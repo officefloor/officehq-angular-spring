@@ -54,6 +54,14 @@ public class Claim {
     @Column(name = "settled_due", precision = 14, scale = 2)
     private BigDecimal settledDue;
 
+    /** Bound by its person's last statement, which it counted toward; its due is then {@link #statedDue}. */
+    @Column(name = "stated", nullable = false)
+    private boolean stated;
+
+    /** The due it had at its person's last statement; none while not stated, or stated with no due. */
+    @Column(name = "stated_due", precision = 14, scale = 2)
+    private BigDecimal statedDue;
+
     protected Claim() {}
 
     public Claim(String sheetId, Long personId, BigDecimal amount, LocalDate date, String note) {
@@ -97,4 +105,20 @@ public class Claim {
     public BigDecimal getSettledDue() { return settledDue; }
 
     public void setSettledDue(BigDecimal settledDue) { this.settledDue = settledDue; }
+
+    public boolean isStated() { return stated; }
+
+    public BigDecimal getStatedDue() { return statedDue; }
+
+    /** Bind the claim to a due (null: it has none), as its person's statement does. */
+    public void state(BigDecimal due) {
+        this.stated = true;
+        this.statedDue = due;
+    }
+
+    /** Leave the claim unbound, its due live again. */
+    public void unstate() {
+        this.stated = false;
+        this.statedDue = null;
+    }
 }

@@ -25,15 +25,17 @@ public class ClaimController {
 
     /**
      * A claim as the screen shows it; the amount always has two decimals, and so does the due fixed
-     * when it was settled (null while its due is live). Who opened it is null while DRAFT.
+     * when it was settled (null while its due is live). Who opened it is null while DRAFT. Stated
+     * when bound by its person's last statement, to the due it had then (null when it had none).
      */
     public record ClaimView(Long id, Long personId, String amount, LocalDate date, String note, ClaimStatus status,
-            Long number, String settledDue, String openedBy) {
-        static ClaimView of(Claim claim) {
+            Long number, String settledDue, String openedBy, boolean stated, String statedDue) {
+        public static ClaimView of(Claim claim) {
             return new ClaimView(claim.getId(), claim.getPersonId(), claim.getAmount().toPlainString(),
                     claim.getDate(), claim.getNote(), claim.getStatus(), claim.getNumber(),
                     claim.getSettledDue() == null ? null : claim.getSettledDue().setScale(2).toPlainString(),
-                    claim.getOpenedBy());
+                    claim.getOpenedBy(), claim.isStated(),
+                    claim.getStatedDue() == null ? null : claim.getStatedDue().setScale(2).toPlainString());
         }
     }
 

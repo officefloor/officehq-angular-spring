@@ -25,6 +25,10 @@ export interface Claim {
   settledDue: string | null;
   /** The user who opened it; null while DRAFT. They cannot settle it. */
   openedBy: string | null;
+  /** Bound by its person's last statement, to the due it had then. */
+  stated: boolean;
+  /** The due bound by its person's last statement, two decimals; null while not stated, or stated with none. */
+  statedDue: string | null;
 }
 
 /** Only OPEN and SETTLED claims count toward what is claimed and due. */
@@ -39,11 +43,13 @@ export function cents(amount: string): number {
 }
 
 /**
- * A claim's due in cents: the due fixed when it was settled, else its amount times its grade's
- * rate on its date (of the grade's rates given); null when it has neither.
+ * A claim's due in cents: the due fixed when it was settled, else the due bound by its person's
+ * last statement, else its amount times its grade's rate on its date (of the grade's rates given);
+ * null when it has none.
  */
 export function claimDueCents(c: Claim, rates: Rate[]): number | null {
   if (c.settledDue !== null) return cents(c.settledDue);
+  if (c.stated) return c.statedDue === null ? null : cents(c.statedDue);
   const pct = pctOn(rates, c.date);
   return pct === null ? null : dueCents(cents(c.amount), pct);
 }
@@ -81,6 +87,7 @@ export function money(cents: number): string {
           <span>Due <span data-testid="claim-due">{{ dueOf(c) }}</span></span>
           <span data-testid="claim-status">{{ c.status }}</span>
           <span>Opened by <span data-testid="claim-opened-by">{{ c.openedBy ?? '' }}</span></span>
+          <span>Stated <span data-testid="claim-stated">{{ c.stated ? 'yes' : 'no' }}</span></span>
           <button type="button" data-testid="claim-open" (click)="act(c, 'open')"
                   [attr.aria-label]="'Open claim of ' + c.amount + ' on ' + c.date">Open</button>
           <button type="button" data-testid="claim-settle" (click)="act(c, 'settle')"

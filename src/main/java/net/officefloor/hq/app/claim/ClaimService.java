@@ -104,6 +104,16 @@ public class ClaimService {
         return saved;
     }
 
+    /**
+     * A claim's figure now: the due fixed when it was settled, else the due bound by its person's
+     * last statement, else its live due; null when it has none.
+     */
+    public BigDecimal figureOf(String sheetId, Person person, Claim claim) {
+        if (claim.getSettledDue() != null) return claim.getSettledDue();
+        if (claim.isStated()) return claim.getStatedDue();
+        return dueOf(sheetId, person, claim);
+    }
+
     /** A claim's amount times its person's grade rate on its date, rounded half to even to cents; null with no rate. */
     private BigDecimal dueOf(String sheetId, Person person, Claim claim) {
         return rates.on(sheetId, person.getGrade(), claim.getDate())
