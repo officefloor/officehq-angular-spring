@@ -1,0 +1,68 @@
+{
+  "checkpoint": 88,
+  "stack": {
+    "repo": "/home/daniel/officehq-angular-spring",
+    "origin": "git@github.com:officefloor/officehq-angular-spring.git",
+    "name": "officehq-angular-spring",
+    "base_ref": "base-empty",
+    "base_commit": "65cb8233ea38b2dfa6cfd18709e30cd18fdf3250"
+  },
+  "checkpoint_id": "cp88_compound-late-charge",
+  "phase": "mid",
+  "type": "mutative",
+  "mutates": [
+    27
+  ],
+  "replaced_tests": [
+    "cp27_patrons-and-backing.spec.ts::patrons and backing scenario 2"
+  ],
+  "request": {
+    "spec": "The late charge now compounds: the charge for each 30-day boundary is the late percent in force\non that boundary date of the claim's figure plus the charges of the boundaries before it, each\nrounded like the claim as before, then added up. A claim settled with its charge keeps the frozen\nfigure.\n",
+    "prompt": "You are implementing ONE change to this application.\n\nFIRST read AGENTS.md \u2014 it states the working rules and how the app is tested, and sends you to\nDESIGN.md for the app's stack and conventions. Follow both.\n\nTHE CHANGE REQUEST:\nThe late charge now compounds: the charge for each 30-day boundary is the late percent in force\non that boundary date of the claim's figure plus the charges of the boundaries before it, each\nrounded like the claim as before, then added up. A claim settled with its charge keeps the frozen\nfigure.\n\nYour work is verified by an automated Playwright UI test already installed under e2e/specs/.\nRead that spec: it declares the exact data-testid anchors, values, test data and any audit\nrecords it expects \u2014 match them. Run `bin/e2e` to build the app, start it, and run the test as\nyou work; iterate until it passes. Change whatever the request needs across the app \u2014 its stored\ndata, its server and its front end. Do NOT edit bin/build, bin/start, bin/stop, bin/e2e,\nAGENTS.md, CLAUDE.md, DESIGN.md, e2e/support/ or the test spec.\n"
+  },
+  "commit_sha": "a2a7c16a23d163959f7e77d2a685b9d103abdfbd",
+  "reset_sha": "",
+  "preagent_sha": "18f48348bc100104ebb34cced50615dc4fad6bde",
+  "prev_sha": "18f48348bc100104ebb34cced50615dc4fad6bde",
+  "base_sha": "65cb8233ea38b2dfa6cfd18709e30cd18fdf3250",
+  "agent": {
+    "ok": true,
+    "cost_usd": 0.297404,
+    "input_tokens": 20,
+    "output_tokens": 3038,
+    "cache_read_tokens": 252620,
+    "cache_creation_tokens": 23255,
+    "num_turns": 10,
+    "duration_ms": 194316,
+    "duration_api_ms": 31582,
+    "model": "claude-opus-5-5",
+    "session_id": "bfe8b091-b1b6-4fb1-9a2b-7155c4cfab5b",
+    "stop_reason": "success",
+    "result_text": "The late charge now compounds, and `bin/e2e` passes all 4 tests in the spec.\n\n**What changed:** at each 30-day boundary, the charge is now the late percent in force that day applied to the claim's figure **plus the charges from the earlier boundaries**. Each step is rounded the same way the claim already rounds, and the steps are added up. A boundary whose percent is 0.00 still adds nothing. For example, a 20.00 figure at 10% over three boundaries now gets 2.00 + 2.20 + 2.42 = 6.62 in charges, so it shows 26.62 due.\n\nThis took a one-line change in each of two places, plus updated doc comments:\n- **Server:** `src/main/java/net/officefloor/hq/app/claim/LateCharge.java`, in `charge()`. Every server path that works out a charge goes through this method (person and sheet totals, statements, settling), so they all pick up the change.\n- **Front end:** `src/main/frontend/src/app/features/claims/claims.ts`, in `lateChargeCents()`.\n\n**Settled claims:** these needed no change. Settling already stores the due with the charge frozen in, and that stored figure is what gets shown.\n\n**No stored-data change:** neither the schema nor the stored data needed changing, because the charge is calculated when it's shown rather than saved.",
+    "error": "",
+    "attempts": [
+      {
+        "ok": true,
+        "limit_reached": false,
+        "retryable": false,
+        "timed_out": false,
+        "cost_usd": 0.297404,
+        "num_turns": 10,
+        "duration_ms": 194316,
+        "duration_api_ms": 31582,
+        "error": ""
+      }
+    ]
+  },
+  "agent_stream_file": "cp88.agent.jsonl",
+  "agent_diff_file": "cp88.agent.diff",
+  "build_log_file": null,
+  "tests": {
+    "gated": false,
+    "queued": true
+  },
+  "probe": null,
+  "pinned_touched": [],
+  "acceptance_touched": [],
+  "impact_gate": null
+}
