@@ -1,0 +1,64 @@
+{
+  "checkpoint": 145,
+  "stack": {
+    "repo": "/home/daniel/officehq-angular-spring",
+    "origin": "git@github.com:officefloor/officehq-angular-spring.git",
+    "name": "officehq-angular-spring",
+    "base_ref": "base-empty",
+    "base_commit": "65cb8233ea38b2dfa6cfd18709e30cd18fdf3250"
+  },
+  "checkpoint_id": "cp145_bulk-redate",
+  "phase": "mid",
+  "type": "additive",
+  "mutates": [],
+  "replaced_tests": [],
+  "request": {
+    "spec": "Selected claims can be re-dated together: a date entry and a button beside the bulk buttons.\nEach selected claim is re-dated in list order exactly as the row's re-date does (who may, which\nstatuses, closed periods, renumbering on a period change, CLAIM_REDATED); show how many were re-dated\nand how many refused.\n",
+    "prompt": "You are implementing ONE change to this application.\n\nFIRST read AGENTS.md \u2014 it states the working rules and how the app is tested, and sends you to\nDESIGN.md for the app's stack and conventions. Follow both.\n\nTHE CHANGE REQUEST:\nSelected claims can be re-dated together: a date entry and a button beside the bulk buttons.\nEach selected claim is re-dated in list order exactly as the row's re-date does (who may, which\nstatuses, closed periods, renumbering on a period change, CLAIM_REDATED); show how many were re-dated\nand how many refused.\n\nYour work is verified by an automated Playwright UI test already installed under e2e/specs/.\nRead that spec: it declares the exact data-testid anchors, values, test data and any audit\nrecords it expects \u2014 match them. Run `bin/e2e` to build the app, start it, and run the test as\nyou work; iterate until it passes. Change whatever the request needs across the app \u2014 its stored\ndata, its server and its front end. Do NOT edit bin/build, bin/start, bin/stop, bin/e2e,\nAGENTS.md, CLAUDE.md, DESIGN.md, e2e/support/ or the test spec.\n"
+  },
+  "commit_sha": "2de28973450bc41703d7f231676f47a9ffacf030",
+  "reset_sha": "",
+  "preagent_sha": "102dff2cbe15d6e64d823740ff45a896944f6cb1",
+  "prev_sha": "102dff2cbe15d6e64d823740ff45a896944f6cb1",
+  "base_sha": "65cb8233ea38b2dfa6cfd18709e30cd18fdf3250",
+  "agent": {
+    "ok": true,
+    "cost_usd": 0.5640084,
+    "input_tokens": 30,
+    "output_tokens": 6635,
+    "cache_read_tokens": 515182,
+    "cache_creation_tokens": 41019,
+    "num_turns": 16,
+    "duration_ms": 265503,
+    "duration_api_ms": 93392,
+    "model": "claude-opus-5-5",
+    "session_id": "1dc43f8f-a9df-4bf9-845b-e4209cbd78b1",
+    "stop_reason": "success",
+    "result_text": "Selected claims can now be re-dated together, and all 4 acceptance tests pass under `bin/e2e`.\n\n**Server**\n- **New endpoint:** `POST /api/sheets/{sheetId}/claims/redate`, in `ClaimController.java`. It takes the selected claim ids and a date, and returns how many were re-dated and how many refused.\n- **New `ClaimBulkService.redate`:** it puts the selected claims in list order (people in list position, each person's claims newest first). It then re-dates each one through the existing row re-date, `ClaimService.redate`, in its own transaction. That means every row rule applies: only a steward may do it; the claim must be OPEN or PENDING; it's refused if due in a closed period or if the new date is after the person's retirement. It renumbers when the period changes and writes its own `CLAIM_REDATED` line.\n- **Refusals:** a refused claim is left unchanged and counted as refused. A viewer or an archived sheet gets every selected claim refused, as with the other bulk actions.\n\n**Front end** (`people.ts`, next to the bulk move control)\n- A date entry (`bulk-redate-date`) and a \"Re-date selected claims\" button (`bulk-redate`).\n- The result reads \"Re-dated N, refused M\" (`bulk-redated` / `bulk-redate-refused`). The old counts are cleared as soon as the button is pressed, and the claims list reloads and the selection is cleared once it's done.\n- **Errors:** `bulk-redate-error` shows when the date is blank and when the request itself fails. It clears when the date is edited or the sheet is reloaded.\n\nOne behaviour to note: a blank date shows the error and re-dates nothing, as the row's re-date does. It does not fall back to the sheet's today the way a blank claim date does in the add-claim form.",
+    "error": "",
+    "attempts": [
+      {
+        "ok": true,
+        "limit_reached": false,
+        "retryable": false,
+        "timed_out": false,
+        "cost_usd": 0.5640084,
+        "num_turns": 16,
+        "duration_ms": 265503,
+        "duration_api_ms": 93392,
+        "error": ""
+      }
+    ]
+  },
+  "agent_stream_file": "cp145.agent.jsonl",
+  "agent_diff_file": "cp145.agent.diff",
+  "build_log_file": null,
+  "tests": {
+    "gated": false,
+    "queued": true
+  },
+  "probe": null,
+  "pinned_touched": [],
+  "acceptance_touched": [],
+  "impact_gate": null
+}
