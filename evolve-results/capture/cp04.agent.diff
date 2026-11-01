@@ -1,0 +1,187 @@
+diff --git a/src/main/frontend/src/app/features/people/people.ts b/src/main/frontend/src/app/features/people/people.ts
+index 3b46bdc74..63349d658 100644
+--- a/src/main/frontend/src/app/features/people/people.ts
++++ b/src/main/frontend/src/app/features/people/people.ts
+@@ -1,4 +1,4 @@
+-import { HttpClient } from '@angular/common/http';
++import { HttpClient, HttpErrorResponse } from '@angular/common/http';
+ import { Component, effect, inject, signal } from '@angular/core';
+ import { FormControl, FormGroup, ReactiveFormsModule } from '@angular/forms';
+ import { firstValueFrom } from 'rxjs';
+@@ -115,8 +115,10 @@ export class People {
+     this.error.set('');
+     const sheet = this.session.sheetId();
+     if (!sheet) return;
+-    const { name, grade } = this.form.getRawValue();
+-    if (!name.trim()) {
++    const raw = this.form.getRawValue();
++    const name = raw.name.trim();
++    const grade = raw.grade;
++    if (!name) {
+       this.error.set('Enter a name.');
+       return;
+     }
+@@ -140,8 +142,12 @@ export class People {
+         this.people.update((list) => list.map((p) => (p.id === saved.id ? saved : p)));
+       }
+       this.reset();
+-    } catch {
+-      this.error.set(id === null ? 'Could not add that person.' : 'Could not save that person.');
++    } catch (e) {
++      if (e instanceof HttpErrorResponse && e.status === 409) {
++        this.error.set('That name is already in use on this sheet.');
++      } else {
++        this.error.set(id === null ? 'Could not add that person.' : 'Could not save that person.');
++      }
+     }
+   }
+ }
+diff --git a/src/main/java/net/officefloor/hq/app/person/DuplicatePersonNameException.java b/src/main/java/net/officefloor/hq/app/person/DuplicatePersonNameException.java
+new file mode 100644
+index 000000000..002a1ac4d
+--- /dev/null
++++ b/src/main/java/net/officefloor/hq/app/person/DuplicatePersonNameException.java
+@@ -0,0 +1,8 @@
++package net.officefloor.hq.app.person;
++
++import org.springframework.http.HttpStatus;
++import org.springframework.web.bind.annotation.ResponseStatus;
++
++/** Another person on the sheet already has that name. */
++@ResponseStatus(HttpStatus.CONFLICT)
++public class DuplicatePersonNameException extends RuntimeException {}
+diff --git a/src/main/java/net/officefloor/hq/app/person/Person.java b/src/main/java/net/officefloor/hq/app/person/Person.java
+index bebe02a08..08af53342 100644
+--- a/src/main/java/net/officefloor/hq/app/person/Person.java
++++ b/src/main/java/net/officefloor/hq/app/person/Person.java
+@@ -6,8 +6,12 @@ import jakarta.persistence.GeneratedValue;
+ import jakarta.persistence.GenerationType;
+ import jakarta.persistence.Id;
+ import jakarta.persistence.Table;
++import java.util.Locale;
+ 
+-/** A person on a sheet, with a name and a grade (A, B or C). */
++/**
++ * A person on a sheet, with a name and a grade (A, B or C). The name is kept without surrounding
++ * spaces and is unique on the sheet without regard to case (by its {@link #keyOf key}).
++ */
+ @Entity
+ @Table(name = "person")
+ public class Person {
+@@ -22,6 +26,9 @@ public class Person {
+     @Column(name = "name", nullable = false)
+     private String name;
+ 
++    @Column(name = "name_key", nullable = false)
++    private String nameKey;
++
+     @Column(name = "grade", nullable = false)
+     private String grade;
+ 
+@@ -29,17 +36,25 @@ public class Person {
+ 
+     public Person(String sheetId, String name, String grade) {
+         this.sheetId = sheetId;
+-        this.name = name;
++        setName(name);
+         this.grade = grade;
+     }
+ 
++    /** The key a name is compared by for uniqueness: without surrounding spaces, lower-cased. */
++    public static String keyOf(String name) {
++        return name.strip().toLowerCase(Locale.ROOT);
++    }
++
+     public Long getId() { return id; }
+ 
+     public String getSheetId() { return sheetId; }
+ 
+     public String getName() { return name; }
+ 
+-    public void setName(String name) { this.name = name; }
++    public void setName(String name) {
++        this.name = name.strip();
++        this.nameKey = keyOf(name);
++    }
+ 
+     public String getGrade() { return grade; }
+ 
+diff --git a/src/main/java/net/officefloor/hq/app/person/PersonRepository.java b/src/main/java/net/officefloor/hq/app/person/PersonRepository.java
+index 31d6ec837..5559eb0fe 100644
+--- a/src/main/java/net/officefloor/hq/app/person/PersonRepository.java
++++ b/src/main/java/net/officefloor/hq/app/person/PersonRepository.java
+@@ -9,4 +9,6 @@ public interface PersonRepository extends JpaRepository<Person, Long> {
+     List<Person> findBySheetIdOrderByIdAsc(String sheetId);
+ 
+     Optional<Person> findByIdAndSheetId(Long id, String sheetId);
++
++    Optional<Person> findBySheetIdAndNameKey(String sheetId, String nameKey);
+ }
+diff --git a/src/main/java/net/officefloor/hq/app/person/PersonService.java b/src/main/java/net/officefloor/hq/app/person/PersonService.java
+index 9f0fde140..cdb7b135e 100644
+--- a/src/main/java/net/officefloor/hq/app/person/PersonService.java
++++ b/src/main/java/net/officefloor/hq/app/person/PersonService.java
+@@ -3,10 +3,15 @@ package net.officefloor.hq.app.person;
+ import java.util.List;
+ import net.officefloor.hq.app.sheet.SheetNotFoundException;
+ import net.officefloor.hq.app.sheet.SheetRepository;
++import org.springframework.dao.DataIntegrityViolationException;
+ import org.springframework.stereotype.Service;
+ import org.springframework.transaction.annotation.Transactional;
+ 
+-/** The people on a sheet: listed in the order they were added, added and edited one at a time. */
++/**
++ * The people on a sheet: listed in the order they were added, added and edited one at a time. A
++ * name already used by another person on the sheet (ignoring case and surrounding spaces) is
++ * refused.
++ */
+ @Service
+ public class PersonService {
+ 
+@@ -26,14 +31,31 @@ public class PersonService {
+     @Transactional
+     public Person add(String sheetId, String name, String grade) {
+         if (!sheets.existsById(sheetId)) throw new SheetNotFoundException();
+-        return people.save(new Person(sheetId, name, grade));
++        requireUnused(sheetId, name, null);
++        return saveUnique(new Person(sheetId, name, grade));
+     }
+ 
+     @Transactional
+     public Person edit(String sheetId, Long id, String name, String grade) {
+         Person person = people.findByIdAndSheetId(id, sheetId).orElseThrow(PersonNotFoundException::new);
++        requireUnused(sheetId, name, id);
+         person.setName(name);
+         person.setGrade(grade);
+-        return person;
++        return saveUnique(person);
++    }
++
++    private void requireUnused(String sheetId, String name, Long self) {
++        people.findBySheetIdAndNameKey(sheetId, Person.keyOf(name))
++                .filter(other -> !other.getId().equals(self))
++                .ifPresent(other -> { throw new DuplicatePersonNameException(); });
++    }
++
++    /** Writes the person now, so a name taken meanwhile by another user is refused by the store. */
++    private Person saveUnique(Person person) {
++        try {
++            return people.saveAndFlush(person);
++        } catch (DataIntegrityViolationException e) {
++            throw new DuplicatePersonNameException();
++        }
+     }
+ }
+diff --git a/src/main/resources/db/migration/V4__person_name_unique.sql b/src/main/resources/db/migration/V4__person_name_unique.sql
+new file mode 100644
+index 000000000..583e551c1
+--- /dev/null
++++ b/src/main/resources/db/migration/V4__person_name_unique.sql
+@@ -0,0 +1,7 @@
++-- A person's name is unique on the sheet, compared without case and ignoring surrounding spaces.
++-- Names are stored trimmed; name_key is the trimmed, lower-cased name the uniqueness is kept on.
++UPDATE person SET name = TRIM(name);
++ALTER TABLE person ADD COLUMN name_key VARCHAR(200);
++UPDATE person SET name_key = LOWER(name);
++ALTER TABLE person ALTER COLUMN name_key SET NOT NULL;
++CREATE UNIQUE INDEX person_sheet_name ON person (sheet_id, name_key);
