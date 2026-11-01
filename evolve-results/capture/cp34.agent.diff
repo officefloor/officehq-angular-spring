@@ -1,0 +1,237 @@
+diff --git a/src/main/frontend/src/app/features/claims/claims.ts b/src/main/frontend/src/app/features/claims/claims.ts
+index 15e72a937..a2705fdc2 100644
+--- a/src/main/frontend/src/app/features/claims/claims.ts
++++ b/src/main/frontend/src/app/features/claims/claims.ts
+@@ -147,7 +147,7 @@ function notEditable(status: ClaimStatus | undefined): string {
+ }
+ 
+ // One person's claims, newest first, with one form to add a claim or edit one, and buttons to
+-// open, settle or void each claim.
++// open, settle or void each claim, and a checkbox to select each for a bulk change.
+ @Component({
+   selector: 'app-claims',
+   imports: [ReactiveFormsModule],
+@@ -169,6 +169,9 @@ function notEditable(status: ClaimStatus | undefined): string {
+     <ul [attr.aria-label]="'Claims for ' + personName()">
+       @for (c of claims(); track c.id) {
+         <li [attr.data-testid]="'claim-row-' + c.id">
++          <input type="checkbox" data-testid="claim-select" [checked]="selected().has(c.id)"
++                 (change)="toggled.emit({ id: c.id, checked: $any($event.target).checked })"
++                 [attr.aria-label]="'Select claim of ' + c.amount + ' on ' + c.date" />
+           <span>No. <span data-testid="claim-number">{{ c.number ?? '' }}</span></span>
+           <span data-testid="claim-amount">{{ c.amount }}</span>
+           <span data-testid="claim-date">{{ c.date }}</span>
+@@ -214,6 +217,10 @@ export class Claims {
+   readonly periods = input.required<Period[]>();
+   /** A claim added, edited or given a new status, as the store now holds it. */
+   readonly saved = output<Claim>();
++  /** The ids of the claims selected for a bulk change. */
++  readonly selected = input.required<ReadonlySet<number>>();
++  /** A claim's checkbox ticked or cleared. */
++  readonly toggled = output<{ id: number; checked: boolean }>();
+ 
+   protected readonly editingId = signal<number | null>(null);
+   /** A submit is under way; another one waits for its answer rather than storing twice. */
+diff --git a/src/main/frontend/src/app/features/people/people.ts b/src/main/frontend/src/app/features/people/people.ts
+index 7d8430e69..9f3fe3a43 100644
+--- a/src/main/frontend/src/app/features/people/people.ts
++++ b/src/main/frontend/src/app/features/people/people.ts
+@@ -137,6 +137,14 @@ interface StatementTaken {
+         Show retired
+       </label>
+       <button type="button" data-testid="export-people" (click)="exportCsv()">Export CSV</button>
++      <button type="button" data-testid="bulk-open" (click)="bulkOpen()">Open selected claims</button>
++      @if (bulkOpened(); as result) {
++        <p role="status">Opened <span data-testid="bulk-opened">{{ result.opened }}</span>,
++          refused <span data-testid="bulk-refused">{{ result.refused }}</span></p>
++      }
++      @if (bulkError()) {
++        <p role="alert" class="error" data-testid="bulk-open-error">{{ bulkError() }}</p>
++      }
+       <table>
+         <thead>
+           <tr><th scope="col">Name</th><th scope="col">Grade</th><th scope="col">Claimed</th><th scope="col">Due total</th><th scope="col">Statements</th><th scope="col">Retired</th><th scope="col">Hold</th><th scope="col">Overdue</th><th scope="col">Patrons</th><th scope="col">Claims</th><th scope="col"><span class="visually-hidden">Actions</span></th></tr>
+@@ -195,8 +203,8 @@ interface StatementTaken {
+               </td>
+               <td>
+                 <app-claims [personId]="p.id" [personName]="p.name" [claims]="claimsOf(p.id)" [pctOn]="pctOnOf(p.id)"
+-                            [periods]="periods()"
+-                            (saved)="claimSaved($event)" />
++                            [periods]="periods()" [selected]="selectedIds()"
++                            (saved)="claimSaved($event)" (toggled)="claimToggled($event)" />
+               </td>
+               <td>
+                 <button type="button" [attr.data-testid]="'person-edit-' + p.id" (click)="edit(p)"
+@@ -271,6 +279,11 @@ export class People {
+   );
+   /** Every claim on the sheet, newest first. */
+   protected readonly claims = signal<Claim[]>([]);
++  /** The ids of the claims selected for a bulk change. */
++  protected readonly selectedIds = signal<ReadonlySet<number>>(new Set());
++  /** How many the last bulk open opened and refused; cleared while the next one runs. */
++  protected readonly bulkOpened = signal<{ opened: number; refused: number } | null>(null);
++  protected readonly bulkError = signal('');
+   private readonly claimsByPerson = computed(() => {
+     const by = new Map<number, Claim[]>();
+     for (const c of this.claims()) by.set(c.personId, [...(by.get(c.personId) ?? []), c]);
+@@ -393,6 +406,9 @@ export class People {
+       this.session.loads();
+       this.people.set([]);
+       this.claims.set([]);
++      this.selectedIds.set(new Set());
++      this.bulkOpened.set(null);
++      this.bulkError.set('');
+       this.rates.set([]);
+       this.periods.set([]);
+       this.statements.set([]);
+@@ -413,6 +429,9 @@ export class People {
+     return `/api/sheets/${encodeURIComponent(sheet)}/people`;
+   }
+ 
++  /** A bulk open is under way; another press waits for its answer. */
++  private bulkRunning = false;
++
+   private async load(sheet: string): Promise<void> {
+     try {
+       const [list, claims, rates, statements, periods] = await Promise.all([
+@@ -655,6 +674,39 @@ export class People {
+   }
+ 
+   /** Put an added claim first, or an edited one in its place. */
++  protected claimToggled(e: { id: number; checked: boolean }): void {
++    this.selectedIds.update((ids) => {
++      const next = new Set(ids);
++      if (e.checked) next.add(e.id);
++      else next.delete(e.id);
++      return next;
++    });
++  }
++
++  /** Open every selected claim that can be opened, numbered in list order; show how many opened and were refused. */
++  protected async bulkOpen(): Promise<void> {
++    if (this.bulkRunning) return;
++    this.bulkOpened.set(null);
++    this.bulkError.set('');
++    const sheet = this.session.sheetId();
++    if (!sheet) return;
++    const base = `/api/sheets/${encodeURIComponent(sheet)}`;
++    this.bulkRunning = true;
++    try {
++      const result = await firstValueFrom(this.http.post<{ opened: number; refused: number }>(
++        `${base}/claims/open`, { ids: [...this.selectedIds()] }, { headers: this.headers() }));
++      const claims = await firstValueFrom(this.http.get<Claim[]>(`${base}/claims`, { headers: this.headers() }));
++      if (this.session.sheetId() !== sheet) return;
++      this.claims.set(claims);
++      this.selectedIds.set(new Set());
++      this.bulkOpened.set(result);
++    } catch {
++      if (this.session.sheetId() === sheet) this.bulkError.set('Could not open the selected claims.');
++    } finally {
++      this.bulkRunning = false;
++    }
++  }
++
+   protected claimSaved(claim: Claim): void {
+     this.claims.update((list) =>
+       list.some((c) => c.id === claim.id) ? list.map((c) => (c.id === claim.id ? claim : c)) : [claim, ...list],
+diff --git a/src/main/java/net/officefloor/hq/app/claim/ClaimBulkService.java b/src/main/java/net/officefloor/hq/app/claim/ClaimBulkService.java
+new file mode 100644
+index 000000000..bd5b732a2
+--- /dev/null
++++ b/src/main/java/net/officefloor/hq/app/claim/ClaimBulkService.java
+@@ -0,0 +1,47 @@
++package net.officefloor.hq.app.claim;
++
++import java.util.Comparator;
++import java.util.List;
++import java.util.Set;
++import net.officefloor.hq.app.period.PeriodClosedException;
++import net.officefloor.hq.app.person.PersonNotFoundException;
++import org.springframework.stereotype.Service;
++
++/**
++ * Changes to many selected claims at once. Each claim is changed in its own transaction, in list
++ * order (people in the order they were added, each person's claims newest first), exactly as if
++ * its own button were pressed; one that is refused is left as it is and counted as refused.
++ */
++@Service
++public class ClaimBulkService {
++
++    /** How many of the selected claims went through, and how many were refused. */
++    public record Result(int done, int refused) {}
++
++    private final ClaimService claims;
++    private final ClaimRepository repository;
++
++    public ClaimBulkService(ClaimService claims, ClaimRepository repository) {
++        this.claims = claims;
++        this.repository = repository;
++    }
++
++    /** Open each selected claim that can be opened, numbering them in list order. */
++    public Result open(String sheetId, String user, Set<Long> ids) {
++        List<Claim> selected = repository.findBySheetIdOrderByIdDesc(sheetId).stream()
++                .filter(c -> ids.contains(c.getId()))
++                .sorted(Comparator.comparing(Claim::getPersonId).thenComparing(Claim::getId, Comparator.reverseOrder()))
++                .toList();
++        int done = 0;
++        for (Claim claim : selected) {
++            try {
++                claims.changeStatus(sheetId, user, claim.getId(), ClaimStatus.OPEN);
++                done++;
++            } catch (ClaimStatusRefusedException | PeriodClosedException | ClaimNotFoundException
++                    | PersonNotFoundException refused) {
++                // left as it is
++            }
++        }
++        return new Result(done, ids.size() - done);
++    }
++}
+diff --git a/src/main/java/net/officefloor/hq/app/claim/ClaimController.java b/src/main/java/net/officefloor/hq/app/claim/ClaimController.java
+index e15e3a978..f24958507 100644
+--- a/src/main/java/net/officefloor/hq/app/claim/ClaimController.java
++++ b/src/main/java/net/officefloor/hq/app/claim/ClaimController.java
+@@ -9,6 +9,7 @@ import jakarta.validation.constraints.Size;
+ import java.math.BigDecimal;
+ import java.time.LocalDate;
+ import java.util.List;
++import java.util.Set;
+ import org.springframework.validation.annotation.Validated;
+ import org.springframework.web.bind.annotation.GetMapping;
+ import org.springframework.web.bind.annotation.PathVariable;
+@@ -61,10 +62,18 @@ public class ClaimController {
+         }
+     }
+ 
++    /** The claims selected for a bulk change, by id. */
++    public record BulkRequest(@NotNull @Size(max = 1000) Set<@NotNull Long> ids) {}
++
++    /** How many of the selected claims a bulk open opened, and how many it refused. */
++    public record BulkOpenView(int opened, int refused) {}
++
+     private final ClaimService service;
++    private final ClaimBulkService bulk;
+ 
+-    public ClaimController(ClaimService service) {
++    public ClaimController(ClaimService service, ClaimBulkService bulk) {
+         this.service = service;
++        this.bulk = bulk;
+     }
+ 
+     @GetMapping("/claims")
+@@ -102,6 +111,15 @@ public class ClaimController {
+         return ClaimView.of(service.changeStatus(sheetId, user, id, ClaimStatus.OPEN));
+     }
+ 
++    @PostMapping("/claims/open")
++    public BulkOpenView bulkOpen(
++            @PathVariable @Size(max = 100) @Pattern(regexp = "[A-Za-z0-9._-]+") String sheetId,
++            @RequestHeader("X-User") @NotBlank @Size(max = 100) String user,
++            @RequestBody @Valid BulkRequest request) {
++        ClaimBulkService.Result result = bulk.open(sheetId, user, request.ids());
++        return new BulkOpenView(result.done(), result.refused());
++    }
++
+     @PostMapping("/claims/{id}/settle")
+     public ClaimView settle(
+             @PathVariable @Size(max = 100) @Pattern(regexp = "[A-Za-z0-9._-]+") String sheetId,

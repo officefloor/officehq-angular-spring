@@ -1,0 +1,64 @@
+{
+  "checkpoint": 34,
+  "stack": {
+    "repo": "/home/daniel/officehq-angular-spring",
+    "origin": "git@github.com:officefloor/officehq-angular-spring.git",
+    "name": "officehq-angular-spring",
+    "base_ref": "base-empty",
+    "base_commit": "65cb8233ea38b2dfa6cfd18709e30cd18fdf3250"
+  },
+  "checkpoint_id": "cp34_bulk-open",
+  "phase": "early",
+  "type": "additive",
+  "mutates": [],
+  "replaced_tests": [],
+  "request": {
+    "spec": "Claims can be selected (a checkbox on each) and opened together with one button. Each selected\nclaim that can be opened is opened and numbered in list order (the list order of people, newest\nclaim first within a person); each that cannot is left as it is. Show how many were opened and\nhow many were refused.\n",
+    "prompt": "You are implementing ONE change to this application.\n\nFIRST read AGENTS.md \u2014 it states the working rules and how the app is tested, and sends you to\nDESIGN.md for the app's stack and conventions. Follow both.\n\nTHE CHANGE REQUEST:\nClaims can be selected (a checkbox on each) and opened together with one button. Each selected\nclaim that can be opened is opened and numbered in list order (the list order of people, newest\nclaim first within a person); each that cannot is left as it is. Show how many were opened and\nhow many were refused.\n\nYour work is verified by an automated Playwright UI test already installed under e2e/specs/.\nRead that spec: it declares the exact data-testid anchors, values, test data and any audit\nrecords it expects \u2014 match them. Run `bin/e2e` to build the app, start it, and run the test as\nyou work; iterate until it passes. Change whatever the request needs across the app \u2014 its stored\ndata, its server and its front end. Do NOT edit bin/build, bin/start, bin/stop, bin/e2e,\nAGENTS.md, CLAUDE.md, DESIGN.md, e2e/support/ or the test spec.\n"
+  },
+  "commit_sha": "508563b60e47e1b83e7b09ffff1ce5df07ffa8e0",
+  "reset_sha": "",
+  "preagent_sha": "aa2695a39b365a62a4cf3e059f40643010f32f72",
+  "prev_sha": "aa2695a39b365a62a4cf3e059f40643010f32f72",
+  "base_sha": "65cb8233ea38b2dfa6cfd18709e30cd18fdf3250",
+  "agent": {
+    "ok": true,
+    "cost_usd": 0.6715364000000001,
+    "input_tokens": 30,
+    "output_tokens": 7204,
+    "cache_read_tokens": 578242,
+    "cache_creation_tokens": 51461,
+    "num_turns": 17,
+    "duration_ms": 199697,
+    "duration_api_ms": 75454,
+    "model": "claude-opus-5-5",
+    "session_id": "1ea0ecb4-d4bc-4b90-ac59-524347b653be",
+    "stop_reason": "success",
+    "result_text": "Bulk open is in place, and all 4 acceptance tests pass with `bin/e2e`.\n\n**What it does**\n- Each claim row has a checkbox (`claim-select`).\n- An \"Open selected claims\" button (`bulk-open`) opens every selected claim that can be opened. Afterwards it shows how many were opened (`bulk-opened`) and how many were refused (`bulk-refused`).\n- Claims are opened in list order: people in the order they were added, and each person's claims newest first. So they get the sheet's next numbers in that order.\n- A claim that can't be opened is counted as refused and left unchanged. That covers one that is already open, one dated in a closed period, or one that no longer exists.\n- Each claim is opened in its own transaction, the same way the single Open button does it. So each opened claim writes the usual `CLAIM_OPENED`, `ROLLUP` and `TOTALS` audit lines, and a refusal writes nothing and doesn't use up a number. There is no separate audit line for the bulk action itself, since the test expects none.\n- The old counts disappear while a press is running. When it finishes, the claims are re-read from the server and the selection is cleared.\n\n**Files changed**\n- New `claim/ClaimBulkService.java`, which sorts the selected claims and opens them one by one.\n- `claim/ClaimController.java` has a new `POST /api/sheets/{sheetId}/claims/open` endpoint that takes `{ ids: [...] }` and returns `{ opened, refused }`.\n- `features/claims/claims.ts` has the checkbox, and `features/people/people.ts` has the selection, the button, the counts and an error element (`bulk-open-error`) for when the request itself fails.\n\nNo database change was needed.",
+    "error": "",
+    "attempts": [
+      {
+        "ok": true,
+        "limit_reached": false,
+        "retryable": false,
+        "timed_out": false,
+        "cost_usd": 0.6715364000000001,
+        "num_turns": 17,
+        "duration_ms": 199697,
+        "duration_api_ms": 75454,
+        "error": ""
+      }
+    ]
+  },
+  "agent_stream_file": "cp34.agent.jsonl",
+  "agent_diff_file": "cp34.agent.diff",
+  "build_log_file": null,
+  "tests": {
+    "gated": false,
+    "queued": true
+  },
+  "probe": null,
+  "pinned_touched": [],
+  "acceptance_touched": [],
+  "impact_gate": null
+}
