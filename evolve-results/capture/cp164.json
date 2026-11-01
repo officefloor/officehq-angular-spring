@@ -1,0 +1,76 @@
+{
+  "checkpoint": 164,
+  "stack": {
+    "repo": "/home/daniel/officehq-angular-spring",
+    "origin": "git@github.com:officefloor/officehq-angular-spring.git",
+    "name": "officehq-angular-spring",
+    "base_ref": "base-empty",
+    "base_commit": "65cb8233ea38b2dfa6cfd18709e30cd18fdf3250"
+  },
+  "checkpoint_id": "cp164_correction-limit",
+  "phase": "mid",
+  "type": "mutative",
+  "mutates": [
+    30,
+    34,
+    35,
+    51,
+    144
+  ],
+  "replaced_tests": [
+    "cp144_numbering-per-fiscal-year.spec.ts::numbering per fiscal year scenario 2",
+    "cp30_corrections.spec.ts::corrections",
+    "cp34_bulk-open.spec.ts::bulk open scenario 1",
+    "cp35_numbering-per-period.spec.ts::numbering per period scenario 2",
+    "cp51_proofs.spec.ts::proofs scenario 1"
+  ],
+  "request": {
+    "spec": "A correction may not exceed what remains of the claim it corrects: the target's amount less the\namounts of the corrections already made against it (VOID or DELETED ones left out). A larger\ncorrection is refused with an error on the form.\n",
+    "prompt": "You are implementing ONE change to this application.\n\nFIRST read AGENTS.md \u2014 it states the working rules and how the app is tested, and sends you to\nDESIGN.md for the app's stack and conventions. Follow both.\n\nTHE CHANGE REQUEST:\nA correction may not exceed what remains of the claim it corrects: the target's amount less the\namounts of the corrections already made against it (VOID or DELETED ones left out). A larger\ncorrection is refused with an error on the form.\n\nYour work is verified by an automated Playwright UI test already installed under e2e/specs/.\nRead that spec: it declares the exact data-testid anchors, values, test data and any audit\nrecords it expects \u2014 match them. Run `bin/e2e` to build the app, start it, and run the test as\nyou work; iterate until it passes. Change whatever the request needs across the app \u2014 its stored\ndata, its server and its front end. Do NOT edit bin/build, bin/start, bin/stop, bin/e2e,\nAGENTS.md, CLAUDE.md, DESIGN.md, e2e/support/ or the test spec.\n"
+  },
+  "commit_sha": "271e056b0e485d5c704a943ab4e92f18ae524455",
+  "reset_sha": "",
+  "preagent_sha": "f45d8b45668c65f810c95181b778f5723d01854d",
+  "prev_sha": "f45d8b45668c65f810c95181b778f5723d01854d",
+  "base_sha": "65cb8233ea38b2dfa6cfd18709e30cd18fdf3250",
+  "agent": {
+    "ok": true,
+    "cost_usd": 0.37469359999999996,
+    "input_tokens": 20,
+    "output_tokens": 3322,
+    "cache_read_tokens": 279508,
+    "cache_creation_tokens": 31534,
+    "num_turns": 10,
+    "duration_ms": 259696,
+    "duration_api_ms": 43210,
+    "model": "claude-opus-5-5",
+    "session_id": "6ed08478-f681-4985-8d6a-2cab57354f4a",
+    "stop_reason": "success",
+    "result_text": "A correction can no longer be bigger than what's left of the claim it corrects, and all 4 tests in `bin/e2e` pass.\n\n**How the limit works:** what's left is the corrected claim's amount minus the corrections already made against it, not counting VOID or DELETED ones. The check runs in the server's existing correction check in `ClaimService.java`, so it applies both when a claim is added and when one is saved from the editor. When editing a correction, its own old amount isn't counted against it.\n\n**The error:** a correction that's too big gets the same error the form already showed for a bad correction (one that names no SETTLED claim). It changes nothing in the store or the audit file. No front-end or database changes were needed. I also updated the description comment on `CorrectionRefusedException`.\n\n**Decision for you:** restoring a DELETED correction isn't checked. The request only covers the form, so a restored correction could push the total past the limit. If you want restores refused in that case too, it's a small addition.",
+    "error": "",
+    "attempts": [
+      {
+        "ok": true,
+        "limit_reached": false,
+        "retryable": false,
+        "timed_out": false,
+        "cost_usd": 0.37469359999999996,
+        "num_turns": 10,
+        "duration_ms": 259696,
+        "duration_api_ms": 43210,
+        "error": ""
+      }
+    ]
+  },
+  "agent_stream_file": "cp164.agent.jsonl",
+  "agent_diff_file": "cp164.agent.diff",
+  "build_log_file": null,
+  "tests": {
+    "gated": false,
+    "queued": true
+  },
+  "probe": null,
+  "pinned_touched": [],
+  "acceptance_touched": [],
+  "impact_gate": null
+}
