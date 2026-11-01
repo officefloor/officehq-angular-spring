@@ -114,6 +114,14 @@ interface StatementTaken {
 // due-totals added up; per period, its due-total; per status, how many claims have it.
 // Above everything, a header of counters repeating those figures: the people on the sheet (retired
 // people included), the claims per status, and the sheet's due-total and overdue-total.
+// The sheet's due-total and overdue-total leave out the single highest and the single lowest person's
+// figure when three or more people have one (an n/a due-total is no figure).
+/** Figures in cents added up, leaving out the single highest and the single lowest when there are three or more. */
+function trimmedSum(figures: number[]): number {
+  const sum = figures.reduce((total, c) => total + c, 0);
+  return figures.length < 3 ? sum : sum - Math.max(...figures) - Math.min(...figures);
+}
+
 @Component({
   selector: 'app-people',
   imports: [ReactiveFormsModule, Claims, Periods, Rates],
@@ -431,9 +439,9 @@ export class People {
     }
     return by;
   });
-  /** Everyone's due-total added up, skipping those whose due-total is n/a. */
+  /** Everyone's due-total added up, skipping those whose due-total is n/a, trimmed. */
   protected readonly dueTotal = computed(() =>
-    money(this.people().reduce((sum, p) => sum + (this.dueTotalCents(p) ?? 0), 0)),
+    money(trimmedSum(this.people().map((p) => this.dueTotalCents(p)).filter((c): c is number => c !== null))),
   );
   /** Each person's overdue claims that count, by id: how many and their dues in cents. */
   private readonly overdueByPerson = computed(() => {
@@ -451,9 +459,9 @@ export class People {
   });
   /** The sheet's overdue claims that count: everyone's added up. */
   protected readonly overdueTotal = computed(() => {
-    let total: Overdue = { count: 0, cents: 0 };
-    for (const o of this.overdueByPerson().values()) total = { count: total.count + o.count, cents: total.cents + o.cents };
-    return total;
+    let count = 0;
+    for (const o of this.overdueByPerson().values()) count += o.count;
+    return { count, cents: trimmedSum([...this.overdueByPerson().values()].map((o) => o.cents)) };
   });
   /** Per grade: the people not retired on it today, and their due-totals added up, skipping n/a. */
   protected readonly gradeSummary = computed(() =>

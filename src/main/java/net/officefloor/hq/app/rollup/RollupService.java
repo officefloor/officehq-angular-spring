@@ -80,8 +80,8 @@ public class RollupService {
         }
         Map<Long, Figures> figures = new LinkedHashMap<>();
         BigDecimal claimedTotal = zero();
-        BigDecimal dueTotal = zero();
-        BigDecimal overdueTotal = zero();
+        List<BigDecimal> dues = new ArrayList<>();
+        List<BigDecimal> overdues = new ArrayList<>();
         for (Person person : people.findBySheetIdOrderByIdAsc(sheetId)) {
             BigDecimal claimed = zero();
             BigDecimal due = zero();
@@ -114,10 +114,19 @@ public class RollupService {
             if (sheet != null) personDue = sheet.capped(personDue);
             figures.put(person.getId(), new Figures(person.getName(), claimed, personDue, overdue));
             claimedTotal = claimedTotal.add(claimed);
-            if (personDue != null) dueTotal = dueTotal.add(personDue);
-            overdueTotal = overdueTotal.add(overdue);
+            if (personDue != null) dues.add(personDue);
+            overdues.add(overdue);
         }
-        return new Snapshot(figures, claimedTotal, dueTotal, overdueTotal);
+        return new Snapshot(figures, claimedTotal, trimmedSum(dues), trimmedSum(overdues));
+    }
+
+    /** The figures added up, leaving out the single highest and the single lowest when there are three or more. */
+    static BigDecimal trimmedSum(List<BigDecimal> figures) {
+        BigDecimal sum = figures.stream().reduce(zero(), BigDecimal::add);
+        if (figures.size() < 3) return sum;
+        BigDecimal max = figures.stream().max(BigDecimal::compareTo).orElseThrow();
+        BigDecimal min = figures.stream().min(BigDecimal::compareTo).orElseThrow();
+        return sum.subtract(max).subtract(min);
     }
 
     /** Audit, once the transaction commits, how the sheet's figures moved since {@code before}. */
