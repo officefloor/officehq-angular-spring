@@ -16,6 +16,8 @@ export class Session {
   readonly sheetId = signal<string | null>(null);
   /** The sheet's today (yyyy-mm-dd): every date decision and default date uses it, never the clock. */
   readonly today = signal<string | null>(null);
+  /** Bumped on every sheet load, so features re-read the sheet from the store even for the same id. */
+  readonly loads = signal(0);
 
   async signIn(name: string): Promise<void> {
     const res = await firstValueFrom(this.http.post<{ name: string }>('/api/session', { name }));
@@ -32,6 +34,7 @@ export class Session {
     );
     this.sheetId.set(res.id);
     this.today.set(res.today);
+    this.loads.update((n) => n + 1);
   }
 
   async setToday(today: string): Promise<void> {
