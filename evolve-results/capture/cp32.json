@@ -1,0 +1,85 @@
+{
+  "checkpoint": 32,
+  "stack": {
+    "repo": "/home/daniel/officehq-angular-spring",
+    "origin": "git@github.com:officefloor/officehq-angular-spring.git",
+    "name": "officehq-angular-spring",
+    "base_ref": "base-empty",
+    "base_commit": "65cb8233ea38b2dfa6cfd18709e30cd18fdf3250"
+  },
+  "checkpoint_id": "cp32_rounding-policy-date",
+  "phase": "early",
+  "type": "mutative",
+  "mutates": [
+    7,
+    12,
+    15,
+    16,
+    20,
+    21,
+    23,
+    26,
+    27
+  ],
+  "replaced_tests": [
+    "cp07_rates-and-due.spec.ts::rates and due",
+    "cp12_half-even.spec.ts::half even",
+    "cp15_statements.spec.ts::statements",
+    "cp16_rollup-audit.spec.ts::rollup audit scenario 3",
+    "cp20_open-claims-immutable.spec.ts::open claims immutable scenario 1",
+    "cp21_retire.spec.ts::retire scenario 2",
+    "cp23_roles-and-clerk-limit.spec.ts::roles and clerk limit",
+    "cp26_late-charge.spec.ts::late charge",
+    "cp26_late-charge.spec.ts::late charge scenario 2",
+    "cp27_patrons-and-backing.spec.ts::patrons and backing scenario 2"
+  ],
+  "request": {
+    "spec": "The sheet has a policy date (settings, SETTING_CHANGED key=policy-date value=<date>); when it is\nblank the policy date is the sheet's today. A claim dated before the policy date rounds half up;\na claim dated on or after it rounds half to even. This decides every rounding of that claim's live\nfigures (the rate step and the late charge). A correction rounds by the date of the claim it\ncorrects, not its own. Settled figures stay frozen and figures bound by a statement stay bound.\n",
+    "prompt": "You are implementing ONE change to this application.\n\nFIRST read AGENTS.md \u2014 it states the working rules and how the app is tested, and sends you to\nDESIGN.md for the app's stack and conventions. Follow both.\n\nTHE CHANGE REQUEST:\nThe sheet has a policy date (settings, SETTING_CHANGED key=policy-date value=<date>); when it is\nblank the policy date is the sheet's today. A claim dated before the policy date rounds half up;\na claim dated on or after it rounds half to even. This decides every rounding of that claim's live\nfigures (the rate step and the late charge). A correction rounds by the date of the claim it\ncorrects, not its own. Settled figures stay frozen and figures bound by a statement stay bound.\n\nYour work is verified by an automated Playwright UI test already installed under e2e/specs/.\nRead that spec: it declares the exact data-testid anchors, values, test data and any audit\nrecords it expects \u2014 match them. Run `bin/e2e` to build the app, start it, and run the test as\nyou work; iterate until it passes. Change whatever the request needs across the app \u2014 its stored\ndata, its server and its front end. Do NOT edit bin/build, bin/start, bin/stop, bin/e2e,\nAGENTS.md, CLAUDE.md, DESIGN.md, e2e/support/ or the test spec.\n"
+  },
+  "commit_sha": "26895fc8441cbfbb39396b477814d77dcc0e6386",
+  "reset_sha": "",
+  "preagent_sha": "ae2a7519d5991db6488a3168ea4da2988de416de",
+  "prev_sha": "ae2a7519d5991db6488a3168ea4da2988de416de",
+  "base_sha": "65cb8233ea38b2dfa6cfd18709e30cd18fdf3250",
+  "agent": {
+    "ok": true,
+    "cost_usd": 1.2529702,
+    "input_tokens": 40,
+    "output_tokens": 16774,
+    "cache_read_tokens": 1219451,
+    "cache_creation_tokens": 84180,
+    "num_turns": 21,
+    "duration_ms": 321006,
+    "duration_api_ms": 181450,
+    "model": "claude-opus-5-5",
+    "session_id": "3206bbdd-5b5a-49e9-a303-c1c66289ba68",
+    "stop_reason": "success",
+    "result_text": "The sheet now has a policy date setting, and all 4 tests in the acceptance spec pass under `bin/e2e`.\n\n**How the rounding works now**\n- A claim dated before the policy date rounds half up; one dated on or after it rounds half to even. If the policy date is blank, the sheet's today is used.\n- This applies to both the rate step and the late charge.\n- A correction rounds by the date of the claim it corrects, found by number among the same person's claims. Its own date doesn't count.\n- Settled figures and figures bound by a statement are left as they are, because rounding only touches live figures.\n- Negative amounts round by their size, so \u22121.025 rounding half up gives \u22121.03.\n\n**What changed**\n- **Stored data:** new migration `V26__sheet_policy_date.sql` adds a nullable `policy_date` column, mapped on `Sheet`.\n- **Rounding rule:** new `claim/Rounding.java` works out which rounding a claim uses. The due calculation in `ClaimService`, `LateCharge` and `RollupService` all use it, so settling, statements, period closing and the audited totals all round the same way.\n- **Setting:** a new `PUT /settings/policy-date` endpoint, where blank clears it. Saving writes `SETTING_CHANGED sheet=\u2026 by=\u2026 key=policy-date value=<date or blank>`, followed by ROLLUP/TOTALS lines for any live dues that moved, the same way the floor setting does. The policy date is also returned with the sheet and settings data.\n- **Front end:** the settings screen has a `setting-policy-date` input and shows the saved value in `setting-policy-date-current`. It accepts a real `yyyy-mm-dd` date or blank. The due calculations in `claims.ts` and `people.ts` apply the same rule as the server, so the dues on screen match.",
+    "error": "",
+    "attempts": [
+      {
+        "ok": true,
+        "limit_reached": false,
+        "retryable": false,
+        "timed_out": false,
+        "cost_usd": 1.2529702,
+        "num_turns": 21,
+        "duration_ms": 321006,
+        "duration_api_ms": 181450,
+        "error": ""
+      }
+    ]
+  },
+  "agent_stream_file": "cp32.agent.jsonl",
+  "agent_diff_file": "cp32.agent.diff",
+  "build_log_file": null,
+  "tests": {
+    "gated": false,
+    "queued": true
+  },
+  "probe": null,
+  "pinned_touched": [],
+  "acceptance_touched": [],
+  "impact_gate": null
+}
