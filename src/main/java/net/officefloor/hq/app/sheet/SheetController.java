@@ -47,6 +47,7 @@ public class SheetController {
      *  reviewThreshold is the review threshold (two decimals) in force on the sheet's today, null when there is none;
      *  escalateAfter is the escalation gap in days, null when it is off;
      *  reviewSla is the review SLA in days, null when there is none;
+     *  scoreMid and scoreHigh are the score thresholds, each null when there is none;
      *  proofKinds is the sheet's proof kinds, comma separated, null when there are none;
      *  defaultGrade is the sheet's default grade, null when it sets none (then A);
      *  asOf is the date the sheet is shown as of, when it is (then the sheet is as it stood at the end of it, and today is that date), else null. */
@@ -56,7 +57,7 @@ public class SheetController {
             LocalDate asOf, String noteThreshold, LocalDate entryDate, Map<String, Integer> gradeGrace,
             Map<String, String> gradeProofThreshold, Integer settleBatch, String pot, String parent, int fiscalStartMonth,
             String alertThreshold, String rounding, String reviewThreshold, Integer escalateAfter, Integer reviewSla,
-            String proofKinds, String defaultGrade, Map<String, String> gradeClerkLimit) {
+            String proofKinds, String defaultGrade, Map<String, String> gradeClerkLimit, Integer scoreMid, Integer scoreHigh) {
 
         static SheetView of(Sheet sheet) {
             return of(sheet, null);
@@ -80,7 +81,7 @@ public class SheetController {
                     sheet.getRounding(),
                     sheet.getReviewThreshold() == null ? null : sheet.getReviewThreshold().toPlainString(),
                     sheet.getEscalateAfter(), sheet.getReviewSla(), sheet.getProofKinds(),
-                    sheet.getDefaultGrade(), sheet.getGradeClerkLimits());
+                    sheet.getDefaultGrade(), sheet.getGradeClerkLimits(), sheet.getScoreMid(), sheet.getScoreHigh());
         }
     }
 
@@ -137,6 +138,10 @@ public class SheetController {
 
     /** The sheet's review SLA, in days, as the form submits it; a missing one means none. */
     public record ReviewSlaChange(@Min(0) @Max(36500) Integer reviewSla) {
+    }
+
+    /** A score threshold, a whole number, as the form submits it; a missing one means none. */
+    public record ScoreThresholdChange(@Min(-1_000_000_000) @Max(1_000_000_000) Integer value) {
     }
 
     /** The sheet's fiscal year start month as the form submits it, 1 to 12. */
@@ -352,6 +357,24 @@ public class SheetController {
             @RequestHeader("X-User") @NotBlank @Size(max = 100) String user,
             @Valid @RequestBody ReviewSlaChange request) {
         return SheetView.of(sheets.setReviewSla(id, user, request.reviewSla()));
+    }
+
+    /** Change the sheet's mid score threshold. */
+    @PutMapping("/{id}/settings/score-mid")
+    public SheetView setScoreMid(
+            @PathVariable @NotBlank @Size(max = 100) @Pattern(regexp = "[A-Za-z0-9._-]+") String id,
+            @RequestHeader("X-User") @NotBlank @Size(max = 100) String user,
+            @Valid @RequestBody ScoreThresholdChange request) {
+        return SheetView.of(sheets.setScoreMid(id, user, request.value()));
+    }
+
+    /** Change the sheet's high score threshold. */
+    @PutMapping("/{id}/settings/score-high")
+    public SheetView setScoreHigh(
+            @PathVariable @NotBlank @Size(max = 100) @Pattern(regexp = "[A-Za-z0-9._-]+") String id,
+            @RequestHeader("X-User") @NotBlank @Size(max = 100) String user,
+            @Valid @RequestBody ScoreThresholdChange request) {
+        return SheetView.of(sheets.setScoreHigh(id, user, request.value()));
     }
 
     /** Change the sheet's fiscal year start month. */

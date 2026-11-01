@@ -414,6 +414,7 @@ function csvField(value: string): string {
                 due <span data-testid="person-overdue-total">{{ (money(overdueOf(p.id).cents)) | figure }}</span>
             }
             — score <span data-testid="person-score">{{ scoreOf(p.id) }}</span>
+            <span data-testid="person-band">{{ bandOf(p.id) }}</span>
             — aged 0–30 <span data-testid="person-aged-0-30">{{ (money(agedOf(p.id).upTo30)) | figure }}</span>
             31–60 <span data-testid="person-aged-31-60">{{ (money(agedOf(p.id).upTo60)) | figure }}</span>
             61+ <span data-testid="person-aged-61">{{ (money(agedOf(p.id).over60)) | figure }}</span>
@@ -1430,6 +1431,15 @@ export class PeopleList {
     const rest = scaled - floor * 10_000;
     const score = rest > 5_000 || (rest === 5_000 && floor % 2 !== 0) ? floor + 1 : floor;
     return String(score === 0 ? 0 : score);
+  }
+
+  /** The person's score band while both score thresholds are set: HIGH at or above the high one, MID at or above the
+   *  mid one, else LOW; blank while either is unset. */
+  protected bandOf(personId: number): string {
+    const sheet = this.sheets.current();
+    if (sheet == null || sheet.scoreMid == null || sheet.scoreHigh == null) return '';
+    const score = Number(this.scoreOf(personId));
+    return score >= sheet.scoreHigh ? 'HIGH' : score >= sheet.scoreMid ? 'MID' : 'LOW';
   }
 
   protected snapshotsOf(personId: number): SnapshotView[] {

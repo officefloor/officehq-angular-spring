@@ -226,6 +226,30 @@ public class SheetService {
         return saved;
     }
 
+    /** Set the sheet's mid score threshold (null: none), starting the sheet if it has never been loaded. Not dated. */
+    @Transactional
+    public Sheet setScoreMid(String id, String user, Integer scoreMid) {
+        load(id, user);
+        Sheet sheet = sheets.findLockedById(id).orElseThrow();
+        sheet.setScoreMid(scoreMid);
+        Sheet saved = sheets.saveAndFlush(sheet);
+        audit.recordChangeOnCommit(id, user, "SETTING_CHANGED sheet=" + id + " by=" + user
+                + " key=score-mid value=" + (scoreMid == null ? "" : scoreMid));
+        return saved;
+    }
+
+    /** Set the sheet's high score threshold (null: none), starting the sheet if it has never been loaded. Not dated. */
+    @Transactional
+    public Sheet setScoreHigh(String id, String user, Integer scoreHigh) {
+        load(id, user);
+        Sheet sheet = sheets.findLockedById(id).orElseThrow();
+        sheet.setScoreHigh(scoreHigh);
+        Sheet saved = sheets.saveAndFlush(sheet);
+        audit.recordChangeOnCommit(id, user, "SETTING_CHANGED sheet=" + id + " by=" + user
+                + " key=score-high value=" + (scoreHigh == null ? "" : scoreHigh));
+        return saved;
+    }
+
     /** Set the sheet's fiscal year start month, 1 to 12, starting the sheet if it has never been loaded. Not dated. */
     @Transactional
     public Sheet setFiscalStartMonth(String id, String user, int month) {

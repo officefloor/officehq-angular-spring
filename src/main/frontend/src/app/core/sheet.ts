@@ -72,6 +72,10 @@ export interface SheetView {
   /** The sheet's review SLA, in days: a REVIEW claim whose review day (the sheet's today when it went to REVIEW)
    *  plus these is before the sheet's today is late for review; null: none. Not dated. */
   reviewSla: number | null;
+  /** The sheet's score thresholds, whole numbers: while both are set each person shows a band (HIGH at or above the
+   *  high one, MID at or above the mid one, else LOW); null: none. Not dated. */
+  scoreMid: number | null;
+  scoreHigh: number | null;
   /** The sheet's fiscal year start month, 1 to 12: a fiscal year runs twelve months from the first of it and is
    *  named FY<yyyy> by the calendar year it starts in. Not dated. */
   fiscalStartMonth: number;
@@ -260,6 +264,20 @@ export class Sheets {
   setReviewSla(id: string, reviewSla: number | null): Observable<SheetView> {
     return this.http
       .put<SheetView>(`/api/sheets/${encodeURIComponent(id)}/settings/review-sla`, { reviewSla })
+      .pipe(tap((s) => this.active.set(s)));
+  }
+
+  /** Change the active sheet's mid score threshold, a whole number; null means none. Not dated. */
+  setScoreMid(id: string, value: number | null): Observable<SheetView> {
+    return this.http
+      .put<SheetView>(`/api/sheets/${encodeURIComponent(id)}/settings/score-mid`, { value })
+      .pipe(tap((s) => this.active.set(s)));
+  }
+
+  /** Change the active sheet's high score threshold, a whole number; null means none. Not dated. */
+  setScoreHigh(id: string, value: number | null): Observable<SheetView> {
+    return this.http
+      .put<SheetView>(`/api/sheets/${encodeURIComponent(id)}/settings/score-high`, { value })
       .pipe(tap((s) => this.active.set(s)));
   }
 
