@@ -15,6 +15,8 @@ import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.util.List;
 import org.springframework.validation.annotation.Validated;
+import org.springframework.http.ResponseEntity;
+import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PutMapping;
@@ -118,5 +120,18 @@ public class RateController {
             @RequestHeader("X-User") @NotBlank @Size(max = 100) String user,
             @Valid @RequestBody RateForm request) {
         return RateView.of(rates.set(sheetId, user, grade, request.from(), request.to(), request.rate()));
+    }
+
+    /** A steward withdraws the newest version of a grade's rate from a date (none: from the beginning of time): the
+     *  version before it as it now applies, or no content when the rate is gone. */
+    @DeleteMapping("/{grade}")
+    public ResponseEntity<RateView> withdraw(
+            @PathVariable @NotBlank @Size(max = 100) @Pattern(regexp = "[A-Za-z0-9._-]+") String sheetId,
+            @PathVariable @Pattern(regexp = Sheet.GRADE_CODE) String grade,
+            @RequestHeader("X-User") @NotBlank @Size(max = 100) String user,
+            @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate from) {
+        return rates.withdraw(sheetId, user, grade, from)
+                .map(rate -> ResponseEntity.ok(RateView.of(rate)))
+                .orElseGet(() -> ResponseEntity.noContent().build());
     }
 }

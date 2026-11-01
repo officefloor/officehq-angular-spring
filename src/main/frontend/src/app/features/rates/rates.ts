@@ -27,6 +27,9 @@ import { FigurePipe } from '../../core/figure';
                     through <span data-testid="rate-to">{{ r.to }}</span>
                   }
                   (version <span data-testid="rate-version">{{ r.version }}</span>)
+                  <button type="button" data-testid="rate-withdraw" [disabled]="withdrawing()"
+                    [attr.aria-label]="'Withdraw the newest version of grade ' + g + ' from ' + (r.from ?? 'the start')"
+                    (click)="withdraw(g, r.from)">Withdraw</button>
                 </li>
               }
             </ul>
@@ -118,6 +121,7 @@ export class RatesPanel {
   protected readonly notAvailable = NOT_AVAILABLE;
   protected readonly error = signal<string | null>(null);
   protected readonly saving = signal(false);
+  protected readonly withdrawing = signal(false);
 
   protected readonly form = new FormGroup({
     grade: new FormControl<Grade>('A', { nonNullable: true }),
@@ -214,6 +218,22 @@ export class RatesPanel {
       error: () => {
         this.previewing.set(false);
         this.previewError.set('Could not preview that rate.');
+      },
+    });
+  }
+
+  /** Withdraw a rate's newest version; a refusal shows on the rate form's error. */
+  protected withdraw(grade: Grade, from: string | null): void {
+    if (this.withdrawing()) return;
+    this.error.set(null);
+    const sheet = this.sheets.current();
+    if (!sheet) return;
+    this.withdrawing.set(true);
+    this.rates.withdraw(sheet.id, grade, from).subscribe({
+      next: () => this.withdrawing.set(false),
+      error: () => {
+        this.withdrawing.set(false);
+        this.error.set('Could not withdraw that rate: only a steward may, and only a rate the sheet has.');
       },
     });
   }

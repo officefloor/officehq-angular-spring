@@ -290,6 +290,20 @@ export class Rates {
       );
   }
 
+  /** Withdraw the newest version of a grade's rate from a date (null: from the beginning of time): the version
+   *  before it applies again, or, with none, the rate is gone. */
+  withdraw(sheetId: string, grade: Grade, from: string | null): Observable<RateView | null> {
+    const params: Record<string, string> = from === null ? {} : { from };
+    return this.http.delete<RateView | null>(`${this.base(sheetId)}/${grade}`, { params }).pipe(
+      tap((restored) =>
+        this.list.update((list) => [
+          ...list.filter((r) => r.grade !== grade || r.from !== from),
+          ...(restored ? [restored] : []),
+        ]),
+      ),
+    );
+  }
+
   /** Set a rate per pasted line of grade,rate,from,to, in order, as the form would; when any line is refused, none
    *  is set. */
   importRates(sheetId: string, text: string): Observable<RateImportView> {

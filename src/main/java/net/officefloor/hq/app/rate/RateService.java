@@ -7,8 +7,11 @@ import java.time.LocalDate;
 import java.util.Comparator;
 import java.util.List;
 import java.util.Objects;
+import java.util.Optional;
 import net.officefloor.hq.app.Audit;
 import net.officefloor.hq.app.claim.ClaimRepository;
+import net.officefloor.hq.app.role.Role;
+import net.officefloor.hq.app.role.RoleService;
 import net.officefloor.hq.app.rollup.Rollup;
 import net.officefloor.hq.app.sheet.SheetService;
 import org.springframework.http.HttpStatus;
@@ -27,9 +30,11 @@ public class RateService {
     private final RateChains chains;
     private final RateVersionRepository versions;
     private final ClaimRepository claims;
+    private final RoleService roles;
 
     public RateService(RateRepository rates, SheetService sheets, Audit audit, Rollup rollup, RateChains chains,
-            RateVersionRepository versions, ClaimRepository claims) {
+            RateVersionRepository versions, ClaimRepository claims, RoleService roles) {
+        this.roles = roles;
         this.claims = claims;
         this.versions = versions;
         this.chains = chains;
@@ -97,5 +102,41 @@ public class RateService {
                 + (to == null ? "" : " to=" + to));
         rollup.recordChanges(sheetId, user, before);
         return saved;
+    }
+
+    /** A steward withdraws the newest version of a grade's rate from a date (null: from the beginning of time): the
+     *  version before it, when there is one, applies again; with none the rate is gone (empty). Refused for anyone
+     *  but a steward, and when the grade has no rate from that date. */
+    @Transactional
+    public Optional<Rate> withdraw(String sheetId, String user, String grade, LocalDate from) {
+        sheets.load(sheetId, user);
+        if (!Role.STEWARD.equals(roles.roleOf(sheetId, user))) {
+            throw new ResponseStatusException(HttpStatus.FORBIDDEN, "Only a steward may withdraw a rate");
+        }
+        Rate row = rates.findBySheetIdAndGrade(sheetId, grade).stream()
+                .filter(r -> Objects.equals(r.getFromDate(), from))
+                .findFirst()
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "No such rate on this sheet"));
+        Rollup.Figures before = rollup.of(sheetId);
+        List<RateVersion> older = versions.findByRateIdOrderByVersionAsc(row.getId());
+        Optional<Rate> restored;
+        if (older.isEmpty()) {
+            rates.delete(row);
+            rates.flush();
+            restored = Optional.empty();
+        } else {
+            RateVersion previous = older.get(older.size() - 1);
+            row.setRate(previous.getRate());
+            row.setToDate(previous.getToDate());
+            row.setClaimsAfter(previous.getClaimsAfter());
+            row.setVersion(previous.getVersion());
+            versions.delete(previous);
+            versions.flush();
+            restored = Optional.of(chains.withEarlier(List.of(rates.saveAndFlush(row))).get(0));
+        }
+        audit.recordChangeOnCommit(sheetId, user, "RATE_WITHDRAWN sheet=" + sheetId + " by=" + user
+                + " grade=" + grade + (from == null ? "" : " from=" + from));
+        rollup.recordChanges(sheetId, user, before);
+        return restored;
     }
 }
