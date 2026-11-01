@@ -26,7 +26,7 @@ public class Sheet {
 
     /** The keys of its dated settings; a grade's terms are {@code terms-<grade>}. */
     public static final String FLOOR = "floor", LATE_PCT = "late-pct", TERMS = "terms", CLERK_LIMIT = "clerk-limit",
-            CAP = "cap", PROOF_THRESHOLD = "proof-threshold";
+            CAP = "cap", PROOF_THRESHOLD = "proof-threshold", NOTE_THRESHOLD = "note-threshold";
 
     /** The values in force before any is recorded. */
     public static final BigDecimal START_FLOOR = new BigDecimal("1.00"), START_LATE_PCT = new BigDecimal("0.00");
@@ -188,6 +188,9 @@ public class Sheet {
 
     /** The proof threshold in force on the date; null means none. */
     public BigDecimal proofThresholdOn(LocalDate date) { return decimalOn(PROOF_THRESHOLD, date, null); }
+
+    /** The note threshold in force on the date; null means none. */
+    public BigDecimal noteThresholdOn(LocalDate date) { return decimalOn(NOTE_THRESHOLD, date, null); }
 
     /** The due-total, at most the cap in force today; null (n/a) stays null. */
     public BigDecimal capped(BigDecimal dueTotal) {

@@ -507,6 +507,8 @@ export class Claims {
         ? `A deferred claim cannot be settled until ${c.deferredUntil}.`
         : e instanceof HttpErrorResponse && e.status === 428
         ? `A claim due above the proof threshold cannot be ${PAST[action]} without a proof.`
+        : e instanceof HttpErrorResponse && e.status === 422 && action === 'open'
+        ? 'A claim due above the note threshold cannot be opened with an empty note.'
         : e instanceof HttpErrorResponse && e.status === 403
         ? action === 'settle' && c.openedBy === this.session.user()
           ? 'The user who opened a claim cannot settle it.'

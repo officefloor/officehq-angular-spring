@@ -40,7 +40,8 @@ import org.springframework.transaction.annotation.Transactional;
  * bound by no statement, or void it within 7 days of its settlement: its frozen figure leaves every total
  * and it keeps its number. The user who opened a claim cannot settle it, and a clerk cannot settle one whose
  * due is above the sheet's clerk limit (a steward can). A claim with no proofs whose due is above the proof threshold
- * in force on its date cannot be settled or approved by anyone. No claim dated inside a closed period can
+ * in force on its date cannot be settled or approved by anyone, and one with an empty note whose due is above the
+ * note threshold in force on its date cannot be opened. No claim dated inside a closed period can
  * be added, edited (to or from such a date), opened, settled, re-settled or voided. No claim can be added
  * or edited to a date after its person's retirement date. A claim with a negative amount is a
  * correction: it must name, by number, a SETTLED claim of the same person; only a correction may name one.
@@ -186,6 +187,7 @@ public class ClaimService {
         // Settling freezes the late charge of the moment into the settled due.
         BigDecimal settling = next == ClaimStatus.SETTLED ? chargedFigureOf(sheetId, person, claim) : null;
         if (next == ClaimStatus.SETTLED) refuseUnproved(sheetId, claim, settling);
+        if (next == ClaimStatus.OPEN) refuseUnnoted(sheetId, claim, chargedFigureOf(sheetId, person, claim));
         if (next == ClaimStatus.SETTLED && overClerkLimit(sheetId, user, settling)) next = ClaimStatus.PENDING;
         RollupService.Snapshot before = rollup.snapshot(sheetId);
         refuseIfClosed(sheetId, claim.getDate());
@@ -462,6 +464,16 @@ public class ClaimService {
         if (claim.getProofs() > 0 || due == null) return;
         BigDecimal threshold = settings.proofThresholdOn(sheetId, claim.getDate());
         if (threshold != null && due.compareTo(threshold) > 0) throw new ClaimProofRequiredException();
+    }
+
+    /**
+     * Refuse opening a claim with an empty note whose due is above the note threshold in force on its date;
+     * a due of n/a is within any, and no threshold means no note is needed.
+     */
+    private void refuseUnnoted(String sheetId, Claim claim, BigDecimal due) {
+        if (due == null || (claim.getNote() != null && !claim.getNote().isBlank())) return;
+        BigDecimal threshold = settings.noteThresholdOn(sheetId, claim.getDate());
+        if (threshold != null && due.compareTo(threshold) > 0) throw new ClaimNoteRequiredException();
     }
 
     /** The PENDING claim a steward approves or rejects; refused when not PENDING or not a steward. */

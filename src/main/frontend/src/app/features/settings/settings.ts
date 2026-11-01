@@ -78,9 +78,10 @@ const FROM = 'From (yyyy-mm-dd; blank: the sheet\'s today)';
 // rounds half up, else half to even), the period numbering from (blank: off; while the sheet's today is on or after it,
 // a claim opened is numbered within its period), the cap (blank: none; a person's due-total is at most it), the grace days (blank: off; not dated; when the
 // sheet's today is changed, an open period whose to-date plus them is before it is closed), and the role given to each user name. Saving stores the settings whose
-// field was changed since the last save; clearing the clerk limit, the policy date, the period numbering from, the cap or the proof threshold (Delete or
+// field was changed since the last save; clearing the clerk limit, the policy date, the period numbering from, the cap, the proof threshold or the note threshold (Delete or
 // Backspace) counts as a change even when it was already blank. The clerk limit, the floor, the terms, each grade's terms, the late
-// percent, the cap and the proof threshold are dated: a save records the value from its from-date (blank: the sheet's today), keeping those recorded from
+// percent, the cap, the proof threshold and the note threshold (blank: none; a claim with an empty note whose due is above the one in force on its date
+// cannot be opened) are dated: a save records the value from its from-date (blank: the sheet's today), keeping those recorded from
 // other dates; a claim takes the floor and terms in force on its date, the late percent in force on each 30-day boundary, and the clerk limit and cap are those in force on
 // the sheet's today. Each shows the value in force on the sheet's today. The permission matrix (not dated) gives, for each
 // of open, settle, void, reassign, close and reopen, the roles that may take it, comma separated; blank keeps its standing rule.
@@ -140,6 +141,13 @@ const FROM = 'From (yyyy-mm-dd; blank: the sheet\'s today)';
         <label for="setting-proof-threshold-from">Proof threshold {{ from }}</label>
         <input id="setting-proof-threshold-from" data-testid="setting-proof-threshold-from" formControlName="proofThresholdFrom"
                placeholder="yyyy-mm-dd" />
+        <label for="setting-note-threshold">Note threshold (a claim due above it needs a note to open; blank: none)</label>
+        <input id="setting-note-threshold" data-testid="setting-note-threshold" formControlName="noteThreshold" inputmode="decimal"
+               (keydown.delete)="form.controls.noteThreshold.markAsDirty()"
+               (keydown.backspace)="form.controls.noteThreshold.markAsDirty()" />
+        <label for="setting-note-threshold-from">Note threshold {{ from }}</label>
+        <input id="setting-note-threshold-from" data-testid="setting-note-threshold-from" formControlName="noteThresholdFrom"
+               placeholder="yyyy-mm-dd" />
         <fieldset>
           <legend>Permissions (roles, comma separated: clerk, steward; blank: the standing rule)</legend>
           @for (p of permissions; track p.action) {
@@ -168,6 +176,7 @@ const FROM = 'From (yyyy-mm-dd; blank: the sheet\'s today)';
       <p>Grace days now: <span data-testid="setting-grace-days-current">{{ graceDays() ?? '' }}</span></p>
       <p>Cap now: <span data-testid="setting-cap-current">{{ session.cap() ?? '' }}</span></p>
       <p>Proof threshold now: <span data-testid="setting-proof-threshold-current">{{ session.proofThreshold() ?? '' }}</span></p>
+      <p>Note threshold now: <span data-testid="setting-note-threshold-current">{{ session.noteThreshold() ?? '' }}</span></p>
       @for (p of permissions; track p.action) {
         <p>Who may {{ p.action }} now (blank: {{ p.standing }}):
           <span [attr.data-testid]="'setting-perm-' + p.action + '-current'">{{ permissionsSet()[p.action] ?? '' }}</span></p>
@@ -266,6 +275,8 @@ export class Settings {
     capFrom: new FormControl('', { nonNullable: true }),
     proofThreshold: new FormControl('', { nonNullable: true }),
     proofThresholdFrom: new FormControl('', { nonNullable: true }),
+    noteThreshold: new FormControl('', { nonNullable: true }),
+    noteThresholdFrom: new FormControl('', { nonNullable: true }),
   });
   protected readonly gradeTermsForm = new FormGroup({
     A: new FormControl('', { nonNullable: true }),
@@ -354,8 +365,8 @@ export class Settings {
     this.error.set('');
     const sheet = this.session.sheetId();
     if (!sheet) return;
-    const { clerkLimit, floor, terms, latePct, policyDate, periodNumberingFrom, graceDays, cap, proofThreshold } = this.form.controls;
-    const { clerkLimitFrom, floorFrom, termsFrom, latePctFrom, capFrom, proofThresholdFrom } = this.form.getRawValue();
+    const { clerkLimit, floor, terms, latePct, policyDate, periodNumberingFrom, graceDays, cap, proofThreshold, noteThreshold } = this.form.controls;
+    const { clerkLimitFrom, floorFrom, termsFrom, latePctFrom, capFrom, proofThresholdFrom, noteThresholdFrom } = this.form.getRawValue();
     const value = clerkLimit.value.trim();
     const floorValue = floor.value.trim();
     const termsValue = terms.value.trim();
@@ -365,11 +376,13 @@ export class Settings {
     const graceDaysValue = graceDays.value.trim();
     const capValue = cap.value.trim();
     const proofThresholdValue = proofThreshold.value.trim();
+    const noteThresholdValue = noteThreshold.value.trim();
     // a dated setting saved with a from-date takes it; blank: the sheet's today
     const dated = (from: string): string | null => from.trim() || null;
     const froms = [
       clerkLimit.dirty ? clerkLimitFrom : '', floor.dirty ? floorFrom : '', terms.dirty ? termsFrom : '',
       latePct.dirty ? latePctFrom : '', cap.dirty ? capFrom : '', proofThreshold.dirty ? proofThresholdFrom : '',
+      noteThreshold.dirty ? noteThresholdFrom : '',
       ...GRADES.filter((g) => this.gradeTermsForm.controls[g].dirty).map((g) => this.gradeTermsFromForm.controls[g].value),
     ];
     if (froms.some((from) => from.trim() && !isDate(from.trim()))) {
@@ -415,6 +428,10 @@ export class Settings {
     }
     if (proofThreshold.dirty && proofThresholdValue && !/^\d{1,12}(\.\d{1,2})?$/.test(proofThresholdValue)) {
       this.error.set('Enter a proof threshold of 0.00 or more, with at most two decimals, or leave it blank for none.');
+      return;
+    }
+    if (noteThreshold.dirty && noteThresholdValue && !/^\d{1,12}(\.\d{1,2})?$/.test(noteThresholdValue)) {
+      this.error.set('Enter a note threshold of 0.00 or more, with at most two decimals, or leave it blank for none.');
       return;
     }
     const permsChanged = PERMISSIONS.map((p) => p.action).filter((a) => this.permForm.controls[a].dirty);
@@ -497,6 +514,14 @@ export class Settings {
             { value: proofThresholdValue || null, from: dated(proofThresholdFrom) }, { headers: this.headers() }),
         );
         proofThreshold.markAsPristine();
+        if (this.session.sheetId() === sheet) this.show(view);
+      }
+      if (noteThreshold.dirty) {
+        const view = await firstValueFrom(
+          this.http.put<SettingsView>(`${this.base(sheet)}/settings/note-threshold`,
+            { value: noteThresholdValue || null, from: dated(noteThresholdFrom) }, { headers: this.headers() }),
+        );
+        noteThreshold.markAsPristine();
         if (this.session.sheetId() === sheet) this.show(view);
       }
       for (const a of permsChanged) {
