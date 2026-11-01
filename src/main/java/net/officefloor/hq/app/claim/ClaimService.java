@@ -123,6 +123,9 @@ public class ClaimService {
         if (!claim.getStatus().canBecome(next)) {
             throw new ClaimStatusRefusedException();
         }
+        if (next == ClaimStatus.SETTLED && claim.isDeferredOn(sheets.today(sheetId))) {
+            throw new ClaimDeferredException();
+        }
         if (next == ClaimStatus.SETTLED && user.strip().equals(claim.getOpenedBy())) {
             throw new ClaimSettledByOpenerException();
         }
@@ -249,6 +252,27 @@ public class ClaimService {
         Claim saved = claims.saveAndFlush(claim);
         record("CLAIM_REASSIGNED", sheetId, user, to, saved, saved.getNumber(),
                 " from=" + from.getName() + " to=" + to.getName());
+        rollup.recordChanges(sheetId, user, before);
+        return saved;
+    }
+
+    /**
+     * Defer an OPEN claim until a date after the sheet's today: until the sheet's today reaches it the claim
+     * counts in no total, is not overdue, cannot be settled and is left unbound by a statement. Refused for a
+     * claim that is not OPEN, a date not after today, or a claim dated inside a closed period.
+     */
+    @Transactional
+    public Claim defer(String sheetId, String user, Long id, LocalDate until) {
+        // The snapshot locks the sheet first, so the claim is read once no other change is under way.
+        RollupService.Snapshot before = rollup.snapshot(sheetId);
+        Claim claim = claims.findByIdAndSheetId(id, sheetId).orElseThrow(ClaimNotFoundException::new);
+        if (claim.getStatus() != ClaimStatus.OPEN) throw new ClaimStatusRefusedException();
+        if (!until.isAfter(sheets.today(sheetId))) throw new ClaimDeferDateException();
+        refuseIfClosed(sheetId, claim.getDate());
+        Person person = people.findByIdAndSheetId(claim.getPersonId(), sheetId).orElseThrow(PersonNotFoundException::new);
+        claim.setDeferredUntil(until);
+        Claim saved = claims.saveAndFlush(claim);
+        record("CLAIM_DEFERRED", sheetId, user, person, saved, saved.getNumber(), " until=" + until);
         rollup.recordChanges(sheetId, user, before);
         return saved;
     }

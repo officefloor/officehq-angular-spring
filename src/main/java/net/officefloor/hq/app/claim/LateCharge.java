@@ -17,9 +17,10 @@ public final class LateCharge {
 
     private LateCharge() {}
 
-    /** Overdue: OPEN (or PENDING) with its due-by (fixed when it was added) before the sheet's today. */
+    /** Overdue: OPEN (or PENDING), not deferred, with its due-by (fixed when it was added) before the sheet's today. */
     public static boolean isOverdue(Claim claim, LocalDate today) {
-        return claim.getStatus().isOpen() && today != null && claim.getDueBy().isBefore(today);
+        return claim.getStatus().isOpen() && today != null && claim.getDueBy().isBefore(today)
+                && !claim.isDeferredOn(today);
     }
 
     /** The charge on the claim with the given figure (null: none) as of today; zero when not overdue or a correction. */

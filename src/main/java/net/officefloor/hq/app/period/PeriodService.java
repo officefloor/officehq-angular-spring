@@ -70,7 +70,7 @@ public class PeriodService {
     @Transactional
     public Period close(String sheetId, String user, Long id) {
         // Lock the sheet so no claim in the period changes while its due-total is fixed.
-        sheets.findForUpdate(sheetId).orElseThrow(SheetNotFoundException::new);
+        LocalDate today = sheets.findForUpdate(sheetId).orElseThrow(SheetNotFoundException::new).getToday();
         Period period = periods.findByIdAndSheetId(id, sheetId).orElseThrow(PeriodNotFoundException::new);
         if (period.isClosed()) throw new PeriodClosedException();
         Map<Long, Person> byId = people.findBySheetIdOrderByIdAsc(sheetId).stream()
@@ -80,7 +80,7 @@ public class PeriodService {
         for (Long personId : byId.keySet()) personDues.put(personId, BigDecimal.ZERO.setScale(2));
         for (Claim claim : claims.findBySheetIdOrderByIdDesc(sheetId)) {
             Person person = byId.get(claim.getPersonId());
-            if (person == null || !person.counts(claim) || !period.contains(claim.getDate())) continue;
+            if (person == null || !person.counts(claim, today) || !period.contains(claim.getDate())) continue;
             BigDecimal figure = claimService.chargedFigureOf(sheetId, person, claim);
             if (figure != null) personDues.merge(person.getId(), figure, BigDecimal::add);
         }

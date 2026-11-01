@@ -356,9 +356,9 @@ export class People {
   });
   /** Each person's holds, by id, for those with any. */
   private readonly holdsById = computed(() => new Map(this.people().filter((p) => p.held).map((p) => [p.id, p.holds])));
-  /** Whether the claim counts in the live totals: OPEN, PENDING or SETTLED, less open ones dated within a hold and not bound. */
+  /** Whether the claim counts in the live totals: OPEN, PENDING or SETTLED, less open ones dated within a hold and not bound, and deferred ones. */
   private readonly counts = (c: Claim): boolean =>
-    countsFor(c, (this.holdsById().get(c.personId) ?? []).some((h) => holdContains(h, c.date)));
+    countsFor(c, (this.holdsById().get(c.personId) ?? []).some((h) => holdContains(h, c.date)), this.session.today());
   protected readonly claimedTotal = computed(() => money(this.claims().filter(this.counts).reduce((sum, c) => sum + cents(c.amount), 0)));
   /** The sheet's rates, each for a grade from its from-date. */
   protected readonly rates = signal<Rate[]>([]);

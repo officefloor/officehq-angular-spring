@@ -88,7 +88,7 @@ public class RollupService {
             BigDecimal overdue = zero();
             boolean fixed = false;
             for (Claim claim : claimsByPerson.getOrDefault(person.getId(), List.of())) {
-                if (!person.counts(claim)) continue;
+                if (!person.counts(claim, today)) continue;
                 claimed = claimed.add(claim.getAmount());
                 if (claim.getSettledDue() != null || (claim.isBound() && claim.getStatedDue() != null)) fixed = true;
                 String grade = person.gradeOn(claim.getDate());

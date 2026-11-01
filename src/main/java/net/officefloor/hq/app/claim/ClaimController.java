@@ -33,14 +33,15 @@ public class ClaimController {
      */
     public record ClaimView(Long id, Long personId, String amount, LocalDate date, String note, ClaimStatus status,
             String number, String settledDue, String openedBy, boolean stated, String statedDue, String corrects,
-            LocalDate dueBy, List<LogLineView> log) {
+            LocalDate dueBy, List<LogLineView> log, LocalDate deferredUntil) {
         public static ClaimView of(Claim claim) {
             return new ClaimView(claim.getId(), claim.getPersonId(), claim.getAmount().toPlainString(),
                     claim.getDate(), claim.getNote(), claim.getStatus(), claim.getNumber(),
                     claim.getSettledDue() == null ? null : claim.getSettledDue().setScale(2).toPlainString(),
                     claim.getOpenedBy(), claim.isStated(),
                     claim.getStatedDue() == null ? null : claim.getStatedDue().setScale(2).toPlainString(),
-                    claim.getCorrects(), claim.getDueBy(), claim.getLog().stream().map(LogLineView::of).toList());
+                    claim.getCorrects(), claim.getDueBy(), claim.getLog().stream().map(LogLineView::of).toList(),
+                    claim.getDeferredUntil());
         }
     }
 
@@ -77,6 +78,9 @@ public class ClaimController {
 
     /** Why a steward rejects a PENDING claim. */
     public record RejectRequest(@NotBlank @Size(max = 200) @Pattern(regexp = "\\S+( \\S+)*") String reason) {}
+
+    /** The date an OPEN claim is deferred until: after the sheet's today. */
+    public record DeferRequest(@NotNull LocalDate until) {}
 
     /** The person on the sheet a claim is moved to. */
     public record ReassignRequest(@NotNull Long personId) {}
@@ -207,6 +211,15 @@ public class ClaimController {
             @PathVariable Long id,
             @RequestHeader("X-User") @NotBlank @Size(max = 100) String user) {
         return ClaimView.of(service.resettle(sheetId, user, id));
+    }
+
+    @PostMapping("/claims/{id}/defer")
+    public ClaimView defer(
+            @PathVariable @Size(max = 100) @Pattern(regexp = "[A-Za-z0-9._-]+") String sheetId,
+            @PathVariable Long id,
+            @RequestHeader("X-User") @NotBlank @Size(max = 100) String user,
+            @RequestBody @Valid DeferRequest request) {
+        return ClaimView.of(service.defer(sheetId, user, id, request.until()));
     }
 
     @PostMapping("/claims/{id}/reassign")

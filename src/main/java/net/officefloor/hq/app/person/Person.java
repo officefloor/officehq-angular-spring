@@ -130,10 +130,10 @@ public class Person {
 
     /**
      * Whether a claim of theirs counts in the live totals: it counts by its status, unless it is open
-     * (OPEN or PENDING), dated within a hold and not bound by a statement.
+     * (OPEN or PENDING), dated within a hold and not bound by a statement, or deferred on the sheet's today.
      */
-    public boolean counts(Claim claim) {
-        if (!claim.getStatus().counts()) return false;
+    public boolean counts(Claim claim, LocalDate today) {
+        if (!claim.getStatus().counts() || claim.isDeferredOn(today)) return false;
         return !claim.getStatus().isOpen() || claim.isBound() || !heldOn(claim.getDate());
     }
 

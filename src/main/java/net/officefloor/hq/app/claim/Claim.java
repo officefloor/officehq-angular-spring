@@ -97,6 +97,10 @@ public class Claim {
     @Column(name = "corrects")
     private String corrects;
 
+    /** The date it is deferred until; none unless deferred. Deferred only while OPEN and before that date. */
+    @Column(name = "deferred_until")
+    private LocalDate deferredUntil;
+
     /** Its status log, oldest first: a line for each status it has had, DRAFT when added. */
     @ElementCollection(fetch = FetchType.EAGER)
     @CollectionTable(name = "claim_log", joinColumns = @JoinColumn(name = "claim_id"))
@@ -195,6 +199,18 @@ public class Claim {
     public void state(BigDecimal due) {
         this.stated = true;
         this.statedDue = due;
+    }
+
+    public LocalDate getDeferredUntil() { return deferredUntil; }
+
+    public void setDeferredUntil(LocalDate deferredUntil) { this.deferredUntil = deferredUntil; }
+
+    /**
+     * Whether it is deferred on the date: OPEN, with a deferred-until date after it. A deferred claim counts
+     * in no total, is not overdue, cannot be settled and is left unbound by a statement.
+     */
+    public boolean isDeferredOn(LocalDate today) {
+        return status == ClaimStatus.OPEN && deferredUntil != null && today != null && today.isBefore(deferredUntil);
     }
 
     /** Leave the claim unbound, its due live again. */
