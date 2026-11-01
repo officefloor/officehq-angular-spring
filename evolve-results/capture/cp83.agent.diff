@@ -1,0 +1,399 @@
+diff --git a/src/main/frontend/src/app/features/holidays/holidays.ts b/src/main/frontend/src/app/features/holidays/holidays.ts
+new file mode 100644
+index 000000000..a9f7fea9b
+--- /dev/null
++++ b/src/main/frontend/src/app/features/holidays/holidays.ts
+@@ -0,0 +1,106 @@
++import { HttpClient } from '@angular/common/http';
++import { Component, effect, inject, signal } from '@angular/core';
++import { FormControl, FormGroup, ReactiveFormsModule } from '@angular/forms';
++import { firstValueFrom } from 'rxjs';
++import { Session } from '../../core/session';
++
++/** A holiday on the sheet. */
++interface HolidayView {
++  id: number;
++  date: string;
++}
++
++/** A real calendar date written yyyy-mm-dd. */
++function isDate(value: string): boolean {
++  const at = Date.parse(`${value}T00:00:00Z`);
++  return /^\d{4}-\d{2}-\d{2}$/.test(value) && !Number.isNaN(at) && new Date(at).toISOString().slice(0, 10) === value;
++}
++
++// The sheet's holidays, each date at most once. A claim's due-by, fixed when it is added, is moved past
++// them to the next day that is not one; a holiday added later moves no due-by.
++@Component({
++  selector: 'app-holidays',
++  imports: [ReactiveFormsModule],
++  template: `
++    <section aria-labelledby="holidays-heading">
++      <h2 id="holidays-heading">Holidays</h2>
++      <form [formGroup]="form" (ngSubmit)="add()" aria-label="Add a holiday">
++        <label for="holiday-date">Holiday</label>
++        <input id="holiday-date" data-testid="holiday-date" formControlName="date" placeholder="yyyy-mm-dd" />
++        <button type="submit" data-testid="holiday-add">Add holiday</button>
++        @if (error()) {
++          <p role="alert" class="error" data-testid="holiday-error">{{ error() }}</p>
++        }
++      </form>
++      <ul aria-label="Holidays">
++        @for (h of holidays(); track h.id) {
++          <li [attr.data-testid]="'holiday-row-' + h.date">{{ h.date }}</li>
++        }
++      </ul>
++    </section>
++  `,
++})
++export class Holidays {
++  private readonly http = inject(HttpClient);
++  private readonly session = inject(Session);
++
++  protected readonly holidays = signal<HolidayView[]>([]);
++  protected readonly error = signal('');
++  protected readonly form = new FormGroup({ date: new FormControl('', { nonNullable: true }) });
++  private submitting = false;
++
++  constructor() {
++    this.form.valueChanges.subscribe(() => this.error.set(''));
++    effect(() => {
++      const id = this.session.sheetId();
++      this.session.loads();
++      this.holidays.set([]);
++      this.error.set('');
++      if (id) void this.load(id);
++    });
++  }
++
++  private headers(): Record<string, string> {
++    return { 'X-User': this.session.user() ?? '' };
++  }
++
++  private base(sheet: string): string {
++    return `/api/sheets/${encodeURIComponent(sheet)}/holidays`;
++  }
++
++  private async load(sheet: string): Promise<void> {
++    try {
++      const list = await firstValueFrom(this.http.get<HolidayView[]>(this.base(sheet), { headers: this.headers() }));
++      if (this.session.sheetId() === sheet) this.holidays.set(list);
++    } catch {
++      if (this.session.sheetId() === sheet) this.error.set('Could not load the holidays of this sheet.');
++    }
++  }
++
++  /** Add the date to the sheet's holidays; a date already on the list is refused. */
++  protected async add(): Promise<void> {
++    if (this.submitting) return;
++    this.error.set('');
++    const sheet = this.session.sheetId();
++    if (!sheet) return;
++    const date = this.form.controls.date.value.trim();
++    if (!isDate(date)) {
++      this.error.set('Enter the date as yyyy-mm-dd.');
++      return;
++    }
++    if (this.holidays().some((h) => h.date === date)) {
++      this.error.set('That date is already a holiday.');
++      return;
++    }
++    this.submitting = true;
++    try {
++      const saved = await firstValueFrom(this.http.post<HolidayView>(this.base(sheet), { date }, { headers: this.headers() }));
++      if (this.session.sheetId() !== sheet) return;
++      this.holidays.update((list) => [...list.filter((h) => h.id !== saved.id), saved].sort((a, b) => a.date.localeCompare(b.date)));
++    } catch {
++      if (this.session.sheetId() === sheet) this.error.set('Could not add that holiday: it may already be on the list.');
++    } finally {
++      this.submitting = false;
++    }
++  }
++}
+diff --git a/src/main/frontend/src/app/features/home/home.ts b/src/main/frontend/src/app/features/home/home.ts
+index 779771e41..e90c1be62 100644
+--- a/src/main/frontend/src/app/features/home/home.ts
++++ b/src/main/frontend/src/app/features/home/home.ts
+@@ -1,13 +1,14 @@
+ import { Component, inject, signal } from '@angular/core';
+ import { FormControl, FormGroup, ReactiveFormsModule } from '@angular/forms';
+ import { Session } from '../../core/session';
++import { Holidays } from '../holidays/holidays';
+ import { People } from '../people/people';
+ import { Settings } from '../settings/settings';
+ 
+ // The one screen: sign in by name, then load a sheet by id.
+ @Component({
+   selector: 'app-home',
+-  imports: [ReactiveFormsModule, People, Settings],
++  imports: [ReactiveFormsModule, Holidays, People, Settings],
+   template: `
+     @if (session.user(); as user) {
+       <p>Signed in as <strong data-testid="current-user">{{ user }}</strong></p>
+@@ -37,6 +38,7 @@ import { Settings } from '../settings/settings';
+         <p>Archived: <strong data-testid="sheet-archived">{{ session.archived() ? 'yes' : 'no' }}</strong></p>
+         <button type="button" data-testid="sheet-archive" (click)="archive()">Archive sheet</button>
+         <app-settings />
++        <app-holidays />
+         <app-people />
+       }
+     } @else {
+diff --git a/src/main/java/net/officefloor/hq/app/claim/ClaimService.java b/src/main/java/net/officefloor/hq/app/claim/ClaimService.java
+index bf574a0f6..95dd7a06f 100644
+--- a/src/main/java/net/officefloor/hq/app/claim/ClaimService.java
++++ b/src/main/java/net/officefloor/hq/app/claim/ClaimService.java
+@@ -5,6 +5,7 @@ import java.math.RoundingMode;
+ import java.time.LocalDate;
+ import java.util.List;
+ import net.officefloor.hq.app.Audit;
++import net.officefloor.hq.app.holiday.HolidayService;
+ import net.officefloor.hq.app.period.Period;
+ import net.officefloor.hq.app.period.PeriodClosedException;
+ import net.officefloor.hq.app.period.PeriodRepository;
+@@ -61,12 +62,14 @@ public class ClaimService {
+     private final PeriodRepository periods;
+     private final SettingService settings;
+     private final PersonWatchRepository watches;
++    private final HolidayService holidays;
+     private final Audit audit;
+ 
+     public ClaimService(ClaimRepository claims, PersonRepository people, RateService rates, SheetService sheets,
+             RollupService rollup, PeriodRepository periods, SettingService settings, PersonWatchRepository watches,
+-            Audit audit) {
++            HolidayService holidays, Audit audit) {
+         this.watches = watches;
++        this.holidays = holidays;
+         this.settings = settings;
+         this.periods = periods;
+         this.claims = claims;
+@@ -515,10 +518,13 @@ public class ClaimService {
+         claim.setNumberWithin(period, claims.lastNumberWithin(sheet.getId(), period) + 1);
+     }
+ 
+-    /** The due-by a claim of the person dated on the date is fixed with: its date plus their own terms, else their grade's then. */
++    /**
++     * The due-by a claim of the person dated on the date is fixed with: its date plus their own terms, else
++     * their grade's then, moved past the sheet's holidays now to the next day that is not one.
++     */
+     private LocalDate dueByOf(String sheetId, Person person, LocalDate on) {
+-        return on.plusDays(person.getTerms() != null ? person.getTerms()
+-                : settings.termsFor(sheetId, person.gradeOn(on), on));
++        return holidays.pastHolidays(sheetId, on.plusDays(person.getTerms() != null ? person.getTerms()
++                : settings.termsFor(sheetId, person.gradeOn(on), on)));
+     }
+ 
+     /** The name of the sheet's period the date falls in; empty when in none. */
+diff --git a/src/main/java/net/officefloor/hq/app/holiday/DuplicateHolidayException.java b/src/main/java/net/officefloor/hq/app/holiday/DuplicateHolidayException.java
+new file mode 100644
+index 000000000..20edc1c18
+--- /dev/null
++++ b/src/main/java/net/officefloor/hq/app/holiday/DuplicateHolidayException.java
+@@ -0,0 +1,8 @@
++package net.officefloor.hq.app.holiday;
++
++import org.springframework.http.HttpStatus;
++import org.springframework.web.bind.annotation.ResponseStatus;
++
++/** The date is already on the sheet's list of holidays. */
++@ResponseStatus(HttpStatus.CONFLICT)
++public class DuplicateHolidayException extends RuntimeException {}
+diff --git a/src/main/java/net/officefloor/hq/app/holiday/Holiday.java b/src/main/java/net/officefloor/hq/app/holiday/Holiday.java
+new file mode 100644
+index 000000000..c0d223fee
+--- /dev/null
++++ b/src/main/java/net/officefloor/hq/app/holiday/Holiday.java
+@@ -0,0 +1,38 @@
++package net.officefloor.hq.app.holiday;
++
++import jakarta.persistence.Column;
++import jakarta.persistence.Entity;
++import jakarta.persistence.GeneratedValue;
++import jakarta.persistence.GenerationType;
++import jakarta.persistence.Id;
++import jakarta.persistence.Table;
++import java.time.LocalDate;
++
++/** A holiday on a sheet, each date at most once. */
++@Entity
++@Table(name = "holiday")
++public class Holiday {
++
++    @Id
++    @GeneratedValue(strategy = GenerationType.IDENTITY)
++    private Long id;
++
++    @Column(name = "sheet_id", nullable = false)
++    private String sheetId;
++
++    @Column(name = "holiday_date", nullable = false)
++    private LocalDate date;
++
++    protected Holiday() {}
++
++    public Holiday(String sheetId, LocalDate date) {
++        this.sheetId = sheetId;
++        this.date = date;
++    }
++
++    public Long getId() { return id; }
++
++    public String getSheetId() { return sheetId; }
++
++    public LocalDate getDate() { return date; }
++}
+diff --git a/src/main/java/net/officefloor/hq/app/holiday/HolidayController.java b/src/main/java/net/officefloor/hq/app/holiday/HolidayController.java
+new file mode 100644
+index 000000000..d18ab4802
+--- /dev/null
++++ b/src/main/java/net/officefloor/hq/app/holiday/HolidayController.java
+@@ -0,0 +1,58 @@
++package net.officefloor.hq.app.holiday;
++
++import jakarta.validation.Valid;
++import jakarta.validation.constraints.NotBlank;
++import jakarta.validation.constraints.Pattern;
++import jakarta.validation.constraints.Size;
++import java.time.LocalDate;
++import java.util.List;
++import org.springframework.validation.annotation.Validated;
++import org.springframework.web.bind.annotation.GetMapping;
++import org.springframework.web.bind.annotation.PathVariable;
++import org.springframework.web.bind.annotation.PostMapping;
++import org.springframework.web.bind.annotation.RequestBody;
++import org.springframework.web.bind.annotation.RequestHeader;
++import org.springframework.web.bind.annotation.RequestMapping;
++import org.springframework.web.bind.annotation.RestController;
++
++@RestController
++@Validated
++@RequestMapping("/api/sheets/{sheetId}/holidays")
++public class HolidayController {
++
++    /** A holiday on the sheet. */
++    public record HolidayView(Long id, LocalDate date) {
++        static HolidayView of(Holiday h) {
++            return new HolidayView(h.getId(), h.getDate());
++        }
++    }
++
++    /** A holiday's date (yyyy-mm-dd). */
++    public record HolidayRequest(@NotBlank @Pattern(regexp = "\\d{4}-\\d{2}-\\d{2}") String date) {
++
++        LocalDate dateValue() {
++            return LocalDate.parse(date);
++        }
++    }
++
++    private final HolidayService service;
++
++    public HolidayController(HolidayService service) {
++        this.service = service;
++    }
++
++    @GetMapping
++    public List<HolidayView> list(
++            @PathVariable @Size(max = 100) @Pattern(regexp = "[A-Za-z0-9._-]+") String sheetId,
++            @RequestHeader("X-User") @NotBlank @Size(max = 100) String user) {
++        return service.holidays(sheetId).stream().map(HolidayView::of).toList();
++    }
++
++    @PostMapping
++    public HolidayView add(
++            @PathVariable @Size(max = 100) @Pattern(regexp = "[A-Za-z0-9._-]+") String sheetId,
++            @RequestHeader("X-User") @NotBlank @Size(max = 100) String user,
++            @RequestBody @Valid HolidayRequest request) {
++        return HolidayView.of(service.add(sheetId, user, request.dateValue()));
++    }
++}
+diff --git a/src/main/java/net/officefloor/hq/app/holiday/HolidayRepository.java b/src/main/java/net/officefloor/hq/app/holiday/HolidayRepository.java
+new file mode 100644
+index 000000000..981ebe20e
+--- /dev/null
++++ b/src/main/java/net/officefloor/hq/app/holiday/HolidayRepository.java
+@@ -0,0 +1,12 @@
++package net.officefloor.hq.app.holiday;
++
++import java.time.LocalDate;
++import java.util.List;
++import org.springframework.data.jpa.repository.JpaRepository;
++
++public interface HolidayRepository extends JpaRepository<Holiday, Long> {
++
++    List<Holiday> findBySheetIdOrderByDateAsc(String sheetId);
++
++    boolean existsBySheetIdAndDate(String sheetId, LocalDate date);
++}
+diff --git a/src/main/java/net/officefloor/hq/app/holiday/HolidayService.java b/src/main/java/net/officefloor/hq/app/holiday/HolidayService.java
+new file mode 100644
+index 000000000..8cc56f2bb
+--- /dev/null
++++ b/src/main/java/net/officefloor/hq/app/holiday/HolidayService.java
+@@ -0,0 +1,55 @@
++package net.officefloor.hq.app.holiday;
++
++import java.time.LocalDate;
++import java.util.List;
++import java.util.Set;
++import java.util.stream.Collectors;
++import net.officefloor.hq.app.Audit;
++import net.officefloor.hq.app.sheet.SheetNotFoundException;
++import net.officefloor.hq.app.sheet.SheetRepository;
++import org.springframework.stereotype.Service;
++import org.springframework.transaction.annotation.Transactional;
++
++/**
++ * A sheet's list of holidays, each date at most once. A claim's due-by, fixed when it is added, is
++ * moved past them: the next day that is not a holiday. A holiday added later moves no due-by.
++ */
++@Service
++public class HolidayService {
++
++    private final SheetRepository sheets;
++    private final HolidayRepository holidays;
++    private final Audit audit;
++
++    public HolidayService(SheetRepository sheets, HolidayRepository holidays, Audit audit) {
++        this.sheets = sheets;
++        this.holidays = holidays;
++        this.audit = audit;
++    }
++
++    /** The sheet's holidays, earliest first. */
++    @Transactional(readOnly = true)
++    public List<Holiday> holidays(String sheetId) {
++        return holidays.findBySheetIdOrderByDateAsc(sheetId);
++    }
++
++    /** Add the date to the sheet's holidays; refused for a date already on the list. */
++    @Transactional
++    public Holiday add(String sheetId, String user, LocalDate date) {
++        sheets.findForUpdate(sheetId).orElseThrow(SheetNotFoundException::new);
++        if (holidays.existsBySheetIdAndDate(sheetId, date)) throw new DuplicateHolidayException();
++        Holiday saved = holidays.saveAndFlush(new Holiday(sheetId, date));
++        audit.recordOnCommit("HOLIDAY_ADDED sheet=" + sheetId + " by=" + user.strip() + " date=" + date);
++        return saved;
++    }
++
++    /** The date, or when it is a holiday on the sheet, the next day that is not. */
++    @Transactional(readOnly = true)
++    public LocalDate pastHolidays(String sheetId, LocalDate date) {
++        Set<LocalDate> days = holidays.findBySheetIdOrderByDateAsc(sheetId).stream()
++                .map(Holiday::getDate).collect(Collectors.toSet());
++        LocalDate d = date;
++        while (days.contains(d)) d = d.plusDays(1);
++        return d;
++    }
++}
+diff --git a/src/main/resources/db/migration/V53__holiday.sql b/src/main/resources/db/migration/V53__holiday.sql
+new file mode 100644
+index 000000000..c18100a67
+--- /dev/null
++++ b/src/main/resources/db/migration/V53__holiday.sql
+@@ -0,0 +1,7 @@
++-- The sheet's holidays, each date at most once; a claim's due-by is moved past them when it is added.
++CREATE TABLE holiday (
++    id           BIGINT AUTO_INCREMENT PRIMARY KEY,
++    sheet_id     VARCHAR(100) NOT NULL REFERENCES sheet (id),
++    holiday_date DATE         NOT NULL
++);
++CREATE UNIQUE INDEX holiday_unique ON holiday (sheet_id, holiday_date);
