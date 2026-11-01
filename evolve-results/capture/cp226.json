@@ -1,0 +1,64 @@
+{
+  "checkpoint": 226,
+  "stack": {
+    "repo": "/home/daniel/officehq-angular-spring",
+    "origin": "git@github.com:officefloor/officehq-angular-spring.git",
+    "name": "officehq-angular-spring",
+    "base_ref": "base-empty",
+    "base_commit": "65cb8233ea38b2dfa6cfd18709e30cd18fdf3250"
+  },
+  "checkpoint_id": "cp226_preview-date",
+  "phase": "late",
+  "type": "additive",
+  "mutates": [],
+  "replaced_tests": [],
+  "request": {
+    "spec": "A user can set a preview date on their screen (an entry, a set button and a clear button; show\nit, or nothing). While it is set, every figure on the screen for that user is shown as if the\nsheet's today were that date (overdue, late charges, holds, deferrals, retirements, the grade and\nrate in force), over the sheet's current records; every change still uses the sheet's real today,\nand nothing that a change of today does (snapshots, scores, auto-closing) happens. The preview\nbelongs to the signed-in user's screen.\n",
+    "prompt": "You are implementing ONE change to this application.\n\nFIRST read AGENTS.md \u2014 it states the working rules and how the app is tested, and sends you to\nDESIGN.md for the app's stack and conventions. Follow both.\n\nTHE CHANGE REQUEST:\nA user can set a preview date on their screen (an entry, a set button and a clear button; show\nit, or nothing). While it is set, every figure on the screen for that user is shown as if the\nsheet's today were that date (overdue, late charges, holds, deferrals, retirements, the grade and\nrate in force), over the sheet's current records; every change still uses the sheet's real today,\nand nothing that a change of today does (snapshots, scores, auto-closing) happens. The preview\nbelongs to the signed-in user's screen.\n\nYour work is verified by an automated Playwright UI test already installed under e2e/specs/.\nRead that spec: it declares the exact data-testid anchors, values, test data and any audit\nrecords it expects \u2014 match them. Run `bin/e2e` to build the app, start it, and run the test as\nyou work; iterate until it passes. Change whatever the request needs across the app \u2014 its stored\ndata, its server and its front end. Do NOT edit bin/build, bin/start, bin/stop, bin/e2e,\nAGENTS.md, CLAUDE.md, DESIGN.md, e2e/support/ or the test spec.\n"
+  },
+  "commit_sha": "e5500613c0b029ec0d9e5e3ff3a2739895d10f5c",
+  "reset_sha": "",
+  "preagent_sha": "92f553916b3334750e97fd0b5d71bdebecceb9ed",
+  "prev_sha": "92f553916b3334750e97fd0b5d71bdebecceb9ed",
+  "base_sha": "65cb8233ea38b2dfa6cfd18709e30cd18fdf3250",
+  "agent": {
+    "ok": true,
+    "cost_usd": 2.6115858,
+    "input_tokens": 112,
+    "output_tokens": 28767,
+    "cache_read_tokens": 5022549,
+    "cache_creation_tokens": 128911,
+    "num_turns": 58,
+    "duration_ms": 848323,
+    "duration_api_ms": 361366,
+    "model": "claude-opus-5-5",
+    "session_id": "04f6ec61-74bb-4d4d-94db-884e1c530055",
+    "stop_reason": "success",
+    "result_text": "The preview date is in, and `bin/e2e` now passes all 4 tests.\n\n**What it does**\n- **Controls:** the main screen has a preview date entry, a set button and a clear button (`preview-date`, `preview-set`, `preview-clear`). The date in effect shows in `sheet-preview`, and that's empty when no preview is set. A malformed date shows `preview-error`.\n- **Per screen:** the preview lives only in the signed-in user's browser (in the `Sheets` service in `core/sheet.ts`), the same way the existing \"as of\" date does. Re-loading the sheet keeps it, and another user never sees it.\n- **Figures:** while a preview is set, every figure is worked out as if the sheet's today were that date. That covers overdue, late charges, holds, deferrals, retirements, and the grade and rate in force. The front end does this by treating the preview as today in its own calculations. Server reads that depend on today get the date in a new `X-Preview` header and use it: the consolidated figures, grade dues, the people list, pools and cut totals, and tree search. They work on a temporary copy of the sheet (`Sheet.previewedOn`) that is never saved.\n- **Changes:** these ignore the header, so they still run on the sheet's real today. That means snapshots, scores, auto-closing and audit lines are unaffected. The `sheet-today` display, the \"blank means today\" defaults and the permission checks in the front end also keep the real today.\n\n**One fix outside the preview feature:** scenario 1, which never sets a preview, failed because a person's statement left out their share of someone else's claim. The rollup showed Ben owing 0.50 while his statement recorded 0.00. That bug was already in the app, but the test needs it fixed. Statements now count shared claims the same way the rollup does: the claim's own person counts the figure less what others hold, and each holder adds their part (`StatementService.bind`). This changes what statements record on any sheet that uses claim shares.\n\n**Not covered by preview:** statements, snapshot comparisons and the rate-change preview still use the real today. I took those to be records or changes rather than figures on screen.",
+    "error": "",
+    "attempts": [
+      {
+        "ok": true,
+        "limit_reached": false,
+        "retryable": false,
+        "timed_out": false,
+        "cost_usd": 2.6115858,
+        "num_turns": 58,
+        "duration_ms": 848323,
+        "duration_api_ms": 361366,
+        "error": ""
+      }
+    ]
+  },
+  "agent_stream_file": "cp226.agent.jsonl",
+  "agent_diff_file": "cp226.agent.diff",
+  "build_log_file": null,
+  "tests": {
+    "gated": false,
+    "queued": true
+  },
+  "probe": null,
+  "pinned_touched": [],
+  "acceptance_touched": [],
+  "impact_gate": null
+}
