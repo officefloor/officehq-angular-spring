@@ -15,7 +15,7 @@ const NO_RATES: Rate[][] = [];
 const NO_PCT: PctOn = () => null;
 const NO_GRACE: GraceOn = () => 0;
 /** The statuses the summary counts claims by. */
-const SUMMARY_STATUSES = ['DRAFT', 'OPEN', 'PENDING', 'SETTLED', 'VOID'];
+const SUMMARY_STATUSES = ['DRAFT', 'OPEN', 'PENDING', 'SETTLED', 'VOID', 'REVIEW'];
 
 /** A grade a person was given, in force from a date until the next one; from is null from the start. */
 interface GradeFrom {

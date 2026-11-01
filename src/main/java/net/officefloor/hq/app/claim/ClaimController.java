@@ -375,6 +375,14 @@ public class ClaimController {
         return ClaimView.of(service.approve(sheetId, user, id));
     }
 
+    @PostMapping("/claims/{id}/review")
+    public ClaimView review(
+            @PathVariable @Size(max = 100) @Pattern(regexp = "[A-Za-z0-9._-]+") String sheetId,
+            @PathVariable Long id,
+            @RequestHeader("X-User") @NotBlank @Size(max = 100) String user) {
+        return ClaimView.of(service.review(sheetId, user, id));
+    }
+
     @PostMapping("/claims/{id}/reject")
     public ClaimView reject(
             @PathVariable @Size(max = 100) @Pattern(regexp = "[A-Za-z0-9._-]+") String sheetId,

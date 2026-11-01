@@ -98,7 +98,8 @@ const FROM = 'From (yyyy-mm-dd; blank: the sheet\'s today)';
 // Backspace) counts as a change even when it was already blank. The clerk limit, the floor, the terms, each grade's terms, the late
 // percent, the cap, the proof threshold, the rounding mode (half-up or half-even; blank: none; a claim whose date has one in force
 // rounds its live figures by it, rather than by the policy date) and the note threshold (blank: none; a claim with an empty note whose due is above the one in force on its date
-// cannot be opened) are dated: a save records the value from its from-date (blank: the sheet's today), keeping those recorded from
+// cannot be opened) and the review threshold (blank: none; a claim whose due is above the one in force on its date goes to REVIEW when opened)
+// are dated: a save records the value from its from-date (blank: the sheet's today), keeping those recorded from
 // other dates; a claim takes the floor and terms in force on its date, the late percent in force on each 30-day boundary, and the clerk limit and cap are those in force on
 // the sheet's today. Each shows the value in force on the sheet's today. The permission matrix (not dated) gives, for each
 // of open, settle, void, reassign, close and reopen, the roles that may take it, comma separated; blank keeps its standing rule.
@@ -209,6 +210,13 @@ const FROM = 'From (yyyy-mm-dd; blank: the sheet\'s today)';
         <label for="setting-note-threshold-from">Note threshold {{ from }}</label>
         <input id="setting-note-threshold-from" data-testid="setting-note-threshold-from" formControlName="noteThresholdFrom"
                placeholder="yyyy-mm-dd" />
+        <label for="setting-review-threshold">Review threshold (a claim due above it goes to REVIEW when opened; blank: none)</label>
+        <input id="setting-review-threshold" data-testid="setting-review-threshold" formControlName="reviewThreshold" inputmode="decimal"
+               (keydown.delete)="form.controls.reviewThreshold.markAsDirty()"
+               (keydown.backspace)="form.controls.reviewThreshold.markAsDirty()" />
+        <label for="setting-review-threshold-from">Review threshold {{ from }}</label>
+        <input id="setting-review-threshold-from" data-testid="setting-review-threshold-from" formControlName="reviewThresholdFrom"
+               placeholder="yyyy-mm-dd" />
         <fieldset>
           <legend>Permissions (roles, comma separated: clerk, steward; blank: the standing rule)</legend>
           @for (p of permissions; track p.action) {
@@ -252,6 +260,7 @@ const FROM = 'From (yyyy-mm-dd; blank: the sheet\'s today)';
       }
       <p>Rounding mode now: <span data-testid="setting-rounding-current">{{ session.rounding() ?? '' }}</span></p>
       <p>Note threshold now: <span data-testid="setting-note-threshold-current">{{ session.noteThreshold() ?? '' }}</span></p>
+      <p>Review threshold now: <span data-testid="setting-review-threshold-current">{{ session.reviewThreshold() ?? '' }}</span></p>
       @for (p of permissions; track p.action) {
         <p>Who may {{ p.action }} now (blank: {{ p.standing }}):
           <span [attr.data-testid]="'setting-perm-' + p.action + '-current'">{{ permissionsSet()[p.action] ?? '' }}</span></p>
@@ -380,6 +389,8 @@ export class Settings {
     proofThresholdFrom: new FormControl('', { nonNullable: true }),
     noteThreshold: new FormControl('', { nonNullable: true }),
     noteThresholdFrom: new FormControl('', { nonNullable: true }),
+    reviewThreshold: new FormControl('', { nonNullable: true }),
+    reviewThresholdFrom: new FormControl('', { nonNullable: true }),
     rounding: new FormControl('', { nonNullable: true }),
     roundingFrom: new FormControl('', { nonNullable: true }),
   });
@@ -504,8 +515,8 @@ export class Settings {
     this.error.set('');
     const sheet = this.session.sheetId();
     if (!sheet) return;
-    const { clerkLimit, floor, terms, latePct, policyDate, periodNumberingFrom, graceDays, fiscalStartMonth, entryDate, cap, pot, alertThreshold, parent, proofThreshold, noteThreshold, rounding } = this.form.controls;
-    const { clerkLimitFrom, floorFrom, termsFrom, latePctFrom, capFrom, proofThresholdFrom, noteThresholdFrom, roundingFrom } = this.form.getRawValue();
+    const { clerkLimit, floor, terms, latePct, policyDate, periodNumberingFrom, graceDays, fiscalStartMonth, entryDate, cap, pot, alertThreshold, parent, proofThreshold, noteThreshold, reviewThreshold, rounding } = this.form.controls;
+    const { clerkLimitFrom, floorFrom, termsFrom, latePctFrom, capFrom, proofThresholdFrom, noteThresholdFrom, reviewThresholdFrom, roundingFrom } = this.form.getRawValue();
     const value = clerkLimit.value.trim();
     const floorValue = floor.value.trim();
     const termsValue = terms.value.trim();
@@ -521,13 +532,14 @@ export class Settings {
     const parentValue = parent.value.trim();
     const proofThresholdValue = proofThreshold.value.trim();
     const noteThresholdValue = noteThreshold.value.trim();
+    const reviewThresholdValue = reviewThreshold.value.trim();
     const roundingValue = rounding.value.trim();
     // a dated setting saved with a from-date takes it; blank: the sheet's today
     const dated = (from: string): string | null => from.trim() || null;
     const froms = [
       clerkLimit.dirty ? clerkLimitFrom : '', floor.dirty ? floorFrom : '', terms.dirty ? termsFrom : '',
       latePct.dirty ? latePctFrom : '', cap.dirty ? capFrom : '', proofThreshold.dirty ? proofThresholdFrom : '',
-      noteThreshold.dirty ? noteThresholdFrom : '', rounding.dirty ? roundingFrom : '',
+      noteThreshold.dirty ? noteThresholdFrom : '', reviewThreshold.dirty ? reviewThresholdFrom : '', rounding.dirty ? roundingFrom : '',
       ...GRADES.filter((g) => this.gradeTermsForm.controls[g].dirty).map((g) => this.gradeTermsFromForm.controls[g].value),
       ...GRADES.filter((g) => this.gradeGraceForm.controls[g].dirty).map((g) => this.gradeGraceFromForm.controls[g].value),
       ...GRADES.filter((g) => this.gradeProofForm.controls[g].dirty).map((g) => this.gradeProofFromForm.controls[g].value),
@@ -609,6 +621,10 @@ export class Settings {
     }
     if (noteThreshold.dirty && noteThresholdValue && !/^\d{1,12}(\.\d{1,2})?$/.test(noteThresholdValue)) {
       this.error.set('Enter a note threshold of 0.00 or more, with at most two decimals, or leave it blank for none.');
+      return;
+    }
+    if (reviewThreshold.dirty && reviewThresholdValue && !/^\d{1,12}(\.\d{1,2})?$/.test(reviewThresholdValue)) {
+      this.error.set('Enter a review threshold of 0.00 or more, with at most two decimals, or leave it blank for none.');
       return;
     }
     if (rounding.dirty && !/^(half-up|half-even)?$/.test(roundingValue)) {
@@ -763,6 +779,14 @@ export class Settings {
             { value: noteThresholdValue || null, from: dated(noteThresholdFrom) }, { headers: this.headers() }),
         );
         noteThreshold.markAsPristine();
+        if (this.session.sheetId() === sheet) this.show(view);
+      }
+      if (reviewThreshold.dirty) {
+        const view = await firstValueFrom(
+          this.http.put<SettingsView>(`${this.base(sheet)}/settings/review-threshold`,
+            { value: reviewThresholdValue || null, from: dated(reviewThresholdFrom) }, { headers: this.headers() }),
+        );
+        reviewThreshold.markAsPristine();
         if (this.session.sheetId() === sheet) this.show(view);
       }
       if (rounding.dirty) {

@@ -116,6 +116,19 @@ public class SettingController {
         }
     }
 
+    /** A review threshold with at most two decimals; blank or null: none; recorded from the from-date (yyyy-mm-dd), blank or null: the sheet's today. */
+    public record ReviewThresholdRequest(@Pattern(regexp = "(\\d{1,12}(\\.\\d{1,2})?)?") String value,
+            @Pattern(regexp = "(\\d{4}-\\d{2}-\\d{2})?") String from) {
+
+        LocalDate fromValue() {
+            return from == null || from.isEmpty() ? null : LocalDate.parse(from);
+        }
+
+        BigDecimal thresholdValue() {
+            return value == null || value.isEmpty() ? null : new BigDecimal(value).setScale(2);
+        }
+    }
+
     /** A floor with at most two decimals; recorded from the from-date (yyyy-mm-dd), blank or null: the sheet's today. */
     public record FloorRequest(@NotNull @Pattern(regexp = "\\d{1,12}(\\.\\d{1,2})?") String value,
             @Pattern(regexp = "(\\d{4}-\\d{2}-\\d{2})?") String from) {
@@ -474,6 +487,15 @@ public class SettingController {
             @RequestHeader("X-User") @NotBlank @Size(max = 100) String user,
             @RequestBody @Valid NoteThresholdRequest request) {
         service.setNoteThreshold(sheetId, user, request.thresholdValue(), request.fromValue());
+        return get(sheetId, user);
+    }
+
+    @PutMapping("/settings/review-threshold")
+    public SettingsView setReviewThreshold(
+            @PathVariable @Size(max = 100) @Pattern(regexp = "[A-Za-z0-9._-]+") String sheetId,
+            @RequestHeader("X-User") @NotBlank @Size(max = 100) String user,
+            @RequestBody @Valid ReviewThresholdRequest request) {
+        service.setReviewThreshold(sheetId, user, request.thresholdValue(), request.fromValue());
         return get(sheetId, user);
     }
 

@@ -6,23 +6,25 @@ package net.officefloor.hq.app.claim;
  * PENDING instead, until a steward approves it (SETTLED) or rejects it (OPEN again). A steward
  * may void a SETTLED claim shortly after its settlement ({@link ClaimService}); VOID is final.
  * A DRAFT claim can be deleted (DELETED): it counts nowhere and cannot change, except to be restored
- * to DRAFT on the same sheet's today it was deleted.
+ * to DRAFT on the same sheet's today it was deleted. Opening a claim whose due is above the review
+ * threshold makes it REVIEW instead: it counts nowhere and has no number until a steward's review
+ * opens it (OPEN); it can be voided, but not edited, settled or split.
  */
 public enum ClaimStatus {
-    DRAFT, OPEN, PENDING, SETTLED, VOID, DELETED;
+    DRAFT, OPEN, PENDING, SETTLED, VOID, DELETED, REVIEW;
 
     /**
      * Whether a claim in this status may move to {@code next} by opening, settling, voiding or deleting
      * it; a PENDING claim leaves for SETTLED or OPEN only by a steward's approval or rejection, and a
-     * DELETED one for DRAFT only by its restore.
+     * DELETED one for DRAFT only by its restore, and a REVIEW one for OPEN only by a steward's review.
      */
     public boolean canBecome(ClaimStatus next) {
         return switch (next) {
             case OPEN -> this == DRAFT;
             case PENDING, SETTLED -> this == OPEN;
-            case VOID -> this == DRAFT || this == OPEN || this == PENDING;
+            case VOID -> this == DRAFT || this == OPEN || this == PENDING || this == REVIEW;
             case DELETED -> this == DRAFT;
-            case DRAFT -> false;
+            case DRAFT, REVIEW -> false;
         };
     }
 

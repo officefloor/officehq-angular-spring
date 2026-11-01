@@ -31,6 +31,7 @@ public class Sheet {
      */
     public static final String FLOOR = "floor", LATE_PCT = "late-pct", TERMS = "terms", CLERK_LIMIT = "clerk-limit",
             CAP = "cap", PROOF_THRESHOLD = "proof-threshold", NOTE_THRESHOLD = "note-threshold", GRACE = "grace",
+            REVIEW_THRESHOLD = "review-threshold",
             ROUNDING = "rounding";
 
     /** The values in force before any is recorded. */
@@ -253,6 +254,9 @@ public class Sheet {
 
     /** The note threshold in force on the date; null means none. */
     public BigDecimal noteThresholdOn(LocalDate date) { return decimalOn(NOTE_THRESHOLD, date, null); }
+
+    /** The review threshold in force on the date; null means none. */
+    public BigDecimal reviewThresholdOn(LocalDate date) { return decimalOn(REVIEW_THRESHOLD, date, null); }
 
     /** The due-total, at most the cap in force today; null (n/a) stays null. */
     public BigDecimal capped(BigDecimal dueTotal) {

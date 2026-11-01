@@ -10,12 +10,14 @@ import { NA, dueCents } from '../rates/rates';
  * DRAFT when added, then OPEN, then SETTLED; a clerk's settling above the clerk limit makes it
  * PENDING until a steward approves it (SETTLED) or rejects it (OPEN). A DRAFT, OPEN or PENDING
  * claim can be made VOID. A DRAFT claim can be DELETED, when it counts nowhere, and restored to DRAFT on
- * the same sheet's today it was deleted.
+ * the same sheet's today it was deleted. Opening a claim due above the review threshold in force on its
+ * date makes it REVIEW instead: unnumbered and counted nowhere until a steward reviews it (OPEN); it can
+ * be voided, but not edited, settled or split.
  */
-export type ClaimStatus = 'DRAFT' | 'OPEN' | 'PENDING' | 'SETTLED' | 'VOID' | 'DELETED';
+export type ClaimStatus = 'DRAFT' | 'OPEN' | 'PENDING' | 'SETTLED' | 'VOID' | 'DELETED' | 'REVIEW';
 
 /** A status change a claim's buttons ask for. */
-type ClaimAction = 'open' | 'settle' | 'void' | 'approve' | 'reject' | 'resettle' | 'delete' | 'restore';
+type ClaimAction = 'open' | 'settle' | 'void' | 'approve' | 'reject' | 'resettle' | 'delete' | 'restore' | 'review';
 
 export interface Claim {
   id: number;
@@ -260,7 +262,7 @@ const VOID_REASON_NEEDED = 'Choose a reason from the sheet\'s void reasons to vo
 
 const PAST: Record<ClaimAction, string> = {
   open: 'opened', settle: 'settled', void: 'voided', approve: 'approved', reject: 'rejected',
-  resettle: 're-settled', delete: 'deleted', restore: 'restored',
+  resettle: 're-settled', delete: 'deleted', restore: 'restored', review: 'reviewed',
 };
 
 /** Why a claim's correction is refused. */
@@ -289,7 +291,7 @@ function isCapReached(e: unknown): boolean {
 
 /** Why a claim cannot be edited: only a DRAFT can; an OPEN or PENDING one is voided and added again. */
 function notEditable(status: ClaimStatus | undefined): string {
-  return status === 'OPEN' || status === 'PENDING'
+  return status === 'OPEN' || status === 'PENDING' || status === 'REVIEW'
     ? `An ${status} claim cannot be edited; void it and add a new one.`
     : `${status ? 'A ' + status : 'This'} claim cannot be edited; only a DRAFT can.`;
 }
@@ -410,6 +412,8 @@ function notEditable(status: ClaimStatus | undefined): string {
                   [attr.aria-label]="'Restore claim of ' + c.amount + ' on ' + c.date">Restore</button>
           <button type="button" data-testid="claim-approve" (click)="act(c, 'approve')"
                   [attr.aria-label]="'Approve claim of ' + c.amount + ' on ' + c.date">Approve</button>
+          <button type="button" data-testid="claim-review" (click)="act(c, 'review')"
+                  [attr.aria-label]="'Review claim of ' + c.amount + ' on ' + c.date">Review</button>
           <button type="button" data-testid="claim-resettle" (click)="act(c, 'resettle')"
                   [attr.aria-label]="'Re-settle claim of ' + c.amount + ' on ' + c.date">Re-settle</button>
           <label [for]="fieldId('reject-' + c.id)">Reject reason</label>
@@ -696,6 +700,8 @@ export class Claims {
           ? 'The user who opened a claim cannot approve it.'
           : action === 'resettle'
           ? 'Only a steward can re-settle a SETTLED claim.'
+          : action === 'review'
+          ? 'Only a steward can review a REVIEW claim.'
           : 'Only a steward can approve or reject a PENDING claim.'
         : 'Could not change that claim.';
       this.claimError.set({ id: c.id, message });

@@ -183,6 +183,12 @@ public class SettingService {
         return sheets.findById(sheetId).orElseThrow(SheetNotFoundException::new).noteThresholdOn(date);
     }
 
+    /** The review threshold in force on the date; null means none. */
+    @Transactional(readOnly = true)
+    public BigDecimal reviewThresholdOn(String sheetId, LocalDate date) {
+        return sheets.findById(sheetId).orElseThrow(SheetNotFoundException::new).reviewThresholdOn(date);
+    }
+
     /** The roles set for each action of the permission matrix, comma separated, by action; an action not in it keeps the standing rule. */
     @Transactional(readOnly = true)
     public Map<String, String> permissions(String sheetId) {
@@ -531,6 +537,14 @@ public class SettingService {
     public BigDecimal setNoteThreshold(String sheetId, String user, BigDecimal threshold, LocalDate from) {
         Sheet sheet = sheets.findForUpdate(sheetId).orElseThrow(SheetNotFoundException::new);
         record(sheet, user, Sheet.NOTE_THRESHOLD, threshold == null ? null : threshold.toPlainString(), from);
+        return threshold;
+    }
+
+    /** Record the review threshold (null: none) from the date (null: the sheet's today); no figure moves with it. */
+    @Transactional
+    public BigDecimal setReviewThreshold(String sheetId, String user, BigDecimal threshold, LocalDate from) {
+        Sheet sheet = sheets.findForUpdate(sheetId).orElseThrow(SheetNotFoundException::new);
+        record(sheet, user, Sheet.REVIEW_THRESHOLD, threshold == null ? null : threshold.toPlainString(), from);
         return threshold;
     }
 

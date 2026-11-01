@@ -22,7 +22,7 @@ export interface DatedValue {
 }
 
 /** The values recorded for each dated setting (floor, late-pct, terms, terms-<grade>, grace-<grade>, clerk-limit, cap,
- * proof-threshold, proof-threshold-<grade>, note-threshold, rounding), by key. */
+ * proof-threshold, proof-threshold-<grade>, note-threshold, review-threshold, rounding), by key. */
 export type Dated = Partial<Record<string, DatedValue[]>>;
 
 /** The values in force before any is recorded: a key without one has none. */
@@ -85,6 +85,8 @@ export class Session {
   readonly proofThreshold = computed(() => this.valueOn('proof-threshold', this.today()));
   /** The note threshold in force today, two decimals; null when none. */
   readonly noteThreshold = computed(() => this.valueOn('note-threshold', this.today()));
+  /** The review threshold in force today, two decimals; null when none. */
+  readonly reviewThreshold = computed(() => this.valueOn('review-threshold', this.today()));
   /** The late percent by date, today and policy date together, as a claim's late charge and rounding need them. */
   readonly late = computed<Late>(() => ({
     pctOn: (date) => this.valueOn('late-pct', date) ?? '0.00',

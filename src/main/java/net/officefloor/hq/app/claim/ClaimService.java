@@ -50,6 +50,8 @@ import org.springframework.transaction.annotation.Transactional;
  * be added, edited (to or from such a date), opened, settled, re-settled or voided. No claim can be added
  * or edited to a date after its person's retirement date. A claim with a negative amount is a
  * correction: it must name, by number, a SETTLED claim of the same person; only a correction may name one.
+ * A claim whose due is above the review threshold in force on its date goes to REVIEW when opened, with no
+ * number, until a steward reviews it ({@link #review}).
  * A steward can re-date an OPEN or PENDING claim ({@link #redate}). A DRAFT claim can be deleted, and
  * restored to DRAFT on the same sheet's today ({@link #delete}, {@link #restore}).
  */
@@ -255,17 +257,20 @@ public class ClaimService {
         // Settling freezes the late charge of the moment into the settled due.
         BigDecimal settling = next == ClaimStatus.SETTLED ? chargedFigureOf(sheetId, person, claim) : null;
         if (next == ClaimStatus.SETTLED) refuseUnproved(sheetId, person, claim, settling);
-        if (next == ClaimStatus.OPEN) refuseUnnoted(sheetId, claim, chargedFigureOf(sheetId, person, claim));
+        BigDecimal opening = next == ClaimStatus.OPEN ? chargedFigureOf(sheetId, person, claim) : null;
+        if (next == ClaimStatus.OPEN) refuseUnnoted(sheetId, claim, opening);
         if (next == ClaimStatus.SETTLED && overClerkLimit(sheetId, user, settling)) next = ClaimStatus.PENDING;
         String voidReason = next == ClaimStatus.VOID ? voidReasons.reasonForVoid(sheetId, reason) : null;
         RollupService.Snapshot before = rollup.snapshot(sheetId);
         refuseIfClosed(sheetId, claim.getDueBy());
         if (next == ClaimStatus.OPEN) refuseOverCap(sheetId, claim);
+        if (next == ClaimStatus.OPEN && overReviewThreshold(sheetId, claim, opening)) next = ClaimStatus.REVIEW;
         switch (next) {
             case OPEN -> {
                 number(numbering, claim);
                 claim.setOpenedBy(user.strip());
             }
+            case REVIEW -> claim.setOpenedBy(user.strip());
             case SETTLED -> {
                 claim.setSettledDue(settling);
                 claim.setSettleBatch(null);
@@ -279,6 +284,7 @@ public class ClaimService {
         Claim saved = claims.saveAndFlush(claim);
         String event = switch (next) {
             case OPEN -> "CLAIM_OPENED";
+            case REVIEW -> "CLAIM_REVIEW";
             case PENDING -> "CLAIM_PENDING";
             case SETTLED -> "CLAIM_SETTLED";
             case VOID -> "CLAIM_VOIDED";
@@ -356,6 +362,31 @@ public class ClaimService {
         record("CLAIM_APPROVED", sheetId, user, person, saved, saved.getNumber(), " due="
                 + (saved.getSettledDue() == null ? "n/a" : saved.getSettledDue().setScale(2).toPlainString()));
         notifyWatchers(sheetId, user, person, saved);
+        rollup.recordChanges(sheetId, user, before);
+        return saved;
+    }
+
+    /**
+     * A steward reviews a REVIEW claim: OPEN, given the sheet's next number, still opened by the user who
+     * opened it. Refused for anyone else, a claim in any other status, or one due inside a closed period.
+     */
+    @Transactional
+    public Claim review(String sheetId, String user, Long id) {
+        // Numbering locks the sheet first, so the claim is read once no other change is under way.
+        Sheet numbering = sheets.lockForNumbering(sheetId);
+        RollupService.Snapshot before = rollup.snapshot(sheetId);
+        Claim claim = claims.findByIdAndSheetId(id, sheetId).orElseThrow(ClaimNotFoundException::new);
+        if (claim.getStatus() != ClaimStatus.REVIEW) throw new ClaimStatusRefusedException();
+        if (settings.roleOf(sheetId, user) != Role.STEWARD) throw new ClaimNotStewardException();
+        Person person = people.findByIdAndSheetId(claim.getPersonId(), sheetId).orElseThrow(PersonNotFoundException::new);
+        refuseIfClosed(sheetId, claim.getDueBy());
+        refuseOverCap(sheetId, claim);
+        number(numbering, claim);
+        claim.setStatus(ClaimStatus.OPEN);
+        logStatus(sheetId, user, person, claim);
+        Claim saved = claims.saveAndFlush(claim);
+        record("CLAIM_REVIEWED", sheetId, user, person, saved, null, "");
+        record("CLAIM_OPENED", sheetId, user, person, saved);
         rollup.recordChanges(sheetId, user, before);
         return saved;
     }
@@ -674,6 +705,16 @@ public class ClaimService {
         if (due == null || (claim.getNote() != null && !claim.getNote().isBlank())) return;
         BigDecimal threshold = settings.noteThresholdOn(sheetId, claim.getDate());
         if (threshold != null && due.compareTo(threshold) > 0) throw new ClaimNoteRequiredException();
+    }
+
+    /**
+     * Whether a claim being opened goes to REVIEW: its due is above the review threshold in force on its
+     * date; a due of n/a is within any, and no threshold means none goes to review.
+     */
+    private boolean overReviewThreshold(String sheetId, Claim claim, BigDecimal due) {
+        if (due == null) return false;
+        BigDecimal threshold = settings.reviewThresholdOn(sheetId, claim.getDate());
+        return threshold != null && due.compareTo(threshold) > 0;
     }
 
     /** The PENDING claim a steward approves or rejects; refused when not PENDING or not a steward. */
