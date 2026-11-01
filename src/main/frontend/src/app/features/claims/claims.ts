@@ -45,6 +45,8 @@ export interface Claim {
   deferredUntil: string | null;
   /** How many proofs it has; one above the proof threshold in force on its date needs one to be settled or approved. */
   proofs: number;
+  /** Its external reference, unique on the sheet without regard to case; null when it has none. */
+  ref: string | null;
   /** The number of the claim it was split off; null unless split off one. */
   splitFrom: string | null;
   /** The user whose open editor locks it for everyone else; null while no editor holds it. */
@@ -230,6 +232,14 @@ const PAST: Record<ClaimAction, string> = {
 /** Why a claim's correction is refused. */
 const CORRECTION = 'A negative amount is a correction: name the number of a SETTLED claim of this person that it corrects.';
 
+/** Why a claim's reference is refused. */
+export const DUPLICATE_REF = 'That reference is already used on this sheet (whatever its case).';
+
+/** Whether the server refused a reference already used on the sheet. */
+export function isDuplicateRef(e: unknown): boolean {
+  return e instanceof HttpErrorResponse && e.status === 409 && e.error?.type === 'duplicate-ref';
+}
+
 /** Why a claim cannot be edited: only a DRAFT can; an OPEN or PENDING one is voided and added again. */
 function notEditable(status: ClaimStatus | undefined): string {
   return status === 'OPEN' || status === 'PENDING'
@@ -252,6 +262,8 @@ function notEditable(status: ClaimStatus | undefined): string {
       <input [id]="fieldId('note')" data-testid="claim-form-note" formControlName="note" />
       <label [for]="fieldId('corrects')">Corrects claim no.</label>
       <input [id]="fieldId('corrects')" data-testid="claim-form-corrects" formControlName="corrects" />
+      <label [for]="fieldId('ref')">Reference</label>
+      <input [id]="fieldId('ref')" data-testid="claim-form-ref" formControlName="ref" />
       <button type="submit" data-testid="claim-form-submit">{{ editingId() === null ? 'Add claim' : 'Save claim' }}</button>
       @if (error()) {
         <p role="alert" class="error" data-testid="claim-form-error">{{ error() }}</p>
@@ -267,6 +279,7 @@ function notEditable(status: ClaimStatus | undefined): string {
           <span data-testid="claim-amount">{{ c.amount }}</span>
           <span data-testid="claim-date">{{ c.date }}</span>
           <span data-testid="claim-note">{{ c.note }}</span>
+          <span>Ref <span data-testid="claim-ref">{{ c.ref ?? '' }}</span></span>
           <span>Period <span data-testid="claim-period">{{ periodOf(c) }}</span></span>
           <span>Due <span data-testid="claim-due">{{ dueOf(c) }}</span></span>
           <span data-testid="claim-status">{{ c.status }}</span>
@@ -375,6 +388,8 @@ export class Claims {
   protected readonly editingId = signal<number | null>(null);
   /** A submit is under way; another one waits for its answer rather than storing twice. */
   private saving = false;
+  /** The lock the editor last opened is taking; a save of it waits for it, and is dropped if it was refused. */
+  private locking: Promise<boolean> = Promise.resolve(true);
   protected readonly error = signal('');
   /** The error from the last action on a claim's row, if it was refused. */
   protected readonly claimError = signal<{ id: number; message: string } | null>(null);
@@ -383,6 +398,7 @@ export class Claims {
     date: new FormControl('', { nonNullable: true }),
     note: new FormControl('', { nonNullable: true }),
     corrects: new FormControl('', { nonNullable: true }),
+    ref: new FormControl('', { nonNullable: true }),
   });
 
   constructor() {
@@ -428,13 +444,14 @@ export class Claims {
 
   private reset(): void {
     this.editingId.set(null);
-    this.form.reset({ amount: '', date: '', note: '', corrects: '' }, { emitEvent: false });
+    this.form.reset({ amount: '', date: '', note: '', corrects: '', ref: '' }, { emitEvent: false });
     this.error.set('');
   }
 
   private openEditor(c: Claim): void {
     this.editingId.set(c.id);
-    this.form.setValue({ amount: c.amount, date: c.date, note: c.note, corrects: c.corrects ?? '' },
+    this.form.setValue({ amount: c.amount, date: c.date, note: c.note, corrects: c.corrects ?? '',
+      ref: c.ref ?? '' },
       { emitEvent: false });
     this.error.set('');
   }
@@ -456,15 +473,26 @@ export class Claims {
     const sheet = this.session.sheetId();
     if (!sheet) return;
     const open = this.editingId();
-    if (open !== null) await this.release(sheet, open);
+    // The editor opens at once with the claim as shown, so what is typed while the lock is taken is
+    // kept; a save waits for the lock, and a refused lock closes the editor again.
+    this.openEditor(c);
+    const locking = this.lock(sheet, c, open);
+    this.locking = locking;
+    await locking;
+  }
+
+  /** Take the lock of the claim whose editor has opened, after releasing the one left open; whether it was taken. */
+  private async lock(sheet: string, c: Claim, open: number | null): Promise<boolean> {
+    if (open !== null && open !== c.id) await this.release(sheet, open);
     const url = `/api/sheets/${encodeURIComponent(sheet)}/claims/${c.id}/edit`;
     try {
       const claim = await firstValueFrom(this.http.post<Claim>(url, null, { headers: this.headers() }));
-      if (this.session.sheetId() !== sheet) return;
+      if (this.session.sheetId() !== sheet) return false;
       this.saved.emit(claim);
-      this.openEditor(claim);
+      return true;
     } catch (e) {
-      if (this.session.sheetId() !== sheet) return;
+      if (this.session.sheetId() !== sheet) return false;
+      if (this.editingId() === c.id) this.reset();
       const message = e instanceof HttpErrorResponse && e.status === 423
         ? CLOSED
         : e instanceof HttpErrorResponse && e.status === 409
@@ -475,6 +503,7 @@ export class Claims {
         ? 'Your role may not edit a claim on this sheet.'
         : 'Could not edit that claim.';
       this.claimError.set({ id: c.id, message });
+      return false;
     }
   }
 
@@ -753,7 +782,7 @@ export class Claims {
         : 'A correction keeps a negative amount; enter one below 0.00.' });
       return;
     }
-    const body = { amount, date: c.date, note: c.note, corrects: c.corrects };
+    const body = { amount, date: c.date, note: c.note, corrects: c.corrects, ref: c.ref };
     const url = `/api/sheets/${encodeURIComponent(sheet)}/claims/${c.id}`;
     try {
       const claim = await firstValueFrom(this.http.put<Claim>(url, body, { headers: this.headers() }));
@@ -784,6 +813,12 @@ export class Claims {
   protected async save(): Promise<void> {
     if (this.saving) return;
     this.error.set('');
+    if (this.editingId() !== null) {
+      this.saving = true;
+      const locked = await this.locking;
+      this.saving = false;
+      if (!locked) return;
+    }
     this.claimError.set(null);
     const sheet = this.session.sheetId();
     if (!sheet) return;
@@ -804,7 +839,8 @@ export class Claims {
       this.error.set('Enter a date, or leave it blank for today.');
       return;
     }
-    const body = { amount, date: date || null, note: raw.note.trim(), corrects: corrects || null };
+    const body = { amount, date: date || null, note: raw.note.trim(), corrects: corrects || null,
+      ref: raw.ref.trim() || null };
     const id = this.editingId();
     const base = `/api/sheets/${encodeURIComponent(sheet)}`;
     this.saving = true;
@@ -821,6 +857,10 @@ export class Claims {
       if (this.session.sheetId() !== sheet) return;
       if (id !== null && e instanceof HttpErrorResponse && e.status === 412) {
         this.claimError.set({ id, message: 'Another user is editing this claim; it can be edited once they save or cancel.' });
+        return;
+      }
+      if (isDuplicateRef(e)) {
+        this.error.set(DUPLICATE_REF);
         return;
       }
       if (id !== null && e instanceof HttpErrorResponse && e.status === 409) {

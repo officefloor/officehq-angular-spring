@@ -40,5 +40,8 @@ public interface ClaimRepository extends JpaRepository<Claim, Long> {
             nativeQuery = true)
     void unlockAll(String sheetId);
 
+    /** The claim on the sheet carrying the reference of this key, if any. */
+    Optional<Claim> findBySheetIdAndRefKey(String sheetId, String refKey);
+
     Optional<Claim> findByIdAndSheetId(Long id, String sheetId);
 }

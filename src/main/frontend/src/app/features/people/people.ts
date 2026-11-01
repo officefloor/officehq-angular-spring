@@ -3,7 +3,7 @@ import { Component, computed, effect, inject, signal } from '@angular/core';
 import { FormControl, FormGroup, ReactiveFormsModule } from '@angular/forms';
 import { firstValueFrom } from 'rxjs';
 import { Session } from '../../core/session';
-import { Claim, Claims, GraceOn, PctOn, RETIRED, cents, claimDueCents, countsAt, countsFor, isBound, isOpen, isOverdue, money, roundsOn } from '../claims/claims';
+import { Claim, Claims, DUPLICATE_REF, GraceOn, PctOn, RETIRED, cents, claimDueCents, countsAt, countsFor, isBound, isDuplicateRef, isOpen, isOverdue, money, roundsOn } from '../claims/claims';
 import { Period, Periods, periodOn } from '../periods/periods';
 import { GRADES, NA, Rate, Rates, pctOn, rateOn } from '../rates/rates';
 
@@ -199,7 +199,7 @@ function trimmedSum(figures: number[]): number {
         }
       </form>
       <form [formGroup]="pasteForm" (ngSubmit)="paste()" aria-label="Paste draft claims">
-        <label for="paste-claims">Paste claims (name,amount,date,note per line)</label>
+        <label for="paste-claims">Paste claims (name,amount,date,note per line; end the note with " #reference" to give one)</label>
         <textarea id="paste-claims" data-testid="paste-claims" formControlName="text" rows="4"></textarea>
         <button type="submit" data-testid="paste-submit">Paste</button>
         @if (pasteAdded() !== null) {
@@ -1310,6 +1310,8 @@ export class People {
           ? 'No claim due inside a closed period can be changed.'
           : e instanceof HttpErrorResponse && e.status === 422
           ? RETIRED
+          : isDuplicateRef(e)
+          ? `${DUPLICATE_REF} Each line's reference must be new; nothing was added.`
           : 'Every line must be name,amount,date,note for a person on the sheet; nothing was added.',
       );
     } finally {

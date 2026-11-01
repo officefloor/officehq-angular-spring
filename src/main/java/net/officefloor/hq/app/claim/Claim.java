@@ -18,6 +18,7 @@ import java.time.LocalDate;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
+import java.util.Locale;
 import java.util.Objects;
 
 /**
@@ -98,6 +99,14 @@ public class Claim {
     @Column(name = "corrects")
     private String corrects;
 
+    /** Its external reference, trimmed; none unless given. Unique on the sheet by its {@link #refKeyOf key}. */
+    @Column(name = "ref", length = 200)
+    private String ref;
+
+    /** Its reference lower-cased, the key its uniqueness on the sheet is kept on; none without a reference. */
+    @Column(name = "ref_key", length = 200)
+    private String refKey;
+
     /** The number of the claim it was split from; none unless split off one. */
     @Column(name = "split_from")
     private String splitFrom;
@@ -157,6 +166,19 @@ public class Claim {
     public String getCorrects() { return corrects; }
 
     public void setCorrects(String corrects) { this.corrects = corrects; }
+
+    public String getRef() { return ref; }
+
+    /** Give it an external reference (null: none). */
+    public void setRef(String ref) {
+        this.ref = ref;
+        this.refKey = ref == null ? null : refKeyOf(ref);
+    }
+
+    /** The key a reference is compared on: trimmed, without regard to case. */
+    public static String refKeyOf(String ref) {
+        return ref.strip().toLowerCase(Locale.ROOT);
+    }
 
     public String getSplitFrom() { return splitFrom; }
 

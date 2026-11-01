@@ -88,6 +88,13 @@ public class ClaimService {
     @Transactional
     public Claim add(String sheetId, String user, Long personId, BigDecimal amount, LocalDate date, String note,
             String corrects) {
+        return add(sheetId, user, personId, amount, date, note, corrects, null);
+    }
+
+    /** Add a claim carrying an external reference (null: none); a reference already on the sheet is refused. */
+    @Transactional
+    public Claim add(String sheetId, String user, Long personId, BigDecimal amount, LocalDate date, String note,
+            String corrects, String ref) {
         // The snapshot locks the sheet first, so the person is read as retired by any retirement before.
         RollupService.Snapshot before = rollup.snapshot(sheetId);
         Person person = people.findByIdAndSheetId(personId, sheetId).orElseThrow(PersonNotFoundException::new);
@@ -96,13 +103,16 @@ public class ClaimService {
         refuseIfClosed(sheetId, dueBy);
         if (!person.mayClaimOn(on)) throw new PersonRetiredException();
         refuseUnlessCorrects(sheetId, personId, amount, corrects);
+        refuseIfRefUsed(sheetId, null, ref);
         Claim draft = new Claim(sheetId, personId, amount, on, note, dueBy);
         draft.setCorrects(corrects);
+        draft.setRef(ref);
         draft.setLateEntry(periods.softClosedOn(sheetId, dueBy));
         Claim claim = claims.saveAndFlush(draft);
         logStatus(sheetId, user, person, claim);
         claim = claims.saveAndFlush(claim);
-        record("CLAIM_ADDED", sheetId, user, person, claim);
+        record("CLAIM_ADDED", sheetId, user, person, claim, claim.getNumber(),
+                claim.getRef() != null ? " ref=" + claim.getRef() : "");
         if (claim.isLateEntry()) record("LATE_ENTRY", sheetId, user, person, claim);
         rollup.recordChanges(sheetId, user, before);
         return claim;
@@ -110,7 +120,7 @@ public class ClaimService {
 
     @Transactional
     public Claim edit(String sheetId, String user, Long id, BigDecimal amount, LocalDate date, String note,
-            String corrects) {
+            String corrects, String ref) {
         Claim claim = claims.findByIdAndSheetId(id, sheetId).orElseThrow(ClaimNotFoundException::new);
         if (claim.getStatus() != ClaimStatus.DRAFT) {
             throw new ClaimStatusRefusedException();
@@ -122,7 +132,9 @@ public class ClaimService {
         Person person = people.findByIdAndSheetId(claim.getPersonId(), sheetId).orElseThrow(PersonNotFoundException::new);
         if (!person.mayClaimOn(on)) throw new PersonRetiredException();
         refuseUnlessCorrects(sheetId, person.getId(), amount, corrects);
+        refuseIfRefUsed(sheetId, claim.getId(), ref);
         claim.setAmount(amount);
+        claim.setRef(ref);
         claim.setCorrects(corrects);
         claim.setDate(on);
         claim.setNote(note);
@@ -603,6 +615,14 @@ public class ClaimService {
         audit.recordOnCommit(event + " sheet=" + sheetId + " by=" + user.strip() + " person=" + person.getName()
                 + " amount=" + claim.getAmount().setScale(2).toPlainString() + " date=" + claim.getDate()
                 + (number != null ? " number=" + number : "") + extra);
+    }
+
+    /** Refuse a reference (null: none) that a claim on the sheet other than this one (null: any) already carries. */
+    private void refuseIfRefUsed(String sheetId, Long self, String ref) {
+        if (ref == null) return;
+        claims.findBySheetIdAndRefKey(sheetId, Claim.refKeyOf(ref))
+                .filter(other -> !other.getId().equals(self))
+                .ifPresent(other -> { throw new DuplicateClaimRefException(); });
     }
 
     /**

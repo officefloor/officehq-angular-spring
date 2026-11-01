@@ -6,11 +6,16 @@ import jakarta.validation.constraints.NotNull;
 import jakarta.validation.constraints.Pattern;
 import jakarta.validation.constraints.Size;
 import java.math.BigDecimal;
+import java.net.URI;
 import java.time.LocalDate;
 import java.util.List;
 import java.util.Set;
 import net.officefloor.hq.app.setting.OpenToViewer;
+import org.springframework.http.HttpStatus;
+import org.springframework.http.ProblemDetail;
+import org.springframework.http.ResponseEntity;
 import org.springframework.validation.annotation.Validated;
+import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
@@ -31,12 +36,13 @@ public class ClaimController {
      * when bound by its person's last statement, to the due it had then (null when it had none). A
      * correction has the number of the claim it corrects (null for any other claim). Its status log
      * is oldest first. Locked by the user whose open editor holds it (null when none). A late entry
-     * when added while its period was soft-closed. Reminded on the last day a reminder was written (null when none).
+     * when added while its period was soft-closed. Reminded on the last day a reminder was written (null when none). Its external reference is null when it has none.
      */
     public record ClaimView(Long id, Long personId, String amount, LocalDate date, String note, ClaimStatus status,
             String number, String settledDue, String openedBy, boolean stated, String statedDue, String corrects,
             LocalDate dueBy, List<LogLineView> log, LocalDate deferredUntil,
-            int proofs, String splitFrom, String lockedBy, boolean lateEntry, LocalDate remindedOn) {
+            int proofs, String splitFrom, String lockedBy, boolean lateEntry, LocalDate remindedOn,
+            String ref) {
         public static ClaimView of(Claim claim) {
             return new ClaimView(claim.getId(), claim.getPersonId(), claim.getAmount().toPlainString(),
                     claim.getDate(), claim.getNote(), claim.getStatus(), claim.getNumber(),
@@ -45,7 +51,8 @@ public class ClaimController {
                     claim.getStatedDue() == null ? null : claim.getStatedDue().setScale(2).toPlainString(),
                     claim.getCorrects(), claim.getDueBy(), claim.getLog().stream().map(LogLineView::of).toList(),
                     claim.getDeferredUntil(), claim.getProofs(), claim.getSplitFrom(),
-                    claim.getLockedBy(), claim.isLateEntry(), claim.getRemindedOn());
+                    claim.getLockedBy(), claim.isLateEntry(), claim.getRemindedOn(),
+                    claim.getRef());
         }
     }
 
@@ -65,7 +72,8 @@ public class ClaimController {
             @NotNull @Pattern(regexp = "-?\\d{1,12}(\\.\\d{1,2})?") String amount,
             LocalDate date,
             @Size(max = 500) String note,
-            @Size(max = 220) @Pattern(regexp = "\\S+") String corrects) {
+            @Size(max = 220) @Pattern(regexp = "\\S+") String corrects,
+            @Size(max = 200) String ref) {
 
         BigDecimal amountValue() {
             return new BigDecimal(amount).setScale(2);
@@ -73,6 +81,10 @@ public class ClaimController {
 
         String correctsValue() {
             return corrects == null || corrects.isEmpty() ? null : corrects;
+        }
+
+        String refValue() {
+            return ref == null || ref.isBlank() ? null : ref.strip();
         }
 
         String noteValue() {
@@ -128,6 +140,15 @@ public class ClaimController {
         this.paste = paste;
     }
 
+    /** A reference already used on the sheet: a conflict of its own problem type. */
+    @ExceptionHandler(DuplicateClaimRefException.class)
+    public ResponseEntity<ProblemDetail> duplicateRef() {
+        ProblemDetail problem = ProblemDetail.forStatusAndDetail(HttpStatus.CONFLICT,
+                "That reference is already used on this sheet.");
+        problem.setType(URI.create(DuplicateClaimRefException.TYPE));
+        return ResponseEntity.status(HttpStatus.CONFLICT).body(problem);
+    }
+
     @GetMapping("/claims")
     public List<ClaimView> list(
             @PathVariable @Size(max = 100) @Pattern(regexp = "[A-Za-z0-9._-]+") String sheetId,
@@ -142,7 +163,7 @@ public class ClaimController {
             @RequestHeader("X-User") @NotBlank @Size(max = 100) String user,
             @RequestBody @Valid ClaimRequest request) {
         return ClaimView.of(service.add(sheetId, user, personId, request.amountValue(), request.date(), request.noteValue(),
-                request.correctsValue()));
+                request.correctsValue(), request.refValue()));
     }
 
     @PostMapping("/claims/paste")
@@ -161,7 +182,7 @@ public class ClaimController {
             @RequestHeader("X-User") @NotBlank @Size(max = 100) String user,
             @RequestBody @Valid ClaimRequest request) {
         return ClaimView.of(service.edit(sheetId, user, id, request.amountValue(), request.date(), request.noteValue(),
-                request.correctsValue()));
+                request.correctsValue(), request.refValue()));
     }
 
     @PostMapping("/claims/{id}/edit")
