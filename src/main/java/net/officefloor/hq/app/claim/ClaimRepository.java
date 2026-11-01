@@ -17,6 +17,10 @@ public interface ClaimRepository extends JpaRepository<Claim, Long> {
     @Query(value = "select next value for claim_listed_seq", nativeQuery = true)
     long nextListed();
 
+    /** The next place in the order claims were added, after every claim added so far. */
+    @Query(value = "select next value for claim_added_seq", nativeQuery = true)
+    long nextAdded();
+
     List<Claim> findBySheetIdAndPersonIdOrderByIdDesc(String sheetId, Long personId);
 
     /**

@@ -43,7 +43,7 @@ public class ClaimController {
             LocalDate dueBy, List<LogLineView> log, LocalDate deferredUntil,
             int proofs, String splitFrom, String lockedBy, boolean lateEntry, LocalDate remindedOn,
             String ref, List<String> tags, String voidReason, List<CommentView> comments,
-            Integer batch, List<LineView> lines) {
+            Integer batch, List<LineView> lines, Long added) {
         public static ClaimView of(Claim claim) {
             return new ClaimView(claim.getId(), claim.getPersonId(), claim.getAmount().toPlainString(),
                     claim.getDate(), claim.getNote(), claim.getStatus(), claim.getNumber(),
@@ -56,7 +56,7 @@ public class ClaimController {
                     claim.getRef(), claim.getTags(), claim.getVoidReason(),
                     claim.getComments().stream().map(CommentView::of).toList(),
                     claim.getSettleBatch(),
-                    claim.getLines().stream().map(LineView::of).toList());
+                    claim.getLines().stream().map(LineView::of).toList(), claim.getAdded());
         }
     }
 

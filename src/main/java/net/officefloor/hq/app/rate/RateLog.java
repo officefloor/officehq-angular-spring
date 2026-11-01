@@ -39,6 +39,9 @@ public class RateLog {
     @Column(name = "set_on")
     private LocalDate setOn;
 
+    @Column(name = "forward_after")
+    private Long forwardAfter;
+
     protected RateLog() {}
 
     public RateLog(Rate rate, LocalDate setOn) {
@@ -48,6 +51,7 @@ public class RateLog {
         this.toDate = rate.getToDate();
         this.pct = rate.getPct();
         this.setOn = setOn;
+        this.forwardAfter = rate.getForwardAfter();
     }
 
     public String getGrade() { return grade; }
@@ -58,5 +62,5 @@ public class RateLog {
     public boolean setBy(LocalDate date) { return setOn == null || !setOn.isAfter(date); }
 
     /** The rate as this line set it, as the newest of the given number of versions. */
-    public Rate toRate(int versions) { return new Rate(sheetId, grade, fromDate, toDate, pct, versions); }
+    public Rate toRate(int versions) { return new Rate(sheetId, grade, fromDate, toDate, pct, versions, forwardAfter); }
 }

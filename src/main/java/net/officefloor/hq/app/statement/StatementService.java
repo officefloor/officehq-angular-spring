@@ -132,7 +132,7 @@ public class StatementService {
             if (due != null && !person.gradeOn(claim.getDate()).equals(person.gradeOn(today))) fixed = true;
             // and so does a due under a rate that is not the one in force today
             String grade = person.gradeOn(claim.getDate());
-            if (due != null && !levels.inForce(grade, claim.getDate()).map(Rate::getId)
+            if (due != null && !levels.inForceFor(grade, claim.getDate(), claim.getAdded()).map(Rate::getId)
                     .equals(levels.inForce(grade, today).map(Rate::getId))) fixed = true;
             claim.state(figure, today);
             if (due != null) total = total.add(due);
@@ -175,7 +175,7 @@ public class StatementService {
             BigDecimal settled = status == ClaimStatus.SETTLED ? claim.settledDueAt(asOf) : null;
             BigDecimal figure = settled != null ? settled
                     : binding != null ? binding.getDue()
-                    : ratesThen.inForce(grade, claim.getDate())
+                    : ratesThen.inForceFor(grade, claim.getDate(), claim.getAdded())
                             .map(rate -> claim.getAmount().multiply(rate.getPct()).movePointLeft(2).setScale(2, rounding))
                             .orElse(null);
             BigDecimal due = figure;
@@ -190,7 +190,8 @@ public class StatementService {
             // a due under a grade they had on its date but not on the date counts like a fixed one
             if (due != null && !grade.equals(person.gradeOn(asOf, asOf))) fixed = true;
             // and so does a due under a rate that is not the one in force on the date
-            if (due != null && !ratesThen.inForce(grade, claim.getDate()).equals(ratesThen.inForce(grade, asOf))) {
+            if (due != null && !ratesThen.inForceFor(grade, claim.getDate(), claim.getAdded())
+                    .equals(ratesThen.inForce(grade, asOf))) {
                 fixed = true;
             }
             claim.state(figure, today);

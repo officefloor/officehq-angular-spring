@@ -68,6 +68,8 @@ export interface Claim {
   comments: ClaimComment[];
   /** Its lines, in the order they were added; with any, its amount is what they add up to. */
   lines: ClaimLine[];
+  /** Its place in the order claims were added to their sheets; a forward-only rate applies only to claims added after it was saved. */
+  added: number;
 }
 
 /** A line of a claim: its label, a whole quantity of at least 1 and a unit amount (two decimals). */
@@ -92,8 +94,9 @@ export interface ClaimLogLine {
   due: string | null;
 }
 
-/** A person's rate on a date: the rate then of the grade they had then, or null when it has none. */
-export type PctOn = (date: string) => string | null;
+/** A person's rate on a date: the rate then of the grade they had then, or null when it has none; given a claim's
+ *  place in the order claims were added, of the rates that apply to it. */
+export type PctOn = (date: string, added?: number | null) => string | null;
 
 /** A person's grace days for a claim dated on a date: those of the grade they had then, in force then; 0 when none. */
 export type GraceOn = (date: string) => number;
@@ -209,7 +212,7 @@ export function claimDueCents(c: Claim, pctOn: PctOn, floorOn: FloorOn, late: La
 /** A claim's figure in cents: the rate figure bound by its person's last statement, else its rate figure (no floor). */
 function figureCents(c: Claim, pctOn: PctOn, halfUp: boolean): number | null {
   if (isBound(c)) return c.statedDue === null ? null : cents(c.statedDue);
-  const pct = pctOn(c.date);
+  const pct = pctOn(c.date, c.added);
   if (pct === null) return null;
   return dueCents(cents(c.amount), pct, halfUp);
 }

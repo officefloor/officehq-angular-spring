@@ -26,11 +26,15 @@ import org.springframework.web.bind.annotation.RestController;
 @RequestMapping("/api/sheets/{sheetId}/rates")
 public class RateController {
 
-    /** A grade's rate as the screen shows it, with its version count; the percent always has two decimals; from is null from the start, to null with no end. */
-    public record RateView(String grade, LocalDate from, LocalDate to, String pct, int versions) {
+    /**
+     * A grade's rate as the screen shows it, with its version count; the percent always has two decimals; from is null
+     * from the start, to null with no end; forwardAfter, when forward-only, the last place in the order claims were
+     * added when it was saved (null: it applies to every claim).
+     */
+    public record RateView(String grade, LocalDate from, LocalDate to, String pct, int versions, Long forwardAfter) {
         static RateView of(Rate rate) {
             return new RateView(rate.getGrade(), rate.getFromDate(), rate.getToDate(), rate.getPct().setScale(2).toPlainString(),
-                    rate.getVersions());
+                    rate.getVersions(), rate.getForwardAfter());
         }
     }
 

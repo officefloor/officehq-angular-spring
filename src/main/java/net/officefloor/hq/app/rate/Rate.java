@@ -15,7 +15,9 @@ import java.util.Optional;
 /**
  * The sheet's rate for one grade from a date: a percent with two decimals (0.00 or more). A rate
  * with no from-date applies from the beginning of time; one with a to-date applies through it. Setting
- * a grade and from-date again adds a new version; the row holds the newest, the one in force.
+ * a grade and from-date again adds a new version; the row holds the newest, the one in force. A version
+ * saved with a from-date on or after the sheet's today then is forward-only: it applies only to claims
+ * added after it was saved.
  */
 @Entity
 @Table(name = "rate")
@@ -43,6 +45,10 @@ public class Rate {
     @Column(name = "versions", nullable = false)
     private int versions = 1;
 
+    /** Forward-only: the last place in the order claims were added when it was saved; null applies to every claim. */
+    @Column(name = "forward_after")
+    private Long forwardAfter;
+
     protected Rate() {}
 
     public Rate(String sheetId, String grade, LocalDate fromDate, LocalDate toDate, BigDecimal pct) {
@@ -54,9 +60,11 @@ public class Rate {
     }
 
     /** The rate as it stood after the given number of versions. */
-    public Rate(String sheetId, String grade, LocalDate fromDate, LocalDate toDate, BigDecimal pct, int versions) {
+    public Rate(String sheetId, String grade, LocalDate fromDate, LocalDate toDate, BigDecimal pct, int versions,
+            Long forwardAfter) {
         this(sheetId, grade, fromDate, toDate, pct);
         this.versions = versions;
+        this.forwardAfter = forwardAfter;
     }
 
     /**
@@ -68,6 +76,15 @@ public class Rate {
                 .filter(rate -> rate.appliesOn(date))
                 .max(Comparator.comparing(Rate::getFromDate, Comparator.nullsFirst(Comparator.naturalOrder())))
                 .filter(rate -> rate.toDate == null || !date.isAfter(rate.toDate));
+    }
+
+    /**
+     * Of one grade's rates, the one in force on the date for a claim at the given place in the order claims
+     * were added (null: not added yet, the newest): as {@link #inForce(Collection, LocalDate)}, of those that
+     * apply to it.
+     */
+    public static Optional<Rate> inForceFor(Collection<Rate> rates, LocalDate date, Long added) {
+        return inForce(rates.stream().filter(rate -> rate.appliesToClaimAdded(added)).toList(), date);
     }
 
     public Long getId() { return id; }
@@ -87,13 +104,25 @@ public class Rate {
 
     public BigDecimal getPct() { return pct; }
 
+    /** Forward-only: the last place in the order claims were added when it was saved; null when it applies to every claim. */
+    public Long getForwardAfter() { return forwardAfter; }
+
+    /** Whether it applies to a claim at the given place in the order claims were added (null: not added yet, the newest). */
+    public boolean appliesToClaimAdded(Long added) {
+        return forwardAfter == null || added == null || added > forwardAfter;
+    }
+
     /** How many times its grade and from-date have been set; this is the newest version, the older ones are in the rate log. */
     public int getVersions() { return versions; }
 
-    /** Keep the current value as an older version and make the percent and to-date the newest one. */
-    public void addVersion(BigDecimal pct, LocalDate toDate) {
+    /** Keep the current value as an older version and make the percent, to-date and forward-only point the newest one. */
+    public void addVersion(BigDecimal pct, LocalDate toDate, Long forwardAfter) {
         this.versions++;
         this.pct = pct;
         this.toDate = toDate;
+        this.forwardAfter = forwardAfter;
     }
+
+    /** Make it forward-only from the last place in the order claims were added (null: it applies to every claim). */
+    public void setForwardAfter(Long forwardAfter) { this.forwardAfter = forwardAfter; }
 }

@@ -855,7 +855,7 @@ export class People {
   /** Each person's rate on a date, by id: the rate then of the grade in force for them then. */
   private readonly pctOnByPerson = computed(() => {
     const by = new Map<number, PctOn>();
-    for (const p of this.people()) by.set(p.id, (date) => rateInLevels(this.ratesOf(gradeOn(p, date)), date)?.pct ?? null);
+    for (const p of this.people()) by.set(p.id, (date, added) => rateInLevels(this.ratesOf(gradeOn(p, date)), date, added)?.pct ?? null);
     return by;
   });
   /** Each person's grace days for a claim dated on a date, by id: those of the grade in force for them then, in force then. */
@@ -1247,7 +1247,7 @@ export class People {
     const today = this.session.today();
     const otherRate = (c: Claim) => {
       const rates = this.ratesOf(gradeOn(p, c.date));
-      return today !== null && rateInLevels(rates, c.date) !== rateInLevels(rates, today);
+      return today !== null && rateInLevels(rates, c.date, c.added) !== rateInLevels(rates, today);
     };
     const fixed = (c: Claim) => c.settledDue !== null || (isBound(c) && c.statedDue !== null)
       || ((gradeOn(p, c.date) !== gradeToday || otherRate(c)) && claimDueCents(c, pctOn, floor, late, roundsOn(c, theirs), graceOn) !== null);

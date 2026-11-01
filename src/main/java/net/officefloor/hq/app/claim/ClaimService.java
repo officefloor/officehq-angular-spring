@@ -855,12 +855,13 @@ public class ClaimService {
     }
 
     /**
-     * A claim's rate figure: its amount times the rate on its date of its person's grade in force on it, rounded to
-     * cents as {@link Rounding} has it, with no floor; null with no rate.
+     * A claim's rate figure: its amount times the rate on its date of its person's grade in force on it (of those
+     * that apply to the claim: no forward-only rate saved after it was added), rounded to cents as {@link Rounding}
+     * has it, with no floor; null with no rate.
      */
     private BigDecimal dueOf(String sheetId, Person person, Claim claim) {
         RoundingMode rounding = roundingOf(sheetId, claim);
-        return rates.on(sheetId, person.gradeOn(claim.getDate()), claim.getDate())
+        return rates.onFor(sheetId, person.gradeOn(claim.getDate()), claim.getDate(), claim.getAdded())
                 .map(Rate::getPct)
                 .map(pct -> claim.getAmount().multiply(pct).movePointLeft(2).setScale(2, rounding))
                 .orElse(null);
@@ -895,7 +896,7 @@ public class ClaimService {
         Map<Long, String> old = new HashMap<>();
         for (Claim claim : arriving) {
             old.put(claim.getId(), claim.getNumber());
-            claim.transferTo(to.getId());
+            claim.transferTo(to.getId(), claims.nextAdded());
         }
         claims.saveAllAndFlush(arriving);
         numberAfresh(to, arriving, old);

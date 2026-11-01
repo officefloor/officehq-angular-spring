@@ -20,4 +20,17 @@ public record RateLevels(List<Map<String, List<Rate>>> levels) {
         }
         return Optional.empty();
     }
+
+    /**
+     * The grade's rate on the date for a claim at the given place in the order claims were added (null: not
+     * added yet): the first level's that has one in force then of those that apply to the claim, leaving out
+     * forward-only rates saved after it was added.
+     */
+    public Optional<Rate> inForceFor(String grade, LocalDate date, Long added) {
+        for (Map<String, List<Rate>> level : levels) {
+            Optional<Rate> rate = Rate.inForceFor(level.getOrDefault(grade, List.of()), date, added);
+            if (rate.isPresent()) return rate;
+        }
+        return Optional.empty();
+    }
 }

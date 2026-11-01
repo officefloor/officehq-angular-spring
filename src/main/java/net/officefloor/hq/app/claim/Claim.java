@@ -50,6 +50,15 @@ public class Claim {
     @Column(name = "listed", insertable = false)
     private Long listed;
 
+    /**
+     * Its place in the order claims were added to their sheets: the next of claim_added_seq, given by the
+     * store when added and again when it arrives on another sheet. A forward-only rate applies only to
+     * claims added after it was saved.
+     */
+    @Generated(event = EventType.INSERT)
+    @Column(name = "added", insertable = false)
+    private Long added;
+
     @Column(name = "amount", nullable = false, precision = 14, scale = 2)
     private BigDecimal amount;
 
@@ -255,6 +264,9 @@ public class Claim {
 
     public Long getListed() { return listed; }
 
+    /** Its place in the order claims were added; null until the store has added it (then it is the newest). */
+    public Long getAdded() { return added; }
+
     /** Move the claim to another person, listed as their newest at the given place in the list. */
     public void moveTo(Long personId, long listed) {
         this.personId = personId;
@@ -264,10 +276,12 @@ public class Claim {
     /**
      * Move the claim, with its person, to another sheet: it keeps its status, dates, note, tags, frozen
      * figure, logs and any figure a statement bound it to, but loses its reference, its number (to be
-     * given the other sheet's next), its settle batch and any editor's lock.
+     * given the other sheet's next), its settle batch and any editor's lock; it is added to the other sheet
+     * at the given place in the order claims were added.
      */
-    public void transferTo(String sheetId) {
+    public void transferTo(String sheetId, long added) {
         this.sheetId = sheetId;
+        this.added = added;
         setRef(null);
         this.number = null;
         this.numberPeriod = null;

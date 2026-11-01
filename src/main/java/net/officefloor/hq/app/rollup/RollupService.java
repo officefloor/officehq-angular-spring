@@ -119,7 +119,7 @@ public class RollupService {
                 if (figure != null && today != null && !grade.equals(person.gradeOn(today))) fixed = true;
                 // and so does a due under a rate that is not the one in force today
                 if (figure != null && today != null
-                        && !levels.inForce(grade, claim.getDate()).equals(levels.inForce(grade, today))) fixed = true;
+                        && !levels.inForceFor(grade, claim.getDate(), claim.getAdded()).equals(levels.inForce(grade, today))) fixed = true;
                 if (figure != null) due = due.add(figure);
                 if (figure != null && LateCharge.isOverdue(claim, today, grace)) overdue = overdue.add(figure);
             }
@@ -197,13 +197,14 @@ public class RollupService {
     }
 
     /**
-     * A claim's figure: its settled due, else its stated rate figure, else its rate figure (no floor),
+     * A claim's figure: its settled due, else its stated rate figure, else its rate figure (no floor; of the rates
+     * that apply to it, no forward-only one saved after it was added),
      * rounded as given; null when it has none.
      */
     private static BigDecimal figureOf(Claim claim, RateLevels levels, String grade, RoundingMode rounding) {
         if (claim.getSettledDue() != null) return claim.getSettledDue();
         if (claim.isBound()) return claim.getStatedDue();
-        BigDecimal pct = levels.inForce(grade, claim.getDate()).map(Rate::getPct).orElse(null);
+        BigDecimal pct = levels.inForceFor(grade, claim.getDate(), claim.getAdded()).map(Rate::getPct).orElse(null);
         if (pct == null) return null;
         return claim.getAmount().multiply(pct).movePointLeft(2).setScale(2, rounding);
     }

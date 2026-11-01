@@ -14,6 +14,15 @@ export interface Rate {
   pct: string;
   /** How many versions it has; the pct is the newest. */
   versions: number;
+  /** Forward-only (saved with a from-date on or after the sheet's today): it applies only to claims whose `added` is
+   *  above this; null when it applies to every claim. */
+  forwardAfter: number | null;
+}
+
+/** Whether the rate applies to a claim at the given place in the order claims were added (null or absent: any). */
+function appliesTo(rate: Rate, added: number | null | undefined): boolean {
+  return rate.forwardAfter === null || rate.forwardAfter === undefined || added === null || added === undefined
+    || added > rate.forwardAfter;
 }
 
 export const GRADES = ['A', 'B', 'C'];
@@ -40,11 +49,13 @@ export function pctOn(rates: Rate[], date: string): string | null {
   return rateOn(rates, date)?.pct ?? null;
 }
 
-/** Of one grade's rates, the one in force on a date (as `pctOn` has it), or null. */
-export function rateOn(rates: Rate[], date: string): Rate | null {
+/** Of one grade's rates, the one in force on a date (as `pctOn` has it), or null. Given a claim's place in the order
+ *  claims were added, only of the rates that apply to it (no forward-only rate saved after it was added). */
+export function rateOn(rates: Rate[], date: string, added?: number | null): Rate | null {
   // No from-date sorts as '', before every date.
   let best: Rate | null = null;
   for (const r of rates) {
+    if (!appliesTo(r, added)) continue;
     const from = r.from ?? '';
     if (from <= date && (best === null || from > (best.from ?? ''))) best = r;
   }
@@ -54,9 +65,9 @@ export function rateOn(rates: Rate[], date: string): Rate | null {
 
 /** Of one grade's rates in levels (the sheet's own, then each ancestor's, nearest first), the one in force on a
  *  date: the first level's that has one (as `rateOn` has it), or null. */
-export function rateInLevels(levels: Rate[][], date: string): Rate | null {
+export function rateInLevels(levels: Rate[][], date: string, added?: number | null): Rate | null {
   for (const rates of levels) {
-    const rate = rateOn(rates, date);
+    const rate = rateOn(rates, date, added);
     if (rate !== null) return rate;
   }
   return null;

@@ -18,6 +18,8 @@ import org.springframework.transaction.annotation.Transactional;
  * The sheet's rates for each grade, each from a date (or from the beginning of time): set one grade
  * and from-date at a time, adding a new version of any rate it had (the newest is the one in force). A date's rate is the one with the latest
  * from-date on or before it; a grade with none in force on a date takes the sheet's ancestors' ({@link InheritedRates}).
+ * A rate saved with a from-date on or after the sheet's today is forward-only: a claim's figure takes it only when
+ * the claim was added after it was saved; the rate in force shown for a date takes no account of this.
  */
 @Service
 public class RateService {
@@ -42,6 +44,15 @@ public class RateService {
     @Transactional(readOnly = true)
     public List<Rate> list(String sheetId) {
         return rates.findBySheetIdOrderByGradeAscFromDateAsc(sheetId);
+    }
+
+    /**
+     * The grade's rate on the date for a claim at the given place in the order claims were added (null: not
+     * added yet): as {@link #on(String, String, LocalDate)}, leaving out forward-only rates saved after it was added.
+     */
+    @Transactional(readOnly = true)
+    public Optional<Rate> onFor(String sheetId, String grade, LocalDate date, Long added) {
+        return inherited.of(sheetId).inForceFor(grade, date, added);
     }
 
     /**
@@ -89,8 +100,11 @@ public class RateService {
         Optional<Rate> existing = from == null
                 ? rates.findBySheetIdAndGradeAndFromDateIsNull(sheetId, grade)
                 : rates.findBySheetIdAndGradeAndFromDate(sheetId, grade, from);
+        // saved with a from-date on or after today: forward-only, for the claims added from now on
+        Long forwardAfter = from != null && !from.isBefore(today) ? rates.lastClaimAdded() : null;
         Rate rate = existing.orElseGet(() -> new Rate(sheetId, grade, from, to, pct));
-        if (existing.isPresent()) rate.addVersion(pct, to);
+        if (existing.isPresent()) rate.addVersion(pct, to, forwardAfter);
+        else rate.setForwardAfter(forwardAfter);
         Rate saved = rates.saveAndFlush(rate);
         log.saveAndFlush(new RateLog(saved, today));
         audit.recordOnCommit("RATE_SET sheet=" + sheetId + " by=" + user.strip()
