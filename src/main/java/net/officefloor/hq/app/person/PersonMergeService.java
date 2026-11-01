@@ -48,11 +48,13 @@ public class PersonMergeService {
     private final PlanService plans;
     private final PersonSnapshotService snapshots;
     private final PeriodRepository periods;
+    private final PersonMergeRepository merges;
 
     public PersonMergeService(PersonRepository people, ClaimRepository claims, PatronRepository patrons,
             PoolMemberRepository poolMembers, CrewService crews, StatementService statements, WatchRepository watches,
             SheetService sheets, SheetRepository sheetStore, RoleService roles, Audit audit, Rollup rollup,
-            PlanService plans, PersonSnapshotService snapshots, PeriodRepository periods) {
+            PlanService plans, PersonSnapshotService snapshots, PeriodRepository periods, PersonMergeRepository merges) {
+        this.merges = merges;
         this.periods = periods;
         this.plans = plans;
         this.snapshots = snapshots;
@@ -107,6 +109,8 @@ public class PersonMergeService {
             claim.reassign(into.getId(), ++listed);
         }
         claims.saveAll(moving);
+        merges.save(new PersonMerge(from, into.getId(), user, sheets.today(sheetId),
+                moving.stream().map(Claim::getId).toList()));
 
         // The patron pairs the other has once the merged person's are taken over.
         List<Patron> sheetPatrons = patrons.findBySheetIdOrderByIdAsc(sheetId);
@@ -162,5 +166,67 @@ public class PersonMergeService {
                 + " from=" + fromName + " into=" + merged.getName());
         rollup.recordChanges(sheetId, user, before);
         return merged;
+    }
+
+    /**
+     * The steward who made the last merge into a person undoes it, on the same sheet's today it was made: the merged
+     * person is back, under their id, at the end of the list, as they were when merged (their grades, terms, tags,
+     * past retirements, flag and approver) with their own aliases, which leave the other's, and the claims that came
+     * from them still with the other, their numbers and status as they are now. Patron, pool and every other change
+     * the merge made stays. Refused for anyone but the steward who made it, a person with no merge to undo, on any
+     * later day, and when the merged person's name or one of their aliases is now another's.
+     */
+    @Transactional
+    public Person undoMerge(String sheetId, String user, long intoId) {
+        sheets.load(sheetId, user);
+        sheetStore.findLockedById(sheetId).orElseThrow();
+        if (!Role.STEWARD.equals(roles.roleOf(sheetId, user))) {
+            throw new ResponseStatusException(HttpStatus.FORBIDDEN, "Only a steward can undo a merge");
+        }
+        Person into = people.findByIdAndSheetId(intoId, sheetId)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "No such person on this sheet"));
+        PersonMerge merge = merges.findFirstBySheetIdAndIntoIdAndUndoneFalseOrderByIdDesc(sheetId, into.getId())
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.CONFLICT, "No merge into this person to undo"));
+        if (!merge.getUserName().equals(user)) {
+            throw new ResponseStatusException(HttpStatus.FORBIDDEN, "Only the steward who made a merge can undo it");
+        }
+        if (merge.getMadeOn() == null || !merge.getMadeOn().equals(sheets.today(sheetId))) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT, "A merge can only be undone on the day it was made");
+        }
+        List<String> names = new ArrayList<>();
+        names.add(merge.getName());
+        names.addAll(merge.getAliases());
+        for (String name : names) {
+            people.findBySheetIdAndNameOrAliasIgnoreCase(sheetId, name)
+                    .filter(other -> !other.getId().equals(into.getId()))
+                    .ifPresent(other -> {
+                        throw new ResponseStatusException(HttpStatus.CONFLICT, "The name " + name + " is now another's");
+                    });
+            if (into.getName().equalsIgnoreCase(name)) {
+                throw new ResponseStatusException(HttpStatus.CONFLICT, "The name " + name + " is now another's");
+            }
+        }
+        Rollup.Figures before = rollup.of(sheetId);
+
+        names.forEach(into::removeAlias);
+        String intoName = people.saveAndFlush(into).getName();
+
+        people.insertWithId(merge.getFromId(), sheetId, merge.getName());
+        Person restored = people.findById(merge.getFromId()).orElseThrow();
+        restored.restoreFrom(merge, people.findMaxPositionBySheetId(sheetId) + 1);
+        restored = people.saveAndFlush(restored);
+
+        List<Claim> back = claims.findAllById(merge.getClaimIds()).stream()
+                .filter(c -> sheetId.equals(c.getSheetId()) && into.getId().equals(c.getPersonId()))
+                .toList();
+        back.forEach(c -> c.reassign(merge.getFromId(), c.getListed()));
+        claims.saveAll(back);
+
+        merge.markUndone();
+        merges.save(merge);
+        audit.recordChangeOnCommit(sheetId, user, "PERSON_MERGE_UNDONE sheet=" + sheetId + " by=" + user
+                + " name=" + restored.getName() + " from=" + intoName);
+        rollup.recordChanges(sheetId, user, before);
+        return restored;
     }
 }

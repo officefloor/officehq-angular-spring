@@ -21,6 +21,12 @@ public interface PersonRepository extends JpaRepository<Person, Long> {
     @Query("update Person p set p.position = :position where p.id = :id")
     void setPosition(@Param("id") Long id, @Param("position") int position);
 
+    /** Put back on the sheet, under the id they had, a person merged away; the rest of them is given once loaded. */
+    @Modifying(flushAutomatically = true, clearAutomatically = true)
+    @Query(value = "insert into person (id, sheet_id, name, position, version) values (:id, :sheetId, :name, 0, 0)",
+            nativeQuery = true)
+    void insertWithId(@Param("id") Long id, @Param("sheetId") String sheetId, @Param("name") String name);
+
     Optional<Person> findByIdAndSheetId(Long id, String sheetId);
 
     Optional<Person> findBySheetIdAndNameIgnoreCase(String sheetId, String name);

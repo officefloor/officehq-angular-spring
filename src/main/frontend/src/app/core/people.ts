@@ -208,6 +208,11 @@ export class People {
     return this.http.post<PersonView>(`${this.base(sheetId)}/${id}/merge`, { intoId });
   }
 
+  /** Undo the last merge into the person, on the day it was made (its steward only): the person restored. */
+  undoMerge(sheetId: string, id: number): Observable<PersonView> {
+    return this.http.post<PersonView>(`${this.base(sheetId)}/${id}/merge-undo`, {});
+  }
+
   /** Undo the transfer that brought the person here, on the day they arrived (a steward only). */
   undoTransfer(sheetId: string, id: number): Observable<void> {
     return this.http.post<void>(`${this.base(sheetId)}/${id}/transfer-undo`, {});

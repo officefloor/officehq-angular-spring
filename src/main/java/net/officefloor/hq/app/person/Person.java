@@ -277,6 +277,30 @@ public class Person {
         aliases.add(alias);
     }
 
+    /** Take the alias away, as given; nothing when the person has no such alias. */
+    public void removeAlias(String alias) {
+        aliases.remove(alias);
+    }
+
+    /** Give a person restored by undoing their merge, at {@code position}, what they were when merged: their
+     *  grades, terms, tags, past retirements, flag, approver and own aliases. */
+    public void restoreFrom(PersonMerge merge, int position) {
+        this.position = position;
+        grades.clear();
+        merge.getGrades().forEach(g -> grades.add(new GradeFrom(g.getFromDate(), g.getGrade())));
+        terms = merge.getTerms();
+        datedTerms.clear();
+        merge.getDatedTerms().forEach(t -> datedTerms.add(new TermsFrom(t.getFromDate(), t.getTerms())));
+        tags = merge.getTags();
+        pastRetirements.clear();
+        merge.getPastRetirements().forEach(r -> pastRetirements.add(new PastRetirement(r.getFromDate(), r.getToDate())));
+        flagReason = merge.getFlagReason();
+        flagUntil = merge.getFlagUntil();
+        approver = merge.getApprover();
+        aliases.clear();
+        aliases.addAll(merge.getAliases());
+    }
+
     public long getVersion() {
         return version;
     }
@@ -336,6 +360,14 @@ public class Person {
     /** Whether {@code user} is the person's approver. */
     public boolean isApprover(String user) {
         return approver != null && user != null && approver.equals(user.trim());
+    }
+
+    public String getFlagReason() {
+        return flagReason;
+    }
+
+    public LocalDate getFlagUntil() {
+        return flagUntil;
     }
 
     /** Flag the person with a reason until a date, replacing any flag they had. */

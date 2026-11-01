@@ -550,6 +550,8 @@ function csvField(value: string): string {
             </select>
             <button type="button" data-testid="person-merge" (click)="merge(p, mergeInto.value)"
                     [disabled]="merging() === p.id" [attr.aria-label]="'Merge ' + p.name">Merge</button>
+            <button type="button" data-testid="person-merge-undo" (click)="undoMerge(p)"
+                    [disabled]="merging() === p.id" [attr.aria-label]="'Undo the last merge into ' + p.name">Undo merge</button>
             <label [attr.for]="'person-transfer-to-' + p.id">Transfer to sheet</label>
             <input [id]="'person-transfer-to-' + p.id" data-testid="person-transfer-to" #transferTo
                    (input)="clearPersonError(p.id)" />
@@ -1676,6 +1678,26 @@ export class PeopleList {
       error: () => {
         this.merging.set(null);
         this.personError.set({ id: p.id, message: 'Could not merge ' + p.name + ' into that person.' });
+      },
+    });
+  }
+
+  /** Undo the last merge into the person; once undone the sheet is re-read, as the merged person is back. */
+  protected undoMerge(p: PersonView): void {
+    if (this.merging() === p.id) return;
+    this.personError.set(null);
+    this.patronError.set(null);
+    const sheet = this.sheets.current();
+    if (!sheet) return;
+    this.merging.set(p.id);
+    this.api.undoMerge(sheet.id, p.id).subscribe({
+      next: () => {
+        this.merging.set(null);
+        this.sheets.load(sheet.id).subscribe();
+      },
+      error: () => {
+        this.merging.set(null);
+        this.personError.set({ id: p.id, message: 'Could not undo the last merge into ' + p.name + '.' });
       },
     });
   }
