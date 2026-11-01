@@ -78,6 +78,10 @@ public class Sheet {
     @Column(name = "period_numbering_from")
     private LocalDate periodNumberingFrom;
 
+    /** When its today is changed, an open period whose to-date plus them is before it is closed; null means off. */
+    @Column(name = "grace_days")
+    private Integer graceDays;
+
     protected Sheet() {}
 
     public Sheet(String id, String createdBy, Instant createdAt, LocalDate today) {
@@ -186,6 +190,10 @@ public class Sheet {
     public LocalDate getPeriodNumberingFrom() { return periodNumberingFrom; }
 
     public void setPeriodNumberingFrom(LocalDate periodNumberingFrom) { this.periodNumberingFrom = periodNumberingFrom; }
+
+    public Integer getGraceDays() { return graceDays; }
+
+    public void setGraceDays(Integer graceDays) { this.graceDays = graceDays; }
 
     /** Whether a claim opened now is numbered within its period rather than sheet-wide. */
     public boolean numbersByPeriod() {

@@ -2,6 +2,7 @@ package net.officefloor.hq.app.period;
 
 import java.math.BigDecimal;
 import java.time.LocalDate;
+import java.util.Comparator;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -74,6 +75,25 @@ public class PeriodService {
         Period period = periods.findByIdAndSheetId(id, sheetId).orElseThrow(PeriodNotFoundException::new);
         if (!settings.mayDo(sheetId, user, "close")) throw new PeriodNotPermittedException();
         if (period.isClosed()) throw new PeriodClosedException();
+        return fix(sheetId, user, period, today, false);
+    }
+
+    /**
+     * Close, as a close by hand would, every open period whose to-date plus the grace days is before the
+     * sheet's today, in order of their to-dates, each audited with auto=yes. The caller holds the sheet's
+     * lock, with its new today already set.
+     */
+    @Transactional
+    public void autoClose(String sheetId, String user, LocalDate today, int graceDays) {
+        List<Period> due = periods.findBySheetIdOrderByFromDateAsc(sheetId).stream()
+                .filter(p -> !p.isClosed() && p.getToDate().plusDays(graceDays).isBefore(today))
+                .sorted(Comparator.comparing(Period::getToDate))
+                .toList();
+        for (Period period : due) fix(sheetId, user, period, today, true);
+    }
+
+    /** Close the period, fixing each person's due-total for it and its own, and audit it. */
+    private Period fix(String sheetId, String user, Period period, LocalDate today, boolean auto) {
         Map<Long, Person> byId = people.findBySheetIdOrderByIdAsc(sheetId).stream()
                 .collect(Collectors.toMap(Person::getId, Function.identity()));
         // Every person on the sheet gets a figure, 0.00 when none of their claims falls in it.
@@ -88,7 +108,8 @@ public class PeriodService {
         period.close(personDues);
         Period saved = periods.saveAndFlush(period);
         audit.recordOnCommit("PERIOD_CLOSED sheet=" + sheetId + " by=" + user.strip()
-                + " period=" + saved.getName() + " total=" + saved.getClosedDueTotal().setScale(2).toPlainString());
+                + " period=" + saved.getName() + " total=" + saved.getClosedDueTotal().setScale(2).toPlainString()
+                + (auto ? " auto=yes" : ""));
         return saved;
     }
 

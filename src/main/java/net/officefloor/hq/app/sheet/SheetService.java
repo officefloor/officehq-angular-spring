@@ -2,7 +2,9 @@ package net.officefloor.hq.app.sheet;
 
 import java.time.Instant;
 import java.time.LocalDate;
+import net.officefloor.hq.app.period.PeriodService;
 import net.officefloor.hq.app.rollup.RollupService;
+import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -16,10 +18,13 @@ public class SheetService {
 
     private final SheetRepository sheets;
     private final RollupService rollup;
+    // looked up when used: the periods depend on the claims, which depend on the sheet
+    private final ObjectProvider<PeriodService> periods;
 
-    public SheetService(SheetRepository sheets, RollupService rollup) {
+    public SheetService(SheetRepository sheets, RollupService rollup, ObjectProvider<PeriodService> periods) {
         this.sheets = sheets;
         this.rollup = rollup;
+        this.periods = periods;
     }
 
     @Transactional
@@ -50,13 +55,17 @@ public class SheetService {
         return sheets.findForUpdate(id).orElseThrow(SheetNotFoundException::new);
     }
 
-    /** Change the sheet's today; it has no audit line of its own, only the figures it moves. */
+    /**
+     * Change the sheet's today; it has no audit line of its own. With grace days set, the open periods
+     * past them are closed first, then the figures it moves are audited.
+     */
     @Transactional
     public Sheet setToday(String id, String user, LocalDate today) {
         Sheet sheet = sheets.findForUpdate(id).orElseThrow(SheetNotFoundException::new);
         RollupService.Snapshot before = rollup.snapshot(id);
         sheet.setToday(today);
         sheets.flush();
+        if (sheet.getGraceDays() != null) periods.getObject().autoClose(id, user, today, sheet.getGraceDays());
         rollup.recordChanges(id, user, before);
         return sheet;
     }

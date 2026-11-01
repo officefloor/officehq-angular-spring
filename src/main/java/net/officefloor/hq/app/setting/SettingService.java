@@ -30,6 +30,7 @@ import org.springframework.transaction.annotation.Transactional;
  * and the period numbering from (none: off), from which a claim opened is numbered within its period;
  * and the cap (none: no cap), the most a person's due-total can be; and the proof threshold (none: none,
  * dated, taken on a claim's date), above which a claim's due needs a proof to be settled or approved;
+ * and the grace days (none: off, not dated), past which an open period closes when the sheet's today changes;
  * and the permission matrix (not dated): for each action, the roles that may take it, blank keeping
  * its standing rule.
  */
@@ -261,6 +262,23 @@ public class SettingService {
         audit.recordOnCommit("SETTING_CHANGED sheet=" + sheetId + " by=" + user.strip() + " key=period-numbering-from value="
                 + (from == null ? "" : from.toString()));
         return from;
+    }
+
+    /** Change the grace days (null: off); no period closes until the sheet's today is next changed. */
+    @Transactional
+    public Integer setGraceDays(String sheetId, String user, Integer days) {
+        Sheet sheet = sheets.findForUpdate(sheetId).orElseThrow(SheetNotFoundException::new);
+        sheet.setGraceDays(days);
+        sheets.flush();
+        audit.recordOnCommit("SETTING_CHANGED sheet=" + sheetId + " by=" + user.strip() + " key=grace-days value="
+                + (days == null ? "" : days.toString()));
+        return days;
+    }
+
+    /** The grace days as set; null when blank, which means off. */
+    @Transactional(readOnly = true)
+    public Integer graceDays(String sheetId) {
+        return sheets.findById(sheetId).orElseThrow(SheetNotFoundException::new).getGraceDays();
     }
 
     /** Record the cap (null: none) from the date (null: the sheet's today); the due-totals it moves are audited after its own line. */
