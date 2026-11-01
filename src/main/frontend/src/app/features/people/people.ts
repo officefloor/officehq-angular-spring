@@ -1340,11 +1340,11 @@ export class PeopleList {
   }
 
   /** How far the person's figures (their due-total before the cap plus their cut total) add up above the cap, in
-   *  whole cents; 0 when they do not, there is no cap, or they have no due-total. */
+   *  whole cents; 0 when they do not, there is no cap, or they have no due-total (none, or nothing due). */
   protected excessOf(personId: number): number {
     const sum = this.uncappedDueByPerson().get(personId) ?? null;
     const cap = this.capCents();
-    return sum === null || cap === null ? 0 : Math.max(0, sum + this.cutOf(personId) - cap);
+    return sum === null || sum === 0 || cap === null ? 0 : Math.max(0, sum + this.cutOf(personId) - cap);
   }
 
   /** Download the people as CSV, in list order, retired people included. */

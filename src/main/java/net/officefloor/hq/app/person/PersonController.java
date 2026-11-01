@@ -161,6 +161,15 @@ public class PersonController {
             LocalDate from) {
     }
 
+    /** A grade to merge into another. */
+    public record GradeMerge(@NotNull @Pattern(regexp = "[ABC]") String from,
+            @NotNull @Pattern(regexp = "[ABC]") String into) {
+    }
+
+    /** What a grade merge did: how many people it gave the other grade, and those people as saved. */
+    public record GradeMergeView(int merged, List<PersonView> people) {
+    }
+
     /** What a bulk grade did: how many people it changed, and those people as saved, in list order. */
     public record BulkGradeView(int changed, List<PersonView> people) {
     }
@@ -249,6 +258,18 @@ public class PersonController {
             }
         }
         return new BulkGradeView(changed.size(), changed);
+    }
+
+    /** A steward merges a grade into another: everyone whose grade in force on the sheet's today is {@code from} is
+     *  given {@code into} from the sheet's today, in list order, as the person form would. */
+    @PostMapping("/merge-grade")
+    public GradeMergeView mergeGrade(
+            @PathVariable @NotBlank @Size(max = 100) @Pattern(regexp = "[A-Za-z0-9._-]+") String sheetId,
+            @RequestHeader("X-User") @NotBlank @Size(max = 100) String user,
+            @Valid @RequestBody GradeMerge request) {
+        List<PersonView> merged = people.mergeGrade(sheetId, user, request.from(), request.into()).stream()
+                .map(p -> view(sheetId, p)).toList();
+        return new GradeMergeView(merged.size(), merged);
     }
 
     /**

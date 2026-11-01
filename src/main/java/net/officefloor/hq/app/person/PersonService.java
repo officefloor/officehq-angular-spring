@@ -237,6 +237,39 @@ public class PersonService {
         return edited;
     }
 
+    /**
+     * A steward merges grade {@code from} into grade {@code into}: everyone, in list order, whose grade in force on
+     * the sheet's today is {@code from} is given {@code into} from the sheet's today, each as an edit of them in the
+     * person form would. Refused for the same grade twice, for a retired {@code into}, and for anyone but a steward.
+     * The people so changed, in list order.
+     */
+    @Transactional
+    public List<Person> mergeGrade(String sheetId, String user, String from, String into) {
+        Sheet sheet = sheets.load(sheetId, user);
+        if (!Role.STEWARD.equals(roles.roleOf(sheetId, user))) {
+            throw new ResponseStatusException(HttpStatus.FORBIDDEN, "Only a steward may merge a grade");
+        }
+        if (from.equals(into)) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "A grade cannot be merged into itself");
+        }
+        if (sheet.isGradeRetired(into)) {
+            throw gradeRetired(into);
+        }
+        LocalDate today = sheet.getToday();
+        Rollup.Figures before = rollup.of(sheetId);
+        audit.recordChangeOnCommit(sheetId, user, "GRADE_MERGED sheet=" + sheetId + " by=" + user
+                + " from=" + from + " into=" + into);
+        List<Person> merged = new ArrayList<>();
+        for (Person person : list(sheetId)) {
+            if (from.equals(person.gradeOn(today))) {
+                merged.add(update(sheetId, user, person.getId(), person.getVersion(), person.getName(), into, null,
+                        person.getTerms(), null, person.getContact(), person.getTags(), false));
+            }
+        }
+        rollup.recordChanges(sheetId, user, before);
+        return merged;
+    }
+
     /** Retire a person from a date; a missing date takes the sheet's today. They count as retired at once; the live
      *  totals move with it once the sheet's today reaches the date. */
     @Transactional
