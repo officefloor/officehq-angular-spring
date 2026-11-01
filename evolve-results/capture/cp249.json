@@ -1,0 +1,64 @@
+{
+  "checkpoint": 249,
+  "stack": {
+    "repo": "/home/daniel/officehq-angular-spring",
+    "origin": "git@github.com:officefloor/officehq-angular-spring.git",
+    "name": "officehq-angular-spring",
+    "base_ref": "base-empty",
+    "base_commit": "65cb8233ea38b2dfa6cfd18709e30cd18fdf3250"
+  },
+  "checkpoint_id": "cp249_policy-viewer",
+  "phase": "late",
+  "type": "additive",
+  "mutates": [],
+  "replaced_tests": [],
+  "request": {
+    "spec": "Show the policy versions: one line per version, oldest first, as <version> <from or start>\n<key>=<value> <count of claims whose policy version it is>.\n",
+    "prompt": "You are implementing ONE change to this application.\n\nFIRST read AGENTS.md \u2014 it states the working rules and how the app is tested, and sends you to\nDESIGN.md for the app's stack and conventions. Follow both.\n\nTHE CHANGE REQUEST:\nShow the policy versions: one line per version, oldest first, as <version> <from or start>\n<key>=<value> <count of claims whose policy version it is>.\n\nYour work is verified by an automated Playwright UI test already installed under e2e/specs/.\nRead that spec: it declares the exact data-testid anchors, values, test data and any audit\nrecords it expects \u2014 match them. Run `bin/e2e` to build the app, start it, and run the test as\nyou work; iterate until it passes. Change whatever the request needs across the app \u2014 its stored\ndata, its server and its front end. Do NOT edit bin/build, bin/start, bin/stop, bin/e2e,\nAGENTS.md, CLAUDE.md, DESIGN.md, e2e/support/ or the test spec.\n"
+  },
+  "commit_sha": "17f3ab5ea5cc15df94d2aa6605a63f92dc03a317",
+  "reset_sha": "",
+  "preagent_sha": "8f9ec80c9ed8d1f4cf096139eb55f953a27282cd",
+  "prev_sha": "8f9ec80c9ed8d1f4cf096139eb55f953a27282cd",
+  "base_sha": "65cb8233ea38b2dfa6cfd18709e30cd18fdf3250",
+  "agent": {
+    "ok": true,
+    "cost_usd": 0.8946816000000001,
+    "input_tokens": 56,
+    "output_tokens": 10855,
+    "cache_read_tokens": 1226508,
+    "cache_creation_tokens": 54007,
+    "num_turns": 28,
+    "duration_ms": 319094,
+    "duration_api_ms": 148843,
+    "model": "claude-opus-5-5",
+    "session_id": "ed05261e-a276-43a0-bd46-303c3308dca9",
+    "stop_reason": "success",
+    "result_text": "I've added the policy version viewer, and all 4 tests in `bin/e2e` pass. A \"Show policy versions\" button (`policy-show`) lists one `policy-line` per version, oldest first, as `<version> <from or start> <key>=<value> <count>`.\n\n**Stored data:** the app kept each version's setting and from-date but not the value it set, so I added it.\n- A new migration, `V123__policy_version_value.sql`, adds a `setting_value` column to `sheet_policy_version`.\n- It fills that column for existing versions from the setting value recorded for the same key and from-date. If the same setting was changed more than once from the same date, older versions all get the latest value, because the earlier values were never stored.\n- `PolicyVersion`, `Sheet.record`, the sheet copy, `SheetState` (the history snapshots) and the sheet view all carry the value now. Older history snapshots without it show an empty value.\n\n**Server:** a new `GET /api/sheets/{id}/policy-versions` returns the list. The count for a version is the number of the sheet's claims whose policy version is that one: the version in force on the claim's date, as the existing `claim-policy` shows. Deleted claims don't count; voided ones do (scenario 3 expects that).\n\n**Front end:** a new small panel, `features/settings/policy-viewer.ts`, sits just below the settings panel. It follows the duplicate-claims panel: it fetches the lines fresh on each press, clears them when the sheet is re-loaded, and shows `policy-error` if the fetch fails.\n\nThe from-date shows as `start` only for a version with no from-date. New changes always get one (the sheet's today if left blank), so `start` can only appear on versions made before `V122__policy_version.sql`.",
+    "error": "",
+    "attempts": [
+      {
+        "ok": true,
+        "limit_reached": false,
+        "retryable": false,
+        "timed_out": false,
+        "cost_usd": 0.8946816000000001,
+        "num_turns": 28,
+        "duration_ms": 319094,
+        "duration_api_ms": 148843,
+        "error": ""
+      }
+    ]
+  },
+  "agent_stream_file": "cp249.agent.jsonl",
+  "agent_diff_file": "cp249.agent.diff",
+  "build_log_file": null,
+  "tests": {
+    "gated": false,
+    "queued": true
+  },
+  "probe": null,
+  "pinned_touched": [],
+  "acceptance_touched": [],
+  "impact_gate": null
+}

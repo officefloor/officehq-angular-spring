@@ -1,0 +1,347 @@
+diff --git a/src/main/frontend/src/app/core/sheet.ts b/src/main/frontend/src/app/core/sheet.ts
+index b51f66e88..c0a758fce 100644
+--- a/src/main/frontend/src/app/core/sheet.ts
++++ b/src/main/frontend/src/app/core/sheet.ts
+@@ -13,11 +13,19 @@ export interface DatedSetting {
+ }
+ 
+ /** The sheet as the screen shows it: each dated setting as it is in force on its today. */
+-/** A policy version: the policy setting whose change made it, and the from-date (yyyy-mm-dd) it was changed from;
+- *  null: it counts always. */
++/** A policy version: the policy setting whose change made it, the from-date (yyyy-mm-dd) it was changed from
++ *  (null: it counts always), and the value it set the setting to (null: none). */
+ export interface PolicyVersion {
+   key: string;
+   from: string | null;
++  value: string | null;
++}
++
++/** A line of the policy viewer: a policy version (numbered from 1) and how many of the sheet's claims (not deleted)
++ *  have it as their policy version. */
++export interface PolicyLine extends PolicyVersion {
++  version: number;
++  claims: number;
+ }
+ 
+ export interface SheetView {
+@@ -206,6 +214,11 @@ export class Sheets {
+     return this.load(id);
+   }
+ 
++  /** The sheet's policy versions, oldest first, each with how many claims have it as their policy version. */
++  policyLines(id: string): Observable<PolicyLine[]> {
++    return this.http.get<PolicyLine[]>(`/api/sheets/${encodeURIComponent(id)}/policy-versions`);
++  }
++
+   load(id: string): Observable<SheetView> {
+     return this.http
+       .post<SheetView>(`/api/sheets/${encodeURIComponent(id)}/load`, null)
+diff --git a/src/main/frontend/src/app/features/home/home.ts b/src/main/frontend/src/app/features/home/home.ts
+index c73939706..06c2e3ab8 100644
+--- a/src/main/frontend/src/app/features/home/home.ts
++++ b/src/main/frontend/src/app/features/home/home.ts
+@@ -14,6 +14,7 @@ import { RatesPanel } from '../rates/rates';
+ import { GradesPanel } from '../grades/grades';
+ import { SearchPanel } from '../search/search';
+ import { SettingsPanel } from '../settings/settings';
++import { PolicyViewerPanel } from '../settings/policy-viewer';
+ import { SnapshotComparePanel } from '../snapshots/snapshot-compare';
+ import { TemplatesPanel } from '../templates/templates';
+ import { VoidReasonsPanel } from '../void-reasons/void-reasons';
+@@ -21,7 +22,7 @@ import { VoidReasonsPanel } from '../void-reasons/void-reasons';
+ // The one screen: sign in by name, then choose a sheet by id. Everything else is per sheet.
+ @Component({
+   selector: 'app-home',
+-  imports: [ReactiveFormsModule, PeopleList, RatesPanel, GradesPanel, SettingsPanel, DelegationsPanel, HolidaysPanel,
++  imports: [ReactiveFormsModule, PeopleList, RatesPanel, GradesPanel, SettingsPanel, PolicyViewerPanel, DelegationsPanel, HolidaysPanel,
+     VoidReasonsPanel, TemplatesPanel, NotesPanel, SearchPanel, AuditPanel,
+     ActivityPanel, DuplicatesPanel, SnapshotComparePanel],
+   template: `
+@@ -101,6 +102,7 @@ import { VoidReasonsPanel } from '../void-reasons/void-reasons';
+         <app-rates />
+         <app-grades />
+         <app-settings />
++        <app-policy-viewer />
+         <app-delegations />
+         <app-holidays />
+         <app-void-reasons />
+diff --git a/src/main/frontend/src/app/features/settings/policy-viewer.ts b/src/main/frontend/src/app/features/settings/policy-viewer.ts
+new file mode 100644
+index 000000000..1db408f79
+--- /dev/null
++++ b/src/main/frontend/src/app/features/settings/policy-viewer.ts
+@@ -0,0 +1,63 @@
++import { Component, inject, signal } from '@angular/core';
++import { takeUntilDestroyed, toObservable } from '@angular/core/rxjs-interop';
++import { PolicyLine, Sheets } from '../../core/sheet';
++
++// The sheet's policy versions: one line per version, oldest first, as its number, its from-date ("start" when it
++// counts always), its setting=value and how many claims have it as their policy version.
++@Component({
++  selector: 'app-policy-viewer',
++  template: `
++    <section aria-labelledby="policy-heading">
++      <h3 id="policy-heading">Policy versions</h3>
++      <button type="button" data-testid="policy-show" [disabled]="loading()" (click)="show()">Show policy versions</button>
++      @if (error(); as err) {
++        <p role="alert" data-testid="policy-error">{{ err }}</p>
++      }
++      <ul aria-label="Policy versions, oldest first">
++        @for (line of lines(); track $index) {
++          <li data-testid="policy-line">{{ line }}</li>
++        }
++      </ul>
++    </section>
++  `,
++})
++export class PolicyViewerPanel {
++  private readonly sheets = inject(Sheets);
++
++  protected readonly lines = signal<string[]>([]);
++  protected readonly error = signal<string | null>(null);
++  protected readonly loading = signal(false);
++
++  constructor() {
++    // Another sheet's policy versions are not left showing once a sheet is (re)loaded.
++    toObservable(this.sheets.loaded)
++      .pipe(takeUntilDestroyed())
++      .subscribe(() => {
++        this.lines.set([]);
++        this.error.set(null);
++      });
++  }
++
++  protected show(): void {
++    if (this.loading()) return;
++    this.error.set(null);
++    const sheet = this.sheets.current();
++    if (!sheet) return;
++    this.loading.set(true);
++    this.lines.set([]);
++    this.sheets.policyLines(sheet.id).subscribe({
++      next: (lines) => {
++        this.loading.set(false);
++        this.lines.set(lines.map(lineOf));
++      },
++      error: () => {
++        this.loading.set(false);
++        this.error.set('Could not read the policy versions.');
++      },
++    });
++  }
++}
++
++function lineOf(v: PolicyLine): string {
++  return `${v.version} ${v.from ?? 'start'} ${v.key}=${v.value ?? ''} ${v.claims}`;
++}
+diff --git a/src/main/java/net/officefloor/hq/app/history/SheetState.java b/src/main/java/net/officefloor/hq/app/history/SheetState.java
+index 98bc7b9f9..b484c6f8b 100644
+--- a/src/main/java/net/officefloor/hq/app/history/SheetState.java
++++ b/src/main/java/net/officefloor/hq/app/history/SheetState.java
+@@ -38,9 +38,9 @@ public record SheetState(List<SettingState> settings, LocalDate policyDate, List
+         List<PoolState> pools, List<CrewState> crews, String defaultGrade, Integer scoreMid, Integer scoreHigh,
+         Boolean scoreLog, Integer maxOpen, Integer pendingSla, List<PolicyVersionState> policyVersions) {
+ 
+-    /** A policy version as it stood: the setting whose change made it and the from-date it was changed from
+-     *  (policy versions are null in a state kept before they were recorded). */
+-    public record PolicyVersionState(String key, LocalDate from) {
++    /** A policy version as it stood: the setting whose change made it, the from-date it was changed from and the
++     *  value it set (null in a state kept before values were recorded; policy versions are null in a state kept before they were recorded). */
++    public record PolicyVersionState(String key, LocalDate from, String value) {
+     }
+ 
+     /** A pool as it stood, with its memberships in the order they were added (pools and crews are null in a state
+@@ -183,7 +183,7 @@ public record SheetState(List<SettingState> settings, LocalDate policyDate, List
+                 sheet.getPot(), sheet.getFiscalStartMonth(), sheet.getAlertThreshold(),
+                 sheet.getEscalateAfter(), sheet.getReviewSla(), sheet.getProofKinds(), ancestors, pools, crews,
+                 sheet.getDefaultGrade(), sheet.getScoreMid(), sheet.getScoreHigh(), sheet.isScoreLog(), sheet.getMaxOpen(), sheet.getPendingSla(),
+-                sheet.getPolicyVersions().stream().map(v -> new PolicyVersionState(v.getKey(), v.getFrom())).toList());
++                sheet.getPolicyVersions().stream().map(v -> new PolicyVersionState(v.getKey(), v.getFrom(), v.getValue())).toList());
+     }
+ 
+     /** The rates as they stand now. */
+@@ -217,7 +217,7 @@ public record SheetState(List<SettingState> settings, LocalDate policyDate, List
+         Sheet sheet = new Sheet(live.getId(), live.getCreatedBy(), live.getCreatedAt(), today);
+         settings.forEach(s -> sheet.restore(s.key(), s.from(), s.value()));
+         if (policyVersions != null) {
+-            sheet.restorePolicyVersions(policyVersions.stream().map(v -> new PolicyVersion(v.key(), v.from())).toList());
++            sheet.restorePolicyVersions(policyVersions.stream().map(v -> new PolicyVersion(v.key(), v.from(), v.value())).toList());
+         }
+         sheet.setPolicyDate(policyDate);
+         if (permissions != null) {
+diff --git a/src/main/java/net/officefloor/hq/app/sheet/PolicyVersion.java b/src/main/java/net/officefloor/hq/app/sheet/PolicyVersion.java
+index fa9b28cc7..c073c562a 100644
+--- a/src/main/java/net/officefloor/hq/app/sheet/PolicyVersion.java
++++ b/src/main/java/net/officefloor/hq/app/sheet/PolicyVersion.java
+@@ -5,7 +5,7 @@ import jakarta.persistence.Embeddable;
+ import java.time.LocalDate;
+ 
+ /** A policy version of the sheet: made by a change to a policy setting (its key), from the from-date it was changed
+- *  from (null: from the beginning of time). */
++ *  from (null: from the beginning of time), and the value it set the setting to (null: none). */
+ @Embeddable
+ public class PolicyVersion {
+ 
+@@ -15,12 +15,16 @@ public class PolicyVersion {
+     @Column(name = "from_date")
+     private LocalDate from;
+ 
++    @Column(name = "setting_value")
++    private String value;
++
+     protected PolicyVersion() {
+     }
+ 
+-    public PolicyVersion(String key, LocalDate from) {
++    public PolicyVersion(String key, LocalDate from, String value) {
+         this.key = key;
+         this.from = from;
++        this.value = value;
+     }
+ 
+     public String getKey() {
+@@ -31,6 +35,10 @@ public class PolicyVersion {
+         return from;
+     }
+ 
++    public String getValue() {
++        return value;
++    }
++
+     /** Whether it counts on this day: it has no from-date, or its from-date is on or before it. */
+     boolean startedBy(LocalDate date) {
+         return from == null || !from.isAfter(date);
+diff --git a/src/main/java/net/officefloor/hq/app/sheet/Sheet.java b/src/main/java/net/officefloor/hq/app/sheet/Sheet.java
+index 4fbb23666..37d558544 100644
+--- a/src/main/java/net/officefloor/hq/app/sheet/Sheet.java
++++ b/src/main/java/net/officefloor/hq/app/sheet/Sheet.java
+@@ -230,7 +230,7 @@ public class Sheet {
+     public Sheet copyTo(String id, String createdBy, Instant createdAt) {
+         Sheet copy = new Sheet(id, createdBy, createdAt, today);
+         settings.forEach(s -> copy.settings.add(new DatedSetting(s.getKey(), s.getFrom(), s.getValue())));
+-        policyVersions.forEach(v -> copy.policyVersions.add(new PolicyVersion(v.getKey(), v.getFrom())));
++        policyVersions.forEach(v -> copy.policyVersions.add(new PolicyVersion(v.getKey(), v.getFrom(), v.getValue())));
+         copy.permissions.putAll(permissions);
+         copy.policyDate = policyDate;
+         copy.periodNumberingFrom = periodNumberingFrom;
+@@ -300,7 +300,7 @@ public class Sheet {
+     public void record(String key, LocalDate from, String value) {
+         restore(key, from, value);
+         if (POLICY_KEYS.contains(key)) {
+-            policyVersions.add(new PolicyVersion(key, from));
++            policyVersions.add(new PolicyVersion(key, from, value));
+         }
+     }
+ 
+@@ -319,7 +319,7 @@ public class Sheet {
+     /** Put back the policy versions as they stood, in the order made. */
+     public void restorePolicyVersions(List<PolicyVersion> versions) {
+         policyVersions.clear();
+-        versions.forEach(v -> policyVersions.add(new PolicyVersion(v.getKey(), v.getFrom())));
++        versions.forEach(v -> policyVersions.add(new PolicyVersion(v.getKey(), v.getFrom(), v.getValue())));
+     }
+ 
+     /** The current policy version: how many have been made; 0 before the first. */
+diff --git a/src/main/java/net/officefloor/hq/app/sheet/SheetController.java b/src/main/java/net/officefloor/hq/app/sheet/SheetController.java
+index 8850c631c..b273bed1d 100644
+--- a/src/main/java/net/officefloor/hq/app/sheet/SheetController.java
++++ b/src/main/java/net/officefloor/hq/app/sheet/SheetController.java
+@@ -20,6 +20,7 @@ import net.officefloor.hq.app.role.RoleService;
+ import org.springframework.http.HttpStatus;
+ import org.springframework.validation.annotation.Validated;
+ import org.springframework.web.bind.annotation.PathVariable;
++import org.springframework.web.bind.annotation.GetMapping;
+ import org.springframework.web.bind.annotation.PostMapping;
+ import org.springframework.web.bind.annotation.PutMapping;
+ import org.springframework.web.bind.annotation.RequestBody;
+@@ -93,13 +94,18 @@ public class SheetController {
+                     sheet.getDefaultGrade(), sheet.getGradeClerkLimits(), sheet.getScoreMid(), sheet.getScoreHigh(),
+                     sheet.isScoreLog() ? "on" : null, sheet.getMaxOpen(), sheet.getRetiredGrades(),
+                     sheet.getGrades(), sheet.getPendingSla(), sheet.getPolicyVersion(),
+-                    sheet.getPolicyVersions().stream().map(v -> new PolicyVersionView(v.getKey(), v.getFrom())).toList());
++                    sheet.getPolicyVersions().stream().map(v -> new PolicyVersionView(v.getKey(), v.getFrom(), v.getValue())).toList());
+         }
+     }
+ 
+-    /** A policy version: the policy setting whose change made it and the from-date it was changed from (null: it
+-     *  counts always). */
+-    public record PolicyVersionView(String key, LocalDate from) {
++    /** A policy version: the policy setting whose change made it, the from-date it was changed from (null: it
++     *  counts always) and the value it set the setting to (null: none). */
++    public record PolicyVersionView(String key, LocalDate from, String value) {
++    }
++
++    /** A line of the policy viewer: a policy version (numbered from 1), its setting, from-date (null: it counts
++     *  always) and value, and how many of the sheet's claims (not deleted) have it as their policy version. */
++    public record PolicyLineView(int version, String key, LocalDate from, String value, long claims) {
+     }
+ 
+     /** A dated setting's value from a from-date (null: from the beginning of time); a null value means none. */
+@@ -249,6 +255,14 @@ public class SheetController {
+         return asOf == null ? SheetView.of(live) : SheetView.of(history.sheetAsOf(live, asOf), asOf);
+     }
+ 
++    /** The sheet's policy versions, oldest first, each with how many claims have it as their policy version. */
++    @GetMapping("/{id}/policy-versions")
++    public List<PolicyLineView> policyVersions(
++            @PathVariable @NotBlank @Size(max = 100) @Pattern(regexp = "[A-Za-z0-9._-]+") String id,
++            @RequestHeader("X-User") @NotBlank @Size(max = 100) String user) {
++        return sheets.policyLines(id, user);
++    }
++
+     /** Archive the sheet: a steward only. */
+     @PostMapping("/{id}/archive")
+     public SheetView archive(
+diff --git a/src/main/java/net/officefloor/hq/app/sheet/SheetService.java b/src/main/java/net/officefloor/hq/app/sheet/SheetService.java
+index b84f17bdd..8a6c9e4ab 100644
+--- a/src/main/java/net/officefloor/hq/app/sheet/SheetService.java
++++ b/src/main/java/net/officefloor/hq/app/sheet/SheetService.java
+@@ -6,8 +6,12 @@ import java.time.Instant;
+ import java.time.LocalDate;
+ import java.util.Arrays;
+ import java.util.List;
++import java.util.Map;
++import java.util.stream.Collectors;
++import java.util.stream.IntStream;
+ import net.officefloor.hq.app.Audit;
+ import net.officefloor.hq.app.claim.ClaimRepository;
++import net.officefloor.hq.app.claim.ClaimStatus;
+ import net.officefloor.hq.app.period.PeriodService;
+ import net.officefloor.hq.app.role.Role;
+ import net.officefloor.hq.app.role.RoleService;
+@@ -58,6 +62,21 @@ public class SheetService {
+         });
+     }
+ 
++    /** The sheet's policy versions, oldest first, each with how many of its claims (not deleted) have it as their
++     *  policy version (the one in force on the claim's date); starting the sheet if it has never been loaded. */
++    @Transactional
++    public List<SheetController.PolicyLineView> policyLines(String id, String user) {
++        Sheet sheet = load(id, user);
++        Map<Integer, Long> counts = claims.findBySheetIdOrderByListedDescIdDesc(id).stream()
++                .filter(c -> c.getStatus() != ClaimStatus.DELETED)
++                .collect(Collectors.groupingBy(c -> sheet.policyVersionOn(c.getDate()), Collectors.counting()));
++        List<PolicyVersion> versions = sheet.getPolicyVersions();
++        return IntStream.range(0, versions.size())
++                .mapToObj(i -> new SheetController.PolicyLineView(i + 1, versions.get(i).getKey(),
++                        versions.get(i).getFrom(), versions.get(i).getValue(), counts.getOrDefault(i + 1, 0L)))
++                .toList();
++    }
++
+     /** The sheet's today, or null for a sheet never loaded. */
+     @Transactional(readOnly = true)
+     public LocalDate today(String id) {
+diff --git a/src/main/resources/db/migration/V123__policy_version_value.sql b/src/main/resources/db/migration/V123__policy_version_value.sql
+new file mode 100644
+index 000000000..589221b09
+--- /dev/null
++++ b/src/main/resources/db/migration/V123__policy_version_value.sql
+@@ -0,0 +1,8 @@
++-- A policy version keeps the value its change set the setting to (null: none).
++ALTER TABLE sheet_policy_version ADD COLUMN setting_value VARCHAR(20);
++
++-- The versions made until now take the value recorded for their setting from their from-date.
++UPDATE sheet_policy_version v
++SET setting_value = (SELECT s.setting_value FROM sheet_setting s
++                     WHERE s.sheet_id = v.sheet_id AND s.setting_key = v.setting_key
++                       AND (s.from_date = v.from_date OR (s.from_date IS NULL AND v.from_date IS NULL)));
