@@ -1,0 +1,64 @@
+{
+  "checkpoint": 129,
+  "stack": {
+    "repo": "/home/daniel/officehq-angular-spring",
+    "origin": "git@github.com:officefloor/officehq-angular-spring.git",
+    "name": "officehq-angular-spring",
+    "base_ref": "base-empty",
+    "base_commit": "65cb8233ea38b2dfa6cfd18709e30cd18fdf3250"
+  },
+  "checkpoint_id": "cp129_export-claims",
+  "phase": "mid",
+  "type": "additive",
+  "mutates": [],
+  "replaced_tests": [],
+  "request": {
+    "spec": "A button downloads the claims as a CSV file: a header line person,number,date,amount,due,status,period\nthen one line per claim, people in list order and each person's claims oldest first, retired people\nincluded whether shown or not, with the figures as the screen shows them (an empty number, period or\nn/a as it is). Quoting and line ends as the people export.\n",
+    "prompt": "You are implementing ONE change to this application.\n\nFIRST read AGENTS.md \u2014 it states the working rules and how the app is tested, and sends you to\nDESIGN.md for the app's stack and conventions. Follow both.\n\nTHE CHANGE REQUEST:\nA button downloads the claims as a CSV file: a header line person,number,date,amount,due,status,period\nthen one line per claim, people in list order and each person's claims oldest first, retired people\nincluded whether shown or not, with the figures as the screen shows them (an empty number, period or\nn/a as it is). Quoting and line ends as the people export.\n\nYour work is verified by an automated Playwright UI test already installed under e2e/specs/.\nRead that spec: it declares the exact data-testid anchors, values, test data and any audit\nrecords it expects \u2014 match them. Run `bin/e2e` to build the app, start it, and run the test as\nyou work; iterate until it passes. Change whatever the request needs across the app \u2014 its stored\ndata, its server and its front end. Do NOT edit bin/build, bin/start, bin/stop, bin/e2e,\nAGENTS.md, CLAUDE.md, DESIGN.md, e2e/support/ or the test spec.\n"
+  },
+  "commit_sha": "e4c31b4dba89459fec9da4c83e04db4f27c08039",
+  "reset_sha": "",
+  "preagent_sha": "97be1ebbba014b49faa87582f5c27e4fa9ca5a3f",
+  "prev_sha": "97be1ebbba014b49faa87582f5c27e4fa9ca5a3f",
+  "base_sha": "65cb8233ea38b2dfa6cfd18709e30cd18fdf3250",
+  "agent": {
+    "ok": true,
+    "cost_usd": 0.45255979999999996,
+    "input_tokens": 30,
+    "output_tokens": 4044,
+    "cache_read_tokens": 491439,
+    "cache_creation_tokens": 34159,
+    "num_turns": 15,
+    "duration_ms": 281018,
+    "duration_api_ms": 79215,
+    "model": "claude-opus-5-5",
+    "session_id": "382b7645-fb39-4b80-8931-aa3fc83437f0",
+    "stop_reason": "success",
+    "result_text": "I added an \"Export claims CSV\" button that downloads the claims, and all 4 acceptance tests pass in `bin/e2e`.\n\nThe change is only in the front end, in `src/main/frontend/src/app/features/people/people.ts`. The page already loads all the claims, so the server and stored data didn't need to change.\n\n- **The button** (`data-testid=\"export-claims\"`) sits next to the people export and downloads `claims.csv`.\n- **The file** starts with `person,number,date,amount,due,status,period`, then has one line per claim:\n  - people are in list order, with retired people included whether shown or not;\n  - each person's claims are oldest first (the reverse of the screen's newest-first list).\n- **The figures** are worked out the same way the claim rows work them out. That includes the due with its rounding and late charge, `n/a` when there is no rate, an empty number while a claim is a draft, and an empty period when its due-by date falls in no period.\n- **Quoting and line ends** match the people export. I moved the download code into a shared `downloadCsv` helper, which both exports now use.\n\nClaims with status DELETED are listed in the file too, because the screen still shows them.",
+    "error": "",
+    "attempts": [
+      {
+        "ok": true,
+        "limit_reached": false,
+        "retryable": false,
+        "timed_out": false,
+        "cost_usd": 0.45255979999999996,
+        "num_turns": 15,
+        "duration_ms": 281018,
+        "duration_api_ms": 79215,
+        "error": ""
+      }
+    ]
+  },
+  "agent_stream_file": "cp129.agent.jsonl",
+  "agent_diff_file": "cp129.agent.diff",
+  "build_log_file": null,
+  "tests": {
+    "gated": false,
+    "queued": true
+  },
+  "probe": null,
+  "pinned_touched": [],
+  "acceptance_touched": [],
+  "impact_gate": null
+}
