@@ -67,6 +67,10 @@ public class Sheet {
     @Column(name = "period_numbering_from")
     private LocalDate periodNumberingFrom;
 
+    /** A person's due-total is at most it; null means none. */
+    @Column(name = "due_cap", precision = 14, scale = 2)
+    private BigDecimal cap;
+
     protected Sheet() {}
 
     public Sheet(String id, String createdBy, Instant createdAt, LocalDate today) {
@@ -93,6 +97,15 @@ public class Sheet {
     public BigDecimal getFloor() { return floor; }
 
     public void setFloor(BigDecimal floor) { this.floor = floor; }
+
+    public BigDecimal getCap() { return cap; }
+
+    public void setCap(BigDecimal cap) { this.cap = cap; }
+
+    /** The due-total, at most the cap; null (n/a) stays null. */
+    public BigDecimal capped(BigDecimal dueTotal) {
+        return dueTotal == null || cap == null ? dueTotal : dueTotal.min(cap);
+    }
 
     public int getTerms() { return terms; }
 

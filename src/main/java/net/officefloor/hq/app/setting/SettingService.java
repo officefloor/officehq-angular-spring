@@ -20,7 +20,8 @@ import org.springframework.transaction.annotation.Transactional;
  * added), set for the sheet and, overriding it, for any grade; and the late
  * percent, which an overdue claim's due gains of its figure for every full 30 days overdue; and the
  * policy date (none: the sheet's today), before which a claim's live figures round half up, else half to even;
- * and the period numbering from (none: off), from which a claim opened is numbered within its period.
+ * and the period numbering from (none: off), from which a claim opened is numbered within its period;
+ * and the cap (none: no cap), the most a person's due-total can be.
  */
 @Service
 public class SettingService {
@@ -94,6 +95,12 @@ public class SettingService {
     @Transactional(readOnly = true)
     public LocalDate periodNumberingFrom(String sheetId) {
         return sheets.findById(sheetId).orElseThrow(SheetNotFoundException::new).getPeriodNumberingFrom();
+    }
+
+    /** The cap as set; null when blank, which means none. */
+    @Transactional(readOnly = true)
+    public BigDecimal cap(String sheetId) {
+        return sheets.findById(sheetId).orElseThrow(SheetNotFoundException::new).getCap();
     }
 
     /** The user's role on the sheet: clerk unless given another. */
@@ -193,5 +200,18 @@ public class SettingService {
         audit.recordOnCommit("SETTING_CHANGED sheet=" + sheetId + " by=" + user.strip() + " key=period-numbering-from value="
                 + (from == null ? "" : from.toString()));
         return from;
+    }
+
+    /** Change the cap (null: none); the due-totals it moves are audited after its own line. */
+    @Transactional
+    public BigDecimal setCap(String sheetId, String user, BigDecimal cap) {
+        Sheet sheet = sheets.findForUpdate(sheetId).orElseThrow(SheetNotFoundException::new);
+        RollupService.Snapshot before = rollup.snapshot(sheetId);
+        sheet.setCap(cap);
+        sheets.flush();
+        audit.recordOnCommit("SETTING_CHANGED sheet=" + sheetId + " by=" + user.strip() + " key=cap value="
+                + (cap == null ? "" : cap.toPlainString()));
+        rollup.recordChanges(sheetId, user, before);
+        return cap;
     }
 }

@@ -16,6 +16,7 @@ import net.officefloor.hq.app.person.PersonRepository;
 import net.officefloor.hq.app.rate.Rate;
 import net.officefloor.hq.app.rate.RateService;
 import net.officefloor.hq.app.rollup.RollupService;
+import net.officefloor.hq.app.sheet.Sheet;
 import net.officefloor.hq.app.sheet.SheetNotFoundException;
 import net.officefloor.hq.app.sheet.SheetRepository;
 import org.springframework.stereotype.Service;
@@ -23,7 +24,7 @@ import org.springframework.transaction.annotation.Transactional;
 
 /**
  * The statements taken for people on a sheet. Taking one records the person's due-total at that
- * moment (late charges included) and binds each of their claims that counts to the figure it has
+ * moment (late charges included, at most the sheet's cap) and binds each of their claims that counts to the figure it has
  * then, without its late charge, which keeps following the sheet's today; their other claims
  * are left unbound, their due live again. A claim's due fixed when settled stays as it is.
  */
@@ -70,7 +71,8 @@ public class StatementService {
     @Transactional
     public Taken take(String sheetId, String user, Long personId) {
         // Lock the sheet so the claims and rates read are not changed while the statement is taken.
-        LocalDate today = sheets.findForUpdate(sheetId).orElseThrow(SheetNotFoundException::new).getToday();
+        Sheet sheet = sheets.findForUpdate(sheetId).orElseThrow(SheetNotFoundException::new);
+        LocalDate today = sheet.getToday();
         Person person = people.findByIdAndSheetId(personId, sheetId).orElseThrow(PersonNotFoundException::new);
         RollupService.Snapshot before = rollup.snapshot(sheetId);
         List<Claim> theirs = claims.findBySheetIdAndPersonIdOrderByIdDesc(sheetId, personId);
@@ -97,7 +99,8 @@ public class StatementService {
         }
         // As on screen: n/a when their grade has no rate today and none of the counted claims has a fixed
         // due, nor a due under another grade they had on its date or under a rate not in force today.
-        BigDecimal dueTotal = fixed || rates.on(sheetId, person.gradeOn(today), today).isPresent() ? total : null;
+        BigDecimal dueTotal = sheet.capped(
+                fixed || rates.on(sheetId, person.gradeOn(today), today).isPresent() ? total : null);
         claims.saveAllAndFlush(theirs);
         statements.saveAndFlush(new Statement(sheetId, personId, dueTotal, today, user.strip()));
         audit.recordOnCommit("STATEMENT sheet=" + sheetId + " by=" + user.strip() + " name=" + person.getName()

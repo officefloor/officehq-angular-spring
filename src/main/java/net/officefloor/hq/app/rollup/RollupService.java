@@ -23,7 +23,7 @@ import org.springframework.stereotype.Service;
 
 /**
  * The sheet's figures as the screen shows them: each person's claimed and due-total, and the
- * sheet's claimed-total and due-total; an overdue claim's due has its {@link LateCharge} on top. A change takes a {@link #snapshot} before it alters
+ * sheet's claimed-total and due-total, each person's at most the sheet's cap; an overdue claim's due has its {@link LateCharge} on top. A change takes a {@link #snapshot} before it alters
  * anything and calls {@link #recordChanges} once it has, which audits, after the change's own
  * lines, a ROLLUP line for each person whose figures moved (in the order they were added) and a
  * TOTALS line when the sheet's totals moved.
@@ -106,6 +106,7 @@ public class RollupService {
             boolean rated = today != null
                     && pctOn(ratesByGrade.getOrDefault(person.gradeOn(today), List.of()), today) != null;
             BigDecimal personDue = fixed || rated ? due : null;
+            if (sheet != null) personDue = sheet.capped(personDue);
             figures.put(person.getId(), new Figures(person.getName(), claimed, personDue));
             claimedTotal = claimedTotal.add(claimed);
             if (personDue != null) dueTotal = dueTotal.add(personDue);

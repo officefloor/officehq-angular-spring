@@ -37,6 +37,8 @@ interface SettingsView {
   policyDate: string | null;
   /** From it (yyyy-mm-dd), a claim opened is numbered within its period; null when blank: off. */
   periodNumberingFrom: string | null;
+  /** The most a person's due-total can be, two decimals; null when blank: none. */
+  cap: string | null;
   roles: RoleView[];
 }
 
@@ -45,8 +47,8 @@ interface SettingsView {
 // sheet's for a person of that grade on the claim's date), the late percent (charged on an overdue claim's
 // figure for every full 30 days overdue), the policy date (blank: the sheet's today; a claim dated before it
 // rounds half up, else half to even), the period numbering from (blank: off; while the sheet's today is on or after it,
-// a claim opened is numbered within its period), and the role given to each user name. Saving stores the settings whose
-// field was changed since the last save; clearing the clerk limit, the policy date or the period numbering from (Delete or
+// a claim opened is numbered within its period), the cap (blank: none; a person's due-total is at most it), and the role given to each user name. Saving stores the settings whose
+// field was changed since the last save; clearing the clerk limit, the policy date, the period numbering from or the cap (Delete or
 // Backspace) counts as a change even when it was already blank.
 @Component({
   selector: 'app-settings',
@@ -77,6 +79,9 @@ interface SettingsView {
                placeholder="yyyy-mm-dd"
                (keydown.delete)="form.controls.periodNumberingFrom.markAsDirty()"
                (keydown.backspace)="form.controls.periodNumberingFrom.markAsDirty()" />
+        <label for="setting-cap">Cap (most a person's due-total can be; blank: none)</label>
+        <input id="setting-cap" data-testid="setting-cap" formControlName="cap" inputmode="decimal"
+               (keydown.delete)="form.controls.cap.markAsDirty()" (keydown.backspace)="form.controls.cap.markAsDirty()" />
         <button type="submit" data-testid="settings-save">Save settings</button>
         @if (error()) {
           <p role="alert" class="error" data-testid="settings-error">{{ error() }}</p>
@@ -92,6 +97,7 @@ interface SettingsView {
       <p>Late percent now: <span data-testid="setting-late-pct-current">{{ session.latePct() }}</span></p>
       <p>Policy date now: <span data-testid="setting-policy-date-current">{{ session.policyDate() ?? '' }}</span></p>
       <p>Period numbering from now: <span data-testid="setting-period-numbering-from-current">{{ periodNumberingFrom() ?? '' }}</span></p>
+      <p>Cap now: <span data-testid="setting-cap-current">{{ session.cap() ?? '' }}</span></p>
       <form [formGroup]="roleForm" (ngSubmit)="setRole()" aria-label="Set role">
         <label for="role-form-user">User</label>
         <input id="role-form-user" data-testid="role-form-user" formControlName="user" />
@@ -145,6 +151,7 @@ export class Settings {
     latePct: new FormControl('', { nonNullable: true }),
     policyDate: new FormControl('', { nonNullable: true }),
     periodNumberingFrom: new FormControl('', { nonNullable: true }),
+    cap: new FormControl('', { nonNullable: true }),
   });
   protected readonly gradeTermsForm = new FormGroup({
     A: new FormControl('', { nonNullable: true }),
@@ -200,6 +207,7 @@ export class Settings {
     this.session.terms.set(view.terms);
     this.session.latePct.set(view.latePct);
     this.session.policyDate.set(view.policyDate);
+    this.session.cap.set(view.cap);
   }
 
   protected async save(): Promise<void> {
@@ -207,13 +215,14 @@ export class Settings {
     this.error.set('');
     const sheet = this.session.sheetId();
     if (!sheet) return;
-    const { clerkLimit, floor, terms, latePct, policyDate, periodNumberingFrom } = this.form.controls;
+    const { clerkLimit, floor, terms, latePct, policyDate, periodNumberingFrom, cap } = this.form.controls;
     const value = clerkLimit.value.trim();
     const floorValue = floor.value.trim();
     const termsValue = terms.value.trim();
     const latePctValue = latePct.value.trim();
     const policyDateValue = policyDate.value.trim();
     const periodNumberingFromValue = periodNumberingFrom.value.trim();
+    const capValue = cap.value.trim();
     if (clerkLimit.dirty && value && !/^\d{1,12}(\.\d{1,2})?$/.test(value)) {
       this.error.set('Enter a clerk limit of 0.00 or more, with at most two decimals, or leave it blank for none.');
       return;
@@ -241,6 +250,10 @@ export class Settings {
     }
     if (periodNumberingFrom.dirty && periodNumberingFromValue && !isDate(periodNumberingFromValue)) {
       this.error.set('Enter a period numbering from date as yyyy-mm-dd, or leave it blank for off.');
+      return;
+    }
+    if (cap.dirty && capValue && !/^\d{1,12}(\.\d{1,2})?$/.test(capValue)) {
+      this.error.set('Enter a cap of 0.00 or more, with at most two decimals, or leave it blank for none.');
       return;
     }
     this.submitting.add('save');
@@ -294,6 +307,13 @@ export class Settings {
             { headers: this.headers() }),
         );
         periodNumberingFrom.markAsPristine();
+        if (this.session.sheetId() === sheet) this.show(view);
+      }
+      if (cap.dirty) {
+        const view = await firstValueFrom(
+          this.http.put<SettingsView>(`${this.base(sheet)}/settings/cap`, { value: capValue || null }, { headers: this.headers() }),
+        );
+        cap.markAsPristine();
         if (this.session.sheetId() === sheet) this.show(view);
       }
     } catch {

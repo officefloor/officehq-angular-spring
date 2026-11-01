@@ -27,10 +27,11 @@ public class SettingController {
      * The sheet's settings as the screen shows them; the clerk limit has two decimals, null when none,
      * and so has the floor; the terms are in days, and so are gradeTerms, by grade, for each grade with
      * its own; the late percent has two decimals; the policy date
-     * is null when blank (the sheet's today), and so is the period numbering from (off).
+     * is null when blank (the sheet's today), and so is the period numbering from (off); the cap has
+     * two decimals, null when none.
      */
     public record SettingsView(String clerkLimit, String floor, int terms, String latePct, LocalDate policyDate,
-            LocalDate periodNumberingFrom, List<RoleView> roles, Map<String, Integer> gradeTerms) {}
+            LocalDate periodNumberingFrom, List<RoleView> roles, Map<String, Integer> gradeTerms, String cap) {}
 
     /** A user name's role, as clerk or steward. */
     public record RoleView(String user, String role) {
@@ -43,6 +44,14 @@ public class SettingController {
     public record ClerkLimitRequest(@Pattern(regexp = "(\\d{1,12}(\\.\\d{1,2})?)?") String value) {
 
         BigDecimal limitValue() {
+            return value == null || value.isEmpty() ? null : new BigDecimal(value).setScale(2);
+        }
+    }
+
+    /** A cap with at most two decimals; blank or null: none. */
+    public record CapRequest(@Pattern(regexp = "(\\d{1,12}(\\.\\d{1,2})?)?") String value) {
+
+        BigDecimal capValue() {
             return value == null || value.isEmpty() ? null : new BigDecimal(value).setScale(2);
         }
     }
@@ -108,7 +117,8 @@ public class SettingController {
         return new SettingsView(text(service.clerkLimit(sheetId)), text(service.floor(sheetId)),
                 service.terms(sheetId), text(service.latePct(sheetId)), service.policyDate(sheetId),
                 service.periodNumberingFrom(sheetId),
-                service.roles(sheetId).stream().map(RoleView::of).toList(), service.gradeTerms(sheetId));
+                service.roles(sheetId).stream().map(RoleView::of).toList(), service.gradeTerms(sheetId),
+                text(service.cap(sheetId)));
     }
 
     @PutMapping("/settings/clerk-limit")
@@ -172,6 +182,15 @@ public class SettingController {
             @RequestHeader("X-User") @NotBlank @Size(max = 100) String user,
             @RequestBody @Valid PeriodNumberingFromRequest request) {
         service.setPeriodNumberingFrom(sheetId, user, request.fromValue());
+        return get(sheetId, user);
+    }
+
+    @PutMapping("/settings/cap")
+    public SettingsView setCap(
+            @PathVariable @Size(max = 100) @Pattern(regexp = "[A-Za-z0-9._-]+") String sheetId,
+            @RequestHeader("X-User") @NotBlank @Size(max = 100) String user,
+            @RequestBody @Valid CapRequest request) {
+        service.setCap(sheetId, user, request.capValue());
         return get(sheetId, user);
     }
 

@@ -9,6 +9,7 @@ interface SheetView {
   terms: number;
   latePct: string;
   policyDate: string | null;
+  cap: string | null;
 }
 
 /**
@@ -38,6 +39,8 @@ export class Session {
   readonly latePct = signal('0.00');
   /** The sheet's policy date (yyyy-mm-dd) as set; null when blank, which means the sheet's today. */
   readonly policyDate = signal<string | null>(null);
+  /** The sheet's cap, two decimals: a person's due-total is at most it; null when blank, which means none. */
+  readonly cap = signal<string | null>(null);
   /** The late percent, today and policy date together, as a claim's late charge and rounding need them. */
   readonly late = computed<Late>(() => ({
     pct: this.latePct(),
@@ -68,6 +71,7 @@ export class Session {
     this.terms.set(res.terms);
     this.latePct.set(res.latePct);
     this.policyDate.set(res.policyDate);
+    this.cap.set(res.cap);
     this.loads.update((n) => n + 1);
   }
 

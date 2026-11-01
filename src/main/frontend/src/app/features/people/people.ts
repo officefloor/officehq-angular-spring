@@ -106,6 +106,8 @@ interface StatementTaken {
 // Each person can name other people on the sheet as their patrons, one at a time (not themselves, nor
 // the same person twice); the row shows their patrons' names, sorted, and their backing: their
 // patrons' due-totals added up, skipping n/a.
+// A person's due-total is at most the sheet's cap (blank: none); the row shows their excess, how far the
+// sum of their figures is above it (0.00 when not, or n/a). Every total of due-totals adds the capped ones.
 // Under it, a summary: per grade, the people on it today (retired people excluded) and their
 // due-totals added up; per period, its due-total; per status, how many claims have it.
 // Above everything, a header of counters repeating those figures: the people on the sheet (retired
@@ -171,7 +173,7 @@ interface StatementTaken {
       }
       <table>
         <thead>
-          <tr><th scope="col">Name</th><th scope="col">Grade</th><th scope="col">Claimed</th><th scope="col">Due total</th><th scope="col">Statements</th><th scope="col">Retired</th><th scope="col">Hold</th><th scope="col">Overdue</th><th scope="col">Patrons</th><th scope="col">Claims</th><th scope="col"><span class="visually-hidden">Actions</span></th></tr>
+          <tr><th scope="col">Name</th><th scope="col">Grade</th><th scope="col">Claimed</th><th scope="col">Due total</th><th scope="col">Excess</th><th scope="col">Statements</th><th scope="col">Retired</th><th scope="col">Hold</th><th scope="col">Overdue</th><th scope="col">Patrons</th><th scope="col">Claims</th><th scope="col"><span class="visually-hidden">Actions</span></th></tr>
         </thead>
         <tbody>
           @for (p of listed(); track p.id) {
@@ -180,6 +182,7 @@ interface StatementTaken {
               <td data-testid="person-grade">{{ gradeOf(p) }}</td>
               <td data-testid="person-claimed">{{ claimedOf(p.id) }}</td>
               <td data-testid="person-due-total">{{ dueTotalOf(p) }}</td>
+              <td data-testid="person-excess">{{ excessOf(p) }}</td>
               <td>
                 <span data-testid="person-statement-count">{{ statementOf(p.id)?.count ?? 0 }}</span>
                 <span>Last <span data-testid="person-stated-total">{{ statedTotalOf(p.id) }}</span></span>
@@ -524,7 +527,7 @@ export class People {
    * their grade has no rate in force today and none of those claims has a due fixed when settled or bound by a statement,
    * nor a due under another grade they had on its date or under a rate not in force today.
    */
-  private dueTotalCents(p: Person): number | null {
+  private uncappedDueCents(p: Person): number | null {
     const theirs = this.claimsOf(p.id);
     const counted = theirs.filter(this.counts);
     const pctOn = this.pctOnOf(p.id);
@@ -540,6 +543,26 @@ export class People {
       || ((gradeOn(p, c.date) !== gradeToday || otherRate(c)) && claimDueCents(c, pctOn, floor, late, roundsOn(c, theirs)) !== null);
     if (this.pctOf(gradeToday) === null && !counted.some(fixed)) return null;
     return counted.reduce((sum, c) => sum + (claimDueCents(c, pctOn, floor, late, roundsOn(c, theirs)) ?? 0), 0);
+  }
+
+  /** The sheet's cap in cents, or null when there is none. */
+  private readonly capCents = computed(() => {
+    const cap = this.session.cap();
+    return cap === null ? null : cents(cap);
+  });
+
+  /** Their due-total in cents, at most the cap; null (n/a) is not capped. */
+  private dueTotalCents(p: Person): number | null {
+    const total = this.uncappedDueCents(p);
+    const cap = this.capCents();
+    return total === null || cap === null ? total : Math.min(total, cap);
+  }
+
+  /** How far the sum of their figures is above the cap; 0.00 when it is not, or is n/a. */
+  protected excessOf(p: Person): string {
+    const total = this.uncappedDueCents(p);
+    const cap = this.capCents();
+    return money(total === null || cap === null ? 0 : Math.max(0, total - cap));
   }
 
   protected overdueOf(p: Person): Overdue {
