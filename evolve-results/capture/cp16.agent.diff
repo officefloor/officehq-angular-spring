@@ -1,0 +1,413 @@
+diff --git a/src/main/java/net/officefloor/hq/app/claim/ClaimService.java b/src/main/java/net/officefloor/hq/app/claim/ClaimService.java
+index 2f0ab5b9a..4e0ba71a6 100644
+--- a/src/main/java/net/officefloor/hq/app/claim/ClaimService.java
++++ b/src/main/java/net/officefloor/hq/app/claim/ClaimService.java
+@@ -10,6 +10,7 @@ import net.officefloor.hq.app.person.PersonNotFoundException;
+ import net.officefloor.hq.app.person.PersonRepository;
+ import net.officefloor.hq.app.rate.Rate;
+ import net.officefloor.hq.app.rate.RateService;
++import net.officefloor.hq.app.rollup.RollupService;
+ import net.officefloor.hq.app.sheet.SheetService;
+ import org.springframework.stereotype.Service;
+ import org.springframework.transaction.annotation.Transactional;
+@@ -29,14 +30,16 @@ public class ClaimService {
+     private final PersonRepository people;
+     private final RateService rates;
+     private final SheetService sheets;
++    private final RollupService rollup;
+     private final Audit audit;
+ 
+     public ClaimService(ClaimRepository claims, PersonRepository people, RateService rates, SheetService sheets,
+-            Audit audit) {
++            RollupService rollup, Audit audit) {
+         this.claims = claims;
+         this.people = people;
+         this.rates = rates;
+         this.sheets = sheets;
++        this.rollup = rollup;
+         this.audit = audit;
+     }
+ 
+@@ -48,20 +51,24 @@ public class ClaimService {
+     @Transactional
+     public Claim add(String sheetId, String user, Long personId, BigDecimal amount, LocalDate date, String note) {
+         Person person = people.findByIdAndSheetId(personId, sheetId).orElseThrow(PersonNotFoundException::new);
++        RollupService.Snapshot before = rollup.snapshot(sheetId);
+         Claim claim = claims.saveAndFlush(new Claim(sheetId, personId, amount, dateOrToday(sheetId, date), note));
+         record("CLAIM_ADDED", sheetId, user, person, claim);
++        rollup.recordChanges(sheetId, user, before);
+         return claim;
+     }
+ 
+     @Transactional
+     public Claim edit(String sheetId, String user, Long id, BigDecimal amount, LocalDate date, String note) {
+         Claim claim = claims.findByIdAndSheetId(id, sheetId).orElseThrow(ClaimNotFoundException::new);
++        RollupService.Snapshot before = rollup.snapshot(sheetId);
+         claim.setAmount(amount);
+         claim.setDate(dateOrToday(sheetId, date));
+         claim.setNote(note);
+         Claim saved = claims.saveAndFlush(claim);
+         Person person = people.findByIdAndSheetId(saved.getPersonId(), sheetId).orElseThrow(PersonNotFoundException::new);
+         record("CLAIM_EDITED", sheetId, user, person, saved);
++        rollup.recordChanges(sheetId, user, before);
+         return saved;
+     }
+ 
+@@ -78,6 +85,7 @@ public class ClaimService {
+             throw new ClaimSettledByOpenerException();
+         }
+         Person person = people.findByIdAndSheetId(claim.getPersonId(), sheetId).orElseThrow(PersonNotFoundException::new);
++        RollupService.Snapshot before = rollup.snapshot(sheetId);
+         Long number = claim.getNumber();
+         switch (next) {
+             case OPEN -> {
+@@ -101,6 +109,7 @@ public class ClaimService {
+                 ? " due=" + (saved.getSettledDue() == null ? "n/a" : saved.getSettledDue().setScale(2).toPlainString())
+                 : "";
+         record(event, sheetId, user, person, saved, number, due);
++        rollup.recordChanges(sheetId, user, before);
+         return saved;
+     }
+ 
+diff --git a/src/main/java/net/officefloor/hq/app/person/PersonService.java b/src/main/java/net/officefloor/hq/app/person/PersonService.java
+index a68f30485..3094e2be6 100644
+--- a/src/main/java/net/officefloor/hq/app/person/PersonService.java
++++ b/src/main/java/net/officefloor/hq/app/person/PersonService.java
+@@ -2,6 +2,7 @@ package net.officefloor.hq.app.person;
+ 
+ import java.util.List;
+ import net.officefloor.hq.app.Audit;
++import net.officefloor.hq.app.rollup.RollupService;
+ import net.officefloor.hq.app.sheet.SheetNotFoundException;
+ import net.officefloor.hq.app.sheet.SheetRepository;
+ import org.springframework.dao.DataIntegrityViolationException;
+@@ -19,11 +20,13 @@ public class PersonService {
+ 
+     private final PersonRepository people;
+     private final SheetRepository sheets;
++    private final RollupService rollup;
+     private final Audit audit;
+ 
+-    public PersonService(PersonRepository people, SheetRepository sheets, Audit audit) {
++    public PersonService(PersonRepository people, SheetRepository sheets, RollupService rollup, Audit audit) {
+         this.people = people;
+         this.sheets = sheets;
++        this.rollup = rollup;
+         this.audit = audit;
+     }
+ 
+@@ -36,8 +39,10 @@ public class PersonService {
+     public Person add(String sheetId, String user, String name, String grade) {
+         if (!sheets.existsById(sheetId)) throw new SheetNotFoundException();
+         requireUnused(sheetId, name, null);
++        RollupService.Snapshot before = rollup.snapshot(sheetId);
+         Person person = saveUnique(new Person(sheetId, name, grade));
+         record("PERSON_ADDED", sheetId, user, person);
++        rollup.recordChanges(sheetId, user, before);
+         return person;
+     }
+ 
+@@ -46,10 +51,12 @@ public class PersonService {
+         Person person = people.findByIdAndSheetId(id, sheetId).orElseThrow(PersonNotFoundException::new);
+         if (person.getVersion() != version) throw new PersonVersionConflictException();
+         requireUnused(sheetId, name, id);
++        RollupService.Snapshot before = rollup.snapshot(sheetId);
+         person.setName(name);
+         person.setGrade(grade);
+         Person saved = saveUnique(person);
+         record("PERSON_EDITED", sheetId, user, saved);
++        rollup.recordChanges(sheetId, user, before);
+         return saved;
+     }
+ 
+diff --git a/src/main/java/net/officefloor/hq/app/rate/RateService.java b/src/main/java/net/officefloor/hq/app/rate/RateService.java
+index 5a23c7994..48b13b307 100644
+--- a/src/main/java/net/officefloor/hq/app/rate/RateService.java
++++ b/src/main/java/net/officefloor/hq/app/rate/RateService.java
+@@ -6,6 +6,7 @@ import java.util.Comparator;
+ import java.util.List;
+ import java.util.Optional;
+ import net.officefloor.hq.app.Audit;
++import net.officefloor.hq.app.rollup.RollupService;
+ import net.officefloor.hq.app.sheet.SheetNotFoundException;
+ import net.officefloor.hq.app.sheet.SheetRepository;
+ import org.springframework.stereotype.Service;
+@@ -21,11 +22,13 @@ public class RateService {
+ 
+     private final RateRepository rates;
+     private final SheetRepository sheets;
++    private final RollupService rollup;
+     private final Audit audit;
+ 
+-    public RateService(RateRepository rates, SheetRepository sheets, Audit audit) {
++    public RateService(RateRepository rates, SheetRepository sheets, RollupService rollup, Audit audit) {
+         this.rates = rates;
+         this.sheets = sheets;
++        this.rollup = rollup;
+         this.audit = audit;
+     }
+ 
+@@ -46,6 +49,7 @@ public class RateService {
+     public Rate set(String sheetId, String user, String grade, LocalDate from, BigDecimal pct) {
+         // Lock the sheet so two users setting the same grade and from-date at once replace one rate.
+         sheets.findForUpdate(sheetId).orElseThrow(SheetNotFoundException::new);
++        RollupService.Snapshot before = rollup.snapshot(sheetId);
+         Optional<Rate> existing = from == null
+                 ? rates.findBySheetIdAndGradeAndFromDateIsNull(sheetId, grade)
+                 : rates.findBySheetIdAndGradeAndFromDate(sheetId, grade, from);
+@@ -55,6 +59,7 @@ public class RateService {
+         audit.recordOnCommit("RATE_SET sheet=" + sheetId + " by=" + user.strip()
+                 + " grade=" + saved.getGrade() + " rate=" + saved.getPct().setScale(2).toPlainString()
+                 + (saved.getFromDate() != null ? " from=" + saved.getFromDate() : ""));
++        rollup.recordChanges(sheetId, user, before);
+         return saved;
+     }
+ }
+diff --git a/src/main/java/net/officefloor/hq/app/rollup/RollupService.java b/src/main/java/net/officefloor/hq/app/rollup/RollupService.java
+new file mode 100644
+index 000000000..71d1ca883
+--- /dev/null
++++ b/src/main/java/net/officefloor/hq/app/rollup/RollupService.java
+@@ -0,0 +1,139 @@
++package net.officefloor.hq.app.rollup;
++
++import java.math.BigDecimal;
++import java.math.RoundingMode;
++import java.time.LocalDate;
++import java.util.ArrayList;
++import java.util.Comparator;
++import java.util.LinkedHashMap;
++import java.util.List;
++import java.util.Map;
++import java.util.Objects;
++import net.officefloor.hq.app.Audit;
++import net.officefloor.hq.app.claim.Claim;
++import net.officefloor.hq.app.claim.ClaimRepository;
++import net.officefloor.hq.app.person.Person;
++import net.officefloor.hq.app.person.PersonRepository;
++import net.officefloor.hq.app.rate.Rate;
++import net.officefloor.hq.app.rate.RateRepository;
++import net.officefloor.hq.app.sheet.Sheet;
++import net.officefloor.hq.app.sheet.SheetRepository;
++import org.springframework.stereotype.Service;
++
++/**
++ * The sheet's figures as the screen shows them: each person's claimed and due-total, and the
++ * sheet's claimed-total and due-total. A change takes a {@link #snapshot} before it alters
++ * anything and calls {@link #recordChanges} once it has, which audits, after the change's own
++ * lines, a ROLLUP line for each person whose figures moved (in the order they were added) and a
++ * TOTALS line when the sheet's totals moved.
++ */
++@Service
++public class RollupService {
++
++    /** A person's figures; a null due-total is n/a. */
++    public record Figures(String name, BigDecimal claimed, BigDecimal dueTotal) {
++        boolean sameAs(Figures other) {
++            return other != null && claimed.compareTo(other.claimed) == 0 && Objects.equals(dueTotal, other.dueTotal);
++        }
++    }
++
++    /** The sheet's figures at a moment: each person's, by id in the order they were added, and the totals. */
++    public record Snapshot(Map<Long, Figures> people, BigDecimal claimedTotal, BigDecimal dueTotal) {}
++
++    private final PersonRepository people;
++    private final ClaimRepository claims;
++    private final RateRepository rates;
++    private final SheetRepository sheets;
++    private final Audit audit;
++
++    public RollupService(PersonRepository people, ClaimRepository claims, RateRepository rates,
++            SheetRepository sheets, Audit audit) {
++        this.people = people;
++        this.claims = claims;
++        this.rates = rates;
++        this.sheets = sheets;
++        this.audit = audit;
++    }
++
++    /**
++     * The sheet's figures now. Locks the sheet until the caller's transaction ends, so no other
++     * change on the sheet moves the figures between this snapshot and the one after the change.
++     */
++    public Snapshot snapshot(String sheetId) {
++        LocalDate today = sheets.findForUpdate(sheetId).map(Sheet::getToday).orElse(null);
++        Map<String, List<Rate>> ratesByGrade = new LinkedHashMap<>();
++        for (Rate rate : rates.findBySheetIdOrderByGradeAscFromDateAsc(sheetId)) {
++            ratesByGrade.computeIfAbsent(rate.getGrade(), g -> new ArrayList<>()).add(rate);
++        }
++        Map<Long, List<Claim>> claimsByPerson = new LinkedHashMap<>();
++        for (Claim claim : claims.findBySheetIdOrderByIdDesc(sheetId)) {
++            if (claim.getStatus().counts()) {
++                claimsByPerson.computeIfAbsent(claim.getPersonId(), id -> new ArrayList<>()).add(claim);
++            }
++        }
++        Map<Long, Figures> figures = new LinkedHashMap<>();
++        BigDecimal claimedTotal = zero();
++        BigDecimal dueTotal = zero();
++        for (Person person : people.findBySheetIdOrderByIdAsc(sheetId)) {
++            List<Rate> theirRates = ratesByGrade.getOrDefault(person.getGrade(), List.of());
++            BigDecimal claimed = zero();
++            BigDecimal due = zero();
++            boolean fixed = false;
++            for (Claim claim : claimsByPerson.getOrDefault(person.getId(), List.of())) {
++                claimed = claimed.add(claim.getAmount());
++                if (claim.getSettledDue() != null || (claim.isStated() && claim.getStatedDue() != null)) fixed = true;
++                BigDecimal figure = figureOf(claim, theirRates);
++                if (figure != null) due = due.add(figure);
++            }
++            // As on screen: n/a when their grade has no rate today and none of the counted claims has a fixed due.
++            boolean rated = today != null && pctOn(theirRates, today) != null;
++            BigDecimal personDue = fixed || rated ? due : null;
++            figures.put(person.getId(), new Figures(person.getName(), claimed, personDue));
++            claimedTotal = claimedTotal.add(claimed);
++            if (personDue != null) dueTotal = dueTotal.add(personDue);
++        }
++        return new Snapshot(figures, claimedTotal, dueTotal);
++    }
++
++    /** Audit, once the transaction commits, how the sheet's figures moved since {@code before}. */
++    public void recordChanges(String sheetId, String user, Snapshot before) {
++        Snapshot after = snapshot(sheetId);
++        String by = " sheet=" + sheetId + " by=" + user.strip();
++        for (Map.Entry<Long, Figures> e : after.people().entrySet()) {
++            Figures now = e.getValue();
++            if (now.sameAs(before.people().get(e.getKey()))) continue;
++            audit.recordOnCommit("ROLLUP" + by + " person=" + now.name() + " claimed=" + money(now.claimed())
++                    + " due-total=" + (now.dueTotal() == null ? "n/a" : money(now.dueTotal())));
++        }
++        if (after.claimedTotal().compareTo(before.claimedTotal()) != 0
++                || after.dueTotal().compareTo(before.dueTotal()) != 0) {
++            audit.recordOnCommit("TOTALS" + by + " claimed-total=" + money(after.claimedTotal())
++                    + " due-total=" + money(after.dueTotal()));
++        }
++    }
++
++    /** A claim's figure: its settled due, else its stated due, else its live due; null when it has none. */
++    private static BigDecimal figureOf(Claim claim, List<Rate> rates) {
++        if (claim.getSettledDue() != null) return claim.getSettledDue();
++        if (claim.isStated()) return claim.getStatedDue();
++        BigDecimal pct = pctOn(rates, claim.getDate());
++        return pct == null ? null : claim.getAmount().multiply(pct).movePointLeft(2).setScale(2, RoundingMode.HALF_EVEN);
++    }
++
++    /** Of one grade's rates, the percent in force on the date, or null. */
++    private static BigDecimal pctOn(List<Rate> rates, LocalDate date) {
++        return rates.stream()
++                .filter(rate -> rate.appliesOn(date))
++                .max(Comparator.comparing(Rate::getFromDate, Comparator.nullsFirst(Comparator.naturalOrder())))
++                .map(Rate::getPct)
++                .orElse(null);
++    }
++
++    private static BigDecimal zero() {
++        return BigDecimal.ZERO.setScale(2);
++    }
++
++    private static String money(BigDecimal value) {
++        return value.setScale(2).toPlainString();
++    }
++}
+diff --git a/src/main/java/net/officefloor/hq/app/sheet/SheetController.java b/src/main/java/net/officefloor/hq/app/sheet/SheetController.java
+index 3b9f2c614..3366631a0 100644
+--- a/src/main/java/net/officefloor/hq/app/sheet/SheetController.java
++++ b/src/main/java/net/officefloor/hq/app/sheet/SheetController.java
+@@ -48,6 +48,6 @@ public class SheetController {
+             @PathVariable @Size(max = 100) @Pattern(regexp = "[A-Za-z0-9._-]+") String id,
+             @RequestHeader("X-User") @NotBlank @Size(max = 100) String user,
+             @RequestBody @Valid TodayRequest request) {
+-        return SheetView.of(service.setToday(id, request.today()));
++        return SheetView.of(service.setToday(id, user, request.today()));
+     }
+ }
+diff --git a/src/main/java/net/officefloor/hq/app/sheet/SheetService.java b/src/main/java/net/officefloor/hq/app/sheet/SheetService.java
+index cad27cb78..ae676bc77 100644
+--- a/src/main/java/net/officefloor/hq/app/sheet/SheetService.java
++++ b/src/main/java/net/officefloor/hq/app/sheet/SheetService.java
+@@ -2,6 +2,7 @@ package net.officefloor.hq.app.sheet;
+ 
+ import java.time.Instant;
+ import java.time.LocalDate;
++import net.officefloor.hq.app.rollup.RollupService;
+ import org.springframework.dao.DataIntegrityViolationException;
+ import org.springframework.stereotype.Service;
+ import org.springframework.transaction.annotation.Transactional;
+@@ -14,9 +15,11 @@ import org.springframework.transaction.annotation.Transactional;
+ public class SheetService {
+ 
+     private final SheetRepository sheets;
++    private final RollupService rollup;
+ 
+-    public SheetService(SheetRepository sheets) {
++    public SheetService(SheetRepository sheets, RollupService rollup) {
+         this.sheets = sheets;
++        this.rollup = rollup;
+     }
+ 
+     @Transactional
+@@ -47,11 +50,14 @@ public class SheetService {
+         return sheets.findForUpdate(id).orElseThrow(SheetNotFoundException::new).nextClaimNumber();
+     }
+ 
+-    /** Change the sheet's today. */
++    /** Change the sheet's today; it has no audit line of its own, only the figures it moves. */
+     @Transactional
+-    public Sheet setToday(String id, LocalDate today) {
+-        Sheet sheet = sheets.findById(id).orElseThrow(SheetNotFoundException::new);
++    public Sheet setToday(String id, String user, LocalDate today) {
++        Sheet sheet = sheets.findForUpdate(id).orElseThrow(SheetNotFoundException::new);
++        RollupService.Snapshot before = rollup.snapshot(id);
+         sheet.setToday(today);
++        sheets.flush();
++        rollup.recordChanges(id, user, before);
+         return sheet;
+     }
+ }
+diff --git a/src/main/java/net/officefloor/hq/app/statement/StatementService.java b/src/main/java/net/officefloor/hq/app/statement/StatementService.java
+index ba9862d83..4d39b3d79 100644
+--- a/src/main/java/net/officefloor/hq/app/statement/StatementService.java
++++ b/src/main/java/net/officefloor/hq/app/statement/StatementService.java
+@@ -14,6 +14,7 @@ import net.officefloor.hq.app.person.Person;
+ import net.officefloor.hq.app.person.PersonNotFoundException;
+ import net.officefloor.hq.app.person.PersonRepository;
+ import net.officefloor.hq.app.rate.RateService;
++import net.officefloor.hq.app.rollup.RollupService;
+ import net.officefloor.hq.app.sheet.SheetNotFoundException;
+ import net.officefloor.hq.app.sheet.SheetRepository;
+ import org.springframework.stereotype.Service;
+@@ -39,16 +40,18 @@ public class StatementService {
+     private final ClaimService claimService;
+     private final RateService rates;
+     private final SheetRepository sheets;
++    private final RollupService rollup;
+     private final Audit audit;
+ 
+     public StatementService(StatementRepository statements, PersonRepository people, ClaimRepository claims,
+-            ClaimService claimService, RateService rates, SheetRepository sheets, Audit audit) {
++            ClaimService claimService, RateService rates, SheetRepository sheets, RollupService rollup, Audit audit) {
+         this.statements = statements;
+         this.people = people;
+         this.claims = claims;
+         this.claimService = claimService;
+         this.rates = rates;
+         this.sheets = sheets;
++        this.rollup = rollup;
+         this.audit = audit;
+     }
+ 
+@@ -67,6 +70,7 @@ public class StatementService {
+         // Lock the sheet so the claims and rates read are not changed while the statement is taken.
+         LocalDate today = sheets.findForUpdate(sheetId).orElseThrow(SheetNotFoundException::new).getToday();
+         Person person = people.findByIdAndSheetId(personId, sheetId).orElseThrow(PersonNotFoundException::new);
++        RollupService.Snapshot before = rollup.snapshot(sheetId);
+         List<Claim> theirs = claims.findBySheetIdAndPersonIdOrderByIdDesc(sheetId, personId);
+         boolean fixed = false;
+         BigDecimal total = BigDecimal.ZERO.setScale(2);
+@@ -88,6 +92,7 @@ public class StatementService {
+         statements.saveAndFlush(new Statement(sheetId, personId, dueTotal, today, user.strip()));
+         audit.recordOnCommit("STATEMENT sheet=" + sheetId + " by=" + user.strip() + " name=" + person.getName()
+                 + " due-total=" + (dueTotal == null ? "n/a" : dueTotal.toPlainString()) + " claims=" + counted);
++        rollup.recordChanges(sheetId, user, before);
+         return new Taken(summaryOf(personId, statements.findBySheetIdAndPersonIdOrderByIdAsc(sheetId, personId)),
+                 theirs);
+     }
