@@ -1,0 +1,64 @@
+{
+  "checkpoint": 117,
+  "stack": {
+    "repo": "/home/daniel/officehq-angular-spring",
+    "origin": "git@github.com:officefloor/officehq-angular-spring.git",
+    "name": "officehq-angular-spring",
+    "base_ref": "base-empty",
+    "base_commit": "65cb8233ea38b2dfa6cfd18709e30cd18fdf3250"
+  },
+  "checkpoint_id": "cp117_list-positions",
+  "phase": "mid",
+  "type": "additive",
+  "mutates": [],
+  "replaced_tests": [],
+  "request": {
+    "spec": "People have a position in the list. Up and down buttons on the row swap the person with the one\nabove or below (PERSON_MOVED name=<name> position=<new position, counting from 1>); the top row\ncannot move up nor the bottom row down (refused with an error on the row). The list, the rollup lines\nand every action that works in list order follow the positions. New people go to the end.\n",
+    "prompt": "You are implementing ONE change to this application.\n\nFIRST read AGENTS.md \u2014 it states the working rules and how the app is tested, and sends you to\nDESIGN.md for the app's stack and conventions. Follow both.\n\nTHE CHANGE REQUEST:\nPeople have a position in the list. Up and down buttons on the row swap the person with the one\nabove or below (PERSON_MOVED name=<name> position=<new position, counting from 1>); the top row\ncannot move up nor the bottom row down (refused with an error on the row). The list, the rollup lines\nand every action that works in list order follow the positions. New people go to the end.\n\nYour work is verified by an automated Playwright UI test already installed under e2e/specs/.\nRead that spec: it declares the exact data-testid anchors, values, test data and any audit\nrecords it expects \u2014 match them. Run `bin/e2e` to build the app, start it, and run the test as\nyou work; iterate until it passes. Change whatever the request needs across the app \u2014 its stored\ndata, its server and its front end. Do NOT edit bin/build, bin/start, bin/stop, bin/e2e,\nAGENTS.md, CLAUDE.md, DESIGN.md, e2e/support/ or the test spec.\n"
+  },
+  "commit_sha": "2225592a4a0d38529af5f2b9c3178233b7674eb6",
+  "reset_sha": "",
+  "preagent_sha": "ce793b134f5c73381173f174bf3fb727c7ff054b",
+  "prev_sha": "ce793b134f5c73381173f174bf3fb727c7ff054b",
+  "base_sha": "65cb8233ea38b2dfa6cfd18709e30cd18fdf3250",
+  "agent": {
+    "ok": true,
+    "cost_usd": 1.2237977999999998,
+    "input_tokens": 60,
+    "output_tokens": 11817,
+    "cache_read_tokens": 1799529,
+    "cache_creation_tokens": 78414,
+    "num_turns": 31,
+    "duration_ms": 340742,
+    "duration_api_ms": 121854,
+    "model": "claude-opus-5-5",
+    "session_id": "2182db86-83f3-4a78-bde4-e8e5136c5266",
+    "stop_reason": "success",
+    "result_text": "People can now be moved up and down the list, and all 4 tests in `bin/e2e` pass.\n\n**Stored data:** the new migration `V71__person_position.sql` adds a `list_position` column to each person. Existing people get positions in the order they were added, so their current order doesn't change.\n\n**Server:**\n- **List order:** the people list, the rollup lines and snapshots, bulk grade, and everything else that read people in the order they were added now reads them by position. Bulk open, settle and move also go through people by position, so bulk open numbers claims in the new order.\n- **New people:** a newly added person goes to the end of the list. So does a person transferred in from another sheet.\n- **Moving:** the new `POST /api/sheets/{sheet}/people/{id}/move` endpoint takes `{direction: \"up\"|\"down\"}` and swaps the person with their neighbour. It writes `PERSON_MOVED \u2026 name=<name> position=<n>`, counting from 1. Moving the top person up or the bottom person down is refused: nothing is saved and no audit line is written. Viewers and archived sheets are refused by the existing guards.\n\n**Front end:** each row has Up and Down buttons (`person-move-up` / `person-move-down`) next to the name. After a move the list reloads from the server. A refused move shows the row's `person-error`.\n\n**Hidden retired people:** retired people still hold a place in the list even when hidden. If they're hidden, Up or Down can swap someone with a retired person you can't see, so nothing seems to happen on screen. The tests don't cover this case.",
+    "error": "",
+    "attempts": [
+      {
+        "ok": true,
+        "limit_reached": false,
+        "retryable": false,
+        "timed_out": false,
+        "cost_usd": 1.2237977999999998,
+        "num_turns": 31,
+        "duration_ms": 340742,
+        "duration_api_ms": 121854,
+        "error": ""
+      }
+    ]
+  },
+  "agent_stream_file": "cp117.agent.jsonl",
+  "agent_diff_file": "cp117.agent.diff",
+  "build_log_file": null,
+  "tests": {
+    "gated": false,
+    "queued": true
+  },
+  "probe": null,
+  "pinned_touched": [],
+  "acceptance_touched": [],
+  "impact_gate": null
+}

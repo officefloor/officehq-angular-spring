@@ -1,0 +1,399 @@
+diff --git a/src/main/frontend/src/app/features/people/people.ts b/src/main/frontend/src/app/features/people/people.ts
+index 4a5d94528..61c10be3e 100644
+--- a/src/main/frontend/src/app/features/people/people.ts
++++ b/src/main/frontend/src/app/features/people/people.ts
+@@ -133,7 +133,7 @@ interface StatementTaken {
+   claims: Claim[];
+ }
+ 
+-// The people on the active sheet, in the order they were added, with one form to add or edit,
++// The people on the active sheet, in their list positions (moved up or down a place at a time), with one form to add or edit,
+ // each with their claims, what they have claimed and their due-total (OPEN, PENDING and SETTLED claims only); the sheet's claimed-total and
+ // due-total under the table. Above it, the sheet's rate for each grade. Each person can be given a
+ // statement, which binds their counting claims' dues; the row shows how many statements they have
+@@ -322,7 +322,13 @@ function trimmedSum(figures: number[]): number {
+                        (change)="personToggled(p.id, $any($event.target).checked)"
+                        [attr.aria-label]="'Select ' + p.name" />
+               </td>
+-              <td data-testid="person-name">{{ p.name }}</td>
++              <td>
++                <span data-testid="person-name">{{ p.name }}</span>
++                <button type="button" data-testid="person-move-up" (click)="move(p, 'up')"
++                        [attr.aria-label]="'Move ' + p.name + ' up'">Up</button>
++                <button type="button" data-testid="person-move-down" (click)="move(p, 'down')"
++                        [attr.aria-label]="'Move ' + p.name + ' down'">Down</button>
++              </td>
+               <td data-testid="person-grade">{{ gradeOf(p) }}</td>
+               <td data-testid="person-terms">{{ p.terms ?? '' }}</td>
+               <td data-testid="person-contact">{{ p.contact ?? '' }}</td>
+@@ -1338,6 +1344,26 @@ export class People {
+     }
+   }
+ 
++  /** Swap the person with the one above or below them in the list; the top cannot move up nor the bottom down. */
++  protected async move(p: Person, direction: 'up' | 'down'): Promise<void> {
++    this.personError.set(null);
++    this.clearPatronError(p.id);
++    const sheet = this.session.sheetId();
++    if (!sheet) return;
++    try {
++      await firstValueFrom(
++        this.http.post<Person>(`${this.url(sheet)}/${p.id}/move`, { direction }, { headers: this.headers() }),
++      );
++      const list = await firstValueFrom(this.http.get<Person[]>(this.url(sheet), { headers: this.headers() }));
++      if (this.session.sheetId() !== sheet) return;
++      this.people.set(list);
++    } catch {
++      if (this.session.sheetId() === sheet) {
++        this.personError.set({ id: p.id, message: 'Could not move ' + p.name + ' ' + direction + '.' });
++      }
++    }
++  }
++
+   /** Retire the person from the date (blank: the sheet's today). */
+   protected async retire(p: Person, date: string): Promise<void> {
+     this.personError.set(null);
+diff --git a/src/main/java/net/officefloor/hq/app/claim/ClaimBulkService.java b/src/main/java/net/officefloor/hq/app/claim/ClaimBulkService.java
+index c21f9966b..96c251355 100644
+--- a/src/main/java/net/officefloor/hq/app/claim/ClaimBulkService.java
++++ b/src/main/java/net/officefloor/hq/app/claim/ClaimBulkService.java
+@@ -3,12 +3,16 @@ package net.officefloor.hq.app.claim;
+ import java.math.BigDecimal;
+ import java.math.RoundingMode;
+ import java.util.Comparator;
++import java.util.HashMap;
+ import java.util.List;
++import java.util.Map;
+ import java.util.Set;
+ import java.util.function.Consumer;
+ import net.officefloor.hq.app.Audit;
+ import net.officefloor.hq.app.period.PeriodClosedException;
++import net.officefloor.hq.app.person.Person;
+ import net.officefloor.hq.app.person.PersonNotFoundException;
++import net.officefloor.hq.app.person.PersonRepository;
+ import net.officefloor.hq.app.person.PersonRetiredException;
+ import net.officefloor.hq.app.setting.Role;
+ import net.officefloor.hq.app.setting.SettingService;
+@@ -19,7 +23,7 @@ import org.springframework.transaction.interceptor.TransactionAspectSupport;
+ 
+ /**
+  * Changes to many selected claims at once. Each claim is changed in its own transaction, in list
+- * order (people in the order they were added, each person's claims newest first), exactly as if
++ * order (people in their list positions, each person's claims newest first), exactly as if
+  * its own button were pressed; one that is refused is left as it is and counted as refused (a bulk
+  * settle is instead all or nothing). A
+  * viewer's bulk change, or one on an archived sheet, goes through with nothing done: every selected
+@@ -35,10 +39,12 @@ public class ClaimBulkService {
+     private final ClaimRepository repository;
+     private final SettingService settings;
+     private final SheetService sheets;
++    private final PersonRepository people;
+     private final Audit audit;
+ 
+     public ClaimBulkService(ClaimService claims, ClaimRepository repository, SettingService settings, SheetService sheets,
+-            Audit audit) {
++            PersonRepository people, Audit audit) {
++        this.people = people;
+         this.audit = audit;
+         this.claims = claims;
+         this.repository = repository;
+@@ -118,11 +124,16 @@ public class ClaimBulkService {
+         return settings.roleOf(sheetId, user) == Role.VIEWER || sheets.isArchived(sheetId);
+     }
+ 
+-    /** The selected claims in list order: people in the order they were added, each person's newest first. */
++    /** The selected claims in list order: people in their list positions, each person's newest first. */
+     private List<Claim> selected(String sheetId, Set<Long> ids) {
++        Map<Long, Integer> place = new HashMap<>();
++        List<Person> list = people.findBySheetIdOrderByPositionAscIdAsc(sheetId);
++        for (int i = 0; i < list.size(); i++) place.put(list.get(i).getId(), i);
+         return repository.findBySheetIdOrderByListedDesc(sheetId).stream()
+                 .filter(c -> ids.contains(c.getId()))
+-                .sorted(Comparator.comparing(Claim::getPersonId).thenComparing(Claim::getListed, Comparator.reverseOrder()))
++                .sorted(Comparator.comparing((Claim c) -> place.getOrDefault(c.getPersonId(), Integer.MAX_VALUE))
++                        .thenComparing(Claim::getPersonId)
++                        .thenComparing(Claim::getListed, Comparator.reverseOrder()))
+                 .toList();
+     }
+ 
+diff --git a/src/main/java/net/officefloor/hq/app/claim/ClaimService.java b/src/main/java/net/officefloor/hq/app/claim/ClaimService.java
+index 5b0d4136b..3f7e7e575 100644
+--- a/src/main/java/net/officefloor/hq/app/claim/ClaimService.java
++++ b/src/main/java/net/officefloor/hq/app/claim/ClaimService.java
+@@ -718,7 +718,7 @@ public class ClaimService {
+         int count = 0;
+         BigDecimal diff = BigDecimal.ZERO.setScale(2);
+         Map<Long, Person> byId = new HashMap<>();
+-        for (Person p : people.findBySheetIdOrderByIdAsc(sheetId)) byId.put(p.getId(), p);
++        for (Person p : people.findBySheetIdOrderByPositionAscIdAsc(sheetId)) byId.put(p.getId(), p);
+         for (Claim claim : claims.findBySheetIdOrderByIdDesc(sheetId)) {
+             if (!claim.getStatus().isOpen() || claim.isBound()) continue;
+             Person person = byId.get(claim.getPersonId());
+diff --git a/src/main/java/net/officefloor/hq/app/period/PeriodService.java b/src/main/java/net/officefloor/hq/app/period/PeriodService.java
+index 1e5a6fa95..49242670c 100644
+--- a/src/main/java/net/officefloor/hq/app/period/PeriodService.java
++++ b/src/main/java/net/officefloor/hq/app/period/PeriodService.java
+@@ -137,7 +137,7 @@ public class PeriodService {
+ 
+     /** Close or soft-close the period, fixing each person's due-total for it and its own, and audit it. */
+     private Period fix(String sheetId, String user, Period period, LocalDate today, boolean auto, boolean soft) {
+-        Map<Long, Person> byId = people.findBySheetIdOrderByIdAsc(sheetId).stream()
++        Map<Long, Person> byId = people.findBySheetIdOrderByPositionAscIdAsc(sheetId).stream()
+                 .collect(Collectors.toMap(Person::getId, Function.identity()));
+         // Every person on the sheet gets a figure, 0.00 when none of their claims falls in it.
+         Map<Long, BigDecimal> personDues = new LinkedHashMap<>();
+diff --git a/src/main/java/net/officefloor/hq/app/person/Person.java b/src/main/java/net/officefloor/hq/app/person/Person.java
+index 0d098d4c4..7a3eef239 100644
+--- a/src/main/java/net/officefloor/hq/app/person/Person.java
++++ b/src/main/java/net/officefloor/hq/app/person/Person.java
+@@ -100,6 +100,10 @@ public class Person {
+     @CollectionTable(name = "person_alias", joinColumns = @JoinColumn(name = "person_id"))
+     private List<PersonAlias> aliases = new ArrayList<>();
+ 
++    /** Their position in the sheet's list, smallest first. */
++    @Column(name = "list_position", nullable = false)
++    private long position;
++
+     /** The person they were merged into; null while not merged. */
+     @Column(name = "merged_into")
+     private Long mergedInto;
+@@ -309,4 +313,8 @@ public class Person {
+ 
+     /** Moved on by each save; an edit is refused unless made from the current version. */
+     public long getVersion() { return version; }
++
++    public long getPosition() { return position; }
++
++    public void setPosition(long position) { this.position = position; }
+ }
+diff --git a/src/main/java/net/officefloor/hq/app/person/PersonController.java b/src/main/java/net/officefloor/hq/app/person/PersonController.java
+index 3b8798f25..48b91ef28 100644
+--- a/src/main/java/net/officefloor/hq/app/person/PersonController.java
++++ b/src/main/java/net/officefloor/hq/app/person/PersonController.java
+@@ -113,6 +113,9 @@ public class PersonController {
+         return terms == null || terms.isEmpty() ? null : Integer.valueOf(terms);
+     }
+ 
++    /** Which way to move a person in the list: up or down. */
++    public record MoveRequest(@NotNull @Pattern(regexp = "up|down") String direction) {}
++
+     /** The date a person is retired from (blank: the sheet's today). */
+     public record RetireRequest(LocalDate from) {}
+ 
+@@ -183,6 +186,16 @@ public class PersonController {
+                 request.from()));
+     }
+ 
++    /** Swap the person with the one above or below them in the list. */
++    @PostMapping("/{id}/move")
++    public PersonView move(
++            @PathVariable @Size(max = 100) @Pattern(regexp = "[A-Za-z0-9._-]+") String sheetId,
++            @PathVariable Long id,
++            @RequestHeader("X-User") @NotBlank @Size(max = 100) String user,
++            @RequestBody @Valid MoveRequest request) {
++        return view(service.move(sheetId, user, id, request.direction().equals("up")), user);
++    }
++
+     @PostMapping("/{id}/retire")
+     public PersonView retire(
+             @PathVariable @Size(max = 100) @Pattern(regexp = "[A-Za-z0-9._-]+") String sheetId,
+diff --git a/src/main/java/net/officefloor/hq/app/person/PersonMoveRefusedException.java b/src/main/java/net/officefloor/hq/app/person/PersonMoveRefusedException.java
+new file mode 100644
+index 000000000..01d5b94cd
+--- /dev/null
++++ b/src/main/java/net/officefloor/hq/app/person/PersonMoveRefusedException.java
+@@ -0,0 +1,8 @@
++package net.officefloor.hq.app.person;
++
++import org.springframework.http.HttpStatus;
++import org.springframework.web.bind.annotation.ResponseStatus;
++
++/** The top person cannot move up the list, nor the bottom one down. */
++@ResponseStatus(HttpStatus.CONFLICT)
++public class PersonMoveRefusedException extends RuntimeException {}
+diff --git a/src/main/java/net/officefloor/hq/app/person/PersonRepository.java b/src/main/java/net/officefloor/hq/app/person/PersonRepository.java
+index 9cb75a236..a65ae08c5 100644
+--- a/src/main/java/net/officefloor/hq/app/person/PersonRepository.java
++++ b/src/main/java/net/officefloor/hq/app/person/PersonRepository.java
+@@ -7,7 +7,12 @@ import org.springframework.data.jpa.repository.Query;
+ 
+ public interface PersonRepository extends JpaRepository<Person, Long> {
+ 
+-    List<Person> findBySheetIdOrderByIdAsc(String sheetId);
++    /** The sheet's people in list order: by their position, smallest first. */
++    List<Person> findBySheetIdOrderByPositionAscIdAsc(String sheetId);
++
++    /** The largest position on the sheet, people merged away or transferred off included; 0 when none. */
++    @Query(value = "select coalesce(max(list_position), 0) from person where sheet_id = :sheetId", nativeQuery = true)
++    long maxPosition(String sheetId);
+ 
+     Optional<Person> findByIdAndSheetId(Long id, String sheetId);
+ 
+diff --git a/src/main/java/net/officefloor/hq/app/person/PersonService.java b/src/main/java/net/officefloor/hq/app/person/PersonService.java
+index d83baf613..17c1fc589 100644
+--- a/src/main/java/net/officefloor/hq/app/person/PersonService.java
++++ b/src/main/java/net/officefloor/hq/app/person/PersonService.java
+@@ -34,7 +34,7 @@ import org.springframework.stereotype.Service;
+ import org.springframework.transaction.annotation.Transactional;
+ 
+ /**
+- * The people on a sheet: listed in the order they were added, added and edited one at a time. A
++ * The people on a sheet: listed by their positions (new people at the end), moved up or down one place at a time, added and edited one at a time. A
+  * name already used by another person on the sheet (ignoring case and surrounding spaces) is
+  * refused, and so is an edit made from a version of the person someone else has saved since. A
+  * person can be retired from a date (blank: the sheet's today), and put on hold from a from-date (blank: the sheet's today) to an optional to-date, any number of
+@@ -95,7 +95,7 @@ public class PersonService {
+ 
+     @Transactional(readOnly = true)
+     public List<Person> list(String sheetId) {
+-        return people.findBySheetIdOrderByIdAsc(sheetId);
++        return people.findBySheetIdOrderByPositionAscIdAsc(sheetId);
+     }
+ 
+     /** The ids of the sheet's people who are active on its today ({@link Person#activeOn}). */
+@@ -104,7 +104,7 @@ public class PersonService {
+         LocalDate today = today(sheetId);
+         List<Claim> all = claims.findBySheetIdOrderByIdDesc(sheetId);
+         Set<Long> ids = new HashSet<>();
+-        for (Person person : people.findBySheetIdOrderByIdAsc(sheetId)) {
++        for (Person person : people.findBySheetIdOrderByPositionAscIdAsc(sheetId)) {
+             if (person.activeOn(all, today)) ids.add(person.getId());
+         }
+         return ids;
+@@ -140,6 +140,7 @@ public class PersonService {
+         Person draft = new Person(sheetId, name, grade, today(sheetId));
+         draft.setTerms(terms);
+         draft.setContact(key);
++        draft.setPosition(people.maxPosition(sheetId) + 1);
+         Person person = saveUnique(draft);
+         record("PERSON_ADDED", sheetId, user, person, person.getGrade(),
+                 (terms != null ? " terms=" + terms : "") + (key != null ? " contact=" + key : ""));
+@@ -188,7 +189,7 @@ public class PersonService {
+         Sheet sheet = sheets.findById(sheetId).orElseThrow(SheetNotFoundException::new);
+         if (sheet.isArchived() || settings.roleOf(sheetId, user) == Role.VIEWER) return 0;
+         LocalDate today = sheet.getToday();
+-        List<Person> chosen = people.findBySheetIdOrderByIdAsc(sheetId).stream()
++        List<Person> chosen = people.findBySheetIdOrderByPositionAscIdAsc(sheetId).stream()
+                 .filter(p -> ids.contains(p.getId())).toList();
+         if (chosen.size() != ids.size()) throw new PersonNotFoundException();
+         LocalDate on = from != null ? from : today;
+@@ -202,6 +203,37 @@ public class PersonService {
+         return chosen.size();
+     }
+ 
++    /**
++     * Swap the person with the one above (up) or below (down) them in the list; the top one cannot move
++     * up nor the bottom one down. Returns them in their new place.
++     */
++    @Transactional
++    public Person move(String sheetId, String user, Long id, boolean up) {
++        sheets.findForUpdate(sheetId).orElseThrow(SheetNotFoundException::new);
++        List<Person> list = people.findBySheetIdOrderByPositionAscIdAsc(sheetId);
++        int at = -1;
++        for (int i = 0; i < list.size(); i++) if (list.get(i).getId().equals(id)) at = i;
++        if (at < 0) throw new PersonNotFoundException();
++        int to = up ? at - 1 : at + 1;
++        if (to < 0 || to >= list.size()) throw new PersonMoveRefusedException();
++        Person person = list.get(at);
++        Person other = list.get(to);
++        long mine = person.getPosition();
++        long theirs = other.getPosition();
++        if (mine == theirs) {
++            // positions tied (ordered by id): give the list distinct positions first
++            for (int i = 0; i < list.size(); i++) list.get(i).setPosition(i + 1);
++            mine = person.getPosition();
++            theirs = other.getPosition();
++        }
++        person.setPosition(theirs);
++        other.setPosition(mine);
++        people.saveAllAndFlush(list);
++        audit.recordOnCommit("PERSON_MOVED sheet=" + sheetId + " by=" + user.strip()
++                + " name=" + person.getName() + " position=" + (to + 1));
++        return person;
++    }
++
+     @Transactional
+     public Person retire(String sheetId, String user, Long id, LocalDate from) {
+         // Lock the sheet so no claim is added or edited for them meanwhile against the old date.
+@@ -441,6 +473,7 @@ public class PersonService {
+         // they and their claims arrive on the other sheet
+         List<Claim> moving = claims.findBySheetIdAndPersonIdOrderByIdDesc(sheetId, id);
+         person.transferTo(toSheetId);
++        person.setPosition(people.maxPosition(toSheetId) + 1);
+         Person saved = saveUnique(person);
+         claimService.receive(there, moving);
+ 
+@@ -530,7 +563,7 @@ public class PersonService {
+     public Set<Long> clashingIds(String sheetId) {
+         Set<String> used = keysUsedIn(treeOf(sheetId));
+         Set<Long> ids = new HashSet<>();
+-        for (Person person : people.findBySheetIdOrderByIdAsc(sheetId)) {
++        for (Person person : people.findBySheetIdOrderByPositionAscIdAsc(sheetId)) {
+             if (clashes(person, used)) ids.add(person.getId());
+         }
+         return ids;
+@@ -549,7 +582,7 @@ public class PersonService {
+     private Set<String> keysUsedIn(List<String> sheetIds) {
+         Set<String> keys = new HashSet<>();
+         for (String other : sheetIds) {
+-            for (Person person : people.findBySheetIdOrderByIdAsc(other)) {
++            for (Person person : people.findBySheetIdOrderByPositionAscIdAsc(other)) {
+                 for (String name : person.namesAndAliases()) keys.add(Person.keyOf(name));
+             }
+         }
+diff --git a/src/main/java/net/officefloor/hq/app/pool/PoolService.java b/src/main/java/net/officefloor/hq/app/pool/PoolService.java
+index 4512d610b..40dffa4b2 100644
+--- a/src/main/java/net/officefloor/hq/app/pool/PoolService.java
++++ b/src/main/java/net/officefloor/hq/app/pool/PoolService.java
+@@ -64,7 +64,7 @@ public class PoolService {
+     @Transactional(readOnly = true)
+     public List<PoolLine> pools(String sheetId) {
+         BigDecimal pot = sheets.findById(sheetId).map(Sheet::getPot).orElse(null);
+-        Map<Long, Person> byId = people.findBySheetIdOrderByIdAsc(sheetId).stream()
++        Map<Long, Person> byId = people.findBySheetIdOrderByPositionAscIdAsc(sheetId).stream()
+                 .collect(Collectors.toMap(Person::getId, Function.identity()));
+         List<Pool> all = pools.findBySheetIdOrderByIdAsc(sheetId);
+         Map<Long, String> poolNames = all.stream().collect(Collectors.toMap(Pool::getId, Pool::getName));
+diff --git a/src/main/java/net/officefloor/hq/app/rollup/RollupService.java b/src/main/java/net/officefloor/hq/app/rollup/RollupService.java
+index 0c21a3749..cbf5a0152 100644
+--- a/src/main/java/net/officefloor/hq/app/rollup/RollupService.java
++++ b/src/main/java/net/officefloor/hq/app/rollup/RollupService.java
+@@ -41,7 +41,7 @@ public class RollupService {
+         }
+     }
+ 
+-    /** The sheet's figures at a moment: each person's, by id in the order they were added, and the totals. */
++    /** The sheet's figures at a moment: each person's, in list order (by position), and the totals. */
+     public record Snapshot(Map<Long, Figures> people, BigDecimal claimedTotal, BigDecimal dueTotal,
+             BigDecimal overdueTotal) {}
+ 
+@@ -91,7 +91,7 @@ public class RollupService {
+         BigDecimal claimedTotal = zero();
+         List<BigDecimal> dues = new ArrayList<>();
+         List<BigDecimal> overdues = new ArrayList<>();
+-        for (Person person : people.findBySheetIdOrderByIdAsc(sheetId)) {
++        for (Person person : people.findBySheetIdOrderByPositionAscIdAsc(sheetId)) {
+             BigDecimal claimed = zero();
+             BigDecimal due = zero();
+             BigDecimal overdue = zero();
+@@ -141,7 +141,7 @@ public class RollupService {
+         return sum.subtract(max).subtract(min);
+     }
+ 
+-    /** Audit, once the transaction commits, a SNAPSHOT line of each person's due-total in {@code snapshot}, in the order they were added. */
++    /** Audit, once the transaction commits, a SNAPSHOT line of each person's due-total in {@code snapshot}, in list order. */
+     public void recordSnapshot(String sheetId, String user, Snapshot snapshot) {
+         String by = " sheet=" + sheetId + " by=" + user.strip();
+         for (Figures figures : snapshot.people().values()) {
+diff --git a/src/main/resources/db/migration/V71__person_position.sql b/src/main/resources/db/migration/V71__person_position.sql
+new file mode 100644
+index 000000000..824f788c6
+--- /dev/null
++++ b/src/main/resources/db/migration/V71__person_position.sql
+@@ -0,0 +1,6 @@
++-- People have a position in the sheet's list, smallest first; existing people keep the order they were
++-- added in (by id). New people go to the end.
++ALTER TABLE person ADD COLUMN list_position BIGINT;
++UPDATE person SET list_position = id;
++ALTER TABLE person ALTER COLUMN list_position SET NOT NULL;
++CREATE INDEX person_sheet_position ON person (sheet_id, list_position);
