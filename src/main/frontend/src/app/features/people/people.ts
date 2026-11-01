@@ -351,6 +351,17 @@ function csvField(value: string): string {
         }
       </form>
 
+      <form [formGroup]="bulkHoldForm" (ngSubmit)="bulkHold()" aria-label="Hold the selected people">
+        <label for="bulk-hold-from">Hold from</label>
+        <input id="bulk-hold-from" type="date" data-testid="bulk-hold-from" formControlName="from" />
+        <label for="bulk-hold-to">to</label>
+        <input id="bulk-hold-to" type="date" data-testid="bulk-hold-to" formControlName="to" />
+        <button type="submit" data-testid="bulk-hold" [disabled]="bulkHolding()">Hold selected people</button>
+        @if (bulkHeld() !== null) {
+          Held <span data-testid="bulk-held">{{ bulkHeld() }}</span>
+        }
+      </form>
+
       <p>
         <label for="sort-by">Sort people by</label>
         <select id="sort-by" data-testid="sort-by" [value]="sortKey()" (change)="sortBy($any($event.target).value)">
@@ -730,6 +741,15 @@ export class PeopleList {
   /** The date the selected people are retired from (blank takes the sheet's today). */
   protected readonly bulkRetireForm = new FormGroup({
     from: new FormControl('', { nonNullable: true }),
+  });
+  /** How many people the last bulk hold held; null while one runs or before any. */
+  protected readonly bulkHeld = signal<number | null>(null);
+  /** Whether a bulk hold is running, so a second press waits for the first. */
+  protected readonly bulkHolding = signal(false);
+  /** The dates the selected people are held over (a blank from-date takes the sheet's today, a blank to-date has no end). */
+  protected readonly bulkHoldForm = new FormGroup({
+    from: new FormControl('', { nonNullable: true }),
+    to: new FormControl('', { nonNullable: true }),
   });
   /** Each person's statements, by person; one with none is missing. */
   private readonly statements = signal<Map<number, StatementSummary>>(new Map());
@@ -1245,6 +1265,8 @@ export class PeopleList {
           this.bulkGradeForm.reset({ grade: 'A', from: '' }, { emitEvent: false });
           this.bulkRetired.set(null);
           this.bulkRetireForm.reset({ from: '' }, { emitEvent: false });
+          this.bulkHeld.set(null);
+          this.bulkHoldForm.reset({ from: '', to: '' }, { emitEvent: false });
           this.bulkOpenResult.set(null);
           this.bulkOpenError.set(null);
           this.bulkSettleResult.set(null);
@@ -1891,6 +1913,34 @@ export class PeopleList {
         this.bulkRetiring.set(false);
         // The refusal shows on the first selected person's row.
         if (first !== undefined) this.personError.set({ id: first, message: 'Could not retire the selected people.' });
+      },
+    });
+  }
+
+  /** Hold the selected people together over the dates given, in list order, each as the row's hold would. */
+  protected bulkHold(): void {
+    if (this.bulkHolding()) return;
+    this.bulkHeld.set(null);
+    const sheet = this.sheets.current();
+    if (!sheet) return;
+    const ids = this.people().map((p) => p.id).filter((id) => this.selectedPeople().has(id));
+    const first = ids[0];
+    // A bulk hold is the next action on each selected row: no row's old error stays showing.
+    this.personError.set(null);
+    const { from, to } = this.bulkHoldForm.getRawValue();
+    this.bulkHolding.set(true);
+    this.api.bulkHold(sheet.id, ids, from === '' ? null : from, to === '' ? null : to).subscribe({
+      next: ({ held, people }) => {
+        this.bulkHolding.set(false);
+        const byId = new Map(people.map((p) => [p.id, p]));
+        this.people.update((list) => list.map((p) => byId.get(p.id) ?? p));
+        this.selectedPeople.set(new Set());
+        this.bulkHeld.set(held);
+      },
+      error: () => {
+        this.bulkHolding.set(false);
+        // The refusal shows on the first selected person's row.
+        if (first !== undefined) this.personError.set({ id: first, message: 'Could not hold the selected people.' });
       },
     });
   }

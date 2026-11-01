@@ -184,6 +184,14 @@ public class PersonController {
     public record BulkRetireView(int retired, List<PersonView> people) {
     }
 
+    /** People selected to be held together, from {@code from} (missing: the sheet's today) to {@code to} (missing: no end). */
+    public record BulkHold(@NotNull @Size(max = 1000) List<@NotNull Long> ids, LocalDate from, LocalDate to) {
+    }
+
+    /** What a bulk hold did: how many people it held, and those people as saved, in list order. */
+    public record BulkHoldView(int held, List<PersonView> people) {
+    }
+
     private final PersonService people;
     private final SheetHistory history;
     private final RoleService roles;
@@ -300,6 +308,30 @@ public class PersonController {
             }
         }
         return new BulkRetireView(retired.size(), retired);
+    }
+
+    /** Hold the selected people together, in list order, each as the row's hold would; one refused is left as they are. */
+    @PostMapping("/bulk-hold")
+    public BulkHoldView bulkHold(
+            @PathVariable @NotBlank @Size(max = 100) @Pattern(regexp = "[A-Za-z0-9._-]+") String sheetId,
+            @RequestHeader("X-User") @NotBlank @Size(max = 100) String user,
+            @Valid @RequestBody BulkHold request) {
+        if (roles.isViewer(sheetId, user)) {
+            // A viewer's bulk action goes through with nothing done: no selected person is held.
+            return new BulkHoldView(0, List.of());
+        }
+        Set<Long> selected = new HashSet<>(request.ids());
+        List<PersonView> held = new ArrayList<>();
+        for (Person person : people.list(sheetId)) {
+            if (selected.contains(person.getId())) {
+                try {
+                    held.add(view(sheetId, people.hold(sheetId, user, person.getId(), request.from(), request.to())));
+                } catch (ResponseStatusException refusal) {
+                    // Refused for this person: they are left as they are.
+                }
+            }
+        }
+        return new BulkHoldView(held.size(), held);
     }
 
     /** Swap the person with the one above or below them: everyone on the sheet, in list order, as moved. */

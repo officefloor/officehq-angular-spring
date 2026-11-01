@@ -110,6 +110,12 @@ export interface GradeMergeView {
   people: PersonView[];
 }
 
+/** What a bulk hold did: how many people it held, and those people as saved. */
+export interface BulkHoldView {
+  held: number;
+  people: PersonView[];
+}
+
 /** What a bulk retire did: how many people it retired, and those people as saved. */
 export interface BulkRetireView {
   retired: number;
@@ -215,6 +221,11 @@ export class People {
   /** Give the selected people `grade` from `from` (yyyy-mm-dd; null takes the sheet's today), in list order. */
   bulkGrade(sheetId: string, ids: readonly number[], grade: Grade, from: string | null): Observable<BulkGradeView> {
     return this.http.post<BulkGradeView>(`${this.base(sheetId)}/bulk-grade`, { ids, grade, from });
+  }
+
+  /** Hold the selected people from `from` (null takes the sheet's today) to `to` (null: no end), in list order. */
+  bulkHold(sheetId: string, ids: readonly number[], from: string | null, to: string | null): Observable<BulkHoldView> {
+    return this.http.post<BulkHoldView>(`${this.base(sheetId)}/bulk-hold`, { ids, from, to });
   }
 
   /** Retire the selected people from `from` (yyyy-mm-dd; null takes the sheet's today), in list order. */
