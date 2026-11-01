@@ -407,6 +407,23 @@ public class SettingService {
         return pot;
     }
 
+    /** Change the alert threshold (null: off); not dated. */
+    @Transactional
+    public BigDecimal setAlertThreshold(String sheetId, String user, BigDecimal threshold) {
+        Sheet sheet = sheets.findForUpdate(sheetId).orElseThrow(SheetNotFoundException::new);
+        sheet.setAlertThreshold(threshold);
+        sheets.flush();
+        audit.recordOnCommit("SETTING_CHANGED sheet=" + sheetId + " by=" + user.strip() + " key=alert-threshold value="
+                + (threshold == null ? "" : threshold.toPlainString()));
+        return threshold;
+    }
+
+    /** The alert threshold as set; null when blank, which means off. */
+    @Transactional(readOnly = true)
+    public BigDecimal alertThreshold(String sheetId) {
+        return sheets.findById(sheetId).orElseThrow(SheetNotFoundException::new).getAlertThreshold();
+    }
+
     /** The pot as set; null when blank, which means none. */
     @Transactional(readOnly = true)
     public BigDecimal pot(String sheetId) {

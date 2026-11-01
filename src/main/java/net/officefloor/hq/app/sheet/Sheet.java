@@ -101,6 +101,10 @@ public class Sheet {
     @Column(name = "pot", precision = 14, scale = 2)
     private BigDecimal pot;
 
+    /** A change taking a person's due-total from at or below it (or none) to above it is alerted (not dated); null means off. */
+    @Column(name = "alert_threshold", precision = 14, scale = 2)
+    private BigDecimal alertThreshold;
+
     /** While set, a new claim given no date takes it rather than the sheet's today; null means off. */
     @Column(name = "entry_date")
     private LocalDate entryDate;
@@ -291,6 +295,10 @@ public class Sheet {
     public BigDecimal getPot() { return pot; }
 
     public void setPot(BigDecimal pot) { this.pot = pot; }
+
+    public BigDecimal getAlertThreshold() { return alertThreshold; }
+
+    public void setAlertThreshold(BigDecimal alertThreshold) { this.alertThreshold = alertThreshold; }
 
     public LocalDate getEntryDate() { return entryDate; }
 

@@ -28,7 +28,9 @@ import org.springframework.transaction.annotation.Transactional;
  * sheet's claimed-total and due-total, each person's at most the sheet's cap in force today; a claim's floor is the one in force on its date, its late percent the one in force on each 30-day boundary; an overdue claim's due has its {@link LateCharge} on top. A change takes a {@link #snapshot} before it alters
  * anything and calls {@link #recordChanges} once it has, which audits, after the change's own
  * lines, a ROLLUP line for each person whose figures (overdue-total included) moved (in the order
- * they were added) and a TOTALS line when the sheet's totals moved.
+ * they were added) and a TOTALS line when the sheet's totals moved, then, while the sheet has an alert
+ * threshold, an ALERT line for each person (in list order) whose due-total went from at or below it (or
+ * none) to above it.
  */
 @Service
 public class RollupService {
@@ -171,6 +173,20 @@ public class RollupService {
                     + " due-total=" + money(after.dueTotal())
                     + " overdue-total=" + money(after.overdueTotal()));
         }
+        BigDecimal threshold = sheets.findById(sheetId).map(Sheet::getAlertThreshold).orElse(null);
+        if (threshold == null) return;
+        for (Map.Entry<Long, Figures> e : after.people().entrySet()) {
+            Figures now = e.getValue();
+            Figures was = before == null ? null : before.people().get(e.getKey());
+            if (above(now, threshold) && !above(was, threshold)) {
+                audit.recordOnCommit("ALERT" + by + " name=" + now.name() + " due-total=" + money(now.dueTotal()));
+            }
+        }
+    }
+
+    /** Whether the person's due-total is above the threshold; none (or no figures) is not. */
+    private static boolean above(Figures figures, BigDecimal threshold) {
+        return figures != null && figures.dueTotal() != null && figures.dueTotal().compareTo(threshold) > 0;
     }
 
     /**
