@@ -137,7 +137,7 @@ public class PeriodService {
      *  sheet has no period in that fiscal year. The next fiscal year's twelve periods are generated exactly as
      *  {@link #generateFiscalYear} does, and each person's open figure at the end of the old year's last period, when not
      *  0.00, is added to their opening balance for the new year's first period, unless the year was rolled over already
-     *  and that rollover not undone. Each rollover is recorded so the last can be undone. Returns the periods made, in month order. */
+     *  and that rollover not undone. Every period of the old year still open is then soft-closed, in start-date order. Each rollover is recorded so the last can be undone. Returns the periods made, in month order. */
     @Transactional
     public List<Period> rollover(String sheetId, String user, int year) {
         sheets.load(sheetId, user);
@@ -175,6 +175,9 @@ public class PeriodService {
                 made.stream().map(Period::getId).toList(), set));
         audit.recordChangeOnCommit(sheetId, user, "ROLLOVER sheet=" + sheetId + " by=" + user + " fy=FY" + year
                 + " periods=" + made.size());
+        // Every period of the old year still open is soft-closed, in start-date order.
+        oldYear.stream().filter(p -> !p.isClosed() && !p.isSoftClosed())
+                .forEach(p -> softCloseAndRecord(sheetId, user, p));
         return made;
     }
 
@@ -269,6 +272,11 @@ public class PeriodService {
         if (period.isClosed() || period.isSoftClosed()) {
             throw new ResponseStatusException(HttpStatus.CONFLICT, "That period is already closed");
         }
+        return softCloseAndRecord(sheetId, user, period);
+    }
+
+    /** Fix a period's due-total, each person's figure and each pool member's cut as they are now, and record the soft close. */
+    private Period softCloseAndRecord(String sheetId, String user, Period period) {
         period.softClose(rollup.dueByPersonBetween(sheetId, period.getFromDate(), period.getToDate()),
                 rollup.carriedByPerson(sheetId, period));
         period.fixPoolCuts(pools.cutsNow(sheetId));

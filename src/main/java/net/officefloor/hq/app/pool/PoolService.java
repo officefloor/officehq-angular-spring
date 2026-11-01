@@ -157,7 +157,7 @@ public class PoolService {
     /** The sheet's pools as {@link #list(String)}, with {@code on} (null: the sheet's today) standing in for the
      *  sheet's today, as a sheet shown as of a date reads them: then the pot and the people (retired or held) are as
      *  they stood at the end of that date (see {@link SheetHistory}), a person not on the sheet by then is no member,
-     *  and the pools are as they are now, each with its memberships as they stood then when the state kept them (so a
+     *  and the pools and crews are as they are now, each with its memberships as they stood then when the state kept them (so a
      *  membership since moved by a merge counts for the person who held it then), else as they are now. */
     @Transactional(readOnly = true)
     public List<PoolWithMembers> list(String sheetId, LocalDate on) {
@@ -188,6 +188,12 @@ public class PoolService {
         Map<Long, List<CrewMember>> byCrew = crewMembers.findByCrewIdInOrderByIdAsc(
                 sheetCrews.stream().map(Crew::getId).toList()).stream()
                 .collect(Collectors.groupingBy(CrewMember::getCrewId));
+        if (then.isPresent() && then.get().crews() != null) {
+            byCrew = new HashMap<>(byCrew);
+            for (SheetState.CrewState c : then.get().crews()) {
+                byCrew.put(c.id(), c.members().stream().map(id -> new CrewMember(c.id(), id)).toList());
+            }
+        }
         return build(sheetId, list, byPool, sheetCrews, byCrew, sheetPeople, sheetPot, today);
     }
 
