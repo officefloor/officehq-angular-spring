@@ -1,0 +1,64 @@
+{
+  "checkpoint": 237,
+  "stack": {
+    "repo": "/home/daniel/officehq-angular-spring",
+    "origin": "git@github.com:officefloor/officehq-angular-spring.git",
+    "name": "officehq-angular-spring",
+    "base_ref": "base-empty",
+    "base_commit": "65cb8233ea38b2dfa6cfd18709e30cd18fdf3250"
+  },
+  "checkpoint_id": "cp237_today-permission",
+  "phase": "late",
+  "type": "additive",
+  "mutates": [],
+  "replaced_tests": [],
+  "request": {
+    "spec": "The permission matrix gains today: which roles may change the sheet's today (SETTING_CHANGED\nkey=perm-today value=<roles>; blank keeps the standing rule, anyone but a viewer). A change by a\nrole not allowed is refused with the sheet's error.\n",
+    "prompt": "You are implementing ONE change to this application.\n\nFIRST read AGENTS.md \u2014 it states the working rules and how the app is tested, and sends you to\nDESIGN.md for the app's stack and conventions. Follow both.\n\nTHE CHANGE REQUEST:\nThe permission matrix gains today: which roles may change the sheet's today (SETTING_CHANGED\nkey=perm-today value=<roles>; blank keeps the standing rule, anyone but a viewer). A change by a\nrole not allowed is refused with the sheet's error.\n\nYour work is verified by an automated Playwright UI test already installed under e2e/specs/.\nRead that spec: it declares the exact data-testid anchors, values, test data and any audit\nrecords it expects \u2014 match them. Run `bin/e2e` to build the app, start it, and run the test as\nyou work; iterate until it passes. Change whatever the request needs across the app \u2014 its stored\ndata, its server and its front end. Do NOT edit bin/build, bin/start, bin/stop, bin/e2e,\nAGENTS.md, CLAUDE.md, DESIGN.md, e2e/support/ or the test spec.\n"
+  },
+  "commit_sha": "567056070b8223a7726eec6fe5b53b09f1c6dc4d",
+  "reset_sha": "",
+  "preagent_sha": "224a2355dd0d68452f3088424300adeb94d63661",
+  "prev_sha": "224a2355dd0d68452f3088424300adeb94d63661",
+  "base_sha": "65cb8233ea38b2dfa6cfd18709e30cd18fdf3250",
+  "agent": {
+    "ok": true,
+    "cost_usd": 0.5890422,
+    "input_tokens": 40,
+    "output_tokens": 7394,
+    "cache_read_tokens": 683331,
+    "cache_creation_tokens": 38042,
+    "num_turns": 21,
+    "duration_ms": 324757,
+    "duration_api_ms": 88797,
+    "model": "claude-opus-5-5",
+    "session_id": "3734ed9b-20fd-4a58-b2b7-ce32e100d534",
+    "stop_reason": "success",
+    "result_text": "The permission matrix now covers changing the sheet's today, and all 4 tests in `bin/e2e` pass.\n\n**Server**\n- `Sheet.java`: added a `today` entry. When it's blank, the standing rule applies: clerk, steward or restricted may change today, so anyone but a viewer.\n- `SheetService.setToday`: checks the user's role against the matrix first. If the role isn't allowed, it returns 403 before anything is written, so there's no SNAPSHOT line and no change to the sheet.\n- `SheetService` now takes `RoleService` lazily (`@Lazy`), because `RoleService` already depends on `SheetService`.\n- `SheetController.java`: the `settings/perm/{action}` endpoint now accepts `today`. Saving it writes `SETTING_CHANGED \u2026 key=perm-today value=<roles>`.\n- No database migration was needed: `sheet_permission` already stores any action name, and saving or restoring sheet history copies the whole matrix.\n\n**Front end**\n- `core/sheet.ts`: `today` added to `PERM_ACTIONS` and the standing rules. The settings panel builds its fields from that list, so it now shows `setting-perm-today` and `setting-perm-today-current`.\n- `settings.ts`: added the `perm_today` form field.\n- `home.ts`: a refused change of today shows `sheet-error` with \"Your role may not change the sheet's today.\"\n\n**Two choices the request didn't spell out:**\n- **`restricted` can be listed for today only.** The other matrix entries accept just clerk and steward. Allowing restricted for today means you can write out the standing rule in full.\n- **The settings form's role check is stricter.** It used to let any role name through, and the server then refused viewer or restricted. It now catches those on the form, before saving.",
+    "error": "",
+    "attempts": [
+      {
+        "ok": true,
+        "limit_reached": false,
+        "retryable": false,
+        "timed_out": false,
+        "cost_usd": 0.5890422,
+        "num_turns": 21,
+        "duration_ms": 324757,
+        "duration_api_ms": 88797,
+        "error": ""
+      }
+    ]
+  },
+  "agent_stream_file": "cp237.agent.jsonl",
+  "agent_diff_file": "cp237.agent.diff",
+  "build_log_file": null,
+  "tests": {
+    "gated": false,
+    "queued": true
+  },
+  "probe": null,
+  "pinned_touched": [],
+  "acceptance_touched": [],
+  "impact_gate": null
+}

@@ -1,0 +1,165 @@
+diff --git a/src/main/frontend/src/app/core/sheet.ts b/src/main/frontend/src/app/core/sheet.ts
+index 895eb1954..4ffb416a7 100644
+--- a/src/main/frontend/src/app/core/sheet.ts
++++ b/src/main/frontend/src/app/core/sheet.ts
+@@ -117,13 +117,13 @@ export interface SheetView {
+ }
+ 
+ /** The actions the permission matrix covers. */
+-export const PERM_ACTIONS = ['open', 'settle', 'void', 'reassign', 'close', 'reopen'] as const;
++export const PERM_ACTIONS = ['open', 'settle', 'void', 'reassign', 'close', 'reopen', 'today'] as const;
+ export type PermAction = (typeof PERM_ACTIONS)[number];
+ 
+ /** The roles that may take each action while its matrix entry is blank. */
+ export const STANDING_PERMISSIONS: Record<PermAction, string> = {
+   open: 'clerk,steward', settle: 'clerk,steward', void: 'clerk,steward',
+-  reassign: 'steward', close: 'clerk,steward', reopen: 'steward',
++  reassign: 'steward', close: 'clerk,steward', reopen: 'steward', today: 'clerk,steward,restricted',
+ };
+ 
+ /** A setting's value in force on a date (yyyy-mm-dd): the one recorded with the latest from-date on or before it;
+diff --git a/src/main/frontend/src/app/features/home/home.ts b/src/main/frontend/src/app/features/home/home.ts
+index a8eb7842c..c73939706 100644
+--- a/src/main/frontend/src/app/features/home/home.ts
++++ b/src/main/frontend/src/app/features/home/home.ts
+@@ -1,4 +1,5 @@
+ import { Component, inject, signal } from '@angular/core';
++import { HttpErrorResponse } from '@angular/common/http';
+ import { FormControl, FormGroup, ReactiveFormsModule, Validators } from '@angular/forms';
+ import { LOCALES, Locale, Session } from '../../core/session';
+ import { Sheets } from '../../core/sheet';
+@@ -358,9 +359,11 @@ export class Home {
+     this.savingToday.set(true);
+     this.sheets.setToday(sheet.id, today).subscribe({
+       next: () => this.savingToday.set(false),
+-      error: () => {
++      error: (e: unknown) => {
+         this.savingToday.set(false);
+-        this.todayError.set('Could not change the sheet\'s today.');
++        this.todayError.set(e instanceof HttpErrorResponse && e.status === 403
++          ? 'Your role may not change the sheet\'s today.'
++          : 'Could not change the sheet\'s today.');
+       },
+     });
+   }
+diff --git a/src/main/frontend/src/app/features/settings/settings.ts b/src/main/frontend/src/app/features/settings/settings.ts
+index 91f009942..9b898b745 100644
+--- a/src/main/frontend/src/app/features/settings/settings.ts
++++ b/src/main/frontend/src/app/features/settings/settings.ts
+@@ -376,6 +376,7 @@ export class SettingsPanel {
+     perm_reassign: new FormControl('', { nonNullable: true }),
+     perm_close: new FormControl('', { nonNullable: true }),
+     perm_reopen: new FormControl('', { nonNullable: true }),
++    perm_today: new FormControl('', { nonNullable: true }),
+   });
+   protected readonly roleForm = new FormGroup({
+     user: new FormControl('', { nonNullable: true }),
+@@ -597,7 +598,7 @@ export class SettingsPanel {
+     }
+     const permsSaved = PERM_ACTIONS.filter((a) => isSaved(`perm_${a}`))
+       .map((a) => ({ action: a, roles: controls[`perm_${a}`].value.split(',').map((r) => r.trim()).filter((r) => r !== '') }));
+-    if (permsSaved.some((p) => p.roles.some((r) => !(ROLES as readonly string[]).includes(r)))) {
++    if (permsSaved.some((p) => p.roles.some((r) => r !== 'clerk' && r !== 'steward' && !(p.action === 'today' && r === 'restricted')))) {
+       this.settingsError.set(`List the roles that may take an action, comma separated (${this.roleNames}), or leave it blank for the standing rule.`);
+       return;
+     }
+@@ -661,7 +662,8 @@ export class SettingsPanel {
+   private resetSettings(sheet: SheetView | null): void {
+     this.settingsForm.reset({ clerkLimit: sheet?.clerkLimit ?? '', clerkLimitA: sheet?.gradeClerkLimit?.A ?? '', clerkLimitB: sheet?.gradeClerkLimit?.B ?? '', clerkLimitC: sheet?.gradeClerkLimit?.C ?? '', floor: sheet?.floor ?? '', terms: String(sheet?.terms ?? ''), termsA: String(sheet?.gradeTerms?.A ?? ''), termsB: String(sheet?.gradeTerms?.B ?? ''), termsC: String(sheet?.gradeTerms?.C ?? ''), graceA: String(sheet?.gradeGrace?.A ?? ''), graceB: String(sheet?.gradeGrace?.B ?? ''), graceC: String(sheet?.gradeGrace?.C ?? ''), latePct: sheet?.latePct ?? '', policyDate: sheet?.policyDate ?? '', periodNumberingFrom: sheet?.periodNumberingFrom ?? '', entryDate: sheet?.entryDate ?? '', graceDays: String(sheet?.graceDays ?? ''), escalateAfter: String(sheet?.escalateAfter ?? ''), reviewSla: String(sheet?.reviewSla ?? ''), pendingSla: String(sheet?.pendingSla ?? ''), maxOpen: String(sheet?.maxOpen ?? ''), scoreMid: String(sheet?.scoreMid ?? ''), scoreHigh: String(sheet?.scoreHigh ?? ''), scoreLog: sheet?.scoreLog ?? '', fiscalStartMonth: String(sheet?.fiscalStartMonth ?? ''), pot: sheet?.pot ?? '', proofKinds: sheet?.proofKinds ?? '', defaultGrade: sheet?.defaultGrade ?? '', alertThreshold: sheet?.alertThreshold ?? '', parent: sheet?.parent ?? '', cap: sheet?.cap ?? '', proofThreshold: sheet?.proofThreshold ?? '', proofThresholdA: sheet?.gradeProofThreshold?.A ?? '', proofThresholdB: sheet?.gradeProofThreshold?.B ?? '', proofThresholdC: sheet?.gradeProofThreshold?.C ?? '', noteThreshold: sheet?.noteThreshold ?? '', reviewThreshold: sheet?.reviewThreshold ?? '', rounding: sheet?.rounding ?? '', clerkLimitFrom: '', clerkLimitAFrom: '', clerkLimitBFrom: '', clerkLimitCFrom: '', floorFrom: '', termsFrom: '', termsAFrom: '', termsBFrom: '', termsCFrom: '', graceAFrom: '', graceBFrom: '', graceCFrom: '', latePctFrom: '', capFrom: '', proofThresholdFrom: '', proofThresholdAFrom: '', proofThresholdBFrom: '', proofThresholdCFrom: '', noteThresholdFrom: '', reviewThresholdFrom: '', roundingFrom: '',
+       perm_open: sheet?.permissions?.open ?? '', perm_settle: sheet?.permissions?.settle ?? '', perm_void: sheet?.permissions?.void ?? '',
+-      perm_reassign: sheet?.permissions?.reassign ?? '', perm_close: sheet?.permissions?.close ?? '', perm_reopen: sheet?.permissions?.reopen ?? '' }, { emitEvent: false });
++      perm_reassign: sheet?.permissions?.reassign ?? '', perm_close: sheet?.permissions?.close ?? '', perm_reopen: sheet?.permissions?.reopen ?? '',
++      perm_today: sheet?.permissions?.today ?? '' }, { emitEvent: false });
+   }
+ 
+   protected saveRole(): void {
+diff --git a/src/main/java/net/officefloor/hq/app/sheet/Sheet.java b/src/main/java/net/officefloor/hq/app/sheet/Sheet.java
+index bd5855bbe..0d1bf446b 100644
+--- a/src/main/java/net/officefloor/hq/app/sheet/Sheet.java
++++ b/src/main/java/net/officefloor/hq/app/sheet/Sheet.java
+@@ -58,7 +58,8 @@ public class Sheet {
+     /** The actions the permission matrix covers, and the roles that may take each while its entry is blank. */
+     public static final Map<String, String> STANDING_PERMISSIONS = Map.of(
+             "open", "clerk,steward", "settle", "clerk,steward", "void", "clerk,steward",
+-            "reassign", "steward", "close", "clerk,steward", "reopen", "steward");
++            "reassign", "steward", "close", "clerk,steward", "reopen", "steward",
++            "today", "clerk,steward,restricted");
+ 
+     @Id
+     private String id;
+diff --git a/src/main/java/net/officefloor/hq/app/sheet/SheetController.java b/src/main/java/net/officefloor/hq/app/sheet/SheetController.java
+index dab1d59ea..a01365b47 100644
+--- a/src/main/java/net/officefloor/hq/app/sheet/SheetController.java
++++ b/src/main/java/net/officefloor/hq/app/sheet/SheetController.java
+@@ -578,7 +578,7 @@ public class SheetController {
+     @PutMapping("/{id}/settings/perm/{action}")
+     public SheetView setPermission(
+             @PathVariable @NotBlank @Size(max = 100) @Pattern(regexp = "[A-Za-z0-9._-]+") String id,
+-            @PathVariable @Pattern(regexp = "open|settle|void|reassign|close|reopen") String action,
++            @PathVariable @Pattern(regexp = "open|settle|void|reassign|close|reopen|today") String action,
+             @RequestHeader("X-User") @NotBlank @Size(max = 100) String user,
+             @Valid @RequestBody PermissionChange request) {
+         return SheetView.of(sheets.setPermission(id, user, action, request.roles()));
+diff --git a/src/main/java/net/officefloor/hq/app/sheet/SheetService.java b/src/main/java/net/officefloor/hq/app/sheet/SheetService.java
+index cc4f9e785..b84f17bdd 100644
+--- a/src/main/java/net/officefloor/hq/app/sheet/SheetService.java
++++ b/src/main/java/net/officefloor/hq/app/sheet/SheetService.java
+@@ -10,6 +10,7 @@ import net.officefloor.hq.app.Audit;
+ import net.officefloor.hq.app.claim.ClaimRepository;
+ import net.officefloor.hq.app.period.PeriodService;
+ import net.officefloor.hq.app.role.Role;
++import net.officefloor.hq.app.role.RoleService;
+ import net.officefloor.hq.app.rollup.Rollup;
+ import net.officefloor.hq.app.snapshot.PersonSnapshotService;
+ import org.springframework.context.annotation.Lazy;
+@@ -30,10 +31,12 @@ public class SheetService {
+     private final PeriodService periods;
+     private final ClaimRepository claims;
+     private final PersonSnapshotService snapshots;
++    private final RoleService roles;
+ 
+-    // The period service loads sheets through this one, so it is taken lazily.
++    // The period and role services load sheets through this one, so they are taken lazily.
+     public SheetService(SheetRepository sheets, Rollup rollup, Audit audit, @Lazy PeriodService periods,
+-            ClaimRepository claims, PersonSnapshotService snapshots) {
++            ClaimRepository claims, PersonSnapshotService snapshots, @Lazy RoleService roles) {
++        this.roles = roles;
+         this.sheets = sheets;
+         this.snapshots = snapshots;
+         this.claims = claims;
+@@ -85,11 +88,15 @@ public class SheetService {
+     /** Set the sheet's today, starting the sheet if it has never been loaded; then close every open period past its
+      *  grace days. A change of today first records a SNAPSHOT line per person, in list order, with their due-total on
+      *  the day being left (kept as the person's snapshot line), before them, while the score log is on, a SCORE line
+-     *  per person, in list order, with their score on the day being left, and releases every claim editor's lock on the sheet. */
++     *  per person, in list order, with their score on the day being left, and releases every claim editor's lock on the sheet.
++     *  Refused for a role the permission matrix does not allow to change today. */
+     @Transactional
+     public Sheet setToday(String id, String user, LocalDate today) {
+         load(id, user);
+         Sheet sheet = sheets.findLockedById(id).orElseThrow();
++        if (!sheet.allows("today", roles.roleOf(id, user))) {
++            throw new ResponseStatusException(HttpStatus.FORBIDDEN, "Your role may not change the sheet's today");
++        }
+         Rollup.Figures before = rollup.of(id);
+         boolean changed = !today.equals(sheet.getToday());
+         if (changed) {
+@@ -479,13 +486,15 @@ public class SheetService {
+         return record(id, user, Sheet.ROUNDING, from, mode, true);
+     }
+ 
+-    /** Set the roles that may take an action (a comma separated list of clerk and steward; blank: its standing
+-     *  rule), starting the sheet if it has never been loaded. Not dated. Refused for a role that is neither. */
++    /** Set the roles that may take an action (a comma separated list of clerk and steward, and for today also
++     *  restricted; blank: its standing rule), starting the sheet if it has never been loaded. Not dated. Refused for
++     *  any other role. */
+     @Transactional
+     public Sheet setPermission(String id, String user, String action, String roles) {
+         List<String> listed = roles == null ? List.of()
+                 : Arrays.stream(roles.split(",")).map(String::trim).filter(r -> !r.isEmpty()).distinct().toList();
+-        if (listed.stream().anyMatch(r -> !Role.CLERK.equals(r) && !Role.STEWARD.equals(r))) {
++        if (listed.stream().anyMatch(r -> !Role.CLERK.equals(r) && !Role.STEWARD.equals(r)
++                && !("today".equals(action) && Role.RESTRICTED.equals(r)))) {
+             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "A permission lists the roles clerk and steward");
+         }
+         String value = String.join(",", listed);
