@@ -224,6 +224,14 @@ export function isReviewLate(c: Pick<ClaimView, 'status' | 'log'>, today: string
   return reviewDay !== undefined && addDays(reviewDay, reviewSla) < today;
 }
 
+/** Whether a claim is late pending on the sheet's today: PENDING, with a pending SLA set (null: none), and its
+ *  pending day (the sheet's today when it last went to PENDING, by its log) plus the SLA days before today. */
+export function isPendingLate(c: Pick<ClaimView, 'status' | 'log'>, today: string, pendingSla: number | null): boolean {
+  if (c.status !== 'PENDING' || pendingSla === null) return false;
+  const pendingDay = c.log.filter((l) => l.status === 'PENDING').at(-1)?.on;
+  return pendingDay !== undefined && addDays(pendingDay, pendingSla) < today;
+}
+
 /** A claim as the form submits it: a blank date takes the sheet's today. A negative amount is a correction,
  *  which names in `corrects` the number of the claim it corrects. */
 export interface ClaimForm {

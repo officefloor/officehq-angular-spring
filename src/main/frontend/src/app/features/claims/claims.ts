@@ -2,7 +2,7 @@ import { HttpErrorResponse } from '@angular/common/http';
 import { Component, computed, effect, inject, input, output, signal, untracked } from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { FormControl, FormGroup, ReactiveFormsModule } from '@angular/forms';
-import { AMOUNT_PATTERN, CLAIM_AMOUNT_PATTERN, ClaimStatus, ClaimView, Claims, PROOF_KINDS, ProofKind, cents, countsClaimed, countsWithHolds, isDeferred, isOverdue, isReviewLate, money, roundingDate } from '../../core/claims';
+import { AMOUNT_PATTERN, CLAIM_AMOUNT_PATTERN, ClaimStatus, ClaimView, Claims, PROOF_KINDS, ProofKind, cents, countsClaimed, countsWithHolds, isDeferred, isOverdue, isPendingLate, isReviewLate, money, roundingDate } from '../../core/claims';
 import { Grade, HoldView, PersonView, gradeOn } from '../../core/people';
 import { PeriodView, periodOn } from '../../core/periods';
 import { DEFAULT_DUE_TERMS, NOT_AVAILABLE, RateLine, claimDueCents } from '../../core/rates';
@@ -88,6 +88,7 @@ const UNPROVEN = 'This claim\'s due is above the proof threshold, so it needs a 
           corrects No. <span data-testid="claim-corrects">{{ c.corrects ?? '' }}</span>
           <span data-testid="claim-status">{{ c.status }}</span>
           — review late <span data-testid="claim-review-late">{{ reviewLateOf(c) ? 'yes' : 'no' }}</span>
+          — pending late <span data-testid="claim-pending-late">{{ pendingLateOf(c) ? 'yes' : 'no' }}</span>
           batch <span data-testid="claim-batch">{{ c.batch ?? '' }}</span>
           opened by <span data-testid="claim-opened-by">{{ c.openedBy ?? '' }}</span>
           — stated <span data-testid="claim-stated">{{ c.stated ? 'yes' : 'no' }}</span>
@@ -380,6 +381,12 @@ export class PersonClaims {
   protected reviewLateOf(c: ClaimView): boolean {
     const sheet = this.sheets.current();
     return sheet !== null && isReviewLate(c, sheet.today, sheet.reviewSla);
+  }
+
+  /** Whether the claim is PENDING for longer than the sheet's pending SLA allows. */
+  protected pendingLateOf(c: ClaimView): boolean {
+    const sheet = this.sheets.current();
+    return sheet !== null && isPendingLate(c, sheet.today, sheet.pendingSla);
   }
 
   protected deferredOf(c: ClaimView): boolean {

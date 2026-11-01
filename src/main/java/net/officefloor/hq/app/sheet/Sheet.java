@@ -126,6 +126,11 @@ public class Sheet {
     @Column(name = "review_sla")
     private Integer reviewSla;
 
+    /** The sheet's pending SLA, in days: a PENDING claim whose pending day (the sheet's today when it last went to
+     *  PENDING) plus these is before the sheet's today is late pending; null means none. Not dated. */
+    @Column(name = "pending_sla")
+    private Integer pendingSla;
+
     /** The sheet's maximum of open claims per person, a whole number: opening a claim is refused when its person
      *  already has this many OPEN or PENDING claims; null means none. Not dated. */
     @Column(name = "max_open")
@@ -220,6 +225,7 @@ public class Sheet {
         copy.graceDays = graceDays;
         copy.escalateAfter = escalateAfter;
         copy.reviewSla = reviewSla;
+        copy.pendingSla = pendingSla;
         copy.maxOpen = maxOpen;
         copy.scoreMid = scoreMid;
         copy.scoreHigh = scoreHigh;
@@ -466,6 +472,14 @@ public class Sheet {
 
     public void setReviewSla(Integer reviewSla) {
         this.reviewSla = reviewSla;
+    }
+
+    public Integer getPendingSla() {
+        return pendingSla;
+    }
+
+    public void setPendingSla(Integer pendingSla) {
+        this.pendingSla = pendingSla;
     }
 
     public Integer getMaxOpen() {

@@ -231,6 +231,18 @@ public class SheetService {
         return saved;
     }
 
+    /** Set the sheet's pending SLA in days (null: none), starting the sheet if it has never been loaded. Not dated. */
+    @Transactional
+    public Sheet setPendingSla(String id, String user, Integer pendingSla) {
+        load(id, user);
+        Sheet sheet = sheets.findLockedById(id).orElseThrow();
+        sheet.setPendingSla(pendingSla);
+        Sheet saved = sheets.saveAndFlush(sheet);
+        audit.recordChangeOnCommit(id, user, "SETTING_CHANGED sheet=" + id + " by=" + user
+                + " key=pending-sla value=" + (pendingSla == null ? "" : pendingSla));
+        return saved;
+    }
+
     /** Set the sheet's maximum of open claims per person (null: none), starting the sheet if it has never been loaded.
      *  Not dated. */
     @Transactional
