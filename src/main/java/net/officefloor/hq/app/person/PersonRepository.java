@@ -11,4 +11,6 @@ public interface PersonRepository extends JpaRepository<Person, Long> {
     Optional<Person> findByIdAndSheetId(Long id, String sheetId);
 
     Optional<Person> findBySheetIdAndNameKey(String sheetId, String nameKey);
+
+    Optional<Person> findBySheetIdAndContact(String sheetId, String contact);
 }

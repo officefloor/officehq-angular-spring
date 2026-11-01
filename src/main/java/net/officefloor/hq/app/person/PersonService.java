@@ -33,7 +33,8 @@ import org.springframework.transaction.annotation.Transactional;
  * not the same person twice. A person's grade is dated: the first one given is in force from the
  * beginning of time, and each edit records the grade from its from-date (blank: the sheet's today),
  * unless it leaves the grade as in force on the sheet's today with the from-date blank. A person may
- * have their own terms in days (null: none), given on the add and on each edit.
+ * have their own terms in days (null: none), given on the add and on each edit, and a contact (blank:
+ * none), kept without surrounding spaces and lower-cased; one another person on the sheet has is refused.
  */
 @Service
 public class PersonService {
@@ -92,41 +93,49 @@ public class PersonService {
 
     @Transactional
     public Person add(String sheetId, String user, String name, String grade) {
-        return add(sheetId, user, name, grade, null);
+        return add(sheetId, user, name, grade, null, null);
     }
 
-    /** Add a person with their own terms in days (null: none). */
+    /** Add a person with their own terms in days (null: none) and contact (blank: none). */
     @Transactional
-    public Person add(String sheetId, String user, String name, String grade, Integer terms) {
+    public Person add(String sheetId, String user, String name, String grade, Integer terms, String contact) {
         if (!sheets.existsById(sheetId)) throw new SheetNotFoundException();
         requireUnused(sheetId, name, null);
+        String key = Person.contactOf(contact);
+        requireContactUnused(sheetId, key, null);
         RollupService.Snapshot before = rollup.snapshot(sheetId);
         Person draft = new Person(sheetId, name, grade, today(sheetId));
         draft.setTerms(terms);
+        draft.setContact(key);
         Person person = saveUnique(draft);
         record("PERSON_ADDED", sheetId, user, person, person.getGrade(),
-                terms != null ? " terms=" + terms : "");
+                (terms != null ? " terms=" + terms : "") + (key != null ? " contact=" + key : ""));
         rollup.recordChanges(sheetId, user, before);
         return person;
     }
 
     @Transactional
     public Person edit(String sheetId, String user, Long id, long version, String name, String grade,
-            LocalDate gradeFrom, Integer terms) {
+            LocalDate gradeFrom, Integer terms, String contact) {
         Person person = people.findByIdAndSheetId(id, sheetId).orElseThrow(PersonNotFoundException::new);
         if (person.getVersion() != version) throw new PersonVersionConflictException();
         requireUnused(sheetId, name, id);
+        String key = Person.contactOf(contact);
+        requireContactUnused(sheetId, key, id);
         RollupService.Snapshot before = rollup.snapshot(sheetId);
         LocalDate today = today(sheetId);
         person.setName(name);
         boolean termsChanged = !Objects.equals(terms, person.getTerms());
         person.setTerms(terms);
+        boolean contactChanged = !Objects.equals(key, person.getContact());
+        person.setContact(key);
         if (gradeFrom != null || !grade.equals(person.gradeOn(today))) {
             person.setGradeFrom(gradeFrom != null ? gradeFrom : today, grade, today);
         }
         Person saved = saveUnique(person);
         record("PERSON_EDITED", sheetId, user, saved, saved.gradeOn(today),
-                termsChanged ? " terms=" + (terms != null ? terms : "") : "");
+                (termsChanged ? " terms=" + (terms != null ? terms : "") : "")
+                        + (contactChanged ? " contact=" + (key != null ? key : "") : ""));
         rollup.recordChanges(sheetId, user, before);
         return saved;
     }
@@ -277,6 +286,13 @@ public class PersonService {
         people.findBySheetIdAndNameKey(sheetId, Person.keyOf(name))
                 .filter(other -> !other.getId().equals(self))
                 .ifPresent(other -> { throw new DuplicatePersonNameException(); });
+    }
+
+    private void requireContactUnused(String sheetId, String contact, Long self) {
+        if (contact == null) return;
+        people.findBySheetIdAndContact(sheetId, contact)
+                .filter(other -> !other.getId().equals(self))
+                .ifPresent(other -> { throw new DuplicatePersonContactException(); });
     }
 
     /** Writes the person now, so a name taken meanwhile by another user is refused by the store. */

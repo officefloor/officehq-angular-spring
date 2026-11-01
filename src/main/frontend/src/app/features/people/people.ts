@@ -53,6 +53,8 @@ interface Person {
   watched: boolean;
   /** Their own terms in days, ahead of their grade's and the sheet's; null: none. */
   terms: number | null;
+  /** Their contact, without surrounding spaces and lower-cased; null: none. */
+  contact: string | null;
   /** Whether they have an open claim (OPEN or PENDING) that counts, dated within the 30 days up to and including the sheet's today. */
   active: boolean;
 }
@@ -130,7 +132,8 @@ interface StatementTaken {
 // form's grade from its from-date (blank: the sheet's today), unless it leaves the grade as the row
 // showed it with the from-date blank. A claim takes the rate of the grade in force on its date; the
 // row shows the grade in force on the sheet's today. A person may have their own terms in days (blank:
-// none); a claim's due-by is fixed when it is added from them, else their grade's, else the sheet's.
+// none), and a contact (blank: none), kept trimmed and lower-cased and refused when another person on
+// the sheet has it; a claim's due-by is fixed when it is added from them, else their grade's, else the sheet's.
 // Each person can name other people on the sheet as their patrons, one at a time (not themselves, nor
 // the same person twice); the row shows their patrons' names, sorted, and their backing: their
 // patrons' settled figures added up over their SETTLED claims dated within the 90 days up to and
@@ -180,6 +183,8 @@ function trimmedSum(figures: number[]): number {
         <input type="date" id="person-form-grade-from" data-testid="person-form-grade-from" formControlName="gradeFrom" />
         <label for="person-form-terms">Terms (days, blank: none)</label>
         <input id="person-form-terms" data-testid="person-form-terms" formControlName="terms" inputmode="numeric" />
+        <label for="person-form-contact">Contact (blank: none)</label>
+        <input id="person-form-contact" data-testid="person-form-contact" formControlName="contact" />
         <button type="submit" data-testid="person-form-submit">{{ editingId() === null ? 'Add' : 'Save' }}</button>
         @if (editingId() !== null) {
           <button type="button" data-testid="person-form-cancel" (click)="cancel()">Cancel</button>
@@ -263,7 +268,7 @@ function trimmedSum(figures: number[]): number {
       </form>
       <table>
         <thead>
-          <tr><th scope="col"><span class="visually-hidden">Select</span></th><th scope="col">Name</th><th scope="col">Grade</th><th scope="col">Terms</th><th scope="col">Claimed</th><th scope="col">Due total</th><th scope="col">Excess</th><th scope="col">Settled total</th><th scope="col">Open total</th><th scope="col">Periods</th><th scope="col">Statements</th><th scope="col">Retired</th><th scope="col">Hold</th><th scope="col">Watched</th><th scope="col">Active</th><th scope="col">Overdue</th><th scope="col">Aged</th><th scope="col">Patrons</th><th scope="col">Claims</th><th scope="col"><span class="visually-hidden">Actions</span></th></tr>
+          <tr><th scope="col"><span class="visually-hidden">Select</span></th><th scope="col">Name</th><th scope="col">Grade</th><th scope="col">Terms</th><th scope="col">Contact</th><th scope="col">Claimed</th><th scope="col">Due total</th><th scope="col">Excess</th><th scope="col">Settled total</th><th scope="col">Open total</th><th scope="col">Periods</th><th scope="col">Statements</th><th scope="col">Retired</th><th scope="col">Hold</th><th scope="col">Watched</th><th scope="col">Active</th><th scope="col">Overdue</th><th scope="col">Aged</th><th scope="col">Patrons</th><th scope="col">Claims</th><th scope="col"><span class="visually-hidden">Actions</span></th></tr>
         </thead>
         <tbody>
           @for (p of listed(); track p.id) {
@@ -276,6 +281,7 @@ function trimmedSum(figures: number[]): number {
               <td data-testid="person-name">{{ p.name }}</td>
               <td data-testid="person-grade">{{ gradeOf(p) }}</td>
               <td data-testid="person-terms">{{ p.terms ?? '' }}</td>
+              <td data-testid="person-contact">{{ p.contact ?? '' }}</td>
               <td data-testid="person-claimed">{{ claimedOf(p.id) }}</td>
               <td data-testid="person-due-total">{{ dueTotalOf(p) }}</td>
               <td data-testid="person-excess">{{ excessOf(p) }}</td>
@@ -747,6 +753,8 @@ export class People {
     gradeFrom: new FormControl('', { nonNullable: true }),
     /** Their own terms in days; blank: none. */
     terms: new FormControl('', { nonNullable: true }),
+    /** Their contact; blank: none. */
+    contact: new FormControl('', { nonNullable: true }),
   });
 
   /** A quick-add is under way; another one waits for its answer rather than storing twice. */
@@ -1310,7 +1318,7 @@ export class People {
 
   private reset(): void {
     this.editingId.set(null);
-    this.form.reset({ name: '', grade: 'A', gradeFrom: '', terms: '' }, { emitEvent: false });
+    this.form.reset({ name: '', grade: 'A', gradeFrom: '', terms: '', contact: '' }, { emitEvent: false });
     this.error.set('');
   }
 
@@ -1318,7 +1326,7 @@ export class People {
     this.personError.set(null);
     this.editingId.set(p.id);
     this.editingVersion = p.version;
-    this.form.setValue({ name: p.name, grade: this.gradeOf(p), gradeFrom: '', terms: p.terms?.toString() ?? '' }, { emitEvent: false });
+    this.form.setValue({ name: p.name, grade: this.gradeOf(p), gradeFrom: '', terms: p.terms?.toString() ?? '', contact: p.contact ?? '' }, { emitEvent: false });
     this.error.set('');
   }
 
@@ -1336,6 +1344,7 @@ export class People {
     const grade = raw.grade;
     const gradeFrom = raw.gradeFrom.trim() || null;
     const terms = raw.terms.trim();
+    const contact = raw.contact.trim().toLowerCase();
     if (!name) {
       this.error.set('Enter a name.');
       return;
@@ -1355,13 +1364,13 @@ export class People {
     try {
       if (id === null) {
         const added = await firstValueFrom(
-          this.http.post<Person>(this.url(sheet), { name, grade, terms }, { headers: this.headers() }),
+          this.http.post<Person>(this.url(sheet), { name, grade, terms, contact }, { headers: this.headers() }),
         );
         if (this.session.sheetId() !== sheet) return;
         this.people.update((list) => [...list, added]);
       } else {
         const saved = await firstValueFrom(
-          this.http.put<Person>(`${this.url(sheet)}/${id}`, { name, grade, gradeFrom, terms, version: this.editingVersion }, { headers: this.headers() }),
+          this.http.put<Person>(`${this.url(sheet)}/${id}`, { name, grade, gradeFrom, terms, contact, version: this.editingVersion }, { headers: this.headers() }),
         );
         if (this.session.sheetId() !== sheet) return;
         this.people.update((list) => list.map((p) => (p.id === saved.id ? saved : p)));
@@ -1371,7 +1380,7 @@ export class People {
       if (e instanceof HttpErrorResponse && e.status === 412 && id !== null) {
         await this.showCurrent(sheet, id);
       } else if (e instanceof HttpErrorResponse && e.status === 409) {
-        this.error.set('That name is already in use on this sheet.');
+        this.error.set('That name or contact is already in use on this sheet.');
       } else {
         this.error.set(id === null ? 'Could not add that person.' : 'Could not save that person.');
       }
@@ -1476,7 +1485,7 @@ export class People {
       const current = list.find((p) => p.id === id);
       if (current && this.editingId() === id) {
         this.editingVersion = current.version;
-        this.form.setValue({ name: current.name, grade: this.gradeOf(current), gradeFrom: '', terms: current.terms?.toString() ?? '' }, { emitEvent: false });
+        this.form.setValue({ name: current.name, grade: this.gradeOf(current), gradeFrom: '', terms: current.terms?.toString() ?? '', contact: current.contact ?? '' }, { emitEvent: false });
       }
     } catch {
       // the error already shown stands

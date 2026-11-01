@@ -32,11 +32,11 @@ public class PersonController {
      * grade recorded, earliest first (the first from null, the beginning of time); retiredFrom is null
      * while not retired; held whether they have any hold, holds every hold, earliest first; patronIds
      * in the order named; watched whether the signed-in user watches them; terms their own, null for none;
-     * active whether they are active on the sheet's today ({@link Person#activeOn}).
+     * contact theirs, null for none; active whether they are active on the sheet's today ({@link Person#activeOn}).
      */
     public record PersonView(Long id, String name, String grade, List<GradeView> grades, long version,
             boolean retired, LocalDate retiredFrom, boolean held, List<HoldView> holds, List<Long> patronIds,
-            boolean watched, Integer terms, boolean active) {
+            boolean watched, Integer terms, boolean active, String contact) {
         public static PersonView of(Person person, LocalDate today, List<Long> patronIds, boolean watched,
                 boolean active) {
             List<GradeView> grades = new ArrayList<>();
@@ -46,7 +46,7 @@ public class PersonController {
                     today == null ? person.getGrade() : person.gradeOn(today), grades, person.getVersion(),
                     person.isRetired(), person.getRetiredFrom(), person.isHeld(),
                     person.getHolds().stream().map(h -> new HoldView(h.getFromDate(), h.getToDate())).toList(),
-                    patronIds, watched, person.getTerms(), active);
+                    patronIds, watched, person.getTerms(), active, person.getContact());
         }
     }
 
@@ -68,7 +68,8 @@ public class PersonController {
     public record PersonRequest(
             @NotBlank @Size(max = 200) String name,
             @NotNull @Pattern(regexp = "[ABC]") String grade,
-            @Pattern(regexp = "\\d{0,4}") String terms) {}
+            @Pattern(regexp = "\\d{0,4}") String terms,
+            @Size(max = 200) String contact) {}
 
     /** An edit, made from the version of the person the form loaded. */
     public record PersonEditRequest(
@@ -76,6 +77,7 @@ public class PersonController {
             @NotNull @Pattern(regexp = "[ABC]") String grade,
             LocalDate gradeFrom,
             @Pattern(regexp = "\\d{0,4}") String terms,
+            @Size(max = 200) String contact,
             @NotNull Long version) {}
 
     /** The people to give the grade, from the date (blank: the sheet's today). */
@@ -120,7 +122,8 @@ public class PersonController {
             @PathVariable @Size(max = 100) @Pattern(regexp = "[A-Za-z0-9._-]+") String sheetId,
             @RequestHeader("X-User") @NotBlank @Size(max = 100) String user,
             @RequestBody @Valid PersonRequest request) {
-        return view(service.add(sheetId, user, request.name(), request.grade(), termsOf(request.terms())), user);
+        return view(service.add(sheetId, user, request.name(), request.grade(), termsOf(request.terms()),
+                request.contact()), user);
     }
 
     @PutMapping("/{id}")
@@ -130,7 +133,7 @@ public class PersonController {
             @RequestHeader("X-User") @NotBlank @Size(max = 100) String user,
             @RequestBody @Valid PersonEditRequest request) {
         return view(service.edit(sheetId, user, id, request.version(), request.name(), request.grade(),
-                request.gradeFrom(), termsOf(request.terms())), user);
+                request.gradeFrom(), termsOf(request.terms()), request.contact()), user);
     }
 
     /** Give each selected person the grade from the date (blank: the sheet's today), in list order. */

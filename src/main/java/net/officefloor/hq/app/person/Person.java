@@ -77,6 +77,10 @@ public class Person {
     @Column(name = "terms")
     private Integer terms;
 
+    /** Their contact, without surrounding spaces and lower-cased; null: none. */
+    @Column(name = "contact")
+    private String contact;
+
     @Column(name = "retired_from")
     private LocalDate retiredFrom;
 
@@ -154,6 +158,17 @@ public class Person {
     public Integer getTerms() { return terms; }
 
     public void setTerms(Integer terms) { this.terms = terms; }
+
+    /** Their contact, or null when they have none. */
+    public String getContact() { return contact; }
+
+    public void setContact(String contact) { this.contact = contactOf(contact); }
+
+    /** A contact as it is stored: without surrounding spaces, lower-cased; blank or null: none. */
+    public static String contactOf(String contact) {
+        if (contact == null || contact.isBlank()) return null;
+        return contact.strip().toLowerCase(Locale.ROOT);
+    }
 
     /** The date they are retired from, or null while not retired. */
     public LocalDate getRetiredFrom() { return retiredFrom; }
