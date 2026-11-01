@@ -450,10 +450,9 @@ public class Claim {
     public BigDecimal getStatedDue() { return statedDue; }
 
     /**
-     * Whether its due is now bound by its person's last statement: stated and not PENDING. A PENDING
-     * claim shows its live due, and is bound again if rejected.
+     * Whether its due is now bound by its person's last statement: stated, a PENDING claim like any other.
      */
-    public boolean isBound() { return stated && status != ClaimStatus.PENDING; }
+    public boolean isBound() { return stated; }
 
     /** Bind the claim to a due (null: it has none) on the sheet's today, as its person's statement does. */
     public void state(BigDecimal due, LocalDate on) {

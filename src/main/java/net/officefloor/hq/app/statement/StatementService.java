@@ -169,8 +169,7 @@ public class StatementService {
                 claim.unstate(today);
                 continue;
             }
-            // a PENDING claim showed its live due, unbound
-            ClaimBinding binding = status == ClaimStatus.PENDING ? null : claim.bindingAt(asOf);
+            ClaimBinding binding = claim.bindingAt(asOf);
             if (status.isOpen() && binding == null
                     && (person.heldOn(claim.getDate(), asOf) || person.retiredAt(asOf))) {
                 claim.unstate(today);

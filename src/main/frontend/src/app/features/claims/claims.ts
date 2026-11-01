@@ -35,7 +35,7 @@ export interface Claim {
   settledDue: string | null;
   /** The user who opened it; null while DRAFT. They cannot settle it. */
   openedBy: string | null;
-  /** Bound by its person's last statement, to the due it had then; not while PENDING, when its due is live. */
+  /** Bound by its person's last statement, to the due it had then. */
   stated: boolean;
   /** The due bound by its person's last statement, two decimals; null while not stated, or stated with none. */
   statedDue: string | null;
@@ -117,9 +117,9 @@ export function counts(c: Claim): boolean {
   return isOpen(c) || c.status === 'SETTLED';
 }
 
-/** Whether its due is now bound by its person's last statement: stated and not PENDING. */
+/** Whether its due is now bound by its person's last statement: stated, a PENDING claim like any other. */
 export function isBound(c: Claim): boolean {
-  return c.stated && c.status !== 'PENDING';
+  return c.stated;
 }
 
 /**
