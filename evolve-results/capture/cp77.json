@@ -1,0 +1,64 @@
+{
+  "checkpoint": 77,
+  "stack": {
+    "repo": "/home/daniel/officehq-angular-spring",
+    "origin": "git@github.com:officefloor/officehq-angular-spring.git",
+    "name": "officehq-angular-spring",
+    "base_ref": "base-empty",
+    "base_commit": "65cb8233ea38b2dfa6cfd18709e30cd18fdf3250"
+  },
+  "checkpoint_id": "cp77_note-required",
+  "phase": "early",
+  "type": "additive",
+  "mutates": [],
+  "replaced_tests": [],
+  "request": {
+    "spec": "The sheet gains a note threshold (settings, dated like the floor; SETTING_CHANGED\nkey=note-threshold value=<amount>; blank means none). A claim whose due is above the threshold in\nforce on its date cannot be opened with an empty note: opening it, alone or by the bulk button, is\nrefused with an error on the claim.\n",
+    "prompt": "You are implementing ONE change to this application.\n\nFIRST read AGENTS.md \u2014 it states the working rules and how the app is tested, and sends you to\nDESIGN.md for the app's stack and conventions. Follow both.\n\nTHE CHANGE REQUEST:\nThe sheet gains a note threshold (settings, dated like the floor; SETTING_CHANGED\nkey=note-threshold value=<amount>; blank means none). A claim whose due is above the threshold in\nforce on its date cannot be opened with an empty note: opening it, alone or by the bulk button, is\nrefused with an error on the claim.\n\nYour work is verified by an automated Playwright UI test already installed under e2e/specs/.\nRead that spec: it declares the exact data-testid anchors, values, test data and any audit\nrecords it expects \u2014 match them. Run `bin/e2e` to build the app, start it, and run the test as\nyou work; iterate until it passes. Change whatever the request needs across the app \u2014 its stored\ndata, its server and its front end. Do NOT edit bin/build, bin/start, bin/stop, bin/e2e,\nAGENTS.md, CLAUDE.md, DESIGN.md, e2e/support/ or the test spec.\n"
+  },
+  "commit_sha": "bfbb7467b524cd4302ffca3a096c1178d749aaed",
+  "reset_sha": "",
+  "preagent_sha": "6e2715605bdf9e1934bac043fd035150b3a18bc0",
+  "prev_sha": "6e2715605bdf9e1934bac043fd035150b3a18bc0",
+  "base_sha": "65cb8233ea38b2dfa6cfd18709e30cd18fdf3250",
+  "agent": {
+    "ok": true,
+    "cost_usd": 0.9061176,
+    "input_tokens": 32,
+    "output_tokens": 8704,
+    "cache_read_tokens": 777788,
+    "cache_creation_tokens": 72044,
+    "num_turns": 18,
+    "duration_ms": 215673,
+    "duration_api_ms": 94950,
+    "model": "claude-opus-5-5",
+    "session_id": "5f531128-e72e-4249-8ae1-d975eefc8d56",
+    "stop_reason": "success",
+    "result_text": "The sheet now has a note threshold. A claim with an empty note can't be opened if its due is above the threshold in force on the claim's date \u2014 whether opened on its own or with the bulk button. `bin/e2e` passes all 4 acceptance tests.\n\n**What it does**\n- **Setting:** `note-threshold` is a dated setting like the floor. You give it a value and a from-date (blank from-date means the sheet's today), and a blank value means no threshold. Saving it writes `SETTING_CHANGED \u2026 key=note-threshold value=<amount>`, with `from=<date>` at the end when a date was given. No database migration was needed, because dated settings are already stored as key/value rows.\n- **Which due is checked:** the claim's live due at the moment of opening, after the floor is applied. So in the test a 5.00 claim whose figure is 0.50 is refused, because the floor lifts its due to 2.00, which is above the 1.50 threshold.\n- **When it doesn't block:** a due of n/a never blocks, and a note that is only spaces counts as empty.\n- **Refusals:** a refused open returns HTTP 422 and nothing is written to the store or the audit file. The claim row shows \"A claim due above the note threshold cannot be opened with an empty note.\" The bulk open counts it as refused.\n\n**Changes**\n- `Sheet.java`: the new setting key and `noteThresholdOn(date)`.\n- `SettingService` / `SettingController`: `setNoteThreshold` and `PUT /settings/note-threshold`.\n- New `ClaimNoteRequiredException`, thrown in `ClaimService.changeStatus` when opening, and caught in `ClaimBulkService`.\n- Front end: the threshold and from-date fields plus `setting-note-threshold-current` in `settings.ts`, `noteThreshold` in `session.ts`, and the error message in `claims.ts`.\n\n**One choice to check:** the check only covers opening from DRAFT, alone or in bulk. Splitting a claim also creates an OPEN claim, and that path is not checked. I left it out because the request only mentions opening, but it's a small addition if you want it covered.",
+    "error": "",
+    "attempts": [
+      {
+        "ok": true,
+        "limit_reached": false,
+        "retryable": false,
+        "timed_out": false,
+        "cost_usd": 0.9061176,
+        "num_turns": 18,
+        "duration_ms": 215673,
+        "duration_api_ms": 94950,
+        "error": ""
+      }
+    ]
+  },
+  "agent_stream_file": "cp77.agent.jsonl",
+  "agent_diff_file": "cp77.agent.diff",
+  "build_log_file": null,
+  "tests": {
+    "gated": false,
+    "queued": true
+  },
+  "probe": null,
+  "pinned_touched": [],
+  "acceptance_touched": [],
+  "impact_gate": null
+}
