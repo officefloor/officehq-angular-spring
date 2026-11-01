@@ -6,6 +6,7 @@ import { LIVE } from '../../core/as-of';
 import { Session } from '../../core/session';
 import { Claim, Claims, DUPLICATE_REF, GraceOn, PctOn, RETIRED, cents, claimDueCents, countsAt, countsFor, isBound, isDuplicateRef, isOpen, isOverdue, money, roundsOn } from '../claims/claims';
 import { Period, Periods, periodOn } from '../periods/periods';
+import { Plan, Plans } from '../plans/plans';
 import { GRADES, NA, Rate, Rates, dueCents, rateInLevels } from '../rates/rates';
 
 const NO_CLAIMS: Claim[] = [];
@@ -206,7 +207,7 @@ function trimmedSum(figures: number[]): number {
 
 @Component({
   selector: 'app-people',
-  imports: [ReactiveFormsModule, Claims, Periods, Rates],
+  imports: [ReactiveFormsModule, Claims, Periods, Plans, Rates],
   template: `
     <header aria-label="Sheet counters">
       <p>People: <strong data-testid="header-people-count">{{ people().length }}</strong></p>
@@ -286,6 +287,13 @@ function trimmedSum(figures: number[]): number {
           <p role="alert" class="error" data-testid="paste-error">{{ pasteError() }}</p>
         }
       </form>
+      <button type="button" data-testid="plan-generate" (click)="generatePlans()">Generate planned claims</button>
+      @if (plansGenerated() !== null) {
+        <p role="status">Made <span data-testid="plan-generated-count">{{ plansGenerated() }}</span></p>
+      }
+      @if (generateError()) {
+        <p role="alert" class="error" data-testid="plan-generate-error">{{ generateError() }}</p>
+      }
       <label>
         <input type="checkbox" data-testid="show-retired" [checked]="session.showRetired()"
                (change)="session.showRetired.set($any($event.target).checked)" />
@@ -348,7 +356,7 @@ function trimmedSum(figures: number[]): number {
       }
       <table>
         <thead>
-          <tr><th scope="col"><span class="visually-hidden">Select</span></th><th scope="col">Name</th><th scope="col">Grade</th><th scope="col">Terms</th><th scope="col">Contact</th><th scope="col">Aliases</th><th scope="col">Came from</th><th scope="col">Claimed</th><th scope="col">Due total</th><th scope="col">Excess</th><th scope="col">Settled total</th><th scope="col">Open total</th><th scope="col">Cut total</th><th scope="col">Periods</th><th scope="col">Statements</th><th scope="col">Retired</th><th scope="col">Hold</th><th scope="col">Watched</th><th scope="col">Active</th><th scope="col">Clashing</th><th scope="col">Overdue</th><th scope="col">Aged</th><th scope="col">Patrons</th><th scope="col">Claims</th><th scope="col"><span class="visually-hidden">Actions</span></th></tr>
+          <tr><th scope="col"><span class="visually-hidden">Select</span></th><th scope="col">Name</th><th scope="col">Grade</th><th scope="col">Terms</th><th scope="col">Contact</th><th scope="col">Aliases</th><th scope="col">Came from</th><th scope="col">Claimed</th><th scope="col">Due total</th><th scope="col">Excess</th><th scope="col">Settled total</th><th scope="col">Open total</th><th scope="col">Cut total</th><th scope="col">Periods</th><th scope="col">Statements</th><th scope="col">Retired</th><th scope="col">Hold</th><th scope="col">Watched</th><th scope="col">Active</th><th scope="col">Clashing</th><th scope="col">Overdue</th><th scope="col">Aged</th><th scope="col">Patrons</th><th scope="col">Plans</th><th scope="col">Claims</th><th scope="col"><span class="visually-hidden">Actions</span></th></tr>
         </thead>
         <tbody>
           @for (p of listed(); track p.id) {
@@ -467,6 +475,9 @@ function trimmedSum(figures: number[]): number {
                 @if (patronError()?.id === p.id) {
                   <p role="alert" class="error" data-testid="person-patron-error">{{ patronError()?.message }}</p>
                 }
+              </td>
+              <td>
+                <app-plans [personId]="p.id" [personName]="p.name" [plans]="plansOf(p.id)" (added)="planAdded($event)" />
               </td>
               <td>
                 <app-claims [personId]="p.id" [personName]="p.name" [claims]="claimsOf(p.id)" [pctOn]="pctOnOf(p.id)" [graceOn]="graceOnOf(p.id)"
@@ -629,6 +640,18 @@ export class People {
   );
   /** Every claim on the sheet, newest first. */
   protected readonly claims = signal<Claim[]>([]);
+  /** Every plan on the sheet, in the order they were added. */
+  protected readonly plans = signal<Plan[]>([]);
+  private readonly plansByPerson = computed(() => {
+    const by = new Map<number, Plan[]>();
+    for (const pl of this.plans()) by.set(pl.personId, [...(by.get(pl.personId) ?? []), pl]);
+    return by;
+  });
+  /** How many claims the last generate made; null before one, and while one runs. */
+  protected readonly plansGenerated = signal<number | null>(null);
+  protected readonly generateError = signal('');
+  /** A generate is under way; another press waits for its answer. */
+  private generating = false;
   /** The ids of the claims selected for a bulk change. */
   protected readonly selectedIds = signal<ReadonlySet<number>>(new Set());
   /** How many the last bulk open opened and refused; cleared while the next one runs. */
@@ -974,6 +997,9 @@ export class People {
       this.people.set([]);
       this.descendants.set(null);
       this.claims.set([]);
+      this.plans.set([]);
+      this.plansGenerated.set(null);
+      this.generateError.set('');
       this.selectedIds.set(new Set());
       this.selectedPeople.set(new Set());
       this.bulkGraded.set(null);
@@ -1037,7 +1063,7 @@ export class People {
 
   private async load(sheet: string): Promise<void> {
     try {
-      const [list, claims, rates, statements, periods, tags, descendants] = await Promise.all([
+      const [list, claims, rates, statements, periods, tags, descendants, plans] = await Promise.all([
         firstValueFrom(this.http.get<Person[]>(this.url(sheet), { headers: this.headers() })),
         firstValueFrom(this.http.get<Claim[]>(`/api/sheets/${encodeURIComponent(sheet)}/claims`, { headers: this.headers() })),
         firstValueFrom(this.http.get<Rate[]>(`/api/sheets/${encodeURIComponent(sheet)}/rates`, { headers: this.headers() })),
@@ -1045,6 +1071,7 @@ export class People {
         firstValueFrom(this.http.get<Period[]>(`/api/sheets/${encodeURIComponent(sheet)}/periods`, { headers: this.headers() })),
         firstValueFrom(this.http.get<string[]>(`/api/sheets/${encodeURIComponent(sheet)}/claims/tags`, { headers: this.headers() })),
         firstValueFrom(this.http.get<Descendants>(`/api/sheets/${encodeURIComponent(sheet)}/descendants/figures`, { headers: this.headers(), context: new HttpContext().set(LIVE, true) })),
+        firstValueFrom(this.http.get<Plan[]>(`/api/sheets/${encodeURIComponent(sheet)}/plans`, { headers: this.headers() })),
       ]);
       if (this.session.sheetId() !== sheet) return;
       this.people.set(list);
@@ -1054,6 +1081,7 @@ export class People {
       this.periods.set(periods);
       this.usedTags.set(tags);
       this.descendants.set(descendants);
+      this.plans.set(plans);
     } catch {
       if (this.session.sheetId() === sheet) this.error.set('Could not load the people on this sheet.');
     }
@@ -1863,6 +1891,51 @@ export class People {
    * Add a DRAFT claim per pasted line of name,amount,date,note, in order, for the person of the name
    * on the sheet. Every line is checked first; if any is refused, none is added.
    */
+  /** The person's plans, in the order they were added. */
+  protected plansOf(personId: number): Plan[] {
+    return this.plansByPerson().get(personId) ?? [];
+  }
+
+  protected planAdded(plan: Plan): void {
+    this.plans.update((list) => [...list, plan]);
+  }
+
+  /**
+   * Make every plan's claims due by the sheet's today that it has not made yet, then read the claims and
+   * plans again: the count shown is how many were made.
+   */
+  protected async generatePlans(): Promise<void> {
+    if (this.generating) return;
+    this.generateError.set('');
+    this.plansGenerated.set(null);
+    const sheet = this.session.sheetId();
+    if (!sheet) return;
+    this.generating = true;
+    try {
+      const done = await firstValueFrom(
+        this.http.post<{ generated: number }>(`/api/sheets/${encodeURIComponent(sheet)}/plans/generate`, null,
+          { headers: this.headers() }),
+      );
+      const [claims, plans] = await Promise.all([
+        firstValueFrom(this.http.get<Claim[]>(`/api/sheets/${encodeURIComponent(sheet)}/claims`, { headers: this.headers() })),
+        firstValueFrom(this.http.get<Plan[]>(`/api/sheets/${encodeURIComponent(sheet)}/plans`, { headers: this.headers() })),
+      ]);
+      if (this.session.sheetId() !== sheet) return;
+      this.claims.set(claims);
+      this.plans.set(plans);
+      this.plansGenerated.set(done.generated);
+    } catch (e) {
+      if (this.session.sheetId() !== sheet) return;
+      this.generateError.set(
+        e instanceof HttpErrorResponse && e.status === 403
+          ? 'You may not change this sheet.'
+          : 'Could not generate the planned claims.',
+      );
+    } finally {
+      this.generating = false;
+    }
+  }
+
   protected async paste(): Promise<void> {
     if (this.pasting) return;
     this.pasteError.set('');
