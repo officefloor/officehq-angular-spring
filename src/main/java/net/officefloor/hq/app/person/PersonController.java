@@ -22,7 +22,7 @@ import org.springframework.web.bind.annotation.RestController;
 public class PersonController {
 
     public record PersonView(Long id, String name, String grade, long version) {
-        static PersonView of(Person person) {
+        public static PersonView of(Person person) {
             return new PersonView(person.getId(), person.getName(), person.getGrade(), person.getVersion());
         }
     }

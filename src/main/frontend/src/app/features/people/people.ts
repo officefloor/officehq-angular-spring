@@ -26,6 +26,13 @@ interface StatementSummary {
   lastDate: string;
 }
 
+/** A quick-add done: the person the claim went to, whether they were added for it, and the claim. */
+interface QuickAdded {
+  person: Person;
+  added: boolean;
+  claim: Claim;
+}
+
 /** A statement just taken: the person's statements and their claims as they now stand. */
 interface StatementTaken {
   summary: StatementSummary;
@@ -60,6 +67,16 @@ interface StatementTaken {
         }
         @if (error()) {
           <p role="alert" class="error" data-testid="person-form-error">{{ error() }}</p>
+        }
+      </form>
+      <form [formGroup]="quickForm" (ngSubmit)="quickAdd()" aria-label="Quick-add a draft claim">
+        <label for="quick-name">Name</label>
+        <input id="quick-name" data-testid="quick-name" formControlName="name" />
+        <label for="quick-amount">Amount</label>
+        <input id="quick-amount" data-testid="quick-amount" formControlName="amount" inputmode="decimal" />
+        <button type="submit" data-testid="quick-submit">Quick add</button>
+        @if (quickError()) {
+          <p role="alert" class="error" data-testid="quick-error">{{ quickError() }}</p>
         }
       </form>
       <table>
@@ -168,8 +185,17 @@ export class People {
     grade: new FormControl('A', { nonNullable: true }),
   });
 
+  /** A quick-add is under way; another one waits for its answer rather than storing twice. */
+  private quickAdding = false;
+  protected readonly quickError = signal('');
+  protected readonly quickForm = new FormGroup({
+    name: new FormControl('', { nonNullable: true }),
+    amount: new FormControl('', { nonNullable: true }),
+  });
+
   constructor() {
     this.form.valueChanges.subscribe(() => this.error.set(''));
+    this.quickForm.valueChanges.subscribe(() => this.quickError.set(''));
     effect(() => {
       const id = this.session.sheetId();
       this.session.loads();
@@ -180,6 +206,8 @@ export class People {
       this.statements.set([]);
       this.personError.set(null);
       this.reset();
+      this.quickForm.reset({ name: '', amount: '' }, { emitEvent: false });
+      this.quickError.set('');
       if (id) void this.load(id);
     });
   }
@@ -359,6 +387,49 @@ export class People {
       }
     } finally {
       this.saving = false;
+    }
+  }
+
+  /**
+   * Add a DRAFT claim of the amount, dated the sheet's today with an empty note, for the person of
+   * the name; one not on the sheet is added first with grade A. A refusal adds neither.
+   */
+  protected async quickAdd(): Promise<void> {
+    if (this.quickAdding) return;
+    this.quickError.set('');
+    const sheet = this.session.sheetId();
+    if (!sheet) return;
+    const raw = this.quickForm.getRawValue();
+    const name = raw.name.trim();
+    const amount = raw.amount.trim();
+    if (!name) {
+      this.quickError.set('Enter a name.');
+      return;
+    }
+    if (!/^\d{1,12}(\.\d{1,2})?$/.test(amount)) {
+      this.quickError.set('Enter an amount of 0.00 or more, with at most two decimals.');
+      return;
+    }
+    this.quickAdding = true;
+    try {
+      const done = await firstValueFrom(
+        this.http.post<QuickAdded>(`/api/sheets/${encodeURIComponent(sheet)}/quick-add`, { name, amount }, { headers: this.headers() }),
+      );
+      if (this.session.sheetId() !== sheet) return;
+      if (done.added) this.people.update((list) => [...list.filter((p) => p.id !== done.person.id), done.person]);
+      this.claimSaved(done.claim);
+      this.quickForm.reset({ name: '', amount: '' }, { emitEvent: false });
+    } catch (e) {
+      if (this.session.sheetId() !== sheet) return;
+      this.quickError.set(
+        e instanceof HttpErrorResponse && e.status === 423
+          ? 'No claim dated inside a closed period can be changed.'
+          : e instanceof HttpErrorResponse && e.status === 409
+          ? 'That name is already in use on this sheet.'
+          : 'Could not quick-add that claim.',
+      );
+    } finally {
+      this.quickAdding = false;
     }
   }
 
