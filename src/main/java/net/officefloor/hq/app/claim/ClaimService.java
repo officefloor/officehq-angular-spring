@@ -405,6 +405,15 @@ public class ClaimService {
      */
     @Transactional
     public Claim reassign(String sheetId, String user, Long id, Long toPersonId) {
+        return reassign(sheetId, user, id, toPersonId, false);
+    }
+
+    /**
+     * Reassign a claim by the rules above; a bulk move ({@code bulk}) takes a claim already its new
+     * person's as moved to them again rather than refusing it.
+     */
+    @Transactional
+    public Claim reassign(String sheetId, String user, Long id, Long toPersonId, boolean bulk) {
         // The snapshot locks the sheet first, so the claim is read once no other change is under way.
         RollupService.Snapshot before = rollup.snapshot(sheetId);
         Claim claim = claims.findByIdAndSheetId(id, sheetId).orElseThrow(ClaimNotFoundException::new);
@@ -413,7 +422,7 @@ public class ClaimService {
         if (!settings.mayDo(sheetId, user, "reassign")) throw new ClaimNotPermittedException();
         Person from = people.findByIdAndSheetId(claim.getPersonId(), sheetId).orElseThrow(PersonNotFoundException::new);
         Person to = people.findByIdAndSheetId(toPersonId, sheetId).orElseThrow(PersonNotFoundException::new);
-        if (from.getId().equals(to.getId())) throw new ClaimReassignRefusedException();
+        if (!bulk && from.getId().equals(to.getId())) throw new ClaimReassignRefusedException();
         refuseIfClosed(sheetId, claim.getDueBy());
         if (!to.mayClaimOn(claim.getDate())) throw new PersonRetiredException();
         claim.unstate(sheets.today(sheetId));

@@ -143,6 +143,12 @@ public class ClaimController {
     /** How many of the selected claims a bulk settle settled (or sent to PENDING), and how many it refused. */
     public record BulkSettleView(int settled, int refused) {}
 
+    /** The claims selected for a bulk move, by id, and the person on the sheet they are moved to. */
+    public record BulkReassignRequest(@NotNull @Size(max = 1000) Set<@NotNull Long> ids, @NotNull Long personId) {}
+
+    /** How many of the selected claims a bulk move moved, and how many it refused. */
+    public record BulkReassignView(int reassigned, int refused) {}
+
     /** Pasted lines of name,amount,date,note, one claim each. */
     public record PasteRequest(@NotNull @Size(max = 200000) String text) {}
 
@@ -254,6 +260,16 @@ public class ClaimController {
             @RequestBody @Valid BulkRequest request) {
         ClaimBulkService.Result result = bulk.settle(sheetId, user, request.ids());
         return new BulkSettleView(result.done(), result.refused());
+    }
+
+    @OpenToViewer
+    @PostMapping("/claims/reassign")
+    public BulkReassignView bulkReassign(
+            @PathVariable @Size(max = 100) @Pattern(regexp = "[A-Za-z0-9._-]+") String sheetId,
+            @RequestHeader("X-User") @NotBlank @Size(max = 100) String user,
+            @RequestBody @Valid BulkReassignRequest request) {
+        ClaimBulkService.Result result = bulk.reassign(sheetId, user, request.ids(), request.personId());
+        return new BulkReassignView(result.done(), result.refused());
     }
 
     @PostMapping("/claims/{id}/settle")
