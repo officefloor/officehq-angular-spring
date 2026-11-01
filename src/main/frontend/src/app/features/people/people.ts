@@ -6,7 +6,7 @@ import { firstValueFrom } from 'rxjs';
 import { LIVE } from '../../core/as-of';
 import { PEOPLE_COLUMNS, PeopleColumn, Session } from '../../core/session';
 import { downloadCsv } from '../../core/csv';
-import { Claim, Claims, DUPLICATE_REF, GraceOn, PctOn, RETIRED, cents, claimDueCents, countsAt, countsFor, isBound, isCorrection, isDuplicateRef, isOpen, isOverdue, money, roundsOn } from '../claims/claims';
+import { Claim, Claims, DUPLICATE_REF, GraceOn, PctOn, RETIRED, cents, claimDueCents, countsAt, countsFor, isBound, isCorrection, isDuplicateRef, isOpen, isOverdue, money, roundsOn, statusAt } from '../claims/claims';
 import { Period, Periods, periodOn } from '../periods/periods';
 import { Plan, Plans } from '../plans/plans';
 import { GRADES, NA, Rate, Rates, dueCents, rateInLevels } from '../rates/rates';
@@ -452,7 +452,8 @@ function trimmedSum(figures: number[]): number {
               <td data-testid="person-cut-total">{{ money(cutTotalOf(p.id)) | figure }}</td>
               <td>
                 @for (period of periods(); track period.id) {
-                  <span>{{ period.name }} <span [attr.data-testid]="'person-period-' + period.name + '-due-total'">{{ personPeriodDueOf(p, period) | figure }}</span></span>
+                  <span>{{ period.name }} <span [attr.data-testid]="'person-period-' + period.name + '-due-total'">{{ personPeriodDueOf(p, period) | figure }}</span>
+                    carried <span [attr.data-testid]="'person-period-' + period.name + '-carried'">{{ personPeriodCarriedOf(p, period) | figure }}</span></span>
                 }
               </td>
               <td>
@@ -823,6 +824,35 @@ export class People {
   }
   protected personPeriodDueOf(p: Person, period: Period): string {
     return money(this.personPeriodCents(p.id, period));
+  }
+  /**
+   * Each person's carried figure per period in cents, by person id then period id: the dues as shown now of
+   * their claims that count whose due-by falls in a period ending before it starts and that were still open
+   * (OPEN or PENDING) at the end of its last day, by the status log.
+   */
+  private readonly personPeriodCarriedCents = computed(() => {
+    const by = new Map<number, Map<number, number>>();
+    const today = this.session.today();
+    const periods = this.periods();
+    for (const c of this.claims()) {
+      const own = periodOn(periods, c.dueBy);
+      const pctOn = this.pctOnByPerson().get(c.personId);
+      if (own === null || pctOn === undefined) continue;
+      let due: number | null = null;
+      for (const period of periods) {
+        if (own.to >= period.from) continue;
+        const status = statusAt(c, period.to);
+        if ((status !== 'OPEN' && status !== 'PENDING') || !countsAt(c, period.to, this.keptOut(c), today)) continue;
+        due ??= claimDueCents(c, pctOn, this.session.floorCentsOn, this.session.late(), roundsOn(c, this.claimsOf(c.personId)), this.graceOnOf(c.personId)) ?? 0;
+        const theirs = by.get(c.personId) ?? new Map<number, number>();
+        theirs.set(period.id, (theirs.get(period.id) ?? 0) + due);
+        by.set(c.personId, theirs);
+      }
+    }
+    return by;
+  });
+  protected personPeriodCarriedOf(p: Person, period: Period): string {
+    return money(this.personPeriodCarriedCents().get(p.id)?.get(period.id) ?? 0);
   }
   /** A period's due-total: the people's figures for it added up. */
   protected readonly periodDueTotalOf = (period: Period): string =>
