@@ -11,6 +11,10 @@ import java.util.Map;
 import java.util.function.Function;
 import java.util.stream.Collectors;
 import net.officefloor.hq.app.Audit;
+import net.officefloor.hq.app.crew.Crew;
+import net.officefloor.hq.app.crew.CrewMember;
+import net.officefloor.hq.app.crew.CrewMemberRepository;
+import net.officefloor.hq.app.crew.CrewRepository;
 import net.officefloor.hq.app.person.Person;
 import net.officefloor.hq.app.person.PersonNotFoundException;
 import net.officefloor.hq.app.person.PersonRepository;
@@ -36,7 +40,10 @@ import org.springframework.transaction.annotation.Transactional;
  * every member (whose dates include the sheet's today) is retired has no cuts. A hold leaves the
  * total share and balance as they are. A membership may carry a from-date and a to-date (both included);
  * a member whose dates do not include the sheet's today is left out entirely: its share counts 0.00 toward
- * the total and it has no cut.
+ * the total and it has no cut. A crew is also a pool, listed after the pools under its name (no pool has a crew's
+ * name): its lead and then its members (people still on the sheet), at equal shares of 100.00 split as patrons'
+ * shares are - each rounded half to even, the remainder on the lead - cut like any pool's members. Its members
+ * come only from the crew.
  */
 @Service
 public class PoolService {
@@ -51,21 +58,29 @@ public class PoolService {
     public record Member(Long personId, Long poolId, String name, BigDecimal share, boolean retired, boolean held,
             boolean active, BigDecimal cut) {}
 
-    /** A pool as shown: its members in the order added, its total share, and whether it is balanced. */
-    public record PoolLine(Long id, String name, List<Member> members, BigDecimal totalShare, boolean balanced) {}
+    /**
+     * A pool as shown: its members in the order added, its total share, and whether it is balanced; a crew's
+     * pool carries the crew's id (null for a pool) and no pool id.
+     */
+    public record PoolLine(Long id, Long crewId, String name, List<Member> members, BigDecimal totalShare,
+            boolean balanced) {}
 
     private final SheetRepository sheets;
     private final PoolRepository pools;
     private final PoolMemberRepository members;
     private final PersonRepository people;
+    private final CrewRepository crews;
+    private final CrewMemberRepository crewMembers;
     private final Audit audit;
 
     public PoolService(SheetRepository sheets, PoolRepository pools, PoolMemberRepository members,
-            PersonRepository people, Audit audit) {
+            PersonRepository people, CrewRepository crews, CrewMemberRepository crewMembers, Audit audit) {
         this.sheets = sheets;
         this.pools = pools;
         this.members = members;
         this.people = people;
+        this.crews = crews;
+        this.crewMembers = crewMembers;
         this.audit = audit;
     }
 
@@ -104,12 +119,45 @@ public class PoolService {
                         today != null && p.heldOn(today), active, null));
                 if (active) total = total.add(m.getShare());
             }
-            uncut.put(pool.getId(), new PoolLine(pool.getId(), pool.getName(), shown, total, total.compareTo(HUNDRED) == 0));
+            uncut.put(pool.getId(),
+                    new PoolLine(pool.getId(), null, pool.getName(), shown, total, total.compareTo(HUNDRED) == 0));
         }
         Map<Long, PoolLine> cutLines = new HashMap<>();
         List<PoolLine> lines = new ArrayList<>();
         for (Long id : uncut.keySet()) lines.add(withCuts(id, uncut, parentOf, pot, cutLines));
+        Map<Long, List<CrewMember>> byCrew = crewMembers.findBySheetIdOrderByIdAsc(sheetId).stream()
+                .collect(Collectors.groupingBy(CrewMember::getCrewId));
+        for (Crew crew : crews.findBySheetIdOrderByIdAsc(sheetId)) {
+            List<Person> in = new ArrayList<>();
+            Person lead = byId.get(crew.getLeadPersonId());
+            if (lead != null) in.add(lead);
+            for (CrewMember m : byCrew.getOrDefault(crew.getId(), List.of())) {
+                Person p = byId.get(m.getPersonId());
+                if (p != null) in.add(p);
+            }
+            lines.add(crewLine(crew, in, pot, today));
+        }
         return lines;
+    }
+
+    /**
+     * A crew as a pool: its people (the lead first, when still on the sheet) at equal shares of 100.00, each
+     * rounded half to even to two decimals and the remainder on the first, cut like any balanced pool's members.
+     */
+    private static PoolLine crewLine(Crew crew, List<Person> in, BigDecimal pot, LocalDate today) {
+        List<Member> shown = new ArrayList<>();
+        int n = in.size();
+        BigDecimal each = n == 0 ? HUNDRED : HUNDRED.divide(BigDecimal.valueOf(n), 2, RoundingMode.HALF_EVEN);
+        for (int i = 0; i < n; i++) {
+            Person p = in.get(i);
+            BigDecimal share = i == 0 ? HUNDRED.subtract(each.multiply(BigDecimal.valueOf(n - 1))) : each;
+            shown.add(new Member(p.getId(), null, p.getName(), share, p.isRetired(),
+                    today != null && p.heldOn(today), true, null));
+        }
+        BigDecimal total = n == 0 ? BigDecimal.ZERO.setScale(2) : HUNDRED;
+        boolean balanced = n > 0;
+        return new PoolLine(null, crew.getId(), crew.getName(), balanced && pot != null ? cut(shown, pot) : shown,
+                total, balanced);
     }
 
     /**
@@ -129,7 +177,7 @@ public class PoolService {
                     .filter(m -> id.equals(m.poolId())).findFirst().map(Member::cut).orElse(null);
         }
         PoolLine out = line.balanced() && pot != null
-                ? new PoolLine(line.id(), line.name(), cut(line.members(), pot), line.totalShare(), true)
+                ? new PoolLine(line.id(), null, line.name(), cut(line.members(), pot), line.totalShare(), true)
                 : line;
         done.put(id, out);
         return out;
@@ -174,13 +222,15 @@ public class PoolService {
         return out;
     }
 
-    /** Add a pool, its name trimmed; refused when blank or already a pool of the sheet. */
+    /** Add a pool, its name trimmed; refused when blank or already a pool or a crew of the sheet. */
     @Transactional
     public Pool add(String sheetId, String user, String name) {
         sheets.findForUpdate(sheetId).orElseThrow(SheetNotFoundException::new);
         String text = name == null ? "" : name.strip();
         if (text.isEmpty()) throw new PoolNameBlankException();
-        if (pools.existsBySheetIdAndName(sheetId, text)) throw new DuplicatePoolNameException();
+        if (pools.existsBySheetIdAndName(sheetId, text) || crews.existsBySheetIdAndName(sheetId, text)) {
+            throw new DuplicatePoolNameException();
+        }
         Pool saved = pools.saveAndFlush(new Pool(sheetId, text));
         audit.recordOnCommit("POOL_ADDED sheet=" + sheetId + " by=" + user.strip() + " name=" + text);
         return saved;

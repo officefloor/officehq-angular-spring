@@ -17,9 +17,10 @@ interface MemberView {
   cut: string | null;
 }
 
-/** A pool on the sheet, with its members in the order added. */
+/** A pool on the sheet, with its members in the order added; a crew's pool has no id and carries the crew's id. */
 interface PoolView {
-  id: number;
+  id: number | null;
+  crewId: number | null;
   name: string;
   members: MemberView[];
   totalShare: string;
@@ -68,7 +69,9 @@ function percent(hundredths: number): string {
 // balanced pool shows their cut of the pool's pot (worked out by the server; a retired member's share is spread
 // over the others, and a pool of only retired members shows none): the sheet's pot for a pool that is a member
 // of none, else its cut in the pool above; an unbalanced pool, or no pot, shows none. Each person's cuts as shown,
-// across every pool, are added up as their cut total for the people section.
+// across every pool, are added up as their cut total for the people section. Each crew is also a pool, listed
+// after the pools under its name: its lead and members at equal shares (worked out by the server); its members
+// come from the crew, so it has no add-member form and is not offered as a member. No pool has a crew's name.
 @Component({
   selector: 'app-pools',
   imports: [FigurePipe, ReactiveFormsModule],
@@ -85,7 +88,7 @@ function percent(hundredths: number): string {
       </form>
       <button type="button" data-testid="export-pools" (click)="exportPools()">Export pools CSV</button>
       <ul aria-label="Pools">
-        @for (p of lines(); track p.id) {
+        @for (p of lines(); track p.name) {
           <li [attr.data-testid]="'pool-row-' + p.name">
             <strong>{{ p.name }}</strong>
             — total share <span data-testid="pool-total-share">{{ p.total | figure }}</span>,
@@ -98,28 +101,32 @@ function percent(hundredths: number): string {
                 </li>
               }
             </ul>
-            <form [formGroup]="memberForm(p.id)" (ngSubmit)="addMember(p)" [attr.aria-label]="'Add a member to ' + p.name">
-              <label [for]="'pool-member-select-' + p.id">Person or pool</label>
-              <select [id]="'pool-member-select-' + p.id" data-testid="pool-member-select" formControlName="personId">
+            @if (p.id; as id) {
+            <form [formGroup]="memberForm(id)" (ngSubmit)="addMember(p, id)" [attr.aria-label]="'Add a member to ' + p.name">
+              <label [for]="'pool-member-select-' + id">Person or pool</label>
+              <select [id]="'pool-member-select-' + id" data-testid="pool-member-select" formControlName="personId">
                 <option value="">Choose a person or pool</option>
                 @for (person of session.people(); track person.id) {
                   <option [value]="person.id">{{ person.name }}</option>
                 }
-                @for (other of pools(); track other.id) {
-                  <option [value]="'pool:' + other.id">pool:{{ other.name }}</option>
+                @for (other of pools(); track other.name) {
+                  @if (other.id !== null) {
+                    <option [value]="'pool:' + other.id">pool:{{ other.name }}</option>
+                  }
                 }
               </select>
-              <label [for]="'pool-member-share-' + p.id">Share %</label>
-              <input [id]="'pool-member-share-' + p.id" data-testid="pool-member-share" formControlName="share" inputmode="decimal" />
-              <label [for]="'pool-member-from-' + p.id">From (optional)</label>
-              <input type="date" [id]="'pool-member-from-' + p.id" data-testid="pool-member-from" formControlName="from" />
-              <label [for]="'pool-member-to-' + p.id">To (optional)</label>
-              <input type="date" [id]="'pool-member-to-' + p.id" data-testid="pool-member-to" formControlName="to" />
+              <label [for]="'pool-member-share-' + id">Share %</label>
+              <input [id]="'pool-member-share-' + id" data-testid="pool-member-share" formControlName="share" inputmode="decimal" />
+              <label [for]="'pool-member-from-' + id">From (optional)</label>
+              <input type="date" [id]="'pool-member-from-' + id" data-testid="pool-member-from" formControlName="from" />
+              <label [for]="'pool-member-to-' + id">To (optional)</label>
+              <input type="date" [id]="'pool-member-to-' + id" data-testid="pool-member-to" formControlName="to" />
               <button type="submit" data-testid="pool-member-add">Add member</button>
-              @if (memberError()?.id === p.id) {
+              @if (memberError()?.id === id) {
                 <p role="alert" class="error" data-testid="pool-error">{{ memberError()?.message }}</p>
               }
             </form>
+            }
           </li>
         }
       </ul>
@@ -178,7 +185,7 @@ export class Pools {
       if (id) void this.load(id);
     });
     effect(() => {
-      if (this.session.potSaves() === 0 && this.session.holdChanges() === 0) return;
+      if (this.session.potSaves() === 0 && this.session.holdChanges() === 0 && this.session.crewChanges() === 0) return;
       const id = untracked(() => this.session.sheetId());
       if (id) void this.load(id);
     });
@@ -235,7 +242,7 @@ export class Pools {
     downloadCsv(lines, 'pools.csv');
   }
 
-  /** Add a pool, its name trimmed; a blank one or one already a pool is refused. */
+  /** Add a pool, its name trimmed; a blank one or one already a pool or a crew is refused. */
   protected async add(): Promise<void> {
     if (this.submitting) return;
     this.error.set('');
@@ -247,7 +254,7 @@ export class Pools {
       return;
     }
     if (this.pools().some((p) => p.name === name)) {
-      this.error.set('That pool is already on the sheet.');
+      this.error.set('That name is already a pool or a crew on the sheet.');
       return;
     }
     this.submitting = true;
@@ -257,7 +264,7 @@ export class Pools {
     } catch (e) {
       if (this.session.sheetId() !== sheet) return;
       this.error.set(e instanceof HttpErrorResponse && e.status === 409
-        ? 'That pool is already on the sheet.'
+        ? 'That name is already a pool or a crew on the sheet.'
         : 'Could not add that pool.');
     } finally {
       this.submitting = false;
@@ -268,17 +275,17 @@ export class Pools {
    * Add the chosen person, or pool, to the pool with its share; a person already in it, a pool already a
    * member of a pool, a pool that would contain itself, a chain more than three deep, or a bad share, is refused.
    */
-  protected async addMember(pool: PoolView): Promise<void> {
+  protected async addMember(pool: PoolView, poolId: number): Promise<void> {
     if (this.submitting) return;
     this.memberError.set(null);
     const sheet = this.session.sheetId();
     if (!sheet) return;
-    const f = this.memberForm(pool.id);
+    const f = this.memberForm(poolId);
     const chosen = f.controls.personId.value;
     const memberPoolId = chosen.startsWith(POOL_VALUE) ? Number(chosen.slice(POOL_VALUE.length)) : null;
     const personId = memberPoolId === null ? Number(chosen) : null;
     const share = f.controls.share.value.trim();
-    const refuse = (message: string) => this.memberError.set({ id: pool.id, message });
+    const refuse = (message: string) => this.memberError.set({ id: poolId, message });
     if (!personId && !memberPoolId) return refuse('Choose a person or pool.');
     if (!SHARE.test(share) || hundredths(share) <= 0 || hundredths(share) > 10_000) {
       return refuse('Enter a share of two decimals, more than 0.00 and at most 100.00.');
@@ -288,14 +295,14 @@ export class Pools {
     const to = f.controls.to.value || null;
     if (from !== null && to !== null && to < from) return refuse('The to-date cannot be before the from-date.');
     if (personId !== null && pool.members.some((m) => m.personId === personId)) return refuse('That person is already in the pool.');
-    if (memberPoolId !== null && (memberPoolId === pool.id || this.pools().some((p) => p.members.some((m) => m.poolId === memberPoolId)))) {
+    if (memberPoolId !== null && (memberPoolId === poolId || this.pools().some((p) => p.members.some((m) => m.poolId === memberPoolId)))) {
       return refuse(nesting);
     }
     this.submitting = true;
     try {
       const body = memberPoolId === null ? { personId, share, from, to } : { poolId: memberPoolId, share, from, to };
       const list = await firstValueFrom(
-        this.http.post<PoolView[]>(`${this.base(sheet)}/${pool.id}/members`, body, { headers: this.headers() }),
+        this.http.post<PoolView[]>(`${this.base(sheet)}/${poolId}/members`, body, { headers: this.headers() }),
       );
       if (this.session.sheetId() === sheet) this.pools.set(list);
     } catch (e) {

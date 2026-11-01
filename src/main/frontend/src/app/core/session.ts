@@ -163,6 +163,8 @@ export class Session {
   readonly potSaves = signal(0);
   /** Bumped each time a hold is put on or the sheet's today changes, so the pools re-read their cuts. */
   readonly holdChanges = signal(0);
+  /** Bumped each time a crew or a crew member is added, so the pools re-read the crews' pools. */
+  readonly crewChanges = signal(0);
   /**
    * Each person's cut total in cents, by person id: their cuts as the pools show them, across every pool
    * they are a member of, added up (a pool that shows no cuts adds nothing). Kept by the pools section.

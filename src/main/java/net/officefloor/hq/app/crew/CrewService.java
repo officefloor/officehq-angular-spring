@@ -9,6 +9,7 @@ import net.officefloor.hq.app.Audit;
 import net.officefloor.hq.app.person.Person;
 import net.officefloor.hq.app.person.PersonNotFoundException;
 import net.officefloor.hq.app.person.PersonRepository;
+import net.officefloor.hq.app.pool.PoolRepository;
 import net.officefloor.hq.app.sheet.SheetNotFoundException;
 import net.officefloor.hq.app.sheet.SheetRepository;
 import org.springframework.stereotype.Service;
@@ -16,7 +17,8 @@ import org.springframework.transaction.annotation.Transactional;
 
 /**
  * A sheet's crews, each name once, each led by a person of the sheet, and their members: people of the
- * sheet other than the lead, each at most once in a crew. A person can be in several crews.
+ * sheet other than the lead, each at most once in a crew. A person can be in several crews. A crew is also a
+ * pool (see the pools), so no crew has a pool's name.
  */
 @Service
 public class CrewService {
@@ -31,10 +33,12 @@ public class CrewService {
     private final CrewRepository crews;
     private final CrewMemberRepository members;
     private final PersonRepository people;
+    private final PoolRepository pools;
     private final Audit audit;
 
     public CrewService(SheetRepository sheets, CrewRepository crews, CrewMemberRepository members,
-            PersonRepository people, Audit audit) {
+            PersonRepository people, PoolRepository pools, Audit audit) {
+        this.pools = pools;
         this.sheets = sheets;
         this.crews = crews;
         this.members = members;
@@ -63,14 +67,14 @@ public class CrewService {
         return lines;
     }
 
-    /** Add a crew, its name trimmed, led by a person of the sheet; refused when blank or already a crew of the sheet. */
+    /** Add a crew, its name trimmed, led by a person of the sheet; refused when blank or already a crew or a pool of the sheet. */
     @Transactional
     public Crew add(String sheetId, String user, String name, Long leadId) {
         sheets.findForUpdate(sheetId).orElseThrow(SheetNotFoundException::new);
         String text = name == null ? "" : name.strip();
         if (text.isEmpty()) throw new CrewNameBlankException();
         Person lead = people.findByIdAndSheetId(leadId, sheetId).orElseThrow(PersonNotFoundException::new);
-        if (crews.existsBySheetIdAndName(sheetId, text)) throw new DuplicateCrewNameException();
+        if (crews.existsBySheetIdAndName(sheetId, text) || pools.existsBySheetIdAndName(sheetId, text)) throw new DuplicateCrewNameException();
         Crew saved = crews.saveAndFlush(new Crew(sheetId, text, lead.getId()));
         audit.recordOnCommit("CREW_ADDED sheet=" + sheetId + " by=" + user.strip() + " name=" + text
                 + " lead=" + lead.getName());

@@ -29,7 +29,7 @@ interface CrewLine extends CrewView {
 // The sheet's crews, each name once (trimmed, not blank), each led by a person of the sheet, and their
 // members: people of the sheet other than the lead, each at most once in a crew. Each crew shows its lead
 // and its due-total: the lead's and the members' due-totals as the people section shows them, added up,
-// an n/a one skipped.
+// an n/a one skipped. A crew is also a pool (the pools section shows it), so a pool's name is refused too.
 @Component({
   selector: 'app-crews',
   imports: [FigurePipe, ReactiveFormsModule],
@@ -174,10 +174,11 @@ export class Crews {
     try {
       const list = await firstValueFrom(this.http.post<CrewView[]>(this.base(sheet), { name, leadId }, { headers: this.headers() }));
       if (this.session.sheetId() === sheet) this.crews.set(list);
+      this.session.crewChanges.update((n) => n + 1);
     } catch (e) {
       if (this.session.sheetId() !== sheet) return;
       this.error.set(e instanceof HttpErrorResponse && e.status === 409
-        ? 'That crew is already on the sheet.'
+        ? 'That name is already a crew or a pool on the sheet.'
         : 'Could not add that crew.');
     } finally {
       this.submitting = false;
@@ -201,6 +202,7 @@ export class Crews {
         this.http.post<CrewView[]>(`${this.base(sheet)}/${crew.id}/members`, { personId }, { headers: this.headers() }),
       );
       if (this.session.sheetId() === sheet) this.crews.set(list);
+      this.session.crewChanges.update((n) => n + 1);
     } catch (e) {
       if (this.session.sheetId() !== sheet) return;
       refuse(e instanceof HttpErrorResponse && e.status === 409 ? already : 'Could not add that member.');

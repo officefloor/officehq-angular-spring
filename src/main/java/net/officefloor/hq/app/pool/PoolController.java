@@ -28,10 +28,13 @@ public class PoolController {
     public record MemberView(Long personId, Long poolId, String name, String share, boolean retired,
             boolean active, String cut) {}
 
-    /** A pool on the sheet, with its members, total share (two decimals) and whether it is balanced. */
-    public record PoolView(Long id, String name, List<MemberView> members, String totalShare, boolean balanced) {
+    /**
+     * A pool on the sheet, with its members, total share (two decimals) and whether it is balanced; a crew's
+     * pool has no id and carries the crew's id.
+     */
+    public record PoolView(Long id, Long crewId, String name, List<MemberView> members, String totalShare, boolean balanced) {
         static PoolView of(PoolService.PoolLine p) {
-            return new PoolView(p.id(), p.name(),
+            return new PoolView(p.id(), p.crewId(), p.name(),
                     p.members().stream().map(m -> new MemberView(m.personId(), m.poolId(), m.name(), m.share().toPlainString(), m.retired(),
                             m.active(), m.cut() == null ? null : m.cut().toPlainString())).toList(),
                     p.totalShare().toPlainString(), p.balanced());
