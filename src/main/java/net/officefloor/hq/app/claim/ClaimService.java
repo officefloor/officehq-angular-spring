@@ -235,7 +235,7 @@ public class ClaimService {
         Person person = people.findByIdAndSheetId(claim.getPersonId(), sheetId).orElseThrow(PersonNotFoundException::new);
         // Settling freezes the late charge of the moment into the settled due.
         BigDecimal settling = next == ClaimStatus.SETTLED ? chargedFigureOf(sheetId, person, claim) : null;
-        if (next == ClaimStatus.SETTLED) refuseUnproved(sheetId, claim, settling);
+        if (next == ClaimStatus.SETTLED) refuseUnproved(sheetId, person, claim, settling);
         if (next == ClaimStatus.OPEN) refuseUnnoted(sheetId, claim, chargedFigureOf(sheetId, person, claim));
         if (next == ClaimStatus.SETTLED && overClerkLimit(sheetId, user, settling)) next = ClaimStatus.PENDING;
         String voidReason = next == ClaimStatus.VOID ? voidReasons.reasonForVoid(sheetId, reason) : null;
@@ -281,7 +281,7 @@ public class ClaimService {
         Person person = people.findByIdAndSheetId(claim.getPersonId(), sheetId).orElseThrow(PersonNotFoundException::new);
         refuseIfClosed(sheetId, claim.getDueBy());
         BigDecimal settling = chargedFigureOf(sheetId, person, claim);
-        refuseUnproved(sheetId, claim, settling);
+        refuseUnproved(sheetId, person, claim, settling);
         claim.setSettledDue(settling);
         claim.setStatus(ClaimStatus.SETTLED);
         logStatus(sheetId, user, person, claim);
@@ -556,11 +556,12 @@ public class ClaimService {
 
     /**
      * Refuse settling or approving a claim with no proofs whose due is above the proof threshold in force on
-     * its date; a due of n/a is within any, and no threshold means none is needed.
+     * its date (its person's grade's then when set, else the sheet's); a due of n/a is within any, and no
+     * threshold means none is needed.
      */
-    private void refuseUnproved(String sheetId, Claim claim, BigDecimal due) {
+    private void refuseUnproved(String sheetId, Person person, Claim claim, BigDecimal due) {
         if (claim.getProofs() > 0 || due == null) return;
-        BigDecimal threshold = settings.proofThresholdOn(sheetId, claim.getDate());
+        BigDecimal threshold = settings.proofThresholdFor(sheetId, person.gradeOn(claim.getDate()), claim.getDate());
         if (threshold != null && due.compareTo(threshold) > 0) throw new ClaimProofRequiredException();
     }
 

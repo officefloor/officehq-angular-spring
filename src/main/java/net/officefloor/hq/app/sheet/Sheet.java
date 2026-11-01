@@ -24,7 +24,10 @@ import java.util.TreeMap;
 @Table(name = "sheet")
 public class Sheet {
 
-    /** The keys of its dated settings; a grade's terms are {@code terms-<grade>}, its grace days {@code grace-<grade>}. */
+    /**
+     * The keys of its dated settings; a grade's terms are {@code terms-<grade>}, its grace days {@code grace-<grade>},
+     * its proof threshold {@code proof-threshold-<grade>}.
+     */
     public static final String FLOOR = "floor", LATE_PCT = "late-pct", TERMS = "terms", CLERK_LIMIT = "clerk-limit",
             CAP = "cap", PROOF_THRESHOLD = "proof-threshold", NOTE_THRESHOLD = "note-threshold", GRACE = "grace";
 
@@ -199,6 +202,17 @@ public class Sheet {
 
     /** The proof threshold in force on the date; null means none. */
     public BigDecimal proofThresholdOn(LocalDate date) { return decimalOn(PROOF_THRESHOLD, date, null); }
+
+    /** The grade's own proof threshold in force on the date; null when it has none then (none recorded, or blank). */
+    public BigDecimal gradeProofThresholdOn(String grade, LocalDate date) {
+        return decimalOn(PROOF_THRESHOLD + "-" + grade, date, null);
+    }
+
+    /** The proof threshold for a claim of the grade dated on the date: the grade's own then, else the sheet's then; null means none. */
+    public BigDecimal proofThresholdFor(String grade, LocalDate date) {
+        BigDecimal own = gradeProofThresholdOn(grade, date);
+        return own != null ? own : proofThresholdOn(date);
+    }
 
     /** The note threshold in force on the date; null means none. */
     public BigDecimal noteThresholdOn(LocalDate date) { return decimalOn(NOTE_THRESHOLD, date, null); }

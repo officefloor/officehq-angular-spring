@@ -29,7 +29,7 @@ import org.springframework.transaction.annotation.Transactional;
  * policy date (none: the sheet's today), before which a claim's live figures round half up, else half to even;
  * and the period numbering from (none: off), from which a claim opened is numbered within its period;
  * and the cap (none: no cap), the most a person's due-total can be; and the proof threshold (none: none,
- * dated, taken on a claim's date), above which a claim's due needs a proof to be settled or approved;
+ * dated, taken on a claim's date; a grade's own, when set, overrides it for a claim whose person has that grade on its date), above which a claim's due needs a proof to be settled or approved;
  * and the entry date (none: off, not dated), the date a new claim given none takes rather than the sheet's today;
  * and the grace days (none: off, not dated), past which an open period closes when the sheet's today changes;
  * and the grace days of each grade (none: none, dated, taken on a claim's date for its person's grade then),
@@ -161,6 +161,12 @@ public class SettingService {
     @Transactional(readOnly = true)
     public BigDecimal proofThresholdOn(String sheetId, LocalDate date) {
         return sheets.findById(sheetId).orElseThrow(SheetNotFoundException::new).proofThresholdOn(date);
+    }
+
+    /** The proof threshold for a claim of the grade dated on the date: the grade's own then, else the sheet's; null means none. */
+    @Transactional(readOnly = true)
+    public BigDecimal proofThresholdFor(String sheetId, String grade, LocalDate date) {
+        return sheets.findById(sheetId).orElseThrow(SheetNotFoundException::new).proofThresholdFor(grade, date);
     }
 
     /** The note threshold in force on the date; null means none. */
@@ -393,6 +399,14 @@ public class SettingService {
     public BigDecimal setProofThreshold(String sheetId, String user, BigDecimal threshold, LocalDate from) {
         Sheet sheet = sheets.findForUpdate(sheetId).orElseThrow(SheetNotFoundException::new);
         record(sheet, user, Sheet.PROOF_THRESHOLD, threshold == null ? null : threshold.toPlainString(), from);
+        return threshold;
+    }
+
+    /** Record the grade's proof threshold (null: none, the sheet's applies) from the date (null: the sheet's today); no figure moves with it. */
+    @Transactional
+    public BigDecimal setGradeProofThreshold(String sheetId, String user, String grade, BigDecimal threshold, LocalDate from) {
+        Sheet sheet = sheets.findForUpdate(sheetId).orElseThrow(SheetNotFoundException::new);
+        record(sheet, user, Sheet.PROOF_THRESHOLD + "-" + grade, threshold == null ? null : threshold.toPlainString(), from);
         return threshold;
     }
 

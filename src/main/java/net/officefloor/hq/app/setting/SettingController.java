@@ -365,6 +365,16 @@ public class SettingController {
         return get(sheetId, user);
     }
 
+    @PutMapping("/settings/proof-threshold/{grade}")
+    public SettingsView setGradeProofThreshold(
+            @PathVariable @Size(max = 100) @Pattern(regexp = "[A-Za-z0-9._-]+") String sheetId,
+            @PathVariable @Pattern(regexp = "[ABC]") String grade,
+            @RequestHeader("X-User") @NotBlank @Size(max = 100) String user,
+            @RequestBody @Valid ProofThresholdRequest request) {
+        service.setGradeProofThreshold(sheetId, user, grade, request.thresholdValue(), request.fromValue());
+        return get(sheetId, user);
+    }
+
     @PutMapping("/settings/note-threshold")
     public SettingsView setNoteThreshold(
             @PathVariable @Size(max = 100) @Pattern(regexp = "[A-Za-z0-9._-]+") String sheetId,
