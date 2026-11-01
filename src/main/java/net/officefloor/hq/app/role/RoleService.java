@@ -54,7 +54,7 @@ public class RoleService {
         return Role.VIEWER.equals(roleOf(sheetId, userName));
     }
 
-    /** Assign a role (clerk, steward or viewer) to a user name, replacing the one it had. The sheet is locked
+    /** Assign a role (clerk, steward, viewer or restricted) to a user name, replacing the one it had. The sheet is locked
      *  first, so two assignments to one name are made one at a time. */
     @Transactional
     public Role set(String sheetId, String user, String userName, String role) {

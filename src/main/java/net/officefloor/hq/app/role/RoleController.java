@@ -32,8 +32,9 @@ public class RoleController {
         }
     }
 
-    /** A role as the form submits it: clerk, steward or viewer. */
-    public record RoleForm(@NotNull @Pattern(regexp = Role.CLERK + "|" + Role.STEWARD + "|" + Role.VIEWER) String role) {
+    /** A role as the form submits it: clerk, steward, viewer or restricted. */
+    public record RoleForm(@NotNull @Pattern(regexp = Role.CLERK + "|" + Role.STEWARD + "|" + Role.VIEWER + "|"
+            + Role.RESTRICTED) String role) {
     }
 
     private final RoleService roles;

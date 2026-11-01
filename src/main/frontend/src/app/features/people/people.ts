@@ -28,6 +28,8 @@ import { ClassicPeriod, ClassicSummaryPanel } from '../summary/classic-summary';
 import { VoidReasons } from '../../core/void-reasons';
 import { FigurePipe } from '../../core/figure';
 import { Dashboard } from '../dashboard/dashboard';
+import { Roles } from '../../core/roles';
+import { Delegations } from '../../core/delegations';
 
 const NO_CLAIMS: ClaimView[] = [];
 const NO_SNAPSHOTS: SnapshotView[] = [];
@@ -588,10 +590,31 @@ export class PeopleList {
   protected readonly people = signal<PersonView[]>([]);
   /** The figures of the sheet's descendants, as each of them shows its own, re-read on each (re)load. */
   private readonly descendants = signal<DescendantFigures>(NO_DESCENDANTS);
-  /** The people listed: retired people only while "show retired" is on. Totals still count everyone. */
-  protected readonly listed = computed(() =>
-    this.api.showRetired() ? this.people() : this.people().filter((p) => !p.retired),
-  );
+  private readonly roles = inject(Roles);
+  private readonly delegations = inject(Delegations);
+  /** For a restricted user, the ids of the people it may see: its own person and the leads and members of the crews
+   *  that person leads or belongs to (none without a person of its name); null for any other role. A delegation of
+   *  the steward role holding the sheet's today lifts the restriction, as it does the role. */
+  private readonly visibleIds = computed<ReadonlySet<number> | null>(() => {
+    const user = this.session.user();
+    if (!user || !this.roles.all().some((r) => r.user === user && r.role === 'restricted')) return null;
+    const today = this.sheets.current()?.today;
+    if (today && this.delegations.all().some((d) => d.user === user && d.from <= today && today <= d.to)) return null;
+    const me = this.me();
+    if (!me) return new Set();
+    const ids = new Set([me.id]);
+    for (const crew of this.crews.all()) {
+      const of = [...(crew.lead ? [crew.lead.id] : []), ...crew.members.map((m) => m.id)];
+      if (of.includes(me.id)) of.forEach((id) => ids.add(id));
+    }
+    return ids;
+  });
+  /** The people listed: retired people only while "show retired" is on, and for a restricted user only those it may
+   *  see. Totals still count everyone. */
+  protected readonly listed = computed(() => {
+    const visible = this.visibleIds();
+    return this.people().filter((p) => (this.api.showRetired() || !p.retired) && (visible === null || visible.has(p.id)));
+  });
   protected readonly sortKeys = SORT_KEYS;
   /** Each signed-in user's sort key for this screen; 'added' (list order) until they choose one. */
   private readonly sortByUser = signal<ReadonlyMap<string, SortKey>>(new Map());

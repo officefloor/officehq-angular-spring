@@ -2,8 +2,9 @@ import { HttpClient } from '@angular/common/http';
 import { Injectable, inject, signal } from '@angular/core';
 import { Observable, tap } from 'rxjs';
 
-/** The roles a sheet's settings can assign (a viewer sees everything and changes nothing); a name with none assigned is a clerk. */
-export const ROLES = ['clerk', 'steward', 'viewer'] as const;
+/** The roles a sheet's settings can assign (a viewer sees everything and changes nothing; a restricted user's people list
+ *  shows only the people of its crews and itself); a name with none assigned is a clerk. */
+export const ROLES = ['clerk', 'steward', 'viewer', 'restricted'] as const;
 export type RoleName = (typeof ROLES)[number];
 
 export interface RoleView {
