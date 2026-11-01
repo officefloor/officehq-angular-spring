@@ -37,7 +37,8 @@ import org.springframework.transaction.annotation.Transactional;
  * fixes its due at its figure (the due bound by a statement, else its person's grade rate of the
  * moment on the claim's date) with its late charge of the moment frozen in; with no figure it
  * stays live. A steward can re-settle a SETTLED claim at the figure it would have today as an open claim
- * bound by no statement. The user who opened a claim cannot settle it, and a clerk cannot settle one whose
+ * bound by no statement, or void it within 7 days of its settlement: its frozen figure leaves every total
+ * and it keeps its number. The user who opened a claim cannot settle it, and a clerk cannot settle one whose
  * due is above the sheet's clerk limit (a steward can). A claim with no proofs whose due is above the proof threshold
  * in force on its date cannot be settled or approved by anyone. No claim dated inside a closed period can
  * be added, edited (to or from such a date), opened, settled, re-settled or voided. No claim can be added
@@ -46,6 +47,9 @@ import org.springframework.transaction.annotation.Transactional;
  */
 @Service
 public class ClaimService {
+
+    /** How many days after its settlement a steward may still void a SETTLED claim. */
+    static final int VOID_SETTLED_DAYS = 7;
 
     private final ClaimRepository claims;
     private final PersonRepository people;
@@ -135,7 +139,9 @@ public class ClaimService {
             default -> throw new ClaimStatusRefusedException();
         };
         if (!settings.mayDo(sheetId, user, action)) throw new ClaimNotPermittedException();
-        if (!claim.getStatus().canBecome(next)) {
+        boolean voidingSettled = next == ClaimStatus.VOID && claim.getStatus() == ClaimStatus.SETTLED;
+        if (voidingSettled) refuseVoidOfSettled(sheetId, user, claim);
+        else if (!claim.getStatus().canBecome(next)) {
             throw new ClaimStatusRefusedException();
         }
         if (next == ClaimStatus.SETTLED && claim.isDeferredOn(sheets.today(sheetId))) {
@@ -171,6 +177,7 @@ public class ClaimService {
         };
         String due = next == ClaimStatus.SETTLED
                 ? " due=" + (saved.getSettledDue() == null ? "n/a" : saved.getSettledDue().setScale(2).toPlainString())
+                : voidingSettled ? " reversed=" + figureText(saved.getSettledDue())
                 : "";
         record(event, sheetId, user, person, saved, saved.getNumber(), due);
         if (next == ClaimStatus.SETTLED) notifyWatchers(sheetId, user, person, saved);
@@ -242,6 +249,19 @@ public class ClaimService {
         notifyWatchers(sheetId, user, person, saved);
         rollup.recordChanges(sheetId, user, before);
         return saved;
+    }
+
+    /**
+     * Refuse voiding a SETTLED claim unless by a steward within {@value #VOID_SETTLED_DAYS} days of its
+     * settlement (its status log's last SETTLED date) by the sheet's today.
+     */
+    private void refuseVoidOfSettled(String sheetId, String user, Claim claim) {
+        if (settings.roleOf(sheetId, user) != Role.STEWARD) throw new ClaimNotStewardException();
+        LocalDate settled = claim.settledOn();
+        LocalDate today = sheets.today(sheetId);
+        if (settled == null || today.isBefore(settled) || today.isAfter(settled.plusDays(VOID_SETTLED_DAYS))) {
+            throw new ClaimVoidWindowException();
+        }
     }
 
     /** One NOTIFY line per user watching the claim's person, in the order they started watching. */

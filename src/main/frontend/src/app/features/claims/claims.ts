@@ -409,8 +409,8 @@ export class Claims {
   }
 
   /**
-   * Open, settle or void a claim, approve or reject (with a reason) a PENDING one, or re-settle a
-   * SETTLED one at its figure today; a change its
+   * Open, settle or void a claim, approve or reject (with a reason) a PENDING one, re-settle a
+   * SETTLED one at its figure today, or (a steward, within 7 days of settling) void it; a change its
    * status does not allow is refused.
    */
   protected async act(c: Claim, action: ClaimAction, reason = ''): Promise<void> {
@@ -434,6 +434,8 @@ export class Claims {
         ? CLOSED
         : e instanceof HttpErrorResponse && e.status === 409
         ? `A ${c.status} claim cannot be ${PAST[action]}.`
+        : e instanceof HttpErrorResponse && e.status === 410
+        ? 'A SETTLED claim can be voided only within 7 days of its settlement.'
         : e instanceof HttpErrorResponse && e.status === 412
         ? `A deferred claim cannot be settled until ${c.deferredUntil}.`
         : e instanceof HttpErrorResponse && e.status === 428
@@ -441,6 +443,8 @@ export class Claims {
         : e instanceof HttpErrorResponse && e.status === 403
         ? action === 'settle' && c.openedBy === this.session.user()
           ? 'The user who opened a claim cannot settle it.'
+          : action === 'void' && c.status === 'SETTLED'
+          ? 'Only a steward can void a SETTLED claim.'
           : action === 'open' || action === 'settle' || action === 'void'
           ? `Your role may not ${action} a claim on this sheet.`
           : action === 'approve' && c.openedBy === this.session.user()
@@ -568,6 +572,8 @@ export class Claims {
         ? CLOSED
         : e instanceof HttpErrorResponse && e.status === 409
         ? `A ${c.status} claim cannot be split; only an OPEN one can.`
+        : e instanceof HttpErrorResponse && e.status === 410
+        ? 'A SETTLED claim can be voided only within 7 days of its settlement.'
         : e instanceof HttpErrorResponse && e.status === 412
         ? `A deferred claim cannot be split until ${c.deferredUntil}.`
         : e instanceof HttpErrorResponse && e.status === 403

@@ -189,6 +189,13 @@ public class Claim {
         return at;
     }
 
+    /** The date it was last settled, as its status log records it; null when the log has no SETTLED line. */
+    public LocalDate settledOn() {
+        LocalDate on = null;
+        for (ClaimLogEntry line : log) if (line.getStatus() == ClaimStatus.SETTLED) on = line.getDate();
+        return on;
+    }
+
     public String getNumber() { return number; }
 
     /** Number the claim sheet-wide. */
