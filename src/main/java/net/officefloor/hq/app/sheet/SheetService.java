@@ -67,18 +67,21 @@ public class SheetService {
     }
 
     /**
-     * Change the sheet's today; it has no audit line of its own. With grace days set, the open periods
+     * Change the sheet's today; it has no audit line of its own, but a new today first audits a SNAPSHOT
+     * line per person, in list order, with their due-total on the day being left. With grace days set, the open periods
      * past them are closed first, then the figures it moves are audited. A new today releases every
      * claim editor's lock on the sheet.
      */
     @Transactional
     public Sheet setToday(String id, String user, LocalDate today) {
         Sheet sheet = sheets.findForUpdate(id).orElseThrow(SheetNotFoundException::new);
-        if (!today.equals(sheet.getToday())) {
+        boolean changed = !today.equals(sheet.getToday());
+        if (changed) {
             claims.getObject().unlockAll(id);
             sheet = sheets.findForUpdate(id).orElseThrow(SheetNotFoundException::new);
         }
         RollupService.Snapshot before = rollup.snapshot(id);
+        if (changed) rollup.recordSnapshot(id, user, before);
         sheet.setToday(today);
         sheets.flush();
         if (sheet.getGraceDays() != null) periods.getObject().autoClose(id, user, today, sheet.getGraceDays());

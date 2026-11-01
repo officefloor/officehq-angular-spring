@@ -131,6 +131,15 @@ public class RollupService {
         return sum.subtract(max).subtract(min);
     }
 
+    /** Audit, once the transaction commits, a SNAPSHOT line of each person's due-total in {@code snapshot}, in the order they were added. */
+    public void recordSnapshot(String sheetId, String user, Snapshot snapshot) {
+        String by = " sheet=" + sheetId + " by=" + user.strip();
+        for (Figures figures : snapshot.people().values()) {
+            audit.recordOnCommit("SNAPSHOT" + by + " name=" + figures.name()
+                    + " due-total=" + (figures.dueTotal() == null ? "n/a" : money(figures.dueTotal())));
+        }
+    }
+
     /** Audit, once the transaction commits, how the sheet's figures moved since {@code before}. */
     public void recordChanges(String sheetId, String user, Snapshot before) {
         Snapshot after = snapshot(sheetId);
