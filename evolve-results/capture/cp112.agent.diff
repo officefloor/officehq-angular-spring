@@ -1,0 +1,251 @@
+diff --git a/src/main/frontend/src/app/features/people/people.ts b/src/main/frontend/src/app/features/people/people.ts
+index 3a978c35f..4f0934c8f 100644
+--- a/src/main/frontend/src/app/features/people/people.ts
++++ b/src/main/frontend/src/app/features/people/people.ts
+@@ -60,6 +60,8 @@ interface Person {
+   aliases: string[];
+   /** Whether they have an open claim (OPEN or PENDING) that counts, dated within the 30 days up to and including the sheet's today. */
+   active: boolean;
++  /** Whether their name or an alias is, as names are compared, a name or alias on another sheet of the sheet's tree. */
++  clashing: boolean;
+ }
+ 
+ /** The person's grade in force on the date: the one with the latest from-date on or before it. */
+@@ -151,6 +153,9 @@ interface StatementTaken {
+ // the sheet has it; a claim's due-by is fixed when it is added from them, else their grade's, else the sheet's.
+ // A person may have aliases, added one at a time and shown sorted as names are compared; an alias may not
+ // be any name or alias on the sheet, and the quick-add bar and the paste box find a person by one too.
++// No name or alias may be used that another sheet of the sheet's tree (the sheets reached through
++// parents and children) already uses as a name or alias; a person who already clashes so shows
++// clashing yes, and each edit of them is refused until it renames them to a name that does not clash.
+ // Each person can name other people on the sheet as their patrons, one at a time (not themselves, nor
+ // the same person twice). The patrons carry shares: 100.00 split equally in the order named, each rounded
+ // half to even to two decimals, the remainder going to the first named. The row shows each patron as
+@@ -293,7 +298,7 @@ function trimmedSum(figures: number[]): number {
+       </form>
+       <table>
+         <thead>
+-          <tr><th scope="col"><span class="visually-hidden">Select</span></th><th scope="col">Name</th><th scope="col">Grade</th><th scope="col">Terms</th><th scope="col">Contact</th><th scope="col">Aliases</th><th scope="col">Claimed</th><th scope="col">Due total</th><th scope="col">Excess</th><th scope="col">Settled total</th><th scope="col">Open total</th><th scope="col">Periods</th><th scope="col">Statements</th><th scope="col">Retired</th><th scope="col">Hold</th><th scope="col">Watched</th><th scope="col">Active</th><th scope="col">Overdue</th><th scope="col">Aged</th><th scope="col">Patrons</th><th scope="col">Claims</th><th scope="col"><span class="visually-hidden">Actions</span></th></tr>
++          <tr><th scope="col"><span class="visually-hidden">Select</span></th><th scope="col">Name</th><th scope="col">Grade</th><th scope="col">Terms</th><th scope="col">Contact</th><th scope="col">Aliases</th><th scope="col">Claimed</th><th scope="col">Due total</th><th scope="col">Excess</th><th scope="col">Settled total</th><th scope="col">Open total</th><th scope="col">Periods</th><th scope="col">Statements</th><th scope="col">Retired</th><th scope="col">Hold</th><th scope="col">Watched</th><th scope="col">Active</th><th scope="col">Clashing</th><th scope="col">Overdue</th><th scope="col">Aged</th><th scope="col">Patrons</th><th scope="col">Claims</th><th scope="col"><span class="visually-hidden">Actions</span></th></tr>
+         </thead>
+         <tbody>
+           @for (p of listed(); track p.id) {
+@@ -371,6 +376,7 @@ function trimmedSum(figures: number[]): number {
+                         [attr.aria-label]="(p.watched ? 'Stop watching ' : 'Watch ') + p.name">{{ p.watched ? 'Unwatch' : 'Watch' }}</button>
+               </td>
+               <td data-testid="person-active">{{ p.active ? 'yes' : 'no' }}</td>
++              <td data-testid="person-clashing">{{ p.clashing ? 'yes' : 'no' }}</td>
+               <td>
+                 <span data-testid="person-overdue-count">{{ overdueOf(p).count }}</span>
+                 <span>Total <span data-testid="person-overdue-total">{{ money(overdueOf(p).cents) }}</span></span>
+diff --git a/src/main/java/net/officefloor/hq/app/person/PersonController.java b/src/main/java/net/officefloor/hq/app/person/PersonController.java
+index d8db7d4fc..bf14f31e6 100644
+--- a/src/main/java/net/officefloor/hq/app/person/PersonController.java
++++ b/src/main/java/net/officefloor/hq/app/person/PersonController.java
+@@ -33,13 +33,15 @@ public class PersonController {
+      * grade recorded, earliest first (the first from null, the beginning of time); retiredFrom is null
+      * while not retired; held whether they have any hold, holds every hold, earliest first; patronIds
+      * in the order named; watched whether the signed-in user watches them; terms their own, null for none;
+-     * contact theirs, null for none; aliases theirs, sorted as names are compared; active whether they are active on the sheet's today ({@link Person#activeOn}).
++     * contact theirs, null for none; aliases theirs, sorted as names are compared; active whether they are active on the sheet's today ({@link Person#activeOn});
++     * clashing whether their name or an alias is used on another sheet of the sheet's tree ({@link PersonService#clashingIds}).
+      */
+     public record PersonView(Long id, String name, String grade, List<GradeView> grades, long version,
+             boolean retired, LocalDate retiredFrom, boolean held, List<HoldView> holds, List<Long> patronIds,
+-            boolean watched, Integer terms, boolean active, String contact, List<String> aliases) {
++            boolean watched, Integer terms, boolean active, String contact, List<String> aliases,
++            boolean clashing) {
+         public static PersonView of(Person person, LocalDate today, List<Long> patronIds, boolean watched,
+-                boolean active) {
++                boolean active, boolean clashing) {
+             List<GradeView> grades = new ArrayList<>();
+             grades.add(new GradeView(null, person.getGrade()));
+             person.getDatedGrades().forEach((from, grade) -> grades.add(new GradeView(from, grade)));
+@@ -48,7 +50,7 @@ public class PersonController {
+                     person.isRetired(), person.getRetiredFrom(), person.isHeld(),
+                     person.getHolds().stream().map(h -> new HoldView(h.getFromDate(), h.getToDate())).toList(),
+                     patronIds, watched, person.getTerms(), active, person.getContact(),
+-                    person.getAliases());
++                    person.getAliases(), clashing);
+         }
+     }
+ 
+@@ -124,9 +126,10 @@ public class PersonController {
+         Set<Long> watched = service.watchedIds(sheetId, user);
+         LocalDate today = service.today(sheetId);
+         Set<Long> active = service.activeIds(sheetId);
++        Set<Long> clashing = service.clashingIds(sheetId);
+         return service.list(sheetId).stream()
+                 .map(p -> PersonView.of(p, today, patrons.getOrDefault(p.getId(), List.of()),
+-                        watched.contains(p.getId()), active.contains(p.getId())))
++                        watched.contains(p.getId()), active.contains(p.getId()), clashing.contains(p.getId())))
+                 .toList();
+     }
+ 
+@@ -232,6 +235,6 @@ public class PersonController {
+ 
+     private PersonView view(Person person, String user) {
+         return PersonView.of(person, service.today(person.getSheetId()), service.patronIdsOf(person.getId()),
+-                service.watches(person.getId(), user), service.isActive(person));
++                service.watches(person.getId(), user), service.isActive(person), service.isClashing(person));
+     }
+ }
+diff --git a/src/main/java/net/officefloor/hq/app/person/PersonService.java b/src/main/java/net/officefloor/hq/app/person/PersonService.java
+index d501c04fa..daecdacd7 100644
+--- a/src/main/java/net/officefloor/hq/app/person/PersonService.java
++++ b/src/main/java/net/officefloor/hq/app/person/PersonService.java
+@@ -24,7 +24,9 @@ import net.officefloor.hq.app.setting.Role;
+ import net.officefloor.hq.app.setting.SettingService;
+ import net.officefloor.hq.app.sheet.Sheet;
+ import net.officefloor.hq.app.sheet.SheetNotFoundException;
++import net.officefloor.hq.app.sheet.SheetParentRepository;
+ import net.officefloor.hq.app.sheet.SheetRepository;
++import net.officefloor.hq.app.sheet.SheetService;
+ import net.officefloor.hq.app.statement.StatementRepository;
+ import org.springframework.dao.DataIntegrityViolationException;
+ import org.springframework.orm.ObjectOptimisticLockingFailureException;
+@@ -46,6 +48,10 @@ import org.springframework.transaction.annotation.Transactional;
+  * A person may have aliases, added one at a time; an alias shares the names' uniqueness: it may not be,
+  * as names are compared, any name or alias on the sheet, and no name may be an alias on the sheet. The
+  * sheet is locked while a name or alias is checked and written, so two users cannot take one at once.
++ * Nor may a name or alias be used, as names are compared, when another sheet of the sheet's tree
++ * ({@link #treeOf}) already uses it as a name or alias. People who already clash so are kept, shown as
++ * clashing ({@link #clashingIds}), and each edit of them is refused until it renames them to a name that
++ * does not clash, leaving them no alias that does.
+  * A steward can merge a person into another ({@link #merge}), and transfer one to another sheet
+  * ({@link #transfer}).
+  */
+@@ -63,12 +69,16 @@ public class PersonService {
+     private final PoolMemberRepository poolMembers;
+     private final PeriodRepository periods;
+     private final ClaimService claimService;
++    private final SheetParentRepository parents;
++    private final SheetService sheetService;
+     private final Audit audit;
+ 
+     public PersonService(PersonRepository people, PersonPatronRepository patrons,
+             PersonWatchRepository watches, SheetRepository sheets, ClaimRepository claims, RollupService rollup,
+             SettingService settings, StatementRepository statements, PoolMemberRepository poolMembers,
+-            PeriodRepository periods, ClaimService claimService, Audit audit) {
++            PeriodRepository periods, ClaimService claimService, SheetParentRepository parents, SheetService sheetService, Audit audit) {
++        this.parents = parents;
++        this.sheetService = sheetService;
+         this.claimService = claimService;
+         this.statements = statements;
+         this.poolMembers = poolMembers;
+@@ -123,6 +133,7 @@ public class PersonService {
+     public Person add(String sheetId, String user, String name, String grade, Integer terms, String contact) {
+         if (sheets.findForUpdate(sheetId).isEmpty()) throw new SheetNotFoundException();
+         requireUnused(sheetId, name, null);
++        requireUnusedInTree(sheetId, name);
+         String key = Person.contactOf(contact);
+         requireContactUnused(sheetId, key, null);
+         RollupService.Snapshot before = rollup.snapshot(sheetId);
+@@ -143,6 +154,8 @@ public class PersonService {
+         if (person.getVersion() != version) throw new PersonVersionConflictException();
+         sheets.findForUpdate(sheetId).orElseThrow(SheetNotFoundException::new);
+         requireUnused(sheetId, name, id);
++        requireUnusedInTree(sheetId, name);
++        for (String alias : person.getAliases()) requireUnusedInTree(sheetId, alias);
+         String key = Person.contactOf(contact);
+         requireContactUnused(sheetId, key, id);
+         RollupService.Snapshot before = rollup.snapshot(sheetId);
+@@ -232,6 +245,7 @@ public class PersonService {
+         if (alias.isBlank() || people.findByNameOrAlias(sheetId, alias).isPresent()) {
+             throw new DuplicatePersonNameException();
+         }
++        requireUnusedInTree(sheetId, alias);
+         person.addAlias(alias);
+         Person saved = saveUnique(person);
+         audit.recordOnCommit("PERSON_ALIAS_ADDED sheet=" + sheetId + " by=" + user.strip()
+@@ -380,7 +394,8 @@ public class PersonService {
+ 
+     /**
+      * A steward transfers the person to another sheet by its id; not a retired person, not to this sheet
+-     * nor to an archived one, and not when their name, an alias or their contact is, as each is compared,
++     * nor to an archived one (an id never used starts that sheet, as loading it would; a refused transfer
++     * leaves it unstarted), and not when their name, an alias or their contact is, as each is compared,
+      * already on the other sheet. They arrive with every grade (and its from-date), their terms, contact,
+      * aliases and holds, and their claims ({@link ClaimService#receive}); their statements, patron links
+      * either way, pool memberships and watchers are dropped, and they leave this sheet. Each sheet audits
+@@ -389,6 +404,7 @@ public class PersonService {
+     @Transactional
+     public void transfer(String sheetId, String user, Long id, String toSheetId) {
+         if (sheetId.equals(toSheetId)) throw new PersonTransferRefusedException();
++        if (sheets.existsById(sheetId)) sheetService.load(toSheetId, user.strip());
+         // lock both sheets, always in the same order, so two transfers between them cannot deadlock
+         boolean thisFirst = sheetId.compareTo(toSheetId) < 0;
+         Sheet first = sheets.findForUpdate(thisFirst ? sheetId : toSheetId).orElse(null);
+@@ -492,6 +508,60 @@ public class PersonService {
+         }
+     }
+ 
++    /**
++     * The other sheets of the sheet's tree: its topmost ancestor and every descendant of that, each once,
++     * never the sheet itself.
++     */
++    @Transactional(readOnly = true)
++    public List<String> treeOf(String sheetId) {
++        String root = sheetId;
++        Set<String> seen = new HashSet<>(Set.of(sheetId));
++        for (String at = parents.parentOf(sheetId); at != null && seen.add(at); at = parents.parentOf(at)) root = at;
++        List<String> tree = new ArrayList<>();
++        if (!root.equals(sheetId)) tree.add(root);
++        for (String descendant : parents.descendantsOf(root)) {
++            if (!descendant.equals(sheetId) && !tree.contains(descendant)) tree.add(descendant);
++        }
++        return tree;
++    }
++
++    /** The ids of the sheet's people whose name or an alias another sheet of its tree uses as a name or alias. */
++    @Transactional(readOnly = true)
++    public Set<Long> clashingIds(String sheetId) {
++        Set<String> used = keysUsedIn(treeOf(sheetId));
++        Set<Long> ids = new HashSet<>();
++        for (Person person : people.findBySheetIdOrderByIdAsc(sheetId)) {
++            if (clashes(person, used)) ids.add(person.getId());
++        }
++        return ids;
++    }
++
++    /** Whether the person's name or an alias another sheet of their sheet's tree uses as a name or alias. */
++    @Transactional(readOnly = true)
++    public boolean isClashing(Person person) {
++        return clashes(person, keysUsedIn(treeOf(person.getSheetId())));
++    }
++
++    private static boolean clashes(Person person, Set<String> used) {
++        return person.namesAndAliases().stream().map(Person::keyOf).anyMatch(used::contains);
++    }
++
++    private Set<String> keysUsedIn(List<String> sheetIds) {
++        Set<String> keys = new HashSet<>();
++        for (String other : sheetIds) {
++            for (Person person : people.findBySheetIdOrderByIdAsc(other)) {
++                for (String name : person.namesAndAliases()) keys.add(Person.keyOf(name));
++            }
++        }
++        return keys;
++    }
++
++    private void requireUnusedInTree(String sheetId, String name) {
++        for (String other : treeOf(sheetId)) {
++            if (people.findByNameOrAlias(other, name).isPresent()) throw new DuplicatePersonNameException();
++        }
++    }
++
+     private void requireContactUnused(String sheetId, String contact, Long self) {
+         if (contact == null) return;
+         people.findBySheetIdAndContact(sheetId, contact)
+diff --git a/src/main/java/net/officefloor/hq/app/quickadd/QuickAddController.java b/src/main/java/net/officefloor/hq/app/quickadd/QuickAddController.java
+index 9c920d273..94c929acb 100644
+--- a/src/main/java/net/officefloor/hq/app/quickadd/QuickAddController.java
++++ b/src/main/java/net/officefloor/hq/app/quickadd/QuickAddController.java
+@@ -50,6 +50,6 @@ public class QuickAddController {
+             @RequestBody @Valid QuickAddRequest request) {
+         QuickAddService.QuickAdded done = service.add(sheetId, user, request.name().strip(), request.amountValue());
+         return new QuickAddView(PersonView.of(done.person(), people.today(done.person().getSheetId()), people.patronIdsOf(done.person().getId()),
+-                people.watches(done.person().getId(), user), people.isActive(done.person())), done.added(), ClaimView.of(done.claim()));
++                people.watches(done.person().getId(), user), people.isActive(done.person()), people.isClashing(done.person())), done.added(), ClaimView.of(done.claim()));
+     }
+ }
