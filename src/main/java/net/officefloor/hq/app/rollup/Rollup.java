@@ -279,6 +279,28 @@ public class Rollup {
         return byPerson;
     }
 
+    /** The dues of the sheet's claims that count on its today (as for their person's due-total, not deferred), added
+     *  up by the policy version in force on each claim's date (0: before the first); a claim with no due adds none. */
+    public Map<Integer, BigDecimal> dueByPolicyVersion(Sheet sheet) {
+        RateChain sheetRates = rates.of(sheet.getId());
+        LocalDate today = sheet.getToday();
+        List<Claim> sheetClaims = claims.findBySheetIdOrderByListedDescIdDesc(sheet.getId());
+        Map<Integer, BigDecimal> dues = new LinkedHashMap<>();
+        for (Person person : people.findBySheetIdOrderByPositionAscIdAsc(sheet.getId())) {
+            for (Claim claim : sheetClaims) {
+                if (!claim.getPersonId().equals(person.getId()) || !person.counts(claim, today)
+                        || claim.isDeferredOn(today)) {
+                    continue;
+                }
+                BigDecimal due = dueOf(claim, person.gradeOn(claim.getDate()), sheetRates, sheet, sheetClaims);
+                if (due != null) {
+                    dues.merge(sheet.policyVersionOn(claim.getDate()), due, BigDecimal::add);
+                }
+            }
+        }
+        return dues;
+    }
+
     /** The figures added up, leaving out the single highest and the single lowest when there are three or more. */
     public static BigDecimal trimmedSum(List<BigDecimal> figures) {
         BigDecimal sum = figures.stream().reduce(BigDecimal.ZERO.setScale(2), BigDecimal::add);

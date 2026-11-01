@@ -63,17 +63,20 @@ public class SheetService {
     }
 
     /** The sheet's policy versions, oldest first, each with how many of its claims (not deleted) have it as their
-     *  policy version (the one in force on the claim's date); starting the sheet if it has never been loaded. */
+     *  policy version (the one in force on the claim's date) and the dues of those of them that count, added up;
+     *  starting the sheet if it has never been loaded. */
     @Transactional
     public List<SheetController.PolicyLineView> policyLines(String id, String user) {
         Sheet sheet = load(id, user);
         Map<Integer, Long> counts = claims.findBySheetIdOrderByListedDescIdDesc(id).stream()
                 .filter(c -> c.getStatus() != ClaimStatus.DELETED)
                 .collect(Collectors.groupingBy(c -> sheet.policyVersionOn(c.getDate()), Collectors.counting()));
+        Map<Integer, BigDecimal> dues = rollup.dueByPolicyVersion(sheet);
         List<PolicyVersion> versions = sheet.getPolicyVersions();
         return IntStream.range(0, versions.size())
                 .mapToObj(i -> new SheetController.PolicyLineView(i + 1, versions.get(i).getKey(),
-                        versions.get(i).getFrom(), versions.get(i).getValue(), counts.getOrDefault(i + 1, 0L)))
+                        versions.get(i).getFrom(), versions.get(i).getValue(), counts.getOrDefault(i + 1, 0L),
+                        dues.getOrDefault(i + 1, BigDecimal.ZERO).setScale(2).toPlainString()))
                 .toList();
     }
 

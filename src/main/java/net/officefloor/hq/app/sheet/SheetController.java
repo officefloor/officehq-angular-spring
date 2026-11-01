@@ -104,8 +104,9 @@ public class SheetController {
     }
 
     /** A line of the policy viewer: a policy version (numbered from 1), its setting, from-date (null: it counts
-     *  always) and value, and how many of the sheet's claims (not deleted) have it as their policy version. */
-    public record PolicyLineView(int version, String key, LocalDate from, String value, long claims) {
+     *  always) and value, how many of the sheet's claims (not deleted) have it as their policy version, and the dues
+     *  of those of them that count, added up (two decimals). */
+    public record PolicyLineView(int version, String key, LocalDate from, String value, long claims, String dueTotal) {
     }
 
     /** A dated setting's value from a from-date (null: from the beginning of time); a null value means none. */

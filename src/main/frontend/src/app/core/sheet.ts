@@ -26,6 +26,8 @@ export interface PolicyVersion {
 export interface PolicyLine extends PolicyVersion {
   version: number;
   claims: number;
+  /** The dues of its claims that count, added up (two decimals). */
+  dueTotal: string;
 }
 
 export interface SheetView {
