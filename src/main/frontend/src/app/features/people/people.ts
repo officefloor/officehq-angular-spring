@@ -795,12 +795,12 @@ export class PeopleList {
     money(this.claims().filter(this.countsClaimedNow()).filter((c) => c.corrects === null).reduce((sum, c) => sum + cents(c.amount), 0)),
   );
   /** Each person's due-total in whole cents: the sum of the dues of their claims that count (0 with none),
-   *  at most the sheet's cap; null when neither their grade in force today nor the grade any of those claims is at has a rate in
+   *  at most the sheet's cap less their cut total (not below 0); null when neither their grade in force today nor the grade any of those claims is at has a rate in
    *  force today, and none of those claims has a due. */
   protected readonly dueByPerson = computed(() => {
     const cap = this.capCents();
     return new Map([...this.uncappedDueByPerson()].map(([id, due]) =>
-      [id, due === null || cap === null ? due : Math.min(due, cap)]));
+      [id, due === null || cap === null ? due : Math.min(due, Math.max(0, cap - this.cutOf(id)))]));
   });
   /** The sheet's cap in whole cents; null with none. */
   private readonly capCents = computed(() => {
@@ -1339,11 +1339,12 @@ export class PeopleList {
     return this.splitByPerson().get(personId) ?? NO_SPLIT;
   }
 
-  /** How far the person's figures add up above the cap, in whole cents; 0 when they do not, or have no due-total. */
+  /** How far the person's figures (their due-total before the cap plus their cut total) add up above the cap, in
+   *  whole cents; 0 when they do not, there is no cap, or they have no due-total. */
   protected excessOf(personId: number): number {
     const sum = this.uncappedDueByPerson().get(personId) ?? null;
-    const due = this.dueByPerson().get(personId) ?? null;
-    return sum === null || due === null ? 0 : sum - due;
+    const cap = this.capCents();
+    return sum === null || cap === null ? 0 : Math.max(0, sum + this.cutOf(personId) - cap);
   }
 
   /** Download the people as CSV, in list order, retired people included. */

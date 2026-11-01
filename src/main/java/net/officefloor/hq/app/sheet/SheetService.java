@@ -297,11 +297,14 @@ public class SheetService {
     public Sheet setPot(String id, String user, BigDecimal pot) {
         load(id, user);
         Sheet sheet = sheets.findLockedById(id).orElseThrow();
+        // The pot sets the cuts, which the cap counts against: record how the figures moved.
+        Rollup.Figures before = rollup.of(id);
         BigDecimal scaled = pot == null ? null : pot.setScale(2, RoundingMode.UNNECESSARY);
         sheet.setPot(scaled);
         Sheet saved = sheets.saveAndFlush(sheet);
         audit.recordChangeOnCommit(id, user, "SETTING_CHANGED sheet=" + id + " by=" + user
                 + " key=pot value=" + (scaled == null ? "" : scaled.toPlainString()));
+        rollup.recordChanges(id, user, before);
         return saved;
     }
 

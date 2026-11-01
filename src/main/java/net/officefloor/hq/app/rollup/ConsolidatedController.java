@@ -1,5 +1,6 @@
 package net.officefloor.hq.app.rollup;
 
+import net.officefloor.hq.app.pool.PoolService;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.Pattern;
 import jakarta.validation.constraints.Size;
@@ -61,9 +62,11 @@ public class ConsolidatedController {
     private final RateChains rates;
     private final PersonRepository people;
     private final ClaimRepository claims;
+    private final PoolService pools;
 
     public ConsolidatedController(SheetRepository sheets, Rollup rollup, SheetHistory history, RateChains rates,
-            PersonRepository people, ClaimRepository claims) {
+            PersonRepository people, ClaimRepository claims, PoolService pools) {
+        this.pools = pools;
         this.sheets = sheets;
         this.rollup = rollup;
         this.history = history;
@@ -185,7 +188,8 @@ public class ConsolidatedController {
         Sheet sheet = then.rebuildSheet(live, asOf);
         List<Person> sheetPeople = then.rebuildPeople(sheetId);
         List<Claim> sheetClaims = then.rebuildClaims(sheetId);
-        return new Counted(sheet, rollup.of(sheet, history.ratesAsOf(sheetId, asOf), sheetPeople, sheetClaims),
+        return new Counted(sheet, rollup.of(sheet, history.ratesAsOf(sheetId, asOf), sheetPeople, sheetClaims,
+                        pools.cutTotals(sheetId, asOf)),
                 sheetPeople, sheetClaims);
     }
 }

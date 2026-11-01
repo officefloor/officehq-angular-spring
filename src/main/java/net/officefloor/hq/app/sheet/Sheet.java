@@ -630,10 +630,15 @@ public class Sheet {
         return amountOn(CAP, today, null);
     }
 
-    /** A person's due-total as it counts: the sum of their figures, at most the cap when there is one. */
-    public BigDecimal capped(BigDecimal sum) {
+    /** A person's due-total as it counts: the sum of their figures, at most the cap less their cut total (not below
+     *  0.00) when there is a cap. */
+    public BigDecimal capped(BigDecimal sum, BigDecimal cut) {
         BigDecimal cap = getCap();
-        return cap == null || sum.compareTo(cap) <= 0 ? sum : cap;
+        if (cap == null) {
+            return sum;
+        }
+        BigDecimal room = cap.subtract(cut).max(BigDecimal.ZERO.setScale(2));
+        return sum.compareTo(room) <= 0 ? sum : room;
     }
 
     /** Whether a claim opened now is numbered within its period: the period numbering from is set and the

@@ -23,6 +23,7 @@ import net.officefloor.hq.app.period.PeriodController.PeriodView;
 import net.officefloor.hq.app.period.PeriodRepository;
 import net.officefloor.hq.app.person.Person;
 import net.officefloor.hq.app.person.PersonRepository;
+import net.officefloor.hq.app.rollup.Rollup;
 import net.officefloor.hq.app.sheet.Sheet;
 import net.officefloor.hq.app.sheet.SheetRepository;
 import net.officefloor.hq.app.sheet.SheetService;
@@ -128,10 +129,12 @@ public class PoolService {
     private final CrewRepository crews;
     private final CrewMemberRepository crewMembers;
     private final PeriodRepository periods;
+    private final Rollup rollup;
 
     public PoolService(PoolRepository pools, PoolMemberRepository members, PersonRepository people,
             SheetService sheets, SheetRepository sheetStore, Audit audit, SheetHistory history, CrewRepository crews,
-            CrewMemberRepository crewMembers, PeriodRepository periods) {
+            CrewMemberRepository crewMembers, PeriodRepository periods, Rollup rollup) {
+        this.rollup = rollup;
         this.periods = periods;
         this.history = history;
         this.crews = crews;
@@ -290,6 +293,24 @@ public class PoolService {
         cutsOf(list(sheetId, null)).forEach((poolId, of) ->
                 of.forEach((key, cut) -> made.put(poolId + "/" + key, cut)));
         return made;
+    }
+
+    /** Each person's cut total, by person id, with {@code on} (null: the sheet's today) standing in for the sheet's
+     *  today as for {@link #list(String, LocalDate)}: their shown cuts across every pool they are a member of, added
+     *  up; a person with no cut shown is left out. */
+    @Transactional(readOnly = true)
+    public Map<Long, BigDecimal> cutTotals(String sheetId, LocalDate on) {
+        Map<Long, BigDecimal> byPerson = new HashMap<>();
+        for (PoolWithMembers p : list(sheetId, on)) {
+            List<BigDecimal> cuts = p.cuts();
+            for (int i = 0; cuts != null && i < p.members().size(); i++) {
+                Member m = p.members().get(i);
+                if (m.person() != null && cuts.get(i) != null && m.inForce()) {
+                    byPerson.merge(m.person().getId(), cuts.get(i), BigDecimal::add);
+                }
+            }
+        }
+        return byPerson;
     }
 
     /** A member's key among the cuts a closed period fixed. */
@@ -463,6 +484,8 @@ public class PoolService {
         sheetStore.findLockedById(sheetId).orElseThrow();
         Pool pool = pools.findById(poolId).filter(p -> p.getSheetId().equals(sheetId))
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "No such pool on this sheet"));
+        // A member moves the cuts, which the cap counts against: record how the figures moved.
+        Rollup.Figures before = rollup.of(sheetId);
         String name;
         PoolMember member;
         if (personId != null) {
@@ -489,6 +512,7 @@ public class PoolService {
         audit.recordChangeOnCommit(sheetId, user, "POOL_MEMBER_ADDED sheet=" + sheetId + " by=" + user
                 + " pool=" + pool.getName() + " name=" + name + " share=" + scaled.toPlainString() + (from == null ? "" : " from=" + from)
                 + (to == null ? "" : " to=" + to));
+        rollup.recordChanges(sheetId, user, before);
         return list(sheetId).stream().filter(p -> p.pool().getId().equals(pool.getId())).findFirst().orElseThrow();
     }
 

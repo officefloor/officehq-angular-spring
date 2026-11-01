@@ -21,6 +21,7 @@ import net.officefloor.hq.app.history.SheetHistory;
 import net.officefloor.hq.app.history.SheetState;
 import net.officefloor.hq.app.person.Person;
 import net.officefloor.hq.app.person.PersonRepository;
+import net.officefloor.hq.app.pool.PoolService;
 import net.officefloor.hq.app.rate.RateChain;
 import net.officefloor.hq.app.rate.RateChains;
 import net.officefloor.hq.app.role.Role;
@@ -29,6 +30,7 @@ import net.officefloor.hq.app.rollup.Rollup;
 import net.officefloor.hq.app.sheet.Sheet;
 import net.officefloor.hq.app.sheet.SheetRepository;
 import net.officefloor.hq.app.sheet.SheetService;
+import org.springframework.context.annotation.Lazy;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -60,10 +62,12 @@ public class StatementService {
     private final Rollup rollup;
     private final RoleService roles;
     private final SheetHistory history;
+    private final PoolService pools;
 
     public StatementService(StatementRepository statements, ClaimRepository claims, PersonRepository people,
             RateChains rates, SheetService sheets, SheetRepository sheetStore, Audit audit, Rollup rollup,
-            RoleService roles, SheetHistory history) {
+            RoleService roles, SheetHistory history, @Lazy PoolService pools) {
+        this.pools = pools;
         this.roles = roles;
         this.history = history;
         this.statements = statements;
@@ -147,7 +151,7 @@ public class StatementService {
         Stated stated;
         if (asOf == null) {
             stated = bind(sheet, rates.of(sheetId), person, theirs, Function.identity(),
-                    person::countsUnbound, theirs);
+                    person::countsUnbound, theirs, cutOf(sheetId, personId, null));
         } else {
             SheetState then = history.asOf(sheetId, asOf).orElse(null);
             SheetState.PersonState personThen = then == null ? null : then.person(personId).orElse(null);
@@ -160,7 +164,7 @@ public class StatementService {
             then.claims().stream().filter(c -> c.personId() == personId)
                     .forEach(c -> claimsThen.put(c.id(), c.rebuild(sheetId)));
             stated = bind(then.rebuildSheet(sheet, asOf), ratesAsOf(sheetId, then, asOf), asThen, theirs,
-                    c -> claimsThen.get(c.getId()), asThen::counts, claimsThen.values());
+                    c -> claimsThen.get(c.getId()), asThen::counts, claimsThen.values(), cutOf(sheetId, personId, asOf));
         }
         LocalDate takenOn = asOf != null ? asOf : today;
         claims.saveAllAndFlush(theirs);
@@ -169,6 +173,11 @@ public class StatementService {
                 + " due-total=" + stated.dueTotal() + " claims=" + stated.counted() + (asOf == null ? "" : " asof=" + asOf));
         rollup.recordChanges(sheetId, user, before);
         return new Taken(summaryOf(statements.findBySheetIdAndPersonIdOrderByIdAsc(sheetId, personId)), theirs);
+    }
+
+    /** A person's cut total with {@code on} (null: the sheet's today) standing in for the sheet's today. */
+    private BigDecimal cutOf(String sheetId, long personId, LocalDate on) {
+        return pools.cutTotals(sheetId, on).getOrDefault(personId, BigDecimal.ZERO.setScale(2));
     }
 
     /** What a statement came to: the due-total it records and how many claims it bound. */
@@ -181,7 +190,8 @@ public class StatementService {
      * the person's then), with the person, the rates and the claims that decide its rounding as they stand there.
      */
     private static Stated bind(Sheet sheet, RateChain sheetRates, Person person, List<Claim> theirs,
-            Function<Claim, Claim> asThen, BiPredicate<Claim, LocalDate> counts, Collection<Claim> roundingClaims) {
+            Function<Claim, Claim> asThen, BiPredicate<Claim, LocalDate> counts, Collection<Claim> roundingClaims,
+            BigDecimal cut) {
         LocalDate today = sheet.getToday();
         Set<String> grades = new HashSet<>(Set.of(person.gradeOn(today)));
         BigDecimal total = BigDecimal.ZERO.setScale(2);
@@ -211,7 +221,7 @@ public class StatementService {
         // As on screen: with no rate in force today for their grade on the sheet's today, nor for the grade any
         // of their claims that count is at, and no claim that has a due, the person has no due-total.
         boolean anyRate = grades.stream().anyMatch(g -> sheetRates.inForceOn(g, today).isPresent());
-        return new Stated(!anyRate && !anyDue ? "n/a" : sheet.capped(total).toPlainString(), counted);
+        return new Stated(!anyRate && !anyDue ? "n/a" : sheet.capped(total, cut).toPlainString(), counted);
     }
 
     /**

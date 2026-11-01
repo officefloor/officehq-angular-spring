@@ -18,12 +18,14 @@ import net.officefloor.hq.app.claim.ClaimStatus;
 import net.officefloor.hq.app.person.Person;
 import net.officefloor.hq.app.period.Period;
 import net.officefloor.hq.app.period.PeriodRepository;
+import net.officefloor.hq.app.pool.PoolService;
 import net.officefloor.hq.app.person.PersonRepository;
 import net.officefloor.hq.app.rate.Rate;
 import net.officefloor.hq.app.rate.RateChain;
 import net.officefloor.hq.app.rate.RateChains;
 import net.officefloor.hq.app.sheet.Sheet;
 import net.officefloor.hq.app.sheet.SheetRepository;
+import org.springframework.context.annotation.Lazy;
 import org.springframework.stereotype.Service;
 
 /**
@@ -52,9 +54,11 @@ public class Rollup {
     private final RateChains rates;
     private final PeriodRepository periods;
     private final Audit audit;
+    private final PoolService pools;
 
     public Rollup(SheetRepository sheets, PersonRepository people, ClaimRepository claims, RateChains rates,
-            PeriodRepository periods, Audit audit) {
+            PeriodRepository periods, Audit audit, @Lazy PoolService pools) {
+        this.pools = pools;
         this.periods = periods;
         this.sheets = sheets;
         this.people = people;
@@ -70,8 +74,16 @@ public class Rollup {
     }
 
     /** The figures of a sheet holding these rates, people (in list order) and claims (in list order), worked out on
-     *  its today: the live sheet's, or one rebuilt as it stood at a moment (none: no sheet). */
+     *  its today: the live sheet's, with each person's cut total as it stands now (none: no sheet). */
     public Figures of(Sheet sheet, RateChain sheetRates, List<Person> sheetPeople, List<Claim> sheetClaims) {
+        return of(sheet, sheetRates, sheetPeople, sheetClaims,
+                sheet == null ? Map.of() : pools.cutTotals(sheet.getId(), null));
+    }
+
+    /** The figures of a sheet as {@link #of(Sheet, RateChain, List, List)}, with these cut totals by person id (a
+     *  person left out has none): the live sheet's, or one rebuilt as it stood at a moment (none: no sheet). */
+    public Figures of(Sheet sheet, RateChain sheetRates, List<Person> sheetPeople, List<Claim> sheetClaims,
+            Map<Long, BigDecimal> cutTotals) {
         LocalDate today = sheet == null ? null : sheet.getToday();
         Map<Long, PersonFigures> byPerson = new LinkedHashMap<>();
         BigDecimal claimedTotal = BigDecimal.ZERO.setScale(2);
@@ -107,7 +119,8 @@ public class Rollup {
             String due = NOT_AVAILABLE;
             if (!dues.isEmpty() || anyRate) {
                 BigDecimal sum = dues.stream().reduce(BigDecimal.ZERO.setScale(2), BigDecimal::add);
-                BigDecimal total = sheet == null ? sum : sheet.capped(sum);
+                BigDecimal total = sheet == null ? sum : sheet.capped(sum,
+                        cutTotals.getOrDefault(person.getId(), BigDecimal.ZERO.setScale(2)));
                 dueFigures.add(total);
                 due = total.toPlainString();
             }
