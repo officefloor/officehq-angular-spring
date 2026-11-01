@@ -1,0 +1,68 @@
+diff --git a/src/main/frontend/src/app/features/people/people.ts b/src/main/frontend/src/app/features/people/people.ts
+index 9dc04938e..8e8a9ef64 100644
+--- a/src/main/frontend/src/app/features/people/people.ts
++++ b/src/main/frontend/src/app/features/people/people.ts
+@@ -187,6 +187,8 @@ interface StatementTaken {
+ // member of, added up (a pool that shows no cuts adds nothing); the sheet's cut total adds up everyone's.
+ // Under it, a summary: per grade, the people on it today (retired people excluded) and their
+ // due-totals added up; per period, its due-total; per status, how many claims have it.
++// Beside it, a classic summary: per period, its due-total counting each claim by its status now (a closed
++// period shows the figure fixed when it closed), and the sheet's due-total with no trimming.
+ // Above everything, a header of counters repeating those figures: the people on the sheet (retired
+ // people included), the claims per status, and the sheet's due-total and overdue-total.
+ // The sheet's due-total and overdue-total leave out the single highest and the single lowest person's
+@@ -641,6 +643,24 @@ function trimmedSum(figures: number[]): number {
+         </tbody>
+       </table>
+     </section>
++    <section aria-labelledby="classic-heading">
++      <h2 id="classic-heading">Classic summary</h2>
++      <table>
++        <caption>By period, each claim counted by its status now</caption>
++        <thead>
++          <tr><th scope="col">Period</th><th scope="col">Due total</th></tr>
++        </thead>
++        <tbody>
++          @for (p of periods(); track p.id) {
++            <tr>
++              <th scope="row">{{ p.name }}</th>
++              <td [attr.data-testid]="'classic-period-' + p.name + '-due-total'">{{ classicPeriodDueTotalOf(p) }}</td>
++            </tr>
++          }
++        </tbody>
++      </table>
++      <p>Due total (not trimmed): <strong data-testid="classic-due-total">{{ classicDueTotal() }}</strong></p>
++    </section>
+   `,
+ })
+ export class People {
+@@ -787,6 +807,29 @@ export class People {
+   private periodDueCents(period: Period): number {
+     return this.people().reduce((sum, p) => sum + this.personPeriodCents(p.id, period), 0);
+   }
++  /**
++   * Each period's classic live due-total in cents, by period id: the dues as shown now of the claims whose
++   * due-by falls in it that count by their status now.
++   */
++  private readonly classicPeriodLiveCents = computed(() => {
++    const by = new Map<number, number>();
++    for (const c of this.claims()) {
++      const period = periodOn(this.periods(), c.dueBy);
++      const pctOn = this.pctOnByPerson().get(c.personId);
++      if (period === null || pctOn === undefined || !this.counts(c)) continue;
++      by.set(period.id, (by.get(period.id) ?? 0) + (claimDueCents(c, pctOn, this.session.floorCentsOn, this.session.late(), roundsOn(c, this.claimsOf(c.personId)), this.graceOnOf(c.personId)) ?? 0));
++    }
++    return by;
++  });
++  /** A period's classic due-total: the figure fixed when it was closed or soft-closed, else each claim counted by its status now. */
++  protected classicPeriodDueTotalOf(period: Period): string {
++    if (period.closed || period.softClosed) return money(this.periodDueCents(period));
++    return money(this.classicPeriodLiveCents().get(period.id) ?? 0);
++  }
++  /** Everyone's due-total added up, skipping those whose due-total is n/a, not trimmed. */
++  protected readonly classicDueTotal = computed(() =>
++    money(this.people().reduce((sum, p) => sum + (this.dueTotalCents(p) ?? 0), 0)),
++  );
+   /** A period's due-total less that of the period before it by from-date; nothing for the earliest. */
+   protected periodChangeOf(period: Period): string {
+     const list = [...this.periods()].sort((a, b) => (a.from < b.from ? -1 : 1));
