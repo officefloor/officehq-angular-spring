@@ -108,7 +108,8 @@ function csvField(value: string): string {
     <app-header [peopleCount]="people().length" [statuses]="summaryByStatus()" [dueTotal]="dueTotal()"
                 [overdueTotal]="money(overdueTotals().cents)" [myDueTotal]="me() ? dueOf(me()!) : ''"
                 [myOverdueTotal]="me() ? money(overdueOf(me()!.id).cents) : ''"
-                [myCrewDueTotal]="myCrewDueTotal()" [myReviewsCount]="myReviewsCount()" />
+                [myCrewDueTotal]="myCrewDueTotal()" [myReviewsCount]="myReviewsCount()"
+                [watchedDueTotal]="watchedDueTotal()" />
     <app-dashboard [pending]="statusCount('PENDING')" [review]="statusCount('REVIEW')"
                    [overdue]="overdueTotals().count" />
     <app-periods [dueTotals]="dueByPeriod()" />
@@ -594,6 +595,12 @@ export class PeopleList {
     if (led.length === 0) return '';
     const due = this.dueByPerson();
     return money(led.reduce((sum, crew) => sum + crewDueCents(crew, due), 0));
+  });
+
+  /** The due-totals of the people the signed-in user watches, added up; 0.00 when they watch no one. */
+  protected readonly watchedDueTotal = computed(() => {
+    const due = this.dueByPerson();
+    return money([...this.watched()].reduce((sum, id) => sum + (due.get(id) ?? 0), 0));
   });
 
   protected readonly grades = GRADES;

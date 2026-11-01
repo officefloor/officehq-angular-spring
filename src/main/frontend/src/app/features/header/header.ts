@@ -4,7 +4,7 @@ import { FigurePipe } from '../../core/figure';
 
 // The sheet's counters, always on show: its people (retired included), its claims per status and
 // its due-total and overdue-total,
-// the signed-in user's own due-total and overdue-total, the due-totals of the crews they lead and how many REVIEW claims are assigned to them. Each repeats a figure shown elsewhere and is fed from the same source.
+// the signed-in user's own due-total and overdue-total, the due-totals of the crews they lead, how many REVIEW claims are assigned to them and the due-totals of the people they watch. Each repeats a figure shown elsewhere and is fed from the same source.
 @Component({
   selector: 'app-header',
   imports: [FigurePipe],
@@ -21,6 +21,7 @@ import { FigurePipe } from '../../core/figure';
         <li>My overdue: <strong data-testid="my-overdue-total">{{ (myOverdueTotal()) | figure }}</strong></li>
         <li>My reviews: <strong data-testid="my-reviews-count">{{ myReviewsCount() }}</strong></li>
         <li>My crews' due: <strong data-testid="my-crew-due-total">{{ (myCrewDueTotal()) | figure }}</strong></li>
+        <li>Watched due: <strong data-testid="watched-due-total">{{ (watchedDueTotal()) | figure }}</strong></li>
       </ul>
     </header>
   `,
@@ -37,4 +38,6 @@ export class SheetHeader {
   readonly myCrewDueTotal = input.required<string>();
   /** How many REVIEW claims are assigned to the signed-in user to review. */
   readonly myReviewsCount = input.required<number>();
+  /** The due-totals of the people the signed-in user watches, added up; 0.00 when they watch no one. */
+  readonly watchedDueTotal = input.required<string>();
 }
