@@ -629,8 +629,43 @@ public class ClaimService {
      * has none. A statement binds the figure, never the charge nor the floor.
      */
     public BigDecimal chargedFigureOf(String sheetId, Person person, Claim claim) {
-        BigDecimal figure = figureOf(sheetId, person, claim);
-        if (claim.getSettledDue() != null) return figure;
+        return charged(sheetId, person, claim, figureOf(sheetId, person, claim));
+    }
+
+    /** What a rate preview finds: how many claims' dues would change, and by how much in all. */
+    public record RatePreview(int count, BigDecimal diff) {}
+
+    /**
+     * How many OPEN and PENDING claims of people on the grade (the one in force on the claim's date) would show
+     * a different due were the percent the grade's rate on every date, and the sum of new minus current dues
+     * (a due of n/a counts as 0). A claim bound by a statement does not change. Nothing is stored.
+     */
+    @Transactional(readOnly = true)
+    public RatePreview previewRate(String sheetId, String grade, BigDecimal pct) {
+        int count = 0;
+        BigDecimal diff = BigDecimal.ZERO.setScale(2);
+        java.util.Map<Long, Person> byId = new java.util.HashMap<>();
+        for (Person p : people.findBySheetIdOrderByIdAsc(sheetId)) byId.put(p.getId(), p);
+        for (Claim claim : claims.findBySheetIdOrderByIdDesc(sheetId)) {
+            if (!claim.getStatus().isOpen() || claim.isBound()) continue;
+            Person person = byId.get(claim.getPersonId());
+            if (person == null || !grade.equals(person.gradeOn(claim.getDate()))) continue;
+            BigDecimal current = chargedFigureOf(sheetId, person, claim);
+            BigDecimal figure = claim.getAmount().multiply(pct).movePointLeft(2).setScale(2, roundingOf(sheetId, claim));
+            BigDecimal next = charged(sheetId, person, claim, figure);
+            BigDecimal was = current == null ? BigDecimal.ZERO.setScale(2) : current;
+            BigDecimal now = next == null ? BigDecimal.ZERO.setScale(2) : next;
+            if (current == null || now.compareTo(was) != 0) {
+                count++;
+                diff = diff.add(now.subtract(was));
+            }
+        }
+        return new RatePreview(count, diff.setScale(2));
+    }
+
+    /** The claim's due with the figure given: floored, with its late charge while overdue; a settled due as fixed. */
+    private BigDecimal charged(String sheetId, Person person, Claim claim, BigDecimal figure) {
+        if (claim.getSettledDue() != null) return claim.getSettledDue();
         return floored(sheetId, claim, LateCharge.withCharge(claim, figure, sheets.today(sheetId),
                 graceOf(sheetId, person, claim), d -> settings.latePctOn(sheetId, d), roundingOf(sheetId, claim)));
     }

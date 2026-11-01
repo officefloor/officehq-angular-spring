@@ -76,6 +76,26 @@ export function rateOn(rates: Rate[], date: string): Rate | null {
           <p role="alert" class="error" data-testid="rate-form-error">{{ error() }}</p>
         }
       </form>
+      <form [formGroup]="previewForm" (ngSubmit)="preview()" aria-label="Preview rate">
+        <label for="rate-preview-grade">Grade</label>
+        <select id="rate-preview-grade" data-testid="rate-preview-grade" formControlName="grade">
+          @for (g of grades; track g) {
+            <option [value]="g">{{ g }}</option>
+          }
+        </select>
+        <label for="rate-preview-pct">Candidate rate (%)</label>
+        <input id="rate-preview-pct" data-testid="rate-preview-pct" formControlName="pct" inputmode="decimal" />
+        <button type="submit" data-testid="rate-preview">Preview</button>
+        @if (previewed(); as p) {
+          <p aria-live="polite">
+            Claims changed <span data-testid="rate-preview-count">{{ p.count }}</span>,
+            difference <span data-testid="rate-preview-diff">{{ p.diff }}</span>
+          </p>
+        }
+        @if (previewError()) {
+          <p role="alert" class="error" data-testid="rate-preview-error">{{ previewError() }}</p>
+        }
+      </form>
       <table>
         <caption>In force today</caption>
         <thead>
@@ -130,6 +150,15 @@ export class Rates {
     from: new FormControl('', { nonNullable: true }),
     to: new FormControl('', { nonNullable: true }),
   });
+  protected readonly previewForm = new FormGroup({
+    grade: new FormControl('A', { nonNullable: true }),
+    pct: new FormControl('', { nonNullable: true }),
+  });
+  /** The last preview's answer: how many open claims' dues would change, and the sum of the differences. */
+  protected readonly previewed = signal<{ count: number; diff: string } | null>(null);
+  protected readonly previewError = signal('');
+  /** Counts each preview, so only the latest one's answer is shown. */
+  private previewSeq = 0;
   /** By grade, then from-date, the one from the start first. */
   protected readonly sorted = computed(() =>
     [...this.rates()].sort((a, b) =>
@@ -139,6 +168,11 @@ export class Rates {
 
   constructor() {
     this.form.valueChanges.subscribe(() => this.error.set(''));
+    this.previewForm.valueChanges.subscribe(() => {
+      this.previewSeq++;
+      this.previewed.set(null);
+      this.previewError.set('');
+    });
   }
 
   protected currentOf(grade: string): string | null {
@@ -188,6 +222,37 @@ export class Rates {
       this.error.set('Could not set that rate.');
     } finally {
       this.saving = false;
+    }
+  }
+
+  /** Ask the store what the candidate rate would change for the grade; nothing is saved. */
+  protected async preview(): Promise<void> {
+    const seq = ++this.previewSeq;
+    this.previewed.set(null);
+    this.previewError.set('');
+    const sheet = this.session.sheetId();
+    if (!sheet) return;
+    const raw = this.previewForm.getRawValue();
+    const pct = raw.pct.trim();
+    if (!GRADES.includes(raw.grade)) {
+      this.previewError.set('Choose a grade.');
+      return;
+    }
+    if (!/^\d{1,5}(\.\d{1,2})?$/.test(pct)) {
+      this.previewError.set('Enter a percent of 0.00 or more, with at most two decimals.');
+      return;
+    }
+    try {
+      const result = await firstValueFrom(
+        this.http.get<{ count: number; diff: string }>(`/api/sheets/${encodeURIComponent(sheet)}/rates/${raw.grade}/preview`, {
+          params: { pct },
+          headers: { 'X-User': this.session.user() ?? '' },
+        }),
+      );
+      if (seq !== this.previewSeq || this.session.sheetId() !== sheet) return;
+      this.previewed.set(result);
+    } catch {
+      if (seq === this.previewSeq) this.previewError.set('Could not preview that rate.');
     }
   }
 }
