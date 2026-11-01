@@ -1,0 +1,64 @@
+{
+  "checkpoint": 79,
+  "stack": {
+    "repo": "/home/daniel/officehq-angular-spring",
+    "origin": "git@github.com:officefloor/officehq-angular-spring.git",
+    "name": "officehq-angular-spring",
+    "base_ref": "base-empty",
+    "base_commit": "65cb8233ea38b2dfa6cfd18709e30cd18fdf3250"
+  },
+  "checkpoint_id": "cp79_entry-date",
+  "phase": "early",
+  "type": "additive",
+  "mutates": [],
+  "replaced_tests": [],
+  "request": {
+    "spec": "The sheet may have an entry date (settings, a date, blank means off, not dated; SETTING_CHANGED\nkey=entry-date value=<date>). While it is set, it is the default date of a new claim wherever the\nsheet's today was: the claim form, the quick-add bar, a pasted line with a blank date and a\ncorrection.\n",
+    "prompt": "You are implementing ONE change to this application.\n\nFIRST read AGENTS.md \u2014 it states the working rules and how the app is tested, and sends you to\nDESIGN.md for the app's stack and conventions. Follow both.\n\nTHE CHANGE REQUEST:\nThe sheet may have an entry date (settings, a date, blank means off, not dated; SETTING_CHANGED\nkey=entry-date value=<date>). While it is set, it is the default date of a new claim wherever the\nsheet's today was: the claim form, the quick-add bar, a pasted line with a blank date and a\ncorrection.\n\nYour work is verified by an automated Playwright UI test already installed under e2e/specs/.\nRead that spec: it declares the exact data-testid anchors, values, test data and any audit\nrecords it expects \u2014 match them. Run `bin/e2e` to build the app, start it, and run the test as\nyou work; iterate until it passes. Change whatever the request needs across the app \u2014 its stored\ndata, its server and its front end. Do NOT edit bin/build, bin/start, bin/stop, bin/e2e,\nAGENTS.md, CLAUDE.md, DESIGN.md, e2e/support/ or the test spec.\n"
+  },
+  "commit_sha": "41a52db45c7393c937a421401877bfae92f12956",
+  "reset_sha": "",
+  "preagent_sha": "9c69a248e8ff11ffc0a6ed7b61ce482b4ea18c9e",
+  "prev_sha": "9c69a248e8ff11ffc0a6ed7b61ce482b4ea18c9e",
+  "base_sha": "65cb8233ea38b2dfa6cfd18709e30cd18fdf3250",
+  "agent": {
+    "ok": true,
+    "cost_usd": 1.8761296000000003,
+    "input_tokens": 94,
+    "output_tokens": 18545,
+    "cache_read_tokens": 3411348,
+    "cache_creation_tokens": 102823,
+    "num_turns": 48,
+    "duration_ms": 554990,
+    "duration_api_ms": 192704,
+    "model": "claude-opus-5-5",
+    "session_id": "96c8bbfe-b7f5-4450-ada0-1e56713a0358",
+    "stop_reason": "success",
+    "result_text": "I added the entry date setting, and all 4 tests in `bin/e2e` now pass. To get there I also had to fix two bulk-grade bugs. They're older problems that the spec's other scenarios run into, not part of the entry date itself.\n\n**The entry date**\n- **Storage:** the sheet gets a new `entry_date` column (migration `V51__sheet_entry_date.sql`). It is undated, and blank means off.\n- **Server:** saving it goes through `PUT /api/sheets/{id}/settings/entry-date`. It writes the audit line `SETTING_CHANGED sheet=<id> by=<user> key=entry-date value=<date>`, with an empty value when it's cleared. The settings view now includes `entryDate`, and viewers are refused like any other setting change.\n- **Default date:** a new claim with no date gets its date in `ClaimService.add`. It now uses the entry date while one is set, otherwise the sheet's today. The claim form, the quick-add bar, pasted lines with a blank date and corrections all add claims through that method, so they all pick it up.\n- **Editing a claim:** saving a claim's editor with a blank date still uses the sheet's today. The request covers new claims only, and the tests don't touch this case.\n- **Settings screen:** there's a new `setting-entry-date` field and a `setting-entry-date-current` display, set up the same way as \"period numbering from\". Clearing the field with Delete or Backspace counts as a change.\n\n**The two bulk-grade fixes** (`PersonService.bulkGrade`, `PersonController`)\n1. Grading people in bulk with the date left blank recorded a new grade from today even for someone whose grade wasn't changing. The person form doesn't do that, and the code comments say bulk grading should behave like it. Because of this, a later dated grade change was hidden behind the extra record, which is why scenario 2 failed. It now records nothing for an unchanged grade, though it still counts the person and writes the `PERSON_EDITED` line.\n2. A viewer's bulk grade was refused outright, so the screen showed an error. The app's rule for other bulk actions (bulk open and settle) is that a viewer's request goes through and changes nothing. Bulk grade now follows that rule: a viewer, or anyone on an archived sheet, gets a count of 0 and nothing is written. Scenario 1 expects this.",
+    "error": "",
+    "attempts": [
+      {
+        "ok": true,
+        "limit_reached": false,
+        "retryable": false,
+        "timed_out": false,
+        "cost_usd": 1.8761296000000003,
+        "num_turns": 48,
+        "duration_ms": 554990,
+        "duration_api_ms": 192704,
+        "error": ""
+      }
+    ]
+  },
+  "agent_stream_file": "cp79.agent.jsonl",
+  "agent_diff_file": "cp79.agent.diff",
+  "build_log_file": null,
+  "tests": {
+    "gated": false,
+    "queued": true
+  },
+  "probe": null,
+  "pinned_touched": [],
+  "acceptance_touched": [],
+  "impact_gate": null
+}
