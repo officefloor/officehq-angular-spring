@@ -1,0 +1,64 @@
+{
+  "checkpoint": 10,
+  "stack": {
+    "repo": "/home/daniel/officehq-angular-spring",
+    "origin": "git@github.com:officefloor/officehq-angular-spring.git",
+    "name": "officehq-angular-spring",
+    "base_ref": "base-empty",
+    "base_commit": "65cb8233ea38b2dfa6cfd18709e30cd18fdf3250"
+  },
+  "checkpoint_id": "cp10_settle-freezes-due",
+  "phase": "early",
+  "type": "additive",
+  "mutates": [],
+  "replaced_tests": [],
+  "request": {
+    "spec": "Settling a claim fixes its due: the figure it had at the moment of settling is kept, and later\nchanges to rates do not alter it. Open claims stay live. Show the frozen figure in the same place\nas before, and add due=<due> at the end of the CLAIM_SETTLED line.\n",
+    "prompt": "You are implementing ONE change to this application.\n\nFIRST read AGENTS.md \u2014 it states the working rules and how the app is tested, and sends you to\nDESIGN.md for the app's stack and conventions. Follow both.\n\nTHE CHANGE REQUEST:\nSettling a claim fixes its due: the figure it had at the moment of settling is kept, and later\nchanges to rates do not alter it. Open claims stay live. Show the frozen figure in the same place\nas before, and add due=<due> at the end of the CLAIM_SETTLED line.\n\nYour work is verified by an automated Playwright UI test already installed under e2e/specs/.\nRead that spec: it declares the exact data-testid anchors, values, test data and any audit\nrecords it expects \u2014 match them. Run `bin/e2e` to build the app, start it, and run the test as\nyou work; iterate until it passes. Change whatever the request needs across the app \u2014 its stored\ndata, its server and its front end. Do NOT edit bin/build, bin/start, bin/stop, bin/e2e,\nAGENTS.md, CLAUDE.md, DESIGN.md, e2e/support/ or the test spec.\n"
+  },
+  "commit_sha": "1dd96c4aeca75e38b7fdf91b2c7d508517bc1d4d",
+  "reset_sha": "",
+  "preagent_sha": "8107f569059c2faa625afc3915264178fc9a8c4e",
+  "prev_sha": "8107f569059c2faa625afc3915264178fc9a8c4e",
+  "base_sha": "65cb8233ea38b2dfa6cfd18709e30cd18fdf3250",
+  "agent": {
+    "ok": true,
+    "cost_usd": 0.6288468,
+    "input_tokens": 22,
+    "output_tokens": 8485,
+    "cache_read_tokens": 365854,
+    "cache_creation_tokens": 48236,
+    "num_turns": 12,
+    "duration_ms": 296122,
+    "duration_api_ms": 81480,
+    "model": "claude-opus-5-5",
+    "session_id": "8f34be19-250a-4706-be0a-983a4b6ef8dd",
+    "stop_reason": "success",
+    "result_text": "Settling a claim now fixes its due, and all 4 acceptance tests pass with `bin/e2e`.\n\n**How it works:**\n- **Stored data:** a new migration, `V9__claim_settled_due.sql`, adds a `settled_due` column to claims that can be empty.\n- **Server** (`ClaimService`): when a claim is settled, its due is worked out once from the person's grade rate at that moment and saved. It uses the same half-up rounding to cents as the screen. The `CLAIM_SETTLED` audit line now ends with `due=<due>`. The claim data sent to the screen includes this `settledDue`.\n- **Front end** (`claims.ts`): `claim-due` shows the frozen figure when there is one, and otherwise the live figure as before. Open and draft claims are unchanged.\n\n**Two behaviours the test required:**\n- **Settled with no rate for the grade:** nothing is frozen. The audit line says `due=n/a` and the claim's due stays live, so it shows a figure once the grade gets a rate or the person moves to a graded rate (test scenario 3 checks this).\n- **Totals stay live:** the person due-total and the sheet due-total are still the claimed amount times the current rate. I first changed them to add up the frozen figures, but the test expects live totals (e.g. 4.60 rather than 2.00 + 0.60), so I put that back. As a result, after a rate change a person's due-total can differ from the sum of their claims' dues. If you want the totals frozen too, that's a separate change, and this test would need different expected values.\n\nEditing a settled claim's amount does not change its frozen due.",
+    "error": "",
+    "attempts": [
+      {
+        "ok": true,
+        "limit_reached": false,
+        "retryable": false,
+        "timed_out": false,
+        "cost_usd": 0.6288468,
+        "num_turns": 12,
+        "duration_ms": 296122,
+        "duration_api_ms": 81480,
+        "error": ""
+      }
+    ]
+  },
+  "agent_stream_file": "cp10.agent.jsonl",
+  "agent_diff_file": "cp10.agent.diff",
+  "build_log_file": null,
+  "tests": {
+    "gated": false,
+    "queued": true
+  },
+  "probe": null,
+  "pinned_touched": [],
+  "acceptance_touched": [],
+  "impact_gate": null
+}
