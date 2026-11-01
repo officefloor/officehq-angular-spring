@@ -1,0 +1,119 @@
+diff --git a/src/main/frontend/src/app/features/people/people.ts b/src/main/frontend/src/app/features/people/people.ts
+index 5c23b67df..d839e0736 100644
+--- a/src/main/frontend/src/app/features/people/people.ts
++++ b/src/main/frontend/src/app/features/people/people.ts
+@@ -111,6 +111,14 @@ interface StatementSummary {
+   count: number;
+   lastDueTotal: string | null;
+   lastDate: string;
++  /** Each statement standing, oldest first by date. */
++  lines: StatementLine[];
++}
++
++/** A statement as listed: its date and due-total (null when n/a). */
++interface StatementLine {
++  date: string;
++  dueTotal: string | null;
+ }
+ 
+ /** Overdue claims that count: how many, and their dues in cents. */
+@@ -459,6 +467,11 @@ function trimmedSum(figures: number[]): number {
+                 @if (shows('statement-count')) {<span data-testid="person-statement-count">{{ statementOf(p.id)?.count ?? 0 }}</span>}
+                 @if (shows('stated-total')) {<span>Last <span data-testid="person-stated-total">{{ statedTotalOf(p.id) | figure }}</span></span>}
+                 @if (shows('statement-date')) {<span>on <span data-testid="person-statement-date">{{ statementOf(p.id)?.lastDate ?? '' }}</span></span>}
++                <ul>
++                  @for (l of statementOf(p.id)?.lines ?? []; track $index) {
++                    <li data-testid="person-statement-line-line">{{ l.date }} {{ l.dueTotal ?? 'n/a' }}</li>
++                  }
++                </ul>
+                 <label [for]="'person-statement-asof-' + p.id" class="visually-hidden">Statement for {{ p.name }} as of</label>
+                 <input type="date" [id]="'person-statement-asof-' + p.id" data-testid="person-statement-asof"
+                        #statementAsOf (input)="clearPersonError(p.id)" />
+diff --git a/src/main/java/net/officefloor/hq/app/statement/StatementController.java b/src/main/java/net/officefloor/hq/app/statement/StatementController.java
+index bbfb61b3d..ee3f9dd2e 100644
+--- a/src/main/java/net/officefloor/hq/app/statement/StatementController.java
++++ b/src/main/java/net/officefloor/hq/app/statement/StatementController.java
+@@ -3,6 +3,7 @@ package net.officefloor.hq.app.statement;
+ import jakarta.validation.constraints.NotBlank;
+ import jakarta.validation.constraints.Pattern;
+ import jakarta.validation.constraints.Size;
++import java.math.BigDecimal;
+ import java.time.LocalDate;
+ import java.util.List;
+ import net.officefloor.hq.app.claim.ClaimController.ClaimView;
+@@ -20,15 +21,26 @@ import org.springframework.web.bind.annotation.RestController;
+ @RequestMapping("/api/sheets/{sheetId}")
+ public class StatementController {
+ 
+-    /** A person's statements as the screen shows them; the last due-total has two decimals, null when n/a. */
+-    public record StatementSummaryView(Long personId, int count, String lastDueTotal, LocalDate lastDate) {
++    /**
++     * A person's statements as the screen shows them, with each one standing, oldest first; due-totals have
++     * two decimals, null when n/a.
++     */
++    public record StatementSummaryView(Long personId, int count, String lastDueTotal, LocalDate lastDate,
++            List<StatementLineView> lines) {
+         static StatementSummaryView of(StatementService.Summary summary) {
+-            return new StatementSummaryView(summary.personId(), summary.count(),
+-                    summary.lastDueTotal() == null ? null : summary.lastDueTotal().setScale(2).toPlainString(),
+-                    summary.lastDate());
++            return new StatementSummaryView(summary.personId(), summary.count(), money(summary.lastDueTotal()),
++                    summary.lastDate(),
++                    summary.lines().stream().map(l -> new StatementLineView(l.date(), money(l.dueTotal()))).toList());
++        }
++
++        private static String money(BigDecimal value) {
++            return value == null ? null : value.setScale(2).toPlainString();
+         }
+     }
+ 
++    /** A statement as listed: its date and due-total (two decimals, null when n/a). */
++    public record StatementLineView(LocalDate date, String dueTotal) {}
++
+     /** A statement just taken: the person's statements and their claims as they now stand. */
+     public record StatementTakenView(StatementSummaryView summary, List<ClaimView> claims) {}
+ 
+diff --git a/src/main/java/net/officefloor/hq/app/statement/StatementService.java b/src/main/java/net/officefloor/hq/app/statement/StatementService.java
+index 684cdfaf2..a5b0ac433 100644
+--- a/src/main/java/net/officefloor/hq/app/statement/StatementService.java
++++ b/src/main/java/net/officefloor/hq/app/statement/StatementService.java
+@@ -4,6 +4,7 @@ import java.math.BigDecimal;
+ import java.math.RoundingMode;
+ import java.time.LocalDate;
+ import java.util.ArrayList;
++import java.util.Comparator;
+ import java.util.LinkedHashMap;
+ import java.util.List;
+ import java.util.Map;
+@@ -42,8 +43,14 @@ import org.springframework.transaction.annotation.Transactional;
+ @Service
+ public class StatementService {
+ 
+-    /** A person's statements: how many, and the last one's due-total (null when n/a) and date. */
+-    public record Summary(Long personId, int count, BigDecimal lastDueTotal, LocalDate lastDate) {}
++    /**
++     * A person's statements: how many, the last one's due-total (null when n/a) and date, and each one
++     * standing, oldest first by date (in the order taken on the same date).
++     */
++    public record Summary(Long personId, int count, BigDecimal lastDueTotal, LocalDate lastDate, List<Line> lines) {}
++
++    /** A statement as listed: its date and due-total (null when n/a). */
++    public record Line(LocalDate date, BigDecimal dueTotal) {}
+ 
+     /** A statement just taken, with the person's claims as they now stand. */
+     public record Taken(Summary summary, List<Claim> claims) {}
+@@ -226,8 +233,12 @@ public class StatementService {
+     }
+ 
+     private static Summary summaryOf(Long personId, List<Statement> list) {
+-        if (list.isEmpty()) return new Summary(personId, 0, null, null);
++        List<Line> lines = list.stream()
++                .sorted(Comparator.comparing(Statement::getDate).thenComparing(Statement::getId))
++                .map(s -> new Line(s.getDate(), s.getDueTotal()))
++                .toList();
++        if (list.isEmpty()) return new Summary(personId, 0, null, null, lines);
+         Statement last = list.get(list.size() - 1);
+-        return new Summary(personId, list.size(), last.getDueTotal(), last.getDate());
++        return new Summary(personId, list.size(), last.getDueTotal(), last.getDate(), lines);
+     }
+ }
