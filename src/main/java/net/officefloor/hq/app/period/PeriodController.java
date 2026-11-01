@@ -7,6 +7,8 @@ import jakarta.validation.constraints.Pattern;
 import jakarta.validation.constraints.Size;
 import java.time.LocalDate;
 import java.util.List;
+import java.util.Map;
+import java.util.TreeMap;
 import org.springframework.validation.annotation.Validated;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
@@ -21,13 +23,19 @@ import org.springframework.web.bind.annotation.RestController;
 @RequestMapping("/api/sheets/{sheetId}/periods")
 public class PeriodController {
 
-    /** A period as the screen shows it; once closed, with the due-total fixed then (two decimals). */
+    /**
+     * A period as the screen shows it; once closed, with the due-total fixed then and each person's
+     * due-total for it fixed then, by person id (two decimals; empty while open).
+     */
     public record PeriodView(long id, String name, LocalDate from, LocalDate to, boolean closed,
-            String closedDueTotal) {
+            String closedDueTotal, Map<Long, String> closedPersonDues) {
         static PeriodView of(Period period) {
+            Map<Long, String> personDues = new TreeMap<>();
+            period.getClosedPersonDues().forEach((personId, due) -> personDues.put(personId, due.setScale(2).toPlainString()));
             return new PeriodView(period.getId(), period.getName(), period.getFromDate(), period.getToDate(),
                     period.isClosed(),
-                    period.getClosedDueTotal() == null ? null : period.getClosedDueTotal().setScale(2).toPlainString());
+                    period.getClosedDueTotal() == null ? null : period.getClosedDueTotal().setScale(2).toPlainString(),
+                    personDues);
         }
     }
 

@@ -1,17 +1,25 @@
 package net.officefloor.hq.app.period;
 
+import jakarta.persistence.CollectionTable;
 import jakarta.persistence.Column;
+import jakarta.persistence.ElementCollection;
 import jakarta.persistence.Entity;
+import jakarta.persistence.FetchType;
 import jakarta.persistence.GeneratedValue;
 import jakarta.persistence.GenerationType;
 import jakarta.persistence.Id;
+import jakarta.persistence.JoinColumn;
+import jakarta.persistence.MapKeyColumn;
 import jakarta.persistence.Table;
 import java.math.BigDecimal;
 import java.time.LocalDate;
+import java.util.Map;
+import java.util.TreeMap;
 
 /**
  * A period of the sheet: a name unique on the sheet, from and to a date, both inclusive. Once
- * closed, its due-total is fixed at what it was when it was closed; reopened, it is live again.
+ * closed, its due-total and each person's due-total for it are fixed at what they were when it was
+ * closed; reopened, they are live again.
  */
 @Entity
 @Table(name = "period")
@@ -40,6 +48,13 @@ public class Period {
     @Column(name = "closed_due_total", precision = 14, scale = 2)
     private BigDecimal closedDueTotal;
 
+    /** Each person's due-total for it fixed when it was closed, by person id; empty while it is open. */
+    @ElementCollection(fetch = FetchType.EAGER)
+    @CollectionTable(name = "period_person_due", joinColumns = @JoinColumn(name = "period_id"))
+    @MapKeyColumn(name = "person_id")
+    @Column(name = "due_total", nullable = false, precision = 14, scale = 2)
+    private Map<Long, BigDecimal> closedPersonDues = new TreeMap<>();
+
     protected Period() {}
 
     public Period(String sheetId, String name, LocalDate fromDate, LocalDate toDate) {
@@ -63,16 +78,21 @@ public class Period {
 
     public BigDecimal getClosedDueTotal() { return closedDueTotal; }
 
-    /** Close it, fixing its due-total. */
-    public void close(BigDecimal dueTotal) {
+    public Map<Long, BigDecimal> getClosedPersonDues() { return closedPersonDues; }
+
+    /** Close it, fixing each person's due-total for it and its own, the sum of theirs. */
+    public void close(Map<Long, BigDecimal> personDues) {
         this.closed = true;
-        this.closedDueTotal = dueTotal;
+        this.closedPersonDues.clear();
+        this.closedPersonDues.putAll(personDues);
+        this.closedDueTotal = personDues.values().stream().reduce(BigDecimal.ZERO.setScale(2), BigDecimal::add);
     }
 
     /** Reopen it: its due-total is live again. */
     public void reopen() {
         this.closed = false;
         this.closedDueTotal = null;
+        this.closedPersonDues.clear();
     }
 
     /** Whether the date falls in it, both ends inclusive. */

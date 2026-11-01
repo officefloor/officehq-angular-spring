@@ -2,6 +2,7 @@ package net.officefloor.hq.app.period;
 
 import java.math.BigDecimal;
 import java.time.LocalDate;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.function.Function;
@@ -21,8 +22,8 @@ import org.springframework.transaction.annotation.Transactional;
 
 /**
  * The sheet's periods: each named uniquely on the sheet, from and to a date inclusive, none
- * overlapping. Closing a period fixes its due-total at that moment: the figures of the claims that
- * count whose date falls in it. A steward can reopen a closed period, making its due-total live again.
+ * overlapping. Closing a period fixes, at that moment, each person's due-total for it (the figures
+ * of their claims that count whose date falls in it) and its own due-total, the sum of theirs. A steward can reopen a closed period, making its due-total live again.
  */
 @Service
 public class PeriodService {
@@ -74,17 +75,19 @@ public class PeriodService {
         if (period.isClosed()) throw new PeriodClosedException();
         Map<Long, Person> byId = people.findBySheetIdOrderByIdAsc(sheetId).stream()
                 .collect(Collectors.toMap(Person::getId, Function.identity()));
-        BigDecimal total = BigDecimal.ZERO.setScale(2);
+        // Every person on the sheet gets a figure, 0.00 when none of their claims falls in it.
+        Map<Long, BigDecimal> personDues = new LinkedHashMap<>();
+        for (Long personId : byId.keySet()) personDues.put(personId, BigDecimal.ZERO.setScale(2));
         for (Claim claim : claims.findBySheetIdOrderByIdDesc(sheetId)) {
             Person person = byId.get(claim.getPersonId());
             if (person == null || !person.counts(claim) || !period.contains(claim.getDate())) continue;
             BigDecimal figure = claimService.chargedFigureOf(sheetId, person, claim);
-            if (figure != null) total = total.add(figure);
+            if (figure != null) personDues.merge(person.getId(), figure, BigDecimal::add);
         }
-        period.close(total);
+        period.close(personDues);
         Period saved = periods.saveAndFlush(period);
         audit.recordOnCommit("PERIOD_CLOSED sheet=" + sheetId + " by=" + user.strip()
-                + " period=" + saved.getName() + " total=" + total.setScale(2).toPlainString());
+                + " period=" + saved.getName() + " total=" + saved.getClosedDueTotal().setScale(2).toPlainString());
         return saved;
     }
 

@@ -181,7 +181,7 @@ interface StatementTaken {
       }
       <table>
         <thead>
-          <tr><th scope="col">Name</th><th scope="col">Grade</th><th scope="col">Claimed</th><th scope="col">Due total</th><th scope="col">Excess</th><th scope="col">Statements</th><th scope="col">Retired</th><th scope="col">Hold</th><th scope="col">Overdue</th><th scope="col">Patrons</th><th scope="col">Claims</th><th scope="col"><span class="visually-hidden">Actions</span></th></tr>
+          <tr><th scope="col">Name</th><th scope="col">Grade</th><th scope="col">Claimed</th><th scope="col">Due total</th><th scope="col">Excess</th><th scope="col">Periods</th><th scope="col">Statements</th><th scope="col">Retired</th><th scope="col">Hold</th><th scope="col">Overdue</th><th scope="col">Patrons</th><th scope="col">Claims</th><th scope="col"><span class="visually-hidden">Actions</span></th></tr>
         </thead>
         <tbody>
           @for (p of listed(); track p.id) {
@@ -191,6 +191,11 @@ interface StatementTaken {
               <td data-testid="person-claimed">{{ claimedOf(p.id) }}</td>
               <td data-testid="person-due-total">{{ dueTotalOf(p) }}</td>
               <td data-testid="person-excess">{{ excessOf(p) }}</td>
+              <td>
+                @for (period of periods(); track period.id) {
+                  <span>{{ period.name }} <span [attr.data-testid]="'person-period-' + period.name + '-due-total'">{{ personPeriodDueOf(p, period) }}</span></span>
+                }
+              </td>
               <td>
                 <span data-testid="person-statement-count">{{ statementOf(p.id)?.count ?? 0 }}</span>
                 <span>Last <span data-testid="person-stated-total">{{ statedTotalOf(p.id) }}</span></span>
@@ -291,7 +296,7 @@ interface StatementTaken {
           @for (p of periods(); track p.id) {
             <tr>
               <th scope="row">{{ p.name }}</th>
-              <td [attr.data-testid]="'summary-period-' + p.name + '-due-total'">{{ p.closedDueTotal ?? periodDueTotalOf(p) }}</td>
+              <td [attr.data-testid]="'summary-period-' + p.name + '-due-total'">{{ periodDueTotalOf(p) }}</td>
             </tr>
           }
         </tbody>
@@ -348,18 +353,30 @@ export class People {
   protected readonly rates = signal<Rate[]>([]);
   /** The sheet's periods, earliest first. */
   protected readonly periods = signal<Period[]>([]);
-  /** Each period's due-total in cents, by id: the dues of the claims that count whose date falls in it. */
-  private readonly periodDueCents = computed(() => {
-    const by = new Map<number, number>();
+  /** Each person's live due-total per period in cents, by person id then period id: the dues of their claims that count whose date falls in it. */
+  private readonly personPeriodLiveCents = computed(() => {
+    const by = new Map<number, Map<number, number>>();
     for (const c of this.claims().filter(this.counts)) {
       const period = periodOn(this.periods(), c.date);
       const pctOn = this.pctOnByPerson().get(c.personId);
       if (period === null || pctOn === undefined) continue;
-      by.set(period.id, (by.get(period.id) ?? 0) + (claimDueCents(c, pctOn, cents(this.session.floor()), this.session.late(), roundsOn(c, this.claimsOf(c.personId))) ?? 0));
+      const theirs = by.get(c.personId) ?? new Map<number, number>();
+      theirs.set(period.id, (theirs.get(period.id) ?? 0) + (claimDueCents(c, pctOn, cents(this.session.floor()), this.session.late(), roundsOn(c, this.claimsOf(c.personId))) ?? 0));
+      by.set(c.personId, theirs);
     }
     return by;
   });
-  protected readonly periodDueTotalOf = (p: Period): string => money(this.periodDueCents().get(p.id) ?? 0);
+  /** A person's due-total for a period in cents: fixed when it was closed (0 for someone added later), else live. */
+  private personPeriodCents(personId: number, period: Period): number {
+    if (period.closed) return cents(period.closedPersonDues?.[personId] ?? '0.00');
+    return this.personPeriodLiveCents().get(personId)?.get(period.id) ?? 0;
+  }
+  protected personPeriodDueOf(p: Person, period: Period): string {
+    return money(this.personPeriodCents(p.id, period));
+  }
+  /** A period's due-total: the people's figures for it added up. */
+  protected readonly periodDueTotalOf = (period: Period): string =>
+    money(this.people().reduce((sum, p) => sum + this.personPeriodCents(p.id, period), 0));
   /** Each person's statements, for those who have had any. */
   protected readonly statements = signal<StatementSummary[]>([]);
   private readonly statementByPerson = computed(() => new Map(this.statements().map((s) => [s.personId, s])));

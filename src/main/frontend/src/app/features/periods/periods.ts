@@ -15,6 +15,8 @@ export interface Period {
   closed: boolean;
   /** The due-total fixed when it was closed, two decimals; null while open. */
   closedDueTotal: string | null;
+  /** Each person's due-total for it fixed when it was closed, two decimals, by person id; empty while open. */
+  closedPersonDues: Record<string, string>;
 }
 
 /** Of the sheet's periods, the one whose dates contain the date, or null. */
@@ -57,7 +59,7 @@ export function closedOn(periods: Period[], date: string): boolean {
               <td data-testid="period-name">{{ p.name }}</td>
               <td data-testid="period-from">{{ p.from }}</td>
               <td data-testid="period-to">{{ p.to }}</td>
-              <td data-testid="period-due-total">{{ p.closedDueTotal ?? dueTotalOf()(p) }}</td>
+              <td data-testid="period-due-total">{{ dueTotalOf()(p) }}</td>
               <td data-testid="period-closed">{{ p.closed ? 'yes' : 'no' }}</td>
               <td>
                 <button type="button" data-testid="period-close" (click)="close(p)"
@@ -81,7 +83,7 @@ export class Periods {
 
   /** The sheet's periods, earliest first. */
   readonly periods = input.required<Period[]>();
-  /** A period's due-total, two decimals. */
+  /** A period's due-total, two decimals: the people's figures for it added up, fixed ones once closed. */
   readonly dueTotalOf = input.required<(p: Period) => string>();
   /** A period added, closed or reopened, as the store now holds it. */
   readonly saved = output<Period>();
