@@ -66,3 +66,20 @@ export class Consolidated {
       self ? { params: { self: 'true' } } : {});
   }
 }
+
+/** Whether a sheet exists (has ever been loaded), and per grade the due-totals of the people not retired on it, as
+ *  its summary shows them (two decimals; a grade no one counts on is missing). */
+export interface GradeDues {
+  exists: boolean;
+  dueByGrade: Record<string, string>;
+}
+
+// A sheet's per-grade due-totals, to compare the shown sheet's summary with.
+@Injectable({ providedIn: 'root' })
+export class SheetGradeDues {
+  private readonly http = inject(HttpClient);
+
+  of(sheetId: string): Observable<GradeDues> {
+    return this.http.get<GradeDues>(`/api/sheets/${encodeURIComponent(sheetId)}/grade-dues`);
+  }
+}

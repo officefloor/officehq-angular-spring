@@ -25,6 +25,7 @@ import { Pools } from '../../core/pools';
 import { Crews, crewDueCents } from '../../core/crews';
 import { GradeSummary, PeriodSummary, StatusSummary, SummaryPanel, VoidReasonSummary } from '../summary/summary';
 import { ClassicPeriod, ClassicSummaryPanel } from '../summary/classic-summary';
+import { SheetComparePanel } from '../summary/sheet-compare';
 import { VoidReasons } from '../../core/void-reasons';
 import { FigurePipe } from '../../core/figure';
 import { Dashboard } from '../dashboard/dashboard';
@@ -97,7 +98,7 @@ function csvField(value: string): string {
 // each person's claims and due-total, and the sheet's claimed-total and due-total.
 @Component({
   selector: 'app-people',
-  imports: [ReactiveFormsModule, FigurePipe, SheetHeader, PersonClaims, PeriodsPanel, SummaryPanel, ClassicSummaryPanel, PoolsPanel, CrewsPanel, PersonPlans, PlanGenerate, Dashboard],
+  imports: [ReactiveFormsModule, FigurePipe, SheetHeader, PersonClaims, PeriodsPanel, SummaryPanel, ClassicSummaryPanel, SheetComparePanel, PoolsPanel, CrewsPanel, PersonPlans, PlanGenerate, Dashboard],
   template: `
     <app-header [peopleCount]="people().length" [statuses]="summaryByStatus()" [dueTotal]="dueTotal()"
                 [overdueTotal]="money(overdueTotals().cents)" [myDueTotal]="me() ? dueOf(me()!) : ''"
@@ -111,6 +112,7 @@ function csvField(value: string): string {
     <app-summary [grades]="summaryByGrade()" [periods]="summaryByPeriod()" [statuses]="summaryByStatus()"
                  [voidReasons]="summaryByVoidReason()" [reviewLate]="reviewLateCount()" />
     <app-classic-summary [periods]="classicByPeriod()" [dueTotal]="classicDueTotal()" />
+    <app-sheet-compare [grades]="summaryByGrade()" />
 
     <section aria-labelledby="people-heading">
       <h2 id="people-heading">People</h2>
