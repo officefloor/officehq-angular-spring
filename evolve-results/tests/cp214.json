@@ -1,0 +1,66 @@
+{
+  "checkpoint": 214,
+  "checkpoint_id": "cp214_max-open-claims",
+  "kind": "checkpoint",
+  "run_id": "202610271-as",
+  "condition": "just-solve",
+  "chain": 2,
+  "branch": "evolve/202610271-as/just-solve/chain2",
+  "commit_sha": "e5b472b0370fd80179ee38cbd6a72dfcf0d92ac1",
+  "harness_sha": "8b39da3c7afa3e0f848a31d0db987618db86a6b6",
+  "harness_dirty": [],
+  "workers": 3,
+  "port": 3002,
+  "started_at": "2026-11-01T01:25:10",
+  "seconds": 180,
+  "build_log_file": "cp214.test.log",
+  "replaced_tests": [],
+  "tests": {
+    "gated": true,
+    "scope": "checkpoint",
+    "build_ok": true,
+    "build_output": "",
+    "total_selected": 4,
+    "results": {
+      "cp214_max-open-claims.spec.ts::max open claims": true,
+      "cp214_max-open-claims.spec.ts::max open claims scenario 1": true,
+      "cp214_max-open-claims.spec.ts::max open claims scenario 2": true,
+      "cp214_max-open-claims.spec.ts::max open claims scenario 3": true
+    },
+    "detail": [
+      {
+        "test_id": "cp214_max-open-claims.spec.ts::max open claims",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 21688,
+        "failure": ""
+      },
+      {
+        "test_id": "cp214_max-open-claims.spec.ts::max open claims scenario 1",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 29513,
+        "failure": ""
+      },
+      {
+        "test_id": "cp214_max-open-claims.spec.ts::max open claims scenario 2",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 29148,
+        "failure": ""
+      },
+      {
+        "test_id": "cp214_max-open-claims.spec.ts::max open claims scenario 3",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 32960,
+        "failure": ""
+      }
+    ],
+    "error": "",
+    "gate_invalid": false,
+    "app_broken": false,
+    "gate_attempts": 1,
+    "seed_contract": null
+  }
+}

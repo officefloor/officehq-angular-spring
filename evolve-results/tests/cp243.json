@@ -1,0 +1,66 @@
+{
+  "checkpoint": 243,
+  "checkpoint_id": "cp243_person-export",
+  "kind": "checkpoint",
+  "run_id": "202610271-as",
+  "condition": "just-solve",
+  "chain": 2,
+  "branch": "evolve/202610271-as/just-solve/chain2",
+  "commit_sha": "065d94e74c43c96c4671d4d4d3a16b7562420068",
+  "harness_sha": "8b39da3c7afa3e0f848a31d0db987618db86a6b6",
+  "harness_dirty": [],
+  "workers": 3,
+  "port": 3002,
+  "started_at": "2026-11-01T09:14:27",
+  "seconds": 177,
+  "build_log_file": "cp243.test.log",
+  "replaced_tests": [],
+  "tests": {
+    "gated": true,
+    "scope": "checkpoint",
+    "build_ok": true,
+    "build_output": "",
+    "total_selected": 4,
+    "results": {
+      "cp243_person-export.spec.ts::person export": true,
+      "cp243_person-export.spec.ts::person export scenario 1": true,
+      "cp243_person-export.spec.ts::person export scenario 2": true,
+      "cp243_person-export.spec.ts::person export scenario 3": true
+    },
+    "detail": [
+      {
+        "test_id": "cp243_person-export.spec.ts::person export",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 8473,
+        "failure": ""
+      },
+      {
+        "test_id": "cp243_person-export.spec.ts::person export scenario 1",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 31724,
+        "failure": ""
+      },
+      {
+        "test_id": "cp243_person-export.spec.ts::person export scenario 2",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 37016,
+        "failure": ""
+      },
+      {
+        "test_id": "cp243_person-export.spec.ts::person export scenario 3",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 34207,
+        "failure": ""
+      }
+    ],
+    "error": "",
+    "gate_invalid": false,
+    "app_broken": false,
+    "gate_attempts": 1,
+    "seed_contract": null
+  }
+}

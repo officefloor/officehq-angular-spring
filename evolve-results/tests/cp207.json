@@ -1,0 +1,66 @@
+{
+  "checkpoint": 207,
+  "checkpoint_id": "cp207_year-end-rollover",
+  "kind": "checkpoint",
+  "run_id": "202610271-as",
+  "condition": "just-solve",
+  "chain": 2,
+  "branch": "evolve/202610271-as/just-solve/chain2",
+  "commit_sha": "a904038e48371416062fde4adbda31a0a446734c",
+  "harness_sha": "8b39da3c7afa3e0f848a31d0db987618db86a6b6",
+  "harness_dirty": [],
+  "workers": 3,
+  "port": 3002,
+  "started_at": "2026-10-31T23:08:29",
+  "seconds": 148,
+  "build_log_file": "cp207.test.log",
+  "replaced_tests": [],
+  "tests": {
+    "gated": true,
+    "scope": "checkpoint",
+    "build_ok": true,
+    "build_output": "",
+    "total_selected": 4,
+    "results": {
+      "cp207_year-end-rollover.spec.ts::year end rollover": true,
+      "cp207_year-end-rollover.spec.ts::year end rollover scenario 1": true,
+      "cp207_year-end-rollover.spec.ts::year end rollover scenario 2": true,
+      "cp207_year-end-rollover.spec.ts::year end rollover scenario 3": true
+    },
+    "detail": [
+      {
+        "test_id": "cp207_year-end-rollover.spec.ts::year end rollover",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 18589,
+        "failure": ""
+      },
+      {
+        "test_id": "cp207_year-end-rollover.spec.ts::year end rollover scenario 1",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 27524,
+        "failure": ""
+      },
+      {
+        "test_id": "cp207_year-end-rollover.spec.ts::year end rollover scenario 2",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 34334,
+        "failure": ""
+      },
+      {
+        "test_id": "cp207_year-end-rollover.spec.ts::year end rollover scenario 3",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 28317,
+        "failure": ""
+      }
+    ],
+    "error": "",
+    "gate_invalid": false,
+    "app_broken": false,
+    "gate_attempts": 1,
+    "seed_contract": null
+  }
+}

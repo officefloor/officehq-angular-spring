@@ -1,0 +1,66 @@
+{
+  "checkpoint": 174,
+  "checkpoint_id": "cp174_late-charge-waiver",
+  "kind": "checkpoint",
+  "run_id": "202610271-as",
+  "condition": "just-solve",
+  "chain": 2,
+  "branch": "evolve/202610271-as/just-solve/chain2",
+  "commit_sha": "49e44fb04baf4f4a2135618acba86e41844f0052",
+  "harness_sha": "8b39da3c7afa3e0f848a31d0db987618db86a6b6",
+  "harness_dirty": [],
+  "workers": 3,
+  "port": 3002,
+  "started_at": "2026-10-31T16:48:43",
+  "seconds": 129,
+  "build_log_file": "cp174.test.log",
+  "replaced_tests": [],
+  "tests": {
+    "gated": true,
+    "scope": "checkpoint",
+    "build_ok": true,
+    "build_output": "",
+    "total_selected": 4,
+    "results": {
+      "cp174_late-charge-waiver.spec.ts::late charge waiver": true,
+      "cp174_late-charge-waiver.spec.ts::late charge waiver scenario 1": true,
+      "cp174_late-charge-waiver.spec.ts::late charge waiver scenario 2": false,
+      "cp174_late-charge-waiver.spec.ts::late charge waiver scenario 3": true
+    },
+    "detail": [
+      {
+        "test_id": "cp174_late-charge-waiver.spec.ts::late charge waiver",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 9669,
+        "failure": ""
+      },
+      {
+        "test_id": "cp174_late-charge-waiver.spec.ts::late charge waiver scenario 1",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 28062,
+        "failure": ""
+      },
+      {
+        "test_id": "cp174_late-charge-waiver.spec.ts::late charge waiver scenario 2",
+        "category": "functionality",
+        "passed": false,
+        "duration_ms": 15358,
+        "failure": "Error: \u001b[31mTimed out 8000ms waiting for \u001b[39m\u001b[2mexpect(\u001b[22m\u001b[31mlocator\u001b[39m\u001b[2m).\u001b[22mtoHaveText\u001b[2m(\u001b[22m\u001b[32mexpected\u001b[39m\u001b[2m)\u001b[22m\n\nLocator: getByTestId('setting-parent-current')\nExpected string: \u001b[32m\"smvw5ujmwiwi3-p\"\u001b[39m\nReceived string: \u001b[31m\"\"\u001b[39m\nCall log:\n  \u001b[2m- expect.toHaveText with timeout 8000ms\u001b[22m\n\u001b[2m  - waiting for getByTestId('setting-parent-current')\u001b[22m\n\u001b[2m  -   locator resolved to <strong data-testid=\"setting-parent-current\"></strong>\u001b[22m\n\u001b[2m  -   unexpected value \"\"\u001b[22m\n\u001b[2m  -   locator resolved to <strong data-testid=\"setting-parent-current\"></strong>\u001b[22m\n\u001b[2m  -   unexpected value \"\"\u001b[22m\n\u001b[2m  -   locator resolved to <strong data-testid=\"setting-parent-current\"></strong>\u001b[22m\n\u001b[2m  -   unexpected value \"\"\u001b[22m\n\u001b[2m  -   locator resolved to <strong data-testid=\"setting-parent-current\"></strong>\u001b[22m\n\u001b[2m  -   unexpected value \"\"\u001b[22m\n\u001b[2m  -   locator resolved to <strong data-testid=\"setting-parent-current\"></strong>\u001b[22m\n\u001b[2m  -   unexpected value \"\"\u001b[22m\n\u001b[2m  -   locator resolved to <strong data-testid=\"setting-parent-current\"></strong>\u001b[22m\n\u001b[2m  -   unexpected value \"\"\u001b[22m\n\u001b[2m  -   locator resolved to <strong data-testid=\"setting-parent-current\"></strong>\u001b[22m\n\u001b[2m  -   unexpected value \"\"\u001b[22m\n\u001b[2m  -   locator resolved to <strong data-testid=\"setting-parent-current\"></strong>\u001b[22m\n\u001b[2m  -   unexpected value \"\"\u001b[22m\n\u001b[2m  -   locator resolved to <strong data-testid=\"setting-parent-current\"></strong>\u001b[22m\n\u001b[2m  -   unexpected value \"\"\u001b[22m\n\u001b[2m  -   locator resolved to <strong data-testid=\"setting-parent-current\"></strong>\u001b[22m\n\u001b[2m  -   unexpected value \"\"\u001b[22m\n\u001b[2m  -   locator resolved to <strong data-testid=\"setting-parent-current\"></strong>\u001b[22m\n\u001b[2m  -   unexpected value \"\"\u001b[22m\n\u001b[2m  -   locator resolved to <strong data-testid=\"setting-parent-current\"></strong>\u001b[22m\n\u001b[2m  -   unexpected value \"\"\u001b[22m\n\n\n   at ../support/ui.ts:1195\n\n  1193 |   await setField(page, `setting-${key}-from`, undefined);    // undated: from the sheet's today\n  1194 |   await page.getByTestId('settings-save').click();\n> 1195 |   await expect(page.getByTestId(`setting-${key}-current`)).toHaveText(value, { timeout: WAIT });\n       |                                                            ^\n  1196 | }\n  1197 |\n  1198 | /** Save a setting where the screen may refuse it: true when the value in force shows it. */\n\n    at Object.setSetting (/home/daniel/ui-work/runs/202610271-as/testing/e2e/support/ui.ts:1195:60)\n    at /home/daniel/ui-work/runs/202610271-as/testing/e2e/specs/cp174_late-charge-waiver.spec.ts:619:5 | Error: \u001b[31mTimed out 8000ms waiting for \u001b[39m\u001b[2mexpect(\u001b[22m\u001b[31mlocator\u001b[39m\u001b[2m).\u001b[22mtoHaveText\u001b[2m(\u001b[22m\u001b[32mexpected\u001b[39m\u001b[2m)\u001b[22m\n\nLocator: getByTestId('setting-parent-current')\nExpected string: \u001b[32m\"smvw5ujmwiwi3-p\"\u001b[39m\nReceived string: \u001b[31m\"\"\u001b[39m\nCall log:\n  \u001b[2m- expect.toHaveText with timeout 8000ms\u001b[22m\n\u001b[2m  - waiting for getByTestId('setting-parent-current')\u001b[22m\n\u001b[2m  -   locator resolved to <strong data-testid=\"setting-parent-current\"></strong>\u001b[22m\n\u001b[2m  -   unexpected value \"\"\u001b[22m\n\u001b[2m  -   locator resolved to <strong data-testid=\"setting-parent-current\"></strong>\u001b[22m\n\u001b[2m  -   unexpected value \"\"\u001b[22m\n\u001b[2m  -   locator resolved to <strong data-testid=\"setting-parent-current\"></strong>\u001b[22m\n\u001b[2m  -   unexpected value \"\"\u001b[22m\n\u001b[2m  -   locator resolved to <strong data-testid=\"setting-parent-current\"></strong>\u001b[22m\n\u001b[2m  -   unexpected value \"\"\u001b[22m\n\u001b[2m  -   locator resolved to <strong data-testid=\"setting-parent-current\"></strong>\u001b[22m\n\u001b[2m  -   unexpected value \"\"\u001b[22m\n\u001b[2m  -   locator resolved to <strong data-testid=\"setting-parent-current\"></strong>\u001b[22m\n\u001b[2m  -   unexpected value \"\"\u001b[22m\n\u001b[2m  -   locator resolved to <strong data-testid=\"setting-parent-current\"></strong>\u001b[22m\n\u001b[2m  -   unexpected value \"\"\u001b[22m\n\u001b[2m  -   locator resolved to <strong data-testid=\"setting-parent-current\"></strong>\u001b[22m\n\u001b[2m  -   unexpected value \"\"\u001b[22m\n\u001b[2m  -   locator resolved to <strong data-testid=\"setting-parent-current\"></strong>\u001b[22m\n\u001b[2m  -   unexpected value \"\"\u001b[22m\n\u001b[2m  -   locator resolved to <strong data-testid=\"setting-parent-current\"></strong>\u001b[22m\n\u001b[2m  -   unexpected value \"\"\u001b[22m\n\u001b[2m  -   locator resolved to <strong data-testid=\"setting-parent-current\"></strong>\u001b[22m\n\u001b[2m  -   unexpected value \"\"\u001b[22m\n\u001b[2m  -   locator resolved to <strong data-testid=\"setting-parent-current\"></strong>\u001b[22m\n\u001b[2m  -   unexpected value \"\"\u001b[22m\n"
+      },
+      {
+        "test_id": "cp174_late-charge-waiver.spec.ts::late charge waiver scenario 3",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 32153,
+        "failure": ""
+      }
+    ],
+    "error": "",
+    "gate_invalid": false,
+    "app_broken": false,
+    "gate_attempts": 1,
+    "seed_contract": null
+  }
+}

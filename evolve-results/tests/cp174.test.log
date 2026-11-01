@@ -1,0 +1,69 @@
+$ bin/build  (attempt 1)
+Picked up JAVA_TOOL_OPTIONS: -Djava.io.tmpdir=/tmp/202610271-as-testing-cp174-fx6bivw8
+
+$ npm ci --silent (cwd e2e)
+
+$ npx playwright install chromium (cwd e2e)
+
+$ npx playwright test --reporter=json,list --workers=3 --output=/home/daniel/ui-work/runs/202610271-as/testing/.run/pw-artifacts  (attempt 1, exit 1)
+
+Running 4 tests using 1 worker
+
+  ✓  1 [chromium] › cp174_late-charge-waiver.spec.ts:6:7 › late charge waiver › late charge waiver (9.7s)
+  ✓  2 [chromium] › cp174_late-charge-waiver.spec.ts:105:7 › late charge waiver › late charge waiver scenario 1 (28.1s)
+  ✘  3 [chromium] › cp174_late-charge-waiver.spec.ts:598:7 › late charge waiver › late charge waiver scenario 2 (15.4s)
+  ✓  4 [chromium] › cp174_late-charge-waiver.spec.ts:950:7 › late charge waiver › late charge waiver scenario 3 (32.2s)
+
+
+  1) [chromium] › cp174_late-charge-waiver.spec.ts:598:7 › late charge waiver › late charge waiver scenario 2 
+
+    Error: [31mTimed out 8000ms waiting for [39m[2mexpect([22m[31mlocator[39m[2m).[22mtoHaveText[2m([22m[32mexpected[39m[2m)[22m
+
+    Locator: getByTestId('setting-parent-current')
+    Expected string: [32m"smvw5ujmwiwi3-p"[39m
+    Received string: [31m""[39m
+    Call log:
+      [2m- expect.toHaveText with timeout 8000ms[22m
+    [2m  - waiting for getByTestId('setting-parent-current')[22m
+    [2m  -   locator resolved to <strong data-testid="setting-parent-current"></strong>[22m
+    [2m  -   unexpected value ""[22m
+    [2m  -   locator resolved to <strong data-testid="setting-parent-current"></strong>[22m
+    [2m  -   unexpected value ""[22m
+    [2m  -   locator resolved to <strong data-testid="setting-parent-current"></strong>[22m
+    [2m  -   unexpected value ""[22m
+    [2m  -   locator resolved to <strong data-testid="setting-parent-current"></strong>[22m
+    [2m  -   unexpected value ""[22m
+    [2m  -   locator resolved to <strong data-testid="setting-parent-current"></strong>[22m
+    [2m  -   unexpected value ""[22m
+    [2m  -   locator resolved to <strong data-testid="setting-parent-current"></strong>[22m
+    [2m  -   unexpected value ""[22m
+    [2m  -   locator resolved to <strong data-testid="setting-parent-current"></strong>[22m
+    [2m  -   unexpected value ""[22m
+    [2m  -   locator resolved to <strong data-testid="setting-parent-current"></strong>[22m
+    [2m  -   unexpected value ""[22m
+    [2m  -   locator resolved to <strong data-testid="setting-parent-current"></strong>[22m
+    [2m  -   unexpected value ""[22m
+    [2m  -   locator resolved to <strong data-testid="setting-parent-current"></strong>[22m
+    [2m  -   unexpected value ""[22m
+    [2m  -   locator resolved to <strong data-testid="setting-parent-current"></strong>[22m
+    [2m  -   unexpected value ""[22m
+    [2m  -   locator resolved to <strong data-testid="setting-parent-current"></strong>[22m
+    [2m  -   unexpected value ""[22m
+
+
+       at ../support/ui.ts:1195
+
+      1193 |   await setField(page, `setting-${key}-from`, undefined);    // undated: from the sheet's today
+      1194 |   await page.getByTestId('settings-save').click();
+    > 1195 |   await expect(page.getByTestId(`setting-${key}-current`)).toHaveText(value, { timeout: WAIT });
+           |                                                            ^
+      1196 | }
+      1197 |
+      1198 | /** Save a setting where the screen may refuse it: true when the value in force shows it. */
+
+        at Object.setSetting (/home/daniel/ui-work/runs/202610271-as/testing/e2e/support/ui.ts:1195:60)
+        at /home/daniel/ui-work/runs/202610271-as/testing/e2e/specs/cp174_late-charge-waiver.spec.ts:619:5
+
+  1 failed
+    [chromium] › cp174_late-charge-waiver.spec.ts:598:7 › late charge waiver › late charge waiver scenario 2 
+  3 passed (1.5m)

@@ -1,0 +1,69 @@
+$ bin/build  (attempt 1)
+Picked up JAVA_TOOL_OPTIONS: -Djava.io.tmpdir=/tmp/202610271-as-testing-cp234-9_91wkc_
+
+$ npm ci --silent (cwd e2e)
+
+$ npx playwright install chromium (cwd e2e)
+
+$ npx playwright test --reporter=json,list --workers=3 --output=/home/daniel/ui-work/runs/202610271-as/testing/.run/pw-artifacts  (attempt 1, exit 1)
+
+Running 4 tests using 1 worker
+
+  ✓  1 [chromium] › cp234_tree-export.spec.ts:6:7 › tree export › tree export (10.4s)
+  ✘  2 [chromium] › cp234_tree-export.spec.ts:43:7 › tree export › tree export scenario 1 (17.7s)
+  ✓  3 [chromium] › cp234_tree-export.spec.ts:666:7 › tree export › tree export scenario 2 (42.0s)
+  ✓  4 [chromium] › cp234_tree-export.spec.ts:1467:7 › tree export › tree export scenario 3 (23.6s)
+
+
+  1) [chromium] › cp234_tree-export.spec.ts:43:7 › tree export › tree export scenario 1 ────────────
+
+    Error: [31mTimed out 8000ms waiting for [39m[2mexpect([22m[31mlocator[39m[2m).[22mtoHaveText[2m([22m[32mexpected[39m[2m)[22m
+
+    Locator: getByTestId('setting-parent-current')
+    Expected string: [32m"smvwz7b47ch2r-p"[39m
+    Received string: [31m""[39m
+    Call log:
+      [2m- expect.toHaveText with timeout 8000ms[22m
+    [2m  - waiting for getByTestId('setting-parent-current')[22m
+    [2m  -   locator resolved to <strong data-testid="setting-parent-current"></strong>[22m
+    [2m  -   unexpected value ""[22m
+    [2m  -   locator resolved to <strong data-testid="setting-parent-current"></strong>[22m
+    [2m  -   unexpected value ""[22m
+    [2m  -   locator resolved to <strong data-testid="setting-parent-current"></strong>[22m
+    [2m  -   unexpected value ""[22m
+    [2m  -   locator resolved to <strong data-testid="setting-parent-current"></strong>[22m
+    [2m  -   unexpected value ""[22m
+    [2m  -   locator resolved to <strong data-testid="setting-parent-current"></strong>[22m
+    [2m  -   unexpected value ""[22m
+    [2m  -   locator resolved to <strong data-testid="setting-parent-current"></strong>[22m
+    [2m  -   unexpected value ""[22m
+    [2m  -   locator resolved to <strong data-testid="setting-parent-current"></strong>[22m
+    [2m  -   unexpected value ""[22m
+    [2m  -   locator resolved to <strong data-testid="setting-parent-current"></strong>[22m
+    [2m  -   unexpected value ""[22m
+    [2m  -   locator resolved to <strong data-testid="setting-parent-current"></strong>[22m
+    [2m  -   unexpected value ""[22m
+    [2m  -   locator resolved to <strong data-testid="setting-parent-current"></strong>[22m
+    [2m  -   unexpected value ""[22m
+    [2m  -   locator resolved to <strong data-testid="setting-parent-current"></strong>[22m
+    [2m  -   unexpected value ""[22m
+    [2m  -   locator resolved to <strong data-testid="setting-parent-current"></strong>[22m
+    [2m  -   unexpected value ""[22m
+
+
+       at ../support/ui.ts:1195
+
+      1193 |   await setField(page, `setting-${key}-from`, undefined);    // undated: from the sheet's today
+      1194 |   await page.getByTestId('settings-save').click();
+    > 1195 |   await expect(page.getByTestId(`setting-${key}-current`)).toHaveText(value, { timeout: WAIT });
+           |                                                            ^
+      1196 | }
+      1197 |
+      1198 | /** Save a setting where the screen may refuse it: true when the value in force shows it. */
+
+        at Object.setSetting (/home/daniel/ui-work/runs/202610271-as/testing/e2e/support/ui.ts:1195:60)
+        at /home/daniel/ui-work/runs/202610271-as/testing/e2e/specs/cp234_tree-export.spec.ts:66:5
+
+  1 failed
+    [chromium] › cp234_tree-export.spec.ts:43:7 › tree export › tree export scenario 1 ─────────────
+  3 passed (1.7m)

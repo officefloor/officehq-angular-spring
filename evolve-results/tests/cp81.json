@@ -1,0 +1,66 @@
+{
+  "checkpoint": 81,
+  "checkpoint_id": "cp81_remind",
+  "kind": "checkpoint",
+  "run_id": "202610271-as",
+  "condition": "just-solve",
+  "chain": 2,
+  "branch": "evolve/202610271-as/just-solve/chain2",
+  "commit_sha": "706e98f3b89c7448993c5c88404a63c19d4e4f1a",
+  "harness_sha": "8b39da3c7afa3e0f848a31d0db987618db86a6b6",
+  "harness_dirty": [],
+  "workers": 3,
+  "port": 3002,
+  "started_at": "2026-10-31T04:46:41",
+  "seconds": 84,
+  "build_log_file": "cp81.test.log",
+  "replaced_tests": [],
+  "tests": {
+    "gated": true,
+    "scope": "checkpoint",
+    "build_ok": true,
+    "build_output": "",
+    "total_selected": 4,
+    "results": {
+      "cp81_remind.spec.ts::remind": true,
+      "cp81_remind.spec.ts::remind scenario 1": true,
+      "cp81_remind.spec.ts::remind scenario 2": true,
+      "cp81_remind.spec.ts::remind scenario 3": true
+    },
+    "detail": [
+      {
+        "test_id": "cp81_remind.spec.ts::remind",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 8794,
+        "failure": ""
+      },
+      {
+        "test_id": "cp81_remind.spec.ts::remind scenario 1",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 13643,
+        "failure": ""
+      },
+      {
+        "test_id": "cp81_remind.spec.ts::remind scenario 2",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 10019,
+        "failure": ""
+      },
+      {
+        "test_id": "cp81_remind.spec.ts::remind scenario 3",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 13943,
+        "failure": ""
+      }
+    ],
+    "error": "",
+    "gate_invalid": false,
+    "app_broken": false,
+    "gate_attempts": 1,
+    "seed_contract": null
+  }
+}

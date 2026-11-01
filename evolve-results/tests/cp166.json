@@ -1,0 +1,66 @@
+{
+  "checkpoint": 166,
+  "checkpoint_id": "cp166_crews",
+  "kind": "checkpoint",
+  "run_id": "202610271-as",
+  "condition": "just-solve",
+  "chain": 2,
+  "branch": "evolve/202610271-as/just-solve/chain2",
+  "commit_sha": "04c11a1527e1853b12d7f0e3d66f4b6d9808b5fa",
+  "harness_sha": "8b39da3c7afa3e0f848a31d0db987618db86a6b6",
+  "harness_dirty": [],
+  "workers": 3,
+  "port": 3002,
+  "started_at": "2026-10-31T15:05:39",
+  "seconds": 138,
+  "build_log_file": "cp166.test.log",
+  "replaced_tests": [],
+  "tests": {
+    "gated": true,
+    "scope": "checkpoint",
+    "build_ok": true,
+    "build_output": "",
+    "total_selected": 4,
+    "results": {
+      "cp166_crews.spec.ts::crews": true,
+      "cp166_crews.spec.ts::crews scenario 1": true,
+      "cp166_crews.spec.ts::crews scenario 2": true,
+      "cp166_crews.spec.ts::crews scenario 3": true
+    },
+    "detail": [
+      {
+        "test_id": "cp166_crews.spec.ts::crews",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 12467,
+        "failure": ""
+      },
+      {
+        "test_id": "cp166_crews.spec.ts::crews scenario 1",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 17664,
+        "failure": ""
+      },
+      {
+        "test_id": "cp166_crews.spec.ts::crews scenario 2",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 27985,
+        "failure": ""
+      },
+      {
+        "test_id": "cp166_crews.spec.ts::crews scenario 3",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 24861,
+        "failure": ""
+      }
+    ],
+    "error": "",
+    "gate_invalid": false,
+    "app_broken": false,
+    "gate_attempts": 1,
+    "seed_contract": null
+  }
+}

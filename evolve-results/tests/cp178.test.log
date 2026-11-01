@@ -1,0 +1,60 @@
+$ bin/build  (attempt 1)
+Picked up JAVA_TOOL_OPTIONS: -Djava.io.tmpdir=/tmp/202610271-as-testing-cp178-wh1rzewb
+
+$ npm ci --silent (cwd e2e)
+
+$ npx playwright install chromium (cwd e2e)
+
+$ npx playwright test --reporter=json,list --workers=3 --output=/home/daniel/ui-work/runs/202610271-as/testing/.run/pw-artifacts  (attempt 1, exit 1)
+
+Running 4 tests using 1 worker
+
+  ✓  1 [chromium] › cp178_steward-dashboard.spec.ts:6:7 › steward dashboard › steward dashboard (14.1s)
+  ✓  2 [chromium] › cp178_steward-dashboard.spec.ts:78:7 › steward dashboard › steward dashboard scenario 1 (35.2s)
+  ✓  3 [chromium] › cp178_steward-dashboard.spec.ts:535:7 › steward dashboard › steward dashboard scenario 2 (18.8s)
+  ✘  4 [chromium] › cp178_steward-dashboard.spec.ts:973:7 › steward dashboard › steward dashboard scenario 3 (27.9s)
+
+
+  1) [chromium] › cp178_steward-dashboard.spec.ts:973:7 › steward dashboard › steward dashboard scenario 3 
+
+    Error: [31mTimed out 5000ms waiting for [39m[2mexpect([22m[31mlocator[39m[2m).[22mtoHaveText[2m([22m[32mexpected[39m[2m)[22m
+
+    Locator: getByTestId('person-row-10').getByTestId('person-statement-line-line')
+    [32m- Expected  - 1[39m
+    [31m+ Received  + 1[39m
+
+    [2m  Array [[22m
+    [2m    "2026-03-10 0.00",[22m
+    [32m-   "2026-05-04 0.00",[39m
+    [2m    "2026-04-02 0.00",[22m
+    [31m+   "2026-05-04 0.00",[39m
+    [2m  ][22m
+    Call log:
+      [2m- expect.toHaveText with timeout 5000ms[22m
+    [2m  - waiting for getByTestId('person-row-10').getByTestId('person-statement-line-line')[22m
+    [2m  -   locator resolved to 3 elements[22m
+    [2m  -   locator resolved to 3 elements[22m
+    [2m  -   locator resolved to 3 elements[22m
+    [2m  -   locator resolved to 3 elements[22m
+    [2m  -   locator resolved to 3 elements[22m
+    [2m  -   locator resolved to 3 elements[22m
+    [2m  -   locator resolved to 3 elements[22m
+    [2m  -   locator resolved to 3 elements[22m
+    [2m  -   locator resolved to 3 elements[22m
+
+
+      1334 |     await expect(pg_uma.getByTestId("person-row-" + p_ada).getByTestId("person-tags")).toHaveText("");
+      1335 |     await expect(pg_uma.getByTestId("person-row-" + p_ada).getByTestId("person-snapshot-line")).toHaveText(["2026-03-10 0.00", "2026-04-07 0.00", "2026-05-04 2.00"]);
+    > 1336 |     await expect(pg_uma.getByTestId("person-row-" + p_ada).getByTestId("person-statement-line-line")).toHaveText(["2026-03-10 0.00", "2026-05-04 0.00", "2026-04-02 0.00"]);
+           |                                                                                                       ^
+      1337 |     await expect(pg_uma.getByTestId("person-row-" + p_ada).getByTestId("person-period-P1-due-total")).toHaveText("0.00");
+      1338 |     await expect(pg_uma.getByTestId("person-row-" + p_ada).getByTestId("person-period-P2-due-total")).toHaveText("0.00");
+      1339 |     await expect(pg_uma.getByTestId("person-row-" + p_ada).getByTestId("person-period-P1-carried")).toHaveText("0.00");
+
+        at /home/daniel/ui-work/runs/202610271-as/testing/e2e/specs/cp178_steward-dashboard.spec.ts:1336:103
+
+  Slow test file: [chromium] › cp178_steward-dashboard.spec.ts (1.6m)
+  Consider splitting slow test files to speed up parallel execution
+  1 failed
+    [chromium] › cp178_steward-dashboard.spec.ts:973:7 › steward dashboard › steward dashboard scenario 3 
+  3 passed (1.7m)

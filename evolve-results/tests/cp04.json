@@ -1,0 +1,44 @@
+{
+  "checkpoint": 4,
+  "checkpoint_id": "cp04_name-uniqueness",
+  "kind": "checkpoint",
+  "run_id": "202610271-as",
+  "condition": "just-solve",
+  "chain": 2,
+  "branch": "evolve/202610271-as/just-solve/chain2",
+  "commit_sha": "8bd2bfa6b1f4d40059c248933017ce9322378fce",
+  "harness_sha": "8b39da3c7afa3e0f848a31d0db987618db86a6b6",
+  "harness_dirty": [],
+  "workers": 3,
+  "port": 3002,
+  "started_at": "2026-10-31T00:46:44",
+  "seconds": 60,
+  "build_log_file": "cp04.test.log",
+  "replaced_tests": [
+    "cp03_people.spec.ts::people"
+  ],
+  "tests": {
+    "gated": true,
+    "scope": "checkpoint",
+    "build_ok": true,
+    "build_output": "",
+    "total_selected": 1,
+    "results": {
+      "cp04_name-uniqueness.spec.ts::name uniqueness": true
+    },
+    "detail": [
+      {
+        "test_id": "cp04_name-uniqueness.spec.ts::name uniqueness",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 7311,
+        "failure": ""
+      }
+    ],
+    "error": "",
+    "gate_invalid": false,
+    "app_broken": false,
+    "gate_attempts": 1,
+    "seed_contract": null
+  }
+}
