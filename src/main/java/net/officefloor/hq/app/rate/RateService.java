@@ -17,7 +17,7 @@ import org.springframework.transaction.annotation.Transactional;
 /**
  * The sheet's rates for each grade, each from a date (or from the beginning of time): set one grade
  * and from-date at a time, replacing any rate it had. A date's rate is the one with the latest
- * from-date on or before it.
+ * from-date on or before it; a grade with none in force on a date takes the sheet's ancestors' ({@link InheritedRates}).
  */
 @Service
 public class RateService {
@@ -26,14 +26,16 @@ public class RateService {
     private final RateLogRepository log;
     private final SheetRepository sheets;
     private final RollupService rollup;
+    private final InheritedRates inherited;
     private final Audit audit;
 
     public RateService(RateRepository rates, RateLogRepository log, SheetRepository sheets, RollupService rollup,
-            Audit audit) {
+            InheritedRates inherited, Audit audit) {
         this.rates = rates;
         this.log = log;
         this.sheets = sheets;
         this.rollup = rollup;
+        this.inherited = inherited;
         this.audit = audit;
     }
 
@@ -42,10 +44,25 @@ public class RateService {
         return rates.findBySheetIdOrderByGradeAscFromDateAsc(sheetId);
     }
 
-    /** The grade's rate on the date: the one with the latest from-date on or before it, if any and not ended. */
+    /**
+     * The grade's rate on the date: the one with the latest from-date on or before it, if any and not ended;
+     * else the nearest ancestor's in force then.
+     */
     @Transactional(readOnly = true)
     public Optional<Rate> on(String sheetId, String grade, LocalDate date) {
-        return Rate.inForce(rates.findBySheetIdAndGrade(sheetId, grade), date);
+        return inherited.of(sheetId).inForce(grade, date);
+    }
+
+    /** The sheet's rates and its ancestors' ({@link InheritedRates}), as they are now. */
+    @Transactional(readOnly = true)
+    public RateLevels levels(String sheetId) {
+        return inherited.of(sheetId);
+    }
+
+    /** The rates of the sheet's ancestors, nearest first, each by grade: as they are now, or as they stood at the end of the date given. */
+    @Transactional(readOnly = true)
+    public List<Map<String, List<Rate>>> ancestors(String sheetId, LocalDate asOf) {
+        return asOf == null ? inherited.ancestors(sheetId) : inherited.ancestorsAsOf(sheetId, asOf);
     }
 
     /**
@@ -54,15 +71,13 @@ public class RateService {
      */
     @Transactional(readOnly = true)
     public Map<String, List<Rate>> asOf(String sheetId, LocalDate date) {
-        Map<String, Map<Optional<LocalDate>, Rate>> then = new LinkedHashMap<>();
-        for (RateLog line : log.findBySheetIdOrderByIdAsc(sheetId)) {
-            if (!line.setBy(date)) continue;
-            then.computeIfAbsent(line.getGrade(), g -> new LinkedHashMap<>())
-                    .put(Optional.ofNullable(line.getFromDate()), line.toRate());
-        }
-        Map<String, List<Rate>> byGrade = new LinkedHashMap<>();
-        then.forEach((grade, rates) -> byGrade.put(grade, new ArrayList<>(rates.values())));
-        return byGrade;
+        return inherited.asOf(sheetId, date);
+    }
+
+    /** The sheet\'s rates and its ancestors\', each as they stood at the end of the date. */
+    @Transactional(readOnly = true)
+    public RateLevels levelsAsOf(String sheetId, LocalDate date) {
+        return inherited.levelsAsOf(sheetId, date);
     }
 
     @Transactional

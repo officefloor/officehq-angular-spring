@@ -19,6 +19,7 @@ import net.officefloor.hq.app.person.Person;
 import net.officefloor.hq.app.person.PersonNotFoundException;
 import net.officefloor.hq.app.person.PersonRepository;
 import net.officefloor.hq.app.rate.Rate;
+import net.officefloor.hq.app.rate.RateLevels;
 import net.officefloor.hq.app.rate.RateService;
 import net.officefloor.hq.app.rollup.RollupService;
 import net.officefloor.hq.app.setting.Role;
@@ -115,6 +116,7 @@ public class StatementService {
     private Bound bindNow(Sheet sheet, Person person, List<Claim> theirs) {
         String sheetId = sheet.getId();
         LocalDate today = sheet.getToday();
+        RateLevels levels = rates.levels(sheetId);
         boolean fixed = false;
         BigDecimal total = BigDecimal.ZERO.setScale(2);
         int counted = 0;
@@ -130,8 +132,8 @@ public class StatementService {
             if (due != null && !person.gradeOn(claim.getDate()).equals(person.gradeOn(today))) fixed = true;
             // and so does a due under a rate that is not the one in force today
             String grade = person.gradeOn(claim.getDate());
-            if (due != null && !rates.on(sheetId, grade, claim.getDate()).map(Rate::getId)
-                    .equals(rates.on(sheetId, grade, today).map(Rate::getId))) fixed = true;
+            if (due != null && !levels.inForce(grade, claim.getDate()).map(Rate::getId)
+                    .equals(levels.inForce(grade, today).map(Rate::getId))) fixed = true;
             claim.state(figure, today);
             if (due != null) total = total.add(due);
             counted++;
@@ -139,7 +141,7 @@ public class StatementService {
         // As on screen: n/a when their grade has no rate today and none of the counted claims has a fixed
         // due, nor a due under another grade they had on its date or under a rate not in force today.
         return new Bound(sheet.capped(
-                fixed || rates.on(sheetId, person.gradeOn(today), today).isPresent() ? total : null), counted);
+                fixed || levels.inForce(person.gradeOn(today), today).isPresent() ? total : null), counted);
     }
 
     /**
@@ -149,7 +151,7 @@ public class StatementService {
      */
     private Bound bindAsOf(Sheet sheet, Person person, List<Claim> theirs, LocalDate asOf) {
         LocalDate today = sheet.getToday();
-        Map<String, List<Rate>> ratesThen = rates.asOf(sheet.getId(), asOf);
+        RateLevels ratesThen = rates.levelsAsOf(sheet.getId(), asOf);
         Map<String, LocalDate> datesByNumber = Rounding.datesByNumber(theirs);
         boolean fixed = false;
         BigDecimal total = BigDecimal.ZERO.setScale(2);
@@ -168,12 +170,11 @@ public class StatementService {
                 continue;
             }
             String grade = person.gradeOn(claim.getDate(), asOf);
-            List<Rate> gradeRates = ratesThen.getOrDefault(grade, List.of());
             RoundingMode rounding = Rounding.of(Rounding.basisOf(claim, datesByNumber), sheet.getPolicyDate(), asOf);
             BigDecimal settled = status == ClaimStatus.SETTLED ? claim.settledDueAt(asOf) : null;
             BigDecimal figure = settled != null ? settled
                     : binding != null ? binding.getDue()
-                    : Rate.inForce(gradeRates, claim.getDate())
+                    : ratesThen.inForce(grade, claim.getDate())
                             .map(rate -> claim.getAmount().multiply(rate.getPct()).movePointLeft(2).setScale(2, rounding))
                             .orElse(null);
             BigDecimal due = figure;
@@ -188,14 +189,14 @@ public class StatementService {
             // a due under a grade they had on its date but not on the date counts like a fixed one
             if (due != null && !grade.equals(person.gradeOn(asOf, asOf))) fixed = true;
             // and so does a due under a rate that is not the one in force on the date
-            if (due != null && !Rate.inForce(gradeRates, claim.getDate()).equals(Rate.inForce(gradeRates, asOf))) {
+            if (due != null && !ratesThen.inForce(grade, claim.getDate()).equals(ratesThen.inForce(grade, asOf))) {
                 fixed = true;
             }
             claim.state(figure, today);
             if (due != null) total = total.add(due);
             counted++;
         }
-        boolean rated = Rate.inForce(ratesThen.getOrDefault(person.gradeOn(asOf, asOf), List.of()), asOf).isPresent();
+        boolean rated = ratesThen.inForce(person.gradeOn(asOf, asOf), asOf).isPresent();
         return new Bound(sheet.cappedAsOf(fixed || rated ? total : null, asOf), counted);
     }
 

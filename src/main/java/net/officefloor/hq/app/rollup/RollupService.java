@@ -16,7 +16,8 @@ import net.officefloor.hq.app.claim.Rounding;
 import net.officefloor.hq.app.person.Person;
 import net.officefloor.hq.app.person.PersonRepository;
 import net.officefloor.hq.app.rate.Rate;
-import net.officefloor.hq.app.rate.RateRepository;
+import net.officefloor.hq.app.rate.InheritedRates;
+import net.officefloor.hq.app.rate.RateLevels;
 import net.officefloor.hq.app.sheet.Sheet;
 import net.officefloor.hq.app.sheet.SheetRepository;
 import org.springframework.stereotype.Service;
@@ -45,11 +46,11 @@ public class RollupService {
 
     private final PersonRepository people;
     private final ClaimRepository claims;
-    private final RateRepository rates;
+    private final InheritedRates rates;
     private final SheetRepository sheets;
     private final Audit audit;
 
-    public RollupService(PersonRepository people, ClaimRepository claims, RateRepository rates,
+    public RollupService(PersonRepository people, ClaimRepository claims, InheritedRates rates,
             SheetRepository sheets, Audit audit) {
         this.people = people;
         this.claims = claims;
@@ -66,10 +67,8 @@ public class RollupService {
         Sheet sheet = sheets.findForUpdate(sheetId).orElse(null);
         LocalDate today = sheet == null ? null : sheet.getToday();
         LocalDate policyDate = sheet == null ? null : sheet.getPolicyDate();
-        Map<String, List<Rate>> ratesByGrade = new LinkedHashMap<>();
-        for (Rate rate : rates.findBySheetIdOrderByGradeAscFromDateAsc(sheetId)) {
-            ratesByGrade.computeIfAbsent(rate.getGrade(), g -> new ArrayList<>()).add(rate);
-        }
+        // its own rates, then its ancestors' for a grade and date it has none in force on
+        RateLevels levels = rates.of(sheetId);
         Map<Long, List<Claim>> claimsByPerson = new LinkedHashMap<>();
         List<Claim> all = claims.findBySheetIdOrderByIdDesc(sheetId);
         Map<String, LocalDate> datesByNumber = Rounding.datesByNumber(all);
@@ -98,22 +97,21 @@ public class RollupService {
                 // and the grace days of their grade on the claim's date, in force on it
                 int grace = sheet == null ? 0 : sheet.graceOn(grade, claim.getDate());
                 BigDecimal figure = LateCharge.withCharge(claim,
-                        figureOf(claim, ratesByGrade.getOrDefault(grade, List.of()), rounding), today, grace,
+                        figureOf(claim, levels, grade, rounding), today, grace,
                         d -> sheet == null ? zero() : sheet.latePctOn(d), rounding);
                 // the floor last, over the figure and its charge; a settled due is frozen, a correction has none
                 if (figure != null && claim.getSettledDue() == null && !claim.isCorrection()) figure = figure.max(floor);
                 // a due under a grade they had on its date but not today counts like a fixed one
                 if (figure != null && today != null && !grade.equals(person.gradeOn(today))) fixed = true;
                 // and so does a due under a rate that is not the one in force today
-                if (figure != null && today != null && !Rate.inForce(ratesByGrade.getOrDefault(grade, List.of()),
-                        claim.getDate()).equals(Rate.inForce(ratesByGrade.getOrDefault(grade, List.of()), today))) fixed = true;
+                if (figure != null && today != null
+                        && !levels.inForce(grade, claim.getDate()).equals(levels.inForce(grade, today))) fixed = true;
                 if (figure != null) due = due.add(figure);
                 if (figure != null && LateCharge.isOverdue(claim, today, grace)) overdue = overdue.add(figure);
             }
             // As on screen: n/a when their grade has no rate today and none of the counted claims has a fixed
             // due, nor a due under another grade they had on its date or under a rate not in force today.
-            boolean rated = today != null
-                    && pctOn(ratesByGrade.getOrDefault(person.gradeOn(today), List.of()), today) != null;
+            boolean rated = today != null && levels.inForce(person.gradeOn(today), today).isPresent();
             BigDecimal personDue = fixed || rated ? due : null;
             if (sheet != null) personDue = sheet.capped(personDue);
             figures.put(person.getId(), new Figures(person.getName(), claimed, personDue, overdue));
@@ -166,19 +164,12 @@ public class RollupService {
      * A claim's figure: its settled due, else its stated rate figure, else its rate figure (no floor),
      * rounded as given; null when it has none.
      */
-    private static BigDecimal figureOf(Claim claim, List<Rate> rates, RoundingMode rounding) {
+    private static BigDecimal figureOf(Claim claim, RateLevels levels, String grade, RoundingMode rounding) {
         if (claim.getSettledDue() != null) return claim.getSettledDue();
         if (claim.isBound()) return claim.getStatedDue();
-        BigDecimal pct = pctOn(rates, claim.getDate());
+        BigDecimal pct = levels.inForce(grade, claim.getDate()).map(Rate::getPct).orElse(null);
         if (pct == null) return null;
         return claim.getAmount().multiply(pct).movePointLeft(2).setScale(2, rounding);
-    }
-
-    /** Of one grade's rates, the percent in force on the date, or null. */
-    private static BigDecimal pctOn(List<Rate> rates, LocalDate date) {
-        return Rate.inForce(rates, date)
-                .map(Rate::getPct)
-                .orElse(null);
     }
 
     private static BigDecimal zero() {

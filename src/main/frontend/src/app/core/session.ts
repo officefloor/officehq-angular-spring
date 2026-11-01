@@ -129,6 +129,8 @@ export class Session {
   /** Bumped on every sheet load, so features re-read the sheet from the store even for the same id. */
   readonly loads = signal(0);
 
+  /** The id of the sheet this one names as its parent, as the settings last read it; null when none. */
+  readonly parent = signal<string | null>(null);
   /** Bumped each time the pot is saved, so the pools re-read their cuts. */
   readonly potSaves = signal(0);
   /**

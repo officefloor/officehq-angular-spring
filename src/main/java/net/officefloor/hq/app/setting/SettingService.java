@@ -3,6 +3,7 @@ package net.officefloor.hq.app.setting;
 import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.util.EnumSet;
+import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -12,6 +13,9 @@ import net.officefloor.hq.app.Audit;
 import net.officefloor.hq.app.rollup.RollupService;
 import net.officefloor.hq.app.sheet.DatedSetting;
 import net.officefloor.hq.app.sheet.Sheet;
+import net.officefloor.hq.app.sheet.SheetParent;
+import net.officefloor.hq.app.sheet.SheetParentRefusedException;
+import net.officefloor.hq.app.sheet.SheetParentRepository;
 import net.officefloor.hq.app.sheet.SheetNotFoundException;
 import net.officefloor.hq.app.sheet.SheetRepository;
 import org.springframework.stereotype.Service;
@@ -35,7 +39,8 @@ import org.springframework.transaction.annotation.Transactional;
  * and the grace days of each grade (none: none, dated, taken on a claim's date for its person's grade then),
  * past its due-by plus which a claim is overdue and from which its late charge's 30-day boundaries count;
  * and the permission matrix (not dated): for each action, the roles that may take it, blank keeping
- * its standing rule.
+ * its standing rule; and the parent (none: none, not dated), the sheet whose rates, then its parent's,
+ * up to three levels up, a grade with no rate in force on a date takes.
  */
 @Service
 public class SettingService {
@@ -55,12 +60,14 @@ public class SettingService {
     private final SheetRepository sheets;
     private final SheetRoleRepository roles;
     private final DelegationRepository delegations;
+    private final SheetParentRepository parents;
     private final RollupService rollup;
     private final Audit audit;
 
     public SettingService(SheetRepository sheets, SheetRoleRepository roles, DelegationRepository delegations,
-            RollupService rollup, Audit audit) {
+            SheetParentRepository parents, RollupService rollup, Audit audit) {
         this.sheets = sheets;
+        this.parents = parents;
         this.roles = roles;
         this.delegations = delegations;
         this.rollup = rollup;
@@ -393,6 +400,43 @@ public class SettingService {
     @Transactional(readOnly = true)
     public BigDecimal pot(String sheetId) {
         return sheets.findById(sheetId).orElseThrow(SheetNotFoundException::new).getPot();
+    }
+
+    /**
+     * Change the parent (null: none); not dated. Refused for the sheet itself, a sheet never loaded, or a
+     * sheet that has this one as an ancestor. The dues it moves are audited after its own line.
+     */
+    @Transactional
+    public String setParent(String sheetId, String user, String parent) {
+        sheets.findForUpdate(sheetId).orElseThrow(SheetNotFoundException::new);
+        if (parent != null) {
+            if (parent.equals(sheetId) || !sheets.existsById(parent)) throw new SheetParentRefusedException();
+            // every ancestor of the parent, however far up, so no chain of parents ever loops
+            Set<String> seen = new HashSet<>(Set.of(parent));
+            for (String at = parents.parentOf(parent); at != null && seen.add(at); at = parents.parentOf(at)) {
+                if (at.equals(sheetId)) throw new SheetParentRefusedException();
+            }
+        }
+        RollupService.Snapshot before = rollup.snapshot(sheetId);
+        if (parent == null) {
+            parents.findById(sheetId).ifPresent(parents::delete);
+        } else {
+            SheetParent link = parents.findById(sheetId).orElseGet(() -> new SheetParent(sheetId, parent));
+            link.setParentSheet(parent);
+            parents.save(link);
+        }
+        parents.flush();
+        audit.recordOnCommit("SETTING_CHANGED sheet=" + sheetId + " by=" + user.strip() + " key=parent value="
+                + (parent == null ? "" : parent));
+        rollup.recordChanges(sheetId, user, before);
+        return parent;
+    }
+
+    /** The parent as set; null when none. */
+    @Transactional(readOnly = true)
+    public String parent(String sheetId) {
+        sheets.findById(sheetId).orElseThrow(SheetNotFoundException::new);
+        return parents.parentOf(sheetId);
     }
 
     /** The grace days as set; null when blank, which means off. */

@@ -8,6 +8,7 @@ import jakarta.validation.constraints.Size;
 import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.util.List;
+import net.officefloor.hq.app.asof.AsOfGuard;
 import net.officefloor.hq.app.claim.ClaimService;
 import org.springframework.validation.annotation.Validated;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -66,6 +67,21 @@ public class RateController {
             @PathVariable @Size(max = 100) @Pattern(regexp = "[A-Za-z0-9._-]+") String sheetId,
             @RequestHeader("X-User") @NotBlank @Size(max = 100) String user) {
         return service.list(sheetId).stream().map(RateView::of).toList();
+    }
+
+    /**
+     * The rates of the sheet's ancestors, nearest first (up to three levels up), that a grade with no rate
+     * of its own in force on a date takes; as of the user's as-of date, each as it stood at the end of it.
+     */
+    @GetMapping("/inherited")
+    public List<List<RateView>> inherited(
+            @PathVariable @Size(max = 100) @Pattern(regexp = "[A-Za-z0-9._-]+") String sheetId,
+            @RequestHeader("X-User") @NotBlank @Size(max = 100) String user,
+            @RequestHeader(value = AsOfGuard.HEADER, required = false) @Pattern(regexp = "\\s*(\\d{4}-\\d{2}-\\d{2})?\\s*") String asOf) {
+        LocalDate date = asOf == null || asOf.isBlank() ? null : LocalDate.parse(asOf.strip());
+        return service.ancestors(sheetId, date).stream()
+                .map(level -> level.values().stream().flatMap(List::stream).map(RateView::of).toList())
+                .toList();
     }
 
     @PutMapping("/{grade}")

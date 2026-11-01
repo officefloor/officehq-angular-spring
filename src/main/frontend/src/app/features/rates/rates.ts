@@ -50,8 +50,19 @@ export function rateOn(rates: Rate[], date: string): Rate | null {
   return best;
 }
 
+/** Of one grade's rates in levels (the sheet's own, then each ancestor's, nearest first), the one in force on a
+ *  date: the first level's that has one (as `rateOn` has it), or null. */
+export function rateInLevels(levels: Rate[][], date: string): Rate | null {
+  for (const rates of levels) {
+    const rate = rateOn(rates, date);
+    if (rate !== null) return rate;
+  }
+  return null;
+}
+
 // The sheet's rates, each for a grade from a from-date (or from the start), with one form to set
-// a grade's rate from a date (and through a date, if it ends); and per grade, the rate in force on the sheet's today.
+// a grade's rate from a date (and through a date, if it ends); and per grade, the rate in force on the sheet's today
+// (its own, else its nearest ancestor's in force then).
 @Component({
   selector: 'app-rates',
   imports: [ReactiveFormsModule],
@@ -134,6 +145,8 @@ export class Rates {
   private readonly session = inject(Session);
 
   readonly rates = input.required<Rate[]>();
+  /** The rates of the sheet's ancestors, nearest first: a grade with none of its own in force on a date takes theirs. */
+  readonly inherited = input<Rate[][]>([]);
   /** The sheet's today, for the rate in force on it. */
   readonly today = input.required<string | null>();
   /** A rate set, as the store now holds it. */
@@ -177,7 +190,9 @@ export class Rates {
 
   protected currentOf(grade: string): string | null {
     const today = this.today();
-    return today === null ? null : pctOn(this.rates().filter((r) => r.grade === grade), today);
+    if (today === null) return null;
+    const levels = [this.rates(), ...this.inherited()].map((rates) => rates.filter((r) => r.grade === grade));
+    return rateInLevels(levels, today)?.pct ?? null;
   }
 
   protected async save(): Promise<void> {

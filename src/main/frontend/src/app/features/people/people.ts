@@ -5,10 +5,10 @@ import { firstValueFrom } from 'rxjs';
 import { Session } from '../../core/session';
 import { Claim, Claims, DUPLICATE_REF, GraceOn, PctOn, RETIRED, cents, claimDueCents, countsAt, countsFor, isBound, isDuplicateRef, isOpen, isOverdue, money, roundsOn } from '../claims/claims';
 import { Period, Periods, periodOn } from '../periods/periods';
-import { GRADES, NA, Rate, Rates, dueCents, pctOn, rateOn } from '../rates/rates';
+import { GRADES, NA, Rate, Rates, dueCents, rateInLevels } from '../rates/rates';
 
 const NO_CLAIMS: Claim[] = [];
-const NO_RATES: Rate[] = [];
+const NO_RATES: Rate[][] = [];
 const NO_PCT: PctOn = () => null;
 const NO_GRACE: GraceOn = () => 0;
 /** The statuses the summary counts claims by. */
@@ -172,7 +172,7 @@ function trimmedSum(figures: number[]): number {
       <p>Due total: <strong data-testid="header-due-total">{{ dueTotal() }}</strong></p>
       <p>Overdue total: <strong data-testid="header-overdue-total">{{ money(overdueTotal().cents) }}</strong></p>
     </header>
-    <app-rates [rates]="rates()" [today]="session.today()" (saved)="rateSaved($event)" />
+    <app-rates [rates]="rates()" [inherited]="inheritedRates()" [today]="session.today()" (saved)="rateSaved($event)" />
     <app-periods [periods]="periods()" [dueTotalOf]="periodDueTotalOf" (saved)="periodSaved($event)" />
     <section aria-labelledby="people-heading">
       <h2 id="people-heading">People</h2>
@@ -552,6 +552,8 @@ export class People {
   protected readonly claimedTotal = computed(() => money(this.claims().filter(this.counts).reduce((sum, c) => sum + cents(c.amount), 0)));
   /** The sheet's rates, each for a grade from its from-date. */
   protected readonly rates = signal<Rate[]>([]);
+  /** The rates of the sheet's ancestors, nearest first: a grade with none of its own in force on a date takes theirs. */
+  protected readonly inheritedRates = signal<Rate[][]>([]);
   /** The sheet's periods, earliest first. */
   protected readonly periods = signal<Period[]>([]);
   /**
@@ -591,15 +593,17 @@ export class People {
   /** The error from the last patron added on a person's row, if it was refused. */
   protected readonly patronError = signal<{ id: number; message: string } | null>(null);
   private readonly peopleById = computed(() => new Map(this.people().map((p) => [p.id, p])));
+  /** Each grade's rates in levels: the sheet's own, then each ancestor's, nearest first. */
   private readonly ratesByGrade = computed(() => {
-    const by = new Map<string, Rate[]>();
-    for (const r of this.rates()) by.set(r.grade, [...(by.get(r.grade) ?? []), r]);
+    const by = new Map<string, Rate[][]>();
+    const levels = [this.rates(), ...this.inheritedRates()];
+    for (const g of GRADES) by.set(g, levels.map((rates) => rates.filter((r) => r.grade === g)));
     return by;
   });
   /** Each person's rate on a date, by id: the rate then of the grade in force for them then. */
   private readonly pctOnByPerson = computed(() => {
     const by = new Map<number, PctOn>();
-    for (const p of this.people()) by.set(p.id, (date) => pctOn(this.ratesOf(gradeOn(p, date)), date));
+    for (const p of this.people()) by.set(p.id, (date) => rateInLevels(this.ratesOf(gradeOn(p, date)), date)?.pct ?? null);
     return by;
   });
   /** Each person's grace days for a claim dated on a date, by id: those of the grade in force for them then, in force then. */
@@ -613,8 +617,8 @@ export class People {
     const today = this.session.today();
     const by = new Map<string, string>();
     if (today === null) return by;
-    for (const [grade, rates] of this.ratesByGrade()) {
-      const pct = pctOn(rates, today);
+    for (const [grade, levels] of this.ratesByGrade()) {
+      const pct = rateInLevels(levels, today)?.pct ?? null;
       if (pct !== null) by.set(grade, pct);
     }
     return by;
@@ -833,6 +837,25 @@ export class People {
       this.pasteAdded.set(null);
       if (id) void this.load(id);
     });
+    // the ancestors' rates, read again whenever the sheet is loaded or its parent changes
+    effect(() => {
+      const id = this.session.sheetId();
+      this.session.loads();
+      this.session.parent();
+      this.inheritedRates.set([]);
+      if (id) void this.loadInherited(id);
+    });
+  }
+
+  private async loadInherited(sheet: string): Promise<void> {
+    try {
+      const levels = await firstValueFrom(
+        this.http.get<Rate[][]>(`/api/sheets/${encodeURIComponent(sheet)}/rates/inherited`, { headers: this.headers() }),
+      );
+      if (this.session.sheetId() === sheet) this.inheritedRates.set(levels);
+    } catch {
+      if (this.session.sheetId() === sheet) this.error.set('Could not load the parent sheet\'s rates.');
+    }
   }
 
   private headers(): Record<string, string> {
@@ -880,7 +903,8 @@ export class People {
     return money(this.claimedCents(personId));
   }
 
-  protected ratesOf(grade: string): Rate[] {
+  /** The grade's rates in levels: the sheet's own, then each ancestor's, nearest first. */
+  protected ratesOf(grade: string): Rate[][] {
     return this.ratesByGrade().get(grade) ?? NO_RATES;
   }
 
@@ -921,7 +945,7 @@ export class People {
     const today = this.session.today();
     const otherRate = (c: Claim) => {
       const rates = this.ratesOf(gradeOn(p, c.date));
-      return today !== null && rateOn(rates, c.date) !== rateOn(rates, today);
+      return today !== null && rateInLevels(rates, c.date) !== rateInLevels(rates, today);
     };
     const fixed = (c: Claim) => c.settledDue !== null || (isBound(c) && c.statedDue !== null)
       || ((gradeOn(p, c.date) !== gradeToday || otherRate(c)) && claimDueCents(c, pctOn, floor, late, roundsOn(c, theirs), graceOn) !== null);
