@@ -20,6 +20,7 @@ import java.util.Locale;
 import java.util.Map;
 import java.util.TreeMap;
 import net.officefloor.hq.app.claim.Claim;
+import net.officefloor.hq.app.claim.ClaimStatus;
 
 /**
  * A person on a sheet, with a name and a grade (A, B or C). The name is kept without surrounding
@@ -135,6 +136,17 @@ public class Person {
     public boolean counts(Claim claim, LocalDate today) {
         if (!claim.getStatus().counts() || claim.isDeferredOn(today)) return false;
         return !claim.getStatus().isOpen() || claim.isBound() || !heldOn(claim.getDate());
+    }
+
+    /**
+     * Whether a claim of theirs counts for a period ending on the date: by the status it had at the end
+     * of that date, less a deferred one and an open one dated within a hold and not bound, as the live
+     * rules say.
+     */
+    public boolean countsAt(Claim claim, LocalDate end, LocalDate today) {
+        ClaimStatus at = claim.statusAt(end);
+        if (at == null || !at.counts() || claim.isDeferredOn(today)) return false;
+        return !at.isOpen() || claim.isBound() || !heldOn(claim.getDate());
     }
 
     /** Moved on by each save; an edit is refused unless made from the current version. */

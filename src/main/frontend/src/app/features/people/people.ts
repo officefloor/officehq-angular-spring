@@ -3,7 +3,7 @@ import { Component, computed, effect, inject, signal } from '@angular/core';
 import { FormControl, FormGroup, ReactiveFormsModule } from '@angular/forms';
 import { firstValueFrom } from 'rxjs';
 import { Session } from '../../core/session';
-import { Claim, Claims, PctOn, RETIRED, cents, claimDueCents, countsFor, isBound, isOverdue, money, roundsOn } from '../claims/claims';
+import { Claim, Claims, PctOn, RETIRED, cents, claimDueCents, countsAt, countsFor, isBound, isOverdue, money, roundsOn } from '../claims/claims';
 import { Period, Periods, periodOn } from '../periods/periods';
 import { GRADES, NA, Rate, Rates, pctOn, rateOn } from '../rates/rates';
 
@@ -364,13 +364,19 @@ export class People {
   protected readonly rates = signal<Rate[]>([]);
   /** The sheet's periods, earliest first. */
   protected readonly periods = signal<Period[]>([]);
-  /** Each person's live due-total per period in cents, by person id then period id: the dues of their claims that count whose date falls in it. */
+  /**
+   * Each person's live due-total per period in cents, by person id then period id: the dues as shown now
+   * of their claims whose date falls in it that counted by the status they had at the end of its last day.
+   */
   private readonly personPeriodLiveCents = computed(() => {
     const by = new Map<number, Map<number, number>>();
-    for (const c of this.claims().filter(this.counts)) {
+    const today = this.session.today();
+    for (const c of this.claims()) {
       const period = periodOn(this.periods(), c.date);
       const pctOn = this.pctOnByPerson().get(c.personId);
       if (period === null || pctOn === undefined) continue;
+      const held = (this.holdsById().get(c.personId) ?? []).some((h) => holdContains(h, c.date));
+      if (!countsAt(c, period.to, held, today)) continue;
       const theirs = by.get(c.personId) ?? new Map<number, number>();
       theirs.set(period.id, (theirs.get(period.id) ?? 0) + (claimDueCents(c, pctOn, this.session.floorCentsOn, this.session.late(), roundsOn(c, this.claimsOf(c.personId))) ?? 0));
       by.set(c.personId, theirs);

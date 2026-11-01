@@ -169,6 +169,18 @@ public class Claim {
         log.add(new ClaimLogEntry(status, by, on, due));
     }
 
+    /**
+     * The status it had at the end of the date, as its log records it: the last line dated on or before
+     * it; null when it had none then (added after it). With no log lines (added before the log was
+     * kept) it is taken to have had its status now.
+     */
+    public ClaimStatus statusAt(LocalDate date) {
+        if (log.isEmpty()) return status;
+        ClaimStatus at = null;
+        for (ClaimLogEntry line : log) if (!line.getDate().isAfter(date)) at = line.getStatus();
+        return at;
+    }
+
     public String getNumber() { return number; }
 
     /** Number the claim sheet-wide. */

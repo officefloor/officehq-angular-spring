@@ -92,6 +92,29 @@ export function countsFor(c: Claim, heldOnDate: boolean, today: string | null): 
   return counts(c) && (!heldOnDate || !isOpen(c) || isBound(c)) && !isDeferred(c, today);
 }
 
+/**
+ * The status the claim had at the end of the date, as its status log records it: the last line dated
+ * on or before it; null when it had none then (added after it). A claim with no log lines (added
+ * before the log was kept) is taken to have had its status now.
+ */
+export function statusAt(c: Claim, date: string): ClaimStatus | null {
+  if (c.log.length === 0) return c.status;
+  let at: ClaimStatus | null = null;
+  for (const line of c.log) if (line.date <= date) at = line.status;
+  return at;
+}
+
+/**
+ * Whether the claim counts for a period ending on `end`: by the status it had then (open or SETTLED),
+ * less a deferred one and an open one dated within a hold and not bound, as the live rules say.
+ */
+export function countsAt(c: Claim, end: string, heldOnDate: boolean, today: string | null): boolean {
+  const status = statusAt(c, end);
+  if (status === null) return false;
+  const open = status === 'OPEN' || status === 'PENDING';
+  return (open || status === 'SETTLED') && (!heldOnDate || !open || isBound(c)) && !isDeferred(c, today);
+}
+
 /** A claim's amount as cents, so sums are exact; a correction's is negative. */
 export function cents(amount: string): number {
   const negative = amount.startsWith('-');
