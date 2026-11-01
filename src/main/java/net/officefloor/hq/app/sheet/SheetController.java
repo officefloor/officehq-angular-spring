@@ -30,18 +30,18 @@ public class SheetController {
      * force on its today: the floor has two decimals, the terms are in days, the late percent has two
      * decimals; the policy date is null when blank (the sheet's today); the cap has two decimals, null
      * when none; dated has every value recorded for its dated settings, by key; archived is whether a
-     * steward has archived it; last batch is the number of its last bulk settle batch, null when none.
+     * steward has archived it; last batch is the number of its last bulk settle batch, null when none; the review SLA is in days, null when none.
      */
     public record SheetView(String id, LocalDate today, String floor, int terms, String latePct,
             LocalDate policyDate, String cap, Map<String, List<SettingController.DatedView>> dated,
-            boolean archived, Integer lastBatch) {
+            boolean archived, Integer lastBatch, Integer reviewSla) {
         static SheetView of(Sheet sheet) {
             LocalDate today = sheet.getToday();
             return new SheetView(sheet.getId(), today, sheet.floorOn(today).toPlainString(),
                     sheet.termsOn(today), sheet.latePctOn(today).toPlainString(), sheet.getPolicyDate(),
                     sheet.getCap() == null ? null : sheet.getCap().toPlainString(),
                     SettingController.datedViews(sheet.getDated()), sheet.isArchived(),
-                    sheet.getLastSettleBatch() == 0 ? null : sheet.getLastSettleBatch());
+                    sheet.getLastSettleBatch() == 0 ? null : sheet.getLastSettleBatch(), sheet.getReviewSla());
         }
     }
 

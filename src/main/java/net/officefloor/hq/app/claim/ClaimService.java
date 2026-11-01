@@ -270,7 +270,10 @@ public class ClaimService {
                 number(numbering, claim);
                 claim.setOpenedBy(user.strip());
             }
-            case REVIEW -> claim.setOpenedBy(user.strip());
+            case REVIEW -> {
+                claim.setOpenedBy(user.strip());
+                claim.setReviewOn(sheets.today(sheetId));
+            }
             case SETTLED -> {
                 claim.setSettledDue(settling);
                 claim.setSettleBatch(null);

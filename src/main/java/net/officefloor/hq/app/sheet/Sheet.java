@@ -100,6 +100,10 @@ public class Sheet {
     @Column(name = "escalate_after")
     private Integer escalateAfter;
 
+    /** A REVIEW claim whose review day plus this many days is before today is late for review (not dated); null means none. */
+    @Column(name = "review_sla")
+    private Integer reviewSla;
+
     /** The month (1 to 12) a fiscal year starts in (not dated); 1 unless set. */
     @Column(name = "fiscal_start_month", nullable = false)
     private int fiscalStartMonth = 1;
@@ -320,6 +324,10 @@ public class Sheet {
     public void setGraceDays(Integer graceDays) { this.graceDays = graceDays; }
 
     public Integer getEscalateAfter() { return escalateAfter; }
+
+    public Integer getReviewSla() { return reviewSla; }
+
+    public void setReviewSla(Integer reviewSla) { this.reviewSla = reviewSla; }
 
     public void setEscalateAfter(Integer escalateAfter) { this.escalateAfter = escalateAfter; }
     public int getFiscalStartMonth() { return fiscalStartMonth; }

@@ -13,6 +13,7 @@ interface SheetView {
   dated: Dated;
   archived: boolean;
   lastBatch: number | null;
+  reviewSla: number | null;
 }
 
 /** The people-list columns a user can switch off on their screen. */
@@ -148,6 +149,15 @@ export class Session {
 
   /** The number of the sheet's last bulk settle batch, or null while there has been none. */
   readonly lastBatch = signal<number | null>(null);
+  /** The review SLA in days (not dated): a REVIEW claim whose review day plus it is before today is late for review; null when none. */
+  readonly reviewSla = signal<number | null>(null);
+  /** Whether a claim is late for review: REVIEW, and its review day plus the review SLA is before the sheet's today. */
+  reviewLate(claim: { status: string; reviewOn: string | null }): boolean {
+    const sla = this.reviewSla();
+    const today = this.today();
+    if (claim.status !== 'REVIEW' || sla === null || today === null || claim.reviewOn === null) return false;
+    return Math.round((Date.parse(today) - Date.parse(claim.reviewOn)) / 86_400_000) > sla;
+  }
 
   /** The id of the last sheet this one was cloned to from this screen; null when none since it was loaded. */
   readonly clonedTo = signal<string | null>(null);
@@ -235,6 +245,7 @@ export class Session {
     this.policyDate.set(res.policyDate);
     this.archived.set(res.archived);
     this.lastBatch.set(res.lastBatch);
+    this.reviewSla.set(res.reviewSla);
     this.clonedTo.set(null);
     this.loads.update((n) => n + 1);
   }

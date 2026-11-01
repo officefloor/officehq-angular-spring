@@ -666,6 +666,10 @@ function trimmedSum(figures: number[]): number {
               <td [attr.data-testid]="'summary-status-' + s.status + '-count'">{{ s.count }}</td>
             </tr>
           }
+          <tr>
+            <th scope="row">REVIEW late for review</th>
+            <td data-testid="summary-review-late-count">{{ reviewLateCount() }}</td>
+          </tr>
         </tbody>
       </table>
       <table>
@@ -1101,6 +1105,8 @@ export class People {
   protected readonly statusSummary = computed(() =>
     SUMMARY_STATUSES.map((status) => ({ status, count: this.claims().filter((c) => c.status === status).length })),
   );
+  /** How many of the sheet's REVIEW claims are late for review. */
+  protected readonly reviewLateCount = computed(() => this.claims().filter((c) => this.session.reviewLate(c)).length);
   /** Per reason on the sheet's list: how many VOID claims were voided with it. */
   protected readonly voidReasonSummary = computed(() =>
     this.session.voidReasons().map((reason) => ({

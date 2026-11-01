@@ -170,6 +170,10 @@ public class Claim {
     @Column(name = "escalated", nullable = false)
     private boolean escalated;
 
+    /** The sheet's today when it last went to REVIEW; none unless it has. */
+    @Column(name = "review_on")
+    private LocalDate reviewOn;
+
     /** The number of the bulk settle batch that settled it (or sent it to PENDING); none when settled one at a time. */
     @Column(name = "settle_batch")
     private Integer settleBatch;
@@ -397,6 +401,8 @@ public class Claim {
     /** Record a reminder written on the sheet's today. */
     public void remind(LocalDate on) { this.remindedOn = on; }
     public boolean isEscalated() { return escalated; }
+    public LocalDate getReviewOn() { return reviewOn; }
+    public void setReviewOn(LocalDate reviewOn) { this.reviewOn = reviewOn; }
     /** Record that a reminder escalated it. */
     public void escalate() { this.escalated = true; }
     public Integer getSettleBatch() { return settleBatch; }

@@ -406,6 +406,17 @@ public class SettingService {
         return days;
     }
 
+    /** Change the review SLA in days (null: none); no claim changes with it. */
+    @Transactional
+    public Integer setReviewSla(String sheetId, String user, Integer days) {
+        Sheet sheet = sheets.findForUpdate(sheetId).orElseThrow(SheetNotFoundException::new);
+        sheet.setReviewSla(days);
+        sheets.flush();
+        audit.recordOnCommit("SETTING_CHANGED sheet=" + sheetId + " by=" + user.strip() + " key=review-sla value="
+                + (days == null ? "" : days.toString()));
+        return days;
+    }
+
     /** Change the fiscal year start month, 1 to 12; the periods' fiscal years follow it. */
     @Transactional
     public int setFiscalStartMonth(String sheetId, String user, int month) {
@@ -515,6 +526,12 @@ public class SettingService {
     @Transactional(readOnly = true)
     public Integer escalateAfter(String sheetId) {
         return sheets.findById(sheetId).orElseThrow(SheetNotFoundException::new).getEscalateAfter();
+    }
+
+    /** The review SLA in days as set; null when blank, which means none. */
+    @Transactional(readOnly = true)
+    public Integer reviewSla(String sheetId) {
+        return sheets.findById(sheetId).orElseThrow(SheetNotFoundException::new).getReviewSla();
     }
 
     /** The grace days as set; null when blank, which means off. */
