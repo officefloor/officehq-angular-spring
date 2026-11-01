@@ -27,6 +27,13 @@ import { Settings } from '../settings/settings';
           <input id="sheet-today" type="date" data-testid="sheet-today-input" formControlName="today" />
           <button type="submit" data-testid="sheet-today-save">Set today</button>
         </form>
+        <form [formGroup]="asOfForm" (ngSubmit)="setAsOf()" aria-label="As of">
+          <label for="asof-date">View as of</label>
+          <input id="asof-date" type="date" data-testid="asof-date" formControlName="date" />
+          <button type="submit" data-testid="asof-set">Set as of</button>
+          <button type="button" data-testid="asof-clear" (click)="clearAsOf()">Clear as of</button>
+        </form>
+        <p>As of: <strong data-testid="sheet-asof">{{ session.asOf() ?? '' }}</strong></p>
         <p>Archived: <strong data-testid="sheet-archived">{{ session.archived() ? 'yes' : 'no' }}</strong></p>
         <button type="button" data-testid="sheet-archive" (click)="archive()">Archive sheet</button>
         <app-settings />
@@ -49,6 +56,7 @@ export class Home {
   protected readonly signinForm = new FormGroup({ name: new FormControl('', { nonNullable: true }) });
   protected readonly sheetForm = new FormGroup({ id: new FormControl('', { nonNullable: true }) });
   protected readonly todayForm = new FormGroup({ today: new FormControl('', { nonNullable: true }) });
+  protected readonly asOfForm = new FormGroup({ date: new FormControl('', { nonNullable: true }) });
   protected readonly signinError = signal('');
   protected readonly sheetError = signal('');
   /** The forms with a submit under way; another submit of one waits for its answer. */
@@ -58,6 +66,7 @@ export class Home {
     this.signinForm.valueChanges.subscribe(() => this.signinError.set(''));
     this.sheetForm.valueChanges.subscribe(() => this.sheetError.set(''));
     this.todayForm.valueChanges.subscribe(() => this.sheetError.set(''));
+    this.asOfForm.valueChanges.subscribe(() => this.sheetError.set(''));
   }
 
   protected async signIn(): Promise<void> {
@@ -111,6 +120,34 @@ export class Home {
       this.sheetError.set('Could not change today.');
     } finally {
       this.submitting.delete('saveToday');
+    }
+  }
+
+  protected async setAsOf(): Promise<void> {
+    if (this.submitting.has('asOf')) return;
+    this.sheetError.set('');
+    const date = this.asOfForm.controls.date.value.trim();
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) {
+      this.sheetError.set('Enter a date.');
+      return;
+    }
+    await this.changeAsOf(date);
+  }
+
+  protected async clearAsOf(): Promise<void> {
+    if (this.submitting.has('asOf')) return;
+    this.sheetError.set('');
+    await this.changeAsOf(null);
+  }
+
+  private async changeAsOf(date: string | null): Promise<void> {
+    this.submitting.add('asOf');
+    try {
+      await this.session.setAsOf(date);
+    } catch {
+      this.sheetError.set('Could not show the sheet as of that date.');
+    } finally {
+      this.submitting.delete('asOf');
     }
   }
 

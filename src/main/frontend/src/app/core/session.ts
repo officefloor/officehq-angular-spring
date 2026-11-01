@@ -91,6 +91,12 @@ export class Session {
 
   /** Bumped on every sheet load, so features re-read the sheet from the store even for the same id. */
   readonly loads = signal(0);
+  /**
+   * The as-of date (yyyy-mm-dd) the signed-in user views the sheet at, or null: while it is set every
+   * figure is shown as it stood at the end of that date, with it as the sheet's today, and every change
+   * is refused. It belongs to this screen, and is left as it is by loading a sheet.
+   */
+  readonly asOf = signal<string | null>(null);
   /** Whether retired people are listed: off when the screen opens, left as it is by loading a sheet. */
   readonly showRetired = signal(false);
 
@@ -113,6 +119,14 @@ export class Session {
     this.policyDate.set(res.policyDate);
     this.archived.set(res.archived);
     this.loads.update((n) => n + 1);
+  }
+
+  /** View the active sheet as of a date (yyyy-mm-dd), or as it is now (null): it is loaded again. */
+  async setAsOf(asOf: string | null): Promise<void> {
+    const id = this.sheetId();
+    if (!id) throw new Error('no sheet loaded');
+    this.asOf.set(asOf);
+    await this.loadSheet(id);
   }
 
   async setToday(today: string): Promise<void> {

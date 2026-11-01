@@ -771,7 +771,8 @@ export class People {
 
   /**
    * Take a statement for the person, binding their counting claims to their dues now, or as they stood
-   * at the end of the date entered (blank: now). The date is cleared once the statement is taken.
+   * at the end of the date entered (blank: now). The date is cleared once the statement is taken or refused,
+   * so a refused date never carries into the next statement.
    */
   protected async takeStatement(p: Person, asOfInput: HTMLInputElement): Promise<void> {
     this.personError.set(null);
@@ -793,7 +794,9 @@ export class People {
       const byId = new Map(taken.claims.map((c) => [c.id, c]));
       this.claims.update((list) => list.map((c) => byId.get(c.id) ?? c));
     } catch {
-      if (this.session.sheetId() === sheet) this.personError.set({ id: p.id, message: 'Could not take a statement for ' + p.name + '.' });
+      if (this.session.sheetId() !== sheet) return;
+      asOfInput.value = '';
+      this.personError.set({ id: p.id, message: 'Could not take a statement for ' + p.name + '.' });
     }
   }
 
