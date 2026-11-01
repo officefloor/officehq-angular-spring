@@ -52,6 +52,17 @@ public class Statement {
         this.takenBy = takenBy;
     }
 
+    /** A copy of the statement, as taken, for the person on the sheet. */
+    public Statement copyFor(String sheetId, Long personId) {
+        return new Statement(sheetId, personId, dueTotal, date, takenOn, takenBy);
+    }
+
+    /** Move the statement to the person on the sheet, as taken. */
+    public void moveTo(String sheetId, Long personId) {
+        this.sheetId = sheetId;
+        this.personId = personId;
+    }
+
     public Long getId() { return id; }
 
     public String getSheetId() { return sheetId; }

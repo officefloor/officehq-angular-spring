@@ -254,14 +254,11 @@ public class Claim {
 
     /**
      * Move the claim, with its person, to another sheet: it keeps its status, dates, note, tags, frozen
-     * figure and logs, but loses any figure a statement bound it to, its reference, its number (to be
+     * figure, logs and any figure a statement bound it to, but loses its reference, its number (to be
      * given the other sheet's next), its settle batch and any editor's lock.
      */
     public void transferTo(String sheetId) {
         this.sheetId = sheetId;
-        this.stated = false;
-        this.statedDue = null;
-        bindings.clear();
         setRef(null);
         this.number = null;
         this.numberPeriod = null;
