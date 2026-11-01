@@ -124,7 +124,7 @@ public record SheetState(List<SettingState> settings, LocalDate policyDate, List
             String corrects, long listed, ClaimStatus status, String number, BigDecimal settledDue, boolean stated,
             BigDecimal statedDue, LocalDate deferredUntil, LocalDate remindedOn, String ref, String tags,
             boolean waived, BigDecimal statedLate, boolean held, List<ShareState> shares,
-            String reviewAssigned) {
+            String reviewAssigned, Boolean dueBySet) {
 
         /** The claim as it stood then, unsaved. */
         public Claim rebuild(String sheetId) {
@@ -141,6 +141,9 @@ public record SheetState(List<SettingState> settings, LocalDate policyDate, List
             }
             claim.setHeld(held);
             claim.setReviewAssigned(reviewAssigned);
+            if (Boolean.TRUE.equals(dueBySet)) {
+                claim.setDueBy(dueBy);
+            }
             if (stated) {
                 claim.bind(statedDue, statedLate);
             }
@@ -168,7 +171,7 @@ public record SheetState(List<SettingState> settings, LocalDate policyDate, List
                         c.getSettledDue(), c.isStated(), c.getStatedDue(), c.getDeferredUntil(), c.getRemindedOn(), c.getRef(), c.getTags(),
                         c.isWaived(), c.getBoundLate(), c.isHeld(), c.getShares().stream()
                                 .map(sh -> new ShareState(sh.getPersonId(), sh.getShare())).toList(),
-                        c.getReviewAssigned())).toList(),
+                        c.getReviewAssigned(), c.isDueBySet())).toList(),
                 new TreeMap<>(sheet.getPermissions()), sheet.getPeriodNumberingFrom(), sheet.getGraceDays(),
                 sheet.isArchived(), views, sheet.getEntryDate(), sheet.getLastSettleBatch(),
                 sheet.getPot(), sheet.getFiscalStartMonth(), sheet.getAlertThreshold(),

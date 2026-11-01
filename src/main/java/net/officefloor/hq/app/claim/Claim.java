@@ -71,6 +71,11 @@ public class Claim {
     @Column(name = "due_by", nullable = false)
     private LocalDate dueBy;
 
+    /** Whether a steward set the due-by directly: it then stays as set, and a holiday added later does not fix it
+     *  again. */
+    @Column(name = "due_by_set", nullable = false)
+    private boolean dueBySet;
+
     /** The terms the claim's due-by was fixed with: the number of business days after its date it is due by. */
     @Column(name = "terms", nullable = false)
     private int terms;
@@ -221,6 +226,7 @@ public class Claim {
         copy.tags = tags;
         copy.voidReason = voidReason;
         copy.terms = terms;
+        copy.dueBySet = dueBySet;
         copy.status = status;
         copy.settledDue = settledDue;
         copy.openedBy = openedBy;
@@ -330,6 +336,16 @@ public class Claim {
 
     public LocalDate getDueBy() {
         return dueBy;
+    }
+
+    public boolean isDueBySet() {
+        return dueBySet;
+    }
+
+    /** A steward sets the due-by directly; it stays as set. */
+    public void setDueBy(LocalDate dueBy) {
+        this.dueBy = dueBy;
+        this.dueBySet = true;
     }
 
     public int getTerms() {

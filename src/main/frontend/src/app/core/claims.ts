@@ -383,6 +383,11 @@ export class Claims {
     return this.http.put<ClaimView>(`${this.base(sheetId)}/claims/${id}/date`, { date });
   }
 
+  /** A steward sets a DRAFT, OPEN or PENDING claim's due-by to `dueBy` (yyyy-mm-dd); it stays as set. */
+  setDueBy(sheetId: string, id: number, dueBy: string): Observable<ClaimView> {
+    return this.http.put<ClaimView>(`${this.base(sheetId)}/claims/${id}/due-by`, { dueBy });
+  }
+
   /** Raise a claim's proofs count by one, of a kind (null: none chosen, a receipt); refused for a SETTLED or VOID
    *  claim. */
   addProof(sheetId: string, id: number, kind: ProofKind | null): Observable<ClaimView> {

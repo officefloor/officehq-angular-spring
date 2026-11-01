@@ -465,6 +465,36 @@ public class ClaimService {
         return redated;
     }
 
+    /** A steward sets a DRAFT, OPEN or PENDING claim's due-by directly. It stays as set: a holiday added later does
+     *  not move it, and its overdue state, late charge, grace and period follow it. CLAIM_DUE_BY_SET names the claim
+     *  and ends with the old and new due-by. Refused for anyone but a steward, a claim in any other status and an old
+     *  or new due-by inside a closed period. */
+    @Transactional
+    public Claim setDueBy(String sheetId, String user, long id, LocalDate dueBy) {
+        sheets.load(sheetId, user);
+        sheetStore.findLockedById(sheetId).orElseThrow();
+        Claim claim = claims.findByIdAndSheetId(id, sheetId)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "No such claim on this sheet"));
+        if (!Role.STEWARD.equals(roles.roleOf(sheetId, user))) {
+            throw new ResponseStatusException(HttpStatus.FORBIDDEN, "Only a steward sets a claim's due-by");
+        }
+        if (claim.getStatus() != ClaimStatus.DRAFT && !claim.getStatus().isOpen()) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT,
+                    "A " + claim.getStatus() + " claim's due-by cannot be set; only a DRAFT, OPEN or PENDING one's can");
+        }
+        refuseIfClosed(sheetId, claim.getDueBy());
+        refuseIfClosed(sheetId, dueBy);
+        Person person = people.findByIdAndSheetId(claim.getPersonId(), sheetId).orElseThrow();
+        Rollup.Figures before = rollup.of(sheetId);
+        LocalDate old = claim.getDueBy();
+        claim.setDueBy(dueBy);
+        Claim set = claims.saveAndFlush(claim);
+        audit.recordChangeOnCommit(sheetId, user, entry("CLAIM_DUE_BY_SET", user, person, set, set.getNumber())
+                + " old=" + old + " new=" + dueBy);
+        rollup.recordChanges(sheetId, user, before);
+        return set;
+    }
+
     /** Open a claim's editor for this user, locking the claim for other users until they save or cancel it or the
      *  sheet's today changes. Refused for a claim that is not a draft, one due by inside a closed period and one
      *  another user has locked; a refused claim takes no lock. Opening it again for the same user keeps the lock. */

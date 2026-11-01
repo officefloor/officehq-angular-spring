@@ -74,7 +74,7 @@ public class HolidayService {
                 .collect(Collectors.toSet());
         for (Claim claim : claims.findBySheetIdOrderByListedDescIdDesc(sheetId)) {
             if (claim.getStatus() == ClaimStatus.SETTLED || claim.getStatus() == ClaimStatus.VOID
-                    || claim.getDueBy().isBefore(holiday)) {
+                    || claim.isDueBySet() || claim.getDueBy().isBefore(holiday)) {
                 continue;
             }
             claim.refixDueBy(businessDaysAfter(claim.getDate(), claim.getTerms(), dates));

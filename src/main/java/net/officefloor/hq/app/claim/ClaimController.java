@@ -158,6 +158,10 @@ public class ClaimController {
     public record Redating(@NotNull LocalDate date) {
     }
 
+    /** The due-by a steward sets a claim to. */
+    public record DueBySetting(@NotNull LocalDate dueBy) {
+    }
+
     /** The person a claim is to move to. */
     public record Reassignment(@NotNull Long personId) {
     }
@@ -338,6 +342,15 @@ public class ClaimController {
             @RequestHeader("X-User") @NotBlank @Size(max = 100) String user,
             @Valid @RequestBody Redating request) {
         return ClaimView.of(claims.redate(sheetId, user, id, request.date()));
+    }
+
+    @PutMapping("/claims/{id}/due-by")
+    public ClaimView setDueBy(
+            @PathVariable @NotBlank @Size(max = 100) @Pattern(regexp = "[A-Za-z0-9._-]+") String sheetId,
+            @PathVariable long id,
+            @RequestHeader("X-User") @NotBlank @Size(max = 100) String user,
+            @Valid @RequestBody DueBySetting request) {
+        return ClaimView.of(claims.setDueBy(sheetId, user, id, request.dueBy()));
     }
 
     /** A proof as the screen gives it: its kind, receipt or photo; a missing one means a receipt, not chosen. */

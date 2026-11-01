@@ -104,6 +104,11 @@ const UNPROVEN = 'This claim\'s due is above the proof threshold, so it needs a 
                  [value]="newDates()[c.id] ?? ''" (input)="newDateChanged(c, $any($event.target).value)" />
           <button type="button" data-testid="claim-redate" (click)="redate(c)"
                   [attr.aria-label]="'Re-date claim of ' + c.amount + ' on ' + c.date">Re-date</button>
+          <label [for]="'claim-due-by-new-' + c.id">New due-by</label>
+          <input [id]="'claim-due-by-new-' + c.id" type="date" data-testid="claim-due-by-new"
+                 [value]="newDueBys()[c.id] ?? ''" (input)="newDueByChanged(c, $any($event.target).value)" />
+          <button type="button" data-testid="claim-set-due-by" (click)="setDueBy(c)"
+                  [attr.aria-label]="'Set due-by of claim of ' + c.amount + ' on ' + c.date">Set due-by</button>
           — proofs <span data-testid="claim-proofs">{{ c.proofs }}</span>
           (receipts <span data-testid="claim-proofs-receipt">{{ c.proofReceipts }}</span>,
           photos <span data-testid="claim-proofs-photo">{{ c.proofPhotos }}</span>)
@@ -319,6 +324,8 @@ export class PersonClaims {
   protected readonly proofKindOptions = PROOF_KINDS;
   /** The new date typed for each OPEN or PENDING claim, by id. */
   protected readonly newDates = signal<Readonly<Record<number, string>>>({});
+  /** The due-by typed to set on each claim, by id. */
+  protected readonly newDueBys = signal<Readonly<Record<number, string>>>({});
   /** The amount typed to split off each OPEN claim, by id. */
   protected readonly splitAmounts = signal<Readonly<Record<number, string>>>({});
 
@@ -458,6 +465,36 @@ export class PersonClaims {
             : err instanceof HttpErrorResponse && err.status === 422
               ? `${this.personName()} retired before ${date}.`
               : `A ${c.status} claim cannot be re-dated; only an OPEN or PENDING one can.`,
+      }),
+    });
+  }
+
+  protected newDueByChanged(c: ClaimView, dueBy: string): void {
+    this.newDueBys.update((dueBys) => ({ ...dueBys, [c.id]: dueBy }));
+    if (this.claimError()?.id === c.id) this.claimError.set(null);
+  }
+
+  protected setDueBy(c: ClaimView): void {
+    this.claimError.set(null);
+    const sheet = this.sheets.current();
+    if (!sheet) return;
+    const dueBy = (this.newDueBys()[c.id] ?? '').trim();
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(dueBy)) {
+      this.claimError.set({ id: c.id, message: 'Choose the new due-by of the claim.' });
+      return;
+    }
+    this.api.setDueBy(sheet.id, c.id, dueBy).subscribe({
+      next: (saved) => {
+        this.newDueBys.update((dueBys) => ({ ...dueBys, [c.id]: '' }));
+        this.saved.emit(saved);
+      },
+      error: (err: unknown) => this.claimError.set({
+        id: c.id,
+        message: err instanceof HttpErrorResponse && err.status === 403
+          ? 'Only a steward can set a claim\'s due-by.'
+          : err instanceof HttpErrorResponse && err.status === 423
+            ? 'That due-by is inside a closed period.'
+            : `A ${c.status} claim's due-by cannot be set; only a DRAFT, OPEN or PENDING one's can.`,
       }),
     });
   }
