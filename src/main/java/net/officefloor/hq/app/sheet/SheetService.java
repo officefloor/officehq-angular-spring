@@ -37,6 +37,16 @@ public class SheetService {
         return sheets.findById(id).map(Sheet::getToday).orElseThrow(SheetNotFoundException::new);
     }
 
+    /**
+     * Take the next claim number on the sheet: 1, 2, ... with no gaps and never reused. The sheet
+     * stays locked until the caller's transaction ends, so two users opening claims at once get
+     * different numbers.
+     */
+    @Transactional
+    public long nextClaimNumber(String id) {
+        return sheets.findForUpdate(id).orElseThrow(SheetNotFoundException::new).nextClaimNumber();
+    }
+
     /** Change the sheet's today. */
     @Transactional
     public Sheet setToday(String id, LocalDate today) {

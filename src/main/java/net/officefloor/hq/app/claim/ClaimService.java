@@ -14,7 +14,8 @@ import org.springframework.transaction.annotation.Transactional;
 /**
  * The claims on a sheet: listed newest first, added to a person and edited one at a time. A claim
  * given no date takes the sheet's today. A claim is added as DRAFT and moves through its statuses
- * as {@link ClaimStatus} allows; a change it does not allow is refused.
+ * as {@link ClaimStatus} allows; a change it does not allow is refused. Opening a claim gives it
+ * the sheet's next number; voiding it clears the number, which is never given again.
  */
 @Service
 public class ClaimService {
@@ -58,9 +59,21 @@ public class ClaimService {
 
     @Transactional
     public Claim changeStatus(String sheetId, String user, Long id, ClaimStatus next) {
+        // Opening takes the sheet's next number, locking the sheet first so the claim is read only
+        // once no other open on the sheet is under way; a refusal rolls the number back.
+        Long opened = next == ClaimStatus.OPEN ? sheets.nextClaimNumber(sheetId) : null;
         Claim claim = claims.findByIdAndSheetId(id, sheetId).orElseThrow(ClaimNotFoundException::new);
         if (!claim.getStatus().canBecome(next)) {
             throw new ClaimStatusRefusedException();
+        }
+        Long number = claim.getNumber();
+        switch (next) {
+            case OPEN -> {
+                number = opened;
+                claim.setNumber(number);
+            }
+            case VOID -> claim.setNumber(null);
+            default -> {}
         }
         claim.setStatus(next);
         Claim saved = claims.saveAndFlush(claim);
@@ -71,13 +84,19 @@ public class ClaimService {
             case VOID -> "CLAIM_VOIDED";
             case DRAFT -> throw new IllegalStateException();
         };
-        record(event, sheetId, user, person, saved);
+        record(event, sheetId, user, person, saved, number);
         return saved;
     }
 
     private void record(String event, String sheetId, String user, Person person, Claim claim) {
+        record(event, sheetId, user, person, claim, claim.getNumber());
+    }
+
+    /** A claim's audit line; one about a claim with a number ends with it. */
+    private void record(String event, String sheetId, String user, Person person, Claim claim, Long number) {
         audit.recordOnCommit(event + " sheet=" + sheetId + " by=" + user.strip() + " person=" + person.getName()
-                + " amount=" + claim.getAmount().setScale(2).toPlainString() + " date=" + claim.getDate());
+                + " amount=" + claim.getAmount().setScale(2).toPlainString() + " date=" + claim.getDate()
+                + (number != null ? " number=" + number : ""));
     }
 
     private LocalDate dateOrToday(String sheetId, LocalDate date) {

@@ -13,7 +13,7 @@ import java.time.LocalDate;
 
 /**
  * A claim by a person on a sheet: an amount (0.00 or more, two decimals), a date, a note and a
- * status (DRAFT when added).
+ * status (DRAFT when added), and a number once opened.
  */
 @Entity
 @Table(name = "claim")
@@ -41,6 +41,10 @@ public class Claim {
     @Enumerated(EnumType.STRING)
     @Column(name = "status", nullable = false)
     private ClaimStatus status = ClaimStatus.DRAFT;
+
+    /** Given when the claim is opened; none while DRAFT, cleared when VOID. */
+    @Column(name = "claim_number")
+    private Long number;
 
     protected Claim() {}
 
@@ -73,4 +77,8 @@ public class Claim {
     public ClaimStatus getStatus() { return status; }
 
     public void setStatus(ClaimStatus status) { this.status = status; }
+
+    public Long getNumber() { return number; }
+
+    public void setNumber(Long number) { this.number = number; }
 }

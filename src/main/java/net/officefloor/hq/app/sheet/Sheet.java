@@ -25,6 +25,10 @@ public class Sheet {
     @Column(name = "today", nullable = false)
     private LocalDate today;
 
+    /** The last claim number given on the sheet; the next claim opened takes the one after it. */
+    @Column(name = "last_claim_number", nullable = false)
+    private long lastClaimNumber;
+
     protected Sheet() {}
 
     public Sheet(String id, String createdBy, Instant createdAt, LocalDate today) {
@@ -43,4 +47,7 @@ public class Sheet {
     public LocalDate getToday() { return today; }
 
     public void setToday(LocalDate today) { this.today = today; }
+
+    /** Take the next claim number on the sheet. */
+    public long nextClaimNumber() { return ++lastClaimNumber; }
 }

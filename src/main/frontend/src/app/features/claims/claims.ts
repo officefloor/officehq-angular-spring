@@ -19,6 +19,8 @@ export interface Claim {
   date: string;
   note: string;
   status: ClaimStatus;
+  /** Given when the claim is opened; null while DRAFT and once VOID. */
+  number: number | null;
 }
 
 /** Only OPEN and SETTLED claims count toward what is claimed and due. */
@@ -58,6 +60,7 @@ export function money(cents: number): string {
     <ul [attr.aria-label]="'Claims for ' + personName()">
       @for (c of claims(); track c.id) {
         <li [attr.data-testid]="'claim-row-' + c.id">
+          <span>No. <span data-testid="claim-number">{{ c.number ?? '' }}</span></span>
           <span data-testid="claim-amount">{{ c.amount }}</span>
           <span data-testid="claim-date">{{ c.date }}</span>
           <span data-testid="claim-note">{{ c.note }}</span>
