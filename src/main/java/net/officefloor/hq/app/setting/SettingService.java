@@ -378,6 +378,23 @@ public class SettingService {
         return sheets.findById(sheetId).orElseThrow(SheetNotFoundException::new).getEntryDate();
     }
 
+    /** Change the pot (null: none); not dated. */
+    @Transactional
+    public BigDecimal setPot(String sheetId, String user, BigDecimal pot) {
+        Sheet sheet = sheets.findForUpdate(sheetId).orElseThrow(SheetNotFoundException::new);
+        sheet.setPot(pot);
+        sheets.flush();
+        audit.recordOnCommit("SETTING_CHANGED sheet=" + sheetId + " by=" + user.strip() + " key=pot value="
+                + (pot == null ? "" : pot.toPlainString()));
+        return pot;
+    }
+
+    /** The pot as set; null when blank, which means none. */
+    @Transactional(readOnly = true)
+    public BigDecimal pot(String sheetId) {
+        return sheets.findById(sheetId).orElseThrow(SheetNotFoundException::new).getPot();
+    }
+
     /** The grace days as set; null when blank, which means off. */
     @Transactional(readOnly = true)
     public Integer graceDays(String sheetId) {

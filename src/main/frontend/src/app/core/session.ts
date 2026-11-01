@@ -128,6 +128,9 @@ export class Session {
 
   /** Bumped on every sheet load, so features re-read the sheet from the store even for the same id. */
   readonly loads = signal(0);
+
+  /** Bumped each time the pot is saved, so the pools re-read their cuts. */
+  readonly potSaves = signal(0);
   /**
    * The as-of date (yyyy-mm-dd) the signed-in user views the sheet at, or null: while it is set every
    * figure is shown as it stood at the end of that date, with it as the sheet's today, and every change

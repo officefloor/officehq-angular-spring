@@ -36,12 +36,12 @@ public class SettingController {
      * is null when blank (the sheet's today), and so is the period numbering from (off); the cap has
      * two decimals, null when none; permissions has the roles set for each action of the permission
      * matrix, comma separated, for each action with any set (the rest keep the standing rule); the grace
-     * days are a whole number of days, null when blank (off); the entry date is null when blank (off).
+     * days are a whole number of days, null when blank (off); the entry date is null when blank (off); the pot has two decimals, null when none.
      */
     public record SettingsView(String clerkLimit, String floor, int terms, String latePct, LocalDate policyDate,
             LocalDate periodNumberingFrom, List<RoleView> roles, Map<String, Integer> gradeTerms, String cap,
             Map<String, List<DatedView>> dated, Map<String, String> permissions, Integer graceDays,
-            LocalDate entryDate) {}
+            LocalDate entryDate, String pot) {}
 
     /** A value recorded for a dated setting from a date on; null when none. */
     public record DatedView(LocalDate from, String value) {}
@@ -164,6 +164,14 @@ public class SettingController {
         }
     }
 
+    /** A pot with at most two decimals; blank or null: none. */
+    public record PotRequest(@Pattern(regexp = "(\\d{1,12}(\\.\\d{1,2})?)?") String value) {
+
+        BigDecimal potValue() {
+            return value == null || value.isEmpty() ? null : new BigDecimal(value).setScale(2);
+        }
+    }
+
     /** Grace days: a whole number of days; blank or null: off. */
     public record GraceDaysRequest(@Pattern(regexp = "(\\d{1,4})?") String value) {
 
@@ -252,7 +260,7 @@ public class SettingController {
                 service.periodNumberingFrom(sheetId),
                 service.roles(sheetId).stream().map(RoleView::of).toList(), service.gradeTerms(sheetId),
                 text(service.cap(sheetId)), datedViews(service.dated(sheetId)), service.permissions(sheetId),
-                service.graceDays(sheetId), service.entryDate(sheetId));
+                service.graceDays(sheetId), service.entryDate(sheetId), text(service.pot(sheetId)));
     }
 
     @PutMapping("/settings/clerk-limit")
@@ -325,6 +333,15 @@ public class SettingController {
             @RequestHeader("X-User") @NotBlank @Size(max = 100) String user,
             @RequestBody @Valid GraceDaysRequest request) {
         service.setGraceDays(sheetId, user, request.daysValue());
+        return get(sheetId, user);
+    }
+
+    @PutMapping("/settings/pot")
+    public SettingsView setPot(
+            @PathVariable @Size(max = 100) @Pattern(regexp = "[A-Za-z0-9._-]+") String sheetId,
+            @RequestHeader("X-User") @NotBlank @Size(max = 100) String user,
+            @RequestBody @Valid PotRequest request) {
+        service.setPot(sheetId, user, request.potValue());
         return get(sheetId, user);
     }
 

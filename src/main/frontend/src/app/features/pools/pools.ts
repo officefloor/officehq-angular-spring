@@ -1,15 +1,16 @@
 import { HttpClient, HttpErrorResponse } from '@angular/common/http';
-import { Component, computed, effect, inject, signal } from '@angular/core';
+import { Component, computed, effect, inject, signal, untracked } from '@angular/core';
 import { FormControl, FormGroup, ReactiveFormsModule } from '@angular/forms';
 import { firstValueFrom } from 'rxjs';
 import { Session } from '../../core/session';
 
-/** A member of a pool: the person, their share (two decimals), and whether they were retired when read. */
+/** A member of a pool: the person, their share (two decimals), whether they were retired when read, and their cut of the pot (two decimals; null: none). */
 interface MemberView {
   personId: number;
   name: string;
   share: string;
   retired: boolean;
+  cut: string | null;
 }
 
 /** A pool on the sheet, with its members in the order added. */
@@ -21,10 +22,11 @@ interface PoolView {
   balanced: boolean;
 }
 
-/** A pool as shown: its total share (two decimals) and whether it is balanced. */
+/** A pool as shown: its total share (two decimals), whether it is balanced, and each member's cut ('' when none). */
 interface PoolLine extends PoolView {
   total: string;
   isBalanced: boolean;
+  cuts: Map<number, string>;
 }
 
 /** A share at most two decimals, more than 0.00 and at most 100.00. */
@@ -42,7 +44,8 @@ function percent(hundredths: number): string {
 
 // The sheet's pools, each name once, and their members: people of the sheet, each at most once in a
 // pool, with a share percent. A person can be in several pools. A pool shows its total share and is
-// balanced when the shares total exactly 100.00; a retired member's share counts as 0.00 toward it.
+// balanced when the shares total exactly 100.00; a retired member's share counts as 0.00 toward it. Each member of a
+// balanced pool shows their cut of the sheet's pot (worked out by the server); an unbalanced pool, or no pot, shows none.
 @Component({
   selector: 'app-pools',
   imports: [ReactiveFormsModule],
@@ -66,7 +69,8 @@ function percent(hundredths: number): string {
             <ul [attr.aria-label]="'Members of ' + p.name">
               @for (m of p.members; track m.personId) {
                 <li [attr.data-testid]="'pool-member-' + p.name + '-' + m.personId">
-                  {{ m.name }}: <span data-testid="pool-share">{{ m.share }}</span>
+                  {{ m.name }}: <span data-testid="pool-share">{{ m.share }}</span>,
+                  cut <span data-testid="pool-cut">{{ p.cuts.get(m.personId) ?? '' }}</span>
                 </li>
               }
             </ul>
@@ -108,7 +112,10 @@ export class Pools {
     const retired = new Map(this.session.people().map((p) => [p.id, p.retired]));
     return this.pools().map((p) => {
       const total = p.members.reduce((sum, m) => ((retired.get(m.personId) ?? m.retired) ? sum : sum + hundredths(m.share)), 0);
-      return { ...p, total: percent(total), isBalanced: total === 10_000 };
+      // the cuts as read stand only while no member's retirement has changed since
+      const current = p.members.every((m) => (retired.get(m.personId) ?? m.retired) === m.retired);
+      const cuts = new Map(current && total === 10_000 ? p.members.map((m) => [m.personId, m.cut ?? ''] as const) : []);
+      return { ...p, total: percent(total), isBalanced: total === 10_000, cuts };
     });
   });
 
@@ -121,6 +128,11 @@ export class Pools {
       this.memberForms.clear();
       this.error.set('');
       this.memberError.set(null);
+      if (id) void this.load(id);
+    });
+    effect(() => {
+      if (this.session.potSaves() === 0) return;
+      const id = untracked(() => this.session.sheetId());
       if (id) void this.load(id);
     });
   }

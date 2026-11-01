@@ -20,14 +20,15 @@ import org.springframework.web.bind.annotation.RestController;
 @RequestMapping("/api/sheets/{sheetId}/pools")
 public class PoolController {
 
-    /** A member of a pool: the person, their share (two decimals), and whether they are retired. */
-    public record MemberView(Long personId, String name, String share, boolean retired) {}
+    /** A member of a pool: the person, their share (two decimals), whether they are retired, and their cut of the pot (two decimals, null: none). */
+    public record MemberView(Long personId, String name, String share, boolean retired, String cut) {}
 
     /** A pool on the sheet, with its members, total share (two decimals) and whether it is balanced. */
     public record PoolView(Long id, String name, List<MemberView> members, String totalShare, boolean balanced) {
         static PoolView of(PoolService.PoolLine p) {
             return new PoolView(p.id(), p.name(),
-                    p.members().stream().map(m -> new MemberView(m.personId(), m.name(), m.share().toPlainString(), m.retired())).toList(),
+                    p.members().stream().map(m -> new MemberView(m.personId(), m.name(), m.share().toPlainString(), m.retired(),
+                            m.cut() == null ? null : m.cut().toPlainString())).toList(),
                     p.totalShare().toPlainString(), p.balanced());
         }
     }

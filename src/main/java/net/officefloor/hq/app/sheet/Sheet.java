@@ -93,6 +93,10 @@ public class Sheet {
     @Column(name = "grace_days")
     private Integer graceDays;
 
+    /** Split across each balanced pool's members as their cuts (not dated); null means none. */
+    @Column(name = "pot", precision = 14, scale = 2)
+    private BigDecimal pot;
+
     /** While set, a new claim given no date takes it rather than the sheet's today; null means off. */
     @Column(name = "entry_date")
     private LocalDate entryDate;
@@ -277,6 +281,10 @@ public class Sheet {
     public Integer getGraceDays() { return graceDays; }
 
     public void setGraceDays(Integer graceDays) { this.graceDays = graceDays; }
+
+    public BigDecimal getPot() { return pot; }
+
+    public void setPot(BigDecimal pot) { this.pot = pot; }
 
     public LocalDate getEntryDate() { return entryDate; }
 

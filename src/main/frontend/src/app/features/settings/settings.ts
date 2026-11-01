@@ -68,6 +68,8 @@ interface SettingsView {
   graceDays: number | null;
   /** While set (yyyy-mm-dd), a new claim given no date takes it rather than the sheet's today; null when blank: off. */
   entryDate: string | null;
+  /** Split across each balanced pool's members as their cuts, two decimals; null when blank: none. */
+  pot: string | null;
 }
 
 /** A from-date field (yyyy-mm-dd) for a dated setting; blank: the sheet's today. */
@@ -81,7 +83,8 @@ const FROM = 'From (yyyy-mm-dd; blank: the sheet\'s today)';
 // a claim opened is numbered within its period), the entry date (blank: off; not dated; while set, a new claim given no date,
 // from the claim form, the quick-add bar, a paste or a correction, takes it rather than the sheet's today), the cap (blank: none; a person's due-total is at most it), the grace days (blank: off; not dated; when the
 // sheet's today is changed, an open period whose to-date plus them is before it is closed), the grace days of each grade (blank: none; dated; a claim
-// whose person's grade on its date has them in force then is overdue, and charged late, only from its due-by plus them), and the role given to each user name. Saving stores the settings whose
+// whose person's grade on its date has them in force then is overdue, and charged late, only from its due-by plus them), the pot (blank: none;
+// not dated; split across each balanced pool's members as their cuts), and the role given to each user name. Saving stores the settings whose
 // field was changed since the last save; the proof threshold of each grade (blank: none, the sheet's applies; dated) overrides the sheet's for a
 // claim whose person has that grade on its date; clearing the clerk limit, the policy date, the period numbering from, the cap, the proof threshold or the note threshold (Delete or
 // Backspace) counts as a change even when it was already blank. The clerk limit, the floor, the terms, each grade's terms, the late
@@ -148,6 +151,9 @@ const FROM = 'From (yyyy-mm-dd; blank: the sheet\'s today)';
         <input id="setting-entry-date" data-testid="setting-entry-date" formControlName="entryDate" placeholder="yyyy-mm-dd"
                (keydown.delete)="form.controls.entryDate.markAsDirty()"
                (keydown.backspace)="form.controls.entryDate.markAsDirty()" />
+        <label for="setting-pot">Pot (split across a balanced pool's members; blank: none)</label>
+        <input id="setting-pot" data-testid="setting-pot" formControlName="pot" inputmode="decimal"
+               (keydown.delete)="form.controls.pot.markAsDirty()" (keydown.backspace)="form.controls.pot.markAsDirty()" />
         <label for="setting-cap">Cap (most a person's due-total can be; blank: none)</label>
         <input id="setting-cap" data-testid="setting-cap" formControlName="cap" inputmode="decimal"
                (keydown.delete)="form.controls.cap.markAsDirty()" (keydown.backspace)="form.controls.cap.markAsDirty()" />
@@ -208,6 +214,7 @@ const FROM = 'From (yyyy-mm-dd; blank: the sheet\'s today)';
           <span [attr.data-testid]="'setting-grace-' + g + '-current'">{{ gradeGrace()[g] ?? '' }}</span></p>
       }
       <p>Entry date now: <span data-testid="setting-entry-date-current">{{ entryDate() ?? '' }}</span></p>
+      <p>Pot now: <span data-testid="setting-pot-current">{{ pot() ?? '' }}</span></p>
       <p>Cap now: <span data-testid="setting-cap-current">{{ session.cap() ?? '' }}</span></p>
       <p>Proof threshold now: <span data-testid="setting-proof-threshold-current">{{ session.proofThreshold() ?? '' }}</span></p>
       @for (g of grades; track g) {
@@ -311,6 +318,7 @@ export class Settings {
   protected readonly periodNumberingFrom = signal<string | null>(null);
   protected readonly graceDays = signal<number | null>(null);
   protected readonly entryDate = signal<string | null>(null);
+  protected readonly pot = signal<string | null>(null);
   protected readonly userRoles = signal<RoleView[]>([]);
   protected readonly error = signal('');
   protected readonly roleError = signal('');
@@ -328,6 +336,7 @@ export class Settings {
     graceDays: new FormControl('', { nonNullable: true }),
     entryDate: new FormControl('', { nonNullable: true }),
     cap: new FormControl('', { nonNullable: true }),
+    pot: new FormControl('', { nonNullable: true }),
     clerkLimitFrom: new FormControl('', { nonNullable: true }),
     floorFrom: new FormControl('', { nonNullable: true }),
     termsFrom: new FormControl('', { nonNullable: true }),
@@ -403,6 +412,7 @@ export class Settings {
       this.periodNumberingFrom.set(null);
       this.graceDays.set(null);
       this.entryDate.set(null);
+      this.pot.set(null);
       this.userRoles.set([]);
       this.permissionsSet.set({});
       this.error.set('');
@@ -440,6 +450,7 @@ export class Settings {
     this.periodNumberingFrom.set(view.periodNumberingFrom);
     this.graceDays.set(view.graceDays);
     this.entryDate.set(view.entryDate);
+    this.pot.set(view.pot);
     this.userRoles.set(view.roles);
     this.permissionsSet.set(view.permissions);
     this.session.dated.set(view.dated);
@@ -451,7 +462,7 @@ export class Settings {
     this.error.set('');
     const sheet = this.session.sheetId();
     if (!sheet) return;
-    const { clerkLimit, floor, terms, latePct, policyDate, periodNumberingFrom, graceDays, entryDate, cap, proofThreshold, noteThreshold } = this.form.controls;
+    const { clerkLimit, floor, terms, latePct, policyDate, periodNumberingFrom, graceDays, entryDate, cap, pot, proofThreshold, noteThreshold } = this.form.controls;
     const { clerkLimitFrom, floorFrom, termsFrom, latePctFrom, capFrom, proofThresholdFrom, noteThresholdFrom } = this.form.getRawValue();
     const value = clerkLimit.value.trim();
     const floorValue = floor.value.trim();
@@ -462,6 +473,7 @@ export class Settings {
     const graceDaysValue = graceDays.value.trim();
     const entryDateValue = entryDate.value.trim();
     const capValue = cap.value.trim();
+    const potValue = pot.value.trim();
     const proofThresholdValue = proofThreshold.value.trim();
     const noteThresholdValue = noteThreshold.value.trim();
     // a dated setting saved with a from-date takes it; blank: the sheet's today
@@ -522,6 +534,10 @@ export class Settings {
     }
     if (cap.dirty && capValue && !/^\d{1,12}(\.\d{1,2})?$/.test(capValue)) {
       this.error.set('Enter a cap of 0.00 or more, with at most two decimals, or leave it blank for none.');
+      return;
+    }
+    if (pot.dirty && potValue && !/^\d{1,12}(\.\d{1,2})?$/.test(potValue)) {
+      this.error.set('Enter a pot of 0.00 or more, with at most two decimals, or leave it blank for none.');
       return;
     }
     if (proofThreshold.dirty && proofThresholdValue && !/^\d{1,12}(\.\d{1,2})?$/.test(proofThresholdValue)) {
@@ -627,6 +643,16 @@ export class Settings {
         );
         cap.markAsPristine();
         if (this.session.sheetId() === sheet) this.show(view);
+      }
+      if (pot.dirty) {
+        const view = await firstValueFrom(
+          this.http.put<SettingsView>(`${this.base(sheet)}/settings/pot`, { value: potValue || null }, { headers: this.headers() }),
+        );
+        pot.markAsPristine();
+        if (this.session.sheetId() === sheet) {
+          this.show(view);
+          this.session.potSaves.update((n) => n + 1);
+        }
       }
       if (proofThreshold.dirty) {
         const view = await firstValueFrom(
