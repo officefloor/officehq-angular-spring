@@ -1,0 +1,64 @@
+{
+  "checkpoint": 91,
+  "stack": {
+    "repo": "/home/daniel/officehq-angular-spring",
+    "origin": "git@github.com:officefloor/officehq-angular-spring.git",
+    "name": "officehq-angular-spring",
+    "base_ref": "base-empty",
+    "base_commit": "65cb8233ea38b2dfa6cfd18709e30cd18fdf3250"
+  },
+  "checkpoint_id": "cp91_claim-comments",
+  "phase": "mid",
+  "type": "additive",
+  "mutates": [],
+  "replaced_tests": [],
+  "request": {
+    "spec": "A claim can be commented (a text entry and a button on the claim; an empty comment is refused\nwith an error on the claim). Each comment is kept with the user who wrote it and the sheet's today\nwhen it was written, shown on the claim in order as <user> on <date>: <text>, and written as\nCOMMENT_ADDED, naming the claim like every claim line and ending text=<text>. A viewer, an archived\nsheet and the as-of view refuse it like any change.\n",
+    "prompt": "You are implementing ONE change to this application.\n\nFIRST read AGENTS.md \u2014 it states the working rules and how the app is tested, and sends you to\nDESIGN.md for the app's stack and conventions. Follow both.\n\nTHE CHANGE REQUEST:\nA claim can be commented (a text entry and a button on the claim; an empty comment is refused\nwith an error on the claim). Each comment is kept with the user who wrote it and the sheet's today\nwhen it was written, shown on the claim in order as <user> on <date>: <text>, and written as\nCOMMENT_ADDED, naming the claim like every claim line and ending text=<text>. A viewer, an archived\nsheet and the as-of view refuse it like any change.\n\nYour work is verified by an automated Playwright UI test already installed under e2e/specs/.\nRead that spec: it declares the exact data-testid anchors, values, test data and any audit\nrecords it expects \u2014 match them. Run `bin/e2e` to build the app, start it, and run the test as\nyou work; iterate until it passes. Change whatever the request needs across the app \u2014 its stored\ndata, its server and its front end. Do NOT edit bin/build, bin/start, bin/stop, bin/e2e,\nAGENTS.md, CLAUDE.md, DESIGN.md, e2e/support/ or the test spec.\n"
+  },
+  "commit_sha": "51a730ffa91091eefe9d097f46a1eaba2aee56b3",
+  "reset_sha": "",
+  "preagent_sha": "4bffa2365c9ed8b5715b3cf687e5efad976ba78d",
+  "prev_sha": "4bffa2365c9ed8b5715b3cf687e5efad976ba78d",
+  "base_sha": "65cb8233ea38b2dfa6cfd18709e30cd18fdf3250",
+  "agent": {
+    "ok": true,
+    "cost_usd": 0.7291909999999999,
+    "input_tokens": 28,
+    "output_tokens": 7188,
+    "cache_read_tokens": 593555,
+    "cache_creation_tokens": 58326,
+    "num_turns": 15,
+    "duration_ms": 234345,
+    "duration_api_ms": 68443,
+    "model": "claude-opus-5-5",
+    "session_id": "b50f6294-af57-4ce1-81bb-8cdbf8e1b97a",
+    "stop_reason": "success",
+    "result_text": "Claims can now take comments, and all 4 Playwright tests pass in `bin/e2e`.\n\n- **Stored data:** a new migration, `V58__claim_comment.sql`, adds a `claim_comment` table. Each row holds who wrote the comment, the sheet's today when it was written, and the text, oldest first. On the `Claim` entity this is a list of a new `ClaimComment` class, modelled on the existing status log.\n- **Server:** a new endpoint, `POST /api/sheets/{sheetId}/claims/{id}/comments`, accepts a comment. Blank text is rejected and the comment is trimmed before saving. Each claim the API returns now includes its `comments` list. A saved comment writes `COMMENT_ADDED \u2026 person=\u2026 amount=\u2026 date=\u2026 [number=\u2026] text=<text>`, in the same form as the other claim audit lines. Viewers, archived sheets and the as-of view are refused by the app's existing guards; I added no code for those.\n- **Front end:** each claim row lists its comments as `<user> on <date>: <text>` (`claim-comments-line`). It has a text box (`claim-comment-text`) and an add button (`claim-comment-add`). An empty comment is refused on screen with the claim's error message (`claim-error`) and is not sent to the server. Changing the text box clears that error.\n\nComments are accepted on a claim in any status (the test comments on draft and settled claims). Unlike adding a proof, a comment is not blocked when the claim falls inside a closed period, because the request didn't ask for that.",
+    "error": "",
+    "attempts": [
+      {
+        "ok": true,
+        "limit_reached": false,
+        "retryable": false,
+        "timed_out": false,
+        "cost_usd": 0.7291909999999999,
+        "num_turns": 15,
+        "duration_ms": 234345,
+        "duration_api_ms": 68443,
+        "error": ""
+      }
+    ]
+  },
+  "agent_stream_file": "cp91.agent.jsonl",
+  "agent_diff_file": "cp91.agent.diff",
+  "build_log_file": null,
+  "tests": {
+    "gated": false,
+    "queued": true
+  },
+  "probe": null,
+  "pinned_touched": [],
+  "acceptance_touched": [],
+  "impact_gate": null
+}
