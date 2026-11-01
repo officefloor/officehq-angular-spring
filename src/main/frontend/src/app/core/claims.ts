@@ -120,14 +120,11 @@ export function isDeferred(c: Pick<ClaimView, 'deferredUntil' | 'status'>, today
   return c.status === 'OPEN' && c.deferredUntil !== null && today < c.deferredUntil;
 }
 
-/** Whether an unstated OPEN or PENDING claim is left out of the live totals on the sheet's today: dated within one
- *  of these holds or held itself, or its person's retirement date (null: not retired) reached by today. */
-function heldOn(c: ClaimView, holds: readonly HoldView[], today: string, retiredFrom: string | null, ownHold = true): boolean {
-  return (
-    (ownHold && c.held) ||
-    (retiredFrom !== null && today !== '' && retiredFrom <= today) ||
-    holds.some((h) => h.from <= c.date && (h.to === null || c.date <= h.to))
-  );
+/** Whether an unstated OPEN or PENDING claim is left out of the live totals on the sheet's today: its person's
+ *  retirement date (null: not retired) reached by today. A hold (the person's or the claim's own) does not take
+ *  it out: holds only change the pools' cuts. */
+function heldOn(_c: ClaimView, _holds: readonly HoldView[], today: string, retiredFrom: string | null, _ownHold = true): boolean {
+  return retiredFrom !== null && today !== '' && retiredFrom <= today;
 }
 
 /** Whether the claim counts in the live totals on the sheet's today for a person with these holds and retirement

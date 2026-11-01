@@ -258,7 +258,7 @@ export class PersonClaims {
   readonly periods = input.required<readonly PeriodView[]>();
   /** The other people on the sheet a claim can be moved to. */
   readonly others = input<readonly Pick<PersonView, 'id' | 'name'>[]>([]);
-  /** The person's holds: their open claims dated within one, and not bound by a statement, count in no total. */
+  /** The person's holds: they no longer take any claim out of a total; only the pools' cuts heed them. */
   readonly holds = input<readonly HoldView[]>([]);
   /** The person's retirement date (null: not retired): once the sheet's today reaches it, their open claims not
    *  bound by a statement count in no total. */

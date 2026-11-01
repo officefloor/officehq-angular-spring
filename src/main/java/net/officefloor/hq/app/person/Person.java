@@ -342,9 +342,9 @@ public class Person {
                 ? flagReason : null;
     }
 
-    /** Whether a claim of this person counts in the live totals on the sheet's {@code today}: an OPEN or PENDING one
-     *  dated within a hold, or any once {@code today} reaches the retirement date, does not, unless a statement
-     *  binds it. */
+    /** Whether a claim of this person counts in the live totals on the sheet's {@code today}: an OPEN one does not
+     *  once {@code today} reaches the retirement date, unless a statement binds it. A hold (theirs or the claim's
+     *  own) does not take it out: holds only change the pools' cuts. */
     public boolean counts(Claim claim, LocalDate today) {
         return claim.getStatus().counts() && (claim.isStated() || !heldOn(claim, today));
     }
@@ -357,7 +357,7 @@ public class Person {
     }
 
     /** Whether a claim of this person counts in the figures of a period ending {@code end}: by the status it had at
-     *  the end of that day, left out when held or retired as the live totals on the sheet's {@code today} say. */
+     *  the end of that day, left out when retired as the live totals on the sheet's {@code today} say. */
     public boolean countsAtEnd(Claim claim, LocalDate end, LocalDate today) {
         ClaimStatus at = claim.statusAt(end);
         return at != null && at.counts() && (claim.isStated() || !heldOn(claim, today));
@@ -371,11 +371,9 @@ public class Person {
                         || holds.stream().anyMatch(h -> h.covers(claim.getDate()))));
     }
 
-    /** Whether the claim is open and held itself or dated within one of the person's holds, or open once {@code today} reaches
-     *  the person's retirement date. */
+    /** Whether the claim is open once {@code today} reaches the person's retirement date. */
     private boolean heldOn(Claim claim, LocalDate today) {
-        return claim.getStatus().isOpen()
-                && (retiredOn(today) || claim.isHeld() || holds.stream().anyMatch(h -> h.covers(claim.getDate())));
+        return claim.getStatus().isOpen() && retiredOn(today);
     }
 
     /** Whether a hold of the person is in force on {@code date}: one whose dates include it. */
