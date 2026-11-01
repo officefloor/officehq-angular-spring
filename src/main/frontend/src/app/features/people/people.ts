@@ -3,7 +3,7 @@ import { Component, computed, effect, inject, signal } from '@angular/core';
 import { FormControl, FormGroup, ReactiveFormsModule } from '@angular/forms';
 import { firstValueFrom } from 'rxjs';
 import { Session } from '../../core/session';
-import { Claim, Claims, cents, claimDueCents, counts, money } from '../claims/claims';
+import { Claim, Claims, RETIRED, cents, claimDueCents, counts, money } from '../claims/claims';
 import { Period, Periods, periodOn } from '../periods/periods';
 import { GRADES, NA, Rate, Rates, pctOn } from '../rates/rates';
 
@@ -16,6 +16,9 @@ interface Person {
   grade: string;
   /** Moved on by each save; an edit is made from the version the form loaded. */
   version: number;
+  /** Retired once given a retirement date, whatever the date; retiredFrom is null while not. */
+  retired: boolean;
+  retiredFrom: string | null;
 }
 
 /** A person's statements: how many, and the last one's due-total (null when n/a) and date. */
@@ -43,7 +46,9 @@ interface StatementTaken {
 // each with their claims, what they have claimed and their due-total (OPEN and SETTLED claims only); the sheet's claimed-total and
 // due-total under the table. Above it, the sheet's rate for each grade. Each person can be given a
 // statement, which binds their counting claims' dues; the row shows how many statements they have
-// had and the last one's due-total and date.
+// had and the last one's due-total and date. Each person can be retired from a date (blank: the sheet's
+// today); retired people are left out of the list unless show retired is on, but their claims
+// keep counting in every total.
 @Component({
   selector: 'app-people',
   imports: [ReactiveFormsModule, Claims, Periods, Rates],
@@ -79,12 +84,17 @@ interface StatementTaken {
           <p role="alert" class="error" data-testid="quick-error">{{ quickError() }}</p>
         }
       </form>
+      <label>
+        <input type="checkbox" data-testid="show-retired" [checked]="session.showRetired()"
+               (change)="session.showRetired.set($any($event.target).checked)" />
+        Show retired
+      </label>
       <table>
         <thead>
-          <tr><th scope="col">Name</th><th scope="col">Grade</th><th scope="col">Claimed</th><th scope="col">Due total</th><th scope="col">Statements</th><th scope="col">Claims</th><th scope="col"><span class="visually-hidden">Actions</span></th></tr>
+          <tr><th scope="col">Name</th><th scope="col">Grade</th><th scope="col">Claimed</th><th scope="col">Due total</th><th scope="col">Statements</th><th scope="col">Retired</th><th scope="col">Claims</th><th scope="col"><span class="visually-hidden">Actions</span></th></tr>
         </thead>
         <tbody>
-          @for (p of people(); track p.id) {
+          @for (p of listed(); track p.id) {
             <tr [attr.data-testid]="'person-row-' + p.id">
               <td data-testid="person-name">{{ p.name }}</td>
               <td data-testid="person-grade">{{ p.grade }}</td>
@@ -99,6 +109,15 @@ interface StatementTaken {
                 @if (personError()?.id === p.id) {
                   <p role="alert" class="error" data-testid="person-error">{{ personError()?.message }}</p>
                 }
+              </td>
+              <td>
+                <span data-testid="person-retired">{{ p.retired ? 'yes' : 'no' }}</span>
+                <span>from <span data-testid="person-retired-from">{{ p.retiredFrom ?? '' }}</span></span>
+                <label [for]="'person-retire-date-' + p.id" class="visually-hidden">Retire {{ p.name }} from</label>
+                <input type="date" [id]="'person-retire-date-' + p.id" data-testid="person-retire-date"
+                       #retireDate (input)="clearPersonError(p.id)" />
+                <button type="button" data-testid="person-retire" (click)="retire(p, retireDate.value)"
+                        [attr.aria-label]="'Retire ' + p.name">Retire</button>
               </td>
               <td>
                 <app-claims [personId]="p.id" [personName]="p.name" [claims]="claimsOf(p.id)" [rates]="ratesOf(p.grade)"
@@ -124,6 +143,10 @@ export class People {
 
   protected readonly grades = GRADES;
   protected readonly people = signal<Person[]>([]);
+  /** The people on screen: everyone, less the retired unless show retired is on. */
+  protected readonly listed = computed(() =>
+    this.session.showRetired() ? this.people() : this.people().filter((p) => !p.retired),
+  );
   /** Every claim on the sheet, newest first. */
   protected readonly claims = signal<Claim[]>([]);
   private readonly claimsByPerson = computed(() => {
@@ -307,6 +330,31 @@ export class People {
     }
   }
 
+  protected clearPersonError(id: number): void {
+    if (this.personError()?.id === id) this.personError.set(null);
+  }
+
+  /** Retire the person from the date (blank: the sheet's today). */
+  protected async retire(p: Person, date: string): Promise<void> {
+    this.personError.set(null);
+    const sheet = this.session.sheetId();
+    if (!sheet) return;
+    const from = date.trim();
+    if (from && !/^\d{4}-\d{2}-\d{2}$/.test(from)) {
+      this.personError.set({ id: p.id, message: 'Enter a date, or leave it blank for today.' });
+      return;
+    }
+    try {
+      const saved = await firstValueFrom(
+        this.http.post<Person>(`${this.url(sheet)}/${p.id}/retire`, { from: from || null }, { headers: this.headers() }),
+      );
+      if (this.session.sheetId() !== sheet) return;
+      this.people.update((list) => list.map((x) => (x.id === saved.id ? saved : x)));
+    } catch {
+      if (this.session.sheetId() === sheet) this.personError.set({ id: p.id, message: 'Could not retire ' + p.name + '.' });
+    }
+  }
+
   /** Put a set rate in place of the grade's old one from the same date. */
   protected rateSaved(rate: Rate): void {
     this.rates.update((list) => [...list.filter((r) => r.grade !== rate.grade || r.from !== rate.from), rate]);
@@ -424,6 +472,8 @@ export class People {
       this.quickError.set(
         e instanceof HttpErrorResponse && e.status === 423
           ? 'No claim dated inside a closed period can be changed.'
+          : e instanceof HttpErrorResponse && e.status === 422
+          ? RETIRED
           : e instanceof HttpErrorResponse && e.status === 409
           ? 'That name is already in use on this sheet.'
           : 'Could not quick-add that claim.',

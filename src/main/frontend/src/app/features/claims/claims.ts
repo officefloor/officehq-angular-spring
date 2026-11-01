@@ -58,6 +58,9 @@ export function claimDueCents(c: Claim, rates: Rate[]): number | null {
 /** Why a change to a claim dated inside a closed period is refused. */
 const CLOSED = 'No claim dated inside a closed period can be changed.';
 
+/** Why a claim dated after its person's retirement date is refused. */
+export const RETIRED = 'No claim can be dated after its person\'s retirement date.';
+
 /** Cents as an amount with two decimals. */
 export function money(cents: number): string {
   return `${Math.floor(cents / 100)}.${String(cents % 100).padStart(2, '0')}`;
@@ -257,6 +260,8 @@ export class Claims {
       this.error.set(
         e instanceof HttpErrorResponse && e.status === 423
           ? CLOSED
+          : e instanceof HttpErrorResponse && e.status === 422
+          ? RETIRED
           : id === null ? 'Could not add that claim.' : 'Could not save that claim.',
       );
     } finally {

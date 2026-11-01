@@ -1,5 +1,6 @@
 package net.officefloor.hq.app.person;
 
+import java.time.LocalDate;
 import java.util.List;
 import net.officefloor.hq.app.Audit;
 import net.officefloor.hq.app.rollup.RollupService;
@@ -13,7 +14,8 @@ import org.springframework.transaction.annotation.Transactional;
 /**
  * The people on a sheet: listed in the order they were added, added and edited one at a time. A
  * name already used by another person on the sheet (ignoring case and surrounding spaces) is
- * refused, and so is an edit made from a version of the person someone else has saved since.
+ * refused, and so is an edit made from a version of the person someone else has saved since. A
+ * person can be retired from a date (blank: the sheet's today).
  */
 @Service
 public class PersonService {
@@ -57,6 +59,19 @@ public class PersonService {
         Person saved = saveUnique(person);
         record("PERSON_EDITED", sheetId, user, saved);
         rollup.recordChanges(sheetId, user, before);
+        return saved;
+    }
+
+    @Transactional
+    public Person retire(String sheetId, String user, Long id, LocalDate from) {
+        // Lock the sheet so no claim is added or edited for them meanwhile against the old date.
+        LocalDate today = sheets.findForUpdate(sheetId).orElseThrow(SheetNotFoundException::new).getToday();
+        Person person = people.findByIdAndSheetId(id, sheetId).orElseThrow(PersonNotFoundException::new);
+        LocalDate on = from != null ? from : today;
+        person.setRetiredFrom(on);
+        Person saved = saveUnique(person);
+        audit.recordOnCommit("PERSON_RETIRED sheet=" + sheetId + " by=" + user.strip()
+                + " name=" + saved.getName() + " from=" + on);
         return saved;
     }
 

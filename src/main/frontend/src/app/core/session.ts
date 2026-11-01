@@ -18,6 +18,8 @@ export class Session {
   readonly today = signal<string | null>(null);
   /** Bumped on every sheet load, so features re-read the sheet from the store even for the same id. */
   readonly loads = signal(0);
+  /** Whether retired people are listed: off when the screen opens, left as it is by loading a sheet. */
+  readonly showRetired = signal(false);
 
   async signIn(name: string): Promise<void> {
     const res = await firstValueFrom(this.http.post<{ name: string }>('/api/session', { name }));

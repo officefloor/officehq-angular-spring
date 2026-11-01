@@ -7,11 +7,14 @@ import jakarta.persistence.GenerationType;
 import jakarta.persistence.Id;
 import jakarta.persistence.Table;
 import jakarta.persistence.Version;
+import java.time.LocalDate;
 import java.util.Locale;
 
 /**
  * A person on a sheet, with a name and a grade (A, B or C). The name is kept without surrounding
- * spaces and is unique on the sheet without regard to case (by its {@link #keyOf key}).
+ * spaces and is unique on the sheet without regard to case (by its {@link #keyOf key}). A person
+ * given a retirement date is retired at once, whatever the date; none of their claims may be dated
+ * after it.
  */
 @Entity
 @Table(name = "person")
@@ -32,6 +35,9 @@ public class Person {
 
     @Column(name = "grade", nullable = false)
     private String grade;
+
+    @Column(name = "retired_from")
+    private LocalDate retiredFrom;
 
     @Version
     @Column(name = "version", nullable = false)
@@ -64,6 +70,16 @@ public class Person {
     public String getGrade() { return grade; }
 
     public void setGrade(String grade) { this.grade = grade; }
+
+    /** The date they are retired from, or null while not retired. */
+    public LocalDate getRetiredFrom() { return retiredFrom; }
+
+    public void setRetiredFrom(LocalDate retiredFrom) { this.retiredFrom = retiredFrom; }
+
+    public boolean isRetired() { return retiredFrom != null; }
+
+    /** Whether a claim of theirs may be dated on the date: not after their retirement date. */
+    public boolean mayClaimOn(LocalDate date) { return retiredFrom == null || !date.isAfter(retiredFrom); }
 
     /** Moved on by each save; an edit is refused unless made from the current version. */
     public long getVersion() { return version; }

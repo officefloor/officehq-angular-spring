@@ -9,6 +9,7 @@ import net.officefloor.hq.app.period.PeriodClosedException;
 import net.officefloor.hq.app.period.PeriodRepository;
 import net.officefloor.hq.app.person.Person;
 import net.officefloor.hq.app.person.PersonNotFoundException;
+import net.officefloor.hq.app.person.PersonRetiredException;
 import net.officefloor.hq.app.person.PersonRepository;
 import net.officefloor.hq.app.rate.Rate;
 import net.officefloor.hq.app.rate.RateService;
@@ -25,7 +26,8 @@ import org.springframework.transaction.annotation.Transactional;
  * can be edited; an OPEN one is changed by voiding it and adding a new one. Settling it
  * fixes its due at its person's grade rate of the moment on the claim's date; with no such rate it
  * stays live. The user who opened a claim cannot settle it. No claim dated inside a closed period
- * can be added, edited (to or from such a date), opened, settled or voided.
+ * can be added, edited (to or from such a date), opened, settled or voided. No claim can be added
+ * or edited to a date after its person's retirement date.
  */
 @Service
 public class ClaimService {
@@ -56,10 +58,12 @@ public class ClaimService {
 
     @Transactional
     public Claim add(String sheetId, String user, Long personId, BigDecimal amount, LocalDate date, String note) {
-        Person person = people.findByIdAndSheetId(personId, sheetId).orElseThrow(PersonNotFoundException::new);
+        // The snapshot locks the sheet first, so the person is read as retired by any retirement before.
         RollupService.Snapshot before = rollup.snapshot(sheetId);
+        Person person = people.findByIdAndSheetId(personId, sheetId).orElseThrow(PersonNotFoundException::new);
         LocalDate on = dateOrToday(sheetId, date);
         refuseIfClosed(sheetId, on);
+        if (!person.mayClaimOn(on)) throw new PersonRetiredException();
         Claim claim = claims.saveAndFlush(new Claim(sheetId, personId, amount, on, note));
         record("CLAIM_ADDED", sheetId, user, person, claim);
         rollup.recordChanges(sheetId, user, before);
@@ -76,11 +80,12 @@ public class ClaimService {
         LocalDate on = dateOrToday(sheetId, date);
         refuseIfClosed(sheetId, claim.getDate());
         refuseIfClosed(sheetId, on);
+        Person person = people.findByIdAndSheetId(claim.getPersonId(), sheetId).orElseThrow(PersonNotFoundException::new);
+        if (!person.mayClaimOn(on)) throw new PersonRetiredException();
         claim.setAmount(amount);
         claim.setDate(on);
         claim.setNote(note);
         Claim saved = claims.saveAndFlush(claim);
-        Person person = people.findByIdAndSheetId(saved.getPersonId(), sheetId).orElseThrow(PersonNotFoundException::new);
         record("CLAIM_EDITED", sheetId, user, person, saved);
         rollup.recordChanges(sheetId, user, before);
         return saved;
