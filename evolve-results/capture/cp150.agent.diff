@@ -1,0 +1,187 @@
+diff --git a/src/main/frontend/src/app/features/home/home.ts b/src/main/frontend/src/app/features/home/home.ts
+index 42ef02f3a..7a2f17dd9 100644
+--- a/src/main/frontend/src/app/features/home/home.ts
++++ b/src/main/frontend/src/app/features/home/home.ts
+@@ -2,6 +2,7 @@ import { Component, inject, signal } from '@angular/core';
+ import { FormControl, FormGroup, ReactiveFormsModule } from '@angular/forms';
+ import { Session } from '../../core/session';
+ import { AuditView } from '../audit-view/audit-view';
++import { TreeSearch } from '../tree-search/tree-search';
+ import { Holidays } from '../holidays/holidays';
+ import { People } from '../people/people';
+ import { Pools } from '../pools/pools';
+@@ -12,7 +13,7 @@ import { VoidReasons } from '../void-reasons/void-reasons';
+ // The one screen: sign in by name, then load a sheet by id.
+ @Component({
+   selector: 'app-home',
+-  imports: [ReactiveFormsModule, AuditView, Holidays, People, Pools, Settings, Templates, VoidReasons],
++  imports: [ReactiveFormsModule, AuditView, Holidays, People, Pools, Settings, Templates, TreeSearch, VoidReasons],
+   template: `
+     @if (session.user(); as user) {
+       <p>Signed in as <strong data-testid="current-user">{{ user }}</strong></p>
+@@ -54,6 +55,7 @@ import { VoidReasons } from '../void-reasons/void-reasons';
+         <app-templates />
+         <app-people />
+         <app-pools />
++        <app-tree-search />
+         <app-audit-view />
+       }
+     } @else {
+diff --git a/src/main/frontend/src/app/features/tree-search/tree-search.ts b/src/main/frontend/src/app/features/tree-search/tree-search.ts
+new file mode 100644
+index 000000000..42fadedee
+--- /dev/null
++++ b/src/main/frontend/src/app/features/tree-search/tree-search.ts
+@@ -0,0 +1,79 @@
++import { HttpClient } from '@angular/common/http';
++import { Component, effect, inject, signal } from '@angular/core';
++import { FormControl, FormGroup, ReactiveFormsModule } from '@angular/forms';
++import { firstValueFrom } from 'rxjs';
++import { Session } from '../../core/session';
++
++// The people of this sheet and every other sheet of its tree whose name or an alias contains the
++// text (case ignored), one line each as "<sheet id> <name> <due-total>": this sheet's first in list
++// order, then the other sheets' by sheet id.
++@Component({
++  selector: 'app-tree-search',
++  imports: [ReactiveFormsModule],
++  template: `
++    <section aria-labelledby="search-heading">
++      <h2 id="search-heading">Search the tree</h2>
++      <form [formGroup]="form" (ngSubmit)="search()" aria-label="Search the tree">
++        <label for="search-name">Name or alias</label>
++        <input id="search-name" data-testid="search-name" formControlName="text" />
++        <button type="submit" data-testid="search">Search</button>
++        @if (error()) {
++          <p role="alert" class="error" data-testid="search-error">{{ error() }}</p>
++        }
++      </form>
++      @if (count() !== null) {
++        <p>Found <span data-testid="search-count">{{ count() }}</span></p>
++      }
++      <ol aria-label="People found">
++        @for (line of lines(); track $index) {
++          <li data-testid="search-line">{{ line }}</li>
++        }
++      </ol>
++    </section>
++  `,
++})
++export class TreeSearch {
++  private readonly http = inject(HttpClient);
++  private readonly session = inject(Session);
++
++  protected readonly lines = signal<string[]>([]);
++  protected readonly count = signal<number | null>(null);
++  protected readonly error = signal('');
++  protected readonly form = new FormGroup({ text: new FormControl('', { nonNullable: true }) });
++  /** Counts the presses of search, so only the answer to the latest is shown. */
++  private request = 0;
++
++  constructor() {
++    this.form.valueChanges.subscribe(() => this.error.set(''));
++    effect(() => {
++      this.session.sheetId();
++      this.session.loads();
++      this.request++;
++      this.lines.set([]);
++      this.count.set(null);
++      this.error.set('');
++    });
++  }
++
++  protected async search(): Promise<void> {
++    const sheet = this.session.sheetId();
++    if (!sheet) return;
++    const request = ++this.request;
++    this.lines.set([]);
++    this.count.set(null);
++    this.error.set('');
++    try {
++      const list = await firstValueFrom(
++        this.http.get<string[]>(`/api/sheets/${encodeURIComponent(sheet)}/tree-search`, {
++          headers: { 'X-User': this.session.user() ?? '' },
++          params: { text: this.form.controls.text.value },
++        }),
++      );
++      if (request !== this.request) return;
++      this.lines.set(list);
++      this.count.set(list.length);
++    } catch {
++      if (request === this.request) this.error.set('Could not search the tree.');
++    }
++  }
++}
+diff --git a/src/main/java/net/officefloor/hq/app/rollup/TreeSearchController.java b/src/main/java/net/officefloor/hq/app/rollup/TreeSearchController.java
+new file mode 100644
+index 000000000..7ca78c9ef
+--- /dev/null
++++ b/src/main/java/net/officefloor/hq/app/rollup/TreeSearchController.java
+@@ -0,0 +1,67 @@
++package net.officefloor.hq.app.rollup;
++
++import jakarta.validation.constraints.NotBlank;
++import jakarta.validation.constraints.Pattern;
++import jakarta.validation.constraints.Size;
++import java.math.BigDecimal;
++import java.util.ArrayList;
++import java.util.List;
++import java.util.Locale;
++import net.officefloor.hq.app.person.Person;
++import net.officefloor.hq.app.person.PersonRepository;
++import net.officefloor.hq.app.sheet.SheetParentRepository;
++import org.springframework.transaction.annotation.Transactional;
++import org.springframework.validation.annotation.Validated;
++import org.springframework.web.bind.annotation.GetMapping;
++import org.springframework.web.bind.annotation.PathVariable;
++import org.springframework.web.bind.annotation.RequestHeader;
++import org.springframework.web.bind.annotation.RequestMapping;
++import org.springframework.web.bind.annotation.RequestParam;
++import org.springframework.web.bind.annotation.RestController;
++
++/**
++ * The people of a sheet and every other sheet of its tree (its topmost ancestor and every descendant
++ * of that) whose name or an alias contains the text, ignoring case: one line each, the sheet's own
++ * people first in list order, then the other sheets' by sheet id, each with the due-total its sheet
++ * shows for them (n/a when it has none).
++ */
++@RestController
++@Validated
++@RequestMapping("/api/sheets/{sheetId}/tree-search")
++public class TreeSearchController {
++
++    private final SheetParentRepository parents;
++    private final PersonRepository people;
++    private final RollupService rollup;
++
++    public TreeSearchController(SheetParentRepository parents, PersonRepository people, RollupService rollup) {
++        this.parents = parents;
++        this.people = people;
++        this.rollup = rollup;
++    }
++
++    /** Lines of {@code <sheet id> <name> <due-total>}. */
++    @GetMapping
++    @Transactional(readOnly = true)
++    public List<String> search(
++            @PathVariable @Size(max = 100) @Pattern(regexp = "[A-Za-z0-9._-]+") String sheetId,
++            @RequestHeader("X-User") @NotBlank @Size(max = 100) String user,
++            @RequestParam(name = "text", required = false, defaultValue = "") @Size(max = 200) String text) {
++        String needle = text.strip().toLowerCase(Locale.ROOT);
++        List<String> sheets = new ArrayList<>(List.of(sheetId));
++        parents.treeOf(sheetId).stream().filter(at -> !at.equals(sheetId)).sorted().forEach(sheets::add);
++        List<String> lines = new ArrayList<>();
++        for (String at : sheets) {
++            RollupService.Snapshot figures = rollup.current(at);
++            for (Person person : people.findBySheetIdOrderByPositionAscIdAsc(at)) {
++                boolean matches = person.namesAndAliases().stream()
++                        .anyMatch(name -> name.toLowerCase(Locale.ROOT).contains(needle));
++                if (!matches) continue;
++                RollupService.Figures own = figures.people().get(person.getId());
++                BigDecimal due = own == null ? null : own.dueTotal();
++                lines.add(at + " " + person.getName() + " " + (due == null ? "n/a" : due.setScale(2).toPlainString()));
++            }
++        }
++        return lines;
++    }
++}
