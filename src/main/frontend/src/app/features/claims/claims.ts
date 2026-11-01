@@ -218,6 +218,8 @@ export class Claims {
         ? CLOSED
         : e instanceof HttpErrorResponse && e.status === 403
         ? 'The user who opened a claim cannot settle it.'
+        : e instanceof HttpErrorResponse && e.status === 422
+        ? 'A clerk cannot settle a claim whose due is above the clerk limit.'
         : e instanceof HttpErrorResponse && e.status === 409
         ? `A ${c.status} claim cannot be ${action === 'open' ? 'opened' : action === 'settle' ? 'settled' : 'voided'}.`
         : 'Could not change that claim.';

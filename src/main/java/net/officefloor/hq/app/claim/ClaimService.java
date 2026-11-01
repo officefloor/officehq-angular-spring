@@ -14,6 +14,8 @@ import net.officefloor.hq.app.person.PersonRepository;
 import net.officefloor.hq.app.rate.Rate;
 import net.officefloor.hq.app.rate.RateService;
 import net.officefloor.hq.app.rollup.RollupService;
+import net.officefloor.hq.app.setting.Role;
+import net.officefloor.hq.app.setting.SettingService;
 import net.officefloor.hq.app.sheet.SheetService;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -25,8 +27,9 @@ import org.springframework.transaction.annotation.Transactional;
  * the sheet's next number, which it keeps when voided and is never given again. Only a DRAFT claim
  * can be edited; an OPEN one is changed by voiding it and adding a new one. Settling it
  * fixes its due at its person's grade rate of the moment on the claim's date; with no such rate it
- * stays live. The user who opened a claim cannot settle it. No claim dated inside a closed period
- * can be added, edited (to or from such a date), opened, settled or voided. No claim can be added
+ * stays live. The user who opened a claim cannot settle it, and a clerk cannot settle one whose
+ * due is above the sheet's clerk limit (a steward can). No claim dated inside a closed period can
+ * be added, edited (to or from such a date), opened, settled or voided. No claim can be added
  * or edited to a date after its person's retirement date.
  */
 @Service
@@ -38,10 +41,12 @@ public class ClaimService {
     private final SheetService sheets;
     private final RollupService rollup;
     private final PeriodRepository periods;
+    private final SettingService settings;
     private final Audit audit;
 
     public ClaimService(ClaimRepository claims, PersonRepository people, RateService rates, SheetService sheets,
-            RollupService rollup, PeriodRepository periods, Audit audit) {
+            RollupService rollup, PeriodRepository periods, SettingService settings, Audit audit) {
+        this.settings = settings;
         this.periods = periods;
         this.claims = claims;
         this.people = people;
@@ -104,6 +109,7 @@ public class ClaimService {
             throw new ClaimSettledByOpenerException();
         }
         Person person = people.findByIdAndSheetId(claim.getPersonId(), sheetId).orElseThrow(PersonNotFoundException::new);
+        if (next == ClaimStatus.SETTLED) refuseIfOverClerkLimit(sheetId, user, person, claim);
         RollupService.Snapshot before = rollup.snapshot(sheetId);
         refuseIfClosed(sheetId, claim.getDate());
         Long number = claim.getNumber();
@@ -160,6 +166,14 @@ public class ClaimService {
         audit.recordOnCommit(event + " sheet=" + sheetId + " by=" + user.strip() + " person=" + person.getName()
                 + " amount=" + claim.getAmount().setScale(2).toPlainString() + " date=" + claim.getDate()
                 + (number != null ? " number=" + number : "") + extra);
+    }
+
+    /** Refuse a clerk's settling of a claim whose due is above the clerk limit; a due of n/a is within any. */
+    private void refuseIfOverClerkLimit(String sheetId, String user, Person person, Claim claim) {
+        if (settings.roleOf(sheetId, user) == Role.STEWARD) return;
+        BigDecimal limit = settings.clerkLimit(sheetId);
+        BigDecimal due = dueOf(sheetId, person, claim);
+        if (limit != null && due != null && due.compareTo(limit) > 0) throw new ClaimOverClerkLimitException();
     }
 
     /** Refuse a change to a claim dated inside a closed period; the caller holds the sheet's lock. */
