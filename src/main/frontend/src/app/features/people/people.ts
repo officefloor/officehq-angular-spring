@@ -274,12 +274,12 @@ function trimmedSum(figures: number[]): number {
           <p role="alert" class="error" data-testid="quick-error">{{ quickError() }}</p>
         }
       </form>
-      <form [formGroup]="pasteForm" (ngSubmit)="paste()" aria-label="Paste draft claims">
+      <form [formGroup]="pasteForm" (ngSubmit)="paste()" aria-label="Paste claims">
         <label for="paste-claims">Paste claims (name,amount,date,note per line; end the note with " #reference" to give one)</label>
         <textarea id="paste-claims" data-testid="paste-claims" formControlName="text" rows="4"></textarea>
         <button type="submit" data-testid="paste-submit">Paste</button>
         @if (pasteAdded() !== null) {
-          <p role="status">Added <span data-testid="paste-added">{{ pasteAdded() }}</span></p>
+          <p role="status">Lines through <span data-testid="paste-added">{{ pasteAdded() }}</span></p>
         }
         @if (pasteError()) {
           <p role="alert" class="error" data-testid="paste-error">{{ pasteError() }}</p>
@@ -1034,7 +1034,7 @@ export class People {
   /** A paste is under way; another one waits for its answer rather than storing twice. */
   private pasting = false;
   protected readonly pasteError = signal('');
-  /** How many claims the last paste added; null before one, and while one runs. */
+  /** How many lines the last paste put through; null before one, and while one runs. */
   protected readonly pasteAdded = signal<number | null>(null);
   protected readonly pasteForm = new FormGroup({
     text: new FormControl('', { nonNullable: true }),
@@ -2087,11 +2087,11 @@ export class People {
       this.pasteError.set(
         e instanceof HttpErrorResponse && e.status === 423
           ? 'No claim due inside a closed period can be changed.'
-          : e instanceof HttpErrorResponse && e.status === 422
-          ? RETIRED
           : isDuplicateRef(e)
           ? `${DUPLICATE_REF} Each line's reference must be new; nothing was added.`
-          : 'Every line must be name,amount,date,note for a person on the sheet; nothing was added.',
+          : e instanceof HttpErrorResponse && e.status === 400
+          ? 'Every line must be name,amount,date,note for a person on the sheet, and a line matching an existing claim must match a DRAFT; nothing was added.'
+          : 'A line could not be added and opened (a person retired, a note required, a period\'s cap, a permission or a lock); nothing was added.',
       );
     } finally {
       this.pasting = false;

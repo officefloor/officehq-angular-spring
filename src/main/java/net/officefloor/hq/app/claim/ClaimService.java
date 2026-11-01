@@ -944,7 +944,7 @@ public class ClaimService {
     }
 
     /** A new claim's date: the one given, else the entry date while set, else the sheet's today. */
-    private LocalDate dateOrEntryDate(String sheetId, LocalDate date) {
+    public LocalDate dateOrEntryDate(String sheetId, LocalDate date) {
         if (date != null) return date;
         LocalDate entryDate = settings.entryDate(sheetId);
         return entryDate != null ? entryDate : sheets.today(sheetId);

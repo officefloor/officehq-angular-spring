@@ -20,6 +20,8 @@ import java.util.Collections;
 import java.util.List;
 import java.util.Locale;
 import java.util.Objects;
+import org.hibernate.annotations.Generated;
+import org.hibernate.generator.EventType;
 
 /**
  * A claim by a person on a sheet: an amount (two decimals), a date, a note and a status (DRAFT when
@@ -44,6 +46,7 @@ public class Claim {
      * Its place in its sheet's list, newest (highest) first: the next of claim_listed_seq, given by the
      * store when added and again when moved to another person.
      */
+    @Generated(event = EventType.INSERT)
     @Column(name = "listed", insertable = false)
     private Long listed;
 

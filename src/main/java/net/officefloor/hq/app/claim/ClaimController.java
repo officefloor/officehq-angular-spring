@@ -186,7 +186,7 @@ public class ClaimController {
     /** Pasted lines of name,amount,date,note, one claim each. */
     public record PasteRequest(@NotNull @Size(max = 200000) String text) {}
 
-    /** The claims a paste added, in the order of their lines. */
+    /** How many lines of a paste went through, and the claims they added or updated and opened, in line order. */
     public record PasteView(int added, List<ClaimView> claims) {}
 
     private final ClaimService service;
