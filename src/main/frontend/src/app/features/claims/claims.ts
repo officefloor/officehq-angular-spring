@@ -141,6 +141,9 @@ const UNPROVEN = 'This claim\'s due is above the proof threshold, so it needs a 
                   [attr.aria-label]="'Part-settle claim of ' + c.amount + ' on ' + c.date">Part-settle</button>
           <button type="button" data-testid="claim-open" (click)="changeStatus(c, 'OPEN')"
                   [attr.aria-label]="'Open claim of ' + c.amount + ' on ' + c.date">Open</button>
+          <label [for]="'claim-settle-date-' + c.id">Settle as of</label>
+          <input [id]="'claim-settle-date-' + c.id" type="date" data-testid="claim-settle-date"
+                 [value]="settleDates()[c.id] ?? ''" (input)="settleDateChanged(c, $any($event.target).value)" />
           <button type="button" data-testid="claim-settle" (click)="changeStatus(c, 'SETTLED')"
                   [attr.aria-label]="'Settle claim of ' + c.amount + ' on ' + c.date">Settle</button>
           <button type="button" data-testid="claim-approve" (click)="approve(c)"
@@ -284,6 +287,8 @@ export class PersonClaims {
   protected readonly reassignTo = signal<Readonly<Record<number, string>>>({});
   /** The date typed to defer each OPEN claim until, by id. */
   protected readonly deferDates = signal<Readonly<Record<number, string>>>({});
+  /** The date typed to settle each claim as of, by id; none settles it as it stands now. */
+  protected readonly settleDates = signal<Readonly<Record<number, string>>>({});
   /** The proof kind chosen for each claim's next proof; none chosen means a receipt. */
   protected readonly proofKinds = signal<Readonly<Record<number, ProofKind | ''>>>({});
   protected readonly proofKindOptions = PROOF_KINDS;
@@ -507,6 +512,11 @@ export class PersonClaims {
     if (this.claimError()?.id === c.id) this.claimError.set(null);
   }
 
+  protected settleDateChanged(c: ClaimView, date: string): void {
+    this.settleDates.update((dates) => ({ ...dates, [c.id]: date }));
+    if (this.claimError()?.id === c.id) this.claimError.set(null);
+  }
+
   protected changeStatus(c: ClaimView, status: ClaimStatus): void {
     this.claimError.set(null);
     const sheet = this.sheets.current();
@@ -516,11 +526,23 @@ export class PersonClaims {
       this.claimError.set({ id: c.id, message: 'Choose a reason from the list to void this claim.' });
       return;
     }
-    this.api.changeStatus(sheet.id, c.id, status, reason === '' ? undefined : reason).subscribe({
-      next: (saved) => this.saved.emit(saved),
+    const on = status === 'SETTLED' ? (this.settleDates()[c.id] ?? '').trim() : '';
+    if (on !== '' && !/^\d{4}-\d{2}-\d{2}$/.test(on)) {
+      this.claimError.set({ id: c.id, message: 'Choose the date to settle the claim as of.' });
+      return;
+    }
+    this.api.changeStatus(sheet.id, c.id, status, reason === '' ? undefined : reason, on === '' ? undefined : on).subscribe({
+      next: (saved) => {
+        if (status === 'SETTLED') this.settleDates.update((dates) => ({ ...dates, [c.id]: '' }));
+        this.saved.emit(saved);
+      },
       error: (err: unknown) => this.claimError.set({
         id: c.id,
-        message: status === 'VOID' && err instanceof HttpErrorResponse && err.status === 422
+        message: on !== '' && err instanceof HttpErrorResponse && err.status === 400
+          ? on > sheet.today
+            ? `A claim is settled as of a date on or before today (${sheet.today}).`
+            : `This claim was not on the sheet by ${on}.`
+          : status === 'VOID' && err instanceof HttpErrorResponse && err.status === 422
           ? 'Choose a reason from the sheet\'s list to void this claim.'
           : err instanceof HttpErrorResponse && err.status === 403
           ? status === 'SETTLED' && c.openedBy === this.session.user()

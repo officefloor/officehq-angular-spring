@@ -337,8 +337,9 @@ export class Claims {
     return this.http.delete<ClaimView>(`${this.base(sheetId)}/claims/${id}/lock`);
   }
 
-  changeStatus(sheetId: string, id: number, status: ClaimStatus, reason?: string): Observable<ClaimView> {
-    return this.http.put<ClaimView>(`${this.base(sheetId)}/claims/${id}/status`, { status, reason: reason ?? null });
+  changeStatus(sheetId: string, id: number, status: ClaimStatus, reason?: string, on?: string): Observable<ClaimView> {
+    return this.http.put<ClaimView>(`${this.base(sheetId)}/claims/${id}/status`,
+      { status, reason: reason ?? null, on: on ?? null });
   }
 
   /** Defer an OPEN claim until `until` (yyyy-mm-dd), a day after the sheet's today. */

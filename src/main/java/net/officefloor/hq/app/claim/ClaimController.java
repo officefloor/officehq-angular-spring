@@ -119,8 +119,10 @@ public class ClaimController {
             @Size(max = 1000) String tags) {
     }
 
-    /** The status a claim is to move to; a void gives its reason from the sheet's list (none when not given). */
-    public record StatusChange(@NotNull ClaimStatus status, @Size(max = 200) String reason) {
+    /** The status a claim is to move to; a void gives its reason from the sheet's list (none when not given), a settle
+     *  the date it is settled as of (none when not given: as it stands now). */
+    public record StatusChange(@NotNull ClaimStatus status, @Size(max = 200) String reason,
+            @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate on) {
     }
 
     /** Why a steward rejects a PENDING claim. */
@@ -263,7 +265,7 @@ public class ClaimController {
             @PathVariable long id,
             @RequestHeader("X-User") @NotBlank @Size(max = 100) String user,
             @Valid @RequestBody StatusChange request) {
-        return ClaimView.of(claims.changeStatus(sheetId, user, id, request.status(), request.reason()));
+        return ClaimView.of(claims.changeStatus(sheetId, user, id, request.status(), request.reason(), request.on()));
     }
 
     @PutMapping("/claims/{id}/approve")

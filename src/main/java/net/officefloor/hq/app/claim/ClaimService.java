@@ -16,6 +16,7 @@ import java.util.Set;
 import java.util.TreeSet;
 import net.officefloor.hq.app.Audit;
 import net.officefloor.hq.app.history.SheetHistory;
+import net.officefloor.hq.app.history.SheetState;
 import net.officefloor.hq.app.holiday.HolidayService;
 import net.officefloor.hq.app.person.Person;
 import net.officefloor.hq.app.period.Period;
@@ -255,13 +256,27 @@ public class ClaimService {
      *  reason on it; the claim keeps the reason and the audit line ends with it. */
     @Transactional
     public Claim changeStatus(String sheetId, String user, long id, ClaimStatus next, String reason) {
-        return changeStatus(sheetId, user, id, next, reason, true);
+        return changeStatus(sheetId, user, id, next, reason, true, null);
+    }
+
+    /** Move a claim to a new status, as {@link #changeStatus(String, String, long, ClaimStatus, String)}; a settle
+     *  as of a date ({@code on}, none when null) fixes the claim's due as it stood at the end of that date (see
+     *  {@link #dueAsOf}) and the CLAIM_SETTLED line ends with that date. Refused for a date after the sheet's today
+     *  and for a claim not on the sheet by then. */
+    @Transactional
+    public Claim changeStatus(String sheetId, String user, long id, ClaimStatus next, String reason, LocalDate on) {
+        return changeStatus(sheetId, user, id, next, reason, true, on);
     }
 
     /** Move a claim to a new status, as {@link #changeStatus(String, String, long, ClaimStatus, String)}; while
      *  {@code judged} is false the four-eyes rules and the proof rule are left to the caller, who has judged them on
      *  another claim. */
     private Claim changeStatus(String sheetId, String user, long id, ClaimStatus next, String reason, boolean judged) {
+        return changeStatus(sheetId, user, id, next, reason, judged, null);
+    }
+
+    private Claim changeStatus(String sheetId, String user, long id, ClaimStatus next, String reason, boolean judged,
+            LocalDate on) {
         sheets.load(sheetId, user);
         Sheet sheet = sheetStore.findLockedById(sheetId).orElseThrow();
         Claim claim = claims.findByIdAndSheetId(id, sheetId)
@@ -298,7 +313,8 @@ public class ClaimService {
                     "The user who opened or last edited a claim cannot settle it");
         }
         Person person = people.findByIdAndSheetId(claim.getPersonId(), sheetId).orElseThrow();
-        BigDecimal due = dueNow(sheet, claim, person);
+        LocalDate settledOn = next == ClaimStatus.SETTLED ? on : null;
+        BigDecimal due = settledOn != null ? dueAsOf(sheet, claim, settledOn) : dueNow(sheet, claim, person);
         if (next == ClaimStatus.SETTLED) {
             if (judged) {
                 refuseUnproven(sheet, claim, person, due);
@@ -342,6 +358,9 @@ public class ClaimService {
         String line = entry(event, user, person, changed, number);
         if (next == ClaimStatus.SETTLED) {
             line += " due=" + dueText(changed);
+            if (settledOn != null) {
+                line += " on=" + settledOn;
+            }
         } else if (voidsSettled) {
             line += " reversed=" + dueText(changed);
         }
@@ -913,6 +932,42 @@ public class ClaimService {
         // raised to the floor.
         BigDecimal figure = claim.isBound() ? claim.getBoundDue() : live;
         return figure == null ? null : floored(claim, figure.add(lateCharge(claim, figure, sheet, person.gradeOn(claim.getDate()))), sheet);
+    }
+
+    /** The due a claim would have been settled at as it stood at the end of a date, that date standing in for the
+     *  sheet's today, as the as-of view works it out: the sheet, its rates, the claim's person and its claims as they
+     *  stood then (see {@link SheetHistory}), its bound figure, else its live one, with the late charge it had gained by
+     *  then on top, raised to the floor in force then; null when it had no figure. Refused for a date after the
+     *  sheet's today and for a claim not on the sheet by then. */
+    private BigDecimal dueAsOf(Sheet sheet, Claim claim, LocalDate on) {
+        String sheetId = sheet.getId();
+        if (on.isAfter(sheet.getToday())) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
+                    "A claim can be settled as of a date on or before " + sheet.getToday());
+        }
+        SheetState then = history.asOf(sheetId, on).orElse(null);
+        Claim claimThen = then == null ? null : then.rebuildClaims(sheetId).stream()
+                .filter(c -> c.getId().equals(claim.getId())).findFirst().orElse(null);
+        SheetState.PersonState personState = claimThen == null ? null
+                : then.person(claimThen.getPersonId()).orElse(null);
+        if (personState == null) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "The claim was not on the sheet by " + on);
+        }
+        Sheet sheetThen = then.rebuildSheet(sheet, on);
+        Person personThen = personState.rebuild(sheetId);
+        List<Claim> claimsThen = then.rebuildClaims(sheetId);
+        if (claimThen.getSettledDue() != null) {
+            return claimThen.getSettledDue();
+        }
+        String grade = personThen.gradeOn(claimThen.getDate());
+        BigDecimal figure = claimThen.isBound() ? claimThen.getBoundDue()
+                : history.ratesOf(sheetId, then, on).inForceOn(grade, claimThen.getDate(), claimThen.getId())
+                        .map(Rate::getRate)
+                        .map(rate -> liveFigure(claimThen, rate,
+                                sheetThen.roundingFor(roundingDate(claimThen, claimsThen))))
+                        .orElse(null);
+        return figure == null ? null
+                : floored(claimThen, figure.add(lateCharge(claimThen, figure, sheetThen, grade)), sheetThen);
     }
 
     /** A claim's live figure as rates and grades are now, bound by no statement; null when its grade has
