@@ -1,0 +1,46 @@
+diff --git a/src/main/frontend/src/app/features/people/people.ts b/src/main/frontend/src/app/features/people/people.ts
+index 29cc2cf4f..7d8430e69 100644
+--- a/src/main/frontend/src/app/features/people/people.ts
++++ b/src/main/frontend/src/app/features/people/people.ts
+@@ -44,6 +44,11 @@ function gradeOn(p: Person, date: string): string {
+   return on;
+ }
+ 
++/** A CSV field: wrapped in double quotes, any inside doubled, when it holds a comma, a quote or a line break. */
++function csvField(value: string): string {
++  return /[",\r\n]/.test(value) ? `"${value.replaceAll('"', '""')}"` : value;
++}
++
+ /** A person's statements: how many, and the last one's due-total (null when n/a) and date. */
+ interface StatementSummary {
+   personId: number;
+@@ -131,6 +136,7 @@ interface StatementTaken {
+                (change)="session.showRetired.set($any($event.target).checked)" />
+         Show retired
+       </label>
++      <button type="button" data-testid="export-people" (click)="exportCsv()">Export CSV</button>
+       <table>
+         <thead>
+           <tr><th scope="col">Name</th><th scope="col">Grade</th><th scope="col">Claimed</th><th scope="col">Due total</th><th scope="col">Statements</th><th scope="col">Retired</th><th scope="col">Hold</th><th scope="col">Overdue</th><th scope="col">Patrons</th><th scope="col">Claims</th><th scope="col"><span class="visually-hidden">Actions</span></th></tr>
+@@ -487,6 +493,21 @@ export class People {
+     return total === null ? NA : money(total);
+   }
+ 
++  /**
++   * Downloads everyone, retired people included, in list order as CSV: name, grade in force today,
++   * retired-from (or nothing) and due-total as shown.
++   */
++  protected exportCsv(): void {
++    const lines = [['name', 'grade', 'retired-from', 'due-total'], ...this.people().map((p) => [p.name, this.gradeOf(p), p.retiredFrom ?? '', this.dueTotalOf(p)])];
++    const csv = lines.map((fields) => fields.map(csvField).join(',') + '\n').join('');
++    const url = URL.createObjectURL(new Blob([csv], { type: 'text/csv' }));
++    const link = document.createElement('a');
++    link.href = url;
++    link.download = 'people.csv';
++    link.click();
++    setTimeout(() => URL.revokeObjectURL(url));
++  }
++
+   /** Their patrons' names, comma and space separated, sorted. */
+   protected patronsOf(p: Person): string {
+     return this.patronsOfPerson(p)

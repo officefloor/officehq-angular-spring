@@ -1,0 +1,64 @@
+{
+  "checkpoint": 33,
+  "stack": {
+    "repo": "/home/daniel/officehq-angular-spring",
+    "origin": "git@github.com:officefloor/officehq-angular-spring.git",
+    "name": "officehq-angular-spring",
+    "base_ref": "base-empty",
+    "base_commit": "65cb8233ea38b2dfa6cfd18709e30cd18fdf3250"
+  },
+  "checkpoint_id": "cp33_export-people",
+  "phase": "early",
+  "type": "additive",
+  "mutates": [],
+  "replaced_tests": [],
+  "request": {
+    "spec": "A button downloads the people as a CSV file: a header line name,grade,retired-from,due-total,\nthen one line per person in list order, retired people included, with the grade in force today,\nthe retired-from date or nothing, and the due-total as shown. A value holding a comma, a quote or a\nline break is wrapped in double quotes, with any quote inside doubled. Lines end with a line\nfeed.\n",
+    "prompt": "You are implementing ONE change to this application.\n\nFIRST read AGENTS.md \u2014 it states the working rules and how the app is tested, and sends you to\nDESIGN.md for the app's stack and conventions. Follow both.\n\nTHE CHANGE REQUEST:\nA button downloads the people as a CSV file: a header line name,grade,retired-from,due-total,\nthen one line per person in list order, retired people included, with the grade in force today,\nthe retired-from date or nothing, and the due-total as shown. A value holding a comma, a quote or a\nline break is wrapped in double quotes, with any quote inside doubled. Lines end with a line\nfeed.\n\nYour work is verified by an automated Playwright UI test already installed under e2e/specs/.\nRead that spec: it declares the exact data-testid anchors, values, test data and any audit\nrecords it expects \u2014 match them. Run `bin/e2e` to build the app, start it, and run the test as\nyou work; iterate until it passes. Change whatever the request needs across the app \u2014 its stored\ndata, its server and its front end. Do NOT edit bin/build, bin/start, bin/stop, bin/e2e,\nAGENTS.md, CLAUDE.md, DESIGN.md, e2e/support/ or the test spec.\n"
+  },
+  "commit_sha": "e95b4d49b15b10bda748a5d31745422752785c1e",
+  "reset_sha": "",
+  "preagent_sha": "5a5c7ac222876d8c956f468e1bf122ee6107e581",
+  "prev_sha": "5a5c7ac222876d8c956f468e1bf122ee6107e581",
+  "base_sha": "65cb8233ea38b2dfa6cfd18709e30cd18fdf3250",
+  "agent": {
+    "ok": true,
+    "cost_usd": 0.33527579999999996,
+    "input_tokens": 20,
+    "output_tokens": 2775,
+    "cache_read_tokens": 252159,
+    "cache_creation_tokens": 28658,
+    "num_turns": 10,
+    "duration_ms": 143689,
+    "duration_api_ms": 29091,
+    "model": "claude-opus-5-5",
+    "session_id": "ff6273d2-475c-46bb-a779-d81207804447",
+    "stop_reason": "success",
+    "result_text": "I added an \"Export CSV\" button (`data-testid=\"export-people\"`) next to \"Show retired\". It downloads `people.csv`, and all 4 acceptance tests pass with `bin/e2e`.\n\nThe change is all in `src/main/frontend/src/app/features/people/people.ts`, with nothing new on the server. The file is built in the browser from what the screen already holds:\n\n- **Content:** the header `name,grade,retired-from,due-total`, then one line per person in list order. Retired people are always included, even when \"Show retired\" is off.\n- **Values:** the same ones the rows show. That's the grade in force on the sheet's today, the retired-from date or nothing, and the due-total as displayed, including `n/a`.\n- **Format:** a value holding a comma, a quote or a line break is wrapped in double quotes, with quotes inside doubled. Every line ends with a line feed.\n\nI built it in the browser because the due-total is only calculated on the screen; the server has no copy of it. That way the export can't disagree with the rows. Exporting writes nothing to the audit file, since the tests don't expect a record for it.",
+    "error": "",
+    "attempts": [
+      {
+        "ok": true,
+        "limit_reached": false,
+        "retryable": false,
+        "timed_out": false,
+        "cost_usd": 0.33527579999999996,
+        "num_turns": 10,
+        "duration_ms": 143689,
+        "duration_api_ms": 29091,
+        "error": ""
+      }
+    ]
+  },
+  "agent_stream_file": "cp33.agent.jsonl",
+  "agent_diff_file": "cp33.agent.diff",
+  "build_log_file": null,
+  "tests": {
+    "gated": false,
+    "queued": true
+  },
+  "probe": null,
+  "pinned_touched": [],
+  "acceptance_touched": [],
+  "impact_gate": null
+}
