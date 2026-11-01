@@ -7,9 +7,12 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.StandardOpenOption;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.Collections;
 import java.util.List;
 import java.util.Locale;
+import java.util.Map;
+import java.util.TreeMap;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 import net.officefloor.hq.app.history.SheetHistory;
@@ -155,6 +158,24 @@ public class Audit {
             values.add(m.group(1));
         }
         return values;
+    }
+
+    /**
+     * The sheet's activity: for every user ({@code by=}) and every event (a record's first word) in the sheet's
+     * records, one line {@code <user> <EVENT> <count>}, sorted by user then event. A record naming no user is not
+     * counted.
+     */
+    public List<String> activity(String sheetId) {
+        Map<String, Map<String, Long>> counts = new TreeMap<>();
+        for (String line : lines(sheetId, null)) {
+            String[] words = line.split(" ");
+            Arrays.stream(words).filter(w -> w.startsWith("by=") && w.length() > 3).findFirst()
+                    .ifPresent(by -> counts.computeIfAbsent(by.substring(3), u -> new TreeMap<>())
+                            .merge(words[0], 1L, Long::sum));
+        }
+        List<String> activity = new ArrayList<>();
+        counts.forEach((user, events) -> events.forEach((event, n) -> activity.add(user + " " + event + " " + n)));
+        return activity;
     }
 
     /** Truncate the audit file. */

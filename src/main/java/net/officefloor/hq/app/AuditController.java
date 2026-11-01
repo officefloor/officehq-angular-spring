@@ -45,4 +45,11 @@ public class AuditController {
         }
         return lines;
     }
+
+    /** The sheet's activity: one line {@code <user> <EVENT> <count>} per user and event, by user then event. */
+    @GetMapping("/api/sheets/{sheetId}/activity")
+    public List<String> activity(
+            @PathVariable @NotBlank @Size(max = 100) @Pattern(regexp = "[A-Za-z0-9._-]+") String sheetId) {
+        return audit.activity(sheetId);
+    }
 }

@@ -3,6 +3,7 @@ import { FormControl, FormGroup, ReactiveFormsModule, Validators } from '@angula
 import { LOCALES, Locale, Session } from '../../core/session';
 import { Sheets } from '../../core/sheet';
 import { AuditPanel } from '../audit/audit';
+import { ActivityPanel } from '../audit/activity';
 import { DelegationsPanel } from '../delegations/delegations';
 import { HolidaysPanel } from '../holidays/holidays';
 import { NotesPanel } from '../notes/notes';
@@ -17,7 +18,8 @@ import { VoidReasonsPanel } from '../void-reasons/void-reasons';
 @Component({
   selector: 'app-home',
   imports: [ReactiveFormsModule, PeopleList, RatesPanel, SettingsPanel, DelegationsPanel, HolidaysPanel,
-    VoidReasonsPanel, TemplatesPanel, NotesPanel, SearchPanel, AuditPanel],
+    VoidReasonsPanel, TemplatesPanel, NotesPanel, SearchPanel, AuditPanel,
+    ActivityPanel],
   template: `
     @if (session.user(); as user) {
       <p>Signed in as <strong data-testid="current-user">{{ user }}</strong></p>
@@ -91,6 +93,7 @@ import { VoidReasonsPanel } from '../void-reasons/void-reasons';
         <app-people />
         <app-search />
         <app-audit />
+        <app-activity />
       } @else {
         <p data-testid="sheet-none">Load a sheet to begin.</p>
       }

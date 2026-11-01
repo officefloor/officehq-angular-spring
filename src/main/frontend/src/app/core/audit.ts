@@ -12,4 +12,9 @@ export class AuditLog {
     const params = name.trim() ? new HttpParams().set('name', name) : undefined;
     return this.http.get<string[]>(`/api/sheets/${encodeURIComponent(sheetId)}/audit`, { params });
   }
+
+  /** The sheet's activity: one line `<user> <EVENT> <count>` per user and event, by user then event. */
+  activity(sheetId: string): Observable<string[]> {
+    return this.http.get<string[]>(`/api/sheets/${encodeURIComponent(sheetId)}/activity`);
+  }
 }
