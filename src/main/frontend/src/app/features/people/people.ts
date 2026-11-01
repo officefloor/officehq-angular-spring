@@ -10,6 +10,8 @@ import { GRADES, NA, Rate, Rates, pctOn } from '../rates/rates';
 const NO_CLAIMS: Claim[] = [];
 const NO_RATES: Rate[] = [];
 const NO_PCT: PctOn = () => null;
+/** The statuses the summary counts claims by, PENDING among them though no claim is held in it now. */
+const SUMMARY_STATUSES = ['DRAFT', 'OPEN', 'PENDING', 'SETTLED', 'VOID'];
 
 /** A grade a person was given, in force from a date until the next one; from is null from the start. */
 interface GradeFrom {
@@ -85,6 +87,8 @@ interface StatementTaken {
 // Each person can name other people on the sheet as their patrons, one at a time (not themselves, nor
 // the same person twice); the row shows their patrons' names, sorted, and their backing: their
 // patrons' due-totals added up, skipping n/a.
+// Under it, a summary: per grade, the people on it today (retired people excluded) and their
+// due-totals added up; per period, its due-total; per status, how many claims have it.
 @Component({
   selector: 'app-people',
   imports: [ReactiveFormsModule, Claims, Periods, Rates],
@@ -201,6 +205,52 @@ interface StatementTaken {
       <p>Overdue: <strong data-testid="rollup-overdue-count">{{ overdueTotal().count }}</strong>
         totalling <strong data-testid="rollup-overdue-total">{{ money(overdueTotal().cents) }}</strong></p>
     </section>
+    <section aria-labelledby="summary-heading">
+      <h2 id="summary-heading">Summary</h2>
+      <table>
+        <caption>By grade today, retired people excluded</caption>
+        <thead>
+          <tr><th scope="col">Grade</th><th scope="col">People</th><th scope="col">Due total</th></tr>
+        </thead>
+        <tbody>
+          @for (g of gradeSummary(); track g.grade) {
+            <tr>
+              <th scope="row">{{ g.grade }}</th>
+              <td [attr.data-testid]="'summary-grade-' + g.grade + '-count'">{{ g.count }}</td>
+              <td [attr.data-testid]="'summary-grade-' + g.grade + '-due-total'">{{ g.dueTotal }}</td>
+            </tr>
+          }
+        </tbody>
+      </table>
+      <table>
+        <caption>By period</caption>
+        <thead>
+          <tr><th scope="col">Period</th><th scope="col">Due total</th></tr>
+        </thead>
+        <tbody>
+          @for (p of periods(); track p.id) {
+            <tr>
+              <th scope="row">{{ p.name }}</th>
+              <td [attr.data-testid]="'summary-period-' + p.name + '-due-total'">{{ p.closedDueTotal ?? periodDueTotalOf(p) }}</td>
+            </tr>
+          }
+        </tbody>
+      </table>
+      <table>
+        <caption>By status</caption>
+        <thead>
+          <tr><th scope="col">Status</th><th scope="col">Claims</th></tr>
+        </thead>
+        <tbody>
+          @for (s of statusSummary(); track s.status) {
+            <tr>
+              <th scope="row">{{ s.status }}</th>
+              <td [attr.data-testid]="'summary-status-' + s.status + '-count'">{{ s.count }}</td>
+            </tr>
+          }
+        </tbody>
+      </table>
+    </section>
   `,
 })
 export class People {
@@ -295,6 +345,17 @@ export class People {
     for (const o of this.overdueByPerson().values()) total = { count: total.count + o.count, cents: total.cents + o.cents };
     return total;
   });
+  /** Per grade: the people not retired on it today, and their due-totals added up, skipping n/a. */
+  protected readonly gradeSummary = computed(() =>
+    GRADES.map((grade) => {
+      const on = this.people().filter((p) => !p.retired && this.gradeOf(p) === grade);
+      return { grade, count: on.length, dueTotal: money(on.reduce((sum, p) => sum + (this.dueTotalCents(p) ?? 0), 0)) };
+    }),
+  );
+  /** Per status: how many of the sheet's claims have it. */
+  protected readonly statusSummary = computed(() =>
+    SUMMARY_STATUSES.map((status) => ({ status, count: this.claims().filter((c) => c.status === status).length })),
+  );
   protected readonly money = money;
   protected readonly editingId = signal<number | null>(null);
   /** The version of the person being edited, as the form loaded it. */
