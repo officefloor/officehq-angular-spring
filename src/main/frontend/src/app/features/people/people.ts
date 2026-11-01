@@ -4,6 +4,7 @@ import { FormControl, FormGroup, ReactiveFormsModule } from '@angular/forms';
 import { firstValueFrom } from 'rxjs';
 import { Session } from '../../core/session';
 import { Claim, Claims, cents, money } from '../claims/claims';
+import { GRADES, Rate, Rates, due, dueCents } from '../rates/rates';
 
 const NO_CLAIMS: Claim[] = [];
 
@@ -14,11 +15,13 @@ interface Person {
 }
 
 // The people on the active sheet, in the order they were added, with one form to add or edit,
-// each with their claims and what they have claimed; the sheet's claimed-total under the table.
+// each with their claims, what they have claimed and their due-total; the sheet's claimed-total and
+// due-total under the table. Above it, the sheet's rate for each grade.
 @Component({
   selector: 'app-people',
-  imports: [ReactiveFormsModule, Claims],
+  imports: [ReactiveFormsModule, Claims, Rates],
   template: `
+    <app-rates [rates]="rates()" (saved)="rateSaved($event)" />
     <section aria-labelledby="people-heading">
       <h2 id="people-heading">People</h2>
       <form [formGroup]="form" (ngSubmit)="save()" [attr.aria-label]="editingId() === null ? 'Add person' : 'Edit person'">
@@ -40,7 +43,7 @@ interface Person {
       </form>
       <table>
         <thead>
-          <tr><th scope="col">Name</th><th scope="col">Grade</th><th scope="col">Claimed</th><th scope="col">Claims</th><th scope="col"><span class="visually-hidden">Actions</span></th></tr>
+          <tr><th scope="col">Name</th><th scope="col">Grade</th><th scope="col">Claimed</th><th scope="col">Due total</th><th scope="col">Claims</th><th scope="col"><span class="visually-hidden">Actions</span></th></tr>
         </thead>
         <tbody>
           @for (p of people(); track p.id) {
@@ -48,8 +51,9 @@ interface Person {
               <td data-testid="person-name">{{ p.name }}</td>
               <td data-testid="person-grade">{{ p.grade }}</td>
               <td data-testid="person-claimed">{{ claimedOf(p.id) }}</td>
+              <td data-testid="person-due-total">{{ dueTotalOf(p) }}</td>
               <td>
-                <app-claims [personId]="p.id" [personName]="p.name" [claims]="claimsOf(p.id)"
+                <app-claims [personId]="p.id" [personName]="p.name" [claims]="claimsOf(p.id)" [pct]="pctOf(p.grade)"
                             (saved)="claimSaved($event)" />
               </td>
               <td>
@@ -61,6 +65,7 @@ interface Person {
         </tbody>
       </table>
       <p>Claimed total: <strong data-testid="rollup-claimed-total">{{ claimedTotal() }}</strong></p>
+      <p>Due total: <strong data-testid="rollup-due-total">{{ dueTotal() }}</strong></p>
     </section>
   `,
 })
@@ -68,7 +73,7 @@ export class People {
   private readonly http = inject(HttpClient);
   private readonly session = inject(Session);
 
-  protected readonly grades = ['A', 'B', 'C'];
+  protected readonly grades = GRADES;
   protected readonly people = signal<Person[]>([]);
   /** Every claim on the sheet, newest first. */
   protected readonly claims = signal<Claim[]>([]);
@@ -78,6 +83,19 @@ export class People {
     return by;
   });
   protected readonly claimedTotal = computed(() => money(this.claims().reduce((sum, c) => sum + cents(c.amount), 0)));
+  /** The sheet's rate for each grade that has one. */
+  protected readonly rates = signal<Rate[]>([]);
+  private readonly pctByGrade = computed(() => new Map(this.rates().map((r) => [r.grade, r.pct])));
+  /** Everyone's due-total added up, skipping those whose grade has no rate. */
+  protected readonly dueTotal = computed(() => {
+    const byGrade = this.pctByGrade();
+    let sum = 0;
+    for (const p of this.people()) {
+      const pct = byGrade.get(p.grade);
+      if (pct !== undefined) sum += dueCents(this.claimedCents(p.id), pct);
+    }
+    return money(sum);
+  });
   protected readonly editingId = signal<number | null>(null);
   protected readonly error = signal('');
   protected readonly form = new FormGroup({
@@ -92,6 +110,7 @@ export class People {
       this.session.loads();
       this.people.set([]);
       this.claims.set([]);
+      this.rates.set([]);
       this.reset();
       if (id) void this.load(id);
     });
@@ -107,13 +126,15 @@ export class People {
 
   private async load(sheet: string): Promise<void> {
     try {
-      const [list, claims] = await Promise.all([
+      const [list, claims, rates] = await Promise.all([
         firstValueFrom(this.http.get<Person[]>(this.url(sheet), { headers: this.headers() })),
         firstValueFrom(this.http.get<Claim[]>(`/api/sheets/${encodeURIComponent(sheet)}/claims`, { headers: this.headers() })),
+        firstValueFrom(this.http.get<Rate[]>(`/api/sheets/${encodeURIComponent(sheet)}/rates`, { headers: this.headers() })),
       ]);
       if (this.session.sheetId() !== sheet) return;
       this.people.set(list);
       this.claims.set(claims);
+      this.rates.set(rates);
     } catch {
       if (this.session.sheetId() === sheet) this.error.set('Could not load the people on this sheet.');
     }
@@ -123,8 +144,26 @@ export class People {
     return this.claimsByPerson().get(personId) ?? NO_CLAIMS;
   }
 
+  private claimedCents(personId: number): number {
+    return this.claimsOf(personId).reduce((sum, c) => sum + cents(c.amount), 0);
+  }
+
   protected claimedOf(personId: number): string {
-    return money(this.claimsOf(personId).reduce((sum, c) => sum + cents(c.amount), 0));
+    return money(this.claimedCents(personId));
+  }
+
+  protected pctOf(grade: string): string | null {
+    return this.pctByGrade().get(grade) ?? null;
+  }
+
+  /** What they have claimed times their grade's rate, or n/a when the grade has no rate. */
+  protected dueTotalOf(p: Person): string {
+    return due(this.claimedCents(p.id), this.pctOf(p.grade));
+  }
+
+  /** Put a set rate in place of the grade's old one. */
+  protected rateSaved(rate: Rate): void {
+    this.rates.update((list) => [...list.filter((r) => r.grade !== rate.grade), rate]);
   }
 
   /** Put an added claim first, or an edited one in its place. */

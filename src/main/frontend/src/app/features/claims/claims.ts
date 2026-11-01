@@ -3,6 +3,7 @@ import { Component, inject, input, output, signal } from '@angular/core';
 import { FormControl, FormGroup, ReactiveFormsModule } from '@angular/forms';
 import { firstValueFrom } from 'rxjs';
 import { Session } from '../../core/session';
+import { due } from '../rates/rates';
 
 export interface Claim {
   id: number;
@@ -47,6 +48,7 @@ export function money(cents: number): string {
           <span data-testid="claim-amount">{{ c.amount }}</span>
           <span data-testid="claim-date">{{ c.date }}</span>
           <span data-testid="claim-note">{{ c.note }}</span>
+          <span>Due <span data-testid="claim-due">{{ dueOf(c) }}</span></span>
           @if (editingId() === c.id) {
             <button type="button" data-testid="claim-cancel" (click)="cancel()">Cancel</button>
           } @else {
@@ -65,6 +67,8 @@ export class Claims {
   readonly personId = input.required<number>();
   readonly personName = input.required<string>();
   readonly claims = input.required<Claim[]>();
+  /** The rate for the person's grade, or null when the grade has no rate. */
+  readonly pct = input.required<string | null>();
   /** A claim added or edited, as the store now holds it. */
   readonly saved = output<Claim>();
 
@@ -82,6 +86,10 @@ export class Claims {
 
   protected fieldId(field: string): string {
     return `claim-${this.personId()}-${field}`;
+  }
+
+  protected dueOf(c: Claim): string {
+    return due(cents(c.amount), this.pct());
   }
 
   private headers(): Record<string, string> {
