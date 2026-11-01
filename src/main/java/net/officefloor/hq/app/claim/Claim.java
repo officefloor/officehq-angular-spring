@@ -123,6 +123,10 @@ public class Claim {
     @Column(name = "deferred_until")
     private LocalDate deferredUntil;
 
+    /** The reason it was voided with, from the sheet's list; none unless voided with one. */
+    @Column(name = "void_reason", length = 200)
+    private String voidReason;
+
     /** The sheet's today when it was deferred; none unless deferred (or deferred before this was kept). */
     @Column(name = "deferred_on")
     private LocalDate deferredOn;
@@ -206,6 +210,10 @@ public class Claim {
     }
 
     public String getSplitFrom() { return splitFrom; }
+
+    public String getVoidReason() { return voidReason; }
+
+    public void setVoidReason(String voidReason) { this.voidReason = voidReason; }
 
     public void setSplitFrom(String splitFrom) { this.splitFrom = splitFrom; }
 

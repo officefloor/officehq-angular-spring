@@ -36,13 +36,13 @@ public class ClaimController {
      * when bound by its person's last statement, to the due it had then (null when it had none). A
      * correction has the number of the claim it corrects (null for any other claim). Its status log
      * is oldest first. Locked by the user whose open editor holds it (null when none). A late entry
-     * when added while its period was soft-closed. Reminded on the last day a reminder was written (null when none). Its external reference is null when it has none. Its tags are sorted (empty when none).
+     * when added while its period was soft-closed. Reminded on the last day a reminder was written (null when none). Its external reference is null when it has none. Its tags are sorted (empty when none). Its void reason is null unless voided with one.
      */
     public record ClaimView(Long id, Long personId, String amount, LocalDate date, String note, ClaimStatus status,
             String number, String settledDue, String openedBy, boolean stated, String statedDue, String corrects,
             LocalDate dueBy, List<LogLineView> log, LocalDate deferredUntil,
             int proofs, String splitFrom, String lockedBy, boolean lateEntry, LocalDate remindedOn,
-            String ref, List<String> tags) {
+            String ref, List<String> tags, String voidReason) {
         public static ClaimView of(Claim claim) {
             return new ClaimView(claim.getId(), claim.getPersonId(), claim.getAmount().toPlainString(),
                     claim.getDate(), claim.getNote(), claim.getStatus(), claim.getNumber(),
@@ -52,7 +52,7 @@ public class ClaimController {
                     claim.getCorrects(), claim.getDueBy(), claim.getLog().stream().map(LogLineView::of).toList(),
                     claim.getDeferredUntil(), claim.getProofs(), claim.getSplitFrom(),
                     claim.getLockedBy(), claim.isLateEntry(), claim.getRemindedOn(),
-                    claim.getRef(), claim.getTags());
+                    claim.getRef(), claim.getTags(), claim.getVoidReason());
         }
     }
 
@@ -119,6 +119,9 @@ public class ClaimController {
 
     /** A split claim as it now is, and the new claim split off it. */
     public record SplitView(ClaimView original, ClaimView split) {}
+
+    /** The reason a claim is voided with, from the sheet's list; none for a sheet without one. */
+    public record VoidRequest(@Size(max = 200) String reason) {}
 
     /** The claims selected for a bulk change, by id. */
     public record BulkRequest(@NotNull @Size(max = 1000) Set<@NotNull Long> ids) {}
@@ -254,8 +257,9 @@ public class ClaimController {
     public ClaimView voidClaim(
             @PathVariable @Size(max = 100) @Pattern(regexp = "[A-Za-z0-9._-]+") String sheetId,
             @PathVariable Long id,
-            @RequestHeader("X-User") @NotBlank @Size(max = 100) String user) {
-        return ClaimView.of(service.changeStatus(sheetId, user, id, ClaimStatus.VOID));
+            @RequestHeader("X-User") @NotBlank @Size(max = 100) String user,
+            @RequestBody(required = false) @Valid VoidRequest request) {
+        return ClaimView.of(service.voidClaim(sheetId, user, id, request == null ? null : request.reason()));
     }
 
     @PostMapping("/claims/{id}/approve")

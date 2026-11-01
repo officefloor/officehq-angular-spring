@@ -47,6 +47,8 @@ export interface Claim {
   proofs: number;
   /** Its external reference, unique on the sheet without regard to case; null when it has none. */
   ref: string | null;
+  /** The reason it was voided with, from the sheet's list; null unless voided with one. */
+  voidReason: string | null;
   /** Its tags, trimmed, lower-cased, each once and sorted; empty when it has none. */
   tags: string[];
   /** The number of the claim it was split off; null unless split off one. */
@@ -227,6 +229,9 @@ export function money(cents: number): string {
 }
 
 /** What each action makes of a claim, for why it was refused. */
+/** Why a void without a reason from the sheet's list is refused. */
+const VOID_REASON_NEEDED = 'Choose a reason from the sheet\'s void reasons to void the claim.';
+
 const PAST: Record<ClaimAction, string> = {
   open: 'opened', settle: 'settled', void: 'voided', approve: 'approved', reject: 'rejected',
   resettle: 're-settled',
@@ -309,8 +314,21 @@ function notEditable(status: ClaimStatus | undefined): string {
                   [attr.aria-label]="'Open claim of ' + c.amount + ' on ' + c.date">Open</button>
           <button type="button" data-testid="claim-settle" (click)="act(c, 'settle')"
                   [attr.aria-label]="'Settle claim of ' + c.amount + ' on ' + c.date">Settle</button>
-          <button type="button" data-testid="claim-void" (click)="act(c, 'void')"
-                  [attr.aria-label]="'Void claim of ' + c.amount + ' on ' + c.date">Void</button>
+          @if (session.voidReasons().length > 0) {
+            <label [for]="fieldId('void-' + c.id)">Void reason</label>
+            <select [id]="fieldId('void-' + c.id)" data-testid="claim-void-reason" #voidReason
+                    (change)="clearClaimError(c.id)">
+              <option value="">Choose a reason</option>
+              @for (r of session.voidReasons(); track r) {
+                <option [value]="r">{{ r }}</option>
+              }
+            </select>
+            <button type="button" data-testid="claim-void" (click)="act(c, 'void', voidReason.value)"
+                    [attr.aria-label]="'Void claim of ' + c.amount + ' on ' + c.date">Void</button>
+          } @else {
+            <button type="button" data-testid="claim-void" (click)="act(c, 'void')"
+                    [attr.aria-label]="'Void claim of ' + c.amount + ' on ' + c.date">Void</button>
+          }
           <button type="button" data-testid="claim-approve" (click)="act(c, 'approve')"
                   [attr.aria-label]="'Approve claim of ' + c.amount + ' on ' + c.date">Approve</button>
           <button type="button" data-testid="claim-resettle" (click)="act(c, 'resettle')"
@@ -368,7 +386,7 @@ function notEditable(status: ClaimStatus | undefined): string {
 })
 export class Claims {
   private readonly http = inject(HttpClient);
-  private readonly session = inject(Session);
+  protected readonly session = inject(Session);
 
   readonly personId = input.required<number>();
   readonly personName = input.required<string>();
@@ -549,8 +567,12 @@ export class Claims {
       this.claimError.set({ id: c.id, message: 'Give a reason for rejecting the claim (at most 200 characters).' });
       return;
     }
+    if (action === 'void' && this.session.voidReasons().length > 0 && !this.session.voidReasons().includes(why)) {
+      this.claimError.set({ id: c.id, message: VOID_REASON_NEEDED });
+      return;
+    }
     const url = `/api/sheets/${encodeURIComponent(sheet)}/claims/${c.id}/${action}`;
-    const body = action === 'reject' ? { reason: why } : null;
+    const body = action === 'reject' || (action === 'void' && why !== '') ? { reason: why } : null;
     try {
       const claim = await firstValueFrom(this.http.post<Claim>(url, body, { headers: this.headers() }));
       if (this.session.sheetId() !== sheet) return;
@@ -567,6 +589,8 @@ export class Claims {
         ? `A deferred claim cannot be settled until ${c.deferredUntil}.`
         : e instanceof HttpErrorResponse && e.status === 428
         ? `A claim due above the proof threshold cannot be ${PAST[action]} without a proof.`
+        : e instanceof HttpErrorResponse && e.status === 422 && action === 'void'
+        ? VOID_REASON_NEEDED
         : e instanceof HttpErrorResponse && e.status === 422 && action === 'open'
         ? 'A claim due above the note threshold cannot be opened with an empty note.'
         : e instanceof HttpErrorResponse && e.status === 403

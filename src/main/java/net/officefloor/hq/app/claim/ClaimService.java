@@ -22,6 +22,7 @@ import net.officefloor.hq.app.setting.Role;
 import net.officefloor.hq.app.setting.SettingService;
 import net.officefloor.hq.app.sheet.Sheet;
 import net.officefloor.hq.app.sheet.SheetService;
+import net.officefloor.hq.app.voidreason.VoidReasonService;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -64,11 +65,13 @@ public class ClaimService {
     private final PersonWatchRepository watches;
     private final HolidayService holidays;
     private final ClaimTagRepository tags;
+    private final VoidReasonService voidReasons;
     private final Audit audit;
 
     public ClaimService(ClaimRepository claims, PersonRepository people, RateService rates, SheetService sheets,
             RollupService rollup, PeriodRepository periods, SettingService settings, PersonWatchRepository watches,
-            HolidayService holidays, ClaimTagRepository tags, Audit audit) {
+            HolidayService holidays, ClaimTagRepository tags, VoidReasonService voidReasons, Audit audit) {
+        this.voidReasons = voidReasons;
         this.tags = tags;
         this.watches = watches;
         this.holidays = holidays;
@@ -196,6 +199,16 @@ public class ClaimService {
 
     @Transactional
     public Claim changeStatus(String sheetId, String user, Long id, ClaimStatus next) {
+        return changeStatus(sheetId, user, id, next, null);
+    }
+
+    /** Void a claim; while the sheet's list of void reasons is not empty, only with a reason on it. */
+    @Transactional
+    public Claim voidClaim(String sheetId, String user, Long id, String reason) {
+        return changeStatus(sheetId, user, id, ClaimStatus.VOID, reason);
+    }
+
+    private Claim changeStatus(String sheetId, String user, Long id, ClaimStatus next, String reason) {
         // Opening takes the sheet's next number, locking the sheet first so the claim is read only
         // once no other open on the sheet is under way; a refusal rolls the number back.
         Sheet numbering = next == ClaimStatus.OPEN ? sheets.lockForNumbering(sheetId) : null;
@@ -224,6 +237,7 @@ public class ClaimService {
         if (next == ClaimStatus.SETTLED) refuseUnproved(sheetId, claim, settling);
         if (next == ClaimStatus.OPEN) refuseUnnoted(sheetId, claim, chargedFigureOf(sheetId, person, claim));
         if (next == ClaimStatus.SETTLED && overClerkLimit(sheetId, user, settling)) next = ClaimStatus.PENDING;
+        String voidReason = next == ClaimStatus.VOID ? voidReasons.reasonForVoid(sheetId, reason) : null;
         RollupService.Snapshot before = rollup.snapshot(sheetId);
         refuseIfClosed(sheetId, claim.getDueBy());
         switch (next) {
@@ -232,6 +246,7 @@ public class ClaimService {
                 claim.setOpenedBy(user.strip());
             }
             case SETTLED -> claim.setSettledDue(settling);
+            case VOID -> claim.setVoidReason(voidReason);
             default -> {}
         }
         claim.setStatus(next);
@@ -248,6 +263,7 @@ public class ClaimService {
                 ? " due=" + (saved.getSettledDue() == null ? "n/a" : saved.getSettledDue().setScale(2).toPlainString())
                 : voidingSettled ? " reversed=" + figureText(saved.getSettledDue())
                 : "";
+        if (voidReason != null) due += " reason=" + voidReason;
         record(event, sheetId, user, person, saved, saved.getNumber(), due);
         if (next == ClaimStatus.SETTLED) notifyWatchers(sheetId, user, person, saved);
         rollup.recordChanges(sheetId, user, before);

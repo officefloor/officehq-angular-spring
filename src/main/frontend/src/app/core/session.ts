@@ -92,6 +92,12 @@ export class Session {
     return found !== undefined ? found.value : (STARTING[key] ?? null);
   }
 
+  /**
+   * The sheet's void reasons, in the order they were added: while any are on the list, a claim is voided
+   * only with one of them. Kept by the void reasons section as it reads and adds them.
+   */
+  readonly voidReasons = signal<string[]>([]);
+
   /** Whether a steward has archived the sheet: it stays visible and every change to it is refused. */
   readonly archived = signal(false);
 

@@ -422,6 +422,20 @@ function trimmedSum(figures: number[]): number {
           }
         </tbody>
       </table>
+      <table>
+        <caption>By void reason, every reason on the sheet's list</caption>
+        <thead>
+          <tr><th scope="col">Void reason</th><th scope="col">VOID claims</th></tr>
+        </thead>
+        <tbody>
+          @for (v of voidReasonSummary(); track v.reason) {
+            <tr>
+              <th scope="row">{{ v.reason }}</th>
+              <td [attr.data-testid]="'summary-void-' + v.reason + '-count'">{{ v.count }}</td>
+            </tr>
+          }
+        </tbody>
+      </table>
     </section>
   `,
 })
@@ -656,6 +670,13 @@ export class People {
   /** Per status: how many of the sheet's claims have it. */
   protected readonly statusSummary = computed(() =>
     SUMMARY_STATUSES.map((status) => ({ status, count: this.claims().filter((c) => c.status === status).length })),
+  );
+  /** Per reason on the sheet's list: how many VOID claims were voided with it. */
+  protected readonly voidReasonSummary = computed(() =>
+    this.session.voidReasons().map((reason) => ({
+      reason,
+      count: this.claims().filter((c) => c.status === 'VOID' && c.voidReason === reason).length,
+    })),
   );
   protected readonly money = money;
   protected readonly editingId = signal<number | null>(null);
