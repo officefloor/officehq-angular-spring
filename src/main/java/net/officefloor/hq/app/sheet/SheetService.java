@@ -84,7 +84,8 @@ public class SheetService {
 
     /** Set the sheet's today, starting the sheet if it has never been loaded; then close every open period past its
      *  grace days. A change of today first records a SNAPSHOT line per person, in list order, with their due-total on
-     *  the day being left (kept as the person's snapshot line), and releases every claim editor's lock on the sheet. */
+     *  the day being left (kept as the person's snapshot line), before them, while the score log is on, a SCORE line
+     *  per person, in list order, with their score on the day being left, and releases every claim editor's lock on the sheet. */
     @Transactional
     public Sheet setToday(String id, String user, LocalDate today) {
         load(id, user);
@@ -93,6 +94,10 @@ public class SheetService {
         boolean changed = !today.equals(sheet.getToday());
         if (changed) {
             LocalDate left = sheet.getToday();
+            if (sheet.isScoreLog()) {
+                rollup.scoresOf(id).forEach((personId, score) -> audit.recordActingOnCommit(id, user,
+                        "SCORE sheet=" + id + " by=" + user + " name=" + score.name() + " score=" + score.score()));
+            }
             before.people().forEach((personId, figures) -> {
                 snapshots.record(id, personId, left, figures.dueTotal(), today);
                 audit.recordActingOnCommit(id, user, "SNAPSHOT sheet=" + id + " by=" + user
@@ -247,6 +252,18 @@ public class SheetService {
         Sheet saved = sheets.saveAndFlush(sheet);
         audit.recordChangeOnCommit(id, user, "SETTING_CHANGED sheet=" + id + " by=" + user
                 + " key=score-high value=" + (scoreHigh == null ? "" : scoreHigh));
+        return saved;
+    }
+
+    /** Turn the sheet's score log switch on or off, starting the sheet if it has never been loaded. Not dated. */
+    @Transactional
+    public Sheet setScoreLog(String id, String user, boolean on) {
+        load(id, user);
+        Sheet sheet = sheets.findLockedById(id).orElseThrow();
+        sheet.setScoreLog(on);
+        Sheet saved = sheets.saveAndFlush(sheet);
+        audit.recordChangeOnCommit(id, user, "SETTING_CHANGED sheet=" + id + " by=" + user
+                + " key=score-log value=" + (on ? "on" : ""));
         return saved;
     }
 

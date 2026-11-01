@@ -76,6 +76,8 @@ export interface SheetView {
    *  high one, MID at or above the mid one, else LOW); null: none. Not dated. */
   scoreMid: number | null;
   scoreHigh: number | null;
+  /** The sheet's score log switch: 'on' while a change of today records each person's score; null: off. Not dated. */
+  scoreLog: 'on' | null;
   /** The sheet's fiscal year start month, 1 to 12: a fiscal year runs twelve months from the first of it and is
    *  named FY<yyyy> by the calendar year it starts in. Not dated. */
   fiscalStartMonth: number;
@@ -278,6 +280,13 @@ export class Sheets {
   setScoreHigh(id: string, value: number | null): Observable<SheetView> {
     return this.http
       .put<SheetView>(`/api/sheets/${encodeURIComponent(id)}/settings/score-high`, { value })
+      .pipe(tap((s) => this.active.set(s)));
+  }
+
+  /** Turn the active sheet's score log switch on ('on') or off (null). Not dated. */
+  setScoreLog(id: string, value: 'on' | null): Observable<SheetView> {
+    return this.http
+      .put<SheetView>(`/api/sheets/${encodeURIComponent(id)}/settings/score-log`, { value })
       .pipe(tap((s) => this.active.set(s)));
   }
 

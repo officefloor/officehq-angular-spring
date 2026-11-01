@@ -119,6 +119,40 @@ public class Rollup {
                 trimmedSum(overdueFigures).toPlainString());
     }
 
+    /** A person's score, as the screen shows it. */
+    public record PersonScore(String name, long score) {
+    }
+
+    /** Each person's score on the sheet's today as the store holds it now, by id in list order, as the screen shows
+     *  it: the dues of their SETTLED claims that count, less 500.00 for each of their overdue claims that count,
+     *  divided by 100 and rounded half to even to a whole number. */
+    public Map<Long, PersonScore> scoresOf(String sheetId) {
+        Sheet sheet = sheets.findById(sheetId).orElse(null);
+        LocalDate today = sheet == null ? null : sheet.getToday();
+        RateChain sheetRates = rates.of(sheetId);
+        List<Claim> sheetClaims = claims.findBySheetIdOrderByListedDescIdDesc(sheetId);
+        Map<Long, PersonScore> byPerson = new LinkedHashMap<>();
+        for (Person person : people.findBySheetIdOrderByPositionAscIdAsc(sheetId)) {
+            List<Claim> counting = sheetClaims.stream()
+                    .filter(c -> c.getPersonId().equals(person.getId()) && person.counts(c, today)
+                            && !c.isDeferredOn(today))
+                    .toList();
+            BigDecimal settled = counting.stream()
+                    .filter(c -> c.getStatus() == ClaimStatus.SETTLED)
+                    .map(c -> dueOf(c, person.gradeOn(c.getDate()), sheetRates, sheet, sheetClaims))
+                    .filter(Objects::nonNull)
+                    .reduce(BigDecimal.ZERO.setScale(2), BigDecimal::add);
+            long overdue = counting.stream()
+                    .filter(c -> today != null && ClaimService.isOverdue(c, sheet, person.gradeOn(c.getDate())))
+                    .count();
+            BigDecimal score = settled.subtract(BigDecimal.valueOf(500 * overdue))
+                    .divide(BigDecimal.valueOf(100))
+                    .setScale(0, RoundingMode.HALF_EVEN);
+            byPerson.put(person.getId(), new PersonScore(person.getName(), score.longValueExact()));
+        }
+        return byPerson;
+    }
+
     /** The figures added up, leaving out the single highest and the single lowest when there are three or more. */
     static BigDecimal trimmedSum(List<BigDecimal> figures) {
         BigDecimal sum = figures.stream().reduce(BigDecimal.ZERO.setScale(2), BigDecimal::add);

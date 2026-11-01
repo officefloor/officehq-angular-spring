@@ -130,6 +130,11 @@ public class Sheet {
     @Column(name = "score_high")
     private Integer scoreHigh;
 
+    /** The sheet's score log switch: while on, a change of the sheet's today first records a SCORE line per person
+     *  with their score on the day being left. Not dated. */
+    @Column(name = "score_log", nullable = false)
+    private boolean scoreLog;
+
     /** The sheet's fiscal year start month, 1 to 12: a fiscal year runs twelve months from the first of it and is
      *  named FY by the calendar year it starts in. Not dated. */
     @Column(name = "fiscal_start_month", nullable = false)
@@ -194,6 +199,7 @@ public class Sheet {
         copy.reviewSla = reviewSla;
         copy.scoreMid = scoreMid;
         copy.scoreHigh = scoreHigh;
+        copy.scoreLog = scoreLog;
         copy.fiscalStartMonth = fiscalStartMonth;
         copy.pot = pot;
         copy.alertThreshold = alertThreshold;
@@ -439,6 +445,14 @@ public class Sheet {
 
     public void setScoreHigh(Integer scoreHigh) {
         this.scoreHigh = scoreHigh;
+    }
+
+    public boolean isScoreLog() {
+        return scoreLog;
+    }
+
+    public void setScoreLog(boolean scoreLog) {
+        this.scoreLog = scoreLog;
     }
 
     public int getFiscalStartMonth() {
