@@ -96,6 +96,10 @@ public class Sheet {
     @Column(name = "grace_days")
     private Integer graceDays;
 
+    /** Reminding a claim whose previous reminder was at least this many days before today escalates it (not dated); null means off. */
+    @Column(name = "escalate_after")
+    private Integer escalateAfter;
+
     /** The month (1 to 12) a fiscal year starts in (not dated); 1 unless set. */
     @Column(name = "fiscal_start_month", nullable = false)
     private int fiscalStartMonth = 1;
@@ -314,6 +318,10 @@ public class Sheet {
     public Integer getGraceDays() { return graceDays; }
 
     public void setGraceDays(Integer graceDays) { this.graceDays = graceDays; }
+
+    public Integer getEscalateAfter() { return escalateAfter; }
+
+    public void setEscalateAfter(Integer escalateAfter) { this.escalateAfter = escalateAfter; }
     public int getFiscalStartMonth() { return fiscalStartMonth; }
     public void setFiscalStartMonth(int fiscalStartMonth) { this.fiscalStartMonth = fiscalStartMonth; }
 

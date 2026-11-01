@@ -668,7 +668,9 @@ public class ClaimService {
 
     /**
      * Remind an OPEN or PENDING claim: a REMIND line is written and the claim is reminded on the sheet's
-     * today. Refused for a claim in any other status, or one already reminded on the sheet's today.
+     * today. Refused for a claim in any other status, or one already reminded on the sheet's today. When the
+     * sheet has an escalation gap and the previous reminder was at least that many days before today, an
+     * ESCALATE line follows, once per claim ever.
      */
     @Transactional
     public Claim remind(String sheetId, String user, Long id) {
@@ -679,9 +681,14 @@ public class ClaimService {
         LocalDate today = sheets.today(sheetId);
         if (today.equals(claim.getRemindedOn())) throw new ClaimRemindedException();
         Person person = people.findByIdAndSheetId(claim.getPersonId(), sheetId).orElseThrow(PersonNotFoundException::new);
+        Integer escalateAfter = settings.escalateAfter(sheetId);
+        boolean escalates = escalateAfter != null && !claim.isEscalated() && claim.getRemindedOn() != null
+                && !claim.getRemindedOn().plusDays(escalateAfter).isAfter(today);
         claim.remind(today);
+        if (escalates) claim.escalate();
         Claim saved = claims.saveAndFlush(claim);
         record("REMIND", sheetId, user, person, saved);
+        if (escalates) record("ESCALATE", sheetId, user, person, saved);
         rollup.recordChanges(sheetId, user, before);
         return saved;
     }

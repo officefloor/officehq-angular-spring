@@ -38,12 +38,14 @@ public class SettingController {
      * matrix, comma separated, for each action with any set (the rest keep the standing rule); the grace
      * days are a whole number of days, null when blank (off); the entry date is null when blank (off); the pot has two decimals, null when none;
      * the parent is the id of the sheet it names as its parent, null when none; the fiscal start month
-     * is the month (1 to 12) a fiscal year starts in; the alert threshold has two decimals, null when off.
+     * is the month (1 to 12) a fiscal year starts in; the alert threshold has two decimals, null when off;
+     * the escalate after is a whole number of days, null when blank (off).
      */
     public record SettingsView(String clerkLimit, String floor, int terms, String latePct, LocalDate policyDate,
             LocalDate periodNumberingFrom, List<RoleView> roles, Map<String, Integer> gradeTerms, String cap,
             Map<String, List<DatedView>> dated, Map<String, String> permissions, Integer graceDays,
-            LocalDate entryDate, String pot, String parent, int fiscalStartMonth, String alertThreshold) {}
+            LocalDate entryDate, String pot, String parent, int fiscalStartMonth, String alertThreshold,
+            Integer escalateAfter) {}
 
     /** A value recorded for a dated setting from a date on; null when none. */
     public record DatedView(LocalDate from, String value) {}
@@ -224,6 +226,14 @@ public class SettingController {
         }
     }
 
+    /** Escalate after: a whole number of days; blank or null: off. */
+    public record EscalateAfterRequest(@Pattern(regexp = "(\\d{1,4})?") String value) {
+
+        Integer daysValue() {
+            return value == null || value.isEmpty() ? null : Integer.valueOf(value);
+        }
+    }
+
     /** The fiscal year start month: 1 to 12. */
     public record FiscalStartMonthRequest(@NotNull @Pattern(regexp = "[1-9]|1[0-2]") String value) {
 
@@ -313,7 +323,8 @@ public class SettingController {
                 service.roles(sheetId).stream().map(RoleView::of).toList(), service.gradeTerms(sheetId),
                 text(service.cap(sheetId)), datedViews(service.dated(sheetId)), service.permissions(sheetId),
                 service.graceDays(sheetId), service.entryDate(sheetId), text(service.pot(sheetId)),
-                service.parent(sheetId), service.fiscalStartMonth(sheetId), text(service.alertThreshold(sheetId)));
+                service.parent(sheetId), service.fiscalStartMonth(sheetId), text(service.alertThreshold(sheetId)),
+                service.escalateAfter(sheetId));
     }
 
     @PutMapping("/settings/clerk-limit")
@@ -395,6 +406,15 @@ public class SettingController {
             @RequestHeader("X-User") @NotBlank @Size(max = 100) String user,
             @RequestBody @Valid GraceDaysRequest request) {
         service.setGraceDays(sheetId, user, request.daysValue());
+        return get(sheetId, user);
+    }
+
+    @PutMapping("/settings/escalate-after")
+    public SettingsView setEscalateAfter(
+            @PathVariable @Size(max = 100) @Pattern(regexp = "[A-Za-z0-9._-]+") String sheetId,
+            @RequestHeader("X-User") @NotBlank @Size(max = 100) String user,
+            @RequestBody @Valid EscalateAfterRequest request) {
+        service.setEscalateAfter(sheetId, user, request.daysValue());
         return get(sheetId, user);
     }
 

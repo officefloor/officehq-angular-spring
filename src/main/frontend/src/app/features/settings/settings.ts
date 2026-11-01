@@ -77,6 +77,8 @@ interface SettingsView {
   fiscalStartMonth: number;
   /** A person's due-total going above it is alerted, two decimals; null when blank: off. */
   alertThreshold: string | null;
+  /** Reminding a claim whose previous reminder was at least this many days before today escalates it; null when blank: off. */
+  escalateAfter: number | null;
 }
 
 /** A from-date field (yyyy-mm-dd) for a dated setting; blank: the sheet's today. */
@@ -91,7 +93,7 @@ const FROM = 'From (yyyy-mm-dd; blank: the sheet\'s today)';
 // from the claim form, the quick-add bar, a paste or a correction, takes it rather than the sheet's today), the cap (blank: none; a person's due-total is at most it), the grace days (blank: off; not dated; when the
 // sheet's today is changed, an open period whose to-date plus them is before it is closed), the grace days of each grade (blank: none; dated; a claim
 // whose person's grade on its date has them in force then is overdue, and charged late, only from its due-by plus them), the pot (blank: none;
-// not dated; split across each balanced pool's members as their cuts), the alert threshold (blank: off; not dated; a person whose due-total a change takes from at or below it to above it is alerted in the audit), the parent (blank: none; not dated; the id of a loaded sheet,
+// not dated; split across each balanced pool's members as their cuts), the alert threshold (blank: off; not dated; a person whose due-total a change takes from at or below it to above it is alerted in the audit), the escalate after (blank: off; not dated; reminding a claim whose previous reminder was at least that many days before the sheet's today escalates it, once per claim), the parent (blank: none; not dated; the id of a loaded sheet,
 // not this one nor one that has this one as an ancestor, whose rates, then its parent's, up to three levels up, a grade with no
 // rate in force on a date takes), and the role given to each user name. Saving stores the settings whose
 // field was changed since the last save; the proof threshold of each grade (blank: none, the sheet's applies; dated) overrides the sheet's for a
@@ -148,6 +150,10 @@ const FROM = 'From (yyyy-mm-dd; blank: the sheet\'s today)';
         <input id="setting-grace-days" data-testid="setting-grace-days" formControlName="graceDays" inputmode="numeric"
                (keydown.delete)="form.controls.graceDays.markAsDirty()"
                (keydown.backspace)="form.controls.graceDays.markAsDirty()" />
+        <label for="setting-escalate-after">Escalate after (days since a claim's previous reminder that escalate it when reminded; blank: off)</label>
+        <input id="setting-escalate-after" data-testid="setting-escalate-after" formControlName="escalateAfter" inputmode="numeric"
+               (keydown.delete)="form.controls.escalateAfter.markAsDirty()"
+               (keydown.backspace)="form.controls.escalateAfter.markAsDirty()" />
         <label for="setting-fiscal-start-month">Fiscal year start month (1 to 12)</label>
         <input id="setting-fiscal-start-month" data-testid="setting-fiscal-start-month" formControlName="fiscalStartMonth"
                inputmode="numeric"
@@ -244,6 +250,7 @@ const FROM = 'From (yyyy-mm-dd; blank: the sheet\'s today)';
       <p>Policy date now: <span data-testid="setting-policy-date-current">{{ session.policyDate() ?? '' }}</span></p>
       <p>Period numbering from now: <span data-testid="setting-period-numbering-from-current">{{ periodNumberingFrom() ?? '' }}</span></p>
       <p>Grace days now: <span data-testid="setting-grace-days-current">{{ graceDays() ?? '' }}</span></p>
+      <p>Escalate after now: <span data-testid="setting-escalate-after-current">{{ escalateAfter() ?? '' }}</span></p>
       <p>Fiscal year start month now: <span data-testid="setting-fiscal-start-month-current">{{ session.fiscalStartMonth() }}</span></p>
       @for (g of grades; track g) {
         <p>Grace days for grade {{ g }} now (blank: none):
@@ -357,6 +364,7 @@ export class Settings {
   });
   protected readonly periodNumberingFrom = signal<string | null>(null);
   protected readonly graceDays = signal<number | null>(null);
+  protected readonly escalateAfter = signal<number | null>(null);
   protected readonly entryDate = signal<string | null>(null);
   protected readonly pot = signal<string | null>(null);
   protected readonly alertThreshold = signal<string | null>(null);
@@ -375,6 +383,7 @@ export class Settings {
     policyDate: new FormControl('', { nonNullable: true }),
     periodNumberingFrom: new FormControl('', { nonNullable: true }),
     graceDays: new FormControl('', { nonNullable: true }),
+    escalateAfter: new FormControl('', { nonNullable: true }),
     fiscalStartMonth: new FormControl('', { nonNullable: true }),
     entryDate: new FormControl('', { nonNullable: true }),
     cap: new FormControl('', { nonNullable: true }),
@@ -459,6 +468,7 @@ export class Settings {
       this.session.loads();
       this.periodNumberingFrom.set(null);
       this.graceDays.set(null);
+      this.escalateAfter.set(null);
       this.session.fiscalStartMonth.set(1);
       this.entryDate.set(null);
       this.pot.set(null);
@@ -500,6 +510,7 @@ export class Settings {
   private show(view: SettingsView): void {
     this.periodNumberingFrom.set(view.periodNumberingFrom);
     this.graceDays.set(view.graceDays);
+    this.escalateAfter.set(view.escalateAfter);
     this.session.fiscalStartMonth.set(view.fiscalStartMonth);
     this.entryDate.set(view.entryDate);
     this.pot.set(view.pot);
@@ -516,7 +527,7 @@ export class Settings {
     this.error.set('');
     const sheet = this.session.sheetId();
     if (!sheet) return;
-    const { clerkLimit, floor, terms, latePct, policyDate, periodNumberingFrom, graceDays, fiscalStartMonth, entryDate, cap, pot, alertThreshold, parent, proofThreshold, noteThreshold, reviewThreshold, rounding } = this.form.controls;
+    const { clerkLimit, floor, terms, latePct, policyDate, periodNumberingFrom, graceDays, escalateAfter, fiscalStartMonth, entryDate, cap, pot, alertThreshold, parent, proofThreshold, noteThreshold, reviewThreshold, rounding } = this.form.controls;
     const { clerkLimitFrom, floorFrom, termsFrom, latePctFrom, capFrom, proofThresholdFrom, noteThresholdFrom, reviewThresholdFrom, roundingFrom } = this.form.getRawValue();
     const value = clerkLimit.value.trim();
     const floorValue = floor.value.trim();
@@ -525,6 +536,7 @@ export class Settings {
     const policyDateValue = policyDate.value.trim();
     const periodNumberingFromValue = periodNumberingFrom.value.trim();
     const graceDaysValue = graceDays.value.trim();
+    const escalateAfterValue = escalateAfter.value.trim();
     const fiscalStartMonthValue = fiscalStartMonth.value.trim();
     const entryDateValue = entryDate.value.trim();
     const capValue = cap.value.trim();
@@ -580,6 +592,10 @@ export class Settings {
     }
     if (graceDays.dirty && graceDaysValue && !/^\d{1,4}$/.test(graceDaysValue)) {
       this.error.set('Enter grace days as a whole number of days, 0 or more, or leave it blank for off.');
+      return;
+    }
+    if (escalateAfter.dirty && escalateAfterValue && !/^\d{1,4}$/.test(escalateAfterValue)) {
+      this.error.set('Enter escalate after as a whole number of days, 0 or more, or leave it blank for off.');
       return;
     }
     if (fiscalStartMonth.dirty && !/^([1-9]|1[0-2])$/.test(fiscalStartMonthValue)) {
@@ -697,6 +713,14 @@ export class Settings {
             { headers: this.headers() }),
         );
         graceDays.markAsPristine();
+        if (this.session.sheetId() === sheet) this.show(view);
+      }
+      if (escalateAfter.dirty) {
+        const view = await firstValueFrom(
+          this.http.put<SettingsView>(`${this.base(sheet)}/settings/escalate-after`, { value: escalateAfterValue || null },
+            { headers: this.headers() }),
+        );
+        escalateAfter.markAsPristine();
         if (this.session.sheetId() === sheet) this.show(view);
       }
       if (fiscalStartMonth.dirty) {
