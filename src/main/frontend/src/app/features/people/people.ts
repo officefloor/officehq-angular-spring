@@ -223,6 +223,17 @@ function trimmedSum(figures: number[]): number {
           <p role="alert" class="error" data-testid="person-form-error">{{ error() }}</p>
         }
       </form>
+      <form [formGroup]="importForm" (ngSubmit)="importPeople()" aria-label="Import people">
+        <label for="import-people">Import people (name,grade,terms,contact per line; terms and contact may be left out)</label>
+        <textarea id="import-people" data-testid="import-people" formControlName="text" rows="4"></textarea>
+        <button type="submit" data-testid="import-submit">Import</button>
+        @if (importAdded() !== null) {
+          <p role="status">Added <span data-testid="import-added">{{ importAdded() }}</span></p>
+        }
+        @if (importError()) {
+          <p role="alert" class="error" data-testid="import-error">{{ importError() }}</p>
+        }
+      </form>
       <form [formGroup]="quickForm" (ngSubmit)="quickAdd()" aria-label="Quick-add a draft claim">
         <label for="quick-name">Name</label>
         <input id="quick-name" data-testid="quick-name" formControlName="name" />
@@ -847,6 +858,15 @@ export class People {
     amount: new FormControl('', { nonNullable: true }),
   });
 
+  /** An import is under way; another one waits for its answer rather than storing twice. */
+  private importing = false;
+  protected readonly importError = signal('');
+  /** How many people the last import added; null before one, and while one runs. */
+  protected readonly importAdded = signal<number | null>(null);
+  protected readonly importForm = new FormGroup({
+    text: new FormControl('', { nonNullable: true }),
+  });
+
   /** A paste is under way; another one waits for its answer rather than storing twice. */
   private pasting = false;
   protected readonly pasteError = signal('');
@@ -858,6 +878,7 @@ export class People {
 
   constructor() {
     this.pasteForm.valueChanges.subscribe(() => this.pasteError.set(''));
+    this.importForm.valueChanges.subscribe(() => this.importError.set(''));
     this.form.valueChanges.subscribe(() => this.error.set(''));
     this.quickForm.valueChanges.subscribe(() => this.quickError.set(''));
     this.bulkGradeForm.valueChanges.subscribe(() => this.personError.set(null));
@@ -890,6 +911,9 @@ export class People {
       this.pasteForm.reset({ text: '' }, { emitEvent: false });
       this.pasteError.set('');
       this.pasteAdded.set(null);
+      this.importForm.reset({ text: '' }, { emitEvent: false });
+      this.importError.set('');
+      this.importAdded.set(null);
       if (id) void this.load(id);
     });
     // the ancestors' rates, read again whenever the sheet is loaded or its parent changes
@@ -1689,6 +1713,43 @@ export class People {
       );
     } finally {
       this.pasting = false;
+    }
+  }
+
+  /**
+   * Add a person per pasted line of name,grade,terms,contact, in order, each as the person form adds
+   * one. Every line is checked first; if any is refused, none is added.
+   */
+  protected async importPeople(): Promise<void> {
+    if (this.importing) return;
+    this.importError.set('');
+    this.importAdded.set(null);
+    const sheet = this.session.sheetId();
+    if (!sheet) return;
+    const text = this.importForm.getRawValue().text;
+    if (!text.trim()) {
+      this.importError.set('Paste at least one line of name,grade,terms,contact.');
+      return;
+    }
+    this.importing = true;
+    try {
+      const done = await firstValueFrom(
+        this.http.post<{ added: number; people: Person[] }>(
+          `${this.url(sheet)}/import`, { text }, { headers: this.headers() }),
+      );
+      if (this.session.sheetId() !== sheet) return;
+      this.people.update((list) => [...list, ...done.people]);
+      this.importAdded.set(done.added);
+      this.importForm.reset({ text: '' }, { emitEvent: false });
+    } catch (e) {
+      if (this.session.sheetId() !== sheet) return;
+      this.importError.set(
+        e instanceof HttpErrorResponse && e.status === 409
+          ? 'A name or contact is already in use on this sheet, or given twice; nothing was imported.'
+          : 'Every line must be name,grade,terms,contact as the person form takes them; nothing was imported.',
+      );
+    } finally {
+      this.importing = false;
     }
   }
 
