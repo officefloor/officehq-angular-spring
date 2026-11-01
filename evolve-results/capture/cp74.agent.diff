@@ -1,0 +1,669 @@
+diff --git a/src/main/frontend/src/app/app.config.ts b/src/main/frontend/src/app/app.config.ts
+index f904378d2..c1d67211a 100644
+--- a/src/main/frontend/src/app/app.config.ts
++++ b/src/main/frontend/src/app/app.config.ts
+@@ -1,9 +1,10 @@
+ import { ApplicationConfig, provideBrowserGlobalErrorListeners } from '@angular/core';
+-import { provideHttpClient } from '@angular/common/http';
++import { provideHttpClient, withInterceptors } from '@angular/common/http';
+ import { provideRouter } from '@angular/router';
+ import { routes } from './app.routes';
++import { asOfInterceptor } from './core/as-of';
+ 
+-// The app's wiring: the router and the HTTP client.
++// The app's wiring: the router and the HTTP client, whose calls carry the user's as-of date.
+ export const appConfig: ApplicationConfig = {
+-  providers: [provideBrowserGlobalErrorListeners(), provideRouter(routes), provideHttpClient()],
++  providers: [provideBrowserGlobalErrorListeners(), provideRouter(routes), provideHttpClient(withInterceptors([asOfInterceptor]))],
+ };
+diff --git a/src/main/frontend/src/app/core/as-of.ts b/src/main/frontend/src/app/core/as-of.ts
+new file mode 100644
+index 000000000..2fe742ee9
+--- /dev/null
++++ b/src/main/frontend/src/app/core/as-of.ts
+@@ -0,0 +1,13 @@
++import { HttpInterceptorFn } from '@angular/common/http';
++import { inject } from '@angular/core';
++import { Session } from './session';
++
++/**
++ * While the signed-in user has an as-of date set, every call to a sheet carries it: the server shows
++ * the sheet as it stood at the end of that date and refuses every change.
++ */
++export const asOfInterceptor: HttpInterceptorFn = (req, next) => {
++  const asOf = inject(Session).asOf();
++  if (asOf === null || !req.url.startsWith('/api/sheets/')) return next(req);
++  return next(req.clone({ setHeaders: { 'X-As-Of': asOf } }));
++};
+diff --git a/src/main/frontend/src/app/core/session.ts b/src/main/frontend/src/app/core/session.ts
+index b2c3a6453..b3491818b 100644
+--- a/src/main/frontend/src/app/core/session.ts
++++ b/src/main/frontend/src/app/core/session.ts
+@@ -91,6 +91,12 @@ export class Session {
+ 
+   /** Bumped on every sheet load, so features re-read the sheet from the store even for the same id. */
+   readonly loads = signal(0);
++  /**
++   * The as-of date (yyyy-mm-dd) the signed-in user views the sheet at, or null: while it is set every
++   * figure is shown as it stood at the end of that date, with it as the sheet's today, and every change
++   * is refused. It belongs to this screen, and is left as it is by loading a sheet.
++   */
++  readonly asOf = signal<string | null>(null);
+   /** Whether retired people are listed: off when the screen opens, left as it is by loading a sheet. */
+   readonly showRetired = signal(false);
+ 
+@@ -115,6 +121,14 @@ export class Session {
+     this.loads.update((n) => n + 1);
+   }
+ 
++  /** View the active sheet as of a date (yyyy-mm-dd), or as it is now (null): it is loaded again. */
++  async setAsOf(asOf: string | null): Promise<void> {
++    const id = this.sheetId();
++    if (!id) throw new Error('no sheet loaded');
++    this.asOf.set(asOf);
++    await this.loadSheet(id);
++  }
++
+   async setToday(today: string): Promise<void> {
+     const user = this.user();
+     const id = this.sheetId();
+diff --git a/src/main/frontend/src/app/features/home/home.ts b/src/main/frontend/src/app/features/home/home.ts
+index 9bbe4dd7c..779771e41 100644
+--- a/src/main/frontend/src/app/features/home/home.ts
++++ b/src/main/frontend/src/app/features/home/home.ts
+@@ -27,6 +27,13 @@ import { Settings } from '../settings/settings';
+           <input id="sheet-today" type="date" data-testid="sheet-today-input" formControlName="today" />
+           <button type="submit" data-testid="sheet-today-save">Set today</button>
+         </form>
++        <form [formGroup]="asOfForm" (ngSubmit)="setAsOf()" aria-label="As of">
++          <label for="asof-date">View as of</label>
++          <input id="asof-date" type="date" data-testid="asof-date" formControlName="date" />
++          <button type="submit" data-testid="asof-set">Set as of</button>
++          <button type="button" data-testid="asof-clear" (click)="clearAsOf()">Clear as of</button>
++        </form>
++        <p>As of: <strong data-testid="sheet-asof">{{ session.asOf() ?? '' }}</strong></p>
+         <p>Archived: <strong data-testid="sheet-archived">{{ session.archived() ? 'yes' : 'no' }}</strong></p>
+         <button type="button" data-testid="sheet-archive" (click)="archive()">Archive sheet</button>
+         <app-settings />
+@@ -49,6 +56,7 @@ export class Home {
+   protected readonly signinForm = new FormGroup({ name: new FormControl('', { nonNullable: true }) });
+   protected readonly sheetForm = new FormGroup({ id: new FormControl('', { nonNullable: true }) });
+   protected readonly todayForm = new FormGroup({ today: new FormControl('', { nonNullable: true }) });
++  protected readonly asOfForm = new FormGroup({ date: new FormControl('', { nonNullable: true }) });
+   protected readonly signinError = signal('');
+   protected readonly sheetError = signal('');
+   /** The forms with a submit under way; another submit of one waits for its answer. */
+@@ -58,6 +66,7 @@ export class Home {
+     this.signinForm.valueChanges.subscribe(() => this.signinError.set(''));
+     this.sheetForm.valueChanges.subscribe(() => this.sheetError.set(''));
+     this.todayForm.valueChanges.subscribe(() => this.sheetError.set(''));
++    this.asOfForm.valueChanges.subscribe(() => this.sheetError.set(''));
+   }
+ 
+   protected async signIn(): Promise<void> {
+@@ -114,6 +123,34 @@ export class Home {
+     }
+   }
+ 
++  protected async setAsOf(): Promise<void> {
++    if (this.submitting.has('asOf')) return;
++    this.sheetError.set('');
++    const date = this.asOfForm.controls.date.value.trim();
++    if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) {
++      this.sheetError.set('Enter a date.');
++      return;
++    }
++    await this.changeAsOf(date);
++  }
++
++  protected async clearAsOf(): Promise<void> {
++    if (this.submitting.has('asOf')) return;
++    this.sheetError.set('');
++    await this.changeAsOf(null);
++  }
++
++  private async changeAsOf(date: string | null): Promise<void> {
++    this.submitting.add('asOf');
++    try {
++      await this.session.setAsOf(date);
++    } catch {
++      this.sheetError.set('Could not show the sheet as of that date.');
++    } finally {
++      this.submitting.delete('asOf');
++    }
++  }
++
+   protected async archive(): Promise<void> {
+     if (this.submitting.has('archive')) return;
+     this.sheetError.set('');
+diff --git a/src/main/frontend/src/app/features/people/people.ts b/src/main/frontend/src/app/features/people/people.ts
+index 0993466cb..e8b75fc37 100644
+--- a/src/main/frontend/src/app/features/people/people.ts
++++ b/src/main/frontend/src/app/features/people/people.ts
+@@ -771,7 +771,8 @@ export class People {
+ 
+   /**
+    * Take a statement for the person, binding their counting claims to their dues now, or as they stood
+-   * at the end of the date entered (blank: now). The date is cleared once the statement is taken.
++   * at the end of the date entered (blank: now). The date is cleared once the statement is taken or refused,
++   * so a refused date never carries into the next statement.
+    */
+   protected async takeStatement(p: Person, asOfInput: HTMLInputElement): Promise<void> {
+     this.personError.set(null);
+@@ -793,7 +794,9 @@ export class People {
+       const byId = new Map(taken.claims.map((c) => [c.id, c]));
+       this.claims.update((list) => list.map((c) => byId.get(c.id) ?? c));
+     } catch {
+-      if (this.session.sheetId() === sheet) this.personError.set({ id: p.id, message: 'Could not take a statement for ' + p.name + '.' });
++      if (this.session.sheetId() !== sheet) return;
++      asOfInput.value = '';
++      this.personError.set({ id: p.id, message: 'Could not take a statement for ' + p.name + '.' });
+     }
+   }
+ 
+diff --git a/src/main/java/net/officefloor/hq/app/asof/AsOfGuard.java b/src/main/java/net/officefloor/hq/app/asof/AsOfGuard.java
+new file mode 100644
+index 000000000..21aa64d2b
+--- /dev/null
++++ b/src/main/java/net/officefloor/hq/app/asof/AsOfGuard.java
+@@ -0,0 +1,114 @@
++package net.officefloor.hq.app.asof;
++
++import jakarta.servlet.http.HttpServletRequest;
++import jakarta.servlet.http.HttpServletResponse;
++import java.time.LocalDate;
++import java.time.format.DateTimeParseException;
++import java.util.Map;
++import java.util.concurrent.ConcurrentHashMap;
++import java.util.concurrent.locks.ReentrantLock;
++import org.springframework.context.annotation.Configuration;
++import org.springframework.http.HttpMethod;
++import org.springframework.transaction.PlatformTransactionManager;
++import org.springframework.transaction.TransactionStatus;
++import org.springframework.transaction.support.DefaultTransactionDefinition;
++import org.springframework.web.method.HandlerMethod;
++import org.springframework.web.servlet.HandlerInterceptor;
++import org.springframework.web.servlet.HandlerMapping;
++import org.springframework.web.servlet.config.annotation.InterceptorRegistry;
++import org.springframework.web.servlet.config.annotation.WebMvcConfigurer;
++
++/**
++ * The as-of view, which belongs to the user's screen: a request to a sheet carrying an
++ * {@value #HEADER} date is shown as the sheet stood at the end of that date, and a change asked
++ * with one is refused before anything is written. Every other change made to a sheet that has gone
++ * through is marked for {@link SheetHistoryFilter} to record in its {@link SheetHistory}.
++ *
++ * <p>A read as of a date runs in a transaction that puts the sheet back as it stood then, with that
++ * date as its today, and is rolled back once the read is answered, so it changes nothing and audits
++ * nothing.
++ */
++@Configuration
++public class AsOfGuard implements WebMvcConfigurer, HandlerInterceptor {
++
++    /** The request header carrying the user's as-of date (yyyy-mm-dd). */
++    public static final String HEADER = "X-As-Of";
++
++    private static final String VIEW = AsOfGuard.class.getName() + ".view";
++
++    /** A read as of a date under way: its transaction and the lock it holds on its sheet. */
++    private record View(TransactionStatus transaction, ReentrantLock lock) {}
++
++    private final SheetHistory history;
++    private final PlatformTransactionManager transactions;
++    /** One as-of read of a sheet at a time: each puts back the same rows. */
++    private final Map<String, ReentrantLock> locks = new ConcurrentHashMap<>();
++
++    public AsOfGuard(SheetHistory history, PlatformTransactionManager transactions) {
++        this.history = history;
++        this.transactions = transactions;
++    }
++
++    @Override
++    public void addInterceptors(InterceptorRegistry registry) {
++        registry.addInterceptor(this).addPathPatterns("/api/sheets/*/**");
++    }
++
++    @Override
++    public boolean preHandle(HttpServletRequest request, HttpServletResponse response, Object handler) {
++        if (!(handler instanceof HandlerMethod method)) return true;
++        String sheetId = sheetId(request);
++        String header = request.getHeader(HEADER);
++        if (sheetId == null || header == null || header.isBlank()) return true;
++        if (!isRead(request) && !method.hasMethodAnnotation(AsOfRead.class)) throw new AsOfRefusedException();
++        LocalDate asOf;
++        try {
++            asOf = LocalDate.parse(header.trim());
++        } catch (DateTimeParseException e) {
++            throw new AsOfRefusedException();
++        }
++        // a sheet never started is started as usual
++        if (!history.exists(sheetId)) return true;
++        ReentrantLock lock = locks.computeIfAbsent(sheetId, id -> new ReentrantLock());
++        lock.lock();
++        TransactionStatus transaction = null;
++        try {
++            transaction = transactions.getTransaction(new DefaultTransactionDefinition());
++            history.restore(sheetId, asOf);
++        } catch (RuntimeException e) {
++            if (transaction != null) transactions.rollback(transaction);
++            lock.unlock();
++            throw e;
++        }
++        request.setAttribute(VIEW, new View(transaction, lock));
++        return true;
++    }
++
++    @Override
++    public void afterCompletion(HttpServletRequest request, HttpServletResponse response, Object handler, Exception ex) {
++        if (request.getAttribute(VIEW) instanceof View view) {
++            request.removeAttribute(VIEW);
++            try {
++                transactions.rollback(view.transaction());
++            } finally {
++                view.lock().unlock();
++            }
++            return;
++        }
++        if (isRead(request) || ex != null || response.getStatus() >= 400) return;
++        String sheetId = sheetId(request);
++        if (sheetId != null) request.setAttribute(SheetHistoryFilter.CHANGED, sheetId);
++    }
++
++    private static boolean isRead(HttpServletRequest request) {
++        return HttpMethod.GET.matches(request.getMethod()) || HttpMethod.HEAD.matches(request.getMethod());
++    }
++
++    /** The sheet the request is for: its sheetId path variable, or the id of a request to the sheet itself. */
++    private static String sheetId(HttpServletRequest request) {
++        @SuppressWarnings("unchecked")
++        Map<String, String> vars = (Map<String, String>) request.getAttribute(HandlerMapping.URI_TEMPLATE_VARIABLES_ATTRIBUTE);
++        if (vars == null) return null;
++        return vars.getOrDefault("sheetId", vars.get("id"));
++    }
++}
+diff --git a/src/main/java/net/officefloor/hq/app/asof/AsOfRead.java b/src/main/java/net/officefloor/hq/app/asof/AsOfRead.java
+new file mode 100644
+index 000000000..4f51598e5
+--- /dev/null
++++ b/src/main/java/net/officefloor/hq/app/asof/AsOfRead.java
+@@ -0,0 +1,14 @@
++package net.officefloor.hq.app.asof;
++
++import java.lang.annotation.ElementType;
++import java.lang.annotation.Retention;
++import java.lang.annotation.RetentionPolicy;
++import java.lang.annotation.Target;
++
++/**
++ * A request handler that only reads the sheet although it is not a GET (loading a sheet): it is shown
++ * as of the user's as-of date like any read, not refused like a change.
++ */
++@Target(ElementType.METHOD)
++@Retention(RetentionPolicy.RUNTIME)
++public @interface AsOfRead {}
+diff --git a/src/main/java/net/officefloor/hq/app/asof/AsOfRefusedException.java b/src/main/java/net/officefloor/hq/app/asof/AsOfRefusedException.java
+new file mode 100644
+index 000000000..f07385919
+--- /dev/null
++++ b/src/main/java/net/officefloor/hq/app/asof/AsOfRefusedException.java
+@@ -0,0 +1,8 @@
++package net.officefloor.hq.app.asof;
++
++import org.springframework.http.HttpStatus;
++import org.springframework.web.bind.annotation.ResponseStatus;
++
++/** While a user views a sheet as of a date, they can change nothing on it. */
++@ResponseStatus(HttpStatus.CONFLICT)
++public class AsOfRefusedException extends RuntimeException {}
+diff --git a/src/main/java/net/officefloor/hq/app/asof/SheetHistory.java b/src/main/java/net/officefloor/hq/app/asof/SheetHistory.java
+new file mode 100644
+index 000000000..cd2ca6396
+--- /dev/null
++++ b/src/main/java/net/officefloor/hq/app/asof/SheetHistory.java
+@@ -0,0 +1,257 @@
++package net.officefloor.hq.app.asof;
++
++import java.io.ByteArrayInputStream;
++import java.io.ByteArrayOutputStream;
++import java.io.IOException;
++import java.io.ObjectInputStream;
++import java.io.ObjectOutputStream;
++import java.io.Serializable;
++import java.io.UncheckedIOException;
++import java.sql.DatabaseMetaData;
++import java.sql.Date;
++import java.sql.ResultSet;
++import java.time.LocalDate;
++import java.util.ArrayList;
++import java.util.Arrays;
++import java.util.Collections;
++import java.util.HashMap;
++import java.util.HashSet;
++import java.util.LinkedHashMap;
++import java.util.List;
++import java.util.Map;
++import java.util.Set;
++import java.util.TreeMap;
++import java.util.TreeSet;
++import javax.sql.DataSource;
++import org.springframework.jdbc.core.ConnectionCallback;
++import org.springframework.jdbc.core.JdbcTemplate;
++import org.springframework.stereotype.Service;
++import org.springframework.transaction.annotation.Transactional;
++
++/**
++ * What each sheet held after each change to it, so it can be shown as it stood at the end of a date.
++ * A snapshot is every row the sheet owns in every table (the sheet's own row, the rows carrying its
++ * id, and the rows hanging off those by a reference), with the sheet's today once the change was
++ * made. Any table added later is covered the same way, without listing it here.
++ */
++@Service
++public class SheetHistory {
++
++    private static final String ROOT = "SHEET";
++    /** Tables that are not the sheet's data: the schema's history and this history itself. */
++    private static final Set<String> NOT_SHEET_DATA = Set.of("FLYWAY_SCHEMA_HISTORY", "SHEET_SNAPSHOT");
++
++    /** A table the sheet owns rows of: its columns and the condition (one parameter, the sheet id) selecting them. */
++    private record Owned(String name, List<String> columns, String owns) {}
++
++    /** One table's rows in a snapshot. */
++    private record TableRows(String name, String[] columns, List<Object[]> rows) implements Serializable {}
++
++    private final JdbcTemplate jdbc;
++    /** The owned tables, each after every table it references. */
++    private volatile List<Owned> tables;
++
++    public SheetHistory(DataSource dataSource) {
++        this.jdbc = new JdbcTemplate(dataSource);
++    }
++
++    /** Whether the sheet has been started. */
++    @Transactional(readOnly = true)
++    public boolean exists(String sheetId) {
++        Integer n = jdbc.queryForObject("SELECT COUNT(*) FROM sheet WHERE id = ?", Integer.class, sheetId);
++        return n != null && n > 0;
++    }
++
++    /**
++     * Record what the sheet holds now, with its today, unless that is what it held after its last
++     * change.
++     */
++    @Transactional
++    public void capture(String sheetId) {
++        List<Date> today = jdbc.queryForList("SELECT today FROM sheet WHERE id = ?", Date.class, sheetId);
++        if (today.isEmpty()) return;
++        byte[] data = serialize(read(sheetId));
++        List<byte[]> last = jdbc.query("SELECT data FROM sheet_snapshot WHERE sheet_id = ? ORDER BY id DESC LIMIT 1",
++                (rs, i) -> rs.getBytes(1), sheetId);
++        if (!last.isEmpty() && Arrays.equals(last.get(0), data)) return;
++        // the sheet as it was started stands for every date before its first change
++        Date takenOn = last.isEmpty() ? null : today.get(0);
++        jdbc.update("INSERT INTO sheet_snapshot (sheet_id, taken_on, data) VALUES (?, ?, ?)", sheetId, takenOn, data);
++    }
++
++    /**
++     * Put the sheet back, in the current transaction, as it stood at the end of the date: as the last
++     * change made while its today was on or before the date left it (as it was started, when there was
++     * none), with the date as its today. The caller rolls the transaction back once it has read it.
++     */
++    @Transactional
++    public void restore(String sheetId, LocalDate asOf) {
++        List<byte[]> found = jdbc.query("SELECT data FROM sheet_snapshot WHERE sheet_id = ? AND taken_on <= ?"
++                + " ORDER BY id DESC LIMIT 1", (rs, i) -> rs.getBytes(1), sheetId, Date.valueOf(asOf));
++        if (found.isEmpty()) {
++            found = jdbc.query("SELECT data FROM sheet_snapshot WHERE sheet_id = ? ORDER BY id LIMIT 1",
++                    (rs, i) -> rs.getBytes(1), sheetId);
++        }
++        if (!found.isEmpty()) write(sheetId, deserialize(found.get(0)));
++        jdbc.update("UPDATE sheet SET today = ? WHERE id = ?", Date.valueOf(asOf), sheetId);
++    }
++
++    private List<TableRows> read(String sheetId) {
++        List<TableRows> snapshot = new ArrayList<>();
++        for (Owned t : tables()) {
++            String cols = String.join(", ", t.columns().stream().map(SheetHistory::quote).toList());
++            StringBuilder order = new StringBuilder();
++            for (int i = 1; i <= t.columns().size(); i++) order.append(i == 1 ? "" : ", ").append(i);
++            List<Object[]> rows = jdbc.query("SELECT " + cols + " FROM " + quote(t.name()) + " WHERE " + t.owns()
++                    + " ORDER BY " + order, (rs, i) -> {
++                        Object[] row = new Object[t.columns().size()];
++                        for (int c = 0; c < row.length; c++) row[c] = rs.getObject(c + 1);
++                        return row;
++                    }, sheetId);
++            snapshot.add(new TableRows(t.name(), t.columns().toArray(String[]::new), rows));
++        }
++        return snapshot;
++    }
++
++    private void write(String sheetId, List<TableRows> snapshot) {
++        Map<String, TableRows> byName = new HashMap<>();
++        for (TableRows t : snapshot) byName.put(t.name(), t);
++        List<Owned> owned = tables();
++        for (int i = owned.size() - 1; i >= 0; i--) {
++            Owned t = owned.get(i);
++            if (!t.name().equals(ROOT)) jdbc.update("DELETE FROM " + quote(t.name()) + " WHERE " + t.owns(), sheetId);
++        }
++        for (Owned t : owned) {
++            TableRows rows = byName.get(t.name());
++            if (rows == null || rows.rows().isEmpty()) continue;
++            List<String> cols = Arrays.stream(rows.columns()).filter(t.columns()::contains).toList();
++            int[] at = cols.stream().mapToInt(c -> Arrays.asList(rows.columns()).indexOf(c)).toArray();
++            if (t.name().equals(ROOT)) {
++                List<String> set = cols.stream().filter(c -> !c.equals("ID")).toList();
++                String sql = "UPDATE " + quote(ROOT) + " SET "
++                        + String.join(", ", set.stream().map(c -> quote(c) + " = ?").toList()) + " WHERE ID = ?";
++                for (Object[] row : rows.rows()) {
++                    List<Object> args = new ArrayList<>();
++                    for (int k = 0; k < cols.size(); k++) if (!cols.get(k).equals("ID")) args.add(row[at[k]]);
++                    args.add(sheetId);
++                    jdbc.update(sql, args.toArray());
++                }
++            } else {
++                String sql = "INSERT INTO " + quote(t.name()) + " ("
++                        + String.join(", ", cols.stream().map(SheetHistory::quote).toList()) + ") VALUES ("
++                        + String.join(", ", Collections.nCopies(cols.size(), "?")) + ")";
++                List<Object[]> args = new ArrayList<>();
++                for (Object[] row : rows.rows()) {
++                    Object[] values = new Object[at.length];
++                    for (int k = 0; k < at.length; k++) values[k] = row[at[k]];
++                    args.add(values);
++                }
++                jdbc.batchUpdate(sql, args);
++            }
++        }
++    }
++
++    /** The tables the sheets own rows of, read from the schema once. */
++    private List<Owned> tables() {
++        List<Owned> found = tables;
++        if (found == null) {
++            found = jdbc.execute((ConnectionCallback<List<Owned>>) con -> discover(con.getMetaData()));
++            tables = found;
++        }
++        return found;
++    }
++
++    private static List<Owned> discover(DatabaseMetaData meta) throws java.sql.SQLException {
++        String schema = "PUBLIC";
++        Map<String, List<String>> columns = new TreeMap<>();
++        try (ResultSet rs = meta.getTables(null, schema, "%", null)) {
++            while (rs.next()) {
++                String type = rs.getString("TABLE_TYPE");
++                String name = rs.getString("TABLE_NAME");
++                if (type != null && type.contains("TABLE") && !NOT_SHEET_DATA.contains(name)) columns.put(name, new ArrayList<>());
++            }
++        }
++        for (Map.Entry<String, List<String>> e : columns.entrySet()) {
++            try (ResultSet rs = meta.getColumns(null, schema, e.getKey(), "%")) {
++                Map<Integer, String> ordered = new TreeMap<>();
++                while (rs.next()) ordered.put(rs.getInt("ORDINAL_POSITION"), rs.getString("COLUMN_NAME"));
++                e.getValue().addAll(ordered.values());
++            }
++        }
++        // each table's references: referencing column -> referenced table and column
++        Map<String, Map<String, String[]>> refs = new HashMap<>();
++        for (String table : columns.keySet()) {
++            Map<String, String[]> to = new LinkedHashMap<>();
++            try (ResultSet rs = meta.getImportedKeys(null, schema, table)) {
++                while (rs.next()) {
++                    String parent = rs.getString("PKTABLE_NAME");
++                    if (!parent.equals(table) && columns.containsKey(parent)) {
++                        to.put(rs.getString("FKCOLUMN_NAME"), new String[] {parent, rs.getString("PKCOLUMN_NAME")});
++                    }
++                }
++            }
++            refs.put(table, to);
++        }
++        // parents first
++        List<String> order = new ArrayList<>();
++        Set<String> placed = new HashSet<>();
++        Set<String> left = new TreeSet<>(columns.keySet());
++        while (!left.isEmpty()) {
++            String next = left.stream()
++                    .filter(t -> refs.get(t).values().stream().allMatch(r -> placed.contains(r[0])))
++                    .findFirst().orElse(left.iterator().next());
++            order.add(next);
++            placed.add(next);
++            left.remove(next);
++        }
++        Map<String, String> owns = new HashMap<>();
++        List<Owned> owned = new ArrayList<>();
++        for (String table : order) {
++            List<String> cols = columns.get(table);
++            String cond = null;
++            if (table.equals(ROOT)) {
++                cond = "ID = ?";
++            } else if (cols.contains("SHEET_ID")) {
++                cond = "SHEET_ID = ?";
++            } else {
++                for (Map.Entry<String, String[]> r : refs.get(table).entrySet()) {
++                    String parent = owns.get(r.getValue()[0]);
++                    if (parent != null) {
++                        cond = quote(r.getKey()) + " IN (SELECT " + quote(r.getValue()[1]) + " FROM "
++                                + quote(r.getValue()[0]) + " WHERE " + parent + ")";
++                        break;
++                    }
++                }
++            }
++            if (cond == null) continue;
++            owns.put(table, cond);
++            owned.add(new Owned(table, List.copyOf(cols), cond));
++        }
++        return List.copyOf(owned);
++    }
++
++    private static String quote(String name) {
++        return "\"" + name + "\"";
++    }
++
++    private static byte[] serialize(List<TableRows> snapshot) {
++        ByteArrayOutputStream bytes = new ByteArrayOutputStream();
++        try (ObjectOutputStream out = new ObjectOutputStream(bytes)) {
++            out.writeObject(new ArrayList<>(snapshot));
++        } catch (IOException e) {
++            throw new UncheckedIOException(e);
++        }
++        return bytes.toByteArray();
++    }
++
++    @SuppressWarnings("unchecked")
++    private static List<TableRows> deserialize(byte[] data) {
++        try (ObjectInputStream in = new ObjectInputStream(new ByteArrayInputStream(data))) {
++            return (List<TableRows>) in.readObject();
++        } catch (IOException e) {
++            throw new UncheckedIOException(e);
++        } catch (ClassNotFoundException e) {
++            throw new IllegalStateException(e);
++        }
++    }
++}
+diff --git a/src/main/java/net/officefloor/hq/app/asof/SheetHistoryFilter.java b/src/main/java/net/officefloor/hq/app/asof/SheetHistoryFilter.java
+new file mode 100644
+index 000000000..47058ea69
+--- /dev/null
++++ b/src/main/java/net/officefloor/hq/app/asof/SheetHistoryFilter.java
+@@ -0,0 +1,46 @@
++package net.officefloor.hq.app.asof;
++
++import jakarta.servlet.FilterChain;
++import jakarta.servlet.ServletException;
++import jakarta.servlet.http.HttpServletRequest;
++import jakarta.servlet.http.HttpServletResponse;
++import java.io.IOException;
++import org.springframework.http.HttpMethod;
++import org.springframework.stereotype.Component;
++import org.springframework.web.filter.OncePerRequestFilter;
++import org.springframework.web.util.ContentCachingResponseWrapper;
++
++/**
++ * Records a sheet in its {@link SheetHistory} after each change to it that went through (marked by
++ * {@link AsOfGuard}), before the answer goes back: the user's next change cannot overtake it.
++ */
++@Component
++public class SheetHistoryFilter extends OncePerRequestFilter {
++
++    /** The request attribute naming the sheet a change that went through was made to. */
++    static final String CHANGED = SheetHistoryFilter.class.getName() + ".changed";
++
++    private final SheetHistory history;
++
++    public SheetHistoryFilter(SheetHistory history) {
++        this.history = history;
++    }
++
++    @Override
++    protected boolean shouldNotFilter(HttpServletRequest request) {
++        return HttpMethod.GET.matches(request.getMethod()) || HttpMethod.HEAD.matches(request.getMethod())
++                || !request.getRequestURI().startsWith("/api/sheets/");
++    }
++
++    @Override
++    protected void doFilterInternal(HttpServletRequest request, HttpServletResponse response, FilterChain chain)
++            throws ServletException, IOException {
++        ContentCachingResponseWrapper held = new ContentCachingResponseWrapper(response);
++        try {
++            chain.doFilter(request, held);
++            if (request.getAttribute(CHANGED) instanceof String sheetId) history.capture(sheetId);
++        } finally {
++            held.copyBodyToResponse();
++        }
++    }
++}
+diff --git a/src/main/java/net/officefloor/hq/app/sheet/SheetController.java b/src/main/java/net/officefloor/hq/app/sheet/SheetController.java
+index a5e4394be..37eb2f2f4 100644
+--- a/src/main/java/net/officefloor/hq/app/sheet/SheetController.java
++++ b/src/main/java/net/officefloor/hq/app/sheet/SheetController.java
+@@ -8,6 +8,7 @@ import jakarta.validation.constraints.Size;
+ import java.time.LocalDate;
+ import java.util.List;
+ import java.util.Map;
++import net.officefloor.hq.app.asof.AsOfRead;
+ import net.officefloor.hq.app.setting.OpenToViewer;
+ import net.officefloor.hq.app.setting.SettingController;
+ import org.springframework.validation.annotation.Validated;
+@@ -53,6 +54,7 @@ public class SheetController {
+ 
+     /** Load (or start) a sheet by id for the signed-in user. */
+     @OpenToViewer
++    @AsOfRead
+     @PostMapping("/{id}/load")
+     public SheetView load(
+             @PathVariable @Size(max = 100) @Pattern(regexp = "[A-Za-z0-9._-]+") String id,
+diff --git a/src/main/resources/db/migration/V50__sheet_snapshot.sql b/src/main/resources/db/migration/V50__sheet_snapshot.sql
+new file mode 100644
+index 000000000..f717b1d56
+--- /dev/null
++++ b/src/main/resources/db/migration/V50__sheet_snapshot.sql
+@@ -0,0 +1,11 @@
++-- What a sheet held after each change to it, oldest first, so it can be shown as of a date: every
++-- row the sheet owns, in every table, with the sheet's today once the change was made (empty: the
++-- sheet as it was started, which stands for any date before its first change). A change that left
++-- the sheet as it was records nothing.
++CREATE TABLE sheet_snapshot (
++    id       BIGINT AUTO_INCREMENT PRIMARY KEY,
++    sheet_id VARCHAR(100) NOT NULL,
++    taken_on DATE,
++    data     VARBINARY NOT NULL
++);
++CREATE INDEX sheet_snapshot_sheet ON sheet_snapshot (sheet_id, id);
