@@ -23,10 +23,11 @@ import org.springframework.web.bind.annotation.RestController;
 public class PersonController {
 
     /** A person as the screen shows them; retiredFrom is null while not retired. */
-    public record PersonView(Long id, String name, String grade, long version, boolean retired, LocalDate retiredFrom) {
+    public record PersonView(Long id, String name, String grade, long version, boolean retired, LocalDate retiredFrom,
+            boolean held) {
         public static PersonView of(Person person) {
             return new PersonView(person.getId(), person.getName(), person.getGrade(), person.getVersion(),
-                    person.isRetired(), person.getRetiredFrom());
+                    person.isRetired(), person.getRetiredFrom(), person.isHeld());
         }
     }
 
@@ -80,5 +81,14 @@ public class PersonController {
             @RequestHeader("X-User") @NotBlank @Size(max = 100) String user,
             @RequestBody RetireRequest request) {
         return PersonView.of(service.retire(sheetId, user, id, request.from()));
+    }
+
+    /** Put the person on hold, or take them off it when held. */
+    @PostMapping("/{id}/hold")
+    public PersonView hold(
+            @PathVariable @Size(max = 100) @Pattern(regexp = "[A-Za-z0-9._-]+") String sheetId,
+            @PathVariable Long id,
+            @RequestHeader("X-User") @NotBlank @Size(max = 100) String user) {
+        return PersonView.of(service.toggleHold(sheetId, user, id));
     }
 }

@@ -14,7 +14,7 @@ import java.util.Locale;
  * A person on a sheet, with a name and a grade (A, B or C). The name is kept without surrounding
  * spaces and is unique on the sheet without regard to case (by its {@link #keyOf key}). A person
  * given a retirement date is retired at once, whatever the date; none of their claims may be dated
- * after it.
+ * after it. A person can be put on hold and taken off it again.
  */
 @Entity
 @Table(name = "person")
@@ -38,6 +38,9 @@ public class Person {
 
     @Column(name = "retired_from")
     private LocalDate retiredFrom;
+
+    @Column(name = "held", nullable = false)
+    private boolean held;
 
     @Version
     @Column(name = "version", nullable = false)
@@ -80,6 +83,11 @@ public class Person {
 
     /** Whether a claim of theirs may be dated on the date: not after their retirement date. */
     public boolean mayClaimOn(LocalDate date) { return retiredFrom == null || !date.isAfter(retiredFrom); }
+
+    /** While held, their OPEN claims count in no live total; their SETTLED claims still do. */
+    public boolean isHeld() { return held; }
+
+    public void setHeld(boolean held) { this.held = held; }
 
     /** Moved on by each save; an edit is refused unless made from the current version. */
     public long getVersion() { return version; }

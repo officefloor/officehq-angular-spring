@@ -3,7 +3,7 @@ import { Component, computed, effect, inject, signal } from '@angular/core';
 import { FormControl, FormGroup, ReactiveFormsModule } from '@angular/forms';
 import { firstValueFrom } from 'rxjs';
 import { Session } from '../../core/session';
-import { Claim, Claims, RETIRED, cents, claimDueCents, counts, money } from '../claims/claims';
+import { Claim, Claims, RETIRED, cents, claimDueCents, countsFor, money } from '../claims/claims';
 import { Period, Periods, periodOn } from '../periods/periods';
 import { GRADES, NA, Rate, Rates, pctOn } from '../rates/rates';
 
@@ -19,6 +19,8 @@ interface Person {
   /** Retired once given a retirement date, whatever the date; retiredFrom is null while not. */
   retired: boolean;
   retiredFrom: string | null;
+  /** While held, their OPEN claims count in no live total; their SETTLED claims still do. */
+  held: boolean;
 }
 
 /** A person's statements: how many, and the last one's due-total (null when n/a) and date. */
@@ -48,7 +50,8 @@ interface StatementTaken {
 // statement, which binds their counting claims' dues; the row shows how many statements they have
 // had and the last one's due-total and date. Each person can be retired from a date (blank: the sheet's
 // today); retired people are left out of the list unless show retired is on, but their claims
-// keep counting in every total.
+// keep counting in every total. Each person can be put on hold and taken off it again; while held,
+// their OPEN claims count in no live total (theirs, the sheet's or a period's), their SETTLED ones still do.
 @Component({
   selector: 'app-people',
   imports: [ReactiveFormsModule, Claims, Periods, Rates],
@@ -91,7 +94,7 @@ interface StatementTaken {
       </label>
       <table>
         <thead>
-          <tr><th scope="col">Name</th><th scope="col">Grade</th><th scope="col">Claimed</th><th scope="col">Due total</th><th scope="col">Statements</th><th scope="col">Retired</th><th scope="col">Claims</th><th scope="col"><span class="visually-hidden">Actions</span></th></tr>
+          <tr><th scope="col">Name</th><th scope="col">Grade</th><th scope="col">Claimed</th><th scope="col">Due total</th><th scope="col">Statements</th><th scope="col">Retired</th><th scope="col">Hold</th><th scope="col">Claims</th><th scope="col"><span class="visually-hidden">Actions</span></th></tr>
         </thead>
         <tbody>
           @for (p of listed(); track p.id) {
@@ -118,6 +121,11 @@ interface StatementTaken {
                        #retireDate (input)="clearPersonError(p.id)" />
                 <button type="button" data-testid="person-retire" (click)="retire(p, retireDate.value)"
                         [attr.aria-label]="'Retire ' + p.name">Retire</button>
+              </td>
+              <td>
+                <span data-testid="person-hold">{{ p.held ? 'yes' : 'no' }}</span>
+                <button type="button" data-testid="person-hold-toggle" (click)="toggleHold(p)"
+                        [attr.aria-label]="(p.held ? 'Release ' : 'Hold ') + p.name">{{ p.held ? 'Release' : 'Hold' }}</button>
               </td>
               <td>
                 <app-claims [personId]="p.id" [personName]="p.name" [claims]="claimsOf(p.id)" [rates]="ratesOf(p.grade)"
@@ -154,7 +162,11 @@ export class People {
     for (const c of this.claims()) by.set(c.personId, [...(by.get(c.personId) ?? []), c]);
     return by;
   });
-  protected readonly claimedTotal = computed(() => money(this.claims().filter(counts).reduce((sum, c) => sum + cents(c.amount), 0)));
+  /** The ids of the people on hold. */
+  private readonly heldIds = computed(() => new Set(this.people().filter((p) => p.held).map((p) => p.id)));
+  /** Whether the claim counts in the live totals: OPEN or SETTLED, and not OPEN for a held person. */
+  private readonly counts = (c: Claim): boolean => countsFor(c, this.heldIds().has(c.personId));
+  protected readonly claimedTotal = computed(() => money(this.claims().filter(this.counts).reduce((sum, c) => sum + cents(c.amount), 0)));
   /** The sheet's rates, each for a grade from its from-date. */
   protected readonly rates = signal<Rate[]>([]);
   /** The sheet's periods, earliest first. */
@@ -163,7 +175,7 @@ export class People {
   private readonly periodDueCents = computed(() => {
     const grades = new Map(this.people().map((p) => [p.id, p.grade]));
     const by = new Map<number, number>();
-    for (const c of this.claims().filter(counts)) {
+    for (const c of this.claims().filter(this.counts)) {
       const period = periodOn(this.periods(), c.date);
       const grade = grades.get(c.personId);
       if (period === null || grade === undefined) continue;
@@ -268,7 +280,7 @@ export class People {
   }
 
   private claimedCents(personId: number): number {
-    return this.claimsOf(personId).filter(counts).reduce((sum, c) => sum + cents(c.amount), 0);
+    return this.claimsOf(personId).filter(this.counts).reduce((sum, c) => sum + cents(c.amount), 0);
   }
 
   protected claimedOf(personId: number): string {
@@ -289,7 +301,7 @@ export class People {
    * their grade has no rate in force today and none of those claims has a due fixed when settled or bound by a statement.
    */
   private dueTotalCents(p: Person): number | null {
-    const counted = this.claimsOf(p.id).filter(counts);
+    const counted = this.claimsOf(p.id).filter(this.counts);
     const fixed = (c: Claim) => c.settledDue !== null || (c.stated && c.statedDue !== null);
     if (this.pctOf(p.grade) === null && !counted.some(fixed)) return null;
     const rates = this.ratesOf(p.grade);
@@ -352,6 +364,24 @@ export class People {
       this.people.update((list) => list.map((x) => (x.id === saved.id ? saved : x)));
     } catch {
       if (this.session.sheetId() === sheet) this.personError.set({ id: p.id, message: 'Could not retire ' + p.name + '.' });
+    }
+  }
+
+  /** Put the person on hold, or take them off it when held. */
+  protected async toggleHold(p: Person): Promise<void> {
+    this.personError.set(null);
+    const sheet = this.session.sheetId();
+    if (!sheet) return;
+    try {
+      const saved = await firstValueFrom(
+        this.http.post<Person>(`${this.url(sheet)}/${p.id}/hold`, null, { headers: this.headers() }),
+      );
+      if (this.session.sheetId() !== sheet) return;
+      this.people.update((list) => list.map((x) => (x.id === saved.id ? saved : x)));
+    } catch {
+      if (this.session.sheetId() === sheet) {
+        this.personError.set({ id: p.id, message: 'Could not ' + (p.held ? 'release ' : 'hold ') + p.name + '.' });
+      }
     }
   }
 

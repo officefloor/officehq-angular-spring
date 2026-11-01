@@ -15,7 +15,7 @@ import org.springframework.transaction.annotation.Transactional;
  * The people on a sheet: listed in the order they were added, added and edited one at a time. A
  * name already used by another person on the sheet (ignoring case and surrounding spaces) is
  * refused, and so is an edit made from a version of the person someone else has saved since. A
- * person can be retired from a date (blank: the sheet's today).
+ * person can be retired from a date (blank: the sheet's today), and put on hold or taken off it.
  */
 @Service
 public class PersonService {
@@ -72,6 +72,19 @@ public class PersonService {
         Person saved = saveUnique(person);
         audit.recordOnCommit("PERSON_RETIRED sheet=" + sheetId + " by=" + user.strip()
                 + " name=" + saved.getName() + " from=" + on);
+        return saved;
+    }
+
+    /** Put the person on hold, or take them off it when held; their OPEN claims leave or rejoin the totals. */
+    @Transactional
+    public Person toggleHold(String sheetId, String user, Long id) {
+        RollupService.Snapshot before = rollup.snapshot(sheetId);
+        Person person = people.findByIdAndSheetId(id, sheetId).orElseThrow(PersonNotFoundException::new);
+        person.setHeld(!person.isHeld());
+        Person saved = saveUnique(person);
+        audit.recordOnCommit((saved.isHeld() ? "PERSON_HELD" : "PERSON_RELEASED") + " sheet=" + sheetId
+                + " by=" + user.strip() + " name=" + saved.getName());
+        rollup.recordChanges(sheetId, user, before);
         return saved;
     }
 

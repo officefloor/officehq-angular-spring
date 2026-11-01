@@ -21,4 +21,9 @@ public enum ClaimStatus {
     public boolean counts() {
         return this == OPEN || this == SETTLED;
     }
+
+    /** Whether a claim in this status counts, for a person held or not: a held person's OPEN claims do not. */
+    public boolean counts(boolean held) {
+        return held ? this == SETTLED : counts();
+    }
 }

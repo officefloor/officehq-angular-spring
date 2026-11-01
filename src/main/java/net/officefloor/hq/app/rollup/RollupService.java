@@ -80,6 +80,7 @@ public class RollupService {
             BigDecimal due = zero();
             boolean fixed = false;
             for (Claim claim : claimsByPerson.getOrDefault(person.getId(), List.of())) {
+                if (!claim.getStatus().counts(person.isHeld())) continue;
                 claimed = claimed.add(claim.getAmount());
                 if (claim.getSettledDue() != null || (claim.isStated() && claim.getStatedDue() != null)) fixed = true;
                 BigDecimal figure = figureOf(claim, theirRates);

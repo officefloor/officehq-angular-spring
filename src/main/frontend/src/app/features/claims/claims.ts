@@ -37,6 +37,11 @@ export function counts(c: Claim): boolean {
   return c.status === 'OPEN' || c.status === 'SETTLED';
 }
 
+/** Whether the claim counts for its person held or not: a held person's OPEN claims do not. */
+export function countsFor(c: Claim, held: boolean): boolean {
+  return held ? c.status === 'SETTLED' : counts(c);
+}
+
 /** A claim's amount as cents, so sums are exact. */
 export function cents(amount: string): number {
   const [whole, frac = ''] = amount.split('.');
