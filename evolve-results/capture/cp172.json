@@ -1,0 +1,68 @@
+{
+  "checkpoint": 172,
+  "stack": {
+    "repo": "/home/daniel/officehq-angular-spring",
+    "origin": "git@github.com:officefloor/officehq-angular-spring.git",
+    "name": "officehq-angular-spring",
+    "base_ref": "base-empty",
+    "base_commit": "65cb8233ea38b2dfa6cfd18709e30cd18fdf3250"
+  },
+  "checkpoint_id": "cp172_pending-bound",
+  "phase": "late",
+  "type": "mutative",
+  "mutates": [
+    36
+  ],
+  "replaced_tests": [
+    "cp36_approvals.spec.ts::approvals"
+  ],
+  "request": {
+    "spec": "A PENDING claim is now bound by a statement like any other claim that counts: while a statement\nbinds it, it shows and totals the bound figure.\n",
+    "prompt": "You are implementing ONE change to this application.\n\nFIRST read AGENTS.md \u2014 it states the working rules and how the app is tested, and sends you to\nDESIGN.md for the app's stack and conventions. Follow both.\n\nTHE CHANGE REQUEST:\nA PENDING claim is now bound by a statement like any other claim that counts: while a statement\nbinds it, it shows and totals the bound figure.\n\nYour work is verified by an automated Playwright UI test already installed under e2e/specs/.\nRead that spec: it declares the exact data-testid anchors, values, test data and any audit\nrecords it expects \u2014 match them. Run `bin/e2e` to build the app, start it, and run the test as\nyou work; iterate until it passes. Change whatever the request needs across the app \u2014 its stored\ndata, its server and its front end. Do NOT edit bin/build, bin/start, bin/stop, bin/e2e,\nAGENTS.md, CLAUDE.md, DESIGN.md, e2e/support/ or the test spec.\n"
+  },
+  "commit_sha": "cba8c540e0f184145c7f8c5df4128d0d86dfc520",
+  "reset_sha": "",
+  "preagent_sha": "a6b31a9a083da804ff7f41551f1e43b8e1602dc7",
+  "prev_sha": "a6b31a9a083da804ff7f41551f1e43b8e1602dc7",
+  "base_sha": "65cb8233ea38b2dfa6cfd18709e30cd18fdf3250",
+  "agent": {
+    "ok": true,
+    "cost_usd": 0.8268098,
+    "input_tokens": 46,
+    "output_tokens": 8468,
+    "cache_read_tokens": 1032569,
+    "cache_creation_tokens": 56344,
+    "num_turns": 23,
+    "duration_ms": 666992,
+    "duration_api_ms": 93843,
+    "model": "claude-opus-5-5",
+    "session_id": "287ef8a4-c6d4-498a-8805-20e08b12d35c",
+    "stop_reason": "success",
+    "result_text": "A PENDING claim that a statement has bound now shows and totals the bound figure, like any other bound claim. Three of the four e2e tests pass. \"pending bound scenario 1\" still fails, at line 322: `rate-current-C` shows `n/a` where the test expects `5.00`. That failure isn't caused by this change. I put the original code back, re-ran, and it failed at the same spot.\n\n**The change**\n- **Server:** `Claim.isBound()` in `Claim.java` is now simply `stated`. Before, it excluded PENDING claims, so they always showed their live due. The figure shown, the person and sheet totals, the rollups and the hold/retirement rules all go through this check, so they all pick up the bound figure now.\n- **Statements as of an earlier date:** `StatementService.bindAsOf` no longer ignores the binding a PENDING claim had on that date.\n- **Front end:** `isBound()` in `claims.ts` matches the server, and I updated the comments that described the old behaviour.\n\nNo stored data or audit records change.\n\n**Why scenario 1 fails**\nThe failure comes from the machine's clock. A sheet whose \"today\" is never set starts at the real date, which is now 2026-11-02. The test's parent sheet never sets one, so the rates it sets there are dated 2026-11-02. When the test views the sheet as of 2026-04-02, those rates don't exist yet, so grade C shows `n/a`. The test looks like it was written when the real date was before April 2026. It should pass if the machine's date is set before 2026-04-02. Making it pass otherwise would mean changing how a new sheet picks its starting date, which is outside this request, so I left it alone.",
+    "error": "",
+    "attempts": [
+      {
+        "ok": true,
+        "limit_reached": false,
+        "retryable": false,
+        "timed_out": false,
+        "cost_usd": 0.8268098,
+        "num_turns": 23,
+        "duration_ms": 666992,
+        "duration_api_ms": 93843,
+        "error": ""
+      }
+    ]
+  },
+  "agent_stream_file": "cp172.agent.jsonl",
+  "agent_diff_file": "cp172.agent.diff",
+  "build_log_file": null,
+  "tests": {
+    "gated": false,
+    "queued": true
+  },
+  "probe": null,
+  "pinned_touched": [],
+  "acceptance_touched": [],
+  "impact_gate": null
+}

@@ -1,0 +1,56 @@
+diff --git a/src/main/frontend/src/app/features/claims/claims.ts b/src/main/frontend/src/app/features/claims/claims.ts
+index e3205693d..0bc508a49 100644
+--- a/src/main/frontend/src/app/features/claims/claims.ts
++++ b/src/main/frontend/src/app/features/claims/claims.ts
+@@ -35,7 +35,7 @@ export interface Claim {
+   settledDue: string | null;
+   /** The user who opened it; null while DRAFT. They cannot settle it. */
+   openedBy: string | null;
+-  /** Bound by its person's last statement, to the due it had then; not while PENDING, when its due is live. */
++  /** Bound by its person's last statement, to the due it had then. */
+   stated: boolean;
+   /** The due bound by its person's last statement, two decimals; null while not stated, or stated with none. */
+   statedDue: string | null;
+@@ -117,9 +117,9 @@ export function counts(c: Claim): boolean {
+   return isOpen(c) || c.status === 'SETTLED';
+ }
+ 
+-/** Whether its due is now bound by its person's last statement: stated and not PENDING. */
++/** Whether its due is now bound by its person's last statement: stated, a PENDING claim like any other. */
+ export function isBound(c: Claim): boolean {
+-  return c.stated && c.status !== 'PENDING';
++  return c.stated;
+ }
+ 
+ /**
+diff --git a/src/main/java/net/officefloor/hq/app/claim/Claim.java b/src/main/java/net/officefloor/hq/app/claim/Claim.java
+index 548de026d..6f3eaa2cc 100644
+--- a/src/main/java/net/officefloor/hq/app/claim/Claim.java
++++ b/src/main/java/net/officefloor/hq/app/claim/Claim.java
+@@ -450,10 +450,9 @@ public class Claim {
+     public BigDecimal getStatedDue() { return statedDue; }
+ 
+     /**
+-     * Whether its due is now bound by its person's last statement: stated and not PENDING. A PENDING
+-     * claim shows its live due, and is bound again if rejected.
++     * Whether its due is now bound by its person's last statement: stated, a PENDING claim like any other.
+      */
+-    public boolean isBound() { return stated && status != ClaimStatus.PENDING; }
++    public boolean isBound() { return stated; }
+ 
+     /** Bind the claim to a due (null: it has none) on the sheet's today, as its person's statement does. */
+     public void state(BigDecimal due, LocalDate on) {
+diff --git a/src/main/java/net/officefloor/hq/app/statement/StatementService.java b/src/main/java/net/officefloor/hq/app/statement/StatementService.java
+index a5b0ac433..7f36b0864 100644
+--- a/src/main/java/net/officefloor/hq/app/statement/StatementService.java
++++ b/src/main/java/net/officefloor/hq/app/statement/StatementService.java
+@@ -169,8 +169,7 @@ public class StatementService {
+                 claim.unstate(today);
+                 continue;
+             }
+-            // a PENDING claim showed its live due, unbound
+-            ClaimBinding binding = status == ClaimStatus.PENDING ? null : claim.bindingAt(asOf);
++            ClaimBinding binding = claim.bindingAt(asOf);
+             if (status.isOpen() && binding == null
+                     && (person.heldOn(claim.getDate(), asOf) || person.retiredAt(asOf))) {
+                 claim.unstate(today);
