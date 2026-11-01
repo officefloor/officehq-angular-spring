@@ -1,0 +1,64 @@
+{
+  "checkpoint": 234,
+  "stack": {
+    "repo": "/home/daniel/officehq-angular-spring",
+    "origin": "git@github.com:officefloor/officehq-angular-spring.git",
+    "name": "officehq-angular-spring",
+    "base_ref": "base-empty",
+    "base_commit": "65cb8233ea38b2dfa6cfd18709e30cd18fdf3250"
+  },
+  "checkpoint_id": "cp234_tree-export",
+  "phase": "late",
+  "type": "additive",
+  "mutates": [],
+  "replaced_tests": [],
+  "request": {
+    "spec": "A button downloads the people of the whole tree as a CSV file: a header line\nsheet,name,grade,due-total then one line per person, this sheet first in list order, then the\nother sheets of the tree by sheet id.\n",
+    "prompt": "You are implementing ONE change to this application.\n\nFIRST read AGENTS.md \u2014 it states the working rules and how the app is tested, and sends you to\nDESIGN.md for the app's stack and conventions. Follow both.\n\nTHE CHANGE REQUEST:\nA button downloads the people of the whole tree as a CSV file: a header line\nsheet,name,grade,due-total then one line per person, this sheet first in list order, then the\nother sheets of the tree by sheet id.\n\nYour work is verified by an automated Playwright UI test already installed under e2e/specs/.\nRead that spec: it declares the exact data-testid anchors, values, test data and any audit\nrecords it expects \u2014 match them. Run `bin/e2e` to build the app, start it, and run the test as\nyou work; iterate until it passes. Change whatever the request needs across the app \u2014 its stored\ndata, its server and its front end. Do NOT edit bin/build, bin/start, bin/stop, bin/e2e,\nAGENTS.md, CLAUDE.md, DESIGN.md, e2e/support/ or the test spec.\n"
+  },
+  "commit_sha": "cb525882e8b02fd6d38a9eb1647542aa6cc8da79",
+  "reset_sha": "",
+  "preagent_sha": "e11ea71d58881d7e7233f207ec5aeff90cba18a1",
+  "prev_sha": "e11ea71d58881d7e7233f207ec5aeff90cba18a1",
+  "base_sha": "65cb8233ea38b2dfa6cfd18709e30cd18fdf3250",
+  "agent": {
+    "ok": true,
+    "cost_usd": 0.7631606000000001,
+    "input_tokens": 52,
+    "output_tokens": 7783,
+    "cache_read_tokens": 1035583,
+    "cache_creation_tokens": 50022,
+    "num_turns": 26,
+    "duration_ms": 979545,
+    "duration_api_ms": 81625,
+    "model": "claude-opus-5-5",
+    "session_id": "1ea9e894-e867-4c32-998e-febd91a1bf28",
+    "stop_reason": "success",
+    "result_text": "The tree export is in, and the last `bin/e2e` run passed all 4 tests.\n\n**The export.** There's a new \"Export the tree's people as CSV\" button (`export-tree`) in the \"Search the tree\" panel, in `src/main/frontend/src/app/features/search/search.ts`. The tree is the sheet at the top of the current sheet's chain of parents plus all of its descendants. Clicking the button reads the tree from the store again and downloads `tree-<sheet>.csv`:\n- The header line is `sheet,name,grade,due-total`.\n- The current sheet's people come first, in list order, then the other sheets' people, sheets sorted by id.\n- Grade is the one in force on each sheet's today. A person with no due-total shows `n/a`.\n\nIt reuses the tree search endpoint that already existed, with an empty search text, which returns everyone in exactly that order. So the server needed no changes for the export itself. If the read fails, the panel shows an error (`export-tree-error`).\n\n**A separate server fix.** The first run failed \"tree export scenario 2\" on its audit check. Waiving a claim's late charge wrote `CLAIM_WAIVED` but never the `ROLLUP`/`TOTALS` lines that follow other claim changes, and the test expects them. That bug was already in the code and has nothing to do with the export. I fixed it in `ClaimService.waive` by recording figure changes the same way holding a claim does. After that, everything passed.",
+    "error": "",
+    "attempts": [
+      {
+        "ok": true,
+        "limit_reached": false,
+        "retryable": false,
+        "timed_out": false,
+        "cost_usd": 0.7631606000000001,
+        "num_turns": 26,
+        "duration_ms": 979545,
+        "duration_api_ms": 81625,
+        "error": ""
+      }
+    ]
+  },
+  "agent_stream_file": "cp234.agent.jsonl",
+  "agent_diff_file": "cp234.agent.diff",
+  "build_log_file": null,
+  "tests": {
+    "gated": false,
+    "queued": true
+  },
+  "probe": null,
+  "pinned_touched": [],
+  "acceptance_touched": [],
+  "impact_gate": null
+}
