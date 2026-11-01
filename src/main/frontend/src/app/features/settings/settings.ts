@@ -7,6 +7,17 @@ import { Dated, Session } from '../../core/session';
 /** A role a user name can be given; any name not given one is a clerk. */
 export const ROLES = ['clerk', 'steward'];
 
+/** The actions of the permission matrix, each with the roles that may take it while none are set (its standing rule). */
+export const PERMISSIONS = [
+  { action: 'open', standing: 'clerk,steward' },
+  { action: 'settle', standing: 'clerk,steward' },
+  { action: 'void', standing: 'clerk,steward' },
+  { action: 'reassign', standing: 'steward' },
+  { action: 'close', standing: 'clerk,steward' },
+  { action: 'reopen', standing: 'steward' },
+] as const;
+type PermAction = (typeof PERMISSIONS)[number]['action'];
+
 /** The grades a person can have; each can have its own terms. */
 export const GRADES = ['A', 'B', 'C'] as const;
 type Grade = (typeof GRADES)[number];
@@ -42,6 +53,8 @@ interface SettingsView {
   roles: RoleView[];
   /** The values recorded for each dated setting, by key; those above are the ones in force on the sheet's today. */
   dated: Dated;
+  /** The roles set for each action of the permission matrix, comma separated; an action not in it keeps its standing rule. */
+  permissions: Partial<Record<PermAction, string>>;
 }
 
 /** A from-date field (yyyy-mm-dd) for a dated setting; blank: the sheet's today. */
@@ -57,7 +70,8 @@ const FROM = 'From (yyyy-mm-dd; blank: the sheet\'s today)';
 // Backspace) counts as a change even when it was already blank. The clerk limit, the floor, the terms, each grade's terms, the late
 // percent, the cap and the proof threshold are dated: a save records the value from its from-date (blank: the sheet's today), keeping those recorded from
 // other dates; a claim takes the floor, late percent and terms in force on its date, and the clerk limit and cap are those in force on
-// the sheet's today. Each shows the value in force on the sheet's today.
+// the sheet's today. Each shows the value in force on the sheet's today. The permission matrix (not dated) gives, for each
+// of open, settle, void, reassign, close and reopen, the roles that may take it, comma separated; blank keeps its standing rule.
 @Component({
   selector: 'app-settings',
   imports: [ReactiveFormsModule],
@@ -110,6 +124,16 @@ const FROM = 'From (yyyy-mm-dd; blank: the sheet\'s today)';
         <label for="setting-proof-threshold-from">Proof threshold {{ from }}</label>
         <input id="setting-proof-threshold-from" data-testid="setting-proof-threshold-from" formControlName="proofThresholdFrom"
                placeholder="yyyy-mm-dd" />
+        <fieldset>
+          <legend>Permissions (roles, comma separated: clerk, steward; blank: the standing rule)</legend>
+          @for (p of permissions; track p.action) {
+            <label [for]="'setting-perm-' + p.action">Who may {{ p.action }} (blank: {{ p.standing }})</label>
+            <input [id]="'setting-perm-' + p.action" [attr.data-testid]="'setting-perm-' + p.action"
+                   [formControl]="permForm.controls[p.action]"
+                   (keydown.delete)="permForm.controls[p.action].markAsDirty()"
+                   (keydown.backspace)="permForm.controls[p.action].markAsDirty()" />
+          }
+        </fieldset>
         <button type="submit" data-testid="settings-save">Save settings</button>
         @if (error()) {
           <p role="alert" class="error" data-testid="settings-error">{{ error() }}</p>
@@ -127,6 +151,10 @@ const FROM = 'From (yyyy-mm-dd; blank: the sheet\'s today)';
       <p>Period numbering from now: <span data-testid="setting-period-numbering-from-current">{{ periodNumberingFrom() ?? '' }}</span></p>
       <p>Cap now: <span data-testid="setting-cap-current">{{ session.cap() ?? '' }}</span></p>
       <p>Proof threshold now: <span data-testid="setting-proof-threshold-current">{{ session.proofThreshold() ?? '' }}</span></p>
+      @for (p of permissions; track p.action) {
+        <p>Who may {{ p.action }} now (blank: {{ p.standing }}):
+          <span [attr.data-testid]="'setting-perm-' + p.action + '-current'">{{ permissionsSet()[p.action] ?? '' }}</span></p>
+      }
       <form [formGroup]="roleForm" (ngSubmit)="setRole()" aria-label="Set role">
         <label for="role-form-user">User</label>
         <input id="role-form-user" data-testid="role-form-user" formControlName="user" />
@@ -165,6 +193,9 @@ export class Settings {
 
   protected readonly roles = ROLES;
   protected readonly grades = GRADES;
+  protected readonly permissions = PERMISSIONS;
+  /** The roles set for each action of the permission matrix; an action not in it keeps its standing rule. */
+  protected readonly permissionsSet = signal<Partial<Record<PermAction, string>>>({});
   protected readonly from = FROM;
   /** The terms in force on the sheet's today for each grade that has its own then. */
   protected readonly gradeTerms = computed(() => {
@@ -208,6 +239,14 @@ export class Settings {
     B: new FormControl('', { nonNullable: true }),
     C: new FormControl('', { nonNullable: true }),
   });
+  protected readonly permForm = new FormGroup({
+    open: new FormControl('', { nonNullable: true }),
+    settle: new FormControl('', { nonNullable: true }),
+    void: new FormControl('', { nonNullable: true }),
+    reassign: new FormControl('', { nonNullable: true }),
+    close: new FormControl('', { nonNullable: true }),
+    reopen: new FormControl('', { nonNullable: true }),
+  });
   protected readonly roleForm = new FormGroup({
     user: new FormControl('', { nonNullable: true }),
     role: new FormControl('', { nonNullable: true }),
@@ -217,12 +256,14 @@ export class Settings {
     this.form.valueChanges.subscribe(() => this.error.set(''));
     this.gradeTermsForm.valueChanges.subscribe(() => this.error.set(''));
     this.gradeTermsFromForm.valueChanges.subscribe(() => this.error.set(''));
+    this.permForm.valueChanges.subscribe(() => this.error.set(''));
     this.roleForm.valueChanges.subscribe(() => this.roleError.set(''));
     effect(() => {
       const id = this.session.sheetId();
       this.session.loads();
       this.periodNumberingFrom.set(null);
       this.userRoles.set([]);
+      this.permissionsSet.set({});
       this.error.set('');
       this.roleError.set('');
       if (id) void this.load(id);
@@ -250,6 +291,7 @@ export class Settings {
   private show(view: SettingsView): void {
     this.periodNumberingFrom.set(view.periodNumberingFrom);
     this.userRoles.set(view.roles);
+    this.permissionsSet.set(view.permissions);
     this.session.dated.set(view.dated);
     this.session.policyDate.set(view.policyDate);
   }
@@ -315,6 +357,12 @@ export class Settings {
     }
     if (proofThreshold.dirty && proofThresholdValue && !/^\d{1,12}(\.\d{1,2})?$/.test(proofThresholdValue)) {
       this.error.set('Enter a proof threshold of 0.00 or more, with at most two decimals, or leave it blank for none.');
+      return;
+    }
+    const permsChanged = PERMISSIONS.map((p) => p.action).filter((a) => this.permForm.controls[a].dirty);
+    const rolesList = /^\s*((clerk|steward)\s*(,\s*(clerk|steward)\s*)*)?$/i;
+    if (permsChanged.some((a) => !rolesList.test(this.permForm.controls[a].value))) {
+      this.error.set('Enter the roles that may take an action as clerk, steward or both, comma separated, or leave it blank for the standing rule.');
       return;
     }
     this.submitting.add('save');
@@ -383,6 +431,14 @@ export class Settings {
             { value: proofThresholdValue || null, from: dated(proofThresholdFrom) }, { headers: this.headers() }),
         );
         proofThreshold.markAsPristine();
+        if (this.session.sheetId() === sheet) this.show(view);
+      }
+      for (const a of permsChanged) {
+        const control = this.permForm.controls[a];
+        const view = await firstValueFrom(
+          this.http.put<SettingsView>(`${this.base(sheet)}/settings/perm/${a}`, { value: control.value.trim() }, { headers: this.headers() }),
+        );
+        control.markAsPristine();
         if (this.session.sheetId() === sheet) this.show(view);
       }
     } catch {

@@ -2,8 +2,11 @@ package net.officefloor.hq.app.setting;
 
 import java.math.BigDecimal;
 import java.time.LocalDate;
+import java.util.EnumSet;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.TreeMap;
 import net.officefloor.hq.app.Audit;
 import net.officefloor.hq.app.rollup.RollupService;
@@ -26,13 +29,24 @@ import org.springframework.transaction.annotation.Transactional;
  * policy date (none: the sheet's today), before which a claim's live figures round half up, else half to even;
  * and the period numbering from (none: off), from which a claim opened is numbered within its period;
  * and the cap (none: no cap), the most a person's due-total can be; and the proof threshold (none: none,
- * dated, taken on a claim's date), above which a claim's due needs a proof to be settled or approved.
+ * dated, taken on a claim's date), above which a claim's due needs a proof to be settled or approved;
+ * and the permission matrix (not dated): for each action, the roles that may take it, blank keeping
+ * its standing rule.
  */
 @Service
 public class SettingService {
 
     /** The grades a person can have, each of which can have its own terms. */
     public static final List<String> GRADES = List.of("A", "B", "C");
+
+    /** The actions of the permission matrix, each with its standing rule: the roles that may take it while none are set. */
+    public static final Map<String, Set<Role>> STANDING_PERMISSIONS;
+    static {
+        Map<String, Set<Role>> standing = new LinkedHashMap<>();
+        for (String action : List.of("open", "settle", "void", "close")) standing.put(action, EnumSet.of(Role.CLERK, Role.STEWARD));
+        for (String action : List.of("reassign", "reopen")) standing.put(action, EnumSet.of(Role.STEWARD));
+        STANDING_PERMISSIONS = Map.copyOf(standing);
+    }
 
     private final SheetRepository sheets;
     private final SheetRoleRepository roles;
@@ -134,6 +148,29 @@ public class SettingService {
     @Transactional(readOnly = true)
     public BigDecimal proofThresholdOn(String sheetId, LocalDate date) {
         return sheets.findById(sheetId).orElseThrow(SheetNotFoundException::new).proofThresholdOn(date);
+    }
+
+    /** The roles set for each action of the permission matrix, comma separated, by action; an action not in it keeps the standing rule. */
+    @Transactional(readOnly = true)
+    public Map<String, String> permissions(String sheetId) {
+        return sheets.findById(sheetId).map(Sheet::getPermissions).orElseThrow(SheetNotFoundException::new);
+    }
+
+    /** Whether the user's role on the sheet may take the action: by the roles set for it, else its standing rule. */
+    @Transactional(readOnly = true)
+    public boolean mayDo(String sheetId, String user, String action) {
+        Sheet sheet = sheets.findById(sheetId).orElseThrow(SheetNotFoundException::new);
+        Role role = roleOf(sheetId, user);
+        String set = sheet.permission(action);
+        if (set == null) return STANDING_PERMISSIONS.get(action).contains(role);
+        return parseRoles(set).contains(role);
+    }
+
+    /** Roles written comma separated (clerk, steward), in any case and with spaces around each. */
+    public static Set<Role> parseRoles(String roles) {
+        Set<Role> parsed = EnumSet.noneOf(Role.class);
+        for (String r : roles.split(",")) parsed.add(Role.valueOf(r.strip().toUpperCase()));
+        return parsed;
     }
 
     /** The user's role on the sheet: clerk unless given another. */
@@ -241,6 +278,18 @@ public class SettingService {
         Sheet sheet = sheets.findForUpdate(sheetId).orElseThrow(SheetNotFoundException::new);
         record(sheet, user, Sheet.PROOF_THRESHOLD, threshold == null ? null : threshold.toPlainString(), from);
         return threshold;
+    }
+
+    /** Set the roles (comma separated; blank or null: the standing rule) that may take the action; not dated. */
+    @Transactional
+    public String setPermission(String sheetId, String user, String action, String roles) {
+        Sheet sheet = sheets.findForUpdate(sheetId).orElseThrow(SheetNotFoundException::new);
+        String value = roles == null ? "" : roles;
+        sheet.setPermission(action, value);
+        sheets.flush();
+        audit.recordOnCommit("SETTING_CHANGED sheet=" + sheetId + " by=" + user.strip() + " key=perm-" + action
+                + " value=" + value);
+        return value;
     }
 
     /**

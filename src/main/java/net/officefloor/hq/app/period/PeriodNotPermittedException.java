@@ -3,6 +3,6 @@ package net.officefloor.hq.app.period;
 import org.springframework.http.HttpStatus;
 import org.springframework.web.bind.annotation.ResponseStatus;
 
-/** Only a steward can reopen a closed period. */
+/** The user's role may not close or reopen a period by the sheet's permission matrix. */
 @ResponseStatus(HttpStatus.FORBIDDEN)
-public class PeriodReopenNotStewardException extends RuntimeException {}
+public class PeriodNotPermittedException extends RuntimeException {}

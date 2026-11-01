@@ -30,7 +30,7 @@ export function closedOn(periods: Period[], date: string): boolean {
 }
 
 // The sheet's periods, with one form to add one, each period's due-total and whether it is
-// closed, and a button to close each and to reopen each (a steward only).
+// closed, and a button to close each and to reopen each (by the roles the sheet's permission matrix allows).
 @Component({
   selector: 'app-periods',
   imports: [ReactiveFormsModule],
@@ -118,14 +118,17 @@ export class Periods {
       this.saved.emit(period);
     } catch (e) {
       if (this.session.sheetId() !== sheet) return;
-      const message = e instanceof HttpErrorResponse && e.status === 423
+      const status = e instanceof HttpErrorResponse ? e.status : 0;
+      const message = status === 423
         ? 'That period is already closed.'
+        : status === 403
+        ? 'Your role may not close a period on this sheet.'
         : 'Could not close that period.';
       this.periodError.set({ id: p.id, message });
     }
   }
 
-  /** Reopen a closed period, making its due-total live again; a steward only. */
+  /** Reopen a closed period, making its due-total live again; by the roles the permission matrix allows. */
   protected async reopen(p: Period): Promise<void> {
     this.periodError.set(null);
     const sheet = this.session.sheetId();
@@ -142,7 +145,7 @@ export class Periods {
       if (this.session.sheetId() !== sheet) return;
       const status = e instanceof HttpErrorResponse ? e.status : 0;
       const message = status === 403
-        ? 'Only a steward can reopen a period.'
+        ? 'Your role may not reopen a period on this sheet.'
         : status === 409
           ? 'That period is not closed.'
           : 'Could not reopen that period.';

@@ -121,6 +121,13 @@ public class ClaimService {
         // once no other open on the sheet is under way; a refusal rolls the number back.
         Sheet numbering = next == ClaimStatus.OPEN ? sheets.lockForNumbering(sheetId) : null;
         Claim claim = claims.findByIdAndSheetId(id, sheetId).orElseThrow(ClaimNotFoundException::new);
+        String action = switch (next) {
+            case OPEN -> "open";
+            case SETTLED -> "settle";
+            case VOID -> "void";
+            default -> throw new ClaimStatusRefusedException();
+        };
+        if (!settings.mayDo(sheetId, user, action)) throw new ClaimNotPermittedException();
         if (!claim.getStatus().canBecome(next)) {
             throw new ClaimStatusRefusedException();
         }
@@ -233,7 +240,7 @@ public class ClaimService {
     }
 
     /**
-     * A steward moves a DRAFT, OPEN or PENDING claim to another person on the sheet. It keeps its number
+     * A user whose role may reassign (a steward, unless the permission matrix says otherwise) moves a DRAFT, OPEN or PENDING claim to another person on the sheet. It keeps its number
      * and date, loses any figure a statement bound it to (live again until its new person's next
      * statement), and is listed as its new person's newest claim. A SETTLED or VOID claim cannot move,
      * nor one dated inside a closed period, nor one dated after its new person's retirement date.
@@ -245,7 +252,7 @@ public class ClaimService {
         Claim claim = claims.findByIdAndSheetId(id, sheetId).orElseThrow(ClaimNotFoundException::new);
         ClaimStatus status = claim.getStatus();
         if (status != ClaimStatus.DRAFT && !status.isOpen()) throw new ClaimStatusRefusedException();
-        if (settings.roleOf(sheetId, user) != Role.STEWARD) throw new ClaimNotStewardException();
+        if (!settings.mayDo(sheetId, user, "reassign")) throw new ClaimNotPermittedException();
         Person from = people.findByIdAndSheetId(claim.getPersonId(), sheetId).orElseThrow(PersonNotFoundException::new);
         Person to = people.findByIdAndSheetId(toPersonId, sheetId).orElseThrow(PersonNotFoundException::new);
         if (from.getId().equals(to.getId())) throw new ClaimReassignRefusedException();

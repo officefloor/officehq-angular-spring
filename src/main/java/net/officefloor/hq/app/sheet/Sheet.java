@@ -7,6 +7,7 @@ import jakarta.persistence.Entity;
 import jakarta.persistence.FetchType;
 import jakarta.persistence.Id;
 import jakarta.persistence.JoinColumn;
+import jakarta.persistence.MapKeyColumn;
 import jakarta.persistence.Table;
 import java.math.BigDecimal;
 import java.time.Instant;
@@ -14,6 +15,8 @@ import java.time.LocalDate;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.List;
+import java.util.Map;
+import java.util.TreeMap;
 
 /** A sheet, keyed by the id a user types; everything else in the app is kept per sheet. */
 @Entity
@@ -56,6 +59,16 @@ public class Sheet {
     @ElementCollection(fetch = FetchType.EAGER)
     @CollectionTable(name = "sheet_setting", joinColumns = @JoinColumn(name = "sheet_id"))
     private List<DatedSetting> dated = new ArrayList<>();
+
+    /**
+     * The roles that may take each action whose standing rule was replaced, comma separated, by action
+     * (open, settle, void, reassign, close, reopen); an action not in it keeps the standing rule.
+     */
+    @ElementCollection(fetch = FetchType.EAGER)
+    @CollectionTable(name = "sheet_permission", joinColumns = @JoinColumn(name = "sheet_id"))
+    @MapKeyColumn(name = "perm_action")
+    @Column(name = "perm_roles", nullable = false)
+    private Map<String, String> permissions = new TreeMap<>();
 
     /** A claim dated before it rounds half up, one on or after it half to even; null means the sheet's today. */
     @Column(name = "policy_date")
@@ -153,6 +166,18 @@ public class Sheet {
 
     /** The late percent in force on the date: 0.00 before any is recorded. */
     public BigDecimal latePctOn(LocalDate date) { return decimalOn(LATE_PCT, date, START_LATE_PCT); }
+
+    /** The roles set for each action, comma separated, by action; an action not in it keeps the standing rule. */
+    public Map<String, String> getPermissions() { return new TreeMap<>(permissions); }
+
+    /** Set the roles that may take the action, comma separated; blank or null: the standing rule. */
+    public void setPermission(String action, String roles) {
+        if (roles == null || roles.isEmpty()) permissions.remove(action);
+        else permissions.put(action, roles);
+    }
+
+    /** The roles set for the action, comma separated; null when it keeps the standing rule. */
+    public String permission(String action) { return permissions.get(action); }
 
     public LocalDate getPolicyDate() { return policyDate; }
 

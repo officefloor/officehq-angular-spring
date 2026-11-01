@@ -106,13 +106,15 @@ export function statusAt(c: Claim, date: string): ClaimStatus | null {
 
 /**
  * Whether the claim counts for a period ending on `end`: by the status it had then (open or SETTLED),
- * less a deferred one and an open one dated within a hold and not bound, as the live rules say.
+ * less a deferred one and one still open now (OPEN or PENDING) dated within a hold and not bound, as the
+ * live rules say: a claim since settled or voided is no longer kept out by a hold.
  */
 export function countsAt(c: Claim, end: string, heldOnDate: boolean, today: string | null): boolean {
   const status = statusAt(c, end);
   if (status === null) return false;
-  const open = status === 'OPEN' || status === 'PENDING';
-  return (open || status === 'SETTLED') && (!heldOnDate || !open || isBound(c)) && !isDeferred(c, today);
+  const counts = status === 'OPEN' || status === 'PENDING' || status === 'SETTLED';
+  const openNow = c.status === 'OPEN' || c.status === 'PENDING';
+  return counts && (!heldOnDate || !openNow || isBound(c)) && !isDeferred(c, today);
 }
 
 /** A claim's amount as cents, so sums are exact; a correction's is negative. */
@@ -423,8 +425,10 @@ export class Claims {
         : e instanceof HttpErrorResponse && e.status === 428
         ? `A claim due above the proof threshold cannot be ${PAST[action]} without a proof.`
         : e instanceof HttpErrorResponse && e.status === 403
-        ? action === 'settle'
+        ? action === 'settle' && c.openedBy === this.session.user()
           ? 'The user who opened a claim cannot settle it.'
+          : action === 'open' || action === 'settle' || action === 'void'
+          ? `Your role may not ${action} a claim on this sheet.`
           : action === 'approve' && c.openedBy === this.session.user()
           ? 'The user who opened a claim cannot approve it.'
           : action === 'resettle'
@@ -492,7 +496,7 @@ export class Claims {
     }
   }
 
-  /** A steward moves a DRAFT, OPEN or PENDING claim to another person; a SETTLED or VOID one cannot move. */
+  /** A user whose role may reassign moves a DRAFT, OPEN or PENDING claim to another person; a SETTLED or VOID one cannot move. */
   protected async reassign(c: Claim, to: string): Promise<void> {
     this.claimError.set(null);
     const sheet = this.session.sheetId();
@@ -515,7 +519,7 @@ export class Claims {
         : e instanceof HttpErrorResponse && e.status === 409
         ? `A ${c.status} claim cannot be moved; only a DRAFT, OPEN or PENDING one can.`
         : e instanceof HttpErrorResponse && e.status === 403
-        ? 'Only a steward can move a claim to another person.'
+        ? 'Your role may not move a claim to another person on this sheet.'
         : e instanceof HttpErrorResponse && e.status === 422
         ? RETIRED
         : 'Could not move that claim.';

@@ -140,13 +140,13 @@ public class Person {
 
     /**
      * Whether a claim of theirs counts for a period ending on the date: by the status it had at the end
-     * of that date, less a deferred one and an open one dated within a hold and not bound, as the live
-     * rules say.
+     * of that date, less a deferred one and one still open now (OPEN or PENDING) dated within a hold and
+     * not bound, as the live rules say: a claim since settled or voided is no longer kept out by a hold.
      */
     public boolean countsAt(Claim claim, LocalDate end, LocalDate today) {
         ClaimStatus at = claim.statusAt(end);
         if (at == null || !at.counts() || claim.isDeferredOn(today)) return false;
-        return !at.isOpen() || claim.isBound() || !heldOn(claim.getDate());
+        return !claim.getStatus().isOpen() || claim.isBound() || !heldOn(claim.getDate());
     }
 
     /** Moved on by each save; an edit is refused unless made from the current version. */

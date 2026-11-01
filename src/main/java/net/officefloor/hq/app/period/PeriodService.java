@@ -13,7 +13,6 @@ import net.officefloor.hq.app.claim.ClaimRepository;
 import net.officefloor.hq.app.claim.ClaimService;
 import net.officefloor.hq.app.person.Person;
 import net.officefloor.hq.app.person.PersonRepository;
-import net.officefloor.hq.app.setting.Role;
 import net.officefloor.hq.app.setting.SettingService;
 import net.officefloor.hq.app.sheet.SheetNotFoundException;
 import net.officefloor.hq.app.sheet.SheetRepository;
@@ -73,6 +72,7 @@ public class PeriodService {
         // Lock the sheet so no claim in the period changes while its due-total is fixed.
         LocalDate today = sheets.findForUpdate(sheetId).orElseThrow(SheetNotFoundException::new).getToday();
         Period period = periods.findByIdAndSheetId(id, sheetId).orElseThrow(PeriodNotFoundException::new);
+        if (!settings.mayDo(sheetId, user, "close")) throw new PeriodNotPermittedException();
         if (period.isClosed()) throw new PeriodClosedException();
         Map<Long, Person> byId = people.findBySheetIdOrderByIdAsc(sheetId).stream()
                 .collect(Collectors.toMap(Person::getId, Function.identity()));
@@ -96,7 +96,7 @@ public class PeriodService {
     public Period reopen(String sheetId, String user, Long id) {
         sheets.findForUpdate(sheetId).orElseThrow(SheetNotFoundException::new);
         Period period = periods.findByIdAndSheetId(id, sheetId).orElseThrow(PeriodNotFoundException::new);
-        if (settings.roleOf(sheetId, user) != Role.STEWARD) throw new PeriodReopenNotStewardException();
+        if (!settings.mayDo(sheetId, user, "reopen")) throw new PeriodNotPermittedException();
         if (!period.isClosed()) throw new PeriodOpenException();
         period.reopen();
         Period saved = periods.saveAndFlush(period);

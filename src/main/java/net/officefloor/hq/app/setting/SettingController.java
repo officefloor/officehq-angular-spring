@@ -8,6 +8,7 @@ import jakarta.validation.constraints.Size;
 import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.List;
 import java.util.Map;
 import java.util.TreeMap;
@@ -32,11 +33,12 @@ public class SettingController {
      * and so has the floor; the terms are in days, and so are gradeTerms, by grade, for each grade with
      * its own; the late percent has two decimals; the policy date
      * is null when blank (the sheet's today), and so is the period numbering from (off); the cap has
-     * two decimals, null when none.
+     * two decimals, null when none; permissions has the roles set for each action of the permission
+     * matrix, comma separated, for each action with any set (the rest keep the standing rule).
      */
     public record SettingsView(String clerkLimit, String floor, int terms, String latePct, LocalDate policyDate,
             LocalDate periodNumberingFrom, List<RoleView> roles, Map<String, Integer> gradeTerms, String cap,
-            Map<String, List<DatedView>> dated) {}
+            Map<String, List<DatedView>> dated, Map<String, String> permissions) {}
 
     /** A value recorded for a dated setting from a date on; null when none. */
     public record DatedView(LocalDate from, String value) {}
@@ -151,6 +153,16 @@ public class SettingController {
         }
     }
 
+    /** The roles that may take an action, comma separated (clerk, steward); blank or null: the standing rule. */
+    public record PermissionRequest(
+            @Pattern(regexp = "(?i)\\s*((clerk|steward)\\s*(,\\s*(clerk|steward)\\s*)*)?") String value) {
+
+        String rolesValue() {
+            if (value == null || value.isBlank()) return "";
+            return String.join(",", Arrays.stream(value.split(",")).map(r -> r.strip().toLowerCase()).toList());
+        }
+    }
+
     /** A role: clerk or steward. */
     public record RoleRequest(@NotNull @Pattern(regexp = "clerk|steward") String role) {
 
@@ -173,7 +185,7 @@ public class SettingController {
                 service.terms(sheetId), text(service.latePct(sheetId)), service.policyDate(sheetId),
                 service.periodNumberingFrom(sheetId),
                 service.roles(sheetId).stream().map(RoleView::of).toList(), service.gradeTerms(sheetId),
-                text(service.cap(sheetId)), datedViews(service.dated(sheetId)));
+                text(service.cap(sheetId)), datedViews(service.dated(sheetId)), service.permissions(sheetId));
     }
 
     @PutMapping("/settings/clerk-limit")
@@ -255,6 +267,16 @@ public class SettingController {
             @RequestHeader("X-User") @NotBlank @Size(max = 100) String user,
             @RequestBody @Valid ProofThresholdRequest request) {
         service.setProofThreshold(sheetId, user, request.thresholdValue(), request.fromValue());
+        return get(sheetId, user);
+    }
+
+    @PutMapping("/settings/perm/{action}")
+    public SettingsView setPermission(
+            @PathVariable @Size(max = 100) @Pattern(regexp = "[A-Za-z0-9._-]+") String sheetId,
+            @PathVariable @Pattern(regexp = "open|settle|void|reassign|close|reopen") String action,
+            @RequestHeader("X-User") @NotBlank @Size(max = 100) String user,
+            @RequestBody @Valid PermissionRequest request) {
+        service.setPermission(sheetId, user, action, request.rolesValue());
         return get(sheetId, user);
     }
 
