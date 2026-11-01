@@ -16,6 +16,7 @@ import net.officefloor.hq.app.sheet.DatedSetting;
 import org.springframework.validation.annotation.Validated;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
+import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.PutMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestHeader;
@@ -180,6 +181,27 @@ public class SettingController {
         }
     }
 
+    /** A delegation of the steward role: to the user, by the steward, from and to a date, inclusive. */
+    public record DelegationView(Long id, String user, String by, LocalDate from, LocalDate to) {
+        static DelegationView of(Delegation d) {
+            return new DelegationView(d.getId(), d.getUserName(), d.getDelegator(), d.getFromDate(), d.getToDate());
+        }
+    }
+
+    /** A delegation to the user from the from-date (yyyy-mm-dd; blank or null: the sheet's today) to the to-date. */
+    public record DelegationRequest(@NotBlank @Size(max = 100) String user,
+            @Pattern(regexp = "(\\d{4}-\\d{2}-\\d{2})?") String from,
+            @NotBlank @Pattern(regexp = "\\d{4}-\\d{2}-\\d{2}") String to) {
+
+        LocalDate fromValue() {
+            return from == null || from.isEmpty() ? null : LocalDate.parse(from);
+        }
+
+        LocalDate toValue() {
+            return LocalDate.parse(to);
+        }
+    }
+
     private final SettingService service;
 
     public SettingController(SettingService service) {
@@ -306,6 +328,21 @@ public class SettingController {
             @RequestHeader("X-User") @NotBlank @Size(max = 100) String user,
             @RequestBody @Valid RoleRequest request) {
         return RoleView.of(service.setRole(sheetId, user, name, request.roleValue()));
+    }
+
+    @GetMapping("/delegations")
+    public List<DelegationView> delegations(
+            @PathVariable @Size(max = 100) @Pattern(regexp = "[A-Za-z0-9._-]+") String sheetId,
+            @RequestHeader("X-User") @NotBlank @Size(max = 100) String user) {
+        return service.delegations(sheetId).stream().map(DelegationView::of).toList();
+    }
+
+    @PostMapping("/delegations")
+    public DelegationView delegate(
+            @PathVariable @Size(max = 100) @Pattern(regexp = "[A-Za-z0-9._-]+") String sheetId,
+            @RequestHeader("X-User") @NotBlank @Size(max = 100) String user,
+            @RequestBody @Valid DelegationRequest request) {
+        return DelegationView.of(service.delegate(sheetId, user, request.user(), request.fromValue(), request.toValue()));
     }
 
     private static String text(BigDecimal limit) {

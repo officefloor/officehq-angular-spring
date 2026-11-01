@@ -33,6 +33,15 @@ interface RoleView {
   role: string;
 }
 
+/** A steward's role delegated to a user, by the steward, from and to a date, inclusive. */
+interface DelegationView {
+  id: number;
+  user: string;
+  by: string;
+  from: string;
+  to: string;
+}
+
 interface SettingsView {
   /** The highest due a clerk can settle, two decimals; null when there is no limit. */
   clerkLimit: string | null;
@@ -192,6 +201,23 @@ const FROM = 'From (yyyy-mm-dd; blank: the sheet\'s today)';
           }
         </tbody>
       </table>
+      <form [formGroup]="delegateForm" (ngSubmit)="delegate()" aria-label="Delegate the steward role">
+        <label for="delegate-user">Delegate the steward role to</label>
+        <input id="delegate-user" data-testid="delegate-user" formControlName="user" />
+        <label for="delegate-from">From (blank: today)</label>
+        <input id="delegate-from" data-testid="delegate-from" formControlName="from" placeholder="yyyy-mm-dd" />
+        <label for="delegate-to">To</label>
+        <input id="delegate-to" data-testid="delegate-to" formControlName="to" placeholder="yyyy-mm-dd" />
+        <button type="submit" data-testid="delegate-submit">Delegate</button>
+        @if (delegateError()) {
+          <p role="alert" class="error" data-testid="delegate-error">{{ delegateError() }}</p>
+        }
+      </form>
+      <ul aria-label="Delegations">
+        @for (d of delegations(); track d.id) {
+          <li data-testid="delegate-line">{{ d.by }} delegated the steward role to {{ d.user }} from {{ d.from }} to {{ d.to }}</li>
+        }
+      </ul>
     </section>
   `,
 })
@@ -220,6 +246,8 @@ export class Settings {
   protected readonly userRoles = signal<RoleView[]>([]);
   protected readonly error = signal('');
   protected readonly roleError = signal('');
+  protected readonly delegations = signal<DelegationView[]>([]);
+  protected readonly delegateError = signal('');
   /** The forms with a submit under way; another submit of one waits for its answer. */
   private readonly submitting = new Set<string>();
   protected readonly form = new FormGroup({
@@ -261,6 +289,11 @@ export class Settings {
     user: new FormControl('', { nonNullable: true }),
     role: new FormControl('', { nonNullable: true }),
   });
+  protected readonly delegateForm = new FormGroup({
+    user: new FormControl('', { nonNullable: true }),
+    from: new FormControl('', { nonNullable: true }),
+    to: new FormControl('', { nonNullable: true }),
+  });
 
   constructor() {
     this.form.valueChanges.subscribe(() => this.error.set(''));
@@ -268,6 +301,7 @@ export class Settings {
     this.gradeTermsFromForm.valueChanges.subscribe(() => this.error.set(''));
     this.permForm.valueChanges.subscribe(() => this.error.set(''));
     this.roleForm.valueChanges.subscribe(() => this.roleError.set(''));
+    this.delegateForm.valueChanges.subscribe(() => this.delegateError.set(''));
     effect(() => {
       const id = this.session.sheetId();
       this.session.loads();
@@ -277,6 +311,8 @@ export class Settings {
       this.permissionsSet.set({});
       this.error.set('');
       this.roleError.set('');
+      this.delegations.set([]);
+      this.delegateError.set('');
       if (id) void this.load(id);
     });
   }
@@ -294,6 +330,11 @@ export class Settings {
       const view = await firstValueFrom(this.http.get<SettingsView>(`${this.base(sheet)}/settings`, { headers: this.headers() }));
       if (this.session.sheetId() !== sheet) return;
       this.show(view);
+      const delegations = await firstValueFrom(
+        this.http.get<DelegationView[]>(`${this.base(sheet)}/delegations`, { headers: this.headers() }),
+      );
+      if (this.session.sheetId() !== sheet) return;
+      this.delegations.set(delegations);
     } catch {
       if (this.session.sheetId() === sheet) this.error.set('Could not load the settings of this sheet.');
     }
@@ -502,6 +543,42 @@ export class Settings {
       if (this.session.sheetId() === sheet) this.roleError.set('Could not set that role.');
     } finally {
       this.submitting.delete('role');
+    }
+  }
+
+  /** A steward delegates the steward role to a user from the from-date (blank: today) to the to-date, inclusive. */
+  protected async delegate(): Promise<void> {
+    if (this.submitting.has('delegate')) return;
+    this.delegateError.set('');
+    const sheet = this.session.sheetId();
+    if (!sheet) return;
+    const raw = this.delegateForm.getRawValue();
+    const user = raw.user.trim();
+    const from = raw.from.trim();
+    const to = raw.to.trim();
+    if (!user) {
+      this.delegateError.set('Enter a user name.');
+      return;
+    }
+    if ((from && !isDate(from)) || !isDate(to)) {
+      this.delegateError.set('Enter the dates as yyyy-mm-dd; the to-date is needed.');
+      return;
+    }
+    if (from && to < from) {
+      this.delegateError.set('The to-date cannot be before the from-date.');
+      return;
+    }
+    this.submitting.add('delegate');
+    try {
+      const saved = await firstValueFrom(
+        this.http.post<DelegationView>(`${this.base(sheet)}/delegations`, { user, from, to }, { headers: this.headers() }),
+      );
+      if (this.session.sheetId() !== sheet) return;
+      this.delegations.update((list) => [...list.filter((d) => d.id !== saved.id), saved]);
+    } catch {
+      if (this.session.sheetId() === sheet) this.delegateError.set('Could not delegate: only a steward can, for a to-date on or after the from-date.');
+    } finally {
+      this.submitting.delete('delegate');
     }
   }
 }
