@@ -32,6 +32,20 @@ public final class LateCharge {
                 .setScale(2, rounding);
     }
 
+    /**
+     * The figure with the charge it would have on top were the claim open now, whatever its status; null
+     * when the figure is.
+     */
+    public static BigDecimal withChargeAsOpen(Claim claim, BigDecimal figure, LocalDate today, BigDecimal latePct,
+            RoundingMode rounding) {
+        if (figure == null || claim.isCorrection() || today == null || !claim.getDueBy().isBefore(today)) {
+            return figure;
+        }
+        long steps = ChronoUnit.DAYS.between(claim.getDueBy(), today) / STEP_DAYS;
+        return figure.add(figure.multiply(latePct).multiply(BigDecimal.valueOf(steps)).movePointLeft(2)
+                .setScale(2, rounding));
+    }
+
     /** The figure with its charge added on top; null when the figure is. */
     public static BigDecimal withCharge(Claim claim, BigDecimal figure, LocalDate today, BigDecimal latePct,
             RoundingMode rounding) {

@@ -184,6 +184,14 @@ public class ClaimController {
         return ClaimView.of(service.reject(sheetId, user, id, request.reason()));
     }
 
+    @PostMapping("/claims/{id}/resettle")
+    public ClaimView resettle(
+            @PathVariable @Size(max = 100) @Pattern(regexp = "[A-Za-z0-9._-]+") String sheetId,
+            @PathVariable Long id,
+            @RequestHeader("X-User") @NotBlank @Size(max = 100) String user) {
+        return ClaimView.of(service.resettle(sheetId, user, id));
+    }
+
     @PostMapping("/claims/{id}/reassign")
     public ClaimView reassign(
             @PathVariable @Size(max = 100) @Pattern(regexp = "[A-Za-z0-9._-]+") String sheetId,

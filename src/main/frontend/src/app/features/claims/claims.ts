@@ -14,7 +14,7 @@ import { NA, dueCents } from '../rates/rates';
 export type ClaimStatus = 'DRAFT' | 'OPEN' | 'PENDING' | 'SETTLED' | 'VOID';
 
 /** A status change a claim's buttons ask for. */
-type ClaimAction = 'open' | 'settle' | 'void' | 'approve' | 'reject';
+type ClaimAction = 'open' | 'settle' | 'void' | 'approve' | 'reject' | 'resettle';
 
 export interface Claim {
   id: number;
@@ -157,6 +157,7 @@ export function money(cents: number): string {
 /** What each action makes of a claim, for why it was refused. */
 const PAST: Record<ClaimAction, string> = {
   open: 'opened', settle: 'settled', void: 'voided', approve: 'approved', reject: 'rejected',
+  resettle: 're-settled',
 };
 
 /** Why a claim's correction is refused. */
@@ -170,7 +171,7 @@ function notEditable(status: ClaimStatus | undefined): string {
 }
 
 // One person's claims, newest first, with one form to add a claim or edit one, and buttons to
-// open, settle or void each claim, approve or reject (with a reason) a PENDING one, move one to another person, and a checkbox to select each for a bulk change.
+// open, settle or void each claim, approve or reject (with a reason) a PENDING one, re-settle a SETTLED one, move one to another person, and a checkbox to select each for a bulk change.
 @Component({
   selector: 'app-claims',
   imports: [ReactiveFormsModule],
@@ -220,6 +221,8 @@ function notEditable(status: ClaimStatus | undefined): string {
                   [attr.aria-label]="'Void claim of ' + c.amount + ' on ' + c.date">Void</button>
           <button type="button" data-testid="claim-approve" (click)="act(c, 'approve')"
                   [attr.aria-label]="'Approve claim of ' + c.amount + ' on ' + c.date">Approve</button>
+          <button type="button" data-testid="claim-resettle" (click)="act(c, 'resettle')"
+                  [attr.aria-label]="'Re-settle claim of ' + c.amount + ' on ' + c.date">Re-settle</button>
           <label [for]="fieldId('reject-' + c.id)">Reject reason</label>
           <input [id]="fieldId('reject-' + c.id)" data-testid="claim-reject-reason" #rejectReason />
           <button type="button" data-testid="claim-reject" (click)="act(c, 'reject', rejectReason.value)"
@@ -337,7 +340,8 @@ export class Claims {
   }
 
   /**
-   * Open, settle or void a claim, or approve or reject (with a reason) a PENDING one; a change its
+   * Open, settle or void a claim, approve or reject (with a reason) a PENDING one, or re-settle a
+   * SETTLED one at its figure today; a change its
    * status does not allow is refused.
    */
   protected async act(c: Claim, action: ClaimAction, reason = ''): Promise<void> {
@@ -366,6 +370,8 @@ export class Claims {
           ? 'The user who opened a claim cannot settle it.'
           : action === 'approve' && c.openedBy === this.session.user()
           ? 'The user who opened a claim cannot approve it.'
+          : action === 'resettle'
+          ? 'Only a steward can re-settle a SETTLED claim.'
           : 'Only a steward can approve or reject a PENDING claim.'
         : 'Could not change that claim.';
       this.claimError.set({ id: c.id, message });

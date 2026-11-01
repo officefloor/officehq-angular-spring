@@ -33,9 +33,10 @@ import org.springframework.transaction.annotation.Transactional;
  * can be edited; an OPEN one is changed by voiding it and adding a new one. Settling it
  * fixes its due at its figure (the due bound by a statement, else its person's grade rate of the
  * moment on the claim's date) with its late charge of the moment frozen in; with no figure it
- * stays live. The user who opened a claim cannot settle it, and a clerk cannot settle one whose
+ * stays live. A steward can re-settle a SETTLED claim at the figure it would have today as an open claim
+ * bound by no statement. The user who opened a claim cannot settle it, and a clerk cannot settle one whose
  * due is above the sheet's clerk limit (a steward can). No claim dated inside a closed period can
- * be added, edited (to or from such a date), opened, settled or voided. No claim can be added
+ * be added, edited (to or from such a date), opened, settled, re-settled or voided. No claim can be added
  * or edited to a date after its person's retirement date. A claim with a negative amount is a
  * correction: it must name, by number, a SETTLED claim of the same person; only a correction may name one.
  */
@@ -190,6 +191,37 @@ public class ClaimService {
         record("CLAIM_REJECTED", sheetId, user, person, saved, saved.getNumber(), " reason=" + reason);
         rollup.recordChanges(sheetId, user, before);
         return saved;
+    }
+
+    /**
+     * A steward re-settles a SETTLED claim: its due fixed again at the figure it would have today as an
+     * open claim bound by no statement (today's rates, grades, floor and late charge). Refused for anyone
+     * else, a claim in any other status, or one dated inside a closed period.
+     */
+    @Transactional
+    public Claim resettle(String sheetId, String user, Long id) {
+        // The snapshot locks the sheet first, so the claim is read once no other change is under way.
+        RollupService.Snapshot before = rollup.snapshot(sheetId);
+        Claim claim = claims.findByIdAndSheetId(id, sheetId).orElseThrow(ClaimNotFoundException::new);
+        if (claim.getStatus() != ClaimStatus.SETTLED) throw new ClaimStatusRefusedException();
+        if (settings.roleOf(sheetId, user) != Role.STEWARD) throw new ClaimNotStewardException();
+        Person person = people.findByIdAndSheetId(claim.getPersonId(), sheetId).orElseThrow(PersonNotFoundException::new);
+        refuseIfClosed(sheetId, claim.getDate());
+        BigDecimal old = claim.getSettledDue();
+        BigDecimal figure = LateCharge.withChargeAsOpen(claim, dueOf(sheetId, person, claim), sheets.today(sheetId),
+                settings.latePct(sheetId), roundingOf(sheetId, claim));
+        claim.setSettledDue(figure);
+        logStatus(sheetId, user, person, claim);
+        Claim saved = claims.saveAndFlush(claim);
+        record("CLAIM_RESETTLED", sheetId, user, person, saved, saved.getNumber(),
+                " old=" + figureText(old) + " new=" + figureText(figure));
+        rollup.recordChanges(sheetId, user, before);
+        return saved;
+    }
+
+    /** A fixed due as an audit line has it: two decimals, or n/a when none. */
+    private static String figureText(BigDecimal due) {
+        return due == null ? "n/a" : due.setScale(2).toPlainString();
     }
 
     /**
