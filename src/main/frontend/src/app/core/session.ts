@@ -134,6 +134,11 @@ export class Session {
   /** Bumped each time the pot is saved, so the pools re-read their cuts. */
   readonly potSaves = signal(0);
   /**
+   * Each person's cut total in cents, by person id: their cuts as the pools show them, across every pool
+   * they are a member of, added up (a pool that shows no cuts adds nothing). Kept by the pools section.
+   */
+  readonly cutTotals = signal<ReadonlyMap<number, number>>(new Map());
+  /**
    * The as-of date (yyyy-mm-dd) the signed-in user views the sheet at, or null: while it is set every
    * figure is shown as it stood at the end of that date, with it as the sheet's today, and every change
    * is refused. It belongs to this screen, and is left as it is by loading a sheet.

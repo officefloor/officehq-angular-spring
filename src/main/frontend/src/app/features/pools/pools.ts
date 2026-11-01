@@ -58,7 +58,8 @@ function percent(hundredths: number): string {
 // is at most three deep (the server refuses either). A pool shows its total share and is
 // balanced when the shares total exactly 100.00; a retired member's share counts as 0.00 toward it. Each member of a
 // balanced pool shows their cut of the pool's pot (worked out by the server): the sheet's pot for a pool that is a member
-// of none, else its cut in the pool above; an unbalanced pool, or no pot, shows none.
+// of none, else its cut in the pool above; an unbalanced pool, or no pot, shows none. Each person's cuts as shown,
+// across every pool, are added up as their cut total for the people section.
 @Component({
   selector: 'app-pools',
   imports: [ReactiveFormsModule],
@@ -143,6 +144,15 @@ export class Pools {
   });
 
   constructor() {
+    effect(() => {
+      const totals = new Map<number, number>();
+      for (const p of this.lines()) {
+        for (const m of p.lines) {
+          if (m.personId !== null && m.shownCut !== '') totals.set(m.personId, (totals.get(m.personId) ?? 0) + hundredths(m.shownCut));
+        }
+      }
+      this.session.cutTotals.set(totals);
+    });
     this.form.valueChanges.subscribe(() => this.error.set(''));
     effect(() => {
       const id = this.session.sheetId();

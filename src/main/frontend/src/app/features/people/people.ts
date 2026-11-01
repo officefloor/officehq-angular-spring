@@ -164,6 +164,8 @@ interface StatementTaken {
 // their share divided by 100, rounded half to even, added up (0.00 with none).
 // A person's due-total is at most the sheet's cap (blank: none); the row shows their excess, how far the
 // sum of their figures is above it (0.00 when not, or n/a). Every total of due-totals adds the capped ones.
+// Each row shows the person's cut total: their cuts as the pools show them, across every pool they are a
+// member of, added up (a pool that shows no cuts adds nothing); the sheet's cut total adds up everyone's.
 // Under it, a summary: per grade, the people on it today (retired people excluded) and their
 // due-totals added up; per period, its due-total; per status, how many claims have it.
 // Above everything, a header of counters repeating those figures: the people on the sheet (retired
@@ -312,7 +314,7 @@ function trimmedSum(figures: number[]): number {
       </form>
       <table>
         <thead>
-          <tr><th scope="col"><span class="visually-hidden">Select</span></th><th scope="col">Name</th><th scope="col">Grade</th><th scope="col">Terms</th><th scope="col">Contact</th><th scope="col">Aliases</th><th scope="col">Claimed</th><th scope="col">Due total</th><th scope="col">Excess</th><th scope="col">Settled total</th><th scope="col">Open total</th><th scope="col">Periods</th><th scope="col">Statements</th><th scope="col">Retired</th><th scope="col">Hold</th><th scope="col">Watched</th><th scope="col">Active</th><th scope="col">Clashing</th><th scope="col">Overdue</th><th scope="col">Aged</th><th scope="col">Patrons</th><th scope="col">Claims</th><th scope="col"><span class="visually-hidden">Actions</span></th></tr>
+          <tr><th scope="col"><span class="visually-hidden">Select</span></th><th scope="col">Name</th><th scope="col">Grade</th><th scope="col">Terms</th><th scope="col">Contact</th><th scope="col">Aliases</th><th scope="col">Claimed</th><th scope="col">Due total</th><th scope="col">Excess</th><th scope="col">Settled total</th><th scope="col">Open total</th><th scope="col">Cut total</th><th scope="col">Periods</th><th scope="col">Statements</th><th scope="col">Retired</th><th scope="col">Hold</th><th scope="col">Watched</th><th scope="col">Active</th><th scope="col">Clashing</th><th scope="col">Overdue</th><th scope="col">Aged</th><th scope="col">Patrons</th><th scope="col">Claims</th><th scope="col"><span class="visually-hidden">Actions</span></th></tr>
         </thead>
         <tbody>
           @for (p of listed(); track p.id) {
@@ -345,6 +347,7 @@ function trimmedSum(figures: number[]): number {
               <td data-testid="person-excess">{{ excessOf(p) }}</td>
               <td data-testid="person-settled-total">{{ money(splitOf(p).settled) }}</td>
               <td data-testid="person-open-total">{{ money(splitOf(p).open) }}</td>
+              <td data-testid="person-cut-total">{{ money(cutTotalOf(p.id)) }}</td>
               <td>
                 @for (period of periods(); track period.id) {
                   <span>{{ period.name }} <span [attr.data-testid]="'person-period-' + period.name + '-due-total'">{{ personPeriodDueOf(p, period) }}</span></span>
@@ -457,6 +460,7 @@ function trimmedSum(figures: number[]): number {
         totalling <strong data-testid="rollup-overdue-total">{{ money(overdueTotal().cents) }}</strong></p>
       <p>Settled total: <strong data-testid="rollup-settled-total">{{ money(splitTotal().settled) }}</strong></p>
       <p>Open total: <strong data-testid="rollup-open-total">{{ money(splitTotal().open) }}</strong></p>
+      <p>Cut total: <strong data-testid="rollup-cut-total">{{ money(cutTotal()) }}</strong></p>
     </section>
     <section aria-labelledby="summary-heading">
       <h2 id="summary-heading">Summary</h2>
@@ -771,6 +775,9 @@ export class People {
     }
     return total;
   });
+  /** The sheet's cut total in cents: everyone's cut totals added up. */
+  protected readonly cutTotal = computed(() =>
+    this.people().reduce((sum, p) => sum + this.cutTotalOf(p.id), 0));
   /** The sheet's overdue claims that count: everyone's added up. */
   protected readonly overdueTotal = computed(() => {
     let count = 0;
@@ -885,6 +892,11 @@ export class People {
   protected readonly pasteForm = new FormGroup({
     text: new FormControl('', { nonNullable: true }),
   });
+
+  /** The person's cut total in cents: their cuts across every pool they are a member of, added up. */
+  protected cutTotalOf(personId: number): number {
+    return this.session.cutTotals().get(personId) ?? 0;
+  }
 
   constructor() {
     this.pasteForm.valueChanges.subscribe(() => this.pasteError.set(''));
