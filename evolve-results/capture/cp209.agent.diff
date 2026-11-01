@@ -1,0 +1,78 @@
+diff --git a/src/main/frontend/src/app/features/people/people.ts b/src/main/frontend/src/app/features/people/people.ts
+index 7149e04f4..d5549eb8a 100644
+--- a/src/main/frontend/src/app/features/people/people.ts
++++ b/src/main/frontend/src/app/features/people/people.ts
+@@ -413,6 +413,7 @@ function csvField(value: string): string {
+             @if (session.shows('overdue-total')) {
+                 due <span data-testid="person-overdue-total">{{ (money(overdueOf(p.id).cents)) | figure }}</span>
+             }
++            — score <span data-testid="person-score">{{ scoreOf(p.id) }}</span>
+             — aged 0–30 <span data-testid="person-aged-0-30">{{ (money(agedOf(p.id).upTo30)) | figure }}</span>
+             31–60 <span data-testid="person-aged-31-60">{{ (money(agedOf(p.id).upTo60)) | figure }}</span>
+             61+ <span data-testid="person-aged-61">{{ (money(agedOf(p.id).over60)) | figure }}</span>
+@@ -592,6 +593,9 @@ export class PeopleList {
+   private readonly descendants = signal<DescendantFigures>(NO_DESCENDANTS);
+   private readonly roles = inject(Roles);
+   private readonly delegations = inject(Delegations);
++  /** The ids of the people this screen added since the sheet was last (re)loaded: a restricted user still sees a
++   *  person it has just added, until the sheet is re-read. */
++  private readonly addedHere = signal<ReadonlySet<number>>(new Set());
+   /** For a restricted user, the ids of the people it may see: its own person and the leads and members of the crews
+    *  that person leads or belongs to (none without a person of its name); null for any other role. A delegation of
+    *  the steward role holding the sheet's today lifts the restriction, as it does the role. */
+@@ -613,7 +617,9 @@ export class PeopleList {
+    *  see. Totals still count everyone. */
+   protected readonly listed = computed(() => {
+     const visible = this.visibleIds();
+-    return this.people().filter((p) => (this.api.showRetired() || !p.retired) && (visible === null || visible.has(p.id)));
++    const added = this.addedHere();
++    return this.people().filter((p) => (this.api.showRetired() || !p.retired)
++      && (visible === null || visible.has(p.id) || added.has(p.id)));
+   });
+   protected readonly sortKeys = SORT_KEYS;
+   /** Each signed-in user's sort key for this screen; 'added' (list order) until they choose one. */
+@@ -1168,6 +1174,7 @@ export class PeopleList {
+       .pipe(
+         switchMap((sheet) => {
+           this.people.set([]);
++          this.addedHere.set(new Set());
+           this.claims.set([]);
+           this.selectedClaims.set(new Set());
+           this.selectedPeople.set(new Set());
+@@ -1415,6 +1422,16 @@ export class PeopleList {
+     return this.overdueByPerson().get(personId) ?? NO_OVERDUE;
+   }
+ 
++  /** The person's score: their settled figures divided by 100, less 5 for each overdue claim that counts, rounded
++   *  half to even to a whole number. Worked in whole cents so the halves are exact. */
++  protected scoreOf(personId: number): string {
++    const scaled = this.splitOf(personId).settled - this.overdueOf(personId).count * 5 * 10_000;
++    const floor = Math.floor(scaled / 10_000);
++    const rest = scaled - floor * 10_000;
++    const score = rest > 5_000 || (rest === 5_000 && floor % 2 !== 0) ? floor + 1 : floor;
++    return String(score === 0 ? 0 : score);
++  }
++
+   protected snapshotsOf(personId: number): SnapshotView[] {
+     return this.snapshots().get(personId) ?? NO_SNAPSHOTS;
+   }
+@@ -1971,7 +1988,10 @@ export class PeopleList {
+     this.claimsApi.quickAdd(sheet.id, value.name, amount).subscribe({
+       next: ({ person, personAdded, claim }) => {
+         this.quickSaving.set(false);
+-        if (personAdded) this.people.update((list) => [...list, person]);
++        if (personAdded) {
++          this.people.update((list) => [...list, person]);
++          this.addedHere.update((ids) => new Set(ids).add(person.id));
++        }
+         this.claimSaved(claim);
+         this.quickForm.reset({ name: '', amount: '' }, { emitEvent: false });
+       },
+@@ -2113,6 +2133,7 @@ export class PeopleList {
+         this.people.update((list) =>
+           id === null ? [...list, saved] : list.map((p) => (p.id === saved.id ? saved : p)),
+         );
++        if (id === null) this.addedHere.update((ids) => new Set(ids).add(saved.id));
+         this.reset();
+       },
+       error: (err: unknown) => {
