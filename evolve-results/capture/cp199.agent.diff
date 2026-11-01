@@ -1,0 +1,273 @@
+diff --git a/src/main/frontend/src/app/core/people.ts b/src/main/frontend/src/app/core/people.ts
+index 39fb6bf83..dd63e3eb1 100644
+--- a/src/main/frontend/src/app/core/people.ts
++++ b/src/main/frontend/src/app/core/people.ts
+@@ -66,6 +66,8 @@ export interface PersonView {
+   /** The reason a steward flagged the person for, while the sheet's today is on or before its until-date; null or
+    *  missing otherwise. */
+   flag?: string | null;
++  /** The user who may approve or reject the person's PENDING claims as a steward may; null or missing when none. */
++  approver?: string | null;
+ }
+ 
+ /** A past retirement: retired from `from`, unretired on `to` (yyyy-mm-dd). */
+@@ -176,6 +178,11 @@ export class People {
+     return this.http.post<PersonView>(`${this.base(sheetId)}/${id}/flag`, { reason, until });
+   }
+ 
++  /** Set the person's approver (blank: none). */
++  setApprover(sheetId: string, id: number, user: string): Observable<PersonView> {
++    return this.http.post<PersonView>(`${this.base(sheetId)}/${id}/approver`, { user });
++  }
++
+   /** Give the person an alias; refused when blank or already a name or alias on the sheet. */
+   addAlias(sheetId: string, id: number, alias: string): Observable<PersonView> {
+     return this.http.post<PersonView>(`${this.base(sheetId)}/${id}/aliases`, { alias });
+diff --git a/src/main/frontend/src/app/features/claims/claims.ts b/src/main/frontend/src/app/features/claims/claims.ts
+index a74c8e64f..d08ab3e99 100644
+--- a/src/main/frontend/src/app/features/claims/claims.ts
++++ b/src/main/frontend/src/app/features/claims/claims.ts
+@@ -731,7 +731,7 @@ export class PersonClaims {
+             ? 'You opened this claim, so another steward must approve it.'
+             : c.editedBy === this.session.user()
+             ? 'You last edited this claim, so another steward must approve it.'
+-            : 'Only a steward can approve a claim.'
++            : 'Only a steward or the approver of this person can approve a claim.'
+           : this.refusal(err, c, 'approved'),
+       }),
+     });
+@@ -795,7 +795,7 @@ export class PersonClaims {
+       error: (err: unknown) => this.claimError.set({
+         id: c.id,
+         message: err instanceof HttpErrorResponse && err.status === 403
+-          ? 'Only a steward can reject a claim.'
++          ? 'Only a steward or the approver of this person can reject a claim.'
+           : this.refusal(err, c, 'rejected'),
+       }),
+     });
+diff --git a/src/main/frontend/src/app/features/people/people.ts b/src/main/frontend/src/app/features/people/people.ts
+index c5d9cdb44..1eee0533e 100644
+--- a/src/main/frontend/src/app/features/people/people.ts
++++ b/src/main/frontend/src/app/features/people/people.ts
+@@ -464,6 +464,12 @@ function csvField(value: string): string {
+                    (input)="clearPersonError(p.id)" />
+             <button type="button" data-testid="person-flag" (click)="flag(p, flagReason, flagUntil)"
+                     [disabled]="flagging() === p.id" [attr.aria-label]="'Flag ' + p.name">Flag</button>
++            — approver <span data-testid="person-approver">{{ p.approver ?? '' }}</span>
++            <label [attr.for]="'person-approver-input-' + p.id">Approver</label>
++            <input [id]="'person-approver-input-' + p.id" data-testid="person-approver-input" #approverInput
++                   autocomplete="off" (input)="clearPersonError(p.id)" />
++            <button type="button" data-testid="person-approver-save" (click)="setApprover(p, approverInput)"
++                    [disabled]="approving() === p.id" [attr.aria-label]="'Set the approver of ' + p.name">Set approver</button>
+             <button type="button" [attr.data-testid]="'person-edit-' + p.id" (click)="edit(p)"
+                     [attr.aria-label]="'Edit ' + p.name">Edit</button>
+             <label [attr.for]="'person-statement-asof-' + p.id">Statement as of</label>
+@@ -694,6 +700,9 @@ export class PeopleList {
+   /** The person being flagged, so a second press waits for the first. */
+   protected readonly flagging = signal<number | null>(null);
+ 
++  /** The person whose approver is being set, so a second press waits for the first. */
++  protected readonly approving = signal<number | null>(null);
++
+   /** The person an alias is being added to, so a second press waits for the first. */
+   protected readonly aliasing = signal<number | null>(null);
+   /** The error of the last action taken on a person's row, until the next action on that row. */
+@@ -1588,6 +1597,27 @@ export class PeopleList {
+     });
+   }
+ 
++  /** Set the person's approver to the user name typed (blank: none). */
++  protected setApprover(p: PersonView, input: HTMLInputElement): void {
++    if (this.approving() === p.id) return;
++    this.personError.set(null);
++    this.patronError.set(null);
++    const sheet = this.sheets.current();
++    if (!sheet) return;
++    this.approving.set(p.id);
++    this.api.setApprover(sheet.id, p.id, input.value).subscribe({
++      next: (saved) => {
++        this.approving.set(null);
++        input.value = '';
++        this.people.update((list) => list.map((q) => (q.id === saved.id ? saved : q)));
++      },
++      error: () => {
++        this.approving.set(null);
++        this.personError.set({ id: p.id, message: 'The approver of ' + p.name + ' could not be set.' });
++      },
++    });
++  }
++
+   /** Put the person on hold over the dates given: a blank from-date takes the sheet's today, a blank to-date has no end. */
+   protected hold(p: PersonView, from: string, to: string): void {
+     if (this.holding() === p.id) return;
+diff --git a/src/main/java/net/officefloor/hq/app/claim/ClaimService.java b/src/main/java/net/officefloor/hq/app/claim/ClaimService.java
+index 21e921fc6..2cce1892c 100644
+--- a/src/main/java/net/officefloor/hq/app/claim/ClaimService.java
++++ b/src/main/java/net/officefloor/hq/app/claim/ClaimService.java
+@@ -908,8 +908,8 @@ public class ClaimService {
+                 changeStatus(sheetId, user, split.split().getId(), ClaimStatus.SETTLED, null, false));
+     }
+ 
+-    /** The PENDING claim a steward approves or rejects; refused for a clerk, a claim in any other status and one
+-     *  due by inside a closed period. */
++    /** The PENDING claim a steward, or its person's approver, approves or rejects; refused for anyone else, a claim
++     *  in any other status and one due by inside a closed period. */
+     private Claim pendingClaim(String sheetId, String user, long id) {
+         Claim claim = claims.findByIdAndSheetId(id, sheetId)
+                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "No such claim on this sheet"));
+@@ -918,8 +918,10 @@ public class ClaimService {
+             throw new ResponseStatusException(HttpStatus.CONFLICT,
+                     "A " + claim.getStatus() + " claim is not waiting for approval");
+         }
+-        if (!Role.STEWARD.equals(roles.roleOf(sheetId, user))) {
+-            throw new ResponseStatusException(HttpStatus.FORBIDDEN, "Only a steward approves or rejects a claim");
++        if (!Role.STEWARD.equals(roles.roleOf(sheetId, user)) && !people.findByIdAndSheetId(claim.getPersonId(), sheetId)
++                .map(p -> p.isApprover(user)).orElse(false)) {
++            throw new ResponseStatusException(HttpStatus.FORBIDDEN,
++                    "Only a steward or the person's approver approves or rejects a claim");
+         }
+         return claim;
+     }
+diff --git a/src/main/java/net/officefloor/hq/app/history/SheetState.java b/src/main/java/net/officefloor/hq/app/history/SheetState.java
+index cd264e63d..2e47f834b 100644
+--- a/src/main/java/net/officefloor/hq/app/history/SheetState.java
++++ b/src/main/java/net/officefloor/hq/app/history/SheetState.java
+@@ -177,7 +177,7 @@ public record SheetState(List<SettingState> settings, LocalDate policyDate, List
+                 .map(p -> new PersonView(v.id(), v.name(), p.rebuild(sheetId).gradeOn(today), v.grades(),
+                         p.rebuild(sheetId).termsOn(today),
+                         v.version(), v.retired(), v.retiredFrom(), v.held(), v.holds(), v.contact(), v.aliases(), v.clashing(), v.origin(),
+-                        v.pastRetirements(), v.tags(), v.undatedTerms(), v.datedTerms(), v.flag()))
++                        v.pastRetirements(), v.tags(), v.undatedTerms(), v.datedTerms(), v.flag(), v.approver()))
+                 .orElse(v)).toList();
+     }
+ 
+diff --git a/src/main/java/net/officefloor/hq/app/person/Person.java b/src/main/java/net/officefloor/hq/app/person/Person.java
+index d29cba520..b741ae38f 100644
+--- a/src/main/java/net/officefloor/hq/app/person/Person.java
++++ b/src/main/java/net/officefloor/hq/app/person/Person.java
+@@ -94,6 +94,10 @@ public class Person {
+     @Column(name = "flag_until")
+     private LocalDate flagUntil;
+ 
++    /** The user who may approve or reject the person's PENDING claims as a steward may; null when none. */
++    @Column(name = "approver", length = 100)
++    private String approver;
++
+     /** The other names the person is found by, stored trimmed. */
+     @ElementCollection(fetch = FetchType.EAGER)
+     @CollectionTable(name = "person_alias", joinColumns = @JoinColumn(name = "person_id"))
+@@ -132,6 +136,7 @@ public class Person {
+         copy.aliases.addAll(aliases);
+         copy.flagReason = flagReason;
+         copy.flagUntil = flagUntil;
++        copy.approver = approver;
+         return copy;
+     }
+ 
+@@ -309,6 +314,21 @@ public class Person {
+         holds.add(hold);
+     }
+ 
++    /** The user who may approve or reject the person's PENDING claims; null when none. */
++    public String getApprover() {
++        return approver;
++    }
++
++    /** Set the person's approver (null: none). */
++    public void setApprover(String approver) {
++        this.approver = approver;
++    }
++
++    /** Whether {@code user} is the person's approver. */
++    public boolean isApprover(String user) {
++        return approver != null && user != null && approver.equals(user.trim());
++    }
++
+     /** Flag the person with a reason until a date, replacing any flag they had. */
+     public void flag(String reason, LocalDate until) {
+         this.flagReason = reason;
+diff --git a/src/main/java/net/officefloor/hq/app/person/PersonController.java b/src/main/java/net/officefloor/hq/app/person/PersonController.java
+index 312fa30ef..244a639c2 100644
+--- a/src/main/java/net/officefloor/hq/app/person/PersonController.java
++++ b/src/main/java/net/officefloor/hq/app/person/PersonController.java
+@@ -38,7 +38,8 @@ public class PersonController {
+     public record PersonView(long id, String name, String grade, List<GradeView> grades, Integer terms,
+             long version, boolean retired, LocalDate retiredFrom, boolean held, List<HoldView> holds, String contact,
+             List<String> aliases, boolean clashing, String origin, List<RetirementView> pastRetirements,
+-            List<String> tags, Integer undatedTerms, List<TermsView> datedTerms, String flag) {
++            List<String> tags, Integer undatedTerms, List<TermsView> datedTerms, String flag,
++            String approver) {
+ 
+         /** A view read back without tags or dated terms (taken before people had them) has none. */
+         public PersonView {
+@@ -58,7 +59,7 @@ public class PersonController {
+                     person.getAliases(), clashing, person.getOriginSheetId(),
+                     person.getPastRetirements().stream().map(RetirementView::of).toList(), person.tagList(),
+                     person.getTerms(), person.getDatedTerms().stream().map(TermsView::of).toList(),
+-                    person.flagOn(today));
++                    person.flagOn(today), person.getApprover());
+         }
+     }
+ 
+@@ -90,6 +91,10 @@ public class PersonController {
+     public record HoldForm(LocalDate from, LocalDate to) {
+     }
+ 
++    /** An approver as the form submits it: a user name (blank or missing: none). */
++    public record ApproverForm(@Size(max = 100) String user) {
++    }
++
+     /** A flag as the form submits it: a reason (blank: refused) and the last day it is in force (missing: the
+      *  sheet's today). */
+     public record FlagForm(@Size(max = 200) String reason, LocalDate until) {
+@@ -314,6 +319,16 @@ public class PersonController {
+         return view(sheetId, people.addAlias(sheetId, user, id, request.alias()));
+     }
+ 
++    /** Set the person's approver. */
++    @PostMapping("/{id}/approver")
++    public PersonView setApprover(
++            @PathVariable @NotBlank @Size(max = 100) @Pattern(regexp = "[A-Za-z0-9._-]+") String sheetId,
++            @PathVariable long id,
++            @RequestHeader("X-User") @NotBlank @Size(max = 100) String user,
++            @Valid @RequestBody ApproverForm request) {
++        return view(sheetId, people.setApprover(sheetId, user, id, request.user()));
++    }
++
+     /** Merge the person into another of the sheet: the person merged into, as saved. */
+     @PostMapping("/{id}/merge")
+     public PersonView merge(
+diff --git a/src/main/java/net/officefloor/hq/app/person/PersonService.java b/src/main/java/net/officefloor/hq/app/person/PersonService.java
+index 307e365ce..45df501ea 100644
+--- a/src/main/java/net/officefloor/hq/app/person/PersonService.java
++++ b/src/main/java/net/officefloor/hq/app/person/PersonService.java
+@@ -308,6 +308,21 @@ public class PersonService {
+         return saved;
+     }
+ 
++    /** Give the person an approver, a user name stored trimmed (blank: none), who may approve or reject their
++     *  PENDING claims as a steward may. */
++    @Transactional
++    public Person setApprover(String sheetId, String user, long id, String approver) {
++        sheets.load(sheetId, user);
++        Person person = people.findByIdAndSheetId(id, sheetId)
++                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "No such person on this sheet"));
++        String trimmed = approver == null ? "" : approver.trim();
++        person.setApprover(trimmed.isEmpty() ? null : trimmed);
++        Person saved = save(person);
++        audit.recordChangeOnCommit(sheetId, user, "APPROVER_SET sheet=" + sheetId + " by=" + user
++                + " name=" + saved.getName() + " user=" + trimmed);
++        return saved;
++    }
++
+     /** Give the person an alias, stored trimmed: refused when blank, or when it is, without regard to case, any
+      *  name or alias on the sheet or on another sheet of its tree. */
+     @Transactional
+diff --git a/src/main/resources/db/migration/V105__person_approver.sql b/src/main/resources/db/migration/V105__person_approver.sql
+new file mode 100644
+index 000000000..5fb5229ed
+--- /dev/null
++++ b/src/main/resources/db/migration/V105__person_approver.sql
+@@ -0,0 +1,2 @@
++-- A user who may approve or reject the person's PENDING claims as a steward may. Null for none.
++ALTER TABLE person ADD COLUMN approver VARCHAR(100);
