@@ -284,9 +284,11 @@ export class People {
     this.rates.update((list) => [...list.filter((r) => r.grade !== rate.grade || r.from !== rate.from), rate]);
   }
 
-  /** Put an added period in its place by from-date. */
+  /** Put an added period in its place by from-date, or a closed one in its place. */
   protected periodSaved(period: Period): void {
-    this.periods.update((list) => [...list, period].sort((a, b) => (a.from < b.from ? -1 : 1)));
+    this.periods.update((list) =>
+      [...list.filter((p) => p.id !== period.id), period].sort((a, b) => (a.from < b.from ? -1 : 1)),
+    );
   }
 
   /** Put an added claim first, or an edited one in its place. */

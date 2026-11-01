@@ -3,7 +3,7 @@ import { Component, inject, input, output, signal } from '@angular/core';
 import { FormControl, FormGroup, ReactiveFormsModule } from '@angular/forms';
 import { firstValueFrom } from 'rxjs';
 import { Session } from '../../core/session';
-import { Period, periodOn } from '../periods/periods';
+import { Period, closedOn, periodOn } from '../periods/periods';
 import { NA, Rate, dueCents, pctOn } from '../rates/rates';
 
 /** DRAFT when added, then OPEN, then SETTLED; a DRAFT or OPEN claim can be made VOID. */
@@ -54,6 +54,9 @@ export function claimDueCents(c: Claim, rates: Rate[]): number | null {
   const pct = pctOn(rates, c.date);
   return pct === null ? null : dueCents(cents(c.amount), pct);
 }
+
+/** Why a change to a claim dated inside a closed period is refused. */
+const CLOSED = 'No claim dated inside a closed period can be changed.';
 
 /** Cents as an amount with two decimals. */
 export function money(cents: number): string {
@@ -167,6 +170,10 @@ export class Claims {
 
   protected edit(c: Claim): void {
     this.claimError.set(null);
+    if (closedOn(this.periods(), c.date)) {
+      this.claimError.set({ id: c.id, message: CLOSED });
+      return;
+    }
     this.editingId.set(c.id);
     this.form.setValue({ amount: c.amount, date: c.date, note: c.note }, { emitEvent: false });
     this.error.set('');
@@ -188,7 +195,9 @@ export class Claims {
       this.saved.emit(claim);
     } catch (e) {
       if (this.session.sheetId() !== sheet) return;
-      const message = e instanceof HttpErrorResponse && e.status === 403
+      const message = e instanceof HttpErrorResponse && e.status === 423
+        ? CLOSED
+        : e instanceof HttpErrorResponse && e.status === 403
         ? 'The user who opened a claim cannot settle it.'
         : e instanceof HttpErrorResponse && e.status === 409
         ? `A ${c.status} claim cannot be ${action === 'open' ? 'opened' : action === 'settle' ? 'settled' : 'voided'}.`
@@ -227,8 +236,13 @@ export class Claims {
       if (this.session.sheetId() !== sheet) return;
       this.saved.emit(claim);
       this.reset();
-    } catch {
-      this.error.set(id === null ? 'Could not add that claim.' : 'Could not save that claim.');
+    } catch (e) {
+      if (this.session.sheetId() !== sheet) return;
+      this.error.set(
+        e instanceof HttpErrorResponse && e.status === 423
+          ? CLOSED
+          : id === null ? 'Could not add that claim.' : 'Could not save that claim.',
+      );
     } finally {
       this.saving = false;
     }

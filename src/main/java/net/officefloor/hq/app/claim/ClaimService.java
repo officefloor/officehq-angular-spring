@@ -5,6 +5,8 @@ import java.math.RoundingMode;
 import java.time.LocalDate;
 import java.util.List;
 import net.officefloor.hq.app.Audit;
+import net.officefloor.hq.app.period.PeriodClosedException;
+import net.officefloor.hq.app.period.PeriodRepository;
 import net.officefloor.hq.app.person.Person;
 import net.officefloor.hq.app.person.PersonNotFoundException;
 import net.officefloor.hq.app.person.PersonRepository;
@@ -21,7 +23,8 @@ import org.springframework.transaction.annotation.Transactional;
  * as {@link ClaimStatus} allows; a change it does not allow is refused. Opening a claim gives it
  * the sheet's next number; voiding it clears the number, which is never given again. Settling it
  * fixes its due at its person's grade rate of the moment on the claim's date; with no such rate it
- * stays live. The user who opened a claim cannot settle it.
+ * stays live. The user who opened a claim cannot settle it. No claim dated inside a closed period
+ * can be added, edited (to or from such a date), opened, settled or voided.
  */
 @Service
 public class ClaimService {
@@ -31,10 +34,12 @@ public class ClaimService {
     private final RateService rates;
     private final SheetService sheets;
     private final RollupService rollup;
+    private final PeriodRepository periods;
     private final Audit audit;
 
     public ClaimService(ClaimRepository claims, PersonRepository people, RateService rates, SheetService sheets,
-            RollupService rollup, Audit audit) {
+            RollupService rollup, PeriodRepository periods, Audit audit) {
+        this.periods = periods;
         this.claims = claims;
         this.people = people;
         this.rates = rates;
@@ -52,7 +57,9 @@ public class ClaimService {
     public Claim add(String sheetId, String user, Long personId, BigDecimal amount, LocalDate date, String note) {
         Person person = people.findByIdAndSheetId(personId, sheetId).orElseThrow(PersonNotFoundException::new);
         RollupService.Snapshot before = rollup.snapshot(sheetId);
-        Claim claim = claims.saveAndFlush(new Claim(sheetId, personId, amount, dateOrToday(sheetId, date), note));
+        LocalDate on = dateOrToday(sheetId, date);
+        refuseIfClosed(sheetId, on);
+        Claim claim = claims.saveAndFlush(new Claim(sheetId, personId, amount, on, note));
         record("CLAIM_ADDED", sheetId, user, person, claim);
         rollup.recordChanges(sheetId, user, before);
         return claim;
@@ -62,8 +69,11 @@ public class ClaimService {
     public Claim edit(String sheetId, String user, Long id, BigDecimal amount, LocalDate date, String note) {
         Claim claim = claims.findByIdAndSheetId(id, sheetId).orElseThrow(ClaimNotFoundException::new);
         RollupService.Snapshot before = rollup.snapshot(sheetId);
+        LocalDate on = dateOrToday(sheetId, date);
+        refuseIfClosed(sheetId, claim.getDate());
+        refuseIfClosed(sheetId, on);
         claim.setAmount(amount);
-        claim.setDate(dateOrToday(sheetId, date));
+        claim.setDate(on);
         claim.setNote(note);
         Claim saved = claims.saveAndFlush(claim);
         Person person = people.findByIdAndSheetId(saved.getPersonId(), sheetId).orElseThrow(PersonNotFoundException::new);
@@ -86,6 +96,7 @@ public class ClaimService {
         }
         Person person = people.findByIdAndSheetId(claim.getPersonId(), sheetId).orElseThrow(PersonNotFoundException::new);
         RollupService.Snapshot before = rollup.snapshot(sheetId);
+        refuseIfClosed(sheetId, claim.getDate());
         Long number = claim.getNumber();
         switch (next) {
             case OPEN -> {
@@ -141,6 +152,11 @@ public class ClaimService {
         audit.recordOnCommit(event + " sheet=" + sheetId + " by=" + user.strip() + " person=" + person.getName()
                 + " amount=" + claim.getAmount().setScale(2).toPlainString() + " date=" + claim.getDate()
                 + (number != null ? " number=" + number : "") + extra);
+    }
+
+    /** Refuse a change to a claim dated inside a closed period; the caller holds the sheet's lock. */
+    private void refuseIfClosed(String sheetId, LocalDate date) {
+        if (periods.closedOn(sheetId, date)) throw new PeriodClosedException();
     }
 
     private LocalDate dateOrToday(String sheetId, LocalDate date) {

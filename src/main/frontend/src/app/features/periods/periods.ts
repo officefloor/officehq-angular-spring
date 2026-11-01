@@ -11,6 +11,10 @@ export interface Period {
   /** The first and last dates (yyyy-mm-dd) in it, both inclusive. */
   from: string;
   to: string;
+  /** Once closed, no claim dated inside it can change. */
+  closed: boolean;
+  /** The due-total fixed when it was closed, two decimals; null while open. */
+  closedDueTotal: string | null;
 }
 
 /** Of the sheet's periods, the one whose dates contain the date, or null. */
@@ -18,7 +22,13 @@ export function periodOn(periods: Period[], date: string): Period | null {
   return periods.find((p) => p.from <= date && date <= p.to) ?? null;
 }
 
-// The sheet's periods, with one form to add one, and each period's due-total.
+/** Whether the date falls inside a closed period. */
+export function closedOn(periods: Period[], date: string): boolean {
+  return periodOn(periods, date)?.closed ?? false;
+}
+
+// The sheet's periods, with one form to add one, each period's due-total and whether it is
+// closed, and a button to close each.
 @Component({
   selector: 'app-periods',
   imports: [ReactiveFormsModule],
@@ -39,7 +49,7 @@ export function periodOn(periods: Period[], date: string): Period | null {
       </form>
       <table>
         <thead>
-          <tr><th scope="col">Name</th><th scope="col">From</th><th scope="col">To</th><th scope="col">Due total</th></tr>
+          <tr><th scope="col">Name</th><th scope="col">From</th><th scope="col">To</th><th scope="col">Due total</th><th scope="col">Closed</th><th scope="col"><span class="visually-hidden">Actions</span></th></tr>
         </thead>
         <tbody>
           @for (p of periods(); track p.id) {
@@ -47,7 +57,15 @@ export function periodOn(periods: Period[], date: string): Period | null {
               <td data-testid="period-name">{{ p.name }}</td>
               <td data-testid="period-from">{{ p.from }}</td>
               <td data-testid="period-to">{{ p.to }}</td>
-              <td data-testid="period-due-total">{{ dueTotalOf()(p) }}</td>
+              <td data-testid="period-due-total">{{ p.closedDueTotal ?? dueTotalOf()(p) }}</td>
+              <td data-testid="period-closed">{{ p.closed ? 'yes' : 'no' }}</td>
+              <td>
+                <button type="button" data-testid="period-close" (click)="close(p)"
+                        [attr.aria-label]="'Close period ' + p.name">Close</button>
+                @if (periodError()?.id === p.id) {
+                  <p role="alert" class="error" data-testid="period-error">{{ periodError()?.message }}</p>
+                }
+              </td>
             </tr>
           }
         </tbody>
@@ -63,10 +81,12 @@ export class Periods {
   readonly periods = input.required<Period[]>();
   /** A period's due-total, two decimals. */
   readonly dueTotalOf = input.required<(p: Period) => string>();
-  /** A period added, as the store now holds it. */
+  /** A period added or closed, as the store now holds it. */
   readonly saved = output<Period>();
 
   protected readonly error = signal('');
+  /** The error from the last action on a period's row, if it was refused. */
+  protected readonly periodError = signal<{ id: number; message: string } | null>(null);
   /** A submit is under way; another one waits for its answer rather than storing twice. */
   private saving = false;
   protected readonly form = new FormGroup({
@@ -77,6 +97,28 @@ export class Periods {
 
   constructor() {
     this.form.valueChanges.subscribe(() => this.error.set(''));
+  }
+
+  /** Close a period, fixing its due-total; a closed one cannot be closed again. */
+  protected async close(p: Period): Promise<void> {
+    this.periodError.set(null);
+    const sheet = this.session.sheetId();
+    if (!sheet) return;
+    try {
+      const period = await firstValueFrom(
+        this.http.post<Period>(`/api/sheets/${encodeURIComponent(sheet)}/periods/${p.id}/close`, null, {
+          headers: { 'X-User': this.session.user() ?? '' },
+        }),
+      );
+      if (this.session.sheetId() !== sheet) return;
+      this.saved.emit(period);
+    } catch (e) {
+      if (this.session.sheetId() !== sheet) return;
+      const message = e instanceof HttpErrorResponse && e.status === 423
+        ? 'That period is already closed.'
+        : 'Could not close that period.';
+      this.periodError.set({ id: p.id, message });
+    }
   }
 
   protected async save(): Promise<void> {
