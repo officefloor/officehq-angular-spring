@@ -1,0 +1,28 @@
+diff --git a/src/main/frontend/src/app/features/people/people.ts b/src/main/frontend/src/app/features/people/people.ts
+index 8cdca5fd3..0d500d5b6 100644
+--- a/src/main/frontend/src/app/features/people/people.ts
++++ b/src/main/frontend/src/app/features/people/people.ts
+@@ -121,6 +121,9 @@ function csvField(value: string): string {
+       <p>Settled in total: <strong data-testid="rollup-settled-total">{{ (money(splitTotals().settled)) | figure }}</strong>,
+         open in total: <strong data-testid="rollup-open-total">{{ (money(splitTotals().open)) | figure }}</strong></p>
+       <p>Cut in total: <strong data-testid="rollup-cut-total">{{ (money(cutTotal())) | figure }}</strong></p>
++      <p>Aged 0–30: <strong data-testid="rollup-aged-0-30">{{ (money(agedTotals().upTo30)) | figure }}</strong>,
++        31–60: <strong data-testid="rollup-aged-31-60">{{ (money(agedTotals().upTo60)) | figure }}</strong>,
++        61+: <strong data-testid="rollup-aged-61">{{ (money(agedTotals().over60)) | figure }}</strong></p>
+       @if (tagTotals().length > 0) {
+         <ul aria-label="Due by tag">
+           @for (t of tagTotals(); track t.tag) {
+@@ -878,6 +881,13 @@ export class PeopleList {
+     }
+     return byPerson;
+   });
++  /** Everyone's aged dues added up, bucket by bucket, not trimmed. */
++  protected readonly agedTotals = computed(() =>
++    [...this.agedByPerson().values()].reduce(
++      (sum, a) => ({ upTo30: sum.upTo30 + a.upTo30, upTo60: sum.upTo60 + a.upTo60, over60: sum.over60 + a.over60 }),
++      { ...NO_AGED },
++    ),
++  );
+   /** Everyone's overdue claims added up: the count of them all, the dues trimmed of the highest and lowest person's. */
+   protected readonly overdueTotals = computed(() => {
+     const overdue = [...this.overdueByPerson().values()];
