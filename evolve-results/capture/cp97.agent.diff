@@ -1,0 +1,54 @@
+diff --git a/src/main/frontend/src/app/features/people/people.ts b/src/main/frontend/src/app/features/people/people.ts
+index e6788b710..5bfd7d032 100644
+--- a/src/main/frontend/src/app/features/people/people.ts
++++ b/src/main/frontend/src/app/features/people/people.ts
+@@ -423,6 +423,20 @@ function trimmedSum(figures: number[]): number {
+           }
+         </tbody>
+       </table>
++      <table>
++        <caption>By month, every month a claim on the sheet is dated in</caption>
++        <thead>
++          <tr><th scope="col">Month</th><th scope="col">Due total</th></tr>
++        </thead>
++        <tbody>
++          @for (m of monthSummary(); track m.month) {
++            <tr>
++              <th scope="row">{{ m.month }}</th>
++              <td [attr.data-testid]="'month-' + m.month + '-due-total'">{{ m.dueTotal }}</td>
++            </tr>
++          }
++        </tbody>
++      </table>
+       <table>
+         <caption>By status</caption>
+         <thead>
+@@ -685,6 +699,28 @@ export class People {
+     }
+     return [...totals.keys()].sort().map((tag) => ({ tag, dueTotal: money(totals.get(tag) ?? 0) }));
+   });
++  /**
++   * Per calendar month (yyyy-mm) any claim of the sheet is dated in, sorted: the dues of the claims that
++   * count dated in it, added up.
++   */
++  protected readonly monthSummary = computed(() => {
++    const floor = this.session.floorCentsOn;
++    const late = this.session.late();
++    const totals = new Map<string, number>();
++    for (const c of this.claims()) totals.set(c.date.slice(0, 7), 0);
++    for (const p of this.people()) {
++      const pctOn = this.pctOnOf(p.id);
++      const graceOn = this.graceOnOf(p.id);
++      const theirs = this.claimsOf(p.id);
++      for (const c of theirs) {
++        if (!this.counts(c)) continue;
++        const month = c.date.slice(0, 7);
++        const due = claimDueCents(c, pctOn, floor, late, roundsOn(c, theirs), graceOn) ?? 0;
++        totals.set(month, (totals.get(month) ?? 0) + due);
++      }
++    }
++    return [...totals.keys()].sort().map((month) => ({ month, dueTotal: money(totals.get(month) ?? 0) }));
++  });
+   /** Per status: how many of the sheet's claims have it. */
+   protected readonly statusSummary = computed(() =>
+     SUMMARY_STATUSES.map((status) => ({ status, count: this.claims().filter((c) => c.status === status).length })),
