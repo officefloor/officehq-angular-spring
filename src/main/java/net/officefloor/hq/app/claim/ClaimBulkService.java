@@ -49,7 +49,8 @@ public class ClaimBulkService {
             try {
                 claims.changeStatus(sheetId, user, claim.getId(), next);
                 done++;
-            } catch (ClaimStatusRefusedException | ClaimSettledByOpenerException | ClaimDeferredException | PeriodClosedException
+            } catch (ClaimStatusRefusedException | ClaimSettledByOpenerException | ClaimDeferredException | ClaimProofRequiredException
+                    | PeriodClosedException
                     | ClaimNotFoundException | PersonNotFoundException refused) {
                 // left as it is
             }

@@ -6,7 +6,7 @@ import java.time.LocalDate;
 
 /**
  * A value recorded for one of a sheet's dated settings (the floor, the late percent, the terms, a
- * grade's terms, the clerk limit, the cap) from a date on; a null value is none.
+ * grade's terms, the clerk limit, the cap, the proof threshold) from a date on; a null value is none.
  */
 @Embeddable
 public class DatedSetting {

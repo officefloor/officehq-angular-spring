@@ -53,9 +53,9 @@ const FROM = 'From (yyyy-mm-dd; blank: the sheet\'s today)';
 // figure for every full 30 days overdue), the policy date (blank: the sheet's today; a claim dated before it
 // rounds half up, else half to even), the period numbering from (blank: off; while the sheet's today is on or after it,
 // a claim opened is numbered within its period), the cap (blank: none; a person's due-total is at most it), and the role given to each user name. Saving stores the settings whose
-// field was changed since the last save; clearing the clerk limit, the policy date, the period numbering from or the cap (Delete or
+// field was changed since the last save; clearing the clerk limit, the policy date, the period numbering from, the cap or the proof threshold (Delete or
 // Backspace) counts as a change even when it was already blank. The clerk limit, the floor, the terms, each grade's terms, the late
-// percent and the cap are dated: a save records the value from its from-date (blank: the sheet's today), keeping those recorded from
+// percent, the cap and the proof threshold are dated: a save records the value from its from-date (blank: the sheet's today), keeping those recorded from
 // other dates; a claim takes the floor, late percent and terms in force on its date, and the clerk limit and cap are those in force on
 // the sheet's today. Each shows the value in force on the sheet's today.
 @Component({
@@ -103,6 +103,13 @@ const FROM = 'From (yyyy-mm-dd; blank: the sheet\'s today)';
                (keydown.delete)="form.controls.cap.markAsDirty()" (keydown.backspace)="form.controls.cap.markAsDirty()" />
         <label for="setting-cap-from">Cap {{ from }}</label>
         <input id="setting-cap-from" data-testid="setting-cap-from" formControlName="capFrom" placeholder="yyyy-mm-dd" />
+        <label for="setting-proof-threshold">Proof threshold (a claim due above it needs a proof to settle; blank: none)</label>
+        <input id="setting-proof-threshold" data-testid="setting-proof-threshold" formControlName="proofThreshold" inputmode="decimal"
+               (keydown.delete)="form.controls.proofThreshold.markAsDirty()"
+               (keydown.backspace)="form.controls.proofThreshold.markAsDirty()" />
+        <label for="setting-proof-threshold-from">Proof threshold {{ from }}</label>
+        <input id="setting-proof-threshold-from" data-testid="setting-proof-threshold-from" formControlName="proofThresholdFrom"
+               placeholder="yyyy-mm-dd" />
         <button type="submit" data-testid="settings-save">Save settings</button>
         @if (error()) {
           <p role="alert" class="error" data-testid="settings-error">{{ error() }}</p>
@@ -119,6 +126,7 @@ const FROM = 'From (yyyy-mm-dd; blank: the sheet\'s today)';
       <p>Policy date now: <span data-testid="setting-policy-date-current">{{ session.policyDate() ?? '' }}</span></p>
       <p>Period numbering from now: <span data-testid="setting-period-numbering-from-current">{{ periodNumberingFrom() ?? '' }}</span></p>
       <p>Cap now: <span data-testid="setting-cap-current">{{ session.cap() ?? '' }}</span></p>
+      <p>Proof threshold now: <span data-testid="setting-proof-threshold-current">{{ session.proofThreshold() ?? '' }}</span></p>
       <form [formGroup]="roleForm" (ngSubmit)="setRole()" aria-label="Set role">
         <label for="role-form-user">User</label>
         <input id="role-form-user" data-testid="role-form-user" formControlName="user" />
@@ -187,6 +195,8 @@ export class Settings {
     termsFrom: new FormControl('', { nonNullable: true }),
     latePctFrom: new FormControl('', { nonNullable: true }),
     capFrom: new FormControl('', { nonNullable: true }),
+    proofThreshold: new FormControl('', { nonNullable: true }),
+    proofThresholdFrom: new FormControl('', { nonNullable: true }),
   });
   protected readonly gradeTermsForm = new FormGroup({
     A: new FormControl('', { nonNullable: true }),
@@ -249,8 +259,8 @@ export class Settings {
     this.error.set('');
     const sheet = this.session.sheetId();
     if (!sheet) return;
-    const { clerkLimit, floor, terms, latePct, policyDate, periodNumberingFrom, cap } = this.form.controls;
-    const { clerkLimitFrom, floorFrom, termsFrom, latePctFrom, capFrom } = this.form.getRawValue();
+    const { clerkLimit, floor, terms, latePct, policyDate, periodNumberingFrom, cap, proofThreshold } = this.form.controls;
+    const { clerkLimitFrom, floorFrom, termsFrom, latePctFrom, capFrom, proofThresholdFrom } = this.form.getRawValue();
     const value = clerkLimit.value.trim();
     const floorValue = floor.value.trim();
     const termsValue = terms.value.trim();
@@ -258,11 +268,12 @@ export class Settings {
     const policyDateValue = policyDate.value.trim();
     const periodNumberingFromValue = periodNumberingFrom.value.trim();
     const capValue = cap.value.trim();
+    const proofThresholdValue = proofThreshold.value.trim();
     // a dated setting saved with a from-date takes it; blank: the sheet's today
     const dated = (from: string): string | null => from.trim() || null;
     const froms = [
       clerkLimit.dirty ? clerkLimitFrom : '', floor.dirty ? floorFrom : '', terms.dirty ? termsFrom : '',
-      latePct.dirty ? latePctFrom : '', cap.dirty ? capFrom : '',
+      latePct.dirty ? latePctFrom : '', cap.dirty ? capFrom : '', proofThreshold.dirty ? proofThresholdFrom : '',
       ...GRADES.filter((g) => this.gradeTermsForm.controls[g].dirty).map((g) => this.gradeTermsFromForm.controls[g].value),
     ];
     if (froms.some((from) => from.trim() && !isDate(from.trim()))) {
@@ -300,6 +311,10 @@ export class Settings {
     }
     if (cap.dirty && capValue && !/^\d{1,12}(\.\d{1,2})?$/.test(capValue)) {
       this.error.set('Enter a cap of 0.00 or more, with at most two decimals, or leave it blank for none.');
+      return;
+    }
+    if (proofThreshold.dirty && proofThresholdValue && !/^\d{1,12}(\.\d{1,2})?$/.test(proofThresholdValue)) {
+      this.error.set('Enter a proof threshold of 0.00 or more, with at most two decimals, or leave it blank for none.');
       return;
     }
     this.submitting.add('save');
@@ -360,6 +375,14 @@ export class Settings {
           this.http.put<SettingsView>(`${this.base(sheet)}/settings/cap`, { value: capValue || null, from: dated(capFrom) }, { headers: this.headers() }),
         );
         cap.markAsPristine();
+        if (this.session.sheetId() === sheet) this.show(view);
+      }
+      if (proofThreshold.dirty) {
+        const view = await firstValueFrom(
+          this.http.put<SettingsView>(`${this.base(sheet)}/settings/proof-threshold`,
+            { value: proofThresholdValue || null, from: dated(proofThresholdFrom) }, { headers: this.headers() }),
+        );
+        proofThreshold.markAsPristine();
         if (this.session.sheetId() === sheet) this.show(view);
       }
     } catch {

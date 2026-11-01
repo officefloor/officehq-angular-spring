@@ -19,7 +19,8 @@ export interface DatedValue {
   value: string | null;
 }
 
-/** The values recorded for each dated setting (floor, late-pct, terms, terms-<grade>, clerk-limit, cap), by key. */
+/** The values recorded for each dated setting (floor, late-pct, terms, terms-<grade>, clerk-limit, cap,
+ * proof-threshold), by key. */
 export type Dated = Partial<Record<string, DatedValue[]>>;
 
 /** The values in force before any is recorded: a key without one has none. */
@@ -58,6 +59,8 @@ export class Session {
   readonly policyDate = signal<string | null>(null);
   /** The sheet's cap in force today, two decimals: a person's due-total is at most it; null when none. */
   readonly cap = computed(() => this.valueOn('cap', this.today()));
+  /** The proof threshold in force today, two decimals; null when none. */
+  readonly proofThreshold = computed(() => this.valueOn('proof-threshold', this.today()));
   /** The late percent by date, today and policy date together, as a claim's late charge and rounding need them. */
   readonly late = computed<Late>(() => ({
     pctOn: (date) => this.valueOn('late-pct', date) ?? '0.00',

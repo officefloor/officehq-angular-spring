@@ -97,6 +97,10 @@ public class Claim {
     @Column(name = "corrects")
     private String corrects;
 
+    /** How many proofs it has; raised one at a time while not SETTLED or VOID. */
+    @Column(name = "proofs", nullable = false)
+    private int proofs;
+
     /** The date it is deferred until; none unless deferred. Deferred only while OPEN and before that date. */
     @Column(name = "deferred_until")
     private LocalDate deferredUntil;
@@ -200,6 +204,11 @@ public class Claim {
         this.stated = true;
         this.statedDue = due;
     }
+
+    public int getProofs() { return proofs; }
+
+    /** Raise its proofs count by one. */
+    public void addProof() { proofs++; }
 
     public LocalDate getDeferredUntil() { return deferredUntil; }
 

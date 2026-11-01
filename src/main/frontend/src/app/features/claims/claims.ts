@@ -43,6 +43,8 @@ export interface Claim {
   log: ClaimLogLine[];
   /** The date (yyyy-mm-dd) it is deferred until; null unless deferred. Deferred only while OPEN and before it. */
   deferredUntil: string | null;
+  /** How many proofs it has; one above the proof threshold in force on its date needs one to be settled or approved. */
+  proofs: number;
 }
 
 /** A status a claim was given, by whom, on the sheet's today then, with its due then (null: none). */
@@ -223,6 +225,7 @@ function notEditable(status: ClaimStatus | undefined): string {
           <span>Overdue <span data-testid="claim-overdue">{{ overdueOf(c) ? 'yes' : 'no' }}</span></span>
           <span>Deferred <span data-testid="claim-deferred">{{ deferredOf(c) ? 'yes' : 'no' }}</span></span>
           <span>Deferred until <span data-testid="claim-deferred-until">{{ c.deferredUntil ?? '' }}</span></span>
+          <span>Proofs <span data-testid="claim-proofs">{{ c.proofs }}</span></span>
           <span>Corrects <span data-testid="claim-corrects">{{ c.corrects ?? '' }}</span></span>
           <ol [attr.aria-label]="'Status log of claim of ' + c.amount + ' on ' + c.date">
             @for (line of c.log; track $index) {
@@ -243,6 +246,8 @@ function notEditable(status: ClaimStatus | undefined): string {
           <input [id]="fieldId('reject-' + c.id)" data-testid="claim-reject-reason" #rejectReason />
           <button type="button" data-testid="claim-reject" (click)="act(c, 'reject', rejectReason.value)"
                   [attr.aria-label]="'Reject claim of ' + c.amount + ' on ' + c.date">Reject</button>
+          <button type="button" data-testid="claim-proof" (click)="addProof(c)"
+                  [attr.aria-label]="'Add a proof to claim of ' + c.amount + ' on ' + c.date">Add proof</button>
           <label [for]="fieldId('defer-' + c.id)">Defer until</label>
           <input [id]="fieldId('defer-' + c.id)" type="date" data-testid="claim-defer-date" #deferDate
                  (input)="clearClaimError(c.id)" />
@@ -392,6 +397,8 @@ export class Claims {
         ? `A ${c.status} claim cannot be ${PAST[action]}.`
         : e instanceof HttpErrorResponse && e.status === 412
         ? `A deferred claim cannot be settled until ${c.deferredUntil}.`
+        : e instanceof HttpErrorResponse && e.status === 428
+        ? `A claim due above the proof threshold cannot be ${PAST[action]} without a proof.`
         : e instanceof HttpErrorResponse && e.status === 403
         ? action === 'settle'
           ? 'The user who opened a claim cannot settle it.'
@@ -407,6 +414,27 @@ export class Claims {
 
   protected clearClaimError(id: number): void {
     if (this.claimError()?.id === id) this.claimError.set(null);
+  }
+
+  /** Raise a claim's proofs count by one; a SETTLED or VOID claim, or one dated inside a closed period, is refused. */
+  protected async addProof(c: Claim): Promise<void> {
+    this.claimError.set(null);
+    const sheet = this.session.sheetId();
+    if (!sheet) return;
+    const url = `/api/sheets/${encodeURIComponent(sheet)}/claims/${c.id}/proof`;
+    try {
+      const claim = await firstValueFrom(this.http.post<Claim>(url, null, { headers: this.headers() }));
+      if (this.session.sheetId() !== sheet) return;
+      this.saved.emit(claim);
+    } catch (e) {
+      if (this.session.sheetId() !== sheet) return;
+      const message = e instanceof HttpErrorResponse && e.status === 423
+        ? CLOSED
+        : e instanceof HttpErrorResponse && e.status === 409
+        ? `A ${c.status} claim cannot be given a proof.`
+        : 'Could not add a proof to that claim.';
+      this.claimError.set({ id: c.id, message });
+    }
   }
 
   /**

@@ -33,7 +33,8 @@ public class ClaimController {
      */
     public record ClaimView(Long id, Long personId, String amount, LocalDate date, String note, ClaimStatus status,
             String number, String settledDue, String openedBy, boolean stated, String statedDue, String corrects,
-            LocalDate dueBy, List<LogLineView> log, LocalDate deferredUntil) {
+            LocalDate dueBy, List<LogLineView> log, LocalDate deferredUntil,
+            int proofs) {
         public static ClaimView of(Claim claim) {
             return new ClaimView(claim.getId(), claim.getPersonId(), claim.getAmount().toPlainString(),
                     claim.getDate(), claim.getNote(), claim.getStatus(), claim.getNumber(),
@@ -41,7 +42,7 @@ public class ClaimController {
                     claim.getOpenedBy(), claim.isStated(),
                     claim.getStatedDue() == null ? null : claim.getStatedDue().setScale(2).toPlainString(),
                     claim.getCorrects(), claim.getDueBy(), claim.getLog().stream().map(LogLineView::of).toList(),
-                    claim.getDeferredUntil());
+                    claim.getDeferredUntil(), claim.getProofs());
         }
     }
 
@@ -220,6 +221,14 @@ public class ClaimController {
             @RequestHeader("X-User") @NotBlank @Size(max = 100) String user,
             @RequestBody @Valid DeferRequest request) {
         return ClaimView.of(service.defer(sheetId, user, id, request.until()));
+    }
+
+    @PostMapping("/claims/{id}/proof")
+    public ClaimView addProof(
+            @PathVariable @Size(max = 100) @Pattern(regexp = "[A-Za-z0-9._-]+") String sheetId,
+            @PathVariable Long id,
+            @RequestHeader("X-User") @NotBlank @Size(max = 100) String user) {
+        return ClaimView.of(service.addProof(sheetId, user, id));
     }
 
     @PostMapping("/claims/{id}/reassign")

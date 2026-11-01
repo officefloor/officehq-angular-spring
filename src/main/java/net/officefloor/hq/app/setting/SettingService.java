@@ -25,7 +25,8 @@ import org.springframework.transaction.annotation.Transactional;
  * on the sheet's today (see {@link Sheet}). And the
  * policy date (none: the sheet's today), before which a claim's live figures round half up, else half to even;
  * and the period numbering from (none: off), from which a claim opened is numbered within its period;
- * and the cap (none: no cap), the most a person's due-total can be.
+ * and the cap (none: no cap), the most a person's due-total can be; and the proof threshold (none: none,
+ * dated, taken on a claim's date), above which a claim's due needs a proof to be settled or approved.
  */
 @Service
 public class SettingService {
@@ -129,6 +130,12 @@ public class SettingService {
         return sheets.findById(sheetId).orElseThrow(SheetNotFoundException::new).getCap();
     }
 
+    /** The proof threshold in force on the date; null means none. */
+    @Transactional(readOnly = true)
+    public BigDecimal proofThresholdOn(String sheetId, LocalDate date) {
+        return sheets.findById(sheetId).orElseThrow(SheetNotFoundException::new).proofThresholdOn(date);
+    }
+
     /** The user's role on the sheet: clerk unless given another. */
     @Transactional(readOnly = true)
     public Role roleOf(String sheetId, String userName) {
@@ -226,6 +233,14 @@ public class SettingService {
         record(sheet, user, Sheet.CAP, cap == null ? null : cap.toPlainString(), from);
         rollup.recordChanges(sheetId, user, before);
         return cap;
+    }
+
+    /** Record the proof threshold (null: none) from the date (null: the sheet's today); no figure moves with it. */
+    @Transactional
+    public BigDecimal setProofThreshold(String sheetId, String user, BigDecimal threshold, LocalDate from) {
+        Sheet sheet = sheets.findForUpdate(sheetId).orElseThrow(SheetNotFoundException::new);
+        record(sheet, user, Sheet.PROOF_THRESHOLD, threshold == null ? null : threshold.toPlainString(), from);
+        return threshold;
     }
 
     /**
