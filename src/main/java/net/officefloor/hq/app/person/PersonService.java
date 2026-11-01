@@ -162,13 +162,17 @@ public class PersonService {
     @Transactional
     public Person edit(String sheetId, String user, Long id, long version, String name, String grade,
             LocalDate gradeFrom, Integer terms, String contact) {
-        return edit(sheetId, user, id, version, name, grade, gradeFrom, terms, contact, null);
+        return edit(sheetId, user, id, version, name, grade, gradeFrom, terms, null, contact, null);
     }
 
-    /** Edit a person, giving them the tags (as {@link Claim#tagsOf} reads them); null: their tags kept. */
+    /**
+     * Edit a person, giving them the tags (as {@link Claim#tagsOf} reads them); null: their tags kept. Their
+     * terms (null: none) are recorded from the terms from-date, keeping those already recorded (in place of
+     * any from the same date); with none, from the beginning of time.
+     */
     @Transactional
     public Person edit(String sheetId, String user, Long id, long version, String name, String grade,
-            LocalDate gradeFrom, Integer terms, String contact, List<String> tags) {
+            LocalDate gradeFrom, Integer terms, LocalDate termsFrom, String contact, List<String> tags) {
         Person person = people.findByIdAndSheetId(id, sheetId).orElseThrow(PersonNotFoundException::new);
         if (person.getVersion() != version) throw new PersonVersionConflictException();
         sheets.findForUpdate(sheetId).orElseThrow(SheetNotFoundException::new);
@@ -180,8 +184,12 @@ public class PersonService {
         RollupService.Snapshot before = rollup.snapshot(sheetId);
         LocalDate today = today(sheetId);
         person.setName(name);
-        boolean termsChanged = !Objects.equals(terms, person.getTerms());
-        person.setTerms(terms);
+        Integer termsBefore = person.getTerms();
+        Map<LocalDate, Integer> datedTermsBefore = person.getDatedTerms();
+        if (termsFrom != null) person.setTermsFrom(termsFrom, terms);
+        else person.setTerms(terms);
+        boolean termsChanged = !Objects.equals(termsBefore, person.getTerms())
+                || !datedTermsBefore.equals(person.getDatedTerms());
         boolean contactChanged = !Objects.equals(key, person.getContact());
         person.setContact(key);
         if (tags != null) person.setTags(tags);
@@ -191,7 +199,7 @@ public class PersonService {
         Person saved = saveUnique(person);
         claimService.keepTags(sheetId, saved.getTags());
         record("PERSON_EDITED", sheetId, user, saved, saved.gradeOn(today),
-                (termsChanged ? " terms=" + (terms != null ? terms : "") : "")
+                (termsChanged ? " terms=" + (saved.termsOn(today) != null ? saved.termsOn(today) : "") : "")
                         + (contactChanged ? " contact=" + (key != null ? key : "") : ""));
         rollup.recordChanges(sheetId, user, before);
         return saved;

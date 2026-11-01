@@ -754,11 +754,12 @@ public class ClaimService {
     }
 
     /**
-     * The terms a claim of the person dated on the date is fixed with: their own terms, else their grade's
-     * then. Its due-by is the terms-th business day after its date (skipping weekends and the sheet's holidays).
+     * The terms a claim of the person dated on the date is fixed with: their own terms in force then, else
+     * their grade's then. Its due-by is the terms-th business day after its date (skipping weekends and the sheet's holidays).
      */
     private int termsOf(String sheetId, Person person, LocalDate on) {
-        return person.getTerms() != null ? person.getTerms() : settings.termsFor(sheetId, person.gradeOn(on), on);
+        Integer own = person.termsOn(on);
+        return own != null ? own : settings.termsFor(sheetId, person.gradeOn(on), on);
     }
 
     /**

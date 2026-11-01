@@ -68,8 +68,10 @@ interface Person {
   patronIds: number[];
   /** Whether the signed-in user watches them. */
   watched: boolean;
-  /** Their own terms in days, ahead of their grade's and the sheet's; null: none. */
+  /** Their own terms in days in force on the sheet's today, ahead of their grade's and the sheet's; null: none. */
   terms: number | null;
+  /** Their own terms in days from the beginning of time; null: none. */
+  baseTerms: number | null;
   /** Their contact, without surrounding spaces and lower-cased; null: none. */
   contact: string | null;
   /** Their aliases, sorted as names are compared. */
@@ -175,7 +177,8 @@ interface StatementTaken {
 // form's grade from its from-date (blank: the sheet's today), unless it leaves the grade as the row
 // showed it with the from-date blank. A claim takes the rate of the grade in force on its date; the
 // row shows the grade in force on the sheet's today. A person may have their own terms in days (blank:
-// none), and a contact (blank: none), kept trimmed and lower-cased and refused when another person on
+// none), dated like the grade: saved with a terms from-date they are recorded from it, the others kept,
+// else from the beginning of time; a claim takes those in force on its date and the row those on today, and a contact (blank: none), kept trimmed and lower-cased and refused when another person on
 // the sheet has it, and tags (comma separated; trimmed, lower-cased, repeats dropped, shown sorted);
 // a claim counts in a tag's total when it or its person carries the tag, once; a claim's due-by is fixed when it is added from them, else their grade's, else the sheet's.
 // A person may have aliases, added one at a time and shown sorted as names are compared; an alias may not
@@ -249,6 +252,8 @@ function trimmedSum(figures: number[]): number {
         <input type="date" id="person-form-grade-from" data-testid="person-form-grade-from" formControlName="gradeFrom" />
         <label for="person-form-terms">Terms (days, blank: none)</label>
         <input id="person-form-terms" data-testid="person-form-terms" formControlName="terms" inputmode="numeric" />
+        <label for="person-form-terms-from">Terms from (blank: always)</label>
+        <input type="date" id="person-form-terms-from" data-testid="person-form-terms-from" formControlName="termsFrom" />
         <label for="person-form-contact">Contact (blank: none)</label>
         <input id="person-form-contact" data-testid="person-form-contact" formControlName="contact" />
         <label for="person-form-tags">Tags (comma separated)</label>
@@ -1122,6 +1127,8 @@ export class People {
     gradeFrom: new FormControl('', { nonNullable: true }),
     /** Their own terms in days; blank: none. */
     terms: new FormControl('', { nonNullable: true }),
+    /** The date their terms are in force from; blank: the beginning of time. */
+    termsFrom: new FormControl('', { nonNullable: true }),
     /** Their contact; blank: none. */
     contact: new FormControl('', { nonNullable: true }),
     /** Their tags, comma separated; blank: none. */
@@ -1754,7 +1761,7 @@ export class People {
       return;
     }
     const body = {
-      name: p.name, grade, gradeFrom: null, terms: p.terms?.toString() ?? '', contact: p.contact ?? '',
+      name: p.name, grade, gradeFrom: null, terms: p.baseTerms?.toString() ?? '', contact: p.contact ?? '',
       tags: p.tags.join(', '), version: p.version,
     };
     try {
@@ -2023,7 +2030,7 @@ export class People {
 
   private reset(): void {
     this.editingId.set(null);
-    this.form.reset({ name: '', grade: 'A', gradeFrom: '', terms: '', contact: '', tags: '' }, { emitEvent: false });
+    this.form.reset({ name: '', grade: 'A', gradeFrom: '', terms: '', termsFrom: '', contact: '', tags: '' }, { emitEvent: false });
     this.error.set('');
   }
 
@@ -2031,7 +2038,7 @@ export class People {
     this.personError.set(null);
     this.editingId.set(p.id);
     this.editingVersion = p.version;
-    this.form.setValue({ name: p.name, grade: this.gradeOf(p), gradeFrom: '', terms: p.terms?.toString() ?? '', contact: p.contact ?? '', tags: p.tags.join(', ') }, { emitEvent: false });
+    this.form.setValue({ name: p.name, grade: this.gradeOf(p), gradeFrom: '', terms: p.terms?.toString() ?? '', termsFrom: '', contact: p.contact ?? '', tags: p.tags.join(', ') }, { emitEvent: false });
     this.error.set('');
   }
 
@@ -2049,6 +2056,7 @@ export class People {
     const grade = raw.grade;
     const gradeFrom = raw.gradeFrom.trim() || null;
     const terms = raw.terms.trim();
+    const termsFrom = raw.termsFrom.trim() || null;
     const contact = raw.contact.trim().toLowerCase();
     const tags = raw.tags;
     if (!name) {
@@ -2076,7 +2084,7 @@ export class People {
         this.people.update((list) => [...list, added]);
       } else {
         const saved = await firstValueFrom(
-          this.http.put<Person>(`${this.url(sheet)}/${id}`, { name, grade, gradeFrom, terms, contact, tags, version: this.editingVersion }, { headers: this.headers() }),
+          this.http.put<Person>(`${this.url(sheet)}/${id}`, { name, grade, gradeFrom, terms, termsFrom, contact, tags, version: this.editingVersion }, { headers: this.headers() }),
         );
         if (this.session.sheetId() !== sheet) return;
         this.people.update((list) => list.map((p) => (p.id === saved.id ? saved : p)));
@@ -2277,7 +2285,7 @@ export class People {
       const current = list.find((p) => p.id === id);
       if (current && this.editingId() === id) {
         this.editingVersion = current.version;
-        this.form.setValue({ name: current.name, grade: this.gradeOf(current), gradeFrom: '', terms: current.terms?.toString() ?? '', contact: current.contact ?? '', tags: current.tags.join(', ') }, { emitEvent: false });
+        this.form.setValue({ name: current.name, grade: this.gradeOf(current), gradeFrom: '', terms: current.terms?.toString() ?? '', termsFrom: '', contact: current.contact ?? '', tags: current.tags.join(', ') }, { emitEvent: false });
       }
     } catch {
       // the error already shown stands

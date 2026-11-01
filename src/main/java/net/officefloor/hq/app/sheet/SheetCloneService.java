@@ -95,7 +95,7 @@ public class SheetCloneService {
             row.put("VERSION", 0L);
             long id = insertNew("person", row);
             people.put(old, id);
-            for (String table : List.of("person_grade", "person_grade_log", "person_hold", "person_retirement",
+            for (String table : List.of("person_grade", "person_grade_log", "person_terms", "person_hold", "person_retirement",
                     "person_snapshot")) {
                 for (Map<String, Object> line : rows("SELECT * FROM " + table + " WHERE person_id = ?", old)) {
                     line.put("PERSON_ID", id);

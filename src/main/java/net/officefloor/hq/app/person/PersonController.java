@@ -34,7 +34,8 @@ public class PersonController {
      * A person as the screen shows them: grade is the one in force on the sheet's today, grades every
      * grade recorded, earliest first (the first from null, the beginning of time); retiredFrom is null
      * while not retired; retirements their past ones, earliest first; held whether they have any hold, holds every hold, earliest first; patronIds
-     * in the order named; watched whether the signed-in user watches them; terms their own, null for none;
+     * in the order named; watched whether the signed-in user watches them; terms their own in force on the sheet's today, null for none,
+     * and baseTerms their own from the beginning of time, null for none;
      * contact theirs, null for none; aliases theirs, sorted as names are compared; active whether they are active on the sheet's today ({@link Person#activeOn});
      * clashing whether their name or an alias is used on another sheet of the sheet's tree ({@link PersonService#clashingIds});
      * origin the sheet they were transferred from, null when never transferred; tags theirs, sorted (empty when none);
@@ -44,7 +45,7 @@ public class PersonController {
             boolean retired, LocalDate retiredFrom, boolean held, List<HoldView> holds, List<Long> patronIds,
             boolean watched, Integer terms, boolean active, String contact, List<String> aliases,
             boolean clashing, String origin, List<RetirementView> retirements, List<String> tags,
-            List<SnapshotView> snapshots) {
+            List<SnapshotView> snapshots, Integer baseTerms) {
         public static PersonView of(Person person, LocalDate today, List<Long> patronIds, boolean watched,
                 boolean active, boolean clashing) {
             List<GradeView> grades = new ArrayList<>();
@@ -54,12 +55,13 @@ public class PersonController {
                     today == null ? person.getGrade() : person.gradeOn(today), grades, person.getVersion(),
                     person.isRetired(), person.getRetiredFrom(), person.isHeld(),
                     person.getHolds().stream().map(h -> new HoldView(h.getFromDate(), h.getToDate())).toList(),
-                    patronIds, watched, person.getTerms(), active, person.getContact(),
+                    patronIds, watched, today == null ? person.getTerms() : person.termsOn(today), active, person.getContact(),
                     person.getAliases(), clashing, person.getTransferredFrom(),
                     person.getRetirements().stream().map(r -> new RetirementView(r.getFromDate(), r.getToDate())).toList(),
                     person.getTags(),
                     person.getSnapshots().stream().map(s -> new SnapshotView(s.getDay(),
-                            s.getDueTotal() == null ? null : s.getDueTotal().setScale(2).toPlainString())).toList());
+                            s.getDueTotal() == null ? null : s.getDueTotal().setScale(2).toPlainString())).toList(),
+                    person.getTerms());
         }
     }
 
@@ -106,6 +108,7 @@ public class PersonController {
             @NotNull @Pattern(regexp = "[ABC]") String grade,
             LocalDate gradeFrom,
             @Pattern(regexp = "\\d{0,4}") String terms,
+            LocalDate termsFrom,
             @Size(max = 200) String contact,
             @Size(max = 1000) String tags,
             @NotNull Long version) {}
@@ -195,7 +198,7 @@ public class PersonController {
             @RequestHeader("X-User") @NotBlank @Size(max = 100) String user,
             @RequestBody @Valid PersonEditRequest request) {
         return view(service.edit(sheetId, user, id, request.version(), request.name(), request.grade(),
-                request.gradeFrom(), termsOf(request.terms()), request.contact(),
+                request.gradeFrom(), termsOf(request.terms()), request.termsFrom(), request.contact(),
                 request.tags() == null ? null : Claim.tagsOf(request.tags())), user);
     }
 

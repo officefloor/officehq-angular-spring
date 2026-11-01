@@ -86,9 +86,19 @@ public class Person {
     @Column(name = "retired_on")
     private LocalDate retiredOn;
 
-    /** Their own terms in days, ahead of their grade's and the sheet's; null: none. */
+    /** Their own terms in days from the beginning of time, ahead of their grade's and the sheet's; null: none. */
     @Column(name = "terms")
     private Integer terms;
+
+    /** Their own terms recorded from a from-date, by that date; {@link #NO_TERMS}: none from it. */
+    @ElementCollection(fetch = FetchType.EAGER)
+    @CollectionTable(name = "person_terms", joinColumns = @JoinColumn(name = "person_id"))
+    @MapKeyColumn(name = "from_date")
+    @Column(name = "terms", nullable = false)
+    private Map<LocalDate, Integer> datedTerms = new TreeMap<>();
+
+    /** The dated terms value stored for none from its from-date. */
+    private static final int NO_TERMS = -1;
 
     /** Their contact, without surrounding spaces and lower-cased; null: none. */
     @Column(name = "contact")
@@ -202,10 +212,30 @@ public class Person {
     /** The grades recorded after the first, by the date each is in force from, earliest first. */
     public Map<LocalDate, String> getDatedGrades() { return new TreeMap<>(datedGrades); }
 
-    /** Their own terms in days, or null when they have none. */
+    /** Their own terms in days from the beginning of time, or null when they have none then. */
     public Integer getTerms() { return terms; }
 
+    /** Record their own terms (null: none) from the beginning of time, keeping those recorded from a date. */
     public void setTerms(Integer terms) { this.terms = terms; }
+
+    /** Their own terms in force on the date: those with the latest from-date on or before it; null: none. */
+    public Integer termsOn(LocalDate date) {
+        Map.Entry<LocalDate, Integer> on = date == null ? null : new TreeMap<>(datedTerms).floorEntry(date);
+        if (on == null) return terms;
+        return on.getValue() == NO_TERMS ? null : on.getValue();
+    }
+
+    /** Record their own terms (null: none) from the date, in place of any recorded from the same date. */
+    public void setTermsFrom(LocalDate from, Integer terms) {
+        datedTerms.put(from, terms == null ? NO_TERMS : terms);
+    }
+
+    /** Their own terms recorded from a from-date, by that date, earliest first; null: none from it. */
+    public Map<LocalDate, Integer> getDatedTerms() {
+        TreeMap<LocalDate, Integer> all = new TreeMap<>();
+        datedTerms.forEach((from, t) -> all.put(from, t == NO_TERMS ? null : t));
+        return all;
+    }
 
     /** Their contact, or null when they have none. */
     public String getContact() { return contact; }
