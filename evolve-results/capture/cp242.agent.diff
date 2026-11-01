@@ -1,0 +1,99 @@
+diff --git a/src/main/frontend/src/app/core/people.ts b/src/main/frontend/src/app/core/people.ts
+index 2b488f976..1c6ff4b12 100644
+--- a/src/main/frontend/src/app/core/people.ts
++++ b/src/main/frontend/src/app/core/people.ts
+@@ -143,6 +143,37 @@ export function nameWithGrade(p: Pick<PersonView, 'name' | 'grade' | 'grades'>,
+   return `${p.name} (${gradeOn(p, date)})`;
+ }
+ 
++/** A claim as a person's timeline shows it. */
++export interface TimelineClaim {
++  date: string;
++  amount: string;
++  status: string;
++}
++
++/** The person's timeline: a line for each dated thing about them, in date order; on one date, their grade changes,
++ *  then their claims (by their amounts as written), then their holds, then their retirements, then their unretirements. */
++export function timelineOf(p: Pick<PersonView, 'grades' | 'holds' | 'retiredFrom' | 'pastRetirements'>,
++                           claims: readonly TimelineClaim[]): string[] {
++  const entries: { date: string; kind: number; order: string; text: string }[] = [];
++  for (const g of p.grades) {
++    if (g.from !== null) entries.push({ date: g.from, kind: 0, order: '', text: `grade ${g.grade}` });
++  }
++  for (const c of claims) {
++    entries.push({ date: c.date, kind: 1, order: c.amount, text: `claim ${c.amount} ${c.status}` });
++  }
++  for (const h of p.holds) {
++    entries.push({ date: h.from, kind: 2, order: '', text: h.to === null ? 'hold' : `hold to ${h.to}` });
++  }
++  const retirements = [...(p.pastRetirements ?? [])];
++  for (const r of retirements) entries.push({ date: r.from, kind: 3, order: '', text: 'retired' });
++  if (p.retiredFrom !== null) entries.push({ date: p.retiredFrom, kind: 3, order: '', text: 'retired' });
++  for (const r of retirements) entries.push({ date: r.to, kind: 4, order: '', text: 'unretired' });
++  return entries
++    .map((e, i) => ({ ...e, i }))
++    .sort((a, b) => a.date.localeCompare(b.date) || a.kind - b.kind || a.order.localeCompare(b.order) || a.i - b.i)
++    .map((e) => `${e.date} ${e.text}`);
++}
++
+ // The people kept on a sheet, listed in their positions; new people go to the end.
+ @Injectable({ providedIn: 'root' })
+ export class People {
+diff --git a/src/main/frontend/src/app/features/claims/claims.ts b/src/main/frontend/src/app/features/claims/claims.ts
+index c1d94c681..ea53b6466 100644
+--- a/src/main/frontend/src/app/features/claims/claims.ts
++++ b/src/main/frontend/src/app/features/claims/claims.ts
+@@ -1226,8 +1226,16 @@ export class PersonClaims {
+       },
+       error: (err: unknown) => {
+         this.saving.set(false);
++        // A claim with lines has the amount of its lines: no save of another amount can go through, so its editor
++        // is closed (releasing the lock) and the form is back to adding, still showing why.
++        const edited = id === null ? undefined : this.claims().find((c) => c.id === id);
++        const linesFixAmount = err instanceof HttpErrorResponse && err.status === 409 && edited !== undefined
++          && edited.lines.length > 0 && cents(edited.amount) !== cents(amount);
++        if (linesFixAmount) this.cancel();
+         this.error.set(
+-          err instanceof HttpErrorResponse && err.status === 423
++          linesFixAmount
++            ? 'A claim with lines has the amount of its lines; it cannot be given another.'
++            : err instanceof HttpErrorResponse && err.status === 423
+             ? 'That claim is due by inside a closed period.'
+             : err instanceof HttpErrorResponse && err.status === 422
+               ? 'That claim is dated after the person retired.'
+diff --git a/src/main/frontend/src/app/features/people/people.ts b/src/main/frontend/src/app/features/people/people.ts
+index fa9630aec..c844e323e 100644
+--- a/src/main/frontend/src/app/features/people/people.ts
++++ b/src/main/frontend/src/app/features/people/people.ts
+@@ -4,7 +4,7 @@ import { takeUntilDestroyed, toObservable } from '@angular/core/rxjs-interop';
+ import { FormControl, FormGroup, ReactiveFormsModule, Validators } from '@angular/forms';
+ import { forkJoin, of, switchMap } from 'rxjs';
+ import { AMOUNT_PATTERN, ClaimView, Claims, cents, countsAtEndWithHolds, countsClaimed, countsWithHolds, isOverdue, isPendingLate, isReviewLate, money, holderPartCents, roundingDate, sharePartCents, statusAt } from '../../core/claims';
+-import { Grade, People, PersonView, gradeOn, nameWithGrade } from '../../core/people';
++import { Grade, People, PersonView, gradeOn, nameWithGrade, timelineOf } from '../../core/people';
+ import { PatronView, Patrons } from '../../core/patrons';
+ import { Periods, periodOn } from '../../core/periods';
+ import { DEFAULT_DUE_TERMS, DueTerms, NOT_AVAILABLE, RateLine, Rates, claimDueCents, rateOnLine, roundsHalfUp } from '../../core/rates';
+@@ -564,6 +564,11 @@ function csvField(value: string): string {
+             @if (personError()?.id === p.id) {
+               <p role="alert" data-testid="person-error">{{ personError()?.message }}</p>
+             }
++            <ol data-testid="person-timeline" [attr.aria-label]="'Timeline of ' + p.name">
++              @for (line of timelines().get(p.id) ?? []; track $index) {
++                <li data-testid="person-timeline-line">{{ line }}</li>
++              }
++            </ol>
+             <app-person-plans [personId]="p.id" [personName]="p.name" (claimsEdited)="plansGenerated($event)" />
+             <app-person-claims [personId]="p.id" [personName]="p.name" [claims]="claimsOf(p.id)" [ratesByGrade]="rates.lineByGrade()" [grades]="p"
+                                [periods]="periods.list()" [holds]="p.holds" [retiredFrom]="p.retiredFrom" [others]="othersOf(p.id)"
+@@ -790,6 +795,9 @@ export class PeopleList {
+     for (const c of this.claims()) byPerson.set(c.personId, [...(byPerson.get(c.personId) ?? []), c]);
+     return byPerson;
+   });
++  /** Each person's timeline: a line for each dated thing about them, in date order. */
++  protected readonly timelines = computed(() =>
++    new Map(this.people().map((p) => [p.id, timelineOf(p, this.claimsOf(p.id))])));
+   /** For each person, the other people on the sheet their claims can be moved to. */
+   private readonly othersByPerson = computed(() => {
+     const people = this.people();
