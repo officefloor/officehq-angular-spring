@@ -1,0 +1,48 @@
+diff --git a/src/main/java/net/officefloor/hq/app/rollup/RollupService.java b/src/main/java/net/officefloor/hq/app/rollup/RollupService.java
+index bcf95cddb..ce61b71d3 100644
+--- a/src/main/java/net/officefloor/hq/app/rollup/RollupService.java
++++ b/src/main/java/net/officefloor/hq/app/rollup/RollupService.java
+@@ -131,6 +131,15 @@ public class RollupService {
+         return sum.subtract(max).subtract(min);
+     }
+ 
++    /** Audit, once the transaction commits, a SNAPSHOT line of each person's due-total in {@code snapshot}, in the order they were added. */
++    public void recordSnapshot(String sheetId, String user, Snapshot snapshot) {
++        String by = " sheet=" + sheetId + " by=" + user.strip();
++        for (Figures figures : snapshot.people().values()) {
++            audit.recordOnCommit("SNAPSHOT" + by + " name=" + figures.name()
++                    + " due-total=" + (figures.dueTotal() == null ? "n/a" : money(figures.dueTotal())));
++        }
++    }
++
+     /** Audit, once the transaction commits, how the sheet's figures moved since {@code before}. */
+     public void recordChanges(String sheetId, String user, Snapshot before) {
+         Snapshot after = snapshot(sheetId);
+diff --git a/src/main/java/net/officefloor/hq/app/sheet/SheetService.java b/src/main/java/net/officefloor/hq/app/sheet/SheetService.java
+index e40ad0578..4b6f4a22e 100644
+--- a/src/main/java/net/officefloor/hq/app/sheet/SheetService.java
++++ b/src/main/java/net/officefloor/hq/app/sheet/SheetService.java
+@@ -67,18 +67,21 @@ public class SheetService {
+     }
+ 
+     /**
+-     * Change the sheet's today; it has no audit line of its own. With grace days set, the open periods
++     * Change the sheet's today; it has no audit line of its own, but a new today first audits a SNAPSHOT
++     * line per person, in list order, with their due-total on the day being left. With grace days set, the open periods
+      * past them are closed first, then the figures it moves are audited. A new today releases every
+      * claim editor's lock on the sheet.
+      */
+     @Transactional
+     public Sheet setToday(String id, String user, LocalDate today) {
+         Sheet sheet = sheets.findForUpdate(id).orElseThrow(SheetNotFoundException::new);
+-        if (!today.equals(sheet.getToday())) {
++        boolean changed = !today.equals(sheet.getToday());
++        if (changed) {
+             claims.getObject().unlockAll(id);
+             sheet = sheets.findForUpdate(id).orElseThrow(SheetNotFoundException::new);
+         }
+         RollupService.Snapshot before = rollup.snapshot(id);
++        if (changed) rollup.recordSnapshot(id, user, before);
+         sheet.setToday(today);
+         sheets.flush();
+         if (sheet.getGraceDays() != null) periods.getObject().autoClose(id, user, today, sheet.getGraceDays());
