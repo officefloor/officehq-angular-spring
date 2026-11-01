@@ -4,6 +4,7 @@ import jakarta.validation.Valid;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.NotNull;
 import jakarta.validation.constraints.Pattern;
+import jakarta.validation.constraints.Positive;
 import jakarta.validation.constraints.Size;
 import java.time.LocalDate;
 import java.util.List;
@@ -29,22 +30,26 @@ public class PeriodController {
      * figures are fixed the same way while it is not closed.
      */
     public record PeriodView(long id, String name, LocalDate from, LocalDate to, boolean closed,
-            boolean softClosed, String closedDueTotal, Map<Long, String> closedPersonDues) {
+            boolean softClosed, String closedDueTotal, Map<Long, String> closedPersonDues, Integer cap) {
         static PeriodView of(Period period) {
             Map<Long, String> personDues = new TreeMap<>();
             period.getClosedPersonDues().forEach((personId, due) -> personDues.put(personId, due.setScale(2).toPlainString()));
             return new PeriodView(period.getId(), period.getName(), period.getFromDate(), period.getToDate(),
                     period.isClosed(), period.isSoftClosed(),
                     period.getClosedDueTotal() == null ? null : period.getClosedDueTotal().setScale(2).toPlainString(),
-                    personDues);
+                    personDues, period.getCap());
         }
     }
 
-    /** A name of letters, digits, '.', '_' or '-', and a from and to date, both inclusive. */
+    /**
+     * A name of letters, digits, '.', '_' or '-', a from and to date, both inclusive, and a cap on each
+     * person's OPEN or PENDING claims in it (null: none).
+     */
     public record PeriodRequest(
             @NotNull @Pattern(regexp = "[A-Za-z0-9._-]{1,100}") String name,
             @NotNull LocalDate from,
-            @NotNull LocalDate to) {}
+            @NotNull LocalDate to,
+            @Positive Integer cap) {}
 
     /** The first and last dates whose months get a period each; blank takes the sheet's today. */
     public record GenerateRequest(LocalDate from, LocalDate to) {}
@@ -70,7 +75,7 @@ public class PeriodController {
             @PathVariable @Size(max = 100) @Pattern(regexp = "[A-Za-z0-9._-]+") String sheetId,
             @RequestHeader("X-User") @NotBlank @Size(max = 100) String user,
             @RequestBody @Valid PeriodRequest request) {
-        return PeriodView.of(service.add(sheetId, user, request.name(), request.from(), request.to()));
+        return PeriodView.of(service.add(sheetId, user, request.name(), request.from(), request.to(), request.cap()));
     }
 
     /** Make a period for each month from the from-date's to the to-date's: those made, earliest first. */

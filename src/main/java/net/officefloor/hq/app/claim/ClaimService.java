@@ -260,6 +260,7 @@ public class ClaimService {
         String voidReason = next == ClaimStatus.VOID ? voidReasons.reasonForVoid(sheetId, reason) : null;
         RollupService.Snapshot before = rollup.snapshot(sheetId);
         refuseIfClosed(sheetId, claim.getDueBy());
+        if (next == ClaimStatus.OPEN) refuseOverCap(sheetId, claim);
         switch (next) {
             case OPEN -> {
                 number(numbering, claim);
@@ -710,6 +711,23 @@ public class ClaimService {
      */
     private int termsOf(String sheetId, Person person, LocalDate on) {
         return person.getTerms() != null ? person.getTerms() : settings.termsFor(sheetId, person.gradeOn(on), on);
+    }
+
+    /**
+     * Refuse to open a claim whose due-by falls in a period with a cap when its person already has that
+     * many OPEN or PENDING claims due inside the period.
+     */
+    private void refuseOverCap(String sheetId, Claim claim) {
+        Period period = periods.findBySheetIdOrderByFromDateAsc(sheetId).stream()
+                .filter(p -> p.contains(claim.getDueBy()))
+                .findFirst().orElse(null);
+        if (period == null || period.getCap() == null) return;
+        long open = claims.findBySheetIdAndPersonIdOrderByIdDesc(sheetId, claim.getPersonId()).stream()
+                .filter(c -> !c.getId().equals(claim.getId()))
+                .filter(c -> c.getStatus() == ClaimStatus.OPEN || c.getStatus() == ClaimStatus.PENDING)
+                .filter(c -> period.contains(c.getDueBy()))
+                .count();
+        if (open >= period.getCap()) throw new ClaimCapReachedException();
     }
 
     /** The name of the sheet's period the date falls in; empty when in none. */

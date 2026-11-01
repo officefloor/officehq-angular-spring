@@ -209,6 +209,15 @@ public class ClaimController {
         return ResponseEntity.status(HttpStatus.CONFLICT).body(problem);
     }
 
+    /** A claim whose person already has its period's cap of OPEN or PENDING claims: a conflict of its own problem type. */
+    @ExceptionHandler(ClaimCapReachedException.class)
+    public ResponseEntity<ProblemDetail> capReached() {
+        ProblemDetail problem = ProblemDetail.forStatusAndDetail(HttpStatus.CONFLICT,
+                "The person already has as many open claims in this period as its cap allows.");
+        problem.setType(URI.create(ClaimCapReachedException.TYPE));
+        return ResponseEntity.status(HttpStatus.CONFLICT).body(problem);
+    }
+
     @ExceptionHandler(DuplicateClaimRefException.class)
     public ResponseEntity<ProblemDetail> duplicateRef() {
         ProblemDetail problem = ProblemDetail.forStatusAndDetail(HttpStatus.CONFLICT,

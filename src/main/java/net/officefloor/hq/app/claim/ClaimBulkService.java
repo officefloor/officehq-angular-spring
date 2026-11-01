@@ -165,7 +165,7 @@ public class ClaimBulkService {
                 change.accept(claim.getId());
                 done++;
             } catch (ClaimStatusRefusedException | ClaimSettledByOpenerException | ClaimDeferredException | ClaimProofRequiredException
-                    | ClaimNoteRequiredException
+                    | ClaimNoteRequiredException | ClaimCapReachedException
                     | ClaimNotPermittedException
                     | PeriodClosedException
                     | ClaimNotFoundException | PersonNotFoundException refused) {

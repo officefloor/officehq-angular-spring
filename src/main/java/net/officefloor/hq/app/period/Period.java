@@ -60,6 +60,10 @@ public class Period {
     @Column(name = "due_total", nullable = false, precision = 14, scale = 2)
     private Map<Long, BigDecimal> closedPersonDues = new TreeMap<>();
 
+    /** The most OPEN or PENDING claims a person may have in it; null for no cap. */
+    @Column(name = "claim_cap")
+    private Integer cap;
+
     protected Period() {}
 
     public Period(String sheetId, String name, LocalDate fromDate, LocalDate toDate) {
@@ -67,6 +71,11 @@ public class Period {
         this.name = name;
         this.fromDate = fromDate;
         this.toDate = toDate;
+    }
+
+    public Period(String sheetId, String name, LocalDate fromDate, LocalDate toDate, Integer cap) {
+        this(sheetId, name, fromDate, toDate);
+        this.cap = cap;
     }
 
     public Long getId() { return id; }
@@ -86,6 +95,8 @@ public class Period {
     public BigDecimal getClosedDueTotal() { return closedDueTotal; }
 
     public Map<Long, BigDecimal> getClosedPersonDues() { return closedPersonDues; }
+
+    public Integer getCap() { return cap; }
 
     /** Close it, fixing each person's due-total for it and its own, the sum of theirs. */
     public void close(Map<Long, BigDecimal> personDues) {

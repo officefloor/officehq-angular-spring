@@ -19,6 +19,8 @@ export interface Period {
   closedDueTotal: string | null;
   /** Each person's due-total for it fixed when it was closed, two decimals, by person id; empty while open. */
   closedPersonDues: Record<string, string>;
+  /** The most OPEN or PENDING claims a person may have in it; null for no cap. */
+  cap: number | null;
 }
 
 /** Of the sheet's periods, the one whose dates contain the date, or null. */
@@ -58,6 +60,8 @@ export function closedOn(periods: Period[], date: string): boolean {
         <input id="period-form-from" type="date" data-testid="period-form-from" formControlName="from" />
         <label for="period-form-to">To</label>
         <input id="period-form-to" type="date" data-testid="period-form-to" formControlName="to" />
+        <label for="period-form-cap">Open claims cap per person</label>
+        <input id="period-form-cap" data-testid="period-form-cap" formControlName="cap" inputmode="numeric" />
         <button type="submit" data-testid="period-form-submit">Add period</button>
         @if (error()) {
           <p role="alert" class="error" data-testid="period-form-error">{{ error() }}</p>
@@ -83,7 +87,7 @@ export function closedOn(periods: Period[], date: string): boolean {
       </form>
       <table>
         <thead>
-          <tr><th scope="col">Name</th><th scope="col">From</th><th scope="col">To</th><th scope="col">Due total</th><th scope="col">Closed</th><th scope="col">Fiscal year</th><th scope="col"><span class="visually-hidden">Actions</span></th></tr>
+          <tr><th scope="col">Name</th><th scope="col">From</th><th scope="col">To</th><th scope="col">Due total</th><th scope="col">Closed</th><th scope="col">Fiscal year</th><th scope="col">Cap</th><th scope="col"><span class="visually-hidden">Actions</span></th></tr>
         </thead>
         <tbody>
           @for (p of periods(); track p.id) {
@@ -94,6 +98,7 @@ export function closedOn(periods: Period[], date: string): boolean {
               <td data-testid="period-due-total">{{ dueTotalOf()(p) }}</td>
               <td data-testid="period-closed">{{ p.closed ? 'yes' : p.softClosed ? 'soft' : 'no' }}</td>
               <td data-testid="period-fy">{{ fyOf(p) }}</td>
+              <td data-testid="period-cap">{{ p.cap ?? '' }}</td>
               <td>
                 <button type="button" data-testid="period-close" (click)="close(p)"
                         [attr.aria-label]="'Close period ' + p.name">Close</button>
@@ -132,6 +137,7 @@ export class Periods {
     name: new FormControl('', { nonNullable: true }),
     from: new FormControl('', { nonNullable: true }),
     to: new FormControl('', { nonNullable: true }),
+    cap: new FormControl('', { nonNullable: true }),
   });
 
   protected readonly generateError = signal('');
@@ -293,6 +299,7 @@ export class Periods {
     const name = raw.name.trim();
     const from = raw.from.trim() || (this.session.today() ?? '');
     const to = raw.to.trim();
+    const capText = raw.cap.trim();
     if (!/^[A-Za-z0-9._-]{1,100}$/.test(name)) {
       this.error.set('Enter a name of letters, digits, ".", "_" or "-".');
       return;
@@ -305,6 +312,11 @@ export class Periods {
       this.error.set('The to date cannot be before the from date.');
       return;
     }
+    if (capText !== '' && (!/^\d{1,9}$/.test(capText) || Number(capText) < 1)) {
+      this.error.set('Enter a cap of a whole number of at least 1, or leave it blank.');
+      return;
+    }
+    const cap = capText === '' ? null : Number(capText);
     if (this.periods().some((p) => p.name === name)) {
       this.error.set('That name is already in use on this sheet.');
       return;
@@ -312,13 +324,13 @@ export class Periods {
     this.saving = true;
     try {
       const period = await firstValueFrom(
-        this.http.post<Period>(`/api/sheets/${encodeURIComponent(sheet)}/periods`, { name, from, to }, {
+        this.http.post<Period>(`/api/sheets/${encodeURIComponent(sheet)}/periods`, { name, from, to, cap }, {
           headers: { 'X-User': this.session.user() ?? '' },
         }),
       );
       if (this.session.sheetId() !== sheet) return;
       this.saved.emit(period);
-      this.form.reset({ name: '', from: '', to: '' }, { emitEvent: false });
+      this.form.reset({ name: '', from: '', to: '', cap: '' }, { emitEvent: false });
     } catch (e) {
       if (this.session.sheetId() !== sheet) return;
       this.error.set(

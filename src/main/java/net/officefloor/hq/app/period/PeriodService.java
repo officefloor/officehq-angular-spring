@@ -58,7 +58,7 @@ public class PeriodService {
     }
 
     @Transactional
-    public Period add(String sheetId, String user, String name, LocalDate from, LocalDate to) {
+    public Period add(String sheetId, String user, String name, LocalDate from, LocalDate to, Integer cap) {
         if (to.isBefore(from)) throw new PeriodDatesException();
         // Lock the sheet so two users adding periods at once cannot overlap or share a name.
         sheets.findForUpdate(sheetId).orElseThrow(SheetNotFoundException::new);
@@ -66,9 +66,10 @@ public class PeriodService {
         if (periods.findBySheetIdOrderByFromDateAsc(sheetId).stream().anyMatch(p -> p.overlaps(from, to))) {
             throw new PeriodOverlapException();
         }
-        Period saved = periods.saveAndFlush(new Period(sheetId, name, from, to));
+        Period saved = periods.saveAndFlush(new Period(sheetId, name, from, to, cap));
         audit.recordOnCommit("PERIOD_ADDED sheet=" + sheetId + " by=" + user.strip()
-                + " period=" + saved.getName() + " from=" + saved.getFromDate() + " to=" + saved.getToDate());
+                + " period=" + saved.getName() + " from=" + saved.getFromDate() + " to=" + saved.getToDate()
+                + (saved.getCap() == null ? "" : " cap=" + saved.getCap()));
         return saved;
     }
 
