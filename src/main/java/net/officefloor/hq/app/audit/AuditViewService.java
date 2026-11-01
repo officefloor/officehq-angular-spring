@@ -7,6 +7,7 @@ import java.util.regex.Pattern;
 import net.officefloor.hq.app.Audit;
 import net.officefloor.hq.app.person.Person;
 import net.officefloor.hq.app.person.PersonRepository;
+import net.officefloor.hq.app.sheet.SheetParentRepository;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -19,16 +20,19 @@ public class AuditViewService {
 
     private final Audit audit;
     private final PersonRepository people;
+    private final SheetParentRepository parents;
 
-    public AuditViewService(Audit audit, PersonRepository people) {
+    public AuditViewService(Audit audit, PersonRepository people, SheetParentRepository parents) {
         this.audit = audit;
         this.people = people;
+        this.parents = parents;
     }
 
     /**
      * The sheet's audit lines exactly as the file holds them, newest first. With a name (blank: none)
      * only those carrying name=<the name> or person=<the name>, the name compared without surrounding
-     * spaces and ignoring case; when the name, or an alias, is of a person transferred here, they are
+     * spaces and ignoring case, followed by the matching lines of the sheet's descendants (each
+     * sheet's newest first, the sheets in order of id); when the name, or an alias, is of a person transferred here, they are
      * followed by the lines about them from the sheet they came from, up to the one of their transfer
      * here, newest first.
      */
@@ -41,6 +45,9 @@ public class AuditViewService {
         List<String> all = audit.lines();
         List<String> out = linesOf(all, sheetId, about);
         if (about == null) return out;
+        List<String> descendants = new ArrayList<>(parents.descendantsOf(sheetId));
+        Collections.sort(descendants);
+        for (String descendant : descendants) out.addAll(linesOf(all, descendant, about));
         String origin = people.findByNameOrAlias(sheetId, wanted).map(Person::getTransferredFrom).orElse(null);
         if (origin == null || origin.equals(sheetId)) return out;
         List<String> theirs = linesOf(all, origin, about);

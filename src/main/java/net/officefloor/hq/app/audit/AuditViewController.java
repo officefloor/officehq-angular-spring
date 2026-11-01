@@ -23,7 +23,7 @@ public class AuditViewController {
         this.service = service;
     }
 
-    /** The sheet's audit lines, newest first; with a name only those about that person. */
+    /** The sheet's audit lines, newest first; with a name only those about that person, then its descendants' ones. */
     @GetMapping
     public List<String> list(
             @PathVariable @Size(max = 100) @Pattern(regexp = "[A-Za-z0-9._-]+") String sheetId,
