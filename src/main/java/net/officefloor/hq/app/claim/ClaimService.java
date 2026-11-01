@@ -658,12 +658,13 @@ public class ClaimService {
     }
 
     /**
-     * Give an opened claim its number: the sheet's next, or while the sheet numbers by period, the next
+     * Give an opened claim its number: the next after the last sheet-wide number given anywhere in the
+     * sheet's tree (its topmost ancestor and every descendant of that), or while the sheet numbers by period, the next
      * within the period its due-by falls in (in no period: the next in the sheet's X sequence).
      */
     private void number(Sheet sheet, Claim claim) {
         if (!sheet.numbersByPeriod()) {
-            claim.setNumber(sheet.nextClaimNumber());
+            claim.setNumber(sheet.nextClaimNumberAfter(sheets.lastClaimNumberInTree(sheet.getId())));
             return;
         }
         String period = periodOn(sheet.getId(), claim.getDueBy());

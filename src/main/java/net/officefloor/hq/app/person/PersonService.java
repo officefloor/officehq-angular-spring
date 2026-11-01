@@ -625,15 +625,7 @@ public class PersonService {
      */
     @Transactional(readOnly = true)
     public List<String> treeOf(String sheetId) {
-        String root = sheetId;
-        Set<String> seen = new HashSet<>(Set.of(sheetId));
-        for (String at = parents.parentOf(sheetId); at != null && seen.add(at); at = parents.parentOf(at)) root = at;
-        List<String> tree = new ArrayList<>();
-        if (!root.equals(sheetId)) tree.add(root);
-        for (String descendant : parents.descendantsOf(root)) {
-            if (!descendant.equals(sheetId) && !tree.contains(descendant)) tree.add(descendant);
-        }
-        return tree;
+        return parents.treeOf(sheetId).stream().filter(at -> !at.equals(sheetId)).toList();
     }
 
     /** The ids of the sheet's people whose name or an alias another sheet of its tree uses as a name or alias. */

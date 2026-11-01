@@ -1,7 +1,9 @@
 package net.officefloor.hq.app.sheet;
 
 import java.util.ArrayList;
+import java.util.HashSet;
 import java.util.List;
+import java.util.Set;
 import org.springframework.data.jpa.repository.JpaRepository;
 
 public interface SheetParentRepository extends JpaRepository<SheetParent, String> {
@@ -20,6 +22,22 @@ public interface SheetParentRepository extends JpaRepository<SheetParent, String
             }
         }
         return descendants;
+    }
+
+    /** The topmost ancestor of the sheet (the sheet itself when it names no parent). */
+    default String rootOf(String sheetId) {
+        String root = sheetId;
+        Set<String> seen = new HashSet<>(Set.of(sheetId));
+        for (String at = parentOf(sheetId); at != null && seen.add(at); at = parentOf(at)) root = at;
+        return root;
+    }
+
+    /** Every sheet of the sheet's tree: its topmost ancestor, then every descendant of that, each once. */
+    default List<String> treeOf(String sheetId) {
+        String root = rootOf(sheetId);
+        List<String> tree = new ArrayList<>(List.of(root));
+        tree.addAll(descendantsOf(root));
+        return tree;
     }
 
     /** The sheet's parent; null when it names none. */

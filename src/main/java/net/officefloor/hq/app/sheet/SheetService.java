@@ -21,6 +21,7 @@ import org.springframework.transaction.annotation.Transactional;
 public class SheetService {
 
     private final SheetRepository sheets;
+    private final SheetParentRepository parents;
     private final RollupService rollup;
     // looked up when used: the periods depend on the claims, which depend on the sheet
     private final ObjectProvider<PeriodService> periods;
@@ -28,10 +29,11 @@ public class SheetService {
     private final ObjectProvider<ClaimRepository> claims;
     private final Audit audit;
 
-    public SheetService(SheetRepository sheets, RollupService rollup, ObjectProvider<PeriodService> periods,
+    public SheetService(SheetRepository sheets, SheetParentRepository parents, RollupService rollup, ObjectProvider<PeriodService> periods,
             ObjectProvider<SettingService> settings, ObjectProvider<ClaimRepository> claims, Audit audit) {
         this.claims = claims;
         this.sheets = sheets;
+        this.parents = parents;
         this.rollup = rollup;
         this.periods = periods;
         this.settings = settings;
@@ -64,6 +66,18 @@ public class SheetService {
     @Transactional
     public Sheet lockForNumbering(String id) {
         return sheets.findForUpdate(id).orElseThrow(SheetNotFoundException::new);
+    }
+
+    /**
+     * The last sheet-wide claim number given on any sheet of the sheet's tree (its topmost ancestor and every
+     * descendant of that); 0 if none. The tree's topmost sheet is locked too, as well as the caller's own
+     * (see {@link #lockForNumbering}), so two users opening claims on sheets of one tree get different numbers.
+     */
+    @Transactional
+    public long lastClaimNumberInTree(String id) {
+        String root = parents.rootOf(id);
+        if (!root.equals(id)) sheets.findForUpdate(root);
+        return sheets.lastClaimNumberAmong(parents.treeOf(id));
     }
 
     /**

@@ -306,4 +306,10 @@ public class Sheet {
 
     /** Take the next claim number on the sheet. */
     public long nextClaimNumber() { return ++lastClaimNumber; }
+
+    /** The next sheet-wide claim number after both the sheet's last and {@code last}, kept as the sheet's last. */
+    public long nextClaimNumberAfter(long last) {
+        lastClaimNumber = Math.max(lastClaimNumber, last) + 1;
+        return lastClaimNumber;
+    }
 }
