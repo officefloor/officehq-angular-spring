@@ -5,12 +5,15 @@ import java.util.List;
 import java.util.Set;
 import net.officefloor.hq.app.period.PeriodClosedException;
 import net.officefloor.hq.app.person.PersonNotFoundException;
+import net.officefloor.hq.app.setting.Role;
+import net.officefloor.hq.app.setting.SettingService;
 import org.springframework.stereotype.Service;
 
 /**
  * Changes to many selected claims at once. Each claim is changed in its own transaction, in list
  * order (people in the order they were added, each person's claims newest first), exactly as if
- * its own button were pressed; one that is refused is left as it is and counted as refused.
+ * its own button were pressed; one that is refused is left as it is and counted as refused. A
+ * viewer's bulk change goes through with nothing done: every selected claim is refused.
  */
 @Service
 public class ClaimBulkService {
@@ -20,10 +23,12 @@ public class ClaimBulkService {
 
     private final ClaimService claims;
     private final ClaimRepository repository;
+    private final SettingService settings;
 
-    public ClaimBulkService(ClaimService claims, ClaimRepository repository) {
+    public ClaimBulkService(ClaimService claims, ClaimRepository repository, SettingService settings) {
         this.claims = claims;
         this.repository = repository;
+        this.settings = settings;
     }
 
     /** Open each selected claim that can be opened, numbering them in list order. */
@@ -40,6 +45,7 @@ public class ClaimBulkService {
     }
 
     private Result change(String sheetId, String user, Set<Long> ids, ClaimStatus next) {
+        if (settings.roleOf(sheetId, user) == Role.VIEWER) return new Result(0, ids.size());
         List<Claim> selected = repository.findBySheetIdOrderByListedDesc(sheetId).stream()
                 .filter(c -> ids.contains(c.getId()))
                 .sorted(Comparator.comparing(Claim::getPersonId).thenComparing(Claim::getListed, Comparator.reverseOrder()))

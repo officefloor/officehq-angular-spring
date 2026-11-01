@@ -161,6 +161,7 @@ public class SettingService {
     public boolean mayDo(String sheetId, String user, String action) {
         Sheet sheet = sheets.findById(sheetId).orElseThrow(SheetNotFoundException::new);
         Role role = roleOf(sheetId, user);
+        if (role == Role.VIEWER) return false;
         String set = sheet.permission(action);
         if (set == null) return STANDING_PERMISSIONS.get(action).contains(role);
         return parseRoles(set).contains(role);

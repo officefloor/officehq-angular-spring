@@ -8,6 +8,7 @@ import jakarta.validation.constraints.Size;
 import java.time.LocalDate;
 import java.util.List;
 import java.util.Map;
+import net.officefloor.hq.app.setting.OpenToViewer;
 import net.officefloor.hq.app.setting.SettingController;
 import org.springframework.validation.annotation.Validated;
 import org.springframework.web.bind.annotation.PathVariable;
@@ -49,6 +50,7 @@ public class SheetController {
     }
 
     /** Load (or start) a sheet by id for the signed-in user. */
+    @OpenToViewer
     @PostMapping("/{id}/load")
     public SheetView load(
             @PathVariable @Size(max = 100) @Pattern(regexp = "[A-Za-z0-9._-]+") String id,

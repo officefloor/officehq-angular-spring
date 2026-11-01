@@ -4,8 +4,8 @@ import { FormControl, FormGroup, ReactiveFormsModule } from '@angular/forms';
 import { firstValueFrom } from 'rxjs';
 import { Dated, Session } from '../../core/session';
 
-/** A role a user name can be given; any name not given one is a clerk. */
-export const ROLES = ['clerk', 'steward'];
+/** A role a user name can be given; any name not given one is a clerk. A viewer can change nothing. */
+export const ROLES = ['clerk', 'steward', 'viewer'];
 
 /** The actions of the permission matrix, each with the roles that may take it while none are set (its standing rule). */
 export const PERMISSIONS = [
@@ -158,7 +158,7 @@ const FROM = 'From (yyyy-mm-dd; blank: the sheet\'s today)';
       <form [formGroup]="roleForm" (ngSubmit)="setRole()" aria-label="Set role">
         <label for="role-form-user">User</label>
         <input id="role-form-user" data-testid="role-form-user" formControlName="user" />
-        <label for="role-form-role">Role (clerk or steward)</label>
+        <label for="role-form-role">Role (clerk, steward or viewer)</label>
         <input id="role-form-role" data-testid="role-form-role" formControlName="role" list="role-options" />
         <datalist id="role-options">
           @for (r of roles; track r) {
@@ -461,7 +461,7 @@ export class Settings {
       return;
     }
     if (!ROLES.includes(role)) {
-      this.roleError.set('Choose a role: clerk or steward.');
+      this.roleError.set('Choose a role: clerk, steward or viewer.');
       return;
     }
     this.submitting.add('role');

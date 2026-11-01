@@ -9,6 +9,7 @@ import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.util.List;
 import java.util.Set;
+import net.officefloor.hq.app.setting.OpenToViewer;
 import org.springframework.validation.annotation.Validated;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
@@ -155,6 +156,7 @@ public class ClaimController {
         return ClaimView.of(service.changeStatus(sheetId, user, id, ClaimStatus.OPEN));
     }
 
+    @OpenToViewer
     @PostMapping("/claims/open")
     public BulkOpenView bulkOpen(
             @PathVariable @Size(max = 100) @Pattern(regexp = "[A-Za-z0-9._-]+") String sheetId,
@@ -164,6 +166,7 @@ public class ClaimController {
         return new BulkOpenView(result.done(), result.refused());
     }
 
+    @OpenToViewer
     @PostMapping("/claims/settle")
     public BulkSettleView bulkSettle(
             @PathVariable @Size(max = 100) @Pattern(regexp = "[A-Za-z0-9._-]+") String sheetId,
