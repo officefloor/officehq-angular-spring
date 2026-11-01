@@ -1,0 +1,64 @@
+{
+  "checkpoint": 57,
+  "stack": {
+    "repo": "/home/daniel/officehq-angular-spring",
+    "origin": "git@github.com:officefloor/officehq-angular-spring.git",
+    "name": "officehq-angular-spring",
+    "base_ref": "base-empty",
+    "base_commit": "65cb8233ea38b2dfa6cfd18709e30cd18fdf3250"
+  },
+  "checkpoint_id": "cp57_split-claim",
+  "phase": "early",
+  "type": "additive",
+  "mutates": [],
+  "replaced_tests": [],
+  "request": {
+    "spec": "An OPEN claim can be split: an amount on the claim (more than 0.00 and less than the claim's\namount) and a button. The claim keeps the rest of its amount and loses any figure a statement\nbound it to; a new OPEN claim with the split-off amount, the same date and note, the next number,\nopened by the signed-in user and with a due-by fixed now from the terms in force on the date, is\nlisted under the person. Both show the original's number as split-from (the new claim; the\noriginal shows nothing). A PENDING, deferred or settled claim, or one in a closed period, cannot\nbe split, and a user whose role may not open a claim cannot split one (the new claim is theirs to\nopen). CLAIM_SPLIT is written naming the original with its remaining amount and ending\ninto=<new number>, then CLAIM_OPENED for the new claim, then the rollup lines.\n",
+    "prompt": "You are implementing ONE change to this application.\n\nFIRST read AGENTS.md \u2014 it states the working rules and how the app is tested, and sends you to\nDESIGN.md for the app's stack and conventions. Follow both.\n\nTHE CHANGE REQUEST:\nAn OPEN claim can be split: an amount on the claim (more than 0.00 and less than the claim's\namount) and a button. The claim keeps the rest of its amount and loses any figure a statement\nbound it to; a new OPEN claim with the split-off amount, the same date and note, the next number,\nopened by the signed-in user and with a due-by fixed now from the terms in force on the date, is\nlisted under the person. Both show the original's number as split-from (the new claim; the\noriginal shows nothing). A PENDING, deferred or settled claim, or one in a closed period, cannot\nbe split, and a user whose role may not open a claim cannot split one (the new claim is theirs to\nopen). CLAIM_SPLIT is written naming the original with its remaining amount and ending\ninto=<new number>, then CLAIM_OPENED for the new claim, then the rollup lines.\n\nYour work is verified by an automated Playwright UI test already installed under e2e/specs/.\nRead that spec: it declares the exact data-testid anchors, values, test data and any audit\nrecords it expects \u2014 match them. Run `bin/e2e` to build the app, start it, and run the test as\nyou work; iterate until it passes. Change whatever the request needs across the app \u2014 its stored\ndata, its server and its front end. Do NOT edit bin/build, bin/start, bin/stop, bin/e2e,\nAGENTS.md, CLAUDE.md, DESIGN.md, e2e/support/ or the test spec.\n"
+  },
+  "commit_sha": "1f4143f524070fc93a8a7c759b800c5dc2200773",
+  "reset_sha": "",
+  "preagent_sha": "5b223420cd87f1b29ce1bd3f1cb83cee8d328d12",
+  "prev_sha": "5b223420cd87f1b29ce1bd3f1cb83cee8d328d12",
+  "base_sha": "65cb8233ea38b2dfa6cfd18709e30cd18fdf3250",
+  "agent": {
+    "ok": true,
+    "cost_usd": 0.958688,
+    "input_tokens": 36,
+    "output_tokens": 9475,
+    "cache_read_tokens": 923940,
+    "cache_creation_tokens": 73032,
+    "num_turns": 20,
+    "duration_ms": 289238,
+    "duration_api_ms": 119592,
+    "model": "claude-opus-5-5",
+    "session_id": "5a5f90c3-4585-4ec4-9736-952a7e0a628d",
+    "stop_reason": "success",
+    "result_text": "Open claims can now be split. `bin/e2e` passes all 4 tests in the spec. After that run I changed one comment line in `claims.ts` and didn't re-run the tests.\n\n**Stored data:** a new migration, `V41__claim_split_from.sql`, adds a `split_from` column to the claim table. The `Claim` entity carries it, and the claim data sent to the screen now includes it.\n\n**Server:**\n- New endpoint `POST /api/sheets/{sheetId}/claims/{id}/split`, handled by `ClaimService.split`.\n- **Refusals:** a claim that isn't OPEN (PENDING, settled and so on), a claim deferred as of the sheet's today, a user whose role may not open a claim, a claim dated in a closed period, and an amount that isn't more than 0.00 and less than the claim's amount. A refused split writes nothing to the store and nothing to the audit file.\n- **What a split does:**\n  - The original keeps the rest of its amount and loses any figure a statement bound it to.\n  - A new OPEN claim gets the split-off amount, the same date and note, and the next number (or the next within its period, if the sheet numbers that way).\n  - The new claim is opened by the signed-in user, its due-by is set from the terms in force on its date, and it records the original's number as split-from.\n- **Audit:** it writes `CLAIM_SPLIT \u2026 into=<n>`, then `CLAIM_OPENED` for the new claim, then the rollup lines.\n\n**Front end (`claims.ts`):** each claim row has a split amount input, a Split button and a \"Split from\" value (blank unless the claim was split off another). A refused split shows the row's error message, which clears when the amount is typed again or the next action is taken. The screen also checks the amount range itself before sending.\n\nTwo choices the request didn't spell out:\n- **Who may split:** I reused the existing \"open\" permission rather than adding a separate \"split\" one, so whatever roles may open a claim on a sheet may also split one.\n- **Retirement:** a split isn't refused when the person has retired since the claim's date. The new claim keeps the original's date, and the request doesn't list retirement as a reason to refuse.",
+    "error": "",
+    "attempts": [
+      {
+        "ok": true,
+        "limit_reached": false,
+        "retryable": false,
+        "timed_out": false,
+        "cost_usd": 0.958688,
+        "num_turns": 20,
+        "duration_ms": 289238,
+        "duration_api_ms": 119592,
+        "error": ""
+      }
+    ]
+  },
+  "agent_stream_file": "cp57.agent.jsonl",
+  "agent_diff_file": "cp57.agent.diff",
+  "build_log_file": null,
+  "tests": {
+    "gated": false,
+    "queued": true
+  },
+  "probe": null,
+  "pinned_touched": [],
+  "acceptance_touched": [],
+  "impact_gate": null
+}
