@@ -1,0 +1,170 @@
+diff --git a/src/main/frontend/src/app/features/people/people.ts b/src/main/frontend/src/app/features/people/people.ts
+index 5677fb3c8..9dc04938e 100644
+--- a/src/main/frontend/src/app/features/people/people.ts
++++ b/src/main/frontend/src/app/features/people/people.ts
+@@ -274,12 +274,12 @@ function trimmedSum(figures: number[]): number {
+           <p role="alert" class="error" data-testid="quick-error">{{ quickError() }}</p>
+         }
+       </form>
+-      <form [formGroup]="pasteForm" (ngSubmit)="paste()" aria-label="Paste draft claims">
++      <form [formGroup]="pasteForm" (ngSubmit)="paste()" aria-label="Paste claims">
+         <label for="paste-claims">Paste claims (name,amount,date,note per line; end the note with " #reference" to give one)</label>
+         <textarea id="paste-claims" data-testid="paste-claims" formControlName="text" rows="4"></textarea>
+         <button type="submit" data-testid="paste-submit">Paste</button>
+         @if (pasteAdded() !== null) {
+-          <p role="status">Added <span data-testid="paste-added">{{ pasteAdded() }}</span></p>
++          <p role="status">Lines through <span data-testid="paste-added">{{ pasteAdded() }}</span></p>
+         }
+         @if (pasteError()) {
+           <p role="alert" class="error" data-testid="paste-error">{{ pasteError() }}</p>
+@@ -1034,7 +1034,7 @@ export class People {
+   /** A paste is under way; another one waits for its answer rather than storing twice. */
+   private pasting = false;
+   protected readonly pasteError = signal('');
+-  /** How many claims the last paste added; null before one, and while one runs. */
++  /** How many lines the last paste put through; null before one, and while one runs. */
+   protected readonly pasteAdded = signal<number | null>(null);
+   protected readonly pasteForm = new FormGroup({
+     text: new FormControl('', { nonNullable: true }),
+@@ -2087,11 +2087,11 @@ export class People {
+       this.pasteError.set(
+         e instanceof HttpErrorResponse && e.status === 423
+           ? 'No claim due inside a closed period can be changed.'
+-          : e instanceof HttpErrorResponse && e.status === 422
+-          ? RETIRED
+           : isDuplicateRef(e)
+           ? `${DUPLICATE_REF} Each line's reference must be new; nothing was added.`
+-          : 'Every line must be name,amount,date,note for a person on the sheet; nothing was added.',
++          : e instanceof HttpErrorResponse && e.status === 400
++          ? 'Every line must be name,amount,date,note for a person on the sheet, and a line matching an existing claim must match a DRAFT; nothing was added.'
++          : 'A line could not be added and opened (a person retired, a note required, a period\'s cap, a permission or a lock); nothing was added.',
+       );
+     } finally {
+       this.pasting = false;
+diff --git a/src/main/java/net/officefloor/hq/app/claim/Claim.java b/src/main/java/net/officefloor/hq/app/claim/Claim.java
+index 671d9f56e..baeb0dcc4 100644
+--- a/src/main/java/net/officefloor/hq/app/claim/Claim.java
++++ b/src/main/java/net/officefloor/hq/app/claim/Claim.java
+@@ -20,6 +20,8 @@ import java.util.Collections;
+ import java.util.List;
+ import java.util.Locale;
+ import java.util.Objects;
++import org.hibernate.annotations.Generated;
++import org.hibernate.generator.EventType;
+ 
+ /**
+  * A claim by a person on a sheet: an amount (two decimals), a date, a note and a status (DRAFT when
+@@ -44,6 +46,7 @@ public class Claim {
+      * Its place in its sheet's list, newest (highest) first: the next of claim_listed_seq, given by the
+      * store when added and again when moved to another person.
+      */
++    @Generated(event = EventType.INSERT)
+     @Column(name = "listed", insertable = false)
+     private Long listed;
+ 
+diff --git a/src/main/java/net/officefloor/hq/app/claim/ClaimController.java b/src/main/java/net/officefloor/hq/app/claim/ClaimController.java
+index ce0cee191..5bdd22f77 100644
+--- a/src/main/java/net/officefloor/hq/app/claim/ClaimController.java
++++ b/src/main/java/net/officefloor/hq/app/claim/ClaimController.java
+@@ -186,7 +186,7 @@ public class ClaimController {
+     /** Pasted lines of name,amount,date,note, one claim each. */
+     public record PasteRequest(@NotNull @Size(max = 200000) String text) {}
+ 
+-    /** The claims a paste added, in the order of their lines. */
++    /** How many lines of a paste went through, and the claims they added or updated and opened, in line order. */
+     public record PasteView(int added, List<ClaimView> claims) {}
+ 
+     private final ClaimService service;
+diff --git a/src/main/java/net/officefloor/hq/app/claim/ClaimPasteService.java b/src/main/java/net/officefloor/hq/app/claim/ClaimPasteService.java
+index 54d774e2e..68defa44b 100644
+--- a/src/main/java/net/officefloor/hq/app/claim/ClaimPasteService.java
++++ b/src/main/java/net/officefloor/hq/app/claim/ClaimPasteService.java
+@@ -6,6 +6,7 @@ import java.time.format.DateTimeParseException;
+ import java.util.ArrayList;
+ import java.util.HashSet;
+ import java.util.List;
++import java.util.Objects;
+ import java.util.Set;
+ import java.util.regex.Matcher;
+ import java.util.regex.Pattern;
+@@ -21,6 +22,12 @@ import org.springframework.transaction.annotation.Transactional;
+  * " #<reference>" gives the claim that external reference (that part is not the note); a reference already
+  * on the sheet, or given twice in the paste, compared without regard to case, refuses it. Blank lines are
+  * skipped; a paste with no line is refused. It is one change: a line that is refused refuses them all.
++ * <p>
++ * Each claim then arrives OPEN: opened by the user exactly as the open button opens one, in paste order,
++ * any refusal of the open refusing the paste. A line whose person, date and note match one of that
++ * person's claims as they stood before the paste (neither VOID nor DELETED) updates that claim instead:
++ * the newest such DRAFT (not already taken by an earlier line) is edited to the line's amount, when it
++ * differs, and opened; a line whose matches include no such DRAFT refuses the paste.
+  */
+ @Service
+ public class ClaimPasteService {
+@@ -35,10 +42,12 @@ public class ClaimPasteService {
+     private record Line(Long personId, BigDecimal amount, LocalDate date, String note, String ref) {}
+ 
+     private final ClaimService claims;
++    private final ClaimRepository stored;
+     private final PersonRepository people;
+ 
+-    public ClaimPasteService(ClaimService claims, PersonRepository people) {
++    public ClaimPasteService(ClaimService claims, ClaimRepository stored, PersonRepository people) {
+         this.claims = claims;
++        this.stored = stored;
+         this.people = people;
+     }
+ 
+@@ -53,12 +62,36 @@ public class ClaimPasteService {
+             lines.add(line);
+         }
+         if (lines.isEmpty()) throw new ClaimPasteRefusedException();
+-        List<Claim> added = new ArrayList<>();
++        // The claims as they stood before the paste, newest first: a line never matches one it added.
++        List<Claim> before = stored.findBySheetIdOrderByListedDesc(sheetId).stream()
++                .filter(c -> c.getStatus() != ClaimStatus.VOID && c.getStatus() != ClaimStatus.DELETED)
++                .toList();
++        Set<Long> taken = new HashSet<>();
++        List<Claim> opened = new ArrayList<>();
+         for (Line line : lines) {
+-            added.add(claims.add(sheetId, user, line.personId(), line.amount(), line.date(), line.note(), null,
+-                    line.ref()));
++            LocalDate on = claims.dateOrEntryDate(sheetId, line.date());
++            List<Claim> matches = before.stream()
++                    .filter(c -> c.getPersonId().equals(line.personId()) && on.equals(c.getDate())
++                            && Objects.toString(c.getNote(), "").equals(line.note()))
++                    .toList();
++            Long id;
++            if (matches.isEmpty()) {
++                id = claims.add(sheetId, user, line.personId(), line.amount(), line.date(), line.note(), null,
++                        line.ref()).getId();
++            } else {
++                Claim draft = matches.stream()
++                        .filter(c -> c.getStatus() == ClaimStatus.DRAFT && !taken.contains(c.getId()))
++                        .findFirst().orElseThrow(ClaimPasteRefusedException::new);
++                taken.add(draft.getId());
++                id = draft.getId();
++                if (draft.getAmount().compareTo(line.amount()) != 0) {
++                    claims.edit(sheetId, user, id, line.amount(), draft.getDate(), draft.getNote(),
++                            draft.getCorrects(), draft.getRef(), draft.getTags());
++                }
++            }
++            opened.add(claims.changeStatus(sheetId, user, id, ClaimStatus.OPEN));
+         }
+-        return added;
++        return opened;
+     }
+ 
+     private Line parse(String sheetId, String raw) {
+diff --git a/src/main/java/net/officefloor/hq/app/claim/ClaimService.java b/src/main/java/net/officefloor/hq/app/claim/ClaimService.java
+index 79d679a29..125f0e343 100644
+--- a/src/main/java/net/officefloor/hq/app/claim/ClaimService.java
++++ b/src/main/java/net/officefloor/hq/app/claim/ClaimService.java
+@@ -944,7 +944,7 @@ public class ClaimService {
+     }
+ 
+     /** A new claim's date: the one given, else the entry date while set, else the sheet's today. */
+-    private LocalDate dateOrEntryDate(String sheetId, LocalDate date) {
++    public LocalDate dateOrEntryDate(String sheetId, LocalDate date) {
+         if (date != null) return date;
+         LocalDate entryDate = settings.entryDate(sheetId);
+         return entryDate != null ? entryDate : sheets.today(sheetId);
