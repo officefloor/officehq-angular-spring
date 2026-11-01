@@ -29,14 +29,18 @@ interface SettingsView {
   latePct: string;
   /** Before it a claim's live figures round half up, else half to even (yyyy-mm-dd); null when blank: the sheet's today. */
   policyDate: string | null;
+  /** From it (yyyy-mm-dd), a claim opened is numbered within its period; null when blank: off. */
+  periodNumberingFrom: string | null;
   roles: RoleView[];
 }
 
 // The sheet's settings: the clerk limit (blank: no limit), the floor of a claim's live due, the terms
 // (the days after its date by which a claim is due), the late percent (charged on an overdue claim's
 // figure for every full 30 days overdue), the policy date (blank: the sheet's today; a claim dated before it
-// rounds half up, else half to even), and the role given to each user name. Saving stores the settings whose field was changed since the last save;
-// clearing the clerk limit or the policy date (Delete or Backspace) counts as a change even when it was already blank.
+// rounds half up, else half to even), the period numbering from (blank: off; while the sheet's today is on or after it,
+// a claim opened is numbered within its period), and the role given to each user name. Saving stores the settings whose
+// field was changed since the last save; clearing the clerk limit, the policy date or the period numbering from (Delete or
+// Backspace) counts as a change even when it was already blank.
 @Component({
   selector: 'app-settings',
   imports: [ReactiveFormsModule],
@@ -56,6 +60,11 @@ interface SettingsView {
         <label for="setting-policy-date">Policy date (blank: the sheet's today; before it rounds half up)</label>
         <input id="setting-policy-date" data-testid="setting-policy-date" formControlName="policyDate" placeholder="yyyy-mm-dd"
                (keydown.delete)="form.controls.policyDate.markAsDirty()" (keydown.backspace)="form.controls.policyDate.markAsDirty()" />
+        <label for="setting-period-numbering-from">Period numbering from (blank: off)</label>
+        <input id="setting-period-numbering-from" data-testid="setting-period-numbering-from" formControlName="periodNumberingFrom"
+               placeholder="yyyy-mm-dd"
+               (keydown.delete)="form.controls.periodNumberingFrom.markAsDirty()"
+               (keydown.backspace)="form.controls.periodNumberingFrom.markAsDirty()" />
         <button type="submit" data-testid="settings-save">Save settings</button>
         @if (error()) {
           <p role="alert" class="error" data-testid="settings-error">{{ error() }}</p>
@@ -66,6 +75,7 @@ interface SettingsView {
       <p>Terms now: <span data-testid="setting-terms-current">{{ session.terms() }}</span></p>
       <p>Late percent now: <span data-testid="setting-late-pct-current">{{ session.latePct() }}</span></p>
       <p>Policy date now: <span data-testid="setting-policy-date-current">{{ session.policyDate() ?? '' }}</span></p>
+      <p>Period numbering from now: <span data-testid="setting-period-numbering-from-current">{{ periodNumberingFrom() ?? '' }}</span></p>
       <form [formGroup]="roleForm" (ngSubmit)="setRole()" aria-label="Set role">
         <label for="role-form-user">User</label>
         <input id="role-form-user" data-testid="role-form-user" formControlName="user" />
@@ -104,6 +114,7 @@ export class Settings {
 
   protected readonly roles = ROLES;
   protected readonly clerkLimit = signal<string | null>(null);
+  protected readonly periodNumberingFrom = signal<string | null>(null);
   protected readonly userRoles = signal<RoleView[]>([]);
   protected readonly error = signal('');
   protected readonly roleError = signal('');
@@ -115,6 +126,7 @@ export class Settings {
     terms: new FormControl('', { nonNullable: true }),
     latePct: new FormControl('', { nonNullable: true }),
     policyDate: new FormControl('', { nonNullable: true }),
+    periodNumberingFrom: new FormControl('', { nonNullable: true }),
   });
   protected readonly roleForm = new FormGroup({
     user: new FormControl('', { nonNullable: true }),
@@ -128,6 +140,7 @@ export class Settings {
       const id = this.session.sheetId();
       this.session.loads();
       this.clerkLimit.set(null);
+      this.periodNumberingFrom.set(null);
       this.userRoles.set([]);
       this.error.set('');
       this.roleError.set('');
@@ -155,6 +168,7 @@ export class Settings {
 
   private show(view: SettingsView): void {
     this.clerkLimit.set(view.clerkLimit);
+    this.periodNumberingFrom.set(view.periodNumberingFrom);
     this.userRoles.set(view.roles);
     this.session.floor.set(view.floor);
     this.session.terms.set(view.terms);
@@ -167,12 +181,13 @@ export class Settings {
     this.error.set('');
     const sheet = this.session.sheetId();
     if (!sheet) return;
-    const { clerkLimit, floor, terms, latePct, policyDate } = this.form.controls;
+    const { clerkLimit, floor, terms, latePct, policyDate, periodNumberingFrom } = this.form.controls;
     const value = clerkLimit.value.trim();
     const floorValue = floor.value.trim();
     const termsValue = terms.value.trim();
     const latePctValue = latePct.value.trim();
     const policyDateValue = policyDate.value.trim();
+    const periodNumberingFromValue = periodNumberingFrom.value.trim();
     if (clerkLimit.dirty && value && !/^\d{1,12}(\.\d{1,2})?$/.test(value)) {
       this.error.set('Enter a clerk limit of 0.00 or more, with at most two decimals, or leave it blank for none.');
       return;
@@ -191,6 +206,10 @@ export class Settings {
     }
     if (policyDate.dirty && policyDateValue && !isDate(policyDateValue)) {
       this.error.set('Enter a policy date as yyyy-mm-dd, or leave it blank for the sheet\'s today.');
+      return;
+    }
+    if (periodNumberingFrom.dirty && periodNumberingFromValue && !isDate(periodNumberingFromValue)) {
+      this.error.set('Enter a period numbering from date as yyyy-mm-dd, or leave it blank for off.');
       return;
     }
     this.submitting.add('save');
@@ -228,6 +247,14 @@ export class Settings {
           this.http.put<SettingsView>(`${this.base(sheet)}/settings/policy-date`, { value: policyDateValue || null }, { headers: this.headers() }),
         );
         policyDate.markAsPristine();
+        if (this.session.sheetId() === sheet) this.show(view);
+      }
+      if (periodNumberingFrom.dirty) {
+        const view = await firstValueFrom(
+          this.http.put<SettingsView>(`${this.base(sheet)}/settings/period-numbering-from`, { value: periodNumberingFromValue || null },
+            { headers: this.headers() }),
+        );
+        periodNumberingFrom.markAsPristine();
         if (this.session.sheetId() === sheet) this.show(view);
       }
     } catch {

@@ -16,7 +16,7 @@ public final class Rounding {
     private Rounding() {}
 
     /** The date a claim rounds by: a correction's corrected claim's date (from {@code datesByNumber}), else its own. */
-    public static LocalDate basisOf(Claim claim, Map<Long, LocalDate> datesByNumber) {
+    public static LocalDate basisOf(Claim claim, Map<String, LocalDate> datesByNumber) {
         if (claim.getCorrects() != null) {
             LocalDate corrected = datesByNumber.get(claim.getCorrects());
             if (corrected != null) return corrected;
@@ -31,8 +31,8 @@ public final class Rounding {
     }
 
     /** The dates of the numbered claims, by number. */
-    public static Map<Long, LocalDate> datesByNumber(List<Claim> claims) {
-        Map<Long, LocalDate> dates = new HashMap<>();
+    public static Map<String, LocalDate> datesByNumber(List<Claim> claims) {
+        Map<String, LocalDate> dates = new HashMap<>();
         for (Claim c : claims) {
             if (c.getNumber() != null) dates.put(c.getNumber(), c.getDate());
         }

@@ -25,10 +25,10 @@ public class SettingController {
     /**
      * The sheet's settings as the screen shows them; the clerk limit has two decimals, null when none,
      * and so has the floor; the terms are in days; the late percent has two decimals; the policy date
-     * is null when blank (the sheet's today).
+     * is null when blank (the sheet's today), and so is the period numbering from (off).
      */
     public record SettingsView(String clerkLimit, String floor, int terms, String latePct, LocalDate policyDate,
-            List<RoleView> roles) {}
+            LocalDate periodNumberingFrom, List<RoleView> roles) {}
 
     /** A user name's role, as clerk or steward. */
     public record RoleView(String user, String role) {
@@ -69,6 +69,14 @@ public class SettingController {
         }
     }
 
+    /** A period numbering from date (yyyy-mm-dd); blank or null: off. */
+    public record PeriodNumberingFromRequest(@Pattern(regexp = "(\\d{4}-\\d{2}-\\d{2})?") String value) {
+
+        LocalDate fromValue() {
+            return value == null || value.isEmpty() ? null : LocalDate.parse(value);
+        }
+    }
+
     /** Terms: a whole number of days. */
     public record TermsRequest(@NotNull @Pattern(regexp = "\\d{1,4}") String value) {
 
@@ -97,6 +105,7 @@ public class SettingController {
             @RequestHeader("X-User") @NotBlank @Size(max = 100) String user) {
         return new SettingsView(text(service.clerkLimit(sheetId)), text(service.floor(sheetId)),
                 service.terms(sheetId), text(service.latePct(sheetId)), service.policyDate(sheetId),
+                service.periodNumberingFrom(sheetId),
                 service.roles(sheetId).stream().map(RoleView::of).toList());
     }
 
@@ -142,6 +151,15 @@ public class SettingController {
             @RequestHeader("X-User") @NotBlank @Size(max = 100) String user,
             @RequestBody @Valid PolicyDateRequest request) {
         service.setPolicyDate(sheetId, user, request.policyDateValue());
+        return get(sheetId, user);
+    }
+
+    @PutMapping("/settings/period-numbering-from")
+    public SettingsView setPeriodNumberingFrom(
+            @PathVariable @Size(max = 100) @Pattern(regexp = "[A-Za-z0-9._-]+") String sheetId,
+            @RequestHeader("X-User") @NotBlank @Size(max = 100) String user,
+            @RequestBody @Valid PeriodNumberingFromRequest request) {
+        service.setPeriodNumberingFrom(sheetId, user, request.fromValue());
         return get(sheetId, user);
     }
 

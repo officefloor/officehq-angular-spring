@@ -43,9 +43,20 @@ public class Claim {
     @Column(name = "status", nullable = false)
     private ClaimStatus status = ClaimStatus.DRAFT;
 
-    /** Given when the claim is opened; none while DRAFT, kept when VOID. */
+    /**
+     * Given when the claim is opened: the sheet-wide number, or <period name>-<n> (X-<n> in no
+     * period) while the sheet numbers by period; none while DRAFT, kept when VOID.
+     */
     @Column(name = "claim_number")
-    private Long number;
+    private String number;
+
+    /** The period the claim was numbered within (empty: in no period); none unless numbered by period. */
+    @Column(name = "number_period")
+    private String numberPeriod;
+
+    /** The claim's place in its period's numbering; none unless numbered by period. */
+    @Column(name = "number_seq")
+    private Integer numberSeq;
 
     /** The user who opened the claim; none while DRAFT. */
     @Column(name = "opened_by", length = 100)
@@ -65,7 +76,7 @@ public class Claim {
 
     /** The number of the claim this correction corrects; none unless a correction. */
     @Column(name = "corrects")
-    private Long corrects;
+    private String corrects;
 
     protected Claim() {}
 
@@ -82,9 +93,9 @@ public class Claim {
     /** A correction: a negative amount. Its due has no floor and no late charge. */
     public boolean isCorrection() { return amount.signum() < 0; }
 
-    public Long getCorrects() { return corrects; }
+    public String getCorrects() { return corrects; }
 
-    public void setCorrects(Long corrects) { this.corrects = corrects; }
+    public void setCorrects(String corrects) { this.corrects = corrects; }
 
     public String getSheetId() { return sheetId; }
 
@@ -106,9 +117,17 @@ public class Claim {
 
     public void setStatus(ClaimStatus status) { this.status = status; }
 
-    public Long getNumber() { return number; }
+    public String getNumber() { return number; }
 
-    public void setNumber(Long number) { this.number = number; }
+    /** Number the claim sheet-wide. */
+    public void setNumber(long number) { this.number = String.valueOf(number); }
+
+    /** Number the claim within a period (empty name: in no period): <period name>-<n>, or X-<n>. */
+    public void setNumberWithin(String period, int seq) {
+        this.numberPeriod = period;
+        this.numberSeq = seq;
+        this.number = (period.isEmpty() ? "X" : period) + "-" + seq;
+    }
 
     public String getOpenedBy() { return openedBy; }
 

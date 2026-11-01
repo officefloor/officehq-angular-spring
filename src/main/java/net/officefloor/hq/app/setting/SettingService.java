@@ -16,7 +16,8 @@ import org.springframework.transaction.annotation.Transactional;
  * limit, the highest due a clerk can settle (none: no limit); and the floor, the least a claim's
  * live due can be; and the terms, the days after its date by which a claim is due; and the late
  * percent, which an overdue claim's due gains of its figure for every full 30 days overdue; and the
- * policy date (none: the sheet's today), before which a claim's live figures round half up, else half to even.
+ * policy date (none: the sheet's today), before which a claim's live figures round half up, else half to even;
+ * and the period numbering from (none: off), from which a claim opened is numbered within its period.
  */
 @Service
 public class SettingService {
@@ -63,6 +64,12 @@ public class SettingService {
     @Transactional(readOnly = true)
     public LocalDate policyDate(String sheetId) {
         return sheets.findById(sheetId).orElseThrow(SheetNotFoundException::new).getPolicyDate();
+    }
+
+    /** The period numbering from as set; null when blank, which means off. */
+    @Transactional(readOnly = true)
+    public LocalDate periodNumberingFrom(String sheetId) {
+        return sheets.findById(sheetId).orElseThrow(SheetNotFoundException::new).getPeriodNumberingFrom();
     }
 
     /** The user's role on the sheet: clerk unless given another. */
@@ -140,5 +147,16 @@ public class SettingService {
                 + (policyDate == null ? "" : policyDate.toString()));
         rollup.recordChanges(sheetId, user, before);
         return policyDate;
+    }
+
+    /** Change the period numbering from (null: off); a claim already numbered keeps its number. */
+    @Transactional
+    public LocalDate setPeriodNumberingFrom(String sheetId, String user, LocalDate from) {
+        Sheet sheet = sheets.findForUpdate(sheetId).orElseThrow(SheetNotFoundException::new);
+        sheet.setPeriodNumberingFrom(from);
+        sheets.flush();
+        audit.recordOnCommit("SETTING_CHANGED sheet=" + sheetId + " by=" + user.strip() + " key=period-numbering-from value="
+                + (from == null ? "" : from.toString()));
+        return from;
     }
 }

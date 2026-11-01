@@ -21,7 +21,8 @@ export interface Claim {
   note: string;
   status: ClaimStatus;
   /** Given when the claim is opened and kept once VOID; null while DRAFT. */
-  number: number | null;
+  /** The sheet-wide number, or <period name>-<n> (X-<n> in no period) when numbered by period; null while DRAFT. */
+  number: string | null;
   /** The due fixed when it was settled, two decimals; null while its due is live. */
   settledDue: string | null;
   /** The user who opened it; null while DRAFT. They cannot settle it. */
@@ -31,7 +32,7 @@ export interface Claim {
   /** The due bound by its person's last statement, two decimals; null while not stated, or stated with none. */
   statedDue: string | null;
   /** A correction's (negative amount's) number of the SETTLED claim it corrects; null for any other claim. */
-  corrects: number | null;
+  corrects: string | null;
 }
 
 /** A person's rate on a date: the rate then of the grade they had then, or null when it has none. */
@@ -160,7 +161,7 @@ function notEditable(status: ClaimStatus | undefined): string {
       <label [for]="fieldId('note')">Note</label>
       <input [id]="fieldId('note')" data-testid="claim-form-note" formControlName="note" />
       <label [for]="fieldId('corrects')">Corrects claim no.</label>
-      <input [id]="fieldId('corrects')" data-testid="claim-form-corrects" formControlName="corrects" inputmode="numeric" />
+      <input [id]="fieldId('corrects')" data-testid="claim-form-corrects" formControlName="corrects" />
       <button type="submit" data-testid="claim-form-submit">{{ editingId() === null ? 'Add claim' : 'Save claim' }}</button>
       @if (error()) {
         <p role="alert" class="error" data-testid="claim-form-error">{{ error() }}</p>
@@ -283,7 +284,7 @@ export class Claims {
       return;
     }
     this.editingId.set(c.id);
-    this.form.setValue({ amount: c.amount, date: c.date, note: c.note, corrects: c.corrects === null ? '' : String(c.corrects) },
+    this.form.setValue({ amount: c.amount, date: c.date, note: c.note, corrects: c.corrects ?? '' },
       { emitEvent: false });
     this.error.set('');
   }
@@ -332,7 +333,7 @@ export class Claims {
       return;
     }
     const correction = amount.startsWith('-') && cents(amount) < 0;
-    if (correction ? !/^[1-9]\d{0,17}$/.test(corrects) : corrects !== '') {
+    if (correction ? !/^\S{1,220}$/.test(corrects) : corrects !== '') {
       this.error.set(correction ? CORRECTION : 'Only a correction (a negative amount) names a claim it corrects.');
       return;
     }
@@ -340,7 +341,7 @@ export class Claims {
       this.error.set('Enter a date, or leave it blank for today.');
       return;
     }
-    const body = { amount, date: date || null, note: raw.note.trim(), corrects: corrects ? Number(corrects) : null };
+    const body = { amount, date: date || null, note: raw.note.trim(), corrects: corrects || null };
     const id = this.editingId();
     const base = `/api/sheets/${encodeURIComponent(sheet)}`;
     this.saving = true;

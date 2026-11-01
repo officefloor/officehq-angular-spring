@@ -5,6 +5,7 @@ import java.math.RoundingMode;
 import java.time.LocalDate;
 import java.util.List;
 import net.officefloor.hq.app.Audit;
+import net.officefloor.hq.app.period.Period;
 import net.officefloor.hq.app.period.PeriodClosedException;
 import net.officefloor.hq.app.period.PeriodRepository;
 import net.officefloor.hq.app.person.Person;
@@ -16,6 +17,7 @@ import net.officefloor.hq.app.rate.RateService;
 import net.officefloor.hq.app.rollup.RollupService;
 import net.officefloor.hq.app.setting.Role;
 import net.officefloor.hq.app.setting.SettingService;
+import net.officefloor.hq.app.sheet.Sheet;
 import net.officefloor.hq.app.sheet.SheetService;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -24,7 +26,8 @@ import org.springframework.transaction.annotation.Transactional;
  * The claims on a sheet: listed newest first, added to a person and edited one at a time. A claim
  * given no date takes the sheet's today. A claim is added as DRAFT and moves through its statuses
  * as {@link ClaimStatus} allows; a change it does not allow is refused. Opening a claim gives it
- * the sheet's next number, which it keeps when voided and is never given again. Only a DRAFT claim
+ * the sheet's next number (or, while the sheet numbers by period, the next within its period), which it
+ * keeps when voided and is never given again. Only a DRAFT claim
  * can be edited; an OPEN one is changed by voiding it and adding a new one. Settling it
  * fixes its due at its figure (the due bound by a statement, else its person's grade rate of the
  * moment on the claim's date) with its late charge of the moment frozen in; with no figure it
@@ -65,7 +68,7 @@ public class ClaimService {
 
     @Transactional
     public Claim add(String sheetId, String user, Long personId, BigDecimal amount, LocalDate date, String note,
-            Long corrects) {
+            String corrects) {
         // The snapshot locks the sheet first, so the person is read as retired by any retirement before.
         RollupService.Snapshot before = rollup.snapshot(sheetId);
         Person person = people.findByIdAndSheetId(personId, sheetId).orElseThrow(PersonNotFoundException::new);
@@ -83,7 +86,7 @@ public class ClaimService {
 
     @Transactional
     public Claim edit(String sheetId, String user, Long id, BigDecimal amount, LocalDate date, String note,
-            Long corrects) {
+            String corrects) {
         Claim claim = claims.findByIdAndSheetId(id, sheetId).orElseThrow(ClaimNotFoundException::new);
         if (claim.getStatus() != ClaimStatus.DRAFT) {
             throw new ClaimStatusRefusedException();
@@ -109,7 +112,7 @@ public class ClaimService {
     public Claim changeStatus(String sheetId, String user, Long id, ClaimStatus next) {
         // Opening takes the sheet's next number, locking the sheet first so the claim is read only
         // once no other open on the sheet is under way; a refusal rolls the number back.
-        Long opened = next == ClaimStatus.OPEN ? sheets.nextClaimNumber(sheetId) : null;
+        Sheet numbering = next == ClaimStatus.OPEN ? sheets.lockForNumbering(sheetId) : null;
         Claim claim = claims.findByIdAndSheetId(id, sheetId).orElseThrow(ClaimNotFoundException::new);
         if (!claim.getStatus().canBecome(next)) {
             throw new ClaimStatusRefusedException();
@@ -123,11 +126,9 @@ public class ClaimService {
         if (next == ClaimStatus.SETTLED) refuseIfOverClerkLimit(sheetId, user, settling);
         RollupService.Snapshot before = rollup.snapshot(sheetId);
         refuseIfClosed(sheetId, claim.getDate());
-        Long number = claim.getNumber();
         switch (next) {
             case OPEN -> {
-                number = opened;
-                claim.setNumber(number);
+                number(numbering, claim);
                 claim.setOpenedBy(user.strip());
             }
             case SETTLED -> claim.setSettledDue(settling);
@@ -144,9 +145,25 @@ public class ClaimService {
         String due = next == ClaimStatus.SETTLED
                 ? " due=" + (saved.getSettledDue() == null ? "n/a" : saved.getSettledDue().setScale(2).toPlainString())
                 : "";
-        record(event, sheetId, user, person, saved, number, due);
+        record(event, sheetId, user, person, saved, saved.getNumber(), due);
         rollup.recordChanges(sheetId, user, before);
         return saved;
+    }
+
+    /**
+     * Give an opened claim its number: the sheet's next, or while the sheet numbers by period, the next
+     * within the period its date falls in (in no period: the next in the sheet's X sequence).
+     */
+    private void number(Sheet sheet, Claim claim) {
+        if (!sheet.numbersByPeriod()) {
+            claim.setNumber(sheet.nextClaimNumber());
+            return;
+        }
+        String period = periods.findBySheetIdOrderByFromDateAsc(sheet.getId()).stream()
+                .filter(p -> p.contains(claim.getDate()))
+                .map(Period::getName)
+                .findFirst().orElse("");
+        claim.setNumberWithin(period, claims.lastNumberWithin(sheet.getId(), period) + 1);
     }
 
     /**
@@ -196,7 +213,7 @@ public class ClaimService {
     }
 
     /** A claim's audit line; one about a claim with a number has it, then any extra fields. */
-    private void record(String event, String sheetId, String user, Person person, Claim claim, Long number,
+    private void record(String event, String sheetId, String user, Person person, Claim claim, String number,
             String extra) {
         audit.recordOnCommit(event + " sheet=" + sheetId + " by=" + user.strip() + " person=" + person.getName()
                 + " amount=" + claim.getAmount().setScale(2).toPlainString() + " date=" + claim.getDate()
@@ -207,7 +224,7 @@ public class ClaimService {
      * Refuse a correction that names no SETTLED claim of its person by number, and a claim that names
      * one but is not a correction.
      */
-    private void refuseUnlessCorrects(String sheetId, Long personId, BigDecimal amount, Long corrects) {
+    private void refuseUnlessCorrects(String sheetId, Long personId, BigDecimal amount, String corrects) {
         if (amount.signum() >= 0) {
             if (corrects != null) throw new CorrectionRefusedException();
             return;

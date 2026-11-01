@@ -74,7 +74,7 @@ public class RollupService {
         }
         Map<Long, List<Claim>> claimsByPerson = new LinkedHashMap<>();
         List<Claim> all = claims.findBySheetIdOrderByIdDesc(sheetId);
-        Map<Long, LocalDate> datesByNumber = Rounding.datesByNumber(all);
+        Map<String, LocalDate> datesByNumber = Rounding.datesByNumber(all);
         for (Claim claim : all) {
             if (claim.getStatus().counts()) {
                 claimsByPerson.computeIfAbsent(claim.getPersonId(), id -> new ArrayList<>()).add(claim);

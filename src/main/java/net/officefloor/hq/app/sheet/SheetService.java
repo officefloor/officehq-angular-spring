@@ -41,13 +41,13 @@ public class SheetService {
     }
 
     /**
-     * Take the next claim number on the sheet: 1, 2, ... with no gaps and never reused. The sheet
-     * stays locked until the caller's transaction ends, so two users opening claims at once get
-     * different numbers.
+     * Lock the sheet for numbering a claim: its sheet-wide numbers are 1, 2, ... with no gaps and never
+     * reused, and so are its numbers within each period. The sheet stays locked until the caller's
+     * transaction ends, so two users opening claims at once get different numbers.
      */
     @Transactional
-    public long nextClaimNumber(String id) {
-        return sheets.findForUpdate(id).orElseThrow(SheetNotFoundException::new).nextClaimNumber();
+    public Sheet lockForNumbering(String id) {
+        return sheets.findForUpdate(id).orElseThrow(SheetNotFoundException::new);
     }
 
     /** Change the sheet's today; it has no audit line of its own, only the figures it moves. */
