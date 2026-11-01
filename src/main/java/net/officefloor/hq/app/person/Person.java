@@ -108,6 +108,10 @@ public class Person {
     @Column(name = "merged_into")
     private Long mergedInto;
 
+    /** The sheet they were last transferred from; null when never transferred. */
+    @Column(name = "transferred_from")
+    private String transferredFrom;
+
     @Version
     @Column(name = "version", nullable = false)
     private long version;
@@ -216,13 +220,17 @@ public class Person {
         return theirs;
     }
 
-    /** Move them to another sheet, with their grades, terms, contact, aliases and holds. */
+    /** Move them to another sheet, noting the one they came from, with their grades, terms, contact, aliases and holds. */
     public void transferTo(String sheetId) {
+        this.transferredFrom = this.sheetId;
         this.sheetId = sheetId;
         List<PersonAlias> theirs = new ArrayList<>(aliases);
         aliases.clear();
         for (PersonAlias a : theirs) aliases.add(new PersonAlias(sheetId, a.getAlias()));
     }
+
+    /** The sheet they were last transferred from, or null when never transferred. */
+    public String getTransferredFrom() { return transferredFrom; }
 
     /** Their name and aliases, as given. */
     public List<String> namesAndAliases() {

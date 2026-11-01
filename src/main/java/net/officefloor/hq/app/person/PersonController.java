@@ -34,12 +34,13 @@ public class PersonController {
      * while not retired; held whether they have any hold, holds every hold, earliest first; patronIds
      * in the order named; watched whether the signed-in user watches them; terms their own, null for none;
      * contact theirs, null for none; aliases theirs, sorted as names are compared; active whether they are active on the sheet's today ({@link Person#activeOn});
-     * clashing whether their name or an alias is used on another sheet of the sheet's tree ({@link PersonService#clashingIds}).
+     * clashing whether their name or an alias is used on another sheet of the sheet's tree ({@link PersonService#clashingIds});
+     * origin the sheet they were transferred from, null when never transferred.
      */
     public record PersonView(Long id, String name, String grade, List<GradeView> grades, long version,
             boolean retired, LocalDate retiredFrom, boolean held, List<HoldView> holds, List<Long> patronIds,
             boolean watched, Integer terms, boolean active, String contact, List<String> aliases,
-            boolean clashing) {
+            boolean clashing, String origin) {
         public static PersonView of(Person person, LocalDate today, List<Long> patronIds, boolean watched,
                 boolean active, boolean clashing) {
             List<GradeView> grades = new ArrayList<>();
@@ -50,7 +51,7 @@ public class PersonController {
                     person.isRetired(), person.getRetiredFrom(), person.isHeld(),
                     person.getHolds().stream().map(h -> new HoldView(h.getFromDate(), h.getToDate())).toList(),
                     patronIds, watched, person.getTerms(), active, person.getContact(),
-                    person.getAliases(), clashing);
+                    person.getAliases(), clashing, person.getTransferredFrom());
         }
     }
 

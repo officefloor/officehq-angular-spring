@@ -62,6 +62,8 @@ interface Person {
   active: boolean;
   /** Whether their name or an alias is, as names are compared, a name or alias on another sheet of the sheet's tree. */
   clashing: boolean;
+  /** The sheet they were transferred from; null when never transferred. */
+  origin: string | null;
 }
 
 /** The person's grade in force on the date: the one with the latest from-date on or before it. */
@@ -314,7 +316,7 @@ function trimmedSum(figures: number[]): number {
       </form>
       <table>
         <thead>
-          <tr><th scope="col"><span class="visually-hidden">Select</span></th><th scope="col">Name</th><th scope="col">Grade</th><th scope="col">Terms</th><th scope="col">Contact</th><th scope="col">Aliases</th><th scope="col">Claimed</th><th scope="col">Due total</th><th scope="col">Excess</th><th scope="col">Settled total</th><th scope="col">Open total</th><th scope="col">Cut total</th><th scope="col">Periods</th><th scope="col">Statements</th><th scope="col">Retired</th><th scope="col">Hold</th><th scope="col">Watched</th><th scope="col">Active</th><th scope="col">Clashing</th><th scope="col">Overdue</th><th scope="col">Aged</th><th scope="col">Patrons</th><th scope="col">Claims</th><th scope="col"><span class="visually-hidden">Actions</span></th></tr>
+          <tr><th scope="col"><span class="visually-hidden">Select</span></th><th scope="col">Name</th><th scope="col">Grade</th><th scope="col">Terms</th><th scope="col">Contact</th><th scope="col">Aliases</th><th scope="col">Came from</th><th scope="col">Claimed</th><th scope="col">Due total</th><th scope="col">Excess</th><th scope="col">Settled total</th><th scope="col">Open total</th><th scope="col">Cut total</th><th scope="col">Periods</th><th scope="col">Statements</th><th scope="col">Retired</th><th scope="col">Hold</th><th scope="col">Watched</th><th scope="col">Active</th><th scope="col">Clashing</th><th scope="col">Overdue</th><th scope="col">Aged</th><th scope="col">Patrons</th><th scope="col">Claims</th><th scope="col"><span class="visually-hidden">Actions</span></th></tr>
         </thead>
         <tbody>
           @for (p of listed(); track p.id) {
@@ -342,6 +344,7 @@ function trimmedSum(figures: number[]): number {
                 <button type="button" data-testid="person-alias-add" (click)="addAlias(p, aliasInput)"
                         [attr.aria-label]="'Add alias for ' + p.name">Add alias</button>
               </td>
+              <td data-testid="person-origin">{{ p.origin ?? '' }}</td>
               <td data-testid="person-claimed">{{ claimedOf(p.id) }}</td>
               <td data-testid="person-due-total">{{ dueTotalOf(p) }}</td>
               <td data-testid="person-excess">{{ excessOf(p) }}</td>
