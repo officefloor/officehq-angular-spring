@@ -6,11 +6,15 @@ import { Late, Session } from '../../core/session';
 import { Period, closedOn, periodOn } from '../periods/periods';
 import { NA, dueCents } from '../rates/rates';
 
-/** DRAFT when added, then OPEN, then SETTLED; a DRAFT or OPEN claim can be made VOID. */
-export type ClaimStatus = 'DRAFT' | 'OPEN' | 'SETTLED' | 'VOID';
+/**
+ * DRAFT when added, then OPEN, then SETTLED; a clerk's settling above the clerk limit makes it
+ * PENDING until a steward approves it (SETTLED) or rejects it (OPEN). A DRAFT, OPEN or PENDING
+ * claim can be made VOID.
+ */
+export type ClaimStatus = 'DRAFT' | 'OPEN' | 'PENDING' | 'SETTLED' | 'VOID';
 
 /** A status change a claim's buttons ask for. */
-type ClaimAction = 'open' | 'settle' | 'void';
+type ClaimAction = 'open' | 'settle' | 'void' | 'approve' | 'reject';
 
 export interface Claim {
   id: number;
@@ -27,7 +31,7 @@ export interface Claim {
   settledDue: string | null;
   /** The user who opened it; null while DRAFT. They cannot settle it. */
   openedBy: string | null;
-  /** Bound by its person's last statement, to the due it had then. */
+  /** Bound by its person's last statement, to the due it had then; not while PENDING, when its due is live. */
   stated: boolean;
   /** The due bound by its person's last statement, two decimals; null while not stated, or stated with none. */
   statedDue: string | null;
@@ -38,12 +42,22 @@ export interface Claim {
 /** A person's rate on a date: the rate then of the grade they had then, or null when it has none. */
 export type PctOn = (date: string) => string | null;
 
-/** Only OPEN and SETTLED claims count toward what is claimed and due. */
-export function counts(c: Claim): boolean {
-  return c.status === 'OPEN' || c.status === 'SETTLED';
+/** Open: OPEN, or PENDING, which is handled like it. */
+export function isOpen(c: Claim): boolean {
+  return c.status === 'OPEN' || c.status === 'PENDING';
 }
 
-/** Whether the claim counts for its person held or not: a held person's OPEN claims do not. */
+/** Only open (OPEN or PENDING) and SETTLED claims count toward what is claimed and due. */
+export function counts(c: Claim): boolean {
+  return isOpen(c) || c.status === 'SETTLED';
+}
+
+/** Whether its due is now bound by its person's last statement: stated and not PENDING. */
+export function isBound(c: Claim): boolean {
+  return c.stated && c.status !== 'PENDING';
+}
+
+/** Whether the claim counts for its person held or not: a held person's open claims do not. */
 export function countsFor(c: Claim, held: boolean): boolean {
   return held ? c.status === 'SETTLED' : counts(c);
 }
@@ -90,7 +104,7 @@ export function claimDueCents(c: Claim, pctOn: PctOn, floorCents: number, late: 
 
 /** A claim's figure in cents: the due bound by its person's last statement, else its floored live due. */
 function figureCents(c: Claim, pctOn: PctOn, floorCents: number, halfUp: boolean): number | null {
-  if (c.stated) return c.statedDue === null ? null : cents(c.statedDue);
+  if (isBound(c)) return c.statedDue === null ? null : cents(c.statedDue);
   const pct = pctOn(c.date);
   if (pct === null) return null;
   const due = dueCents(cents(c.amount), pct, halfUp);
@@ -120,9 +134,9 @@ export function dueBy(c: Claim, terms: number): string {
   return addDays(c.date, terms);
 }
 
-/** Overdue: OPEN with its due-by before the sheet's today. */
+/** Overdue: OPEN or PENDING with its due-by before the sheet's today. */
 export function isOverdue(c: Claim, terms: number, today: string | null): boolean {
-  return c.status === 'OPEN' && today !== null && dueBy(c, terms) < today;
+  return isOpen(c) && today !== null && dueBy(c, terms) < today;
 }
 
 /** Why a change to a claim dated inside a closed period is refused. */
@@ -137,18 +151,23 @@ export function money(cents: number): string {
   return `${cents < 0 ? '-' : ''}${Math.floor(size / 100)}.${String(size % 100).padStart(2, '0')}`;
 }
 
+/** What each action makes of a claim, for why it was refused. */
+const PAST: Record<ClaimAction, string> = {
+  open: 'opened', settle: 'settled', void: 'voided', approve: 'approved', reject: 'rejected',
+};
+
 /** Why a claim's correction is refused. */
 const CORRECTION = 'A negative amount is a correction: name the number of a SETTLED claim of this person that it corrects.';
 
-/** Why a claim cannot be edited: only a DRAFT can; an OPEN one is voided and added again. */
+/** Why a claim cannot be edited: only a DRAFT can; an OPEN or PENDING one is voided and added again. */
 function notEditable(status: ClaimStatus | undefined): string {
-  return status === 'OPEN'
-    ? 'An OPEN claim cannot be edited; void it and add a new one.'
+  return status === 'OPEN' || status === 'PENDING'
+    ? `An ${status} claim cannot be edited; void it and add a new one.`
     : `${status ? 'A ' + status : 'This'} claim cannot be edited; only a DRAFT can.`;
 }
 
 // One person's claims, newest first, with one form to add a claim or edit one, and buttons to
-// open, settle or void each claim, and a checkbox to select each for a bulk change.
+// open, settle or void each claim, approve or reject (with a reason) a PENDING one, and a checkbox to select each for a bulk change.
 @Component({
   selector: 'app-claims',
   imports: [ReactiveFormsModule],
@@ -191,6 +210,12 @@ function notEditable(status: ClaimStatus | undefined): string {
                   [attr.aria-label]="'Settle claim of ' + c.amount + ' on ' + c.date">Settle</button>
           <button type="button" data-testid="claim-void" (click)="act(c, 'void')"
                   [attr.aria-label]="'Void claim of ' + c.amount + ' on ' + c.date">Void</button>
+          <button type="button" data-testid="claim-approve" (click)="act(c, 'approve')"
+                  [attr.aria-label]="'Approve claim of ' + c.amount + ' on ' + c.date">Approve</button>
+          <label [for]="fieldId('reject-' + c.id)">Reject reason</label>
+          <input [id]="fieldId('reject-' + c.id)" data-testid="claim-reject-reason" #rejectReason />
+          <button type="button" data-testid="claim-reject" (click)="act(c, 'reject', rejectReason.value)"
+                  [attr.aria-label]="'Reject claim of ' + c.amount + ' on ' + c.date">Reject</button>
           @if (editingId() === c.id) {
             <button type="button" data-testid="claim-cancel" (click)="cancel()">Cancel</button>
           } @else {
@@ -293,26 +318,37 @@ export class Claims {
     this.reset();
   }
 
-  /** Open, settle or void a claim; a change its status does not allow is refused. */
-  protected async act(c: Claim, action: ClaimAction): Promise<void> {
+  /**
+   * Open, settle or void a claim, or approve or reject (with a reason) a PENDING one; a change its
+   * status does not allow is refused.
+   */
+  protected async act(c: Claim, action: ClaimAction, reason = ''): Promise<void> {
     this.claimError.set(null);
     const sheet = this.session.sheetId();
     if (!sheet) return;
+    const why = reason.trim().replace(/\s+/g, ' ');
+    if (action === 'reject' && (why === '' || why.length > 200)) {
+      this.claimError.set({ id: c.id, message: 'Give a reason for rejecting the claim (at most 200 characters).' });
+      return;
+    }
     const url = `/api/sheets/${encodeURIComponent(sheet)}/claims/${c.id}/${action}`;
+    const body = action === 'reject' ? { reason: why } : null;
     try {
-      const claim = await firstValueFrom(this.http.post<Claim>(url, null, { headers: this.headers() }));
+      const claim = await firstValueFrom(this.http.post<Claim>(url, body, { headers: this.headers() }));
       if (this.session.sheetId() !== sheet) return;
       this.saved.emit(claim);
     } catch (e) {
       if (this.session.sheetId() !== sheet) return;
       const message = e instanceof HttpErrorResponse && e.status === 423
         ? CLOSED
-        : e instanceof HttpErrorResponse && e.status === 403
-        ? 'The user who opened a claim cannot settle it.'
-        : e instanceof HttpErrorResponse && e.status === 422
-        ? 'A clerk cannot settle a claim whose due is above the clerk limit.'
         : e instanceof HttpErrorResponse && e.status === 409
-        ? `A ${c.status} claim cannot be ${action === 'open' ? 'opened' : action === 'settle' ? 'settled' : 'voided'}.`
+        ? `A ${c.status} claim cannot be ${PAST[action]}.`
+        : e instanceof HttpErrorResponse && e.status === 403
+        ? action === 'settle'
+          ? 'The user who opened a claim cannot settle it.'
+          : action === 'approve' && c.openedBy === this.session.user()
+          ? 'The user who opened a claim cannot approve it.'
+          : 'Only a steward can approve or reject a PENDING claim.'
         : 'Could not change that claim.';
       this.claimError.set({ id: c.id, message });
     }

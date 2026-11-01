@@ -110,7 +110,7 @@ public class Person {
     /** Whether a claim of theirs may be dated on the date: not after their retirement date. */
     public boolean mayClaimOn(LocalDate date) { return retiredFrom == null || !date.isAfter(retiredFrom); }
 
-    /** While held, their OPEN claims count in no live total; their SETTLED claims still do. */
+    /** While held, their open (OPEN or PENDING) claims count in no live total; their SETTLED claims still do. */
     public boolean isHeld() { return held; }
 
     public void setHeld(boolean held) { this.held = held; }

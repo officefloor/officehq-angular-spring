@@ -83,7 +83,7 @@ public class StatementService {
             }
             BigDecimal figure = claimService.figureOf(sheetId, person, claim);
             BigDecimal due = claimService.chargedFigureOf(sheetId, person, claim);
-            if (claim.getSettledDue() != null || (claim.isStated() && claim.getStatedDue() != null)) fixed = true;
+            if (claim.getSettledDue() != null || (claim.isBound() && claim.getStatedDue() != null)) fixed = true;
             // a due under a grade they had on its date but not today counts like a fixed one
             if (due != null && !person.gradeOn(claim.getDate()).equals(person.gradeOn(today))) fixed = true;
             claim.state(figure);

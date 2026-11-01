@@ -96,7 +96,7 @@ public class PersonService {
         return saved;
     }
 
-    /** Put the person on hold, or take them off it when held; their OPEN claims leave or rejoin the totals. */
+    /** Put the person on hold, or take them off it when held; their open (OPEN or PENDING) claims leave or rejoin the totals. */
     @Transactional
     public Person toggleHold(String sheetId, String user, Long id) {
         RollupService.Snapshot before = rollup.snapshot(sheetId);

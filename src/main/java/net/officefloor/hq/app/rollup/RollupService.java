@@ -90,7 +90,7 @@ public class RollupService {
             for (Claim claim : claimsByPerson.getOrDefault(person.getId(), List.of())) {
                 if (!claim.getStatus().counts(person.isHeld())) continue;
                 claimed = claimed.add(claim.getAmount());
-                if (claim.getSettledDue() != null || (claim.isStated() && claim.getStatedDue() != null)) fixed = true;
+                if (claim.getSettledDue() != null || (claim.isBound() && claim.getStatedDue() != null)) fixed = true;
                 String grade = person.gradeOn(claim.getDate());
                 RoundingMode rounding = Rounding.of(Rounding.basisOf(claim, datesByNumber), policyDate, today);
                 BigDecimal figure = LateCharge.withCharge(claim,
@@ -135,7 +135,7 @@ public class RollupService {
      */
     private static BigDecimal figureOf(Claim claim, List<Rate> rates, BigDecimal floor, RoundingMode rounding) {
         if (claim.getSettledDue() != null) return claim.getSettledDue();
-        if (claim.isStated()) return claim.getStatedDue();
+        if (claim.isBound()) return claim.getStatedDue();
         BigDecimal pct = pctOn(rates, claim.getDate());
         if (pct == null) return null;
         BigDecimal due = claim.getAmount().multiply(pct).movePointLeft(2).setScale(2, rounding);

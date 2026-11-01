@@ -3,14 +3,14 @@ import { Component, computed, effect, inject, signal } from '@angular/core';
 import { FormControl, FormGroup, ReactiveFormsModule } from '@angular/forms';
 import { firstValueFrom } from 'rxjs';
 import { Session } from '../../core/session';
-import { Claim, Claims, PctOn, RETIRED, cents, claimDueCents, countsFor, isOverdue, money, roundsOn } from '../claims/claims';
+import { Claim, Claims, PctOn, RETIRED, cents, claimDueCents, countsFor, isBound, isOverdue, money, roundsOn } from '../claims/claims';
 import { Period, Periods, periodOn } from '../periods/periods';
 import { GRADES, NA, Rate, Rates, pctOn } from '../rates/rates';
 
 const NO_CLAIMS: Claim[] = [];
 const NO_RATES: Rate[] = [];
 const NO_PCT: PctOn = () => null;
-/** The statuses the summary counts claims by, PENDING among them though no claim is held in it now. */
+/** The statuses the summary counts claims by. */
 const SUMMARY_STATUSES = ['DRAFT', 'OPEN', 'PENDING', 'SETTLED', 'VOID'];
 
 /** A grade a person was given, in force from a date until the next one; from is null from the start. */
@@ -31,7 +31,7 @@ interface Person {
   /** Retired once given a retirement date, whatever the date; retiredFrom is null while not. */
   retired: boolean;
   retiredFrom: string | null;
-  /** While held, their OPEN claims count in no live total; their SETTLED claims still do. */
+  /** While held, their open (OPEN or PENDING) claims count in no live total; their SETTLED claims still do. */
   held: boolean;
   /** The other people on the sheet they have named as patrons, in the order named. */
   patronIds: number[];
@@ -77,13 +77,13 @@ interface StatementTaken {
 }
 
 // The people on the active sheet, in the order they were added, with one form to add or edit,
-// each with their claims, what they have claimed and their due-total (OPEN and SETTLED claims only); the sheet's claimed-total and
+// each with their claims, what they have claimed and their due-total (OPEN, PENDING and SETTLED claims only); the sheet's claimed-total and
 // due-total under the table. Above it, the sheet's rate for each grade. Each person can be given a
 // statement, which binds their counting claims' dues; the row shows how many statements they have
 // had and the last one's due-total and date. Each person can be retired from a date (blank: the sheet's
 // today); retired people are left out of the list unless show retired is on, but their claims
 // keep counting in every total. Each person can be put on hold and taken off it again; while held,
-// their OPEN claims count in no live total (theirs, the sheet's or a period's), their SETTLED ones still do.
+// their open (OPEN or PENDING) claims count in no live total (theirs, the sheet's or a period's), their SETTLED ones still do.
 // Each person, and the sheet, shows how many of the claims that count are overdue and their dues' total.
 // A person's grade is dated: the first one given is in force from the start; each save records the
 // form's grade from its from-date (blank: the sheet's today), unless it leaves the grade as the row
@@ -291,7 +291,7 @@ export class People {
   });
   /** The ids of the people on hold. */
   private readonly heldIds = computed(() => new Set(this.people().filter((p) => p.held).map((p) => p.id)));
-  /** Whether the claim counts in the live totals: OPEN or SETTLED, and not OPEN for a held person. */
+  /** Whether the claim counts in the live totals: OPEN, PENDING or SETTLED, and only SETTLED for a held person. */
   private readonly counts = (c: Claim): boolean => countsFor(c, this.heldIds().has(c.personId));
   protected readonly claimedTotal = computed(() => money(this.claims().filter(this.counts).reduce((sum, c) => sum + cents(c.amount), 0)));
   /** The sheet's rates, each for a grade from its from-date. */
@@ -496,7 +496,7 @@ export class People {
     const floor = cents(this.session.floor());
     const late = this.session.late();
     const gradeToday = this.gradeOf(p);
-    const fixed = (c: Claim) => c.settledDue !== null || (c.stated && c.statedDue !== null)
+    const fixed = (c: Claim) => c.settledDue !== null || (isBound(c) && c.statedDue !== null)
       || (gradeOn(p, c.date) !== gradeToday && claimDueCents(c, pctOn, floor, late, roundsOn(c, theirs)) !== null);
     if (this.pctOf(gradeToday) === null && !counted.some(fixed)) return null;
     return counted.reduce((sum, c) => sum + (claimDueCents(c, pctOn, floor, late, roundsOn(c, theirs)) ?? 0), 0);

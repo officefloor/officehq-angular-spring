@@ -141,6 +141,12 @@ public class Claim {
 
     public BigDecimal getStatedDue() { return statedDue; }
 
+    /**
+     * Whether its due is now bound by its person's last statement: stated and not PENDING. A PENDING
+     * claim shows its live due, and is bound again if rejected.
+     */
+    public boolean isBound() { return stated && status != ClaimStatus.PENDING; }
+
     /** Bind the claim to a due (null: it has none), as its person's statement does. */
     public void state(BigDecimal due) {
         this.stated = true;
