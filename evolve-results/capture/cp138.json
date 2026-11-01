@@ -1,0 +1,64 @@
+{
+  "checkpoint": 138,
+  "stack": {
+    "repo": "/home/daniel/officehq-angular-spring",
+    "origin": "git@github.com:officefloor/officehq-angular-spring.git",
+    "name": "officehq-angular-spring",
+    "base_ref": "base-empty",
+    "base_commit": "65cb8233ea38b2dfa6cfd18709e30cd18fdf3250"
+  },
+  "checkpoint_id": "cp138_inline-grade",
+  "phase": "mid",
+  "type": "additive",
+  "mutates": [],
+  "replaced_tests": [],
+  "request": {
+    "spec": "Each person's row has a grade select and a save button that records the chosen grade from the\nsheet's today exactly as the person form would (PERSON_EDITED and the rollup lines).\n",
+    "prompt": "You are implementing ONE change to this application.\n\nFIRST read AGENTS.md \u2014 it states the working rules and how the app is tested, and sends you to\nDESIGN.md for the app's stack and conventions. Follow both.\n\nTHE CHANGE REQUEST:\nEach person's row has a grade select and a save button that records the chosen grade from the\nsheet's today exactly as the person form would (PERSON_EDITED and the rollup lines).\n\nYour work is verified by an automated Playwright UI test already installed under e2e/specs/.\nRead that spec: it declares the exact data-testid anchors, values, test data and any audit\nrecords it expects \u2014 match them. Run `bin/e2e` to build the app, start it, and run the test as\nyou work; iterate until it passes. Change whatever the request needs across the app \u2014 its stored\ndata, its server and its front end. Do NOT edit bin/build, bin/start, bin/stop, bin/e2e,\nAGENTS.md, CLAUDE.md, DESIGN.md, e2e/support/ or the test spec.\n"
+  },
+  "commit_sha": "21a4a2e448625981362923c81df30fc56b33a3b1",
+  "reset_sha": "",
+  "preagent_sha": "76fd6a375f53c41918a27ece33fef02c197de9b8",
+  "prev_sha": "76fd6a375f53c41918a27ece33fef02c197de9b8",
+  "base_sha": "65cb8233ea38b2dfa6cfd18709e30cd18fdf3250",
+  "agent": {
+    "ok": true,
+    "cost_usd": 1.0457012,
+    "input_tokens": 54,
+    "output_tokens": 10676,
+    "cache_read_tokens": 1266826,
+    "cache_creation_tokens": 72325,
+    "num_turns": 28,
+    "duration_ms": 427280,
+    "duration_api_ms": 116393,
+    "model": "claude-opus-5-5",
+    "session_id": "ea9621f8-3d80-4585-825c-8d0bcc4dc308",
+    "stop_reason": "success",
+    "result_text": "Each person's row now has a grade select and a \"Save grade\" button, and all four Playwright tests pass with `bin/e2e`. No errors appear in the app log.\n\n**The change** is in `src/main/frontend/src/app/features/people/people.ts`.\n- **Row controls:** the select (`person-inline-grade`) and save button (`person-inline-grade-save`) sit in the Grade cell. The select starts on the grade in force on the sheet's today.\n- **How it saves:** a new `saveGrade` method calls the same save endpoint as the person form. It sends the person's current name, terms, contact and tags, the chosen grade, a blank from-date (meaning the sheet's today), and the version shown on screen. So it writes the same `PERSON_EDITED` and rollup lines as the form, and the server refuses it in the same cases:\n  - a viewer tries it;\n  - someone else saved the person since the sheet was loaded (and an editor opened before an inline save is refused afterwards);\n  - the person's name clashes with another sheet.\n- **Refusals:** a refused save shows the row's existing `person-error`, and the next action on the row clears it. No server changes were needed for the feature itself.\n\n**An existing bug I had to fix.** Scenario 1 failed for a reason unrelated to the new controls. Moving a person to another sheet keeps their record's id. Viewing the original sheet as of an earlier date restores a saved copy of it, and that tried to insert the moved person again with the same id. The insert failed and the sheet wouldn't load. In `src/main/java/net/officefloor/hq/app/asof/SheetHistory.java`, the restore now writes those rows as \"insert or update by primary key\" instead of a plain insert. That restore always happens in a transaction that is rolled back, so the other sheet's stored data isn't affected. This touches the as-of feature, not just inline grades, so it's worth a look in review.",
+    "error": "",
+    "attempts": [
+      {
+        "ok": true,
+        "limit_reached": false,
+        "retryable": false,
+        "timed_out": false,
+        "cost_usd": 1.0457012,
+        "num_turns": 28,
+        "duration_ms": 427280,
+        "duration_api_ms": 116393,
+        "error": ""
+      }
+    ]
+  },
+  "agent_stream_file": "cp138.agent.jsonl",
+  "agent_diff_file": "cp138.agent.diff",
+  "build_log_file": null,
+  "tests": {
+    "gated": false,
+    "queued": true
+  },
+  "probe": null,
+  "pinned_touched": [],
+  "acceptance_touched": [],
+  "impact_gate": null
+}
