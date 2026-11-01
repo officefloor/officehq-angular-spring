@@ -13,6 +13,7 @@ import net.officefloor.hq.app.claim.ClaimService;
 import org.springframework.validation.annotation.Validated;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
+import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.PutMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestHeader;
@@ -40,15 +41,23 @@ public class RateController {
         }
     }
 
+    /** Pasted lines of grade,rate,from,to, one rate each. */
+    public record ImportRequest(@NotNull @Size(max = 200000) String text) {}
+
+    /** How many rates an import set, and each as the store now holds it, in the order of their lines. */
+    public record ImportView(int set, List<RateView> rates) {}
+
     /** A rate preview as the screen shows it: how many claims' dues would change, and the sum of the differences (two decimals). */
     public record PreviewView(int count, String diff) {}
 
     private final RateService service;
     private final ClaimService claims;
+    private final RateImportService importer;
 
-    public RateController(RateService service, ClaimService claims) {
+    public RateController(RateService service, ClaimService claims, RateImportService importer) {
         this.service = service;
         this.claims = claims;
+        this.importer = importer;
     }
 
     /** What the percent as the grade's rate on every date would change; nothing is stored. */
@@ -91,5 +100,15 @@ public class RateController {
             @RequestHeader("X-User") @NotBlank @Size(max = 100) String user,
             @RequestBody @Valid RateRequest request) {
         return RateView.of(service.set(sheetId, user, grade, request.from(), request.to(), request.pctValue()));
+    }
+
+    /** Set a rate per pasted line, in order, each as the form sets it; a line refused refuses them all. */
+    @PostMapping("/import")
+    public ImportView importRates(
+            @PathVariable @Size(max = 100) @Pattern(regexp = "[A-Za-z0-9._-]+") String sheetId,
+            @RequestHeader("X-User") @NotBlank @Size(max = 100) String user,
+            @RequestBody @Valid ImportRequest request) {
+        List<RateView> set = importer.importRates(sheetId, user, request.text()).stream().map(RateView::of).toList();
+        return new ImportView(set.size(), set);
     }
 }

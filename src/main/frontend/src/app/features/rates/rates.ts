@@ -87,6 +87,17 @@ export function rateInLevels(levels: Rate[][], date: string): Rate | null {
           <p role="alert" class="error" data-testid="rate-form-error">{{ error() }}</p>
         }
       </form>
+      <form [formGroup]="importForm" (ngSubmit)="importRates()" aria-label="Import rates">
+        <label for="import-rates">Import rates (grade,rate,from,to per line; from and to may be left out)</label>
+        <textarea id="import-rates" data-testid="import-rates" formControlName="text" rows="4"></textarea>
+        <button type="submit" data-testid="import-rates-submit">Import</button>
+        @if (importSet() !== null) {
+          <p role="status">Set <span data-testid="import-rates-set">{{ importSet() }}</span></p>
+        }
+        @if (importError()) {
+          <p role="alert" class="error" data-testid="import-rates-error">{{ importError() }}</p>
+        }
+      </form>
       <form [formGroup]="previewForm" (ngSubmit)="preview()" aria-label="Preview rate">
         <label for="rate-preview-grade">Grade</label>
         <select id="rate-preview-grade" data-testid="rate-preview-grade" formControlName="grade">
@@ -151,6 +162,8 @@ export class Rates {
   readonly today = input.required<string | null>();
   /** A rate set, as the store now holds it. */
   readonly saved = output<Rate>();
+  /** The rates an import set, as the store now holds them, in the order of their lines. */
+  readonly imported = output<Rate[]>();
 
   protected readonly grades = GRADES;
   protected readonly na = NA;
@@ -163,6 +176,13 @@ export class Rates {
     from: new FormControl('', { nonNullable: true }),
     to: new FormControl('', { nonNullable: true }),
   });
+  protected readonly importForm = new FormGroup({
+    text: new FormControl('', { nonNullable: true }),
+  });
+  /** How many rates the last import set; null while none has been done since the box was pressed. */
+  protected readonly importSet = signal<number | null>(null);
+  protected readonly importError = signal('');
+  private importing = false;
   protected readonly previewForm = new FormGroup({
     grade: new FormControl('A', { nonNullable: true }),
     pct: new FormControl('', { nonNullable: true }),
@@ -181,6 +201,7 @@ export class Rates {
 
   constructor() {
     this.form.valueChanges.subscribe(() => this.error.set(''));
+    this.importForm.valueChanges.subscribe(() => this.importError.set(''));
     this.previewForm.valueChanges.subscribe(() => {
       this.previewSeq++;
       this.previewed.set(null);
@@ -237,6 +258,40 @@ export class Rates {
       this.error.set('Could not set that rate.');
     } finally {
       this.saving = false;
+    }
+  }
+
+  /**
+   * Set a rate per pasted line of grade,rate,from,to, in order, each as the form sets one. Every line
+   * is checked first; if any is refused, nothing is set.
+   */
+  protected async importRates(): Promise<void> {
+    if (this.importing) return;
+    this.importError.set('');
+    this.importSet.set(null);
+    const sheet = this.session.sheetId();
+    if (!sheet) return;
+    const text = this.importForm.getRawValue().text;
+    if (!text.trim()) {
+      this.importError.set('Paste at least one line of grade,rate,from,to.');
+      return;
+    }
+    this.importing = true;
+    try {
+      const done = await firstValueFrom(
+        this.http.post<{ set: number; rates: Rate[] }>(`/api/sheets/${encodeURIComponent(sheet)}/rates/import`, { text }, {
+          headers: { 'X-User': this.session.user() ?? '' },
+        }),
+      );
+      if (this.session.sheetId() !== sheet) return;
+      this.imported.emit(done.rates);
+      this.importSet.set(done.set);
+      this.importForm.reset({ text: '' }, { emitEvent: false });
+    } catch {
+      if (this.session.sheetId() !== sheet) return;
+      this.importError.set('Every line must be grade,rate,from,to as the rate form takes them; nothing was set.');
+    } finally {
+      this.importing = false;
     }
   }
 

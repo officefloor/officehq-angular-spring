@@ -196,7 +196,7 @@ function trimmedSum(figures: number[]): number {
       <p>Due total: <strong data-testid="consolidated-due-total">{{ money(consolidated().dueCents) }}</strong></p>
       <p>Overdue total: <strong data-testid="consolidated-overdue-total">{{ money(consolidated().overdueCents) }}</strong></p>
     </section>
-    <app-rates [rates]="rates()" [inherited]="inheritedRates()" [today]="session.today()" (saved)="rateSaved($event)" />
+    <app-rates [rates]="rates()" [inherited]="inheritedRates()" [today]="session.today()" (saved)="rateSaved($event)" (imported)="ratesImported($event)" />
     <app-periods [periods]="periods()" [dueTotalOf]="periodDueTotalOf" (saved)="periodSaved($event)" />
     <section aria-labelledby="people-heading">
       <h2 id="people-heading">People</h2>
@@ -1430,6 +1430,11 @@ export class People {
   /** Put a set rate in place of the grade's old one from the same date. */
   protected rateSaved(rate: Rate): void {
     this.rates.update((list) => [...list.filter((r) => r.grade !== rate.grade || r.from !== rate.from), rate]);
+  }
+
+  /** Put each imported rate in place, in the order they were set. */
+  protected ratesImported(rates: Rate[]): void {
+    for (const rate of rates) this.rateSaved(rate);
   }
 
   /** Put an added period in its place by from-date, or a closed or reopened one in its place. */
