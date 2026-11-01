@@ -10,6 +10,8 @@ import net.officefloor.hq.app.claim.Claim;
 import net.officefloor.hq.app.claim.ClaimRepository;
 import net.officefloor.hq.app.patron.Patron;
 import net.officefloor.hq.app.patron.PatronRepository;
+import net.officefloor.hq.app.period.Period;
+import net.officefloor.hq.app.period.PeriodRepository;
 import net.officefloor.hq.app.plan.PlanService;
 import net.officefloor.hq.app.pool.PoolMember;
 import net.officefloor.hq.app.crew.CrewService;
@@ -45,11 +47,13 @@ public class PersonMergeService {
     private final Rollup rollup;
     private final PlanService plans;
     private final PersonSnapshotService snapshots;
+    private final PeriodRepository periods;
 
     public PersonMergeService(PersonRepository people, ClaimRepository claims, PatronRepository patrons,
             PoolMemberRepository poolMembers, CrewService crews, StatementService statements, WatchRepository watches,
             SheetService sheets, SheetRepository sheetStore, RoleService roles, Audit audit, Rollup rollup,
-            PlanService plans, PersonSnapshotService snapshots) {
+            PlanService plans, PersonSnapshotService snapshots, PeriodRepository periods) {
+        this.periods = periods;
         this.plans = plans;
         this.snapshots = snapshots;
         this.people = people;
@@ -73,6 +77,7 @@ public class PersonMergeService {
      * person's and whose last statement stays theirs (or, having none, becomes the merged person's last); their name and aliases become aliases of the other; their patrons are added to the
      * other's (never the other themselves, nor one twice), anyone naming them as patron names the other instead (once),
      * and their pool memberships move to the other (shares added where the other is already a member). Their
+     * figures fixed by a closed or soft-closed period are added to the other's there. Their
      * holds, watchers, snapshot lines and contact are dropped with them. Refused for anyone but a steward, a merge into
      * the same person, and when either of them is retired.
      */
@@ -140,6 +145,10 @@ public class PersonMergeService {
         snapshots.dropOf(sheetId, from.getId());
         watches.deleteAll(watches.findByPersonIdOrderByIdAsc(from.getId()));
         plans.reassign(from.getId(), into.getId());
+        // A closed or soft-closed period keeps the merged person's fixed figures, now the other's.
+        List<Period> fixed = periods.findBySheetIdOrderByFromDateAsc(sheetId).stream().filter(Period::isFixed).toList();
+        fixed.forEach(period -> period.mergePerson(from.getId(), into.getId()));
+        periods.saveAll(fixed);
         String fromName = from.getName();
         List<String> fromAliases = from.getAliases();
         people.delete(from);

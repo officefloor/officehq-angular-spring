@@ -231,6 +231,19 @@ public class Period {
         this.closedTotal = personTotals.values().stream().reduce(BigDecimal.ZERO.setScale(2), BigDecimal::add);
     }
 
+    /** Fold a person merged into another into the other's fixed figures for the period: the merged person's
+     *  due-total and carried figure are added to the other's. The period's own due-total is unchanged. */
+    public void mergePerson(Long fromId, Long intoId) {
+        BigDecimal total = closedPersonTotals.remove(fromId);
+        if (total != null) {
+            closedPersonTotals.merge(intoId, total, BigDecimal::add);
+        }
+        BigDecimal carried = closedPersonCarried.remove(fromId);
+        if (carried != null) {
+            closedPersonCarried.merge(intoId, carried, BigDecimal::add);
+        }
+    }
+
     /** Reopen the period: its due-total and each person's figures for it are live again. */
     public void reopen() {
         this.closed = false;

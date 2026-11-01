@@ -143,7 +143,7 @@ export function roundsHalfUp(date: string, sheet: DueTerms): boolean {
  *  rounded as the claim rounds, added up. A correction (a negative amount) gains none, nor does a claim whose late
  *  charge was waived. */
 export function lateChargeCents(
-  c: { amount: string; date: string; dueBy: string; status: ClaimStatus; deferredUntil: string | null; waived?: boolean },
+  c: { amount: string; date: string; dueBy: string; status: ClaimStatus; deferredUntil: string | null; stated: boolean; waived?: boolean },
   figureCents: number,
   sheet: DueTerms,
   graceDays = 0,

@@ -483,10 +483,11 @@ public class Claim {
         this.deferredUntil = deferredUntil;
     }
 
-    /** Whether the claim is deferred on this day: it is OPEN and deferred until a later day. While deferred it
+    /** Whether the claim is deferred on this day: it is deferred until a later day and not bound by a statement (a
+     *  deferral takes effect only once the binding ends), and is OPEN, or SETTLED while bound. While deferred it
      *  counts in no total, is not overdue, cannot be settled and is left unbound by a statement. */
     public boolean isDeferredOn(LocalDate today) {
-        return status == ClaimStatus.OPEN && deferredUntil != null && today != null && today.isBefore(deferredUntil);
+        return (status == ClaimStatus.OPEN || status == ClaimStatus.SETTLED) && !stated && deferredUntil != null && today != null && today.isBefore(deferredUntil);
     }
 
     public String getRef() {

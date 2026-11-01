@@ -134,10 +134,11 @@ export function counts(c: ClaimView): boolean {
   return c.status === 'OPEN' || c.status === 'PENDING' || c.status === 'SETTLED';
 }
 
-/** Whether a claim is deferred on the sheet's today: OPEN and deferred until a later day. While deferred it
- *  counts in no total, is not overdue and cannot be settled. */
-export function isDeferred(c: Pick<ClaimView, 'deferredUntil' | 'status'>, today: string): boolean {
-  return c.status === 'OPEN' && c.deferredUntil !== null && today < c.deferredUntil;
+/** Whether a claim is deferred on the sheet's today: deferred until a later day and not bound by a statement (a
+ *  deferral takes effect only once the binding ends), and OPEN, or SETTLED while bound. While deferred it counts in
+ *  no total, is not overdue and cannot be settled. */
+export function isDeferred(c: Pick<ClaimView, 'deferredUntil' | 'status' | 'stated'>, today: string): boolean {
+  return (c.status === 'OPEN' || c.status === 'SETTLED') && !c.stated && c.deferredUntil !== null && today < c.deferredUntil;
 }
 
 /** Whether an unstated OPEN or PENDING claim is left out of the live totals on the sheet's today: its person's
@@ -212,7 +213,7 @@ export function addDays(date: string, days: number): string {
 
 /** Whether a claim is overdue on the sheet's today: OPEN or PENDING, not deferred, and its due-by plus the grace
  *  days of its person's grade (in force on its date) a day before it. */
-export function isOverdue(c: Pick<ClaimView, 'dueBy' | 'status' | 'deferredUntil'>, today: string, graceDays = 0): boolean {
+export function isOverdue(c: Pick<ClaimView, 'dueBy' | 'status' | 'deferredUntil' | 'stated'>, today: string, graceDays = 0): boolean {
   return (c.status === 'OPEN' || c.status === 'PENDING') && !isDeferred(c, today) && addDays(c.dueBy, graceDays) < today;
 }
 

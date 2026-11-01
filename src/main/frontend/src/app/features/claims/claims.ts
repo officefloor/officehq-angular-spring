@@ -401,10 +401,11 @@ export class PersonClaims {
     return sheet !== null && isDeferred(c, sheet.today);
   }
 
-  /** Whether the claim's deferral, whatever its status now, runs to a day after the sheet's today. */
+  /** Whether the claim's deferral, whatever its status now, runs to a day after the sheet's today and has taken
+   *  effect: no statement binds the claim. */
   protected deferralShown(c: ClaimView): boolean {
     const sheet = this.sheets.current();
-    return sheet !== null && c.deferredUntil !== null && sheet.today < c.deferredUntil;
+    return sheet !== null && !c.stated && c.deferredUntil !== null && sheet.today < c.deferredUntil;
   }
 
   protected deferDateChanged(c: ClaimView, date: string): void {
