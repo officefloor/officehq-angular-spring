@@ -473,6 +473,8 @@ function csvField(value: string): string {
                     [attr.aria-label]="'Take a statement of ' + p.name">Statement</button>
             <button type="button" data-testid="person-unstate" (click)="cancelStatement(p)" [disabled]="stating() === p.id"
                     [attr.aria-label]="'Cancel the last statement of ' + p.name">Cancel statement</button>
+            <button type="button" data-testid="person-export-statement" (click)="exportStatement(p)"
+                    [attr.aria-label]="'Export the statement of ' + p.name + ' as CSV'">Export statement</button>
             <label [attr.for]="'person-retire-date-' + p.id">Retire from</label>
             <input [id]="'person-retire-date-' + p.id" type="date" data-testid="person-retire-date" #retireDate />
             <button type="button" data-testid="person-retire" (click)="retire(p, retireDate.value)" [disabled]="retiring() === p.id"
@@ -1239,6 +1241,17 @@ export class PeopleList {
       })),
     ].map((fields) => fields.map(csvField).join(',') + '\n');
     this.download(lines, 'claims');
+  }
+
+  /** Download the person's statement as CSV: each claim of theirs their last statement binds, oldest first, with
+   *  the figure it is bound to as the claim shows it. */
+  protected exportStatement(p: PersonView): void {
+    const lines = [
+      ['number', 'date', 'amount', 'figure', 'status'],
+      ...[...this.claimsOf(p.id)].reverse().filter((c) => c.stated)
+        .map((c) => [c.number ?? '', c.date, c.amount, c.statedDue ?? NOT_AVAILABLE, c.status]),
+    ].map((fields) => fields.map(csvField).join(',') + '\n');
+    this.download(lines, 'statement-' + p.id);
   }
 
   private download(lines: string[], what: string): void {
