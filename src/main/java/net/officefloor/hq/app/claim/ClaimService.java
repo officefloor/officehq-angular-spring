@@ -50,7 +50,8 @@ import org.springframework.transaction.annotation.Transactional;
  * be added, edited (to or from such a date), opened, settled, re-settled or voided. No claim can be added
  * or edited to a date after its person's retirement date. A claim with a negative amount is a
  * correction: it must name, by number, a SETTLED claim of the same person; only a correction may name one.
- * A steward can re-date an OPEN or PENDING claim ({@link #redate}).
+ * A steward can re-date an OPEN or PENDING claim ({@link #redate}). A DRAFT claim can be deleted, and
+ * restored to DRAFT on the same sheet's today ({@link #delete}, {@link #restore}).
  */
 @Service
 public class ClaimService {
@@ -277,7 +278,7 @@ public class ClaimService {
             case PENDING -> "CLAIM_PENDING";
             case SETTLED -> "CLAIM_SETTLED";
             case VOID -> "CLAIM_VOIDED";
-            case DRAFT -> throw new IllegalStateException();
+            case DRAFT, DELETED -> throw new IllegalStateException();
         };
         String due = next == ClaimStatus.SETTLED
                 ? " due=" + (saved.getSettledDue() == null ? "n/a" : saved.getSettledDue().setScale(2).toPlainString())
@@ -286,6 +287,49 @@ public class ClaimService {
         if (voidReason != null) due += " reason=" + voidReason;
         record(event, sheetId, user, person, saved, saved.getNumber(), due);
         if (next == ClaimStatus.SETTLED) notifyWatchers(sheetId, user, person, saved);
+        rollup.recordChanges(sheetId, user, before);
+        return saved;
+    }
+
+    /**
+     * Delete a DRAFT claim: DELETED, it counts nowhere and cannot be edited, opened or voided until restored.
+     * Refused for a claim in any other status, one another user's editor locks, or one due inside a closed period.
+     */
+    @Transactional
+    public Claim delete(String sheetId, String user, Long id) {
+        // The snapshot locks the sheet first, so the claim is read once no other change is under way.
+        RollupService.Snapshot before = rollup.snapshot(sheetId);
+        Claim claim = claims.findByIdAndSheetId(id, sheetId).orElseThrow(ClaimNotFoundException::new);
+        if (!claim.getStatus().canBecome(ClaimStatus.DELETED)) throw new ClaimStatusRefusedException();
+        if (claim.isLockedAgainst(user)) throw new ClaimLockedException();
+        refuseIfClosed(sheetId, claim.getDueBy());
+        Person person = people.findByIdAndSheetId(claim.getPersonId(), sheetId).orElseThrow(PersonNotFoundException::new);
+        claim.setLockedBy(null);
+        claim.setStatus(ClaimStatus.DELETED);
+        logStatus(sheetId, user, person, claim);
+        Claim saved = claims.saveAndFlush(claim);
+        record("CLAIM_DELETED", sheetId, user, person, saved);
+        rollup.recordChanges(sheetId, user, before);
+        return saved;
+    }
+
+    /**
+     * Restore a DELETED claim to DRAFT, on the same sheet's today it was deleted. Refused for a claim in any
+     * other status, on a later day, or for one due inside a closed period.
+     */
+    @Transactional
+    public Claim restore(String sheetId, String user, Long id) {
+        // The snapshot locks the sheet first, so the claim is read once no other change is under way.
+        RollupService.Snapshot before = rollup.snapshot(sheetId);
+        Claim claim = claims.findByIdAndSheetId(id, sheetId).orElseThrow(ClaimNotFoundException::new);
+        if (claim.getStatus() != ClaimStatus.DELETED) throw new ClaimStatusRefusedException();
+        if (!sheets.today(sheetId).equals(claim.deletedOn())) throw new ClaimRestoreWindowException();
+        refuseIfClosed(sheetId, claim.getDueBy());
+        Person person = people.findByIdAndSheetId(claim.getPersonId(), sheetId).orElseThrow(PersonNotFoundException::new);
+        claim.setStatus(ClaimStatus.DRAFT);
+        logStatus(sheetId, user, person, claim);
+        Claim saved = claims.saveAndFlush(claim);
+        record("CLAIM_RESTORED", sheetId, user, person, saved);
         rollup.recordChanges(sheetId, user, before);
         return saved;
     }
@@ -530,14 +574,15 @@ public class ClaimService {
     }
 
     /**
-     * Raise a claim's proofs count by one. Refused for a SETTLED or VOID claim, or one due inside a closed period.
+     * Raise a claim's proofs count by one. Refused for a SETTLED, VOID or DELETED claim, or one due inside a closed period.
      */
     @Transactional
     public Claim addProof(String sheetId, String user, Long id) {
         // The snapshot locks the sheet first, so the claim is read once no other change is under way.
         RollupService.Snapshot before = rollup.snapshot(sheetId);
         Claim claim = claims.findByIdAndSheetId(id, sheetId).orElseThrow(ClaimNotFoundException::new);
-        if (claim.getStatus() == ClaimStatus.SETTLED || claim.getStatus() == ClaimStatus.VOID) {
+        if (claim.getStatus() == ClaimStatus.SETTLED || claim.getStatus() == ClaimStatus.VOID
+                || claim.getStatus() == ClaimStatus.DELETED) {
             throw new ClaimStatusRefusedException();
         }
         refuseIfClosed(sheetId, claim.getDueBy());

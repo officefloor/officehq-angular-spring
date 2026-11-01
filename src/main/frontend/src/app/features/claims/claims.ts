@@ -9,12 +9,13 @@ import { NA, dueCents } from '../rates/rates';
 /**
  * DRAFT when added, then OPEN, then SETTLED; a clerk's settling above the clerk limit makes it
  * PENDING until a steward approves it (SETTLED) or rejects it (OPEN). A DRAFT, OPEN or PENDING
- * claim can be made VOID.
+ * claim can be made VOID. A DRAFT claim can be DELETED, when it counts nowhere, and restored to DRAFT on
+ * the same sheet's today it was deleted.
  */
-export type ClaimStatus = 'DRAFT' | 'OPEN' | 'PENDING' | 'SETTLED' | 'VOID';
+export type ClaimStatus = 'DRAFT' | 'OPEN' | 'PENDING' | 'SETTLED' | 'VOID' | 'DELETED';
 
 /** A status change a claim's buttons ask for. */
-type ClaimAction = 'open' | 'settle' | 'void' | 'approve' | 'reject' | 'resettle';
+type ClaimAction = 'open' | 'settle' | 'void' | 'approve' | 'reject' | 'resettle' | 'delete' | 'restore';
 
 export interface Claim {
   id: number;
@@ -245,7 +246,7 @@ const VOID_REASON_NEEDED = 'Choose a reason from the sheet\'s void reasons to vo
 
 const PAST: Record<ClaimAction, string> = {
   open: 'opened', settle: 'settled', void: 'voided', approve: 'approved', reject: 'rejected',
-  resettle: 're-settled',
+  resettle: 're-settled', delete: 'deleted', restore: 'restored',
 };
 
 /** Why a claim's correction is refused. */
@@ -360,6 +361,10 @@ function notEditable(status: ClaimStatus | undefined): string {
             <button type="button" data-testid="claim-void" (click)="act(c, 'void')"
                     [attr.aria-label]="'Void claim of ' + c.amount + ' on ' + c.date">Void</button>
           }
+          <button type="button" data-testid="claim-delete" (click)="act(c, 'delete')"
+                  [attr.aria-label]="'Delete claim of ' + c.amount + ' on ' + c.date">Delete</button>
+          <button type="button" data-testid="claim-restore" (click)="act(c, 'restore')"
+                  [attr.aria-label]="'Restore claim of ' + c.amount + ' on ' + c.date">Restore</button>
           <button type="button" data-testid="claim-approve" (click)="act(c, 'approve')"
                   [attr.aria-label]="'Approve claim of ' + c.amount + ' on ' + c.date">Approve</button>
           <button type="button" data-testid="claim-resettle" (click)="act(c, 'resettle')"
@@ -591,8 +596,8 @@ export class Claims {
 
   /**
    * Open, settle or void a claim, approve or reject (with a reason) a PENDING one, re-settle a
-   * SETTLED one at its figure today, or (a steward, within 7 days of settling) void it; a change its
-   * status does not allow is refused.
+   * SETTLED one at its figure today, or (a steward, within 7 days of settling) void it, delete a DRAFT one
+   * or restore a DELETED one on the day it was deleted; a change its status does not allow is refused.
    */
   protected async act(c: Claim, action: ClaimAction, reason = ''): Promise<void> {
     this.claimError.set(null);
@@ -613,12 +618,18 @@ export class Claims {
       const claim = await firstValueFrom(this.http.post<Claim>(url, body, { headers: this.headers() }));
       if (this.session.sheetId() !== sheet) return;
       this.saved.emit(claim);
+      // A deleted claim cannot be edited, so an editor left open on it closes.
+      if (action === 'delete' && this.editingId() === c.id) this.reset();
     } catch (e) {
       if (this.session.sheetId() !== sheet) return;
       const message = e instanceof HttpErrorResponse && e.status === 423
         ? CLOSED
         : e instanceof HttpErrorResponse && e.status === 409
         ? `A ${c.status} claim cannot be ${PAST[action]}.`
+        : e instanceof HttpErrorResponse && e.status === 410 && action === 'restore'
+        ? 'A DELETED claim can be restored only on the day it was deleted.'
+        : e instanceof HttpErrorResponse && e.status === 412 && action === 'delete'
+        ? 'Another user is editing this claim; it can be deleted once they save or cancel.'
         : e instanceof HttpErrorResponse && e.status === 410
         ? 'A SETTLED claim can be voided only within 7 days of its settlement.'
         : e instanceof HttpErrorResponse && e.status === 412

@@ -294,6 +294,22 @@ public class ClaimController {
         return ClaimView.of(service.voidClaim(sheetId, user, id, request == null ? null : request.reason()));
     }
 
+    @PostMapping("/claims/{id}/delete")
+    public ClaimView delete(
+            @PathVariable @Size(max = 100) @Pattern(regexp = "[A-Za-z0-9._-]+") String sheetId,
+            @PathVariable Long id,
+            @RequestHeader("X-User") @NotBlank @Size(max = 100) String user) {
+        return ClaimView.of(service.delete(sheetId, user, id));
+    }
+
+    @PostMapping("/claims/{id}/restore")
+    public ClaimView restore(
+            @PathVariable @Size(max = 100) @Pattern(regexp = "[A-Za-z0-9._-]+") String sheetId,
+            @PathVariable Long id,
+            @RequestHeader("X-User") @NotBlank @Size(max = 100) String user) {
+        return ClaimView.of(service.restore(sheetId, user, id));
+    }
+
     @PostMapping("/claims/{id}/approve")
     public ClaimView approve(
             @PathVariable @Size(max = 100) @Pattern(regexp = "[A-Za-z0-9._-]+") String sheetId,

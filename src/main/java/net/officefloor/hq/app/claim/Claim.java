@@ -347,6 +347,13 @@ public class Claim {
         return on;
     }
 
+    /** The sheet's today it was last deleted on, as its status log records it; null when the log has no DELETED line. */
+    public LocalDate deletedOn() {
+        LocalDate on = null;
+        for (ClaimLogEntry line : log) if (line.getStatus() == ClaimStatus.DELETED) on = line.getDate();
+        return on;
+    }
+
     public boolean isLateEntry() { return lateEntry; }
     public void setLateEntry(boolean lateEntry) { this.lateEntry = lateEntry; }
 
