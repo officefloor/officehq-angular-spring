@@ -120,6 +120,11 @@ public class Sheet {
     @Column(name = "review_sla")
     private Integer reviewSla;
 
+    /** The sheet's maximum of open claims per person, a whole number: opening a claim is refused when its person
+     *  already has this many OPEN or PENDING claims; null means none. Not dated. */
+    @Column(name = "max_open")
+    private Integer maxOpen;
+
     /** The sheet's mid score threshold, a whole number: with the high one set, a person whose score is at or above it
      *  (and below the high one) is in the MID band; null means none. Not dated. */
     @Column(name = "score_mid")
@@ -197,6 +202,7 @@ public class Sheet {
         copy.graceDays = graceDays;
         copy.escalateAfter = escalateAfter;
         copy.reviewSla = reviewSla;
+        copy.maxOpen = maxOpen;
         copy.scoreMid = scoreMid;
         copy.scoreHigh = scoreHigh;
         copy.scoreLog = scoreLog;
@@ -429,6 +435,14 @@ public class Sheet {
 
     public void setReviewSla(Integer reviewSla) {
         this.reviewSla = reviewSla;
+    }
+
+    public Integer getMaxOpen() {
+        return maxOpen;
+    }
+
+    public void setMaxOpen(Integer maxOpen) {
+        this.maxOpen = maxOpen;
     }
 
     public Integer getScoreMid() {

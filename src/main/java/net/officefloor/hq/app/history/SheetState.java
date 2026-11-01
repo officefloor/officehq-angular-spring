@@ -35,7 +35,7 @@ public record SheetState(List<SettingState> settings, LocalDate policyDate, List
         Integer lastSettleBatch, BigDecimal pot, Integer fiscalStartMonth, BigDecimal alertThreshold,
         Integer escalateAfter, Integer reviewSla, String proofKinds, List<AncestorState> ancestors,
         List<PoolState> pools, List<CrewState> crews, String defaultGrade, Integer scoreMid, Integer scoreHigh,
-        Boolean scoreLog) {
+        Boolean scoreLog, Integer maxOpen) {
 
     /** A pool as it stood, with its memberships in the order they were added (pools and crews are null in a state
      *  kept before they were recorded). */
@@ -162,7 +162,7 @@ public record SheetState(List<SettingState> settings, LocalDate policyDate, List
                 sheet.isArchived(), views, sheet.getEntryDate(), sheet.getLastSettleBatch(),
                 sheet.getPot(), sheet.getFiscalStartMonth(), sheet.getAlertThreshold(),
                 sheet.getEscalateAfter(), sheet.getReviewSla(), sheet.getProofKinds(), ancestors, pools, crews,
-                sheet.getDefaultGrade(), sheet.getScoreMid(), sheet.getScoreHigh(), sheet.isScoreLog());
+                sheet.getDefaultGrade(), sheet.getScoreMid(), sheet.getScoreHigh(), sheet.isScoreLog(), sheet.getMaxOpen());
     }
 
     /** The rates as they stand now. */
@@ -203,6 +203,7 @@ public record SheetState(List<SettingState> settings, LocalDate policyDate, List
         sheet.setGraceDays(graceDays);
         sheet.setEscalateAfter(escalateAfter);
         sheet.setReviewSla(reviewSla);
+        sheet.setMaxOpen(maxOpen);
         sheet.setScoreMid(scoreMid);
         sheet.setScoreHigh(scoreHigh);
         sheet.setScoreLog(Boolean.TRUE.equals(scoreLog));

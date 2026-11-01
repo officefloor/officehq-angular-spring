@@ -47,6 +47,7 @@ public class SheetController {
      *  reviewThreshold is the review threshold (two decimals) in force on the sheet's today, null when there is none;
      *  escalateAfter is the escalation gap in days, null when it is off;
      *  reviewSla is the review SLA in days, null when there is none;
+     *  maxOpen is the maximum of open claims per person, null when there is none;
      *  scoreMid and scoreHigh are the score thresholds, each null when there is none;
      *  scoreLog is "on" while the score log switch is on, else null;
      *  proofKinds is the sheet's proof kinds, comma separated, null when there are none;
@@ -59,7 +60,7 @@ public class SheetController {
             Map<String, String> gradeProofThreshold, Integer settleBatch, String pot, String parent, int fiscalStartMonth,
             String alertThreshold, String rounding, String reviewThreshold, Integer escalateAfter, Integer reviewSla,
             String proofKinds, String defaultGrade, Map<String, String> gradeClerkLimit, Integer scoreMid, Integer scoreHigh,
-            String scoreLog) {
+            String scoreLog, Integer maxOpen) {
 
         static SheetView of(Sheet sheet) {
             return of(sheet, null);
@@ -84,7 +85,7 @@ public class SheetController {
                     sheet.getReviewThreshold() == null ? null : sheet.getReviewThreshold().toPlainString(),
                     sheet.getEscalateAfter(), sheet.getReviewSla(), sheet.getProofKinds(),
                     sheet.getDefaultGrade(), sheet.getGradeClerkLimits(), sheet.getScoreMid(), sheet.getScoreHigh(),
-                    sheet.isScoreLog() ? "on" : null);
+                    sheet.isScoreLog() ? "on" : null, sheet.getMaxOpen());
         }
     }
 
@@ -141,6 +142,10 @@ public class SheetController {
 
     /** The sheet's review SLA, in days, as the form submits it; a missing one means none. */
     public record ReviewSlaChange(@Min(0) @Max(36500) Integer reviewSla) {
+    }
+
+    /** The sheet's maximum of open claims per person, a whole number, as the form submits it; a missing one means none. */
+    public record MaxOpenChange(@Min(0) @Max(1_000_000) Integer maxOpen) {
     }
 
     /** A score threshold, a whole number, as the form submits it; a missing one means none. */
@@ -364,6 +369,15 @@ public class SheetController {
             @RequestHeader("X-User") @NotBlank @Size(max = 100) String user,
             @Valid @RequestBody ReviewSlaChange request) {
         return SheetView.of(sheets.setReviewSla(id, user, request.reviewSla()));
+    }
+
+    /** Change the sheet's maximum of open claims per person. */
+    @PutMapping("/{id}/settings/max-open")
+    public SheetView setMaxOpen(
+            @PathVariable @NotBlank @Size(max = 100) @Pattern(regexp = "[A-Za-z0-9._-]+") String id,
+            @RequestHeader("X-User") @NotBlank @Size(max = 100) String user,
+            @Valid @RequestBody MaxOpenChange request) {
+        return SheetView.of(sheets.setMaxOpen(id, user, request.maxOpen()));
     }
 
     /** Change the sheet's mid score threshold. */

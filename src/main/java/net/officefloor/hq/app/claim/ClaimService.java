@@ -322,6 +322,7 @@ public class ClaimService {
         } else if (next == ClaimStatus.OPEN) {
             refuseUnnoted(sheet, claim, due);
             refuseOverCap(sheetId, claim);
+            refuseOverMaxOpen(sheet, claim);
             refuseFlagged(sheet, user, person);
         }
         if (next == ClaimStatus.SETTLED && overClerkLimit(sheet, user, person, due)) {
@@ -1174,6 +1175,22 @@ public class ClaimService {
                 throw new ResponseStatusException(HttpStatus.CONFLICT, "This person already has " + held
                         + " open claims in period " + period.getName() + ", its cap");
             }
+        }
+    }
+
+    /** Refuse opening a claim whose person already has the sheet's maximum of OPEN or PENDING claims. */
+    private void refuseOverMaxOpen(Sheet sheet, Claim claim) {
+        Integer max = sheet.getMaxOpen();
+        if (max == null) {
+            return;
+        }
+        long held = claims.findBySheetIdAndPersonIdOrderByListedDescIdDesc(sheet.getId(), claim.getPersonId()).stream()
+                .filter(c -> !c.getId().equals(claim.getId()))
+                .filter(c -> c.getStatus() == ClaimStatus.OPEN || c.getStatus() == ClaimStatus.PENDING)
+                .count();
+        if (held >= max) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT,
+                    "This person already has " + held + " open claims, the sheet's maximum");
         }
     }
 

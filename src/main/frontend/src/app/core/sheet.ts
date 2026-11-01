@@ -72,6 +72,9 @@ export interface SheetView {
   /** The sheet's review SLA, in days: a REVIEW claim whose review day (the sheet's today when it went to REVIEW)
    *  plus these is before the sheet's today is late for review; null: none. Not dated. */
   reviewSla: number | null;
+  /** The sheet's maximum of open claims per person, a whole number: opening a claim is refused when its person
+   *  already has this many OPEN or PENDING claims; null: none. Not dated. */
+  maxOpen: number | null;
   /** The sheet's score thresholds, whole numbers: while both are set each person shows a band (HIGH at or above the
    *  high one, MID at or above the mid one, else LOW); null: none. Not dated. */
   scoreMid: number | null;
@@ -266,6 +269,13 @@ export class Sheets {
   setReviewSla(id: string, reviewSla: number | null): Observable<SheetView> {
     return this.http
       .put<SheetView>(`/api/sheets/${encodeURIComponent(id)}/settings/review-sla`, { reviewSla })
+      .pipe(tap((s) => this.active.set(s)));
+  }
+
+  /** Change the active sheet's maximum of open claims per person; null means none. Not dated. */
+  setMaxOpen(id: string, maxOpen: number | null): Observable<SheetView> {
+    return this.http
+      .put<SheetView>(`/api/sheets/${encodeURIComponent(id)}/settings/max-open`, { maxOpen })
       .pipe(tap((s) => this.active.set(s)));
   }
 
