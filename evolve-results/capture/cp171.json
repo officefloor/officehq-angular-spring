@@ -1,0 +1,64 @@
+{
+  "checkpoint": 171,
+  "stack": {
+    "repo": "/home/daniel/officehq-angular-spring",
+    "origin": "git@github.com:officefloor/officehq-angular-spring.git",
+    "name": "officehq-angular-spring",
+    "base_ref": "base-empty",
+    "base_commit": "65cb8233ea38b2dfa6cfd18709e30cd18fdf3250"
+  },
+  "checkpoint_id": "cp171_review-sla",
+  "phase": "late",
+  "type": "additive",
+  "mutates": [],
+  "replaced_tests": [],
+  "request": {
+    "spec": "The sheet has a review SLA (settings, days, not dated; SETTING_CHANGED key=review-sla\nvalue=<days>; blank means none). A REVIEW claim whose review day (the sheet's today when it went to\nREVIEW) plus the SLA days is before the sheet's today shows review-late yes; the summary counts\nsuch claims.\n",
+    "prompt": "You are implementing ONE change to this application.\n\nFIRST read AGENTS.md \u2014 it states the working rules and how the app is tested, and sends you to\nDESIGN.md for the app's stack and conventions. Follow both.\n\nTHE CHANGE REQUEST:\nThe sheet has a review SLA (settings, days, not dated; SETTING_CHANGED key=review-sla\nvalue=<days>; blank means none). A REVIEW claim whose review day (the sheet's today when it went to\nREVIEW) plus the SLA days is before the sheet's today shows review-late yes; the summary counts\nsuch claims.\n\nYour work is verified by an automated Playwright UI test already installed under e2e/specs/.\nRead that spec: it declares the exact data-testid anchors, values, test data and any audit\nrecords it expects \u2014 match them. Run `bin/e2e` to build the app, start it, and run the test as\nyou work; iterate until it passes. Change whatever the request needs across the app \u2014 its stored\ndata, its server and its front end. Do NOT edit bin/build, bin/start, bin/stop, bin/e2e,\nAGENTS.md, CLAUDE.md, DESIGN.md, e2e/support/ or the test spec.\n"
+  },
+  "commit_sha": "e87a6ac62dc70b924e0a7ac8122baf6ec443193e",
+  "reset_sha": "",
+  "preagent_sha": "7351a3f92a121621bb08d7585a13f78d2a9ef558",
+  "prev_sha": "7351a3f92a121621bb08d7585a13f78d2a9ef558",
+  "base_sha": "65cb8233ea38b2dfa6cfd18709e30cd18fdf3250",
+  "agent": {
+    "ok": true,
+    "cost_usd": 1.1133426000000002,
+    "input_tokens": 50,
+    "output_tokens": 12312,
+    "cache_read_tokens": 1402073,
+    "cache_creation_tokens": 73311,
+    "num_turns": 26,
+    "duration_ms": 299029,
+    "duration_api_ms": 120758,
+    "model": "claude-opus-5-5",
+    "session_id": "93a9a744-5b68-45dd-81b7-ceb66f1b0769",
+    "stop_reason": "success",
+    "result_text": "I've added the review SLA, and all 4 tests in `e2e/specs/acceptance.spec.ts` pass. Something I didn't start was already using port 3000, so I left it running and ran the tests with `PORT=3417 bin/e2e`.\n\n**How it works**\n- **Setting:** Review SLA is a new field on the settings form, in whole days and not dated. Saving it writes `SETTING_CHANGED sheet=\u2026 by=\u2026 key=review-sla value=<days>`, with nothing after `value=` when cleared. Blank means no SLA.\n- **Review day:** when a claim goes to REVIEW, it now stores the sheet's today as its review day.\n- **Review late:** each claim row shows \"Review late\" yes/no. It is yes only for a REVIEW claim whose review day plus the SLA days is before the sheet's today. With an SLA of 2 and a review day of 03-10, it shows no on 03-12 and yes on 03-13.\n- **Summary:** the \"By status\" table has a new row with the number of late REVIEW claims.\n\n**Files changed**\n- **Database:** new migration `V93__review_sla.sql`, adding a review-SLA column to the sheet and a review-day column to the claim.\n- **Server:**\n  - `Sheet` and `Claim` hold the two new values.\n  - `ClaimService` records the review day when a claim goes to REVIEW.\n  - `SettingService` and `SettingController` add a `PUT /settings/review-sla` endpoint and include the SLA in the settings response.\n  - `SheetController` includes the SLA when a sheet is loaded, and `ClaimController` includes each claim's review day.\n- **Front end:**\n  - `session.ts` keeps the SLA and decides whether a claim is late, using the sheet's today, never the real clock.\n  - `settings.ts` has the new field and current value; `claims.ts` shows the yes/no on each row; `people.ts` shows the summary count.\n\nTwo limits to be aware of:\n- Lateness is worked out on screen, not on the server, because the existing summary counts are already calculated there.\n- Claims that went to REVIEW before this change have no stored review day, so they always show no.",
+    "error": "",
+    "attempts": [
+      {
+        "ok": true,
+        "limit_reached": false,
+        "retryable": false,
+        "timed_out": false,
+        "cost_usd": 1.1133426000000002,
+        "num_turns": 26,
+        "duration_ms": 299029,
+        "duration_api_ms": 120758,
+        "error": ""
+      }
+    ]
+  },
+  "agent_stream_file": "cp171.agent.jsonl",
+  "agent_diff_file": "cp171.agent.diff",
+  "build_log_file": null,
+  "tests": {
+    "gated": false,
+    "queued": true
+  },
+  "probe": null,
+  "pinned_touched": [],
+  "acceptance_touched": [],
+  "impact_gate": null
+}
