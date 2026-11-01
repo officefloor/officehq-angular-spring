@@ -2,6 +2,8 @@ package net.officefloor.hq.app.period;
 
 import java.math.BigDecimal;
 import java.time.LocalDate;
+import java.time.YearMonth;
+import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -66,6 +68,35 @@ public class PeriodService {
         audit.recordOnCommit("PERIOD_ADDED sheet=" + sheetId + " by=" + user.strip()
                 + " period=" + saved.getName() + " from=" + saved.getFromDate() + " to=" + saved.getToDate());
         return saved;
+    }
+
+    /**
+     * Make one period per calendar month from the from-date's month to the to-date's month, each from
+     * the first to the last day of its month and named yyyy-mm. A month whose name is already a period,
+     * or whose days overlap one on the sheet, is left out; the others are still made. A blank date
+     * takes the sheet's today.
+     */
+    @Transactional
+    public List<Period> generate(String sheetId, String user, LocalDate fromOrNull, LocalDate toOrNull) {
+        // Lock the sheet so two users adding periods at once cannot overlap or share a name.
+        LocalDate today = sheets.findForUpdate(sheetId).orElseThrow(SheetNotFoundException::new).getToday();
+        LocalDate from = fromOrNull == null ? today : fromOrNull;
+        LocalDate to = toOrNull == null ? today : toOrNull;
+        if (to.isBefore(from)) throw new PeriodDatesException();
+        List<Period> existing = new ArrayList<>(periods.findBySheetIdOrderByFromDateAsc(sheetId));
+        List<Period> made = new ArrayList<>();
+        for (YearMonth month = YearMonth.from(from); !month.isAfter(YearMonth.from(to)); month = month.plusMonths(1)) {
+            String name = month.toString();
+            LocalDate first = month.atDay(1);
+            LocalDate last = month.atEndOfMonth();
+            if (existing.stream().anyMatch(p -> p.getName().equals(name) || p.overlaps(first, last))) continue;
+            Period saved = periods.saveAndFlush(new Period(sheetId, name, first, last));
+            existing.add(saved);
+            made.add(saved);
+            audit.recordOnCommit("PERIOD_ADDED sheet=" + sheetId + " by=" + user.strip()
+                    + " period=" + saved.getName() + " from=" + saved.getFromDate() + " to=" + saved.getToDate());
+        }
+        return made;
     }
 
     @Transactional

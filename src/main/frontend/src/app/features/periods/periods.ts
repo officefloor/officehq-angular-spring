@@ -30,7 +30,7 @@ export function closedOn(periods: Period[], date: string): boolean {
 }
 
 // The sheet's periods, with one form to add one, each period's due-total and whether it is
-// closed, and a button to close each and to reopen each (by the roles the sheet's permission matrix allows).
+// closed, a form to generate one per month over a date range, and a button to close each and to reopen each (by the roles the sheet's permission matrix allows).
 @Component({
   selector: 'app-periods',
   imports: [ReactiveFormsModule],
@@ -47,6 +47,19 @@ export function closedOn(periods: Period[], date: string): boolean {
         <button type="submit" data-testid="period-form-submit">Add period</button>
         @if (error()) {
           <p role="alert" class="error" data-testid="period-form-error">{{ error() }}</p>
+        }
+      </form>
+      <form [formGroup]="generateForm" (ngSubmit)="generate()" aria-label="Generate monthly periods">
+        <label for="period-generate-from">From</label>
+        <input id="period-generate-from" type="date" data-testid="period-generate-from" formControlName="from" />
+        <label for="period-generate-to">To</label>
+        <input id="period-generate-to" type="date" data-testid="period-generate-to" formControlName="to" />
+        <button type="submit" data-testid="period-generate">Generate monthly periods</button>
+        @if (generated() !== null) {
+          <output data-testid="period-generated" aria-live="polite">{{ generated() }}</output>
+        }
+        @if (generateError()) {
+          <p role="alert" class="error" data-testid="period-generate-error">{{ generateError() }}</p>
         }
       </form>
       <table>
@@ -99,8 +112,55 @@ export class Periods {
     to: new FormControl('', { nonNullable: true }),
   });
 
+  protected readonly generateError = signal('');
+  /** How many periods the last generate made; null while one runs or before any. */
+  protected readonly generated = signal<number | null>(null);
+  private generating = false;
+  protected readonly generateForm = new FormGroup({
+    from: new FormControl('', { nonNullable: true }),
+    to: new FormControl('', { nonNullable: true }),
+  });
+
   constructor() {
     this.form.valueChanges.subscribe(() => this.error.set(''));
+    this.generateForm.valueChanges.subscribe(() => this.generateError.set(''));
+  }
+
+  /** Make a period for each month from the from-date's to the to-date's, leaving out taken or overlapped months. */
+  protected async generate(): Promise<void> {
+    if (this.generating) return;
+    this.generateError.set('');
+    this.generated.set(null);
+    const sheet = this.session.sheetId();
+    if (!sheet) return;
+    const raw = this.generateForm.getRawValue();
+    const today = this.session.today() ?? '';
+    const from = raw.from.trim() || today;
+    const to = raw.to.trim() || today;
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(from) || !/^\d{4}-\d{2}-\d{2}$/.test(to)) {
+      this.generateError.set('Enter a from and a to date.');
+      return;
+    }
+    if (to < from) {
+      this.generateError.set('The to date cannot be before the from date.');
+      return;
+    }
+    this.generating = true;
+    try {
+      const made = await firstValueFrom(
+        this.http.post<Period[]>(`/api/sheets/${encodeURIComponent(sheet)}/periods/generate`, { from, to }, {
+          headers: { 'X-User': this.session.user() ?? '' },
+        }),
+      );
+      if (this.session.sheetId() !== sheet) return;
+      for (const period of made) this.saved.emit(period);
+      this.generated.set(made.length);
+    } catch {
+      if (this.session.sheetId() !== sheet) return;
+      this.generateError.set('Could not generate those periods.');
+    } finally {
+      this.generating = false;
+    }
   }
 
   /** Close a period, fixing its due-total; a closed one cannot be closed again. */

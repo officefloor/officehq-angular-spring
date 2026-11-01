@@ -45,6 +45,9 @@ public class PeriodController {
             @NotNull LocalDate from,
             @NotNull LocalDate to) {}
 
+    /** The first and last dates whose months get a period each; blank takes the sheet's today. */
+    public record GenerateRequest(LocalDate from, LocalDate to) {}
+
     private final PeriodService service;
 
     public PeriodController(PeriodService service) {
@@ -64,6 +67,15 @@ public class PeriodController {
             @RequestHeader("X-User") @NotBlank @Size(max = 100) String user,
             @RequestBody @Valid PeriodRequest request) {
         return PeriodView.of(service.add(sheetId, user, request.name(), request.from(), request.to()));
+    }
+
+    /** Make a period for each month from the from-date's to the to-date's: those made, earliest first. */
+    @PostMapping("/generate")
+    public List<PeriodView> generate(
+            @PathVariable @Size(max = 100) @Pattern(regexp = "[A-Za-z0-9._-]+") String sheetId,
+            @RequestHeader("X-User") @NotBlank @Size(max = 100) String user,
+            @RequestBody GenerateRequest request) {
+        return service.generate(sheetId, user, request.from(), request.to()).stream().map(PeriodView::of).toList();
     }
 
     @PostMapping("/{id}/close")
