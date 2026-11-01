@@ -436,6 +436,9 @@ const EXPORT_CELLS = [
             @if (session.shows('excess')) {
                 excess <span data-testid="person-excess">{{ (money(excessOf(p.id))) | figure }}</span>
             }
+            — claims @for (st of PERSON_COUNT_STATUSES; track st) {
+              {{ st.toLowerCase() }} <span [attr.data-testid]="'person-claims-' + st + '-count'">{{ statusCountOf(p.id, st) }}</span>
+            }
             cut <span data-testid="person-cut-total">{{ (money(cutOf(p.id))) | figure }}</span>
             @if (session.shows('overdue-count')) {
                 — overdue <span data-testid="person-overdue-count">{{ overdueOf(p.id).count }}</span>
@@ -1359,6 +1362,20 @@ export class PeopleList {
     this.quickForm.valueChanges.pipe(takeUntilDestroyed()).subscribe(() => this.quickError.set(null));
     this.pasteForm.valueChanges.pipe(takeUntilDestroyed()).subscribe(() => this.pasteError.set(null));
     this.importForm.valueChanges.pipe(takeUntilDestroyed()).subscribe(() => this.importError.set(null));
+  }
+
+  /** The statuses each person's row counts their claims in, in the order it lists them. */
+  protected readonly PERSON_COUNT_STATUSES = ['OPEN', 'SETTLED'] as const;
+  /** Per person: how many of their claims are in each status. */
+  private readonly statusCountsByPerson = computed(() =>
+    new Map(this.people().map((p) => {
+      const counts = new Map<string, number>();
+      for (const c of this.claimsOf(p.id)) counts.set(c.status, (counts.get(c.status) ?? 0) + 1);
+      return [p.id, counts];
+    })));
+  /** How many of a person's claims are in a status. */
+  protected statusCountOf(personId: number, status: string): number {
+    return this.statusCountsByPerson().get(personId)?.get(status) ?? 0;
   }
 
   protected claimsOf(personId: number): ClaimView[] {
