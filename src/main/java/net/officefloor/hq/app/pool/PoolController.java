@@ -5,6 +5,7 @@ import jakarta.validation.constraints.AssertTrue;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.Pattern;
 import jakarta.validation.constraints.Size;
+import java.time.LocalDate;
 import java.util.List;
 import org.springframework.validation.annotation.Validated;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -22,16 +23,17 @@ public class PoolController {
 
     /**
      * A member of a pool: the person or the pool (the other null), its name, its share (two decimals),
-     * whether the person is retired, and its cut of the pot (two decimals, null: none).
+     * whether the person is retired, whether its dates include the sheet's today, and its cut of the pot (two decimals, null: none).
      */
-    public record MemberView(Long personId, Long poolId, String name, String share, boolean retired, String cut) {}
+    public record MemberView(Long personId, Long poolId, String name, String share, boolean retired,
+            boolean active, String cut) {}
 
     /** A pool on the sheet, with its members, total share (two decimals) and whether it is balanced. */
     public record PoolView(Long id, String name, List<MemberView> members, String totalShare, boolean balanced) {
         static PoolView of(PoolService.PoolLine p) {
             return new PoolView(p.id(), p.name(),
                     p.members().stream().map(m -> new MemberView(m.personId(), m.poolId(), m.name(), m.share().toPlainString(), m.retired(),
-                            m.cut() == null ? null : m.cut().toPlainString())).toList(),
+                            m.active(), m.cut() == null ? null : m.cut().toPlainString())).toList(),
                     p.totalShare().toPlainString(), p.balanced());
         }
     }
@@ -39,8 +41,12 @@ public class PoolController {
     /** A pool's name. */
     public record PoolRequest(@NotBlank @Size(max = 200) String name) {}
 
-    /** A member to add: a person, or another pool, of the sheet (exactly one of them) and its share percent. */
-    public record MemberRequest(Long personId, Long poolId, @NotBlank @Size(max = 20) String share) {
+    /**
+     * A member to add: a person, or another pool, of the sheet (exactly one of them), its share percent, and
+     * the optional from-date and to-date of the membership.
+     */
+    public record MemberRequest(Long personId, Long poolId, @NotBlank @Size(max = 20) String share, LocalDate from,
+            LocalDate to) {
         @AssertTrue
         boolean isOneMember() {
             return (personId == null) != (poolId == null);
@@ -76,9 +82,9 @@ public class PoolController {
             @RequestHeader("X-User") @NotBlank @Size(max = 100) String user,
             @RequestBody @Valid MemberRequest request) {
         if (request.poolId() != null) {
-            service.addPoolMember(sheetId, user, poolId, request.poolId(), request.share());
+            service.addPoolMember(sheetId, user, poolId, request.poolId(), request.share(), request.from(), request.to());
         } else {
-            service.addMember(sheetId, user, poolId, request.personId(), request.share());
+            service.addMember(sheetId, user, poolId, request.personId(), request.share(), request.from(), request.to());
         }
         return list(sheetId, user);
     }

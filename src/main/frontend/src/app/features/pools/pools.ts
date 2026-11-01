@@ -4,13 +4,14 @@ import { FormControl, FormGroup, ReactiveFormsModule } from '@angular/forms';
 import { firstValueFrom } from 'rxjs';
 import { Session } from '../../core/session';
 
-/** A member of a pool: the person or the pool (the other null), its name, its share (two decimals), whether the person was retired when read, and its cut of the pot (two decimals; null: none). */
+/** A member of a pool: the person or the pool (the other null), its name, its share (two decimals), whether the person was retired when read, whether its dates include the sheet's today, and its cut of the pot (two decimals; null: none). */
 interface MemberView {
   personId: number | null;
   poolId: number | null;
   name: string;
   share: string;
   retired: boolean;
+  active: boolean;
   cut: string | null;
 }
 
@@ -36,6 +37,9 @@ interface PoolLine extends PoolView {
   isBalanced: boolean;
 }
 
+/** The add-member form: the chosen person or pool, the share, and the optional from- and to-dates. */
+type MemberFormControls = { personId: FormControl<string>; share: FormControl<string>; from: FormControl<string>; to: FormControl<string> };
+
 /** The select's value for a pool as a member. */
 const POOL_VALUE = 'pool:';
 
@@ -56,7 +60,9 @@ function percent(hundredths: number): string {
 // pool, and other pools (chosen as pool:<name>), each a member of at most one pool, with a share percent.
 // A person can be in several pools. A pool cannot contain itself through any chain, and a chain of pools
 // is at most three deep (the server refuses either). A pool shows its total share and is
-// balanced when the shares total exactly 100.00; a retired member's share counts as 0.00 toward it. Each member of a
+// balanced when the shares total exactly 100.00; a retired member's share counts as 0.00 toward it. A membership
+// may carry a from-date and a to-date (both optional, both included; a to-date before the from-date is refused);
+// a member whose dates leave out the sheet's today counts 0.00 toward the total and has no cut. Each member of a
 // balanced pool shows their cut of the pool's pot (worked out by the server): the sheet's pot for a pool that is a member
 // of none, else its cut in the pool above; an unbalanced pool, or no pot, shows none. Each person's cuts as shown,
 // across every pool, are added up as their cut total for the people section.
@@ -101,6 +107,10 @@ function percent(hundredths: number): string {
               </select>
               <label [for]="'pool-member-share-' + p.id">Share %</label>
               <input [id]="'pool-member-share-' + p.id" data-testid="pool-member-share" formControlName="share" inputmode="decimal" />
+              <label [for]="'pool-member-from-' + p.id">From (optional)</label>
+              <input type="date" [id]="'pool-member-from-' + p.id" data-testid="pool-member-from" formControlName="from" />
+              <label [for]="'pool-member-to-' + p.id">To (optional)</label>
+              <input type="date" [id]="'pool-member-to-' + p.id" data-testid="pool-member-to" formControlName="to" />
               <button type="submit" data-testid="pool-member-add">Add member</button>
               @if (memberError()?.id === p.id) {
                 <p role="alert" class="error" data-testid="pool-error">{{ memberError()?.message }}</p>
@@ -121,7 +131,7 @@ export class Pools {
   /** The error of the last member add refused, on the pool it was asked of. */
   protected readonly memberError = signal<{ id: number; message: string } | null>(null);
   protected readonly form = new FormGroup({ name: new FormControl('', { nonNullable: true }) });
-  private readonly memberForms = new Map<number, FormGroup<{ personId: FormControl<string>; share: FormControl<string> }>>();
+  private readonly memberForms = new Map<number, FormGroup<MemberFormControls>>();
   private submitting = false;
 
   /** Each pool with its total share, a retired member's share counting 0.00, as the people now stand. */
@@ -132,7 +142,7 @@ export class Pools {
     // is a cut in the pool above, so any change anywhere stales them all
     const current = this.pools().every((p) => p.members.every((m) => isRetired(m) === m.retired));
     return this.pools().map((p) => {
-      const total = p.members.reduce((sum, m) => (isRetired(m) ? sum : sum + hundredths(m.share)), 0);
+      const total = p.members.reduce((sum, m) => (isRetired(m) || !m.active ? sum : sum + hundredths(m.share)), 0);
       const shown = current && total === 10_000;
       const lines = p.members.map((m) => ({
         ...m,
@@ -179,12 +189,14 @@ export class Pools {
   }
 
   /** The pool's add-member form, made the first time it is shown. */
-  protected memberForm(poolId: number): FormGroup<{ personId: FormControl<string>; share: FormControl<string> }> {
+  protected memberForm(poolId: number): FormGroup<MemberFormControls> {
     let f = this.memberForms.get(poolId);
     if (!f) {
       f = new FormGroup({
         personId: new FormControl('', { nonNullable: true }),
         share: new FormControl('', { nonNullable: true }),
+        from: new FormControl('', { nonNullable: true }),
+        to: new FormControl('', { nonNullable: true }),
       });
       f.valueChanges.subscribe(() => {
         if (this.memberError()?.id === poolId) this.memberError.set(null);
@@ -252,13 +264,16 @@ export class Pools {
       return refuse('Enter a share of two decimals, more than 0.00 and at most 100.00.');
     }
     const nesting = 'That pool cannot be a member here: it is already in a pool, would contain itself, or would make a chain more than three deep.';
+    const from = f.controls.from.value || null;
+    const to = f.controls.to.value || null;
+    if (from !== null && to !== null && to < from) return refuse('The to-date cannot be before the from-date.');
     if (personId !== null && pool.members.some((m) => m.personId === personId)) return refuse('That person is already in the pool.');
     if (memberPoolId !== null && (memberPoolId === pool.id || this.pools().some((p) => p.members.some((m) => m.poolId === memberPoolId)))) {
       return refuse(nesting);
     }
     this.submitting = true;
     try {
-      const body = memberPoolId === null ? { personId, share } : { poolId: memberPoolId, share };
+      const body = memberPoolId === null ? { personId, share, from, to } : { poolId: memberPoolId, share, from, to };
       const list = await firstValueFrom(
         this.http.post<PoolView[]>(`${this.base(sheet)}/${pool.id}/members`, body, { headers: this.headers() }),
       );
