@@ -83,20 +83,26 @@ function termsText(p: PersonView): string {
   return terms === null ? '' : String(terms);
 }
 
-/** A CSV field: wrapped in double quotes, with any quote inside doubled, when it holds a comma, a quote or a line break. */
 /** The figures added up, leaving out the single highest and the single lowest when there are three or more. */
 function trimmedSum(figures: number[]): number {
   const sum = figures.reduce((total, f) => total + f, 0);
   return figures.length < 3 ? sum : sum - Math.max(...figures) - Math.min(...figures);
 }
 
-
+/** A CSV field: wrapped in double quotes, with any quote inside doubled, when it holds a comma, a quote or a line break. */
 function csvField(value: string): string {
   return /[",\r\n]/.test(value) ? '"' + value.replaceAll('"', '""') + '"' : value;
 }
 
+/** The cells of a person's row its CSV export holds, in order. */
+const EXPORT_CELLS = [
+  'person-name', 'person-grade', 'person-claimed', 'person-due-total', 'person-statement-count',
+  'person-overdue-total', 'person-hold', 'person-retired', 'person-aliases', 'person-score',
+] as const;
+
 // The people on the active sheet: one form to add a person or edit an existing one, the list with
 // each person's claims and due-total, and the sheet's claimed-total and due-total.
+
 @Component({
   selector: 'app-people',
   imports: [ReactiveFormsModule, FigurePipe, SheetHeader, PersonClaims, PeriodsPanel, SummaryPanel, ClassicSummaryPanel, SheetComparePanel, PoolsPanel, CrewsPanel, PersonPlans, PlanGenerate, Dashboard],
@@ -378,10 +384,12 @@ function csvField(value: string): string {
 
       <ul data-testid="person-list">
         @for (p of shown(); track p.id) {
-          <li [attr.data-testid]="'person-row-' + p.id">
+          <li [attr.data-testid]="'person-row-' + p.id" #personRow>
             <input type="checkbox" data-testid="person-select" [checked]="selectedPeople().has(p.id)"
                    (change)="togglePerson(p.id, $any($event.target).checked)" [attr.aria-label]="'Select ' + p.name" />
             <span data-testid="person-name">{{ nameShown(p) }}</span>
+            <button type="button" data-testid="person-export" (click)="exportRow(p, personRow)"
+                    [attr.aria-label]="'Download the row of ' + p.name + ' as CSV'">Export</button>
             <button type="button" data-testid="person-move-up" (click)="move(p, 'up')" [disabled]="moving() === p.id"
                     [attr.aria-label]="'Move ' + p.name + ' up'">Up</button>
             <button type="button" data-testid="person-move-down" (click)="move(p, 'down')" [disabled]="moving() === p.id"
@@ -1448,6 +1456,16 @@ export class PeopleList {
         .map((c) => [c.number ?? '', c.date, c.amount, c.statedDue ?? NOT_AVAILABLE, c.status]),
     ].map((fields) => fields.map(csvField).join(',') + '\n');
     this.download(lines, 'statement-' + p.id);
+  }
+
+  /** Download the person's row as CSV: one line per cell, with the value as the row shows it (blank for a cell
+   *  the signed-in user's screen hides). */
+  protected exportRow(p: PersonView, row: HTMLElement): void {
+    const lines = [
+      ['cell', 'value'],
+      ...EXPORT_CELLS.map((cell) => [cell, row.querySelector(`[data-testid="${cell}"]`)?.textContent?.trim() ?? '']),
+    ].map((fields) => fields.map(csvField).join(',') + '\n');
+    this.download(lines, 'person-' + p.id);
   }
 
   private download(lines: string[], what: string): void {
