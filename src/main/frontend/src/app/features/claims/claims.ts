@@ -125,6 +125,12 @@ const UNPROVEN = 'This claim\'s due is above the proof threshold, so it needs a 
           — held <span data-testid="claim-held">{{ c.held ? 'yes' : 'no' }}</span>
           <button type="button" data-testid="claim-hold" (click)="toggleHold(c)"
                   [attr.aria-label]="(c.held ? 'Release' : 'Hold') + ' claim of ' + c.amount + ' on ' + c.date">{{ c.held ? 'Release' : 'Hold' }}</button>
+          — review assigned to <span data-testid="claim-review-assigned">{{ c.reviewAssigned ?? '' }}</span>
+          <label [for]="'claim-review-user-' + c.id">Reviewer</label>
+          <input [id]="'claim-review-user-' + c.id" data-testid="claim-review-user" autocomplete="off"
+                 [value]="reviewUsers()[c.id] ?? ''" (input)="reviewUserChanged(c, $any($event.target).value)" />
+          <button type="button" data-testid="claim-review-assign" (click)="assignReview(c)"
+                  [attr.aria-label]="'Assign the review of claim of ' + c.amount + ' on ' + c.date">Assign review</button>
           split from No. <span data-testid="claim-split-from">{{ c.splitFrom ?? '' }}</span>
           — late entry <span data-testid="claim-late-entry">{{ c.lateEntry ? 'yes' : 'no' }}</span>
           <label [for]="'claim-split-amount-' + c.id">Amount to split off</label>
@@ -297,6 +303,8 @@ export class PersonClaims {
   protected readonly timelines = signal<Readonly<Record<number, readonly string[]>>>({});
   /** The comment typed for each claim, by id. */
   protected readonly commentTexts = signal<Readonly<Record<number, string>>>({});
+  /** The user typed to assign each claim's review to, by claim id. */
+  protected readonly reviewUsers = signal<Readonly<Record<number, string>>>({});
   /** The person chosen and the share percent typed to share each claim, by claim id. */
   protected readonly shareDrafts = signal<Readonly<Record<number, { personId: string; share: string }>>>({});
   /** The person chosen to move each claim to, by claim id. */
@@ -715,6 +723,34 @@ export class PersonClaims {
           : c.status === 'OPEN' || c.status === 'PENDING'
             ? "This claim's late charge was already waived."
             : `A ${c.status} claim cannot be waived.`,
+      }),
+    });
+  }
+
+  protected reviewUserChanged(c: ClaimView, user: string): void {
+    this.reviewUsers.update((users) => ({ ...users, [c.id]: user }));
+    if (this.claimError()?.id === c.id) this.claimError.set(null);
+  }
+
+  protected assignReview(c: ClaimView): void {
+    this.claimError.set(null);
+    const sheet = this.sheets.current();
+    if (!sheet) return;
+    const user = (this.reviewUsers()[c.id] ?? '').trim();
+    if (user === '') {
+      this.claimError.set({ id: c.id, message: 'Name the user to review the claim.' });
+      return;
+    }
+    this.api.assignReview(sheet.id, c.id, user).subscribe({
+      next: (saved) => {
+        this.reviewUsers.update((users) => ({ ...users, [c.id]: '' }));
+        this.saved.emit(saved);
+      },
+      error: (err: unknown) => this.claimError.set({
+        id: c.id,
+        message: err instanceof HttpErrorResponse && err.status === 403
+          ? "Only a steward can assign a claim's review."
+          : `A ${c.status} claim is not waiting for review.`,
       }),
     });
   }

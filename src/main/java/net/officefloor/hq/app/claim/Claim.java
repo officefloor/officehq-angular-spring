@@ -143,6 +143,10 @@ public class Claim {
     @Column(name = "held", nullable = false)
     private boolean held;
 
+    /** The user a steward assigned the claim to review (null when it was never assigned). */
+    @Column(name = "review_assigned", length = 100)
+    private String reviewAssigned;
+
     /** How many proofs have been given for the claim. */
     @Column(name = "proofs", nullable = false)
     private int proofs;
@@ -228,6 +232,7 @@ public class Claim {
         copy.escalated = escalated;
         copy.waived = waived;
         copy.held = held;
+        copy.reviewAssigned = reviewAssigned;
         copy.proofs = proofs;
         copy.proofPhotos = proofPhotos;
         copy.lateEntry = lateEntry;
@@ -530,6 +535,14 @@ public class Claim {
 
     public void setHeld(boolean held) {
         this.held = held;
+    }
+
+    public String getReviewAssigned() {
+        return reviewAssigned;
+    }
+
+    public void setReviewAssigned(String reviewAssigned) {
+        this.reviewAssigned = reviewAssigned;
     }
 
     public int getProofs() {

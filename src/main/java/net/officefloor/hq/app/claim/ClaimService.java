@@ -663,6 +663,33 @@ public class ClaimService {
         return waived;
     }
 
+    /** A steward assigns a REVIEW claim to a user to review; REVIEW_ASSIGNED names the claim and ends with the user.
+     *  Refused for anyone but a steward, a blank user and a claim in any other status. */
+    @Transactional
+    public Claim assignReview(String sheetId, String user, long id, String assignee) {
+        sheets.load(sheetId, user);
+        sheetStore.findLockedById(sheetId).orElseThrow();
+        Claim claim = claims.findByIdAndSheetId(id, sheetId)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "No such claim on this sheet"));
+        if (!Role.STEWARD.equals(roles.roleOf(sheetId, user))) {
+            throw new ResponseStatusException(HttpStatus.FORBIDDEN, "Only a steward assigns a claim's review");
+        }
+        String to = assignee == null ? "" : assignee.trim();
+        if (to.isEmpty()) {
+            throw new ResponseStatusException(HttpStatus.UNPROCESSABLE_CONTENT, "Name the user to review the claim");
+        }
+        if (claim.getStatus() != ClaimStatus.REVIEW) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT,
+                    "A " + claim.getStatus() + " claim is not waiting for review");
+        }
+        Person person = people.findByIdAndSheetId(claim.getPersonId(), sheetId).orElseThrow();
+        claim.setReviewAssigned(to);
+        Claim assigned = claims.saveAndFlush(claim);
+        audit.recordChangeOnCommit(sheetId, user, entry("REVIEW_ASSIGNED", user, person, assigned, null)
+                + " user=" + to);
+        return assigned;
+    }
+
     /** A steward approves a PENDING claim: it becomes SETTLED, taking its next number as settling does, its due fixed as it is at this moment (its bound figure, else its live
      *  one, with the late charge it has gained). Refused for a clerk, for the user who opened the claim or last edited it, for a
      *  claim that is not PENDING and for one due by inside a closed period. */

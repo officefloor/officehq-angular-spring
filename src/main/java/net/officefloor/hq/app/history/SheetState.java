@@ -123,7 +123,8 @@ public record SheetState(List<SettingState> settings, LocalDate policyDate, List
     public record ClaimState(long id, long personId, BigDecimal amount, LocalDate date, LocalDate dueBy, String note,
             String corrects, long listed, ClaimStatus status, String number, BigDecimal settledDue, boolean stated,
             BigDecimal statedDue, LocalDate deferredUntil, LocalDate remindedOn, String ref, String tags,
-            boolean waived, BigDecimal statedLate, boolean held, List<ShareState> shares) {
+            boolean waived, BigDecimal statedLate, boolean held, List<ShareState> shares,
+            String reviewAssigned) {
 
         /** The claim as it stood then, unsaved. */
         public Claim rebuild(String sheetId) {
@@ -139,6 +140,7 @@ public record SheetState(List<SettingState> settings, LocalDate policyDate, List
                 claim.waive();
             }
             claim.setHeld(held);
+            claim.setReviewAssigned(reviewAssigned);
             if (stated) {
                 claim.bind(statedDue, statedLate);
             }
@@ -165,7 +167,8 @@ public record SheetState(List<SettingState> settings, LocalDate policyDate, List
                         c.getDueBy(), c.getNote(), c.getCorrects(), c.getListed(), c.getStatus(), c.getNumber(),
                         c.getSettledDue(), c.isStated(), c.getStatedDue(), c.getDeferredUntil(), c.getRemindedOn(), c.getRef(), c.getTags(),
                         c.isWaived(), c.getBoundLate(), c.isHeld(), c.getShares().stream()
-                                .map(sh -> new ShareState(sh.getPersonId(), sh.getShare())).toList())).toList(),
+                                .map(sh -> new ShareState(sh.getPersonId(), sh.getShare())).toList(),
+                        c.getReviewAssigned())).toList(),
                 new TreeMap<>(sheet.getPermissions()), sheet.getPeriodNumberingFrom(), sheet.getGraceDays(),
                 sheet.isArchived(), views, sheet.getEntryDate(), sheet.getLastSettleBatch(),
                 sheet.getPot(), sheet.getFiscalStartMonth(), sheet.getAlertThreshold(),

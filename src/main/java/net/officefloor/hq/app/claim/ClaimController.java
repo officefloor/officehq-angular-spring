@@ -48,7 +48,8 @@ public class ClaimController {
      * a steward waived its late charge; statedLate is the late charge its person's last statement binds with
      * statedDue (null when not bound, or bound with none, when its late charge follows the sheet's today);
      * proofReceipts and proofPhotos are how many of its proofs are of each kind; held is whether it is held;
-     * shares are the other people holding a part of its due, in the order given.
+     * shares are the other people holding a part of its due, in the order given; reviewAssigned is the user a steward
+     * assigned it to review (null when never assigned).
      */
     public record ClaimView(long id, long personId, String amount, LocalDate date, String note, ClaimStatus status,
             String number, String settledDue, String openedBy, boolean stated, String statedDue, String corrects,
@@ -56,7 +57,7 @@ public class ClaimController {
             String lockedBy, boolean lateEntry, LocalDate remindedOn, String ref, List<String> tags,
             String voidReason, List<CommentLine> comments, String editedBy, Integer batch, List<LineView> lines,
             boolean waived, String statedLate, int proofReceipts, int proofPhotos, boolean held,
-            List<ShareView> shares) {
+            List<ShareView> shares, String reviewAssigned) {
 
         public static ClaimView of(Claim claim) {
             return new ClaimView(claim.getId(), claim.getPersonId(), claim.getAmount().toPlainString(),
@@ -72,7 +73,7 @@ public class ClaimController {
                     claim.isWaived(),
                     claim.getBoundLate() == null ? null : claim.getBoundLate().toPlainString(),
                     claim.getProofReceipts(), claim.getProofPhotos(), claim.isHeld(),
-                    claim.getShares().stream().map(ShareView::of).toList());
+                    claim.getShares().stream().map(ShareView::of).toList(), claim.getReviewAssigned());
         }
     }
 
@@ -118,6 +119,10 @@ public class ClaimController {
     /** A line to add to a claim: a label, a quantity and a unit amount; the service refuses what is out of range. */
     public record LineForm(@Size(max = 200) String label, @NotNull Integer qty,
             @NotNull @Digits(integer = 12, fraction = 2) BigDecimal unit) {
+    }
+
+    /** The user to assign a REVIEW claim to review; a blank one is refused. */
+    public record ReviewAssignForm(@Size(max = 100) String user) {
     }
 
     /** A comment to add to a claim; an empty one is refused. */
@@ -380,6 +385,15 @@ public class ClaimController {
             @PathVariable long id,
             @RequestHeader("X-User") @NotBlank @Size(max = 100) String user) {
         return ClaimView.of(claims.waive(sheetId, user, id));
+    }
+
+    @PutMapping("/claims/{id}/review-assigned")
+    public ClaimView assignReview(
+            @PathVariable @NotBlank @Size(max = 100) @Pattern(regexp = "[A-Za-z0-9._-]+") String sheetId,
+            @PathVariable long id,
+            @RequestHeader("X-User") @NotBlank @Size(max = 100) String user,
+            @Valid @RequestBody ReviewAssignForm request) {
+        return ClaimView.of(claims.assignReview(sheetId, user, id, request.user()));
     }
 
     @PostMapping("/claims/{id}/hold")

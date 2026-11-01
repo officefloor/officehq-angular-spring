@@ -86,6 +86,9 @@ export interface ClaimView {
   /** The other people holding a part of the claim's due, in the order given; missing on a claim kept before shares
    *  were. */
   shares?: ClaimShare[];
+  /** The user a steward assigned the claim to review; null (missing on a claim kept before assignments were) when
+   *  never assigned. */
+  reviewAssigned?: string | null;
 }
 
 /** A share of a claim: the person holding it and their share percent with exactly two decimals. */
@@ -397,6 +400,11 @@ export class Claims {
   /** A steward waives an OPEN or PENDING claim's late charge; refused once it was waived. */
   waive(sheetId: string, id: number): Observable<ClaimView> {
     return this.http.post<ClaimView>(`${this.base(sheetId)}/claims/${id}/waiver`, {});
+  }
+
+  /** A steward assigns a REVIEW claim to a user to review; refused for a blank user or any other status. */
+  assignReview(sheetId: string, id: number, user: string): Observable<ClaimView> {
+    return this.http.put<ClaimView>(`${this.base(sheetId)}/claims/${id}/review-assigned`, { user });
   }
 
   /** Hold an OPEN or PENDING claim, or release it when held. */

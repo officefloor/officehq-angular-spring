@@ -108,7 +108,7 @@ function csvField(value: string): string {
     <app-header [peopleCount]="people().length" [statuses]="summaryByStatus()" [dueTotal]="dueTotal()"
                 [overdueTotal]="money(overdueTotals().cents)" [myDueTotal]="me() ? dueOf(me()!) : ''"
                 [myOverdueTotal]="me() ? money(overdueOf(me()!.id).cents) : ''"
-                [myCrewDueTotal]="myCrewDueTotal()" />
+                [myCrewDueTotal]="myCrewDueTotal()" [myReviewsCount]="myReviewsCount()" />
     <app-dashboard [pending]="statusCount('PENDING')" [review]="statusCount('REVIEW')"
                    [overdue]="overdueTotals().count" />
     <app-periods [dueTotals]="dueByPeriod()" />
@@ -1100,6 +1100,12 @@ export class PeopleList {
   protected statusCount(status: string): number {
     return this.summaryByStatus().find((s) => s.status === status)?.count ?? 0;
   }
+  /** How many of the sheet's REVIEW claims are assigned to the signed-in user to review. */
+  protected readonly myReviewsCount = computed(() => {
+    const user = this.session.user()?.trim().toLowerCase();
+    if (!user) return 0;
+    return this.claims().filter((c) => c.status === 'REVIEW' && c.reviewAssigned?.toLowerCase() === user).length;
+  });
   /** How many of the sheet's claims are late for review on its today. */
   protected readonly reviewLateCount = computed(() => {
     const sheet = this.sheets.current();
