@@ -232,6 +232,8 @@ function trimmedSum(figures: number[]): number {
                 <span>on <span data-testid="person-statement-date">{{ statementOf(p.id)?.lastDate ?? '' }}</span></span>
                 <button type="button" data-testid="person-statement" (click)="takeStatement(p)"
                         [attr.aria-label]="'Take statement for ' + p.name">Statement</button>
+                <button type="button" data-testid="person-unstate" (click)="cancelStatement(p)"
+                        [attr.aria-label]="'Cancel last statement for ' + p.name">Cancel statement</button>
                 @if (personError()?.id === p.id) {
                   <p role="alert" class="error" data-testid="person-error">{{ personError()?.message }}</p>
                 }
@@ -773,6 +775,28 @@ export class People {
       this.claims.update((list) => list.map((c) => byId.get(c.id) ?? c));
     } catch {
       if (this.session.sheetId() === sheet) this.personError.set({ id: p.id, message: 'Could not take a statement for ' + p.name + '.' });
+    }
+  }
+
+  /** Cancel the person's last statement, making the claims it bound live again. */
+  protected async cancelStatement(p: Person): Promise<void> {
+    this.personError.set(null);
+    this.clearPatronError(p.id);
+    const sheet = this.session.sheetId();
+    if (!sheet) return;
+    try {
+      const cancelled = await firstValueFrom(
+        this.http.post<StatementTaken>(`${this.url(sheet)}/${p.id}/statement/cancel`, null, { headers: this.headers() }),
+      );
+      if (this.session.sheetId() !== sheet) return;
+      this.statements.update((list) => [
+        ...list.filter((s) => s.personId !== p.id),
+        ...(cancelled.summary.count > 0 ? [cancelled.summary] : []),
+      ]);
+      const byId = new Map(cancelled.claims.map((c) => [c.id, c]));
+      this.claims.update((list) => list.map((c) => byId.get(c.id) ?? c));
+    } catch {
+      if (this.session.sheetId() === sheet) this.personError.set({ id: p.id, message: 'Could not cancel the last statement for ' + p.name + '.' });
     }
   }
 

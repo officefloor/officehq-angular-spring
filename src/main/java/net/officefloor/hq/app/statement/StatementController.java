@@ -53,4 +53,14 @@ public class StatementController {
         return new StatementTakenView(StatementSummaryView.of(taken.summary()),
                 taken.claims().stream().map(ClaimView::of).toList());
     }
+
+    @PostMapping("/people/{personId}/statement/cancel")
+    public StatementTakenView cancel(
+            @PathVariable @Size(max = 100) @Pattern(regexp = "[A-Za-z0-9._-]+") String sheetId,
+            @PathVariable Long personId,
+            @RequestHeader("X-User") @NotBlank @Size(max = 100) String user) {
+        StatementService.Taken taken = service.cancelLast(sheetId, user, personId);
+        return new StatementTakenView(StatementSummaryView.of(taken.summary()),
+                taken.claims().stream().map(ClaimView::of).toList());
+    }
 }

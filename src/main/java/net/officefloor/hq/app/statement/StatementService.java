@@ -16,6 +16,8 @@ import net.officefloor.hq.app.person.PersonRepository;
 import net.officefloor.hq.app.rate.Rate;
 import net.officefloor.hq.app.rate.RateService;
 import net.officefloor.hq.app.rollup.RollupService;
+import net.officefloor.hq.app.setting.Role;
+import net.officefloor.hq.app.setting.SettingService;
 import net.officefloor.hq.app.sheet.Sheet;
 import net.officefloor.hq.app.sheet.SheetNotFoundException;
 import net.officefloor.hq.app.sheet.SheetRepository;
@@ -27,6 +29,8 @@ import org.springframework.transaction.annotation.Transactional;
  * moment (late charges included, at most the sheet's cap) and binds each of their claims that counts to the figure it has
  * then, without its late charge, which keeps following the sheet's today; their other claims
  * are left unbound, their due live again. A claim's due fixed when settled stays as it is.
+ * A steward can cancel a person's last statement: the claims it bound are live again (a figure bound
+ * by a statement before it is not restored) and the statement before it is their last.
  */
 @Service
 public class StatementService {
@@ -44,10 +48,12 @@ public class StatementService {
     private final RateService rates;
     private final SheetRepository sheets;
     private final RollupService rollup;
+    private final SettingService settings;
     private final Audit audit;
 
     public StatementService(StatementRepository statements, PersonRepository people, ClaimRepository claims,
-            ClaimService claimService, RateService rates, SheetRepository sheets, RollupService rollup, Audit audit) {
+            ClaimService claimService, RateService rates, SheetRepository sheets, RollupService rollup,
+            SettingService settings, Audit audit) {
         this.statements = statements;
         this.people = people;
         this.claims = claims;
@@ -55,6 +61,7 @@ public class StatementService {
         this.rates = rates;
         this.sheets = sheets;
         this.rollup = rollup;
+        this.settings = settings;
         this.audit = audit;
     }
 
@@ -110,7 +117,31 @@ public class StatementService {
                 theirs);
     }
 
+    /** A steward cancels the person's last statement, unbinding the claims it bound. */
+    @Transactional
+    public Taken cancelLast(String sheetId, String user, Long personId) {
+        sheets.findForUpdate(sheetId).orElseThrow(SheetNotFoundException::new);
+        Person person = people.findByIdAndSheetId(personId, sheetId).orElseThrow(PersonNotFoundException::new);
+        if (settings.roleOf(sheetId, user) != Role.STEWARD) throw new StatementCancelRefusedException();
+        List<Statement> theirStatements = new ArrayList<>(statements.findBySheetIdAndPersonIdOrderByIdAsc(sheetId, personId));
+        if (theirStatements.isEmpty()) throw new StatementCancelRefusedException();
+        Statement last = theirStatements.remove(theirStatements.size() - 1);
+        RollupService.Snapshot before = rollup.snapshot(sheetId);
+        List<Claim> theirs = claims.findBySheetIdAndPersonIdOrderByIdDesc(sheetId, personId);
+        for (Claim claim : theirs) {
+            if (claim.isStated()) claim.unstate();
+        }
+        claims.saveAllAndFlush(theirs);
+        statements.delete(last);
+        statements.flush();
+        audit.recordOnCommit("STATEMENT_CANCELLED sheet=" + sheetId + " by=" + user.strip() + " name=" + person.getName()
+                + " due-total=" + (last.getDueTotal() == null ? "n/a" : last.getDueTotal().toPlainString()));
+        rollup.recordChanges(sheetId, user, before);
+        return new Taken(summaryOf(personId, theirStatements), theirs);
+    }
+
     private static Summary summaryOf(Long personId, List<Statement> list) {
+        if (list.isEmpty()) return new Summary(personId, 0, null, null);
         Statement last = list.get(list.size() - 1);
         return new Summary(personId, list.size(), last.getDueTotal(), last.getDate());
     }

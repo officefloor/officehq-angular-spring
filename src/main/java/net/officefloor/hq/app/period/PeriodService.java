@@ -122,14 +122,14 @@ public class PeriodService {
     }
 
     /**
-     * Close, as a close by hand would, every open period whose to-date plus the grace days is before the
+     * Close, as a close by hand would, every open period (not a soft-closed one) whose to-date plus the grace days is before the
      * sheet's today, in order of their to-dates, each audited with auto=yes. The caller holds the sheet's
      * lock, with its new today already set.
      */
     @Transactional
     public void autoClose(String sheetId, String user, LocalDate today, int graceDays) {
         List<Period> due = periods.findBySheetIdOrderByFromDateAsc(sheetId).stream()
-                .filter(p -> !p.isClosed() && p.getToDate().plusDays(graceDays).isBefore(today))
+                .filter(p -> !p.isClosed() && !p.isSoftClosed() && p.getToDate().plusDays(graceDays).isBefore(today))
                 .sorted(Comparator.comparing(Period::getToDate))
                 .toList();
         for (Period period : due) fix(sheetId, user, period, today, true, false);
