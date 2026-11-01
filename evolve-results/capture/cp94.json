@@ -1,0 +1,64 @@
+{
+  "checkpoint": 94,
+  "stack": {
+    "repo": "/home/daniel/officehq-angular-spring",
+    "origin": "git@github.com:officefloor/officehq-angular-spring.git",
+    "name": "officehq-angular-spring",
+    "base_ref": "base-empty",
+    "base_commit": "65cb8233ea38b2dfa6cfd18709e30cd18fdf3250"
+  },
+  "checkpoint_id": "cp94_proof-threshold-per-grade",
+  "phase": "mid",
+  "type": "additive",
+  "mutates": [],
+  "replaced_tests": [],
+  "request": {
+    "spec": "The proof threshold can be set per grade (settings, SETTING_CHANGED key=proof-threshold-<grade>\nvalue=<amount>, dated like the floor; blank means none). For a claim, the threshold in force is\nits person's grade's threshold in force on the claim's date when one is set, else the sheet's.\n",
+    "prompt": "You are implementing ONE change to this application.\n\nFIRST read AGENTS.md \u2014 it states the working rules and how the app is tested, and sends you to\nDESIGN.md for the app's stack and conventions. Follow both.\n\nTHE CHANGE REQUEST:\nThe proof threshold can be set per grade (settings, SETTING_CHANGED key=proof-threshold-<grade>\nvalue=<amount>, dated like the floor; blank means none). For a claim, the threshold in force is\nits person's grade's threshold in force on the claim's date when one is set, else the sheet's.\n\nYour work is verified by an automated Playwright UI test already installed under e2e/specs/.\nRead that spec: it declares the exact data-testid anchors, values, test data and any audit\nrecords it expects \u2014 match them. Run `bin/e2e` to build the app, start it, and run the test as\nyou work; iterate until it passes. Change whatever the request needs across the app \u2014 its stored\ndata, its server and its front end. Do NOT edit bin/build, bin/start, bin/stop, bin/e2e,\nAGENTS.md, CLAUDE.md, DESIGN.md, e2e/support/ or the test spec.\n"
+  },
+  "commit_sha": "acfec5c7256f8a6202cc4febfbed89ef8f6b3d75",
+  "reset_sha": "",
+  "preagent_sha": "d68a9fd9860fac65e7d8bdde4815cf96542da5ab",
+  "prev_sha": "d68a9fd9860fac65e7d8bdde4815cf96542da5ab",
+  "base_sha": "65cb8233ea38b2dfa6cfd18709e30cd18fdf3250",
+  "agent": {
+    "ok": true,
+    "cost_usd": 1.1646150000000004,
+    "input_tokens": 6,
+    "output_tokens": 747,
+    "cache_read_tokens": 191538,
+    "cache_creation_tokens": 3854,
+    "num_turns": 2,
+    "duration_ms": 10683,
+    "duration_api_ms": 129835,
+    "model": "claude-opus-5-5",
+    "session_id": "d4176024-8770-4d6f-b1b7-b013a4c4f3a6",
+    "stop_reason": "success",
+    "result_text": "Each grade can now have its own proof threshold. `bin/e2e` builds the app and passes all 4 tests in the spec.\n\n**How it behaves:** to decide whether a claim needs a proof before it can be settled or approved, the app looks at the grade the person had on the claim's date. If that grade has its own threshold in force on that date, that threshold is used; otherwise the sheet's threshold applies. Leaving a grade's threshold blank means it has none, so the sheet's threshold applies again.\n\n**Server**\n- `Sheet.java` looks up a grade's threshold from the dated settings under the key `proof-threshold-<grade>`, and falls back to the sheet's.\n- `SettingService` gains `setGradeProofThreshold`. It saves the same way the floor does and writes the audit line `SETTING_CHANGED ... key=proof-threshold-<grade> value=<amount>`, with ` from=<date>` added when a from-date is given.\n- `SettingController` gains a new endpoint, `PUT /settings/proof-threshold/{grade}`, for grades A, B and C.\n- `ClaimService`'s proof check now takes the person and uses the grade they had on the claim's date. Both settling and approving go through it.\n- No database migration was needed: the existing dated-settings table already stores these by key.\n\n**Screen** (`settings.ts`)\n- Each grade gets a value field and a from-date field: `setting-proof-threshold-<g>` and `setting-proof-threshold-<g>-from`.\n- Each grade also shows the value in force on the sheet's today in `setting-proof-threshold-<g>-current`.\n- Typing in these fields clears any settings error. Bad values are refused and show `settings-error`, as the other dated settings do.",
+    "error": "",
+    "attempts": [
+      {
+        "ok": true,
+        "limit_reached": false,
+        "retryable": false,
+        "timed_out": false,
+        "cost_usd": 1.1646150000000004,
+        "num_turns": 2,
+        "duration_ms": 10683,
+        "duration_api_ms": 129835,
+        "error": ""
+      }
+    ]
+  },
+  "agent_stream_file": "cp94.agent.jsonl",
+  "agent_diff_file": "cp94.agent.diff",
+  "build_log_file": null,
+  "tests": {
+    "gated": false,
+    "queued": true
+  },
+  "probe": null,
+  "pinned_touched": [],
+  "acceptance_touched": [],
+  "impact_gate": null
+}
