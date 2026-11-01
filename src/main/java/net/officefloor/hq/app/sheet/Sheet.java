@@ -230,7 +230,7 @@ public class Sheet {
     public Sheet copyTo(String id, String createdBy, Instant createdAt) {
         Sheet copy = new Sheet(id, createdBy, createdAt, today);
         settings.forEach(s -> copy.settings.add(new DatedSetting(s.getKey(), s.getFrom(), s.getValue())));
-        policyVersions.forEach(v -> copy.policyVersions.add(new PolicyVersion(v.getKey(), v.getFrom())));
+        policyVersions.forEach(v -> copy.policyVersions.add(new PolicyVersion(v.getKey(), v.getFrom(), v.getValue())));
         copy.permissions.putAll(permissions);
         copy.policyDate = policyDate;
         copy.periodNumberingFrom = periodNumberingFrom;
@@ -300,7 +300,7 @@ public class Sheet {
     public void record(String key, LocalDate from, String value) {
         restore(key, from, value);
         if (POLICY_KEYS.contains(key)) {
-            policyVersions.add(new PolicyVersion(key, from));
+            policyVersions.add(new PolicyVersion(key, from, value));
         }
     }
 
@@ -319,7 +319,7 @@ public class Sheet {
     /** Put back the policy versions as they stood, in the order made. */
     public void restorePolicyVersions(List<PolicyVersion> versions) {
         policyVersions.clear();
-        versions.forEach(v -> policyVersions.add(new PolicyVersion(v.getKey(), v.getFrom())));
+        versions.forEach(v -> policyVersions.add(new PolicyVersion(v.getKey(), v.getFrom(), v.getValue())));
     }
 
     /** The current policy version: how many have been made; 0 before the first. */

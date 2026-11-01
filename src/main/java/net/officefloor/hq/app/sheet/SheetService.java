@@ -6,8 +6,12 @@ import java.time.Instant;
 import java.time.LocalDate;
 import java.util.Arrays;
 import java.util.List;
+import java.util.Map;
+import java.util.stream.Collectors;
+import java.util.stream.IntStream;
 import net.officefloor.hq.app.Audit;
 import net.officefloor.hq.app.claim.ClaimRepository;
+import net.officefloor.hq.app.claim.ClaimStatus;
 import net.officefloor.hq.app.period.PeriodService;
 import net.officefloor.hq.app.role.Role;
 import net.officefloor.hq.app.role.RoleService;
@@ -56,6 +60,21 @@ public class SheetService {
                 return sheets.findById(id).orElseThrow(() -> raced);
             }
         });
+    }
+
+    /** The sheet's policy versions, oldest first, each with how many of its claims (not deleted) have it as their
+     *  policy version (the one in force on the claim's date); starting the sheet if it has never been loaded. */
+    @Transactional
+    public List<SheetController.PolicyLineView> policyLines(String id, String user) {
+        Sheet sheet = load(id, user);
+        Map<Integer, Long> counts = claims.findBySheetIdOrderByListedDescIdDesc(id).stream()
+                .filter(c -> c.getStatus() != ClaimStatus.DELETED)
+                .collect(Collectors.groupingBy(c -> sheet.policyVersionOn(c.getDate()), Collectors.counting()));
+        List<PolicyVersion> versions = sheet.getPolicyVersions();
+        return IntStream.range(0, versions.size())
+                .mapToObj(i -> new SheetController.PolicyLineView(i + 1, versions.get(i).getKey(),
+                        versions.get(i).getFrom(), versions.get(i).getValue(), counts.getOrDefault(i + 1, 0L)))
+                .toList();
     }
 
     /** The sheet's today, or null for a sheet never loaded. */

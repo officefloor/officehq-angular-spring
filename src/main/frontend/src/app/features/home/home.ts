@@ -14,6 +14,7 @@ import { RatesPanel } from '../rates/rates';
 import { GradesPanel } from '../grades/grades';
 import { SearchPanel } from '../search/search';
 import { SettingsPanel } from '../settings/settings';
+import { PolicyViewerPanel } from '../settings/policy-viewer';
 import { SnapshotComparePanel } from '../snapshots/snapshot-compare';
 import { TemplatesPanel } from '../templates/templates';
 import { VoidReasonsPanel } from '../void-reasons/void-reasons';
@@ -21,7 +22,7 @@ import { VoidReasonsPanel } from '../void-reasons/void-reasons';
 // The one screen: sign in by name, then choose a sheet by id. Everything else is per sheet.
 @Component({
   selector: 'app-home',
-  imports: [ReactiveFormsModule, PeopleList, RatesPanel, GradesPanel, SettingsPanel, DelegationsPanel, HolidaysPanel,
+  imports: [ReactiveFormsModule, PeopleList, RatesPanel, GradesPanel, SettingsPanel, PolicyViewerPanel, DelegationsPanel, HolidaysPanel,
     VoidReasonsPanel, TemplatesPanel, NotesPanel, SearchPanel, AuditPanel,
     ActivityPanel, DuplicatesPanel, SnapshotComparePanel],
   template: `
@@ -101,6 +102,7 @@ import { VoidReasonsPanel } from '../void-reasons/void-reasons';
         <app-rates />
         <app-grades />
         <app-settings />
+        <app-policy-viewer />
         <app-delegations />
         <app-holidays />
         <app-void-reasons />

@@ -13,11 +13,19 @@ export interface DatedSetting {
 }
 
 /** The sheet as the screen shows it: each dated setting as it is in force on its today. */
-/** A policy version: the policy setting whose change made it, and the from-date (yyyy-mm-dd) it was changed from;
- *  null: it counts always. */
+/** A policy version: the policy setting whose change made it, the from-date (yyyy-mm-dd) it was changed from
+ *  (null: it counts always), and the value it set the setting to (null: none). */
 export interface PolicyVersion {
   key: string;
   from: string | null;
+  value: string | null;
+}
+
+/** A line of the policy viewer: a policy version (numbered from 1) and how many of the sheet's claims (not deleted)
+ *  have it as their policy version. */
+export interface PolicyLine extends PolicyVersion {
+  version: number;
+  claims: number;
 }
 
 export interface SheetView {
@@ -204,6 +212,11 @@ export class Sheets {
   setPreview(id: string, preview: string | null): Observable<SheetView> {
     this.previewDate.set(preview);
     return this.load(id);
+  }
+
+  /** The sheet's policy versions, oldest first, each with how many claims have it as their policy version. */
+  policyLines(id: string): Observable<PolicyLine[]> {
+    return this.http.get<PolicyLine[]>(`/api/sheets/${encodeURIComponent(id)}/policy-versions`);
   }
 
   load(id: string): Observable<SheetView> {

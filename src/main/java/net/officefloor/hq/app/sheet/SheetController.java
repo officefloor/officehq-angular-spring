@@ -20,6 +20,7 @@ import net.officefloor.hq.app.role.RoleService;
 import org.springframework.http.HttpStatus;
 import org.springframework.validation.annotation.Validated;
 import org.springframework.web.bind.annotation.PathVariable;
+import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.PutMapping;
 import org.springframework.web.bind.annotation.RequestBody;
@@ -93,13 +94,18 @@ public class SheetController {
                     sheet.getDefaultGrade(), sheet.getGradeClerkLimits(), sheet.getScoreMid(), sheet.getScoreHigh(),
                     sheet.isScoreLog() ? "on" : null, sheet.getMaxOpen(), sheet.getRetiredGrades(),
                     sheet.getGrades(), sheet.getPendingSla(), sheet.getPolicyVersion(),
-                    sheet.getPolicyVersions().stream().map(v -> new PolicyVersionView(v.getKey(), v.getFrom())).toList());
+                    sheet.getPolicyVersions().stream().map(v -> new PolicyVersionView(v.getKey(), v.getFrom(), v.getValue())).toList());
         }
     }
 
-    /** A policy version: the policy setting whose change made it and the from-date it was changed from (null: it
-     *  counts always). */
-    public record PolicyVersionView(String key, LocalDate from) {
+    /** A policy version: the policy setting whose change made it, the from-date it was changed from (null: it
+     *  counts always) and the value it set the setting to (null: none). */
+    public record PolicyVersionView(String key, LocalDate from, String value) {
+    }
+
+    /** A line of the policy viewer: a policy version (numbered from 1), its setting, from-date (null: it counts
+     *  always) and value, and how many of the sheet's claims (not deleted) have it as their policy version. */
+    public record PolicyLineView(int version, String key, LocalDate from, String value, long claims) {
     }
 
     /** A dated setting's value from a from-date (null: from the beginning of time); a null value means none. */
@@ -247,6 +253,14 @@ public class SheetController {
             @RequestHeader(value = SheetHistory.AS_OF_HEADER, required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate asOf) {
         Sheet live = sheets.load(id, user);
         return asOf == null ? SheetView.of(live) : SheetView.of(history.sheetAsOf(live, asOf), asOf);
+    }
+
+    /** The sheet's policy versions, oldest first, each with how many claims have it as their policy version. */
+    @GetMapping("/{id}/policy-versions")
+    public List<PolicyLineView> policyVersions(
+            @PathVariable @NotBlank @Size(max = 100) @Pattern(regexp = "[A-Za-z0-9._-]+") String id,
+            @RequestHeader("X-User") @NotBlank @Size(max = 100) String user) {
+        return sheets.policyLines(id, user);
     }
 
     /** Archive the sheet: a steward only. */
