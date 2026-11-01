@@ -25,13 +25,15 @@ import org.springframework.transaction.annotation.Transactional;
  * pool, and other pools, each a member of at most one pool, with a share percent. A person can be in
  * several pools. A pool cannot contain itself through any chain, and a chain of pools is at most three
  * deep. A pool is balanced when its shares
- * total exactly 100.00; a retired member's share (retirement date set, whatever the date) counts as
- * 0.00 toward the total. Each member of a balanced pool cuts the pool's pot (none: no cuts) - the sheet's
+ * total exactly 100.00; a retired member's share (retirement date set, whatever the date) counts toward
+ * the total as given. Each member of a balanced pool cuts the pool's pot (none: no cuts) - the sheet's
  * pot for a pool that is a member of none, else its cut in the pool above: the pot
  * times their share over the shares of the members with a cut, rounded half to even to two decimals, a
  * retired member, or a person with a hold in force on the sheet's today, 0.00 (no cut); the remainder, the
  * pot less the cuts, goes to the member with the largest share (one with no cut counting 0.00), the earliest
- * added on a tie, so the cuts total exactly the pot (all 0.00 when no member has a cut). A hold leaves the
+ * added on a tie, so the cuts total exactly the pot (all 0.00 when no member has a cut). A retired member's
+ * share is so spread over the others in proportion to their shares, as a held member's is; a pool whose
+ * every member (whose dates include the sheet's today) is retired has no cuts. A hold leaves the
  * total share and balance as they are. A membership may carry a from-date and a to-date (both included);
  * a member whose dates do not include the sheet's today is left out entirely: its share counts 0.00 toward
  * the total and it has no cut.
@@ -100,7 +102,7 @@ public class PoolService {
                 if (p == null) continue;
                 shown.add(new Member(p.getId(), null, p.getName(), m.getShare().setScale(2), p.isRetired(),
                         today != null && p.heldOn(today), active, null));
-                if (!p.isRetired() && active) total = total.add(m.getShare());
+                if (active) total = total.add(m.getShare());
             }
             uncut.put(pool.getId(), new PoolLine(pool.getId(), pool.getName(), shown, total, total.compareTo(HUNDRED) == 0));
         }
@@ -137,9 +139,11 @@ public class PoolService {
      * The members with their cuts of the pot: each the pot times their share over the shares of the members
      * with a cut, rounded half to even, a retired or held member 0.00, a member whose dates leave out the
      * sheet's today none; the remainder goes to the largest
-     * share, the earliest added on a tie; all 0.00 when no member has a cut.
+     * share, the earliest added on a tie; all 0.00 when no member has a cut, none when every member whose
+     * dates include the sheet's today is retired.
      */
     private static List<Member> cut(List<Member> shown, BigDecimal pot) {
+        if (shown.stream().filter(Member::active).allMatch(Member::retired)) return shown;
         BigDecimal[] cuts = new BigDecimal[shown.size()];
         BigDecimal[] shares = new BigDecimal[shown.size()];
         BigDecimal cutShares = BigDecimal.ZERO.setScale(2);

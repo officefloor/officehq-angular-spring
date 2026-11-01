@@ -60,10 +60,11 @@ function percent(hundredths: number): string {
 // pool, and other pools (chosen as pool:<name>), each a member of at most one pool, with a share percent.
 // A person can be in several pools. A pool cannot contain itself through any chain, and a chain of pools
 // is at most three deep (the server refuses either). A pool shows its total share and is
-// balanced when the shares total exactly 100.00; a retired member's share counts as 0.00 toward it. A membership
+// balanced when the shares total exactly 100.00; a retired member's share counts toward it as given. A membership
 // may carry a from-date and a to-date (both optional, both included; a to-date before the from-date is refused);
 // a member whose dates leave out the sheet's today counts 0.00 toward the total and has no cut. Each member of a
-// balanced pool shows their cut of the pool's pot (worked out by the server): the sheet's pot for a pool that is a member
+// balanced pool shows their cut of the pool's pot (worked out by the server; a retired member's share is spread
+// over the others, and a pool of only retired members shows none): the sheet's pot for a pool that is a member
 // of none, else its cut in the pool above; an unbalanced pool, or no pot, shows none. Each person's cuts as shown,
 // across every pool, are added up as their cut total for the people section.
 @Component({
@@ -134,7 +135,7 @@ export class Pools {
   private readonly memberForms = new Map<number, FormGroup<MemberFormControls>>();
   private submitting = false;
 
-  /** Each pool with its total share, a retired member's share counting 0.00, as the people now stand. */
+  /** Each pool with its total share, a retired member's share counting as given, its cuts as the people now stand. */
   protected readonly lines = computed<PoolLine[]>(() => {
     const retired = new Map(this.session.people().map((p) => [p.id, p.retired]));
     const isRetired = (m: MemberView) => m.personId !== null && (retired.get(m.personId) ?? m.retired);
@@ -142,7 +143,7 @@ export class Pools {
     // is a cut in the pool above, so any change anywhere stales them all
     const current = this.pools().every((p) => p.members.every((m) => isRetired(m) === m.retired));
     return this.pools().map((p) => {
-      const total = p.members.reduce((sum, m) => (isRetired(m) || !m.active ? sum : sum + hundredths(m.share)), 0);
+      const total = p.members.reduce((sum, m) => (!m.active ? sum : sum + hundredths(m.share)), 0);
       const shown = current && total === 10_000;
       const lines = p.members.map((m) => ({
         ...m,
