@@ -1,0 +1,116 @@
+diff --git a/src/main/java/net/officefloor/hq/app/claim/Claim.java b/src/main/java/net/officefloor/hq/app/claim/Claim.java
+index 92eeb8922..671d9f56e 100644
+--- a/src/main/java/net/officefloor/hq/app/claim/Claim.java
++++ b/src/main/java/net/officefloor/hq/app/claim/Claim.java
+@@ -382,6 +382,9 @@ public class Claim {
+     /** Number the claim sheet-wide. */
+     public void setNumber(long number) { this.number = String.valueOf(number); }
+ 
++    /** Number the claim within a fiscal year: FY&lt;year&gt;-&lt;n&gt;. */
++    public void setFiscalNumber(int year, long n) { this.number = "FY" + year + "-" + n; }
++
+     /** Number the claim within a period (empty name: in no period): <period name>-<n>, or X-<n>. */
+     public void setNumberWithin(String period, int seq) {
+         this.numberPeriod = period;
+diff --git a/src/main/java/net/officefloor/hq/app/claim/ClaimService.java b/src/main/java/net/officefloor/hq/app/claim/ClaimService.java
+index e1ce3a9f9..da538cfae 100644
+--- a/src/main/java/net/officefloor/hq/app/claim/ClaimService.java
++++ b/src/main/java/net/officefloor/hq/app/claim/ClaimService.java
+@@ -684,19 +684,26 @@ public class ClaimService {
+     }
+ 
+     /**
+-     * Give an opened claim its number: the next after the last sheet-wide number given anywhere in the
+-     * sheet's tree (its topmost ancestor and every descendant of that), or while the sheet numbers by period, the next
++     * Give an opened claim its number: FY&lt;year&gt;-&lt;n&gt;, the next in the fiscal year its due-by falls in
++     * (by the sheet's fiscal start month) after the last given in that year anywhere in the sheet's tree
++     * (its topmost ancestor and every descendant of that), or while the sheet numbers by period, the next
+      * within the period its due-by falls in (in no period: the next in the sheet's X sequence).
+      */
+     private void number(Sheet sheet, Claim claim) {
+         if (!sheet.numbersByPeriod()) {
+-            claim.setNumber(sheet.nextClaimNumberAfter(sheets.lastClaimNumberInTree(sheet.getId())));
++            int year = fiscalYearOf(sheet, claim.getDueBy() != null ? claim.getDueBy() : claim.getDate());
++            claim.setFiscalNumber(year, sheets.nextFiscalNumberInTree(sheet.getId(), year));
+             return;
+         }
+         String period = periodOn(sheet.getId(), claim.getDueBy());
+         claim.setNumberWithin(period, claims.lastNumberWithin(sheet.getId(), period) + 1);
+     }
+ 
++    /** The fiscal year the date falls in, by the calendar year of its first day (the sheet's start month). */
++    private static int fiscalYearOf(Sheet sheet, LocalDate date) {
++        return date.getMonthValue() >= sheet.getFiscalStartMonth() ? date.getYear() : date.getYear() - 1;
++    }
++
+     /**
+      * The terms a claim of the person dated on the date is fixed with: their own terms, else their grade's
+      * then. Its due-by is the terms-th business day after its date (skipping weekends and the sheet's holidays).
+diff --git a/src/main/java/net/officefloor/hq/app/sheet/SheetRepository.java b/src/main/java/net/officefloor/hq/app/sheet/SheetRepository.java
+index cfb33e101..3ee790580 100644
+--- a/src/main/java/net/officefloor/hq/app/sheet/SheetRepository.java
++++ b/src/main/java/net/officefloor/hq/app/sheet/SheetRepository.java
+@@ -5,6 +5,7 @@ import java.util.Collection;
+ import java.util.Optional;
+ import org.springframework.data.jpa.repository.JpaRepository;
+ import org.springframework.data.jpa.repository.Lock;
++import org.springframework.data.jpa.repository.Modifying;
+ import org.springframework.data.jpa.repository.Query;
+ 
+ public interface SheetRepository extends JpaRepository<Sheet, String> {
+@@ -17,4 +18,15 @@ public interface SheetRepository extends JpaRepository<Sheet, String> {
+     /** The last sheet-wide claim number given on any of the sheets; 0 if none. */
+     @Query(value = "select coalesce(max(last_claim_number), 0) from sheet where id in (:ids)", nativeQuery = true)
+     long lastClaimNumberAmong(Collection<String> ids);
++
++    /** The last claim number given in the fiscal year on any of the sheets; 0 if none. */
++    @Query(value = "select coalesce(max(last_number), 0) from sheet_fiscal_number where sheet_id in (:ids)"
++            + " and fiscal_year = :year", nativeQuery = true)
++    long lastFiscalNumberAmong(Collection<String> ids, int year);
++
++    /** Keep the number as the last the sheet gave in the fiscal year. */
++    @Modifying
++    @Query(value = "merge into sheet_fiscal_number (sheet_id, fiscal_year, last_number) key (sheet_id, fiscal_year)"
++            + " values (:id, :year, :number)", nativeQuery = true)
++    void keepFiscalNumber(String id, int year, long number);
+ }
+diff --git a/src/main/java/net/officefloor/hq/app/sheet/SheetService.java b/src/main/java/net/officefloor/hq/app/sheet/SheetService.java
+index b97db0da8..920b3ef8d 100644
+--- a/src/main/java/net/officefloor/hq/app/sheet/SheetService.java
++++ b/src/main/java/net/officefloor/hq/app/sheet/SheetService.java
+@@ -80,6 +80,20 @@ public class SheetService {
+         return sheets.lastClaimNumberAmong(parents.treeOf(id));
+     }
+ 
++    /**
++     * Take the next claim number in the fiscal year on the sheet's tree: the next after the last given in that
++     * year on any sheet of the tree (its topmost sheet locked as for {@link #lastClaimNumberInTree}), kept as
++     * the sheet's last in that year.
++     */
++    @Transactional
++    public long nextFiscalNumberInTree(String id, int year) {
++        String root = parents.rootOf(id);
++        if (!root.equals(id)) sheets.findForUpdate(root);
++        long next = sheets.lastFiscalNumberAmong(parents.treeOf(id), year) + 1;
++        sheets.keepFiscalNumber(id, year, next);
++        return next;
++    }
++
+     /**
+      * Change the sheet's today; it has no audit line of its own, but a new today first audits a SNAPSHOT
+      * line per person, in list order, with their due-total on the day being left. With grace days set, the open periods
+diff --git a/src/main/resources/db/migration/V81__sheet_fiscal_number.sql b/src/main/resources/db/migration/V81__sheet_fiscal_number.sql
+new file mode 100644
+index 000000000..a2b0d9b75
+--- /dev/null
++++ b/src/main/resources/db/migration/V81__sheet_fiscal_number.sql
+@@ -0,0 +1,9 @@
++-- Sheet-wide numbering restarts each fiscal year: a claim opened is numbered FY<year>-<n>, the next in
++-- the fiscal year its due-by falls in (by the sheet's fiscal start month), shared across the sheet's
++-- tree. Each sheet keeps the last number it gave in each fiscal year; numbers already given stay.
++CREATE TABLE sheet_fiscal_number (
++    sheet_id    VARCHAR(100) NOT NULL,
++    fiscal_year INT          NOT NULL,
++    last_number BIGINT       NOT NULL,
++    PRIMARY KEY (sheet_id, fiscal_year)
++);
