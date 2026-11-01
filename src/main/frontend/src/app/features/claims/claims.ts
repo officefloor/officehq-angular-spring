@@ -167,7 +167,7 @@ function notEditable(status: ClaimStatus | undefined): string {
 }
 
 // One person's claims, newest first, with one form to add a claim or edit one, and buttons to
-// open, settle or void each claim, approve or reject (with a reason) a PENDING one, and a checkbox to select each for a bulk change.
+// open, settle or void each claim, approve or reject (with a reason) a PENDING one, move one to another person, and a checkbox to select each for a bulk change.
 @Component({
   selector: 'app-claims',
   imports: [ReactiveFormsModule],
@@ -216,6 +216,15 @@ function notEditable(status: ClaimStatus | undefined): string {
           <input [id]="fieldId('reject-' + c.id)" data-testid="claim-reject-reason" #rejectReason />
           <button type="button" data-testid="claim-reject" (click)="act(c, 'reject', rejectReason.value)"
                   [attr.aria-label]="'Reject claim of ' + c.amount + ' on ' + c.date">Reject</button>
+          <label [for]="fieldId('reassign-' + c.id)">Move to</label>
+          <select [id]="fieldId('reassign-' + c.id)" data-testid="claim-reassign-to" #reassignTo
+                  (change)="clearClaimError(c.id)">
+            @for (o of others(); track o.id) {
+              <option [value]="o.id">{{ o.name }}</option>
+            }
+          </select>
+          <button type="button" data-testid="claim-reassign" (click)="reassign(c, reassignTo.value)"
+                  [attr.aria-label]="'Move claim of ' + c.amount + ' on ' + c.date">Move</button>
           @if (editingId() === c.id) {
             <button type="button" data-testid="claim-cancel" (click)="cancel()">Cancel</button>
           } @else {
@@ -243,6 +252,10 @@ export class Claims {
   readonly periods = input.required<Period[]>();
   /** A claim added, edited or given a new status, as the store now holds it. */
   readonly saved = output<Claim>();
+  /** The other people on the sheet a claim may be moved to. */
+  readonly others = input.required<{ id: number; name: string }[]>();
+  /** A claim moved to another person, as the store now holds it. */
+  readonly moved = output<Claim>();
   /** The ids of the claims selected for a bulk change. */
   readonly selected = input.required<ReadonlySet<number>>();
   /** A claim's checkbox ticked or cleared. */
@@ -350,6 +363,41 @@ export class Claims {
           ? 'The user who opened a claim cannot approve it.'
           : 'Only a steward can approve or reject a PENDING claim.'
         : 'Could not change that claim.';
+      this.claimError.set({ id: c.id, message });
+    }
+  }
+
+  protected clearClaimError(id: number): void {
+    if (this.claimError()?.id === id) this.claimError.set(null);
+  }
+
+  /** A steward moves a DRAFT, OPEN or PENDING claim to another person; a SETTLED or VOID one cannot move. */
+  protected async reassign(c: Claim, to: string): Promise<void> {
+    this.claimError.set(null);
+    const sheet = this.session.sheetId();
+    if (!sheet) return;
+    if (to === '') {
+      this.claimError.set({ id: c.id, message: 'Choose another person to move the claim to.' });
+      return;
+    }
+    const url = `/api/sheets/${encodeURIComponent(sheet)}/claims/${c.id}/reassign`;
+    try {
+      const claim = await firstValueFrom(
+        this.http.post<Claim>(url, { personId: Number(to) }, { headers: this.headers() }));
+      if (this.session.sheetId() !== sheet) return;
+      if (this.editingId() === c.id) this.reset();
+      this.moved.emit(claim);
+    } catch (e) {
+      if (this.session.sheetId() !== sheet) return;
+      const message = e instanceof HttpErrorResponse && e.status === 423
+        ? CLOSED
+        : e instanceof HttpErrorResponse && e.status === 409
+        ? `A ${c.status} claim cannot be moved; only a DRAFT, OPEN or PENDING one can.`
+        : e instanceof HttpErrorResponse && e.status === 403
+        ? 'Only a steward can move a claim to another person.'
+        : e instanceof HttpErrorResponse && e.status === 422
+        ? RETIRED
+        : 'Could not move that claim.';
       this.claimError.set({ id: c.id, message });
     }
   }

@@ -28,9 +28,9 @@ public class ClaimBulkService {
 
     /** Open each selected claim that can be opened, numbering them in list order. */
     public Result open(String sheetId, String user, Set<Long> ids) {
-        List<Claim> selected = repository.findBySheetIdOrderByIdDesc(sheetId).stream()
+        List<Claim> selected = repository.findBySheetIdOrderByListedDesc(sheetId).stream()
                 .filter(c -> ids.contains(c.getId()))
-                .sorted(Comparator.comparing(Claim::getPersonId).thenComparing(Claim::getId, Comparator.reverseOrder()))
+                .sorted(Comparator.comparing(Claim::getPersonId).thenComparing(Claim::getListed, Comparator.reverseOrder()))
                 .toList();
         int done = 0;
         for (Claim claim : selected) {

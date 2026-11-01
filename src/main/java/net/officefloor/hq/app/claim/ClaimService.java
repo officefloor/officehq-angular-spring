@@ -63,7 +63,7 @@ public class ClaimService {
 
     @Transactional(readOnly = true)
     public List<Claim> list(String sheetId) {
-        return claims.findBySheetIdOrderByIdDesc(sheetId);
+        return claims.findBySheetIdOrderByListedDesc(sheetId);
     }
 
     @Transactional
@@ -180,6 +180,34 @@ public class ClaimService {
         claim.setStatus(ClaimStatus.OPEN);
         Claim saved = claims.saveAndFlush(claim);
         record("CLAIM_REJECTED", sheetId, user, person, saved, saved.getNumber(), " reason=" + reason);
+        rollup.recordChanges(sheetId, user, before);
+        return saved;
+    }
+
+    /**
+     * A steward moves a DRAFT, OPEN or PENDING claim to another person on the sheet. It keeps its number
+     * and date, loses any figure a statement bound it to (live again until its new person's next
+     * statement), and is listed as its new person's newest claim. A SETTLED or VOID claim cannot move,
+     * nor one dated inside a closed period, nor one dated after its new person's retirement date.
+     */
+    @Transactional
+    public Claim reassign(String sheetId, String user, Long id, Long toPersonId) {
+        // The snapshot locks the sheet first, so the claim is read once no other change is under way.
+        RollupService.Snapshot before = rollup.snapshot(sheetId);
+        Claim claim = claims.findByIdAndSheetId(id, sheetId).orElseThrow(ClaimNotFoundException::new);
+        ClaimStatus status = claim.getStatus();
+        if (status != ClaimStatus.DRAFT && !status.isOpen()) throw new ClaimStatusRefusedException();
+        if (settings.roleOf(sheetId, user) != Role.STEWARD) throw new ClaimNotStewardException();
+        Person from = people.findByIdAndSheetId(claim.getPersonId(), sheetId).orElseThrow(PersonNotFoundException::new);
+        Person to = people.findByIdAndSheetId(toPersonId, sheetId).orElseThrow(PersonNotFoundException::new);
+        if (from.getId().equals(to.getId())) throw new ClaimReassignRefusedException();
+        refuseIfClosed(sheetId, claim.getDate());
+        if (!to.mayClaimOn(claim.getDate())) throw new PersonRetiredException();
+        claim.unstate();
+        claim.moveTo(to.getId(), claims.nextListed());
+        Claim saved = claims.saveAndFlush(claim);
+        record("CLAIM_REASSIGNED", sheetId, user, to, saved, saved.getNumber(),
+                " from=" + from.getName() + " to=" + to.getName());
         rollup.recordChanges(sheetId, user, before);
         return saved;
     }

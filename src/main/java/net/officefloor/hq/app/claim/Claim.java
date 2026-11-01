@@ -30,6 +30,13 @@ public class Claim {
     @Column(name = "person_id", nullable = false)
     private Long personId;
 
+    /**
+     * Its place in its sheet's list, newest (highest) first: the next of claim_listed_seq, given by the
+     * store when added and again when moved to another person.
+     */
+    @Column(name = "listed", insertable = false)
+    private Long listed;
+
     @Column(name = "amount", nullable = false, precision = 14, scale = 2)
     private BigDecimal amount;
 
@@ -100,6 +107,14 @@ public class Claim {
     public String getSheetId() { return sheetId; }
 
     public Long getPersonId() { return personId; }
+
+    public Long getListed() { return listed; }
+
+    /** Move the claim to another person, listed as their newest at the given place in the list. */
+    public void moveTo(Long personId, long listed) {
+        this.personId = personId;
+        this.listed = listed;
+    }
 
     public BigDecimal getAmount() { return amount; }
 

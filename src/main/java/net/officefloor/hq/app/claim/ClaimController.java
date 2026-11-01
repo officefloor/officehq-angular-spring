@@ -68,6 +68,9 @@ public class ClaimController {
     /** Why a steward rejects a PENDING claim. */
     public record RejectRequest(@NotBlank @Size(max = 200) @Pattern(regexp = "\\S+( \\S+)*") String reason) {}
 
+    /** The person on the sheet a claim is moved to. */
+    public record ReassignRequest(@NotNull Long personId) {}
+
     /** The claims selected for a bulk change, by id. */
     public record BulkRequest(@NotNull @Size(max = 1000) Set<@NotNull Long> ids) {}
 
@@ -157,5 +160,14 @@ public class ClaimController {
             @RequestHeader("X-User") @NotBlank @Size(max = 100) String user,
             @RequestBody @Valid RejectRequest request) {
         return ClaimView.of(service.reject(sheetId, user, id, request.reason()));
+    }
+
+    @PostMapping("/claims/{id}/reassign")
+    public ClaimView reassign(
+            @PathVariable @Size(max = 100) @Pattern(regexp = "[A-Za-z0-9._-]+") String sheetId,
+            @PathVariable Long id,
+            @RequestHeader("X-User") @NotBlank @Size(max = 100) String user,
+            @RequestBody @Valid ReassignRequest request) {
+        return ClaimView.of(service.reassign(sheetId, user, id, request.personId()));
     }
 }

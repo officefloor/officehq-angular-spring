@@ -203,8 +203,8 @@ interface StatementTaken {
               </td>
               <td>
                 <app-claims [personId]="p.id" [personName]="p.name" [claims]="claimsOf(p.id)" [pctOn]="pctOnOf(p.id)"
-                            [periods]="periods()" [selected]="selectedIds()"
-                            (saved)="claimSaved($event)" (toggled)="claimToggled($event)" />
+                            [periods]="periods()" [selected]="selectedIds()" [others]="patronChoicesFor(p)"
+                            (saved)="claimSaved($event)" (moved)="claimMoved($event)" (toggled)="claimToggled($event)" />
               </td>
               <td>
                 <button type="button" [attr.data-testid]="'person-edit-' + p.id" (click)="edit(p)"
@@ -711,6 +711,11 @@ export class People {
     this.claims.update((list) =>
       list.some((c) => c.id === claim.id) ? list.map((c) => (c.id === claim.id ? claim : c)) : [claim, ...list],
     );
+  }
+
+  /** Put a claim moved to another person first, as their newest. */
+  protected claimMoved(claim: Claim): void {
+    this.claims.update((list) => [claim, ...list.filter((c) => c.id !== claim.id)]);
   }
 
   private reset(): void {
