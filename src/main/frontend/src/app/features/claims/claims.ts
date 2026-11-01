@@ -59,6 +59,15 @@ export interface Claim {
   lateEntry: boolean;
   /** The last sheet's today (yyyy-mm-dd) a reminder was written for it; null until reminded. */
   remindedOn: string | null;
+  /** Its comments, oldest first. */
+  comments: ClaimComment[];
+}
+
+/** A comment on a claim: who wrote it, the sheet's today (yyyy-mm-dd) when written, and its text. */
+export interface ClaimComment {
+  by: string;
+  date: string;
+  text: string;
 }
 
 /** A status a claim was given, by whom, on the sheet's today then, with its due then (null: none). */
@@ -310,6 +319,16 @@ function notEditable(status: ClaimStatus | undefined): string {
               <li data-testid="claim-log-line">{{ line.status }} by {{ line.by }} on {{ line.date }} due={{ line.due ?? na }}</li>
             }
           </ol>
+          <ol [attr.aria-label]="'Comments on claim of ' + c.amount + ' on ' + c.date">
+            @for (comment of c.comments; track $index) {
+              <li data-testid="claim-comments-line">{{ comment.by }} on {{ comment.date }}: {{ comment.text }}</li>
+            }
+          </ol>
+          <label [for]="fieldId('comment-' + c.id)">Comment</label>
+          <input [id]="fieldId('comment-' + c.id)" data-testid="claim-comment-text" #commentText
+                 (input)="clearClaimError(c.id)" />
+          <button type="button" data-testid="claim-comment-add" (click)="addComment(c, commentText)"
+                  [attr.aria-label]="'Comment on claim of ' + c.amount + ' on ' + c.date">Add comment</button>
           <button type="button" data-testid="claim-open" (click)="act(c, 'open')"
                   [attr.aria-label]="'Open claim of ' + c.amount + ' on ' + c.date">Open</button>
           <button type="button" data-testid="claim-settle" (click)="act(c, 'settle')"
@@ -631,6 +650,31 @@ export class Claims {
         : e instanceof HttpErrorResponse && e.status === 409
         ? `A ${c.status} claim cannot be given a proof.`
         : 'Could not add a proof to that claim.';
+      this.claimError.set({ id: c.id, message });
+    }
+  }
+
+  /** Comment on a claim; an empty comment is refused. */
+  protected async addComment(c: Claim, field: HTMLInputElement): Promise<void> {
+    this.claimError.set(null);
+    const sheet = this.session.sheetId();
+    if (!sheet) return;
+    const text = field.value.trim();
+    if (text === '') {
+      this.claimError.set({ id: c.id, message: 'Enter a comment.' });
+      return;
+    }
+    const url = `/api/sheets/${encodeURIComponent(sheet)}/claims/${c.id}/comments`;
+    try {
+      const claim = await firstValueFrom(this.http.post<Claim>(url, { text }, { headers: this.headers() }));
+      if (this.session.sheetId() !== sheet) return;
+      field.value = '';
+      this.saved.emit(claim);
+    } catch (e) {
+      if (this.session.sheetId() !== sheet) return;
+      const message = e instanceof HttpErrorResponse && e.status === 400
+        ? 'Enter a comment (at most 500 characters).'
+        : 'Could not comment on that claim.';
       this.claimError.set({ id: c.id, message });
     }
   }

@@ -155,6 +155,12 @@ public class Claim {
     @OrderColumn(name = "seq")
     private List<ClaimBinding> bindings = new ArrayList<>();
 
+    /** Its comments, oldest first. */
+    @ElementCollection(fetch = FetchType.EAGER)
+    @CollectionTable(name = "claim_comment", joinColumns = @JoinColumn(name = "claim_id"))
+    @OrderColumn(name = "seq")
+    private List<ClaimComment> comments = new ArrayList<>();
+
     protected Claim() {}
 
     public Claim(String sheetId, Long personId, BigDecimal amount, LocalDate date, String note, LocalDate dueBy) {
@@ -247,6 +253,13 @@ public class Claim {
     public ClaimStatus getStatus() { return status; }
 
     public void setStatus(ClaimStatus status) { this.status = status; }
+
+    public List<ClaimComment> getComments() { return Collections.unmodifiableList(comments); }
+
+    /** Add a comment written by the user on the date. */
+    public void comment(String by, LocalDate on, String text) {
+        comments.add(new ClaimComment(by, on, text));
+    }
 
     public List<ClaimLogEntry> getLog() { return Collections.unmodifiableList(log); }
 

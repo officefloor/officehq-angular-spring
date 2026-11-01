@@ -509,6 +509,20 @@ public class ClaimService {
         return saved;
     }
 
+    /** Comment on a claim: the comment is kept with the user and the sheet's today, in any status. */
+    @Transactional
+    public Claim comment(String sheetId, String user, Long id, String text) {
+        // The snapshot locks the sheet first, so the claim is read once no other change is under way.
+        RollupService.Snapshot before = rollup.snapshot(sheetId);
+        Claim claim = claims.findByIdAndSheetId(id, sheetId).orElseThrow(ClaimNotFoundException::new);
+        Person person = people.findByIdAndSheetId(claim.getPersonId(), sheetId).orElseThrow(PersonNotFoundException::new);
+        claim.comment(user.strip(), sheets.today(sheetId), text);
+        Claim saved = claims.saveAndFlush(claim);
+        record("COMMENT_ADDED", sheetId, user, person, saved, saved.getNumber(), " text=" + text);
+        rollup.recordChanges(sheetId, user, before);
+        return saved;
+    }
+
     /**
      * Remind an OPEN or PENDING claim: a REMIND line is written and the claim is reminded on the sheet's
      * today. Refused for a claim in any other status, or one already reminded on the sheet's today.

@@ -36,13 +36,13 @@ public class ClaimController {
      * when bound by its person's last statement, to the due it had then (null when it had none). A
      * correction has the number of the claim it corrects (null for any other claim). Its status log
      * is oldest first. Locked by the user whose open editor holds it (null when none). A late entry
-     * when added while its period was soft-closed. Reminded on the last day a reminder was written (null when none). Its external reference is null when it has none. Its tags are sorted (empty when none). Its void reason is null unless voided with one.
+     * when added while its period was soft-closed. Reminded on the last day a reminder was written (null when none). Its external reference is null when it has none. Its tags are sorted (empty when none). Its void reason is null unless voided with one. Its comments are oldest first.
      */
     public record ClaimView(Long id, Long personId, String amount, LocalDate date, String note, ClaimStatus status,
             String number, String settledDue, String openedBy, boolean stated, String statedDue, String corrects,
             LocalDate dueBy, List<LogLineView> log, LocalDate deferredUntil,
             int proofs, String splitFrom, String lockedBy, boolean lateEntry, LocalDate remindedOn,
-            String ref, List<String> tags, String voidReason) {
+            String ref, List<String> tags, String voidReason, List<CommentView> comments) {
         public static ClaimView of(Claim claim) {
             return new ClaimView(claim.getId(), claim.getPersonId(), claim.getAmount().toPlainString(),
                     claim.getDate(), claim.getNote(), claim.getStatus(), claim.getNumber(),
@@ -52,7 +52,8 @@ public class ClaimController {
                     claim.getCorrects(), claim.getDueBy(), claim.getLog().stream().map(LogLineView::of).toList(),
                     claim.getDeferredUntil(), claim.getProofs(), claim.getSplitFrom(),
                     claim.getLockedBy(), claim.isLateEntry(), claim.getRemindedOn(),
-                    claim.getRef(), claim.getTags(), claim.getVoidReason());
+                    claim.getRef(), claim.getTags(), claim.getVoidReason(),
+                    claim.getComments().stream().map(CommentView::of).toList());
         }
     }
 
@@ -61,6 +62,13 @@ public class ClaimController {
         static LogLineView of(ClaimLogEntry entry) {
             return new LogLineView(entry.getStatus(), entry.getBy(), entry.getDate(),
                     entry.getDue() == null ? null : entry.getDue().setScale(2).toPlainString());
+        }
+    }
+
+    /** A comment on a claim: who wrote it, the sheet's today then, and its text. */
+    public record CommentView(String by, LocalDate date, String text) {
+        static CommentView of(ClaimComment comment) {
+            return new CommentView(comment.getBy(), comment.getDate(), comment.getText());
         }
     }
 
@@ -99,6 +107,9 @@ public class ClaimController {
 
     /** Why a steward rejects a PENDING claim. */
     public record RejectRequest(@NotBlank @Size(max = 200) @Pattern(regexp = "\\S+( \\S+)*") String reason) {}
+
+    /** A comment's text: not blank. */
+    public record CommentRequest(@NotBlank @Size(max = 500) String text) {}
 
     /** The date an OPEN claim is deferred until: after the sheet's today. */
     public record DeferRequest(@NotNull LocalDate until) {}
@@ -311,6 +322,15 @@ public class ClaimController {
             @PathVariable Long id,
             @RequestHeader("X-User") @NotBlank @Size(max = 100) String user) {
         return ClaimView.of(service.addProof(sheetId, user, id));
+    }
+
+    @PostMapping("/claims/{id}/comments")
+    public ClaimView comment(
+            @PathVariable @Size(max = 100) @Pattern(regexp = "[A-Za-z0-9._-]+") String sheetId,
+            @PathVariable Long id,
+            @RequestHeader("X-User") @NotBlank @Size(max = 100) String user,
+            @RequestBody @Valid CommentRequest request) {
+        return ClaimView.of(service.comment(sheetId, user, id, request.text().strip()));
     }
 
     @PostMapping("/claims/{id}/remind")
