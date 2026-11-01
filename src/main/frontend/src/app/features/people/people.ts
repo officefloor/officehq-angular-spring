@@ -384,9 +384,17 @@ export class People {
   });
   /** Each person's holds, by id, for those with any. */
   private readonly holdsById = computed(() => new Map(this.people().filter((p) => p.held).map((p) => [p.id, p.holds])));
-  /** Whether the claim counts in the live totals: OPEN, PENDING or SETTLED, less open ones dated within a hold and not bound, and deferred ones. */
-  private readonly counts = (c: Claim): boolean =>
-    countsFor(c, (this.holdsById().get(c.personId) ?? []).some((h) => holdContains(h, c.date)), this.session.today());
+  /** The sheet's today, those whose retirement date it has reached, by id. */
+  private readonly retiredTodayIds = computed(() => {
+    const today = this.session.today();
+    return new Set(this.people().filter((p) => today !== null && p.retiredFrom !== null && p.retiredFrom <= today).map((p) => p.id));
+  });
+  /** Whether the claim's person keeps it out of the live totals while open: dated within a hold of theirs, or they are retired on the sheet's today. */
+  private keptOut(c: Claim): boolean {
+    return this.retiredTodayIds().has(c.personId) || (this.holdsById().get(c.personId) ?? []).some((h) => holdContains(h, c.date));
+  }
+  /** Whether the claim counts in the live totals: OPEN, PENDING or SETTLED, less open ones kept out by a hold or retirement and not bound, and deferred ones. */
+  private readonly counts = (c: Claim): boolean => countsFor(c, this.keptOut(c), this.session.today());
   protected readonly claimedTotal = computed(() => money(this.claims().filter(this.counts).reduce((sum, c) => sum + cents(c.amount), 0)));
   /** The sheet's rates, each for a grade from its from-date. */
   protected readonly rates = signal<Rate[]>([]);
@@ -403,8 +411,7 @@ export class People {
       const period = periodOn(this.periods(), c.date);
       const pctOn = this.pctOnByPerson().get(c.personId);
       if (period === null || pctOn === undefined) continue;
-      const held = (this.holdsById().get(c.personId) ?? []).some((h) => holdContains(h, c.date));
-      if (!countsAt(c, period.to, held, today)) continue;
+      if (!countsAt(c, period.to, this.keptOut(c), today)) continue;
       const theirs = by.get(c.personId) ?? new Map<number, number>();
       theirs.set(period.id, (theirs.get(period.id) ?? 0) + (claimDueCents(c, pctOn, this.session.floorCentsOn, this.session.late(), roundsOn(c, this.claimsOf(c.personId))) ?? 0));
       by.set(c.personId, theirs);

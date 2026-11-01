@@ -26,7 +26,8 @@ import net.officefloor.hq.app.claim.ClaimStatus;
  * A person on a sheet, with a name and a grade (A, B or C). The name is kept without surrounding
  * spaces and is unique on the sheet without regard to case (by its {@link #keyOf key}). A person
  * given a retirement date is retired at once, whatever the date; none of their claims may be dated
- * after it. A person may have several holds over time, each from a from-date to an optional to-date. The grade is dated: the first one
+ * after it, and from the day the sheet's today reaches it their open claims, unless bound by a
+ * statement, leave the live totals as a hold's do. A person may have several holds over time, each from a from-date to an optional to-date. The grade is dated: the first one
  * given is in force from the beginning of time, and each later one from its from-date. A person may have
  * their own terms in days, which their claims' due-by takes ahead of their grade's and the sheet's.
  */
@@ -139,24 +140,31 @@ public class Person {
     /** Whether the date falls within any of their holds. */
     public boolean heldOn(LocalDate date) { return holds.stream().anyMatch(h -> h.contains(date)); }
 
+    /** Whether their retirement date is reached on the date (the date on or after it). */
+    public boolean retiredOn(LocalDate date) { return retiredFrom != null && date != null && !date.isBefore(retiredFrom); }
+
+    /** Whether an open claim of theirs is kept out of the live totals: dated within a hold, or retired by the sheet's today. */
+    private boolean keptOut(Claim claim, LocalDate today) { return heldOn(claim.getDate()) || retiredOn(today); }
+
     /**
      * Whether a claim of theirs counts in the live totals: it counts by its status, unless it is open
-     * (OPEN or PENDING), dated within a hold and not bound by a statement, or deferred on the sheet's today.
+     * (OPEN or PENDING), dated within a hold or theirs once their retirement date is reached on the
+     * sheet's today, and not bound by a statement, or deferred on the sheet's today.
      */
     public boolean counts(Claim claim, LocalDate today) {
         if (!claim.getStatus().counts() || claim.isDeferredOn(today)) return false;
-        return !claim.getStatus().isOpen() || claim.isBound() || !heldOn(claim.getDate());
+        return !claim.getStatus().isOpen() || claim.isBound() || !keptOut(claim, today);
     }
 
     /**
      * Whether a claim of theirs counts for a period ending on the date: by the status it had at the end
-     * of that date, less a deferred one and one still open now (OPEN or PENDING) dated within a hold and
-     * not bound, as the live rules say: a claim since settled or voided is no longer kept out by a hold.
+     * of that date, less a deferred one and one still open now (OPEN or PENDING) dated within a hold, or
+     * theirs once retired on the sheet's today, and not bound, as the live rules say: a claim since settled or voided is no longer kept out by a hold.
      */
     public boolean countsAt(Claim claim, LocalDate end, LocalDate today) {
         ClaimStatus at = claim.statusAt(end);
         if (at == null || !at.counts() || claim.isDeferredOn(today)) return false;
-        return !claim.getStatus().isOpen() || claim.isBound() || !heldOn(claim.getDate());
+        return !claim.getStatus().isOpen() || claim.isBound() || !keptOut(claim, today);
     }
 
     /**

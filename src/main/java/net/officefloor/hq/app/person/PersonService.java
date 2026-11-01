@@ -132,11 +132,14 @@ public class PersonService {
         // Lock the sheet so no claim is added or edited for them meanwhile against the old date.
         LocalDate today = sheets.findForUpdate(sheetId).orElseThrow(SheetNotFoundException::new).getToday();
         Person person = people.findByIdAndSheetId(id, sheetId).orElseThrow(PersonNotFoundException::new);
+        // Once the sheet's today reaches the date, their open claims leave the totals.
+        RollupService.Snapshot before = rollup.snapshot(sheetId);
         LocalDate on = from != null ? from : today;
         person.setRetiredFrom(on);
         Person saved = saveUnique(person);
         audit.recordOnCommit("PERSON_RETIRED sheet=" + sheetId + " by=" + user.strip()
                 + " name=" + saved.getName() + " from=" + on);
+        rollup.recordChanges(sheetId, user, before);
         return saved;
     }
 
