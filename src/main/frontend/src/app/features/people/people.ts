@@ -60,6 +60,8 @@ interface Person {
   aliases: string[];
   /** Whether they have an open claim (OPEN or PENDING) that counts, dated within the 30 days up to and including the sheet's today. */
   active: boolean;
+  /** Whether their name or an alias is, as names are compared, a name or alias on another sheet of the sheet's tree. */
+  clashing: boolean;
 }
 
 /** The person's grade in force on the date: the one with the latest from-date on or before it. */
@@ -151,6 +153,9 @@ interface StatementTaken {
 // the sheet has it; a claim's due-by is fixed when it is added from them, else their grade's, else the sheet's.
 // A person may have aliases, added one at a time and shown sorted as names are compared; an alias may not
 // be any name or alias on the sheet, and the quick-add bar and the paste box find a person by one too.
+// No name or alias may be used that another sheet of the sheet's tree (the sheets reached through
+// parents and children) already uses as a name or alias; a person who already clashes so shows
+// clashing yes, and each edit of them is refused until it renames them to a name that does not clash.
 // Each person can name other people on the sheet as their patrons, one at a time (not themselves, nor
 // the same person twice). The patrons carry shares: 100.00 split equally in the order named, each rounded
 // half to even to two decimals, the remainder going to the first named. The row shows each patron as
@@ -293,7 +298,7 @@ function trimmedSum(figures: number[]): number {
       </form>
       <table>
         <thead>
-          <tr><th scope="col"><span class="visually-hidden">Select</span></th><th scope="col">Name</th><th scope="col">Grade</th><th scope="col">Terms</th><th scope="col">Contact</th><th scope="col">Aliases</th><th scope="col">Claimed</th><th scope="col">Due total</th><th scope="col">Excess</th><th scope="col">Settled total</th><th scope="col">Open total</th><th scope="col">Periods</th><th scope="col">Statements</th><th scope="col">Retired</th><th scope="col">Hold</th><th scope="col">Watched</th><th scope="col">Active</th><th scope="col">Overdue</th><th scope="col">Aged</th><th scope="col">Patrons</th><th scope="col">Claims</th><th scope="col"><span class="visually-hidden">Actions</span></th></tr>
+          <tr><th scope="col"><span class="visually-hidden">Select</span></th><th scope="col">Name</th><th scope="col">Grade</th><th scope="col">Terms</th><th scope="col">Contact</th><th scope="col">Aliases</th><th scope="col">Claimed</th><th scope="col">Due total</th><th scope="col">Excess</th><th scope="col">Settled total</th><th scope="col">Open total</th><th scope="col">Periods</th><th scope="col">Statements</th><th scope="col">Retired</th><th scope="col">Hold</th><th scope="col">Watched</th><th scope="col">Active</th><th scope="col">Clashing</th><th scope="col">Overdue</th><th scope="col">Aged</th><th scope="col">Patrons</th><th scope="col">Claims</th><th scope="col"><span class="visually-hidden">Actions</span></th></tr>
         </thead>
         <tbody>
           @for (p of listed(); track p.id) {
@@ -371,6 +376,7 @@ function trimmedSum(figures: number[]): number {
                         [attr.aria-label]="(p.watched ? 'Stop watching ' : 'Watch ') + p.name">{{ p.watched ? 'Unwatch' : 'Watch' }}</button>
               </td>
               <td data-testid="person-active">{{ p.active ? 'yes' : 'no' }}</td>
+              <td data-testid="person-clashing">{{ p.clashing ? 'yes' : 'no' }}</td>
               <td>
                 <span data-testid="person-overdue-count">{{ overdueOf(p).count }}</span>
                 <span>Total <span data-testid="person-overdue-total">{{ money(overdueOf(p).cents) }}</span></span>

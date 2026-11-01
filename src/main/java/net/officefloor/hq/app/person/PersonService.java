@@ -24,7 +24,9 @@ import net.officefloor.hq.app.setting.Role;
 import net.officefloor.hq.app.setting.SettingService;
 import net.officefloor.hq.app.sheet.Sheet;
 import net.officefloor.hq.app.sheet.SheetNotFoundException;
+import net.officefloor.hq.app.sheet.SheetParentRepository;
 import net.officefloor.hq.app.sheet.SheetRepository;
+import net.officefloor.hq.app.sheet.SheetService;
 import net.officefloor.hq.app.statement.StatementRepository;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.orm.ObjectOptimisticLockingFailureException;
@@ -46,6 +48,10 @@ import org.springframework.transaction.annotation.Transactional;
  * A person may have aliases, added one at a time; an alias shares the names' uniqueness: it may not be,
  * as names are compared, any name or alias on the sheet, and no name may be an alias on the sheet. The
  * sheet is locked while a name or alias is checked and written, so two users cannot take one at once.
+ * Nor may a name or alias be used, as names are compared, when another sheet of the sheet's tree
+ * ({@link #treeOf}) already uses it as a name or alias. People who already clash so are kept, shown as
+ * clashing ({@link #clashingIds}), and each edit of them is refused until it renames them to a name that
+ * does not clash, leaving them no alias that does.
  * A steward can merge a person into another ({@link #merge}), and transfer one to another sheet
  * ({@link #transfer}).
  */
@@ -63,12 +69,16 @@ public class PersonService {
     private final PoolMemberRepository poolMembers;
     private final PeriodRepository periods;
     private final ClaimService claimService;
+    private final SheetParentRepository parents;
+    private final SheetService sheetService;
     private final Audit audit;
 
     public PersonService(PersonRepository people, PersonPatronRepository patrons,
             PersonWatchRepository watches, SheetRepository sheets, ClaimRepository claims, RollupService rollup,
             SettingService settings, StatementRepository statements, PoolMemberRepository poolMembers,
-            PeriodRepository periods, ClaimService claimService, Audit audit) {
+            PeriodRepository periods, ClaimService claimService, SheetParentRepository parents, SheetService sheetService, Audit audit) {
+        this.parents = parents;
+        this.sheetService = sheetService;
         this.claimService = claimService;
         this.statements = statements;
         this.poolMembers = poolMembers;
@@ -123,6 +133,7 @@ public class PersonService {
     public Person add(String sheetId, String user, String name, String grade, Integer terms, String contact) {
         if (sheets.findForUpdate(sheetId).isEmpty()) throw new SheetNotFoundException();
         requireUnused(sheetId, name, null);
+        requireUnusedInTree(sheetId, name);
         String key = Person.contactOf(contact);
         requireContactUnused(sheetId, key, null);
         RollupService.Snapshot before = rollup.snapshot(sheetId);
@@ -143,6 +154,8 @@ public class PersonService {
         if (person.getVersion() != version) throw new PersonVersionConflictException();
         sheets.findForUpdate(sheetId).orElseThrow(SheetNotFoundException::new);
         requireUnused(sheetId, name, id);
+        requireUnusedInTree(sheetId, name);
+        for (String alias : person.getAliases()) requireUnusedInTree(sheetId, alias);
         String key = Person.contactOf(contact);
         requireContactUnused(sheetId, key, id);
         RollupService.Snapshot before = rollup.snapshot(sheetId);
@@ -232,6 +245,7 @@ public class PersonService {
         if (alias.isBlank() || people.findByNameOrAlias(sheetId, alias).isPresent()) {
             throw new DuplicatePersonNameException();
         }
+        requireUnusedInTree(sheetId, alias);
         person.addAlias(alias);
         Person saved = saveUnique(person);
         audit.recordOnCommit("PERSON_ALIAS_ADDED sheet=" + sheetId + " by=" + user.strip()
@@ -380,7 +394,8 @@ public class PersonService {
 
     /**
      * A steward transfers the person to another sheet by its id; not a retired person, not to this sheet
-     * nor to an archived one, and not when their name, an alias or their contact is, as each is compared,
+     * nor to an archived one (an id never used starts that sheet, as loading it would; a refused transfer
+     * leaves it unstarted), and not when their name, an alias or their contact is, as each is compared,
      * already on the other sheet. They arrive with every grade (and its from-date), their terms, contact,
      * aliases and holds, and their claims ({@link ClaimService#receive}); their statements, patron links
      * either way, pool memberships and watchers are dropped, and they leave this sheet. Each sheet audits
@@ -389,6 +404,7 @@ public class PersonService {
     @Transactional
     public void transfer(String sheetId, String user, Long id, String toSheetId) {
         if (sheetId.equals(toSheetId)) throw new PersonTransferRefusedException();
+        if (sheets.existsById(sheetId)) sheetService.load(toSheetId, user.strip());
         // lock both sheets, always in the same order, so two transfers between them cannot deadlock
         boolean thisFirst = sheetId.compareTo(toSheetId) < 0;
         Sheet first = sheets.findForUpdate(thisFirst ? sheetId : toSheetId).orElse(null);
@@ -489,6 +505,60 @@ public class PersonService {
                 .ifPresent(other -> { throw new DuplicatePersonNameException(); });
         if (people.findBySheetIdAndAliasKey(sheetId, Person.keyOf(name)).isPresent()) {
             throw new DuplicatePersonNameException();
+        }
+    }
+
+    /**
+     * The other sheets of the sheet's tree: its topmost ancestor and every descendant of that, each once,
+     * never the sheet itself.
+     */
+    @Transactional(readOnly = true)
+    public List<String> treeOf(String sheetId) {
+        String root = sheetId;
+        Set<String> seen = new HashSet<>(Set.of(sheetId));
+        for (String at = parents.parentOf(sheetId); at != null && seen.add(at); at = parents.parentOf(at)) root = at;
+        List<String> tree = new ArrayList<>();
+        if (!root.equals(sheetId)) tree.add(root);
+        for (String descendant : parents.descendantsOf(root)) {
+            if (!descendant.equals(sheetId) && !tree.contains(descendant)) tree.add(descendant);
+        }
+        return tree;
+    }
+
+    /** The ids of the sheet's people whose name or an alias another sheet of its tree uses as a name or alias. */
+    @Transactional(readOnly = true)
+    public Set<Long> clashingIds(String sheetId) {
+        Set<String> used = keysUsedIn(treeOf(sheetId));
+        Set<Long> ids = new HashSet<>();
+        for (Person person : people.findBySheetIdOrderByIdAsc(sheetId)) {
+            if (clashes(person, used)) ids.add(person.getId());
+        }
+        return ids;
+    }
+
+    /** Whether the person's name or an alias another sheet of their sheet's tree uses as a name or alias. */
+    @Transactional(readOnly = true)
+    public boolean isClashing(Person person) {
+        return clashes(person, keysUsedIn(treeOf(person.getSheetId())));
+    }
+
+    private static boolean clashes(Person person, Set<String> used) {
+        return person.namesAndAliases().stream().map(Person::keyOf).anyMatch(used::contains);
+    }
+
+    private Set<String> keysUsedIn(List<String> sheetIds) {
+        Set<String> keys = new HashSet<>();
+        for (String other : sheetIds) {
+            for (Person person : people.findBySheetIdOrderByIdAsc(other)) {
+                for (String name : person.namesAndAliases()) keys.add(Person.keyOf(name));
+            }
+        }
+        return keys;
+    }
+
+    private void requireUnusedInTree(String sheetId, String name) {
+        for (String other : treeOf(sheetId)) {
+            if (people.findByNameOrAlias(other, name).isPresent()) throw new DuplicatePersonNameException();
         }
     }
 
