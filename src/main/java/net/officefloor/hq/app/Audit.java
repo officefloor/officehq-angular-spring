@@ -6,6 +6,7 @@ import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.StandardOpenOption;
+import java.util.List;
 import java.util.Set;
 import net.officefloor.hq.app.setting.SettingService;
 import org.springframework.beans.factory.ObjectProvider;
@@ -85,6 +86,15 @@ public class Audit {
         if (sheetId.isEmpty() || user.isEmpty()) return "";
         String delegator = settings.getObject().actingFor(sheetId, user);
         return delegator == null ? "" : " for=" + delegator;
+    }
+
+    /** Every record the file holds, oldest first; none when there is no file yet. */
+    public synchronized List<String> lines() {
+        try {
+            return Files.exists(file) ? Files.readAllLines(file, StandardCharsets.UTF_8) : List.of();
+        } catch (IOException e) {
+            throw new UncheckedIOException(e);
+        }
     }
 
     /** Truncate the audit file. */
