@@ -1,0 +1,168 @@
+diff --git a/src/main/frontend/src/app/features/periods/periods.ts b/src/main/frontend/src/app/features/periods/periods.ts
+index d050500ff..10ff24ad6 100644
+--- a/src/main/frontend/src/app/features/periods/periods.ts
++++ b/src/main/frontend/src/app/features/periods/periods.ts
+@@ -30,7 +30,7 @@ export function closedOn(periods: Period[], date: string): boolean {
+ }
+ 
+ // The sheet's periods, with one form to add one, each period's due-total and whether it is
+-// closed, and a button to close each and to reopen each (by the roles the sheet's permission matrix allows).
++// closed, a form to generate one per month over a date range, and a button to close each and to reopen each (by the roles the sheet's permission matrix allows).
+ @Component({
+   selector: 'app-periods',
+   imports: [ReactiveFormsModule],
+@@ -49,6 +49,19 @@ export function closedOn(periods: Period[], date: string): boolean {
+           <p role="alert" class="error" data-testid="period-form-error">{{ error() }}</p>
+         }
+       </form>
++      <form [formGroup]="generateForm" (ngSubmit)="generate()" aria-label="Generate monthly periods">
++        <label for="period-generate-from">From</label>
++        <input id="period-generate-from" type="date" data-testid="period-generate-from" formControlName="from" />
++        <label for="period-generate-to">To</label>
++        <input id="period-generate-to" type="date" data-testid="period-generate-to" formControlName="to" />
++        <button type="submit" data-testid="period-generate">Generate monthly periods</button>
++        @if (generated() !== null) {
++          <output data-testid="period-generated" aria-live="polite">{{ generated() }}</output>
++        }
++        @if (generateError()) {
++          <p role="alert" class="error" data-testid="period-generate-error">{{ generateError() }}</p>
++        }
++      </form>
+       <table>
+         <thead>
+           <tr><th scope="col">Name</th><th scope="col">From</th><th scope="col">To</th><th scope="col">Due total</th><th scope="col">Closed</th><th scope="col"><span class="visually-hidden">Actions</span></th></tr>
+@@ -99,8 +112,55 @@ export class Periods {
+     to: new FormControl('', { nonNullable: true }),
+   });
+ 
++  protected readonly generateError = signal('');
++  /** How many periods the last generate made; null while one runs or before any. */
++  protected readonly generated = signal<number | null>(null);
++  private generating = false;
++  protected readonly generateForm = new FormGroup({
++    from: new FormControl('', { nonNullable: true }),
++    to: new FormControl('', { nonNullable: true }),
++  });
++
+   constructor() {
+     this.form.valueChanges.subscribe(() => this.error.set(''));
++    this.generateForm.valueChanges.subscribe(() => this.generateError.set(''));
++  }
++
++  /** Make a period for each month from the from-date's to the to-date's, leaving out taken or overlapped months. */
++  protected async generate(): Promise<void> {
++    if (this.generating) return;
++    this.generateError.set('');
++    this.generated.set(null);
++    const sheet = this.session.sheetId();
++    if (!sheet) return;
++    const raw = this.generateForm.getRawValue();
++    const today = this.session.today() ?? '';
++    const from = raw.from.trim() || today;
++    const to = raw.to.trim() || today;
++    if (!/^\d{4}-\d{2}-\d{2}$/.test(from) || !/^\d{4}-\d{2}-\d{2}$/.test(to)) {
++      this.generateError.set('Enter a from and a to date.');
++      return;
++    }
++    if (to < from) {
++      this.generateError.set('The to date cannot be before the from date.');
++      return;
++    }
++    this.generating = true;
++    try {
++      const made = await firstValueFrom(
++        this.http.post<Period[]>(`/api/sheets/${encodeURIComponent(sheet)}/periods/generate`, { from, to }, {
++          headers: { 'X-User': this.session.user() ?? '' },
++        }),
++      );
++      if (this.session.sheetId() !== sheet) return;
++      for (const period of made) this.saved.emit(period);
++      this.generated.set(made.length);
++    } catch {
++      if (this.session.sheetId() !== sheet) return;
++      this.generateError.set('Could not generate those periods.');
++    } finally {
++      this.generating = false;
++    }
+   }
+ 
+   /** Close a period, fixing its due-total; a closed one cannot be closed again. */
+diff --git a/src/main/java/net/officefloor/hq/app/period/PeriodController.java b/src/main/java/net/officefloor/hq/app/period/PeriodController.java
+index f0a7263a1..4205ef387 100644
+--- a/src/main/java/net/officefloor/hq/app/period/PeriodController.java
++++ b/src/main/java/net/officefloor/hq/app/period/PeriodController.java
+@@ -45,6 +45,9 @@ public class PeriodController {
+             @NotNull LocalDate from,
+             @NotNull LocalDate to) {}
+ 
++    /** The first and last dates whose months get a period each; blank takes the sheet's today. */
++    public record GenerateRequest(LocalDate from, LocalDate to) {}
++
+     private final PeriodService service;
+ 
+     public PeriodController(PeriodService service) {
+@@ -66,6 +69,15 @@ public class PeriodController {
+         return PeriodView.of(service.add(sheetId, user, request.name(), request.from(), request.to()));
+     }
+ 
++    /** Make a period for each month from the from-date's to the to-date's: those made, earliest first. */
++    @PostMapping("/generate")
++    public List<PeriodView> generate(
++            @PathVariable @Size(max = 100) @Pattern(regexp = "[A-Za-z0-9._-]+") String sheetId,
++            @RequestHeader("X-User") @NotBlank @Size(max = 100) String user,
++            @RequestBody GenerateRequest request) {
++        return service.generate(sheetId, user, request.from(), request.to()).stream().map(PeriodView::of).toList();
++    }
++
+     @PostMapping("/{id}/close")
+     public PeriodView close(
+             @PathVariable @Size(max = 100) @Pattern(regexp = "[A-Za-z0-9._-]+") String sheetId,
+diff --git a/src/main/java/net/officefloor/hq/app/period/PeriodService.java b/src/main/java/net/officefloor/hq/app/period/PeriodService.java
+index 6162da4bb..10ff4a1db 100644
+--- a/src/main/java/net/officefloor/hq/app/period/PeriodService.java
++++ b/src/main/java/net/officefloor/hq/app/period/PeriodService.java
+@@ -2,6 +2,8 @@ package net.officefloor.hq.app.period;
+ 
+ import java.math.BigDecimal;
+ import java.time.LocalDate;
++import java.time.YearMonth;
++import java.util.ArrayList;
+ import java.util.Comparator;
+ import java.util.LinkedHashMap;
+ import java.util.List;
+@@ -68,6 +70,35 @@ public class PeriodService {
+         return saved;
+     }
+ 
++    /**
++     * Make one period per calendar month from the from-date's month to the to-date's month, each from
++     * the first to the last day of its month and named yyyy-mm. A month whose name is already a period,
++     * or whose days overlap one on the sheet, is left out; the others are still made. A blank date
++     * takes the sheet's today.
++     */
++    @Transactional
++    public List<Period> generate(String sheetId, String user, LocalDate fromOrNull, LocalDate toOrNull) {
++        // Lock the sheet so two users adding periods at once cannot overlap or share a name.
++        LocalDate today = sheets.findForUpdate(sheetId).orElseThrow(SheetNotFoundException::new).getToday();
++        LocalDate from = fromOrNull == null ? today : fromOrNull;
++        LocalDate to = toOrNull == null ? today : toOrNull;
++        if (to.isBefore(from)) throw new PeriodDatesException();
++        List<Period> existing = new ArrayList<>(periods.findBySheetIdOrderByFromDateAsc(sheetId));
++        List<Period> made = new ArrayList<>();
++        for (YearMonth month = YearMonth.from(from); !month.isAfter(YearMonth.from(to)); month = month.plusMonths(1)) {
++            String name = month.toString();
++            LocalDate first = month.atDay(1);
++            LocalDate last = month.atEndOfMonth();
++            if (existing.stream().anyMatch(p -> p.getName().equals(name) || p.overlaps(first, last))) continue;
++            Period saved = periods.saveAndFlush(new Period(sheetId, name, first, last));
++            existing.add(saved);
++            made.add(saved);
++            audit.recordOnCommit("PERIOD_ADDED sheet=" + sheetId + " by=" + user.strip()
++                    + " period=" + saved.getName() + " from=" + saved.getFromDate() + " to=" + saved.getToDate());
++        }
++        return made;
++    }
++
+     @Transactional
+     public Period close(String sheetId, String user, Long id) {
+         // Lock the sheet so no claim in the period changes while its due-total is fixed.
