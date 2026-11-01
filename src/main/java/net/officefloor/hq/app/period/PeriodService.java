@@ -124,8 +124,8 @@ public class PeriodService {
 
     /** Roll the fiscal year starting in the given calendar year over; only a steward may, and it is refused when the
      *  sheet has no period in that fiscal year. The next fiscal year's twelve periods are generated exactly as
-     *  {@link #generateFiscalYear} does, and each person's open figure at the end of the old year's last period is
-     *  added to their opening balance for the new year's first period. Returns the periods made, in month order. */
+     *  {@link #generateFiscalYear} does, and each person's open figure at the end of the old year's last period, when not
+     *  0.00, is added to their opening balance for the new year's first period. Returns the periods made, in month order. */
     @Transactional
     public List<Period> rollover(String sheetId, String user, int year) {
         sheets.load(sheetId, user);
@@ -147,6 +147,9 @@ public class PeriodService {
                         "The next fiscal year has no period to carry into"));
         for (Person person : people.findBySheetIdOrderByPositionAscIdAsc(sheetId)) {
             BigDecimal amount = open.getOrDefault(person.getId(), BigDecimal.ZERO.setScale(2));
+            if (amount.signum() == 0) {
+                continue;
+            }
             first.addOpening(person.getId(), amount);
             audit.recordChangeOnCommit(sheetId, user, "OPENING_SET sheet=" + sheetId + " by=" + user + " name="
                     + person.getName() + " period=" + first.getName() + " amount=" + amount.toPlainString());

@@ -438,7 +438,7 @@ public class Claim {
         return splitFrom;
     }
 
-    /** Make the claim OPEN as one split off another: numbered, opened by this user and naming the claim it was
+    /** Make the claim OPEN as one split off another: with this number (none until settled), opened by this user and naming the claim it was
      *  split from. */
     public void openAsSplit(String number, String openedBy, String splitFrom) {
         this.status = ClaimStatus.OPEN;
