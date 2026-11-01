@@ -124,7 +124,7 @@ public class Rollup {
     }
 
     /** Each person's score on the sheet's today as the store holds it now, by id in list order, as the screen shows
-     *  it: the dues of their SETTLED claims that count, less 500.00 for each of their overdue claims that count,
+     *  it: the dues of their SETTLED claims that count and correct nothing, less 500.00 for each of their overdue claims that count,
      *  divided by 100 and rounded half to even to a whole number. */
     public Map<Long, PersonScore> scoresOf(String sheetId) {
         Sheet sheet = sheets.findById(sheetId).orElse(null);
@@ -138,7 +138,7 @@ public class Rollup {
                             && !c.isDeferredOn(today))
                     .toList();
             BigDecimal settled = counting.stream()
-                    .filter(c -> c.getStatus() == ClaimStatus.SETTLED)
+                    .filter(c -> c.getStatus() == ClaimStatus.SETTLED && c.getCorrects() == null)
                     .map(c -> dueOf(c, person.gradeOn(c.getDate()), sheetRates, sheet, sheetClaims))
                     .filter(Objects::nonNull)
                     .reduce(BigDecimal.ZERO.setScale(2), BigDecimal::add);
