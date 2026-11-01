@@ -207,6 +207,15 @@ public class Person {
         grades.add(new GradeFrom(from, grade));
     }
 
+    /** Every grade recorded as {@code from} becomes {@code into}, keeping its from-date. */
+    public void regrade(String from, String into) {
+        List<GradeFrom> regraded = grades.stream()
+                .map(g -> from.equals(g.getGrade()) ? new GradeFrom(g.getFromDate(), into) : g)
+                .toList();
+        grades.clear();
+        grades.addAll(regraded);
+    }
+
     public Integer getTerms() {
         return terms;
     }

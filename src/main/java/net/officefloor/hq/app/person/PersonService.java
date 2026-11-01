@@ -245,7 +245,8 @@ public class PersonService {
     /**
      * A steward merges grade {@code from} into grade {@code into}: everyone, in list order, whose grade in force on
      * the sheet's today is {@code from} is given {@code into} from the sheet's today, each as an edit of them in the
-     * person form would. Refused for the same grade twice, for a retired {@code into}, and for anyone but a steward.
+     * person form would; then, retroactively, every grade of theirs recorded as {@code from}, whatever its date,
+     * becomes {@code into}. Refused for the same grade twice, for a retired {@code into}, and for anyone but a steward.
      * The people so changed, in list order.
      */
     @Transactional
@@ -269,8 +270,10 @@ public class PersonService {
         List<Person> merged = new ArrayList<>();
         for (Person person : list(sheetId)) {
             if (from.equals(person.gradeOn(today))) {
-                merged.add(update(sheetId, user, person.getId(), person.getVersion(), person.getName(), into, null,
-                        person.getTerms(), null, person.getContact(), person.getTags(), false));
+                Person edited = update(sheetId, user, person.getId(), person.getVersion(), person.getName(), into,
+                        null, person.getTerms(), null, person.getContact(), person.getTags(), false);
+                edited.regrade(from, into);
+                merged.add(save(edited));
             }
         }
         rollup.recordChanges(sheetId, user, before);
