@@ -148,7 +148,7 @@ function halfUp(basis: string, late: Late): boolean {
  * A claim's due in cents: the due fixed when it was settled (late charge frozen in), else its figure
  * — the due bound by its person's last statement, else its amount times its person's rate on its
  * date (as `pctOn` gives it), at least the floor in force on its date (`floorOn`, in cents) unless a correction —
- * with its late charge (by the late percent in force on its date) on top;
+ * with its late charge (by the late percent in force on each 30-day boundary) on top;
  * null when it has none. Its live figures round by the date `basis` (see {@link roundsOn}).
  */
 export function claimDueCents(c: Claim, pctOn: PctOn, floorOn: FloorOn, late: Late, basis: string): number | null {
@@ -168,14 +168,19 @@ function figureCents(c: Claim, pctOn: PctOn, floorOn: FloorOn, halfUp: boolean):
 }
 
 /**
- * The late charge in cents on an overdue claim with the given figure: the late percent in force on its date of it for
- * every full 30 days past its due-by, rounded like a due; 0 when not overdue or a correction. Never bound
- * by a statement.
+ * The late charge in cents on an overdue claim with the given figure, worked out per 30-day boundary: for each full
+ * 30 days past its due-by, the late percent in force on that boundary date (the due-by plus 30, 60, 90 ... days) of
+ * it, rounded like a due, and the charges added up; 0 when not overdue or a correction. Never bound by a statement.
  */
 export function lateChargeCents(c: Claim, figureCents: number, late: Late, halfUp: boolean): number {
   if (late.today === null || isCorrection(c) || !isOverdue(c, late.today)) return 0;
-  const days = Math.round((Date.parse(`${late.today}T00:00:00Z`) - Date.parse(`${c.dueBy}T00:00:00Z`)) / 86_400_000);
-  return dueCents(figureCents * Math.floor(days / 30), late.pctOn(c.date), halfUp);
+  const dueBy = Date.parse(`${c.dueBy}T00:00:00Z`);
+  let total = 0;
+  for (let step = 1; ; step++) {
+    const boundary = new Date(dueBy + step * 30 * 86_400_000).toISOString().slice(0, 10);
+    if (boundary > late.today) return total;
+    total += dueCents(figureCents, late.pctOn(boundary), halfUp);
+  }
 }
 
 /** Overdue: OPEN or PENDING, not deferred, with its due-by before the sheet's today. */

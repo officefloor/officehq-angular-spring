@@ -23,7 +23,7 @@ import org.springframework.stereotype.Service;
 
 /**
  * The sheet's figures as the screen shows them: each person's claimed and due-total, and the
- * sheet's claimed-total and due-total, each person's at most the sheet's cap in force today; a claim's floor and late percent are those in force on its date; an overdue claim's due has its {@link LateCharge} on top. A change takes a {@link #snapshot} before it alters
+ * sheet's claimed-total and due-total, each person's at most the sheet's cap in force today; a claim's floor is the one in force on its date, its late percent the one in force on each 30-day boundary; an overdue claim's due has its {@link LateCharge} on top. A change takes a {@link #snapshot} before it alters
  * anything and calls {@link #recordChanges} once it has, which audits, after the change's own
  * lines, a ROLLUP line for each person whose figures (overdue-total included) moved (in the order
  * they were added) and a TOTALS line when the sheet's totals moved.
@@ -93,12 +93,11 @@ public class RollupService {
                 if (claim.getSettledDue() != null || (claim.isBound() && claim.getStatedDue() != null)) fixed = true;
                 String grade = person.gradeOn(claim.getDate());
                 RoundingMode rounding = Rounding.of(Rounding.basisOf(claim, datesByNumber), policyDate, today);
-                // the floor and late percent in force on the claim's date
+                // the floor in force on the claim's date, the late percent in force on each 30-day boundary
                 BigDecimal floor = sheet == null ? zero() : sheet.floorOn(claim.getDate());
-                BigDecimal latePct = sheet == null ? zero() : sheet.latePctOn(claim.getDate());
                 BigDecimal figure = LateCharge.withCharge(claim,
                         figureOf(claim, ratesByGrade.getOrDefault(grade, List.of()), floor, rounding), today,
-                        latePct, rounding);
+                        d -> sheet == null ? zero() : sheet.latePctOn(d), rounding);
                 // a due under a grade they had on its date but not today counts like a fixed one
                 if (figure != null && today != null && !grade.equals(person.gradeOn(today))) fixed = true;
                 // and so does a due under a rate that is not the one in force today

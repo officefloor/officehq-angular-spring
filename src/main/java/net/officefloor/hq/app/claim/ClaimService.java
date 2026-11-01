@@ -224,7 +224,7 @@ public class ClaimService {
         refuseIfClosed(sheetId, claim.getDate());
         BigDecimal old = claim.getSettledDue();
         BigDecimal figure = LateCharge.withChargeAsOpen(claim, dueOf(sheetId, person, claim), sheets.today(sheetId),
-                settings.latePctOn(sheetId, claim.getDate()), roundingOf(sheetId, claim));
+                d -> settings.latePctOn(sheetId, d), roundingOf(sheetId, claim));
         claim.setSettledDue(figure);
         logStatus(sheetId, user, person, claim);
         Claim saved = claims.saveAndFlush(claim);
@@ -360,7 +360,7 @@ public class ClaimService {
         BigDecimal figure = figureOf(sheetId, person, claim);
         if (claim.getSettledDue() != null) return figure;
         return LateCharge.withCharge(claim, figure, sheets.today(sheetId),
-                settings.latePctOn(sheetId, claim.getDate()), roundingOf(sheetId, claim));
+                d -> settings.latePctOn(sheetId, d), roundingOf(sheetId, claim));
     }
 
     /** How the claim's live figures round: by its date, or a correction's by its corrected claim's ({@link Rounding}). */

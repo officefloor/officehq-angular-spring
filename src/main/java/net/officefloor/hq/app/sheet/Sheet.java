@@ -50,8 +50,8 @@ public class Sheet {
 
     /**
      * The values recorded for its dated settings, each from a from-date: the floor (a claim's live due
-     * is at least the one in force on its date), the late percent (an overdue claim's due gains the one
-     * in force on its date of its figure for every full 30 days overdue), the terms of the sheet and of
+     * is at least the one in force on its date), the late percent (an overdue claim's due gains, for each full 30 days overdue,
+     * the one in force on that boundary date of its figure), the terms of the sheet and of
      * each grade (a claim's due-by is its date plus those in force on it), the clerk limit (a clerk can
      * settle a claim only when its due is at or below the one in force today) and the cap (a person's
      * due-total is at most the one in force today).

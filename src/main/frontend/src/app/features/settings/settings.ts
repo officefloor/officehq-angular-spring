@@ -65,14 +65,14 @@ const FROM = 'From (yyyy-mm-dd; blank: the sheet\'s today)';
 // The sheet's settings: the clerk limit (blank: no limit), the floor of a claim's live due, the terms
 // (the days after its date by which a claim is due, fixed when it is added), the terms of each grade (overriding the
 // sheet's for a person of that grade on the claim's date), the late percent (charged on an overdue claim's
-// figure for every full 30 days overdue), the policy date (blank: the sheet's today; a claim dated before it
+// figure for every full 30 days overdue, the one in force on each 30-day boundary), the policy date (blank: the sheet's today; a claim dated before it
 // rounds half up, else half to even), the period numbering from (blank: off; while the sheet's today is on or after it,
 // a claim opened is numbered within its period), the cap (blank: none; a person's due-total is at most it), the grace days (blank: off; not dated; when the
 // sheet's today is changed, an open period whose to-date plus them is before it is closed), and the role given to each user name. Saving stores the settings whose
 // field was changed since the last save; clearing the clerk limit, the policy date, the period numbering from, the cap or the proof threshold (Delete or
 // Backspace) counts as a change even when it was already blank. The clerk limit, the floor, the terms, each grade's terms, the late
 // percent, the cap and the proof threshold are dated: a save records the value from its from-date (blank: the sheet's today), keeping those recorded from
-// other dates; a claim takes the floor, late percent and terms in force on its date, and the clerk limit and cap are those in force on
+// other dates; a claim takes the floor and terms in force on its date, the late percent in force on each 30-day boundary, and the clerk limit and cap are those in force on
 // the sheet's today. Each shows the value in force on the sheet's today. The permission matrix (not dated) gives, for each
 // of open, settle, void, reassign, close and reopen, the roles that may take it, comma separated; blank keeps its standing rule.
 @Component({

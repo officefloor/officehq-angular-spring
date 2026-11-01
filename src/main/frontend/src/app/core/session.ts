@@ -51,7 +51,7 @@ export class Session {
   readonly floor = computed(() => this.valueOn('floor', this.today()) ?? '1.00');
   /** The sheet's terms in days in force today: a claim of a grade without its own is due by its date plus those in force then. */
   readonly terms = computed(() => Number(this.valueOn('terms', this.today()) ?? '14'));
-  /** The sheet's late percent in force today, two decimals: an overdue claim's due gains the one in force on its date of its figure every full 30 days. */
+  /** The sheet's late percent in force today, two decimals: an overdue claim's due gains, for each full 30 days, the one in force on that boundary date of its figure. */
   readonly latePct = computed(() => this.valueOn('late-pct', this.today()) ?? '0.00');
   /** The clerk limit in force today, two decimals; null when none. */
   readonly clerkLimit = computed(() => this.valueOn('clerk-limit', this.today()));
