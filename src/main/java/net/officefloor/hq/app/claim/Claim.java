@@ -1,15 +1,23 @@
 package net.officefloor.hq.app.claim;
 
+import jakarta.persistence.CollectionTable;
 import jakarta.persistence.Column;
+import jakarta.persistence.ElementCollection;
 import jakarta.persistence.Entity;
 import jakarta.persistence.EnumType;
 import jakarta.persistence.Enumerated;
 import jakarta.persistence.GeneratedValue;
 import jakarta.persistence.GenerationType;
+import jakarta.persistence.FetchType;
 import jakarta.persistence.Id;
+import jakarta.persistence.JoinColumn;
+import jakarta.persistence.OrderColumn;
 import jakarta.persistence.Table;
 import java.math.BigDecimal;
 import java.time.LocalDate;
+import java.util.ArrayList;
+import java.util.Collections;
+import java.util.List;
 
 /**
  * A claim by a person on a sheet: an amount (two decimals), a date, a note and a status (DRAFT when
@@ -89,6 +97,12 @@ public class Claim {
     @Column(name = "corrects")
     private String corrects;
 
+    /** Its status log, oldest first: a line for each status it has had, DRAFT when added. */
+    @ElementCollection(fetch = FetchType.EAGER)
+    @CollectionTable(name = "claim_log", joinColumns = @JoinColumn(name = "claim_id"))
+    @OrderColumn(name = "seq")
+    private List<ClaimLogEntry> log = new ArrayList<>();
+
     protected Claim() {}
 
     public Claim(String sheetId, Long personId, BigDecimal amount, LocalDate date, String note, LocalDate dueBy) {
@@ -139,6 +153,13 @@ public class Claim {
     public ClaimStatus getStatus() { return status; }
 
     public void setStatus(ClaimStatus status) { this.status = status; }
+
+    public List<ClaimLogEntry> getLog() { return Collections.unmodifiableList(log); }
+
+    /** Log the status it now has, given by the user on the date, with its due at that moment. */
+    public void logStatus(String by, LocalDate on, BigDecimal due) {
+        log.add(new ClaimLogEntry(status, by, on, due));
+    }
 
     public String getNumber() { return number; }
 

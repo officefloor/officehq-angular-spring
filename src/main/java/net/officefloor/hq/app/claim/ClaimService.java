@@ -82,6 +82,8 @@ public class ClaimService {
         Claim draft = new Claim(sheetId, personId, amount, on, note, dueBy);
         draft.setCorrects(corrects);
         Claim claim = claims.saveAndFlush(draft);
+        logStatus(sheetId, user, person, claim);
+        claim = claims.saveAndFlush(claim);
         record("CLAIM_ADDED", sheetId, user, person, claim);
         rollup.recordChanges(sheetId, user, before);
         return claim;
@@ -138,6 +140,7 @@ public class ClaimService {
             default -> {}
         }
         claim.setStatus(next);
+        logStatus(sheetId, user, person, claim);
         Claim saved = claims.saveAndFlush(claim);
         String event = switch (next) {
             case OPEN -> "CLAIM_OPENED";
@@ -165,6 +168,7 @@ public class ClaimService {
         refuseIfClosed(sheetId, claim.getDate());
         claim.setSettledDue(chargedFigureOf(sheetId, person, claim));
         claim.setStatus(ClaimStatus.SETTLED);
+        logStatus(sheetId, user, person, claim);
         Claim saved = claims.saveAndFlush(claim);
         record("CLAIM_APPROVED", sheetId, user, person, saved, saved.getNumber(), " due="
                 + (saved.getSettledDue() == null ? "n/a" : saved.getSettledDue().setScale(2).toPlainString()));
@@ -181,6 +185,7 @@ public class ClaimService {
         Person person = people.findByIdAndSheetId(claim.getPersonId(), sheetId).orElseThrow(PersonNotFoundException::new);
         refuseIfClosed(sheetId, claim.getDate());
         claim.setStatus(ClaimStatus.OPEN);
+        logStatus(sheetId, user, person, claim);
         Claim saved = claims.saveAndFlush(claim);
         record("CLAIM_REJECTED", sheetId, user, person, saved, saved.getNumber(), " reason=" + reason);
         rollup.recordChanges(sheetId, user, before);
@@ -279,6 +284,11 @@ public class ClaimService {
                 .map(pct -> claim.getAmount().multiply(pct).movePointLeft(2).setScale(2, rounding))
                 .map(due -> floor == null ? due : due.max(floor))
                 .orElse(null);
+    }
+
+    /** Log the status the claim now has: by the user on the sheet's today, with its due at this moment. */
+    private void logStatus(String sheetId, String user, Person person, Claim claim) {
+        claim.logStatus(user.strip(), sheets.today(sheetId), chargedFigureOf(sheetId, person, claim));
     }
 
     private void record(String event, String sheetId, String user, Person person, Claim claim) {

@@ -39,6 +39,16 @@ export interface Claim {
   corrects: string | null;
   /** The date it is due by (yyyy-mm-dd), fixed when it was added; it does not move with its date or the terms. */
   dueBy: string;
+  /** Its status log, oldest first: a line for each status it has had, DRAFT when added. */
+  log: ClaimLogLine[];
+}
+
+/** A status a claim was given, by whom, on the sheet's today then, with its due then (null: none). */
+export interface ClaimLogLine {
+  status: ClaimStatus;
+  by: string;
+  date: string;
+  due: string | null;
 }
 
 /** A person's rate on a date: the rate then of the grade they had then, or null when it has none. */
@@ -194,6 +204,11 @@ function notEditable(status: ClaimStatus | undefined): string {
           <span>Due by <span data-testid="claim-due-by">{{ c.dueBy }}</span></span>
           <span>Overdue <span data-testid="claim-overdue">{{ overdueOf(c) ? 'yes' : 'no' }}</span></span>
           <span>Corrects <span data-testid="claim-corrects">{{ c.corrects ?? '' }}</span></span>
+          <ol [attr.aria-label]="'Status log of claim of ' + c.amount + ' on ' + c.date">
+            @for (line of c.log; track $index) {
+              <li data-testid="claim-log-line">{{ line.status }} by {{ line.by }} on {{ line.date }} due={{ line.due ?? na }}</li>
+            }
+          </ol>
           <button type="button" data-testid="claim-open" (click)="act(c, 'open')"
                   [attr.aria-label]="'Open claim of ' + c.amount + ' on ' + c.date">Open</button>
           <button type="button" data-testid="claim-settle" (click)="act(c, 'settle')"
@@ -251,6 +266,7 @@ export class Claims {
   /** A claim's checkbox ticked or cleared. */
   readonly toggled = output<{ id: number; checked: boolean }>();
 
+  protected readonly na = NA;
   protected readonly editingId = signal<number | null>(null);
   /** A submit is under way; another one waits for its answer rather than storing twice. */
   private saving = false;
