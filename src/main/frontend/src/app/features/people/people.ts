@@ -204,6 +204,8 @@ function trimmedSum(figures: number[]): number {
       }
       <p>Due total: <strong data-testid="header-due-total">{{ dueTotal() }}</strong></p>
       <p>Overdue total: <strong data-testid="header-overdue-total">{{ money(overdueTotal().cents) }}</strong></p>
+      <p>My due total: <strong data-testid="my-due-total">{{ me() ? dueTotalOf(me()!) : '' }}</strong></p>
+      <p>My overdue total: <strong data-testid="my-overdue-total">{{ me() ? money(overdueOf(me()!).cents) : '' }}</strong></p>
     </header>
     <section aria-labelledby="consolidated-heading">
       <h2 id="consolidated-heading">Consolidated (this sheet and its descendants)</h2>
@@ -727,6 +729,14 @@ export class People {
       if (pct !== null) by.set(grade, pct);
     }
     return by;
+  });
+  /** The person with the signed-in user's name, by name or alias as names are compared; null when none. */
+  protected readonly me = computed(() => {
+    const user = this.session.user();
+    if (user === null) return null;
+    const key = user.trim().toLowerCase();
+    return this.people().find((p) => p.name.trim().toLowerCase() === key
+      || p.aliases.some((a) => a.trim().toLowerCase() === key)) ?? null;
   });
   /** Everyone's due-total added up, skipping those whose due-total is n/a, trimmed. */
   private readonly dueTotalAllCents = computed(() =>
