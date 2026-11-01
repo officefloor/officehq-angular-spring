@@ -1,0 +1,47 @@
+diff --git a/src/main/frontend/src/app/features/people/people.ts b/src/main/frontend/src/app/features/people/people.ts
+index 657364342..a949e5a81 100644
+--- a/src/main/frontend/src/app/features/people/people.ts
++++ b/src/main/frontend/src/app/features/people/people.ts
+@@ -247,6 +247,7 @@ function csvField(value: string): string {
+       <p>
+         <button type="button" data-testid="export-people" (click)="exportCsv()">Export people as CSV</button>
+         <button type="button" data-testid="export-claims" (click)="exportClaims()">Export claims as CSV</button>
++        <button type="button" data-testid="export-periods" (click)="exportPeriods()">Export period figures as CSV</button>
+       </p>
+ 
+       <p>
+@@ -1378,6 +1379,18 @@ export class PeopleList {
+     this.download(lines, 'claims');
+   }
+ 
++  /** Download the period figures as CSV: people in list order, retired people included, each person's periods in
++   *  the order added, with the due-total and carried figure as the person's row shows them. */
++  protected exportPeriods(): void {
++    const periods = [...this.periods.list()].sort((a, b) => a.id - b.id);
++    const lines = [
++      ['person', 'period', 'figure', 'carried'],
++      ...this.people().flatMap((p) => periods.map((pd) =>
++        [p.name, pd.name, this.periodDueOf(p.id, pd.id), this.periodCarriedOf(p.id, pd.id)])),
++    ].map((fields) => fields.map(csvField).join(',') + '\n');
++    this.download(lines, 'periods');
++  }
++
+   /** Download the person's statement as CSV: each claim of theirs their last statement binds, oldest first, with
+    *  the figure it is bound to as the claim shows it. */
+   protected exportStatement(p: PersonView): void {
+diff --git a/src/main/java/net/officefloor/hq/app/person/Person.java b/src/main/java/net/officefloor/hq/app/person/Person.java
+index b4ed9e6c9..436904a7b 100644
+--- a/src/main/java/net/officefloor/hq/app/person/Person.java
++++ b/src/main/java/net/officefloor/hq/app/person/Person.java
+@@ -366,9 +366,8 @@ public class Person {
+     /** Whether a claim of this person counts as a new statement finds it: as when no statement binds it, except that
+      *  an open claim a statement binds still counts once {@code today} reaches the retirement date. */
+     public boolean countsUnbound(Claim claim, LocalDate today) {
+-        return claim.getStatus().counts() && !(claim.getStatus().isOpen()
+-                && ((!claim.isStated() && retiredOn(today)) || claim.isHeld()
+-                        || holds.stream().anyMatch(h -> h.covers(claim.getDate()))));
++        return claim.getStatus().counts()
++                && !(claim.getStatus().isOpen() && !claim.isStated() && retiredOn(today));
+     }
+ 
+     /** Whether the claim is open once {@code today} reaches the person's retirement date. */

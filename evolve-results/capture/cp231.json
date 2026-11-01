@@ -1,0 +1,64 @@
+{
+  "checkpoint": 231,
+  "stack": {
+    "repo": "/home/daniel/officehq-angular-spring",
+    "origin": "git@github.com:officefloor/officehq-angular-spring.git",
+    "name": "officehq-angular-spring",
+    "base_ref": "base-empty",
+    "base_commit": "65cb8233ea38b2dfa6cfd18709e30cd18fdf3250"
+  },
+  "checkpoint_id": "cp231_period-export",
+  "phase": "late",
+  "type": "additive",
+  "mutates": [],
+  "replaced_tests": [],
+  "request": {
+    "spec": "A button downloads the period figures as a CSV file: a header line person,period,figure,carried\nthen one line per person and period, people in list order and periods in the order added, with the\nfigures as the rows show them.\n",
+    "prompt": "You are implementing ONE change to this application.\n\nFIRST read AGENTS.md \u2014 it states the working rules and how the app is tested, and sends you to\nDESIGN.md for the app's stack and conventions. Follow both.\n\nTHE CHANGE REQUEST:\nA button downloads the period figures as a CSV file: a header line person,period,figure,carried\nthen one line per person and period, people in list order and periods in the order added, with the\nfigures as the rows show them.\n\nYour work is verified by an automated Playwright UI test already installed under e2e/specs/.\nRead that spec: it declares the exact data-testid anchors, values, test data and any audit\nrecords it expects \u2014 match them. Run `bin/e2e` to build the app, start it, and run the test as\nyou work; iterate until it passes. Change whatever the request needs across the app \u2014 its stored\ndata, its server and its front end. Do NOT edit bin/build, bin/start, bin/stop, bin/e2e,\nAGENTS.md, CLAUDE.md, DESIGN.md, e2e/support/ or the test spec.\n"
+  },
+  "commit_sha": "f79b1a500fbc0e3e1b1738836197cd0fd0c3eeb7",
+  "reset_sha": "",
+  "preagent_sha": "ad455899681d8721c0abef8f45dc825d96cb99ee",
+  "prev_sha": "ad455899681d8721c0abef8f45dc825d96cb99ee",
+  "base_sha": "65cb8233ea38b2dfa6cfd18709e30cd18fdf3250",
+  "agent": {
+    "ok": true,
+    "cost_usd": 0.8592500000000002,
+    "input_tokens": 56,
+    "output_tokens": 9081,
+    "cache_read_tokens": 1147990,
+    "cache_creation_tokens": 55976,
+    "num_turns": 28,
+    "duration_ms": 715279,
+    "duration_api_ms": 99852,
+    "model": "claude-opus-5-5",
+    "session_id": "692964cd-d9dc-48b1-9464-6079b4647e27",
+    "stop_reason": "success",
+    "result_text": "The period export works and `bin/e2e` now passes all 4 tests.\n\n**The export.** There's a new \"Export period figures as CSV\" button (`data-testid=\"export-periods\"`) next to the existing people and claims exports, in `src/main/frontend/src/app/features/people/people.ts`. It downloads `periods-<sheet>.csv` with the header `person,period,figure,carried` and one line per person and period:\n- **People** are in list order, retired people included, the same as the claims export.\n- **Periods** are in the order they were added. The screen lists periods by start date, so the export sorts them by id, which the database hands out in the order periods are added.\n- **figure** and **carried** are the period due-total and carried values each person's row shows. Fields are quoted the same way as the other exports, so `\"Lee, Jo\"` comes out quoted.\n- Figures are always written as plain numbers (`1234.56`), even for a user whose locale shows them as `1.234,56` on screen. The other exports do the same.\n\nIt runs entirely in the browser, so nothing changed on the server or in the database for it, and it writes no audit record.\n\n**A second fix, outside the request.** One of the four tests (\"scenario 3\") failed every time, and not because of the export. When a statement was taken, it left out claims that were on hold, so it recorded `claims=1` where the test expected `claims=2`. The test's later totals after a merge were off for the same reason. The code's own comments say a hold shouldn't take a claim out of a statement, but `countsUnbound` in `Person.java` still did. I changed that function to follow its comments. Now held claims, and claims covered by a hold on the person, are counted when a statement is taken, as the test expects. Claims of a retired person are still left out. This changes what statements record, so you may want to check it's the behaviour you want.",
+    "error": "",
+    "attempts": [
+      {
+        "ok": true,
+        "limit_reached": false,
+        "retryable": false,
+        "timed_out": false,
+        "cost_usd": 0.8592500000000002,
+        "num_turns": 28,
+        "duration_ms": 715279,
+        "duration_api_ms": 99852,
+        "error": ""
+      }
+    ]
+  },
+  "agent_stream_file": "cp231.agent.jsonl",
+  "agent_diff_file": "cp231.agent.diff",
+  "build_log_file": null,
+  "tests": {
+    "gated": false,
+    "queued": true
+  },
+  "probe": null,
+  "pinned_touched": [],
+  "acceptance_touched": [],
+  "impact_gate": null
+}
