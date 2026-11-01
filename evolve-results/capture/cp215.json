@@ -1,0 +1,64 @@
+{
+  "checkpoint": 215,
+  "stack": {
+    "repo": "/home/daniel/officehq-angular-spring",
+    "origin": "git@github.com:officefloor/officehq-angular-spring.git",
+    "name": "officehq-angular-spring",
+    "base_ref": "base-empty",
+    "base_commit": "65cb8233ea38b2dfa6cfd18709e30cd18fdf3250"
+  },
+  "checkpoint_id": "cp215_sheet-comparison",
+  "phase": "late",
+  "type": "additive",
+  "mutates": [],
+  "replaced_tests": [],
+  "request": {
+    "spec": "A sheet id entry and a button compare this sheet with another: one line per grade of this sheet,\n<grade> <this sheet's summary due-total for the grade> <the other sheet's>, 0.00 for a grade the\nother sheet has no one on; a sheet that does not exist gives no lines.\n",
+    "prompt": "You are implementing ONE change to this application.\n\nFIRST read AGENTS.md \u2014 it states the working rules and how the app is tested, and sends you to\nDESIGN.md for the app's stack and conventions. Follow both.\n\nTHE CHANGE REQUEST:\nA sheet id entry and a button compare this sheet with another: one line per grade of this sheet,\n<grade> <this sheet's summary due-total for the grade> <the other sheet's>, 0.00 for a grade the\nother sheet has no one on; a sheet that does not exist gives no lines.\n\nYour work is verified by an automated Playwright UI test already installed under e2e/specs/.\nRead that spec: it declares the exact data-testid anchors, values, test data and any audit\nrecords it expects \u2014 match them. Run `bin/e2e` to build the app, start it, and run the test as\nyou work; iterate until it passes. Change whatever the request needs across the app \u2014 its stored\ndata, its server and its front end. Do NOT edit bin/build, bin/start, bin/stop, bin/e2e,\nAGENTS.md, CLAUDE.md, DESIGN.md, e2e/support/ or the test spec.\n"
+  },
+  "commit_sha": "c194d9d18e3fbca47d6939ab76d876c8fa7ccad8",
+  "reset_sha": "",
+  "preagent_sha": "34f2d7412d397b935b3ae2013c2e5a477786af93",
+  "prev_sha": "34f2d7412d397b935b3ae2013c2e5a477786af93",
+  "base_sha": "65cb8233ea38b2dfa6cfd18709e30cd18fdf3250",
+  "agent": {
+    "ok": true,
+    "cost_usd": 0.6315552,
+    "input_tokens": 30,
+    "output_tokens": 7696,
+    "cache_read_tokens": 556496,
+    "cache_creation_tokens": 45777,
+    "num_turns": 15,
+    "duration_ms": 266835,
+    "duration_api_ms": 90686,
+    "model": "claude-opus-5-5",
+    "session_id": "87393866-e0d7-47d3-8ed2-f8bea864f053",
+    "stop_reason": "success",
+    "result_text": "The sheet comparison is in, and all 4 acceptance tests pass in `bin/e2e`.\n\nThere's now a \"Compare with another sheet\" panel just below the classic summary. You type another sheet's id in `compare-sheet` and press `compare`. It shows one `compare-line` per grade of this sheet, as `<grade> <this sheet's summary due-total> <the other sheet's>`. A grade with no one on it in the other sheet shows `0.00`, and a sheet id that was never loaded gives no lines.\n\n- **This sheet's figures** come from the per-grade summary already on screen, so the two always agree. People who are retired drop out of the figures even when \"show retired\" is on, the same as in the summary.\n- **The other sheet's figures** come from a new read-only endpoint, `GET /api/sheets/{id}/grade-dues` in `rollup/GradeDuesController.java`. It works them out the same way as the existing consolidated figures: due-totals of people not retired, by their grade on that sheet's today. It also says whether the sheet exists, and it never creates a sheet, so checking an unknown id leaves nothing behind.\n- **The front end** is a new component, `features/summary/sheet-compare.ts`, plus a small `SheetGradeDues` service in `core/consolidated.ts`. It's placed in the template in `features/people/people.ts`.\n\nThree behaviours the test doesn't cover:\n- An empty or malformed sheet id, or a failed request, shows a `compare-error` message.\n- Loading a different sheet clears any comparison on screen.\n- The other sheet's figures are always as they stand now. If this sheet is being viewed as of a past date, the other sheet is still read live, not as of that date.\n\nThe change only reads data, so it adds no database migration and no audit records.",
+    "error": "",
+    "attempts": [
+      {
+        "ok": true,
+        "limit_reached": false,
+        "retryable": false,
+        "timed_out": false,
+        "cost_usd": 0.6315552,
+        "num_turns": 15,
+        "duration_ms": 266835,
+        "duration_api_ms": 90686,
+        "error": ""
+      }
+    ]
+  },
+  "agent_stream_file": "cp215.agent.jsonl",
+  "agent_diff_file": "cp215.agent.diff",
+  "build_log_file": null,
+  "tests": {
+    "gated": false,
+    "queued": true
+  },
+  "probe": null,
+  "pinned_touched": [],
+  "acceptance_touched": [],
+  "impact_gate": null
+}

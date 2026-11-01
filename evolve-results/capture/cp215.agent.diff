@@ -1,0 +1,222 @@
+diff --git a/src/main/frontend/src/app/core/consolidated.ts b/src/main/frontend/src/app/core/consolidated.ts
+index d817b9c00..8f61422fc 100644
+--- a/src/main/frontend/src/app/core/consolidated.ts
++++ b/src/main/frontend/src/app/core/consolidated.ts
+@@ -66,3 +66,20 @@ export class Consolidated {
+       self ? { params: { self: 'true' } } : {});
+   }
+ }
++
++/** Whether a sheet exists (has ever been loaded), and per grade the due-totals of the people not retired on it, as
++ *  its summary shows them (two decimals; a grade no one counts on is missing). */
++export interface GradeDues {
++  exists: boolean;
++  dueByGrade: Record<string, string>;
++}
++
++// A sheet's per-grade due-totals, to compare the shown sheet's summary with.
++@Injectable({ providedIn: 'root' })
++export class SheetGradeDues {
++  private readonly http = inject(HttpClient);
++
++  of(sheetId: string): Observable<GradeDues> {
++    return this.http.get<GradeDues>(`/api/sheets/${encodeURIComponent(sheetId)}/grade-dues`);
++  }
++}
+diff --git a/src/main/frontend/src/app/features/people/people.ts b/src/main/frontend/src/app/features/people/people.ts
+index 444ccc528..2836ad62a 100644
+--- a/src/main/frontend/src/app/features/people/people.ts
++++ b/src/main/frontend/src/app/features/people/people.ts
+@@ -25,6 +25,7 @@ import { Pools } from '../../core/pools';
+ import { Crews, crewDueCents } from '../../core/crews';
+ import { GradeSummary, PeriodSummary, StatusSummary, SummaryPanel, VoidReasonSummary } from '../summary/summary';
+ import { ClassicPeriod, ClassicSummaryPanel } from '../summary/classic-summary';
++import { SheetComparePanel } from '../summary/sheet-compare';
+ import { VoidReasons } from '../../core/void-reasons';
+ import { FigurePipe } from '../../core/figure';
+ import { Dashboard } from '../dashboard/dashboard';
+@@ -97,7 +98,7 @@ function csvField(value: string): string {
+ // each person's claims and due-total, and the sheet's claimed-total and due-total.
+ @Component({
+   selector: 'app-people',
+-  imports: [ReactiveFormsModule, FigurePipe, SheetHeader, PersonClaims, PeriodsPanel, SummaryPanel, ClassicSummaryPanel, PoolsPanel, CrewsPanel, PersonPlans, PlanGenerate, Dashboard],
++  imports: [ReactiveFormsModule, FigurePipe, SheetHeader, PersonClaims, PeriodsPanel, SummaryPanel, ClassicSummaryPanel, SheetComparePanel, PoolsPanel, CrewsPanel, PersonPlans, PlanGenerate, Dashboard],
+   template: `
+     <app-header [peopleCount]="people().length" [statuses]="summaryByStatus()" [dueTotal]="dueTotal()"
+                 [overdueTotal]="money(overdueTotals().cents)" [myDueTotal]="me() ? dueOf(me()!) : ''"
+@@ -111,6 +112,7 @@ function csvField(value: string): string {
+     <app-summary [grades]="summaryByGrade()" [periods]="summaryByPeriod()" [statuses]="summaryByStatus()"
+                  [voidReasons]="summaryByVoidReason()" [reviewLate]="reviewLateCount()" />
+     <app-classic-summary [periods]="classicByPeriod()" [dueTotal]="classicDueTotal()" />
++    <app-sheet-compare [grades]="summaryByGrade()" />
+ 
+     <section aria-labelledby="people-heading">
+       <h2 id="people-heading">People</h2>
+diff --git a/src/main/frontend/src/app/features/summary/sheet-compare.ts b/src/main/frontend/src/app/features/summary/sheet-compare.ts
+new file mode 100644
+index 000000000..6653cb2c5
+--- /dev/null
++++ b/src/main/frontend/src/app/features/summary/sheet-compare.ts
+@@ -0,0 +1,82 @@
++import { Component, inject, input, signal } from '@angular/core';
++import { takeUntilDestroyed, toObservable } from '@angular/core/rxjs-interop';
++import { FormControl, FormGroup, ReactiveFormsModule } from '@angular/forms';
++import { SheetGradeDues } from '../../core/consolidated';
++import { Sheets } from '../../core/sheet';
++import { GradeSummary } from './summary';
++
++// Compare this sheet with another: per grade of this sheet, its summary due-total and the other sheet's (0.00 with no
++// one on it there); a sheet that does not exist gives no lines.
++@Component({
++  selector: 'app-sheet-compare',
++  imports: [ReactiveFormsModule],
++  template: `
++    <section aria-labelledby="sheet-compare-heading">
++      <h2 id="sheet-compare-heading">Compare with another sheet</h2>
++      <form [formGroup]="form" (ngSubmit)="compare()" aria-label="Compare with another sheet">
++        <label for="compare-sheet">Other sheet id</label>
++        <input id="compare-sheet" data-testid="compare-sheet" formControlName="other" />
++        <button type="submit" data-testid="compare" [disabled]="comparing()">Compare</button>
++        @if (error(); as err) {
++          <p role="alert" data-testid="compare-error">{{ err }}</p>
++        }
++      </form>
++      <ul aria-label="Sheet comparison">
++        @for (line of lines(); track $index) {
++          <li data-testid="compare-line">{{ line }}</li>
++        }
++      </ul>
++    </section>
++  `,
++})
++export class SheetComparePanel {
++  private readonly sheets = inject(Sheets);
++  private readonly gradeDues = inject(SheetGradeDues);
++
++  /** This sheet's summary by grade. */
++  readonly grades = input.required<readonly GradeSummary[]>();
++
++  protected readonly form = new FormGroup({
++    other: new FormControl('', { nonNullable: true }),
++  });
++  protected readonly lines = signal<readonly string[]>([]);
++  protected readonly comparing = signal(false);
++  protected readonly error = signal<string | null>(null);
++
++  constructor() {
++    // A (re)loaded sheet starts with no comparison shown.
++    toObservable(this.sheets.loaded)
++      .pipe(takeUntilDestroyed())
++      .subscribe(() => {
++        this.lines.set([]);
++        this.error.set(null);
++      });
++    // An error is removed as soon as its form is changed.
++    this.form.valueChanges.pipe(takeUntilDestroyed()).subscribe(() => this.error.set(null));
++  }
++
++  protected compare(): void {
++    // A second press before the first has answered is ignored.
++    if (this.comparing()) return;
++    const other = this.form.getRawValue().other.trim();
++    this.error.set(null);
++    this.lines.set([]);
++    if (!/^[A-Za-z0-9._-]{1,100}$/.test(other)) {
++      this.error.set('Enter a sheet id.');
++      return;
++    }
++    this.comparing.set(true);
++    this.gradeDues.of(other).subscribe({
++      next: ({ exists, dueByGrade }) => {
++        this.comparing.set(false);
++        this.lines.set(exists
++          ? this.grades().map((g) => `${g.grade} ${g.dueTotal} ${dueByGrade[g.grade] ?? '0.00'}`)
++          : []);
++      },
++      error: () => {
++        this.comparing.set(false);
++        this.error.set('Could not compare the sheets.');
++      },
++    });
++  }
++}
+diff --git a/src/main/java/net/officefloor/hq/app/rollup/GradeDuesController.java b/src/main/java/net/officefloor/hq/app/rollup/GradeDuesController.java
+new file mode 100644
+index 000000000..db2aa5fd2
+--- /dev/null
++++ b/src/main/java/net/officefloor/hq/app/rollup/GradeDuesController.java
+@@ -0,0 +1,74 @@
++package net.officefloor.hq.app.rollup;
++
++import jakarta.validation.constraints.NotBlank;
++import jakarta.validation.constraints.Pattern;
++import jakarta.validation.constraints.Size;
++import java.math.BigDecimal;
++import java.time.LocalDate;
++import java.util.LinkedHashMap;
++import java.util.List;
++import java.util.Map;
++import net.officefloor.hq.app.claim.Claim;
++import net.officefloor.hq.app.claim.ClaimRepository;
++import net.officefloor.hq.app.person.Person;
++import net.officefloor.hq.app.person.PersonRepository;
++import net.officefloor.hq.app.rate.RateChains;
++import net.officefloor.hq.app.sheet.Sheet;
++import net.officefloor.hq.app.sheet.SheetRepository;
++import org.springframework.transaction.annotation.Transactional;
++import org.springframework.validation.annotation.Validated;
++import org.springframework.web.bind.annotation.GetMapping;
++import org.springframework.web.bind.annotation.PathVariable;
++import org.springframework.web.bind.annotation.RestController;
++
++/** A sheet's per-grade due-totals, as its summary shows them, which the screen compares another sheet's with. */
++@RestController
++@Validated
++public class GradeDuesController {
++
++    /** Whether the sheet exists (has ever been loaded), and per grade the due-totals of the people not retired on it
++     *  on the sheet's today (none counting as 0), with two decimals; a grade no one counts on is missing. */
++    public record GradeDues(boolean exists, Map<String, String> dueByGrade) {
++    }
++
++    private final SheetRepository sheets;
++    private final Rollup rollup;
++    private final RateChains rates;
++    private final PersonRepository people;
++    private final ClaimRepository claims;
++
++    public GradeDuesController(SheetRepository sheets, Rollup rollup, RateChains rates, PersonRepository people,
++            ClaimRepository claims) {
++        this.sheets = sheets;
++        this.rollup = rollup;
++        this.rates = rates;
++        this.people = people;
++        this.claims = claims;
++    }
++
++    /** The sheet's per-grade due-totals as the store holds it now; a sheet never loaded exists not, with none. */
++    @GetMapping("/api/sheets/{sheetId}/grade-dues")
++    @Transactional(readOnly = true)
++    public GradeDues gradeDues(
++            @PathVariable @NotBlank @Size(max = 100) @Pattern(regexp = "[A-Za-z0-9._-]+") String sheetId) {
++        Sheet sheet = sheets.findById(sheetId).orElse(null);
++        if (sheet == null) {
++            return new GradeDues(false, Map.of());
++        }
++        List<Person> sheetPeople = people.findBySheetIdOrderByPositionAscIdAsc(sheetId);
++        List<Claim> sheetClaims = claims.findBySheetIdOrderByListedDescIdDesc(sheetId);
++        Rollup.Figures figures = rollup.of(sheet, rates.of(sheetId), sheetPeople, sheetClaims);
++        LocalDate today = sheet.getToday();
++        Map<String, BigDecimal> dueByGrade = new LinkedHashMap<>();
++        for (Person person : sheetPeople) {
++            Rollup.PersonFigures own = figures.people().get(person.getId());
++            if (person.isRetired() || own == null || "n/a".equals(own.dueTotal())) {
++                continue;
++            }
++            dueByGrade.merge(person.gradeOn(today), new BigDecimal(own.dueTotal()), BigDecimal::add);
++        }
++        Map<String, String> shown = new LinkedHashMap<>();
++        dueByGrade.forEach((grade, total) -> shown.put(grade, total.setScale(2).toPlainString()));
++        return new GradeDues(true, shown);
++    }
++}
