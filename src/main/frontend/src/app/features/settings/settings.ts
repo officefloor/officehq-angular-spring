@@ -72,6 +72,8 @@ interface SettingsView {
   pot: string | null;
   /** The id of the sheet this one names as its parent; null when none. */
   parent: string | null;
+  /** The month (1 to 12) a fiscal year starts in; 1 unless set. */
+  fiscalStartMonth: number;
 }
 
 /** A from-date field (yyyy-mm-dd) for a dated setting; blank: the sheet's today. */
@@ -141,6 +143,11 @@ const FROM = 'From (yyyy-mm-dd; blank: the sheet\'s today)';
         <input id="setting-grace-days" data-testid="setting-grace-days" formControlName="graceDays" inputmode="numeric"
                (keydown.delete)="form.controls.graceDays.markAsDirty()"
                (keydown.backspace)="form.controls.graceDays.markAsDirty()" />
+        <label for="setting-fiscal-start-month">Fiscal year start month (1 to 12)</label>
+        <input id="setting-fiscal-start-month" data-testid="setting-fiscal-start-month" formControlName="fiscalStartMonth"
+               inputmode="numeric"
+               (keydown.delete)="form.controls.fiscalStartMonth.markAsDirty()"
+               (keydown.backspace)="form.controls.fiscalStartMonth.markAsDirty()" />
         @for (g of grades; track g) {
           <label [for]="'setting-grace-' + g">Grace days for grade {{ g }} (overdue only past the due-by plus them; blank: none)</label>
           <input [id]="'setting-grace-' + g" [attr.data-testid]="'setting-grace-' + g" [formControl]="gradeGraceForm.controls[g]"
@@ -216,6 +223,7 @@ const FROM = 'From (yyyy-mm-dd; blank: the sheet\'s today)';
       <p>Policy date now: <span data-testid="setting-policy-date-current">{{ session.policyDate() ?? '' }}</span></p>
       <p>Period numbering from now: <span data-testid="setting-period-numbering-from-current">{{ periodNumberingFrom() ?? '' }}</span></p>
       <p>Grace days now: <span data-testid="setting-grace-days-current">{{ graceDays() ?? '' }}</span></p>
+      <p>Fiscal year start month now: <span data-testid="setting-fiscal-start-month-current">{{ session.fiscalStartMonth() }}</span></p>
       @for (g of grades; track g) {
         <p>Grace days for grade {{ g }} now (blank: none):
           <span [attr.data-testid]="'setting-grace-' + g + '-current'">{{ gradeGrace()[g] ?? '' }}</span></p>
@@ -342,6 +350,7 @@ export class Settings {
     policyDate: new FormControl('', { nonNullable: true }),
     periodNumberingFrom: new FormControl('', { nonNullable: true }),
     graceDays: new FormControl('', { nonNullable: true }),
+    fiscalStartMonth: new FormControl('', { nonNullable: true }),
     entryDate: new FormControl('', { nonNullable: true }),
     cap: new FormControl('', { nonNullable: true }),
     pot: new FormControl('', { nonNullable: true }),
@@ -420,6 +429,7 @@ export class Settings {
       this.session.loads();
       this.periodNumberingFrom.set(null);
       this.graceDays.set(null);
+      this.session.fiscalStartMonth.set(1);
       this.entryDate.set(null);
       this.pot.set(null);
       this.session.parent.set(null);
@@ -459,6 +469,7 @@ export class Settings {
   private show(view: SettingsView): void {
     this.periodNumberingFrom.set(view.periodNumberingFrom);
     this.graceDays.set(view.graceDays);
+    this.session.fiscalStartMonth.set(view.fiscalStartMonth);
     this.entryDate.set(view.entryDate);
     this.pot.set(view.pot);
     this.session.parent.set(view.parent);
@@ -473,7 +484,7 @@ export class Settings {
     this.error.set('');
     const sheet = this.session.sheetId();
     if (!sheet) return;
-    const { clerkLimit, floor, terms, latePct, policyDate, periodNumberingFrom, graceDays, entryDate, cap, pot, parent, proofThreshold, noteThreshold } = this.form.controls;
+    const { clerkLimit, floor, terms, latePct, policyDate, periodNumberingFrom, graceDays, fiscalStartMonth, entryDate, cap, pot, parent, proofThreshold, noteThreshold } = this.form.controls;
     const { clerkLimitFrom, floorFrom, termsFrom, latePctFrom, capFrom, proofThresholdFrom, noteThresholdFrom } = this.form.getRawValue();
     const value = clerkLimit.value.trim();
     const floorValue = floor.value.trim();
@@ -482,6 +493,7 @@ export class Settings {
     const policyDateValue = policyDate.value.trim();
     const periodNumberingFromValue = periodNumberingFrom.value.trim();
     const graceDaysValue = graceDays.value.trim();
+    const fiscalStartMonthValue = fiscalStartMonth.value.trim();
     const entryDateValue = entryDate.value.trim();
     const capValue = cap.value.trim();
     const potValue = pot.value.trim();
@@ -533,6 +545,10 @@ export class Settings {
     }
     if (graceDays.dirty && graceDaysValue && !/^\d{1,4}$/.test(graceDaysValue)) {
       this.error.set('Enter grace days as a whole number of days, 0 or more, or leave it blank for off.');
+      return;
+    }
+    if (fiscalStartMonth.dirty && !/^([1-9]|1[0-2])$/.test(fiscalStartMonthValue)) {
+      this.error.set('Enter a fiscal year start month from 1 to 12.');
       return;
     }
     const gradeGraceChanged = GRADES.filter((g) => this.gradeGraceForm.controls[g].dirty);
@@ -634,6 +650,14 @@ export class Settings {
             { headers: this.headers() }),
         );
         graceDays.markAsPristine();
+        if (this.session.sheetId() === sheet) this.show(view);
+      }
+      if (fiscalStartMonth.dirty) {
+        const view = await firstValueFrom(
+          this.http.put<SettingsView>(`${this.base(sheet)}/settings/fiscal-start-month`, { value: fiscalStartMonthValue },
+            { headers: this.headers() }),
+        );
+        fiscalStartMonth.markAsPristine();
         if (this.session.sheetId() === sheet) this.show(view);
       }
       for (const g of gradeGraceChanged) {

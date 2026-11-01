@@ -37,12 +37,13 @@ public class SettingController {
      * two decimals, null when none; permissions has the roles set for each action of the permission
      * matrix, comma separated, for each action with any set (the rest keep the standing rule); the grace
      * days are a whole number of days, null when blank (off); the entry date is null when blank (off); the pot has two decimals, null when none;
-     * the parent is the id of the sheet it names as its parent, null when none.
+     * the parent is the id of the sheet it names as its parent, null when none; the fiscal start month
+     * is the month (1 to 12) a fiscal year starts in.
      */
     public record SettingsView(String clerkLimit, String floor, int terms, String latePct, LocalDate policyDate,
             LocalDate periodNumberingFrom, List<RoleView> roles, Map<String, Integer> gradeTerms, String cap,
             Map<String, List<DatedView>> dated, Map<String, String> permissions, Integer graceDays,
-            LocalDate entryDate, String pot, String parent) {}
+            LocalDate entryDate, String pot, String parent, int fiscalStartMonth) {}
 
     /** A value recorded for a dated setting from a date on; null when none. */
     public record DatedView(LocalDate from, String value) {}
@@ -189,6 +190,14 @@ public class SettingController {
         }
     }
 
+    /** The fiscal year start month: 1 to 12. */
+    public record FiscalStartMonthRequest(@NotNull @Pattern(regexp = "[1-9]|1[0-2]") String value) {
+
+        int monthValue() {
+            return Integer.parseInt(value);
+        }
+    }
+
     /** A grade's grace days: a whole number of days; blank or null: none; recorded from the from-date (yyyy-mm-dd), blank or null: the sheet's today. */
     public record GradeGraceRequest(@Pattern(regexp = "(\\d{1,4})?") String value,
             @Pattern(regexp = "(\\d{4}-\\d{2}-\\d{2})?") String from) {
@@ -270,7 +279,7 @@ public class SettingController {
                 service.roles(sheetId).stream().map(RoleView::of).toList(), service.gradeTerms(sheetId),
                 text(service.cap(sheetId)), datedViews(service.dated(sheetId)), service.permissions(sheetId),
                 service.graceDays(sheetId), service.entryDate(sheetId), text(service.pot(sheetId)),
-                service.parent(sheetId));
+                service.parent(sheetId), service.fiscalStartMonth(sheetId));
     }
 
     @PutMapping("/settings/clerk-limit")
@@ -343,6 +352,15 @@ public class SettingController {
             @RequestHeader("X-User") @NotBlank @Size(max = 100) String user,
             @RequestBody @Valid GraceDaysRequest request) {
         service.setGraceDays(sheetId, user, request.daysValue());
+        return get(sheetId, user);
+    }
+
+    @PutMapping("/settings/fiscal-start-month")
+    public SettingsView setFiscalStartMonth(
+            @PathVariable @Size(max = 100) @Pattern(regexp = "[A-Za-z0-9._-]+") String sheetId,
+            @RequestHeader("X-User") @NotBlank @Size(max = 100) String user,
+            @RequestBody @Valid FiscalStartMonthRequest request) {
+        service.setFiscalStartMonth(sheetId, user, request.monthValue());
         return get(sheetId, user);
     }
 

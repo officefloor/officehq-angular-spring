@@ -368,6 +368,17 @@ public class SettingService {
         return days;
     }
 
+    /** Change the fiscal year start month, 1 to 12; the periods' fiscal years follow it. */
+    @Transactional
+    public int setFiscalStartMonth(String sheetId, String user, int month) {
+        Sheet sheet = sheets.findForUpdate(sheetId).orElseThrow(SheetNotFoundException::new);
+        sheet.setFiscalStartMonth(month);
+        sheets.flush();
+        audit.recordOnCommit("SETTING_CHANGED sheet=" + sheetId + " by=" + user.strip() + " key=fiscal-start-month value="
+                + month);
+        return month;
+    }
+
     /** Change the entry date (null: off); no claim already added moves with it. */
     @Transactional
     public LocalDate setEntryDate(String sheetId, String user, LocalDate entryDate) {
@@ -437,6 +448,12 @@ public class SettingService {
     public String parent(String sheetId) {
         sheets.findById(sheetId).orElseThrow(SheetNotFoundException::new);
         return parents.parentOf(sheetId);
+    }
+
+    /** The month (1 to 12) a fiscal year starts in; 1 unless set. */
+    @Transactional(readOnly = true)
+    public int fiscalStartMonth(String sheetId) {
+        return sheets.findById(sheetId).orElseThrow(SheetNotFoundException::new).getFiscalStartMonth();
     }
 
     /** The grace days as set; null when blank, which means off. */

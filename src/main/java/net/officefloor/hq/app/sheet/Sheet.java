@@ -93,6 +93,10 @@ public class Sheet {
     @Column(name = "grace_days")
     private Integer graceDays;
 
+    /** The month (1 to 12) a fiscal year starts in (not dated); 1 unless set. */
+    @Column(name = "fiscal_start_month", nullable = false)
+    private int fiscalStartMonth = 1;
+
     /** Split across each balanced pool's members as their cuts (not dated); null means none. */
     @Column(name = "pot", precision = 14, scale = 2)
     private BigDecimal pot;
@@ -281,6 +285,8 @@ public class Sheet {
     public Integer getGraceDays() { return graceDays; }
 
     public void setGraceDays(Integer graceDays) { this.graceDays = graceDays; }
+    public int getFiscalStartMonth() { return fiscalStartMonth; }
+    public void setFiscalStartMonth(int fiscalStartMonth) { this.fiscalStartMonth = fiscalStartMonth; }
 
     public BigDecimal getPot() { return pot; }
 

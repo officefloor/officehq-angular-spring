@@ -101,6 +101,16 @@ public class PeriodService {
         return made;
     }
 
+    /**
+     * Make the twelve monthly periods of the fiscal year named FY&lt;year&gt;, the one whose first day (the
+     * first of the sheet's fiscal start month) falls in that calendar year, exactly as {@link #generate} does.
+     */
+    @Transactional
+    public List<Period> generateFiscalYear(String sheetId, String user, int year) {
+        YearMonth first = YearMonth.of(year, settings.fiscalStartMonth(sheetId));
+        return generate(sheetId, user, first.atDay(1), first.plusMonths(11).atEndOfMonth());
+    }
+
     @Transactional
     public Period close(String sheetId, String user, Long id) {
         // Lock the sheet so no claim in the period changes while its due-total is fixed.

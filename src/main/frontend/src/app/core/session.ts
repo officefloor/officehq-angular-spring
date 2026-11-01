@@ -137,6 +137,8 @@ export class Session {
 
   /** The id of the sheet this one names as its parent, as the settings last read it; null when none. */
   readonly parent = signal<string | null>(null);
+  /** The month (1 to 12) a fiscal year starts in, as the settings last read it; 1 unless set. */
+  readonly fiscalStartMonth = signal(1);
   /** Bumped each time the pot is saved, so the pools re-read their cuts. */
   readonly potSaves = signal(0);
   /** Bumped each time a hold is put on or the sheet's today changes, so the pools re-read their cuts. */
