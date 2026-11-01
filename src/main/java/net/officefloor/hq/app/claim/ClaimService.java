@@ -111,6 +111,7 @@ public class ClaimService {
             throw new ClaimStatusRefusedException();
         }
         RollupService.Snapshot before = rollup.snapshot(sheetId);
+        if (claim.isLockedAgainst(user)) throw new ClaimLockedException();
         LocalDate on = dateOrToday(sheetId, date);
         refuseIfClosed(sheetId, claim.getDate());
         refuseIfClosed(sheetId, on);
@@ -121,10 +122,38 @@ public class ClaimService {
         claim.setCorrects(corrects);
         claim.setDate(on);
         claim.setNote(note);
+        claim.setLockedBy(null);
         Claim saved = claims.saveAndFlush(claim);
         record("CLAIM_EDITED", sheetId, user, person, saved);
         rollup.recordChanges(sheetId, user, before);
         return saved;
+    }
+
+    /**
+     * Open a claim's editor: the claim is locked for every other user until the editor is saved or
+     * cancelled, or the sheet's today changes. A claim that cannot be edited (not DRAFT, or dated inside a
+     * closed period), or one another user's editor already locks, is refused and takes no lock.
+     */
+    @Transactional
+    public Claim lock(String sheetId, String user, Long id) {
+        // Locking the sheet first, so two users opening the same claim's editor at once take turns.
+        sheets.lockForNumbering(sheetId);
+        Claim claim = claims.findByIdAndSheetId(id, sheetId).orElseThrow(ClaimNotFoundException::new);
+        if (claim.getStatus() != ClaimStatus.DRAFT) throw new ClaimStatusRefusedException();
+        refuseIfClosed(sheetId, claim.getDate());
+        if (claim.isLockedAgainst(user)) throw new ClaimLockedException();
+        claim.setLockedBy(user.strip());
+        return claims.saveAndFlush(claim);
+    }
+
+    /** Cancel a claim's editor: the user's own lock on it is released; another user's is left as it is. */
+    @Transactional
+    public Claim unlock(String sheetId, String user, Long id) {
+        sheets.lockForNumbering(sheetId);
+        Claim claim = claims.findByIdAndSheetId(id, sheetId).orElseThrow(ClaimNotFoundException::new);
+        if (claim.getLockedBy() == null || claim.isLockedAgainst(user)) return claim;
+        claim.setLockedBy(null);
+        return claims.saveAndFlush(claim);
     }
 
     @Transactional

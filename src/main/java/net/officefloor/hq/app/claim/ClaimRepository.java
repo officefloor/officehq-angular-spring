@@ -34,5 +34,11 @@ public interface ClaimRepository extends JpaRepository<Claim, Long> {
             + " values (:sheetId, :period, :seq)", nativeQuery = true)
     void retireNumberWithin(String sheetId, String period, int seq);
 
+    /** Release every claim editor's lock on the sheet. */
+    @Modifying(flushAutomatically = true, clearAutomatically = true)
+    @Query(value = "update claim set locked_by = null where sheet_id = :sheetId and locked_by is not null",
+            nativeQuery = true)
+    void unlockAll(String sheetId);
+
     Optional<Claim> findByIdAndSheetId(Long id, String sheetId);
 }

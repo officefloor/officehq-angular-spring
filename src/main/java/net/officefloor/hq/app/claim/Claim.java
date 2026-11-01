@@ -109,6 +109,9 @@ public class Claim {
     @Column(name = "deferred_until")
     private LocalDate deferredUntil;
 
+    /** The user whose open editor locks it for everyone else; none while no editor holds it. */
+    @Column(name = "locked_by", length = 100)
+    private String lockedBy;
     /** Its status log, oldest first: a line for each status it has had, DRAFT when added. */
     @ElementCollection(fetch = FetchType.EAGER)
     @CollectionTable(name = "claim_log", joinColumns = @JoinColumn(name = "claim_id"))
@@ -196,6 +199,10 @@ public class Claim {
         return on;
     }
 
+    public String getLockedBy() { return lockedBy; }
+    public void setLockedBy(String lockedBy) { this.lockedBy = lockedBy; }
+    /** Locked by an open editor of a user other than this one. */
+    public boolean isLockedAgainst(String user) { return lockedBy != null && !lockedBy.equals(user.strip()); }
     public String getNumber() { return number; }
 
     /** Number the claim sheet-wide. */

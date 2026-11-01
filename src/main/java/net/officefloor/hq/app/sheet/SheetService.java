@@ -3,6 +3,7 @@ package net.officefloor.hq.app.sheet;
 import java.time.Instant;
 import java.time.LocalDate;
 import net.officefloor.hq.app.Audit;
+import net.officefloor.hq.app.claim.ClaimRepository;
 import net.officefloor.hq.app.period.PeriodService;
 import net.officefloor.hq.app.rollup.RollupService;
 import net.officefloor.hq.app.setting.Role;
@@ -24,10 +25,12 @@ public class SheetService {
     // looked up when used: the periods depend on the claims, which depend on the sheet
     private final ObjectProvider<PeriodService> periods;
     private final ObjectProvider<SettingService> settings;
+    private final ObjectProvider<ClaimRepository> claims;
     private final Audit audit;
 
     public SheetService(SheetRepository sheets, RollupService rollup, ObjectProvider<PeriodService> periods,
-            ObjectProvider<SettingService> settings, Audit audit) {
+            ObjectProvider<SettingService> settings, ObjectProvider<ClaimRepository> claims, Audit audit) {
+        this.claims = claims;
         this.sheets = sheets;
         this.rollup = rollup;
         this.periods = periods;
@@ -65,11 +68,16 @@ public class SheetService {
 
     /**
      * Change the sheet's today; it has no audit line of its own. With grace days set, the open periods
-     * past them are closed first, then the figures it moves are audited.
+     * past them are closed first, then the figures it moves are audited. A new today releases every
+     * claim editor's lock on the sheet.
      */
     @Transactional
     public Sheet setToday(String id, String user, LocalDate today) {
         Sheet sheet = sheets.findForUpdate(id).orElseThrow(SheetNotFoundException::new);
+        if (!today.equals(sheet.getToday())) {
+            claims.getObject().unlockAll(id);
+            sheet = sheets.findForUpdate(id).orElseThrow(SheetNotFoundException::new);
+        }
         RollupService.Snapshot before = rollup.snapshot(id);
         sheet.setToday(today);
         sheets.flush();

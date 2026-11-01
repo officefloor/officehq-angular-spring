@@ -30,12 +30,12 @@ public class ClaimController {
      * when it was settled (null while its due is live). Who opened it is null while DRAFT. Stated
      * when bound by its person's last statement, to the due it had then (null when it had none). A
      * correction has the number of the claim it corrects (null for any other claim). Its status log
-     * is oldest first.
+     * is oldest first. Locked by the user whose open editor holds it (null when none).
      */
     public record ClaimView(Long id, Long personId, String amount, LocalDate date, String note, ClaimStatus status,
             String number, String settledDue, String openedBy, boolean stated, String statedDue, String corrects,
             LocalDate dueBy, List<LogLineView> log, LocalDate deferredUntil,
-            int proofs, String splitFrom) {
+            int proofs, String splitFrom, String lockedBy) {
         public static ClaimView of(Claim claim) {
             return new ClaimView(claim.getId(), claim.getPersonId(), claim.getAmount().toPlainString(),
                     claim.getDate(), claim.getNote(), claim.getStatus(), claim.getNumber(),
@@ -43,7 +43,8 @@ public class ClaimController {
                     claim.getOpenedBy(), claim.isStated(),
                     claim.getStatedDue() == null ? null : claim.getStatedDue().setScale(2).toPlainString(),
                     claim.getCorrects(), claim.getDueBy(), claim.getLog().stream().map(LogLineView::of).toList(),
-                    claim.getDeferredUntil(), claim.getProofs(), claim.getSplitFrom());
+                    claim.getDeferredUntil(), claim.getProofs(), claim.getSplitFrom(),
+                    claim.getLockedBy());
         }
     }
 
@@ -160,6 +161,22 @@ public class ClaimController {
             @RequestBody @Valid ClaimRequest request) {
         return ClaimView.of(service.edit(sheetId, user, id, request.amountValue(), request.date(), request.noteValue(),
                 request.correctsValue()));
+    }
+
+    @PostMapping("/claims/{id}/edit")
+    public ClaimView lock(
+            @PathVariable @Size(max = 100) @Pattern(regexp = "[A-Za-z0-9._-]+") String sheetId,
+            @PathVariable Long id,
+            @RequestHeader("X-User") @NotBlank @Size(max = 100) String user) {
+        return ClaimView.of(service.lock(sheetId, user, id));
+    }
+
+    @PostMapping("/claims/{id}/cancel")
+    public ClaimView unlock(
+            @PathVariable @Size(max = 100) @Pattern(regexp = "[A-Za-z0-9._-]+") String sheetId,
+            @PathVariable Long id,
+            @RequestHeader("X-User") @NotBlank @Size(max = 100) String user) {
+        return ClaimView.of(service.unlock(sheetId, user, id));
     }
 
     @PostMapping("/claims/{id}/open")

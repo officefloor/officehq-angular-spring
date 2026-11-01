@@ -1,5 +1,5 @@
 import { HttpClient, HttpErrorResponse } from '@angular/common/http';
-import { Component, inject, input, output, signal } from '@angular/core';
+import { Component, effect, inject, input, output, signal, untracked } from '@angular/core';
 import { FormControl, FormGroup, ReactiveFormsModule } from '@angular/forms';
 import { firstValueFrom } from 'rxjs';
 import { Late, Session } from '../../core/session';
@@ -47,6 +47,8 @@ export interface Claim {
   proofs: number;
   /** The number of the claim it was split off; null unless split off one. */
   splitFrom: string | null;
+  /** The user whose open editor locks it for everyone else; null while no editor holds it. */
+  lockedBy: string | null;
 }
 
 /** A status a claim was given, by whom, on the sheet's today then, with its due then (null: none). */
@@ -358,6 +360,16 @@ export class Claims {
 
   constructor() {
     this.form.valueChanges.subscribe(() => this.error.set(''));
+    // An editor this user left open (its lock survives a re-load of the sheet) opens again.
+    effect(() => {
+      const claims = this.claims();
+      untracked(() => {
+        if (this.editingId() !== null) return;
+        const user = this.session.user();
+        const mine = claims.find((c) => c.status === 'DRAFT' && user !== null && c.lockedBy === user);
+        if (mine) this.openEditor(mine);
+      });
+    });
   }
 
   protected fieldId(field: string): string {
@@ -393,7 +405,18 @@ export class Claims {
     this.error.set('');
   }
 
-  protected edit(c: Claim): void {
+  private openEditor(c: Claim): void {
+    this.editingId.set(c.id);
+    this.form.setValue({ amount: c.amount, date: c.date, note: c.note, corrects: c.corrects ?? '' },
+      { emitEvent: false });
+    this.error.set('');
+  }
+
+  /**
+   * Open a claim's editor, locking the claim for every other user until it is saved or cancelled; a claim
+   * that cannot be edited, one another user's editor locks, or a user whose role may change nothing is refused.
+   */
+  protected async edit(c: Claim): Promise<void> {
     this.claimError.set(null);
     if (closedOn(this.periods(), c.date)) {
       this.claimError.set({ id: c.id, message: CLOSED });
@@ -403,14 +426,50 @@ export class Claims {
       this.claimError.set({ id: c.id, message: notEditable(c.status) });
       return;
     }
-    this.editingId.set(c.id);
-    this.form.setValue({ amount: c.amount, date: c.date, note: c.note, corrects: c.corrects ?? '' },
-      { emitEvent: false });
-    this.error.set('');
+    const sheet = this.session.sheetId();
+    if (!sheet) return;
+    const open = this.editingId();
+    if (open !== null) await this.release(sheet, open);
+    const url = `/api/sheets/${encodeURIComponent(sheet)}/claims/${c.id}/edit`;
+    try {
+      const claim = await firstValueFrom(this.http.post<Claim>(url, null, { headers: this.headers() }));
+      if (this.session.sheetId() !== sheet) return;
+      this.saved.emit(claim);
+      this.openEditor(claim);
+    } catch (e) {
+      if (this.session.sheetId() !== sheet) return;
+      const message = e instanceof HttpErrorResponse && e.status === 423
+        ? CLOSED
+        : e instanceof HttpErrorResponse && e.status === 409
+        ? notEditable(undefined)
+        : e instanceof HttpErrorResponse && e.status === 412
+        ? 'Another user is editing this claim; it can be edited once they save or cancel.'
+        : e instanceof HttpErrorResponse && e.status === 403
+        ? 'Your role may not edit a claim on this sheet.'
+        : 'Could not edit that claim.';
+      this.claimError.set({ id: c.id, message });
+    }
   }
 
-  protected cancel(): void {
+  /** Close the editor, releasing the claim's lock. */
+  protected async cancel(): Promise<void> {
+    const sheet = this.session.sheetId();
+    const id = this.editingId();
+    this.claimError.set(null);
+    if (sheet && id !== null) await this.release(sheet, id);
+    if (this.session.sheetId() !== sheet) return;
     this.reset();
+  }
+
+  /** Release this user's lock on a claim whose editor closes. */
+  private async release(sheet: string, id: number): Promise<void> {
+    const url = `/api/sheets/${encodeURIComponent(sheet)}/claims/${id}/cancel`;
+    try {
+      const claim = await firstValueFrom(this.http.post<Claim>(url, null, { headers: this.headers() }));
+      if (this.session.sheetId() === sheet) this.saved.emit(claim);
+    } catch {
+      // the lock goes anyway when the sheet's today changes
+    }
   }
 
   /**
@@ -661,6 +720,10 @@ export class Claims {
       this.reset();
     } catch (e) {
       if (this.session.sheetId() !== sheet) return;
+      if (id !== null && e instanceof HttpErrorResponse && e.status === 412) {
+        this.claimError.set({ id, message: 'Another user is editing this claim; it can be edited once they save or cancel.' });
+        return;
+      }
       if (id !== null && e instanceof HttpErrorResponse && e.status === 409) {
         const status = this.claims().find((c) => c.id === id)?.status;
         this.claimError.set({ id, message: notEditable(status) });
