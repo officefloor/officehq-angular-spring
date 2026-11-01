@@ -1,6 +1,6 @@
 import { Component, inject, signal } from '@angular/core';
 import { FormControl, FormGroup, ReactiveFormsModule } from '@angular/forms';
-import { Session } from '../../core/session';
+import { LOCALES, Locale, Session } from '../../core/session';
 import { AuditView } from '../audit-view/audit-view';
 import { TreeSearch } from '../tree-search/tree-search';
 import { Holidays } from '../holidays/holidays';
@@ -17,6 +17,19 @@ import { VoidReasons } from '../void-reasons/void-reasons';
   template: `
     @if (session.user(); as user) {
       <p>Signed in as <strong data-testid="current-user">{{ user }}</strong></p>
+      <form [formGroup]="localeForm" (ngSubmit)="saveLocale()" aria-label="Locale">
+        <label for="user-locale">Locale</label>
+        <select id="user-locale" data-testid="user-locale" formControlName="locale">
+          @for (l of locales; track l) {
+            <option [value]="l">{{ l }}</option>
+          }
+        </select>
+        <button type="submit" data-testid="user-locale-save">Save locale</button>
+        <span>Locale now: <strong data-testid="user-locale-current">{{ session.locale() }}</strong></span>
+        @if (localeError()) {
+          <p role="alert" class="error" data-testid="user-locale-error">{{ localeError() }}</p>
+        }
+      </form>
       <form [formGroup]="sheetForm" (ngSubmit)="loadSheet()" aria-label="Load sheet">
         <label for="sheet-id">Sheet id</label>
         <input id="sheet-id" data-testid="sheet-id-input" formControlName="id" />
@@ -77,6 +90,9 @@ export class Home {
   protected readonly todayForm = new FormGroup({ today: new FormControl('', { nonNullable: true }) });
   protected readonly asOfForm = new FormGroup({ date: new FormControl('', { nonNullable: true }) });
   protected readonly cloneForm = new FormGroup({ to: new FormControl('', { nonNullable: true }) });
+  protected readonly localeForm = new FormGroup({ locale: new FormControl<Locale>('en', { nonNullable: true }) });
+  protected readonly locales = LOCALES;
+  protected readonly localeError = signal('');
   protected readonly signinError = signal('');
   protected readonly sheetError = signal('');
   /** The forms with a submit under way; another submit of one waits for its answer. */
@@ -84,6 +100,7 @@ export class Home {
 
   constructor() {
     this.signinForm.valueChanges.subscribe(() => this.signinError.set(''));
+    this.localeForm.valueChanges.subscribe(() => this.localeError.set(''));
     this.sheetForm.valueChanges.subscribe(() => this.sheetError.set(''));
     this.todayForm.valueChanges.subscribe(() => this.sheetError.set(''));
     this.asOfForm.valueChanges.subscribe(() => this.sheetError.set(''));
@@ -101,10 +118,24 @@ export class Home {
     this.submitting.add('signIn');
     try {
       await this.session.signIn(name);
+      this.localeForm.setValue({ locale: this.session.locale() }, { emitEvent: false });
     } catch {
       this.signinError.set('Could not sign in.');
     } finally {
       this.submitting.delete('signIn');
+    }
+  }
+
+  protected async saveLocale(): Promise<void> {
+    if (this.submitting.has('saveLocale')) return;
+    this.localeError.set('');
+    this.submitting.add('saveLocale');
+    try {
+      await this.session.setLocale(this.localeForm.controls.locale.value);
+    } catch {
+      this.localeError.set('Could not save the locale.');
+    } finally {
+      this.submitting.delete('saveLocale');
     }
   }
 

@@ -1,5 +1,6 @@
 import { HttpClient } from '@angular/common/http';
 import { Component, computed, effect, inject, signal } from '@angular/core';
+import { FigurePipe } from '../../core/figure';
 import { FormControl, FormGroup, ReactiveFormsModule } from '@angular/forms';
 import { firstValueFrom } from 'rxjs';
 import { Dated, Session } from '../../core/session';
@@ -105,7 +106,7 @@ const FROM = 'From (yyyy-mm-dd; blank: the sheet\'s today)';
 // of open, settle, void, reassign, close and reopen, the roles that may take it, comma separated; blank keeps its standing rule.
 @Component({
   selector: 'app-settings',
-  imports: [ReactiveFormsModule],
+  imports: [FigurePipe, ReactiveFormsModule],
   template: `
     <section aria-labelledby="settings-heading">
       <h2 id="settings-heading">Settings</h2>
@@ -232,14 +233,14 @@ const FROM = 'From (yyyy-mm-dd; blank: the sheet\'s today)';
           <p role="alert" class="error" data-testid="settings-error">{{ error() }}</p>
         }
       </form>
-      <p>Clerk limit now: <span data-testid="setting-clerk-limit-current">{{ session.clerkLimit() ?? '' }}</span></p>
-      <p>Floor now: <span data-testid="setting-floor-current">{{ session.floor() }}</span></p>
+      <p>Clerk limit now: <span data-testid="setting-clerk-limit-current">{{ session.clerkLimit() ?? '' | figure }}</span></p>
+      <p>Floor now: <span data-testid="setting-floor-current">{{ session.floor() | figure }}</span></p>
       <p>Terms now: <span data-testid="setting-terms-current">{{ session.terms() }}</span></p>
       @for (g of grades; track g) {
         <p>Terms for grade {{ g }} now (blank: the sheet's terms):
           <span [attr.data-testid]="'setting-terms-' + g + '-current'">{{ gradeTerms()[g] ?? '' }}</span></p>
       }
-      <p>Late percent now: <span data-testid="setting-late-pct-current">{{ session.latePct() }}</span></p>
+      <p>Late percent now: <span data-testid="setting-late-pct-current">{{ session.latePct() | figure }}</span></p>
       <p>Policy date now: <span data-testid="setting-policy-date-current">{{ session.policyDate() ?? '' }}</span></p>
       <p>Period numbering from now: <span data-testid="setting-period-numbering-from-current">{{ periodNumberingFrom() ?? '' }}</span></p>
       <p>Grace days now: <span data-testid="setting-grace-days-current">{{ graceDays() ?? '' }}</span></p>
@@ -249,18 +250,18 @@ const FROM = 'From (yyyy-mm-dd; blank: the sheet\'s today)';
           <span [attr.data-testid]="'setting-grace-' + g + '-current'">{{ gradeGrace()[g] ?? '' }}</span></p>
       }
       <p>Entry date now: <span data-testid="setting-entry-date-current">{{ entryDate() ?? '' }}</span></p>
-      <p>Pot now: <span data-testid="setting-pot-current">{{ pot() ?? '' }}</span></p>
-      <p>Alert threshold now: <span data-testid="setting-alert-threshold-current">{{ alertThreshold() ?? '' }}</span></p>
+      <p>Pot now: <span data-testid="setting-pot-current">{{ pot() ?? '' | figure }}</span></p>
+      <p>Alert threshold now: <span data-testid="setting-alert-threshold-current">{{ alertThreshold() ?? '' | figure }}</span></p>
       <p>Parent sheet now: <span data-testid="setting-parent-current">{{ session.parent() ?? '' }}</span></p>
-      <p>Cap now: <span data-testid="setting-cap-current">{{ session.cap() ?? '' }}</span></p>
-      <p>Proof threshold now: <span data-testid="setting-proof-threshold-current">{{ session.proofThreshold() ?? '' }}</span></p>
+      <p>Cap now: <span data-testid="setting-cap-current">{{ session.cap() ?? '' | figure }}</span></p>
+      <p>Proof threshold now: <span data-testid="setting-proof-threshold-current">{{ session.proofThreshold() ?? '' | figure }}</span></p>
       @for (g of grades; track g) {
         <p>Proof threshold for grade {{ g }} now (blank: the sheet's):
-          <span [attr.data-testid]="'setting-proof-threshold-' + g + '-current'">{{ gradeProof()[g] ?? '' }}</span></p>
+          <span [attr.data-testid]="'setting-proof-threshold-' + g + '-current'">{{ gradeProof()[g] ?? '' | figure }}</span></p>
       }
       <p>Rounding mode now: <span data-testid="setting-rounding-current">{{ session.rounding() ?? '' }}</span></p>
-      <p>Note threshold now: <span data-testid="setting-note-threshold-current">{{ session.noteThreshold() ?? '' }}</span></p>
-      <p>Review threshold now: <span data-testid="setting-review-threshold-current">{{ session.reviewThreshold() ?? '' }}</span></p>
+      <p>Note threshold now: <span data-testid="setting-note-threshold-current">{{ session.noteThreshold() ?? '' | figure }}</span></p>
+      <p>Review threshold now: <span data-testid="setting-review-threshold-current">{{ session.reviewThreshold() ?? '' | figure }}</span></p>
       @for (p of permissions; track p.action) {
         <p>Who may {{ p.action }} now (blank: {{ p.standing }}):
           <span [attr.data-testid]="'setting-perm-' + p.action + '-current'">{{ permissionsSet()[p.action] ?? '' }}</span></p>

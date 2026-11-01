@@ -59,11 +59,17 @@ export interface PersonRef {
 /** What the people list can be sorted by on the screen. */
 export type PeopleSort = 'added' | 'name' | 'grade' | 'due-total';
 
+/** The locales a user can choose: under de a figure shows as 1.234,56, under en as 1234.56. */
+export type Locale = 'en' | 'de';
+export const LOCALES: readonly Locale[] = ['en', 'de'];
+
 @Injectable({ providedIn: 'root' })
 export class Session {
   private readonly http = inject(HttpClient);
 
   readonly user = signal<string | null>(null);
+  /** The signed-in user's locale, saved per user: how the screen shows them figures (en unless chosen). */
+  readonly locale = signal<Locale>('en');
   readonly sheetId = signal<string | null>(null);
   /** The sheet's today (yyyy-mm-dd): every date decision and default date uses it, never the clock. */
   readonly today = signal<string | null>(null);
@@ -167,8 +173,21 @@ export class Session {
   readonly sortBy = signal<PeopleSort>('added');
 
   async signIn(name: string): Promise<void> {
-    const res = await firstValueFrom(this.http.post<{ name: string }>('/api/session', { name }));
+    const res = await firstValueFrom(this.http.post<{ name: string; locale: Locale }>('/api/session', { name }));
     this.user.set(res.name);
+    this.locale.set(res.locale);
+  }
+
+  /** Save the signed-in user's locale; it holds for them on every sheet. */
+  async setLocale(locale: Locale): Promise<void> {
+    const user = this.user();
+    if (!user) throw new Error('not signed in');
+    const res = await firstValueFrom(
+      this.http.put<{ name: string; locale: Locale }>('/api/session/locale', { locale }, {
+        headers: { 'X-User': user },
+      }),
+    );
+    if (this.user() === res.name) this.locale.set(res.locale);
   }
 
   async loadSheet(id: string): Promise<void> {

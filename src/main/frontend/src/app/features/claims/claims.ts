@@ -1,5 +1,6 @@
 import { HttpClient, HttpErrorResponse } from '@angular/common/http';
 import { Component, effect, inject, input, output, signal, untracked } from '@angular/core';
+import { FigurePipe } from '../../core/figure';
 import { FormControl, FormGroup, ReactiveFormsModule } from '@angular/forms';
 import { firstValueFrom } from 'rxjs';
 import { Late, Session } from '../../core/session';
@@ -303,7 +304,7 @@ function notEditable(status: ClaimStatus | undefined): string {
 // open, settle or void each claim, approve or reject (with a reason) a PENDING one, re-settle a SETTLED one, move one to another person, split an amount off an OPEN one, and a checkbox to select each for a bulk change.
 @Component({
   selector: 'app-claims',
-  imports: [ReactiveFormsModule],
+  imports: [FigurePipe, ReactiveFormsModule],
   template: `
     <form [formGroup]="form" (ngSubmit)="save()" [attr.aria-label]="(editingId() === null ? 'Add claim for ' : 'Edit claim for ') + personName()">
       <label [for]="fieldId('amount')">Amount</label>
@@ -339,13 +340,13 @@ function notEditable(status: ClaimStatus | undefined): string {
                  (change)="toggled.emit({ id: c.id, checked: $any($event.target).checked })"
                  [attr.aria-label]="'Select claim of ' + c.amount + ' on ' + c.date" />
           <span>No. <span data-testid="claim-number">{{ c.number ?? '' }}</span></span>
-          <span data-testid="claim-amount">{{ c.amount }}</span>
+          <span data-testid="claim-amount">{{ c.amount | figure }}</span>
           <span data-testid="claim-date">{{ c.date }}</span>
           <span data-testid="claim-note">{{ c.note }}</span>
           <span>Ref <span data-testid="claim-ref">{{ c.ref ?? '' }}</span></span>
           <span>Tags <span data-testid="claim-tags">{{ c.tags.join(', ') }}</span></span>
           <span>Period <span data-testid="claim-period">{{ periodOf(c) }}</span></span>
-          <span>Due <span data-testid="claim-due">{{ dueOf(c) }}</span></span>
+          <span>Due <span data-testid="claim-due">{{ dueOf(c) | figure }}</span></span>
           <span data-testid="claim-status">{{ c.status }}</span>
           <span>Opened by <span data-testid="claim-opened-by">{{ c.openedBy ?? '' }}</span></span>
           <span>Stated <span data-testid="claim-stated">{{ c.stated ? 'yes' : 'no' }}</span></span>

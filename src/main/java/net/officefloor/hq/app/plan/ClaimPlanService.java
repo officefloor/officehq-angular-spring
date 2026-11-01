@@ -13,6 +13,8 @@ import net.officefloor.hq.app.person.Person;
 import net.officefloor.hq.app.person.PersonNotFoundException;
 import net.officefloor.hq.app.person.PersonRepository;
 import net.officefloor.hq.app.person.PersonRetiredException;
+import net.officefloor.hq.app.setting.Role;
+import net.officefloor.hq.app.setting.SettingService;
 import net.officefloor.hq.app.sheet.SheetNotFoundException;
 import net.officefloor.hq.app.sheet.SheetRepository;
 import net.officefloor.hq.app.sheet.SheetService;
@@ -39,11 +41,13 @@ public class ClaimPlanService {
     private final SheetService sheets;
     private final ClaimService claims;
     private final TransactionTemplate transaction;
+    private final SettingService settings;
     private final Audit audit;
 
     public ClaimPlanService(ClaimPlanRepository plans, ClaimPlanDateRepository dates, PersonRepository people,
-            SheetRepository sheetRows, SheetService sheets, ClaimService claims,
+            SheetRepository sheetRows, SheetService sheets, ClaimService claims, SettingService settings,
             PlatformTransactionManager transactions, Audit audit) {
+        this.settings = settings;
         this.plans = plans;
         this.dates = dates;
         this.people = people;
@@ -88,8 +92,12 @@ public class ClaimPlanService {
         return plan;
     }
 
-    /** Make the plans' claims due by the sheet's today: how many were made. */
+    /**
+     * Make the plans' claims due by the sheet's today: how many were made. A viewer's generate, or one on an
+     * archived sheet, goes through with nothing made, like a bulk change.
+     */
     public int generate(String sheetId, String user) {
+        if (settings.roleOf(sheetId, user) == Role.VIEWER || sheets.isArchived(sheetId)) return 0;
         LocalDate today = sheets.today(sheetId);
         int made = 0;
         for (ClaimPlan plan : plans(sheetId)) {

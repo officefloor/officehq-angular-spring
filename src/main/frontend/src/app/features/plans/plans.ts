@@ -1,5 +1,6 @@
 import { HttpClient, HttpErrorResponse } from '@angular/common/http';
 import { Component, effect, inject, input, output, signal } from '@angular/core';
+import { FigurePipe } from '../../core/figure';
 import { FormControl, FormGroup, ReactiveFormsModule } from '@angular/forms';
 import { firstValueFrom } from 'rxjs';
 import { Session } from '../../core/session';
@@ -29,12 +30,12 @@ const DATE = /^\d{4}-\d{2}-\d{2}$/;
 // A person's plans, on their row, and the form that adds one. The sheet's generate button makes their claims.
 @Component({
   selector: 'app-plans',
-  imports: [ReactiveFormsModule],
+  imports: [FigurePipe, ReactiveFormsModule],
   template: `
     <ul [attr.aria-label]="'Plans of ' + personName()">
       @for (pl of plans(); track pl.id) {
         <li [attr.data-testid]="'plan-row-' + pl.id">
-          <span data-testid="plan-amount-shown">{{ pl.amount }}</span>
+          <span data-testid="plan-amount-shown">{{ pl.amount | figure }}</span>
           from <span data-testid="plan-start">{{ pl.start }}</span>
           @if (pl.day !== null) {
             monthly on day <span data-testid="plan-day">{{ pl.day }}</span>

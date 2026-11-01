@@ -1,5 +1,6 @@
 import { HttpClient } from '@angular/common/http';
 import { Component, computed, inject, input, output, signal } from '@angular/core';
+import { FigurePipe } from '../../core/figure';
 import { FormControl, FormGroup, ReactiveFormsModule } from '@angular/forms';
 import { firstValueFrom } from 'rxjs';
 import { Session } from '../../core/session';
@@ -78,7 +79,7 @@ export function rateInLevels(levels: Rate[][], date: string, added?: number | nu
 // (its own, else its nearest ancestor's in force then).
 @Component({
   selector: 'app-rates',
-  imports: [ReactiveFormsModule],
+  imports: [FigurePipe, ReactiveFormsModule],
   template: `
     <section aria-labelledby="rates-heading">
       <h2 id="rates-heading">Rates</h2>
@@ -124,7 +125,7 @@ export function rateInLevels(levels: Rate[][], date: string, added?: number | nu
         @if (previewed(); as p) {
           <p aria-live="polite">
             Claims changed <span data-testid="rate-preview-count">{{ p.count }}</span>,
-            difference <span data-testid="rate-preview-diff">{{ p.diff }}</span>
+            difference <span data-testid="rate-preview-diff">{{ p.diff | figure }}</span>
           </p>
         }
         @if (previewError()) {
@@ -140,7 +141,7 @@ export function rateInLevels(levels: Rate[][], date: string, added?: number | nu
           @for (g of grades; track g) {
             <tr>
               <td>{{ g }}</td>
-              <td [attr.data-testid]="'rate-current-' + g">{{ currentOf(g) ?? na }}</td>
+              <td [attr.data-testid]="'rate-current-' + g">{{ currentOf(g) ?? na | figure }}</td>
             </tr>
           }
         </tbody>
@@ -156,7 +157,7 @@ export function rateInLevels(levels: Rate[][], date: string, added?: number | nu
               <td>{{ r.grade }}</td>
               <td data-testid="rate-from">{{ r.from ?? 'start' }}</td>
               <td data-testid="rate-to">{{ r.to ?? '' }}</td>
-              <td data-testid="rate-pct">{{ r.pct }}</td>
+              <td data-testid="rate-pct">{{ r.pct | figure }}</td>
               <td data-testid="rate-version">{{ r.versions }}</td>
             </tr>
           }

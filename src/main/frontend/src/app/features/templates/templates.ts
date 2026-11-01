@@ -1,5 +1,6 @@
 import { HttpClient, HttpErrorResponse } from '@angular/common/http';
 import { Component, effect, inject, signal } from '@angular/core';
+import { FigurePipe } from '../../core/figure';
 import { FormControl, FormGroup, ReactiveFormsModule } from '@angular/forms';
 import { firstValueFrom } from 'rxjs';
 import { ClaimTemplate, Session } from '../../core/session';
@@ -8,7 +9,7 @@ import { ClaimTemplate, Session } from '../../core/session';
 // person's row makes a DRAFT claim from one with the amount and note it has at that moment.
 @Component({
   selector: 'app-templates',
-  imports: [ReactiveFormsModule],
+  imports: [FigurePipe, ReactiveFormsModule],
   template: `
     <section aria-labelledby="templates-heading">
       <h2 id="templates-heading">Claim templates</h2>
@@ -28,7 +29,7 @@ import { ClaimTemplate, Session } from '../../core/session';
         @for (t of session.templates(); track t.name) {
           <li [attr.data-testid]="'template-row-' + t.name">
             <span data-testid="template-name">{{ t.name }}</span>
-            <span data-testid="template-amount">{{ t.amount }}</span>
+            <span data-testid="template-amount">{{ t.amount | figure }}</span>
             <span data-testid="template-note">{{ t.note }}</span>
           </li>
         }

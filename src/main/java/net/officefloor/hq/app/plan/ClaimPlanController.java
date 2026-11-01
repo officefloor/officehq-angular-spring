@@ -11,6 +11,7 @@ import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.util.List;
 import java.util.Map;
+import net.officefloor.hq.app.setting.OpenToViewer;
 import org.springframework.validation.annotation.Validated;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
@@ -86,6 +87,7 @@ public class ClaimPlanController {
         return PlanView.of(plan, 0, service.today(sheetId));
     }
 
+    @OpenToViewer
     @PostMapping("/plans/generate")
     public GenerateView generate(
             @PathVariable @Size(max = 100) @Pattern(regexp = "[A-Za-z0-9._-]+") String sheetId,

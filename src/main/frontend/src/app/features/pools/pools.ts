@@ -1,5 +1,6 @@
 import { HttpClient, HttpErrorResponse } from '@angular/common/http';
 import { Component, computed, effect, inject, signal, untracked } from '@angular/core';
+import { FigurePipe } from '../../core/figure';
 import { FormControl, FormGroup, ReactiveFormsModule } from '@angular/forms';
 import { firstValueFrom } from 'rxjs';
 import { Session } from '../../core/session';
@@ -70,7 +71,7 @@ function percent(hundredths: number): string {
 // across every pool, are added up as their cut total for the people section.
 @Component({
   selector: 'app-pools',
-  imports: [ReactiveFormsModule],
+  imports: [FigurePipe, ReactiveFormsModule],
   template: `
     <section aria-labelledby="pools-heading">
       <h2 id="pools-heading">Pools</h2>
@@ -87,13 +88,13 @@ function percent(hundredths: number): string {
         @for (p of lines(); track p.id) {
           <li [attr.data-testid]="'pool-row-' + p.name">
             <strong>{{ p.name }}</strong>
-            — total share <span data-testid="pool-total-share">{{ p.total }}</span>,
+            — total share <span data-testid="pool-total-share">{{ p.total | figure }}</span>,
             balanced <span data-testid="pool-balanced">{{ p.isBalanced ? 'yes' : 'no' }}</span>
             <ul [attr.aria-label]="'Members of ' + p.name">
               @for (m of p.lines; track m.key) {
                 <li [attr.data-testid]="'pool-member-' + p.name + '-' + m.key">
-                  {{ m.poolId === null ? m.name : 'pool:' + m.name }}: <span data-testid="pool-share">{{ m.share }}</span>,
-                  cut <span data-testid="pool-cut">{{ m.shownCut }}</span>
+                  {{ m.poolId === null ? m.name : 'pool:' + m.name }}: <span data-testid="pool-share">{{ m.share | figure }}</span>,
+                  cut <span data-testid="pool-cut">{{ m.shownCut | figure }}</span>
                 </li>
               }
             </ul>

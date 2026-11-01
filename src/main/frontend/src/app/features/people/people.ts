@@ -1,5 +1,6 @@
 import { HttpClient, HttpContext, HttpErrorResponse } from '@angular/common/http';
 import { Component, computed, effect, inject, signal } from '@angular/core';
+import { FigurePipe } from '../../core/figure';
 import { FormControl, FormGroup, ReactiveFormsModule } from '@angular/forms';
 import { firstValueFrom } from 'rxjs';
 import { LIVE } from '../../core/as-of';
@@ -205,23 +206,23 @@ function trimmedSum(figures: number[]): number {
 
 @Component({
   selector: 'app-people',
-  imports: [ReactiveFormsModule, Claims, Periods, Plans, Rates],
+  imports: [FigurePipe, ReactiveFormsModule, Claims, Periods, Plans, Rates],
   template: `
     <header aria-label="Sheet counters">
       <p>People: <strong data-testid="header-people-count">{{ people().length }}</strong></p>
       @for (s of statusSummary(); track s.status) {
         <p>{{ s.status }}: <strong [attr.data-testid]="'header-claims-' + s.status + '-count'">{{ s.count }}</strong></p>
       }
-      <p>Due total: <strong data-testid="header-due-total">{{ dueTotal() }}</strong></p>
-      <p>Overdue total: <strong data-testid="header-overdue-total">{{ money(overdueTotal().cents) }}</strong></p>
-      <p>My due total: <strong data-testid="my-due-total">{{ me() ? dueTotalOf(me()!) : '' }}</strong></p>
-      <p>My overdue total: <strong data-testid="my-overdue-total">{{ me() ? money(overdueOf(me()!).cents) : '' }}</strong></p>
+      <p>Due total: <strong data-testid="header-due-total">{{ dueTotal() | figure }}</strong></p>
+      <p>Overdue total: <strong data-testid="header-overdue-total">{{ money(overdueTotal().cents) | figure }}</strong></p>
+      <p>My due total: <strong data-testid="my-due-total">{{ (me() ? dueTotalOf(me()!) : '') | figure }}</strong></p>
+      <p>My overdue total: <strong data-testid="my-overdue-total">{{ (me() ? money(overdueOf(me()!).cents) : '') | figure }}</strong></p>
     </header>
     <section aria-labelledby="consolidated-heading">
       <h2 id="consolidated-heading">Consolidated (this sheet and its descendants)</h2>
       <p>People: <strong data-testid="consolidated-people-count">{{ consolidated().people }}</strong></p>
-      <p>Due total: <strong data-testid="consolidated-due-total">{{ money(consolidated().dueCents) }}</strong></p>
-      <p>Overdue total: <strong data-testid="consolidated-overdue-total">{{ money(consolidated().overdueCents) }}</strong></p>
+      <p>Due total: <strong data-testid="consolidated-due-total">{{ money(consolidated().dueCents) | figure }}</strong></p>
+      <p>Overdue total: <strong data-testid="consolidated-overdue-total">{{ money(consolidated().overdueCents) | figure }}</strong></p>
     </section>
     <app-rates [rates]="rates()" [inherited]="inheritedRates()" [today]="session.today()" (saved)="rateSaved($event)" (imported)="ratesImported($event)" />
     <app-periods [periods]="periods()" [dueTotalOf]="periodDueTotalOf" (saved)="periodSaved($event)" />
@@ -416,8 +417,8 @@ function trimmedSum(figures: number[]): number {
                         [attr.aria-label]="'Add alias for ' + p.name">Add alias</button>
               </td>
               <td data-testid="person-origin">{{ p.origin ?? '' }}</td>
-              <td data-testid="person-claimed">{{ claimedOf(p.id) }}</td>
-              <td data-testid="person-due-total">{{ dueTotalOf(p) }}</td>
+              <td data-testid="person-claimed">{{ claimedOf(p.id) | figure }}</td>
+              <td data-testid="person-due-total">{{ dueTotalOf(p) | figure }}</td>
               <td>
                 <ul>
                   @for (s of p.snapshots; track $index) {
@@ -425,18 +426,18 @@ function trimmedSum(figures: number[]): number {
                   }
                 </ul>
               </td>
-              <td data-testid="person-excess">{{ excessOf(p) }}</td>
-              <td data-testid="person-settled-total">{{ money(splitOf(p).settled) }}</td>
-              <td data-testid="person-open-total">{{ money(splitOf(p).open) }}</td>
-              <td data-testid="person-cut-total">{{ money(cutTotalOf(p.id)) }}</td>
+              <td data-testid="person-excess">{{ excessOf(p) | figure }}</td>
+              <td data-testid="person-settled-total">{{ money(splitOf(p).settled) | figure }}</td>
+              <td data-testid="person-open-total">{{ money(splitOf(p).open) | figure }}</td>
+              <td data-testid="person-cut-total">{{ money(cutTotalOf(p.id)) | figure }}</td>
               <td>
                 @for (period of periods(); track period.id) {
-                  <span>{{ period.name }} <span [attr.data-testid]="'person-period-' + period.name + '-due-total'">{{ personPeriodDueOf(p, period) }}</span></span>
+                  <span>{{ period.name }} <span [attr.data-testid]="'person-period-' + period.name + '-due-total'">{{ personPeriodDueOf(p, period) | figure }}</span></span>
                 }
               </td>
               <td>
                 <span data-testid="person-statement-count">{{ statementOf(p.id)?.count ?? 0 }}</span>
-                <span>Last <span data-testid="person-stated-total">{{ statedTotalOf(p.id) }}</span></span>
+                <span>Last <span data-testid="person-stated-total">{{ statedTotalOf(p.id) | figure }}</span></span>
                 <span>on <span data-testid="person-statement-date">{{ statementOf(p.id)?.lastDate ?? '' }}</span></span>
                 <label [for]="'person-statement-asof-' + p.id" class="visually-hidden">Statement for {{ p.name }} as of</label>
                 <input type="date" [id]="'person-statement-asof-' + p.id" data-testid="person-statement-asof"
@@ -490,16 +491,16 @@ function trimmedSum(figures: number[]): number {
               <td data-testid="person-clashing">{{ p.clashing ? 'yes' : 'no' }}</td>
               <td>
                 <span data-testid="person-overdue-count">{{ overdueOf(p).count }}</span>
-                <span>Total <span data-testid="person-overdue-total">{{ money(overdueOf(p).cents) }}</span></span>
+                <span>Total <span data-testid="person-overdue-total">{{ money(overdueOf(p).cents) | figure }}</span></span>
               </td>
               <td>
-                <span>0-30 <span data-testid="person-aged-0-30">{{ money(agedOf(p).upTo30) }}</span></span>
-                <span>31-60 <span data-testid="person-aged-31-60">{{ money(agedOf(p).upTo60) }}</span></span>
-                <span>61+ <span data-testid="person-aged-61">{{ money(agedOf(p).over60) }}</span></span>
+                <span>0-30 <span data-testid="person-aged-0-30">{{ money(agedOf(p).upTo30) | figure }}</span></span>
+                <span>31-60 <span data-testid="person-aged-31-60">{{ money(agedOf(p).upTo60) | figure }}</span></span>
+                <span>61+ <span data-testid="person-aged-61">{{ money(agedOf(p).over60) | figure }}</span></span>
               </td>
               <td>
                 <span data-testid="person-patrons">{{ patronsOf(p) }}</span>
-                <span>Backing <span data-testid="person-backing">{{ backingOf(p) }}</span></span>
+                <span>Backing <span data-testid="person-backing">{{ backingOf(p) | figure }}</span></span>
                 <label [for]="'person-patron-select-' + p.id" class="visually-hidden">Patron for {{ p.name }}</label>
                 <select [id]="'person-patron-select-' + p.id" data-testid="person-patron-select" #patronSelect
                         (change)="clearPatronError(p.id)">
@@ -545,13 +546,13 @@ function trimmedSum(figures: number[]): number {
           }
         </tbody>
       </table>
-      <p>Claimed total: <strong data-testid="rollup-claimed-total">{{ claimedTotal() }}</strong></p>
-      <p>Due total: <strong data-testid="rollup-due-total">{{ dueTotal() }}</strong></p>
+      <p>Claimed total: <strong data-testid="rollup-claimed-total">{{ claimedTotal() | figure }}</strong></p>
+      <p>Due total: <strong data-testid="rollup-due-total">{{ dueTotal() | figure }}</strong></p>
       <p>Overdue: <strong data-testid="rollup-overdue-count">{{ overdueTotal().count }}</strong>
-        totalling <strong data-testid="rollup-overdue-total">{{ money(overdueTotal().cents) }}</strong></p>
-      <p>Settled total: <strong data-testid="rollup-settled-total">{{ money(splitTotal().settled) }}</strong></p>
-      <p>Open total: <strong data-testid="rollup-open-total">{{ money(splitTotal().open) }}</strong></p>
-      <p>Cut total: <strong data-testid="rollup-cut-total">{{ money(cutTotal()) }}</strong></p>
+        totalling <strong data-testid="rollup-overdue-total">{{ money(overdueTotal().cents) | figure }}</strong></p>
+      <p>Settled total: <strong data-testid="rollup-settled-total">{{ money(splitTotal().settled) | figure }}</strong></p>
+      <p>Open total: <strong data-testid="rollup-open-total">{{ money(splitTotal().open) | figure }}</strong></p>
+      <p>Cut total: <strong data-testid="rollup-cut-total">{{ money(cutTotal()) | figure }}</strong></p>
     </section>
     <section aria-labelledby="summary-heading">
       <h2 id="summary-heading">Summary</h2>
@@ -565,7 +566,7 @@ function trimmedSum(figures: number[]): number {
             <tr>
               <th scope="row">{{ g.grade }}</th>
               <td [attr.data-testid]="'summary-grade-' + g.grade + '-count'">{{ g.count }}</td>
-              <td [attr.data-testid]="'summary-grade-' + g.grade + '-due-total'">{{ g.dueTotal }}</td>
+              <td [attr.data-testid]="'summary-grade-' + g.grade + '-due-total'">{{ g.dueTotal | figure }}</td>
               <td [attr.data-testid]="'summary-grade-' + g.grade + '-active'">{{ g.active }}</td>
             </tr>
           }
@@ -580,8 +581,8 @@ function trimmedSum(figures: number[]): number {
           @for (p of periods(); track p.id) {
             <tr>
               <th scope="row">{{ p.name }}</th>
-              <td [attr.data-testid]="'summary-period-' + p.name + '-due-total'">{{ periodDueTotalOf(p) }}</td>
-              <td [attr.data-testid]="'summary-period-' + p.name + '-change'">{{ periodChangeOf(p) }}</td>
+              <td [attr.data-testid]="'summary-period-' + p.name + '-due-total'">{{ periodDueTotalOf(p) | figure }}</td>
+              <td [attr.data-testid]="'summary-period-' + p.name + '-change'">{{ periodChangeOf(p) | figure }}</td>
             </tr>
           }
         </tbody>
@@ -595,7 +596,7 @@ function trimmedSum(figures: number[]): number {
           @for (t of tagSummary(); track t.tag) {
             <tr>
               <th scope="row">{{ t.tag }}</th>
-              <td [attr.data-testid]="'tag-' + t.tag + '-due-total'">{{ t.dueTotal }}</td>
+              <td [attr.data-testid]="'tag-' + t.tag + '-due-total'">{{ t.dueTotal | figure }}</td>
             </tr>
           }
         </tbody>
@@ -609,7 +610,7 @@ function trimmedSum(figures: number[]): number {
           @for (m of monthSummary(); track m.month) {
             <tr>
               <th scope="row">{{ m.month }}</th>
-              <td [attr.data-testid]="'month-' + m.month + '-due-total'">{{ m.dueTotal }}</td>
+              <td [attr.data-testid]="'month-' + m.month + '-due-total'">{{ m.dueTotal | figure }}</td>
             </tr>
           }
         </tbody>
@@ -654,12 +655,12 @@ function trimmedSum(figures: number[]): number {
           @for (p of periods(); track p.id) {
             <tr>
               <th scope="row">{{ p.name }}</th>
-              <td [attr.data-testid]="'classic-period-' + p.name + '-due-total'">{{ classicPeriodDueTotalOf(p) }}</td>
+              <td [attr.data-testid]="'classic-period-' + p.name + '-due-total'">{{ classicPeriodDueTotalOf(p) | figure }}</td>
             </tr>
           }
         </tbody>
       </table>
-      <p>Due total (not trimmed): <strong data-testid="classic-due-total">{{ classicDueTotal() }}</strong></p>
+      <p>Due total (not trimmed): <strong data-testid="classic-due-total">{{ classicDueTotal() | figure }}</strong></p>
     </section>
   `,
 })

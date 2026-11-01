@@ -1,5 +1,6 @@
 import { HttpClient, HttpErrorResponse } from '@angular/common/http';
 import { Component, inject, input, output, signal } from '@angular/core';
+import { FigurePipe } from '../../core/figure';
 import { FormControl, FormGroup, ReactiveFormsModule } from '@angular/forms';
 import { firstValueFrom } from 'rxjs';
 import { Session } from '../../core/session';
@@ -49,7 +50,7 @@ export function closedOn(periods: Period[], date: string): boolean {
 // and to reopen each (by the roles the sheet's permission matrix allows).
 @Component({
   selector: 'app-periods',
-  imports: [ReactiveFormsModule],
+  imports: [FigurePipe, ReactiveFormsModule],
   template: `
     <section aria-labelledby="periods-heading">
       <h2 id="periods-heading">Periods</h2>
@@ -95,10 +96,10 @@ export function closedOn(periods: Period[], date: string): boolean {
               <td data-testid="period-name">{{ p.name }}</td>
               <td data-testid="period-from">{{ p.from }}</td>
               <td data-testid="period-to">{{ p.to }}</td>
-              <td data-testid="period-due-total">{{ dueTotalOf()(p) }}</td>
+              <td data-testid="period-due-total">{{ dueTotalOf()(p) | figure }}</td>
               <td data-testid="period-closed">{{ p.closed ? 'yes' : p.softClosed ? 'soft' : 'no' }}</td>
               <td data-testid="period-fy">{{ fyOf(p) }}</td>
-              <td data-testid="period-cap">{{ p.cap ?? '' }}</td>
+              <td data-testid="period-cap">{{ p.cap ?? '' | figure }}</td>
               <td>
                 <button type="button" data-testid="period-close" (click)="close(p)"
                         [attr.aria-label]="'Close period ' + p.name">Close</button>
