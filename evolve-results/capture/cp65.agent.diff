@@ -1,0 +1,165 @@
+diff --git a/src/main/frontend/src/app/features/claims/claims.ts b/src/main/frontend/src/app/features/claims/claims.ts
+index ef0bbf890..a0c417a6c 100644
+--- a/src/main/frontend/src/app/features/claims/claims.ts
++++ b/src/main/frontend/src/app/features/claims/claims.ts
+@@ -409,8 +409,8 @@ export class Claims {
+   }
+ 
+   /**
+-   * Open, settle or void a claim, approve or reject (with a reason) a PENDING one, or re-settle a
+-   * SETTLED one at its figure today; a change its
++   * Open, settle or void a claim, approve or reject (with a reason) a PENDING one, re-settle a
++   * SETTLED one at its figure today, or (a steward, within 7 days of settling) void it; a change its
+    * status does not allow is refused.
+    */
+   protected async act(c: Claim, action: ClaimAction, reason = ''): Promise<void> {
+@@ -434,6 +434,8 @@ export class Claims {
+         ? CLOSED
+         : e instanceof HttpErrorResponse && e.status === 409
+         ? `A ${c.status} claim cannot be ${PAST[action]}.`
++        : e instanceof HttpErrorResponse && e.status === 410
++        ? 'A SETTLED claim can be voided only within 7 days of its settlement.'
+         : e instanceof HttpErrorResponse && e.status === 412
+         ? `A deferred claim cannot be settled until ${c.deferredUntil}.`
+         : e instanceof HttpErrorResponse && e.status === 428
+@@ -441,6 +443,8 @@ export class Claims {
+         : e instanceof HttpErrorResponse && e.status === 403
+         ? action === 'settle' && c.openedBy === this.session.user()
+           ? 'The user who opened a claim cannot settle it.'
++          : action === 'void' && c.status === 'SETTLED'
++          ? 'Only a steward can void a SETTLED claim.'
+           : action === 'open' || action === 'settle' || action === 'void'
+           ? `Your role may not ${action} a claim on this sheet.`
+           : action === 'approve' && c.openedBy === this.session.user()
+@@ -568,6 +572,8 @@ export class Claims {
+         ? CLOSED
+         : e instanceof HttpErrorResponse && e.status === 409
+         ? `A ${c.status} claim cannot be split; only an OPEN one can.`
++        : e instanceof HttpErrorResponse && e.status === 410
++        ? 'A SETTLED claim can be voided only within 7 days of its settlement.'
+         : e instanceof HttpErrorResponse && e.status === 412
+         ? `A deferred claim cannot be split until ${c.deferredUntil}.`
+         : e instanceof HttpErrorResponse && e.status === 403
+diff --git a/src/main/java/net/officefloor/hq/app/claim/Claim.java b/src/main/java/net/officefloor/hq/app/claim/Claim.java
+index 5e83fce0c..79baf3ab6 100644
+--- a/src/main/java/net/officefloor/hq/app/claim/Claim.java
++++ b/src/main/java/net/officefloor/hq/app/claim/Claim.java
+@@ -189,6 +189,13 @@ public class Claim {
+         return at;
+     }
+ 
++    /** The date it was last settled, as its status log records it; null when the log has no SETTLED line. */
++    public LocalDate settledOn() {
++        LocalDate on = null;
++        for (ClaimLogEntry line : log) if (line.getStatus() == ClaimStatus.SETTLED) on = line.getDate();
++        return on;
++    }
++
+     public String getNumber() { return number; }
+ 
+     /** Number the claim sheet-wide. */
+diff --git a/src/main/java/net/officefloor/hq/app/claim/ClaimService.java b/src/main/java/net/officefloor/hq/app/claim/ClaimService.java
+index 574d9f731..9e1c3dfb7 100644
+--- a/src/main/java/net/officefloor/hq/app/claim/ClaimService.java
++++ b/src/main/java/net/officefloor/hq/app/claim/ClaimService.java
+@@ -37,7 +37,8 @@ import org.springframework.transaction.annotation.Transactional;
+  * fixes its due at its figure (the due bound by a statement, else its person's grade rate of the
+  * moment on the claim's date) with its late charge of the moment frozen in; with no figure it
+  * stays live. A steward can re-settle a SETTLED claim at the figure it would have today as an open claim
+- * bound by no statement. The user who opened a claim cannot settle it, and a clerk cannot settle one whose
++ * bound by no statement, or void it within 7 days of its settlement: its frozen figure leaves every total
++ * and it keeps its number. The user who opened a claim cannot settle it, and a clerk cannot settle one whose
+  * due is above the sheet's clerk limit (a steward can). A claim with no proofs whose due is above the proof threshold
+  * in force on its date cannot be settled or approved by anyone. No claim dated inside a closed period can
+  * be added, edited (to or from such a date), opened, settled, re-settled or voided. No claim can be added
+@@ -47,6 +48,9 @@ import org.springframework.transaction.annotation.Transactional;
+ @Service
+ public class ClaimService {
+ 
++    /** How many days after its settlement a steward may still void a SETTLED claim. */
++    static final int VOID_SETTLED_DAYS = 7;
++
+     private final ClaimRepository claims;
+     private final PersonRepository people;
+     private final RateService rates;
+@@ -135,7 +139,9 @@ public class ClaimService {
+             default -> throw new ClaimStatusRefusedException();
+         };
+         if (!settings.mayDo(sheetId, user, action)) throw new ClaimNotPermittedException();
+-        if (!claim.getStatus().canBecome(next)) {
++        boolean voidingSettled = next == ClaimStatus.VOID && claim.getStatus() == ClaimStatus.SETTLED;
++        if (voidingSettled) refuseVoidOfSettled(sheetId, user, claim);
++        else if (!claim.getStatus().canBecome(next)) {
+             throw new ClaimStatusRefusedException();
+         }
+         if (next == ClaimStatus.SETTLED && claim.isDeferredOn(sheets.today(sheetId))) {
+@@ -171,6 +177,7 @@ public class ClaimService {
+         };
+         String due = next == ClaimStatus.SETTLED
+                 ? " due=" + (saved.getSettledDue() == null ? "n/a" : saved.getSettledDue().setScale(2).toPlainString())
++                : voidingSettled ? " reversed=" + figureText(saved.getSettledDue())
+                 : "";
+         record(event, sheetId, user, person, saved, saved.getNumber(), due);
+         if (next == ClaimStatus.SETTLED) notifyWatchers(sheetId, user, person, saved);
+@@ -244,6 +251,19 @@ public class ClaimService {
+         return saved;
+     }
+ 
++    /**
++     * Refuse voiding a SETTLED claim unless by a steward within {@value #VOID_SETTLED_DAYS} days of its
++     * settlement (its status log's last SETTLED date) by the sheet's today.
++     */
++    private void refuseVoidOfSettled(String sheetId, String user, Claim claim) {
++        if (settings.roleOf(sheetId, user) != Role.STEWARD) throw new ClaimNotStewardException();
++        LocalDate settled = claim.settledOn();
++        LocalDate today = sheets.today(sheetId);
++        if (settled == null || today.isBefore(settled) || today.isAfter(settled.plusDays(VOID_SETTLED_DAYS))) {
++            throw new ClaimVoidWindowException();
++        }
++    }
++
+     /** One NOTIFY line per user watching the claim's person, in the order they started watching. */
+     private void notifyWatchers(String sheetId, String user, Person person, Claim claim) {
+         for (PersonWatch watch : watches.findByPersonIdOrderByIdAsc(person.getId())) {
+diff --git a/src/main/java/net/officefloor/hq/app/claim/ClaimStatus.java b/src/main/java/net/officefloor/hq/app/claim/ClaimStatus.java
+index 6f63fad9b..1f9823829 100644
+--- a/src/main/java/net/officefloor/hq/app/claim/ClaimStatus.java
++++ b/src/main/java/net/officefloor/hq/app/claim/ClaimStatus.java
+@@ -3,8 +3,8 @@ package net.officefloor.hq.app.claim;
+ /**
+  * A claim's status. It starts as DRAFT, is opened (OPEN) and then settled (SETTLED); a DRAFT,
+  * OPEN or PENDING claim can be voided (VOID). A clerk's settling above the clerk limit makes it
+- * PENDING instead, until a steward approves it (SETTLED) or rejects it (OPEN again). SETTLED and
+- * VOID are final.
++ * PENDING instead, until a steward approves it (SETTLED) or rejects it (OPEN again). A steward
++ * may void a SETTLED claim shortly after its settlement ({@link ClaimService}); VOID is final.
+  */
+ public enum ClaimStatus {
+     DRAFT, OPEN, PENDING, SETTLED, VOID;
+diff --git a/src/main/java/net/officefloor/hq/app/claim/ClaimStatusRefusedException.java b/src/main/java/net/officefloor/hq/app/claim/ClaimStatusRefusedException.java
+index 42ac487a0..43b16c0a6 100644
+--- a/src/main/java/net/officefloor/hq/app/claim/ClaimStatusRefusedException.java
++++ b/src/main/java/net/officefloor/hq/app/claim/ClaimStatusRefusedException.java
+@@ -4,7 +4,7 @@ import org.springframework.http.HttpStatus;
+ import org.springframework.web.bind.annotation.ResponseStatus;
+ 
+ /**
+- * The claim's status cannot change that way (a SETTLED or VOID claim cannot change at all), or the
++ * The claim's status cannot change that way (a VOID claim cannot change at all), or the
+  * claim cannot be edited (only a DRAFT claim can).
+  */
+ @ResponseStatus(HttpStatus.CONFLICT)
+diff --git a/src/main/java/net/officefloor/hq/app/claim/ClaimVoidWindowException.java b/src/main/java/net/officefloor/hq/app/claim/ClaimVoidWindowException.java
+new file mode 100644
+index 000000000..6d777a5bc
+--- /dev/null
++++ b/src/main/java/net/officefloor/hq/app/claim/ClaimVoidWindowException.java
+@@ -0,0 +1,8 @@
++package net.officefloor.hq.app.claim;
++
++import org.springframework.http.HttpStatus;
++import org.springframework.web.bind.annotation.ResponseStatus;
++
++/** A SETTLED claim can be voided only within 7 days of its settlement by the sheet's today. */
++@ResponseStatus(HttpStatus.GONE)
++public class ClaimVoidWindowException extends RuntimeException {}
