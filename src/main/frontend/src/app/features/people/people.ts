@@ -114,6 +114,18 @@ function csvField(value: string): string {
         people <strong data-testid="consolidated-people-count">{{ consolidated().peopleCount }}</strong>,
         due <strong data-testid="consolidated-due-total">{{ (consolidated().dueTotal) | figure }}</strong>,
         overdue <strong data-testid="consolidated-overdue-total">{{ (consolidated().overdueTotal) | figure }}</strong></p>
+      <ul aria-label="Consolidated by grade">
+        @for (g of consolidated().grades; track g.grade) {
+          <li>Grade {{ g.grade }}: due
+            <strong [attr.data-testid]="'consolidated-grade-' + g.grade + '-due-total'">{{ (g.dueTotal) | figure }}</strong></li>
+        }
+      </ul>
+      <ul aria-label="Consolidated by status">
+        @for (s of consolidated().statuses; track s.status) {
+          <li>{{ s.status }}:
+            <strong [attr.data-testid]="'consolidated-status-' + s.status + '-count'">{{ s.count }}</strong> claims</li>
+        }
+      </ul>
       <p>Claimed in total: <strong data-testid="rollup-claimed-total">{{ (claimedTotal()) | figure }}</strong></p>
       <p>Due in total: <strong data-testid="rollup-due-total">{{ (dueTotal()) | figure }}</strong></p>
       <p>Overdue: <strong data-testid="rollup-overdue-count">{{ overdueTotals().count }}</strong>
@@ -845,14 +857,20 @@ export class PeopleList {
   protected readonly dueTotal = computed(() =>
     money(trimmedSum([...this.dueByPerson().values()].filter((due) => due !== null))),
   );
-  /** The sheet's own people count, due-total and overdue-total, as shown here, added to its descendants'; while
-   *  the sheet is shown as of a date, its descendants' are as they stood then too. */
+  /** The sheet's own people count, due-total and overdue-total, per-grade due-totals and per-status claim counts,
+   *  as shown here, added to its descendants'; while the sheet is shown as of a date, its descendants' are as they
+   *  stood then too. */
   protected readonly consolidated = computed(() => {
     const d = this.descendants();
     return {
       peopleCount: this.people().length + d.peopleCount,
       dueTotal: money(cents(this.dueTotal()) + cents(d.dueTotal)),
       overdueTotal: money(this.overdueTotals().cents + cents(d.overdueTotal)),
+      grades: this.summaryByGrade().map((g) => ({
+        grade: g.grade,
+        dueTotal: money(cents(g.dueTotal) + cents(d.dueByGrade[g.grade] ?? '0.00')),
+      })),
+      statuses: this.summaryByStatus().map((s) => ({ status: s.status, count: s.count + (d.countByStatus[s.status] ?? 0) })),
     };
   });
   /** Each person's overdue claims that count: how many, and their dues added up in whole cents (none counting as 0). */
