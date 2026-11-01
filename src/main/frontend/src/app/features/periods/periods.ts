@@ -85,6 +85,19 @@ import { FigurePipe } from '../../core/figure';
         }
       </form>
 
+      <form [formGroup]="rolloverForm" (ngSubmit)="rollover()" aria-label="Roll the year over">
+        <label for="rollover-year">Fiscal year to roll over (the calendar year it starts in)</label>
+        <input id="rollover-year" data-testid="rollover-year" formControlName="year" inputmode="numeric"
+               autocomplete="off" />
+        <button type="submit" data-testid="rollover" [disabled]="rollingOver()">Roll the year over</button>
+        @if (rolledOver() !== null) {
+          <p role="status">Made <span data-testid="rollover-made">{{ rolledOver() }}</span> periods.</p>
+        }
+        @if (rolloverError(); as err) {
+          <p role="alert" data-testid="rollover-error">{{ err }}</p>
+        }
+      </form>
+
       <form [formGroup]="openingForm" (ngSubmit)="importOpenings()" aria-label="Paste opening balances">
         <label for="opening-import">Opening balances, one per line as name,period,amount</label>
         <textarea id="opening-import" data-testid="opening-import" formControlName="text" rows="4"></textarea>
@@ -119,6 +132,15 @@ export class PeriodsPanel {
   protected readonly generating = signal(false);
   /** How many periods the last generate made; null while one runs or before any. */
   protected readonly generated = signal<number | null>(null);
+
+  protected readonly rolloverError = signal<string | null>(null);
+  protected readonly rollingOver = signal(false);
+  /** How many periods the last rollover made; null while one runs or before any. */
+  protected readonly rolledOver = signal<number | null>(null);
+
+  protected readonly rolloverForm = new FormGroup({
+    year: new FormControl('', { nonNullable: true }),
+  });
 
   protected readonly openingError = signal<string | null>(null);
   protected readonly importingOpenings = signal(false);
@@ -380,6 +402,36 @@ export class PeriodsPanel {
       error: () => {
         this.generating.set(false);
         this.generateError.set('Could not generate the fiscal year\'s periods.');
+      },
+    });
+  }
+
+  protected rollover(): void {
+    if (this.rollingOver()) return;
+    this.rolloverError.set(null);
+    this.rolledOver.set(null);
+    const sheet = this.sheets.current();
+    if (!sheet) return;
+    const year = this.rolloverForm.getRawValue().year.trim();
+    if (!/^\d{4}$/.test(year) || Number(year) < 1 || Number(year) > 9998) {
+      this.rolloverError.set('Type the fiscal year as the four-digit year it starts in.');
+      return;
+    }
+    this.rollingOver.set(true);
+    this.periods.rollover(sheet.id, Number(year)).subscribe({
+      next: (result) => {
+        this.rollingOver.set(false);
+        this.rolledOver.set(result.made);
+      },
+      error: (err: unknown) => {
+        this.rollingOver.set(false);
+        this.rolloverError.set(
+          err instanceof HttpErrorResponse && err.status === 403
+            ? 'Only a steward may roll the year over.'
+            : err instanceof HttpErrorResponse && err.status === 409
+              ? 'That fiscal year has no periods on this sheet.'
+              : 'Could not roll the year over.',
+        );
       },
     });
   }

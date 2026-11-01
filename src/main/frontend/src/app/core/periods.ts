@@ -1,6 +1,6 @@
 import { HttpClient } from '@angular/common/http';
 import { Injectable, inject, signal } from '@angular/core';
-import { Observable, tap } from 'rxjs';
+import { Observable, map, switchMap, tap } from 'rxjs';
 
 export interface PeriodView {
   id: number;
@@ -102,6 +102,20 @@ export class Periods {
     return this.http
       .post<GenerateView>(`${this.base(sheetId)}/generate-quarters`, { year })
       .pipe(tap((made) => this.addMade(made)));
+  }
+
+  /** Roll the fiscal year starting in the given calendar year over: the next fiscal year's periods are generated as
+   *  {@link generateFiscalYear} does and each person's open figure is carried into its first period; only a steward
+   *  may, and it is refused when the year has no periods. The periods are re-read once it is done. */
+  rollover(sheetId: string, year: number): Observable<GenerateView> {
+    return this.http.post<GenerateView>(`${this.base(sheetId)}/rollover`, { year }).pipe(
+      switchMap((made) =>
+        this.http.get<PeriodView[]>(this.base(sheetId)).pipe(
+          tap((periods) => this.periods.set(periods)),
+          map(() => made),
+        ),
+      ),
+    );
   }
 
   private addMade(made: GenerateView): void {

@@ -197,6 +197,40 @@ public class Rollup {
         return totals;
     }
 
+    /** Each person's open figure at {@code end}, by person id: the dues as shown now of their claims that count (as for
+     *  the period's figures) which are due by in one of {@code yearPeriods} and were still OPEN or PENDING at the end
+     *  of {@code end}, none counting as 0; every person on the sheet has one. */
+    public Map<Long, BigDecimal> openByPersonAt(String sheetId, List<Period> yearPeriods, LocalDate end) {
+        RateChain sheetRates = rates.of(sheetId);
+        Sheet sheet = sheets.findById(sheetId).orElse(null);
+        LocalDate today = sheet == null ? null : sheet.getToday();
+        Map<Long, Person> personOf = new LinkedHashMap<>();
+        Map<Long, BigDecimal> totals = new LinkedHashMap<>();
+        people.findBySheetIdOrderByPositionAscIdAsc(sheetId).forEach(p -> {
+            personOf.put(p.getId(), p);
+            totals.put(p.getId(), BigDecimal.ZERO.setScale(2));
+        });
+        List<Claim> sheetClaims = claims.findBySheetIdOrderByListedDescIdDesc(sheetId);
+        for (Claim claim : sheetClaims) {
+            Person person = personOf.get(claim.getPersonId());
+            if (person == null || !person.countsAtEnd(claim, end, today) || claim.isDeferredOn(today)) {
+                continue;
+            }
+            ClaimStatus status = claim.statusAt(end);
+            if (status != ClaimStatus.OPEN && status != ClaimStatus.PENDING) {
+                continue;
+            }
+            if (yearPeriods.stream().noneMatch(p -> p.contains(claim.getDueBy()))) {
+                continue;
+            }
+            BigDecimal due = dueOf(claim, person.gradeOn(claim.getDate()), sheetRates, sheet, sheetClaims);
+            if (due != null) {
+                totals.merge(person.getId(), due, BigDecimal::add);
+            }
+        }
+        return totals;
+    }
+
     /** What a candidate rate would change: how many claims would show a different due, and the sum of the
      *  differences (new due minus current due), with two decimals. */
     public record RatePreview(int count, String diff) {

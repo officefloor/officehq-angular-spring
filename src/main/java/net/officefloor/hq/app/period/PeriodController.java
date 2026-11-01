@@ -121,6 +121,16 @@ public class PeriodController {
         return new GenerateView(made.size(), made);
     }
 
+    @PostMapping("/rollover")
+    public GenerateView rollover(
+            @PathVariable @NotBlank @Size(max = 100) @Pattern(regexp = "[A-Za-z0-9._-]+") String sheetId,
+            @RequestHeader("X-User") @NotBlank @Size(max = 100) String user,
+            @Valid @RequestBody GenerateFiscalYearForm request) {
+        List<PeriodView> made = periods.rollover(sheetId, user, request.year()).stream()
+                .map(PeriodView::of).toList();
+        return new GenerateView(made.size(), made);
+    }
+
     @PostMapping("/generate-quarters")
     public GenerateView generateQuarters(
             @PathVariable @NotBlank @Size(max = 100) @Pattern(regexp = "[A-Za-z0-9._-]+") String sheetId,

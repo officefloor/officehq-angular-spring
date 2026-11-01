@@ -5,8 +5,11 @@ import java.time.YearMonth;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.List;
+import java.util.Map;
 import java.math.BigDecimal;
 import net.officefloor.hq.app.Audit;
+import net.officefloor.hq.app.person.Person;
+import net.officefloor.hq.app.person.PersonRepository;
 import net.officefloor.hq.app.role.Role;
 import net.officefloor.hq.app.role.RoleService;
 import net.officefloor.hq.app.rollup.Rollup;
@@ -29,10 +32,12 @@ public class PeriodService {
     private final Audit audit;
     private final Rollup rollup;
     private final RoleService roles;
+    private final PersonRepository people;
 
     public PeriodService(PeriodRepository periods, SheetService sheets, SheetRepository sheetStore, Audit audit,
-            Rollup rollup, RoleService roles) {
+            Rollup rollup, RoleService roles, PersonRepository people) {
         this.roles = roles;
+        this.people = people;
         this.periods = periods;
         this.sheets = sheets;
         this.sheetStore = sheetStore;
@@ -115,6 +120,41 @@ public class PeriodService {
         Sheet sheet = sheets.load(sheetId, user);
         YearMonth first = YearMonth.of(year, sheet.getFiscalStartMonth());
         return generate(sheetId, user, first.atDay(1), first.plusMonths(11).atEndOfMonth());
+    }
+
+    /** Roll the fiscal year starting in the given calendar year over; only a steward may, and it is refused when the
+     *  sheet has no period in that fiscal year. The next fiscal year's twelve periods are generated exactly as
+     *  {@link #generateFiscalYear} does, and each person's open figure at the end of the old year's last period is
+     *  added to their opening balance for the new year's first period. Returns the periods made, in month order. */
+    @Transactional
+    public List<Period> rollover(String sheetId, String user, int year) {
+        sheets.load(sheetId, user);
+        Sheet sheet = sheetStore.findLockedById(sheetId).orElseThrow();
+        if (!Role.STEWARD.equals(roles.roleOf(sheetId, user))) {
+            throw new ResponseStatusException(HttpStatus.FORBIDDEN, "Only a steward may roll the year over");
+        }
+        List<Period> oldYear = periods.findBySheetIdOrderByFromDateAsc(sheetId).stream()
+                .filter(p -> sheet.fiscalYearOf(p.getFromDate()) == year).toList();
+        if (oldYear.isEmpty()) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT, "That fiscal year has no periods on this sheet");
+        }
+        LocalDate end = oldYear.stream().map(Period::getToDate).max(Comparator.naturalOrder()).orElseThrow();
+        Map<Long, BigDecimal> open = rollup.openByPersonAt(sheetId, oldYear, end);
+        List<Period> made = generateFiscalYear(sheetId, user, year + 1);
+        Period first = periods.findBySheetIdOrderByFromDateAsc(sheetId).stream()
+                .filter(p -> sheet.fiscalYearOf(p.getFromDate()) == year + 1).findFirst()
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.CONFLICT,
+                        "The next fiscal year has no period to carry into"));
+        for (Person person : people.findBySheetIdOrderByPositionAscIdAsc(sheetId)) {
+            BigDecimal amount = open.getOrDefault(person.getId(), BigDecimal.ZERO.setScale(2));
+            first.addOpening(person.getId(), amount);
+            audit.recordChangeOnCommit(sheetId, user, "OPENING_SET sheet=" + sheetId + " by=" + user + " name="
+                    + person.getName() + " period=" + first.getName() + " amount=" + amount.toPlainString());
+        }
+        periods.saveAndFlush(first);
+        audit.recordChangeOnCommit(sheetId, user, "ROLLOVER sheet=" + sheetId + " by=" + user + " fy=FY" + year
+                + " periods=" + made.size());
+        return made;
     }
 
     /** Generate the four calendar quarters of the given year, named yyyy-Q1 to yyyy-Q4, each running from the first
