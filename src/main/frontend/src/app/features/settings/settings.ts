@@ -47,7 +47,7 @@ interface SettingsView {
   clerkLimit: string | null;
   /** The least a claim's live due can be, two decimals. */
   floor: string;
-  /** The days after its date by which a claim is due, for a grade without its own. */
+  /** The business days after its date by which a claim is due, for a grade without its own. */
   terms: number;
   /** The terms set for each grade that has its own, by grade. */
   gradeTerms: Partial<Record<Grade, number>>;
@@ -74,7 +74,7 @@ interface SettingsView {
 const FROM = 'From (yyyy-mm-dd; blank: the sheet\'s today)';
 
 // The sheet's settings: the clerk limit (blank: no limit), the floor of a claim's live due, the terms
-// (the days after its date by which a claim is due, fixed when it is added), the terms of each grade (overriding the
+// (the business days after its date by which a claim is due, fixed when it is added), the terms of each grade (overriding the
 // sheet's for a person of that grade on the claim's date), the late percent (charged on an overdue claim's
 // figure for every full 30 days overdue, the one in force on each 30-day boundary), the policy date (blank: the sheet's today; a claim dated before it
 // rounds half up, else half to even), the period numbering from (blank: off; while the sheet's today is on or after it,
@@ -104,12 +104,12 @@ const FROM = 'From (yyyy-mm-dd; blank: the sheet\'s today)';
         <input id="setting-floor" data-testid="setting-floor" formControlName="floor" inputmode="decimal" />
         <label for="setting-floor-from">Floor {{ from }}</label>
         <input id="setting-floor-from" data-testid="setting-floor-from" formControlName="floorFrom" placeholder="yyyy-mm-dd" />
-        <label for="setting-terms">Terms (days)</label>
+        <label for="setting-terms">Terms (business days)</label>
         <input id="setting-terms" data-testid="setting-terms" formControlName="terms" inputmode="numeric" />
         <label for="setting-terms-from">Terms {{ from }}</label>
         <input id="setting-terms-from" data-testid="setting-terms-from" formControlName="termsFrom" placeholder="yyyy-mm-dd" />
         @for (g of grades; track g) {
-          <label [for]="'setting-terms-' + g">Terms for grade {{ g }} (days)</label>
+          <label [for]="'setting-terms-' + g">Terms for grade {{ g }} (business days)</label>
           <input [id]="'setting-terms-' + g" [attr.data-testid]="'setting-terms-' + g" [formControl]="gradeTermsForm.controls[g]"
                  inputmode="numeric" />
           <label [for]="'setting-terms-' + g + '-from'">Terms for grade {{ g }} {{ from }}</label>

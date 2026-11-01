@@ -27,8 +27,8 @@ import org.springframework.transaction.annotation.Transactional;
 
 /**
  * The claims on a sheet: listed newest first, added to a person and edited one at a time. A claim
- * added with no date takes the entry date while one is set, else the sheet's today (an edit with none, the sheet's today). Its due-by is fixed when it is added: its date plus its
- * person's own terms, else the terms in force on that date of its person's grade then (else the
+ * added with no date takes the entry date while one is set, else the sheet's today (an edit with none, the sheet's today). Its due-by is fixed when it is added: the terms-th business day
+ * after its date (skipping weekends and the sheet's holidays then), with its person's own terms, else the terms in force on that date of its person's grade then (else the
  * sheet's terms in force on it); it does not
  * move when its date or the terms change later. A claim is added as DRAFT and moves through its statuses
  * as {@link ClaimStatus} allows; a change it does not allow is refused. Opening a claim gives it
@@ -519,12 +519,12 @@ public class ClaimService {
     }
 
     /**
-     * The due-by a claim of the person dated on the date is fixed with: its date plus their own terms, else
-     * their grade's then, moved past the sheet's holidays now to the next day that is not one.
+     * The due-by a claim of the person dated on the date is fixed with: the terms-th business day after its
+     * date (skipping weekends and the sheet's holidays now), with their own terms, else their grade's then.
      */
     private LocalDate dueByOf(String sheetId, Person person, LocalDate on) {
-        return holidays.pastHolidays(sheetId, on.plusDays(person.getTerms() != null ? person.getTerms()
-                : settings.termsFor(sheetId, person.gradeOn(on), on)));
+        return holidays.businessDaysAfter(sheetId, on, person.getTerms() != null ? person.getTerms()
+                : settings.termsFor(sheetId, person.gradeOn(on), on));
     }
 
     /** The name of the sheet's period the date falls in; empty when in none. */
