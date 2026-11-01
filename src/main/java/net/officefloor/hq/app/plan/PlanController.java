@@ -27,13 +27,26 @@ public class PlanController {
     /** A plan as the screen shows it, with how many claims it has made so far and its next dates after the
      *  sheet's today. */
     public record PlanView(long id, long personId, String amount, LocalDate start, Integer every, Integer day,
-            LocalDate end, int generated, List<LocalDate> nextDates, boolean paused) {
+            LocalDate end, int generated, List<LocalDate> nextDates, boolean paused, List<ChangeView> changes) {
 
         public static PlanView of(PlanService.Counted c) {
             Plan p = c.plan();
             return new PlanView(p.getId(), p.getPersonId(), p.getAmount().toPlainString(), p.getStart(), p.getEvery(),
-                    p.getDay(), p.getEnd(), c.generated(), c.nextDates(), c.paused());
+                    p.getDay(), p.getEnd(), c.generated(), c.nextDates(), c.paused(),
+                    c.changes().stream().map(ChangeView::of).toList());
         }
+    }
+
+    /** A change of a plan's amount: the day it was made and the new amount. */
+    public record ChangeView(LocalDate date, String amount) {
+
+        public static ChangeView of(PlanChange c) {
+            return new ChangeView(c.getChangedOn(), c.getAmount().toPlainString());
+        }
+    }
+
+    /** A plan's new amount as its row submits it. */
+    public record AmountForm(@NotNull BigDecimal amount) {
     }
 
     /** A plan as the form submits it, with either an interval or a day of the month; a missing start takes the
@@ -82,6 +95,15 @@ public class PlanController {
             @PathVariable long planId,
             @RequestHeader("X-User") @NotBlank @Size(max = 100) String user) {
         return PlanView.of(plans.pause(sheetId, user, planId, false));
+    }
+
+    @PostMapping("/plans/{planId}/amount")
+    public PlanView changeAmount(
+            @PathVariable @NotBlank @Size(max = 100) @Pattern(regexp = "[A-Za-z0-9._-]+") String sheetId,
+            @PathVariable long planId,
+            @RequestHeader("X-User") @NotBlank @Size(max = 100) String user,
+            @Valid @RequestBody AmountForm request) {
+        return PlanView.of(plans.changeAmount(sheetId, user, planId, request.amount()));
     }
 
     @PostMapping("/plans/generate")

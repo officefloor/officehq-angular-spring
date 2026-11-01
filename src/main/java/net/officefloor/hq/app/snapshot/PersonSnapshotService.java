@@ -48,6 +48,13 @@ public class PersonSnapshotService {
         snapshots.save(new PersonSnapshot(sheetId, personId, day, dueTotal, today));
     }
 
+    /** Drop the person's snapshot lines, as merging them into another does. */
+    @Transactional
+    public void dropOf(String sheetId, Long personId) {
+        snapshots.deleteAll(snapshots.findBySheetIdAndPersonIdOrderByIdAsc(sheetId, personId));
+        snapshots.flush();
+    }
+
     /** Move the person's snapshots to another person, on another sheet (a merge or transfer); a day the other
      *  already has a snapshot line for keeps theirs, and the moved one is dropped. */
     @Transactional

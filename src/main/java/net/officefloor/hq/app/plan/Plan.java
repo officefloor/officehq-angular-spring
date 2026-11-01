@@ -139,6 +139,11 @@ public class Plan {
         return end;
     }
 
+    /** Change the amount the plan's claims are made with from now on. */
+    public void changeAmount(BigDecimal amount) {
+        this.amount = amount;
+    }
+
     /** Move the plan to another person, as merging its person into them does. */
     public void reassign(Long personId) {
         this.personId = personId;

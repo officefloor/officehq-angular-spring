@@ -153,7 +153,8 @@ public class PoolService {
     /** The sheet's pools as {@link #list(String)}, with {@code on} (null: the sheet's today) standing in for the
      *  sheet's today, as a sheet shown as of a date reads them: then the pot and the people (retired or held) are as
      *  they stood at the end of that date (see {@link SheetHistory}), a person not on the sheet by then is no member,
-     *  and the pools and their memberships are as they are now. */
+     *  and the pools are as they are now, each with its memberships as they stood then when the state kept them (so a
+     *  membership since moved by a merge counts for the person who held it then), else as they are now. */
     @Transactional(readOnly = true)
     public List<PoolWithMembers> list(String sheetId, LocalDate on) {
         Optional<SheetState> then = on == null ? Optional.empty() : history.asOf(sheetId, on);
@@ -165,6 +166,12 @@ public class PoolService {
         List<Pool> list = pools.findBySheetIdOrderByIdAsc(sheetId);
         Map<Long, List<PoolMember>> byPool = members.findByPoolIdInOrderByIdAsc(list.stream().map(Pool::getId).toList())
                 .stream().collect(Collectors.groupingBy(PoolMember::getPoolId));
+        if (then.isPresent() && then.get().pools() != null) {
+            byPool = new HashMap<>(byPool);
+            for (SheetState.PoolState p : then.get().pools()) {
+                byPool.put(p.id(), membersOf(p));
+            }
+        }
         List<Crew> sheetCrews = crews.findBySheetIdOrderByIdAsc(sheetId);
         Map<Long, List<CrewMember>> byCrew = crewMembers.findByCrewIdInOrderByIdAsc(
                 sheetCrews.stream().map(Crew::getId).toList()).stream()
@@ -190,12 +197,7 @@ public class PoolService {
         Map<Long, List<PoolMember>> byPool = new HashMap<>();
         for (SheetState.PoolState p : state.pools()) {
             list.add(Pool.rebuilt(sheetId, p.id(), p.name()));
-            byPool.put(p.id(), p.members().stream().map(m -> {
-                PoolMember member = m.memberPoolId() != null ? PoolMember.ofPool(p.id(), m.memberPoolId(), m.share())
-                        : new PoolMember(p.id(), m.personId(), m.share());
-                member.setDates(m.from(), m.to());
-                return member;
-            }).toList());
+            byPool.put(p.id(), membersOf(p));
         }
         List<Crew> sheetCrews = new ArrayList<>();
         Map<Long, List<CrewMember>> byCrew = new HashMap<>();
@@ -204,6 +206,16 @@ public class PoolService {
             byCrew.put(c.id(), c.members().stream().map(id -> new CrewMember(c.id(), id)).toList());
         }
         return build(sheetId, list, byPool, sheetCrews, byCrew, state.rebuildPeople(sheetId), state.pot(), date);
+    }
+
+    /** A kept pool's memberships, rebuilt unsaved in the order they were added. */
+    private static List<PoolMember> membersOf(SheetState.PoolState p) {
+        return p.members().stream().map(m -> {
+            PoolMember member = m.memberPoolId() != null ? PoolMember.ofPool(p.id(), m.memberPoolId(), m.share())
+                    : new PoolMember(p.id(), m.personId(), m.share());
+            member.setDates(m.from(), m.to());
+            return member;
+        }).toList();
     }
 
     /** A member's cut at the end of a period: the period's name and the cut (null: none). */

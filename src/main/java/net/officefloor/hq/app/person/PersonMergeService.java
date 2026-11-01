@@ -70,10 +70,10 @@ public class PersonMergeService {
      * A steward merges a person into another of the sheet. The merged person's claims move to the other, keeping
      * their numbers and dates, listed as the other's newest in the order they were added, each keeping any figure a
      * statement bound it to; their statements move to the other, whose count becomes their own plus the merged
-     * person's and whose last statement stays theirs (or, having none, becomes the merged person's last), and so do their snapshot lines; their name and aliases become aliases of the other; their patrons are added to the
+     * person's and whose last statement stays theirs (or, having none, becomes the merged person's last); their name and aliases become aliases of the other; their patrons are added to the
      * other's (never the other themselves, nor one twice), anyone naming them as patron names the other instead (once),
      * and their pool memberships move to the other (shares added where the other is already a member). Their
-     * holds, watchers and contact are dropped with them. Refused for anyone but a steward, a merge into
+     * holds, watchers, snapshot lines and contact are dropped with them. Refused for anyone but a steward, a merge into
      * the same person, and when either of them is retired.
      */
     @Transactional
@@ -137,7 +137,7 @@ public class PersonMergeService {
         crews.reassign(from.getId(), into.getId());
 
         statements.move(sheetId, from.getId(), sheetId, into.getId());
-        snapshots.move(sheetId, from.getId(), sheetId, into.getId());
+        snapshots.dropOf(sheetId, from.getId());
         watches.deleteAll(watches.findByPersonIdOrderByIdAsc(from.getId()));
         plans.reassign(from.getId(), into.getId());
         String fromName = from.getName();

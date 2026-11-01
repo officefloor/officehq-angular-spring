@@ -18,6 +18,14 @@ export interface PlanView {
   nextDates: string[];
   /** Whether the plan is paused now: its dates from the day it was paused are skipped until it is resumed. */
   paused: boolean;
+  /** The changes of the plan's amount, oldest first. */
+  changes: PlanChangeView[];
+}
+
+/** A change of a plan's amount: the sheet's today when it was made and the new amount. */
+export interface PlanChangeView {
+  date: string;
+  amount: string;
 }
 
 /** A plan as its form submits it, with either an interval or a day of the month; a blank start takes the sheet's
@@ -76,6 +84,13 @@ export class Plans {
   /** Pause a running plan (on) or resume a paused one (off) from the sheet's today; refused when it already is. */
   pause(sheetId: string, planId: number, on: boolean): Observable<PlanView> {
     return this.http.post<PlanView>(`${this.base(sheetId)}/plans/${planId}/${on ? 'pause' : 'resume'}`, null).pipe(
+      tap((changed) => this.list.update((list) => list.map((p) => (p.id === changed.id ? changed : p)))),
+    );
+  }
+
+  /** Change the plan's amount for the claims generated from now on; refused when the amount is bad. */
+  changeAmount(sheetId: string, planId: number, amount: string): Observable<PlanView> {
+    return this.http.post<PlanView>(`${this.base(sheetId)}/plans/${planId}/amount`, { amount }).pipe(
       tap((changed) => this.list.update((list) => list.map((p) => (p.id === changed.id ? changed : p)))),
     );
   }

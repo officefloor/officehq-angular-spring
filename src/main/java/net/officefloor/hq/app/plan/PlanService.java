@@ -30,6 +30,7 @@ public class PlanService {
     private final PlanRepository plans;
     private final PlanClaimRepository made;
     private final PlanPauseRepository pauses;
+    private final PlanChangeRepository changes;
     private final PersonRepository people;
     private final ClaimService claims;
     private final SheetService sheets;
@@ -37,11 +38,13 @@ public class PlanService {
     private final RoleService roles;
     private final Audit audit;
 
-    public PlanService(PlanRepository plans, PlanClaimRepository made, PlanPauseRepository pauses, PersonRepository people, ClaimService claims,
+    public PlanService(PlanRepository plans, PlanClaimRepository made, PlanPauseRepository pauses,
+            PlanChangeRepository changes, PersonRepository people, ClaimService claims,
             SheetService sheets, SheetRepository sheetStore, RoleService roles, Audit audit) {
         this.plans = plans;
         this.made = made;
         this.pauses = pauses;
+        this.changes = changes;
         this.people = people;
         this.claims = claims;
         this.sheets = sheets;
@@ -54,8 +57,9 @@ public class PlanService {
     private static final int NEXT_DATES = 5;
 
     /** A plan with how many claims it has made so far, its next dates after the sheet's today, and whether it is
-     *  paused now. */
-    public record Counted(Plan plan, int generated, List<LocalDate> nextDates, boolean paused) {
+     *  paused now, and the changes of its amount, oldest first. */
+    public record Counted(Plan plan, int generated, List<LocalDate> nextDates, boolean paused,
+            List<PlanChange> changes) {
     }
 
     /** What a generate did: the claims it made, in the order made, and every plan on the sheet as it is now. */
@@ -69,15 +73,18 @@ public class PlanService {
         Map<Long, Long> counts = made.findByPlanIdInOrderByIdAsc(all.stream().map(Plan::getId).toList()).stream()
                 .collect(Collectors.groupingBy(PlanClaim::getPlanId, Collectors.counting()));
         Map<Long, List<PlanPause>> paused = pausesOf(all);
+        Map<Long, List<PlanChange>> changed = changes.findByPlanIdInOrderByIdAsc(all.stream().map(Plan::getId).toList())
+                .stream().collect(Collectors.groupingBy(PlanChange::getPlanId));
         LocalDate today = sheetStore.findById(sheetId).map(Sheet::getToday).orElse(null);
         return all.stream().map(p -> counted(p, counts.getOrDefault(p.getId(), 0L).intValue(), today,
-                paused.getOrDefault(p.getId(), List.of()))).toList();
+                paused.getOrDefault(p.getId(), List.of()), changed.getOrDefault(p.getId(), List.of()))).toList();
     }
 
-    private static Counted counted(Plan plan, int generated, LocalDate today, List<PlanPause> paused) {
+    private static Counted counted(Plan plan, int generated, LocalDate today, List<PlanPause> paused,
+            List<PlanChange> changed) {
         return new Counted(plan, generated,
                 today == null ? List.of() : plan.nextDates(today, NEXT_DATES, d -> skips(paused, d)),
-                paused.stream().anyMatch(PlanPause::isOpen));
+                paused.stream().anyMatch(PlanPause::isOpen), changed);
     }
 
     /** Each plan's pauses, by plan. */
@@ -118,7 +125,32 @@ public class PlanService {
         audit.recordChangeOnCommit(sheetId, user, (on ? "PLAN_PAUSED" : "PLAN_RESUMED") + " sheet=" + sheetId
                 + " by=" + user + " name=" + person.getName() + " start=" + plan.getStart());
         int generated = made.findByPlanIdInOrderByIdAsc(List.of(planId)).size();
-        return counted(plan, generated, sheet.getToday(), pauses.findByPlanIdInOrderByIdAsc(List.of(planId)));
+        return counted(plan, generated, sheet.getToday(), pauses.findByPlanIdInOrderByIdAsc(List.of(planId)),
+                changes.findByPlanIdInOrderByIdAsc(List.of(planId)));
+    }
+
+    /** Change the plan's amount from the sheet's today: the claims generated from then on take the new amount, those
+     *  already generated keep theirs. Refused when the amount is one the plan form refuses (negative, or with more
+     *  than two decimals). */
+    @Transactional
+    public Counted changeAmount(String sheetId, String user, long planId, BigDecimal amount) {
+        if (amount == null || amount.signum() < 0 || amount.stripTrailingZeros().scale() > 2) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "A plan's amount is not negative, with up to two decimals");
+        }
+        sheets.load(sheetId, user);
+        Sheet sheet = sheetStore.findLockedById(sheetId).orElseThrow();
+        Plan plan = plans.findById(planId).filter(p -> p.getSheetId().equals(sheetId))
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "No such plan on this sheet"));
+        Person person = people.findByIdAndSheetId(plan.getPersonId(), sheetId).orElseThrow();
+        BigDecimal now = amount.setScale(2, RoundingMode.UNNECESSARY);
+        plan.changeAmount(now);
+        plans.flush();
+        changes.saveAndFlush(new PlanChange(planId, sheet.getToday(), now));
+        audit.recordChangeOnCommit(sheetId, user, "PLAN_CHANGED sheet=" + sheetId + " by=" + user
+                + " name=" + person.getName() + " start=" + plan.getStart() + " amount=" + now.toPlainString());
+        int generated = made.findByPlanIdInOrderByIdAsc(List.of(planId)).size();
+        return counted(plan, generated, sheet.getToday(), pauses.findByPlanIdInOrderByIdAsc(List.of(planId)),
+                changes.findByPlanIdInOrderByIdAsc(List.of(planId)));
     }
 
     /** Add a plan for a person; a missing start takes the sheet's today. It runs either every so many days or
@@ -158,7 +190,7 @@ public class PlanService {
                 + " start=" + plan.getStart()
                 + (plan.getDay() != null ? " day=" + plan.getDay() : " every=" + plan.getEvery())
                 + " end=" + plan.getEnd());
-        return counted(plan, 0, sheet.getToday(), List.of());
+        return counted(plan, 0, sheet.getToday(), List.of(), List.of());
     }
 
     /**
@@ -214,6 +246,8 @@ public class PlanService {
         made.flush();
         pauses.deleteAll(pauses.findByPlanIdInOrderByIdAsc(theirs.stream().map(Plan::getId).toList()));
         pauses.flush();
+        changes.deleteAll(changes.findByPlanIdInOrderByIdAsc(theirs.stream().map(Plan::getId).toList()));
+        changes.flush();
         plans.deleteAll(theirs);
         plans.flush();
     }

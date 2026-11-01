@@ -35,6 +35,18 @@ const DAY_PATTERN = /^\d{1,2}$/;
                     [disabled]="busy() === pl.id">Pause</button>
             <button type="button" data-testid="plan-resume" (click)="pause(pl.id, false)"
                     [disabled]="busy() === pl.id">Resume</button>
+            <label [for]="'plan-amount-' + pl.id">New amount</label>
+            <input [id]="'plan-amount-' + pl.id" data-testid="plan-amount" inputmode="decimal" autocomplete="off"
+                   [value]="amountDraft()[pl.id] ?? ''" (input)="draftAmount(pl.id, $event)" />
+            <button type="button" data-testid="plan-amount-save" (click)="changeAmount(pl.id)"
+                    [disabled]="busy() === pl.id">Save amount</button>
+            @if (pl.changes.length > 0) {
+              <ul [attr.aria-label]="'Amount changes of the plan from ' + pl.start">
+                @for (c of pl.changes; track $index) {
+                  <li data-testid="plan-change-line">{{ c.date }} amount={{ c.amount }}</li>
+                }
+              </ul>
+            }
             @if (rowError()?.planId === pl.id) {
               <span role="alert" data-testid="plan-error">{{ rowError()?.message }}</span>
             }
@@ -76,6 +88,8 @@ export class PersonPlans {
   protected readonly busy = signal<number | null>(null);
   /** The last refused action on a plan's row. */
   protected readonly rowError = signal<{ planId: number; message: string } | null>(null);
+  /** The new amount typed on each plan's row, by plan. */
+  protected readonly amountDraft = signal<Record<number, string>>({});
   protected readonly form = new FormGroup({
     amount: new FormControl('', { nonNullable: true }),
     start: new FormControl('', { nonNullable: true }),
@@ -89,10 +103,42 @@ export class PersonPlans {
     toObservable(this.sheets.loaded).pipe(takeUntilDestroyed()).subscribe(() => {
       this.error.set(null);
       this.rowError.set(null);
+      this.amountDraft.set({});
       this.form.reset({ amount: '', start: '', every: '', day: '', end: '' }, { emitEvent: false });
     });
     // An error is removed as soon as its form is changed.
     this.form.valueChanges.pipe(takeUntilDestroyed()).subscribe(() => this.error.set(null));
+  }
+
+  /** Keep the new amount typed on a plan's row; typing removes the row's error. */
+  protected draftAmount(planId: number, event: Event): void {
+    const value = (event.target as HTMLInputElement).value;
+    this.amountDraft.update((d) => ({ ...d, [planId]: value }));
+    if (this.rowError()?.planId === planId) this.rowError.set(null);
+  }
+
+  /** Change the plan's amount for the claims generated from now on; refused when the amount is bad. */
+  protected changeAmount(planId: number): void {
+    if (this.busy() !== null) return;
+    this.rowError.set(null);
+    const sheet = this.sheets.current();
+    if (!sheet) return;
+    const amount = (this.amountDraft()[planId] ?? '').trim();
+    if (!AMOUNT_PATTERN.test(amount)) {
+      this.rowError.set({ planId, message: 'Type an amount of zero or more with up to two decimals.' });
+      return;
+    }
+    this.busy.set(planId);
+    this.plans.changeAmount(sheet.id, planId, amount).subscribe({
+      next: () => {
+        this.busy.set(null);
+        this.amountDraft.update((d) => ({ ...d, [planId]: '' }));
+      },
+      error: () => {
+        this.busy.set(null);
+        this.rowError.set({ planId, message: 'Could not change that plan\'s amount.' });
+      },
+    });
   }
 
   /** Pause (on) or resume (off) the plan; refused when it already is. */
