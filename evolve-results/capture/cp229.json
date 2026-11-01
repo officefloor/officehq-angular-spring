@@ -1,0 +1,64 @@
+{
+  "checkpoint": 229,
+  "stack": {
+    "repo": "/home/daniel/officehq-angular-spring",
+    "origin": "git@github.com:officefloor/officehq-angular-spring.git",
+    "name": "officehq-angular-spring",
+    "base_ref": "base-empty",
+    "base_commit": "65cb8233ea38b2dfa6cfd18709e30cd18fdf3250"
+  },
+  "checkpoint_id": "cp229_grades-editable",
+  "phase": "late",
+  "type": "additive",
+  "mutates": [],
+  "replaced_tests": [],
+  "request": {
+    "spec": "Grades can be added (an entry and a button; GRADE_ADDED grade=<grade>): a code of one to three\ncapital letters not yet a grade; anything else is refused. A new grade appears in every grade\nselect, the summary, the rates and the rate calendar.\n",
+    "prompt": "You are implementing ONE change to this application.\n\nFIRST read AGENTS.md \u2014 it states the working rules and how the app is tested, and sends you to\nDESIGN.md for the app's stack and conventions. Follow both.\n\nTHE CHANGE REQUEST:\nGrades can be added (an entry and a button; GRADE_ADDED grade=<grade>): a code of one to three\ncapital letters not yet a grade; anything else is refused. A new grade appears in every grade\nselect, the summary, the rates and the rate calendar.\n\nYour work is verified by an automated Playwright UI test already installed under e2e/specs/.\nRead that spec: it declares the exact data-testid anchors, values, test data and any audit\nrecords it expects \u2014 match them. Run `bin/e2e` to build the app, start it, and run the test as\nyou work; iterate until it passes. Change whatever the request needs across the app \u2014 its stored\ndata, its server and its front end. Do NOT edit bin/build, bin/start, bin/stop, bin/e2e,\nAGENTS.md, CLAUDE.md, DESIGN.md, e2e/support/ or the test spec.\n"
+  },
+  "commit_sha": "0e9757e07558581a8ce56f1048a3215dd350c0bd",
+  "reset_sha": "",
+  "preagent_sha": "19667339a092d434da4461343c70ebaad5722686",
+  "prev_sha": "19667339a092d434da4461343c70ebaad5722686",
+  "base_sha": "65cb8233ea38b2dfa6cfd18709e30cd18fdf3250",
+  "agent": {
+    "ok": true,
+    "cost_usd": 1.7591934,
+    "input_tokens": 84,
+    "output_tokens": 18370,
+    "cache_read_tokens": 3021327,
+    "cache_creation_tokens": 98399,
+    "num_turns": 43,
+    "duration_ms": 641263,
+    "duration_api_ms": 227576,
+    "model": "claude-opus-5-5",
+    "session_id": "8e4fc7e1-3490-452a-8e1d-6f36a4bf91ed",
+    "stop_reason": "success",
+    "result_text": "Grades can now be added to a sheet, and all 4 tests in `bin/e2e` pass. After the run I made one more edit, a comment in `SheetHistory.java`, and didn't re-run the tests after it.\n\n**What it does:** the Grades panel has a new entry (`grade-add-code`) and an **Add grade** button (`grade-add`). The input is trimmed, so `\" XY \"` becomes `XY`. It's accepted only if it is one to three capital letters and not already a grade on the sheet. Anything else shows `grade-error` and saves nothing. Each added grade writes `GRADE_ADDED sheet=<id> by=<user> grade=<grade>`.\n\n**Stored data:**\n- A new migration, `V118__grade_added.sql`, adds a `sheet_grade_added` table.\n- It widens every grade column from 1 to 3 characters: people's grades, rates, retired grades and the default grade.\n- Every sheet still has A, B and C. Its grades are those three followed by any it has added, in alphabetical order.\n\n**Server:**\n- Every endpoint that took a grade only accepted `[ABC]`; it now accepts any code of one to three capital letters.\n- A grade the sheet doesn't have is refused when you add or edit a person, set or import a rate, retire or merge a grade, or set the default grade. Imports go through the same checks.\n- The sheet's data now includes its list of grades.\n- **Behaviour change:** added grades are not tied to a date, like the parent sheet. So when you view the sheet as it stood on an earlier date, grades added later still appear. One test expects this.\n\n**Front end:** the list of grades now comes from the sheet instead of a fixed A/B/C list. This covers every grade select (person form, inline edit, bulk grade, rate form, rate preview, retire and merge), the grade summary, the consolidated totals, sorting by grade, the current rates and the rate calendar. The default-grade setting is also checked against the sheet's grades.\n\n**Not extended to new grades:** the per-grade settings (clerk limit, terms, grace days and proof threshold for each grade) still exist only for A, B and C. Each is a separate settings field, and the request didn't ask for these. Extending them to added grades would be a follow-up.",
+    "error": "",
+    "attempts": [
+      {
+        "ok": true,
+        "limit_reached": false,
+        "retryable": false,
+        "timed_out": false,
+        "cost_usd": 1.7591934,
+        "num_turns": 43,
+        "duration_ms": 641263,
+        "duration_api_ms": 227576,
+        "error": ""
+      }
+    ]
+  },
+  "agent_stream_file": "cp229.agent.jsonl",
+  "agent_diff_file": "cp229.agent.diff",
+  "build_log_file": null,
+  "tests": {
+    "gated": false,
+    "queued": true
+  },
+  "probe": null,
+  "pinned_touched": [],
+  "acceptance_touched": [],
+  "impact_gate": null
+}
