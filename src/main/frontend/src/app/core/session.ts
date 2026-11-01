@@ -133,6 +133,8 @@ export class Session {
   readonly parent = signal<string | null>(null);
   /** Bumped each time the pot is saved, so the pools re-read their cuts. */
   readonly potSaves = signal(0);
+  /** Bumped each time a hold is put on or the sheet's today changes, so the pools re-read their cuts. */
+  readonly holdChanges = signal(0);
   /**
    * Each person's cut total in cents, by person id: their cuts as the pools show them, across every pool
    * they are a member of, added up (a pool that shows no cuts adds nothing). Kept by the pools section.
@@ -186,7 +188,10 @@ export class Session {
         headers: { 'X-User': user },
       }),
     );
-    if (this.sheetId() === res.id) this.today.set(res.today);
+    if (this.sheetId() === res.id) {
+      this.today.set(res.today);
+      this.holdChanges.update((n) => n + 1);
+    }
   }
 
   async archive(): Promise<void> {

@@ -164,7 +164,7 @@ export class Pools {
       if (id) void this.load(id);
     });
     effect(() => {
-      if (this.session.potSaves() === 0) return;
+      if (this.session.potSaves() === 0 && this.session.holdChanges() === 0) return;
       const id = untracked(() => this.session.sheetId());
       if (id) void this.load(id);
     });

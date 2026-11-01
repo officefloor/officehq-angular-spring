@@ -1417,6 +1417,7 @@ export class People {
       );
       if (this.session.sheetId() !== sheet) return;
       this.people.update((list) => list.map((x) => (x.id === saved.id ? saved : x)));
+      this.session.holdChanges.update((n) => n + 1);
     } catch {
       if (this.session.sheetId() === sheet) this.personError.set({ id: p.id, message: 'Could not hold ' + p.name + '.' });
     }
