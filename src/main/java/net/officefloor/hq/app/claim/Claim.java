@@ -208,6 +208,11 @@ public class Claim {
         this.number = (period.isEmpty() ? "X" : period) + "-" + seq;
     }
 
+    /** The period the claim was numbered within (empty: in no period); null unless numbered by period. */
+    public String getNumberPeriod() { return numberPeriod; }
+
+    public Integer getNumberSeq() { return numberSeq; }
+
     public String getOpenedBy() { return openedBy; }
 
     public void setOpenedBy(String openedBy) { this.openedBy = openedBy; }

@@ -44,6 +44,7 @@ import org.springframework.transaction.annotation.Transactional;
  * be added, edited (to or from such a date), opened, settled, re-settled or voided. No claim can be added
  * or edited to a date after its person's retirement date. A claim with a negative amount is a
  * correction: it must name, by number, a SETTLED claim of the same person; only a correction may name one.
+ * A steward can re-date an OPEN or PENDING claim ({@link #redate}).
  */
 @Service
 public class ClaimService {
@@ -252,6 +253,40 @@ public class ClaimService {
     }
 
     /**
+     * A steward re-dates an OPEN or PENDING claim. Its due-by stays as it was fixed and a figure bound by a
+     * statement stays bound; its period follows the new date. While the sheet numbers by period and the
+     * claim's period changes, it takes the next number of its new period, its old number never given again.
+     * Refused for anyone else, a claim in any other status, one dated inside a closed period, a new date
+     * inside one, or a new date after its person's retirement date.
+     */
+    @Transactional
+    public Claim redate(String sheetId, String user, Long id, LocalDate date) {
+        // Numbering locks the sheet first, so the claim is read once no other change is under way.
+        Sheet numbering = sheets.lockForNumbering(sheetId);
+        RollupService.Snapshot before = rollup.snapshot(sheetId);
+        Claim claim = claims.findByIdAndSheetId(id, sheetId).orElseThrow(ClaimNotFoundException::new);
+        if (!claim.getStatus().isOpen()) throw new ClaimStatusRefusedException();
+        if (settings.roleOf(sheetId, user) != Role.STEWARD) throw new ClaimNotStewardException();
+        refuseIfClosed(sheetId, claim.getDate());
+        refuseIfClosed(sheetId, date);
+        Person person = people.findByIdAndSheetId(claim.getPersonId(), sheetId).orElseThrow(PersonNotFoundException::new);
+        if (!person.mayClaimOn(date)) throw new PersonRetiredException();
+        LocalDate old = claim.getDate();
+        String oldPeriod = claim.getNumberPeriod() != null ? claim.getNumberPeriod() : periodOn(sheetId, old);
+        claim.setDate(date);
+        if (numbering.numbersByPeriod() && !oldPeriod.equals(periodOn(sheetId, date))) {
+            if (claim.getNumberPeriod() != null) {
+                claims.retireNumberWithin(sheetId, claim.getNumberPeriod(), claim.getNumberSeq());
+            }
+            number(numbering, claim);
+        }
+        Claim saved = claims.saveAndFlush(claim);
+        record("CLAIM_REDATED", sheetId, user, person, saved, saved.getNumber(), " old=" + old + " new=" + date);
+        rollup.recordChanges(sheetId, user, before);
+        return saved;
+    }
+
+    /**
      * Refuse voiding a SETTLED claim unless by a steward within {@value #VOID_SETTLED_DAYS} days of its
      * settlement (its status log's last SETTLED date) by the sheet's today.
      */
@@ -415,11 +450,16 @@ public class ClaimService {
             claim.setNumber(sheet.nextClaimNumber());
             return;
         }
-        String period = periods.findBySheetIdOrderByFromDateAsc(sheet.getId()).stream()
-                .filter(p -> p.contains(claim.getDate()))
+        String period = periodOn(sheet.getId(), claim.getDate());
+        claim.setNumberWithin(period, claims.lastNumberWithin(sheet.getId(), period) + 1);
+    }
+
+    /** The name of the sheet's period the date falls in; empty when in none. */
+    private String periodOn(String sheetId, LocalDate date) {
+        return periods.findBySheetIdOrderByFromDateAsc(sheetId).stream()
+                .filter(p -> p.contains(date))
                 .map(Period::getName)
                 .findFirst().orElse("");
-        claim.setNumberWithin(period, claims.lastNumberWithin(sheet.getId(), period) + 1);
     }
 
     /**

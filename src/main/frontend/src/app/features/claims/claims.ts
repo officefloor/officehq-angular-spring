@@ -287,6 +287,11 @@ function notEditable(status: ClaimStatus | undefined): string {
                  (input)="clearClaimError(c.id)" />
           <button type="button" data-testid="claim-defer" (click)="defer(c, deferDate.value)"
                   [attr.aria-label]="'Defer claim of ' + c.amount + ' on ' + c.date">Defer</button>
+          <label [for]="fieldId('redate-' + c.id)">New date</label>
+          <input [id]="fieldId('redate-' + c.id)" type="date" data-testid="claim-date-new" #redateDate
+                 (input)="clearClaimError(c.id)" />
+          <button type="button" data-testid="claim-redate" (click)="redate(c, redateDate.value)"
+                  [attr.aria-label]="'Re-date claim of ' + c.amount + ' on ' + c.date">Re-date</button>
           <label [for]="fieldId('reassign-' + c.id)">Move to</label>
           <select [id]="fieldId('reassign-' + c.id)" data-testid="claim-reassign-to" #reassignTo
                   (change)="clearClaimError(c.id)">
@@ -510,6 +515,39 @@ export class Claims {
         : e instanceof HttpErrorResponse && e.status === 422
         ? 'Enter a date after today to defer the claim until.'
         : 'Could not defer that claim.';
+      this.claimError.set({ id: c.id, message });
+    }
+  }
+
+  /**
+   * A steward re-dates an OPEN or PENDING claim; anyone else, any other claim, a claim in or a new date
+   * inside a closed period, or a new date after its person's retirement is refused.
+   */
+  protected async redate(c: Claim, value: string): Promise<void> {
+    this.claimError.set(null);
+    const sheet = this.session.sheetId();
+    if (!sheet) return;
+    const date = value.trim();
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) {
+      this.claimError.set({ id: c.id, message: 'Enter the new date of the claim.' });
+      return;
+    }
+    const url = `/api/sheets/${encodeURIComponent(sheet)}/claims/${c.id}/redate`;
+    try {
+      const claim = await firstValueFrom(this.http.post<Claim>(url, { date }, { headers: this.headers() }));
+      if (this.session.sheetId() !== sheet) return;
+      this.saved.emit(claim);
+    } catch (e) {
+      if (this.session.sheetId() !== sheet) return;
+      const message = e instanceof HttpErrorResponse && e.status === 423
+        ? CLOSED
+        : e instanceof HttpErrorResponse && e.status === 409
+        ? `A ${c.status} claim cannot be re-dated; only an OPEN or PENDING one can.`
+        : e instanceof HttpErrorResponse && e.status === 403
+        ? 'Only a steward can re-date a claim.'
+        : e instanceof HttpErrorResponse && e.status === 422
+        ? 'The new date is after the person\'s retirement date.'
+        : 'Could not re-date that claim.';
       this.claimError.set({ id: c.id, message });
     }
   }

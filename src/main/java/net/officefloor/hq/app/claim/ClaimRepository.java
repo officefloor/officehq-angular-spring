@@ -3,6 +3,7 @@ package net.officefloor.hq.app.claim;
 import java.util.List;
 import java.util.Optional;
 import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.data.jpa.repository.Modifying;
 import org.springframework.data.jpa.repository.Query;
 
 public interface ClaimRepository extends JpaRepository<Claim, Long> {
@@ -18,9 +19,20 @@ public interface ClaimRepository extends JpaRepository<Claim, Long> {
 
     List<Claim> findBySheetIdAndPersonIdOrderByIdDesc(String sheetId, Long personId);
 
-    /** The last place given in a period's numbering on the sheet (empty name: in no period); 0 if none. */
-    @Query("select coalesce(max(c.numberSeq), 0) from Claim c where c.sheetId = :sheetId and c.numberPeriod = :period")
+    /**
+     * The last place given in a period's numbering on the sheet (empty name: in no period), counting those
+     * given up by claims re-dated out of it; 0 if none.
+     */
+    @Query(value = "select coalesce(max(s), 0) from (select number_seq s from claim where sheet_id = :sheetId"
+            + " and number_period = :period union all select number_seq s from claim_number_retired"
+            + " where sheet_id = :sheetId and number_period = :period) n", nativeQuery = true)
     int lastNumberWithin(String sheetId, String period);
+
+    /** Give up a place in a period's numbering on the sheet, so it is never given again. */
+    @Modifying
+    @Query(value = "insert into claim_number_retired (sheet_id, number_period, number_seq)"
+            + " values (:sheetId, :period, :seq)", nativeQuery = true)
+    void retireNumberWithin(String sheetId, String period, int seq);
 
     Optional<Claim> findByIdAndSheetId(Long id, String sheetId);
 }

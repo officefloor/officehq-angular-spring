@@ -84,6 +84,9 @@ public class ClaimController {
     /** The date an OPEN claim is deferred until: after the sheet's today. */
     public record DeferRequest(@NotNull LocalDate until) {}
 
+    /** The new date of an OPEN or PENDING claim a steward re-dates. */
+    public record RedateRequest(@NotNull LocalDate date) {}
+
     /** The person on the sheet a claim is moved to. */
     public record ReassignRequest(@NotNull Long personId) {}
 
@@ -235,6 +238,15 @@ public class ClaimController {
             @RequestHeader("X-User") @NotBlank @Size(max = 100) String user,
             @RequestBody @Valid DeferRequest request) {
         return ClaimView.of(service.defer(sheetId, user, id, request.until()));
+    }
+
+    @PostMapping("/claims/{id}/redate")
+    public ClaimView redate(
+            @PathVariable @Size(max = 100) @Pattern(regexp = "[A-Za-z0-9._-]+") String sheetId,
+            @PathVariable Long id,
+            @RequestHeader("X-User") @NotBlank @Size(max = 100) String user,
+            @RequestBody @Valid RedateRequest request) {
+        return ClaimView.of(service.redate(sheetId, user, id, request.date()));
     }
 
     @PostMapping("/claims/{id}/proof")
