@@ -177,7 +177,7 @@ public record SheetState(List<SettingState> settings, LocalDate policyDate, List
                 .map(p -> new PersonView(v.id(), v.name(), p.rebuild(sheetId).gradeOn(today), v.grades(),
                         p.rebuild(sheetId).termsOn(today),
                         v.version(), v.retired(), v.retiredFrom(), v.held(), v.holds(), v.contact(), v.aliases(), v.clashing(), v.origin(),
-                        v.pastRetirements(), v.tags(), v.undatedTerms(), v.datedTerms(), v.flag()))
+                        v.pastRetirements(), v.tags(), v.undatedTerms(), v.datedTerms(), v.flag(), v.approver()))
                 .orElse(v)).toList();
     }
 

@@ -66,6 +66,8 @@ export interface PersonView {
   /** The reason a steward flagged the person for, while the sheet's today is on or before its until-date; null or
    *  missing otherwise. */
   flag?: string | null;
+  /** The user who may approve or reject the person's PENDING claims as a steward may; null or missing when none. */
+  approver?: string | null;
 }
 
 /** A past retirement: retired from `from`, unretired on `to` (yyyy-mm-dd). */
@@ -174,6 +176,11 @@ export class People {
   /** A steward flags the person with a reason until a date (null takes the sheet's today). */
   flag(sheetId: string, id: number, reason: string, until: string | null): Observable<PersonView> {
     return this.http.post<PersonView>(`${this.base(sheetId)}/${id}/flag`, { reason, until });
+  }
+
+  /** Set the person's approver (blank: none). */
+  setApprover(sheetId: string, id: number, user: string): Observable<PersonView> {
+    return this.http.post<PersonView>(`${this.base(sheetId)}/${id}/approver`, { user });
   }
 
   /** Give the person an alias; refused when blank or already a name or alias on the sheet. */

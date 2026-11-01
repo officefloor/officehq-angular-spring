@@ -464,6 +464,12 @@ function csvField(value: string): string {
                    (input)="clearPersonError(p.id)" />
             <button type="button" data-testid="person-flag" (click)="flag(p, flagReason, flagUntil)"
                     [disabled]="flagging() === p.id" [attr.aria-label]="'Flag ' + p.name">Flag</button>
+            — approver <span data-testid="person-approver">{{ p.approver ?? '' }}</span>
+            <label [attr.for]="'person-approver-input-' + p.id">Approver</label>
+            <input [id]="'person-approver-input-' + p.id" data-testid="person-approver-input" #approverInput
+                   autocomplete="off" (input)="clearPersonError(p.id)" />
+            <button type="button" data-testid="person-approver-save" (click)="setApprover(p, approverInput)"
+                    [disabled]="approving() === p.id" [attr.aria-label]="'Set the approver of ' + p.name">Set approver</button>
             <button type="button" [attr.data-testid]="'person-edit-' + p.id" (click)="edit(p)"
                     [attr.aria-label]="'Edit ' + p.name">Edit</button>
             <label [attr.for]="'person-statement-asof-' + p.id">Statement as of</label>
@@ -693,6 +699,9 @@ export class PeopleList {
   protected readonly transferring = signal<number | null>(null);
   /** The person being flagged, so a second press waits for the first. */
   protected readonly flagging = signal<number | null>(null);
+
+  /** The person whose approver is being set, so a second press waits for the first. */
+  protected readonly approving = signal<number | null>(null);
 
   /** The person an alias is being added to, so a second press waits for the first. */
   protected readonly aliasing = signal<number | null>(null);
@@ -1584,6 +1593,27 @@ export class PeopleList {
       error: () => {
         this.flagging.set(null);
         this.personError.set({ id: p.id, message: 'Only a steward may flag ' + p.name + '.' });
+      },
+    });
+  }
+
+  /** Set the person's approver to the user name typed (blank: none). */
+  protected setApprover(p: PersonView, input: HTMLInputElement): void {
+    if (this.approving() === p.id) return;
+    this.personError.set(null);
+    this.patronError.set(null);
+    const sheet = this.sheets.current();
+    if (!sheet) return;
+    this.approving.set(p.id);
+    this.api.setApprover(sheet.id, p.id, input.value).subscribe({
+      next: (saved) => {
+        this.approving.set(null);
+        input.value = '';
+        this.people.update((list) => list.map((q) => (q.id === saved.id ? saved : q)));
+      },
+      error: () => {
+        this.approving.set(null);
+        this.personError.set({ id: p.id, message: 'The approver of ' + p.name + ' could not be set.' });
       },
     });
   }

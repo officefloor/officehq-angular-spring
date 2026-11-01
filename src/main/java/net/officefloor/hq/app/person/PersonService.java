@@ -308,6 +308,21 @@ public class PersonService {
         return saved;
     }
 
+    /** Give the person an approver, a user name stored trimmed (blank: none), who may approve or reject their
+     *  PENDING claims as a steward may. */
+    @Transactional
+    public Person setApprover(String sheetId, String user, long id, String approver) {
+        sheets.load(sheetId, user);
+        Person person = people.findByIdAndSheetId(id, sheetId)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "No such person on this sheet"));
+        String trimmed = approver == null ? "" : approver.trim();
+        person.setApprover(trimmed.isEmpty() ? null : trimmed);
+        Person saved = save(person);
+        audit.recordChangeOnCommit(sheetId, user, "APPROVER_SET sheet=" + sheetId + " by=" + user
+                + " name=" + saved.getName() + " user=" + trimmed);
+        return saved;
+    }
+
     /** Give the person an alias, stored trimmed: refused when blank, or when it is, without regard to case, any
      *  name or alias on the sheet or on another sheet of its tree. */
     @Transactional

@@ -38,7 +38,8 @@ public class PersonController {
     public record PersonView(long id, String name, String grade, List<GradeView> grades, Integer terms,
             long version, boolean retired, LocalDate retiredFrom, boolean held, List<HoldView> holds, String contact,
             List<String> aliases, boolean clashing, String origin, List<RetirementView> pastRetirements,
-            List<String> tags, Integer undatedTerms, List<TermsView> datedTerms, String flag) {
+            List<String> tags, Integer undatedTerms, List<TermsView> datedTerms, String flag,
+            String approver) {
 
         /** A view read back without tags or dated terms (taken before people had them) has none. */
         public PersonView {
@@ -58,7 +59,7 @@ public class PersonController {
                     person.getAliases(), clashing, person.getOriginSheetId(),
                     person.getPastRetirements().stream().map(RetirementView::of).toList(), person.tagList(),
                     person.getTerms(), person.getDatedTerms().stream().map(TermsView::of).toList(),
-                    person.flagOn(today));
+                    person.flagOn(today), person.getApprover());
         }
     }
 
@@ -88,6 +89,10 @@ public class PersonController {
 
     /** A hold as the form submits it: a missing from-date takes the sheet's today; a missing to-date has no end. */
     public record HoldForm(LocalDate from, LocalDate to) {
+    }
+
+    /** An approver as the form submits it: a user name (blank or missing: none). */
+    public record ApproverForm(@Size(max = 100) String user) {
     }
 
     /** A flag as the form submits it: a reason (blank: refused) and the last day it is in force (missing: the
@@ -312,6 +317,16 @@ public class PersonController {
             @RequestHeader("X-User") @NotBlank @Size(max = 100) String user,
             @Valid @RequestBody AliasForm request) {
         return view(sheetId, people.addAlias(sheetId, user, id, request.alias()));
+    }
+
+    /** Set the person's approver. */
+    @PostMapping("/{id}/approver")
+    public PersonView setApprover(
+            @PathVariable @NotBlank @Size(max = 100) @Pattern(regexp = "[A-Za-z0-9._-]+") String sheetId,
+            @PathVariable long id,
+            @RequestHeader("X-User") @NotBlank @Size(max = 100) String user,
+            @Valid @RequestBody ApproverForm request) {
+        return view(sheetId, people.setApprover(sheetId, user, id, request.user()));
     }
 
     /** Merge the person into another of the sheet: the person merged into, as saved. */

@@ -94,6 +94,10 @@ public class Person {
     @Column(name = "flag_until")
     private LocalDate flagUntil;
 
+    /** The user who may approve or reject the person's PENDING claims as a steward may; null when none. */
+    @Column(name = "approver", length = 100)
+    private String approver;
+
     /** The other names the person is found by, stored trimmed. */
     @ElementCollection(fetch = FetchType.EAGER)
     @CollectionTable(name = "person_alias", joinColumns = @JoinColumn(name = "person_id"))
@@ -132,6 +136,7 @@ public class Person {
         copy.aliases.addAll(aliases);
         copy.flagReason = flagReason;
         copy.flagUntil = flagUntil;
+        copy.approver = approver;
         return copy;
     }
 
@@ -307,6 +312,21 @@ public class Person {
 
     public void addHold(Hold hold) {
         holds.add(hold);
+    }
+
+    /** The user who may approve or reject the person's PENDING claims; null when none. */
+    public String getApprover() {
+        return approver;
+    }
+
+    /** Set the person's approver (null: none). */
+    public void setApprover(String approver) {
+        this.approver = approver;
+    }
+
+    /** Whether {@code user} is the person's approver. */
+    public boolean isApprover(String user) {
+        return approver != null && user != null && approver.equals(user.trim());
     }
 
     /** Flag the person with a reason until a date, replacing any flag they had. */

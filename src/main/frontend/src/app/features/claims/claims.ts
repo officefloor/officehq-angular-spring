@@ -731,7 +731,7 @@ export class PersonClaims {
             ? 'You opened this claim, so another steward must approve it.'
             : c.editedBy === this.session.user()
             ? 'You last edited this claim, so another steward must approve it.'
-            : 'Only a steward can approve a claim.'
+            : 'Only a steward or the approver of this person can approve a claim.'
           : this.refusal(err, c, 'approved'),
       }),
     });
@@ -795,7 +795,7 @@ export class PersonClaims {
       error: (err: unknown) => this.claimError.set({
         id: c.id,
         message: err instanceof HttpErrorResponse && err.status === 403
-          ? 'Only a steward can reject a claim.'
+          ? 'Only a steward or the approver of this person can reject a claim.'
           : this.refusal(err, c, 'rejected'),
       }),
     });

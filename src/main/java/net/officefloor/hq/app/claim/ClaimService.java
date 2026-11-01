@@ -908,8 +908,8 @@ public class ClaimService {
                 changeStatus(sheetId, user, split.split().getId(), ClaimStatus.SETTLED, null, false));
     }
 
-    /** The PENDING claim a steward approves or rejects; refused for a clerk, a claim in any other status and one
-     *  due by inside a closed period. */
+    /** The PENDING claim a steward, or its person's approver, approves or rejects; refused for anyone else, a claim
+     *  in any other status and one due by inside a closed period. */
     private Claim pendingClaim(String sheetId, String user, long id) {
         Claim claim = claims.findByIdAndSheetId(id, sheetId)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "No such claim on this sheet"));
@@ -918,8 +918,10 @@ public class ClaimService {
             throw new ResponseStatusException(HttpStatus.CONFLICT,
                     "A " + claim.getStatus() + " claim is not waiting for approval");
         }
-        if (!Role.STEWARD.equals(roles.roleOf(sheetId, user))) {
-            throw new ResponseStatusException(HttpStatus.FORBIDDEN, "Only a steward approves or rejects a claim");
+        if (!Role.STEWARD.equals(roles.roleOf(sheetId, user)) && !people.findByIdAndSheetId(claim.getPersonId(), sheetId)
+                .map(p -> p.isApprover(user)).orElse(false)) {
+            throw new ResponseStatusException(HttpStatus.FORBIDDEN,
+                    "Only a steward or the person's approver approves or rejects a claim");
         }
         return claim;
     }
