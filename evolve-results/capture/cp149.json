@@ -1,0 +1,64 @@
+{
+  "checkpoint": 149,
+  "stack": {
+    "repo": "/home/daniel/officehq-angular-spring",
+    "origin": "git@github.com:officefloor/officehq-angular-spring.git",
+    "name": "officehq-angular-spring",
+    "base_ref": "base-empty",
+    "base_commit": "65cb8233ea38b2dfa6cfd18709e30cd18fdf3250"
+  },
+  "checkpoint_id": "cp149_period-claim-cap",
+  "phase": "mid",
+  "type": "additive",
+  "mutates": [],
+  "replaced_tests": [],
+  "request": {
+    "spec": "A period may cap the number of open claims per person (a whole number on the period form, blank\nfor none; PERIOD_ADDED gains cap=<n> at the end when given). Opening a claim that belongs to the\nperiod, alone or by the bulk button, is refused with an error on the claim when the person already\nhas that many OPEN or PENDING claims in it.\n",
+    "prompt": "You are implementing ONE change to this application.\n\nFIRST read AGENTS.md \u2014 it states the working rules and how the app is tested, and sends you to\nDESIGN.md for the app's stack and conventions. Follow both.\n\nTHE CHANGE REQUEST:\nA period may cap the number of open claims per person (a whole number on the period form, blank\nfor none; PERIOD_ADDED gains cap=<n> at the end when given). Opening a claim that belongs to the\nperiod, alone or by the bulk button, is refused with an error on the claim when the person already\nhas that many OPEN or PENDING claims in it.\n\nYour work is verified by an automated Playwright UI test already installed under e2e/specs/.\nRead that spec: it declares the exact data-testid anchors, values, test data and any audit\nrecords it expects \u2014 match them. Run `bin/e2e` to build the app, start it, and run the test as\nyou work; iterate until it passes. Change whatever the request needs across the app \u2014 its stored\ndata, its server and its front end. Do NOT edit bin/build, bin/start, bin/stop, bin/e2e,\nAGENTS.md, CLAUDE.md, DESIGN.md, e2e/support/ or the test spec.\n"
+  },
+  "commit_sha": "7aa29584f4dbd5aa2de1e88b744bb310f7d9affa",
+  "reset_sha": "",
+  "preagent_sha": "0cb1a7ac6397eb6582fb9d0d60bd14db85642739",
+  "prev_sha": "0cb1a7ac6397eb6582fb9d0d60bd14db85642739",
+  "base_sha": "65cb8233ea38b2dfa6cfd18709e30cd18fdf3250",
+  "agent": {
+    "ok": true,
+    "cost_usd": 1.1807755999999998,
+    "input_tokens": 58,
+    "output_tokens": 13747,
+    "cache_read_tokens": 1618938,
+    "cache_creation_tokens": 72727,
+    "num_turns": 30,
+    "duration_ms": 327930,
+    "duration_api_ms": 136641,
+    "model": "claude-opus-5-5",
+    "session_id": "22ede96f-0126-417d-9e28-b99319411cc8",
+    "stop_reason": "success",
+    "result_text": "Periods can now cap open claims per person, and `bin/e2e` passes all 4 tests. One limitation: none of those tests makes a cap actually refuse an open. That path is in place and builds, but nothing has run it yet.\n\n**How it behaves**\n- **Period form:** there's a new cap field (`period-form-cap`). Blank means no cap. Anything other than a whole number of 1 or more is refused with `period-form-error`, and the server rejects it too.\n- **Period list:** a new `period-cap` column shows the cap, or nothing when there isn't one.\n- **Audit:** `PERIOD_ADDED` gets ` cap=<n>` at the end of the line only when a cap was given. Monthly and fiscal-year generation make periods with no cap.\n- **Opening a claim:** a claim belongs to a period by its due-by date, which is the same rule already used for numbering and closing. If the person already has as many OPEN or PENDING claims due in that period as the cap allows, the open is refused. Nothing is written and the number is rolled back. The claim shows `claim-error` with a cap message.\n- **Bulk open:** a claim refused for the cap is counted under refused, and the rest still go through.\n- **Scope:** I only added the check where a claim is opened (on its own or by the bulk button). Other ways a claim can become OPEN, such as a steward rejecting a PENDING claim or splitting a claim, don't check the cap.\n\n**What I changed**\n- **Stored data:** migration `V84__period_cap.sql` adds a nullable `claim_cap` column to `period`. Cloning a sheet copies it, because the clone copies every column of the period table.\n- **Server:**\n  - The period entity, controller and service carry the cap and write it to the audit line.\n  - A new `ClaimCapReachedException` is thrown from the open path in `ClaimService`, while it holds the same sheet lock used for numbering.\n  - `ClaimBulkService` counts that exception as a refusal.\n  - `ClaimController` answers it with a 409 of its own type, `cap-reached`. That keeps it apart from the existing \"a claim in this status can't be opened\" 409.\n- **Front end:** `periods.ts` has the new field, its check and the column. `claims.ts` turns the `cap-reached` answer into its own error message.",
+    "error": "",
+    "attempts": [
+      {
+        "ok": true,
+        "limit_reached": false,
+        "retryable": false,
+        "timed_out": false,
+        "cost_usd": 1.1807755999999998,
+        "num_turns": 30,
+        "duration_ms": 327930,
+        "duration_api_ms": 136641,
+        "error": ""
+      }
+    ]
+  },
+  "agent_stream_file": "cp149.agent.jsonl",
+  "agent_diff_file": "cp149.agent.diff",
+  "build_log_file": null,
+  "tests": {
+    "gated": false,
+    "queued": true
+  },
+  "probe": null,
+  "pinned_touched": [],
+  "acceptance_touched": [],
+  "impact_gate": null
+}
