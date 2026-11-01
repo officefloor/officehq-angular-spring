@@ -1,9 +1,12 @@
 package net.officefloor.hq.app.claim;
 
+import java.math.BigDecimal;
+import java.math.RoundingMode;
 import java.util.Comparator;
 import java.util.List;
 import java.util.Set;
 import java.util.function.Consumer;
+import net.officefloor.hq.app.Audit;
 import net.officefloor.hq.app.period.PeriodClosedException;
 import net.officefloor.hq.app.person.PersonNotFoundException;
 import net.officefloor.hq.app.person.PersonRetiredException;
@@ -11,11 +14,14 @@ import net.officefloor.hq.app.setting.Role;
 import net.officefloor.hq.app.setting.SettingService;
 import net.officefloor.hq.app.sheet.SheetService;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
+import org.springframework.transaction.interceptor.TransactionAspectSupport;
 
 /**
  * Changes to many selected claims at once. Each claim is changed in its own transaction, in list
  * order (people in the order they were added, each person's claims newest first), exactly as if
- * its own button were pressed; one that is refused is left as it is and counted as refused. A
+ * its own button were pressed; one that is refused is left as it is and counted as refused (a bulk
+ * settle is instead all or nothing). A
  * viewer's bulk change, or one on an archived sheet, goes through with nothing done: every selected
  * claim is refused.
  */
@@ -29,8 +35,11 @@ public class ClaimBulkService {
     private final ClaimRepository repository;
     private final SettingService settings;
     private final SheetService sheets;
+    private final Audit audit;
 
-    public ClaimBulkService(ClaimService claims, ClaimRepository repository, SettingService settings, SheetService sheets) {
+    public ClaimBulkService(ClaimService claims, ClaimRepository repository, SettingService settings, SheetService sheets,
+            Audit audit) {
+        this.audit = audit;
         this.claims = claims;
         this.repository = repository;
         this.settings = settings;
@@ -43,14 +52,40 @@ public class ClaimBulkService {
     }
 
     /**
-     * Settle each selected claim that can be settled, by the rules of settling one: a claim over
-     * the user's clerk limit goes to PENDING and counts as settled. One that settles any is a batch:
-     * the sheet's next batch number, given to each claim it settled.
+     * Settle the selected claims, all or nothing, by the rules of settling one: a claim over the
+     * user's clerk limit goes to PENDING and counts as settled. If any is refused, none is settled,
+     * every one counts as refused and nothing is written. Otherwise they are settled in list order as
+     * one batch: the sheet's next batch number, given to each claim, then one BATCH_SETTLED line with
+     * the number of claims and the frozen figures of those SETTLED added up.
      */
+    @Transactional
     public Result settle(String sheetId, String user, Set<Long> ids) {
-        Integer[] batch = {null};
-        return change(sheetId, user, ids,
-                id -> batch[0] = claims.settleInBatch(sheetId, user, id, batch[0]).getSettleBatch());
+        if (refusesAll(sheetId, user)) return new Result(0, ids.size());
+        List<Claim> selected = selected(sheetId, ids);
+        if (selected.size() != ids.size()) return new Result(0, ids.size());
+        Integer batch = null;
+        BigDecimal total = BigDecimal.ZERO;
+        for (Claim claim : selected) {
+            try {
+                Claim settled = claims.settleInBatch(sheetId, user, claim.getId(), batch);
+                batch = settled.getSettleBatch();
+                if (settled.getStatus() == ClaimStatus.SETTLED && settled.getSettledDue() != null) {
+                    total = total.add(settled.getSettledDue());
+                }
+            } catch (ClaimStatusRefusedException | ClaimSettledByOpenerException | ClaimDeferredException | ClaimProofRequiredException
+                    | ClaimNoteRequiredException
+                    | ClaimNotPermittedException
+                    | PeriodClosedException
+                    | ClaimNotFoundException | PersonNotFoundException refused) {
+                TransactionAspectSupport.currentTransactionStatus().setRollbackOnly();
+                return new Result(0, ids.size());
+            }
+        }
+        if (batch != null) {
+            audit.recordOnCommit("BATCH_SETTLED sheet=" + sheetId + " by=" + user.strip() + " batch=" + batch
+                    + " count=" + selected.size() + " total=" + total.setScale(2, RoundingMode.HALF_UP).toPlainString());
+        }
+        return new Result(selected.size(), 0);
     }
 
     /** The number of the sheet's last settle batch, or null while there has been none. */
