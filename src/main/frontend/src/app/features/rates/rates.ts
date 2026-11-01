@@ -12,6 +12,8 @@ export interface Rate {
   to: string | null;
   /** A percent, always two decimals, e.g. "12.50". */
   pct: string;
+  /** How many versions it has; the pct is the newest. */
+  versions: number;
 }
 
 export const GRADES = ['A', 'B', 'C'];
@@ -135,7 +137,7 @@ export function rateInLevels(levels: Rate[][], date: string): Rate | null {
       <table>
         <caption>All rates</caption>
         <thead>
-          <tr><th scope="col">Grade</th><th scope="col">From</th><th scope="col">To</th><th scope="col">Rate (%)</th></tr>
+          <tr><th scope="col">Grade</th><th scope="col">From</th><th scope="col">To</th><th scope="col">Rate (%)</th><th scope="col">Versions</th></tr>
         </thead>
         <tbody>
           @for (r of sorted(); track r.grade + '-' + (r.from ?? 'start')) {
@@ -144,6 +146,7 @@ export function rateInLevels(levels: Rate[][], date: string): Rate | null {
               <td data-testid="rate-from">{{ r.from ?? 'start' }}</td>
               <td data-testid="rate-to">{{ r.to ?? '' }}</td>
               <td data-testid="rate-pct">{{ r.pct }}</td>
+              <td data-testid="rate-version">{{ r.versions }}</td>
             </tr>
           }
         </tbody>

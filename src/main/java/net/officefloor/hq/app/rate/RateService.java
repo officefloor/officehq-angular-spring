@@ -16,7 +16,7 @@ import org.springframework.transaction.annotation.Transactional;
 
 /**
  * The sheet's rates for each grade, each from a date (or from the beginning of time): set one grade
- * and from-date at a time, replacing any rate it had. A date's rate is the one with the latest
+ * and from-date at a time, adding a new version of any rate it had (the newest is the one in force). A date's rate is the one with the latest
  * from-date on or before it; a grade with none in force on a date takes the sheet's ancestors' ({@link InheritedRates}).
  */
 @Service
@@ -90,8 +90,7 @@ public class RateService {
                 ? rates.findBySheetIdAndGradeAndFromDateIsNull(sheetId, grade)
                 : rates.findBySheetIdAndGradeAndFromDate(sheetId, grade, from);
         Rate rate = existing.orElseGet(() -> new Rate(sheetId, grade, from, to, pct));
-        rate.setPct(pct);
-        rate.setToDate(to);
+        if (existing.isPresent()) rate.addVersion(pct, to);
         Rate saved = rates.saveAndFlush(rate);
         log.saveAndFlush(new RateLog(saved, today));
         audit.recordOnCommit("RATE_SET sheet=" + sheetId + " by=" + user.strip()

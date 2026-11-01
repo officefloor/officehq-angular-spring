@@ -57,6 +57,6 @@ public class RateLog {
     /** Whether it was set on or before the date. */
     public boolean setBy(LocalDate date) { return setOn == null || !setOn.isAfter(date); }
 
-    /** The rate as this line set it. */
-    public Rate toRate() { return new Rate(sheetId, grade, fromDate, toDate, pct); }
+    /** The rate as this line set it, as the newest of the given number of versions. */
+    public Rate toRate(int versions) { return new Rate(sheetId, grade, fromDate, toDate, pct, versions); }
 }

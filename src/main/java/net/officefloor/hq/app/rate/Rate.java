@@ -14,7 +14,8 @@ import java.util.Optional;
 
 /**
  * The sheet's rate for one grade from a date: a percent with two decimals (0.00 or more). A rate
- * with no from-date applies from the beginning of time; one with a to-date applies through it.
+ * with no from-date applies from the beginning of time; one with a to-date applies through it. Setting
+ * a grade and from-date again adds a new version; the row holds the newest, the one in force.
  */
 @Entity
 @Table(name = "rate")
@@ -39,6 +40,9 @@ public class Rate {
     @Column(name = "to_date")
     private LocalDate toDate;
 
+    @Column(name = "versions", nullable = false)
+    private int versions = 1;
+
     protected Rate() {}
 
     public Rate(String sheetId, String grade, LocalDate fromDate, LocalDate toDate, BigDecimal pct) {
@@ -47,6 +51,12 @@ public class Rate {
         this.fromDate = fromDate;
         this.toDate = toDate;
         this.pct = pct;
+    }
+
+    /** The rate as it stood after the given number of versions. */
+    public Rate(String sheetId, String grade, LocalDate fromDate, LocalDate toDate, BigDecimal pct, int versions) {
+        this(sheetId, grade, fromDate, toDate, pct);
+        this.versions = versions;
     }
 
     /**
@@ -75,9 +85,15 @@ public class Rate {
     /** The last date it applies on; null when it has no end. */
     public LocalDate getToDate() { return toDate; }
 
-    public void setToDate(LocalDate toDate) { this.toDate = toDate; }
-
     public BigDecimal getPct() { return pct; }
 
-    public void setPct(BigDecimal pct) { this.pct = pct; }
+    /** How many times its grade and from-date have been set; this is the newest version, the older ones are in the rate log. */
+    public int getVersions() { return versions; }
+
+    /** Keep the current value as an older version and make the percent and to-date the newest one. */
+    public void addVersion(BigDecimal pct, LocalDate toDate) {
+        this.versions++;
+        this.pct = pct;
+        this.toDate = toDate;
+    }
 }

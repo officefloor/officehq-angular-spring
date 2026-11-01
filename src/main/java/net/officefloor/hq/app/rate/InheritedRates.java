@@ -66,15 +66,17 @@ public class InheritedRates {
 
     /**
      * A sheet's rates by grade as they stood at the end of the date: of those set while its today was
-     * on or before it, the last set for each grade and from-date.
+     * on or before it, the last set for each grade and from-date (its newest version then).
      */
     @Transactional(readOnly = true)
     public Map<String, List<Rate>> asOf(String sheetId, LocalDate date) {
         Map<String, Map<Optional<LocalDate>, Rate>> then = new LinkedHashMap<>();
         for (RateLog line : log.findBySheetIdOrderByIdAsc(sheetId)) {
             if (!line.setBy(date)) continue;
-            then.computeIfAbsent(line.getGrade(), g -> new LinkedHashMap<>())
-                    .put(Optional.ofNullable(line.getFromDate()), line.toRate());
+            Map<Optional<LocalDate>, Rate> grade = then.computeIfAbsent(line.getGrade(), g -> new LinkedHashMap<>());
+            Optional<LocalDate> from = Optional.ofNullable(line.getFromDate());
+            Rate replaced = grade.get(from);
+            grade.put(from, line.toRate(replaced == null ? 1 : replaced.getVersions() + 1));
         }
         Map<String, List<Rate>> byGrade = new LinkedHashMap<>();
         then.forEach((grade, rates) -> byGrade.put(grade, new ArrayList<>(rates.values())));
