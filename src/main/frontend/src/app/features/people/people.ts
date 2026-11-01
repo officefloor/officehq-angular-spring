@@ -122,6 +122,8 @@ interface StatementTaken {
 // people included), the claims per status, and the sheet's due-total and overdue-total.
 // The sheet's due-total and overdue-total leave out the single highest and the single lowest person's
 // figure when three or more people have one (an n/a due-total is no figure).
+// People can be selected and given a grade together from a from-date (blank: the sheet's today), each in
+// list order as the person form would; the count changed is shown.
 /** Figures in cents added up, leaving out the single highest and the single lowest when there are three or more. */
 function trimmedSum(figures: number[]): number {
   const sum = figures.reduce((total, c) => total + c, 0);
@@ -208,13 +210,32 @@ function trimmedSum(figures: number[]): number {
       @if (bulkSettleError()) {
         <p role="alert" class="error" data-testid="bulk-settle-error">{{ bulkSettleError() }}</p>
       }
+      <form [formGroup]="bulkGradeForm" (ngSubmit)="bulkGrade()" aria-label="Grade selected people">
+        <label for="bulk-grade">Grade selected people</label>
+        <select id="bulk-grade" data-testid="bulk-grade" formControlName="grade">
+          @for (g of grades; track g) {
+            <option [value]="g">{{ g }}</option>
+          }
+        </select>
+        <label for="bulk-grade-from">From (blank: today)</label>
+        <input type="date" id="bulk-grade-from" data-testid="bulk-grade-from" formControlName="from" />
+        <button type="submit" data-testid="bulk-grade-apply">Apply grade</button>
+        @if (bulkGraded() !== null) {
+          <p role="status">Changed <span data-testid="bulk-graded">{{ bulkGraded() }}</span></p>
+        }
+      </form>
       <table>
         <thead>
-          <tr><th scope="col">Name</th><th scope="col">Grade</th><th scope="col">Terms</th><th scope="col">Claimed</th><th scope="col">Due total</th><th scope="col">Excess</th><th scope="col">Periods</th><th scope="col">Statements</th><th scope="col">Retired</th><th scope="col">Hold</th><th scope="col">Watched</th><th scope="col">Active</th><th scope="col">Overdue</th><th scope="col">Patrons</th><th scope="col">Claims</th><th scope="col"><span class="visually-hidden">Actions</span></th></tr>
+          <tr><th scope="col"><span class="visually-hidden">Select</span></th><th scope="col">Name</th><th scope="col">Grade</th><th scope="col">Terms</th><th scope="col">Claimed</th><th scope="col">Due total</th><th scope="col">Excess</th><th scope="col">Periods</th><th scope="col">Statements</th><th scope="col">Retired</th><th scope="col">Hold</th><th scope="col">Watched</th><th scope="col">Active</th><th scope="col">Overdue</th><th scope="col">Patrons</th><th scope="col">Claims</th><th scope="col"><span class="visually-hidden">Actions</span></th></tr>
         </thead>
         <tbody>
           @for (p of listed(); track p.id) {
             <tr [attr.data-testid]="'person-row-' + p.id">
+              <td>
+                <input type="checkbox" data-testid="person-select" [checked]="selectedPeople().has(p.id)"
+                       (change)="personToggled(p.id, $any($event.target).checked)"
+                       [attr.aria-label]="'Select ' + p.name" />
+              </td>
               <td data-testid="person-name">{{ p.name }}</td>
               <td data-testid="person-grade">{{ gradeOf(p) }}</td>
               <td data-testid="person-terms">{{ p.terms ?? '' }}</td>
@@ -380,6 +401,15 @@ export class People {
   /** How many the last bulk settle settled (or sent to PENDING) and refused; cleared while the next one runs. */
   protected readonly bulkSettled = signal<{ settled: number; refused: number } | null>(null);
   protected readonly bulkSettleError = signal('');
+  /** The ids of the people selected for a bulk grade. */
+  protected readonly selectedPeople = signal<ReadonlySet<number>>(new Set());
+  /** How many people the last bulk grade changed; null before one, and while one runs. */
+  protected readonly bulkGraded = signal<number | null>(null);
+  protected readonly bulkGradeForm = new FormGroup({
+    grade: new FormControl('A', { nonNullable: true }),
+    /** The date the grade is in force from; blank: the sheet's today. */
+    from: new FormControl('', { nonNullable: true }),
+  });
   private readonly claimsByPerson = computed(() => {
     const by = new Map<number, Claim[]>();
     for (const c of this.claims()) by.set(c.personId, [...(by.get(c.personId) ?? []), c]);
@@ -535,12 +565,16 @@ export class People {
     this.pasteForm.valueChanges.subscribe(() => this.pasteError.set(''));
     this.form.valueChanges.subscribe(() => this.error.set(''));
     this.quickForm.valueChanges.subscribe(() => this.quickError.set(''));
+    this.bulkGradeForm.valueChanges.subscribe(() => this.personError.set(null));
     effect(() => {
       const id = this.session.sheetId();
       this.session.loads();
       this.people.set([]);
       this.claims.set([]);
       this.selectedIds.set(new Set());
+      this.selectedPeople.set(new Set());
+      this.bulkGraded.set(null);
+      this.bulkGradeForm.reset({ grade: 'A', from: '' }, { emitEvent: false });
       this.bulkOpened.set(null);
       this.bulkError.set('');
       this.bulkSettled.set(null);
@@ -909,6 +943,57 @@ export class People {
       else next.delete(e.id);
       return next;
     });
+  }
+
+  protected personToggled(id: number, checked: boolean): void {
+    this.clearPersonError(id);
+    this.selectedPeople.update((ids) => {
+      const next = new Set(ids);
+      if (checked) next.add(id);
+      else next.delete(id);
+      return next;
+    });
+  }
+
+  /**
+   * Give each selected person the grade from the date (blank: the sheet's today), in list order, as the
+   * person form would; show how many were changed. A refusal changes none and shows on the first selected row.
+   */
+  protected async bulkGrade(): Promise<void> {
+    if (this.bulkRunning) return;
+    this.bulkGraded.set(null);
+    this.personError.set(null);
+    const sheet = this.session.sheetId();
+    if (!sheet) return;
+    const ids = this.listed().filter((p) => this.selectedPeople().has(p.id)).map((p) => p.id);
+    const { grade, from: rawFrom } = this.bulkGradeForm.getRawValue();
+    const from = rawFrom.trim();
+    const refuse = (message: string) => {
+      const first = ids[0] ?? this.listed()[0]?.id;
+      if (first !== undefined) this.personError.set({ id: first, message });
+    };
+    if (ids.length === 0) {
+      refuse('Select at least one person to grade.');
+      return;
+    }
+    if (!this.grades.includes(grade) || (from && !/^\d{4}-\d{2}-\d{2}$/.test(from))) {
+      refuse('Choose a grade, and enter a date or leave it blank for today.');
+      return;
+    }
+    this.bulkRunning = true;
+    try {
+      const result = await firstValueFrom(this.http.post<{ graded: number }>(
+        `${this.url(sheet)}/grade`, { ids, grade, from: from || null }, { headers: this.headers() }));
+      const list = await firstValueFrom(this.http.get<Person[]>(this.url(sheet), { headers: this.headers() }));
+      if (this.session.sheetId() !== sheet) return;
+      this.people.set(list);
+      this.selectedPeople.set(new Set());
+      this.bulkGraded.set(result.graded);
+    } catch {
+      if (this.session.sheetId() === sheet) refuse('Could not grade the selected people.');
+    } finally {
+      this.bulkRunning = false;
+    }
   }
 
   /** Open every selected claim that can be opened, numbered in list order; show how many opened and were refused. */

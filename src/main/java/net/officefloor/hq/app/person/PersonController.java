@@ -2,6 +2,7 @@ package net.officefloor.hq.app.person;
 
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.NotBlank;
+import jakarta.validation.constraints.NotEmpty;
 import jakarta.validation.constraints.NotNull;
 import jakarta.validation.constraints.Pattern;
 import jakarta.validation.constraints.Size;
@@ -76,6 +77,15 @@ public class PersonController {
             @Pattern(regexp = "\\d{0,4}") String terms,
             @NotNull Long version) {}
 
+    /** The people to give the grade, from the date (blank: the sheet's today). */
+    public record BulkGradeRequest(
+            @NotEmpty List<@NotNull Long> ids,
+            @NotNull @Pattern(regexp = "[ABC]") String grade,
+            LocalDate from) {}
+
+    /** How many people a bulk grade changed. */
+    public record BulkGradeResult(int graded) {}
+
     /** Terms in days as the form gave them; blank or null: none. */
     private static Integer termsOf(String terms) {
         return terms == null || terms.isEmpty() ? null : Integer.valueOf(terms);
@@ -120,6 +130,16 @@ public class PersonController {
             @RequestBody @Valid PersonEditRequest request) {
         return view(service.edit(sheetId, user, id, request.version(), request.name(), request.grade(),
                 request.gradeFrom(), termsOf(request.terms())), user);
+    }
+
+    /** Give each selected person the grade from the date (blank: the sheet's today), in list order. */
+    @PostMapping("/grade")
+    public BulkGradeResult bulkGrade(
+            @PathVariable @Size(max = 100) @Pattern(regexp = "[A-Za-z0-9._-]+") String sheetId,
+            @RequestHeader("X-User") @NotBlank @Size(max = 100) String user,
+            @RequestBody @Valid BulkGradeRequest request) {
+        return new BulkGradeResult(service.bulkGrade(sheetId, user, Set.copyOf(request.ids()), request.grade(),
+                request.from()));
     }
 
     @PostMapping("/{id}/retire")

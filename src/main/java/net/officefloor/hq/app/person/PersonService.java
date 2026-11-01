@@ -127,6 +127,29 @@ public class PersonService {
         return saved;
     }
 
+    /**
+     * Give each of the people the grade from the date (blank: the sheet's today), in list order, each as
+     * its own edit would: name and terms kept, with its PERSON_EDITED and rollup lines. One not on the
+     * sheet refuses them all. Returns how many were changed.
+     */
+    @Transactional
+    public int bulkGrade(String sheetId, String user, Set<Long> ids, String grade, LocalDate from) {
+        LocalDate today = today(sheetId);
+        if (today == null) throw new SheetNotFoundException();
+        List<Person> chosen = people.findBySheetIdOrderByIdAsc(sheetId).stream()
+                .filter(p -> ids.contains(p.getId())).toList();
+        if (chosen.size() != ids.size()) throw new PersonNotFoundException();
+        LocalDate on = from != null ? from : today;
+        for (Person person : chosen) {
+            RollupService.Snapshot before = rollup.snapshot(sheetId);
+            person.setGradeFrom(on, grade, today);
+            Person saved = saveUnique(person);
+            record("PERSON_EDITED", sheetId, user, saved, saved.gradeOn(today), "");
+            rollup.recordChanges(sheetId, user, before);
+        }
+        return chosen.size();
+    }
+
     @Transactional
     public Person retire(String sheetId, String user, Long id, LocalDate from) {
         // Lock the sheet so no claim is added or edited for them meanwhile against the old date.
