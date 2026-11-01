@@ -1,0 +1,135 @@
+diff --git a/src/main/frontend/src/app/core/consolidated.ts b/src/main/frontend/src/app/core/consolidated.ts
+index 8f61422fc..560137d99 100644
+--- a/src/main/frontend/src/app/core/consolidated.ts
++++ b/src/main/frontend/src/app/core/consolidated.ts
+@@ -6,7 +6,7 @@ import { Observable } from 'rxjs';
+  *  names or aliases match as names are compared being one), and the due-total and overdue-total of all their people
+  *  trimmed once of the highest and lowest (two decimals); each of those people's names and figures; per grade, the due-totals of the people not
+  *  retired on it (two decimals; a grade no one counts on is missing); and per claim status, how many claims are in
+- *  it (a status no claim is in is missing). */
++ *  it (a status no claim is in is missing); and how many claims that count are overdue on their sheet's today. */
+ export interface DescendantFigures {
+   peopleCount: number;
+   dueTotal: string;
+@@ -14,6 +14,7 @@ export interface DescendantFigures {
+   dueByGrade: Record<string, string>;
+   countByStatus: Record<string, number>;
+   people: TreePerson[];
++  overdueCount: number;
+ }
+ 
+ /** A person of the tree: their name and aliases, their due-total (null with none) and overdue-total as their sheet
+@@ -51,7 +52,7 @@ export function distinctPeople(people: { names: string[] }[]): number {
+ 
+ /** No descendants: nothing to add to a sheet's own figures. */
+ export const NO_DESCENDANTS: DescendantFigures = {
+-  peopleCount: 0, dueTotal: '0.00', overdueTotal: '0.00', dueByGrade: {}, countByStatus: {}, people: [],
++  peopleCount: 0, dueTotal: '0.00', overdueTotal: '0.00', dueByGrade: {}, countByStatus: {}, people: [], overdueCount: 0,
+ };
+ 
+ // A sheet's descendants (its children, the sheets naming it as their parent, and theirs and so on), whose figures
+diff --git a/src/main/frontend/src/app/features/dashboard/dashboard.ts b/src/main/frontend/src/app/features/dashboard/dashboard.ts
+index 46a187272..01f14c06b 100644
+--- a/src/main/frontend/src/app/features/dashboard/dashboard.ts
++++ b/src/main/frontend/src/app/features/dashboard/dashboard.ts
+@@ -5,7 +5,7 @@ import { Session } from '../../core/session';
+ import { Sheets } from '../../core/sheet';
+ 
+ // The steward's dashboard: how many claims are PENDING, how many are in REVIEW and how many that count are
+-// overdue, over the sheet. The cells stay empty for a user who is not a steward; under an as-of date the roles and
++// overdue, over the sheet and all its descendants. The cells stay empty for a user who is not a steward; under an as-of date the roles and
+ // delegations are those the sheet held then, so the role is the one the user had then.
+ @Component({
+   selector: 'app-dashboard',
+diff --git a/src/main/frontend/src/app/features/people/people.ts b/src/main/frontend/src/app/features/people/people.ts
+index 2cfc2a813..93033c7cc 100644
+--- a/src/main/frontend/src/app/features/people/people.ts
++++ b/src/main/frontend/src/app/features/people/people.ts
+@@ -110,8 +110,8 @@ function csvField(value: string): string {
+                 [myOverdueTotal]="me() ? money(overdueOf(me()!.id).cents) : ''"
+                 [myCrewDueTotal]="myCrewDueTotal()" [myReviewsCount]="myReviewsCount()"
+                 [watchedDueTotal]="watchedDueTotal()" />
+-    <app-dashboard [pending]="statusCount('PENDING')" [review]="statusCount('REVIEW')"
+-                   [overdue]="overdueTotals().count" />
++    <app-dashboard [pending]="treeStatusCount('PENDING')" [review]="treeStatusCount('REVIEW')"
++                   [overdue]="overdueTotals().count + descendants().overdueCount" />
+     <app-periods [dueTotals]="dueByPeriod()" />
+     <app-pools [people]="people()" />
+     <app-crews [people]="people()" [dueByPerson]="dueByPerson()" />
+@@ -607,7 +607,7 @@ export class PeopleList {
+   protected readonly money = money;
+   protected readonly people = signal<PersonView[]>([]);
+   /** The figures of the sheet's descendants, as each of them shows its own, re-read on each (re)load. */
+-  private readonly descendants = signal<DescendantFigures>(NO_DESCENDANTS);
++  protected readonly descendants = signal<DescendantFigures>(NO_DESCENDANTS);
+   private readonly roles = inject(Roles);
+   private readonly delegations = inject(Delegations);
+   /** The ids of the people this screen added since the sheet was last (re)loaded: a restricted user still sees a
+@@ -1107,6 +1107,10 @@ export class PeopleList {
+   protected statusCount(status: string): number {
+     return this.summaryByStatus().find((s) => s.status === status)?.count ?? 0;
+   }
++  /** How many claims are in a status over the sheet and its descendants. */
++  protected treeStatusCount(status: string): number {
++    return this.statusCount(status) + (this.descendants().countByStatus[status] ?? 0);
++  }
+   /** How many of the sheet's REVIEW claims are assigned to the signed-in user to review. */
+   protected readonly myReviewsCount = computed(() => {
+     const user = this.session.user()?.trim().toLowerCase();
+diff --git a/src/main/java/net/officefloor/hq/app/rollup/ConsolidatedController.java b/src/main/java/net/officefloor/hq/app/rollup/ConsolidatedController.java
+index 88d290fe8..709c34e2f 100644
+--- a/src/main/java/net/officefloor/hq/app/rollup/ConsolidatedController.java
++++ b/src/main/java/net/officefloor/hq/app/rollup/ConsolidatedController.java
+@@ -14,6 +14,7 @@ import java.util.Map;
+ import java.util.Objects;
+ import net.officefloor.hq.app.claim.Claim;
+ import net.officefloor.hq.app.claim.ClaimRepository;
++import net.officefloor.hq.app.claim.ClaimService;
+ import net.officefloor.hq.app.history.SheetHistory;
+ import net.officefloor.hq.app.history.SheetState;
+ import net.officefloor.hq.app.person.Person;
+@@ -42,9 +43,11 @@ public class ConsolidatedController {
+      *  match as names are compared being one); the due-totals and overdue-totals of all their people, trimmed once of
+      *  the single highest and lowest person's figure when three or more have one, with two decimals; each person's
+      *  names and figures, so the screen can count and trim its own people with them; per grade, the due-totals of the people not retired on it on their sheet's today (none counting as 0), with
+-     *  two decimals; and per claim status, how many claims are in it. */
++     *  two decimals; per claim status, how many claims are in it; and how many claims that count are overdue on
++     *  their sheet's today. */
+     public record DescendantFigures(int peopleCount, String dueTotal, String overdueTotal,
+-            Map<String, String> dueByGrade, Map<String, Integer> countByStatus, List<PersonFigure> people) {
++            Map<String, String> dueByGrade, Map<String, Integer> countByStatus, List<PersonFigure> people,
++            int overdueCount) {
+     }
+ 
+     /** A person of the tree: their name and aliases, their due-total (null when they have none) and overdue-total as
+@@ -85,6 +88,7 @@ public class ConsolidatedController {
+         List<PersonFigure> treePeople = new ArrayList<>();
+         Map<String, BigDecimal> dueByGrade = new LinkedHashMap<>();
+         Map<String, Integer> countByStatus = new LinkedHashMap<>();
++        int overdueCount = 0;
+         List<String> counted = new ArrayList<>(sheets.descendantsOf(sheetId));
+         if (self) {
+             counted.add(0, sheetId);
+@@ -97,6 +101,13 @@ public class ConsolidatedController {
+             Rollup.Figures figures = one.figures();
+             LocalDate today = one.sheet() == null ? null : one.sheet().getToday();
+             for (Person person : one.people()) {
++                if (today != null) {
++                    overdueCount += (int) one.claims().stream()
++                            .filter(c -> c.getPersonId().equals(person.getId()) && person.counts(c, today)
++                                    && !c.isDeferredOn(today)
++                                    && ClaimService.isOverdue(c, one.sheet(), person.gradeOn(c.getDate())))
++                            .count();
++                }
+                 Rollup.PersonFigures own = figures.people().get(person.getId());
+                 if (own != null) {
+                     List<String> names = new ArrayList<>();
+@@ -120,7 +131,7 @@ public class ConsolidatedController {
+                 .map(BigDecimal::new).toList());
+         BigDecimal overdue = Rollup.trimmedSum(treePeople.stream().map(p -> new BigDecimal(p.overdueTotal())).toList());
+         return new DescendantFigures(distinctPeople(treePeople), due.toPlainString(), overdue.toPlainString(),
+-                dueByGradeShown, countByStatus, treePeople);
++                dueByGradeShown, countByStatus, treePeople, overdueCount);
+     }
+ 
+     /** How many distinct people these are: those sharing a name or alias, as names are compared (trimmed, case
