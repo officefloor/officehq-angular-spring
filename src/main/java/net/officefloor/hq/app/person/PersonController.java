@@ -37,12 +37,14 @@ public class PersonController {
      * in the order named; watched whether the signed-in user watches them; terms their own, null for none;
      * contact theirs, null for none; aliases theirs, sorted as names are compared; active whether they are active on the sheet's today ({@link Person#activeOn});
      * clashing whether their name or an alias is used on another sheet of the sheet's tree ({@link PersonService#clashingIds});
-     * origin the sheet they were transferred from, null when never transferred; tags theirs, sorted (empty when none).
+     * origin the sheet they were transferred from, null when never transferred; tags theirs, sorted (empty when none);
+     * snapshots the SNAPSHOT lines written for them, oldest first.
      */
     public record PersonView(Long id, String name, String grade, List<GradeView> grades, long version,
             boolean retired, LocalDate retiredFrom, boolean held, List<HoldView> holds, List<Long> patronIds,
             boolean watched, Integer terms, boolean active, String contact, List<String> aliases,
-            boolean clashing, String origin, List<RetirementView> retirements, List<String> tags) {
+            boolean clashing, String origin, List<RetirementView> retirements, List<String> tags,
+            List<SnapshotView> snapshots) {
         public static PersonView of(Person person, LocalDate today, List<Long> patronIds, boolean watched,
                 boolean active, boolean clashing) {
             List<GradeView> grades = new ArrayList<>();
@@ -55,12 +57,17 @@ public class PersonController {
                     patronIds, watched, person.getTerms(), active, person.getContact(),
                     person.getAliases(), clashing, person.getTransferredFrom(),
                     person.getRetirements().stream().map(r -> new RetirementView(r.getFromDate(), r.getToDate())).toList(),
-                    person.getTags());
+                    person.getTags(),
+                    person.getSnapshots().stream().map(s -> new SnapshotView(s.getDay(),
+                            s.getDueTotal() == null ? null : s.getDueTotal().setScale(2).toPlainString())).toList());
         }
     }
 
     /** A past retirement, from its date to the day they were unretired. */
     public record RetirementView(LocalDate from, LocalDate to) {}
+
+    /** A SNAPSHOT line: the day being left and their due-total on it (null: n/a). */
+    public record SnapshotView(LocalDate day, String dueTotal) {}
 
     /** A grade in force from a date (null: the beginning of time). */
     public record GradeView(LocalDate from, String grade) {}

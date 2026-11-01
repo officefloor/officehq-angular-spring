@@ -143,10 +143,15 @@ public class RollupService {
         return sum.subtract(max).subtract(min);
     }
 
-    /** Audit, once the transaction commits, a SNAPSHOT line of each person's due-total in {@code snapshot}, in list order. */
-    public void recordSnapshot(String sheetId, String user, Snapshot snapshot) {
+    /**
+     * Audit, once the transaction commits, a SNAPSHOT line of each person's due-total in {@code snapshot}, in
+     * list order, and keep it on the person with the day being left.
+     */
+    public void recordSnapshot(String sheetId, String user, LocalDate dayLeft, Snapshot snapshot) {
         String by = " sheet=" + sheetId + " by=" + user.strip();
-        for (Figures figures : snapshot.people().values()) {
+        for (Map.Entry<Long, Figures> e : snapshot.people().entrySet()) {
+            Figures figures = e.getValue();
+            people.findById(e.getKey()).ifPresent(p -> p.addSnapshot(dayLeft, figures.dueTotal()));
             audit.recordOnCommit("SNAPSHOT" + by + " name=" + figures.name()
                     + " due-total=" + (figures.dueTotal() == null ? "n/a" : money(figures.dueTotal())));
         }

@@ -26,7 +26,7 @@ import org.springframework.transaction.annotation.Transactional;
 /**
  * A steward clones the sheet to another id, one never used: the clone starts with this sheet's today,
  * settings, roles, rates, holidays, void reasons, templates, people (with their grades, terms, contacts,
- * aliases, holds, retirements and patrons), pools, periods (all open) and claims (with their status,
+ * aliases, holds, retirements, snapshot lines and patrons), pools, periods (all open) and claims (with their status,
  * frozen figures, dates, notes, tags and logs, numbered afresh by the clone's own numbering). Statements,
  * and the figures they bound, are not copied; nor are watches, delegations or the sheet's parent. Rows are
  * copied column by column as the store holds them, so a column added later is copied too.
@@ -95,7 +95,8 @@ public class SheetCloneService {
             row.put("VERSION", 0L);
             long id = insertNew("person", row);
             people.put(old, id);
-            for (String table : List.of("person_grade", "person_grade_log", "person_hold", "person_retirement")) {
+            for (String table : List.of("person_grade", "person_grade_log", "person_hold", "person_retirement",
+                    "person_snapshot")) {
                 for (Map<String, Object> line : rows("SELECT * FROM " + table + " WHERE person_id = ?", old)) {
                     line.put("PERSON_ID", id);
                     insert(table, line);

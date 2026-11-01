@@ -109,7 +109,7 @@ public class SheetService {
             sheet = sheets.findForUpdate(id).orElseThrow(SheetNotFoundException::new);
         }
         RollupService.Snapshot before = rollup.snapshot(id);
-        if (changed) rollup.recordSnapshot(id, user, before);
+        if (changed) rollup.recordSnapshot(id, user, sheet.getToday(), before);
         sheet.setToday(today);
         sheets.flush();
         if (sheet.getGraceDays() != null) periods.getObject().autoClose(id, user, today, sheet.getGraceDays());

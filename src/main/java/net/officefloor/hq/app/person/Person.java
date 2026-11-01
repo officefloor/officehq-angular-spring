@@ -14,6 +14,7 @@ import jakarta.persistence.OrderBy;
 import jakarta.persistence.OrderColumn;
 import jakarta.persistence.Table;
 import jakarta.persistence.Version;
+import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.util.ArrayList;
 import java.util.Comparator;
@@ -23,6 +24,7 @@ import java.util.Map;
 import java.util.TreeMap;
 import net.officefloor.hq.app.claim.Claim;
 import net.officefloor.hq.app.claim.ClaimStatus;
+import org.hibernate.annotations.OptimisticLock;
 import org.hibernate.annotations.SQLRestriction;
 
 /**
@@ -104,6 +106,13 @@ public class Person {
     @CollectionTable(name = "person_retirement", joinColumns = @JoinColumn(name = "person_id"))
     @OrderBy("fromDate ASC, toDate ASC")
     private List<PersonRetirement> retirements = new ArrayList<>();
+
+    /** The SNAPSHOT lines written for them, oldest first; a new one does not move their version. */
+    @ElementCollection(fetch = FetchType.EAGER)
+    @CollectionTable(name = "person_snapshot", joinColumns = @JoinColumn(name = "person_id"))
+    @OrderColumn(name = "seq")
+    @OptimisticLock(excluded = true)
+    private List<PersonSnapshot> snapshots = new ArrayList<>();
 
     /** Their holds, earliest from-date first. */
     @ElementCollection(fetch = FetchType.EAGER)
@@ -288,6 +297,12 @@ public class Person {
 
     /** Their past retirements, earliest first. */
     public List<PersonRetirement> getRetirements() { return List.copyOf(retirements); }
+
+    /** Keep a SNAPSHOT line written for them: the day being left and their due-total on it (null: n/a). */
+    public void addSnapshot(LocalDate day, BigDecimal dueTotal) { snapshots.add(new PersonSnapshot(day, dueTotal)); }
+
+    /** The SNAPSHOT lines written for them, oldest first. */
+    public List<PersonSnapshot> getSnapshots() { return List.copyOf(snapshots); }
 
     /**
      * Whether a claim of theirs may be dated on the date: not after their retirement date, nor after the

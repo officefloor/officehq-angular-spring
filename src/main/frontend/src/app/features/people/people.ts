@@ -35,6 +35,12 @@ interface Retirement {
   to: string;
 }
 
+/** A SNAPSHOT line: the day being left and their due-total on it (null: n/a). */
+interface Snapshot {
+  day: string;
+  dueTotal: string | null;
+}
+
 /** Whether the date falls within the hold. */
 function holdContains(h: Hold, date: string): boolean {
   return (h.from === null || h.from <= date) && (h.to === null || date <= h.to);
@@ -76,6 +82,8 @@ interface Person {
   origin: string | null;
   /** Their tags, trimmed, lower-cased, each once and sorted; empty when they have none. */
   tags: string[];
+  /** The SNAPSHOT lines written for them, oldest first. */
+  snapshots: Snapshot[];
 }
 
 /** The person's grade in force on the date: the one with the latest from-date on or before it. */
@@ -365,7 +373,7 @@ function trimmedSum(figures: number[]): number {
       }
       <table>
         <thead>
-          <tr><th scope="col"><span class="visually-hidden">Select</span></th><th scope="col">Name</th><th scope="col">Grade</th><th scope="col">Terms</th><th scope="col">Contact</th><th scope="col">Tags</th><th scope="col">Aliases</th><th scope="col">Came from</th><th scope="col">Claimed</th><th scope="col">Due total</th><th scope="col">Excess</th><th scope="col">Settled total</th><th scope="col">Open total</th><th scope="col">Cut total</th><th scope="col">Periods</th><th scope="col">Statements</th><th scope="col">Retired</th><th scope="col">Hold</th><th scope="col">Watched</th><th scope="col">Active</th><th scope="col">Clashing</th><th scope="col">Overdue</th><th scope="col">Aged</th><th scope="col">Patrons</th><th scope="col">Plans</th><th scope="col">Claims</th><th scope="col"><span class="visually-hidden">Actions</span></th></tr>
+          <tr><th scope="col"><span class="visually-hidden">Select</span></th><th scope="col">Name</th><th scope="col">Grade</th><th scope="col">Terms</th><th scope="col">Contact</th><th scope="col">Tags</th><th scope="col">Aliases</th><th scope="col">Came from</th><th scope="col">Claimed</th><th scope="col">Due total</th><th scope="col">Snapshots</th><th scope="col">Excess</th><th scope="col">Settled total</th><th scope="col">Open total</th><th scope="col">Cut total</th><th scope="col">Periods</th><th scope="col">Statements</th><th scope="col">Retired</th><th scope="col">Hold</th><th scope="col">Watched</th><th scope="col">Active</th><th scope="col">Clashing</th><th scope="col">Overdue</th><th scope="col">Aged</th><th scope="col">Patrons</th><th scope="col">Plans</th><th scope="col">Claims</th><th scope="col"><span class="visually-hidden">Actions</span></th></tr>
         </thead>
         <tbody>
           @for (p of sorted(); track p.id) {
@@ -408,6 +416,13 @@ function trimmedSum(figures: number[]): number {
               <td data-testid="person-origin">{{ p.origin ?? '' }}</td>
               <td data-testid="person-claimed">{{ claimedOf(p.id) }}</td>
               <td data-testid="person-due-total">{{ dueTotalOf(p) }}</td>
+              <td>
+                <ul>
+                  @for (s of p.snapshots; track $index) {
+                    <li data-testid="person-snapshot-line">{{ s.day }} {{ s.dueTotal ?? 'n/a' }}</li>
+                  }
+                </ul>
+              </td>
               <td data-testid="person-excess">{{ excessOf(p) }}</td>
               <td data-testid="person-settled-total">{{ money(splitOf(p).settled) }}</td>
               <td data-testid="person-open-total">{{ money(splitOf(p).open) }}</td>
