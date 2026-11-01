@@ -56,6 +56,10 @@ public class Person {
     @Column(name = "name_key", nullable = false)
     private String nameKey;
 
+    /** The name key while not merged away, null once merged: names are unique on the sheet by it. */
+    @Column(name = "live_name_key")
+    private String liveNameKey;
+
     @Column(name = "grade", nullable = false)
     private String grade;
 
@@ -147,6 +151,7 @@ public class Person {
     public void setName(String name) {
         this.name = name.strip();
         this.nameKey = keyOf(name);
+        if (mergedInto == null) this.liveNameKey = nameKey;
     }
 
     /** The first grade they were given, in force from the beginning of time. */
@@ -222,6 +227,7 @@ public class Person {
     public List<String> mergeInto(Long otherId) {
         List<String> theirs = aliases.stream().map(PersonAlias::getAlias).toList();
         this.mergedInto = otherId;
+        this.liveNameKey = null;
         aliases.clear();
         holds.clear();
         this.contact = null;

@@ -20,7 +20,7 @@ public interface PersonRepository extends JpaRepository<Person, Long> {
 
     Optional<Person> findBySheetIdAndContact(String sheetId, String contact);
 
-    @Query("select p from Person p join p.aliases a where p.sheetId = :sheetId and a.aliasKey = :aliasKey")
+    @Query("select distinct p from Person p join p.aliases a where p.sheetId = :sheetId and a.aliasKey = :aliasKey")
     Optional<Person> findBySheetIdAndAliasKey(String sheetId, String aliasKey);
 
     /** The person on the sheet a name or an alias of whom is the name, as names are compared. */
