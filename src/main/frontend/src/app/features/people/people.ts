@@ -525,13 +525,14 @@ function trimmedSum(figures: number[]): number {
       <table>
         <caption>By period</caption>
         <thead>
-          <tr><th scope="col">Period</th><th scope="col">Due total</th></tr>
+          <tr><th scope="col">Period</th><th scope="col">Due total</th><th scope="col">Change</th></tr>
         </thead>
         <tbody>
           @for (p of periods(); track p.id) {
             <tr>
               <th scope="row">{{ p.name }}</th>
               <td [attr.data-testid]="'summary-period-' + p.name + '-due-total'">{{ periodDueTotalOf(p) }}</td>
+              <td [attr.data-testid]="'summary-period-' + p.name + '-change'">{{ periodChangeOf(p) }}</td>
             </tr>
           }
         </tbody>
@@ -703,7 +704,17 @@ export class People {
   }
   /** A period's due-total: the people's figures for it added up. */
   protected readonly periodDueTotalOf = (period: Period): string =>
-    money(this.people().reduce((sum, p) => sum + this.personPeriodCents(p.id, period), 0));
+    money(this.periodDueCents(period));
+  private periodDueCents(period: Period): number {
+    return this.people().reduce((sum, p) => sum + this.personPeriodCents(p.id, period), 0);
+  }
+  /** A period's due-total less that of the period before it by from-date; nothing for the earliest. */
+  protected periodChangeOf(period: Period): string {
+    const list = [...this.periods()].sort((a, b) => (a.from < b.from ? -1 : 1));
+    const at = list.findIndex((p) => p.id === period.id);
+    if (at <= 0) return '';
+    return money(this.periodDueCents(period) - this.periodDueCents(list[at - 1]));
+  }
   /** Each person's statements, for those who have had any. */
   protected readonly statements = signal<StatementSummary[]>([]);
   private readonly statementByPerson = computed(() => new Map(this.statements().map((s) => [s.personId, s])));
