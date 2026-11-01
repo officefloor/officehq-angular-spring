@@ -1,0 +1,168 @@
+diff --git a/src/main/frontend/src/app/core/audit.ts b/src/main/frontend/src/app/core/audit.ts
+index a8aa1963e..fb35ddff0 100644
+--- a/src/main/frontend/src/app/core/audit.ts
++++ b/src/main/frontend/src/app/core/audit.ts
+@@ -12,4 +12,9 @@ export class AuditLog {
+     const params = name.trim() ? new HttpParams().set('name', name) : undefined;
+     return this.http.get<string[]>(`/api/sheets/${encodeURIComponent(sheetId)}/audit`, { params });
+   }
++
++  /** The sheet's activity: one line `<user> <EVENT> <count>` per user and event, by user then event. */
++  activity(sheetId: string): Observable<string[]> {
++    return this.http.get<string[]>(`/api/sheets/${encodeURIComponent(sheetId)}/activity`);
++  }
+ }
+diff --git a/src/main/frontend/src/app/features/audit/activity.ts b/src/main/frontend/src/app/features/audit/activity.ts
+new file mode 100644
+index 000000000..304d167ee
+--- /dev/null
++++ b/src/main/frontend/src/app/features/audit/activity.ts
+@@ -0,0 +1,60 @@
++import { Component, inject, signal } from '@angular/core';
++import { takeUntilDestroyed, toObservable } from '@angular/core/rxjs-interop';
++import { AuditLog } from '../../core/audit';
++import { Sheets } from '../../core/sheet';
++
++// The sheet's activity: for every user and every event in its audit lines, how many there are, by user then event.
++@Component({
++  selector: 'app-activity',
++  template: `
++    <section aria-labelledby="activity-heading">
++      <h3 id="activity-heading">Activity</h3>
++      <button type="button" data-testid="activity-show" [disabled]="loading()" (click)="show()">Show</button>
++      @if (error(); as err) {
++        <p role="alert" data-testid="activity-error">{{ err }}</p>
++      }
++      <ul aria-label="Activity by user and event">
++        @for (line of lines(); track $index) {
++          <li data-testid="activity-line">{{ line }}</li>
++        }
++      </ul>
++    </section>
++  `,
++})
++export class ActivityPanel {
++  private readonly audit = inject(AuditLog);
++  private readonly sheets = inject(Sheets);
++
++  protected readonly lines = signal<string[]>([]);
++  protected readonly error = signal<string | null>(null);
++  protected readonly loading = signal(false);
++
++  constructor() {
++    // Another sheet's activity is not left showing once a sheet is (re)loaded.
++    toObservable(this.sheets.loaded)
++      .pipe(takeUntilDestroyed())
++      .subscribe(() => {
++        this.lines.set([]);
++        this.error.set(null);
++      });
++  }
++
++  protected show(): void {
++    if (this.loading()) return;
++    this.error.set(null);
++    const sheet = this.sheets.current();
++    if (!sheet) return;
++    this.loading.set(true);
++    this.lines.set([]);
++    this.audit.activity(sheet.id).subscribe({
++      next: (lines) => {
++        this.loading.set(false);
++        this.lines.set(lines);
++      },
++      error: () => {
++        this.loading.set(false);
++        this.error.set('Could not read the activity.');
++      },
++    });
++  }
++}
+diff --git a/src/main/frontend/src/app/features/home/home.ts b/src/main/frontend/src/app/features/home/home.ts
+index c508c7191..5799ea5be 100644
+--- a/src/main/frontend/src/app/features/home/home.ts
++++ b/src/main/frontend/src/app/features/home/home.ts
+@@ -3,6 +3,7 @@ import { FormControl, FormGroup, ReactiveFormsModule, Validators } from '@angula
+ import { LOCALES, Locale, Session } from '../../core/session';
+ import { Sheets } from '../../core/sheet';
+ import { AuditPanel } from '../audit/audit';
++import { ActivityPanel } from '../audit/activity';
+ import { DelegationsPanel } from '../delegations/delegations';
+ import { HolidaysPanel } from '../holidays/holidays';
+ import { NotesPanel } from '../notes/notes';
+@@ -17,7 +18,8 @@ import { VoidReasonsPanel } from '../void-reasons/void-reasons';
+ @Component({
+   selector: 'app-home',
+   imports: [ReactiveFormsModule, PeopleList, RatesPanel, SettingsPanel, DelegationsPanel, HolidaysPanel,
+-    VoidReasonsPanel, TemplatesPanel, NotesPanel, SearchPanel, AuditPanel],
++    VoidReasonsPanel, TemplatesPanel, NotesPanel, SearchPanel, AuditPanel,
++    ActivityPanel],
+   template: `
+     @if (session.user(); as user) {
+       <p>Signed in as <strong data-testid="current-user">{{ user }}</strong></p>
+@@ -91,6 +93,7 @@ import { VoidReasonsPanel } from '../void-reasons/void-reasons';
+         <app-people />
+         <app-search />
+         <app-audit />
++        <app-activity />
+       } @else {
+         <p data-testid="sheet-none">Load a sheet to begin.</p>
+       }
+diff --git a/src/main/java/net/officefloor/hq/app/Audit.java b/src/main/java/net/officefloor/hq/app/Audit.java
+index fc02c6dea..c0e22c6bd 100644
+--- a/src/main/java/net/officefloor/hq/app/Audit.java
++++ b/src/main/java/net/officefloor/hq/app/Audit.java
+@@ -7,9 +7,12 @@ import java.nio.file.Files;
+ import java.nio.file.Path;
+ import java.nio.file.StandardOpenOption;
+ import java.util.ArrayList;
++import java.util.Arrays;
+ import java.util.Collections;
+ import java.util.List;
+ import java.util.Locale;
++import java.util.Map;
++import java.util.TreeMap;
+ import java.util.regex.Matcher;
+ import java.util.regex.Pattern;
+ import net.officefloor.hq.app.history.SheetHistory;
+@@ -157,6 +160,24 @@ public class Audit {
+         return values;
+     }
+ 
++    /**
++     * The sheet's activity: for every user ({@code by=}) and every event (a record's first word) in the sheet's
++     * records, one line {@code <user> <EVENT> <count>}, sorted by user then event. A record naming no user is not
++     * counted.
++     */
++    public List<String> activity(String sheetId) {
++        Map<String, Map<String, Long>> counts = new TreeMap<>();
++        for (String line : lines(sheetId, null)) {
++            String[] words = line.split(" ");
++            Arrays.stream(words).filter(w -> w.startsWith("by=") && w.length() > 3).findFirst()
++                    .ifPresent(by -> counts.computeIfAbsent(by.substring(3), u -> new TreeMap<>())
++                            .merge(words[0], 1L, Long::sum));
++        }
++        List<String> activity = new ArrayList<>();
++        counts.forEach((user, events) -> events.forEach((event, n) -> activity.add(user + " " + event + " " + n)));
++        return activity;
++    }
++
+     /** Truncate the audit file. */
+     public synchronized void clear() {
+         try {
+diff --git a/src/main/java/net/officefloor/hq/app/AuditController.java b/src/main/java/net/officefloor/hq/app/AuditController.java
+index ba235f28e..8635c6cf0 100644
+--- a/src/main/java/net/officefloor/hq/app/AuditController.java
++++ b/src/main/java/net/officefloor/hq/app/AuditController.java
+@@ -45,4 +45,11 @@ public class AuditController {
+         }
+         return lines;
+     }
++
++    /** The sheet's activity: one line {@code <user> <EVENT> <count>} per user and event, by user then event. */
++    @GetMapping("/api/sheets/{sheetId}/activity")
++    public List<String> activity(
++            @PathVariable @NotBlank @Size(max = 100) @Pattern(regexp = "[A-Za-z0-9._-]+") String sheetId) {
++        return audit.activity(sheetId);
++    }
+ }
