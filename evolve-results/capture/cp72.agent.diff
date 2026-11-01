@@ -1,0 +1,105 @@
+diff --git a/src/main/frontend/src/app/features/people/people.ts b/src/main/frontend/src/app/features/people/people.ts
+index 16d3103e4..b14b9ebb4 100644
+--- a/src/main/frontend/src/app/features/people/people.ts
++++ b/src/main/frontend/src/app/features/people/people.ts
+@@ -384,9 +384,17 @@ export class People {
+   });
+   /** Each person's holds, by id, for those with any. */
+   private readonly holdsById = computed(() => new Map(this.people().filter((p) => p.held).map((p) => [p.id, p.holds])));
+-  /** Whether the claim counts in the live totals: OPEN, PENDING or SETTLED, less open ones dated within a hold and not bound, and deferred ones. */
+-  private readonly counts = (c: Claim): boolean =>
+-    countsFor(c, (this.holdsById().get(c.personId) ?? []).some((h) => holdContains(h, c.date)), this.session.today());
++  /** The sheet's today, those whose retirement date it has reached, by id. */
++  private readonly retiredTodayIds = computed(() => {
++    const today = this.session.today();
++    return new Set(this.people().filter((p) => today !== null && p.retiredFrom !== null && p.retiredFrom <= today).map((p) => p.id));
++  });
++  /** Whether the claim's person keeps it out of the live totals while open: dated within a hold of theirs, or they are retired on the sheet's today. */
++  private keptOut(c: Claim): boolean {
++    return this.retiredTodayIds().has(c.personId) || (this.holdsById().get(c.personId) ?? []).some((h) => holdContains(h, c.date));
++  }
++  /** Whether the claim counts in the live totals: OPEN, PENDING or SETTLED, less open ones kept out by a hold or retirement and not bound, and deferred ones. */
++  private readonly counts = (c: Claim): boolean => countsFor(c, this.keptOut(c), this.session.today());
+   protected readonly claimedTotal = computed(() => money(this.claims().filter(this.counts).reduce((sum, c) => sum + cents(c.amount), 0)));
+   /** The sheet's rates, each for a grade from its from-date. */
+   protected readonly rates = signal<Rate[]>([]);
+@@ -403,8 +411,7 @@ export class People {
+       const period = periodOn(this.periods(), c.date);
+       const pctOn = this.pctOnByPerson().get(c.personId);
+       if (period === null || pctOn === undefined) continue;
+-      const held = (this.holdsById().get(c.personId) ?? []).some((h) => holdContains(h, c.date));
+-      if (!countsAt(c, period.to, held, today)) continue;
++      if (!countsAt(c, period.to, this.keptOut(c), today)) continue;
+       const theirs = by.get(c.personId) ?? new Map<number, number>();
+       theirs.set(period.id, (theirs.get(period.id) ?? 0) + (claimDueCents(c, pctOn, this.session.floorCentsOn, this.session.late(), roundsOn(c, this.claimsOf(c.personId))) ?? 0));
+       by.set(c.personId, theirs);
+diff --git a/src/main/java/net/officefloor/hq/app/person/Person.java b/src/main/java/net/officefloor/hq/app/person/Person.java
+index 968a4c1c9..82844b9a5 100644
+--- a/src/main/java/net/officefloor/hq/app/person/Person.java
++++ b/src/main/java/net/officefloor/hq/app/person/Person.java
+@@ -26,7 +26,8 @@ import net.officefloor.hq.app.claim.ClaimStatus;
+  * A person on a sheet, with a name and a grade (A, B or C). The name is kept without surrounding
+  * spaces and is unique on the sheet without regard to case (by its {@link #keyOf key}). A person
+  * given a retirement date is retired at once, whatever the date; none of their claims may be dated
+- * after it. A person may have several holds over time, each from a from-date to an optional to-date. The grade is dated: the first one
++ * after it, and from the day the sheet's today reaches it their open claims, unless bound by a
++ * statement, leave the live totals as a hold's do. A person may have several holds over time, each from a from-date to an optional to-date. The grade is dated: the first one
+  * given is in force from the beginning of time, and each later one from its from-date. A person may have
+  * their own terms in days, which their claims' due-by takes ahead of their grade's and the sheet's.
+  */
+@@ -139,24 +140,31 @@ public class Person {
+     /** Whether the date falls within any of their holds. */
+     public boolean heldOn(LocalDate date) { return holds.stream().anyMatch(h -> h.contains(date)); }
+ 
++    /** Whether their retirement date is reached on the date (the date on or after it). */
++    public boolean retiredOn(LocalDate date) { return retiredFrom != null && date != null && !date.isBefore(retiredFrom); }
++
++    /** Whether an open claim of theirs is kept out of the live totals: dated within a hold, or retired by the sheet's today. */
++    private boolean keptOut(Claim claim, LocalDate today) { return heldOn(claim.getDate()) || retiredOn(today); }
++
+     /**
+      * Whether a claim of theirs counts in the live totals: it counts by its status, unless it is open
+-     * (OPEN or PENDING), dated within a hold and not bound by a statement, or deferred on the sheet's today.
++     * (OPEN or PENDING), dated within a hold or theirs once their retirement date is reached on the
++     * sheet's today, and not bound by a statement, or deferred on the sheet's today.
+      */
+     public boolean counts(Claim claim, LocalDate today) {
+         if (!claim.getStatus().counts() || claim.isDeferredOn(today)) return false;
+-        return !claim.getStatus().isOpen() || claim.isBound() || !heldOn(claim.getDate());
++        return !claim.getStatus().isOpen() || claim.isBound() || !keptOut(claim, today);
+     }
+ 
+     /**
+      * Whether a claim of theirs counts for a period ending on the date: by the status it had at the end
+-     * of that date, less a deferred one and one still open now (OPEN or PENDING) dated within a hold and
+-     * not bound, as the live rules say: a claim since settled or voided is no longer kept out by a hold.
++     * of that date, less a deferred one and one still open now (OPEN or PENDING) dated within a hold, or
++     * theirs once retired on the sheet's today, and not bound, as the live rules say: a claim since settled or voided is no longer kept out by a hold.
+      */
+     public boolean countsAt(Claim claim, LocalDate end, LocalDate today) {
+         ClaimStatus at = claim.statusAt(end);
+         if (at == null || !at.counts() || claim.isDeferredOn(today)) return false;
+-        return !claim.getStatus().isOpen() || claim.isBound() || !heldOn(claim.getDate());
++        return !claim.getStatus().isOpen() || claim.isBound() || !keptOut(claim, today);
+     }
+ 
+     /**
+diff --git a/src/main/java/net/officefloor/hq/app/person/PersonService.java b/src/main/java/net/officefloor/hq/app/person/PersonService.java
+index 49f449498..af86af75d 100644
+--- a/src/main/java/net/officefloor/hq/app/person/PersonService.java
++++ b/src/main/java/net/officefloor/hq/app/person/PersonService.java
+@@ -132,11 +132,14 @@ public class PersonService {
+         // Lock the sheet so no claim is added or edited for them meanwhile against the old date.
+         LocalDate today = sheets.findForUpdate(sheetId).orElseThrow(SheetNotFoundException::new).getToday();
+         Person person = people.findByIdAndSheetId(id, sheetId).orElseThrow(PersonNotFoundException::new);
++        // Once the sheet's today reaches the date, their open claims leave the totals.
++        RollupService.Snapshot before = rollup.snapshot(sheetId);
+         LocalDate on = from != null ? from : today;
+         person.setRetiredFrom(on);
+         Person saved = saveUnique(person);
+         audit.recordOnCommit("PERSON_RETIRED sheet=" + sheetId + " by=" + user.strip()
+                 + " name=" + saved.getName() + " from=" + on);
++        rollup.recordChanges(sheetId, user, before);
+         return saved;
+     }
+ 
