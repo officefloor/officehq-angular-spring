@@ -1,0 +1,64 @@
+{
+  "checkpoint": 211,
+  "stack": {
+    "repo": "/home/daniel/officehq-angular-spring",
+    "origin": "git@github.com:officefloor/officehq-angular-spring.git",
+    "name": "officehq-angular-spring",
+    "base_ref": "base-empty",
+    "base_commit": "65cb8233ea38b2dfa6cfd18709e30cd18fdf3250"
+  },
+  "checkpoint_id": "cp211_score-lines",
+  "phase": "late",
+  "type": "additive",
+  "mutates": [],
+  "replaced_tests": [],
+  "request": {
+    "spec": "The sheet gains a score log switch (settings, on or blank, not dated; SETTING_CHANGED key=score-log value=on). While it is on, changing the sheet's today writes, before the SNAPSHOT\nlines, one line SCORE name=<name> score=<score> per person in list order, with the score as it\nstood on the day being left.\n",
+    "prompt": "You are implementing ONE change to this application.\n\nFIRST read AGENTS.md \u2014 it states the working rules and how the app is tested, and sends you to\nDESIGN.md for the app's stack and conventions. Follow both.\n\nTHE CHANGE REQUEST:\nThe sheet gains a score log switch (settings, on or blank, not dated; SETTING_CHANGED key=score-log value=on). While it is on, changing the sheet's today writes, before the SNAPSHOT\nlines, one line SCORE name=<name> score=<score> per person in list order, with the score as it\nstood on the day being left.\n\nYour work is verified by an automated Playwright UI test already installed under e2e/specs/.\nRead that spec: it declares the exact data-testid anchors, values, test data and any audit\nrecords it expects \u2014 match them. Run `bin/e2e` to build the app, start it, and run the test as\nyou work; iterate until it passes. Change whatever the request needs across the app \u2014 its stored\ndata, its server and its front end. Do NOT edit bin/build, bin/start, bin/stop, bin/e2e,\nAGENTS.md, CLAUDE.md, DESIGN.md, e2e/support/ or the test spec.\n"
+  },
+  "commit_sha": "3bcc2da2ab398e35a5fdc1e3e3791d96447687f3",
+  "reset_sha": "",
+  "preagent_sha": "bae1a73837168f77713180671265803547c0a330",
+  "prev_sha": "bae1a73837168f77713180671265803547c0a330",
+  "base_sha": "65cb8233ea38b2dfa6cfd18709e30cd18fdf3250",
+  "agent": {
+    "ok": true,
+    "cost_usd": 0.9198814000000001,
+    "input_tokens": 42,
+    "output_tokens": 10806,
+    "cache_read_tokens": 953647,
+    "cache_creation_tokens": 64108,
+    "num_turns": 21,
+    "duration_ms": 699810,
+    "duration_api_ms": 131353,
+    "model": "claude-opus-5-5",
+    "session_id": "869e0577-b4ea-4fc7-890d-7eb9e1556849",
+    "stop_reason": "success",
+    "result_text": "I added the score log switch, and all 4 tests in `bin/e2e` pass. The first run failed on one wrong audit line (Ada's score came out 5 instead of 0) because I had made the overdue penalty 100 times too small. I fixed that and re-ran.\n\n**What it does**\n- Settings has a new \"Score log\" field (`setting-score-log`, with the value in force shown in `setting-score-log-current`). It takes `on` or blank, isn't dated, and saving it writes `SETTING_CHANGED \u2026 key=score-log value=on` (or `value=` when turned off). Anything other than `on` or blank is refused with the usual settings error.\n- While the switch is on, changing the sheet's today first writes one `SCORE \u2026 name=<name> score=<score>` line per person, in list order, before the `SNAPSHOT` lines. The score is the one on the day being left.\n\n**One thing to know:** until now the score was only worked out in the browser. To write it to the audit file I added a copy of the same formula on the server (`Rollup.scoresOf`): settled dues, minus 500.00 for each overdue claim, divided by 100 and rounded half-to-even. The two copies have to be kept in step if the scoring rule ever changes. The tests show they match here, but I haven't checked every edge case, such as held, deferred or retired people.\n\n**Changes by layer**\n- **Stored data:** a new migration, `V110__sheet_score_log.sql`, adds a `score_log` column (off by default) to the sheet. The switch is carried through cloning and sheet history; history saved before this change reads as off.\n- **Server:** a new `PUT /api/sheets/{id}/settings/score-log` endpoint in `SheetController`, `setScoreLog` in `SheetService`, the SCORE lines added to `setToday`, and `scoreLog` added to the sheet data sent to the browser.\n- **Front end:** `core/sheet.ts` and `features/settings/settings.ts`.",
+    "error": "",
+    "attempts": [
+      {
+        "ok": true,
+        "limit_reached": false,
+        "retryable": false,
+        "timed_out": false,
+        "cost_usd": 0.9198814000000001,
+        "num_turns": 21,
+        "duration_ms": 699810,
+        "duration_api_ms": 131353,
+        "error": ""
+      }
+    ]
+  },
+  "agent_stream_file": "cp211.agent.jsonl",
+  "agent_diff_file": "cp211.agent.diff",
+  "build_log_file": null,
+  "tests": {
+    "gated": false,
+    "queued": true
+  },
+  "probe": null,
+  "pinned_touched": [],
+  "acceptance_touched": [],
+  "impact_gate": null
+}
