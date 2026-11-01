@@ -49,6 +49,6 @@ public class QuickAddController {
             @RequestHeader("X-User") @NotBlank @Size(max = 100) String user,
             @RequestBody @Valid QuickAddRequest request) {
         QuickAddService.QuickAdded done = service.add(sheetId, user, request.name().strip(), request.amountValue());
-        return new QuickAddView(PersonView.of(done.person(), people.patronIdsOf(done.person().getId())), done.added(), ClaimView.of(done.claim()));
+        return new QuickAddView(PersonView.of(done.person(), people.today(done.person().getSheetId()), people.patronIdsOf(done.person().getId())), done.added(), ClaimView.of(done.claim()));
     }
 }

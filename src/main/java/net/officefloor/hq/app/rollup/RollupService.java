@@ -80,7 +80,6 @@ public class RollupService {
         BigDecimal claimedTotal = zero();
         BigDecimal dueTotal = zero();
         for (Person person : people.findBySheetIdOrderByIdAsc(sheetId)) {
-            List<Rate> theirRates = ratesByGrade.getOrDefault(person.getGrade(), List.of());
             BigDecimal claimed = zero();
             BigDecimal due = zero();
             boolean fixed = false;
@@ -88,12 +87,17 @@ public class RollupService {
                 if (!claim.getStatus().counts(person.isHeld())) continue;
                 claimed = claimed.add(claim.getAmount());
                 if (claim.getSettledDue() != null || (claim.isStated() && claim.getStatedDue() != null)) fixed = true;
-                BigDecimal figure = LateCharge.withCharge(claim, figureOf(claim, theirRates, floor), terms, today,
-                        latePct);
+                String grade = person.gradeOn(claim.getDate());
+                BigDecimal figure = LateCharge.withCharge(claim,
+                        figureOf(claim, ratesByGrade.getOrDefault(grade, List.of()), floor), terms, today, latePct);
+                // a due under a grade they had on its date but not today counts like a fixed one
+                if (figure != null && today != null && !grade.equals(person.gradeOn(today))) fixed = true;
                 if (figure != null) due = due.add(figure);
             }
-            // As on screen: n/a when their grade has no rate today and none of the counted claims has a fixed due.
-            boolean rated = today != null && pctOn(theirRates, today) != null;
+            // As on screen: n/a when their grade has no rate today and none of the counted claims has a fixed
+            // due, nor a due under another grade they had on its date.
+            boolean rated = today != null
+                    && pctOn(ratesByGrade.getOrDefault(person.gradeOn(today), List.of()), today) != null;
             BigDecimal personDue = fixed || rated ? due : null;
             figures.put(person.getId(), new Figures(person.getName(), claimed, personDue));
             claimedTotal = claimedTotal.add(claimed);

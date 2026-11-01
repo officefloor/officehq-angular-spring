@@ -4,7 +4,7 @@ import { FormControl, FormGroup, ReactiveFormsModule } from '@angular/forms';
 import { firstValueFrom } from 'rxjs';
 import { Late, Session } from '../../core/session';
 import { Period, closedOn, periodOn } from '../periods/periods';
-import { NA, Rate, dueCents, pctOn } from '../rates/rates';
+import { NA, dueCents } from '../rates/rates';
 
 /** DRAFT when added, then OPEN, then SETTLED; a DRAFT or OPEN claim can be made VOID. */
 export type ClaimStatus = 'DRAFT' | 'OPEN' | 'SETTLED' | 'VOID';
@@ -32,6 +32,9 @@ export interface Claim {
   statedDue: string | null;
 }
 
+/** A person's rate on a date: the rate then of the grade they had then, or null when it has none. */
+export type PctOn = (date: string) => string | null;
+
 /** Only OPEN and SETTLED claims count toward what is claimed and due. */
 export function counts(c: Claim): boolean {
   return c.status === 'OPEN' || c.status === 'SETTLED';
@@ -50,20 +53,20 @@ export function cents(amount: string): number {
 
 /**
  * A claim's due in cents: the due fixed when it was settled (late charge frozen in), else its figure
- * — the due bound by its person's last statement, else its amount times its grade's rate on its
- * date (of the grade's rates given), at least the floor (in cents) — with its late charge on top;
+ * — the due bound by its person's last statement, else its amount times its person's rate on its
+ * date (as `pctOn` gives it), at least the floor (in cents) — with its late charge on top;
  * null when it has none.
  */
-export function claimDueCents(c: Claim, rates: Rate[], floorCents: number, late: Late): number | null {
+export function claimDueCents(c: Claim, pctOn: PctOn, floorCents: number, late: Late): number | null {
   if (c.settledDue !== null) return cents(c.settledDue);
-  const figure = figureCents(c, rates, floorCents);
+  const figure = figureCents(c, pctOn, floorCents);
   return figure === null ? null : figure + lateChargeCents(c, figure, late);
 }
 
 /** A claim's figure in cents: the due bound by its person's last statement, else its floored live due. */
-function figureCents(c: Claim, rates: Rate[], floorCents: number): number | null {
+function figureCents(c: Claim, pctOn: PctOn, floorCents: number): number | null {
   if (c.stated) return c.statedDue === null ? null : cents(c.statedDue);
-  const pct = pctOn(rates, c.date);
+  const pct = pctOn(c.date);
   return pct === null ? null : Math.max(dueCents(cents(c.amount), pct), floorCents);
 }
 
@@ -171,8 +174,8 @@ export class Claims {
   readonly personId = input.required<number>();
   readonly personName = input.required<string>();
   readonly claims = input.required<Claim[]>();
-  /** The rates for the person's grade, each from its from-date. */
-  readonly rates = input.required<Rate[]>();
+  /** The person's rate on a date, of the grade they had then. */
+  readonly pctOn = input.required<PctOn>();
   /** The sheet's periods, for the one each claim's date falls in. */
   readonly periods = input.required<Period[]>();
   /** A claim added, edited or given a new status, as the store now holds it. */
@@ -200,7 +203,7 @@ export class Claims {
 
   /** The due fixed when it was settled, else its figure with its late charge on top. */
   protected dueOf(c: Claim): string {
-    const due = claimDueCents(c, this.rates(), cents(this.session.floor()), this.session.late());
+    const due = claimDueCents(c, this.pctOn(), cents(this.session.floor()), this.session.late());
     return due === null ? NA : money(due);
   }
 

@@ -6,6 +6,7 @@ import jakarta.validation.constraints.NotNull;
 import jakarta.validation.constraints.Pattern;
 import jakarta.validation.constraints.Size;
 import java.time.LocalDate;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import org.springframework.validation.annotation.Validated;
@@ -23,14 +24,25 @@ import org.springframework.web.bind.annotation.RestController;
 @RequestMapping("/api/sheets/{sheetId}/people")
 public class PersonController {
 
-    /** A person as the screen shows them; retiredFrom is null while not retired; patronIds in the order named. */
-    public record PersonView(Long id, String name, String grade, long version, boolean retired, LocalDate retiredFrom,
-            boolean held, List<Long> patronIds) {
-        public static PersonView of(Person person, List<Long> patronIds) {
-            return new PersonView(person.getId(), person.getName(), person.getGrade(), person.getVersion(),
+    /**
+     * A person as the screen shows them: grade is the one in force on the sheet's today, grades every
+     * grade recorded, earliest first (the first from null, the beginning of time); retiredFrom is null
+     * while not retired; patronIds in the order named.
+     */
+    public record PersonView(Long id, String name, String grade, List<GradeView> grades, long version,
+            boolean retired, LocalDate retiredFrom, boolean held, List<Long> patronIds) {
+        public static PersonView of(Person person, LocalDate today, List<Long> patronIds) {
+            List<GradeView> grades = new ArrayList<>();
+            grades.add(new GradeView(null, person.getGrade()));
+            person.getDatedGrades().forEach((from, grade) -> grades.add(new GradeView(from, grade)));
+            return new PersonView(person.getId(), person.getName(),
+                    today == null ? person.getGrade() : person.gradeOn(today), grades, person.getVersion(),
                     person.isRetired(), person.getRetiredFrom(), person.isHeld(), patronIds);
         }
     }
+
+    /** A grade in force from a date (null: the beginning of time). */
+    public record GradeView(LocalDate from, String grade) {}
 
     /** The person to name as a patron. */
     public record PatronRequest(@NotNull Long patronId) {}
@@ -43,6 +55,7 @@ public class PersonController {
     public record PersonEditRequest(
             @NotBlank @Size(max = 200) String name,
             @NotNull @Pattern(regexp = "[ABC]") String grade,
+            LocalDate gradeFrom,
             @NotNull Long version) {}
 
     /** The date a person is retired from (blank: the sheet's today). */
@@ -59,7 +72,9 @@ public class PersonController {
             @PathVariable @Size(max = 100) @Pattern(regexp = "[A-Za-z0-9._-]+") String sheetId,
             @RequestHeader("X-User") @NotBlank @Size(max = 100) String user) {
         Map<Long, List<Long>> patrons = service.patronIds(sheetId);
-        return service.list(sheetId).stream().map(p -> PersonView.of(p, patrons.getOrDefault(p.getId(), List.of()))).toList();
+        LocalDate today = service.today(sheetId);
+        return service.list(sheetId).stream()
+                .map(p -> PersonView.of(p, today, patrons.getOrDefault(p.getId(), List.of()))).toList();
     }
 
     @PostMapping
@@ -76,7 +91,8 @@ public class PersonController {
             @PathVariable Long id,
             @RequestHeader("X-User") @NotBlank @Size(max = 100) String user,
             @RequestBody @Valid PersonEditRequest request) {
-        return view(service.edit(sheetId, user, id, request.version(), request.name(), request.grade()));
+        return view(service.edit(sheetId, user, id, request.version(), request.name(), request.grade(),
+                request.gradeFrom()));
     }
 
     @PostMapping("/{id}/retire")
@@ -108,6 +124,6 @@ public class PersonController {
     }
 
     private PersonView view(Person person) {
-        return PersonView.of(person, service.patronIdsOf(person.getId()));
+        return PersonView.of(person, service.today(person.getSheetId()), service.patronIdsOf(person.getId()));
     }
 }

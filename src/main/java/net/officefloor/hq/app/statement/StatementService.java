@@ -84,12 +84,15 @@ public class StatementService {
             BigDecimal figure = claimService.figureOf(sheetId, person, claim);
             BigDecimal due = claimService.chargedFigureOf(sheetId, person, claim);
             if (claim.getSettledDue() != null || (claim.isStated() && claim.getStatedDue() != null)) fixed = true;
+            // a due under a grade they had on its date but not today counts like a fixed one
+            if (due != null && !person.gradeOn(claim.getDate()).equals(person.gradeOn(today))) fixed = true;
             claim.state(figure);
             if (due != null) total = total.add(due);
             counted++;
         }
-        // As on screen: n/a when their grade has no rate today and none of the counted claims has a fixed due.
-        BigDecimal dueTotal = fixed || rates.on(sheetId, person.getGrade(), today).isPresent() ? total : null;
+        // As on screen: n/a when their grade has no rate today and none of the counted claims has a fixed
+        // due, nor a due under another grade they had on its date.
+        BigDecimal dueTotal = fixed || rates.on(sheetId, person.gradeOn(today), today).isPresent() ? total : null;
         claims.saveAllAndFlush(theirs);
         statements.saveAndFlush(new Statement(sheetId, personId, dueTotal, today, user.strip()));
         audit.recordOnCommit("STATEMENT sheet=" + sheetId + " by=" + user.strip() + " name=" + person.getName()

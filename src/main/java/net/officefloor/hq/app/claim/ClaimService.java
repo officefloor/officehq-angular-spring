@@ -163,12 +163,12 @@ public class ClaimService {
     }
 
     /**
-     * A claim's live due: its amount times its person's grade rate on its date, rounded half to even
+     * A claim's live due: its amount times the rate on its date of its person's grade in force on it, rounded half to even
      * to cents, and at least the sheet's floor; null with no rate.
      */
     private BigDecimal dueOf(String sheetId, Person person, Claim claim) {
         BigDecimal floor = settings.floor(sheetId);
-        return rates.on(sheetId, person.getGrade(), claim.getDate())
+        return rates.on(sheetId, person.gradeOn(claim.getDate()), claim.getDate())
                 .map(Rate::getPct)
                 .map(pct -> claim.getAmount().multiply(pct).movePointLeft(2).setScale(2, RoundingMode.HALF_EVEN))
                 .map(due -> due.max(floor))
