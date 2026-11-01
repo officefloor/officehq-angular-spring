@@ -484,11 +484,14 @@ public class PersonService {
         poolMembers.flush();
         poolMembers.saveAllAndFlush(members.stream().filter(m -> !leaving.contains(m)).toList());
 
-        // closed periods' due-totals
+        // closed periods' due-totals and carried figures
         for (Period period : periods.findBySheetIdOrderByFromDateAsc(sheetId)) {
             Map<Long, BigDecimal> dues = period.getClosedPersonDues();
             BigDecimal theirs = dues.remove(from.getId());
             if (theirs != null) dues.merge(into.getId(), theirs, BigDecimal::add);
+            Map<Long, BigDecimal> carried = period.getClosedPersonCarried();
+            BigDecimal theirCarried = carried.remove(from.getId());
+            if (theirCarried != null) carried.merge(into.getId(), theirCarried, BigDecimal::add);
         }
         periods.flush();
 

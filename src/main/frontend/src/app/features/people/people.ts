@@ -1,9 +1,8 @@
-import { HttpClient, HttpContext, HttpErrorResponse } from '@angular/common/http';
+import { HttpClient, HttpErrorResponse } from '@angular/common/http';
 import { Component, computed, effect, inject, signal } from '@angular/core';
 import { FigurePipe } from '../../core/figure';
 import { FormControl, FormGroup, ReactiveFormsModule } from '@angular/forms';
 import { firstValueFrom } from 'rxjs';
-import { LIVE } from '../../core/as-of';
 import { PEOPLE_COLUMNS, PeopleColumn, Session } from '../../core/session';
 import { downloadCsv } from '../../core/csv';
 import { Claim, Claims, DUPLICATE_REF, GraceOn, PctOn, RETIRED, cents, claimDueCents, countsAt, countsFor, isBound, isCorrection, isDuplicateRef, isOpen, isOverdue, money, roundsOn, statusAt } from '../claims/claims';
@@ -693,21 +692,14 @@ export class People {
 
   protected readonly grades = GRADES;
   protected readonly people = signal<Person[]>([]);
-  /** The sheet's descendants' figures, as the store held them when the sheet was loaded. */
+  /** The sheet's descendants' figures, as the store held them when the sheet was loaded (as of the user's date, while one is set). */
   private readonly descendants = signal<Descendants | null>(null);
   /**
-   * The sheet's own figures, as shown, and its descendants' added up. Read as of a date, they are the
-   * figures the store holds now, the sheet's own included.
+   * The sheet's own figures, as shown, and its descendants' added up. Read as of a date, every sheet of the
+   * tree is as it stood at the end of that date.
    */
   protected readonly consolidated = computed(() => {
     const d = this.descendants();
-    if (d && this.session.asOf() !== null) {
-      return {
-        people: d.ownPeople + d.people,
-        dueCents: cents(d.ownDueTotal) + cents(d.dueTotal),
-        overdueCents: cents(d.ownOverdueTotal) + cents(d.overdueTotal),
-      };
-    }
     return {
       people: this.people().length + (d?.people ?? 0),
       dueCents: this.dueTotalAllCents() + (d ? cents(d.dueTotal) : 0),
@@ -851,7 +843,9 @@ export class People {
     }
     return by;
   });
+  /** A person's carried figure for a period: fixed when it was closed or soft-closed (0 for someone added later), else live. */
   protected personPeriodCarriedOf(p: Person, period: Period): string {
+    if (period.closed || period.softClosed) return money(cents(period.closedPersonCarried?.[p.id] ?? '0.00'));
     return money(this.personPeriodCarriedCents().get(p.id)?.get(period.id) ?? 0);
   }
   /** A period's due-total: the people's figures for it added up. */
@@ -1234,7 +1228,7 @@ export class People {
         firstValueFrom(this.http.get<StatementSummary[]>(`/api/sheets/${encodeURIComponent(sheet)}/statements`, { headers: this.headers() })),
         firstValueFrom(this.http.get<Period[]>(`/api/sheets/${encodeURIComponent(sheet)}/periods`, { headers: this.headers() })),
         firstValueFrom(this.http.get<string[]>(`/api/sheets/${encodeURIComponent(sheet)}/claims/tags`, { headers: this.headers() })),
-        firstValueFrom(this.http.get<Descendants>(`/api/sheets/${encodeURIComponent(sheet)}/descendants/figures`, { headers: this.headers(), context: new HttpContext().set(LIVE, true) })),
+        firstValueFrom(this.http.get<Descendants>(`/api/sheets/${encodeURIComponent(sheet)}/descendants/figures`, { headers: this.headers() })),
         firstValueFrom(this.http.get<Plan[]>(`/api/sheets/${encodeURIComponent(sheet)}/plans`, { headers: this.headers() })),
       ]);
       if (this.session.sheetId() !== sheet) return;

@@ -4,6 +4,7 @@ import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.Pattern;
 import jakarta.validation.constraints.Size;
 import java.math.BigDecimal;
+import net.officefloor.hq.app.asof.AsOfTree;
 import net.officefloor.hq.app.sheet.SheetParentRepository;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.validation.annotation.Validated;
@@ -16,8 +17,9 @@ import org.springframework.web.bind.annotation.RestController;
 /**
  * The figures of a sheet's descendants (the sheets naming it as their parent, theirs and so on),
  * added up: how many people they have, and each one's due-total and overdue-total as that sheet
- * shows them, and the sheet's own figures as it holds them now. The screen adds the sheet's own figures,
- * as shown (as it holds them now while it is shown as of a date), to make the consolidated ones.
+ * shows them, and the sheet's own figures. Read as of a date, every sheet of the tree is as it stood at
+ * the end of that date, with that date as its today. The screen adds the sheet's own figures, as shown,
+ * to make the consolidated ones.
  */
 @RestController
 @Validated
@@ -37,6 +39,7 @@ public class ConsolidatedController {
     }
 
     @GetMapping("/figures")
+    @AsOfTree
     @Transactional(readOnly = true)
     public DescendantsView figures(
             @PathVariable @Size(max = 100) @Pattern(regexp = "[A-Za-z0-9._-]+") String sheetId,

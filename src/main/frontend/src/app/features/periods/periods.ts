@@ -20,6 +20,8 @@ export interface Period {
   closedDueTotal: string | null;
   /** Each person's due-total for it fixed when it was closed, two decimals, by person id; empty while open. */
   closedPersonDues: Record<string, string>;
+  /** Each person's carried figure for it fixed when it was closed, two decimals, by person id; empty while open. */
+  closedPersonCarried: Record<string, string>;
   /** The most OPEN or PENDING claims a person may have in it; null for no cap. */
   cap: number | null;
 }

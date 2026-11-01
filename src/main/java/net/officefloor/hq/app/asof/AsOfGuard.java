@@ -4,9 +4,12 @@ import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
 import java.time.LocalDate;
 import java.time.format.DateTimeParseException;
+import java.util.ArrayList;
+import java.util.List;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.locks.ReentrantLock;
+import net.officefloor.hq.app.sheet.SheetParentRepository;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.http.HttpMethod;
 import org.springframework.transaction.PlatformTransactionManager;
@@ -25,8 +28,8 @@ import org.springframework.web.servlet.config.annotation.WebMvcConfigurer;
  * through is marked for {@link SheetHistoryFilter} to record in its {@link SheetHistory}.
  *
  * <p>A read as of a date runs in a transaction that puts the sheet back as it stood then, with that
- * date as its today, and is rolled back once the read is answered, so it changes nothing and audits
- * nothing.
+ * date as its today (with every descendant sheet too, for a read marked {@link AsOfTree}), and is rolled
+ * back once the read is answered, so it changes nothing and audits nothing.
  */
 @Configuration
 public class AsOfGuard implements WebMvcConfigurer, HandlerInterceptor {
@@ -36,16 +39,18 @@ public class AsOfGuard implements WebMvcConfigurer, HandlerInterceptor {
 
     private static final String VIEW = AsOfGuard.class.getName() + ".view";
 
-    /** A read as of a date under way: its transaction and the lock it holds on its sheet. */
-    private record View(TransactionStatus transaction, ReentrantLock lock) {}
+    /** A read as of a date under way: its transaction and the locks it holds on its sheets. */
+    private record View(TransactionStatus transaction, List<ReentrantLock> locks) {}
 
     private final SheetHistory history;
+    private final SheetParentRepository parents;
     private final PlatformTransactionManager transactions;
     /** One as-of read of a sheet at a time: each puts back the same rows. */
     private final Map<String, ReentrantLock> locks = new ConcurrentHashMap<>();
 
-    public AsOfGuard(SheetHistory history, PlatformTransactionManager transactions) {
+    public AsOfGuard(SheetHistory history, SheetParentRepository parents, PlatformTransactionManager transactions) {
         this.history = history;
+        this.parents = parents;
         this.transactions = transactions;
     }
 
@@ -69,18 +74,27 @@ public class AsOfGuard implements WebMvcConfigurer, HandlerInterceptor {
         }
         // a sheet never started is started as usual
         if (!history.exists(sheetId)) return true;
-        ReentrantLock lock = locks.computeIfAbsent(sheetId, id -> new ReentrantLock());
-        lock.lock();
+        // a read over the tree puts back every descendant too, each locked after its ancestors
+        List<String> restored = new ArrayList<>(List.of(sheetId));
+        if (method.hasMethodAnnotation(AsOfTree.class)) {
+            for (String descendant : parents.descendantsOf(sheetId)) if (history.exists(descendant)) restored.add(descendant);
+        }
+        List<ReentrantLock> held = new ArrayList<>();
         TransactionStatus transaction = null;
         try {
+            for (String sheet : restored) {
+                ReentrantLock lock = locks.computeIfAbsent(sheet, id -> new ReentrantLock());
+                lock.lock();
+                held.add(lock);
+            }
             transaction = transactions.getTransaction(new DefaultTransactionDefinition());
-            history.restore(sheetId, asOf);
+            for (String sheet : restored) history.restore(sheet, asOf);
         } catch (RuntimeException e) {
             if (transaction != null) transactions.rollback(transaction);
-            lock.unlock();
+            unlock(held);
             throw e;
         }
-        request.setAttribute(VIEW, new View(transaction, lock));
+        request.setAttribute(VIEW, new View(transaction, held));
         return true;
     }
 
@@ -91,13 +105,17 @@ public class AsOfGuard implements WebMvcConfigurer, HandlerInterceptor {
             try {
                 transactions.rollback(view.transaction());
             } finally {
-                view.lock().unlock();
+                unlock(view.locks());
             }
             return;
         }
         if (isRead(request) || ex != null || response.getStatus() >= 400) return;
         String sheetId = sheetId(request);
         if (sheetId != null) request.setAttribute(SheetHistoryFilter.CHANGED, sheetId);
+    }
+
+    private static void unlock(List<ReentrantLock> held) {
+        for (int i = held.size() - 1; i >= 0; i--) held.get(i).unlock();
     }
 
     private static boolean isRead(HttpServletRequest request) {

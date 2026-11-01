@@ -18,7 +18,7 @@ import java.util.TreeMap;
 
 /**
  * A period of the sheet: a name unique on the sheet, from and to a date, both inclusive. Once
- * closed, its due-total and each person's due-total for it are fixed at what they were when it was
+ * closed, its due-total and each person's due-total and carried figure for it are fixed at what they were when it was
  * closed; reopened, they are live again. Soft-closed, its figures are fixed the same way, but claims
  * due inside it can still change.
  */
@@ -60,6 +60,13 @@ public class Period {
     @Column(name = "due_total", nullable = false, precision = 14, scale = 2)
     private Map<Long, BigDecimal> closedPersonDues = new TreeMap<>();
 
+    /** Each person's carried figure for it fixed when it was closed, by person id; empty while it is open. */
+    @ElementCollection(fetch = FetchType.EAGER)
+    @CollectionTable(name = "period_person_carried", joinColumns = @JoinColumn(name = "period_id"))
+    @MapKeyColumn(name = "person_id")
+    @Column(name = "carried", nullable = false, precision = 14, scale = 2)
+    private Map<Long, BigDecimal> closedPersonCarried = new TreeMap<>();
+
     /** The most OPEN or PENDING claims a person may have in it; null for no cap. */
     @Column(name = "claim_cap")
     private Integer cap;
@@ -96,33 +103,38 @@ public class Period {
 
     public Map<Long, BigDecimal> getClosedPersonDues() { return closedPersonDues; }
 
+    public Map<Long, BigDecimal> getClosedPersonCarried() { return closedPersonCarried; }
+
     public Integer getCap() { return cap; }
 
-    /** Close it, fixing each person's due-total for it and its own, the sum of theirs. */
-    public void close(Map<Long, BigDecimal> personDues) {
-        fix(personDues);
+    /** Close it, fixing each person's due-total and carried figure for it and its own due-total, the sum of theirs. */
+    public void close(Map<Long, BigDecimal> personDues, Map<Long, BigDecimal> personCarried) {
+        fix(personDues, personCarried);
         this.closed = true;
         this.softClosed = false;
     }
 
     /** Soft-close it, fixing its figures as a close does while its claims can still change. */
-    public void softClose(Map<Long, BigDecimal> personDues) {
-        fix(personDues);
+    public void softClose(Map<Long, BigDecimal> personDues, Map<Long, BigDecimal> personCarried) {
+        fix(personDues, personCarried);
         this.softClosed = true;
     }
 
-    private void fix(Map<Long, BigDecimal> personDues) {
+    private void fix(Map<Long, BigDecimal> personDues, Map<Long, BigDecimal> personCarried) {
         this.closedPersonDues.clear();
         this.closedPersonDues.putAll(personDues);
+        this.closedPersonCarried.clear();
+        this.closedPersonCarried.putAll(personCarried);
         this.closedDueTotal = personDues.values().stream().reduce(BigDecimal.ZERO.setScale(2), BigDecimal::add);
     }
 
-    /** Reopen it: its due-total is live again. */
+    /** Reopen it: its due-total and carried figures are live again. */
     public void reopen() {
         this.closed = false;
         this.softClosed = false;
         this.closedDueTotal = null;
         this.closedPersonDues.clear();
+        this.closedPersonCarried.clear();
     }
 
     /** Whether the date falls in it, both ends inclusive. */

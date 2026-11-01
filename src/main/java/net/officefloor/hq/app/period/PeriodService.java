@@ -14,6 +14,7 @@ import net.officefloor.hq.app.Audit;
 import net.officefloor.hq.app.claim.Claim;
 import net.officefloor.hq.app.claim.ClaimRepository;
 import net.officefloor.hq.app.claim.ClaimService;
+import net.officefloor.hq.app.claim.ClaimStatus;
 import net.officefloor.hq.app.person.Person;
 import net.officefloor.hq.app.person.PersonRepository;
 import net.officefloor.hq.app.setting.SettingService;
@@ -26,9 +27,10 @@ import org.springframework.transaction.annotation.Transactional;
  * The sheet's periods: each named uniquely on the sheet, from and to a date inclusive, none
  * overlapping. Closing a period fixes, at that moment, each person's due-total for it (the figures
  * as shown then of their claims whose due-by falls in it that counted by the status they had at the
- * end of its last day) and its own due-total, the sum of theirs. Soft-closing fixes them the same
+ * end of its last day) and carried figure (the same of their claims due in an earlier period and still
+ * open at the end of its last day), and its own due-total, the sum of their due-totals. Soft-closing fixes them the same
  * way while claims due inside it can still change; a soft-closed period can then be closed (fixing
- * them afresh). A steward can reopen a closed or soft-closed period, making its due-total live again.
+ * them afresh). A steward can reopen a closed or soft-closed period, making its figures live again.
  */
 @Service
 public class PeriodService {
@@ -153,19 +155,37 @@ public class PeriodService {
         // Every person on the sheet gets a figure, 0.00 when none of their claims falls in it.
         Map<Long, BigDecimal> personDues = new LinkedHashMap<>();
         for (Long personId : byId.keySet()) personDues.put(personId, BigDecimal.ZERO.setScale(2));
+        Map<Long, BigDecimal> personCarried = new LinkedHashMap<>(personDues);
+        List<Period> all = periods.findBySheetIdOrderByFromDateAsc(sheetId);
         for (Claim claim : claims.findBySheetIdOrderByIdDesc(sheetId)) {
             Person person = byId.get(claim.getPersonId());
-            if (person == null || !period.contains(claim.getDueBy()) || !person.countsAt(claim, period.getToDate(), today)) continue;
-            BigDecimal figure = claimService.chargedFigureOf(sheetId, person, claim);
-            if (figure != null) personDues.merge(person.getId(), figure, BigDecimal::add);
+            if (person == null || !person.countsAt(claim, period.getToDate(), today)) continue;
+            if (period.contains(claim.getDueBy())) {
+                BigDecimal figure = claimService.chargedFigureOf(sheetId, person, claim);
+                if (figure != null) personDues.merge(person.getId(), figure, BigDecimal::add);
+            } else if (carriedInto(period, claim, all)) {
+                BigDecimal figure = claimService.chargedFigureOf(sheetId, person, claim);
+                if (figure != null) personCarried.merge(person.getId(), figure, BigDecimal::add);
+            }
         }
-        if (soft) period.softClose(personDues);
-        else period.close(personDues);
+        if (soft) period.softClose(personDues, personCarried);
+        else period.close(personDues, personCarried);
         Period saved = periods.saveAndFlush(period);
         audit.recordOnCommit((soft ? "PERIOD_SOFT_CLOSED" : "PERIOD_CLOSED") + " sheet=" + sheetId + " by=" + user.strip()
                 + " period=" + saved.getName() + " total=" + saved.getClosedDueTotal().setScale(2).toPlainString()
                 + (auto ? " auto=yes" : ""));
         return saved;
+    }
+
+    /**
+     * Whether the claim is carried into the period: due in a period ending before it starts, and still
+     * open (OPEN or PENDING) at the end of its last day, by the status log.
+     */
+    private static boolean carriedInto(Period period, Claim claim, List<Period> all) {
+        Period own = all.stream().filter(p -> p.contains(claim.getDueBy())).findFirst().orElse(null);
+        if (own == null || !own.getToDate().isBefore(period.getFromDate())) return false;
+        ClaimStatus status = claim.statusAt(period.getToDate());
+        return status != null && status.isOpen();
     }
 
     @Transactional
