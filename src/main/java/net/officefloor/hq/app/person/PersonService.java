@@ -1,7 +1,9 @@
 package net.officefloor.hq.app.person;
 
+import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
@@ -12,12 +14,17 @@ import java.util.stream.Collectors;
 import net.officefloor.hq.app.Audit;
 import net.officefloor.hq.app.claim.Claim;
 import net.officefloor.hq.app.claim.ClaimRepository;
+import net.officefloor.hq.app.period.Period;
+import net.officefloor.hq.app.period.PeriodRepository;
+import net.officefloor.hq.app.pool.PoolMember;
+import net.officefloor.hq.app.pool.PoolMemberRepository;
 import net.officefloor.hq.app.rollup.RollupService;
 import net.officefloor.hq.app.setting.Role;
 import net.officefloor.hq.app.setting.SettingService;
 import net.officefloor.hq.app.sheet.Sheet;
 import net.officefloor.hq.app.sheet.SheetNotFoundException;
 import net.officefloor.hq.app.sheet.SheetRepository;
+import net.officefloor.hq.app.statement.StatementRepository;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.orm.ObjectOptimisticLockingFailureException;
 import org.springframework.stereotype.Service;
@@ -38,6 +45,7 @@ import org.springframework.transaction.annotation.Transactional;
  * A person may have aliases, added one at a time; an alias shares the names' uniqueness: it may not be,
  * as names are compared, any name or alias on the sheet, and no name may be an alias on the sheet. The
  * sheet is locked while a name or alias is checked and written, so two users cannot take one at once.
+ * A steward can merge a person into another ({@link #merge}).
  */
 @Service
 public class PersonService {
@@ -49,11 +57,18 @@ public class PersonService {
     private final ClaimRepository claims;
     private final RollupService rollup;
     private final SettingService settings;
+    private final StatementRepository statements;
+    private final PoolMemberRepository poolMembers;
+    private final PeriodRepository periods;
     private final Audit audit;
 
     public PersonService(PersonRepository people, PersonPatronRepository patrons,
             PersonWatchRepository watches, SheetRepository sheets, ClaimRepository claims, RollupService rollup,
-            SettingService settings, Audit audit) {
+            SettingService settings, StatementRepository statements, PoolMemberRepository poolMembers,
+            PeriodRepository periods, Audit audit) {
+        this.statements = statements;
+        this.poolMembers = poolMembers;
+        this.periods = periods;
         this.claims = claims;
         this.watches = watches;
         this.people = people;
@@ -252,6 +267,111 @@ public class PersonService {
         audit.recordOnCommit("PATRON_ADDED sheet=" + sheetId + " by=" + user.strip()
                 + " name=" + person.getName() + " patron=" + patron.getName());
         return person;
+    }
+
+    /**
+     * A steward merges the person into another on the sheet; not into themselves, and neither of them
+     * retired. The person's claims move to the other, numbers, dates and due-bys kept, listed as the
+     * other's newest in the order they were added, each losing any figure a statement bound it to. Their
+     * name and aliases become the other's aliases; their patrons are added to the other's (not the other
+     * themselves, no repeats), and anyone naming them as patron names the other instead (no repeats, not
+     * themselves). Their pool memberships move to the other, a share added to the other's where the other
+     * is already a member, and their due-total fixed for a closed period is added to the other's. Their
+     * statements, holds, watchers and contact are dropped, and they leave the sheet.
+     */
+    @Transactional
+    public Person merge(String sheetId, String user, Long id, Long intoId) {
+        LocalDate today = sheets.findForUpdate(sheetId).orElseThrow(SheetNotFoundException::new).getToday();
+        Person from = people.findByIdAndSheetId(id, sheetId).orElseThrow(PersonNotFoundException::new);
+        Person into = people.findByIdAndSheetId(intoId, sheetId).orElseThrow(PersonNotFoundException::new);
+        if (settings.roleOf(sheetId, user) != Role.STEWARD || from.getId().equals(into.getId())
+                || from.isRetired() || into.isRetired()) {
+            throw new PersonMergeRefusedException();
+        }
+        RollupService.Snapshot before = rollup.snapshot(sheetId);
+
+        // claims: listed as the other's newest, in the order they were added
+        List<Claim> moving = new ArrayList<>(claims.findBySheetIdAndPersonIdOrderByIdDesc(sheetId, from.getId()));
+        Collections.reverse(moving);
+        for (Claim claim : moving) {
+            claim.unstate(today);
+            claim.moveTo(into.getId(), claims.nextListed());
+        }
+        claims.saveAllAndFlush(moving);
+
+        // patrons
+        List<PersonPatron> named = patrons.findBySheetIdOrderByIdAsc(sheetId);
+        Set<Long> intoPatrons = new HashSet<>();
+        for (PersonPatron p : named) if (p.getPersonId().equals(into.getId())) intoPatrons.add(p.getPatronId());
+        List<Long> added = new ArrayList<>();
+        List<PersonPatron> repointed = new ArrayList<>();
+        List<PersonPatron> dropped = new ArrayList<>();
+        Map<Long, Set<Long>> byPerson = new HashMap<>();
+        for (PersonPatron p : named) byPerson.computeIfAbsent(p.getPersonId(), k -> new HashSet<>()).add(p.getPatronId());
+        for (PersonPatron p : named) {
+            if (p.getPersonId().equals(from.getId())) {
+                dropped.add(p);
+                Long patron = p.getPatronId();
+                if (!patron.equals(into.getId()) && intoPatrons.add(patron)) added.add(patron);
+            } else if (p.getPatronId().equals(from.getId())) {
+                if (p.getPersonId().equals(into.getId()) || byPerson.get(p.getPersonId()).contains(into.getId())) {
+                    dropped.add(p);
+                } else {
+                    repointed.add(p);
+                }
+            }
+        }
+        patrons.deleteAll(dropped);
+        patrons.flush();
+        for (PersonPatron p : repointed) p.setPatronId(into.getId());
+        patrons.saveAll(repointed);
+        for (Long patron : added) patrons.save(new PersonPatron(sheetId, into.getId(), patron));
+        patrons.flush();
+
+        // pools
+        List<PoolMember> members = poolMembers.findBySheetIdOrderByIdAsc(sheetId);
+        List<PoolMember> leaving = new ArrayList<>();
+        for (PoolMember m : members) {
+            if (!m.getPersonId().equals(from.getId())) continue;
+            PoolMember theirs = members.stream()
+                    .filter(o -> o.getPoolId().equals(m.getPoolId()) && o.getPersonId().equals(into.getId()))
+                    .findFirst().orElse(null);
+            if (theirs != null) {
+                theirs.addShare(m.getShare());
+                leaving.add(m);
+            } else {
+                m.setPersonId(into.getId());
+            }
+        }
+        poolMembers.deleteAll(leaving);
+        poolMembers.flush();
+        poolMembers.saveAllAndFlush(members.stream().filter(m -> !leaving.contains(m)).toList());
+
+        // closed periods' due-totals
+        for (Period period : periods.findBySheetIdOrderByFromDateAsc(sheetId)) {
+            Map<Long, BigDecimal> dues = period.getClosedPersonDues();
+            BigDecimal theirs = dues.remove(from.getId());
+            if (theirs != null) dues.merge(into.getId(), theirs, BigDecimal::add);
+        }
+        periods.flush();
+
+        // statements and watchers dropped
+        statements.deleteAll(statements.findBySheetIdAndPersonIdOrderByIdAsc(sheetId, from.getId()));
+        statements.flush();
+        watches.deleteAll(watches.findByPersonIdOrderByIdAsc(from.getId()));
+        watches.flush();
+
+        // the person leaves, their name and aliases the other's aliases
+        List<String> aliases = new ArrayList<>();
+        aliases.add(from.getName());
+        aliases.addAll(from.mergeInto(into.getId()));
+        saveUnique(from);
+        for (String alias : aliases) if (!into.hasAlias(alias)) into.addAlias(alias);
+        Person saved = saveUnique(into);
+        audit.recordOnCommit("PERSON_MERGED sheet=" + sheetId + " by=" + user.strip()
+                + " from=" + from.getName() + " into=" + saved.getName());
+        rollup.recordChanges(sheetId, user, before);
+        return saved;
     }
 
     /** The ids of the people on the sheet the user watches. */

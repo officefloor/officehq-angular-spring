@@ -23,6 +23,7 @@ import java.util.Map;
 import java.util.TreeMap;
 import net.officefloor.hq.app.claim.Claim;
 import net.officefloor.hq.app.claim.ClaimStatus;
+import org.hibernate.annotations.SQLRestriction;
 
 /**
  * A person on a sheet, with a name and a grade (A, B or C). The name is kept without surrounding
@@ -32,9 +33,11 @@ import net.officefloor.hq.app.claim.ClaimStatus;
  * statement, leave the live totals as a hold's do. A person may have several holds over time, each from a from-date to an optional to-date. The grade is dated: the first one
  * given is in force from the beginning of time, and each later one from its from-date. A person may have
  * their own terms in days, which their claims' due-by takes ahead of their grade's and the sheet's. A person
- * may have aliases, which share the names' uniqueness on the sheet.
+ * may have aliases, which share the names' uniqueness on the sheet. A person merged into another is kept,
+ * naming them, but leaves the sheet: no query reads them.
  */
 @Entity
+@SQLRestriction("merged_into is null")
 @Table(name = "person")
 public class Person {
 
@@ -96,6 +99,10 @@ public class Person {
     @ElementCollection(fetch = FetchType.EAGER)
     @CollectionTable(name = "person_alias", joinColumns = @JoinColumn(name = "person_id"))
     private List<PersonAlias> aliases = new ArrayList<>();
+
+    /** The person they were merged into; null while not merged. */
+    @Column(name = "merged_into")
+    private Long mergedInto;
 
     @Version
     @Column(name = "version", nullable = false)
@@ -191,6 +198,19 @@ public class Person {
     }
 
     public void addAlias(String alias) { aliases.add(new PersonAlias(sheetId, alias)); }
+
+    /**
+     * Merge them into the other person: they name the other as merged into, and lose their aliases, holds
+     * and contact. Returns their aliases, as given, in the order they were added.
+     */
+    public List<String> mergeInto(Long otherId) {
+        List<String> theirs = aliases.stream().map(PersonAlias::getAlias).toList();
+        this.mergedInto = otherId;
+        aliases.clear();
+        holds.clear();
+        this.contact = null;
+        return theirs;
+    }
 
     /** The date they are retired from, or null while not retired. */
     public LocalDate getRetiredFrom() { return retiredFrom; }

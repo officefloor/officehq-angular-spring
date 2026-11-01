@@ -47,4 +47,10 @@ public class PoolMember {
     public Long getPersonId() { return personId; }
 
     public BigDecimal getShare() { return share; }
+
+    /** Make the membership another person's. */
+    public void setPersonId(Long personId) { this.personId = personId; }
+
+    /** Add a share to theirs. */
+    public void addShare(BigDecimal more) { this.share = share.add(more); }
 }

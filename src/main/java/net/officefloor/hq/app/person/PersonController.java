@@ -66,6 +66,9 @@ public class PersonController {
     /** An alias to give a person. */
     public record AliasRequest(@NotBlank @Size(max = 200) String alias) {}
 
+    /** The person to merge a person into. */
+    public record MergeRequest(@NotNull Long intoId) {}
+
     /** The person to name as a patron. */
     public record PatronRequest(@NotNull Long patronId) {}
 
@@ -188,6 +191,16 @@ public class PersonController {
             @RequestHeader("X-User") @NotBlank @Size(max = 100) String user,
             @RequestBody @Valid PatronRequest request) {
         return view(service.addPatron(sheetId, user, id, request.patronId()), user);
+    }
+
+    /** Merge the person into another on the sheet; answers with the person merged into. */
+    @PostMapping("/{id}/merge")
+    public PersonView merge(
+            @PathVariable @Size(max = 100) @Pattern(regexp = "[A-Za-z0-9._-]+") String sheetId,
+            @PathVariable Long id,
+            @RequestHeader("X-User") @NotBlank @Size(max = 100) String user,
+            @RequestBody @Valid MergeRequest request) {
+        return view(service.merge(sheetId, user, id, request.intoId()), user);
     }
 
     /** Start or stop watching the person as the signed-in user. */

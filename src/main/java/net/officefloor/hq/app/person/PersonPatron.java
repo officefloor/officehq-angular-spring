@@ -40,4 +40,7 @@ public class PersonPatron {
     public Long getPersonId() { return personId; }
 
     public Long getPatronId() { return patronId; }
+
+    /** Name another person as the patron in place of the one named. */
+    public void setPatronId(Long patronId) { this.patronId = patronId; }
 }

@@ -384,6 +384,16 @@ function trimmedSum(figures: number[]): number {
               <td>
                 <button type="button" [attr.data-testid]="'person-edit-' + p.id" (click)="edit(p)"
                         [attr.aria-label]="'Edit ' + p.name">Edit</button>
+                <label [for]="'person-merge-into-' + p.id" class="visually-hidden">Merge {{ p.name }} into</label>
+                <select [id]="'person-merge-into-' + p.id" data-testid="person-merge-into" #mergeInto
+                        (change)="clearPersonError(p.id)">
+                  <option value="">Merge into</option>
+                  @for (o of people(); track o.id) {
+                    <option [value]="o.id">{{ o.name }}</option>
+                  }
+                </select>
+                <button type="button" data-testid="person-merge" (click)="merge(p, mergeInto)"
+                        [attr.aria-label]="'Merge ' + p.name">Merge</button>
               </td>
             </tr>
           }
@@ -1133,6 +1143,37 @@ export class People {
         message: e instanceof HttpErrorResponse && e.status === 409
           ? 'That alias is already a name or an alias on this sheet.'
           : 'Could not add that alias for ' + p.name + '.',
+      });
+    }
+  }
+
+  /**
+   * Merge the person into the one chosen in the select (a steward only; not into themselves, neither of
+   * them retired). Once merged the people and their claims are read again, as their claims and patrons moved.
+   */
+  protected async merge(p: Person, select: HTMLSelectElement): Promise<void> {
+    this.personError.set(null);
+    this.clearPatronError(p.id);
+    const sheet = this.session.sheetId();
+    if (!sheet) return;
+    const intoId = Number(select.value);
+    if (!select.value || !Number.isInteger(intoId)) {
+      this.personError.set({ id: p.id, message: 'Choose a person to merge into.' });
+      return;
+    }
+    try {
+      await firstValueFrom(
+        this.http.post<Person>(`${this.url(sheet)}/${p.id}/merge`, { intoId }, { headers: this.headers() }),
+      );
+      if (this.session.sheetId() !== sheet) return;
+      await this.load(sheet);
+    } catch (e) {
+      if (this.session.sheetId() !== sheet) return;
+      this.personError.set({
+        id: p.id,
+        message: e instanceof HttpErrorResponse && e.status === 409
+          ? 'Only a steward can merge, into another person, neither of them retired.'
+          : 'Could not merge ' + p.name + '.',
       });
     }
   }
