@@ -1,0 +1,64 @@
+{
+  "checkpoint": 174,
+  "stack": {
+    "repo": "/home/daniel/officehq-angular-spring",
+    "origin": "git@github.com:officefloor/officehq-angular-spring.git",
+    "name": "officehq-angular-spring",
+    "base_ref": "base-empty",
+    "base_commit": "65cb8233ea38b2dfa6cfd18709e30cd18fdf3250"
+  },
+  "checkpoint_id": "cp174_late-charge-waiver",
+  "phase": "late",
+  "type": "additive",
+  "mutates": [],
+  "replaced_tests": [],
+  "request": {
+    "spec": "A steward can waive a claim's late charge (a button on an OPEN or PENDING claim; CLAIM_WAIVED\nnaming the claim; anyone else, any other status, or a claim already waived is refused with an error\non the claim). A waived claim bears no late charge from then on, whatever its overdue state; show\nwaived yes/no on the claim.\n",
+    "prompt": "You are implementing ONE change to this application.\n\nFIRST read AGENTS.md \u2014 it states the working rules and how the app is tested, and sends you to\nDESIGN.md for the app's stack and conventions. Follow both.\n\nTHE CHANGE REQUEST:\nA steward can waive a claim's late charge (a button on an OPEN or PENDING claim; CLAIM_WAIVED\nnaming the claim; anyone else, any other status, or a claim already waived is refused with an error\non the claim). A waived claim bears no late charge from then on, whatever its overdue state; show\nwaived yes/no on the claim.\n\nYour work is verified by an automated Playwright UI test already installed under e2e/specs/.\nRead that spec: it declares the exact data-testid anchors, values, test data and any audit\nrecords it expects \u2014 match them. Run `bin/e2e` to build the app, start it, and run the test as\nyou work; iterate until it passes. Change whatever the request needs across the app \u2014 its stored\ndata, its server and its front end. Do NOT edit bin/build, bin/start, bin/stop, bin/e2e,\nAGENTS.md, CLAUDE.md, DESIGN.md, e2e/support/ or the test spec.\n"
+  },
+  "commit_sha": "aa1707fb59cc3f493b8e30dc0c7227f458576610",
+  "reset_sha": "",
+  "preagent_sha": "15f171245a4f35ff1935ad116905f53fbfea3ae5",
+  "prev_sha": "15f171245a4f35ff1935ad116905f53fbfea3ae5",
+  "base_sha": "65cb8233ea38b2dfa6cfd18709e30cd18fdf3250",
+  "agent": {
+    "ok": true,
+    "cost_usd": 1.1418402,
+    "input_tokens": 54,
+    "output_tokens": 11873,
+    "cache_read_tokens": 1486861,
+    "cache_creation_tokens": 75849,
+    "num_turns": 29,
+    "duration_ms": 330110,
+    "duration_api_ms": 120621,
+    "model": "claude-opus-5-5",
+    "session_id": "2f70e848-82ba-441d-8b85-ad7b7662de55",
+    "stop_reason": "success",
+    "result_text": "A steward can now waive a claim's late charge, and all 4 tests in `bin/e2e` pass: the waiver test and the three existing scenarios.\n\n**How it works**\n- **Who and when:** each claim has a Waive button. Only a steward can use it, and only on an OPEN or PENDING claim that hasn't already been waived. Otherwise the claim shows an error and nothing is saved or written to the audit file.\n- **Audit:** a waiver writes `CLAIM_WAIVED sheet=\u2026 by=\u2026 person=\u2026 amount=\u2026 date=\u2026 number=\u2026`, the same layout the other claim records use.\n- **Effect:** a waived claim has no late charge from then on, even if it is overdue. It still counts as overdue (shown \"yes\"), and its due drops to the plain figure or the floor. The claim row shows \"Waived yes/no\".\n\n**Changes**\n- **Stored data:** a new migration, `V95__claim_waived.sql`, adds two columns to claims: whether it was waived (`waived`) and the date it was waived (`waived_on`).\n- **Server:** the waive action is in `ClaimService.waive` with a new endpoint, `POST /api/sheets/{sheet}/claims/{id}/waive`. A second waive is refused by the new `ClaimWaivedException`. The late-charge calculation in `LateCharge.java` now skips waived claims.\n- **Front end:** in `claims.ts`, the browser works out dues itself, so its own late-charge code needed the same rule. I also added the Waived field, the button, and the error messages.\n\n**One decision for you:** I read \"from then on\" literally. The charge counts as waived only from the sheet's date when the waiver was made, so a figure worked out for an earlier date still includes the charge. That matters if the sheet's date is moved back before the waiver or a figure is computed as of an earlier date. The test only waives before any charge has built up, so it doesn't settle this either way. If you want a waiver to remove the charge for every date, change `Claim.isWaivedAt` and the front end's `isWaivedAt` to just return whether it was waived.",
+    "error": "",
+    "attempts": [
+      {
+        "ok": true,
+        "limit_reached": false,
+        "retryable": false,
+        "timed_out": false,
+        "cost_usd": 1.1418402,
+        "num_turns": 29,
+        "duration_ms": 330110,
+        "duration_api_ms": 120621,
+        "error": ""
+      }
+    ]
+  },
+  "agent_stream_file": "cp174.agent.jsonl",
+  "agent_diff_file": "cp174.agent.diff",
+  "build_log_file": null,
+  "tests": {
+    "gated": false,
+    "queued": true
+  },
+  "probe": null,
+  "pinned_touched": [],
+  "acceptance_touched": [],
+  "impact_gate": null
+}
