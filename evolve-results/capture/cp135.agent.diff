@@ -1,0 +1,99 @@
+diff --git a/src/main/frontend/src/app/core/csv.ts b/src/main/frontend/src/app/core/csv.ts
+new file mode 100644
+index 000000000..f936ad8c3
+--- /dev/null
++++ b/src/main/frontend/src/app/core/csv.ts
+@@ -0,0 +1,15 @@
++/** A CSV field: wrapped in double quotes, any inside doubled, when it holds a comma, a quote or a line break. */
++function csvField(value: string): string {
++  return /[",\r\n]/.test(value) ? `"${value.replaceAll('"', '""')}"` : value;
++}
++
++/** Downloads the lines as a CSV file, each field quoted as needed and each line ended by a line feed. */
++export function downloadCsv(lines: string[][], filename: string): void {
++  const csv = lines.map((fields) => fields.map(csvField).join(',') + '\n').join('');
++  const url = URL.createObjectURL(new Blob([csv], { type: 'text/csv' }));
++  const link = document.createElement('a');
++  link.href = url;
++  link.download = filename;
++  link.click();
++  setTimeout(() => URL.revokeObjectURL(url));
++}
+diff --git a/src/main/frontend/src/app/features/people/people.ts b/src/main/frontend/src/app/features/people/people.ts
+index 8cabf1db9..75b42c67c 100644
+--- a/src/main/frontend/src/app/features/people/people.ts
++++ b/src/main/frontend/src/app/features/people/people.ts
+@@ -4,6 +4,7 @@ import { FormControl, FormGroup, ReactiveFormsModule } from '@angular/forms';
+ import { firstValueFrom } from 'rxjs';
+ import { LIVE } from '../../core/as-of';
+ import { Session } from '../../core/session';
++import { downloadCsv } from '../../core/csv';
+ import { Claim, Claims, DUPLICATE_REF, GraceOn, PctOn, RETIRED, cents, claimDueCents, countsAt, countsFor, isBound, isDuplicateRef, isOpen, isOverdue, money, roundsOn } from '../claims/claims';
+ import { Period, Periods, periodOn } from '../periods/periods';
+ import { Plan, Plans } from '../plans/plans';
+@@ -84,22 +85,6 @@ function gradeOn(p: Person, date: string): string {
+   return on;
+ }
+ 
+-/** A CSV field: wrapped in double quotes, any inside doubled, when it holds a comma, a quote or a line break. */
+-function csvField(value: string): string {
+-  return /[",\r\n]/.test(value) ? `"${value.replaceAll('"', '""')}"` : value;
+-}
+-
+-/** Downloads the lines as a CSV file, each field quoted as needed and each line ended by a line feed. */
+-function downloadCsv(lines: string[][], filename: string): void {
+-  const csv = lines.map((fields) => fields.map(csvField).join(',') + '\n').join('');
+-  const url = URL.createObjectURL(new Blob([csv], { type: 'text/csv' }));
+-  const link = document.createElement('a');
+-  link.href = url;
+-  link.download = filename;
+-  link.click();
+-  setTimeout(() => URL.revokeObjectURL(url));
+-}
+-
+ /** A person's statements: how many, and the last one's due-total (null when n/a) and date. */
+ /** The figures of the sheet's descendants added up, each sheet's due-total and overdue-total as it shows them. */
+ interface Descendants {
+diff --git a/src/main/frontend/src/app/features/pools/pools.ts b/src/main/frontend/src/app/features/pools/pools.ts
+index fb855a046..7f810c62c 100644
+--- a/src/main/frontend/src/app/features/pools/pools.ts
++++ b/src/main/frontend/src/app/features/pools/pools.ts
+@@ -3,6 +3,7 @@ import { Component, computed, effect, inject, signal, untracked } from '@angular
+ import { FormControl, FormGroup, ReactiveFormsModule } from '@angular/forms';
+ import { firstValueFrom } from 'rxjs';
+ import { Session } from '../../core/session';
++import { downloadCsv } from '../../core/csv';
+ 
+ /** A member of a pool: the person or the pool (the other null), its name, its share (two decimals), whether the person was retired when read, whether its dates include the sheet's today, and its cut of the pot (two decimals; null: none). */
+ interface MemberView {
+@@ -81,6 +82,7 @@ function percent(hundredths: number): string {
+           <p role="alert" class="error" data-testid="pool-form-error">{{ error() }}</p>
+         }
+       </form>
++      <button type="button" data-testid="export-pools" (click)="exportPools()">Export pools CSV</button>
+       <ul aria-label="Pools">
+         @for (p of lines(); track p.id) {
+           <li [attr.data-testid]="'pool-row-' + p.name">
+@@ -216,6 +218,22 @@ export class Pools {
+     }
+   }
+ 
++  /**
++   * Downloads the pools as CSV, re-read from the store first: pools and their members in the order added,
++   * a pool member as pool:<name>, and each cut as shown ('' when none).
++   */
++  protected async exportPools(): Promise<void> {
++    const sheet = this.session.sheetId();
++    if (!sheet) return;
++    await this.load(sheet);
++    if (this.session.sheetId() !== sheet) return;
++    const lines = [['pool', 'member', 'share', 'cut']];
++    for (const p of this.lines()) {
++      for (const m of p.lines) lines.push([p.name, m.poolId === null ? m.name : POOL_VALUE + m.name, m.share, m.shownCut]);
++    }
++    downloadCsv(lines, 'pools.csv');
++  }
++
+   /** Add a pool, its name trimmed; a blank one or one already a pool is refused. */
+   protected async add(): Promise<void> {
+     if (this.submitting) return;
