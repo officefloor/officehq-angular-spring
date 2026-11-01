@@ -1,0 +1,483 @@
+diff --git a/src/main/frontend/src/app/core/plans.ts b/src/main/frontend/src/app/core/plans.ts
+index 9b711eb84..51a370fe5 100644
+--- a/src/main/frontend/src/app/core/plans.ts
++++ b/src/main/frontend/src/app/core/plans.ts
+@@ -18,6 +18,14 @@ export interface PlanView {
+   nextDates: string[];
+   /** Whether the plan is paused now: its dates from the day it was paused are skipped until it is resumed. */
+   paused: boolean;
++  /** The changes of the plan's amount, oldest first. */
++  changes: PlanChangeView[];
++}
++
++/** A change of a plan's amount: the sheet's today when it was made and the new amount. */
++export interface PlanChangeView {
++  date: string;
++  amount: string;
+ }
+ 
+ /** A plan as its form submits it, with either an interval or a day of the month; a blank start takes the sheet's
+@@ -80,6 +88,13 @@ export class Plans {
+     );
+   }
+ 
++  /** Change the plan's amount for the claims generated from now on; refused when the amount is bad. */
++  changeAmount(sheetId: string, planId: number, amount: string): Observable<PlanView> {
++    return this.http.post<PlanView>(`${this.base(sheetId)}/plans/${planId}/amount`, { amount }).pipe(
++      tap((changed) => this.list.update((list) => list.map((p) => (p.id === changed.id ? changed : p)))),
++    );
++  }
++
+   /** Make the DRAFT claims every plan on the sheet is due, up to its end and the sheet's today. */
+   generate(sheetId: string): Observable<GeneratedView> {
+     return this.http.post<GeneratedView>(`${this.base(sheetId)}/plans/generate`, null).pipe(
+diff --git a/src/main/frontend/src/app/features/plans/plans.ts b/src/main/frontend/src/app/features/plans/plans.ts
+index 06c976111..d1b51c8ae 100644
+--- a/src/main/frontend/src/app/features/plans/plans.ts
++++ b/src/main/frontend/src/app/features/plans/plans.ts
+@@ -35,6 +35,18 @@ const DAY_PATTERN = /^\d{1,2}$/;
+                     [disabled]="busy() === pl.id">Pause</button>
+             <button type="button" data-testid="plan-resume" (click)="pause(pl.id, false)"
+                     [disabled]="busy() === pl.id">Resume</button>
++            <label [for]="'plan-amount-' + pl.id">New amount</label>
++            <input [id]="'plan-amount-' + pl.id" data-testid="plan-amount" inputmode="decimal" autocomplete="off"
++                   [value]="amountDraft()[pl.id] ?? ''" (input)="draftAmount(pl.id, $event)" />
++            <button type="button" data-testid="plan-amount-save" (click)="changeAmount(pl.id)"
++                    [disabled]="busy() === pl.id">Save amount</button>
++            @if (pl.changes.length > 0) {
++              <ul [attr.aria-label]="'Amount changes of the plan from ' + pl.start">
++                @for (c of pl.changes; track $index) {
++                  <li data-testid="plan-change-line">{{ c.date }} amount={{ c.amount }}</li>
++                }
++              </ul>
++            }
+             @if (rowError()?.planId === pl.id) {
+               <span role="alert" data-testid="plan-error">{{ rowError()?.message }}</span>
+             }
+@@ -76,6 +88,8 @@ export class PersonPlans {
+   protected readonly busy = signal<number | null>(null);
+   /** The last refused action on a plan's row. */
+   protected readonly rowError = signal<{ planId: number; message: string } | null>(null);
++  /** The new amount typed on each plan's row, by plan. */
++  protected readonly amountDraft = signal<Record<number, string>>({});
+   protected readonly form = new FormGroup({
+     amount: new FormControl('', { nonNullable: true }),
+     start: new FormControl('', { nonNullable: true }),
+@@ -89,12 +103,44 @@ export class PersonPlans {
+     toObservable(this.sheets.loaded).pipe(takeUntilDestroyed()).subscribe(() => {
+       this.error.set(null);
+       this.rowError.set(null);
++      this.amountDraft.set({});
+       this.form.reset({ amount: '', start: '', every: '', day: '', end: '' }, { emitEvent: false });
+     });
+     // An error is removed as soon as its form is changed.
+     this.form.valueChanges.pipe(takeUntilDestroyed()).subscribe(() => this.error.set(null));
+   }
+ 
++  /** Keep the new amount typed on a plan's row; typing removes the row's error. */
++  protected draftAmount(planId: number, event: Event): void {
++    const value = (event.target as HTMLInputElement).value;
++    this.amountDraft.update((d) => ({ ...d, [planId]: value }));
++    if (this.rowError()?.planId === planId) this.rowError.set(null);
++  }
++
++  /** Change the plan's amount for the claims generated from now on; refused when the amount is bad. */
++  protected changeAmount(planId: number): void {
++    if (this.busy() !== null) return;
++    this.rowError.set(null);
++    const sheet = this.sheets.current();
++    if (!sheet) return;
++    const amount = (this.amountDraft()[planId] ?? '').trim();
++    if (!AMOUNT_PATTERN.test(amount)) {
++      this.rowError.set({ planId, message: 'Type an amount of zero or more with up to two decimals.' });
++      return;
++    }
++    this.busy.set(planId);
++    this.plans.changeAmount(sheet.id, planId, amount).subscribe({
++      next: () => {
++        this.busy.set(null);
++        this.amountDraft.update((d) => ({ ...d, [planId]: '' }));
++      },
++      error: () => {
++        this.busy.set(null);
++        this.rowError.set({ planId, message: 'Could not change that plan\'s amount.' });
++      },
++    });
++  }
++
+   /** Pause (on) or resume (off) the plan; refused when it already is. */
+   protected pause(planId: number, on: boolean): void {
+     if (this.busy() !== null) return;
+diff --git a/src/main/java/net/officefloor/hq/app/person/PersonMergeService.java b/src/main/java/net/officefloor/hq/app/person/PersonMergeService.java
+index fc288fa04..dee37434e 100644
+--- a/src/main/java/net/officefloor/hq/app/person/PersonMergeService.java
++++ b/src/main/java/net/officefloor/hq/app/person/PersonMergeService.java
+@@ -70,10 +70,10 @@ public class PersonMergeService {
+      * A steward merges a person into another of the sheet. The merged person's claims move to the other, keeping
+      * their numbers and dates, listed as the other's newest in the order they were added, each keeping any figure a
+      * statement bound it to; their statements move to the other, whose count becomes their own plus the merged
+-     * person's and whose last statement stays theirs (or, having none, becomes the merged person's last), and so do their snapshot lines; their name and aliases become aliases of the other; their patrons are added to the
++     * person's and whose last statement stays theirs (or, having none, becomes the merged person's last); their name and aliases become aliases of the other; their patrons are added to the
+      * other's (never the other themselves, nor one twice), anyone naming them as patron names the other instead (once),
+      * and their pool memberships move to the other (shares added where the other is already a member). Their
+-     * holds, watchers and contact are dropped with them. Refused for anyone but a steward, a merge into
++     * holds, watchers, snapshot lines and contact are dropped with them. Refused for anyone but a steward, a merge into
+      * the same person, and when either of them is retired.
+      */
+     @Transactional
+@@ -137,7 +137,7 @@ public class PersonMergeService {
+         crews.reassign(from.getId(), into.getId());
+ 
+         statements.move(sheetId, from.getId(), sheetId, into.getId());
+-        snapshots.move(sheetId, from.getId(), sheetId, into.getId());
++        snapshots.dropOf(sheetId, from.getId());
+         watches.deleteAll(watches.findByPersonIdOrderByIdAsc(from.getId()));
+         plans.reassign(from.getId(), into.getId());
+         String fromName = from.getName();
+diff --git a/src/main/java/net/officefloor/hq/app/plan/Plan.java b/src/main/java/net/officefloor/hq/app/plan/Plan.java
+index 1ccb10528..2c69041d5 100644
+--- a/src/main/java/net/officefloor/hq/app/plan/Plan.java
++++ b/src/main/java/net/officefloor/hq/app/plan/Plan.java
+@@ -139,6 +139,11 @@ public class Plan {
+         return end;
+     }
+ 
++    /** Change the amount the plan's claims are made with from now on. */
++    public void changeAmount(BigDecimal amount) {
++        this.amount = amount;
++    }
++
+     /** Move the plan to another person, as merging its person into them does. */
+     public void reassign(Long personId) {
+         this.personId = personId;
+diff --git a/src/main/java/net/officefloor/hq/app/plan/PlanChange.java b/src/main/java/net/officefloor/hq/app/plan/PlanChange.java
+new file mode 100644
+index 000000000..4a9dedd1b
+--- /dev/null
++++ b/src/main/java/net/officefloor/hq/app/plan/PlanChange.java
+@@ -0,0 +1,54 @@
++package net.officefloor.hq.app.plan;
++
++import jakarta.persistence.Column;
++import jakarta.persistence.Entity;
++import jakarta.persistence.GeneratedValue;
++import jakarta.persistence.GenerationType;
++import jakarta.persistence.Id;
++import jakarta.persistence.Table;
++import java.math.BigDecimal;
++import java.time.LocalDate;
++
++/** A change of a plan's amount: the sheet's today when it was made and the plan's new amount. */
++@Entity
++@Table(name = "plan_change")
++public class PlanChange {
++
++    @Id
++    @GeneratedValue(strategy = GenerationType.IDENTITY)
++    private Long id;
++
++    @Column(name = "plan_id", nullable = false)
++    private Long planId;
++
++    @Column(name = "changed_on", nullable = false)
++    private LocalDate changedOn;
++
++    @Column(name = "amount", nullable = false, precision = 14, scale = 2)
++    private BigDecimal amount;
++
++    protected PlanChange() {
++    }
++
++    public PlanChange(Long planId, LocalDate changedOn, BigDecimal amount) {
++        this.planId = planId;
++        this.changedOn = changedOn;
++        this.amount = amount;
++    }
++
++    public Long getId() {
++        return id;
++    }
++
++    public Long getPlanId() {
++        return planId;
++    }
++
++    public LocalDate getChangedOn() {
++        return changedOn;
++    }
++
++    public BigDecimal getAmount() {
++        return amount;
++    }
++}
+diff --git a/src/main/java/net/officefloor/hq/app/plan/PlanChangeRepository.java b/src/main/java/net/officefloor/hq/app/plan/PlanChangeRepository.java
+new file mode 100644
+index 000000000..e49deeec4
+--- /dev/null
++++ b/src/main/java/net/officefloor/hq/app/plan/PlanChangeRepository.java
+@@ -0,0 +1,10 @@
++package net.officefloor.hq.app.plan;
++
++import java.util.Collection;
++import java.util.List;
++import org.springframework.data.jpa.repository.JpaRepository;
++
++public interface PlanChangeRepository extends JpaRepository<PlanChange, Long> {
++
++    List<PlanChange> findByPlanIdInOrderByIdAsc(Collection<Long> planIds);
++}
+diff --git a/src/main/java/net/officefloor/hq/app/plan/PlanController.java b/src/main/java/net/officefloor/hq/app/plan/PlanController.java
+index 4212e6a4a..2e8654e8b 100644
+--- a/src/main/java/net/officefloor/hq/app/plan/PlanController.java
++++ b/src/main/java/net/officefloor/hq/app/plan/PlanController.java
+@@ -27,15 +27,28 @@ public class PlanController {
+     /** A plan as the screen shows it, with how many claims it has made so far and its next dates after the
+      *  sheet's today. */
+     public record PlanView(long id, long personId, String amount, LocalDate start, Integer every, Integer day,
+-            LocalDate end, int generated, List<LocalDate> nextDates, boolean paused) {
++            LocalDate end, int generated, List<LocalDate> nextDates, boolean paused, List<ChangeView> changes) {
+ 
+         public static PlanView of(PlanService.Counted c) {
+             Plan p = c.plan();
+             return new PlanView(p.getId(), p.getPersonId(), p.getAmount().toPlainString(), p.getStart(), p.getEvery(),
+-                    p.getDay(), p.getEnd(), c.generated(), c.nextDates(), c.paused());
++                    p.getDay(), p.getEnd(), c.generated(), c.nextDates(), c.paused(),
++                    c.changes().stream().map(ChangeView::of).toList());
+         }
+     }
+ 
++    /** A change of a plan's amount: the day it was made and the new amount. */
++    public record ChangeView(LocalDate date, String amount) {
++
++        public static ChangeView of(PlanChange c) {
++            return new ChangeView(c.getChangedOn(), c.getAmount().toPlainString());
++        }
++    }
++
++    /** A plan's new amount as its row submits it. */
++    public record AmountForm(@NotNull BigDecimal amount) {
++    }
++
+     /** A plan as the form submits it, with either an interval or a day of the month; a missing start takes the
+      *  sheet's today. */
+     public record PlanForm(@NotNull BigDecimal amount, LocalDate start, Integer every, Integer day,
+@@ -84,6 +97,15 @@ public class PlanController {
+         return PlanView.of(plans.pause(sheetId, user, planId, false));
+     }
+ 
++    @PostMapping("/plans/{planId}/amount")
++    public PlanView changeAmount(
++            @PathVariable @NotBlank @Size(max = 100) @Pattern(regexp = "[A-Za-z0-9._-]+") String sheetId,
++            @PathVariable long planId,
++            @RequestHeader("X-User") @NotBlank @Size(max = 100) String user,
++            @Valid @RequestBody AmountForm request) {
++        return PlanView.of(plans.changeAmount(sheetId, user, planId, request.amount()));
++    }
++
+     @PostMapping("/plans/generate")
+     public GeneratedView generate(
+             @PathVariable @NotBlank @Size(max = 100) @Pattern(regexp = "[A-Za-z0-9._-]+") String sheetId,
+diff --git a/src/main/java/net/officefloor/hq/app/plan/PlanService.java b/src/main/java/net/officefloor/hq/app/plan/PlanService.java
+index 73b4cd42d..1dbddf206 100644
+--- a/src/main/java/net/officefloor/hq/app/plan/PlanService.java
++++ b/src/main/java/net/officefloor/hq/app/plan/PlanService.java
+@@ -30,6 +30,7 @@ public class PlanService {
+     private final PlanRepository plans;
+     private final PlanClaimRepository made;
+     private final PlanPauseRepository pauses;
++    private final PlanChangeRepository changes;
+     private final PersonRepository people;
+     private final ClaimService claims;
+     private final SheetService sheets;
+@@ -37,11 +38,13 @@ public class PlanService {
+     private final RoleService roles;
+     private final Audit audit;
+ 
+-    public PlanService(PlanRepository plans, PlanClaimRepository made, PlanPauseRepository pauses, PersonRepository people, ClaimService claims,
++    public PlanService(PlanRepository plans, PlanClaimRepository made, PlanPauseRepository pauses,
++            PlanChangeRepository changes, PersonRepository people, ClaimService claims,
+             SheetService sheets, SheetRepository sheetStore, RoleService roles, Audit audit) {
+         this.plans = plans;
+         this.made = made;
+         this.pauses = pauses;
++        this.changes = changes;
+         this.people = people;
+         this.claims = claims;
+         this.sheets = sheets;
+@@ -54,8 +57,9 @@ public class PlanService {
+     private static final int NEXT_DATES = 5;
+ 
+     /** A plan with how many claims it has made so far, its next dates after the sheet's today, and whether it is
+-     *  paused now. */
+-    public record Counted(Plan plan, int generated, List<LocalDate> nextDates, boolean paused) {
++     *  paused now, and the changes of its amount, oldest first. */
++    public record Counted(Plan plan, int generated, List<LocalDate> nextDates, boolean paused,
++            List<PlanChange> changes) {
+     }
+ 
+     /** What a generate did: the claims it made, in the order made, and every plan on the sheet as it is now. */
+@@ -69,15 +73,18 @@ public class PlanService {
+         Map<Long, Long> counts = made.findByPlanIdInOrderByIdAsc(all.stream().map(Plan::getId).toList()).stream()
+                 .collect(Collectors.groupingBy(PlanClaim::getPlanId, Collectors.counting()));
+         Map<Long, List<PlanPause>> paused = pausesOf(all);
++        Map<Long, List<PlanChange>> changed = changes.findByPlanIdInOrderByIdAsc(all.stream().map(Plan::getId).toList())
++                .stream().collect(Collectors.groupingBy(PlanChange::getPlanId));
+         LocalDate today = sheetStore.findById(sheetId).map(Sheet::getToday).orElse(null);
+         return all.stream().map(p -> counted(p, counts.getOrDefault(p.getId(), 0L).intValue(), today,
+-                paused.getOrDefault(p.getId(), List.of()))).toList();
++                paused.getOrDefault(p.getId(), List.of()), changed.getOrDefault(p.getId(), List.of()))).toList();
+     }
+ 
+-    private static Counted counted(Plan plan, int generated, LocalDate today, List<PlanPause> paused) {
++    private static Counted counted(Plan plan, int generated, LocalDate today, List<PlanPause> paused,
++            List<PlanChange> changed) {
+         return new Counted(plan, generated,
+                 today == null ? List.of() : plan.nextDates(today, NEXT_DATES, d -> skips(paused, d)),
+-                paused.stream().anyMatch(PlanPause::isOpen));
++                paused.stream().anyMatch(PlanPause::isOpen), changed);
+     }
+ 
+     /** Each plan's pauses, by plan. */
+@@ -118,7 +125,32 @@ public class PlanService {
+         audit.recordChangeOnCommit(sheetId, user, (on ? "PLAN_PAUSED" : "PLAN_RESUMED") + " sheet=" + sheetId
+                 + " by=" + user + " name=" + person.getName() + " start=" + plan.getStart());
+         int generated = made.findByPlanIdInOrderByIdAsc(List.of(planId)).size();
+-        return counted(plan, generated, sheet.getToday(), pauses.findByPlanIdInOrderByIdAsc(List.of(planId)));
++        return counted(plan, generated, sheet.getToday(), pauses.findByPlanIdInOrderByIdAsc(List.of(planId)),
++                changes.findByPlanIdInOrderByIdAsc(List.of(planId)));
++    }
++
++    /** Change the plan's amount from the sheet's today: the claims generated from then on take the new amount, those
++     *  already generated keep theirs. Refused when the amount is one the plan form refuses (negative, or with more
++     *  than two decimals). */
++    @Transactional
++    public Counted changeAmount(String sheetId, String user, long planId, BigDecimal amount) {
++        if (amount == null || amount.signum() < 0 || amount.stripTrailingZeros().scale() > 2) {
++            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "A plan's amount is not negative, with up to two decimals");
++        }
++        sheets.load(sheetId, user);
++        Sheet sheet = sheetStore.findLockedById(sheetId).orElseThrow();
++        Plan plan = plans.findById(planId).filter(p -> p.getSheetId().equals(sheetId))
++                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "No such plan on this sheet"));
++        Person person = people.findByIdAndSheetId(plan.getPersonId(), sheetId).orElseThrow();
++        BigDecimal now = amount.setScale(2, RoundingMode.UNNECESSARY);
++        plan.changeAmount(now);
++        plans.flush();
++        changes.saveAndFlush(new PlanChange(planId, sheet.getToday(), now));
++        audit.recordChangeOnCommit(sheetId, user, "PLAN_CHANGED sheet=" + sheetId + " by=" + user
++                + " name=" + person.getName() + " start=" + plan.getStart() + " amount=" + now.toPlainString());
++        int generated = made.findByPlanIdInOrderByIdAsc(List.of(planId)).size();
++        return counted(plan, generated, sheet.getToday(), pauses.findByPlanIdInOrderByIdAsc(List.of(planId)),
++                changes.findByPlanIdInOrderByIdAsc(List.of(planId)));
+     }
+ 
+     /** Add a plan for a person; a missing start takes the sheet's today. It runs either every so many days or
+@@ -158,7 +190,7 @@ public class PlanService {
+                 + " start=" + plan.getStart()
+                 + (plan.getDay() != null ? " day=" + plan.getDay() : " every=" + plan.getEvery())
+                 + " end=" + plan.getEnd());
+-        return counted(plan, 0, sheet.getToday(), List.of());
++        return counted(plan, 0, sheet.getToday(), List.of(), List.of());
+     }
+ 
+     /**
+@@ -214,6 +246,8 @@ public class PlanService {
+         made.flush();
+         pauses.deleteAll(pauses.findByPlanIdInOrderByIdAsc(theirs.stream().map(Plan::getId).toList()));
+         pauses.flush();
++        changes.deleteAll(changes.findByPlanIdInOrderByIdAsc(theirs.stream().map(Plan::getId).toList()));
++        changes.flush();
+         plans.deleteAll(theirs);
+         plans.flush();
+     }
+diff --git a/src/main/java/net/officefloor/hq/app/pool/PoolService.java b/src/main/java/net/officefloor/hq/app/pool/PoolService.java
+index e44e0952d..4cc5eaf47 100644
+--- a/src/main/java/net/officefloor/hq/app/pool/PoolService.java
++++ b/src/main/java/net/officefloor/hq/app/pool/PoolService.java
+@@ -153,7 +153,8 @@ public class PoolService {
+     /** The sheet's pools as {@link #list(String)}, with {@code on} (null: the sheet's today) standing in for the
+      *  sheet's today, as a sheet shown as of a date reads them: then the pot and the people (retired or held) are as
+      *  they stood at the end of that date (see {@link SheetHistory}), a person not on the sheet by then is no member,
+-     *  and the pools and their memberships are as they are now. */
++     *  and the pools are as they are now, each with its memberships as they stood then when the state kept them (so a
++     *  membership since moved by a merge counts for the person who held it then), else as they are now. */
+     @Transactional(readOnly = true)
+     public List<PoolWithMembers> list(String sheetId, LocalDate on) {
+         Optional<SheetState> then = on == null ? Optional.empty() : history.asOf(sheetId, on);
+@@ -165,6 +166,12 @@ public class PoolService {
+         List<Pool> list = pools.findBySheetIdOrderByIdAsc(sheetId);
+         Map<Long, List<PoolMember>> byPool = members.findByPoolIdInOrderByIdAsc(list.stream().map(Pool::getId).toList())
+                 .stream().collect(Collectors.groupingBy(PoolMember::getPoolId));
++        if (then.isPresent() && then.get().pools() != null) {
++            byPool = new HashMap<>(byPool);
++            for (SheetState.PoolState p : then.get().pools()) {
++                byPool.put(p.id(), membersOf(p));
++            }
++        }
+         List<Crew> sheetCrews = crews.findBySheetIdOrderByIdAsc(sheetId);
+         Map<Long, List<CrewMember>> byCrew = crewMembers.findByCrewIdInOrderByIdAsc(
+                 sheetCrews.stream().map(Crew::getId).toList()).stream()
+@@ -190,12 +197,7 @@ public class PoolService {
+         Map<Long, List<PoolMember>> byPool = new HashMap<>();
+         for (SheetState.PoolState p : state.pools()) {
+             list.add(Pool.rebuilt(sheetId, p.id(), p.name()));
+-            byPool.put(p.id(), p.members().stream().map(m -> {
+-                PoolMember member = m.memberPoolId() != null ? PoolMember.ofPool(p.id(), m.memberPoolId(), m.share())
+-                        : new PoolMember(p.id(), m.personId(), m.share());
+-                member.setDates(m.from(), m.to());
+-                return member;
+-            }).toList());
++            byPool.put(p.id(), membersOf(p));
+         }
+         List<Crew> sheetCrews = new ArrayList<>();
+         Map<Long, List<CrewMember>> byCrew = new HashMap<>();
+@@ -206,6 +208,16 @@ public class PoolService {
+         return build(sheetId, list, byPool, sheetCrews, byCrew, state.rebuildPeople(sheetId), state.pot(), date);
+     }
+ 
++    /** A kept pool's memberships, rebuilt unsaved in the order they were added. */
++    private static List<PoolMember> membersOf(SheetState.PoolState p) {
++        return p.members().stream().map(m -> {
++            PoolMember member = m.memberPoolId() != null ? PoolMember.ofPool(p.id(), m.memberPoolId(), m.share())
++                    : new PoolMember(p.id(), m.personId(), m.share());
++            member.setDates(m.from(), m.to());
++            return member;
++        }).toList();
++    }
++
+     /** A member's cut at the end of a period: the period's name and the cut (null: none). */
+     public record PeriodCut(String period, BigDecimal cut) {
+     }
+diff --git a/src/main/java/net/officefloor/hq/app/snapshot/PersonSnapshotService.java b/src/main/java/net/officefloor/hq/app/snapshot/PersonSnapshotService.java
+index 799d7a8de..69ba6a12d 100644
+--- a/src/main/java/net/officefloor/hq/app/snapshot/PersonSnapshotService.java
++++ b/src/main/java/net/officefloor/hq/app/snapshot/PersonSnapshotService.java
+@@ -48,6 +48,13 @@ public class PersonSnapshotService {
+         snapshots.save(new PersonSnapshot(sheetId, personId, day, dueTotal, today));
+     }
+ 
++    /** Drop the person's snapshot lines, as merging them into another does. */
++    @Transactional
++    public void dropOf(String sheetId, Long personId) {
++        snapshots.deleteAll(snapshots.findBySheetIdAndPersonIdOrderByIdAsc(sheetId, personId));
++        snapshots.flush();
++    }
++
+     /** Move the person's snapshots to another person, on another sheet (a merge or transfer); a day the other
+      *  already has a snapshot line for keeps theirs, and the moved one is dropped. */
+     @Transactional
+diff --git a/src/main/resources/db/migration/V107__plan_change.sql b/src/main/resources/db/migration/V107__plan_change.sql
+new file mode 100644
+index 000000000..bdf80fde6
+--- /dev/null
++++ b/src/main/resources/db/migration/V107__plan_change.sql
+@@ -0,0 +1,9 @@
++-- The changes of a plan's amount, in the order made: the sheet's today when it was changed and the new amount. The
++-- new amount is the plan's from then on; claims already generated keep theirs.
++CREATE TABLE plan_change (
++    id         BIGINT AUTO_INCREMENT PRIMARY KEY,
++    plan_id    BIGINT         NOT NULL REFERENCES plan (id),
++    changed_on DATE           NOT NULL,
++    amount     DECIMAL(14, 2) NOT NULL
++);
++CREATE INDEX plan_change_plan ON plan_change (plan_id);
