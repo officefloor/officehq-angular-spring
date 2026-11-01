@@ -902,7 +902,8 @@ export class PersonClaims {
   protected sharesShown(c: ClaimView): string {
     const others = this.others();
     return (c.shares ?? [])
-      .map((sh) => `${others.find((o) => o.id === sh.personId)?.name ?? ''} ${sh.share}`)
+      .map((sh) => `${sh.personId === this.personId() ? this.personName()
+        : others.find((o) => o.id === sh.personId)?.name ?? ''} ${sh.share}`)
       .join(', ');
   }
 

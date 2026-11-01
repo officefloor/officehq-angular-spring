@@ -128,7 +128,10 @@ const EXPORT_CELLS = [
       <p>Consolidated over this sheet and its descendants:
         people <strong data-testid="consolidated-people-count">{{ consolidated().peopleCount }}</strong>,
         due <strong data-testid="consolidated-due-total">{{ (consolidated().dueTotal) | figure }}</strong>,
-        overdue <strong data-testid="consolidated-overdue-total">{{ (consolidated().overdueTotal) | figure }}</strong></p>
+        overdue <strong data-testid="consolidated-overdue-total">{{ (consolidated().overdueTotal) | figure }}</strong>,
+        settled <strong data-testid="consolidated-settled-total">{{ (consolidated().settledTotal) | figure }}</strong>,
+        open <strong data-testid="consolidated-open-total">{{ (consolidated().openTotal) | figure }}</strong>,
+        cut <strong data-testid="consolidated-cut-total">{{ (consolidated().cutTotal) | figure }}</strong></p>
       <ul aria-label="Consolidated by grade">
         @for (g of consolidated().grades; track g.grade) {
           <li>Grade {{ g.grade }}: due
@@ -921,17 +924,16 @@ export class PeopleList {
   protected cutOf(personId: number): number {
     return this.cutByPerson().get(personId) ?? 0;
   }
-  /** The sheet's cut total in whole cents: everyone's cut total added up. */
+  /** The sheet's cut total in whole cents: everyone's cut total added up, trimmed of the highest and lowest. */
   protected readonly cutTotal = computed(() =>
-    this.people().reduce((sum, p) => sum + this.cutOf(p.id), 0));
-  /** Everyone's settled-total and open-total, each simply added up (not trimmed). */
+    trimmedSum(this.people().map((p) => this.cutOf(p.id))));
+  /** Everyone's settled-total and open-total, each added up and trimmed of the highest and lowest. */
   protected readonly splitTotals = computed(() => {
-    const total = { ...NO_SPLIT };
-    for (const split of this.splitByPerson().values()) {
-      total.settled += split.settled;
-      total.open += split.open;
-    }
-    return total;
+    const splits = [...this.splitByPerson().values()];
+    return {
+      settled: trimmedSum(splits.map((split) => split.settled)),
+      open: trimmedSum(splits.map((split) => split.open)),
+    };
   });
   /** For every tag used on the sheet's claims or people, in tag order, the dues in whole cents of the claims that
    *  count which carry it, or whose person does, once (none counting as 0); a claim with two tags counts in both. */
@@ -969,29 +971,40 @@ export class PeopleList {
     money(trimmedSum([...this.dueByPerson().values()].filter((due) => due !== null))),
   );
   /** Over the sheet's own people as shown here and its descendants': how many distinct people (those whose names or
-   *  aliases match as names are compared being one), and everyone's due-total and overdue-total trimmed once of the
+   *  aliases match as names are compared being one), and everyone's due-total, overdue-total, settled-total,
+   *  open-total and cut total trimmed once of the
    *  highest and lowest; the sheet's own per-grade due-totals and per-status claim counts added to its descendants';
    *  while the sheet is shown as of a date, its descendants' are as they stood then too. */
   protected readonly consolidated = computed(() => {
     const d = this.descendants();
     const dueByPerson = this.dueByPerson();
     const overdueByPerson = this.overdueByPerson();
+    const splitByPerson = this.splitByPerson();
     const tree = [
       ...this.people().map((p) => ({
         names: [p.name, ...(p.aliases ?? [])],
         due: dueByPerson.get(p.id) ?? null,
         overdue: overdueByPerson.get(p.id)?.cents ?? 0,
+        settled: splitByPerson.get(p.id)?.settled ?? 0,
+        open: splitByPerson.get(p.id)?.open ?? 0,
+        cut: this.cutOf(p.id),
       })),
       ...d.people.map((p) => ({
         names: p.names,
         due: p.dueTotal === null ? null : cents(p.dueTotal),
         overdue: cents(p.overdueTotal),
+        settled: cents(p.settledTotal),
+        open: cents(p.openTotal),
+        cut: cents(p.cutTotal),
       })),
     ];
     return {
       peopleCount: distinctPeople(tree),
       dueTotal: money(trimmedSum(tree.map((p) => p.due).filter((due) => due !== null))),
       overdueTotal: money(trimmedSum(tree.map((p) => p.overdue))),
+      settledTotal: money(trimmedSum(tree.map((p) => p.settled))),
+      openTotal: money(trimmedSum(tree.map((p) => p.open))),
+      cutTotal: money(trimmedSum(tree.map((p) => p.cut))),
       grades: this.summaryByGrade().map((g) => ({
         grade: g.grade,
         dueTotal: money(cents(g.dueTotal) + cents(d.dueByGrade[g.grade] ?? '0.00')),

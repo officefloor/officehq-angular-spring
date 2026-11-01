@@ -13,6 +13,7 @@ import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 import java.util.Objects;
+import java.util.function.Function;
 import net.officefloor.hq.app.claim.Claim;
 import net.officefloor.hq.app.claim.ClaimRepository;
 import net.officefloor.hq.app.claim.ClaimService;
@@ -46,15 +47,17 @@ public class ConsolidatedController {
      *  the single highest and lowest person's figure when three or more have one, with two decimals; each person's
      *  names and figures, so the screen can count and trim its own people with them; per grade, the due-totals of the people not retired on it on their sheet's today (none counting as 0), with
      *  two decimals; per claim status, how many claims are in it; and how many claims that count are overdue on
-     *  their sheet's today. */
+     *  their sheet's today; and the settled-totals, open-totals and cut totals of all their people, each trimmed once
+     *  as the due-totals are, with two decimals. */
     public record DescendantFigures(int peopleCount, String dueTotal, String overdueTotal,
             Map<String, String> dueByGrade, Map<String, Integer> countByStatus, List<PersonFigure> people,
-            int overdueCount) {
+            int overdueCount, String settledTotal, String openTotal, String cutTotal) {
     }
 
-    /** A person of the tree: their name and aliases, their due-total (null when they have none) and overdue-total as
-     *  their sheet shows them, with two decimals. */
-    public record PersonFigure(List<String> names, String dueTotal, String overdueTotal) {
+    /** A person of the tree: their name and aliases, their due-total (null when they have none), overdue-total,
+     *  settled-total, open-total and cut total as their sheet shows them, with two decimals. */
+    public record PersonFigure(List<String> names, String dueTotal, String overdueTotal, String settledTotal,
+            String openTotal, String cutTotal) {
     }
 
     private final SheetRepository sheets;
@@ -120,7 +123,7 @@ public class ConsolidatedController {
                     names.add(person.getName());
                     names.addAll(person.getAliases());
                     treePeople.add(new PersonFigure(names, "n/a".equals(own.dueTotal()) ? null : own.dueTotal(),
-                            own.overdueTotal()));
+                            own.overdueTotal(), own.settledTotal(), own.openTotal(), own.cutTotal()));
                 }
                 if (person.isRetired() || own == null || "n/a".equals(own.dueTotal())) {
                     continue;
@@ -137,7 +140,14 @@ public class ConsolidatedController {
                 .map(BigDecimal::new).toList());
         BigDecimal overdue = Rollup.trimmedSum(treePeople.stream().map(p -> new BigDecimal(p.overdueTotal())).toList());
         return new DescendantFigures(distinctPeople(treePeople), due.toPlainString(), overdue.toPlainString(),
-                dueByGradeShown, countByStatus, treePeople, overdueCount);
+                dueByGradeShown, countByStatus, treePeople, overdueCount,
+                trimmedOf(treePeople, PersonFigure::settledTotal), trimmedOf(treePeople, PersonFigure::openTotal),
+                trimmedOf(treePeople, PersonFigure::cutTotal));
+    }
+
+    /** One figure of every person of the tree, trimmed once of the single highest and lowest, with two decimals. */
+    private static String trimmedOf(List<PersonFigure> treePeople, Function<PersonFigure, String> figure) {
+        return Rollup.trimmedSum(treePeople.stream().map(figure).map(BigDecimal::new).toList()).toPlainString();
     }
 
     /** How many distinct people these are: those sharing a name or alias, as names are compared (trimmed, case

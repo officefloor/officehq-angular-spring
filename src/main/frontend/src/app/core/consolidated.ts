@@ -6,7 +6,8 @@ import { Observable } from 'rxjs';
  *  names or aliases match as names are compared being one), and the due-total and overdue-total of all their people
  *  trimmed once of the highest and lowest (two decimals); each of those people's names and figures; per grade, the due-totals of the people not
  *  retired on it (two decimals; a grade no one counts on is missing); and per claim status, how many claims are in
- *  it (a status no claim is in is missing); and how many claims that count are overdue on their sheet's today. */
+ *  it (a status no claim is in is missing); how many claims that count are overdue on their sheet's today; and the
+ *  settled-total, open-total and cut total of all their people, each trimmed once as the due-total (two decimals). */
 export interface DescendantFigures {
   peopleCount: number;
   dueTotal: string;
@@ -15,14 +16,20 @@ export interface DescendantFigures {
   countByStatus: Record<string, number>;
   people: TreePerson[];
   overdueCount: number;
+  settledTotal: string;
+  openTotal: string;
+  cutTotal: string;
 }
 
-/** A person of the tree: their name and aliases, their due-total (null with none) and overdue-total as their sheet
- *  shows them (two decimals). */
+/** A person of the tree: their name and aliases, their due-total (null with none), overdue-total, settled-total,
+ *  open-total and cut total as their sheet shows them (two decimals). */
 export interface TreePerson {
   names: string[];
   dueTotal: string | null;
   overdueTotal: string;
+  settledTotal: string;
+  openTotal: string;
+  cutTotal: string;
 }
 
 /** How many distinct people these are: those sharing a name or alias, as names are compared (trimmed, case
@@ -53,6 +60,7 @@ export function distinctPeople(people: { names: string[] }[]): number {
 /** No descendants: nothing to add to a sheet's own figures. */
 export const NO_DESCENDANTS: DescendantFigures = {
   peopleCount: 0, dueTotal: '0.00', overdueTotal: '0.00', dueByGrade: {}, countByStatus: {}, people: [], overdueCount: 0,
+  settledTotal: '0.00', openTotal: '0.00', cutTotal: '0.00',
 };
 
 // A sheet's descendants (its children, the sheets naming it as their parent, and theirs and so on), whose figures

@@ -41,8 +41,15 @@ import org.springframework.stereotype.Service;
 public class Rollup {
 
     /** A person's figures: claimed, due-total and overdue-total, each with two decimals; due-total is "n/a" when they
-     *  have none. */
-    public record PersonFigures(String name, String claimed, String dueTotal, String overdueTotal) {
+     *  have none; and, as the screen shows them, their settled-total and open-total (their due-total before the cap
+     *  split by status: the dues of their SETTLED claims that count, and of their OPEN and PENDING ones, with the parts
+     *  they hold of others' claims, none counting as 0) and their cut total, each with two decimals. */
+    public record PersonFigures(String name, String claimed, String dueTotal, String overdueTotal,
+            String settledTotal, String openTotal, String cutTotal) {
+    }
+
+    /** A part a person holds of another person's claim. */
+    private record HeldPart(Claim claim, BigDecimal part) {
     }
 
     /** A sheet's figures: each person's, by id in the order they were added, and the sheet's totals. */
@@ -128,14 +135,21 @@ public class Rollup {
             // As on screen: with no rate in force today for their grade on the sheet's today, nor for the grade
             // any of their claims is at, and no claim that has a due, the person has no due-total.
             // A shared claim's own person counts its due less its holders' parts; each holder counts their part.
-            List<BigDecimal> dues = Stream.concat(counting.stream()
+            List<HeldPart> ownParts = Stream.concat(counting.stream()
                     .map(c -> {
                         BigDecimal claimDue = dueOf(c, person.gradeOn(c.getDate()), sheetRates, sheet, sheetClaims);
-                        return claimDue == null ? null
-                                : claimDue.subtract(sharedPartOf(c, claimDue, ownerOf::get, sheetRates, sheet, sheetClaims));
-                    }), heldParts(person, ownerOf, today, sheetRates, sheet, sheetClaims).stream())
+                        return claimDue == null ? null : new HeldPart(c,
+                                claimDue.subtract(sharedPartOf(c, claimDue, ownerOf::get, sheetRates, sheet, sheetClaims)));
+                    }), heldPartsOf(person, ownerOf, today, sheetRates, sheet, sheetClaims).stream())
                     .filter(Objects::nonNull)
                     .toList();
+            List<BigDecimal> dues = ownParts.stream().map(HeldPart::part).toList();
+            BigDecimal settled = ownParts.stream().filter(h -> h.claim().getStatus() == ClaimStatus.SETTLED)
+                    .map(HeldPart::part).reduce(BigDecimal.ZERO.setScale(2), BigDecimal::add);
+            BigDecimal open = ownParts.stream().filter(h -> h.claim().getStatus() == ClaimStatus.OPEN
+                            || h.claim().getStatus() == ClaimStatus.PENDING)
+                    .map(HeldPart::part).reduce(BigDecimal.ZERO.setScale(2), BigDecimal::add);
+            BigDecimal cut = cutTotals.getOrDefault(person.getId(), BigDecimal.ZERO).setScale(2);
             boolean anyRate = today != null && Stream.concat(Stream.of(person.gradeOn(today)),
                             counting.stream().map(c -> person.gradeOn(c.getDate())))
                     .anyMatch(grade -> sheetRates.inForceOn(grade, today).isPresent());
@@ -156,7 +170,8 @@ public class Rollup {
                     .reduce(BigDecimal.ZERO.setScale(2), BigDecimal::add);
             overdueFigures.add(overdue);
             byPerson.put(person.getId(),
-                    new PersonFigures(person.getName(), claimed.toPlainString(), due, overdue.toPlainString()));
+                    new PersonFigures(person.getName(), claimed.toPlainString(), due, overdue.toPlainString(),
+                            settled.toPlainString(), open.toPlainString(), cut.toPlainString()));
         }
         return new Figures(byPerson, claimedTotal.toPlainString(), trimmedSum(dueFigures).toPlainString(),
                 trimmedSum(overdueFigures).toPlainString());
@@ -176,7 +191,13 @@ public class Rollup {
      *  {@link #partOf}; a claim with no due adds none, nor does one whose part the person's grade has no rate for. */
     private static List<BigDecimal> heldParts(Person person, Map<Long, Person> ownerOf, LocalDate today,
             RateChain sheetRates, Sheet sheet, List<Claim> sheetClaims) {
-        List<BigDecimal> parts = new ArrayList<>();
+        return heldPartsOf(person, ownerOf, today, sheetRates, sheet, sheetClaims).stream().map(HeldPart::part).toList();
+    }
+
+    /** The parts as {@link #heldParts}, each with the claim it is a part of. */
+    private static List<HeldPart> heldPartsOf(Person person, Map<Long, Person> ownerOf, LocalDate today,
+            RateChain sheetRates, Sheet sheet, List<Claim> sheetClaims) {
+        List<HeldPart> parts = new ArrayList<>();
         for (Claim claim : sheetClaims) {
             ClaimShare share = claim.shareOf(person.getId());
             Person owner = ownerOf.get(claim.getPersonId());
@@ -186,7 +207,7 @@ public class Rollup {
             BigDecimal due = dueOf(claim, owner.gradeOn(claim.getDate()), sheetRates, sheet, sheetClaims);
             BigDecimal part = due == null ? null : partOf(claim, share, due, person, sheetRates, sheet, sheetClaims);
             if (part != null) {
-                parts.add(part);
+                parts.add(new HeldPart(claim, part));
             }
         }
         return parts;
@@ -257,7 +278,7 @@ public class Rollup {
     }
 
     /** The figures added up, leaving out the single highest and the single lowest when there are three or more. */
-    static BigDecimal trimmedSum(List<BigDecimal> figures) {
+    public static BigDecimal trimmedSum(List<BigDecimal> figures) {
         BigDecimal sum = figures.stream().reduce(BigDecimal.ZERO.setScale(2), BigDecimal::add);
         if (figures.size() < 3) {
             return sum;
