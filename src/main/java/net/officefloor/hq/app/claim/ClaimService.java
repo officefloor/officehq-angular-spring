@@ -100,11 +100,11 @@ public class ClaimService {
         return saved;
     }
 
-    /** A claim's amount times its person's grade rate on its date, rounded half up to cents; null with no rate. */
+    /** A claim's amount times its person's grade rate on its date, rounded half to even to cents; null with no rate. */
     private BigDecimal dueOf(String sheetId, Person person, Claim claim) {
         return rates.on(sheetId, person.getGrade(), claim.getDate())
                 .map(Rate::getPct)
-                .map(pct -> claim.getAmount().multiply(pct).movePointLeft(2).setScale(2, RoundingMode.HALF_UP))
+                .map(pct -> claim.getAmount().multiply(pct).movePointLeft(2).setScale(2, RoundingMode.HALF_EVEN))
                 .orElse(null);
     }
 

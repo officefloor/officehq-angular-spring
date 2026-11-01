@@ -3,7 +3,7 @@ import { Component, inject, input, output, signal } from '@angular/core';
 import { FormControl, FormGroup, ReactiveFormsModule } from '@angular/forms';
 import { firstValueFrom } from 'rxjs';
 import { Session } from '../../core/session';
-import { Rate, due, pctOn } from '../rates/rates';
+import { NA, Rate, dueCents, pctOn } from '../rates/rates';
 
 /** DRAFT when added, then OPEN, then SETTLED; a DRAFT or OPEN claim can be made VOID. */
 export type ClaimStatus = 'DRAFT' | 'OPEN' | 'SETTLED' | 'VOID';
@@ -34,6 +34,16 @@ export function counts(c: Claim): boolean {
 export function cents(amount: string): number {
   const [whole, frac = ''] = amount.split('.');
   return Number(whole) * 100 + Number(frac.padEnd(2, '0'));
+}
+
+/**
+ * A claim's due in cents: the due fixed when it was settled, else its amount times its grade's
+ * rate on its date (of the grade's rates given); null when it has neither.
+ */
+export function claimDueCents(c: Claim, rates: Rate[]): number | null {
+  if (c.settledDue !== null) return cents(c.settledDue);
+  const pct = pctOn(rates, c.date);
+  return pct === null ? null : dueCents(cents(c.amount), pct);
 }
 
 /** Cents as an amount with two decimals. */
@@ -120,7 +130,8 @@ export class Claims {
 
   /** The due fixed when it was settled, else its amount times the grade's rate on its date. */
   protected dueOf(c: Claim): string {
-    return c.settledDue ?? due(cents(c.amount), pctOn(this.rates(), c.date));
+    const due = claimDueCents(c, this.rates());
+    return due === null ? NA : money(due);
   }
 
   private headers(): Record<string, string> {

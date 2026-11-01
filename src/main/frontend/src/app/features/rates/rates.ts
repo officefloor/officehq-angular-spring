@@ -3,7 +3,6 @@ import { Component, computed, inject, input, output, signal } from '@angular/cor
 import { FormControl, FormGroup, ReactiveFormsModule } from '@angular/forms';
 import { firstValueFrom } from 'rxjs';
 import { Session } from '../../core/session';
-import { money } from '../claims/claims';
 
 export interface Rate {
   grade: string;
@@ -18,11 +17,15 @@ export const GRADES = ['A', 'B', 'C'];
 /** Shown for a due that has no rate. */
 export const NA = 'n/a';
 
-/** Cents times a percent (two decimals), divided by 100, rounded half up to whole cents. */
+/** Cents times a percent (two decimals), divided by 100, rounded half to even to whole cents. */
 export function dueCents(amountCents: number, pct: string): number {
   const [whole, frac = ''] = pct.split('.');
   const pctHundredths = BigInt(whole) * 100n + BigInt(frac.padEnd(2, '0'));
-  return Number((BigInt(amountCents) * pctHundredths + 5000n) / 10000n);
+  const product = BigInt(amountCents) * pctHundredths;
+  const quotient = product / 10000n;
+  const remainder = product % 10000n;
+  const up = remainder > 5000n || (remainder === 5000n && quotient % 2n === 1n);
+  return Number(up ? quotient + 1n : quotient);
 }
 
 /** Of one grade's rates, the percent in force on a date (the latest from-date on or before it), or null. */
@@ -34,11 +37,6 @@ export function pctOn(rates: Rate[], date: string): string | null {
     if (from <= date && (best === null || from > (best.from ?? ''))) best = r;
   }
   return best?.pct ?? null;
-}
-
-/** The due on an amount in cents at a grade's percent, or n/a when the grade has no rate. */
-export function due(amountCents: number, pct: string | null): string {
-  return pct === null ? NA : money(dueCents(amountCents, pct));
 }
 
 // The sheet's rates, each for a grade from a from-date (or from the start), with one form to set

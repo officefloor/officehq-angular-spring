@@ -3,8 +3,8 @@ import { Component, computed, effect, inject, signal } from '@angular/core';
 import { FormControl, FormGroup, ReactiveFormsModule } from '@angular/forms';
 import { firstValueFrom } from 'rxjs';
 import { Session } from '../../core/session';
-import { Claim, Claims, cents, counts, money } from '../claims/claims';
-import { GRADES, Rate, Rates, due, dueCents, pctOn } from '../rates/rates';
+import { Claim, Claims, cents, claimDueCents, counts, money } from '../claims/claims';
+import { GRADES, NA, Rate, Rates, pctOn } from '../rates/rates';
 
 const NO_CLAIMS: Claim[] = [];
 const NO_RATES: Rate[] = [];
@@ -102,16 +102,10 @@ export class People {
     }
     return by;
   });
-  /** Everyone's due-total added up, skipping those whose grade has no rate in force today. */
-  protected readonly dueTotal = computed(() => {
-    const byGrade = this.pctByGrade();
-    let sum = 0;
-    for (const p of this.people()) {
-      const pct = byGrade.get(p.grade);
-      if (pct !== undefined) sum += dueCents(this.claimedCents(p.id), pct);
-    }
-    return money(sum);
-  });
+  /** Everyone's due-total added up, skipping those whose due-total is n/a. */
+  protected readonly dueTotal = computed(() =>
+    money(this.people().reduce((sum, p) => sum + (this.dueTotalCents(p) ?? 0), 0)),
+  );
   protected readonly editingId = signal<number | null>(null);
   protected readonly error = signal('');
   protected readonly form = new FormGroup({
@@ -177,9 +171,21 @@ export class People {
     return this.pctByGrade().get(grade) ?? null;
   }
 
-  /** What they have claimed times their grade's rate in force today, or n/a when none is. */
+  /**
+   * The sum of the dues of their claims that count, each already rounded to cents; null (n/a) when
+   * their grade has no rate in force today and none of those claims has a due fixed when settled.
+   */
+  private dueTotalCents(p: Person): number | null {
+    const counted = this.claimsOf(p.id).filter(counts);
+    if (this.pctOf(p.grade) === null && !counted.some((c) => c.settledDue !== null)) return null;
+    const rates = this.ratesOf(p.grade);
+    return counted.reduce((sum, c) => sum + (claimDueCents(c, rates) ?? 0), 0);
+  }
+
+  /** Their due-total, or n/a. */
   protected dueTotalOf(p: Person): string {
-    return due(this.claimedCents(p.id), this.pctOf(p.grade));
+    const total = this.dueTotalCents(p);
+    return total === null ? NA : money(total);
   }
 
   /** Put a set rate in place of the grade's old one from the same date. */
