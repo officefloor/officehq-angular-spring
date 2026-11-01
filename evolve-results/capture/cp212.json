@@ -1,0 +1,68 @@
+{
+  "checkpoint": 212,
+  "stack": {
+    "repo": "/home/daniel/officehq-angular-spring",
+    "origin": "git@github.com:officefloor/officehq-angular-spring.git",
+    "name": "officehq-angular-spring",
+    "base_ref": "base-empty",
+    "base_commit": "65cb8233ea38b2dfa6cfd18709e30cd18fdf3250"
+  },
+  "checkpoint_id": "cp212_score-without-corrections",
+  "phase": "late",
+  "type": "mutative",
+  "mutates": [
+    209
+  ],
+  "replaced_tests": [
+    "cp209_score.spec.ts::score"
+  ],
+  "request": {
+    "spec": "The score's settled figures now leave out corrections: only SETTLED claims that correct nothing\ncount toward it.\n",
+    "prompt": "You are implementing ONE change to this application.\n\nFIRST read AGENTS.md \u2014 it states the working rules and how the app is tested, and sends you to\nDESIGN.md for the app's stack and conventions. Follow both.\n\nTHE CHANGE REQUEST:\nThe score's settled figures now leave out corrections: only SETTLED claims that correct nothing\ncount toward it.\n\nYour work is verified by an automated Playwright UI test already installed under e2e/specs/.\nRead that spec: it declares the exact data-testid anchors, values, test data and any audit\nrecords it expects \u2014 match them. Run `bin/e2e` to build the app, start it, and run the test as\nyou work; iterate until it passes. Change whatever the request needs across the app \u2014 its stored\ndata, its server and its front end. Do NOT edit bin/build, bin/start, bin/stop, bin/e2e,\nAGENTS.md, CLAUDE.md, DESIGN.md, e2e/support/ or the test spec.\n"
+  },
+  "commit_sha": "5262f87bd9f2f2e53e74679b6ae8f9d898ea5721",
+  "reset_sha": "",
+  "preagent_sha": "a7c0cfee7d171d16dc3096e290180b3140cc7076",
+  "prev_sha": "a7c0cfee7d171d16dc3096e290180b3140cc7076",
+  "base_sha": "65cb8233ea38b2dfa6cfd18709e30cd18fdf3250",
+  "agent": {
+    "ok": true,
+    "cost_usd": 0.45305359999999995,
+    "input_tokens": 6,
+    "output_tokens": 459,
+    "cache_read_tokens": 85831,
+    "cache_creation_tokens": 1660,
+    "num_turns": 2,
+    "duration_ms": 8717,
+    "duration_api_ms": 68988,
+    "model": "claude-opus-5-5",
+    "session_id": "2275ac10-1ed9-4725-85fa-3a980e52aff4",
+    "stop_reason": "success",
+    "result_text": "The score now leaves out corrections: only SETTLED claims that don't correct another claim count toward it. `bin/e2e` passed all 4 tests in the spec.\n\nThe change is in two places:\n- **Server** (`Rollup.java`, `scoresOf`): when adding up the settled part of the score, it now skips claims that correct another claim. This also changes the scores written to the `SCORE` audit lines.\n- **Front end** (`people.ts`): the screen keeps a separate settled figure for the score that skips corrections, and the score shown is worked out from it. The settled-total shown for each person still includes corrections, since the request was only about the score.\n\nNo stored data or schema changes were needed. After that run started I also reworded the comment on `scoreOf` to mention that corrections are left out. That edit may not have been in the build the test used, but it's a comment only.",
+    "error": "",
+    "attempts": [
+      {
+        "ok": true,
+        "limit_reached": false,
+        "retryable": false,
+        "timed_out": false,
+        "cost_usd": 0.45305359999999995,
+        "num_turns": 2,
+        "duration_ms": 8717,
+        "duration_api_ms": 68988,
+        "error": ""
+      }
+    ]
+  },
+  "agent_stream_file": "cp212.agent.jsonl",
+  "agent_diff_file": "cp212.agent.diff",
+  "build_log_file": null,
+  "tests": {
+    "gated": false,
+    "queued": true
+  },
+  "probe": null,
+  "pinned_touched": [],
+  "acceptance_touched": [],
+  "impact_gate": null
+}
