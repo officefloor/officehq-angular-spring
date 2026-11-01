@@ -1,5 +1,6 @@
 package net.officefloor.hq.app.rate;
 
+import net.officefloor.hq.app.sheet.Sheet;
 import java.math.BigDecimal;
 import java.math.RoundingMode;
 import java.time.LocalDate;
@@ -69,7 +70,9 @@ public class RateService {
         if (from != null && to != null && to.isBefore(from)) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "A rate cannot end before it starts");
         }
-        LocalDate today = sheets.load(sheetId, user).getToday();
+        Sheet sheet = sheets.load(sheetId, user);
+        SheetService.requireGrade(sheet, grade);
+        LocalDate today = sheet.getToday();
         Long claimsAfter = from != null && !from.isBefore(today) ? claims.lastId() : null;
         BigDecimal scaled = rate.setScale(2, RoundingMode.UNNECESSARY);
         Rollup.Figures before = rollup.of(sheetId);

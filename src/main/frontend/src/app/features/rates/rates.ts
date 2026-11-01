@@ -2,7 +2,7 @@ import { Component, inject, signal } from '@angular/core';
 import { takeUntilDestroyed, toObservable } from '@angular/core/rxjs-interop';
 import { FormControl, FormGroup, ReactiveFormsModule } from '@angular/forms';
 import { EMPTY, switchMap } from 'rxjs';
-import { GRADES, Grade } from '../../core/people';
+import { Grade } from '../../core/people';
 import { NOT_AVAILABLE, RATE_PATTERN, RatePreview, Rates } from '../../core/rates';
 import { Sheets } from '../../core/sheet';
 import { FigurePipe } from '../../core/figure';
@@ -16,7 +16,7 @@ import { FigurePipe } from '../../core/figure';
     <section aria-labelledby="rates-heading">
       <h2 id="rates-heading">Rates</h2>
       <ul aria-label="Rate for each grade">
-        @for (g of grades; track g) {
+        @for (g of grades(); track g) {
           <li>
             Grade {{ g }}, today: <span [attr.data-testid]="'rate-current-' + g">{{ (rates.byGrade().get(g) ?? notAvailable) | figure }}</span>
             <ul [attr.aria-label]="'Rates of grade ' + g">
@@ -45,7 +45,7 @@ import { FigurePipe } from '../../core/figure';
           </tr>
         </thead>
         <tbody>
-          @for (g of grades; track g) {
+          @for (g of grades(); track g) {
             <tr>
               <th scope="row">{{ g }}</th>
               @for (m of rates.calendarMonths(); track m) {
@@ -59,7 +59,7 @@ import { FigurePipe } from '../../core/figure';
       <form [formGroup]="form" (ngSubmit)="submit()" aria-label="Set a rate">
         <label for="rate-form-grade">Grade</label>
         <select id="rate-form-grade" data-testid="rate-form-grade" formControlName="grade">
-          @for (g of grades; track g) {
+          @for (g of grades(); track g) {
             <option [value]="g">{{ g }}</option>
           }
         </select>
@@ -90,7 +90,7 @@ import { FigurePipe } from '../../core/figure';
       <form [formGroup]="previewForm" (ngSubmit)="preview()" aria-label="Preview a rate">
         <label for="rate-preview-grade">Grade</label>
         <select id="rate-preview-grade" data-testid="rate-preview-grade" formControlName="grade">
-          @for (g of grades; track g) {
+          @for (g of grades(); track g) {
             <option [value]="g">{{ g }}</option>
           }
         </select>
@@ -114,7 +114,7 @@ export class RatesPanel {
   private readonly sheets = inject(Sheets);
   protected readonly rates = inject(Rates);
 
-  protected readonly grades = GRADES;
+  protected readonly grades = this.sheets.grades;
   protected readonly notAvailable = NOT_AVAILABLE;
   protected readonly error = signal<string | null>(null);
   protected readonly saving = signal(false);

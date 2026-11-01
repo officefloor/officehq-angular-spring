@@ -1,5 +1,6 @@
 package net.officefloor.hq.app.rate;
 
+import net.officefloor.hq.app.sheet.Sheet;
 import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.time.format.DateTimeParseException;
@@ -16,7 +17,7 @@ import org.springframework.web.server.ResponseStatusException;
 public class RateImportService {
 
     /** The grades the rate form takes. */
-    private static final Pattern GRADE = Pattern.compile("[ABC]");
+    private static final Pattern GRADE = Pattern.compile(Sheet.GRADE_CODE);
 
     /** A rate the rate form takes: a percent of 0.00 or more, up to 9999999.99, with up to two decimals. */
     private static final Pattern RATE = Pattern.compile("\\d{1,7}(\\.\\d{1,2})?");
@@ -62,7 +63,7 @@ public class RateImportService {
         }
         String grade = fields[0].trim();
         if (!GRADE.matcher(grade).matches()) {
-            throw refused("A grade is A, B or C");
+            throw refused("A grade is one to three capital letters");
         }
         String rate = fields[1].trim();
         if (!RATE.matcher(rate).matches()) {

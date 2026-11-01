@@ -53,6 +53,7 @@ public class SheetController {
      *  proofKinds is the sheet's proof kinds, comma separated, null when there are none;
      *  defaultGrade is the sheet's default grade, null when it sets none (then A);
      *  retiredGrades is the grades retired on the sheet, in order;
+     *  grades is the sheet's grades: A, B and C, then those added, in order;
      *  asOf is the date the sheet is shown as of, when it is (then the sheet is as it stood at the end of it, and today is that date), else null. */
     public record SheetView(String id, LocalDate today, String clerkLimit, String floor, int terms, String latePct,
             LocalDate policyDate, LocalDate periodNumberingFrom, Map<String, Integer> gradeTerms, String cap,
@@ -61,7 +62,8 @@ public class SheetController {
             Map<String, String> gradeProofThreshold, Integer settleBatch, String pot, String parent, int fiscalStartMonth,
             String alertThreshold, String rounding, String reviewThreshold, Integer escalateAfter, Integer reviewSla,
             String proofKinds, String defaultGrade, Map<String, String> gradeClerkLimit, Integer scoreMid, Integer scoreHigh,
-            String scoreLog, Integer maxOpen, List<String> retiredGrades) {
+            String scoreLog, Integer maxOpen, List<String> retiredGrades,
+            List<String> grades) {
 
         static SheetView of(Sheet sheet) {
             return of(sheet, null);
@@ -86,7 +88,8 @@ public class SheetController {
                     sheet.getReviewThreshold() == null ? null : sheet.getReviewThreshold().toPlainString(),
                     sheet.getEscalateAfter(), sheet.getReviewSla(), sheet.getProofKinds(),
                     sheet.getDefaultGrade(), sheet.getGradeClerkLimits(), sheet.getScoreMid(), sheet.getScoreHigh(),
-                    sheet.isScoreLog() ? "on" : null, sheet.getMaxOpen(), sheet.getRetiredGrades());
+                    sheet.isScoreLog() ? "on" : null, sheet.getMaxOpen(), sheet.getRetiredGrades(),
+                    sheet.getGrades());
         }
     }
 
@@ -179,7 +182,7 @@ public class SheetController {
     }
 
     /** The sheet's default grade as the form submits it: A, B or C; a missing (or blank) one means none (then A). */
-    public record DefaultGradeChange(@Pattern(regexp = "|[ABC]") String defaultGrade) {
+    public record DefaultGradeChange(@Pattern(regexp = "|" + Sheet.GRADE_CODE) String defaultGrade) {
     }
 
     /** The sheet's cap as the form submits it; a missing one means none. */
@@ -293,7 +296,7 @@ public class SheetController {
     @PutMapping("/{id}/settings/terms/{grade}")
     public SheetView setGradeTerms(
             @PathVariable @NotBlank @Size(max = 100) @Pattern(regexp = "[A-Za-z0-9._-]+") String id,
-            @PathVariable @Pattern(regexp = "[ABC]") String grade,
+            @PathVariable @Pattern(regexp = Sheet.GRADE_CODE) String grade,
             @RequestHeader("X-User") @NotBlank @Size(max = 100) String user,
             @Valid @RequestBody GradeTermsChange request) {
         return SheetView.of(sheets.setGradeTerms(id, user, grade, request.terms(), request.from()));
@@ -339,7 +342,7 @@ public class SheetController {
     @PutMapping("/{id}/settings/grace/{grade}")
     public SheetView setGradeGrace(
             @PathVariable @NotBlank @Size(max = 100) @Pattern(regexp = "[A-Za-z0-9._-]+") String id,
-            @PathVariable @Pattern(regexp = "[ABC]") String grade,
+            @PathVariable @Pattern(regexp = Sheet.GRADE_CODE) String grade,
             @RequestHeader("X-User") @NotBlank @Size(max = 100) String user,
             @Valid @RequestBody GradeGraceChange request) {
         return SheetView.of(sheets.setGradeGrace(id, user, grade, request.days(), request.from()));
@@ -455,12 +458,29 @@ public class SheetController {
         return SheetView.of(sheets.setDefaultGrade(id, user, grade));
     }
 
+    /** A grade to add: a code of one to three capital letters, trimmed. */
+    public record GradeAddition(@NotNull String grade) {
+    }
+
+    /** Add a grade. */
+    @PostMapping("/{id}/grades")
+    public SheetView addGrade(
+            @PathVariable @NotBlank @Size(max = 100) @Pattern(regexp = "[A-Za-z0-9._-]+") String id,
+            @RequestHeader("X-User") @NotBlank @Size(max = 100) String user,
+            @Valid @RequestBody GradeAddition request) {
+        String grade = request.grade().trim();
+        if (!grade.matches(Sheet.GRADE_CODE)) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "A grade is one to three capital letters");
+        }
+        return SheetView.of(sheets.addGrade(id, user, grade));
+    }
+
     /** Retire a grade. */
     @PostMapping("/{id}/grades/{grade}/retire")
     public SheetView retireGrade(
             @PathVariable @NotBlank @Size(max = 100) @Pattern(regexp = "[A-Za-z0-9._-]+") String id,
             @RequestHeader("X-User") @NotBlank @Size(max = 100) String user,
-            @PathVariable @Pattern(regexp = "[ABC]") String grade) {
+            @PathVariable @Pattern(regexp = Sheet.GRADE_CODE) String grade) {
         return SheetView.of(sheets.retireGrade(id, user, grade));
     }
 
@@ -496,7 +516,7 @@ public class SheetController {
     @PutMapping("/{id}/settings/clerk-limit/{grade}")
     public SheetView setGradeClerkLimit(
             @PathVariable @NotBlank @Size(max = 100) @Pattern(regexp = "[A-Za-z0-9._-]+") String id,
-            @PathVariable @Pattern(regexp = "[ABC]") String grade,
+            @PathVariable @Pattern(regexp = Sheet.GRADE_CODE) String grade,
             @RequestHeader("X-User") @NotBlank @Size(max = 100) String user,
             @Valid @RequestBody SettingsChange request) {
         return SheetView.of(sheets.setGradeClerkLimit(id, user, grade, request.clerkLimit(), request.from()));
@@ -506,7 +526,7 @@ public class SheetController {
     @PutMapping("/{id}/settings/proof-threshold/{grade}")
     public SheetView setGradeProofThreshold(
             @PathVariable @NotBlank @Size(max = 100) @Pattern(regexp = "[A-Za-z0-9._-]+") String id,
-            @PathVariable @Pattern(regexp = "[ABC]") String grade,
+            @PathVariable @Pattern(regexp = Sheet.GRADE_CODE) String grade,
             @RequestHeader("X-User") @NotBlank @Size(max = 100) String user,
             @Valid @RequestBody ProofThresholdChange request) {
         return SheetView.of(sheets.setGradeProofThreshold(id, user, grade, request.proofThreshold(), request.from()));

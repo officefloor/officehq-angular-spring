@@ -224,8 +224,9 @@ public record SheetState(List<SettingState> settings, LocalDate policyDate, List
         sheet.setProofKinds(proofKinds);
         sheet.setDefaultGrade(defaultGrade);
         sheet.setFiscalStartMonth(fiscalStartMonth == null ? 1 : fiscalStartMonth);
-        // The parent is not dated: it is the one the sheet names now.
+        // The parent and the grades are not dated: they are the ones the sheet has now.
         sheet.setParentId(live.getParentId());
+        sheet.addGradesOf(live);
         if (lastSettleBatch != null) {
             sheet.setLastSettleBatch(lastSettleBatch);
         }

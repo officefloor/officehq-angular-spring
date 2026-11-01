@@ -49,7 +49,11 @@ public class Sheet {
     static final int START_TERMS = 14;
     static final BigDecimal START_LATE_PCT = new BigDecimal("0.00");
 
-    private static final List<String> GRADES = List.of("A", "B", "C");
+    /** The grades every sheet has; a sheet may add more. */
+    public static final List<String> STANDING_GRADES = List.of("A", "B", "C");
+
+    /** A grade's code: one to three capital letters. */
+    public static final String GRADE_CODE = "[A-Z]{1,3}";
 
     /** The actions the permission matrix covers, and the roles that may take each while its entry is blank. */
     public static final Map<String, String> STANDING_PERMISSIONS = Map.of(
@@ -174,14 +178,20 @@ public class Sheet {
 
     /** The sheet's default grade (A, B or C): the grade the quick-add bar gives a new person, and the one an
      *  imported line with a blank grade takes; null means A. Not dated. */
-    @Column(name = "default_grade", length = 1)
+    @Column(name = "default_grade", length = 3)
     private String defaultGrade;
 
     /** The grades retired on the sheet: none can be given to a new person nor chosen in an edit. Not dated. */
     @ElementCollection(fetch = FetchType.EAGER)
     @CollectionTable(name = "sheet_grade_retired", joinColumns = @JoinColumn(name = "sheet_id"))
-    @Column(name = "grade", nullable = false, length = 1)
+    @Column(name = "grade", nullable = false, length = 3)
     private Set<String> retiredGrades = new TreeSet<>();
+
+    /** The grades added to the sheet beside the standing ones. Not dated. */
+    @ElementCollection(fetch = FetchType.EAGER)
+    @CollectionTable(name = "sheet_grade_added", joinColumns = @JoinColumn(name = "sheet_id"))
+    @Column(name = "grade", nullable = false, length = 3)
+    private Set<String> addedGrades = new TreeSet<>();
 
     /** Whether the sheet is archived: everything on it stays visible and every change to it is refused. */
     @Column(name = "archived", nullable = false)
@@ -222,6 +232,7 @@ public class Sheet {
         copy.proofKinds = proofKinds;
         copy.defaultGrade = defaultGrade;
         copy.retiredGrades.addAll(retiredGrades);
+        copy.addedGrades.addAll(addedGrades);
         copy.lastSettleBatch = lastSettleBatch;
         return copy;
     }
@@ -298,7 +309,7 @@ public class Sheet {
     /** The clerk limits set per grade in force on the sheet's today, by grade; a grade without its own is missing. */
     public Map<String, String> getGradeClerkLimits() {
         Map<String, String> byGrade = new TreeMap<>();
-        for (String grade : GRADES) {
+        for (String grade : getGrades()) {
             BigDecimal value = amountOn(CLERK_LIMIT + "-" + grade, today, null);
             if (value != null) {
                 byGrade.put(grade, value.toPlainString());
@@ -338,7 +349,7 @@ public class Sheet {
     /** The terms set per grade in force on the sheet's today, by grade; a grade without its own is missing. */
     public Map<String, Integer> getGradeTerms() {
         Map<String, Integer> byGrade = new TreeMap<>();
-        for (String grade : GRADES) {
+        for (String grade : getGrades()) {
             String value = valueOn(TERMS + "-" + grade, today);
             if (value != null) {
                 byGrade.put(grade, Integer.parseInt(value));
@@ -356,7 +367,7 @@ public class Sheet {
     /** The grace days set per grade in force on the sheet's today, by grade; a grade without any is missing. */
     public Map<String, Integer> getGradeGrace() {
         Map<String, Integer> byGrade = new TreeMap<>();
-        for (String grade : GRADES) {
+        for (String grade : getGrades()) {
             String value = valueOn(GRACE + "-" + grade, today);
             if (value != null) {
                 byGrade.put(grade, Integer.parseInt(value));
@@ -552,6 +563,26 @@ public class Sheet {
         retiredGrades.add(grade);
     }
 
+    /** The sheet's grades: the standing ones, then those added, in order. */
+    public List<String> getGrades() {
+        List<String> grades = new ArrayList<>(STANDING_GRADES);
+        new TreeSet<>(addedGrades).forEach(grades::add);
+        return List.copyOf(grades);
+    }
+
+    public boolean hasGrade(String grade) {
+        return STANDING_GRADES.contains(grade) || addedGrades.contains(grade);
+    }
+
+    public void addGrade(String grade) {
+        addedGrades.add(grade);
+    }
+
+    /** Give this sheet the grades another has added. */
+    public void addGradesOf(Sheet other) {
+        addedGrades.addAll(other.addedGrades);
+    }
+
     /** The sheet's proof kinds, in the order set; none when it sets none. */
     public List<String> proofKindList() {
         return proofKinds == null ? List.of() : Arrays.stream(proofKinds.split(",")).toList();
@@ -593,7 +624,7 @@ public class Sheet {
     /** The proof thresholds set per grade in force on the sheet's today, by grade; a grade without its own is missing. */
     public Map<String, String> getGradeProofThresholds() {
         Map<String, String> byGrade = new TreeMap<>();
-        for (String grade : GRADES) {
+        for (String grade : getGrades()) {
             BigDecimal value = amountOn(PROOF_THRESHOLD + "-" + grade, today, null);
             if (value != null) {
                 byGrade.put(grade, value.toPlainString());

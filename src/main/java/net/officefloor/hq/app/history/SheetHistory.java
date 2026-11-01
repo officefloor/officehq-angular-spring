@@ -257,13 +257,14 @@ public class SheetHistory {
     }
 
     /** The sheet as it stood at the end of a date, unsaved, with that date standing in for its today: as it was
-     *  started when no change was made on it by then. Its parent, not dated, is the one it names now. */
+     *  started when no change was made on it by then. Its parent and its grades, not dated, are the ones it has now. */
     @Transactional(readOnly = true)
     public Sheet sheetAsOf(Sheet live, LocalDate date) {
         return asOf(live.getId(), date).map(s -> s.rebuildSheet(live, date))
                 .orElseGet(() -> {
                     Sheet started = new Sheet(live.getId(), live.getCreatedBy(), live.getCreatedAt(), date);
                     started.setParentId(live.getParentId());
+                    started.addGradesOf(live);
                     return started;
                 });
     }

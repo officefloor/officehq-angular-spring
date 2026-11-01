@@ -76,7 +76,9 @@ public class PersonService {
     @Transactional
     public Person add(String sheetId, String user, String name, String grade, Integer terms, String contact,
             String tags) {
-        if (sheets.load(sheetId, user).isGradeRetired(grade)) {
+        Sheet sheet = sheets.load(sheetId, user);
+        SheetService.requireGrade(sheet, grade);
+        if (sheet.isGradeRetired(grade)) {
             throw gradeRetired(grade);
         }
         String trimmed = name.trim();
@@ -194,6 +196,9 @@ public class PersonService {
             throw changedSince();
         }
         boolean gradeChosen = gradeFrom != null || !grade.equals(person.gradeOn(today));
+        if (gradeChosen) {
+            SheetService.requireGrade(sheet, grade);
+        }
         if (gradeChosen && sheet.isGradeRetired(grade)) {
             throw gradeRetired(grade);
         }
@@ -252,6 +257,8 @@ public class PersonService {
         if (from.equals(into)) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "A grade cannot be merged into itself");
         }
+        SheetService.requireGrade(sheet, from);
+        SheetService.requireGrade(sheet, into);
         if (sheet.isGradeRetired(into)) {
             throw gradeRetired(into);
         }

@@ -1,5 +1,6 @@
 package net.officefloor.hq.app.rate;
 
+import net.officefloor.hq.app.sheet.Sheet;
 import org.springframework.format.annotation.DateTimeFormat;
 import net.officefloor.hq.app.history.SheetHistory;
 import net.officefloor.hq.app.rollup.Rollup;
@@ -80,7 +81,7 @@ public class RateController {
     @GetMapping("/{grade}/preview")
     public Rollup.RatePreview preview(
             @PathVariable @NotBlank @Size(max = 100) @Pattern(regexp = "[A-Za-z0-9._-]+") String sheetId,
-            @PathVariable @Pattern(regexp = "[ABC]") String grade,
+            @PathVariable @Pattern(regexp = Sheet.GRADE_CODE) String grade,
             @RequestParam @NotNull @DecimalMin("0.00") @Digits(integer = 7, fraction = 2) BigDecimal rate) {
         return rates.preview(sheetId, grade, rate);
     }
@@ -113,7 +114,7 @@ public class RateController {
     @PutMapping("/{grade}")
     public RateView set(
             @PathVariable @NotBlank @Size(max = 100) @Pattern(regexp = "[A-Za-z0-9._-]+") String sheetId,
-            @PathVariable @Pattern(regexp = "[ABC]") String grade,
+            @PathVariable @Pattern(regexp = Sheet.GRADE_CODE) String grade,
             @RequestHeader("X-User") @NotBlank @Size(max = 100) String user,
             @Valid @RequestBody RateForm request) {
         return RateView.of(rates.set(sheetId, user, grade, request.from(), request.to(), request.rate()));

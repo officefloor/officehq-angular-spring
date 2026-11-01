@@ -1,7 +1,7 @@
 import { HttpClient, HttpInterceptorFn } from '@angular/common/http';
 import { Injectable, computed, inject, signal } from '@angular/core';
 import { Observable, tap } from 'rxjs';
-import { Grade } from './people';
+import { GRADES, Grade, StandingGrade } from './people';
 
 /** A dated setting's value from its from-date (yyyy-mm-dd; null: from the beginning of time) until the next one's
  *  of the same key; a null value means none. Keys: clerk-limit, clerk-limit-A/B/C, floor, terms, terms-A/B/C, late-pct, grace-A/B/C, cap, proof-threshold, proof-threshold-A/B/C,
@@ -21,7 +21,7 @@ export interface SheetView {
   clerkLimit: string | null;
   /** The clerk limit (two decimals) set per grade, in force on the sheet's today; a grade without its own uses the
    *  sheet's. */
-  gradeClerkLimit: Partial<Record<Grade, string>>;
+  gradeClerkLimit: Partial<Record<StandingGrade, string>>;
   /** A claim's live due is at least this (two decimals). */
   floor: string;
   /** The sheet's terms in business days: a claim is due by the terms-th business day after its date. */
@@ -36,9 +36,9 @@ export interface SheetView {
    *  numbered within its period; null when off. */
   periodNumberingFrom: string | null;
   /** The terms in days set per grade; a grade without its own uses the sheet's terms. */
-  gradeTerms: Partial<Record<Grade, number>>;
+  gradeTerms: Partial<Record<StandingGrade, number>>;
   /** The grace days set per grade, in force on the sheet's today; a grade without any is missing. */
-  gradeGrace: Partial<Record<Grade, number>>;
+  gradeGrace: Partial<Record<StandingGrade, number>>;
   /** A person's due-total is at most this (two decimals); null: none. */
   cap: string | null;
   /** A claim whose due is above this (two decimals), in force on its date, cannot be settled or approved while it
@@ -46,7 +46,7 @@ export interface SheetView {
   proofThreshold: string | null;
   /** The proof threshold (two decimals) set per grade, in force on the sheet's today; a grade without its own uses
    *  the sheet's. */
-  gradeProofThreshold: Partial<Record<Grade, string>>;
+  gradeProofThreshold: Partial<Record<StandingGrade, string>>;
   /** A claim whose due is above this (two decimals), in force on its date, cannot be opened while its note is
    *  empty; null: none. */
   noteThreshold: string | null;
@@ -89,12 +89,14 @@ export interface SheetView {
   /** The sheet's proof kinds, comma separated (receipt, photo): while set, a claim above the proof threshold needs a
    *  proof of each before it can be settled or approved; null when there are none. Not dated. */
   proofKinds: string | null;
-  /** The sheet's default grade (A, B or C): the grade the quick-add bar gives a new person, and the one an imported
+  /** The sheet's default grade (one of its grades): the grade the quick-add bar gives a new person, and the one an imported
    *  line with a blank grade takes; null when it sets none (then A). Not dated. */
   defaultGrade: string | null;
   /** The grades retired on the sheet, in order: none can be given to a new person nor chosen in an edit; people on
    *  one keep it. Not dated. */
   retiredGrades: string[];
+  /** The sheet's grades: A, B and C, then those added to it, in order. Not dated. */
+  grades: Grade[];
   /** The alert threshold (two decimals): a person whose due-total rises from at or below it to above it is alerted;
    *  null when it is off. Not dated. */
   alertThreshold: string | null;
@@ -159,6 +161,8 @@ export class Sheets {
     const preview = this.previewDate();
     return sheet && preview ? { ...sheet, today: preview } : sheet;
   });
+  /** The active sheet's grades: every grade select, the summary and the rates list these. */
+  readonly grades = computed<readonly Grade[]>(() => this.current()?.grades ?? GRADES);
   /** The active sheet's real today (yyyy-mm-dd), whatever the preview: every change and its defaults use it. */
   readonly today = computed(() => this.active()?.today ?? '');
   /** The sheet as last (re)loaded: set on each load only, so changing its today re-reads nothing. */
@@ -346,6 +350,13 @@ export class Sheets {
   setDefaultGrade(id: string, defaultGrade: string | null): Observable<SheetView> {
     return this.http
       .put<SheetView>(`/api/sheets/${encodeURIComponent(id)}/settings/default-grade`, { defaultGrade })
+      .pipe(tap((s) => this.active.set(s)));
+  }
+
+  /** Add a grade to the active sheet: a code of one to three capital letters not yet a grade; refused otherwise. */
+  addGrade(id: string, grade: string): Observable<SheetView> {
+    return this.http
+      .post<SheetView>(`/api/sheets/${encodeURIComponent(id)}/grades`, { grade })
       .pipe(tap((s) => this.active.set(s)));
   }
 

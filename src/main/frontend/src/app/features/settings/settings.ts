@@ -2,7 +2,7 @@ import { Component, inject, signal } from '@angular/core';
 import { takeUntilDestroyed, toObservable } from '@angular/core/rxjs-interop';
 import { FormControl, FormGroup, ReactiveFormsModule } from '@angular/forms';
 import { EMPTY, Observable, concat, last, switchMap } from 'rxjs';
-import { GRADES, Grade } from '../../core/people';
+import { GRADES, StandingGrade } from '../../core/people';
 import { Rates } from '../../core/rates';
 import { ROLES, RoleName, Roles } from '../../core/roles';
 import { PERM_ACTIONS, PermAction, STANDING_PERMISSIONS, SheetView, Sheets } from '../../core/sheet';
@@ -34,16 +34,16 @@ type DatedField = Exclude<SettingField, 'policyDate' | 'periodNumberingFrom' | '
 type FromField = `${DatedField}From`;
 
 /** The form field of each grade's own terms. */
-const GRADE_TERMS_FIELD: Record<Grade, 'termsA' | 'termsB' | 'termsC'> = { A: 'termsA', B: 'termsB', C: 'termsC' };
+const GRADE_TERMS_FIELD: Record<StandingGrade, 'termsA' | 'termsB' | 'termsC'> = { A: 'termsA', B: 'termsB', C: 'termsC' };
 
 /** The form field of each grade's grace days. */
-const GRADE_GRACE_FIELD: Record<Grade, 'graceA' | 'graceB' | 'graceC'> = { A: 'graceA', B: 'graceB', C: 'graceC' };
+const GRADE_GRACE_FIELD: Record<StandingGrade, 'graceA' | 'graceB' | 'graceC'> = { A: 'graceA', B: 'graceB', C: 'graceC' };
 
 /** The form field of each grade's own clerk limit. */
-const GRADE_CLERK_LIMIT_FIELD: Record<Grade, 'clerkLimitA' | 'clerkLimitB' | 'clerkLimitC'> = { A: 'clerkLimitA', B: 'clerkLimitB', C: 'clerkLimitC' };
+const GRADE_CLERK_LIMIT_FIELD: Record<StandingGrade, 'clerkLimitA' | 'clerkLimitB' | 'clerkLimitC'> = { A: 'clerkLimitA', B: 'clerkLimitB', C: 'clerkLimitC' };
 
 /** The form field of each grade's own proof threshold. */
-const GRADE_PROOF_THRESHOLD_FIELD: Record<Grade, 'proofThresholdA' | 'proofThresholdB' | 'proofThresholdC'> = { A: 'proofThresholdA', B: 'proofThresholdB', C: 'proofThresholdC' };
+const GRADE_PROOF_THRESHOLD_FIELD: Record<StandingGrade, 'proofThresholdA' | 'proofThresholdB' | 'proofThresholdC'> = { A: 'proofThresholdA', B: 'proofThresholdB', C: 'proofThresholdC' };
 
 /** The form field of each action's permission entry. */
 type PermField = `perm_${PermAction}`;
@@ -223,7 +223,7 @@ function isDate(value: string): boolean {
         <label for="setting-proof-kinds">Proof kinds (comma separated, of receipt and photo: a claim above the proof threshold needs a proof of each to be settled; blank: none)</label>
         <input id="setting-proof-kinds" data-testid="setting-proof-kinds" formControlName="proofKinds" (focus)="lastFocused = 'proofKinds'"
                autocomplete="off" />
-        <label for="setting-default-grade">Default grade (A, B or C: the grade a person added by the quick-add bar or imported with a blank grade is given; blank: A)</label>
+        <label for="setting-default-grade">Default grade (one of the sheet's grades: the grade a person added by the quick-add bar or imported with a blank grade is given; blank: A)</label>
         <input id="setting-default-grade" data-testid="setting-default-grade" formControlName="defaultGrade" (focus)="lastFocused = 'defaultGrade'"
                autocomplete="off" />
         <label for="setting-note-threshold">Note threshold (a claim due above this on its date needs a note to be opened; blank: none)</label>
@@ -542,8 +542,8 @@ export class SettingsPanel {
       this.settingsError.set('Type proof kinds as a comma separated list of receipt and photo, each at most once, or leave it blank for none.');
       return;
     }
-    if (saveDefaultGrade && defaultGradeValue !== '' && !(GRADES as readonly string[]).includes(defaultGradeValue)) {
-      this.settingsError.set(`Type a default grade of ${GRADES.join(', ')}, or leave it blank for A.`);
+    if (saveDefaultGrade && defaultGradeValue !== '' && !this.sheets.grades().includes(defaultGradeValue)) {
+      this.settingsError.set(`Type a default grade of ${this.sheets.grades().join(', ')}, or leave it blank for A.`);
       return;
     }
     if (savePot && potValue !== '' && !LIMIT_PATTERN.test(potValue)) {

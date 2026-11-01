@@ -4,7 +4,7 @@ import { takeUntilDestroyed, toObservable } from '@angular/core/rxjs-interop';
 import { FormControl, FormGroup, ReactiveFormsModule, Validators } from '@angular/forms';
 import { forkJoin, of, switchMap } from 'rxjs';
 import { AMOUNT_PATTERN, ClaimView, Claims, cents, countsAtEndWithHolds, countsClaimed, countsWithHolds, isOverdue, isReviewLate, money, roundingDate, sharePartCents, statusAt } from '../../core/claims';
-import { GRADES, Grade, People, PersonView, gradeOn, nameWithGrade } from '../../core/people';
+import { Grade, People, PersonView, gradeOn, nameWithGrade } from '../../core/people';
 import { PatronView, Patrons } from '../../core/patrons';
 import { Periods, periodOn } from '../../core/periods';
 import { DEFAULT_DUE_TERMS, DueTerms, NOT_AVAILABLE, RateLine, Rates, claimDueCents } from '../../core/rates';
@@ -168,7 +168,7 @@ function csvField(value: string): string {
         <input id="person-form-name" data-testid="person-form-name" formControlName="name" autocomplete="off" />
         <label for="person-form-grade">Grade</label>
         <select id="person-form-grade" data-testid="person-form-grade" formControlName="grade">
-          @for (g of grades; track g) {
+          @for (g of grades(); track g) {
             <option [value]="g">{{ g }}</option>
           }
         </select>
@@ -328,7 +328,7 @@ function csvField(value: string): string {
       <form [formGroup]="bulkGradeForm" (ngSubmit)="bulkGrade()" aria-label="Grade the selected people">
         <label for="bulk-grade">Grade</label>
         <select id="bulk-grade" data-testid="bulk-grade" formControlName="grade">
-          @for (g of grades; track g) {
+          @for (g of grades(); track g) {
             <option [value]="g">{{ g }}</option>
           }
         </select>
@@ -381,7 +381,7 @@ function csvField(value: string): string {
             <label [attr.for]="'person-inline-grade-' + p.id">Grade</label>
             <select [id]="'person-inline-grade-' + p.id" data-testid="person-inline-grade" #inlineGrade
                     [value]="gradeToday(p)" (change)="clearPersonError(p.id)">
-              @for (g of grades; track g) {
+              @for (g of grades(); track g) {
                 <option [value]="g" [selected]="g === gradeToday(p)">{{ g }}</option>
               }
             </select>
@@ -603,7 +603,7 @@ export class PeopleList {
     return money([...this.watched()].reduce((sum, id) => sum + (due.get(id) ?? 0), 0));
   });
 
-  protected readonly grades = GRADES;
+  protected readonly grades = this.sheets.grades;
   protected readonly money = money;
   protected readonly people = signal<PersonView[]>([]);
   /** The figures of the sheet's descendants, as each of them shows its own, re-read on each (re)load. */
@@ -655,7 +655,7 @@ export class PeopleList {
           return x < y ? -1 : x > y ? 1 : 0;
         });
       case 'grade':
-        return [...list].sort((a, b) => GRADES.indexOf(this.gradeToday(a)) - GRADES.indexOf(this.gradeToday(b)));
+        return [...list].sort((a, b) => this.grades().indexOf(this.gradeToday(a)) - this.grades().indexOf(this.gradeToday(b)));
       case 'due-total': {
         const key = (p: PersonView) => due.get(p.id) ?? Number.POSITIVE_INFINITY;
         return [...list].sort((a, b) => {
@@ -1078,7 +1078,7 @@ export class PeopleList {
     const due = this.dueByPerson();
     const active = this.activeByPerson();
     const current = this.people().filter((p) => !p.retired);
-    return GRADES.map((grade) => {
+    return this.grades().map((grade) => {
       const onGrade = current.filter((p) => this.gradeToday(p) === grade);
       return {
         grade,

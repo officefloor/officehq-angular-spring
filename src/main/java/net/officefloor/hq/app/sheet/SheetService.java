@@ -343,6 +343,7 @@ public class SheetService {
     public Sheet setDefaultGrade(String id, String user, String grade) {
         load(id, user);
         Sheet sheet = sheets.findLockedById(id).orElseThrow();
+        requireGrade(sheet, grade);
         sheet.setDefaultGrade(grade);
         Sheet saved = sheets.saveAndFlush(sheet);
         audit.recordChangeOnCommit(id, user, "SETTING_CHANGED sheet=" + id + " by=" + user
@@ -356,6 +357,7 @@ public class SheetService {
     public Sheet retireGrade(String id, String user, String grade) {
         load(id, user);
         Sheet sheet = sheets.findLockedById(id).orElseThrow();
+        requireGrade(sheet, grade);
         if (sheet.isGradeRetired(grade)) {
             throw new ResponseStatusException(HttpStatus.CONFLICT, "Grade " + grade + " is already retired");
         }
@@ -363,6 +365,28 @@ public class SheetService {
         Sheet saved = sheets.saveAndFlush(sheet);
         audit.recordChangeOnCommit(id, user, "GRADE_RETIRED sheet=" + id + " by=" + user + " grade=" + grade);
         return saved;
+    }
+
+    /** Add a grade, starting the sheet if it has never been loaded: a code of one to three capital letters (trimmed)
+     *  that is not yet a grade of the sheet. Not dated. */
+    @Transactional
+    public Sheet addGrade(String id, String user, String grade) {
+        load(id, user);
+        Sheet sheet = sheets.findLockedById(id).orElseThrow();
+        if (sheet.hasGrade(grade)) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT, "Grade " + grade + " is already a grade");
+        }
+        sheet.addGrade(grade);
+        Sheet saved = sheets.saveAndFlush(sheet);
+        audit.recordChangeOnCommit(id, user, "GRADE_ADDED sheet=" + id + " by=" + user + " grade=" + grade);
+        return saved;
+    }
+
+    /** Refuse a grade the sheet does not have. */
+    public static void requireGrade(Sheet sheet, String grade) {
+        if (grade != null && !sheet.hasGrade(grade)) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "No grade " + grade + " on this sheet");
+        }
     }
 
     /** Set the sheet's parent sheet (null: none), starting the sheet if it has never been loaded. Not dated. Refused

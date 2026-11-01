@@ -1,5 +1,6 @@
 package net.officefloor.hq.app.person;
 
+import net.officefloor.hq.app.sheet.Sheet;
 import java.util.ArrayList;
 import java.util.HashSet;
 import java.util.List;
@@ -19,7 +20,7 @@ public class PersonImportService {
     private static final int TEXT_MAX = 200;
 
     /** The grades the person form takes; blank takes the sheet's default grade. */
-    private static final Pattern GRADE = Pattern.compile("[ABC]?");
+    private static final Pattern GRADE = Pattern.compile("(" + Sheet.GRADE_CODE + ")?");
 
     /** Terms the person form takes: a whole number of days from 0 to 36500. */
     private static final Pattern TERMS = Pattern.compile("\\d{1,5}");
@@ -113,7 +114,7 @@ public class PersonImportService {
         }
         String grade = fields[1].trim();
         if (!GRADE.matcher(grade).matches()) {
-            throw refused("A grade is A, B or C");
+            throw refused("A grade is one to three capital letters");
         }
         Integer terms = null;
         String termsText = fields.length > 2 ? fields[2].trim() : "";

@@ -2,8 +2,11 @@ import { HttpClient } from '@angular/common/http';
 import { Injectable, inject, signal } from '@angular/core';
 import { Observable } from 'rxjs';
 
-export type Grade = 'A' | 'B' | 'C';
-export const GRADES: readonly Grade[] = ['A', 'B', 'C'];
+/** A grade's code: one to three capital letters. Every sheet has A, B and C; a sheet may add more. */
+export type Grade = string;
+/** The grades every sheet has: the per-grade settings are kept for these. */
+export type StandingGrade = 'A' | 'B' | 'C';
+export const GRADES: readonly StandingGrade[] = ['A', 'B', 'C'];
 
 /** A grade recorded for a person, in force from its from-date (yyyy-mm-dd) until the next one's; the
  *  first grade a person was given has none: it applies from the beginning of time. */

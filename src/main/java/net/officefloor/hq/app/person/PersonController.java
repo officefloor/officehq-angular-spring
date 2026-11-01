@@ -1,5 +1,6 @@
 package net.officefloor.hq.app.person;
 
+import net.officefloor.hq.app.sheet.Sheet;
 import org.springframework.format.annotation.DateTimeFormat;
 import net.officefloor.hq.app.sheet.Preview;
 import net.officefloor.hq.app.history.SheetHistory;
@@ -106,7 +107,7 @@ public class PersonController {
      *  comma separated, each trimmed and lower-cased, repeats dropped (blank or missing: none). */
     public record PersonForm(
             @NotBlank @Size(max = 200) String name,
-            @NotNull @Pattern(regexp = "[ABC]") String grade,
+            @NotNull @Pattern(regexp = Sheet.GRADE_CODE) String grade,
             @Min(0) @Max(36500) Integer terms,
             @Size(max = 200) String contact,
             @Size(max = 1000) String tags) {
@@ -118,7 +119,7 @@ public class PersonController {
      *  beginning of time). */
     public record PersonEdit(
             @NotBlank @Size(max = 200) String name,
-            @NotNull @Pattern(regexp = "[ABC]") String grade,
+            @NotNull @Pattern(regexp = Sheet.GRADE_CODE) String grade,
             LocalDate gradeFrom,
             @Min(0) @Max(36500) Integer terms,
             @NotNull Long version,
@@ -158,13 +159,13 @@ public class PersonController {
     /** People selected to be given a grade together, from {@code from} (missing: the sheet's today). */
     public record BulkGrade(
             @NotNull @Size(max = 1000) List<@NotNull Long> ids,
-            @NotNull @Pattern(regexp = "[ABC]") String grade,
+            @NotNull @Pattern(regexp = Sheet.GRADE_CODE) String grade,
             LocalDate from) {
     }
 
     /** A grade to merge into another. */
-    public record GradeMerge(@NotNull @Pattern(regexp = "[ABC]") String from,
-            @NotNull @Pattern(regexp = "[ABC]") String into) {
+    public record GradeMerge(@NotNull @Pattern(regexp = Sheet.GRADE_CODE) String from,
+            @NotNull @Pattern(regexp = Sheet.GRADE_CODE) String into) {
     }
 
     /** What a grade merge did: how many people it gave the other grade, and those people as saved. */
