@@ -54,6 +54,9 @@ export interface PersonRef {
 }
 
 // The signed-in user and the active sheet. Every other feature reads these to scope its calls.
+/** What the people list can be sorted by on the screen. */
+export type PeopleSort = 'added' | 'name' | 'grade' | 'due-total';
+
 @Injectable({ providedIn: 'root' })
 export class Session {
   private readonly http = inject(HttpClient);
@@ -151,6 +154,8 @@ export class Session {
   readonly asOf = signal<string | null>(null);
   /** Whether retired people are listed: off when the screen opens, left as it is by loading a sheet. */
   readonly showRetired = signal(false);
+  /** What the people list is sorted by on this screen: added (list order) when the screen opens, left as it is by loading a sheet. */
+  readonly sortBy = signal<PeopleSort>('added');
 
   async signIn(name: string): Promise<void> {
     const res = await firstValueFrom(this.http.post<{ name: string }>('/api/session', { name }));

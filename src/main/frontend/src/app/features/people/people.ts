@@ -304,6 +304,14 @@ function trimmedSum(figures: number[]): number {
                (change)="session.showRetired.set($any($event.target).checked)" />
         Show retired
       </label>
+      <label for="sort-by">Sort by</label>
+      <select id="sort-by" data-testid="sort-by" [value]="session.sortBy()"
+              (change)="session.sortBy.set($any($event.target).value)">
+        <option value="added">Added</option>
+        <option value="name">Name</option>
+        <option value="grade">Grade</option>
+        <option value="due-total">Due total</option>
+      </select>
       <button type="button" data-testid="export-people" (click)="exportCsv()">Export CSV</button>
       <button type="button" data-testid="export-claims" (click)="exportClaims()">Export claims CSV</button>
       <button type="button" data-testid="bulk-open" (click)="bulkOpen()">Open selected claims</button>
@@ -364,7 +372,7 @@ function trimmedSum(figures: number[]): number {
           <tr><th scope="col"><span class="visually-hidden">Select</span></th><th scope="col">Name</th><th scope="col">Grade</th><th scope="col">Terms</th><th scope="col">Contact</th><th scope="col">Tags</th><th scope="col">Aliases</th><th scope="col">Came from</th><th scope="col">Claimed</th><th scope="col">Due total</th><th scope="col">Excess</th><th scope="col">Settled total</th><th scope="col">Open total</th><th scope="col">Cut total</th><th scope="col">Periods</th><th scope="col">Statements</th><th scope="col">Retired</th><th scope="col">Hold</th><th scope="col">Watched</th><th scope="col">Active</th><th scope="col">Clashing</th><th scope="col">Overdue</th><th scope="col">Aged</th><th scope="col">Patrons</th><th scope="col">Plans</th><th scope="col">Claims</th><th scope="col"><span class="visually-hidden">Actions</span></th></tr>
         </thead>
         <tbody>
-          @for (p of listed(); track p.id) {
+          @for (p of sorted(); track p.id) {
             <tr [attr.data-testid]="'person-row-' + p.id">
               <td>
                 <input type="checkbox" data-testid="person-select" [checked]="selectedPeople().has(p.id)"
@@ -644,6 +652,21 @@ export class People {
   protected readonly listed = computed(() =>
     this.session.showRetired() ? this.people() : this.people().filter((p) => !p.retired),
   );
+  /**
+   * The people on screen as this screen sorts them: by name as names are compared, by the grade in
+   * force today, or by due-total with n/a last; equal keys keep list order. Only the screen is sorted.
+   */
+  protected readonly sorted = computed(() => {
+    const listed = this.listed();
+    const by = this.session.sortBy();
+    if (by === 'added') return listed;
+    const key = (p: Person): string | number | null =>
+      by === 'name' ? p.name.trim().toLowerCase() : by === 'grade' ? this.gradeOf(p) : this.dueTotalCents(p);
+    const keyed = listed.map((p) => ({ p, k: key(p) }));
+    return keyed
+      .sort((a, b) => (a.k === b.k ? 0 : a.k === null ? 1 : b.k === null ? -1 : a.k < b.k ? -1 : 1))
+      .map((e) => e.p);
+  });
   /** Every claim on the sheet, newest first. */
   protected readonly claims = signal<Claim[]>([]);
   /** Every plan on the sheet, in the order they were added. */
