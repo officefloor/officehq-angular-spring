@@ -8,7 +8,7 @@ import java.util.function.Function;
 /**
  * The late charge on an overdue claim, worked out per 30-day boundary: for each full 30 days past its
  * due-by, the late percent in force on that boundary date (the due-by plus 30, 60, 90 ... days) of its
- * figure (the due bound by a statement, else its floored live due), rounded to cents like its due
+ * figure (the rate figure bound by a statement, else its rate figure, with no floor), rounded to cents like its due
  * ({@link Rounding}), and the charges added up; a boundary whose percent is 0.00 adds nothing. A
  * correction has none. It is never bound by a statement; settling freezes it into the settled due.
  */

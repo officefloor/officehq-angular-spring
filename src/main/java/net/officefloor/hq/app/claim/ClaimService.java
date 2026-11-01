@@ -232,8 +232,8 @@ public class ClaimService {
         Person person = people.findByIdAndSheetId(claim.getPersonId(), sheetId).orElseThrow(PersonNotFoundException::new);
         refuseIfClosed(sheetId, claim.getDate());
         BigDecimal old = claim.getSettledDue();
-        BigDecimal figure = LateCharge.withChargeAsOpen(claim, dueOf(sheetId, person, claim), sheets.today(sheetId),
-                d -> settings.latePctOn(sheetId, d), roundingOf(sheetId, claim));
+        BigDecimal figure = floored(sheetId, claim, LateCharge.withChargeAsOpen(claim, dueOf(sheetId, person, claim),
+                sheets.today(sheetId), d -> settings.latePctOn(sheetId, d), roundingOf(sheetId, claim)));
         claim.setSettledDue(figure);
         logStatus(sheetId, user, person, claim);
         Claim saved = claims.saveAndFlush(claim);
@@ -403,8 +403,8 @@ public class ClaimService {
     }
 
     /**
-     * A claim's figure now: the due fixed when it was settled, else the due bound by its person's
-     * last statement, else its live due; null when it has none.
+     * A claim's figure now: the due fixed when it was settled, else the rate figure bound by its person's
+     * last statement, else its rate figure (no floor, no charge); null when it has none.
      */
     public BigDecimal figureOf(String sheetId, Person person, Claim claim) {
         if (claim.getSettledDue() != null) return claim.getSettledDue();
@@ -413,14 +413,21 @@ public class ClaimService {
     }
 
     /**
-     * A claim's due now: its figure, with the late charge on top while it is overdue; null when it
-     * has none. A statement binds the figure, never the charge.
+     * A claim's due now: the greater of the floor in force on its date and its figure with the late
+     * charge on top while it is overdue (a correction: neither); a settled due as fixed; null when it
+     * has none. A statement binds the figure, never the charge nor the floor.
      */
     public BigDecimal chargedFigureOf(String sheetId, Person person, Claim claim) {
         BigDecimal figure = figureOf(sheetId, person, claim);
         if (claim.getSettledDue() != null) return figure;
-        return LateCharge.withCharge(claim, figure, sheets.today(sheetId),
-                d -> settings.latePctOn(sheetId, d), roundingOf(sheetId, claim));
+        return floored(sheetId, claim, LateCharge.withCharge(claim, figure, sheets.today(sheetId),
+                d -> settings.latePctOn(sheetId, d), roundingOf(sheetId, claim)));
+    }
+
+    /** The due at least the sheet's floor in force on the claim's date, unless a correction; null when none. */
+    private BigDecimal floored(String sheetId, Claim claim, BigDecimal due) {
+        if (due == null || claim.isCorrection()) return due;
+        return due.max(settings.floorOn(sheetId, claim.getDate()));
     }
 
     /** How the claim's live figures round: by its date, or a correction's by its corrected claim's ({@link Rounding}). */
@@ -431,16 +438,14 @@ public class ClaimService {
     }
 
     /**
-     * A claim's live due: its amount times the rate on its date of its person's grade in force on it, rounded to
-     * cents as {@link Rounding} has it, and at least the sheet's floor in force on its date unless a correction; null with no rate.
+     * A claim's rate figure: its amount times the rate on its date of its person's grade in force on it, rounded to
+     * cents as {@link Rounding} has it, with no floor; null with no rate.
      */
     private BigDecimal dueOf(String sheetId, Person person, Claim claim) {
-        BigDecimal floor = claim.isCorrection() ? null : settings.floorOn(sheetId, claim.getDate());
         RoundingMode rounding = roundingOf(sheetId, claim);
         return rates.on(sheetId, person.gradeOn(claim.getDate()), claim.getDate())
                 .map(Rate::getPct)
                 .map(pct -> claim.getAmount().multiply(pct).movePointLeft(2).setScale(2, rounding))
-                .map(due -> floor == null ? due : due.max(floor))
                 .orElse(null);
     }
 

@@ -147,26 +147,27 @@ function halfUp(basis: string, late: Late): boolean {
 }
 
 /**
- * A claim's due in cents: the due fixed when it was settled (late charge frozen in), else its figure
- * — the due bound by its person's last statement, else its amount times its person's rate on its
- * date (as `pctOn` gives it), at least the floor in force on its date (`floorOn`, in cents) unless a correction —
- * with its late charge (by the late percent in force on each 30-day boundary) on top;
- * null when it has none. Its live figures round by the date `basis` (see {@link roundsOn}).
+ * A claim's due in cents: the due fixed when it was settled (late charge frozen in), else the greater of
+ * the floor in force on its date (`floorOn`, in cents) and its figure — the rate figure bound by its
+ * person's last statement, else its amount times its person's rate on its date (as `pctOn` gives it) —
+ * with its late charge (by the late percent in force on each 30-day boundary) on top; a correction has
+ * no floor and no charge. Null when it has none. Its live figures round by the date `basis` (see {@link roundsOn}).
  */
 export function claimDueCents(c: Claim, pctOn: PctOn, floorOn: FloorOn, late: Late, basis: string): number | null {
   if (c.settledDue !== null) return cents(c.settledDue);
   const up = halfUp(basis, late);
-  const figure = figureCents(c, pctOn, floorOn, up);
-  return figure === null ? null : figure + lateChargeCents(c, figure, late, up);
+  const figure = figureCents(c, pctOn, up);
+  if (figure === null) return null;
+  const charged = figure + lateChargeCents(c, figure, late, up);
+  return isCorrection(c) ? charged : Math.max(charged, floorOn(c.date));
 }
 
-/** A claim's figure in cents: the due bound by its person's last statement, else its floored live due. */
-function figureCents(c: Claim, pctOn: PctOn, floorOn: FloorOn, halfUp: boolean): number | null {
+/** A claim's figure in cents: the rate figure bound by its person's last statement, else its rate figure (no floor). */
+function figureCents(c: Claim, pctOn: PctOn, halfUp: boolean): number | null {
   if (isBound(c)) return c.statedDue === null ? null : cents(c.statedDue);
   const pct = pctOn(c.date);
   if (pct === null) return null;
-  const due = dueCents(cents(c.amount), pct, halfUp);
-  return isCorrection(c) ? due : Math.max(due, floorOn(c.date));
+  return dueCents(cents(c.amount), pct, halfUp);
 }
 
 /**

@@ -96,8 +96,10 @@ public class RollupService {
                 // the floor in force on the claim's date, the late percent in force on each 30-day boundary
                 BigDecimal floor = sheet == null ? zero() : sheet.floorOn(claim.getDate());
                 BigDecimal figure = LateCharge.withCharge(claim,
-                        figureOf(claim, ratesByGrade.getOrDefault(grade, List.of()), floor, rounding), today,
+                        figureOf(claim, ratesByGrade.getOrDefault(grade, List.of()), rounding), today,
                         d -> sheet == null ? zero() : sheet.latePctOn(d), rounding);
+                // the floor last, over the figure and its charge; a settled due is frozen, a correction has none
+                if (figure != null && claim.getSettledDue() == null && !claim.isCorrection()) figure = figure.max(floor);
                 // a due under a grade they had on its date but not today counts like a fixed one
                 if (figure != null && today != null && !grade.equals(person.gradeOn(today))) fixed = true;
                 // and so does a due under a rate that is not the one in force today
@@ -150,16 +152,15 @@ public class RollupService {
     }
 
     /**
-     * A claim's figure: its settled due, else its stated due, else its live due, at least the floor
-     * unless a correction, rounded as given; null when it has none.
+     * A claim's figure: its settled due, else its stated rate figure, else its rate figure (no floor),
+     * rounded as given; null when it has none.
      */
-    private static BigDecimal figureOf(Claim claim, List<Rate> rates, BigDecimal floor, RoundingMode rounding) {
+    private static BigDecimal figureOf(Claim claim, List<Rate> rates, RoundingMode rounding) {
         if (claim.getSettledDue() != null) return claim.getSettledDue();
         if (claim.isBound()) return claim.getStatedDue();
         BigDecimal pct = pctOn(rates, claim.getDate());
         if (pct == null) return null;
-        BigDecimal due = claim.getAmount().multiply(pct).movePointLeft(2).setScale(2, rounding);
-        return claim.isCorrection() ? due : due.max(floor);
+        return claim.getAmount().multiply(pct).movePointLeft(2).setScale(2, rounding);
     }
 
     /** Of one grade's rates, the percent in force on the date, or null. */
