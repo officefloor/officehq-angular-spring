@@ -1,0 +1,158 @@
+diff --git a/src/main/java/net/officefloor/hq/app/claim/ClaimService.java b/src/main/java/net/officefloor/hq/app/claim/ClaimService.java
+index a3c289d1f..c21f9c126 100644
+--- a/src/main/java/net/officefloor/hq/app/claim/ClaimService.java
++++ b/src/main/java/net/officefloor/hq/app/claim/ClaimService.java
+@@ -658,12 +658,13 @@ public class ClaimService {
+     }
+ 
+     /**
+-     * Give an opened claim its number: the sheet's next, or while the sheet numbers by period, the next
++     * Give an opened claim its number: the next after the last sheet-wide number given anywhere in the
++     * sheet's tree (its topmost ancestor and every descendant of that), or while the sheet numbers by period, the next
+      * within the period its due-by falls in (in no period: the next in the sheet's X sequence).
+      */
+     private void number(Sheet sheet, Claim claim) {
+         if (!sheet.numbersByPeriod()) {
+-            claim.setNumber(sheet.nextClaimNumber());
++            claim.setNumber(sheet.nextClaimNumberAfter(sheets.lastClaimNumberInTree(sheet.getId())));
+             return;
+         }
+         String period = periodOn(sheet.getId(), claim.getDueBy());
+diff --git a/src/main/java/net/officefloor/hq/app/person/PersonService.java b/src/main/java/net/officefloor/hq/app/person/PersonService.java
+index 42c220668..b68b9cde1 100644
+--- a/src/main/java/net/officefloor/hq/app/person/PersonService.java
++++ b/src/main/java/net/officefloor/hq/app/person/PersonService.java
+@@ -625,15 +625,7 @@ public class PersonService {
+      */
+     @Transactional(readOnly = true)
+     public List<String> treeOf(String sheetId) {
+-        String root = sheetId;
+-        Set<String> seen = new HashSet<>(Set.of(sheetId));
+-        for (String at = parents.parentOf(sheetId); at != null && seen.add(at); at = parents.parentOf(at)) root = at;
+-        List<String> tree = new ArrayList<>();
+-        if (!root.equals(sheetId)) tree.add(root);
+-        for (String descendant : parents.descendantsOf(root)) {
+-            if (!descendant.equals(sheetId) && !tree.contains(descendant)) tree.add(descendant);
+-        }
+-        return tree;
++        return parents.treeOf(sheetId).stream().filter(at -> !at.equals(sheetId)).toList();
+     }
+ 
+     /** The ids of the sheet's people whose name or an alias another sheet of its tree uses as a name or alias. */
+diff --git a/src/main/java/net/officefloor/hq/app/sheet/Sheet.java b/src/main/java/net/officefloor/hq/app/sheet/Sheet.java
+index 990a08feb..158562eff 100644
+--- a/src/main/java/net/officefloor/hq/app/sheet/Sheet.java
++++ b/src/main/java/net/officefloor/hq/app/sheet/Sheet.java
+@@ -306,4 +306,10 @@ public class Sheet {
+ 
+     /** Take the next claim number on the sheet. */
+     public long nextClaimNumber() { return ++lastClaimNumber; }
++
++    /** The next sheet-wide claim number after both the sheet's last and {@code last}, kept as the sheet's last. */
++    public long nextClaimNumberAfter(long last) {
++        lastClaimNumber = Math.max(lastClaimNumber, last) + 1;
++        return lastClaimNumber;
++    }
+ }
+diff --git a/src/main/java/net/officefloor/hq/app/sheet/SheetParentRepository.java b/src/main/java/net/officefloor/hq/app/sheet/SheetParentRepository.java
+index dd18f7c7d..67b92b82f 100644
+--- a/src/main/java/net/officefloor/hq/app/sheet/SheetParentRepository.java
++++ b/src/main/java/net/officefloor/hq/app/sheet/SheetParentRepository.java
+@@ -1,7 +1,9 @@
+ package net.officefloor.hq.app.sheet;
+ 
+ import java.util.ArrayList;
++import java.util.HashSet;
+ import java.util.List;
++import java.util.Set;
+ import org.springframework.data.jpa.repository.JpaRepository;
+ 
+ public interface SheetParentRepository extends JpaRepository<SheetParent, String> {
+@@ -22,6 +24,22 @@ public interface SheetParentRepository extends JpaRepository<SheetParent, String
+         return descendants;
+     }
+ 
++    /** The topmost ancestor of the sheet (the sheet itself when it names no parent). */
++    default String rootOf(String sheetId) {
++        String root = sheetId;
++        Set<String> seen = new HashSet<>(Set.of(sheetId));
++        for (String at = parentOf(sheetId); at != null && seen.add(at); at = parentOf(at)) root = at;
++        return root;
++    }
++
++    /** Every sheet of the sheet's tree: its topmost ancestor, then every descendant of that, each once. */
++    default List<String> treeOf(String sheetId) {
++        String root = rootOf(sheetId);
++        List<String> tree = new ArrayList<>(List.of(root));
++        tree.addAll(descendantsOf(root));
++        return tree;
++    }
++
+     /** The sheet's parent; null when it names none. */
+     default String parentOf(String sheetId) {
+         return findById(sheetId).map(SheetParent::getParentSheet).orElse(null);
+diff --git a/src/main/java/net/officefloor/hq/app/sheet/SheetRepository.java b/src/main/java/net/officefloor/hq/app/sheet/SheetRepository.java
+index 4ed70ef8c..cfb33e101 100644
+--- a/src/main/java/net/officefloor/hq/app/sheet/SheetRepository.java
++++ b/src/main/java/net/officefloor/hq/app/sheet/SheetRepository.java
+@@ -1,6 +1,7 @@
+ package net.officefloor.hq.app.sheet;
+ 
+ import jakarta.persistence.LockModeType;
++import java.util.Collection;
+ import java.util.Optional;
+ import org.springframework.data.jpa.repository.JpaRepository;
+ import org.springframework.data.jpa.repository.Lock;
+@@ -12,4 +13,8 @@ public interface SheetRepository extends JpaRepository<Sheet, String> {
+     @Lock(LockModeType.PESSIMISTIC_WRITE)
+     @Query("select s from Sheet s where s.id = :id")
+     Optional<Sheet> findForUpdate(String id);
++
++    /** The last sheet-wide claim number given on any of the sheets; 0 if none. */
++    @Query(value = "select coalesce(max(last_claim_number), 0) from sheet where id in (:ids)", nativeQuery = true)
++    long lastClaimNumberAmong(Collection<String> ids);
+ }
+diff --git a/src/main/java/net/officefloor/hq/app/sheet/SheetService.java b/src/main/java/net/officefloor/hq/app/sheet/SheetService.java
+index 1c8326153..b97db0da8 100644
+--- a/src/main/java/net/officefloor/hq/app/sheet/SheetService.java
++++ b/src/main/java/net/officefloor/hq/app/sheet/SheetService.java
+@@ -21,6 +21,7 @@ import org.springframework.transaction.annotation.Transactional;
+ public class SheetService {
+ 
+     private final SheetRepository sheets;
++    private final SheetParentRepository parents;
+     private final RollupService rollup;
+     // looked up when used: the periods depend on the claims, which depend on the sheet
+     private final ObjectProvider<PeriodService> periods;
+@@ -28,10 +29,11 @@ public class SheetService {
+     private final ObjectProvider<ClaimRepository> claims;
+     private final Audit audit;
+ 
+-    public SheetService(SheetRepository sheets, RollupService rollup, ObjectProvider<PeriodService> periods,
++    public SheetService(SheetRepository sheets, SheetParentRepository parents, RollupService rollup, ObjectProvider<PeriodService> periods,
+             ObjectProvider<SettingService> settings, ObjectProvider<ClaimRepository> claims, Audit audit) {
+         this.claims = claims;
+         this.sheets = sheets;
++        this.parents = parents;
+         this.rollup = rollup;
+         this.periods = periods;
+         this.settings = settings;
+@@ -66,6 +68,18 @@ public class SheetService {
+         return sheets.findForUpdate(id).orElseThrow(SheetNotFoundException::new);
+     }
+ 
++    /**
++     * The last sheet-wide claim number given on any sheet of the sheet's tree (its topmost ancestor and every
++     * descendant of that); 0 if none. The tree's topmost sheet is locked too, as well as the caller's own
++     * (see {@link #lockForNumbering}), so two users opening claims on sheets of one tree get different numbers.
++     */
++    @Transactional
++    public long lastClaimNumberInTree(String id) {
++        String root = parents.rootOf(id);
++        if (!root.equals(id)) sheets.findForUpdate(root);
++        return sheets.lastClaimNumberAmong(parents.treeOf(id));
++    }
++
+     /**
+      * Change the sheet's today; it has no audit line of its own, but a new today first audits a SNAPSHOT
+      * line per person, in list order, with their due-total on the day being left. With grace days set, the open periods
