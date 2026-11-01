@@ -169,6 +169,11 @@ export class Session {
    */
   readonly cutTotals = signal<ReadonlyMap<number, number>>(new Map());
   /**
+   * Each person's due-total in cents as the people section shows it, by person id; null when it shows n/a.
+   * Kept by the people section.
+   */
+  readonly dueTotals = signal<ReadonlyMap<number, number | null>>(new Map());
+  /**
    * The as-of date (yyyy-mm-dd) the signed-in user views the sheet at, or null: while it is set every
    * figure is shown as it stood at the end of that date, with it as the sheet's today, and every change
    * is refused. It belongs to this screen, and is left as it is by loading a sheet.

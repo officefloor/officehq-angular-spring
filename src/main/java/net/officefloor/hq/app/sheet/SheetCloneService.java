@@ -139,6 +139,26 @@ public class SheetCloneService {
             insertNew("pool_member", row);
         }
 
+        // the crews and their members
+        Map<Long, Long> crews = new HashMap<>();
+        for (Map<String, Object> row : rows("SELECT * FROM crew WHERE sheet_id = ? ORDER BY id", sheetId)) {
+            Long old = ((Number) row.get("ID")).longValue();
+            Long lead = people.get(((Number) row.get("LEAD_PERSON_ID")).longValue());
+            if (lead == null) continue;
+            row.put("SHEET_ID", toSheetId);
+            row.put("LEAD_PERSON_ID", lead);
+            crews.put(old, insertNew("crew", row));
+        }
+        for (Map<String, Object> row : rows("SELECT * FROM crew_member WHERE sheet_id = ? ORDER BY id", sheetId)) {
+            Long crew = crews.get(((Number) row.get("CREW_ID")).longValue());
+            Long person = people.get(((Number) row.get("PERSON_ID")).longValue());
+            if (crew == null || person == null) continue;
+            row.put("SHEET_ID", toSheetId);
+            row.put("CREW_ID", crew);
+            row.put("PERSON_ID", person);
+            insertNew("crew_member", row);
+        }
+
         // the periods, all open
         for (Map<String, Object> row : rows("SELECT * FROM period WHERE sheet_id = ? ORDER BY id", sheetId)) {
             row.put("SHEET_ID", toSheetId);
