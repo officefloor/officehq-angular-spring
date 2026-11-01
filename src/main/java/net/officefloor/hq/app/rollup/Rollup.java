@@ -4,10 +4,12 @@ import java.math.BigDecimal;
 import java.math.RoundingMode;
 import java.time.LocalDate;
 import java.util.ArrayList;
+import java.util.Collection;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
+import java.util.function.Function;
 import java.util.stream.Stream;
 import net.officefloor.hq.app.Audit;
 import net.officefloor.hq.app.claim.Claim;
@@ -129,7 +131,8 @@ public class Rollup {
             List<BigDecimal> dues = Stream.concat(counting.stream()
                     .map(c -> {
                         BigDecimal claimDue = dueOf(c, person.gradeOn(c.getDate()), sheetRates, sheet, sheetClaims);
-                        return claimDue == null ? null : claimDue.subtract(c.sharedPartOf(claimDue));
+                        return claimDue == null ? null
+                                : claimDue.subtract(sharedPartOf(c, claimDue, ownerOf::get, sheetRates, sheet, sheetClaims));
                     }), heldParts(person, ownerOf, today, sheetRates, sheet, sheetClaims).stream())
                     .filter(Objects::nonNull)
                     .toList();
@@ -169,8 +172,8 @@ public class Rollup {
                 claims.findBySheetIdOrderByListedDescIdDesc(sheet.getId()));
     }
 
-    /** The parts a person holds of other people's claims that count (as for their own person), each the claim's
-     *  due times the person's share divided by 100, rounded half to even; a claim with no due adds none. */
+    /** The parts a person holds of other people's claims that count (as for their own person), each as
+     *  {@link #partOf}; a claim with no due adds none, nor does one whose part the person's grade has no rate for. */
     private static List<BigDecimal> heldParts(Person person, Map<Long, Person> ownerOf, LocalDate today,
             RateChain sheetRates, Sheet sheet, List<Claim> sheetClaims) {
         List<BigDecimal> parts = new ArrayList<>();
@@ -181,11 +184,42 @@ public class Rollup {
                 continue;
             }
             BigDecimal due = dueOf(claim, owner.gradeOn(claim.getDate()), sheetRates, sheet, sheetClaims);
-            if (due != null) {
-                parts.add(share.partOf(due));
+            BigDecimal part = due == null ? null : partOf(claim, share, due, person, sheetRates, sheet, sheetClaims);
+            if (part != null) {
+                parts.add(part);
             }
         }
         return parts;
+    }
+
+    /** The parts of a claim's due its holders hold, added up, each as {@link #partOf} (one with no rate adding
+     *  0.00); the holders are found by person id. */
+    public static BigDecimal sharedPartOf(Claim claim, BigDecimal due, Function<Long, Person> holders,
+            RateChain sheetRates, Sheet sheet, Collection<Claim> roundingClaims) {
+        BigDecimal total = BigDecimal.ZERO.setScale(2);
+        for (ClaimShare share : claim.getShares()) {
+            Person holder = holders.apply(share.getPersonId());
+            BigDecimal part = holder == null ? null
+                    : partOf(claim, share, due, holder, sheetRates, sheet, roundingClaims);
+            total = part == null ? total : total.add(part);
+        }
+        return total;
+    }
+
+    /** A holder's part of a claim with this due: a settled claim keeps its parts frozen, its settled due times the
+     *  holder's share divided by 100, rounded half to even; any other claim's is its amount times the holder's share
+     *  divided by 100, times the rate of the holder's own grade in force on the claim's date divided by 100, rounded
+     *  as the claim rounds; null when their grade has no rate then. */
+    public static BigDecimal partOf(Claim claim, ClaimShare share, BigDecimal due, Person holder,
+            RateChain sheetRates, Sheet sheet, Collection<Claim> roundingClaims) {
+        if (claim.getSettledDue() != null) {
+            return share.partOf(due);
+        }
+        RoundingMode rounding = sheet == null ? RoundingMode.HALF_EVEN
+                : sheet.roundingFor(ClaimService.roundingDate(claim, roundingClaims));
+        return sheetRates.inForceOn(holder.gradeOn(claim.getDate()), claim.getDate(), claim.getId())
+                .map(rate -> share.partOf(claim.getAmount(), rate.getRate(), rounding))
+                .orElse(null);
     }
 
     /** A person's score, as the screen shows it. */

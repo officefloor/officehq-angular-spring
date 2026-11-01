@@ -3,11 +3,11 @@ import { Component, computed, inject, signal } from '@angular/core';
 import { takeUntilDestroyed, toObservable } from '@angular/core/rxjs-interop';
 import { FormControl, FormGroup, ReactiveFormsModule, Validators } from '@angular/forms';
 import { forkJoin, of, switchMap } from 'rxjs';
-import { AMOUNT_PATTERN, ClaimView, Claims, cents, countsAtEndWithHolds, countsClaimed, countsWithHolds, isOverdue, isPendingLate, isReviewLate, money, roundingDate, sharePartCents, statusAt } from '../../core/claims';
+import { AMOUNT_PATTERN, ClaimView, Claims, cents, countsAtEndWithHolds, countsClaimed, countsWithHolds, isOverdue, isPendingLate, isReviewLate, money, holderPartCents, roundingDate, sharePartCents, statusAt } from '../../core/claims';
 import { Grade, People, PersonView, gradeOn, nameWithGrade } from '../../core/people';
 import { PatronView, Patrons } from '../../core/patrons';
 import { Periods, periodOn } from '../../core/periods';
-import { DEFAULT_DUE_TERMS, DueTerms, NOT_AVAILABLE, RateLine, Rates, claimDueCents } from '../../core/rates';
+import { DEFAULT_DUE_TERMS, DueTerms, NOT_AVAILABLE, RateLine, Rates, claimDueCents, rateOnLine, roundsHalfUp } from '../../core/rates';
 import { Sheets, graceOn } from '../../core/sheet';
 import { SnapshotView, Snapshots } from '../../core/snapshots';
 import { StatementSummary, Statements } from '../../core/statements';
@@ -90,10 +90,6 @@ function trimmedSum(figures: number[]): number {
   return figures.length < 3 ? sum : sum - Math.max(...figures) - Math.min(...figures);
 }
 
-/** What a claim's own person counts of its due, in whole cents: the due less its holders' parts. */
-function ownPart(c: ClaimView, due: number): number {
-  return (c.shares ?? []).reduce((rest, sh) => rest - sharePartCents(due, sh.share), due);
-}
 
 function csvField(value: string): string {
   return /[",\r\n]/.test(value) ? '"' + value.replaceAll('"', '""') + '"' : value;
@@ -840,7 +836,7 @@ export class PeopleList {
       const counting = this.claimsOf(p.id).filter(countsWithHolds(p.holds, this.todayNow(), p.retiredFrom));
       const grades = [this.gradeToday(p), ...counting.map((c) => gradeOn(p, c.date))];
       const dues = [
-        ...counting.map((c) => this.claimDue(p, c, dueTerms)).map((due, i) => due === null ? null : ownPart(counting[i], due)),
+        ...counting.map((c) => this.claimDue(p, c, dueTerms)).map((due, i) => due === null ? null : this.ownPart(counting[i], due, dueTerms)),
         ...(this.heldParts().get(p.id) ?? []).map((h) => h.part),
       ].filter((due) => due !== null);
       if (!grades.some((g) => today.has(g)) && dues.length === 0) {
@@ -852,8 +848,7 @@ export class PeopleList {
     return byPerson;
   });
   /** The parts each person holds of other people's claims that count (as for their own person), by holder id: each
-   *  the claim's due times the holder's share divided by 100, rounded half to even, in whole cents; a claim with no
-   *  due gives none. */
+   *  as `holderPart`, in whole cents; a claim with no due gives none, nor does one whose holder's grade has no rate. */
   private readonly heldParts = computed(() => {
     const dueTerms = this.sheets.current() ?? DEFAULT_DUE_TERMS;
     const byPerson = new Map<number, { claim: ClaimView; part: number }[]>();
@@ -863,7 +858,9 @@ export class PeopleList {
         const due = this.claimDue(p, c, dueTerms);
         if (due === null) continue;
         for (const sh of c.shares) {
-          byPerson.set(sh.personId, [...(byPerson.get(sh.personId) ?? []), { claim: c, part: sharePartCents(due, sh.share) }]);
+          const part = this.holderPart(c, sh, due, dueTerms);
+          if (part === null) continue;
+          byPerson.set(sh.personId, [...(byPerson.get(sh.personId) ?? []), { claim: c, part }]);
         }
       }
     }
@@ -879,10 +876,10 @@ export class PeopleList {
       for (const c of this.claimsOf(p.id).filter(countsWithHolds(p.holds, this.todayNow(), p.retiredFrom))) {
         const due = this.claimDue(p, c, dueTerms) ?? 0;
         if (c.status === 'SETTLED') {
-          split.settled += ownPart(c, due);
+          split.settled += this.ownPart(c, due, dueTerms);
           if (c.corrects == null) split.scored += due;
         }
-        else if (c.status === 'OPEN' || c.status === 'PENDING') split.open += ownPart(c, due);
+        else if (c.status === 'OPEN' || c.status === 'PENDING') split.open += this.ownPart(c, due, dueTerms);
       }
       for (const h of this.heldParts().get(p.id) ?? []) {
         if (h.claim.status === 'SETTLED') split.settled += h.part;
@@ -1347,6 +1344,25 @@ export class PeopleList {
   /** The person's grade in force on the sheet's today. */
   protected gradeToday(p: PersonView): Grade {
     return gradeOn(p, this.sheets.current()?.today ?? '');
+  }
+
+  /** What a claim's own person counts of its due, in whole cents: the due less its holders' parts (one with no rate
+   *  taking 0.00). */
+  private ownPart(c: ClaimView, due: number, dueTerms: DueTerms): number {
+    return (c.shares ?? []).reduce((rest, sh) => rest - (this.holderPart(c, sh, due, dueTerms) ?? 0), due);
+  }
+
+  /** A holder's part of a claim with this due, in whole cents: a settled claim keeps its parts frozen, its settled
+   *  due times the holder's share divided by 100, rounded half to even; any other claim's is its amount times the
+   *  share divided by 100, times the rate of the holder's own grade in force on the claim's date divided by 100,
+   *  rounded as the claim rounds; null when their grade has no rate then. */
+  private holderPart(c: ClaimView, sh: { personId: number; share: string }, due: number, dueTerms: DueTerms): number | null {
+    if (c.settledDue !== null) return sharePartCents(due, sh.share);
+    const holder = this.people().find((p) => p.id === sh.personId);
+    if (!holder) return null;
+    const rate = rateOnLine(this.rates.lineByGrade().get(gradeOn(holder, c.date)) ?? NO_RATES, c.date, c.id);
+    if (rate === undefined) return null;
+    return holderPartCents(cents(c.amount), sh.share, rate, roundsHalfUp(roundingDate(c, this.claimsOf(c.personId)), dueTerms));
   }
 
   /** A claim's due in whole cents, at the rates of its person's grade in force on its date; null with none. */

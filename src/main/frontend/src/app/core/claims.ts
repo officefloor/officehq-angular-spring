@@ -105,6 +105,18 @@ export function sharePartCents(dueCents: number, share: string): number {
   return rest > 5000 || (rest === 5000 && whole % 2 !== 0) ? whole + 1 : whole;
 }
 
+/** A holder's part of a claim's amount in whole cents at the rate of their own grade: the amount times their share
+ *  divided by 100, times the rate divided by 100, rounded as the claim rounds (half up or half to even, away from 0
+ *  alike for a negative amount). */
+export function holderPartCents(amountCents: number, share: string, rate: string, halfUp = false): number {
+  if (amountCents < 0) return -holderPartCents(-amountCents, share, rate, halfUp);
+  const product = BigInt(amountCents) * BigInt(cents(share)) * BigInt(cents(rate));
+  const quotient = product / 100000000n;
+  const remainder = product % 100000000n;
+  const roundUp = remainder > 50000000n || (remainder === 50000000n && (halfUp || quotient % 2n === 1n));
+  return Number(roundUp ? quotient + 1n : quotient);
+}
+
 /** A line of a claim: its label, its quantity (a whole number, at least 1) and its unit amount with exactly two
  *  decimals. */
 export interface ClaimLine {

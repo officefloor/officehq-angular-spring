@@ -36,4 +36,10 @@ public class ClaimShare {
     public BigDecimal partOf(BigDecimal due) {
         return due.multiply(share).movePointLeft(2).setScale(2, RoundingMode.HALF_EVEN);
     }
+
+    /** The holder's part of a claim's amount at their own grade's rate: the amount times their share divided by
+     *  100, times the rate divided by 100, rounded as the claim rounds. */
+    public BigDecimal partOf(BigDecimal amount, BigDecimal rate, RoundingMode rounding) {
+        return amount.multiply(share).multiply(rate).movePointLeft(4).setScale(2, rounding);
+    }
 }
