@@ -12,6 +12,7 @@ import java.util.Objects;
 import net.officefloor.hq.app.Audit;
 import net.officefloor.hq.app.claim.Claim;
 import net.officefloor.hq.app.claim.ClaimRepository;
+import net.officefloor.hq.app.claim.LateCharge;
 import net.officefloor.hq.app.person.Person;
 import net.officefloor.hq.app.person.PersonRepository;
 import net.officefloor.hq.app.rate.Rate;
@@ -22,7 +23,7 @@ import org.springframework.stereotype.Service;
 
 /**
  * The sheet's figures as the screen shows them: each person's claimed and due-total, and the
- * sheet's claimed-total and due-total. A change takes a {@link #snapshot} before it alters
+ * sheet's claimed-total and due-total; an overdue claim's due has its {@link LateCharge} on top. A change takes a {@link #snapshot} before it alters
  * anything and calls {@link #recordChanges} once it has, which audits, after the change's own
  * lines, a ROLLUP line for each person whose figures moved (in the order they were added) and a
  * TOTALS line when the sheet's totals moved.
@@ -63,6 +64,8 @@ public class RollupService {
         Sheet sheet = sheets.findForUpdate(sheetId).orElse(null);
         LocalDate today = sheet == null ? null : sheet.getToday();
         BigDecimal floor = sheet == null ? zero() : sheet.getFloor();
+        int terms = sheet == null ? 0 : sheet.getTerms();
+        BigDecimal latePct = sheet == null ? zero() : sheet.getLatePct();
         Map<String, List<Rate>> ratesByGrade = new LinkedHashMap<>();
         for (Rate rate : rates.findBySheetIdOrderByGradeAscFromDateAsc(sheetId)) {
             ratesByGrade.computeIfAbsent(rate.getGrade(), g -> new ArrayList<>()).add(rate);
@@ -85,7 +88,8 @@ public class RollupService {
                 if (!claim.getStatus().counts(person.isHeld())) continue;
                 claimed = claimed.add(claim.getAmount());
                 if (claim.getSettledDue() != null || (claim.isStated() && claim.getStatedDue() != null)) fixed = true;
-                BigDecimal figure = figureOf(claim, theirRates, floor);
+                BigDecimal figure = LateCharge.withCharge(claim, figureOf(claim, theirRates, floor), terms, today,
+                        latePct);
                 if (figure != null) due = due.add(figure);
             }
             // As on screen: n/a when their grade has no rate today and none of the counted claims has a fixed due.

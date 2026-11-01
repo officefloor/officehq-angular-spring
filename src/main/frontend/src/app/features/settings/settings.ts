@@ -19,11 +19,15 @@ interface SettingsView {
   floor: string;
   /** The days after its date by which a claim is due. */
   terms: number;
+  /** The percent an overdue claim's due gains of its figure for every full 30 days overdue, two decimals. */
+  latePct: string;
   roles: RoleView[];
 }
 
 // The sheet's settings: the clerk limit (blank: no limit), the floor of a claim's live due, the terms
-// (the days after its date by which a claim is due), and the role given to each user name. Saving stores the settings whose field was changed since the last save.
+// (the days after its date by which a claim is due), the late percent (charged on an overdue claim's
+// figure for every full 30 days overdue), and the role given to each user name. Saving stores the settings whose field was changed since the last save;
+// clearing the clerk limit (Delete or Backspace) counts as a change even when it was already blank.
 @Component({
   selector: 'app-settings',
   imports: [ReactiveFormsModule],
@@ -32,11 +36,14 @@ interface SettingsView {
       <h2 id="settings-heading">Settings</h2>
       <form [formGroup]="form" (ngSubmit)="save()" aria-label="Settings">
         <label for="setting-clerk-limit">Clerk limit (blank: no limit)</label>
-        <input id="setting-clerk-limit" data-testid="setting-clerk-limit" formControlName="clerkLimit" inputmode="decimal" />
+        <input id="setting-clerk-limit" data-testid="setting-clerk-limit" formControlName="clerkLimit" inputmode="decimal"
+               (keydown.delete)="form.controls.clerkLimit.markAsDirty()" (keydown.backspace)="form.controls.clerkLimit.markAsDirty()" />
         <label for="setting-floor">Floor (least live due)</label>
         <input id="setting-floor" data-testid="setting-floor" formControlName="floor" inputmode="decimal" />
         <label for="setting-terms">Terms (days)</label>
         <input id="setting-terms" data-testid="setting-terms" formControlName="terms" inputmode="numeric" />
+        <label for="setting-late-pct">Late percent (per full 30 days overdue)</label>
+        <input id="setting-late-pct" data-testid="setting-late-pct" formControlName="latePct" inputmode="decimal" />
         <button type="submit" data-testid="settings-save">Save settings</button>
         @if (error()) {
           <p role="alert" class="error" data-testid="settings-error">{{ error() }}</p>
@@ -45,6 +52,7 @@ interface SettingsView {
       <p>Clerk limit now: <span data-testid="setting-clerk-limit-current">{{ clerkLimit() ?? '' }}</span></p>
       <p>Floor now: <span data-testid="setting-floor-current">{{ session.floor() }}</span></p>
       <p>Terms now: <span data-testid="setting-terms-current">{{ session.terms() }}</span></p>
+      <p>Late percent now: <span data-testid="setting-late-pct-current">{{ session.latePct() }}</span></p>
       <form [formGroup]="roleForm" (ngSubmit)="setRole()" aria-label="Set role">
         <label for="role-form-user">User</label>
         <input id="role-form-user" data-testid="role-form-user" formControlName="user" />
@@ -92,6 +100,7 @@ export class Settings {
     clerkLimit: new FormControl('', { nonNullable: true }),
     floor: new FormControl('', { nonNullable: true }),
     terms: new FormControl('', { nonNullable: true }),
+    latePct: new FormControl('', { nonNullable: true }),
   });
   protected readonly roleForm = new FormGroup({
     user: new FormControl('', { nonNullable: true }),
@@ -135,6 +144,7 @@ export class Settings {
     this.userRoles.set(view.roles);
     this.session.floor.set(view.floor);
     this.session.terms.set(view.terms);
+    this.session.latePct.set(view.latePct);
   }
 
   protected async save(): Promise<void> {
@@ -142,10 +152,11 @@ export class Settings {
     this.error.set('');
     const sheet = this.session.sheetId();
     if (!sheet) return;
-    const { clerkLimit, floor, terms } = this.form.controls;
+    const { clerkLimit, floor, terms, latePct } = this.form.controls;
     const value = clerkLimit.value.trim();
     const floorValue = floor.value.trim();
     const termsValue = terms.value.trim();
+    const latePctValue = latePct.value.trim();
     if (clerkLimit.dirty && value && !/^\d{1,12}(\.\d{1,2})?$/.test(value)) {
       this.error.set('Enter a clerk limit of 0.00 or more, with at most two decimals, or leave it blank for none.');
       return;
@@ -156,6 +167,10 @@ export class Settings {
     }
     if (terms.dirty && !/^\d{1,4}$/.test(termsValue)) {
       this.error.set('Enter terms as a whole number of days, 0 or more.');
+      return;
+    }
+    if (latePct.dirty && !/^\d{1,5}(\.\d{1,2})?$/.test(latePctValue)) {
+      this.error.set('Enter a late percent of 0.00 or more, with at most two decimals.');
       return;
     }
     this.submitting.add('save');
@@ -179,6 +194,13 @@ export class Settings {
           this.http.put<SettingsView>(`${this.base(sheet)}/settings/terms`, { value: termsValue }, { headers: this.headers() }),
         );
         terms.markAsPristine();
+        if (this.session.sheetId() === sheet) this.show(view);
+      }
+      if (latePct.dirty) {
+        const view = await firstValueFrom(
+          this.http.put<SettingsView>(`${this.base(sheet)}/settings/late-pct`, { value: latePctValue }, { headers: this.headers() }),
+        );
+        latePct.markAsPristine();
         if (this.session.sheetId() === sheet) this.show(view);
       }
     } catch {

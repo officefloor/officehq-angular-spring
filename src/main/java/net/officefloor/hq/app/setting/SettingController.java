@@ -23,9 +23,9 @@ public class SettingController {
 
     /**
      * The sheet's settings as the screen shows them; the clerk limit has two decimals, null when none,
-     * and so has the floor; the terms are in days.
+     * and so has the floor; the terms are in days; the late percent has two decimals.
      */
-    public record SettingsView(String clerkLimit, String floor, int terms, List<RoleView> roles) {}
+    public record SettingsView(String clerkLimit, String floor, int terms, String latePct, List<RoleView> roles) {}
 
     /** A user name's role, as clerk or steward. */
     public record RoleView(String user, String role) {
@@ -46,6 +46,14 @@ public class SettingController {
     public record FloorRequest(@NotNull @Pattern(regexp = "\\d{1,12}(\\.\\d{1,2})?") String value) {
 
         BigDecimal floorValue() {
+            return new BigDecimal(value).setScale(2);
+        }
+    }
+
+    /** A late percent with at most two decimals. */
+    public record LatePctRequest(@NotNull @Pattern(regexp = "\\d{1,5}(\\.\\d{1,2})?") String value) {
+
+        BigDecimal latePctValue() {
             return new BigDecimal(value).setScale(2);
         }
     }
@@ -77,7 +85,7 @@ public class SettingController {
             @PathVariable @Size(max = 100) @Pattern(regexp = "[A-Za-z0-9._-]+") String sheetId,
             @RequestHeader("X-User") @NotBlank @Size(max = 100) String user) {
         return new SettingsView(text(service.clerkLimit(sheetId)), text(service.floor(sheetId)),
-                service.terms(sheetId),
+                service.terms(sheetId), text(service.latePct(sheetId)),
                 service.roles(sheetId).stream().map(RoleView::of).toList());
     }
 
@@ -105,6 +113,15 @@ public class SettingController {
             @RequestHeader("X-User") @NotBlank @Size(max = 100) String user,
             @RequestBody @Valid TermsRequest request) {
         service.setTerms(sheetId, user, request.termsValue());
+        return get(sheetId, user);
+    }
+
+    @PutMapping("/settings/late-pct")
+    public SettingsView setLatePct(
+            @PathVariable @Size(max = 100) @Pattern(regexp = "[A-Za-z0-9._-]+") String sheetId,
+            @RequestHeader("X-User") @NotBlank @Size(max = 100) String user,
+            @RequestBody @Valid LatePctRequest request) {
+        service.setLatePct(sheetId, user, request.latePctValue());
         return get(sheetId, user);
     }
 

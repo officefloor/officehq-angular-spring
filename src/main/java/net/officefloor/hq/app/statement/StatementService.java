@@ -22,7 +22,8 @@ import org.springframework.transaction.annotation.Transactional;
 
 /**
  * The statements taken for people on a sheet. Taking one records the person's due-total at that
- * moment and binds each of their claims that counts to the figure it has then; their other claims
+ * moment (late charges included) and binds each of their claims that counts to the figure it has
+ * then, without its late charge, which keeps following the sheet's today; their other claims
  * are left unbound, their due live again. A claim's due fixed when settled stays as it is.
  */
 @Service
@@ -76,14 +77,15 @@ public class StatementService {
         BigDecimal total = BigDecimal.ZERO.setScale(2);
         int counted = 0;
         for (Claim claim : theirs) {
-            if (!claim.getStatus().counts()) {
+            if (!claim.getStatus().counts(person.isHeld())) {
                 claim.unstate();
                 continue;
             }
             BigDecimal figure = claimService.figureOf(sheetId, person, claim);
+            BigDecimal due = claimService.chargedFigureOf(sheetId, person, claim);
             if (claim.getSettledDue() != null || (claim.isStated() && claim.getStatedDue() != null)) fixed = true;
             claim.state(figure);
-            if (figure != null) total = total.add(figure);
+            if (due != null) total = total.add(due);
             counted++;
         }
         // As on screen: n/a when their grade has no rate today and none of the counted claims has a fixed due.

@@ -26,7 +26,8 @@ import org.springframework.transaction.annotation.Transactional;
  * as {@link ClaimStatus} allows; a change it does not allow is refused. Opening a claim gives it
  * the sheet's next number, which it keeps when voided and is never given again. Only a DRAFT claim
  * can be edited; an OPEN one is changed by voiding it and adding a new one. Settling it
- * fixes its due at its person's grade rate of the moment on the claim's date; with no such rate it
+ * fixes its due at its figure (the due bound by a statement, else its person's grade rate of the
+ * moment on the claim's date) with its late charge of the moment frozen in; with no figure it
  * stays live. The user who opened a claim cannot settle it, and a clerk cannot settle one whose
  * due is above the sheet's clerk limit (a steward can). No claim dated inside a closed period can
  * be added, edited (to or from such a date), opened, settled or voided. No claim can be added
@@ -109,7 +110,9 @@ public class ClaimService {
             throw new ClaimSettledByOpenerException();
         }
         Person person = people.findByIdAndSheetId(claim.getPersonId(), sheetId).orElseThrow(PersonNotFoundException::new);
-        if (next == ClaimStatus.SETTLED) refuseIfOverClerkLimit(sheetId, user, person, claim);
+        // Settling freezes the late charge of the moment into the settled due.
+        BigDecimal settling = next == ClaimStatus.SETTLED ? chargedFigureOf(sheetId, person, claim) : null;
+        if (next == ClaimStatus.SETTLED) refuseIfOverClerkLimit(sheetId, user, settling);
         RollupService.Snapshot before = rollup.snapshot(sheetId);
         refuseIfClosed(sheetId, claim.getDate());
         Long number = claim.getNumber();
@@ -119,7 +122,7 @@ public class ClaimService {
                 claim.setNumber(number);
                 claim.setOpenedBy(user.strip());
             }
-            case SETTLED -> claim.setSettledDue(dueOf(sheetId, person, claim));
+            case SETTLED -> claim.setSettledDue(settling);
             default -> {}
         }
         claim.setStatus(next);
@@ -149,6 +152,17 @@ public class ClaimService {
     }
 
     /**
+     * A claim's due now: its figure, with the late charge on top while it is overdue; null when it
+     * has none. A statement binds the figure, never the charge.
+     */
+    public BigDecimal chargedFigureOf(String sheetId, Person person, Claim claim) {
+        BigDecimal figure = figureOf(sheetId, person, claim);
+        if (claim.getSettledDue() != null) return figure;
+        return LateCharge.withCharge(claim, figure, settings.terms(sheetId), sheets.today(sheetId),
+                settings.latePct(sheetId));
+    }
+
+    /**
      * A claim's live due: its amount times its person's grade rate on its date, rounded half to even
      * to cents, and at least the sheet's floor; null with no rate.
      */
@@ -174,10 +188,9 @@ public class ClaimService {
     }
 
     /** Refuse a clerk's settling of a claim whose due is above the clerk limit; a due of n/a is within any. */
-    private void refuseIfOverClerkLimit(String sheetId, String user, Person person, Claim claim) {
+    private void refuseIfOverClerkLimit(String sheetId, String user, BigDecimal due) {
         if (settings.roleOf(sheetId, user) == Role.STEWARD) return;
         BigDecimal limit = settings.clerkLimit(sheetId);
-        BigDecimal due = dueOf(sheetId, person, claim);
         if (limit != null && due != null && due.compareTo(limit) > 0) throw new ClaimOverClerkLimitException();
     }
 

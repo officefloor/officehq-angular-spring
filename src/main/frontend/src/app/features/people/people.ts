@@ -192,7 +192,7 @@ export class People {
       const period = periodOn(this.periods(), c.date);
       const grade = grades.get(c.personId);
       if (period === null || grade === undefined) continue;
-      by.set(period.id, (by.get(period.id) ?? 0) + (claimDueCents(c, this.ratesOf(grade), cents(this.session.floor())) ?? 0));
+      by.set(period.id, (by.get(period.id) ?? 0) + (claimDueCents(c, this.ratesOf(grade), cents(this.session.floor()), this.session.late()) ?? 0));
     }
     return by;
   });
@@ -227,11 +227,12 @@ export class People {
     const terms = this.session.terms();
     const today = this.session.today();
     const floor = cents(this.session.floor());
+    const late = this.session.late();
     const by = new Map<number, Overdue>();
     for (const p of this.people()) {
       const rates = this.ratesOf(p.grade);
       const overdue = this.claimsOf(p.id).filter((c) => this.counts(c) && isOverdue(c, terms, today));
-      by.set(p.id, { count: overdue.length, cents: overdue.reduce((sum, c) => sum + (claimDueCents(c, rates, floor) ?? 0), 0) });
+      by.set(p.id, { count: overdue.length, cents: overdue.reduce((sum, c) => sum + (claimDueCents(c, rates, floor, late) ?? 0), 0) });
     }
     return by;
   });
@@ -339,7 +340,8 @@ export class People {
     if (this.pctOf(p.grade) === null && !counted.some(fixed)) return null;
     const rates = this.ratesOf(p.grade);
     const floor = cents(this.session.floor());
-    return counted.reduce((sum, c) => sum + (claimDueCents(c, rates, floor) ?? 0), 0);
+    const late = this.session.late();
+    return counted.reduce((sum, c) => sum + (claimDueCents(c, rates, floor, late) ?? 0), 0);
   }
 
   protected overdueOf(p: Person): Overdue {

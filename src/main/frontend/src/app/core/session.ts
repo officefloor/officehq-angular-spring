@@ -1,5 +1,5 @@
 import { HttpClient } from '@angular/common/http';
-import { Injectable, inject, signal } from '@angular/core';
+import { Injectable, computed, inject, signal } from '@angular/core';
 import { firstValueFrom } from 'rxjs';
 
 interface SheetView {
@@ -7,6 +7,14 @@ interface SheetView {
   today: string;
   floor: string;
   terms: number;
+  latePct: string;
+}
+
+/** What a claim's late charge depends on: the sheet's late percent, terms and today. */
+export interface Late {
+  pct: string;
+  terms: number;
+  today: string | null;
 }
 
 // The signed-in user and the active sheet. Every other feature reads these to scope its calls.
@@ -22,6 +30,10 @@ export class Session {
   readonly floor = signal('1.00');
   /** The sheet's terms in days: a claim's due-by is its date plus them. */
   readonly terms = signal(14);
+  /** The sheet's late percent, two decimals: an overdue claim's due gains it of its figure for every full 30 days overdue. */
+  readonly latePct = signal('0.00');
+  /** The late percent, terms and today together, as a claim's late charge needs them. */
+  readonly late = computed<Late>(() => ({ pct: this.latePct(), terms: this.terms(), today: this.today() }));
   /** Bumped on every sheet load, so features re-read the sheet from the store even for the same id. */
   readonly loads = signal(0);
   /** Whether retired people are listed: off when the screen opens, left as it is by loading a sheet. */
@@ -44,6 +56,7 @@ export class Session {
     this.today.set(res.today);
     this.floor.set(res.floor);
     this.terms.set(res.terms);
+    this.latePct.set(res.latePct);
     this.loads.update((n) => n + 1);
   }
 

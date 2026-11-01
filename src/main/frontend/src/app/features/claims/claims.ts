@@ -2,7 +2,7 @@ import { HttpClient, HttpErrorResponse } from '@angular/common/http';
 import { Component, inject, input, output, signal } from '@angular/core';
 import { FormControl, FormGroup, ReactiveFormsModule } from '@angular/forms';
 import { firstValueFrom } from 'rxjs';
-import { Session } from '../../core/session';
+import { Late, Session } from '../../core/session';
 import { Period, closedOn, periodOn } from '../periods/periods';
 import { NA, Rate, dueCents, pctOn } from '../rates/rates';
 
@@ -49,15 +49,32 @@ export function cents(amount: string): number {
 }
 
 /**
- * A claim's due in cents: the due fixed when it was settled, else the due bound by its person's
- * last statement, else its amount times its grade's rate on its date (of the grade's rates given),
- * at least the floor (in cents); null when it has none.
+ * A claim's due in cents: the due fixed when it was settled (late charge frozen in), else its figure
+ * — the due bound by its person's last statement, else its amount times its grade's rate on its
+ * date (of the grade's rates given), at least the floor (in cents) — with its late charge on top;
+ * null when it has none.
  */
-export function claimDueCents(c: Claim, rates: Rate[], floorCents: number): number | null {
+export function claimDueCents(c: Claim, rates: Rate[], floorCents: number, late: Late): number | null {
   if (c.settledDue !== null) return cents(c.settledDue);
+  const figure = figureCents(c, rates, floorCents);
+  return figure === null ? null : figure + lateChargeCents(c, figure, late);
+}
+
+/** A claim's figure in cents: the due bound by its person's last statement, else its floored live due. */
+function figureCents(c: Claim, rates: Rate[], floorCents: number): number | null {
   if (c.stated) return c.statedDue === null ? null : cents(c.statedDue);
   const pct = pctOn(rates, c.date);
   return pct === null ? null : Math.max(dueCents(cents(c.amount), pct), floorCents);
+}
+
+/**
+ * The late charge in cents on an overdue claim with the given figure: the late percent of it for
+ * every full 30 days past its due-by, rounded like a due; 0 when not overdue. Never bound by a statement.
+ */
+export function lateChargeCents(c: Claim, figureCents: number, late: Late): number {
+  if (late.today === null || !isOverdue(c, late.terms, late.today)) return 0;
+  const days = Math.round((Date.parse(`${late.today}T00:00:00Z`) - Date.parse(`${dueBy(c, late.terms)}T00:00:00Z`)) / 86_400_000);
+  return dueCents(figureCents * Math.floor(days / 30), late.pct);
 }
 
 /** A date (yyyy-mm-dd) the given number of days later. */
@@ -181,9 +198,9 @@ export class Claims {
     return `claim-${this.personId()}-${field}`;
   }
 
-  /** The due fixed when it was settled, else its amount times the grade's rate on its date, at least the floor. */
+  /** The due fixed when it was settled, else its figure with its late charge on top. */
   protected dueOf(c: Claim): string {
-    const due = claimDueCents(c, this.rates(), cents(this.session.floor()));
+    const due = claimDueCents(c, this.rates(), cents(this.session.floor()), this.session.late());
     return due === null ? NA : money(due);
   }
 
