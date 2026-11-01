@@ -21,7 +21,8 @@ import org.springframework.transaction.annotation.Transactional;
  * The claims on a sheet: listed newest first, added to a person and edited one at a time. A claim
  * given no date takes the sheet's today. A claim is added as DRAFT and moves through its statuses
  * as {@link ClaimStatus} allows; a change it does not allow is refused. Opening a claim gives it
- * the sheet's next number; voiding it clears the number, which is never given again. Settling it
+ * the sheet's next number, which it keeps when voided and is never given again. Only a DRAFT claim
+ * can be edited; an OPEN one is changed by voiding it and adding a new one. Settling it
  * fixes its due at its person's grade rate of the moment on the claim's date; with no such rate it
  * stays live. The user who opened a claim cannot settle it. No claim dated inside a closed period
  * can be added, edited (to or from such a date), opened, settled or voided.
@@ -68,6 +69,9 @@ public class ClaimService {
     @Transactional
     public Claim edit(String sheetId, String user, Long id, BigDecimal amount, LocalDate date, String note) {
         Claim claim = claims.findByIdAndSheetId(id, sheetId).orElseThrow(ClaimNotFoundException::new);
+        if (claim.getStatus() != ClaimStatus.DRAFT) {
+            throw new ClaimStatusRefusedException();
+        }
         RollupService.Snapshot before = rollup.snapshot(sheetId);
         LocalDate on = dateOrToday(sheetId, date);
         refuseIfClosed(sheetId, claim.getDate());
@@ -105,7 +109,6 @@ public class ClaimService {
                 claim.setOpenedBy(user.strip());
             }
             case SETTLED -> claim.setSettledDue(dueOf(sheetId, person, claim));
-            case VOID -> claim.setNumber(null);
             default -> {}
         }
         claim.setStatus(next);

@@ -42,7 +42,7 @@ public class Claim {
     @Column(name = "status", nullable = false)
     private ClaimStatus status = ClaimStatus.DRAFT;
 
-    /** Given when the claim is opened; none while DRAFT, cleared when VOID. */
+    /** Given when the claim is opened; none while DRAFT, kept when VOID. */
     @Column(name = "claim_number")
     private Long number;
 

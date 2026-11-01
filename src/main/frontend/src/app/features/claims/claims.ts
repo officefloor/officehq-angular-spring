@@ -20,7 +20,7 @@ export interface Claim {
   date: string;
   note: string;
   status: ClaimStatus;
-  /** Given when the claim is opened; null while DRAFT and once VOID. */
+  /** Given when the claim is opened and kept once VOID; null while DRAFT. */
   number: number | null;
   /** The due fixed when it was settled, two decimals; null while its due is live. */
   settledDue: string | null;
@@ -61,6 +61,13 @@ const CLOSED = 'No claim dated inside a closed period can be changed.';
 /** Cents as an amount with two decimals. */
 export function money(cents: number): string {
   return `${Math.floor(cents / 100)}.${String(cents % 100).padStart(2, '0')}`;
+}
+
+/** Why a claim cannot be edited: only a DRAFT can; an OPEN one is voided and added again. */
+function notEditable(status: ClaimStatus | undefined): string {
+  return status === 'OPEN'
+    ? 'An OPEN claim cannot be edited; void it and add a new one.'
+    : `${status ? 'A ' + status : 'This'} claim cannot be edited; only a DRAFT can.`;
 }
 
 // One person's claims, newest first, with one form to add a claim or edit one, and buttons to
@@ -174,6 +181,10 @@ export class Claims {
       this.claimError.set({ id: c.id, message: CLOSED });
       return;
     }
+    if (c.status !== 'DRAFT') {
+      this.claimError.set({ id: c.id, message: notEditable(c.status) });
+      return;
+    }
     this.editingId.set(c.id);
     this.form.setValue({ amount: c.amount, date: c.date, note: c.note }, { emitEvent: false });
     this.error.set('');
@@ -238,6 +249,11 @@ export class Claims {
       this.reset();
     } catch (e) {
       if (this.session.sheetId() !== sheet) return;
+      if (id !== null && e instanceof HttpErrorResponse && e.status === 409) {
+        const status = this.claims().find((c) => c.id === id)?.status;
+        this.claimError.set({ id, message: notEditable(status) });
+        return;
+      }
       this.error.set(
         e instanceof HttpErrorResponse && e.status === 423
           ? CLOSED
