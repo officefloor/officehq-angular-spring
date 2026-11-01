@@ -1,0 +1,25 @@
+diff --git a/src/main/frontend/src/app/features/people/people.ts b/src/main/frontend/src/app/features/people/people.ts
+index 303fa1cad..60af8e2f1 100644
+--- a/src/main/frontend/src/app/features/people/people.ts
++++ b/src/main/frontend/src/app/features/people/people.ts
+@@ -108,10 +108,20 @@ interface StatementTaken {
+ // patrons' due-totals added up, skipping n/a.
+ // Under it, a summary: per grade, the people on it today (retired people excluded) and their
+ // due-totals added up; per period, its due-total; per status, how many claims have it.
++// Above everything, a header of counters repeating those figures: the people on the sheet (retired
++// people included), the claims per status, and the sheet's due-total and overdue-total.
+ @Component({
+   selector: 'app-people',
+   imports: [ReactiveFormsModule, Claims, Periods, Rates],
+   template: `
++    <header aria-label="Sheet counters">
++      <p>People: <strong data-testid="header-people-count">{{ people().length }}</strong></p>
++      @for (s of statusSummary(); track s.status) {
++        <p>{{ s.status }}: <strong [attr.data-testid]="'header-claims-' + s.status + '-count'">{{ s.count }}</strong></p>
++      }
++      <p>Due total: <strong data-testid="header-due-total">{{ dueTotal() }}</strong></p>
++      <p>Overdue total: <strong data-testid="header-overdue-total">{{ money(overdueTotal().cents) }}</strong></p>
++    </header>
+     <app-rates [rates]="rates()" [today]="session.today()" (saved)="rateSaved($event)" />
+     <app-periods [periods]="periods()" [dueTotalOf]="periodDueTotalOf" (saved)="periodSaved($event)" />
+     <section aria-labelledby="people-heading">
