@@ -1,4 +1,4 @@
-import { HttpClient } from '@angular/common/http';
+import { HttpClient, HttpErrorResponse } from '@angular/common/http';
 import { Component, effect, inject, signal } from '@angular/core';
 import { FormControl, FormGroup, ReactiveFormsModule } from '@angular/forms';
 import { firstValueFrom } from 'rxjs';
@@ -115,8 +115,10 @@ export class People {
     this.error.set('');
     const sheet = this.session.sheetId();
     if (!sheet) return;
-    const { name, grade } = this.form.getRawValue();
-    if (!name.trim()) {
+    const raw = this.form.getRawValue();
+    const name = raw.name.trim();
+    const grade = raw.grade;
+    if (!name) {
       this.error.set('Enter a name.');
       return;
     }
@@ -140,8 +142,12 @@ export class People {
         this.people.update((list) => list.map((p) => (p.id === saved.id ? saved : p)));
       }
       this.reset();
-    } catch {
-      this.error.set(id === null ? 'Could not add that person.' : 'Could not save that person.');
+    } catch (e) {
+      if (e instanceof HttpErrorResponse && e.status === 409) {
+        this.error.set('That name is already in use on this sheet.');
+      } else {
+        this.error.set(id === null ? 'Could not add that person.' : 'Could not save that person.');
+      }
     }
   }
 }
