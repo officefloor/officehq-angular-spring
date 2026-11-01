@@ -176,6 +176,12 @@ public class Claim {
     @OrderColumn(name = "seq")
     private List<ClaimComment> comments = new ArrayList<>();
 
+    /** Its lines, in the order they were added; with any, its amount is what they add up to. */
+    @ElementCollection(fetch = FetchType.EAGER)
+    @CollectionTable(name = "claim_line", joinColumns = @JoinColumn(name = "claim_id"))
+    @OrderColumn(name = "seq")
+    private List<ClaimLine> lines = new ArrayList<>();
+
     protected Claim() {}
 
     public Claim(String sheetId, Long personId, BigDecimal amount, LocalDate date, String note, LocalDate dueBy,
@@ -303,6 +309,14 @@ public class Claim {
     /** Add a comment written by the user on the date. */
     public void comment(String by, LocalDate on, String text) {
         comments.add(new ClaimComment(by, on, text));
+    }
+
+    public List<ClaimLine> getLines() { return Collections.unmodifiableList(lines); }
+
+    /** Add a line; its amount becomes the quantities times the unit amounts added up. */
+    public void addLine(String label, int qty, BigDecimal unit) {
+        lines.add(new ClaimLine(label, qty, unit));
+        amount = lines.stream().map(ClaimLine::total).reduce(BigDecimal.ZERO, BigDecimal::add).setScale(2);
     }
 
     public List<ClaimLogEntry> getLog() { return Collections.unmodifiableList(log); }

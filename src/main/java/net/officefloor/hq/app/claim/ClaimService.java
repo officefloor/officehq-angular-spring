@@ -161,6 +161,9 @@ public class ClaimService {
         if (!person.mayClaimOn(on)) throw new PersonRetiredException();
         refuseUnlessCorrects(sheetId, person.getId(), amount, corrects);
         refuseIfRefUsed(sheetId, claim.getId(), ref);
+        if (!claim.getLines().isEmpty() && amount.compareTo(claim.getAmount()) != 0) {
+            throw new ClaimLinedAmountException();
+        }
         claim.setAmount(amount);
         claim.setRef(ref);
         claim.setTags(tagged);
@@ -590,6 +593,29 @@ public class ClaimService {
         claim.addProof();
         Claim saved = claims.saveAndFlush(claim);
         record("CLAIM_PROOF_ADDED", sheetId, user, person, saved, saved.getNumber(), " proofs=" + saved.getProofs());
+        rollup.recordChanges(sheetId, user, before);
+        return saved;
+    }
+
+    /**
+     * Add a line to a DRAFT claim: its amount becomes its lines' quantities times their unit amounts added
+     * up, and the claim counts as edited by the user. Refused for a claim in any other status, one due
+     * inside a closed period, or one another user's editor locks.
+     */
+    @Transactional
+    public Claim addLine(String sheetId, String user, Long id, String label, int qty, BigDecimal unit) {
+        // The snapshot locks the sheet first, so the claim is read once no other change is under way.
+        RollupService.Snapshot before = rollup.snapshot(sheetId);
+        Claim claim = claims.findByIdAndSheetId(id, sheetId).orElseThrow(ClaimNotFoundException::new);
+        if (claim.getStatus() != ClaimStatus.DRAFT) throw new ClaimStatusRefusedException();
+        if (claim.isLockedAgainst(user)) throw new ClaimLockedException();
+        refuseIfClosed(sheetId, claim.getDueBy());
+        Person person = people.findByIdAndSheetId(claim.getPersonId(), sheetId).orElseThrow(PersonNotFoundException::new);
+        claim.addLine(label, qty, unit);
+        claim.setEditedBy(user.strip());
+        Claim saved = claims.saveAndFlush(claim);
+        record("CLAIM_LINE_ADDED", sheetId, user, person, saved, saved.getNumber(),
+                " label=" + label + " qty=" + qty + " unit=" + unit.setScale(2).toPlainString());
         rollup.recordChanges(sheetId, user, before);
         return saved;
     }

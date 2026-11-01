@@ -64,6 +64,15 @@ export interface Claim {
   batch: number | null;
   /** Its comments, oldest first. */
   comments: ClaimComment[];
+  /** Its lines, in the order they were added; with any, its amount is what they add up to. */
+  lines: ClaimLine[];
+}
+
+/** A line of a claim: its label, a whole quantity of at least 1 and a unit amount (two decimals). */
+export interface ClaimLine {
+  label: string;
+  qty: number;
+  unit: string;
 }
 
 /** A comment on a claim: who wrote it, the sheet's today (yyyy-mm-dd) when written, and its text. */
@@ -260,6 +269,14 @@ export function isDuplicateRef(e: unknown): boolean {
   return e instanceof HttpErrorResponse && e.status === 409 && e.error?.type === 'duplicate-ref';
 }
 
+/** Why an amount typed on a claim with lines is refused. */
+const LINED_AMOUNT = 'A claim with lines has the amount its lines add up to; add a line to change it.';
+
+/** Whether the server refused an amount other than what a claim's lines add up to. */
+function isLinedAmount(e: unknown): boolean {
+  return e instanceof HttpErrorResponse && e.status === 409 && e.error?.type === 'lined-amount';
+}
+
 /** Why a claim cannot be edited: only a DRAFT can; an OPEN or PENDING one is voided and added again. */
 function notEditable(status: ClaimStatus | undefined): string {
   return status === 'OPEN' || status === 'PENDING'
@@ -337,6 +354,22 @@ function notEditable(status: ClaimStatus | undefined): string {
               <li data-testid="claim-comments-line">{{ comment.by }} on {{ comment.date }}: {{ comment.text }}</li>
             }
           </ol>
+          <ol [attr.aria-label]="'Lines of claim of ' + c.amount + ' on ' + c.date">
+            @for (line of c.lines; track $index) {
+              <li data-testid="claim-lines-line">{{ line.label }} {{ line.qty }} x {{ line.unit }}</li>
+            }
+          </ol>
+          <label [for]="fieldId('line-label-' + c.id)">Line label</label>
+          <input [id]="fieldId('line-label-' + c.id)" data-testid="claim-line-label" #lineLabel
+                 (input)="clearClaimError(c.id)" />
+          <label [for]="fieldId('line-qty-' + c.id)">Quantity</label>
+          <input [id]="fieldId('line-qty-' + c.id)" data-testid="claim-line-qty" inputmode="numeric" #lineQty
+                 (input)="clearClaimError(c.id)" />
+          <label [for]="fieldId('line-unit-' + c.id)">Unit amount</label>
+          <input [id]="fieldId('line-unit-' + c.id)" data-testid="claim-line-unit" inputmode="decimal" #lineUnit
+                 (input)="clearClaimError(c.id)" />
+          <button type="button" data-testid="claim-line-add" (click)="addLine(c, lineLabel, lineQty, lineUnit)"
+                  [attr.aria-label]="'Add a line to claim of ' + c.amount + ' on ' + c.date">Add line</button>
           <label [for]="fieldId('comment-' + c.id)">Comment</label>
           <input [id]="fieldId('comment-' + c.id)" data-testid="claim-comment-text" #commentText
                  (input)="clearClaimError(c.id)" />
@@ -682,6 +715,54 @@ export class Claims {
     }
   }
 
+  /**
+   * Add a line to a DRAFT claim, its amount becoming what its lines add up to; a blank label, a quantity
+   * that is not a whole number of at least 1, a unit amount of more than two decimals, a claim that is not
+   * a DRAFT, one due inside a closed period, or one another user's editor locks is refused.
+   */
+  protected async addLine(c: Claim, label: HTMLInputElement, qty: HTMLInputElement, unit: HTMLInputElement): Promise<void> {
+    this.claimError.set(null);
+    const sheet = this.session.sheetId();
+    if (!sheet) return;
+    const body = { label: label.value.trim(), qty: qty.value.trim(), unit: unit.value.trim() };
+    if (body.label === '' || !/^0*[1-9]\d{0,8}$/.test(body.qty) || !/^\d{1,12}(\.\d{1,2})?$/.test(body.unit)) {
+      this.claimError.set({ id: c.id,
+        message: 'Enter a label, a whole quantity of at least 1 and a unit amount with at most two decimals.' });
+      return;
+    }
+    if (closedOn(this.periods(), c.dueBy)) {
+      this.claimError.set({ id: c.id, message: CLOSED });
+      return;
+    }
+    if (c.status !== 'DRAFT') {
+      this.claimError.set({ id: c.id, message: 'Only a DRAFT claim can have lines added.' });
+      return;
+    }
+    const url = `/api/sheets/${encodeURIComponent(sheet)}/claims/${c.id}/lines`;
+    try {
+      const claim = await firstValueFrom(this.http.post<Claim>(url, body, { headers: this.headers() }));
+      if (this.session.sheetId() !== sheet) return;
+      label.value = '';
+      qty.value = '';
+      unit.value = '';
+      this.saved.emit(claim);
+    } catch (e) {
+      if (this.session.sheetId() !== sheet) return;
+      const message = e instanceof HttpErrorResponse && e.status === 423
+        ? CLOSED
+        : e instanceof HttpErrorResponse && e.status === 409
+        ? 'Only a DRAFT claim can have lines added.'
+        : e instanceof HttpErrorResponse && e.status === 412
+        ? 'Another user is editing this claim; a line can be added once they save or cancel.'
+        : e instanceof HttpErrorResponse && e.status === 403
+        ? 'Your role may not change a claim on this sheet.'
+        : e instanceof HttpErrorResponse && e.status === 400
+        ? 'Enter a label, a whole quantity of at least 1 and a unit amount with at most two decimals.'
+        : 'Could not add a line to that claim.';
+      this.claimError.set({ id: c.id, message });
+    }
+  }
+
   /** Comment on a claim; an empty comment is refused. */
   protected async addComment(c: Claim, field: HTMLInputElement): Promise<void> {
     this.claimError.set(null);
@@ -896,7 +977,9 @@ export class Claims {
       if (this.editingId() === c.id) this.reset();
     } catch (e) {
       if (this.session.sheetId() !== sheet) return;
-      const message = e instanceof HttpErrorResponse && e.status === 423
+      const message = isLinedAmount(e)
+        ? LINED_AMOUNT
+        : e instanceof HttpErrorResponse && e.status === 423
         ? CLOSED
         : e instanceof HttpErrorResponse && e.status === 409
         ? notEditable(c.status === 'DRAFT' ? undefined : c.status)
@@ -1002,6 +1085,10 @@ export class Claims {
       }
       if (isDuplicateRef(e)) {
         this.error.set(DUPLICATE_REF);
+        return;
+      }
+      if (isLinedAmount(e)) {
+        this.error.set(LINED_AMOUNT);
         return;
       }
       if (id !== null && e instanceof HttpErrorResponse && e.status === 409) {

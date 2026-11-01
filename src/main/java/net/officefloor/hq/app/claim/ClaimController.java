@@ -43,7 +43,7 @@ public class ClaimController {
             LocalDate dueBy, List<LogLineView> log, LocalDate deferredUntil,
             int proofs, String splitFrom, String lockedBy, boolean lateEntry, LocalDate remindedOn,
             String ref, List<String> tags, String voidReason, List<CommentView> comments,
-            Integer batch) {
+            Integer batch, List<LineView> lines) {
         public static ClaimView of(Claim claim) {
             return new ClaimView(claim.getId(), claim.getPersonId(), claim.getAmount().toPlainString(),
                     claim.getDate(), claim.getNote(), claim.getStatus(), claim.getNumber(),
@@ -55,7 +55,8 @@ public class ClaimController {
                     claim.getLockedBy(), claim.isLateEntry(), claim.getRemindedOn(),
                     claim.getRef(), claim.getTags(), claim.getVoidReason(),
                     claim.getComments().stream().map(CommentView::of).toList(),
-                    claim.getSettleBatch());
+                    claim.getSettleBatch(),
+                    claim.getLines().stream().map(LineView::of).toList());
         }
     }
 
@@ -64,6 +65,13 @@ public class ClaimController {
         static LogLineView of(ClaimLogEntry entry) {
             return new LogLineView(entry.getStatus(), entry.getBy(), entry.getDate(),
                     entry.getDue() == null ? null : entry.getDue().setScale(2).toPlainString());
+        }
+    }
+
+    /** A line of a claim: its label, quantity and unit amount (two decimals). */
+    public record LineView(String label, int qty, String unit) {
+        static LineView of(ClaimLine line) {
+            return new LineView(line.getLabel(), line.getQty(), line.getUnit().setScale(2).toPlainString());
         }
     }
 
@@ -109,6 +117,21 @@ public class ClaimController {
 
     /** Why a steward rejects a PENDING claim. */
     public record RejectRequest(@NotBlank @Size(max = 200) @Pattern(regexp = "\\S+( \\S+)*") String reason) {}
+
+    /** A claim line: a label (not blank), a whole quantity of at least 1 and a unit amount of up to two decimals. */
+    public record LineRequest(
+            @NotBlank @Size(max = 200) String label,
+            @NotNull @Pattern(regexp = "0*[1-9]\\d{0,8}") String qty,
+            @NotNull @Pattern(regexp = "\\d{1,12}(\\.\\d{1,2})?") String unit) {
+
+        int qtyValue() {
+            return Integer.parseInt(qty);
+        }
+
+        BigDecimal unitValue() {
+            return new BigDecimal(unit).setScale(2);
+        }
+    }
 
     /** A comment's text: not blank. */
     public record CommentRequest(@NotBlank @Size(max = 500) String text) {}
@@ -171,6 +194,15 @@ public class ClaimController {
     }
 
     /** A reference already used on the sheet: a conflict of its own problem type. */
+    /** An amount typed on a claim with lines other than what they add up to: a conflict of its own problem type. */
+    @ExceptionHandler(ClaimLinedAmountException.class)
+    public ResponseEntity<ProblemDetail> linedAmount() {
+        ProblemDetail problem = ProblemDetail.forStatusAndDetail(HttpStatus.CONFLICT,
+                "A claim with lines has the amount its lines add up to.");
+        problem.setType(URI.create(ClaimLinedAmountException.TYPE));
+        return ResponseEntity.status(HttpStatus.CONFLICT).body(problem);
+    }
+
     @ExceptionHandler(DuplicateClaimRefException.class)
     public ResponseEntity<ProblemDetail> duplicateRef() {
         ProblemDetail problem = ProblemDetail.forStatusAndDetail(HttpStatus.CONFLICT,
@@ -359,6 +391,16 @@ public class ClaimController {
             @PathVariable Long id,
             @RequestHeader("X-User") @NotBlank @Size(max = 100) String user) {
         return ClaimView.of(service.addProof(sheetId, user, id));
+    }
+
+    @PostMapping("/claims/{id}/lines")
+    public ClaimView addLine(
+            @PathVariable @Size(max = 100) @Pattern(regexp = "[A-Za-z0-9._-]+") String sheetId,
+            @PathVariable Long id,
+            @RequestHeader("X-User") @NotBlank @Size(max = 100) String user,
+            @RequestBody @Valid LineRequest request) {
+        return ClaimView.of(service.addLine(sheetId, user, id, request.label().strip(), request.qtyValue(),
+                request.unitValue()));
     }
 
     @PostMapping("/claims/{id}/comments")
