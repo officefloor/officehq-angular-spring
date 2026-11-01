@@ -1,0 +1,432 @@
+diff --git a/src/main/frontend/src/app/core/session.ts b/src/main/frontend/src/app/core/session.ts
+index 34d36de0b..fbebb6126 100644
+--- a/src/main/frontend/src/app/core/session.ts
++++ b/src/main/frontend/src/app/core/session.ts
+@@ -5,6 +5,7 @@ import { firstValueFrom } from 'rxjs';
+ interface SheetView {
+   id: string;
+   today: string;
++  floor: string;
+ }
+ 
+ // The signed-in user and the active sheet. Every other feature reads these to scope its calls.
+@@ -16,6 +17,8 @@ export class Session {
+   readonly sheetId = signal<string | null>(null);
+   /** The sheet's today (yyyy-mm-dd): every date decision and default date uses it, never the clock. */
+   readonly today = signal<string | null>(null);
++  /** The sheet's floor, two decimals: a claim's live due is at least it. */
++  readonly floor = signal('1.00');
+   /** Bumped on every sheet load, so features re-read the sheet from the store even for the same id. */
+   readonly loads = signal(0);
+   /** Whether retired people are listed: off when the screen opens, left as it is by loading a sheet. */
+@@ -36,6 +39,7 @@ export class Session {
+     );
+     this.sheetId.set(res.id);
+     this.today.set(res.today);
++    this.floor.set(res.floor);
+     this.loads.update((n) => n + 1);
+   }
+ 
+diff --git a/src/main/frontend/src/app/features/claims/claims.ts b/src/main/frontend/src/app/features/claims/claims.ts
+index cef0c919a..88efe7d5c 100644
+--- a/src/main/frontend/src/app/features/claims/claims.ts
++++ b/src/main/frontend/src/app/features/claims/claims.ts
+@@ -50,14 +50,14 @@ export function cents(amount: string): number {
+ 
+ /**
+  * A claim's due in cents: the due fixed when it was settled, else the due bound by its person's
+- * last statement, else its amount times its grade's rate on its date (of the grade's rates given);
+- * null when it has none.
++ * last statement, else its amount times its grade's rate on its date (of the grade's rates given),
++ * at least the floor (in cents); null when it has none.
+  */
+-export function claimDueCents(c: Claim, rates: Rate[]): number | null {
++export function claimDueCents(c: Claim, rates: Rate[], floorCents: number): number | null {
+   if (c.settledDue !== null) return cents(c.settledDue);
+   if (c.stated) return c.statedDue === null ? null : cents(c.statedDue);
+   const pct = pctOn(rates, c.date);
+-  return pct === null ? null : dueCents(cents(c.amount), pct);
++  return pct === null ? null : Math.max(dueCents(cents(c.amount), pct), floorCents);
+ }
+ 
+ /** Why a change to a claim dated inside a closed period is refused. */
+@@ -162,9 +162,9 @@ export class Claims {
+     return `claim-${this.personId()}-${field}`;
+   }
+ 
+-  /** The due fixed when it was settled, else its amount times the grade's rate on its date. */
++  /** The due fixed when it was settled, else its amount times the grade's rate on its date, at least the floor. */
+   protected dueOf(c: Claim): string {
+-    const due = claimDueCents(c, this.rates());
++    const due = claimDueCents(c, this.rates(), cents(this.session.floor()));
+     return due === null ? NA : money(due);
+   }
+ 
+diff --git a/src/main/frontend/src/app/features/people/people.ts b/src/main/frontend/src/app/features/people/people.ts
+index 5c491549a..d69e23006 100644
+--- a/src/main/frontend/src/app/features/people/people.ts
++++ b/src/main/frontend/src/app/features/people/people.ts
+@@ -179,7 +179,7 @@ export class People {
+       const period = periodOn(this.periods(), c.date);
+       const grade = grades.get(c.personId);
+       if (period === null || grade === undefined) continue;
+-      by.set(period.id, (by.get(period.id) ?? 0) + (claimDueCents(c, this.ratesOf(grade)) ?? 0));
++      by.set(period.id, (by.get(period.id) ?? 0) + (claimDueCents(c, this.ratesOf(grade), cents(this.session.floor())) ?? 0));
+     }
+     return by;
+   });
+@@ -305,7 +305,8 @@ export class People {
+     const fixed = (c: Claim) => c.settledDue !== null || (c.stated && c.statedDue !== null);
+     if (this.pctOf(p.grade) === null && !counted.some(fixed)) return null;
+     const rates = this.ratesOf(p.grade);
+-    return counted.reduce((sum, c) => sum + (claimDueCents(c, rates) ?? 0), 0);
++    const floor = cents(this.session.floor());
++    return counted.reduce((sum, c) => sum + (claimDueCents(c, rates, floor) ?? 0), 0);
+   }
+ 
+   /** Their due-total, or n/a. */
+diff --git a/src/main/frontend/src/app/features/settings/settings.ts b/src/main/frontend/src/app/features/settings/settings.ts
+index 0e9675aa3..89fbc4f5a 100644
+--- a/src/main/frontend/src/app/features/settings/settings.ts
++++ b/src/main/frontend/src/app/features/settings/settings.ts
+@@ -15,10 +15,13 @@ interface RoleView {
+ interface SettingsView {
+   /** The highest due a clerk can settle, two decimals; null when there is no limit. */
+   clerkLimit: string | null;
++  /** The least a claim's live due can be, two decimals. */
++  floor: string;
+   roles: RoleView[];
+ }
+ 
+-// The sheet's settings: the clerk limit (blank: no limit), and the role given to each user name.
++// The sheet's settings: the clerk limit (blank: no limit), the floor of a claim's live due, and the
++// role given to each user name. Saving stores the settings whose field was changed since the last save.
+ @Component({
+   selector: 'app-settings',
+   imports: [ReactiveFormsModule],
+@@ -28,12 +31,15 @@ interface SettingsView {
+       <form [formGroup]="form" (ngSubmit)="save()" aria-label="Settings">
+         <label for="setting-clerk-limit">Clerk limit (blank: no limit)</label>
+         <input id="setting-clerk-limit" data-testid="setting-clerk-limit" formControlName="clerkLimit" inputmode="decimal" />
++        <label for="setting-floor">Floor (least live due)</label>
++        <input id="setting-floor" data-testid="setting-floor" formControlName="floor" inputmode="decimal" />
+         <button type="submit" data-testid="settings-save">Save settings</button>
+         @if (error()) {
+           <p role="alert" class="error" data-testid="settings-error">{{ error() }}</p>
+         }
+       </form>
+       <p>Clerk limit now: <span data-testid="setting-clerk-limit-current">{{ clerkLimit() ?? '' }}</span></p>
++      <p>Floor now: <span data-testid="setting-floor-current">{{ session.floor() }}</span></p>
+       <form [formGroup]="roleForm" (ngSubmit)="setRole()" aria-label="Set role">
+         <label for="role-form-user">User</label>
+         <input id="role-form-user" data-testid="role-form-user" formControlName="user" />
+@@ -68,7 +74,7 @@ interface SettingsView {
+ })
+ export class Settings {
+   private readonly http = inject(HttpClient);
+-  private readonly session = inject(Session);
++  protected readonly session = inject(Session);
+ 
+   protected readonly roles = ROLES;
+   protected readonly clerkLimit = signal<string | null>(null);
+@@ -77,7 +83,10 @@ export class Settings {
+   protected readonly roleError = signal('');
+   /** The forms with a submit under way; another submit of one waits for its answer. */
+   private readonly submitting = new Set<string>();
+-  protected readonly form = new FormGroup({ clerkLimit: new FormControl('', { nonNullable: true }) });
++  protected readonly form = new FormGroup({
++    clerkLimit: new FormControl('', { nonNullable: true }),
++    floor: new FormControl('', { nonNullable: true }),
++  });
+   protected readonly roleForm = new FormGroup({
+     user: new FormControl('', { nonNullable: true }),
+     role: new FormControl('', { nonNullable: true }),
+@@ -118,6 +127,7 @@ export class Settings {
+   private show(view: SettingsView): void {
+     this.clerkLimit.set(view.clerkLimit);
+     this.userRoles.set(view.roles);
++    this.session.floor.set(view.floor);
+   }
+ 
+   protected async save(): Promise<void> {
+@@ -125,17 +135,33 @@ export class Settings {
+     this.error.set('');
+     const sheet = this.session.sheetId();
+     if (!sheet) return;
+-    const value = this.form.controls.clerkLimit.value.trim();
+-    if (value && !/^\d{1,12}(\.\d{1,2})?$/.test(value)) {
++    const { clerkLimit, floor } = this.form.controls;
++    const value = clerkLimit.value.trim();
++    const floorValue = floor.value.trim();
++    if (clerkLimit.dirty && value && !/^\d{1,12}(\.\d{1,2})?$/.test(value)) {
+       this.error.set('Enter a clerk limit of 0.00 or more, with at most two decimals, or leave it blank for none.');
+       return;
+     }
++    if (floor.dirty && !/^\d{1,12}(\.\d{1,2})?$/.test(floorValue)) {
++      this.error.set('Enter a floor of 0.00 or more, with at most two decimals.');
++      return;
++    }
+     this.submitting.add('save');
+     try {
+-      const view = await firstValueFrom(
+-        this.http.put<SettingsView>(`${this.base(sheet)}/settings/clerk-limit`, { value: value || null }, { headers: this.headers() }),
+-      );
+-      if (this.session.sheetId() === sheet) this.show(view);
++      if (clerkLimit.dirty) {
++        const view = await firstValueFrom(
++          this.http.put<SettingsView>(`${this.base(sheet)}/settings/clerk-limit`, { value: value || null }, { headers: this.headers() }),
++        );
++        clerkLimit.markAsPristine();
++        if (this.session.sheetId() === sheet) this.show(view);
++      }
++      if (floor.dirty) {
++        const view = await firstValueFrom(
++          this.http.put<SettingsView>(`${this.base(sheet)}/settings/floor`, { value: floorValue }, { headers: this.headers() }),
++        );
++        floor.markAsPristine();
++        if (this.session.sheetId() === sheet) this.show(view);
++      }
+     } catch {
+       if (this.session.sheetId() === sheet) this.error.set('Could not save the settings.');
+     } finally {
+diff --git a/src/main/java/net/officefloor/hq/app/claim/ClaimService.java b/src/main/java/net/officefloor/hq/app/claim/ClaimService.java
+index 5e9416d83..4ffb734bc 100644
+--- a/src/main/java/net/officefloor/hq/app/claim/ClaimService.java
++++ b/src/main/java/net/officefloor/hq/app/claim/ClaimService.java
+@@ -148,11 +148,16 @@ public class ClaimService {
+         return dueOf(sheetId, person, claim);
+     }
+ 
+-    /** A claim's amount times its person's grade rate on its date, rounded half to even to cents; null with no rate. */
++    /**
++     * A claim's live due: its amount times its person's grade rate on its date, rounded half to even
++     * to cents, and at least the sheet's floor; null with no rate.
++     */
+     private BigDecimal dueOf(String sheetId, Person person, Claim claim) {
++        BigDecimal floor = settings.floor(sheetId);
+         return rates.on(sheetId, person.getGrade(), claim.getDate())
+                 .map(Rate::getPct)
+                 .map(pct -> claim.getAmount().multiply(pct).movePointLeft(2).setScale(2, RoundingMode.HALF_EVEN))
++                .map(due -> due.max(floor))
+                 .orElse(null);
+     }
+ 
+diff --git a/src/main/java/net/officefloor/hq/app/rollup/RollupService.java b/src/main/java/net/officefloor/hq/app/rollup/RollupService.java
+index 720e949b9..cc798cbfe 100644
+--- a/src/main/java/net/officefloor/hq/app/rollup/RollupService.java
++++ b/src/main/java/net/officefloor/hq/app/rollup/RollupService.java
+@@ -60,7 +60,9 @@ public class RollupService {
+      * change on the sheet moves the figures between this snapshot and the one after the change.
+      */
+     public Snapshot snapshot(String sheetId) {
+-        LocalDate today = sheets.findForUpdate(sheetId).map(Sheet::getToday).orElse(null);
++        Sheet sheet = sheets.findForUpdate(sheetId).orElse(null);
++        LocalDate today = sheet == null ? null : sheet.getToday();
++        BigDecimal floor = sheet == null ? zero() : sheet.getFloor();
+         Map<String, List<Rate>> ratesByGrade = new LinkedHashMap<>();
+         for (Rate rate : rates.findBySheetIdOrderByGradeAscFromDateAsc(sheetId)) {
+             ratesByGrade.computeIfAbsent(rate.getGrade(), g -> new ArrayList<>()).add(rate);
+@@ -83,7 +85,7 @@ public class RollupService {
+                 if (!claim.getStatus().counts(person.isHeld())) continue;
+                 claimed = claimed.add(claim.getAmount());
+                 if (claim.getSettledDue() != null || (claim.isStated() && claim.getStatedDue() != null)) fixed = true;
+-                BigDecimal figure = figureOf(claim, theirRates);
++                BigDecimal figure = figureOf(claim, theirRates, floor);
+                 if (figure != null) due = due.add(figure);
+             }
+             // As on screen: n/a when their grade has no rate today and none of the counted claims has a fixed due.
+@@ -113,12 +115,16 @@ public class RollupService {
+         }
+     }
+ 
+-    /** A claim's figure: its settled due, else its stated due, else its live due; null when it has none. */
+-    private static BigDecimal figureOf(Claim claim, List<Rate> rates) {
++    /**
++     * A claim's figure: its settled due, else its stated due, else its live due, at least the floor;
++     * null when it has none.
++     */
++    private static BigDecimal figureOf(Claim claim, List<Rate> rates, BigDecimal floor) {
+         if (claim.getSettledDue() != null) return claim.getSettledDue();
+         if (claim.isStated()) return claim.getStatedDue();
+         BigDecimal pct = pctOn(rates, claim.getDate());
+-        return pct == null ? null : claim.getAmount().multiply(pct).movePointLeft(2).setScale(2, RoundingMode.HALF_EVEN);
++        return pct == null ? null
++                : claim.getAmount().multiply(pct).movePointLeft(2).setScale(2, RoundingMode.HALF_EVEN).max(floor);
+     }
+ 
+     /** Of one grade's rates, the percent in force on the date, or null. */
+diff --git a/src/main/java/net/officefloor/hq/app/setting/SettingController.java b/src/main/java/net/officefloor/hq/app/setting/SettingController.java
+index d8114d588..f2bdb034f 100644
+--- a/src/main/java/net/officefloor/hq/app/setting/SettingController.java
++++ b/src/main/java/net/officefloor/hq/app/setting/SettingController.java
+@@ -21,8 +21,8 @@ import org.springframework.web.bind.annotation.RestController;
+ @RequestMapping("/api/sheets/{sheetId}")
+ public class SettingController {
+ 
+-    /** The sheet's settings as the screen shows them; the clerk limit has two decimals, null when none. */
+-    public record SettingsView(String clerkLimit, List<RoleView> roles) {}
++    /** The sheet's settings as the screen shows them; the clerk limit has two decimals, null when none, and so has the floor. */
++    public record SettingsView(String clerkLimit, String floor, List<RoleView> roles) {}
+ 
+     /** A user name's role, as clerk or steward. */
+     public record RoleView(String user, String role) {
+@@ -39,6 +39,14 @@ public class SettingController {
+         }
+     }
+ 
++    /** A floor with at most two decimals. */
++    public record FloorRequest(@NotNull @Pattern(regexp = "\\d{1,12}(\\.\\d{1,2})?") String value) {
++
++        BigDecimal floorValue() {
++            return new BigDecimal(value).setScale(2);
++        }
++    }
++
+     /** A role: clerk or steward. */
+     public record RoleRequest(@NotNull @Pattern(regexp = "clerk|steward") String role) {
+ 
+@@ -57,7 +65,7 @@ public class SettingController {
+     public SettingsView get(
+             @PathVariable @Size(max = 100) @Pattern(regexp = "[A-Za-z0-9._-]+") String sheetId,
+             @RequestHeader("X-User") @NotBlank @Size(max = 100) String user) {
+-        return new SettingsView(text(service.clerkLimit(sheetId)),
++        return new SettingsView(text(service.clerkLimit(sheetId)), text(service.floor(sheetId)),
+                 service.roles(sheetId).stream().map(RoleView::of).toList());
+     }
+ 
+@@ -70,6 +78,15 @@ public class SettingController {
+         return get(sheetId, user);
+     }
+ 
++    @PutMapping("/settings/floor")
++    public SettingsView setFloor(
++            @PathVariable @Size(max = 100) @Pattern(regexp = "[A-Za-z0-9._-]+") String sheetId,
++            @RequestHeader("X-User") @NotBlank @Size(max = 100) String user,
++            @RequestBody @Valid FloorRequest request) {
++        service.setFloor(sheetId, user, request.floorValue());
++        return get(sheetId, user);
++    }
++
+     @PutMapping("/roles/{name}")
+     public RoleView setRole(
+             @PathVariable @NotBlank @Size(max = 100) String name,
+diff --git a/src/main/java/net/officefloor/hq/app/setting/SettingService.java b/src/main/java/net/officefloor/hq/app/setting/SettingService.java
+index 0d57dd9f2..812cbb3f0 100644
+--- a/src/main/java/net/officefloor/hq/app/setting/SettingService.java
++++ b/src/main/java/net/officefloor/hq/app/setting/SettingService.java
+@@ -3,6 +3,7 @@ package net.officefloor.hq.app.setting;
+ import java.math.BigDecimal;
+ import java.util.List;
+ import net.officefloor.hq.app.Audit;
++import net.officefloor.hq.app.rollup.RollupService;
+ import net.officefloor.hq.app.sheet.Sheet;
+ import net.officefloor.hq.app.sheet.SheetNotFoundException;
+ import net.officefloor.hq.app.sheet.SheetRepository;
+@@ -11,18 +12,21 @@ import org.springframework.transaction.annotation.Transactional;
+ 
+ /**
+  * A sheet's settings: the role each user name has (clerk unless given another) and the clerk
+- * limit, the highest due a clerk can settle (none: no limit).
++ * limit, the highest due a clerk can settle (none: no limit); and the floor, the least a claim's
++ * live due can be.
+  */
+ @Service
+ public class SettingService {
+ 
+     private final SheetRepository sheets;
+     private final SheetRoleRepository roles;
++    private final RollupService rollup;
+     private final Audit audit;
+ 
+-    public SettingService(SheetRepository sheets, SheetRoleRepository roles, Audit audit) {
++    public SettingService(SheetRepository sheets, SheetRoleRepository roles, RollupService rollup, Audit audit) {
+         this.sheets = sheets;
+         this.roles = roles;
++        this.rollup = rollup;
+         this.audit = audit;
+     }
+ 
+@@ -33,7 +37,13 @@ public class SettingService {
+ 
+     @Transactional(readOnly = true)
+     public BigDecimal clerkLimit(String sheetId) {
+-        return sheets.findById(sheetId).map(Sheet::getClerkLimit).orElseThrow(SheetNotFoundException::new);
++        // not mapped through the Optional: a null limit (none) would read as no sheet
++        return sheets.findById(sheetId).orElseThrow(SheetNotFoundException::new).getClerkLimit();
++    }
++
++    @Transactional(readOnly = true)
++    public BigDecimal floor(String sheetId) {
++        return sheets.findById(sheetId).map(Sheet::getFloor).orElseThrow(SheetNotFoundException::new);
+     }
+ 
+     /** The user's role on the sheet: clerk unless given another. */
+@@ -63,4 +73,17 @@ public class SettingService {
+                 + (limit == null ? "" : limit.toPlainString()));
+         return limit;
+     }
++
++    /** Change the floor; the live dues it moves are audited after its own line. */
++    @Transactional
++    public BigDecimal setFloor(String sheetId, String user, BigDecimal floor) {
++        Sheet sheet = sheets.findForUpdate(sheetId).orElseThrow(SheetNotFoundException::new);
++        RollupService.Snapshot before = rollup.snapshot(sheetId);
++        sheet.setFloor(floor);
++        sheets.flush();
++        audit.recordOnCommit("SETTING_CHANGED sheet=" + sheetId + " by=" + user.strip() + " key=floor value="
++                + floor.toPlainString());
++        rollup.recordChanges(sheetId, user, before);
++        return floor;
++    }
+ }
+diff --git a/src/main/java/net/officefloor/hq/app/sheet/Sheet.java b/src/main/java/net/officefloor/hq/app/sheet/Sheet.java
+index a750d2f0e..48a643bde 100644
+--- a/src/main/java/net/officefloor/hq/app/sheet/Sheet.java
++++ b/src/main/java/net/officefloor/hq/app/sheet/Sheet.java
+@@ -34,6 +34,10 @@ public class Sheet {
+     @Column(name = "clerk_limit", precision = 14, scale = 2)
+     private BigDecimal clerkLimit;
+ 
++    /** A claim's live due is at least it; a settled or stated figure is not moved by it. */
++    @Column(name = "due_floor", nullable = false, precision = 14, scale = 2)
++    private BigDecimal floor = new BigDecimal("1.00");
++
+     protected Sheet() {}
+ 
+     public Sheet(String id, String createdBy, Instant createdAt, LocalDate today) {
+@@ -57,6 +61,10 @@ public class Sheet {
+ 
+     public void setClerkLimit(BigDecimal clerkLimit) { this.clerkLimit = clerkLimit; }
+ 
++    public BigDecimal getFloor() { return floor; }
++
++    public void setFloor(BigDecimal floor) { this.floor = floor; }
++
+     /** Take the next claim number on the sheet. */
+     public long nextClaimNumber() { return ++lastClaimNumber; }
+ }
+diff --git a/src/main/java/net/officefloor/hq/app/sheet/SheetController.java b/src/main/java/net/officefloor/hq/app/sheet/SheetController.java
+index 3366631a0..59c16aa45 100644
+--- a/src/main/java/net/officefloor/hq/app/sheet/SheetController.java
++++ b/src/main/java/net/officefloor/hq/app/sheet/SheetController.java
+@@ -20,9 +20,10 @@ import org.springframework.web.bind.annotation.RestController;
+ @RequestMapping("/api/sheets")
+ public class SheetController {
+ 
+-    public record SheetView(String id, LocalDate today) {
++    /** A sheet as the screen shows it; the floor has two decimals. */
++    public record SheetView(String id, LocalDate today, String floor) {
+         static SheetView of(Sheet sheet) {
+-            return new SheetView(sheet.getId(), sheet.getToday());
++            return new SheetView(sheet.getId(), sheet.getToday(), sheet.getFloor().setScale(2).toPlainString());
+         }
+     }
+ 
+diff --git a/src/main/resources/db/migration/V19__sheet_floor.sql b/src/main/resources/db/migration/V19__sheet_floor.sql
+new file mode 100644
+index 000000000..103707095
+--- /dev/null
++++ b/src/main/resources/db/migration/V19__sheet_floor.sql
+@@ -0,0 +1,2 @@
++-- The sheet's floor: a claim's live due is at least it. Every sheet starts at 1.00.
++ALTER TABLE sheet ADD COLUMN due_floor DECIMAL(14, 2) DEFAULT 1.00 NOT NULL;
