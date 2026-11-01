@@ -70,6 +70,10 @@ export class Session {
     today: this.today(),
     policy: this.policyDate() ?? this.today(),
   }));
+  /** The grade's grace days in force on a date: a claim of a person of that grade then is overdue only past its due-by plus them; 0 when none. */
+  graceOn(grade: string, date: string): number {
+    return Number(this.valueOn(`grace-${grade}`, date) ?? '0');
+  }
   /** The floor in force on a date, in cents. */
   readonly floorCentsOn = (date: string): number => {
     const [whole, frac = ''] = (this.valueOn('floor', date) ?? '1.00').split('.');

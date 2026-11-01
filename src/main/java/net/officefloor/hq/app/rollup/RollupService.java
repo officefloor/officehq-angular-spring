@@ -95,8 +95,10 @@ public class RollupService {
                 RoundingMode rounding = Rounding.of(Rounding.basisOf(claim, datesByNumber), policyDate, today);
                 // the floor in force on the claim's date, the late percent in force on each 30-day boundary
                 BigDecimal floor = sheet == null ? zero() : sheet.floorOn(claim.getDate());
+                // and the grace days of their grade on the claim's date, in force on it
+                int grace = sheet == null ? 0 : sheet.graceOn(grade, claim.getDate());
                 BigDecimal figure = LateCharge.withCharge(claim,
-                        figureOf(claim, ratesByGrade.getOrDefault(grade, List.of()), rounding), today,
+                        figureOf(claim, ratesByGrade.getOrDefault(grade, List.of()), rounding), today, grace,
                         d -> sheet == null ? zero() : sheet.latePctOn(d), rounding);
                 // the floor last, over the figure and its charge; a settled due is frozen, a correction has none
                 if (figure != null && claim.getSettledDue() == null && !claim.isCorrection()) figure = figure.max(floor);
@@ -106,7 +108,7 @@ public class RollupService {
                 if (figure != null && today != null && !Rate.inForce(ratesByGrade.getOrDefault(grade, List.of()),
                         claim.getDate()).equals(Rate.inForce(ratesByGrade.getOrDefault(grade, List.of()), today))) fixed = true;
                 if (figure != null) due = due.add(figure);
-                if (figure != null && LateCharge.isOverdue(claim, today)) overdue = overdue.add(figure);
+                if (figure != null && LateCharge.isOverdue(claim, today, grace)) overdue = overdue.add(figure);
             }
             // As on screen: n/a when their grade has no rate today and none of the counted claims has a fixed
             // due, nor a due under another grade they had on its date or under a rate not in force today.

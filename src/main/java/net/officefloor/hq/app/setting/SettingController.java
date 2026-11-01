@@ -172,6 +172,19 @@ public class SettingController {
         }
     }
 
+    /** A grade's grace days: a whole number of days; blank or null: none; recorded from the from-date (yyyy-mm-dd), blank or null: the sheet's today. */
+    public record GradeGraceRequest(@Pattern(regexp = "(\\d{1,4})?") String value,
+            @Pattern(regexp = "(\\d{4}-\\d{2}-\\d{2})?") String from) {
+
+        LocalDate fromValue() {
+            return from == null || from.isEmpty() ? null : LocalDate.parse(from);
+        }
+
+        Integer daysValue() {
+            return value == null || value.isEmpty() ? null : Integer.valueOf(value);
+        }
+    }
+
     /** Terms: a whole number of days; recorded from the from-date (yyyy-mm-dd), blank or null: the sheet's today. */
     public record TermsRequest(@NotNull @Pattern(regexp = "\\d{1,4}") String value,
             @Pattern(regexp = "(\\d{4}-\\d{2}-\\d{2})?") String from) {
@@ -312,6 +325,16 @@ public class SettingController {
             @RequestHeader("X-User") @NotBlank @Size(max = 100) String user,
             @RequestBody @Valid GraceDaysRequest request) {
         service.setGraceDays(sheetId, user, request.daysValue());
+        return get(sheetId, user);
+    }
+
+    @PutMapping("/settings/grace/{grade}")
+    public SettingsView setGradeGrace(
+            @PathVariable @Size(max = 100) @Pattern(regexp = "[A-Za-z0-9._-]+") String sheetId,
+            @PathVariable @Pattern(regexp = "[ABC]") String grade,
+            @RequestHeader("X-User") @NotBlank @Size(max = 100) String user,
+            @RequestBody @Valid GradeGraceRequest request) {
+        service.setGradeGrace(sheetId, user, grade, request.daysValue(), request.fromValue());
         return get(sheetId, user);
     }
 

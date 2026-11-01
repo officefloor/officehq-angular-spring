@@ -179,7 +179,8 @@ public class StatementService {
             BigDecimal due = figure;
             if (settled == null) {
                 if (status.isOpen()) {
-                    due = LateCharge.withChargeAsOpen(claim, due, asOf, d -> sheet.latePctOn(d, asOf), rounding);
+                    due = LateCharge.withChargeAsOpen(claim, due, asOf, sheet.graceOn(grade, claim.getDate(), asOf),
+                            d -> sheet.latePctOn(d, asOf), rounding);
                 }
                 if (due != null && !claim.isCorrection()) due = due.max(sheet.floorOn(claim.getDate(), asOf));
             }

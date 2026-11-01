@@ -275,7 +275,8 @@ public class ClaimService {
         refuseIfClosed(sheetId, claim.getDueBy());
         BigDecimal old = claim.getSettledDue();
         BigDecimal figure = floored(sheetId, claim, LateCharge.withChargeAsOpen(claim, dueOf(sheetId, person, claim),
-                sheets.today(sheetId), d -> settings.latePctOn(sheetId, d), roundingOf(sheetId, claim)));
+                sheets.today(sheetId), graceOf(sheetId, person, claim), d -> settings.latePctOn(sheetId, d),
+                roundingOf(sheetId, claim)));
         claim.setSettledDue(figure);
         logStatus(sheetId, user, person, claim);
         Claim saved = claims.saveAndFlush(claim);
@@ -554,7 +555,12 @@ public class ClaimService {
         BigDecimal figure = figureOf(sheetId, person, claim);
         if (claim.getSettledDue() != null) return figure;
         return floored(sheetId, claim, LateCharge.withCharge(claim, figure, sheets.today(sheetId),
-                d -> settings.latePctOn(sheetId, d), roundingOf(sheetId, claim)));
+                graceOf(sheetId, person, claim), d -> settings.latePctOn(sheetId, d), roundingOf(sheetId, claim)));
+    }
+
+    /** The grace days of the person's grade on the claim's date, in force on it; 0 when none. */
+    private int graceOf(String sheetId, Person person, Claim claim) {
+        return settings.graceOn(sheetId, person.gradeOn(claim.getDate()), claim.getDate());
     }
 
     /** The due at least the sheet's floor in force on the claim's date, unless a correction; null when none. */

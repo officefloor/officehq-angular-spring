@@ -80,7 +80,8 @@ const FROM = 'From (yyyy-mm-dd; blank: the sheet\'s today)';
 // rounds half up, else half to even), the period numbering from (blank: off; while the sheet's today is on or after it,
 // a claim opened is numbered within its period), the entry date (blank: off; not dated; while set, a new claim given no date,
 // from the claim form, the quick-add bar, a paste or a correction, takes it rather than the sheet's today), the cap (blank: none; a person's due-total is at most it), the grace days (blank: off; not dated; when the
-// sheet's today is changed, an open period whose to-date plus them is before it is closed), and the role given to each user name. Saving stores the settings whose
+// sheet's today is changed, an open period whose to-date plus them is before it is closed), the grace days of each grade (blank: none; dated; a claim
+// whose person's grade on its date has them in force then is overdue, and charged late, only from its due-by plus them), and the role given to each user name. Saving stores the settings whose
 // field was changed since the last save; clearing the clerk limit, the policy date, the period numbering from, the cap, the proof threshold or the note threshold (Delete or
 // Backspace) counts as a change even when it was already blank. The clerk limit, the floor, the terms, each grade's terms, the late
 // percent, the cap, the proof threshold and the note threshold (blank: none; a claim with an empty note whose due is above the one in force on its date
@@ -132,6 +133,16 @@ const FROM = 'From (yyyy-mm-dd; blank: the sheet\'s today)';
         <input id="setting-grace-days" data-testid="setting-grace-days" formControlName="graceDays" inputmode="numeric"
                (keydown.delete)="form.controls.graceDays.markAsDirty()"
                (keydown.backspace)="form.controls.graceDays.markAsDirty()" />
+        @for (g of grades; track g) {
+          <label [for]="'setting-grace-' + g">Grace days for grade {{ g }} (overdue only past the due-by plus them; blank: none)</label>
+          <input [id]="'setting-grace-' + g" [attr.data-testid]="'setting-grace-' + g" [formControl]="gradeGraceForm.controls[g]"
+                 inputmode="numeric"
+                 (keydown.delete)="gradeGraceForm.controls[g].markAsDirty()"
+                 (keydown.backspace)="gradeGraceForm.controls[g].markAsDirty()" />
+          <label [for]="'setting-grace-' + g + '-from'">Grace days for grade {{ g }} {{ from }}</label>
+          <input [id]="'setting-grace-' + g + '-from'" [attr.data-testid]="'setting-grace-' + g + '-from'"
+                 [formControl]="gradeGraceFromForm.controls[g]" placeholder="yyyy-mm-dd" />
+        }
         <label for="setting-entry-date">Entry date (a new claim's date when none is given; blank: off)</label>
         <input id="setting-entry-date" data-testid="setting-entry-date" formControlName="entryDate" placeholder="yyyy-mm-dd"
                (keydown.delete)="form.controls.entryDate.markAsDirty()"
@@ -181,6 +192,10 @@ const FROM = 'From (yyyy-mm-dd; blank: the sheet\'s today)';
       <p>Policy date now: <span data-testid="setting-policy-date-current">{{ session.policyDate() ?? '' }}</span></p>
       <p>Period numbering from now: <span data-testid="setting-period-numbering-from-current">{{ periodNumberingFrom() ?? '' }}</span></p>
       <p>Grace days now: <span data-testid="setting-grace-days-current">{{ graceDays() ?? '' }}</span></p>
+      @for (g of grades; track g) {
+        <p>Grace days for grade {{ g }} now (blank: none):
+          <span [attr.data-testid]="'setting-grace-' + g + '-current'">{{ gradeGrace()[g] ?? '' }}</span></p>
+      }
       <p>Entry date now: <span data-testid="setting-entry-date-current">{{ entryDate() ?? '' }}</span></p>
       <p>Cap now: <span data-testid="setting-cap-current">{{ session.cap() ?? '' }}</span></p>
       <p>Proof threshold now: <span data-testid="setting-proof-threshold-current">{{ session.proofThreshold() ?? '' }}</span></p>
@@ -258,6 +273,16 @@ export class Settings {
     }
     return byGrade;
   });
+  /** The grace days in force on the sheet's today for each grade that has any then. */
+  protected readonly gradeGrace = computed(() => {
+    const today = this.session.today();
+    const byGrade: Partial<Record<Grade, string>> = {};
+    for (const g of GRADES) {
+      const grace = this.session.valueOn(`grace-${g}`, today);
+      if (grace !== null) byGrade[g] = grace;
+    }
+    return byGrade;
+  });
   protected readonly periodNumberingFrom = signal<string | null>(null);
   protected readonly graceDays = signal<number | null>(null);
   protected readonly entryDate = signal<string | null>(null);
@@ -298,6 +323,16 @@ export class Settings {
     B: new FormControl('', { nonNullable: true }),
     C: new FormControl('', { nonNullable: true }),
   });
+  protected readonly gradeGraceForm = new FormGroup({
+    A: new FormControl('', { nonNullable: true }),
+    B: new FormControl('', { nonNullable: true }),
+    C: new FormControl('', { nonNullable: true }),
+  });
+  protected readonly gradeGraceFromForm = new FormGroup({
+    A: new FormControl('', { nonNullable: true }),
+    B: new FormControl('', { nonNullable: true }),
+    C: new FormControl('', { nonNullable: true }),
+  });
   protected readonly permForm = new FormGroup({
     open: new FormControl('', { nonNullable: true }),
     settle: new FormControl('', { nonNullable: true }),
@@ -320,6 +355,8 @@ export class Settings {
     this.form.valueChanges.subscribe(() => this.error.set(''));
     this.gradeTermsForm.valueChanges.subscribe(() => this.error.set(''));
     this.gradeTermsFromForm.valueChanges.subscribe(() => this.error.set(''));
+    this.gradeGraceForm.valueChanges.subscribe(() => this.error.set(''));
+    this.gradeGraceFromForm.valueChanges.subscribe(() => this.error.set(''));
     this.permForm.valueChanges.subscribe(() => this.error.set(''));
     this.roleForm.valueChanges.subscribe(() => this.roleError.set(''));
     this.delegateForm.valueChanges.subscribe(() => this.delegateError.set(''));
@@ -397,6 +434,7 @@ export class Settings {
       latePct.dirty ? latePctFrom : '', cap.dirty ? capFrom : '', proofThreshold.dirty ? proofThresholdFrom : '',
       noteThreshold.dirty ? noteThresholdFrom : '',
       ...GRADES.filter((g) => this.gradeTermsForm.controls[g].dirty).map((g) => this.gradeTermsFromForm.controls[g].value),
+      ...GRADES.filter((g) => this.gradeGraceForm.controls[g].dirty).map((g) => this.gradeGraceFromForm.controls[g].value),
     ];
     if (froms.some((from) => from.trim() && !isDate(from.trim()))) {
       this.error.set('Enter a from-date as yyyy-mm-dd, or leave it blank for the sheet\'s today.');
@@ -433,6 +471,11 @@ export class Settings {
     }
     if (graceDays.dirty && graceDaysValue && !/^\d{1,4}$/.test(graceDaysValue)) {
       this.error.set('Enter grace days as a whole number of days, 0 or more, or leave it blank for off.');
+      return;
+    }
+    const gradeGraceChanged = GRADES.filter((g) => this.gradeGraceForm.controls[g].dirty);
+    if (gradeGraceChanged.some((g) => !/^(\d{1,4})?$/.test(this.gradeGraceForm.controls[g].value.trim()))) {
+      this.error.set('Enter a grade\'s grace days as a whole number of days, 0 or more, or leave it blank for none.');
       return;
     }
     if (entryDate.dirty && entryDateValue && !isDate(entryDateValue)) {
@@ -516,6 +559,15 @@ export class Settings {
             { headers: this.headers() }),
         );
         graceDays.markAsPristine();
+        if (this.session.sheetId() === sheet) this.show(view);
+      }
+      for (const g of gradeGraceChanged) {
+        const control = this.gradeGraceForm.controls[g];
+        const view = await firstValueFrom(
+          this.http.put<SettingsView>(`${this.base(sheet)}/settings/grace/${g}`,
+            { value: control.value.trim() || null, from: dated(this.gradeGraceFromForm.controls[g].value) }, { headers: this.headers() }),
+        );
+        control.markAsPristine();
         if (this.session.sheetId() === sheet) this.show(view);
       }
       if (entryDate.dirty) {

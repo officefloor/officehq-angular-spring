@@ -32,6 +32,8 @@ import org.springframework.transaction.annotation.Transactional;
  * dated, taken on a claim's date), above which a claim's due needs a proof to be settled or approved;
  * and the entry date (none: off, not dated), the date a new claim given none takes rather than the sheet's today;
  * and the grace days (none: off, not dated), past which an open period closes when the sheet's today changes;
+ * and the grace days of each grade (none: none, dated, taken on a claim's date for its person's grade then),
+ * past its due-by plus which a claim is overdue and from which its late charge's 30-day boundaries count;
  * and the permission matrix (not dated): for each action, the roles that may take it, blank keeping
  * its standing rule.
  */
@@ -111,6 +113,12 @@ public class SettingService {
     @Transactional(readOnly = true)
     public int termsFor(String sheetId, String grade, LocalDate date) {
         return sheets.findById(sheetId).orElseThrow(SheetNotFoundException::new).termsFor(grade, date);
+    }
+
+    /** The grace days of the grade in force on the date; 0 when none. */
+    @Transactional(readOnly = true)
+    public int graceOn(String sheetId, String grade, LocalDate date) {
+        return sheets.findById(sheetId).map(s -> s.graceOn(grade, date)).orElseThrow(SheetNotFoundException::new);
     }
 
     /** The late percent in force on the sheet's today. */
@@ -297,6 +305,19 @@ public class SettingService {
         record(sheet, user, Sheet.LATE_PCT, latePct.toPlainString(), from);
         rollup.recordChanges(sheetId, user, before);
         return latePct;
+    }
+
+    /**
+     * Record the grade's grace days (null: none) from the date (null: the sheet's today); the dues and
+     * overdue-totals they move are audited after its own line. No claim's due-by moves with them.
+     */
+    @Transactional
+    public Integer setGradeGrace(String sheetId, String user, String grade, Integer days, LocalDate from) {
+        Sheet sheet = sheets.findForUpdate(sheetId).orElseThrow(SheetNotFoundException::new);
+        RollupService.Snapshot before = rollup.snapshot(sheetId);
+        record(sheet, user, Sheet.GRACE + "-" + grade, days == null ? null : days.toString(), from);
+        rollup.recordChanges(sheetId, user, before);
+        return days;
     }
 
     /** Change the policy date (null: the sheet's today); the live dues it moves are audited after its own line. */

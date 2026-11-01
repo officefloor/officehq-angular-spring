@@ -66,6 +66,9 @@ export interface ClaimLogLine {
 /** A person's rate on a date: the rate then of the grade they had then, or null when it has none. */
 export type PctOn = (date: string) => string | null;
 
+/** A person's grace days for a claim dated on a date: those of the grade they had then, in force then; 0 when none. */
+export type GraceOn = (date: string) => number;
+
 /** The sheet's floor in force on a date, in cents. */
 export type FloorOn = (date: string) => number;
 
@@ -158,13 +161,14 @@ function halfUp(basis: string, late: Late): boolean {
  * person's last statement, else its amount times its person's rate on its date (as `pctOn` gives it) —
  * with its late charge (by the late percent in force on each 30-day boundary) on top; a correction has
  * no floor and no charge. Null when it has none. Its live figures round by the date `basis` (see {@link roundsOn}).
+ * Its grace days (`graceOn`) put off when it is overdue and its charge's 30-day boundaries.
  */
-export function claimDueCents(c: Claim, pctOn: PctOn, floorOn: FloorOn, late: Late, basis: string): number | null {
+export function claimDueCents(c: Claim, pctOn: PctOn, floorOn: FloorOn, late: Late, basis: string, graceOn: GraceOn): number | null {
   if (c.settledDue !== null) return cents(c.settledDue);
   const up = halfUp(basis, late);
   const figure = figureCents(c, pctOn, up);
   if (figure === null) return null;
-  const charged = figure + lateChargeCents(c, figure, late, up);
+  const charged = figure + lateChargeCents(c, figure, late, up, graceOn);
   return isCorrection(c) ? charged : Math.max(charged, floorOn(c.date));
 }
 
@@ -178,12 +182,13 @@ function figureCents(c: Claim, pctOn: PctOn, halfUp: boolean): number | null {
 
 /**
  * The late charge in cents on an overdue claim with the given figure, worked out per 30-day boundary: for each full
- * 30 days past its due-by, the late percent in force on that boundary date (the due-by plus 30, 60, 90 ... days) of
- * it, rounded like a due, and the charges added up; 0 when not overdue or a correction. Never bound by a statement.
+ * 30 days past its due-by plus its grace days, the late percent in force on that boundary date (the due-by plus the
+ * grace plus 30, 60, 90 ... days) of it, rounded like a due, and the charges added up; 0 when not overdue or a
+ * correction. Never bound by a statement.
  */
-export function lateChargeCents(c: Claim, figureCents: number, late: Late, halfUp: boolean): number {
-  if (late.today === null || isCorrection(c) || !isOverdue(c, late.today)) return 0;
-  const dueBy = Date.parse(`${c.dueBy}T00:00:00Z`);
+export function lateChargeCents(c: Claim, figureCents: number, late: Late, halfUp: boolean, graceOn: GraceOn): number {
+  if (late.today === null || isCorrection(c) || !isOverdue(c, late.today, graceOn)) return 0;
+  const dueBy = Date.parse(`${lateFrom(c, graceOn)}T00:00:00Z`);
   let total = 0;
   for (let step = 1; ; step++) {
     const boundary = new Date(dueBy + step * 30 * 86_400_000).toISOString().slice(0, 10);
@@ -192,9 +197,16 @@ export function lateChargeCents(c: Claim, figureCents: number, late: Late, halfU
   }
 }
 
-/** Overdue: OPEN or PENDING, not deferred, with its due-by before the sheet's today. */
-export function isOverdue(c: Claim, today: string | null): boolean {
-  return isOpen(c) && today !== null && c.dueBy < today && !isDeferred(c, today);
+/** The date (yyyy-mm-dd) past which a claim is late: its due-by plus its grace days; the due-by shown is unchanged. */
+export function lateFrom(c: Claim, graceOn: GraceOn): string {
+  const grace = graceOn(c.date);
+  if (grace === 0) return c.dueBy;
+  return new Date(Date.parse(`${c.dueBy}T00:00:00Z`) + grace * 86_400_000).toISOString().slice(0, 10);
+}
+
+/** Overdue: OPEN or PENDING, not deferred, with its due-by plus its grace days before the sheet's today. */
+export function isOverdue(c: Claim, today: string | null, graceOn: GraceOn): boolean {
+  return isOpen(c) && today !== null && lateFrom(c, graceOn) < today && !isDeferred(c, today);
 }
 
 /** Why a change to a claim due inside a closed period is refused. */
@@ -339,6 +351,8 @@ export class Claims {
   readonly claims = input.required<Claim[]>();
   /** The person's rate on a date, of the grade they had then. */
   readonly pctOn = input.required<PctOn>();
+  /** The person's grace days for a claim dated on a date, of the grade they had then. */
+  readonly graceOn = input.required<GraceOn>();
   /** The sheet's periods, for the one each claim's due-by falls in. */
   readonly periods = input.required<Period[]>();
   /** A claim added, edited or given a new status, as the store now holds it. */
@@ -386,12 +400,12 @@ export class Claims {
 
   /** The due fixed when it was settled, else its figure with its late charge on top. */
   protected dueOf(c: Claim): string {
-    const due = claimDueCents(c, this.pctOn(), this.session.floorCentsOn, this.session.late(), roundsOn(c, this.claims()));
+    const due = claimDueCents(c, this.pctOn(), this.session.floorCentsOn, this.session.late(), roundsOn(c, this.claims()), this.graceOn());
     return due === null ? NA : money(due);
   }
 
   protected overdueOf(c: Claim): boolean {
-    return isOverdue(c, this.session.today());
+    return isOverdue(c, this.session.today(), this.graceOn());
   }
 
   protected deferredOf(c: Claim): boolean {

@@ -3,13 +3,14 @@ import { Component, computed, effect, inject, signal } from '@angular/core';
 import { FormControl, FormGroup, ReactiveFormsModule } from '@angular/forms';
 import { firstValueFrom } from 'rxjs';
 import { Session } from '../../core/session';
-import { Claim, Claims, PctOn, RETIRED, cents, claimDueCents, countsAt, countsFor, isBound, isOpen, isOverdue, money, roundsOn } from '../claims/claims';
+import { Claim, Claims, GraceOn, PctOn, RETIRED, cents, claimDueCents, countsAt, countsFor, isBound, isOpen, isOverdue, money, roundsOn } from '../claims/claims';
 import { Period, Periods, periodOn } from '../periods/periods';
 import { GRADES, NA, Rate, Rates, pctOn, rateOn } from '../rates/rates';
 
 const NO_CLAIMS: Claim[] = [];
 const NO_RATES: Rate[] = [];
 const NO_PCT: PctOn = () => null;
+const NO_GRACE: GraceOn = () => 0;
 /** The statuses the summary counts claims by. */
 const SUMMARY_STATUSES = ['DRAFT', 'OPEN', 'PENDING', 'SETTLED', 'VOID'];
 
@@ -342,7 +343,7 @@ function trimmedSum(figures: number[]): number {
                 }
               </td>
               <td>
-                <app-claims [personId]="p.id" [personName]="p.name" [claims]="claimsOf(p.id)" [pctOn]="pctOnOf(p.id)"
+                <app-claims [personId]="p.id" [personName]="p.name" [claims]="claimsOf(p.id)" [pctOn]="pctOnOf(p.id)" [graceOn]="graceOnOf(p.id)"
                             [periods]="periods()" [selected]="selectedIds()" [others]="patronChoicesFor(p)"
                             (saved)="claimSaved($event)" (moved)="claimMoved($event)" (toggled)="claimToggled($event)" />
               </td>
@@ -475,7 +476,7 @@ export class People {
       if (period === null || pctOn === undefined) continue;
       if (!countsAt(c, period.to, this.keptOut(c), today)) continue;
       const theirs = by.get(c.personId) ?? new Map<number, number>();
-      theirs.set(period.id, (theirs.get(period.id) ?? 0) + (claimDueCents(c, pctOn, this.session.floorCentsOn, this.session.late(), roundsOn(c, this.claimsOf(c.personId))) ?? 0));
+      theirs.set(period.id, (theirs.get(period.id) ?? 0) + (claimDueCents(c, pctOn, this.session.floorCentsOn, this.session.late(), roundsOn(c, this.claimsOf(c.personId)), this.graceOnOf(c.personId)) ?? 0));
       by.set(c.personId, theirs);
     }
     return by;
@@ -510,6 +511,12 @@ export class People {
     for (const p of this.people()) by.set(p.id, (date) => pctOn(this.ratesOf(gradeOn(p, date)), date));
     return by;
   });
+  /** Each person's grace days for a claim dated on a date, by id: those of the grade in force for them then, in force then. */
+  private readonly graceOnByPerson = computed(() => {
+    const by = new Map<number, GraceOn>();
+    for (const p of this.people()) by.set(p.id, (date) => this.session.graceOn(gradeOn(p, date), date));
+    return by;
+  });
   /** Each grade's rate in force on the sheet's today, for the grades that have one. */
   private readonly pctByGrade = computed(() => {
     const today = this.session.today();
@@ -533,9 +540,10 @@ export class People {
     const by = new Map<number, Overdue>();
     for (const p of this.people()) {
       const pctOn = this.pctOnOf(p.id);
+      const graceOn = this.graceOnOf(p.id);
       const theirs = this.claimsOf(p.id);
-      const overdue = theirs.filter((c) => this.counts(c) && isOverdue(c, today));
-      by.set(p.id, { count: overdue.length, cents: overdue.reduce((sum, c) => sum + (claimDueCents(c, pctOn, floor, late, roundsOn(c, theirs)) ?? 0), 0) });
+      const overdue = theirs.filter((c) => this.counts(c) && isOverdue(c, today, graceOn));
+      by.set(p.id, { count: overdue.length, cents: overdue.reduce((sum, c) => sum + (claimDueCents(c, pctOn, floor, late, roundsOn(c, theirs), graceOn) ?? 0), 0) });
     }
     return by;
   });
@@ -547,11 +555,12 @@ export class People {
     const by = new Map<number, Aged>();
     for (const p of this.people()) {
       const pctOn = this.pctOnOf(p.id);
+      const graceOn = this.graceOnOf(p.id);
       const theirs = this.claimsOf(p.id);
       const aged: Aged = { upTo30: 0, upTo60: 0, over60: 0 };
       for (const c of theirs) {
         if (!isOpen(c) || !this.counts(c)) continue;
-        const due = claimDueCents(c, pctOn, floor, late, roundsOn(c, theirs)) ?? 0;
+        const due = claimDueCents(c, pctOn, floor, late, roundsOn(c, theirs), graceOn) ?? 0;
         const age = today === null ? 0 : daysFrom(c.date, today);
         if (age <= 30) aged.upTo30 += due;
         else if (age <= 60) aged.upTo60 += due;
@@ -571,11 +580,12 @@ export class People {
     const by = new Map<number, Split>();
     for (const p of this.people()) {
       const pctOn = this.pctOnOf(p.id);
+      const graceOn = this.graceOnOf(p.id);
       const theirs = this.claimsOf(p.id);
       const split: Split = { settled: 0, open: 0 };
       for (const c of theirs) {
         if (!this.counts(c)) continue;
-        const due = claimDueCents(c, pctOn, floor, late, roundsOn(c, theirs)) ?? 0;
+        const due = claimDueCents(c, pctOn, floor, late, roundsOn(c, theirs), graceOn) ?? 0;
         if (c.status === 'SETTLED') split.settled += due;
         else split.open += due;
       }
@@ -728,6 +738,11 @@ export class People {
     return this.pctOnByPerson().get(personId) ?? NO_PCT;
   }
 
+  /** The person's grace days for a claim dated on a date, of the grade in force for them then. */
+  protected graceOnOf(personId: number): GraceOn {
+    return this.graceOnByPerson().get(personId) ?? NO_GRACE;
+  }
+
   /** The person's grade in force on the sheet's today. */
   protected gradeOf(p: Person): string {
     const today = this.session.today();
@@ -748,6 +763,7 @@ export class People {
     const theirs = this.claimsOf(p.id);
     const counted = theirs.filter(this.counts);
     const pctOn = this.pctOnOf(p.id);
+    const graceOn = this.graceOnOf(p.id);
     const floor = this.session.floorCentsOn;
     const late = this.session.late();
     const gradeToday = this.gradeOf(p);
@@ -757,9 +773,9 @@ export class People {
       return today !== null && rateOn(rates, c.date) !== rateOn(rates, today);
     };
     const fixed = (c: Claim) => c.settledDue !== null || (isBound(c) && c.statedDue !== null)
-      || ((gradeOn(p, c.date) !== gradeToday || otherRate(c)) && claimDueCents(c, pctOn, floor, late, roundsOn(c, theirs)) !== null);
+      || ((gradeOn(p, c.date) !== gradeToday || otherRate(c)) && claimDueCents(c, pctOn, floor, late, roundsOn(c, theirs), graceOn) !== null);
     if (this.pctOf(gradeToday) === null && !counted.some(fixed)) return null;
-    return counted.reduce((sum, c) => sum + (claimDueCents(c, pctOn, floor, late, roundsOn(c, theirs)) ?? 0), 0);
+    return counted.reduce((sum, c) => sum + (claimDueCents(c, pctOn, floor, late, roundsOn(c, theirs), graceOn) ?? 0), 0);
   }
 
   /** The sheet's cap in cents, or null when there is none. */

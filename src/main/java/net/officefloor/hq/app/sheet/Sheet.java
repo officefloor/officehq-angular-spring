@@ -24,9 +24,9 @@ import java.util.TreeMap;
 @Table(name = "sheet")
 public class Sheet {
 
-    /** The keys of its dated settings; a grade's terms are {@code terms-<grade>}. */
+    /** The keys of its dated settings; a grade's terms are {@code terms-<grade>}, its grace days {@code grace-<grade>}. */
     public static final String FLOOR = "floor", LATE_PCT = "late-pct", TERMS = "terms", CLERK_LIMIT = "clerk-limit",
-            CAP = "cap", PROOF_THRESHOLD = "proof-threshold", NOTE_THRESHOLD = "note-threshold";
+            CAP = "cap", PROOF_THRESHOLD = "proof-threshold", NOTE_THRESHOLD = "note-threshold", GRACE = "grace";
 
     /** The values in force before any is recorded. */
     public static final BigDecimal START_FLOOR = new BigDecimal("1.00"), START_LATE_PCT = new BigDecimal("0.00");
@@ -55,7 +55,8 @@ public class Sheet {
      * the one in force on that boundary date of its figure), the terms of the sheet and of
      * each grade (a claim's due-by is its date plus those in force on it), the clerk limit (a clerk can
      * settle a claim only when its due is at or below the one in force today) and the cap (a person's
-     * due-total is at most the one in force today).
+     * due-total is at most the one in force today), and the grace days of each grade (a claim whose person's
+     * grade on its date has them in force then is overdue, and charged late, from its due-by plus them).
      */
     @ElementCollection(fetch = FetchType.EAGER)
     @CollectionTable(name = "sheet_setting", joinColumns = @JoinColumn(name = "sheet_id"))
@@ -157,6 +158,12 @@ public class Sheet {
     /** The late percent in force on the date as recorded by the end of the as-of date. */
     public BigDecimal latePctOn(LocalDate date, LocalDate asOf) { return decimalOn(LATE_PCT, date, asOf, START_LATE_PCT); }
 
+    /** The grade's grace days in force on the date as recorded by the end of the as-of date; 0 when none. */
+    public int graceOn(String grade, LocalDate date, LocalDate asOf) {
+        DatedSettingLine d = inForce(GRACE + "-" + grade, date, asOf);
+        return d == null || d.getValue() == null ? 0 : Integer.parseInt(d.getValue());
+    }
+
     /** The due-total, at most the cap in force on the as-of date as recorded by its end; null (n/a) stays null. */
     public BigDecimal cappedAsOf(BigDecimal dueTotal, LocalDate asOf) {
         BigDecimal cap = decimalOn(CAP, asOf, asOf, null);
@@ -218,6 +225,12 @@ public class Sheet {
     public int termsFor(String grade, LocalDate date) {
         Integer own = gradeTermsOn(grade, date);
         return own != null ? own : termsOn(date);
+    }
+
+    /** The grade's grace days in force on the date; 0 when it has none then (none recorded, or blank). */
+    public int graceOn(String grade, LocalDate date) {
+        DatedSetting d = inForce(GRACE + "-" + grade, date);
+        return d == null || d.getValue() == null ? 0 : Integer.parseInt(d.getValue());
     }
 
     /** The late percent in force on the date: 0.00 before any is recorded. */
