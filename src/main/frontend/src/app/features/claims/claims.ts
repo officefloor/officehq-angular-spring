@@ -47,6 +47,8 @@ export interface Claim {
   proofs: number;
   /** Its external reference, unique on the sheet without regard to case; null when it has none. */
   ref: string | null;
+  /** Its tags, trimmed, lower-cased, each once and sorted; empty when it has none. */
+  tags: string[];
   /** The number of the claim it was split off; null unless split off one. */
   splitFrom: string | null;
   /** The user whose open editor locks it for everyone else; null while no editor holds it. */
@@ -265,6 +267,8 @@ function notEditable(status: ClaimStatus | undefined): string {
       <input [id]="fieldId('corrects')" data-testid="claim-form-corrects" formControlName="corrects" />
       <label [for]="fieldId('ref')">Reference</label>
       <input [id]="fieldId('ref')" data-testid="claim-form-ref" formControlName="ref" />
+      <label [for]="fieldId('tags')">Tags (comma separated)</label>
+      <input [id]="fieldId('tags')" data-testid="claim-form-tags" formControlName="tags" />
       <button type="submit" data-testid="claim-form-submit">{{ editingId() === null ? 'Add claim' : 'Save claim' }}</button>
       @if (error()) {
         <p role="alert" class="error" data-testid="claim-form-error">{{ error() }}</p>
@@ -281,6 +285,7 @@ function notEditable(status: ClaimStatus | undefined): string {
           <span data-testid="claim-date">{{ c.date }}</span>
           <span data-testid="claim-note">{{ c.note }}</span>
           <span>Ref <span data-testid="claim-ref">{{ c.ref ?? '' }}</span></span>
+          <span>Tags <span data-testid="claim-tags">{{ c.tags.join(', ') }}</span></span>
           <span>Period <span data-testid="claim-period">{{ periodOf(c) }}</span></span>
           <span>Due <span data-testid="claim-due">{{ dueOf(c) }}</span></span>
           <span data-testid="claim-status">{{ c.status }}</span>
@@ -400,6 +405,7 @@ export class Claims {
     note: new FormControl('', { nonNullable: true }),
     corrects: new FormControl('', { nonNullable: true }),
     ref: new FormControl('', { nonNullable: true }),
+    tags: new FormControl('', { nonNullable: true }),
   });
 
   constructor() {
@@ -445,14 +451,14 @@ export class Claims {
 
   private reset(): void {
     this.editingId.set(null);
-    this.form.reset({ amount: '', date: '', note: '', corrects: '', ref: '' }, { emitEvent: false });
+    this.form.reset({ amount: '', date: '', note: '', corrects: '', ref: '', tags: '' }, { emitEvent: false });
     this.error.set('');
   }
 
   private openEditor(c: Claim): void {
     this.editingId.set(c.id);
     this.form.setValue({ amount: c.amount, date: c.date, note: c.note, corrects: c.corrects ?? '',
-      ref: c.ref ?? '' },
+      ref: c.ref ?? '', tags: c.tags.join(', ') },
       { emitEvent: false });
     this.error.set('');
   }
@@ -783,7 +789,7 @@ export class Claims {
         : 'A correction keeps a negative amount; enter one below 0.00.' });
       return;
     }
-    const body = { amount, date: c.date, note: c.note, corrects: c.corrects, ref: c.ref };
+    const body = { amount, date: c.date, note: c.note, corrects: c.corrects, ref: c.ref, tags: c.tags.join(',') };
     const url = `/api/sheets/${encodeURIComponent(sheet)}/claims/${c.id}`;
     try {
       const claim = await firstValueFrom(this.http.put<Claim>(url, body, { headers: this.headers() }));
@@ -841,7 +847,7 @@ export class Claims {
       return;
     }
     const body = { amount, date: date || null, note: raw.note.trim(), corrects: corrects || null,
-      ref: raw.ref.trim() || null };
+      ref: raw.ref.trim() || null, tags: raw.tags };
     const id = this.editingId();
     const base = `/api/sheets/${encodeURIComponent(sheet)}`;
     this.saving = true;

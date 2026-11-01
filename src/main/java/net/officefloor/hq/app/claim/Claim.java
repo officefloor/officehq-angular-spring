@@ -107,6 +107,10 @@ public class Claim {
     @Column(name = "ref_key", length = 200)
     private String refKey;
 
+    /** Its tags, sorted and comma separated (see {@link #tagsOf}); empty for none. */
+    @Column(name = "tags", nullable = false, length = 2000)
+    private String tags = "";
+
     /** The number of the claim it was split from; none unless split off one. */
     @Column(name = "split_from")
     private String splitFrom;
@@ -178,6 +182,27 @@ public class Claim {
     /** The key a reference is compared on: trimmed, without regard to case. */
     public static String refKeyOf(String ref) {
         return ref.strip().toLowerCase(Locale.ROOT);
+    }
+
+    /** Its tags, sorted; empty for none. */
+    public List<String> getTags() {
+        return tags.isEmpty() ? List.of() : List.of(tags.split(","));
+    }
+
+    /** Give it tags, as {@link #tagsOf} reads them. */
+    public void setTags(List<String> tags) {
+        this.tags = String.join(",", tagsOf(tags));
+    }
+
+    /** Tags each trimmed and lower-cased, blanks and repeats dropped, sorted. */
+    public static List<String> tagsOf(List<String> tags) {
+        return tags.stream().map(t -> t.strip().toLowerCase(Locale.ROOT)).filter(t -> !t.isEmpty())
+                .distinct().sorted().toList();
+    }
+
+    /** The tags in comma separated text, as {@link #tagsOf} reads them; none for null. */
+    public static List<String> tagsOf(String text) {
+        return text == null ? List.of() : tagsOf(List.of(text.split(",")));
     }
 
     public String getSplitFrom() { return splitFrom; }

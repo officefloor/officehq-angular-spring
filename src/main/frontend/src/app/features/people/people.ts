@@ -395,6 +395,20 @@ function trimmedSum(figures: number[]): number {
         </tbody>
       </table>
       <table>
+        <caption>By tag, every tag used on the sheet</caption>
+        <thead>
+          <tr><th scope="col">Tag</th><th scope="col">Due total</th></tr>
+        </thead>
+        <tbody>
+          @for (t of tagSummary(); track t.tag) {
+            <tr>
+              <th scope="row">{{ t.tag }}</th>
+              <td [attr.data-testid]="'tag-' + t.tag + '-due-total'">{{ t.dueTotal }}</td>
+            </tr>
+          }
+        </tbody>
+      </table>
+      <table>
         <caption>By status</caption>
         <thead>
           <tr><th scope="col">Status</th><th scope="col">Claims</th></tr>
@@ -616,6 +630,29 @@ export class People {
         active: on.filter((p) => p.active).length };
     }),
   );
+  /** Every tag ever used on a claim of the sheet, as the store last told, sorted. */
+  protected readonly usedTags = signal<string[]>([]);
+  /**
+   * Per tag ever used on the sheet (those of the claims on screen too), sorted: the dues of the claims that
+   * count which carry it, added up; a claim with two tags counts in both.
+   */
+  protected readonly tagSummary = computed(() => {
+    const floor = this.session.floorCentsOn;
+    const late = this.session.late();
+    const totals = new Map<string, number>(this.usedTags().map((t) => [t, 0]));
+    for (const c of this.claims()) for (const t of c.tags) if (!totals.has(t)) totals.set(t, 0);
+    for (const p of this.people()) {
+      const pctOn = this.pctOnOf(p.id);
+      const graceOn = this.graceOnOf(p.id);
+      const theirs = this.claimsOf(p.id);
+      for (const c of theirs) {
+        if (c.tags.length === 0 || !this.counts(c)) continue;
+        const due = claimDueCents(c, pctOn, floor, late, roundsOn(c, theirs), graceOn) ?? 0;
+        for (const t of c.tags) totals.set(t, (totals.get(t) ?? 0) + due);
+      }
+    }
+    return [...totals.keys()].sort().map((tag) => ({ tag, dueTotal: money(totals.get(tag) ?? 0) }));
+  });
   /** Per status: how many of the sheet's claims have it. */
   protected readonly statusSummary = computed(() =>
     SUMMARY_STATUSES.map((status) => ({ status, count: this.claims().filter((c) => c.status === status).length })),
@@ -673,6 +710,7 @@ export class People {
       this.bulkSettleError.set('');
       this.rates.set([]);
       this.periods.set([]);
+      this.usedTags.set([]);
       this.statements.set([]);
       this.personError.set(null);
       this.patronError.set(null);
@@ -699,12 +737,13 @@ export class People {
 
   private async load(sheet: string): Promise<void> {
     try {
-      const [list, claims, rates, statements, periods] = await Promise.all([
+      const [list, claims, rates, statements, periods, tags] = await Promise.all([
         firstValueFrom(this.http.get<Person[]>(this.url(sheet), { headers: this.headers() })),
         firstValueFrom(this.http.get<Claim[]>(`/api/sheets/${encodeURIComponent(sheet)}/claims`, { headers: this.headers() })),
         firstValueFrom(this.http.get<Rate[]>(`/api/sheets/${encodeURIComponent(sheet)}/rates`, { headers: this.headers() })),
         firstValueFrom(this.http.get<StatementSummary[]>(`/api/sheets/${encodeURIComponent(sheet)}/statements`, { headers: this.headers() })),
         firstValueFrom(this.http.get<Period[]>(`/api/sheets/${encodeURIComponent(sheet)}/periods`, { headers: this.headers() })),
+        firstValueFrom(this.http.get<string[]>(`/api/sheets/${encodeURIComponent(sheet)}/claims/tags`, { headers: this.headers() })),
       ]);
       if (this.session.sheetId() !== sheet) return;
       this.people.set(list);
@@ -712,6 +751,7 @@ export class People {
       this.rates.set(rates);
       this.statements.set(statements);
       this.periods.set(periods);
+      this.usedTags.set(tags);
     } catch {
       if (this.session.sheetId() === sheet) this.error.set('Could not load the people on this sheet.');
     }
