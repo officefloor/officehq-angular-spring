@@ -68,6 +68,11 @@ public class ClaimPlanService {
         return made;
     }
 
+    /** The sheet's today, from which a plan's next dates are counted. */
+    public LocalDate today(String sheetId) {
+        return sheets.today(sheetId);
+    }
+
     @Transactional
     public ClaimPlan add(String sheetId, String user, Long personId, BigDecimal amount, LocalDate start,
             Integer every, Integer day, LocalDate end) {

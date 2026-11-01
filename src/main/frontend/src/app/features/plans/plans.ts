@@ -6,7 +6,8 @@ import { Session } from '../../core/session';
 
 /**
  * A person's plan: an amount (two decimals) from its start, every so many days or monthly on a day of the month
- * (one set, the other null), up to its end; how many claims it has made.
+ * (one set, the other null), up to its end; how many claims it has made, and its next five dates after the sheet's
+ * today (comma and space separated).
  */
 export interface Plan {
   id: number;
@@ -17,6 +18,7 @@ export interface Plan {
   day: number | null;
   end: string;
   generated: number;
+  nextDates: string;
 }
 
 const AMOUNT = /^\d{1,12}(\.\d{1,2})?$/;
@@ -40,7 +42,8 @@ const DATE = /^\d{4}-\d{2}-\d{2}$/;
             every <span data-testid="plan-every">{{ pl.every }}</span> days
           }
           to <span data-testid="plan-end">{{ pl.end }}</span>,
-          made <span data-testid="plan-generated">{{ pl.generated }}</span>
+          made <span data-testid="plan-generated">{{ pl.generated }}</span>,
+          next <span data-testid="plan-next-dates">{{ pl.nextDates }}</span>
         </li>
       }
     </ul>

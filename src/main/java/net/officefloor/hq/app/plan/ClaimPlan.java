@@ -94,4 +94,23 @@ public class ClaimPlan {
         }
         return dates;
     }
+
+    /** The plan's first so many dates after the day given, on or before its end. */
+    public List<LocalDate> datesAfter(LocalDate after, int count) {
+        List<LocalDate> next = new ArrayList<>();
+        if (day != null) {
+            YearMonth m = YearMonth.from(start.isAfter(after) ? start : after);
+            for (; next.size() < count && !m.atDay(1).isAfter(end); m = m.plusMonths(1)) {
+                LocalDate d = m.atDay(Math.min(day, m.lengthOfMonth()));
+                if (!d.isBefore(start) && d.isAfter(after) && !d.isAfter(end)) next.add(d);
+            }
+        } else {
+            LocalDate d = start;
+            if (after.isAfter(start)) d = start.plusDays((after.toEpochDay() - start.toEpochDay()) / every * every);
+            for (; next.size() < count && !d.isAfter(end); d = d.plusDays(every)) {
+                if (d.isAfter(after)) next.add(d);
+            }
+        }
+        return next;
+    }
 }
