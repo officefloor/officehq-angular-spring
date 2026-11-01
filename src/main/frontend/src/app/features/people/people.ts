@@ -157,6 +157,17 @@ interface StatementTaken {
           <p role="alert" class="error" data-testid="quick-error">{{ quickError() }}</p>
         }
       </form>
+      <form [formGroup]="pasteForm" (ngSubmit)="paste()" aria-label="Paste draft claims">
+        <label for="paste-claims">Paste claims (name,amount,date,note per line)</label>
+        <textarea id="paste-claims" data-testid="paste-claims" formControlName="text" rows="4"></textarea>
+        <button type="submit" data-testid="paste-submit">Paste</button>
+        @if (pasteAdded() !== null) {
+          <p role="status">Added <span data-testid="paste-added">{{ pasteAdded() }}</span></p>
+        }
+        @if (pasteError()) {
+          <p role="alert" class="error" data-testid="paste-error">{{ pasteError() }}</p>
+        }
+      </form>
       <label>
         <input type="checkbox" data-testid="show-retired" [checked]="session.showRetired()"
                (change)="session.showRetired.set($any($event.target).checked)" />
@@ -464,7 +475,17 @@ export class People {
     amount: new FormControl('', { nonNullable: true }),
   });
 
+  /** A paste is under way; another one waits for its answer rather than storing twice. */
+  private pasting = false;
+  protected readonly pasteError = signal('');
+  /** How many claims the last paste added; null before one, and while one runs. */
+  protected readonly pasteAdded = signal<number | null>(null);
+  protected readonly pasteForm = new FormGroup({
+    text: new FormControl('', { nonNullable: true }),
+  });
+
   constructor() {
+    this.pasteForm.valueChanges.subscribe(() => this.pasteError.set(''));
     this.form.valueChanges.subscribe(() => this.error.set(''));
     this.quickForm.valueChanges.subscribe(() => this.quickError.set(''));
     effect(() => {
@@ -485,6 +506,9 @@ export class People {
       this.reset();
       this.quickForm.reset({ name: '', amount: '' }, { emitEvent: false });
       this.quickError.set('');
+      this.pasteForm.reset({ text: '' }, { emitEvent: false });
+      this.pasteError.set('');
+      this.pasteAdded.set(null);
       if (id) void this.load(id);
     });
   }
@@ -947,6 +971,45 @@ export class People {
       );
     } finally {
       this.quickAdding = false;
+    }
+  }
+
+  /**
+   * Add a DRAFT claim per pasted line of name,amount,date,note, in order, for the person of the name
+   * on the sheet. Every line is checked first; if any is refused, none is added.
+   */
+  protected async paste(): Promise<void> {
+    if (this.pasting) return;
+    this.pasteError.set('');
+    this.pasteAdded.set(null);
+    const sheet = this.session.sheetId();
+    if (!sheet) return;
+    const text = this.pasteForm.getRawValue().text;
+    if (!text.trim()) {
+      this.pasteError.set('Paste at least one line of name,amount,date,note.');
+      return;
+    }
+    this.pasting = true;
+    try {
+      const done = await firstValueFrom(
+        this.http.post<{ added: number; claims: Claim[] }>(
+          `/api/sheets/${encodeURIComponent(sheet)}/claims/paste`, { text }, { headers: this.headers() }),
+      );
+      if (this.session.sheetId() !== sheet) return;
+      for (const claim of done.claims) this.claimSaved(claim);
+      this.pasteAdded.set(done.added);
+      this.pasteForm.reset({ text: '' }, { emitEvent: false });
+    } catch (e) {
+      if (this.session.sheetId() !== sheet) return;
+      this.pasteError.set(
+        e instanceof HttpErrorResponse && e.status === 423
+          ? 'No claim dated inside a closed period can be changed.'
+          : e instanceof HttpErrorResponse && e.status === 422
+          ? RETIRED
+          : 'Every line must be name,amount,date,note for a person on the sheet; nothing was added.',
+      );
+    } finally {
+      this.pasting = false;
     }
   }
 

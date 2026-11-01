@@ -90,12 +90,20 @@ public class ClaimController {
     /** How many of the selected claims a bulk settle settled (or sent to PENDING), and how many it refused. */
     public record BulkSettleView(int settled, int refused) {}
 
+    /** Pasted lines of name,amount,date,note, one claim each. */
+    public record PasteRequest(@NotNull @Size(max = 200000) String text) {}
+
+    /** The claims a paste added, in the order of their lines. */
+    public record PasteView(int added, List<ClaimView> claims) {}
+
     private final ClaimService service;
     private final ClaimBulkService bulk;
+    private final ClaimPasteService paste;
 
-    public ClaimController(ClaimService service, ClaimBulkService bulk) {
+    public ClaimController(ClaimService service, ClaimBulkService bulk, ClaimPasteService paste) {
         this.service = service;
         this.bulk = bulk;
+        this.paste = paste;
     }
 
     @GetMapping("/claims")
@@ -113,6 +121,15 @@ public class ClaimController {
             @RequestBody @Valid ClaimRequest request) {
         return ClaimView.of(service.add(sheetId, user, personId, request.amountValue(), request.date(), request.noteValue(),
                 request.correctsValue()));
+    }
+
+    @PostMapping("/claims/paste")
+    public PasteView paste(
+            @PathVariable @Size(max = 100) @Pattern(regexp = "[A-Za-z0-9._-]+") String sheetId,
+            @RequestHeader("X-User") @NotBlank @Size(max = 100) String user,
+            @RequestBody @Valid PasteRequest request) {
+        List<ClaimView> added = paste.paste(sheetId, user, request.text()).stream().map(ClaimView::of).toList();
+        return new PasteView(added.size(), added);
     }
 
     @PutMapping("/claims/{id}")
