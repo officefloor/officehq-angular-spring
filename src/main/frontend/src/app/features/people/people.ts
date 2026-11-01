@@ -179,7 +179,7 @@ export class People {
       const period = periodOn(this.periods(), c.date);
       const grade = grades.get(c.personId);
       if (period === null || grade === undefined) continue;
-      by.set(period.id, (by.get(period.id) ?? 0) + (claimDueCents(c, this.ratesOf(grade)) ?? 0));
+      by.set(period.id, (by.get(period.id) ?? 0) + (claimDueCents(c, this.ratesOf(grade), cents(this.session.floor())) ?? 0));
     }
     return by;
   });
@@ -305,7 +305,8 @@ export class People {
     const fixed = (c: Claim) => c.settledDue !== null || (c.stated && c.statedDue !== null);
     if (this.pctOf(p.grade) === null && !counted.some(fixed)) return null;
     const rates = this.ratesOf(p.grade);
-    return counted.reduce((sum, c) => sum + (claimDueCents(c, rates) ?? 0), 0);
+    const floor = cents(this.session.floor());
+    return counted.reduce((sum, c) => sum + (claimDueCents(c, rates, floor) ?? 0), 0);
   }
 
   /** Their due-total, or n/a. */

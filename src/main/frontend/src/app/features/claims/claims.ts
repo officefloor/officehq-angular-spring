@@ -50,14 +50,14 @@ export function cents(amount: string): number {
 
 /**
  * A claim's due in cents: the due fixed when it was settled, else the due bound by its person's
- * last statement, else its amount times its grade's rate on its date (of the grade's rates given);
- * null when it has none.
+ * last statement, else its amount times its grade's rate on its date (of the grade's rates given),
+ * at least the floor (in cents); null when it has none.
  */
-export function claimDueCents(c: Claim, rates: Rate[]): number | null {
+export function claimDueCents(c: Claim, rates: Rate[], floorCents: number): number | null {
   if (c.settledDue !== null) return cents(c.settledDue);
   if (c.stated) return c.statedDue === null ? null : cents(c.statedDue);
   const pct = pctOn(rates, c.date);
-  return pct === null ? null : dueCents(cents(c.amount), pct);
+  return pct === null ? null : Math.max(dueCents(cents(c.amount), pct), floorCents);
 }
 
 /** Why a change to a claim dated inside a closed period is refused. */
@@ -162,9 +162,9 @@ export class Claims {
     return `claim-${this.personId()}-${field}`;
   }
 
-  /** The due fixed when it was settled, else its amount times the grade's rate on its date. */
+  /** The due fixed when it was settled, else its amount times the grade's rate on its date, at least the floor. */
   protected dueOf(c: Claim): string {
-    const due = claimDueCents(c, this.rates());
+    const due = claimDueCents(c, this.rates(), cents(this.session.floor()));
     return due === null ? NA : money(due);
   }
 

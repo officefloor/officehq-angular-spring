@@ -60,7 +60,9 @@ public class RollupService {
      * change on the sheet moves the figures between this snapshot and the one after the change.
      */
     public Snapshot snapshot(String sheetId) {
-        LocalDate today = sheets.findForUpdate(sheetId).map(Sheet::getToday).orElse(null);
+        Sheet sheet = sheets.findForUpdate(sheetId).orElse(null);
+        LocalDate today = sheet == null ? null : sheet.getToday();
+        BigDecimal floor = sheet == null ? zero() : sheet.getFloor();
         Map<String, List<Rate>> ratesByGrade = new LinkedHashMap<>();
         for (Rate rate : rates.findBySheetIdOrderByGradeAscFromDateAsc(sheetId)) {
             ratesByGrade.computeIfAbsent(rate.getGrade(), g -> new ArrayList<>()).add(rate);
@@ -83,7 +85,7 @@ public class RollupService {
                 if (!claim.getStatus().counts(person.isHeld())) continue;
                 claimed = claimed.add(claim.getAmount());
                 if (claim.getSettledDue() != null || (claim.isStated() && claim.getStatedDue() != null)) fixed = true;
-                BigDecimal figure = figureOf(claim, theirRates);
+                BigDecimal figure = figureOf(claim, theirRates, floor);
                 if (figure != null) due = due.add(figure);
             }
             // As on screen: n/a when their grade has no rate today and none of the counted claims has a fixed due.
@@ -113,12 +115,16 @@ public class RollupService {
         }
     }
 
-    /** A claim's figure: its settled due, else its stated due, else its live due; null when it has none. */
-    private static BigDecimal figureOf(Claim claim, List<Rate> rates) {
+    /**
+     * A claim's figure: its settled due, else its stated due, else its live due, at least the floor;
+     * null when it has none.
+     */
+    private static BigDecimal figureOf(Claim claim, List<Rate> rates, BigDecimal floor) {
         if (claim.getSettledDue() != null) return claim.getSettledDue();
         if (claim.isStated()) return claim.getStatedDue();
         BigDecimal pct = pctOn(rates, claim.getDate());
-        return pct == null ? null : claim.getAmount().multiply(pct).movePointLeft(2).setScale(2, RoundingMode.HALF_EVEN);
+        return pct == null ? null
+                : claim.getAmount().multiply(pct).movePointLeft(2).setScale(2, RoundingMode.HALF_EVEN).max(floor);
     }
 
     /** Of one grade's rates, the percent in force on the date, or null. */

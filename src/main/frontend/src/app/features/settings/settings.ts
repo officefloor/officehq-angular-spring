@@ -15,10 +15,13 @@ interface RoleView {
 interface SettingsView {
   /** The highest due a clerk can settle, two decimals; null when there is no limit. */
   clerkLimit: string | null;
+  /** The least a claim's live due can be, two decimals. */
+  floor: string;
   roles: RoleView[];
 }
 
-// The sheet's settings: the clerk limit (blank: no limit), and the role given to each user name.
+// The sheet's settings: the clerk limit (blank: no limit), the floor of a claim's live due, and the
+// role given to each user name. Saving stores the settings whose field was changed since the last save.
 @Component({
   selector: 'app-settings',
   imports: [ReactiveFormsModule],
@@ -28,12 +31,15 @@ interface SettingsView {
       <form [formGroup]="form" (ngSubmit)="save()" aria-label="Settings">
         <label for="setting-clerk-limit">Clerk limit (blank: no limit)</label>
         <input id="setting-clerk-limit" data-testid="setting-clerk-limit" formControlName="clerkLimit" inputmode="decimal" />
+        <label for="setting-floor">Floor (least live due)</label>
+        <input id="setting-floor" data-testid="setting-floor" formControlName="floor" inputmode="decimal" />
         <button type="submit" data-testid="settings-save">Save settings</button>
         @if (error()) {
           <p role="alert" class="error" data-testid="settings-error">{{ error() }}</p>
         }
       </form>
       <p>Clerk limit now: <span data-testid="setting-clerk-limit-current">{{ clerkLimit() ?? '' }}</span></p>
+      <p>Floor now: <span data-testid="setting-floor-current">{{ session.floor() }}</span></p>
       <form [formGroup]="roleForm" (ngSubmit)="setRole()" aria-label="Set role">
         <label for="role-form-user">User</label>
         <input id="role-form-user" data-testid="role-form-user" formControlName="user" />
@@ -68,7 +74,7 @@ interface SettingsView {
 })
 export class Settings {
   private readonly http = inject(HttpClient);
-  private readonly session = inject(Session);
+  protected readonly session = inject(Session);
 
   protected readonly roles = ROLES;
   protected readonly clerkLimit = signal<string | null>(null);
@@ -77,7 +83,10 @@ export class Settings {
   protected readonly roleError = signal('');
   /** The forms with a submit under way; another submit of one waits for its answer. */
   private readonly submitting = new Set<string>();
-  protected readonly form = new FormGroup({ clerkLimit: new FormControl('', { nonNullable: true }) });
+  protected readonly form = new FormGroup({
+    clerkLimit: new FormControl('', { nonNullable: true }),
+    floor: new FormControl('', { nonNullable: true }),
+  });
   protected readonly roleForm = new FormGroup({
     user: new FormControl('', { nonNullable: true }),
     role: new FormControl('', { nonNullable: true }),
@@ -118,6 +127,7 @@ export class Settings {
   private show(view: SettingsView): void {
     this.clerkLimit.set(view.clerkLimit);
     this.userRoles.set(view.roles);
+    this.session.floor.set(view.floor);
   }
 
   protected async save(): Promise<void> {
@@ -125,17 +135,33 @@ export class Settings {
     this.error.set('');
     const sheet = this.session.sheetId();
     if (!sheet) return;
-    const value = this.form.controls.clerkLimit.value.trim();
-    if (value && !/^\d{1,12}(\.\d{1,2})?$/.test(value)) {
+    const { clerkLimit, floor } = this.form.controls;
+    const value = clerkLimit.value.trim();
+    const floorValue = floor.value.trim();
+    if (clerkLimit.dirty && value && !/^\d{1,12}(\.\d{1,2})?$/.test(value)) {
       this.error.set('Enter a clerk limit of 0.00 or more, with at most two decimals, or leave it blank for none.');
+      return;
+    }
+    if (floor.dirty && !/^\d{1,12}(\.\d{1,2})?$/.test(floorValue)) {
+      this.error.set('Enter a floor of 0.00 or more, with at most two decimals.');
       return;
     }
     this.submitting.add('save');
     try {
-      const view = await firstValueFrom(
-        this.http.put<SettingsView>(`${this.base(sheet)}/settings/clerk-limit`, { value: value || null }, { headers: this.headers() }),
-      );
-      if (this.session.sheetId() === sheet) this.show(view);
+      if (clerkLimit.dirty) {
+        const view = await firstValueFrom(
+          this.http.put<SettingsView>(`${this.base(sheet)}/settings/clerk-limit`, { value: value || null }, { headers: this.headers() }),
+        );
+        clerkLimit.markAsPristine();
+        if (this.session.sheetId() === sheet) this.show(view);
+      }
+      if (floor.dirty) {
+        const view = await firstValueFrom(
+          this.http.put<SettingsView>(`${this.base(sheet)}/settings/floor`, { value: floorValue }, { headers: this.headers() }),
+        );
+        floor.markAsPristine();
+        if (this.session.sheetId() === sheet) this.show(view);
+      }
     } catch {
       if (this.session.sheetId() === sheet) this.error.set('Could not save the settings.');
     } finally {

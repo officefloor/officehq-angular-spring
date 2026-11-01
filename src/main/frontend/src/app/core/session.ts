@@ -5,6 +5,7 @@ import { firstValueFrom } from 'rxjs';
 interface SheetView {
   id: string;
   today: string;
+  floor: string;
 }
 
 // The signed-in user and the active sheet. Every other feature reads these to scope its calls.
@@ -16,6 +17,8 @@ export class Session {
   readonly sheetId = signal<string | null>(null);
   /** The sheet's today (yyyy-mm-dd): every date decision and default date uses it, never the clock. */
   readonly today = signal<string | null>(null);
+  /** The sheet's floor, two decimals: a claim's live due is at least it. */
+  readonly floor = signal('1.00');
   /** Bumped on every sheet load, so features re-read the sheet from the store even for the same id. */
   readonly loads = signal(0);
   /** Whether retired people are listed: off when the screen opens, left as it is by loading a sheet. */
@@ -36,6 +39,7 @@ export class Session {
     );
     this.sheetId.set(res.id);
     this.today.set(res.today);
+    this.floor.set(res.floor);
     this.loads.update((n) => n + 1);
   }
 

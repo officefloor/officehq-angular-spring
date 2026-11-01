@@ -3,6 +3,7 @@ package net.officefloor.hq.app.setting;
 import java.math.BigDecimal;
 import java.util.List;
 import net.officefloor.hq.app.Audit;
+import net.officefloor.hq.app.rollup.RollupService;
 import net.officefloor.hq.app.sheet.Sheet;
 import net.officefloor.hq.app.sheet.SheetNotFoundException;
 import net.officefloor.hq.app.sheet.SheetRepository;
@@ -11,18 +12,21 @@ import org.springframework.transaction.annotation.Transactional;
 
 /**
  * A sheet's settings: the role each user name has (clerk unless given another) and the clerk
- * limit, the highest due a clerk can settle (none: no limit).
+ * limit, the highest due a clerk can settle (none: no limit); and the floor, the least a claim's
+ * live due can be.
  */
 @Service
 public class SettingService {
 
     private final SheetRepository sheets;
     private final SheetRoleRepository roles;
+    private final RollupService rollup;
     private final Audit audit;
 
-    public SettingService(SheetRepository sheets, SheetRoleRepository roles, Audit audit) {
+    public SettingService(SheetRepository sheets, SheetRoleRepository roles, RollupService rollup, Audit audit) {
         this.sheets = sheets;
         this.roles = roles;
+        this.rollup = rollup;
         this.audit = audit;
     }
 
@@ -33,7 +37,13 @@ public class SettingService {
 
     @Transactional(readOnly = true)
     public BigDecimal clerkLimit(String sheetId) {
-        return sheets.findById(sheetId).map(Sheet::getClerkLimit).orElseThrow(SheetNotFoundException::new);
+        // not mapped through the Optional: a null limit (none) would read as no sheet
+        return sheets.findById(sheetId).orElseThrow(SheetNotFoundException::new).getClerkLimit();
+    }
+
+    @Transactional(readOnly = true)
+    public BigDecimal floor(String sheetId) {
+        return sheets.findById(sheetId).map(Sheet::getFloor).orElseThrow(SheetNotFoundException::new);
     }
 
     /** The user's role on the sheet: clerk unless given another. */
@@ -62,5 +72,18 @@ public class SettingService {
         audit.recordOnCommit("SETTING_CHANGED sheet=" + sheetId + " by=" + user.strip() + " key=clerk-limit value="
                 + (limit == null ? "" : limit.toPlainString()));
         return limit;
+    }
+
+    /** Change the floor; the live dues it moves are audited after its own line. */
+    @Transactional
+    public BigDecimal setFloor(String sheetId, String user, BigDecimal floor) {
+        Sheet sheet = sheets.findForUpdate(sheetId).orElseThrow(SheetNotFoundException::new);
+        RollupService.Snapshot before = rollup.snapshot(sheetId);
+        sheet.setFloor(floor);
+        sheets.flush();
+        audit.recordOnCommit("SETTING_CHANGED sheet=" + sheetId + " by=" + user.strip() + " key=floor value="
+                + floor.toPlainString());
+        rollup.recordChanges(sheetId, user, before);
+        return floor;
     }
 }
