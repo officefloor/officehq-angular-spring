@@ -12,6 +12,8 @@ import net.officefloor.hq.app.person.Person;
 import net.officefloor.hq.app.person.PersonNotFoundException;
 import net.officefloor.hq.app.person.PersonRetiredException;
 import net.officefloor.hq.app.person.PersonRepository;
+import net.officefloor.hq.app.person.PersonWatch;
+import net.officefloor.hq.app.person.PersonWatchRepository;
 import net.officefloor.hq.app.rate.Rate;
 import net.officefloor.hq.app.rate.RateService;
 import net.officefloor.hq.app.rollup.RollupService;
@@ -51,10 +53,13 @@ public class ClaimService {
     private final RollupService rollup;
     private final PeriodRepository periods;
     private final SettingService settings;
+    private final PersonWatchRepository watches;
     private final Audit audit;
 
     public ClaimService(ClaimRepository claims, PersonRepository people, RateService rates, SheetService sheets,
-            RollupService rollup, PeriodRepository periods, SettingService settings, Audit audit) {
+            RollupService rollup, PeriodRepository periods, SettingService settings, PersonWatchRepository watches,
+            Audit audit) {
+        this.watches = watches;
         this.settings = settings;
         this.periods = periods;
         this.claims = claims;
@@ -166,6 +171,7 @@ public class ClaimService {
                 ? " due=" + (saved.getSettledDue() == null ? "n/a" : saved.getSettledDue().setScale(2).toPlainString())
                 : "";
         record(event, sheetId, user, person, saved, saved.getNumber(), due);
+        if (next == ClaimStatus.SETTLED) notifyWatchers(sheetId, user, person, saved);
         rollup.recordChanges(sheetId, user, before);
         return saved;
     }
@@ -187,6 +193,7 @@ public class ClaimService {
         Claim saved = claims.saveAndFlush(claim);
         record("CLAIM_APPROVED", sheetId, user, person, saved, saved.getNumber(), " due="
                 + (saved.getSettledDue() == null ? "n/a" : saved.getSettledDue().setScale(2).toPlainString()));
+        notifyWatchers(sheetId, user, person, saved);
         rollup.recordChanges(sheetId, user, before);
         return saved;
     }
@@ -230,8 +237,17 @@ public class ClaimService {
         Claim saved = claims.saveAndFlush(claim);
         record("CLAIM_RESETTLED", sheetId, user, person, saved, saved.getNumber(),
                 " old=" + figureText(old) + " new=" + figureText(figure));
+        notifyWatchers(sheetId, user, person, saved);
         rollup.recordChanges(sheetId, user, before);
         return saved;
+    }
+
+    /** One NOTIFY line per user watching the claim's person, in the order they started watching. */
+    private void notifyWatchers(String sheetId, String user, Person person, Claim claim) {
+        for (PersonWatch watch : watches.findByPersonIdOrderByIdAsc(person.getId())) {
+            audit.recordOnCommit("NOTIFY sheet=" + sheetId + " by=" + user.strip() + " user=" + watch.getUserName()
+                    + " person=" + person.getName() + " number=" + claim.getNumber());
+        }
     }
 
     /** A fixed due as an audit line has it: two decimals, or n/a when none. */

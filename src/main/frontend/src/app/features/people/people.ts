@@ -48,6 +48,8 @@ interface Person {
   holds: Hold[];
   /** The other people on the sheet they have named as patrons, in the order named. */
   patronIds: number[];
+  /** Whether the signed-in user watches them. */
+  watched: boolean;
 }
 
 /** The person's grade in force on the date: the one with the latest from-date on or before it. */
@@ -192,7 +194,7 @@ interface StatementTaken {
       }
       <table>
         <thead>
-          <tr><th scope="col">Name</th><th scope="col">Grade</th><th scope="col">Claimed</th><th scope="col">Due total</th><th scope="col">Excess</th><th scope="col">Periods</th><th scope="col">Statements</th><th scope="col">Retired</th><th scope="col">Hold</th><th scope="col">Overdue</th><th scope="col">Patrons</th><th scope="col">Claims</th><th scope="col"><span class="visually-hidden">Actions</span></th></tr>
+          <tr><th scope="col">Name</th><th scope="col">Grade</th><th scope="col">Claimed</th><th scope="col">Due total</th><th scope="col">Excess</th><th scope="col">Periods</th><th scope="col">Statements</th><th scope="col">Retired</th><th scope="col">Hold</th><th scope="col">Watched</th><th scope="col">Overdue</th><th scope="col">Patrons</th><th scope="col">Claims</th><th scope="col"><span class="visually-hidden">Actions</span></th></tr>
         </thead>
         <tbody>
           @for (p of listed(); track p.id) {
@@ -241,6 +243,11 @@ interface StatementTaken {
                        #holdTo (input)="clearPersonError(p.id)" />
                 <button type="button" data-testid="person-hold-toggle" (click)="hold(p, holdFrom.value, holdTo.value)"
                         [attr.aria-label]="'Hold ' + p.name">Hold</button>
+              </td>
+              <td>
+                <span data-testid="person-watched">{{ p.watched ? 'yes' : 'no' }}</span>
+                <button type="button" data-testid="person-watch" (click)="watch(p)" [attr.aria-pressed]="p.watched"
+                        [attr.aria-label]="(p.watched ? 'Stop watching ' : 'Watch ') + p.name">{{ p.watched ? 'Unwatch' : 'Watch' }}</button>
               </td>
               <td>
                 <span data-testid="person-overdue-count">{{ overdueOf(p).count }}</span>
@@ -786,6 +793,23 @@ export class People {
       this.people.update((list) => list.map((x) => (x.id === saved.id ? saved : x)));
     } catch {
       if (this.session.sheetId() === sheet) this.personError.set({ id: p.id, message: 'Could not hold ' + p.name + '.' });
+    }
+  }
+
+  /** Start watching the person as the signed-in user, or stop if they already do. */
+  protected async watch(p: Person): Promise<void> {
+    this.personError.set(null);
+    this.clearPatronError(p.id);
+    const sheet = this.session.sheetId();
+    if (!sheet) return;
+    try {
+      const saved = await firstValueFrom(
+        this.http.put<Person>(`${this.url(sheet)}/${p.id}/watch`, { watched: !p.watched }, { headers: this.headers() }),
+      );
+      if (this.session.sheetId() !== sheet) return;
+      this.people.update((list) => list.map((x) => (x.id === saved.id ? saved : x)));
+    } catch {
+      if (this.session.sheetId() === sheet) this.personError.set({ id: p.id, message: 'Could not change watching ' + p.name + '.' });
     }
   }
 
