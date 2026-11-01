@@ -4,20 +4,29 @@ import jakarta.persistence.CollectionTable;
 import jakarta.persistence.Column;
 import jakarta.persistence.ElementCollection;
 import jakarta.persistence.Entity;
+import jakarta.persistence.FetchType;
 import jakarta.persistence.Id;
 import jakarta.persistence.JoinColumn;
-import jakarta.persistence.MapKeyColumn;
 import jakarta.persistence.Table;
 import java.math.BigDecimal;
 import java.time.Instant;
 import java.time.LocalDate;
-import java.util.Map;
-import java.util.TreeMap;
+import java.util.ArrayList;
+import java.util.Comparator;
+import java.util.List;
 
 /** A sheet, keyed by the id a user types; everything else in the app is kept per sheet. */
 @Entity
 @Table(name = "sheet")
 public class Sheet {
+
+    /** The keys of its dated settings; a grade's terms are {@code terms-<grade>}. */
+    public static final String FLOOR = "floor", LATE_PCT = "late-pct", TERMS = "terms", CLERK_LIMIT = "clerk-limit",
+            CAP = "cap";
+
+    /** The values in force before any is recorded. */
+    public static final BigDecimal START_FLOOR = new BigDecimal("1.00"), START_LATE_PCT = new BigDecimal("0.00");
+    public static final int START_TERMS = 14;
 
     @Id
     private String id;
@@ -36,28 +45,17 @@ public class Sheet {
     @Column(name = "last_claim_number", nullable = false)
     private long lastClaimNumber;
 
-    /** A clerk can settle a claim only when its due is at or below it; null means no limit. */
-    @Column(name = "clerk_limit", precision = 14, scale = 2)
-    private BigDecimal clerkLimit;
-
-    /** A claim's live due is at least it; a settled or stated figure is not moved by it. */
-    @Column(name = "due_floor", nullable = false, precision = 14, scale = 2)
-    private BigDecimal floor = new BigDecimal("1.00");
-
-    /** The terms in days: a claim's due-by is its date plus them. */
-    @Column(name = "terms", nullable = false)
-    private int terms = 14;
-
-    /** The terms set for a grade, by grade; a grade without its own uses {@link #terms}. */
-    @ElementCollection
-    @CollectionTable(name = "sheet_grade_terms", joinColumns = @JoinColumn(name = "sheet_id"))
-    @MapKeyColumn(name = "grade")
-    @Column(name = "terms", nullable = false)
-    private Map<String, Integer> gradeTerms = new TreeMap<>();
-
-    /** The late percent: an overdue claim's due gains it of its figure for every full 30 days overdue. */
-    @Column(name = "late_pct", nullable = false, precision = 7, scale = 2)
-    private BigDecimal latePct = new BigDecimal("0.00");
+    /**
+     * The values recorded for its dated settings, each from a from-date: the floor (a claim's live due
+     * is at least the one in force on its date), the late percent (an overdue claim's due gains the one
+     * in force on its date of its figure for every full 30 days overdue), the terms of the sheet and of
+     * each grade (a claim's due-by is its date plus those in force on it), the clerk limit (a clerk can
+     * settle a claim only when its due is at or below the one in force today) and the cap (a person's
+     * due-total is at most the one in force today).
+     */
+    @ElementCollection(fetch = FetchType.EAGER)
+    @CollectionTable(name = "sheet_setting", joinColumns = @JoinColumn(name = "sheet_id"))
+    private List<DatedSetting> dated = new ArrayList<>();
 
     /** A claim dated before it rounds half up, one on or after it half to even; null means the sheet's today. */
     @Column(name = "policy_date")
@@ -66,10 +64,6 @@ public class Sheet {
     /** While set and today is on or after it, a claim opened is numbered within its period; null means off. */
     @Column(name = "period_numbering_from")
     private LocalDate periodNumberingFrom;
-
-    /** A person's due-total is at most it; null means none. */
-    @Column(name = "due_cap", precision = 14, scale = 2)
-    private BigDecimal cap;
 
     protected Sheet() {}
 
@@ -90,38 +84,72 @@ public class Sheet {
 
     public void setToday(LocalDate today) { this.today = today; }
 
-    public BigDecimal getClerkLimit() { return clerkLimit; }
+    /** The values recorded for its dated settings, by key and then from-date, earliest first. */
+    public List<DatedSetting> getDated() {
+        List<DatedSetting> sorted = new ArrayList<>(dated);
+        sorted.sort(Comparator.comparing(DatedSetting::getKey).thenComparing(DatedSetting::getFrom));
+        return sorted;
+    }
 
-    public void setClerkLimit(BigDecimal clerkLimit) { this.clerkLimit = clerkLimit; }
+    /** Record the key's value (null: none) from the date on; a value already recorded from that date is replaced. */
+    public void record(String key, LocalDate from, String value) {
+        dated.removeIf(d -> d.getKey().equals(key) && d.getFrom().equals(from));
+        dated.add(new DatedSetting(key, from, value));
+    }
 
-    public BigDecimal getFloor() { return floor; }
+    /** The key's value recorded with the latest from-date on or before the date; null when none is. */
+    private DatedSetting inForce(String key, LocalDate date) {
+        DatedSetting found = null;
+        for (DatedSetting d : dated) {
+            if (d.getKey().equals(key) && !d.getFrom().isAfter(date)
+                    && (found == null || d.getFrom().isAfter(found.getFrom()))) {
+                found = d;
+            }
+        }
+        return found;
+    }
 
-    public void setFloor(BigDecimal floor) { this.floor = floor; }
+    private BigDecimal decimalOn(String key, LocalDate date, BigDecimal start) {
+        DatedSetting d = inForce(key, date);
+        if (d == null) return start;
+        return d.getValue() == null ? null : new BigDecimal(d.getValue()).setScale(2);
+    }
 
-    public BigDecimal getCap() { return cap; }
+    /** The clerk limit in force today; null means no limit. */
+    public BigDecimal getClerkLimit() { return decimalOn(CLERK_LIMIT, today, null); }
 
-    public void setCap(BigDecimal cap) { this.cap = cap; }
+    /** The floor in force on the date: 1.00 before any is recorded. */
+    public BigDecimal floorOn(LocalDate date) { return decimalOn(FLOOR, date, START_FLOOR); }
 
-    /** The due-total, at most the cap; null (n/a) stays null. */
+    /** The cap in force today; null means none. */
+    public BigDecimal getCap() { return decimalOn(CAP, today, null); }
+
+    /** The due-total, at most the cap in force today; null (n/a) stays null. */
     public BigDecimal capped(BigDecimal dueTotal) {
+        BigDecimal cap = getCap();
         return dueTotal == null || cap == null ? dueTotal : dueTotal.min(cap);
     }
 
-    public int getTerms() { return terms; }
+    /** The sheet's terms in force on the date: 14 before any are recorded. */
+    public int termsOn(LocalDate date) {
+        DatedSetting d = inForce(TERMS, date);
+        return d == null ? START_TERMS : Integer.parseInt(d.getValue());
+    }
 
-    public void setTerms(int terms) { this.terms = terms; }
+    /** The grade's own terms in force on the date; null when it has none then. */
+    public Integer gradeTermsOn(String grade, LocalDate date) {
+        DatedSetting d = inForce(TERMS + "-" + grade, date);
+        return d == null ? null : Integer.valueOf(d.getValue());
+    }
 
-    /** The terms set for the grade; null when it has none of its own. */
-    public Integer getGradeTerms(String grade) { return gradeTerms.get(grade); }
+    /** The terms a claim of the grade dated on the date is given: the grade's own then, else the sheet's then. */
+    public int termsFor(String grade, LocalDate date) {
+        Integer own = gradeTermsOn(grade, date);
+        return own != null ? own : termsOn(date);
+    }
 
-    public void setGradeTerms(String grade, int terms) { gradeTerms.put(grade, terms); }
-
-    /** The terms a claim of the grade is given: its own, else the sheet's. */
-    public int termsFor(String grade) { return gradeTerms.getOrDefault(grade, terms); }
-
-    public BigDecimal getLatePct() { return latePct; }
-
-    public void setLatePct(BigDecimal latePct) { this.latePct = latePct; }
+    /** The late percent in force on the date: 0.00 before any is recorded. */
+    public BigDecimal latePctOn(LocalDate date) { return decimalOn(LATE_PCT, date, START_LATE_PCT); }
 
     public LocalDate getPolicyDate() { return policyDate; }
 

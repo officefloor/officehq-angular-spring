@@ -1,8 +1,8 @@
 import { HttpClient } from '@angular/common/http';
-import { Component, effect, inject, signal } from '@angular/core';
+import { Component, computed, effect, inject, signal } from '@angular/core';
 import { FormControl, FormGroup, ReactiveFormsModule } from '@angular/forms';
 import { firstValueFrom } from 'rxjs';
-import { Session } from '../../core/session';
+import { Dated, Session } from '../../core/session';
 
 /** A role a user name can be given; any name not given one is a clerk. */
 export const ROLES = ['clerk', 'steward'];
@@ -40,7 +40,12 @@ interface SettingsView {
   /** The most a person's due-total can be, two decimals; null when blank: none. */
   cap: string | null;
   roles: RoleView[];
+  /** The values recorded for each dated setting, by key; those above are the ones in force on the sheet's today. */
+  dated: Dated;
 }
+
+/** A from-date field (yyyy-mm-dd) for a dated setting; blank: the sheet's today. */
+const FROM = 'From (yyyy-mm-dd; blank: the sheet\'s today)';
 
 // The sheet's settings: the clerk limit (blank: no limit), the floor of a claim's live due, the terms
 // (the days after its date by which a claim is due, fixed when it is added), the terms of each grade (overriding the
@@ -49,7 +54,10 @@ interface SettingsView {
 // rounds half up, else half to even), the period numbering from (blank: off; while the sheet's today is on or after it,
 // a claim opened is numbered within its period), the cap (blank: none; a person's due-total is at most it), and the role given to each user name. Saving stores the settings whose
 // field was changed since the last save; clearing the clerk limit, the policy date, the period numbering from or the cap (Delete or
-// Backspace) counts as a change even when it was already blank.
+// Backspace) counts as a change even when it was already blank. The clerk limit, the floor, the terms, each grade's terms, the late
+// percent and the cap are dated: a save records the value from its from-date (blank: the sheet's today), keeping those recorded from
+// other dates; a claim takes the floor, late percent and terms in force on its date, and the clerk limit and cap are those in force on
+// the sheet's today. Each shows the value in force on the sheet's today.
 @Component({
   selector: 'app-settings',
   imports: [ReactiveFormsModule],
@@ -60,17 +68,28 @@ interface SettingsView {
         <label for="setting-clerk-limit">Clerk limit (blank: no limit)</label>
         <input id="setting-clerk-limit" data-testid="setting-clerk-limit" formControlName="clerkLimit" inputmode="decimal"
                (keydown.delete)="form.controls.clerkLimit.markAsDirty()" (keydown.backspace)="form.controls.clerkLimit.markAsDirty()" />
+        <label for="setting-clerk-limit-from">Clerk limit {{ from }}</label>
+        <input id="setting-clerk-limit-from" data-testid="setting-clerk-limit-from" formControlName="clerkLimitFrom" placeholder="yyyy-mm-dd" />
         <label for="setting-floor">Floor (least live due)</label>
         <input id="setting-floor" data-testid="setting-floor" formControlName="floor" inputmode="decimal" />
+        <label for="setting-floor-from">Floor {{ from }}</label>
+        <input id="setting-floor-from" data-testid="setting-floor-from" formControlName="floorFrom" placeholder="yyyy-mm-dd" />
         <label for="setting-terms">Terms (days)</label>
         <input id="setting-terms" data-testid="setting-terms" formControlName="terms" inputmode="numeric" />
+        <label for="setting-terms-from">Terms {{ from }}</label>
+        <input id="setting-terms-from" data-testid="setting-terms-from" formControlName="termsFrom" placeholder="yyyy-mm-dd" />
         @for (g of grades; track g) {
           <label [for]="'setting-terms-' + g">Terms for grade {{ g }} (days)</label>
           <input [id]="'setting-terms-' + g" [attr.data-testid]="'setting-terms-' + g" [formControl]="gradeTermsForm.controls[g]"
                  inputmode="numeric" />
+          <label [for]="'setting-terms-' + g + '-from'">Terms for grade {{ g }} {{ from }}</label>
+          <input [id]="'setting-terms-' + g + '-from'" [attr.data-testid]="'setting-terms-' + g + '-from'"
+                 [formControl]="gradeTermsFromForm.controls[g]" placeholder="yyyy-mm-dd" />
         }
         <label for="setting-late-pct">Late percent (per full 30 days overdue)</label>
         <input id="setting-late-pct" data-testid="setting-late-pct" formControlName="latePct" inputmode="decimal" />
+        <label for="setting-late-pct-from">Late percent {{ from }}</label>
+        <input id="setting-late-pct-from" data-testid="setting-late-pct-from" formControlName="latePctFrom" placeholder="yyyy-mm-dd" />
         <label for="setting-policy-date">Policy date (blank: the sheet's today; before it rounds half up)</label>
         <input id="setting-policy-date" data-testid="setting-policy-date" formControlName="policyDate" placeholder="yyyy-mm-dd"
                (keydown.delete)="form.controls.policyDate.markAsDirty()" (keydown.backspace)="form.controls.policyDate.markAsDirty()" />
@@ -82,12 +101,14 @@ interface SettingsView {
         <label for="setting-cap">Cap (most a person's due-total can be; blank: none)</label>
         <input id="setting-cap" data-testid="setting-cap" formControlName="cap" inputmode="decimal"
                (keydown.delete)="form.controls.cap.markAsDirty()" (keydown.backspace)="form.controls.cap.markAsDirty()" />
+        <label for="setting-cap-from">Cap {{ from }}</label>
+        <input id="setting-cap-from" data-testid="setting-cap-from" formControlName="capFrom" placeholder="yyyy-mm-dd" />
         <button type="submit" data-testid="settings-save">Save settings</button>
         @if (error()) {
           <p role="alert" class="error" data-testid="settings-error">{{ error() }}</p>
         }
       </form>
-      <p>Clerk limit now: <span data-testid="setting-clerk-limit-current">{{ clerkLimit() ?? '' }}</span></p>
+      <p>Clerk limit now: <span data-testid="setting-clerk-limit-current">{{ session.clerkLimit() ?? '' }}</span></p>
       <p>Floor now: <span data-testid="setting-floor-current">{{ session.floor() }}</span></p>
       <p>Terms now: <span data-testid="setting-terms-current">{{ session.terms() }}</span></p>
       @for (g of grades; track g) {
@@ -136,8 +157,17 @@ export class Settings {
 
   protected readonly roles = ROLES;
   protected readonly grades = GRADES;
-  protected readonly gradeTerms = signal<Partial<Record<Grade, number>>>({});
-  protected readonly clerkLimit = signal<string | null>(null);
+  protected readonly from = FROM;
+  /** The terms in force on the sheet's today for each grade that has its own then. */
+  protected readonly gradeTerms = computed(() => {
+    const today = this.session.today();
+    const byGrade: Partial<Record<Grade, string>> = {};
+    for (const g of GRADES) {
+      const terms = this.session.valueOn(`terms-${g}`, today);
+      if (terms !== null) byGrade[g] = terms;
+    }
+    return byGrade;
+  });
   protected readonly periodNumberingFrom = signal<string | null>(null);
   protected readonly userRoles = signal<RoleView[]>([]);
   protected readonly error = signal('');
@@ -152,8 +182,18 @@ export class Settings {
     policyDate: new FormControl('', { nonNullable: true }),
     periodNumberingFrom: new FormControl('', { nonNullable: true }),
     cap: new FormControl('', { nonNullable: true }),
+    clerkLimitFrom: new FormControl('', { nonNullable: true }),
+    floorFrom: new FormControl('', { nonNullable: true }),
+    termsFrom: new FormControl('', { nonNullable: true }),
+    latePctFrom: new FormControl('', { nonNullable: true }),
+    capFrom: new FormControl('', { nonNullable: true }),
   });
   protected readonly gradeTermsForm = new FormGroup({
+    A: new FormControl('', { nonNullable: true }),
+    B: new FormControl('', { nonNullable: true }),
+    C: new FormControl('', { nonNullable: true }),
+  });
+  protected readonly gradeTermsFromForm = new FormGroup({
     A: new FormControl('', { nonNullable: true }),
     B: new FormControl('', { nonNullable: true }),
     C: new FormControl('', { nonNullable: true }),
@@ -166,13 +206,12 @@ export class Settings {
   constructor() {
     this.form.valueChanges.subscribe(() => this.error.set(''));
     this.gradeTermsForm.valueChanges.subscribe(() => this.error.set(''));
+    this.gradeTermsFromForm.valueChanges.subscribe(() => this.error.set(''));
     this.roleForm.valueChanges.subscribe(() => this.roleError.set(''));
     effect(() => {
       const id = this.session.sheetId();
       this.session.loads();
-      this.clerkLimit.set(null);
       this.periodNumberingFrom.set(null);
-      this.gradeTerms.set({});
       this.userRoles.set([]);
       this.error.set('');
       this.roleError.set('');
@@ -199,15 +238,10 @@ export class Settings {
   }
 
   private show(view: SettingsView): void {
-    this.clerkLimit.set(view.clerkLimit);
     this.periodNumberingFrom.set(view.periodNumberingFrom);
-    this.gradeTerms.set(view.gradeTerms);
     this.userRoles.set(view.roles);
-    this.session.floor.set(view.floor);
-    this.session.terms.set(view.terms);
-    this.session.latePct.set(view.latePct);
+    this.session.dated.set(view.dated);
     this.session.policyDate.set(view.policyDate);
-    this.session.cap.set(view.cap);
   }
 
   protected async save(): Promise<void> {
@@ -216,6 +250,7 @@ export class Settings {
     const sheet = this.session.sheetId();
     if (!sheet) return;
     const { clerkLimit, floor, terms, latePct, policyDate, periodNumberingFrom, cap } = this.form.controls;
+    const { clerkLimitFrom, floorFrom, termsFrom, latePctFrom, capFrom } = this.form.getRawValue();
     const value = clerkLimit.value.trim();
     const floorValue = floor.value.trim();
     const termsValue = terms.value.trim();
@@ -223,6 +258,17 @@ export class Settings {
     const policyDateValue = policyDate.value.trim();
     const periodNumberingFromValue = periodNumberingFrom.value.trim();
     const capValue = cap.value.trim();
+    // a dated setting saved with a from-date takes it; blank: the sheet's today
+    const dated = (from: string): string | null => from.trim() || null;
+    const froms = [
+      clerkLimit.dirty ? clerkLimitFrom : '', floor.dirty ? floorFrom : '', terms.dirty ? termsFrom : '',
+      latePct.dirty ? latePctFrom : '', cap.dirty ? capFrom : '',
+      ...GRADES.filter((g) => this.gradeTermsForm.controls[g].dirty).map((g) => this.gradeTermsFromForm.controls[g].value),
+    ];
+    if (froms.some((from) => from.trim() && !isDate(from.trim()))) {
+      this.error.set('Enter a from-date as yyyy-mm-dd, or leave it blank for the sheet\'s today.');
+      return;
+    }
     if (clerkLimit.dirty && value && !/^\d{1,12}(\.\d{1,2})?$/.test(value)) {
       this.error.set('Enter a clerk limit of 0.00 or more, with at most two decimals, or leave it blank for none.');
       return;
@@ -260,21 +306,21 @@ export class Settings {
     try {
       if (clerkLimit.dirty) {
         const view = await firstValueFrom(
-          this.http.put<SettingsView>(`${this.base(sheet)}/settings/clerk-limit`, { value: value || null }, { headers: this.headers() }),
+          this.http.put<SettingsView>(`${this.base(sheet)}/settings/clerk-limit`, { value: value || null, from: dated(clerkLimitFrom) }, { headers: this.headers() }),
         );
         clerkLimit.markAsPristine();
         if (this.session.sheetId() === sheet) this.show(view);
       }
       if (floor.dirty) {
         const view = await firstValueFrom(
-          this.http.put<SettingsView>(`${this.base(sheet)}/settings/floor`, { value: floorValue }, { headers: this.headers() }),
+          this.http.put<SettingsView>(`${this.base(sheet)}/settings/floor`, { value: floorValue, from: dated(floorFrom) }, { headers: this.headers() }),
         );
         floor.markAsPristine();
         if (this.session.sheetId() === sheet) this.show(view);
       }
       if (terms.dirty) {
         const view = await firstValueFrom(
-          this.http.put<SettingsView>(`${this.base(sheet)}/settings/terms`, { value: termsValue }, { headers: this.headers() }),
+          this.http.put<SettingsView>(`${this.base(sheet)}/settings/terms`, { value: termsValue, from: dated(termsFrom) }, { headers: this.headers() }),
         );
         terms.markAsPristine();
         if (this.session.sheetId() === sheet) this.show(view);
@@ -282,14 +328,14 @@ export class Settings {
       for (const g of gradeTermsChanged) {
         const control = this.gradeTermsForm.controls[g];
         const view = await firstValueFrom(
-          this.http.put<SettingsView>(`${this.base(sheet)}/settings/terms/${g}`, { value: control.value.trim() }, { headers: this.headers() }),
+          this.http.put<SettingsView>(`${this.base(sheet)}/settings/terms/${g}`, { value: control.value.trim(), from: dated(this.gradeTermsFromForm.controls[g].value) }, { headers: this.headers() }),
         );
         control.markAsPristine();
         if (this.session.sheetId() === sheet) this.show(view);
       }
       if (latePct.dirty) {
         const view = await firstValueFrom(
-          this.http.put<SettingsView>(`${this.base(sheet)}/settings/late-pct`, { value: latePctValue }, { headers: this.headers() }),
+          this.http.put<SettingsView>(`${this.base(sheet)}/settings/late-pct`, { value: latePctValue, from: dated(latePctFrom) }, { headers: this.headers() }),
         );
         latePct.markAsPristine();
         if (this.session.sheetId() === sheet) this.show(view);
@@ -311,7 +357,7 @@ export class Settings {
       }
       if (cap.dirty) {
         const view = await firstValueFrom(
-          this.http.put<SettingsView>(`${this.base(sheet)}/settings/cap`, { value: capValue || null }, { headers: this.headers() }),
+          this.http.put<SettingsView>(`${this.base(sheet)}/settings/cap`, { value: capValue || null, from: dated(capFrom) }, { headers: this.headers() }),
         );
         cap.markAsPristine();
         if (this.session.sheetId() === sheet) this.show(view);

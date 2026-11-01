@@ -10,14 +10,27 @@ interface SheetView {
   latePct: string;
   policyDate: string | null;
   cap: string | null;
+  dated: Dated;
 }
 
+/** A value recorded for a dated setting from a date (yyyy-mm-dd) on; null when none. */
+export interface DatedValue {
+  from: string;
+  value: string | null;
+}
+
+/** The values recorded for each dated setting (floor, late-pct, terms, terms-<grade>, clerk-limit, cap), by key. */
+export type Dated = Partial<Record<string, DatedValue[]>>;
+
+/** The values in force before any is recorded: a key without one has none. */
+const STARTING: Partial<Record<string, string>> = { floor: '1.00', 'late-pct': '0.00', terms: '14' };
+
 /**
- * What a claim's late charge and rounding depend on: the sheet's late percent and today, and
+ * What a claim's late charge and rounding depend on: the sheet's late percent in force on a date, its today, and
  * the policy date in force (the sheet's today when blank), before which a claim's live figures round half up.
  */
 export interface Late {
-  pct: string;
+  pctOn: (date: string) => string;
   today: string | null;
   policy: string | null;
 }
@@ -31,22 +44,44 @@ export class Session {
   readonly sheetId = signal<string | null>(null);
   /** The sheet's today (yyyy-mm-dd): every date decision and default date uses it, never the clock. */
   readonly today = signal<string | null>(null);
-  /** The sheet's floor, two decimals: a claim's live due is at least it. */
-  readonly floor = signal('1.00');
-  /** The sheet's terms in days: a claim of a grade without its own terms is due by its date plus them, fixed when added. */
-  readonly terms = signal(14);
-  /** The sheet's late percent, two decimals: an overdue claim's due gains it of its figure for every full 30 days overdue. */
-  readonly latePct = signal('0.00');
+  /** The values recorded for the sheet's dated settings, by key. */
+  readonly dated = signal<Dated>({});
+  /** The sheet's floor in force today, two decimals: a claim's live due is at least the one in force on its date. */
+  readonly floor = computed(() => this.valueOn('floor', this.today()) ?? '1.00');
+  /** The sheet's terms in days in force today: a claim of a grade without its own is due by its date plus those in force then. */
+  readonly terms = computed(() => Number(this.valueOn('terms', this.today()) ?? '14'));
+  /** The sheet's late percent in force today, two decimals: an overdue claim's due gains the one in force on its date of its figure every full 30 days. */
+  readonly latePct = computed(() => this.valueOn('late-pct', this.today()) ?? '0.00');
+  /** The clerk limit in force today, two decimals; null when none. */
+  readonly clerkLimit = computed(() => this.valueOn('clerk-limit', this.today()));
   /** The sheet's policy date (yyyy-mm-dd) as set; null when blank, which means the sheet's today. */
   readonly policyDate = signal<string | null>(null);
-  /** The sheet's cap, two decimals: a person's due-total is at most it; null when blank, which means none. */
-  readonly cap = signal<string | null>(null);
-  /** The late percent, today and policy date together, as a claim's late charge and rounding need them. */
+  /** The sheet's cap in force today, two decimals: a person's due-total is at most it; null when none. */
+  readonly cap = computed(() => this.valueOn('cap', this.today()));
+  /** The late percent by date, today and policy date together, as a claim's late charge and rounding need them. */
   readonly late = computed<Late>(() => ({
-    pct: this.latePct(),
+    pctOn: (date) => this.valueOn('late-pct', date) ?? '0.00',
     today: this.today(),
     policy: this.policyDate() ?? this.today(),
   }));
+  /** The floor in force on a date, in cents. */
+  readonly floorCentsOn = (date: string): number => {
+    const [whole, frac = ''] = (this.valueOn('floor', date) ?? '1.00').split('.');
+    return Number(whole) * 100 + Number(frac.padEnd(2, '0'));
+  };
+
+  /**
+   * The key's value in force on the date: the one recorded with the latest from-date on or before it,
+   * else its starting value (none for a key without one); null when none.
+   */
+  valueOn(key: string, date: string | null): string | null {
+    let found: DatedValue | undefined;
+    for (const d of this.dated()[key] ?? []) {
+      if (date !== null && d.from <= date && (found === undefined || d.from > found.from)) found = d;
+    }
+    return found !== undefined ? found.value : (STARTING[key] ?? null);
+  }
+
   /** Bumped on every sheet load, so features re-read the sheet from the store even for the same id. */
   readonly loads = signal(0);
   /** Whether retired people are listed: off when the screen opens, left as it is by loading a sheet. */
@@ -67,11 +102,8 @@ export class Session {
     );
     this.sheetId.set(res.id);
     this.today.set(res.today);
-    this.floor.set(res.floor);
-    this.terms.set(res.terms);
-    this.latePct.set(res.latePct);
+    this.dated.set(res.dated);
     this.policyDate.set(res.policyDate);
-    this.cap.set(res.cap);
     this.loads.update((n) => n + 1);
   }
 

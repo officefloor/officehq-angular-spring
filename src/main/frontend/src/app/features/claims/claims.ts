@@ -54,6 +54,9 @@ export interface ClaimLogLine {
 /** A person's rate on a date: the rate then of the grade they had then, or null when it has none. */
 export type PctOn = (date: string) => string | null;
 
+/** The sheet's floor in force on a date, in cents. */
+export type FloorOn = (date: string) => number;
+
 /** Open: OPEN, or PENDING, which is handled like it. */
 export function isOpen(c: Claim): boolean {
   return c.status === 'OPEN' || c.status === 'PENDING';
@@ -107,34 +110,35 @@ function halfUp(basis: string, late: Late): boolean {
 /**
  * A claim's due in cents: the due fixed when it was settled (late charge frozen in), else its figure
  * — the due bound by its person's last statement, else its amount times its person's rate on its
- * date (as `pctOn` gives it), at least the floor (in cents) unless a correction — with its late charge on top;
+ * date (as `pctOn` gives it), at least the floor in force on its date (`floorOn`, in cents) unless a correction —
+ * with its late charge (by the late percent in force on its date) on top;
  * null when it has none. Its live figures round by the date `basis` (see {@link roundsOn}).
  */
-export function claimDueCents(c: Claim, pctOn: PctOn, floorCents: number, late: Late, basis: string): number | null {
+export function claimDueCents(c: Claim, pctOn: PctOn, floorOn: FloorOn, late: Late, basis: string): number | null {
   if (c.settledDue !== null) return cents(c.settledDue);
   const up = halfUp(basis, late);
-  const figure = figureCents(c, pctOn, floorCents, up);
+  const figure = figureCents(c, pctOn, floorOn, up);
   return figure === null ? null : figure + lateChargeCents(c, figure, late, up);
 }
 
 /** A claim's figure in cents: the due bound by its person's last statement, else its floored live due. */
-function figureCents(c: Claim, pctOn: PctOn, floorCents: number, halfUp: boolean): number | null {
+function figureCents(c: Claim, pctOn: PctOn, floorOn: FloorOn, halfUp: boolean): number | null {
   if (isBound(c)) return c.statedDue === null ? null : cents(c.statedDue);
   const pct = pctOn(c.date);
   if (pct === null) return null;
   const due = dueCents(cents(c.amount), pct, halfUp);
-  return isCorrection(c) ? due : Math.max(due, floorCents);
+  return isCorrection(c) ? due : Math.max(due, floorOn(c.date));
 }
 
 /**
- * The late charge in cents on an overdue claim with the given figure: the late percent of it for
+ * The late charge in cents on an overdue claim with the given figure: the late percent in force on its date of it for
  * every full 30 days past its due-by, rounded like a due; 0 when not overdue or a correction. Never bound
  * by a statement.
  */
 export function lateChargeCents(c: Claim, figureCents: number, late: Late, halfUp: boolean): number {
   if (late.today === null || isCorrection(c) || !isOverdue(c, late.today)) return 0;
   const days = Math.round((Date.parse(`${late.today}T00:00:00Z`) - Date.parse(`${c.dueBy}T00:00:00Z`)) / 86_400_000);
-  return dueCents(figureCents * Math.floor(days / 30), late.pct, halfUp);
+  return dueCents(figureCents * Math.floor(days / 30), late.pctOn(c.date), halfUp);
 }
 
 /** Overdue: OPEN or PENDING with its due-by before the sheet's today. */
@@ -296,7 +300,7 @@ export class Claims {
 
   /** The due fixed when it was settled, else its figure with its late charge on top. */
   protected dueOf(c: Claim): string {
-    const due = claimDueCents(c, this.pctOn(), cents(this.session.floor()), this.session.late(), roundsOn(c, this.claims()));
+    const due = claimDueCents(c, this.pctOn(), this.session.floorCentsOn, this.session.late(), roundsOn(c, this.claims()));
     return due === null ? NA : money(due);
   }
 

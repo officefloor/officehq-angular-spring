@@ -23,7 +23,7 @@ import org.springframework.stereotype.Service;
 
 /**
  * The sheet's figures as the screen shows them: each person's claimed and due-total, and the
- * sheet's claimed-total and due-total, each person's at most the sheet's cap; an overdue claim's due has its {@link LateCharge} on top. A change takes a {@link #snapshot} before it alters
+ * sheet's claimed-total and due-total, each person's at most the sheet's cap in force today; a claim's floor and late percent are those in force on its date; an overdue claim's due has its {@link LateCharge} on top. A change takes a {@link #snapshot} before it alters
  * anything and calls {@link #recordChanges} once it has, which audits, after the change's own
  * lines, a ROLLUP line for each person whose figures (overdue-total included) moved (in the order
  * they were added) and a TOTALS line when the sheet's totals moved.
@@ -65,8 +65,6 @@ public class RollupService {
     public Snapshot snapshot(String sheetId) {
         Sheet sheet = sheets.findForUpdate(sheetId).orElse(null);
         LocalDate today = sheet == null ? null : sheet.getToday();
-        BigDecimal floor = sheet == null ? zero() : sheet.getFloor();
-        BigDecimal latePct = sheet == null ? zero() : sheet.getLatePct();
         LocalDate policyDate = sheet == null ? null : sheet.getPolicyDate();
         Map<String, List<Rate>> ratesByGrade = new LinkedHashMap<>();
         for (Rate rate : rates.findBySheetIdOrderByGradeAscFromDateAsc(sheetId)) {
@@ -95,6 +93,9 @@ public class RollupService {
                 if (claim.getSettledDue() != null || (claim.isBound() && claim.getStatedDue() != null)) fixed = true;
                 String grade = person.gradeOn(claim.getDate());
                 RoundingMode rounding = Rounding.of(Rounding.basisOf(claim, datesByNumber), policyDate, today);
+                // the floor and late percent in force on the claim's date
+                BigDecimal floor = sheet == null ? zero() : sheet.floorOn(claim.getDate());
+                BigDecimal latePct = sheet == null ? zero() : sheet.latePctOn(claim.getDate());
                 BigDecimal figure = LateCharge.withCharge(claim,
                         figureOf(claim, ratesByGrade.getOrDefault(grade, List.of()), floor, rounding), today,
                         latePct, rounding);

@@ -6,6 +6,9 @@ import jakarta.validation.constraints.NotNull;
 import jakarta.validation.constraints.Pattern;
 import jakarta.validation.constraints.Size;
 import java.time.LocalDate;
+import java.util.List;
+import java.util.Map;
+import net.officefloor.hq.app.setting.SettingController;
 import org.springframework.validation.annotation.Validated;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
@@ -21,16 +24,19 @@ import org.springframework.web.bind.annotation.RestController;
 public class SheetController {
 
     /**
-     * A sheet as the screen shows it; the floor has two decimals, the terms are in days, the late
-     * percent has two decimals; the policy date is null when blank (the sheet's today); the cap has two
-     * decimals, null when none.
+     * A sheet as the screen shows it; the floor, the terms, the late percent and the cap are those in
+     * force on its today: the floor has two decimals, the terms are in days, the late percent has two
+     * decimals; the policy date is null when blank (the sheet's today); the cap has two decimals, null
+     * when none; dated has every value recorded for its dated settings, by key.
      */
     public record SheetView(String id, LocalDate today, String floor, int terms, String latePct,
-            LocalDate policyDate, String cap) {
+            LocalDate policyDate, String cap, Map<String, List<SettingController.DatedView>> dated) {
         static SheetView of(Sheet sheet) {
-            return new SheetView(sheet.getId(), sheet.getToday(), sheet.getFloor().setScale(2).toPlainString(),
-                    sheet.getTerms(), sheet.getLatePct().setScale(2).toPlainString(), sheet.getPolicyDate(),
-                    sheet.getCap() == null ? null : sheet.getCap().setScale(2).toPlainString());
+            LocalDate today = sheet.getToday();
+            return new SheetView(sheet.getId(), today, sheet.floorOn(today).toPlainString(),
+                    sheet.termsOn(today), sheet.latePctOn(today).toPlainString(), sheet.getPolicyDate(),
+                    sheet.getCap() == null ? null : sheet.getCap().toPlainString(),
+                    SettingController.datedViews(sheet.getDated()));
         }
     }
 

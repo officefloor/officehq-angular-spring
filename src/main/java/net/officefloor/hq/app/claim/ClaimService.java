@@ -24,9 +24,9 @@ import org.springframework.transaction.annotation.Transactional;
 
 /**
  * The claims on a sheet: listed newest first, added to a person and edited one at a time. A claim
- * given no date takes the sheet's today. Its due-by is fixed when it is added: its date plus the terms of its
- * person's grade in force on that date (else the sheet's terms); it does not move when its date or the
- * terms change later. A claim is added as DRAFT and moves through its statuses
+ * given no date takes the sheet's today. Its due-by is fixed when it is added: its date plus the terms
+ * in force on that date of its person's grade then (else the sheet's terms in force on it); it does not
+ * move when its date or the terms change later. A claim is added as DRAFT and moves through its statuses
  * as {@link ClaimStatus} allows; a change it does not allow is refused. Opening a claim gives it
  * the sheet's next number (or, while the sheet numbers by period, the next within its period), which it
  * keeps when voided and is never given again. Only a DRAFT claim
@@ -79,7 +79,7 @@ public class ClaimService {
         refuseIfClosed(sheetId, on);
         if (!person.mayClaimOn(on)) throw new PersonRetiredException();
         refuseUnlessCorrects(sheetId, personId, amount, corrects);
-        LocalDate dueBy = on.plusDays(settings.termsFor(sheetId, person.gradeOn(on)));
+        LocalDate dueBy = on.plusDays(settings.termsFor(sheetId, person.gradeOn(on), on));
         Claim draft = new Claim(sheetId, personId, amount, on, note, dueBy);
         draft.setCorrects(corrects);
         Claim claim = claims.saveAndFlush(draft);
@@ -195,7 +195,8 @@ public class ClaimService {
 
     /**
      * A steward re-settles a SETTLED claim: its due fixed again at the figure it would have today as an
-     * open claim bound by no statement (today's rates, grades, floor and late charge). Refused for anyone
+     * open claim bound by no statement (the rate, grade, floor and late percent in force on its date, the
+     * late charge as of today). Refused for anyone
      * else, a claim in any other status, or one dated inside a closed period.
      */
     @Transactional
@@ -209,7 +210,7 @@ public class ClaimService {
         refuseIfClosed(sheetId, claim.getDate());
         BigDecimal old = claim.getSettledDue();
         BigDecimal figure = LateCharge.withChargeAsOpen(claim, dueOf(sheetId, person, claim), sheets.today(sheetId),
-                settings.latePct(sheetId), roundingOf(sheetId, claim));
+                settings.latePctOn(sheetId, claim.getDate()), roundingOf(sheetId, claim));
         claim.setSettledDue(figure);
         logStatus(sheetId, user, person, claim);
         Claim saved = claims.saveAndFlush(claim);
@@ -294,7 +295,7 @@ public class ClaimService {
         BigDecimal figure = figureOf(sheetId, person, claim);
         if (claim.getSettledDue() != null) return figure;
         return LateCharge.withCharge(claim, figure, sheets.today(sheetId),
-                settings.latePct(sheetId), roundingOf(sheetId, claim));
+                settings.latePctOn(sheetId, claim.getDate()), roundingOf(sheetId, claim));
     }
 
     /** How the claim's live figures round: by its date, or a correction's by its corrected claim's ({@link Rounding}). */
@@ -306,10 +307,10 @@ public class ClaimService {
 
     /**
      * A claim's live due: its amount times the rate on its date of its person's grade in force on it, rounded to
-     * cents as {@link Rounding} has it, and at least the sheet's floor unless a correction; null with no rate.
+     * cents as {@link Rounding} has it, and at least the sheet's floor in force on its date unless a correction; null with no rate.
      */
     private BigDecimal dueOf(String sheetId, Person person, Claim claim) {
-        BigDecimal floor = claim.isCorrection() ? null : settings.floor(sheetId);
+        BigDecimal floor = claim.isCorrection() ? null : settings.floorOn(sheetId, claim.getDate());
         RoundingMode rounding = roundingOf(sheetId, claim);
         return rates.on(sheetId, person.gradeOn(claim.getDate()), claim.getDate())
                 .map(Rate::getPct)

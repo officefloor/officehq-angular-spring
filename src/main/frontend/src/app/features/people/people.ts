@@ -361,7 +361,7 @@ export class People {
       const pctOn = this.pctOnByPerson().get(c.personId);
       if (period === null || pctOn === undefined) continue;
       const theirs = by.get(c.personId) ?? new Map<number, number>();
-      theirs.set(period.id, (theirs.get(period.id) ?? 0) + (claimDueCents(c, pctOn, cents(this.session.floor()), this.session.late(), roundsOn(c, this.claimsOf(c.personId))) ?? 0));
+      theirs.set(period.id, (theirs.get(period.id) ?? 0) + (claimDueCents(c, pctOn, this.session.floorCentsOn, this.session.late(), roundsOn(c, this.claimsOf(c.personId))) ?? 0));
       by.set(c.personId, theirs);
     }
     return by;
@@ -414,7 +414,7 @@ export class People {
   /** Each person's overdue claims that count, by id: how many and their dues in cents. */
   private readonly overdueByPerson = computed(() => {
     const today = this.session.today();
-    const floor = cents(this.session.floor());
+    const floor = this.session.floorCentsOn;
     const late = this.session.late();
     const by = new Map<number, Overdue>();
     for (const p of this.people()) {
@@ -561,7 +561,7 @@ export class People {
     const theirs = this.claimsOf(p.id);
     const counted = theirs.filter(this.counts);
     const pctOn = this.pctOnOf(p.id);
-    const floor = cents(this.session.floor());
+    const floor = this.session.floorCentsOn;
     const late = this.session.late();
     const gradeToday = this.gradeOf(p);
     const today = this.session.today();
