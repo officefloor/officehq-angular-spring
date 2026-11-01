@@ -3,6 +3,7 @@ import { Component, computed, effect, inject, signal, untracked } from '@angular
 import { FormControl, FormGroup, ReactiveFormsModule } from '@angular/forms';
 import { firstValueFrom } from 'rxjs';
 import { Session } from '../../core/session';
+import { downloadCsv } from '../../core/csv';
 
 /** A member of a pool: the person or the pool (the other null), its name, its share (two decimals), whether the person was retired when read, whether its dates include the sheet's today, and its cut of the pot (two decimals; null: none). */
 interface MemberView {
@@ -81,6 +82,7 @@ function percent(hundredths: number): string {
           <p role="alert" class="error" data-testid="pool-form-error">{{ error() }}</p>
         }
       </form>
+      <button type="button" data-testid="export-pools" (click)="exportPools()">Export pools CSV</button>
       <ul aria-label="Pools">
         @for (p of lines(); track p.id) {
           <li [attr.data-testid]="'pool-row-' + p.name">
@@ -214,6 +216,22 @@ export class Pools {
     } catch {
       if (this.session.sheetId() === sheet) this.error.set('Could not load the pools of this sheet.');
     }
+  }
+
+  /**
+   * Downloads the pools as CSV, re-read from the store first: pools and their members in the order added,
+   * a pool member as pool:<name>, and each cut as shown ('' when none).
+   */
+  protected async exportPools(): Promise<void> {
+    const sheet = this.session.sheetId();
+    if (!sheet) return;
+    await this.load(sheet);
+    if (this.session.sheetId() !== sheet) return;
+    const lines = [['pool', 'member', 'share', 'cut']];
+    for (const p of this.lines()) {
+      for (const m of p.lines) lines.push([p.name, m.poolId === null ? m.name : POOL_VALUE + m.name, m.share, m.shownCut]);
+    }
+    downloadCsv(lines, 'pools.csv');
   }
 
   /** Add a pool, its name trimmed; a blank one or one already a pool is refused. */

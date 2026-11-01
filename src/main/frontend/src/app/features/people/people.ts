@@ -4,6 +4,7 @@ import { FormControl, FormGroup, ReactiveFormsModule } from '@angular/forms';
 import { firstValueFrom } from 'rxjs';
 import { LIVE } from '../../core/as-of';
 import { Session } from '../../core/session';
+import { downloadCsv } from '../../core/csv';
 import { Claim, Claims, DUPLICATE_REF, GraceOn, PctOn, RETIRED, cents, claimDueCents, countsAt, countsFor, isBound, isDuplicateRef, isOpen, isOverdue, money, roundsOn } from '../claims/claims';
 import { Period, Periods, periodOn } from '../periods/periods';
 import { Plan, Plans } from '../plans/plans';
@@ -82,22 +83,6 @@ function gradeOn(p: Person, date: string): string {
   let on = p.grade;
   for (const g of p.grades) if (g.from === null || g.from <= date) on = g.grade;
   return on;
-}
-
-/** A CSV field: wrapped in double quotes, any inside doubled, when it holds a comma, a quote or a line break. */
-function csvField(value: string): string {
-  return /[",\r\n]/.test(value) ? `"${value.replaceAll('"', '""')}"` : value;
-}
-
-/** Downloads the lines as a CSV file, each field quoted as needed and each line ended by a line feed. */
-function downloadCsv(lines: string[][], filename: string): void {
-  const csv = lines.map((fields) => fields.map(csvField).join(',') + '\n').join('');
-  const url = URL.createObjectURL(new Blob([csv], { type: 'text/csv' }));
-  const link = document.createElement('a');
-  link.href = url;
-  link.download = filename;
-  link.click();
-  setTimeout(() => URL.revokeObjectURL(url));
 }
 
 /** A person's statements: how many, and the last one's due-total (null when n/a) and date. */
