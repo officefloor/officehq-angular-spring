@@ -1,0 +1,145 @@
+diff --git a/src/main/frontend/src/app/features/claims/claims.ts b/src/main/frontend/src/app/features/claims/claims.ts
+index c3bd18f26..b7608d267 100644
+--- a/src/main/frontend/src/app/features/claims/claims.ts
++++ b/src/main/frontend/src/app/features/claims/claims.ts
+@@ -92,6 +92,29 @@ export function countsFor(c: Claim, heldOnDate: boolean, today: string | null):
+   return counts(c) && (!heldOnDate || !isOpen(c) || isBound(c)) && !isDeferred(c, today);
+ }
+ 
++/**
++ * The status the claim had at the end of the date, as its status log records it: the last line dated
++ * on or before it; null when it had none then (added after it). A claim with no log lines (added
++ * before the log was kept) is taken to have had its status now.
++ */
++export function statusAt(c: Claim, date: string): ClaimStatus | null {
++  if (c.log.length === 0) return c.status;
++  let at: ClaimStatus | null = null;
++  for (const line of c.log) if (line.date <= date) at = line.status;
++  return at;
++}
++
++/**
++ * Whether the claim counts for a period ending on `end`: by the status it had then (open or SETTLED),
++ * less a deferred one and an open one dated within a hold and not bound, as the live rules say.
++ */
++export function countsAt(c: Claim, end: string, heldOnDate: boolean, today: string | null): boolean {
++  const status = statusAt(c, end);
++  if (status === null) return false;
++  const open = status === 'OPEN' || status === 'PENDING';
++  return (open || status === 'SETTLED') && (!heldOnDate || !open || isBound(c)) && !isDeferred(c, today);
++}
++
+ /** A claim's amount as cents, so sums are exact; a correction's is negative. */
+ export function cents(amount: string): number {
+   const negative = amount.startsWith('-');
+diff --git a/src/main/frontend/src/app/features/people/people.ts b/src/main/frontend/src/app/features/people/people.ts
+index 0ad80b137..346434ae6 100644
+--- a/src/main/frontend/src/app/features/people/people.ts
++++ b/src/main/frontend/src/app/features/people/people.ts
+@@ -3,7 +3,7 @@ import { Component, computed, effect, inject, signal } from '@angular/core';
+ import { FormControl, FormGroup, ReactiveFormsModule } from '@angular/forms';
+ import { firstValueFrom } from 'rxjs';
+ import { Session } from '../../core/session';
+-import { Claim, Claims, PctOn, RETIRED, cents, claimDueCents, countsFor, isBound, isOverdue, money, roundsOn } from '../claims/claims';
++import { Claim, Claims, PctOn, RETIRED, cents, claimDueCents, countsAt, countsFor, isBound, isOverdue, money, roundsOn } from '../claims/claims';
+ import { Period, Periods, periodOn } from '../periods/periods';
+ import { GRADES, NA, Rate, Rates, pctOn, rateOn } from '../rates/rates';
+ 
+@@ -364,13 +364,19 @@ export class People {
+   protected readonly rates = signal<Rate[]>([]);
+   /** The sheet's periods, earliest first. */
+   protected readonly periods = signal<Period[]>([]);
+-  /** Each person's live due-total per period in cents, by person id then period id: the dues of their claims that count whose date falls in it. */
++  /**
++   * Each person's live due-total per period in cents, by person id then period id: the dues as shown now
++   * of their claims whose date falls in it that counted by the status they had at the end of its last day.
++   */
+   private readonly personPeriodLiveCents = computed(() => {
+     const by = new Map<number, Map<number, number>>();
+-    for (const c of this.claims().filter(this.counts)) {
++    const today = this.session.today();
++    for (const c of this.claims()) {
+       const period = periodOn(this.periods(), c.date);
+       const pctOn = this.pctOnByPerson().get(c.personId);
+       if (period === null || pctOn === undefined) continue;
++      const held = (this.holdsById().get(c.personId) ?? []).some((h) => holdContains(h, c.date));
++      if (!countsAt(c, period.to, held, today)) continue;
+       const theirs = by.get(c.personId) ?? new Map<number, number>();
+       theirs.set(period.id, (theirs.get(period.id) ?? 0) + (claimDueCents(c, pctOn, this.session.floorCentsOn, this.session.late(), roundsOn(c, this.claimsOf(c.personId))) ?? 0));
+       by.set(c.personId, theirs);
+diff --git a/src/main/java/net/officefloor/hq/app/claim/Claim.java b/src/main/java/net/officefloor/hq/app/claim/Claim.java
+index 8cfc0ee62..0c57f019f 100644
+--- a/src/main/java/net/officefloor/hq/app/claim/Claim.java
++++ b/src/main/java/net/officefloor/hq/app/claim/Claim.java
+@@ -169,6 +169,18 @@ public class Claim {
+         log.add(new ClaimLogEntry(status, by, on, due));
+     }
+ 
++    /**
++     * The status it had at the end of the date, as its log records it: the last line dated on or before
++     * it; null when it had none then (added after it). With no log lines (added before the log was
++     * kept) it is taken to have had its status now.
++     */
++    public ClaimStatus statusAt(LocalDate date) {
++        if (log.isEmpty()) return status;
++        ClaimStatus at = null;
++        for (ClaimLogEntry line : log) if (!line.getDate().isAfter(date)) at = line.getStatus();
++        return at;
++    }
++
+     public String getNumber() { return number; }
+ 
+     /** Number the claim sheet-wide. */
+diff --git a/src/main/java/net/officefloor/hq/app/period/PeriodService.java b/src/main/java/net/officefloor/hq/app/period/PeriodService.java
+index e234dd618..543cd0518 100644
+--- a/src/main/java/net/officefloor/hq/app/period/PeriodService.java
++++ b/src/main/java/net/officefloor/hq/app/period/PeriodService.java
+@@ -23,7 +23,8 @@ import org.springframework.transaction.annotation.Transactional;
+ /**
+  * The sheet's periods: each named uniquely on the sheet, from and to a date inclusive, none
+  * overlapping. Closing a period fixes, at that moment, each person's due-total for it (the figures
+- * of their claims that count whose date falls in it) and its own due-total, the sum of theirs. A steward can reopen a closed period, making its due-total live again.
++ * as shown then of their claims whose date falls in it that counted by the status they had at the
++ * end of its last day) and its own due-total, the sum of theirs. A steward can reopen a closed period, making its due-total live again.
+  */
+ @Service
+ public class PeriodService {
+@@ -80,7 +81,7 @@ public class PeriodService {
+         for (Long personId : byId.keySet()) personDues.put(personId, BigDecimal.ZERO.setScale(2));
+         for (Claim claim : claims.findBySheetIdOrderByIdDesc(sheetId)) {
+             Person person = byId.get(claim.getPersonId());
+-            if (person == null || !person.counts(claim, today) || !period.contains(claim.getDate())) continue;
++            if (person == null || !period.contains(claim.getDate()) || !person.countsAt(claim, period.getToDate(), today)) continue;
+             BigDecimal figure = claimService.chargedFigureOf(sheetId, person, claim);
+             if (figure != null) personDues.merge(person.getId(), figure, BigDecimal::add);
+         }
+diff --git a/src/main/java/net/officefloor/hq/app/person/Person.java b/src/main/java/net/officefloor/hq/app/person/Person.java
+index bdca85d4a..ef4d60444 100644
+--- a/src/main/java/net/officefloor/hq/app/person/Person.java
++++ b/src/main/java/net/officefloor/hq/app/person/Person.java
+@@ -20,6 +20,7 @@ import java.util.Locale;
+ import java.util.Map;
+ import java.util.TreeMap;
+ import net.officefloor.hq.app.claim.Claim;
++import net.officefloor.hq.app.claim.ClaimStatus;
+ 
+ /**
+  * A person on a sheet, with a name and a grade (A, B or C). The name is kept without surrounding
+@@ -137,6 +138,17 @@ public class Person {
+         return !claim.getStatus().isOpen() || claim.isBound() || !heldOn(claim.getDate());
+     }
+ 
++    /**
++     * Whether a claim of theirs counts for a period ending on the date: by the status it had at the end
++     * of that date, less a deferred one and an open one dated within a hold and not bound, as the live
++     * rules say.
++     */
++    public boolean countsAt(Claim claim, LocalDate end, LocalDate today) {
++        ClaimStatus at = claim.statusAt(end);
++        if (at == null || !at.counts() || claim.isDeferredOn(today)) return false;
++        return !at.isOpen() || claim.isBound() || !heldOn(claim.getDate());
++    }
++
+     /** Moved on by each save; an edit is refused unless made from the current version. */
+     public long getVersion() { return version; }
+ }
