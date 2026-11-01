@@ -28,7 +28,7 @@ export function closedOn(periods: Period[], date: string): boolean {
 }
 
 // The sheet's periods, with one form to add one, each period's due-total and whether it is
-// closed, and a button to close each.
+// closed, and a button to close each and to reopen each (a steward only).
 @Component({
   selector: 'app-periods',
   imports: [ReactiveFormsModule],
@@ -62,6 +62,8 @@ export function closedOn(periods: Period[], date: string): boolean {
               <td>
                 <button type="button" data-testid="period-close" (click)="close(p)"
                         [attr.aria-label]="'Close period ' + p.name">Close</button>
+                <button type="button" data-testid="period-reopen" (click)="reopen(p)"
+                        [attr.aria-label]="'Reopen period ' + p.name">Reopen</button>
                 @if (periodError()?.id === p.id) {
                   <p role="alert" class="error" data-testid="period-error">{{ periodError()?.message }}</p>
                 }
@@ -81,7 +83,7 @@ export class Periods {
   readonly periods = input.required<Period[]>();
   /** A period's due-total, two decimals. */
   readonly dueTotalOf = input.required<(p: Period) => string>();
-  /** A period added or closed, as the store now holds it. */
+  /** A period added, closed or reopened, as the store now holds it. */
   readonly saved = output<Period>();
 
   protected readonly error = signal('');
@@ -117,6 +119,31 @@ export class Periods {
       const message = e instanceof HttpErrorResponse && e.status === 423
         ? 'That period is already closed.'
         : 'Could not close that period.';
+      this.periodError.set({ id: p.id, message });
+    }
+  }
+
+  /** Reopen a closed period, making its due-total live again; a steward only. */
+  protected async reopen(p: Period): Promise<void> {
+    this.periodError.set(null);
+    const sheet = this.session.sheetId();
+    if (!sheet) return;
+    try {
+      const period = await firstValueFrom(
+        this.http.post<Period>(`/api/sheets/${encodeURIComponent(sheet)}/periods/${p.id}/reopen`, null, {
+          headers: { 'X-User': this.session.user() ?? '' },
+        }),
+      );
+      if (this.session.sheetId() !== sheet) return;
+      this.saved.emit(period);
+    } catch (e) {
+      if (this.session.sheetId() !== sheet) return;
+      const status = e instanceof HttpErrorResponse ? e.status : 0;
+      const message = status === 403
+        ? 'Only a steward can reopen a period.'
+        : status === 409
+          ? 'That period is not closed.'
+          : 'Could not reopen that period.';
       this.periodError.set({ id: p.id, message });
     }
   }

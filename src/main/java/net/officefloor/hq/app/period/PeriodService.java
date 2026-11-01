@@ -12,6 +12,8 @@ import net.officefloor.hq.app.claim.ClaimRepository;
 import net.officefloor.hq.app.claim.ClaimService;
 import net.officefloor.hq.app.person.Person;
 import net.officefloor.hq.app.person.PersonRepository;
+import net.officefloor.hq.app.setting.Role;
+import net.officefloor.hq.app.setting.SettingService;
 import net.officefloor.hq.app.sheet.SheetNotFoundException;
 import net.officefloor.hq.app.sheet.SheetRepository;
 import org.springframework.stereotype.Service;
@@ -20,7 +22,7 @@ import org.springframework.transaction.annotation.Transactional;
 /**
  * The sheet's periods: each named uniquely on the sheet, from and to a date inclusive, none
  * overlapping. Closing a period fixes its due-total at that moment: the figures of the claims that
- * count whose date falls in it.
+ * count whose date falls in it. A steward can reopen a closed period, making its due-total live again.
  */
 @Service
 public class PeriodService {
@@ -30,10 +32,12 @@ public class PeriodService {
     private final ClaimRepository claims;
     private final PersonRepository people;
     private final ClaimService claimService;
+    private final SettingService settings;
     private final Audit audit;
 
     public PeriodService(PeriodRepository periods, SheetRepository sheets, ClaimRepository claims,
-            PersonRepository people, ClaimService claimService, Audit audit) {
+            PersonRepository people, ClaimService claimService, SettingService settings, Audit audit) {
+        this.settings = settings;
         this.periods = periods;
         this.sheets = sheets;
         this.claims = claims;
@@ -81,6 +85,19 @@ public class PeriodService {
         Period saved = periods.saveAndFlush(period);
         audit.recordOnCommit("PERIOD_CLOSED sheet=" + sheetId + " by=" + user.strip()
                 + " period=" + saved.getName() + " total=" + total.setScale(2).toPlainString());
+        return saved;
+    }
+
+    @Transactional
+    public Period reopen(String sheetId, String user, Long id) {
+        sheets.findForUpdate(sheetId).orElseThrow(SheetNotFoundException::new);
+        Period period = periods.findByIdAndSheetId(id, sheetId).orElseThrow(PeriodNotFoundException::new);
+        if (settings.roleOf(sheetId, user) != Role.STEWARD) throw new PeriodReopenNotStewardException();
+        if (!period.isClosed()) throw new PeriodOpenException();
+        period.reopen();
+        Period saved = periods.saveAndFlush(period);
+        audit.recordOnCommit("PERIOD_REOPENED sheet=" + sheetId + " by=" + user.strip()
+                + " period=" + saved.getName());
         return saved;
     }
 }
