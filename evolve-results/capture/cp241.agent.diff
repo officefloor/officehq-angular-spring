@@ -1,0 +1,14 @@
+diff --git a/src/main/java/net/officefloor/hq/app/person/PersonService.java b/src/main/java/net/officefloor/hq/app/person/PersonService.java
+index 9d797c5de..ed948023d 100644
+--- a/src/main/java/net/officefloor/hq/app/person/PersonService.java
++++ b/src/main/java/net/officefloor/hq/app/person/PersonService.java
+@@ -228,7 +228,8 @@ public class PersonService {
+                     t -> t.getFromDate().equals(termsFrom) && Objects.equals(t.getTerms(), terms));
+             person.setTermsFrom(termsFrom, terms);
+         } else {
+-            termsChanged = !Objects.equals(person.getTerms(), terms);
++            termsChanged = !Objects.equals(person.getTerms(), terms)
++                    || !Objects.equals(person.termsOn(today), terms);
+             person.setTerms(terms);
+         }
+         boolean contactChanged = !Objects.equals(person.getContact(), reach);
