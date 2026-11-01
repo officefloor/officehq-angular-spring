@@ -11,6 +11,7 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import net.officefloor.hq.app.asof.SheetHistory;
 import net.officefloor.hq.app.setting.OpenToViewer;
 import org.springframework.validation.annotation.Validated;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -69,6 +70,9 @@ public class PersonController {
     /** The person to merge a person into. */
     public record MergeRequest(@NotNull Long intoId) {}
 
+    /** The sheet to transfer a person to, by its id. */
+    public record TransferRequest(@NotBlank @Size(max = 100) @Pattern(regexp = "[A-Za-z0-9._-]+") String toSheetId) {}
+
     /** The person to name as a patron. */
     public record PatronRequest(@NotNull Long patronId) {}
 
@@ -105,9 +109,11 @@ public class PersonController {
     public record RetireRequest(LocalDate from) {}
 
     private final PersonService service;
+    private final SheetHistory history;
 
-    public PersonController(PersonService service) {
+    public PersonController(PersonService service, SheetHistory history) {
         this.service = service;
+        this.history = history;
     }
 
     @GetMapping
@@ -201,6 +207,17 @@ public class PersonController {
             @RequestHeader("X-User") @NotBlank @Size(max = 100) String user,
             @RequestBody @Valid MergeRequest request) {
         return view(service.merge(sheetId, user, id, request.intoId()), user);
+    }
+
+    /** Transfer the person to another sheet by its id; that sheet is recorded in its history too. */
+    @PostMapping("/{id}/transfer")
+    public void transfer(
+            @PathVariable @Size(max = 100) @Pattern(regexp = "[A-Za-z0-9._-]+") String sheetId,
+            @PathVariable Long id,
+            @RequestHeader("X-User") @NotBlank @Size(max = 100) String user,
+            @RequestBody @Valid TransferRequest request) {
+        service.transfer(sheetId, user, id, request.toSheetId().strip());
+        history.capture(request.toSheetId().strip());
     }
 
     /** Start or stop watching the person as the signed-in user. */

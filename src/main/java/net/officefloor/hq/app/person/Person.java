@@ -212,6 +212,22 @@ public class Person {
         return theirs;
     }
 
+    /** Move them to another sheet, with their grades, terms, contact, aliases and holds. */
+    public void transferTo(String sheetId) {
+        this.sheetId = sheetId;
+        List<PersonAlias> theirs = new ArrayList<>(aliases);
+        aliases.clear();
+        for (PersonAlias a : theirs) aliases.add(new PersonAlias(sheetId, a.getAlias()));
+    }
+
+    /** Their name and aliases, as given. */
+    public List<String> namesAndAliases() {
+        List<String> all = new ArrayList<>();
+        all.add(name);
+        for (PersonAlias a : aliases) all.add(a.getAlias());
+        return all;
+    }
+
     /** The date they are retired from, or null while not retired. */
     public LocalDate getRetiredFrom() { return retiredFrom; }
 

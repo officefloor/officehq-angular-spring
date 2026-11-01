@@ -1,7 +1,8 @@
-import { HttpClient, HttpErrorResponse } from '@angular/common/http';
+import { HttpClient, HttpContext, HttpErrorResponse } from '@angular/common/http';
 import { Component, computed, effect, inject, signal } from '@angular/core';
 import { FormControl, FormGroup, ReactiveFormsModule } from '@angular/forms';
 import { firstValueFrom } from 'rxjs';
+import { LIVE } from '../../core/as-of';
 import { Session } from '../../core/session';
 import { Claim, Claims, DUPLICATE_REF, GraceOn, PctOn, RETIRED, cents, claimDueCents, countsAt, countsFor, isBound, isDuplicateRef, isOpen, isOverdue, money, roundsOn } from '../claims/claims';
 import { Period, Periods, periodOn } from '../periods/periods';
@@ -80,6 +81,10 @@ interface Descendants {
   people: number;
   dueTotal: string;
   overdueTotal: string;
+  /** The sheet's own figures as the store holds them now. */
+  ownPeople: number;
+  ownDueTotal: string;
+  ownOverdueTotal: string;
 }
 
 interface StatementSummary {
@@ -410,6 +415,11 @@ function trimmedSum(figures: number[]): number {
                 </select>
                 <button type="button" data-testid="person-merge" (click)="merge(p, mergeInto)"
                         [attr.aria-label]="'Merge ' + p.name">Merge</button>
+                <label [for]="'person-transfer-to-' + p.id" class="visually-hidden">Transfer {{ p.name }} to sheet</label>
+                <input [id]="'person-transfer-to-' + p.id" data-testid="person-transfer-to" #transferTo
+                       placeholder="Sheet id" (input)="clearPersonError(p.id)" />
+                <button type="button" data-testid="person-transfer" (click)="transfer(p, transferTo)"
+                        [attr.aria-label]="'Transfer ' + p.name">Transfer</button>
               </td>
             </tr>
           }
@@ -521,9 +531,19 @@ export class People {
   protected readonly people = signal<Person[]>([]);
   /** The sheet's descendants' figures, as the store held them when the sheet was loaded. */
   private readonly descendants = signal<Descendants | null>(null);
-  /** The sheet's own figures, as shown, and its descendants' added up. */
+  /**
+   * The sheet's own figures, as shown, and its descendants' added up. Read as of a date, they are the
+   * figures the store holds now, the sheet's own included.
+   */
   protected readonly consolidated = computed(() => {
     const d = this.descendants();
+    if (d && this.session.asOf() !== null) {
+      return {
+        people: d.ownPeople + d.people,
+        dueCents: cents(d.ownDueTotal) + cents(d.dueTotal),
+        overdueCents: cents(d.ownOverdueTotal) + cents(d.overdueTotal),
+      };
+    }
     return {
       people: this.people().length + (d?.people ?? 0),
       dueCents: this.dueTotalAllCents() + (d ? cents(d.dueTotal) : 0),
@@ -907,7 +927,7 @@ export class People {
         firstValueFrom(this.http.get<StatementSummary[]>(`/api/sheets/${encodeURIComponent(sheet)}/statements`, { headers: this.headers() })),
         firstValueFrom(this.http.get<Period[]>(`/api/sheets/${encodeURIComponent(sheet)}/periods`, { headers: this.headers() })),
         firstValueFrom(this.http.get<string[]>(`/api/sheets/${encodeURIComponent(sheet)}/claims/tags`, { headers: this.headers() })),
-        firstValueFrom(this.http.get<Descendants>(`/api/sheets/${encodeURIComponent(sheet)}/descendants/figures`, { headers: this.headers() })),
+        firstValueFrom(this.http.get<Descendants>(`/api/sheets/${encodeURIComponent(sheet)}/descendants/figures`, { headers: this.headers(), context: new HttpContext().set(LIVE, true) })),
       ]);
       if (this.session.sheetId() !== sheet) return;
       this.people.set(list);
@@ -1248,6 +1268,37 @@ export class People {
         message: e instanceof HttpErrorResponse && e.status === 409
           ? 'Only a steward can merge, into another person, neither of them retired.'
           : 'Could not merge ' + p.name + '.',
+      });
+    }
+  }
+
+  /**
+   * Transfer the person to another sheet by its id (a steward only; not a retired person, nor to this
+   * sheet). Once transferred the people and their claims are read again, as the person left the sheet.
+   */
+  protected async transfer(p: Person, input: HTMLInputElement): Promise<void> {
+    this.personError.set(null);
+    this.clearPatronError(p.id);
+    const sheet = this.session.sheetId();
+    if (!sheet) return;
+    const to = input.value.trim();
+    if (!/^[A-Za-z0-9._-]{1,100}$/.test(to)) {
+      this.personError.set({ id: p.id, message: 'Enter the id of the sheet to transfer to.' });
+      return;
+    }
+    try {
+      await firstValueFrom(
+        this.http.post<void>(`${this.url(sheet)}/${p.id}/transfer`, { toSheetId: to }, { headers: this.headers() }),
+      );
+      if (this.session.sheetId() !== sheet) return;
+      await this.load(sheet);
+    } catch (e) {
+      if (this.session.sheetId() !== sheet) return;
+      this.personError.set({
+        id: p.id,
+        message: e instanceof HttpErrorResponse && e.status === 409
+          ? 'Only a steward can transfer, not a retired person, to another sheet without their name, aliases or contact.'
+          : 'Could not transfer ' + p.name + '.',
       });
     }
   }

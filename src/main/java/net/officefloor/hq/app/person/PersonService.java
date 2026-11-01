@@ -14,6 +14,7 @@ import java.util.stream.Collectors;
 import net.officefloor.hq.app.Audit;
 import net.officefloor.hq.app.claim.Claim;
 import net.officefloor.hq.app.claim.ClaimRepository;
+import net.officefloor.hq.app.claim.ClaimService;
 import net.officefloor.hq.app.period.Period;
 import net.officefloor.hq.app.period.PeriodRepository;
 import net.officefloor.hq.app.pool.PoolMember;
@@ -45,7 +46,8 @@ import org.springframework.transaction.annotation.Transactional;
  * A person may have aliases, added one at a time; an alias shares the names' uniqueness: it may not be,
  * as names are compared, any name or alias on the sheet, and no name may be an alias on the sheet. The
  * sheet is locked while a name or alias is checked and written, so two users cannot take one at once.
- * A steward can merge a person into another ({@link #merge}).
+ * A steward can merge a person into another ({@link #merge}), and transfer one to another sheet
+ * ({@link #transfer}).
  */
 @Service
 public class PersonService {
@@ -60,12 +62,14 @@ public class PersonService {
     private final StatementRepository statements;
     private final PoolMemberRepository poolMembers;
     private final PeriodRepository periods;
+    private final ClaimService claimService;
     private final Audit audit;
 
     public PersonService(PersonRepository people, PersonPatronRepository patrons,
             PersonWatchRepository watches, SheetRepository sheets, ClaimRepository claims, RollupService rollup,
             SettingService settings, StatementRepository statements, PoolMemberRepository poolMembers,
-            PeriodRepository periods, Audit audit) {
+            PeriodRepository periods, ClaimService claimService, Audit audit) {
+        this.claimService = claimService;
         this.statements = statements;
         this.poolMembers = poolMembers;
         this.periods = periods;
@@ -372,6 +376,64 @@ public class PersonService {
                 + " from=" + from.getName() + " into=" + saved.getName());
         rollup.recordChanges(sheetId, user, before);
         return saved;
+    }
+
+    /**
+     * A steward transfers the person to another sheet by its id; not a retired person, not to this sheet
+     * nor to an archived one, and not when their name, an alias or their contact is, as each is compared,
+     * already on the other sheet. They arrive with every grade (and its from-date), their terms, contact,
+     * aliases and holds, and their claims ({@link ClaimService#receive}); their statements, patron links
+     * either way, pool memberships and watchers are dropped, and they leave this sheet. Each sheet audits
+     * the transfer, followed by its rollup lines.
+     */
+    @Transactional
+    public void transfer(String sheetId, String user, Long id, String toSheetId) {
+        if (sheetId.equals(toSheetId)) throw new PersonTransferRefusedException();
+        // lock both sheets, always in the same order, so two transfers between them cannot deadlock
+        boolean thisFirst = sheetId.compareTo(toSheetId) < 0;
+        Sheet first = sheets.findForUpdate(thisFirst ? sheetId : toSheetId).orElse(null);
+        Sheet second = sheets.findForUpdate(thisFirst ? toSheetId : sheetId).orElse(null);
+        Sheet here = thisFirst ? first : second;
+        Sheet there = thisFirst ? second : first;
+        if (here == null) throw new SheetNotFoundException();
+        Person person = people.findByIdAndSheetId(id, sheetId).orElseThrow(PersonNotFoundException::new);
+        if (settings.roleOf(sheetId, user) != Role.STEWARD || person.isRetired() || there == null
+                || there.isArchived()) {
+            throw new PersonTransferRefusedException();
+        }
+        for (String name : person.namesAndAliases()) {
+            if (people.findByNameOrAlias(toSheetId, name).isPresent()) throw new PersonTransferRefusedException();
+        }
+        if (person.getContact() != null && people.findBySheetIdAndContact(toSheetId, person.getContact()).isPresent()) {
+            throw new PersonTransferRefusedException();
+        }
+        RollupService.Snapshot beforeHere = rollup.snapshot(sheetId);
+        RollupService.Snapshot beforeThere = rollup.snapshot(toSheetId);
+
+        // what ties them to this sheet is dropped
+        patrons.deleteAll(patrons.findBySheetIdOrderByIdAsc(sheetId).stream()
+                .filter(p -> p.getPersonId().equals(id) || p.getPatronId().equals(id)).toList());
+        patrons.flush();
+        poolMembers.deleteAll(poolMembers.findBySheetIdOrderByIdAsc(sheetId).stream()
+                .filter(m -> m.getPersonId().equals(id)).toList());
+        poolMembers.flush();
+        statements.deleteAll(statements.findBySheetIdAndPersonIdOrderByIdAsc(sheetId, id));
+        statements.flush();
+        watches.deleteAll(watches.findByPersonIdOrderByIdAsc(id));
+        watches.flush();
+
+        // they and their claims arrive on the other sheet
+        List<Claim> moving = claims.findBySheetIdAndPersonIdOrderByIdDesc(sheetId, id);
+        person.transferTo(toSheetId);
+        Person saved = saveUnique(person);
+        claimService.receive(there, moving);
+
+        audit.recordOnCommit("PERSON_TRANSFERRED sheet=" + sheetId + " by=" + user.strip()
+                + " name=" + saved.getName() + " to=" + toSheetId);
+        rollup.recordChanges(sheetId, user, beforeHere);
+        audit.recordOnCommit("PERSON_TRANSFERRED sheet=" + toSheetId + " by=" + user.strip()
+                + " name=" + saved.getName() + " from=" + sheetId);
+        rollup.recordChanges(toSheetId, user, beforeThere);
     }
 
     /** The ids of the people on the sheet the user watches. */

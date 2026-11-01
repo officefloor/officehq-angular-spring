@@ -16,15 +16,17 @@ import org.springframework.web.bind.annotation.RestController;
 /**
  * The figures of a sheet's descendants (the sheets naming it as their parent, theirs and so on),
  * added up: how many people they have, and each one's due-total and overdue-total as that sheet
- * shows them. The screen adds the sheet's own figures to make the consolidated ones.
+ * shows them, and the sheet's own figures as it holds them now. The screen adds the sheet's own figures,
+ * as shown (as it holds them now while it is shown as of a date), to make the consolidated ones.
  */
 @RestController
 @Validated
 @RequestMapping("/api/sheets/{sheetId}/descendants")
 public class ConsolidatedController {
 
-    /** The descendants' figures added up; the totals have two decimals. */
-    public record DescendantsView(int sheets, int people, String dueTotal, String overdueTotal) {}
+    /** The descendants' figures added up, then the sheet's own; the totals have two decimals. */
+    public record DescendantsView(int sheets, int people, String dueTotal, String overdueTotal, int ownPeople,
+            String ownDueTotal, String ownOverdueTotal) {}
 
     private final SheetParentRepository parents;
     private final RollupService rollup;
@@ -50,6 +52,8 @@ public class ConsolidatedController {
             due = due.add(figures.dueTotal());
             overdue = overdue.add(figures.overdueTotal());
         }
-        return new DescendantsView(sheets, people, due.toPlainString(), overdue.toPlainString());
+        RollupService.Snapshot own = rollup.current(sheetId);
+        return new DescendantsView(sheets, people, due.toPlainString(), overdue.toPlainString(), own.people().size(),
+                own.dueTotal().setScale(2).toPlainString(), own.overdueTotal().setScale(2).toPlainString());
     }
 }

@@ -252,6 +252,30 @@ public class Claim {
         this.listed = listed;
     }
 
+    /**
+     * Move the claim, with its person, to another sheet: it keeps its status, dates, note, tags, frozen
+     * figure and logs, but loses any figure a statement bound it to, its reference, its number (to be
+     * given the other sheet's next), its settle batch and any editor's lock.
+     */
+    public void transferTo(String sheetId) {
+        this.sheetId = sheetId;
+        this.stated = false;
+        this.statedDue = null;
+        bindings.clear();
+        setRef(null);
+        this.number = null;
+        this.numberPeriod = null;
+        this.numberSeq = null;
+        this.settleBatch = null;
+        this.lockedBy = null;
+    }
+
+    /** The sheet's today it was first opened on, as its status log records it; null when it records none. */
+    public LocalDate openedOn() {
+        for (ClaimLogEntry line : log) if (line.getStatus() == ClaimStatus.OPEN) return line.getDate();
+        return null;
+    }
+
     public BigDecimal getAmount() { return amount; }
 
     public void setAmount(BigDecimal amount) { this.amount = amount; }

@@ -3,7 +3,10 @@ package net.officefloor.hq.app.claim;
 import java.math.BigDecimal;
 import java.math.RoundingMode;
 import java.time.LocalDate;
+import java.util.Comparator;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 import net.officefloor.hq.app.Audit;
 import net.officefloor.hq.app.holiday.HolidayService;
 import net.officefloor.hq.app.period.Period;
@@ -669,7 +672,7 @@ public class ClaimService {
     public RatePreview previewRate(String sheetId, String grade, BigDecimal pct) {
         int count = 0;
         BigDecimal diff = BigDecimal.ZERO.setScale(2);
-        java.util.Map<Long, Person> byId = new java.util.HashMap<>();
+        Map<Long, Person> byId = new HashMap<>();
         for (Person p : people.findBySheetIdOrderByIdAsc(sheetId)) byId.put(p.getId(), p);
         for (Claim claim : claims.findBySheetIdOrderByIdDesc(sheetId)) {
             if (!claim.getStatus().isOpen() || claim.isBound()) continue;
@@ -740,6 +743,44 @@ public class ClaimService {
         audit.recordOnCommit(event + " sheet=" + sheetId + " by=" + user.strip() + " person=" + person.getName()
                 + " amount=" + claim.getAmount().setScale(2).toPlainString() + " date=" + claim.getDate()
                 + (number != null ? " number=" + number : "") + extra);
+    }
+
+    /**
+     * Take a person's claims, as they arrive with them from another sheet, onto the sheet (locked for
+     * numbering by the caller): each loses what {@link Claim#transferTo} drops, and each that had a number
+     * takes the sheet's next, in the order they were opened (by the sheet's today each was first opened on,
+     * then in the order they were added). A correction, or a claim split off another, then names the
+     * number its claim was given. Their tags are kept among those used on the sheet.
+     */
+    @Transactional
+    public void receive(Sheet to, List<Claim> arriving) {
+        List<Claim> numbered = arriving.stream().filter(c -> c.getNumber() != null)
+                .sorted(Comparator.comparing(Claim::openedOn,
+                        Comparator.nullsFirst(Comparator.naturalOrder()))
+                        .thenComparing(Claim::getId))
+                .toList();
+        Map<Claim, String> old = new HashMap<>();
+        for (Claim claim : arriving) {
+            old.put(claim, claim.getNumber());
+            claim.transferTo(to.getId());
+        }
+        claims.saveAllAndFlush(arriving);
+        Map<String, String> renumbered = new HashMap<>();
+        for (Claim claim : numbered) {
+            number(to, claim);
+            claims.saveAndFlush(claim);
+            renumbered.put(old.get(claim), claim.getNumber());
+        }
+        for (Claim claim : arriving) {
+            if (claim.getCorrects() != null) {
+                claim.setCorrects(renumbered.getOrDefault(claim.getCorrects(), claim.getCorrects()));
+            }
+            if (claim.getSplitFrom() != null) {
+                claim.setSplitFrom(renumbered.getOrDefault(claim.getSplitFrom(), claim.getSplitFrom()));
+            }
+            keepTags(to.getId(), claim);
+        }
+        claims.saveAllAndFlush(arriving);
     }
 
     /** Keep each of the claim's tags among those ever used on the sheet. */
