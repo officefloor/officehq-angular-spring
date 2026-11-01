@@ -20,7 +20,7 @@ import org.springframework.transaction.annotation.Transactional;
  * as {@link ClaimStatus} allows; a change it does not allow is refused. Opening a claim gives it
  * the sheet's next number; voiding it clears the number, which is never given again. Settling it
  * fixes its due at its person's grade rate of the moment on the claim's date; with no such rate it
- * stays live.
+ * stays live. The user who opened a claim cannot settle it.
  */
 @Service
 public class ClaimService {
@@ -74,12 +74,16 @@ public class ClaimService {
         if (!claim.getStatus().canBecome(next)) {
             throw new ClaimStatusRefusedException();
         }
+        if (next == ClaimStatus.SETTLED && user.strip().equals(claim.getOpenedBy())) {
+            throw new ClaimSettledByOpenerException();
+        }
         Person person = people.findByIdAndSheetId(claim.getPersonId(), sheetId).orElseThrow(PersonNotFoundException::new);
         Long number = claim.getNumber();
         switch (next) {
             case OPEN -> {
                 number = opened;
                 claim.setNumber(number);
+                claim.setOpenedBy(user.strip());
             }
             case SETTLED -> claim.setSettledDue(dueOf(sheetId, person, claim));
             case VOID -> claim.setNumber(null);

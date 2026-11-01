@@ -23,6 +23,8 @@ export interface Claim {
   number: number | null;
   /** The due fixed when it was settled, two decimals; null while its due is live. */
   settledDue: string | null;
+  /** The user who opened it; null while DRAFT. They cannot settle it. */
+  openedBy: string | null;
 }
 
 /** Only OPEN and SETTLED claims count toward what is claimed and due. */
@@ -78,6 +80,7 @@ export function money(cents: number): string {
           <span data-testid="claim-note">{{ c.note }}</span>
           <span>Due <span data-testid="claim-due">{{ dueOf(c) }}</span></span>
           <span data-testid="claim-status">{{ c.status }}</span>
+          <span>Opened by <span data-testid="claim-opened-by">{{ c.openedBy ?? '' }}</span></span>
           <button type="button" data-testid="claim-open" (click)="act(c, 'open')"
                   [attr.aria-label]="'Open claim of ' + c.amount + ' on ' + c.date">Open</button>
           <button type="button" data-testid="claim-settle" (click)="act(c, 'settle')"
@@ -167,7 +170,9 @@ export class Claims {
       this.saved.emit(claim);
     } catch (e) {
       if (this.session.sheetId() !== sheet) return;
-      const message = e instanceof HttpErrorResponse && e.status === 409
+      const message = e instanceof HttpErrorResponse && e.status === 403
+        ? 'The user who opened a claim cannot settle it.'
+        : e instanceof HttpErrorResponse && e.status === 409
         ? `A ${c.status} claim cannot be ${action === 'open' ? 'opened' : action === 'settle' ? 'settled' : 'voided'}.`
         : 'Could not change that claim.';
       this.claimError.set({ id: c.id, message });

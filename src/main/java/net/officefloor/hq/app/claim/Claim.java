@@ -13,7 +13,7 @@ import java.time.LocalDate;
 
 /**
  * A claim by a person on a sheet: an amount (0.00 or more, two decimals), a date, a note and a
- * status (DRAFT when added), and a number once opened.
+ * status (DRAFT when added), and a number and who opened it once opened.
  */
 @Entity
 @Table(name = "claim")
@@ -45,6 +45,10 @@ public class Claim {
     /** Given when the claim is opened; none while DRAFT, cleared when VOID. */
     @Column(name = "claim_number")
     private Long number;
+
+    /** The user who opened the claim; none while DRAFT. */
+    @Column(name = "opened_by", length = 100)
+    private String openedBy;
 
     /** The due fixed when the claim was settled; none while not settled, or settled with no rate. */
     @Column(name = "settled_due", precision = 14, scale = 2)
@@ -85,6 +89,10 @@ public class Claim {
     public Long getNumber() { return number; }
 
     public void setNumber(Long number) { this.number = number; }
+
+    public String getOpenedBy() { return openedBy; }
+
+    public void setOpenedBy(String openedBy) { this.openedBy = openedBy; }
 
     public BigDecimal getSettledDue() { return settledDue; }
 
