@@ -1,0 +1,64 @@
+{
+  "checkpoint": 127,
+  "stack": {
+    "repo": "/home/daniel/officehq-angular-spring",
+    "origin": "git@github.com:officefloor/officehq-angular-spring.git",
+    "name": "officehq-angular-spring",
+    "base_ref": "base-empty",
+    "base_commit": "65cb8233ea38b2dfa6cfd18709e30cd18fdf3250"
+  },
+  "checkpoint_id": "cp127_my-figures",
+  "phase": "mid",
+  "type": "additive",
+  "mutates": [],
+  "replaced_tests": [],
+  "request": {
+    "spec": "The header shows the signed-in user's own figures when a person on the sheet has the user's name\n(by name or alias, as names are compared): that person's due-total and overdue-total; nothing when\nthere is no such person.\n",
+    "prompt": "You are implementing ONE change to this application.\n\nFIRST read AGENTS.md \u2014 it states the working rules and how the app is tested, and sends you to\nDESIGN.md for the app's stack and conventions. Follow both.\n\nTHE CHANGE REQUEST:\nThe header shows the signed-in user's own figures when a person on the sheet has the user's name\n(by name or alias, as names are compared): that person's due-total and overdue-total; nothing when\nthere is no such person.\n\nYour work is verified by an automated Playwright UI test already installed under e2e/specs/.\nRead that spec: it declares the exact data-testid anchors, values, test data and any audit\nrecords it expects \u2014 match them. Run `bin/e2e` to build the app, start it, and run the test as\nyou work; iterate until it passes. Change whatever the request needs across the app \u2014 its stored\ndata, its server and its front end. Do NOT edit bin/build, bin/start, bin/stop, bin/e2e,\nAGENTS.md, CLAUDE.md, DESIGN.md, e2e/support/ or the test spec.\n"
+  },
+  "commit_sha": "860ef31853c03825edd82aa2205421fac824b22c",
+  "reset_sha": "",
+  "preagent_sha": "d7acec61998e06bd1f7cf87afb7cb94cf9b7cc06",
+  "prev_sha": "d7acec61998e06bd1f7cf87afb7cb94cf9b7cc06",
+  "base_sha": "65cb8233ea38b2dfa6cfd18709e30cd18fdf3250",
+  "agent": {
+    "ok": true,
+    "cost_usd": 0.4791634000000001,
+    "input_tokens": 30,
+    "output_tokens": 3771,
+    "cache_read_tokens": 506597,
+    "cache_creation_tokens": 37788,
+    "num_turns": 15,
+    "duration_ms": 204416,
+    "duration_api_ms": 63272,
+    "model": "claude-opus-5-5",
+    "session_id": "c98c8704-8d34-44cd-9bb9-846dc5ce3552",
+    "stop_reason": "success",
+    "result_text": "The header now shows the signed-in user's own due-total and overdue-total, and `bin/e2e` passes all 4 tests in the spec.\n\n**What changed:** only `src/main/frontend/src/app/features/people/people.ts`. The existing header totals are already worked out in the browser, so the server and stored data didn't need touching.\n\n- **Finding the user:** a new `me()` value looks for the person whose name or alias matches the signed-in user's name. It compares names the way the server does: surrounding spaces are ignored and so is letter case, so \"VIC\" matches the user \"vic\".\n- **What's shown:** two new header elements, `my-due-total` and `my-overdue-total`. They reuse the same per-person figures as that person's row, so the cap, holds and late charges apply the same way. A person whose due-total is n/a shows n/a. Both are empty when no person on the sheet has the user's name.\n\nIf more than one person matches (for example, one by name and another by alias), it uses the first one in list order.",
+    "error": "",
+    "attempts": [
+      {
+        "ok": true,
+        "limit_reached": false,
+        "retryable": false,
+        "timed_out": false,
+        "cost_usd": 0.4791634000000001,
+        "num_turns": 15,
+        "duration_ms": 204416,
+        "duration_api_ms": 63272,
+        "error": ""
+      }
+    ]
+  },
+  "agent_stream_file": "cp127.agent.jsonl",
+  "agent_diff_file": "cp127.agent.diff",
+  "build_log_file": null,
+  "tests": {
+    "gated": false,
+    "queued": true
+  },
+  "probe": null,
+  "pinned_touched": [],
+  "acceptance_touched": [],
+  "impact_gate": null
+}
