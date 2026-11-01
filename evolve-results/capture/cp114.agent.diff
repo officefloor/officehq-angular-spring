@@ -1,0 +1,263 @@
+diff --git a/src/main/frontend/src/app/features/claims/claims.ts b/src/main/frontend/src/app/features/claims/claims.ts
+index 7e61eb052..e05f69a58 100644
+--- a/src/main/frontend/src/app/features/claims/claims.ts
++++ b/src/main/frontend/src/app/features/claims/claims.ts
+@@ -9,12 +9,13 @@ import { NA, dueCents } from '../rates/rates';
+ /**
+  * DRAFT when added, then OPEN, then SETTLED; a clerk's settling above the clerk limit makes it
+  * PENDING until a steward approves it (SETTLED) or rejects it (OPEN). A DRAFT, OPEN or PENDING
+- * claim can be made VOID.
++ * claim can be made VOID. A DRAFT claim can be DELETED, when it counts nowhere, and restored to DRAFT on
++ * the same sheet's today it was deleted.
+  */
+-export type ClaimStatus = 'DRAFT' | 'OPEN' | 'PENDING' | 'SETTLED' | 'VOID';
++export type ClaimStatus = 'DRAFT' | 'OPEN' | 'PENDING' | 'SETTLED' | 'VOID' | 'DELETED';
+ 
+ /** A status change a claim's buttons ask for. */
+-type ClaimAction = 'open' | 'settle' | 'void' | 'approve' | 'reject' | 'resettle';
++type ClaimAction = 'open' | 'settle' | 'void' | 'approve' | 'reject' | 'resettle' | 'delete' | 'restore';
+ 
+ export interface Claim {
+   id: number;
+@@ -245,7 +246,7 @@ const VOID_REASON_NEEDED = 'Choose a reason from the sheet\'s void reasons to vo
+ 
+ const PAST: Record<ClaimAction, string> = {
+   open: 'opened', settle: 'settled', void: 'voided', approve: 'approved', reject: 'rejected',
+-  resettle: 're-settled',
++  resettle: 're-settled', delete: 'deleted', restore: 'restored',
+ };
+ 
+ /** Why a claim's correction is refused. */
+@@ -360,6 +361,10 @@ function notEditable(status: ClaimStatus | undefined): string {
+             <button type="button" data-testid="claim-void" (click)="act(c, 'void')"
+                     [attr.aria-label]="'Void claim of ' + c.amount + ' on ' + c.date">Void</button>
+           }
++          <button type="button" data-testid="claim-delete" (click)="act(c, 'delete')"
++                  [attr.aria-label]="'Delete claim of ' + c.amount + ' on ' + c.date">Delete</button>
++          <button type="button" data-testid="claim-restore" (click)="act(c, 'restore')"
++                  [attr.aria-label]="'Restore claim of ' + c.amount + ' on ' + c.date">Restore</button>
+           <button type="button" data-testid="claim-approve" (click)="act(c, 'approve')"
+                   [attr.aria-label]="'Approve claim of ' + c.amount + ' on ' + c.date">Approve</button>
+           <button type="button" data-testid="claim-resettle" (click)="act(c, 'resettle')"
+@@ -591,8 +596,8 @@ export class Claims {
+ 
+   /**
+    * Open, settle or void a claim, approve or reject (with a reason) a PENDING one, re-settle a
+-   * SETTLED one at its figure today, or (a steward, within 7 days of settling) void it; a change its
+-   * status does not allow is refused.
++   * SETTLED one at its figure today, or (a steward, within 7 days of settling) void it, delete a DRAFT one
++   * or restore a DELETED one on the day it was deleted; a change its status does not allow is refused.
+    */
+   protected async act(c: Claim, action: ClaimAction, reason = ''): Promise<void> {
+     this.claimError.set(null);
+@@ -613,12 +618,18 @@ export class Claims {
+       const claim = await firstValueFrom(this.http.post<Claim>(url, body, { headers: this.headers() }));
+       if (this.session.sheetId() !== sheet) return;
+       this.saved.emit(claim);
++      // A deleted claim cannot be edited, so an editor left open on it closes.
++      if (action === 'delete' && this.editingId() === c.id) this.reset();
+     } catch (e) {
+       if (this.session.sheetId() !== sheet) return;
+       const message = e instanceof HttpErrorResponse && e.status === 423
+         ? CLOSED
+         : e instanceof HttpErrorResponse && e.status === 409
+         ? `A ${c.status} claim cannot be ${PAST[action]}.`
++        : e instanceof HttpErrorResponse && e.status === 410 && action === 'restore'
++        ? 'A DELETED claim can be restored only on the day it was deleted.'
++        : e instanceof HttpErrorResponse && e.status === 412 && action === 'delete'
++        ? 'Another user is editing this claim; it can be deleted once they save or cancel.'
+         : e instanceof HttpErrorResponse && e.status === 410
+         ? 'A SETTLED claim can be voided only within 7 days of its settlement.'
+         : e instanceof HttpErrorResponse && e.status === 412
+diff --git a/src/main/java/net/officefloor/hq/app/claim/Claim.java b/src/main/java/net/officefloor/hq/app/claim/Claim.java
+index 1f43dccbc..1b9002464 100644
+--- a/src/main/java/net/officefloor/hq/app/claim/Claim.java
++++ b/src/main/java/net/officefloor/hq/app/claim/Claim.java
+@@ -347,6 +347,13 @@ public class Claim {
+         return on;
+     }
+ 
++    /** The sheet's today it was last deleted on, as its status log records it; null when the log has no DELETED line. */
++    public LocalDate deletedOn() {
++        LocalDate on = null;
++        for (ClaimLogEntry line : log) if (line.getStatus() == ClaimStatus.DELETED) on = line.getDate();
++        return on;
++    }
++
+     public boolean isLateEntry() { return lateEntry; }
+     public void setLateEntry(boolean lateEntry) { this.lateEntry = lateEntry; }
+ 
+diff --git a/src/main/java/net/officefloor/hq/app/claim/ClaimController.java b/src/main/java/net/officefloor/hq/app/claim/ClaimController.java
+index ae57c2df6..7c2afbb5f 100644
+--- a/src/main/java/net/officefloor/hq/app/claim/ClaimController.java
++++ b/src/main/java/net/officefloor/hq/app/claim/ClaimController.java
+@@ -294,6 +294,22 @@ public class ClaimController {
+         return ClaimView.of(service.voidClaim(sheetId, user, id, request == null ? null : request.reason()));
+     }
+ 
++    @PostMapping("/claims/{id}/delete")
++    public ClaimView delete(
++            @PathVariable @Size(max = 100) @Pattern(regexp = "[A-Za-z0-9._-]+") String sheetId,
++            @PathVariable Long id,
++            @RequestHeader("X-User") @NotBlank @Size(max = 100) String user) {
++        return ClaimView.of(service.delete(sheetId, user, id));
++    }
++
++    @PostMapping("/claims/{id}/restore")
++    public ClaimView restore(
++            @PathVariable @Size(max = 100) @Pattern(regexp = "[A-Za-z0-9._-]+") String sheetId,
++            @PathVariable Long id,
++            @RequestHeader("X-User") @NotBlank @Size(max = 100) String user) {
++        return ClaimView.of(service.restore(sheetId, user, id));
++    }
++
+     @PostMapping("/claims/{id}/approve")
+     public ClaimView approve(
+             @PathVariable @Size(max = 100) @Pattern(regexp = "[A-Za-z0-9._-]+") String sheetId,
+diff --git a/src/main/java/net/officefloor/hq/app/claim/ClaimRestoreWindowException.java b/src/main/java/net/officefloor/hq/app/claim/ClaimRestoreWindowException.java
+new file mode 100644
+index 000000000..68b0a7d06
+--- /dev/null
++++ b/src/main/java/net/officefloor/hq/app/claim/ClaimRestoreWindowException.java
+@@ -0,0 +1,8 @@
++package net.officefloor.hq.app.claim;
++
++import org.springframework.http.HttpStatus;
++import org.springframework.web.bind.annotation.ResponseStatus;
++
++/** A DELETED claim can be restored only on the same sheet's today it was deleted. */
++@ResponseStatus(HttpStatus.GONE)
++public class ClaimRestoreWindowException extends RuntimeException {}
+diff --git a/src/main/java/net/officefloor/hq/app/claim/ClaimService.java b/src/main/java/net/officefloor/hq/app/claim/ClaimService.java
+index 589098e8a..5b0d4136b 100644
+--- a/src/main/java/net/officefloor/hq/app/claim/ClaimService.java
++++ b/src/main/java/net/officefloor/hq/app/claim/ClaimService.java
+@@ -50,7 +50,8 @@ import org.springframework.transaction.annotation.Transactional;
+  * be added, edited (to or from such a date), opened, settled, re-settled or voided. No claim can be added
+  * or edited to a date after its person's retirement date. A claim with a negative amount is a
+  * correction: it must name, by number, a SETTLED claim of the same person; only a correction may name one.
+- * A steward can re-date an OPEN or PENDING claim ({@link #redate}).
++ * A steward can re-date an OPEN or PENDING claim ({@link #redate}). A DRAFT claim can be deleted, and
++ * restored to DRAFT on the same sheet's today ({@link #delete}, {@link #restore}).
+  */
+ @Service
+ public class ClaimService {
+@@ -277,7 +278,7 @@ public class ClaimService {
+             case PENDING -> "CLAIM_PENDING";
+             case SETTLED -> "CLAIM_SETTLED";
+             case VOID -> "CLAIM_VOIDED";
+-            case DRAFT -> throw new IllegalStateException();
++            case DRAFT, DELETED -> throw new IllegalStateException();
+         };
+         String due = next == ClaimStatus.SETTLED
+                 ? " due=" + (saved.getSettledDue() == null ? "n/a" : saved.getSettledDue().setScale(2).toPlainString())
+@@ -290,6 +291,49 @@ public class ClaimService {
+         return saved;
+     }
+ 
++    /**
++     * Delete a DRAFT claim: DELETED, it counts nowhere and cannot be edited, opened or voided until restored.
++     * Refused for a claim in any other status, one another user's editor locks, or one due inside a closed period.
++     */
++    @Transactional
++    public Claim delete(String sheetId, String user, Long id) {
++        // The snapshot locks the sheet first, so the claim is read once no other change is under way.
++        RollupService.Snapshot before = rollup.snapshot(sheetId);
++        Claim claim = claims.findByIdAndSheetId(id, sheetId).orElseThrow(ClaimNotFoundException::new);
++        if (!claim.getStatus().canBecome(ClaimStatus.DELETED)) throw new ClaimStatusRefusedException();
++        if (claim.isLockedAgainst(user)) throw new ClaimLockedException();
++        refuseIfClosed(sheetId, claim.getDueBy());
++        Person person = people.findByIdAndSheetId(claim.getPersonId(), sheetId).orElseThrow(PersonNotFoundException::new);
++        claim.setLockedBy(null);
++        claim.setStatus(ClaimStatus.DELETED);
++        logStatus(sheetId, user, person, claim);
++        Claim saved = claims.saveAndFlush(claim);
++        record("CLAIM_DELETED", sheetId, user, person, saved);
++        rollup.recordChanges(sheetId, user, before);
++        return saved;
++    }
++
++    /**
++     * Restore a DELETED claim to DRAFT, on the same sheet's today it was deleted. Refused for a claim in any
++     * other status, on a later day, or for one due inside a closed period.
++     */
++    @Transactional
++    public Claim restore(String sheetId, String user, Long id) {
++        // The snapshot locks the sheet first, so the claim is read once no other change is under way.
++        RollupService.Snapshot before = rollup.snapshot(sheetId);
++        Claim claim = claims.findByIdAndSheetId(id, sheetId).orElseThrow(ClaimNotFoundException::new);
++        if (claim.getStatus() != ClaimStatus.DELETED) throw new ClaimStatusRefusedException();
++        if (!sheets.today(sheetId).equals(claim.deletedOn())) throw new ClaimRestoreWindowException();
++        refuseIfClosed(sheetId, claim.getDueBy());
++        Person person = people.findByIdAndSheetId(claim.getPersonId(), sheetId).orElseThrow(PersonNotFoundException::new);
++        claim.setStatus(ClaimStatus.DRAFT);
++        logStatus(sheetId, user, person, claim);
++        Claim saved = claims.saveAndFlush(claim);
++        record("CLAIM_RESTORED", sheetId, user, person, saved);
++        rollup.recordChanges(sheetId, user, before);
++        return saved;
++    }
++
+     /** A steward other than its opener or last editor approves a PENDING claim: SETTLED, its due fixed at its live due now. */
+     @Transactional
+     public Claim approve(String sheetId, String user, Long id) {
+@@ -530,14 +574,15 @@ public class ClaimService {
+     }
+ 
+     /**
+-     * Raise a claim's proofs count by one. Refused for a SETTLED or VOID claim, or one due inside a closed period.
++     * Raise a claim's proofs count by one. Refused for a SETTLED, VOID or DELETED claim, or one due inside a closed period.
+      */
+     @Transactional
+     public Claim addProof(String sheetId, String user, Long id) {
+         // The snapshot locks the sheet first, so the claim is read once no other change is under way.
+         RollupService.Snapshot before = rollup.snapshot(sheetId);
+         Claim claim = claims.findByIdAndSheetId(id, sheetId).orElseThrow(ClaimNotFoundException::new);
+-        if (claim.getStatus() == ClaimStatus.SETTLED || claim.getStatus() == ClaimStatus.VOID) {
++        if (claim.getStatus() == ClaimStatus.SETTLED || claim.getStatus() == ClaimStatus.VOID
++                || claim.getStatus() == ClaimStatus.DELETED) {
+             throw new ClaimStatusRefusedException();
+         }
+         refuseIfClosed(sheetId, claim.getDueBy());
+diff --git a/src/main/java/net/officefloor/hq/app/claim/ClaimStatus.java b/src/main/java/net/officefloor/hq/app/claim/ClaimStatus.java
+index 1f9823829..7e29b4216 100644
+--- a/src/main/java/net/officefloor/hq/app/claim/ClaimStatus.java
++++ b/src/main/java/net/officefloor/hq/app/claim/ClaimStatus.java
+@@ -5,19 +5,23 @@ package net.officefloor.hq.app.claim;
+  * OPEN or PENDING claim can be voided (VOID). A clerk's settling above the clerk limit makes it
+  * PENDING instead, until a steward approves it (SETTLED) or rejects it (OPEN again). A steward
+  * may void a SETTLED claim shortly after its settlement ({@link ClaimService}); VOID is final.
++ * A DRAFT claim can be deleted (DELETED): it counts nowhere and cannot change, except to be restored
++ * to DRAFT on the same sheet's today it was deleted.
+  */
+ public enum ClaimStatus {
+-    DRAFT, OPEN, PENDING, SETTLED, VOID;
++    DRAFT, OPEN, PENDING, SETTLED, VOID, DELETED;
+ 
+     /**
+-     * Whether a claim in this status may move to {@code next} by opening, settling or voiding it; a
+-     * PENDING claim leaves for SETTLED or OPEN only by a steward's approval or rejection.
++     * Whether a claim in this status may move to {@code next} by opening, settling, voiding or deleting
++     * it; a PENDING claim leaves for SETTLED or OPEN only by a steward's approval or rejection, and a
++     * DELETED one for DRAFT only by its restore.
+      */
+     public boolean canBecome(ClaimStatus next) {
+         return switch (next) {
+             case OPEN -> this == DRAFT;
+             case PENDING, SETTLED -> this == OPEN;
+             case VOID -> this == DRAFT || this == OPEN || this == PENDING;
++            case DELETED -> this == DRAFT;
+             case DRAFT -> false;
+         };
+     }
+diff --git a/src/main/resources/db/migration/V69__claim_deleted.sql b/src/main/resources/db/migration/V69__claim_deleted.sql
+new file mode 100644
+index 000000000..33abee196
+--- /dev/null
++++ b/src/main/resources/db/migration/V69__claim_deleted.sql
+@@ -0,0 +1,5 @@
++-- A DRAFT claim may be DELETED: it counts nowhere and cannot change, unless restored to DRAFT on the
++-- same sheet's today it was deleted.
++ALTER TABLE claim DROP CONSTRAINT claim_status_check;
++ALTER TABLE claim ADD CONSTRAINT claim_status_check
++    CHECK (status IN ('DRAFT', 'OPEN', 'PENDING', 'SETTLED', 'VOID', 'DELETED'));
