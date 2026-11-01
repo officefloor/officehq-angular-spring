@@ -16,6 +16,8 @@ export interface PlanView {
   generated: number;
   /** The first five plan dates after the sheet's today and on or before the end, as of the last (re)load. */
   nextDates: string[];
+  /** Whether the plan is paused now: its dates from the day it was paused are skipped until it is resumed. */
+  paused: boolean;
 }
 
 /** A plan as its form submits it, with either an interval or a day of the month; a blank start takes the sheet's
@@ -68,6 +70,13 @@ export class Plans {
   add(sheetId: string, personId: number, plan: PlanForm): Observable<PlanView> {
     return this.http.post<PlanView>(`${this.base(sheetId)}/people/${personId}/plans`, plan).pipe(
       tap((added) => this.list.update((list) => [...list, added])),
+    );
+  }
+
+  /** Pause a running plan (on) or resume a paused one (off) from the sheet's today; refused when it already is. */
+  pause(sheetId: string, planId: number, on: boolean): Observable<PlanView> {
+    return this.http.post<PlanView>(`${this.base(sheetId)}/plans/${planId}/${on ? 'pause' : 'resume'}`, null).pipe(
+      tap((changed) => this.list.update((list) => list.map((p) => (p.id === changed.id ? changed : p)))),
     );
   }
 

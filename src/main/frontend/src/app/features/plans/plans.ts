@@ -30,6 +30,14 @@ const DAY_PATTERN = /^\d{1,2}$/;
             to <span data-testid="plan-end">{{ pl.end }}</span>
             — made <span data-testid="plan-generated">{{ pl.generated }}</span>
             — next <span data-testid="plan-next-dates">{{ pl.nextDates.join(', ') }}</span>
+            — paused <span data-testid="plan-paused">{{ pl.paused ? 'yes' : 'no' }}</span>
+            <button type="button" data-testid="plan-pause" (click)="pause(pl.id, true)"
+                    [disabled]="busy() === pl.id">Pause</button>
+            <button type="button" data-testid="plan-resume" (click)="pause(pl.id, false)"
+                    [disabled]="busy() === pl.id">Resume</button>
+            @if (rowError()?.planId === pl.id) {
+              <span role="alert" data-testid="plan-error">{{ rowError()?.message }}</span>
+            }
           </li>
         }
       </ul>
@@ -64,6 +72,10 @@ export class PersonPlans {
 
   protected readonly error = signal<string | null>(null);
   protected readonly saving = signal(false);
+  /** The plan a pause or resume is running on, if any. */
+  protected readonly busy = signal<number | null>(null);
+  /** The last refused action on a plan's row. */
+  protected readonly rowError = signal<{ planId: number; message: string } | null>(null);
   protected readonly form = new FormGroup({
     amount: new FormControl('', { nonNullable: true }),
     start: new FormControl('', { nonNullable: true }),
@@ -76,10 +88,27 @@ export class PersonPlans {
     // A (re)load of the sheet starts the form afresh.
     toObservable(this.sheets.loaded).pipe(takeUntilDestroyed()).subscribe(() => {
       this.error.set(null);
+      this.rowError.set(null);
       this.form.reset({ amount: '', start: '', every: '', day: '', end: '' }, { emitEvent: false });
     });
     // An error is removed as soon as its form is changed.
     this.form.valueChanges.pipe(takeUntilDestroyed()).subscribe(() => this.error.set(null));
+  }
+
+  /** Pause (on) or resume (off) the plan; refused when it already is. */
+  protected pause(planId: number, on: boolean): void {
+    if (this.busy() !== null) return;
+    this.rowError.set(null);
+    const sheet = this.sheets.current();
+    if (!sheet) return;
+    this.busy.set(planId);
+    this.plans.pause(sheet.id, planId, on).subscribe({
+      next: () => this.busy.set(null),
+      error: () => {
+        this.busy.set(null);
+        this.rowError.set({ planId, message: on ? 'Could not pause that plan.' : 'Could not resume that plan.' });
+      },
+    });
   }
 
   protected add(): void {

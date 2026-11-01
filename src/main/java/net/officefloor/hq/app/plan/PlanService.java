@@ -29,6 +29,7 @@ public class PlanService {
 
     private final PlanRepository plans;
     private final PlanClaimRepository made;
+    private final PlanPauseRepository pauses;
     private final PersonRepository people;
     private final ClaimService claims;
     private final SheetService sheets;
@@ -36,10 +37,11 @@ public class PlanService {
     private final RoleService roles;
     private final Audit audit;
 
-    public PlanService(PlanRepository plans, PlanClaimRepository made, PersonRepository people, ClaimService claims,
+    public PlanService(PlanRepository plans, PlanClaimRepository made, PlanPauseRepository pauses, PersonRepository people, ClaimService claims,
             SheetService sheets, SheetRepository sheetStore, RoleService roles, Audit audit) {
         this.plans = plans;
         this.made = made;
+        this.pauses = pauses;
         this.people = people;
         this.claims = claims;
         this.sheets = sheets;
@@ -51,8 +53,9 @@ public class PlanService {
     /** How many next dates a plan shows. */
     private static final int NEXT_DATES = 5;
 
-    /** A plan with how many claims it has made so far, and its next dates after the sheet's today. */
-    public record Counted(Plan plan, int generated, List<LocalDate> nextDates) {
+    /** A plan with how many claims it has made so far, its next dates after the sheet's today, and whether it is
+     *  paused now. */
+    public record Counted(Plan plan, int generated, List<LocalDate> nextDates, boolean paused) {
     }
 
     /** What a generate did: the claims it made, in the order made, and every plan on the sheet as it is now. */
@@ -65,9 +68,57 @@ public class PlanService {
         List<Plan> all = plans.findBySheetIdOrderByIdAsc(sheetId);
         Map<Long, Long> counts = made.findByPlanIdInOrderByIdAsc(all.stream().map(Plan::getId).toList()).stream()
                 .collect(Collectors.groupingBy(PlanClaim::getPlanId, Collectors.counting()));
+        Map<Long, List<PlanPause>> paused = pausesOf(all);
         LocalDate today = sheetStore.findById(sheetId).map(Sheet::getToday).orElse(null);
-        return all.stream().map(p -> new Counted(p, counts.getOrDefault(p.getId(), 0L).intValue(),
-                today == null ? List.of() : p.nextDates(today, NEXT_DATES))).toList();
+        return all.stream().map(p -> counted(p, counts.getOrDefault(p.getId(), 0L).intValue(), today,
+                paused.getOrDefault(p.getId(), List.of()))).toList();
+    }
+
+    private static Counted counted(Plan plan, int generated, LocalDate today, List<PlanPause> paused) {
+        return new Counted(plan, generated,
+                today == null ? List.of() : plan.nextDates(today, NEXT_DATES, d -> skips(paused, d)),
+                paused.stream().anyMatch(PlanPause::isOpen));
+    }
+
+    /** Each plan's pauses, by plan. */
+    private Map<Long, List<PlanPause>> pausesOf(List<Plan> all) {
+        return pauses.findByPlanIdInOrderByIdAsc(all.stream().map(Plan::getId).toList()).stream()
+                .collect(Collectors.groupingBy(PlanPause::getPlanId));
+    }
+
+    /** Whether one of a plan's pauses skips the date. */
+    private static boolean skips(List<PlanPause> paused, LocalDate date) {
+        return paused.stream().anyMatch(pp -> pp.skips(date));
+    }
+
+    /** Pause a running plan (on) from the sheet's today, or resume a paused one (off) from it; a plan date on or after
+     *  the day it was paused and before the day it was resumed is skipped. Refused when pausing a paused plan or
+     *  resuming a running one. */
+    @Transactional
+    public Counted pause(String sheetId, String user, long planId, boolean on) {
+        sheets.load(sheetId, user);
+        Sheet sheet = sheetStore.findLockedById(sheetId).orElseThrow();
+        Plan plan = plans.findById(planId).filter(p -> p.getSheetId().equals(sheetId))
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "No such plan on this sheet"));
+        Person person = people.findByIdAndSheetId(plan.getPersonId(), sheetId).orElseThrow();
+        List<PlanPause> theirs = pauses.findByPlanIdInOrderByIdAsc(List.of(planId));
+        PlanPause open = theirs.stream().filter(PlanPause::isOpen).findFirst().orElse(null);
+        if (on) {
+            if (open != null) {
+                throw new ResponseStatusException(HttpStatus.CONFLICT, "The plan is already paused");
+            }
+            pauses.saveAndFlush(new PlanPause(planId, sheet.getToday()));
+        } else {
+            if (open == null) {
+                throw new ResponseStatusException(HttpStatus.CONFLICT, "The plan is not paused");
+            }
+            open.resume(sheet.getToday());
+            pauses.flush();
+        }
+        audit.recordChangeOnCommit(sheetId, user, (on ? "PLAN_PAUSED" : "PLAN_RESUMED") + " sheet=" + sheetId
+                + " by=" + user + " name=" + person.getName() + " start=" + plan.getStart());
+        int generated = made.findByPlanIdInOrderByIdAsc(List.of(planId)).size();
+        return counted(plan, generated, sheet.getToday(), pauses.findByPlanIdInOrderByIdAsc(List.of(planId)));
     }
 
     /** Add a plan for a person; a missing start takes the sheet's today. It runs either every so many days or
@@ -107,14 +158,14 @@ public class PlanService {
                 + " start=" + plan.getStart()
                 + (plan.getDay() != null ? " day=" + plan.getDay() : " every=" + plan.getEvery())
                 + " end=" + plan.getEnd());
-        return new Counted(plan, 0, plan.nextDates(sheet.getToday(), NEXT_DATES));
+        return counted(plan, 0, sheet.getToday(), List.of());
     }
 
     /**
      * Make, for every plan on the sheet in the order they were added, a DRAFT claim with the plan's amount for each
      * plan date (its start, then every so many days; or its day in each month from the start's) up to its end and the
-     * sheet's today that it has made none for yet, dated that day with an empty note, by the claim form's rules: a date
-     * the form refuses is skipped, and tried again the next time. A viewer, who can change nothing, has every date
+     * sheet's today that it has made none for yet and no pause of it skips, dated that day with an empty note, by the
+     * claim form's rules: a date the form refuses is skipped, and tried again the next time. A viewer, who can change nothing, has every date
      * refused, so makes none.
      */
     @Transactional
@@ -129,11 +180,13 @@ public class PlanService {
         for (PlanClaim pc : made.findByPlanIdInOrderByIdAsc(all.stream().map(Plan::getId).toList())) {
             done.add(pc.getPlanId() + "@" + pc.getDate());
         }
+        Map<Long, List<PlanPause>> paused = pausesOf(all);
         List<Claim> added = new ArrayList<>();
         for (Plan plan : all) {
+            List<PlanPause> its = paused.getOrDefault(plan.getId(), List.of());
             LocalDate last = plan.getEnd().isBefore(today) ? plan.getEnd() : today;
             for (LocalDate d : plan.datesUpTo(last)) {
-                if (done.contains(plan.getId() + "@" + d) || !claims.accepts(sheetId, plan.getPersonId(), d)) {
+                if (done.contains(plan.getId() + "@" + d) || skips(its, d) || !claims.accepts(sheetId, plan.getPersonId(), d)) {
                     continue;
                 }
                 Claim claim = claims.add(sheetId, user, plan.getPersonId(), plan.getAmount(), d, "", null, null);
@@ -159,6 +212,8 @@ public class PlanService {
         List<Plan> theirs = plans.findByPersonIdOrderByIdAsc(personId);
         made.deleteAll(made.findByPlanIdInOrderByIdAsc(theirs.stream().map(Plan::getId).toList()));
         made.flush();
+        pauses.deleteAll(pauses.findByPlanIdInOrderByIdAsc(theirs.stream().map(Plan::getId).toList()));
+        pauses.flush();
         plans.deleteAll(theirs);
         plans.flush();
     }

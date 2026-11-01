@@ -11,6 +11,7 @@ import java.time.LocalDate;
 import java.time.YearMonth;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.function.Predicate;
 
 /** A person's plan on a sheet: an amount claimed on its start date and every so many days after, or instead monthly
  *  on a day of the month from the start's month, up to its end date. */
@@ -107,8 +108,9 @@ public class Plan {
         return dates;
     }
 
-    /** The plan's first {@code count} dates after {@code after} and on or before its end, in order. */
-    public List<LocalDate> nextDates(LocalDate after, int count) {
+    /** The plan's first {@code count} dates after {@code after} and on or before its end, in order, leaving out
+     *  those {@code skipped} (as a pause skips them). */
+    public List<LocalDate> nextDates(LocalDate after, int count, Predicate<LocalDate> skipped) {
         List<LocalDate> dates = new ArrayList<>();
         if (day == null) {
             LocalDate d = start;
@@ -117,7 +119,7 @@ public class Plan {
                 d = start.plusDays(steps * every);
             }
             for (; !d.isAfter(end) && dates.size() < count; d = d.plusDays(every)) {
-                if (d.isAfter(after)) {
+                if (d.isAfter(after) && !skipped.test(d)) {
                     dates.add(d);
                 }
             }
@@ -126,7 +128,7 @@ public class Plan {
         YearMonth m = YearMonth.from(start.isAfter(after) ? start : after);
         for (; !m.atDay(1).isAfter(end) && dates.size() < count; m = m.plusMonths(1)) {
             LocalDate d = m.atDay(Math.min(day, m.lengthOfMonth()));
-            if (!d.isBefore(start) && d.isAfter(after) && !d.isAfter(end)) {
+            if (!d.isBefore(start) && d.isAfter(after) && !d.isAfter(end) && !skipped.test(d)) {
                 dates.add(d);
             }
         }
