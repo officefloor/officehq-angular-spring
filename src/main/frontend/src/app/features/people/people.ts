@@ -247,6 +247,7 @@ function csvField(value: string): string {
       <p>
         <button type="button" data-testid="export-people" (click)="exportCsv()">Export people as CSV</button>
         <button type="button" data-testid="export-claims" (click)="exportClaims()">Export claims as CSV</button>
+        <button type="button" data-testid="export-periods" (click)="exportPeriods()">Export period figures as CSV</button>
       </p>
 
       <p>
@@ -1376,6 +1377,18 @@ export class PeopleList {
       })),
     ].map((fields) => fields.map(csvField).join(',') + '\n');
     this.download(lines, 'claims');
+  }
+
+  /** Download the period figures as CSV: people in list order, retired people included, each person's periods in
+   *  the order added, with the due-total and carried figure as the person's row shows them. */
+  protected exportPeriods(): void {
+    const periods = [...this.periods.list()].sort((a, b) => a.id - b.id);
+    const lines = [
+      ['person', 'period', 'figure', 'carried'],
+      ...this.people().flatMap((p) => periods.map((pd) =>
+        [p.name, pd.name, this.periodDueOf(p.id, pd.id), this.periodCarriedOf(p.id, pd.id)])),
+    ].map((fields) => fields.map(csvField).join(',') + '\n');
+    this.download(lines, 'periods');
   }
 
   /** Download the person's statement as CSV: each claim of theirs their last statement binds, oldest first, with
