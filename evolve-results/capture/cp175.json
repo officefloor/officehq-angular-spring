@@ -1,0 +1,64 @@
+{
+  "checkpoint": 175,
+  "stack": {
+    "repo": "/home/daniel/officehq-angular-spring",
+    "origin": "git@github.com:officefloor/officehq-angular-spring.git",
+    "name": "officehq-angular-spring",
+    "base_ref": "base-empty",
+    "base_commit": "65cb8233ea38b2dfa6cfd18709e30cd18fdf3250"
+  },
+  "checkpoint_id": "cp175_transfer-undo",
+  "phase": "late",
+  "type": "additive",
+  "mutates": [],
+  "replaced_tests": [],
+  "request": {
+    "spec": "On the sheet a transfer brought a person to, a steward can undo it on the same sheet-today they\narrived (a button on the row; any later day, anyone else, or a person who did not arrive by transfer\nis refused with an error on the row): the person is transferred back to the sheet they came from by\nexactly the transfer rules and lines, and this sheet then writes PERSON_TRANSFER_UNDONE name=<name>\nto=<sheet id>.\n",
+    "prompt": "You are implementing ONE change to this application.\n\nFIRST read AGENTS.md \u2014 it states the working rules and how the app is tested, and sends you to\nDESIGN.md for the app's stack and conventions. Follow both.\n\nTHE CHANGE REQUEST:\nOn the sheet a transfer brought a person to, a steward can undo it on the same sheet-today they\narrived (a button on the row; any later day, anyone else, or a person who did not arrive by transfer\nis refused with an error on the row): the person is transferred back to the sheet they came from by\nexactly the transfer rules and lines, and this sheet then writes PERSON_TRANSFER_UNDONE name=<name>\nto=<sheet id>.\n\nYour work is verified by an automated Playwright UI test already installed under e2e/specs/.\nRead that spec: it declares the exact data-testid anchors, values, test data and any audit\nrecords it expects \u2014 match them. Run `bin/e2e` to build the app, start it, and run the test as\nyou work; iterate until it passes. Change whatever the request needs across the app \u2014 its stored\ndata, its server and its front end. Do NOT edit bin/build, bin/start, bin/stop, bin/e2e,\nAGENTS.md, CLAUDE.md, DESIGN.md, e2e/support/ or the test spec.\n"
+  },
+  "commit_sha": "071724d022d7001cf80241ed778856c58e3daf54",
+  "reset_sha": "",
+  "preagent_sha": "ed75da023a1b0f4c73ebf29dcfd71c5ad34f2531",
+  "prev_sha": "ed75da023a1b0f4c73ebf29dcfd71c5ad34f2531",
+  "base_sha": "65cb8233ea38b2dfa6cfd18709e30cd18fdf3250",
+  "agent": {
+    "ok": true,
+    "cost_usd": 0.7250384000000001,
+    "input_tokens": 6,
+    "output_tokens": 881,
+    "cache_read_tokens": 119086,
+    "cache_creation_tokens": 2568,
+    "num_turns": 2,
+    "duration_ms": 11999,
+    "duration_api_ms": 106677,
+    "model": "claude-opus-5-5",
+    "session_id": "39f4bb85-257b-4b43-afcf-3372a1c465d1",
+    "stop_reason": "success",
+    "result_text": "A steward can now undo a transfer from the row of the person who arrived by it, and all 4 acceptance tests pass in `bin/e2e`.\n\n**How it works**\n- **Stored data:** a new migration, `V96__person_transferred_on.sql`, adds a `transferred_on` date to each person. A transfer now records the receiving sheet's today on the person, next to the existing `transferred_from`.\n- **Server:** `PersonService.undoTransfer` refuses with the existing transfer-refused error (409) in three cases:\n  - the person did not arrive by transfer;\n  - the sheet's today is no longer their arrival day;\n  - the user is not a steward on this sheet.\n\n  Otherwise it runs the normal `transfer` back to the sheet they came from, so the same refusal rules, data moves and audit lines apply. It then writes `PERSON_TRANSFER_UNDONE name=<name> to=<sheet id>` and that sheet's rollup lines. A new endpoint, `POST /{id}/transfer-undo`, calls it.\n- **Front end:** each row has an \"Undo transfer\" button (`person-transfer-undo`). If the undo succeeds the sheet reloads; if it's refused, the reason shows in the row's `person-error`.\n\n**Behaviour to be aware of**\n- **The second TOTALS line:** the test expects a TOTALS line after `PERSON_TRANSFER_UNDONE` even though the totals didn't change since the line just before it. To produce that, the rollup after the undo is measured against the figures from before the transfer back, not after it.\n- **Undoing again:** a person sent back is, by the transfer rules, now \"transferred from\" the sheet they were just on. So on the same day a steward could undo again from the original sheet and send them across once more. The request doesn't rule this out, so I left it.\n- **Older transfers can't be undone:** anyone transferred before this change has no arrival date stored, so the undo is always refused for them.\n- **Possible deadlock (untested):** the undo locks the current sheet before `transfer` locks both sheets in its fixed order. So two undos happening at once in opposite directions between the same two sheets could in principle deadlock.",
+    "error": "",
+    "attempts": [
+      {
+        "ok": true,
+        "limit_reached": false,
+        "retryable": false,
+        "timed_out": false,
+        "cost_usd": 0.7250384000000001,
+        "num_turns": 2,
+        "duration_ms": 11999,
+        "duration_api_ms": 106677,
+        "error": ""
+      }
+    ]
+  },
+  "agent_stream_file": "cp175.agent.jsonl",
+  "agent_diff_file": "cp175.agent.diff",
+  "build_log_file": null,
+  "tests": {
+    "gated": false,
+    "queued": true
+  },
+  "probe": null,
+  "pinned_touched": [],
+  "acceptance_touched": [],
+  "impact_gate": null
+}

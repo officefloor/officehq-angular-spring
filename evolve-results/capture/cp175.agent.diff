@@ -1,0 +1,166 @@
+diff --git a/src/main/frontend/src/app/features/people/people.ts b/src/main/frontend/src/app/features/people/people.ts
+index 96fcc9b15..11e7b79bd 100644
+--- a/src/main/frontend/src/app/features/people/people.ts
++++ b/src/main/frontend/src/app/features/people/people.ts
+@@ -580,6 +580,8 @@ function trimmedSum(figures: number[]): number {
+                        placeholder="Sheet id" (input)="clearPersonError(p.id)" />
+                 <button type="button" data-testid="person-transfer" (click)="transfer(p, transferTo)"
+                         [attr.aria-label]="'Transfer ' + p.name">Transfer</button>
++                <button type="button" data-testid="person-transfer-undo" (click)="undoTransfer(p)"
++                        [attr.aria-label]="'Undo the transfer of ' + p.name">Undo transfer</button>
+               </td>
+             </tr>
+           }
+@@ -1668,6 +1670,32 @@ export class People {
+     }
+   }
+ 
++  /**
++   * Undo the transfer that brought the person here (a steward only, on the sheet-today they arrived),
++   * sending them back to the sheet they came from. Once undone the people and their claims are read again.
++   */
++  protected async undoTransfer(p: Person): Promise<void> {
++    this.personError.set(null);
++    this.clearPatronError(p.id);
++    const sheet = this.session.sheetId();
++    if (!sheet) return;
++    try {
++      await firstValueFrom(
++        this.http.post<void>(`${this.url(sheet)}/${p.id}/transfer-undo`, {}, { headers: this.headers() }),
++      );
++      if (this.session.sheetId() !== sheet) return;
++      await this.load(sheet);
++    } catch (e) {
++      if (this.session.sheetId() !== sheet) return;
++      this.personError.set({
++        id: p.id,
++        message: e instanceof HttpErrorResponse && e.status === 409
++          ? 'Only a steward can undo a transfer, on the day the person arrived by it.'
++          : 'Could not undo the transfer of ' + p.name + '.',
++      });
++    }
++  }
++
+   /** Swap the person with the one above or below them in the list; the top cannot move up nor the bottom down. */
+   protected async move(p: Person, direction: 'up' | 'down'): Promise<void> {
+     this.personError.set(null);
+diff --git a/src/main/java/net/officefloor/hq/app/person/Person.java b/src/main/java/net/officefloor/hq/app/person/Person.java
+index 724b007d8..0df22de25 100644
+--- a/src/main/java/net/officefloor/hq/app/person/Person.java
++++ b/src/main/java/net/officefloor/hq/app/person/Person.java
+@@ -147,6 +147,10 @@ public class Person {
+     @Column(name = "transferred_from")
+     private String transferredFrom;
+ 
++    /** The sheet-today, on the sheet they arrived on, of their last transfer; null when never transferred. */
++    @Column(name = "transferred_on")
++    private LocalDate transferredOn;
++
+     @Version
+     @Column(name = "version", nullable = false)
+     private long version;
+@@ -287,9 +291,13 @@ public class Person {
+         return theirs;
+     }
+ 
+-    /** Move them to another sheet, noting the one they came from, with their grades, terms, contact, aliases and holds. */
+-    public void transferTo(String sheetId) {
++    /**
++     * Move them to another sheet, noting the one they came from and that sheet's today they arrive on, with
++     * their grades, terms, contact, aliases and holds.
++     */
++    public void transferTo(String sheetId, LocalDate arrivedOn) {
+         this.transferredFrom = this.sheetId;
++        this.transferredOn = arrivedOn;
+         this.sheetId = sheetId;
+         List<PersonAlias> theirs = new ArrayList<>(aliases);
+         aliases.clear();
+@@ -299,6 +307,9 @@ public class Person {
+     /** The sheet they were last transferred from, or null when never transferred. */
+     public String getTransferredFrom() { return transferredFrom; }
+ 
++    /** The sheet-today they arrived on by their last transfer, or null when never transferred. */
++    public LocalDate getTransferredOn() { return transferredOn; }
++
+     /** Their name and aliases, as given. */
+     public List<String> namesAndAliases() {
+         List<String> all = new ArrayList<>();
+diff --git a/src/main/java/net/officefloor/hq/app/person/PersonController.java b/src/main/java/net/officefloor/hq/app/person/PersonController.java
+index 3a2d1901c..8f1aec49e 100644
+--- a/src/main/java/net/officefloor/hq/app/person/PersonController.java
++++ b/src/main/java/net/officefloor/hq/app/person/PersonController.java
+@@ -301,6 +301,17 @@ public class PersonController {
+         history.capture(request.toSheetId().strip());
+     }
+ 
++    /** Undo the transfer that brought the person to this sheet, sending them back to the sheet they came from. */
++    @PostMapping("/{id}/transfer-undo")
++    public void undoTransfer(
++            @PathVariable @Size(max = 100) @Pattern(regexp = "[A-Za-z0-9._-]+") String sheetId,
++            @PathVariable Long id,
++            @RequestHeader("X-User") @NotBlank @Size(max = 100) String user) {
++        String to = service.originOf(sheetId, id);
++        service.undoTransfer(sheetId, user, id);
++        if (to != null) history.capture(to);
++    }
++
+     /** Start or stop watching the person as the signed-in user. */
+     @PutMapping("/{id}/watch")
+     public PersonView watch(
+diff --git a/src/main/java/net/officefloor/hq/app/person/PersonService.java b/src/main/java/net/officefloor/hq/app/person/PersonService.java
+index aa671eaa1..0b87ee07d 100644
+--- a/src/main/java/net/officefloor/hq/app/person/PersonService.java
++++ b/src/main/java/net/officefloor/hq/app/person/PersonService.java
+@@ -584,7 +584,7 @@ public class PersonService {
+         List<Claim> moving = claims.findBySheetIdAndPersonIdOrderByIdDesc(sheetId, id);
+         String name = person.getName();
+         List<String> names = into != null ? leave(person, into) : List.of();
+-        person.transferTo(toSheetId);
++        person.transferTo(toSheetId, there.getToday());
+         person.setPosition(people.maxPosition(toSheetId) + 1);
+         Person saved = saveUnique(person);
+         List<Statement> theirStatements = statements.findBySheetIdAndPersonIdOrderByIdAsc(sheetId, id);
+@@ -606,6 +606,35 @@ public class PersonService {
+         rollup.recordChanges(toSheetId, user, beforeThere);
+     }
+ 
++    /**
++     * A steward undoes the transfer that brought the person to this sheet, on the same sheet-today they
++     * arrived: they are transferred back to the sheet they came from, exactly as {@link #transfer} does
++     * (refused as it refuses), and this sheet then audits the undo, followed by its rollup lines. Refused
++     * on a later day, for anyone else, and for a person who did not arrive by transfer.
++     */
++    @Transactional
++    public void undoTransfer(String sheetId, String user, Long id) {
++        Person person = people.findByIdAndSheetId(id, sheetId).orElseThrow(PersonNotFoundException::new);
++        String from = person.getTransferredFrom();
++        if (from == null || person.getTransferredOn() == null
++                || !person.getTransferredOn().equals(today(sheetId))
++                || settings.roleOf(sheetId, user) != Role.STEWARD) {
++            throw new PersonTransferRefusedException();
++        }
++        String name = person.getName();
++        RollupService.Snapshot before = rollup.snapshot(sheetId);
++        transfer(sheetId, user, id, from);
++        audit.recordOnCommit("PERSON_TRANSFER_UNDONE sheet=" + sheetId + " by=" + user.strip()
++                + " name=" + name + " to=" + from);
++        rollup.recordChanges(sheetId, user, before);
++    }
++
++    /** The sheet the person was last transferred from, or null when never transferred or not on the sheet. */
++    @Transactional(readOnly = true)
++    public String originOf(String sheetId, Long id) {
++        return people.findByIdAndSheetId(id, sheetId).map(Person::getTransferredFrom).orElse(null);
++    }
++
+     /** The ids of the people on the sheet the user watches. */
+     @Transactional(readOnly = true)
+     public Set<Long> watchedIds(String sheetId, String user) {
+diff --git a/src/main/resources/db/migration/V96__person_transferred_on.sql b/src/main/resources/db/migration/V96__person_transferred_on.sql
+new file mode 100644
+index 000000000..792785b4a
+--- /dev/null
++++ b/src/main/resources/db/migration/V96__person_transferred_on.sql
+@@ -0,0 +1,2 @@
++-- The sheet-today, on the sheet they arrived on, a person was last transferred; null when never transferred.
++ALTER TABLE person ADD COLUMN transferred_on DATE;
