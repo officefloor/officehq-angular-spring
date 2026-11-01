@@ -2,6 +2,7 @@ import { Component, inject, signal } from '@angular/core';
 import { FormControl, FormGroup, ReactiveFormsModule } from '@angular/forms';
 import { Session } from '../../core/session';
 import { AuditView } from '../audit-view/audit-view';
+import { TreeSearch } from '../tree-search/tree-search';
 import { Holidays } from '../holidays/holidays';
 import { People } from '../people/people';
 import { Pools } from '../pools/pools';
@@ -12,7 +13,7 @@ import { VoidReasons } from '../void-reasons/void-reasons';
 // The one screen: sign in by name, then load a sheet by id.
 @Component({
   selector: 'app-home',
-  imports: [ReactiveFormsModule, AuditView, Holidays, People, Pools, Settings, Templates, VoidReasons],
+  imports: [ReactiveFormsModule, AuditView, Holidays, People, Pools, Settings, Templates, TreeSearch, VoidReasons],
   template: `
     @if (session.user(); as user) {
       <p>Signed in as <strong data-testid="current-user">{{ user }}</strong></p>
@@ -54,6 +55,7 @@ import { VoidReasons } from '../void-reasons/void-reasons';
         <app-templates />
         <app-people />
         <app-pools />
+        <app-tree-search />
         <app-audit-view />
       }
     } @else {
