@@ -1,6 +1,7 @@
 package net.officefloor.hq.app.person;
 
 import java.util.List;
+import net.officefloor.hq.app.Audit;
 import net.officefloor.hq.app.sheet.SheetNotFoundException;
 import net.officefloor.hq.app.sheet.SheetRepository;
 import org.springframework.dao.DataIntegrityViolationException;
@@ -17,10 +18,12 @@ public class PersonService {
 
     private final PersonRepository people;
     private final SheetRepository sheets;
+    private final Audit audit;
 
-    public PersonService(PersonRepository people, SheetRepository sheets) {
+    public PersonService(PersonRepository people, SheetRepository sheets, Audit audit) {
         this.people = people;
         this.sheets = sheets;
+        this.audit = audit;
     }
 
     @Transactional(readOnly = true)
@@ -29,19 +32,28 @@ public class PersonService {
     }
 
     @Transactional
-    public Person add(String sheetId, String name, String grade) {
+    public Person add(String sheetId, String user, String name, String grade) {
         if (!sheets.existsById(sheetId)) throw new SheetNotFoundException();
         requireUnused(sheetId, name, null);
-        return saveUnique(new Person(sheetId, name, grade));
+        Person person = saveUnique(new Person(sheetId, name, grade));
+        record("PERSON_ADDED", sheetId, user, person);
+        return person;
     }
 
     @Transactional
-    public Person edit(String sheetId, Long id, String name, String grade) {
+    public Person edit(String sheetId, String user, Long id, String name, String grade) {
         Person person = people.findByIdAndSheetId(id, sheetId).orElseThrow(PersonNotFoundException::new);
         requireUnused(sheetId, name, id);
         person.setName(name);
         person.setGrade(grade);
-        return saveUnique(person);
+        Person saved = saveUnique(person);
+        record("PERSON_EDITED", sheetId, user, saved);
+        return saved;
+    }
+
+    private void record(String event, String sheetId, String user, Person person) {
+        audit.recordOnCommit(event + " sheet=" + sheetId + " by=" + user.strip()
+                + " name=" + person.getName() + " grade=" + person.getGrade());
     }
 
     private void requireUnused(String sheetId, String name, Long self) {
