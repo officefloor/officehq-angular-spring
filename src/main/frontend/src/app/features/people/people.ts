@@ -13,7 +13,7 @@ import { SnapshotView, Snapshots } from '../../core/snapshots';
 import { StatementSummary, Statements } from '../../core/statements';
 import { Watches } from '../../core/watches';
 import { COLUMNS, Session } from '../../core/session';
-import { Consolidated, DescendantFigures, NO_DESCENDANTS } from '../../core/consolidated';
+import { Consolidated, DescendantFigures, NO_DESCENDANTS, distinctPeople } from '../../core/consolidated';
 import { PersonClaims } from '../claims/claims';
 import { SheetHeader } from '../header/header';
 import { PeriodsPanel } from '../periods/periods';
@@ -857,15 +857,30 @@ export class PeopleList {
   protected readonly dueTotal = computed(() =>
     money(trimmedSum([...this.dueByPerson().values()].filter((due) => due !== null))),
   );
-  /** The sheet's own people count, due-total and overdue-total, per-grade due-totals and per-status claim counts,
-   *  as shown here, added to its descendants'; while the sheet is shown as of a date, its descendants' are as they
-   *  stood then too. */
+  /** Over the sheet's own people as shown here and its descendants': how many distinct people (those whose names or
+   *  aliases match as names are compared being one), and everyone's due-total and overdue-total trimmed once of the
+   *  highest and lowest; the sheet's own per-grade due-totals and per-status claim counts added to its descendants';
+   *  while the sheet is shown as of a date, its descendants' are as they stood then too. */
   protected readonly consolidated = computed(() => {
     const d = this.descendants();
+    const dueByPerson = this.dueByPerson();
+    const overdueByPerson = this.overdueByPerson();
+    const tree = [
+      ...this.people().map((p) => ({
+        names: [p.name, ...(p.aliases ?? [])],
+        due: dueByPerson.get(p.id) ?? null,
+        overdue: overdueByPerson.get(p.id)?.cents ?? 0,
+      })),
+      ...d.people.map((p) => ({
+        names: p.names,
+        due: p.dueTotal === null ? null : cents(p.dueTotal),
+        overdue: cents(p.overdueTotal),
+      })),
+    ];
     return {
-      peopleCount: this.people().length + d.peopleCount,
-      dueTotal: money(cents(this.dueTotal()) + cents(d.dueTotal)),
-      overdueTotal: money(this.overdueTotals().cents + cents(d.overdueTotal)),
+      peopleCount: distinctPeople(tree),
+      dueTotal: money(trimmedSum(tree.map((p) => p.due).filter((due) => due !== null))),
+      overdueTotal: money(trimmedSum(tree.map((p) => p.overdue))),
       grades: this.summaryByGrade().map((g) => ({
         grade: g.grade,
         dueTotal: money(cents(g.dueTotal) + cents(d.dueByGrade[g.grade] ?? '0.00')),

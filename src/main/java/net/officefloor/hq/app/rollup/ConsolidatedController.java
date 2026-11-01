@@ -6,9 +6,12 @@ import jakarta.validation.constraints.Size;
 import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
+import java.util.Objects;
 import net.officefloor.hq.app.claim.Claim;
 import net.officefloor.hq.app.claim.ClaimRepository;
 import net.officefloor.hq.app.history.SheetHistory;
@@ -35,11 +38,18 @@ import org.springframework.web.bind.annotation.RestController;
 public class ConsolidatedController {
 
     /** The figures of the sheet's descendants (its children, their children and so on; not the sheet itself) added
-     *  up: how many people, and each one's due-total and overdue-total as that sheet shows it, with two decimals;
-     *  per grade, the due-totals of the people not retired on it on their sheet's today (none counting as 0), with
+     *  up: how many people, each person counted once however many sheets they are on (people whose names or aliases
+     *  match as names are compared being one); the due-totals and overdue-totals of all their people, trimmed once of
+     *  the single highest and lowest person's figure when three or more have one, with two decimals; each person's
+     *  names and figures, so the screen can count and trim its own people with them; per grade, the due-totals of the people not retired on it on their sheet's today (none counting as 0), with
      *  two decimals; and per claim status, how many claims are in it. */
     public record DescendantFigures(int peopleCount, String dueTotal, String overdueTotal,
-            Map<String, String> dueByGrade, Map<String, Integer> countByStatus) {
+            Map<String, String> dueByGrade, Map<String, Integer> countByStatus, List<PersonFigure> people) {
+    }
+
+    /** A person of the tree: their name and aliases, their due-total (null when they have none) and overdue-total as
+     *  their sheet shows them, with two decimals. */
+    public record PersonFigure(List<String> names, String dueTotal, String overdueTotal) {
     }
 
     private final SheetRepository sheets;
@@ -72,9 +82,7 @@ public class ConsolidatedController {
             @PathVariable @NotBlank @Size(max = 100) @Pattern(regexp = "[A-Za-z0-9._-]+") String sheetId,
             @RequestParam(defaultValue = "false") boolean self,
             @RequestHeader(value = SheetHistory.AS_OF_HEADER, required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate asOf) {
-        int people = 0;
-        BigDecimal due = BigDecimal.ZERO.setScale(2);
-        BigDecimal overdue = BigDecimal.ZERO.setScale(2);
+        List<PersonFigure> treePeople = new ArrayList<>();
         Map<String, BigDecimal> dueByGrade = new LinkedHashMap<>();
         Map<String, Integer> countByStatus = new LinkedHashMap<>();
         List<String> counted = new ArrayList<>(sheets.descendantsOf(sheetId));
@@ -87,12 +95,16 @@ public class ConsolidatedController {
                 continue;
             }
             Rollup.Figures figures = one.figures();
-            people += figures.people().size();
-            due = due.add(new BigDecimal(figures.dueTotal()));
-            overdue = overdue.add(new BigDecimal(figures.overdueTotal()));
             LocalDate today = one.sheet() == null ? null : one.sheet().getToday();
             for (Person person : one.people()) {
                 Rollup.PersonFigures own = figures.people().get(person.getId());
+                if (own != null) {
+                    List<String> names = new ArrayList<>();
+                    names.add(person.getName());
+                    names.addAll(person.getAliases());
+                    treePeople.add(new PersonFigure(names, "n/a".equals(own.dueTotal()) ? null : own.dueTotal(),
+                            own.overdueTotal()));
+                }
                 if (person.isRetired() || own == null || "n/a".equals(own.dueTotal())) {
                     continue;
                 }
@@ -104,8 +116,42 @@ public class ConsolidatedController {
         }
         Map<String, String> dueByGradeShown = new LinkedHashMap<>();
         dueByGrade.forEach((grade, total) -> dueByGradeShown.put(grade, total.setScale(2).toPlainString()));
-        return new DescendantFigures(people, due.toPlainString(), overdue.toPlainString(), dueByGradeShown,
-                countByStatus);
+        BigDecimal due = Rollup.trimmedSum(treePeople.stream().map(PersonFigure::dueTotal).filter(Objects::nonNull)
+                .map(BigDecimal::new).toList());
+        BigDecimal overdue = Rollup.trimmedSum(treePeople.stream().map(p -> new BigDecimal(p.overdueTotal())).toList());
+        return new DescendantFigures(distinctPeople(treePeople), due.toPlainString(), overdue.toPlainString(),
+                dueByGradeShown, countByStatus, treePeople);
+    }
+
+    /** How many distinct people these are: those sharing a name or alias, as names are compared (trimmed, case
+     *  ignored), directly or through others, being one. */
+    static int distinctPeople(List<PersonFigure> treePeople) {
+        int[] parent = new int[treePeople.size()];
+        for (int i = 0; i < parent.length; i++) {
+            parent[i] = i;
+        }
+        Map<String, Integer> firstWithName = new HashMap<>();
+        int distinct = parent.length;
+        for (int i = 0; i < parent.length; i++) {
+            for (String name : treePeople.get(i).names()) {
+                Integer other = firstWithName.putIfAbsent(name.trim().toLowerCase(Locale.ROOT), i);
+                if (other != null) {
+                    int a = root(parent, i), b = root(parent, other);
+                    if (a != b) {
+                        parent[a] = b;
+                        distinct--;
+                    }
+                }
+            }
+        }
+        return distinct;
+    }
+
+    private static int root(int[] parent, int i) {
+        while (parent[i] != i) {
+            i = parent[i] = parent[parent[i]];
+        }
+        return i;
     }
 
     /** A sheet as the store holds it now. */

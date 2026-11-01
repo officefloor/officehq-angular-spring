@@ -216,7 +216,7 @@ public class PersonService {
                     t -> t.getFromDate().equals(termsFrom) && Objects.equals(t.getTerms(), terms));
             person.setTermsFrom(termsFrom, terms);
         } else {
-            termsChanged = !Objects.equals(person.termsOn(today), terms);
+            termsChanged = !Objects.equals(person.getTerms(), terms);
             person.setTerms(terms);
         }
         boolean contactChanged = !Objects.equals(person.getContact(), reach);
