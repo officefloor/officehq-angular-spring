@@ -1,0 +1,149 @@
+diff --git a/src/main/frontend/src/app/core/claims.ts b/src/main/frontend/src/app/core/claims.ts
+index 57e7e47a3..83a9dc755 100644
+--- a/src/main/frontend/src/app/core/claims.ts
++++ b/src/main/frontend/src/app/core/claims.ts
+@@ -134,10 +134,11 @@ export function counts(c: ClaimView): boolean {
+   return c.status === 'OPEN' || c.status === 'PENDING' || c.status === 'SETTLED';
+ }
+ 
+-/** Whether a claim is deferred on the sheet's today: OPEN and deferred until a later day. While deferred it
+- *  counts in no total, is not overdue and cannot be settled. */
+-export function isDeferred(c: Pick<ClaimView, 'deferredUntil' | 'status'>, today: string): boolean {
+-  return c.status === 'OPEN' && c.deferredUntil !== null && today < c.deferredUntil;
++/** Whether a claim is deferred on the sheet's today: deferred until a later day and not bound by a statement (a
++ *  deferral takes effect only once the binding ends), and OPEN, or SETTLED while bound. While deferred it counts in
++ *  no total, is not overdue and cannot be settled. */
++export function isDeferred(c: Pick<ClaimView, 'deferredUntil' | 'status' | 'stated'>, today: string): boolean {
++  return (c.status === 'OPEN' || c.status === 'SETTLED') && !c.stated && c.deferredUntil !== null && today < c.deferredUntil;
+ }
+ 
+ /** Whether an unstated OPEN or PENDING claim is left out of the live totals on the sheet's today: its person's
+@@ -212,7 +213,7 @@ export function addDays(date: string, days: number): string {
+ 
+ /** Whether a claim is overdue on the sheet's today: OPEN or PENDING, not deferred, and its due-by plus the grace
+  *  days of its person's grade (in force on its date) a day before it. */
+-export function isOverdue(c: Pick<ClaimView, 'dueBy' | 'status' | 'deferredUntil'>, today: string, graceDays = 0): boolean {
++export function isOverdue(c: Pick<ClaimView, 'dueBy' | 'status' | 'deferredUntil' | 'stated'>, today: string, graceDays = 0): boolean {
+   return (c.status === 'OPEN' || c.status === 'PENDING') && !isDeferred(c, today) && addDays(c.dueBy, graceDays) < today;
+ }
+ 
+diff --git a/src/main/frontend/src/app/core/rates.ts b/src/main/frontend/src/app/core/rates.ts
+index 4e33c00cf..83ed54704 100644
+--- a/src/main/frontend/src/app/core/rates.ts
++++ b/src/main/frontend/src/app/core/rates.ts
+@@ -143,7 +143,7 @@ export function roundsHalfUp(date: string, sheet: DueTerms): boolean {
+  *  rounded as the claim rounds, added up. A correction (a negative amount) gains none, nor does a claim whose late
+  *  charge was waived. */
+ export function lateChargeCents(
+-  c: { amount: string; date: string; dueBy: string; status: ClaimStatus; deferredUntil: string | null; waived?: boolean },
++  c: { amount: string; date: string; dueBy: string; status: ClaimStatus; deferredUntil: string | null; stated: boolean; waived?: boolean },
+   figureCents: number,
+   sheet: DueTerms,
+   graceDays = 0,
+diff --git a/src/main/frontend/src/app/features/claims/claims.ts b/src/main/frontend/src/app/features/claims/claims.ts
+index ebbbc50f9..c1d94c681 100644
+--- a/src/main/frontend/src/app/features/claims/claims.ts
++++ b/src/main/frontend/src/app/features/claims/claims.ts
+@@ -401,10 +401,11 @@ export class PersonClaims {
+     return sheet !== null && isDeferred(c, sheet.today);
+   }
+ 
+-  /** Whether the claim's deferral, whatever its status now, runs to a day after the sheet's today. */
++  /** Whether the claim's deferral, whatever its status now, runs to a day after the sheet's today and has taken
++   *  effect: no statement binds the claim. */
+   protected deferralShown(c: ClaimView): boolean {
+     const sheet = this.sheets.current();
+-    return sheet !== null && c.deferredUntil !== null && sheet.today < c.deferredUntil;
++    return sheet !== null && !c.stated && c.deferredUntil !== null && sheet.today < c.deferredUntil;
+   }
+ 
+   protected deferDateChanged(c: ClaimView, date: string): void {
+diff --git a/src/main/java/net/officefloor/hq/app/claim/Claim.java b/src/main/java/net/officefloor/hq/app/claim/Claim.java
+index 44fea6b69..28ea73586 100644
+--- a/src/main/java/net/officefloor/hq/app/claim/Claim.java
++++ b/src/main/java/net/officefloor/hq/app/claim/Claim.java
+@@ -483,10 +483,11 @@ public class Claim {
+         this.deferredUntil = deferredUntil;
+     }
+ 
+-    /** Whether the claim is deferred on this day: it is OPEN and deferred until a later day. While deferred it
++    /** Whether the claim is deferred on this day: it is deferred until a later day and not bound by a statement (a
++     *  deferral takes effect only once the binding ends), and is OPEN, or SETTLED while bound. While deferred it
+      *  counts in no total, is not overdue, cannot be settled and is left unbound by a statement. */
+     public boolean isDeferredOn(LocalDate today) {
+-        return status == ClaimStatus.OPEN && deferredUntil != null && today != null && today.isBefore(deferredUntil);
++        return (status == ClaimStatus.OPEN || status == ClaimStatus.SETTLED) && !stated && deferredUntil != null && today != null && today.isBefore(deferredUntil);
+     }
+ 
+     public String getRef() {
+diff --git a/src/main/java/net/officefloor/hq/app/period/Period.java b/src/main/java/net/officefloor/hq/app/period/Period.java
+index 986d52085..e3440f012 100644
+--- a/src/main/java/net/officefloor/hq/app/period/Period.java
++++ b/src/main/java/net/officefloor/hq/app/period/Period.java
+@@ -231,6 +231,19 @@ public class Period {
+         this.closedTotal = personTotals.values().stream().reduce(BigDecimal.ZERO.setScale(2), BigDecimal::add);
+     }
+ 
++    /** Fold a person merged into another into the other's fixed figures for the period: the merged person's
++     *  due-total and carried figure are added to the other's. The period's own due-total is unchanged. */
++    public void mergePerson(Long fromId, Long intoId) {
++        BigDecimal total = closedPersonTotals.remove(fromId);
++        if (total != null) {
++            closedPersonTotals.merge(intoId, total, BigDecimal::add);
++        }
++        BigDecimal carried = closedPersonCarried.remove(fromId);
++        if (carried != null) {
++            closedPersonCarried.merge(intoId, carried, BigDecimal::add);
++        }
++    }
++
+     /** Reopen the period: its due-total and each person's figures for it are live again. */
+     public void reopen() {
+         this.closed = false;
+diff --git a/src/main/java/net/officefloor/hq/app/person/PersonMergeService.java b/src/main/java/net/officefloor/hq/app/person/PersonMergeService.java
+index dee37434e..fdafa3c2d 100644
+--- a/src/main/java/net/officefloor/hq/app/person/PersonMergeService.java
++++ b/src/main/java/net/officefloor/hq/app/person/PersonMergeService.java
+@@ -10,6 +10,8 @@ import net.officefloor.hq.app.claim.Claim;
+ import net.officefloor.hq.app.claim.ClaimRepository;
+ import net.officefloor.hq.app.patron.Patron;
+ import net.officefloor.hq.app.patron.PatronRepository;
++import net.officefloor.hq.app.period.Period;
++import net.officefloor.hq.app.period.PeriodRepository;
+ import net.officefloor.hq.app.plan.PlanService;
+ import net.officefloor.hq.app.pool.PoolMember;
+ import net.officefloor.hq.app.crew.CrewService;
+@@ -45,11 +47,13 @@ public class PersonMergeService {
+     private final Rollup rollup;
+     private final PlanService plans;
+     private final PersonSnapshotService snapshots;
++    private final PeriodRepository periods;
+ 
+     public PersonMergeService(PersonRepository people, ClaimRepository claims, PatronRepository patrons,
+             PoolMemberRepository poolMembers, CrewService crews, StatementService statements, WatchRepository watches,
+             SheetService sheets, SheetRepository sheetStore, RoleService roles, Audit audit, Rollup rollup,
+-            PlanService plans, PersonSnapshotService snapshots) {
++            PlanService plans, PersonSnapshotService snapshots, PeriodRepository periods) {
++        this.periods = periods;
+         this.plans = plans;
+         this.snapshots = snapshots;
+         this.people = people;
+@@ -73,6 +77,7 @@ public class PersonMergeService {
+      * person's and whose last statement stays theirs (or, having none, becomes the merged person's last); their name and aliases become aliases of the other; their patrons are added to the
+      * other's (never the other themselves, nor one twice), anyone naming them as patron names the other instead (once),
+      * and their pool memberships move to the other (shares added where the other is already a member). Their
++     * figures fixed by a closed or soft-closed period are added to the other's there. Their
+      * holds, watchers, snapshot lines and contact are dropped with them. Refused for anyone but a steward, a merge into
+      * the same person, and when either of them is retired.
+      */
+@@ -140,6 +145,10 @@ public class PersonMergeService {
+         snapshots.dropOf(sheetId, from.getId());
+         watches.deleteAll(watches.findByPersonIdOrderByIdAsc(from.getId()));
+         plans.reassign(from.getId(), into.getId());
++        // A closed or soft-closed period keeps the merged person's fixed figures, now the other's.
++        List<Period> fixed = periods.findBySheetIdOrderByFromDateAsc(sheetId).stream().filter(Period::isFixed).toList();
++        fixed.forEach(period -> period.mergePerson(from.getId(), into.getId()));
++        periods.saveAll(fixed);
+         String fromName = from.getName();
+         List<String> fromAliases = from.getAliases();
+         people.delete(from);

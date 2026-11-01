@@ -1,0 +1,74 @@
+{
+  "checkpoint": 236,
+  "stack": {
+    "repo": "/home/daniel/officehq-angular-spring",
+    "origin": "git@github.com:officefloor/officehq-angular-spring.git",
+    "name": "officehq-angular-spring",
+    "base_ref": "base-empty",
+    "base_commit": "65cb8233ea38b2dfa6cfd18709e30cd18fdf3250"
+  },
+  "checkpoint_id": "cp236_deferred-bound-counts",
+  "phase": "late",
+  "type": "mutative",
+  "mutates": [
+    52,
+    54,
+    89,
+    160
+  ],
+  "replaced_tests": [
+    "cp160_frozen-carried-and-as-of-tree.spec.ts::frozen carried and as of tree scenario 2",
+    "cp52_period-status-as-of-end.spec.ts::period status as of end scenario 2",
+    "cp54_viewer-role.spec.ts::viewer role scenario 2",
+    "cp89_claim-tags.spec.ts::claim tags scenario 3"
+  ],
+  "request": {
+    "spec": "A claim that a statement has bound and that is then deferred stays in the totals, counts and\ncan be settled while bound: the deferral takes effect only once the binding ends (the statement is\ncancelled, or the next statement leaves the claim unbound).\n",
+    "prompt": "You are implementing ONE change to this application.\n\nFIRST read AGENTS.md \u2014 it states the working rules and how the app is tested, and sends you to\nDESIGN.md for the app's stack and conventions. Follow both.\n\nTHE CHANGE REQUEST:\nA claim that a statement has bound and that is then deferred stays in the totals, counts and\ncan be settled while bound: the deferral takes effect only once the binding ends (the statement is\ncancelled, or the next statement leaves the claim unbound).\n\nYour work is verified by an automated Playwright UI test already installed under e2e/specs/.\nRead that spec: it declares the exact data-testid anchors, values, test data and any audit\nrecords it expects \u2014 match them. Run `bin/e2e` to build the app, start it, and run the test as\nyou work; iterate until it passes. Change whatever the request needs across the app \u2014 its stored\ndata, its server and its front end. Do NOT edit bin/build, bin/start, bin/stop, bin/e2e,\nAGENTS.md, CLAUDE.md, DESIGN.md, e2e/support/ or the test spec.\n"
+  },
+  "commit_sha": "94a8fc88736f4f6939654aeeb18b3331d95328f5",
+  "reset_sha": "",
+  "preagent_sha": "6473f9282e4b60717dde76a41a54b81e2360db41",
+  "prev_sha": "6473f9282e4b60717dde76a41a54b81e2360db41",
+  "base_sha": "65cb8233ea38b2dfa6cfd18709e30cd18fdf3250",
+  "agent": {
+    "ok": true,
+    "cost_usd": 0.9780494000000001,
+    "input_tokens": 48,
+    "output_tokens": 11353,
+    "cache_read_tokens": 1169587,
+    "cache_creation_tokens": 64610,
+    "num_turns": 25,
+    "duration_ms": 539240,
+    "duration_api_ms": 125688,
+    "model": "claude-opus-5-5",
+    "session_id": "8e5d6615-6006-4544-8008-b57a6b63847e",
+    "stop_reason": "success",
+    "result_text": "A deferred claim that a statement has bound now keeps counting in the totals and counts, and can be settled. The deferral only takes effect once the binding ends. `bin/e2e` passes all 4 tests.\n\n**The deferral rule:** a claim now counts as deferred only if no statement binds it, both on the server (`Claim.isDeferredOn`) and on the screen (`isDeferred` in `core/claims.ts`). All the totals, overdue checks, late charges and settle/split checks already used these two checks, so they follow the rule without further changes. `claim-deferred` shows \"no\" while the claim is bound.\n\n**A claim settled while bound:** the test expects that once the binding ends, the deferral applies again even though the claim is now settled. It shows `claim-deferred` \"yes\" and drops out of the claimed and settled totals. So the deferral now applies to OPEN or SETTLED claims, where before it was OPEN only. A deferred claim still can't be settled once unbound, so a claim only ends up SETTLED and deferred by being settled while bound.\n\n**New statements:** I left the statement logic alone. The test expects a new statement taken while a claim is still bound to keep it bound (it still reports `claims=2`). If the claim is no longer bound, the statement sees the deferral and leaves it unbound. Cancelling the statement unbinds it, as before.\n\n**Merge fix (needed for scenario 3):** that scenario failed on something unrelated to deferral. When a person was merged into another, a soft-closed or closed period kept the merged person's frozen due-total under their old id, so it vanished from the period and person figures (1.00 shown instead of 6.00). The merge now adds the merged person's frozen due-total and carried figure into the other person's for those periods. That change is in `Period.mergePerson`, called from `PersonMergeService.merge`. Opening balances still don't move on a merge; I left that alone because the request didn't cover it.\n\nThere was no database or audit format change.",
+    "error": "",
+    "attempts": [
+      {
+        "ok": true,
+        "limit_reached": false,
+        "retryable": false,
+        "timed_out": false,
+        "cost_usd": 0.9780494000000001,
+        "num_turns": 25,
+        "duration_ms": 539240,
+        "duration_api_ms": 125688,
+        "error": ""
+      }
+    ]
+  },
+  "agent_stream_file": "cp236.agent.jsonl",
+  "agent_diff_file": "cp236.agent.diff",
+  "build_log_file": null,
+  "tests": {
+    "gated": false,
+    "queued": true
+  },
+  "probe": null,
+  "pinned_touched": [],
+  "acceptance_touched": [],
+  "impact_gate": null
+}
