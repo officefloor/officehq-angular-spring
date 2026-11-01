@@ -1,0 +1,64 @@
+{
+  "checkpoint": 82,
+  "stack": {
+    "repo": "/home/daniel/officehq-angular-spring",
+    "origin": "git@github.com:officefloor/officehq-angular-spring.git",
+    "name": "officehq-angular-spring",
+    "base_ref": "base-empty",
+    "base_commit": "65cb8233ea38b2dfa6cfd18709e30cd18fdf3250"
+  },
+  "checkpoint_id": "cp82_settled-and-open-totals",
+  "phase": "early",
+  "type": "additive",
+  "mutates": [],
+  "replaced_tests": [],
+  "request": {
+    "spec": "Show on each person their settled-total (the due of their SETTLED claims that count, at\ntheir frozen figures, corrections included) and their open-total (the due of their OPEN and\nPENDING claims that count: a held, deferred or retired-and-excluded claim is left out as it is\nfrom the due-total). Show the sheet's settled-total and open-total too, each simply everyone's\nfigure added up (not trimmed). The two must add up to the person's untrimmed due-total before the\ncap.\n",
+    "prompt": "You are implementing ONE change to this application.\n\nFIRST read AGENTS.md \u2014 it states the working rules and how the app is tested, and sends you to\nDESIGN.md for the app's stack and conventions. Follow both.\n\nTHE CHANGE REQUEST:\nShow on each person their settled-total (the due of their SETTLED claims that count, at\ntheir frozen figures, corrections included) and their open-total (the due of their OPEN and\nPENDING claims that count: a held, deferred or retired-and-excluded claim is left out as it is\nfrom the due-total). Show the sheet's settled-total and open-total too, each simply everyone's\nfigure added up (not trimmed). The two must add up to the person's untrimmed due-total before the\ncap.\n\nYour work is verified by an automated Playwright UI test already installed under e2e/specs/.\nRead that spec: it declares the exact data-testid anchors, values, test data and any audit\nrecords it expects \u2014 match them. Run `bin/e2e` to build the app, start it, and run the test as\nyou work; iterate until it passes. Change whatever the request needs across the app \u2014 its stored\ndata, its server and its front end. Do NOT edit bin/build, bin/start, bin/stop, bin/e2e,\nAGENTS.md, CLAUDE.md, DESIGN.md, e2e/support/ or the test spec.\n"
+  },
+  "commit_sha": "c6b4d0d386b210951a4f770dba5c185e1b091a6c",
+  "reset_sha": "",
+  "preagent_sha": "a1d66006eb8a3a8bc6d053758b012a764f85a0bf",
+  "prev_sha": "a1d66006eb8a3a8bc6d053758b012a764f85a0bf",
+  "base_sha": "65cb8233ea38b2dfa6cfd18709e30cd18fdf3250",
+  "agent": {
+    "ok": true,
+    "cost_usd": 0.47211200000000003,
+    "input_tokens": 26,
+    "output_tokens": 3938,
+    "cache_read_tokens": 427440,
+    "cache_creation_tokens": 38470,
+    "num_turns": 13,
+    "duration_ms": 199635,
+    "duration_api_ms": 40990,
+    "model": "claude-opus-5-5",
+    "session_id": "e8c6505b-ee19-48a7-9038-5270d2f696ff",
+    "stop_reason": "success",
+    "result_text": "Each person row now shows a settled-total and an open-total, and the sheet shows both totals under the table. `bin/e2e` passes all 4 tests in the spec.\n\n**How it's worked out:** a person's claims that count are split by status.\n- **Settled-total:** the dues of their SETTLED claims, at their frozen figures. A correction is counted the same way, under whatever status it has.\n- **Open-total:** the dues of their OPEN and PENDING claims. Held, deferred and retired-and-excluded claims are left out, because the check that decides this is the same one the due-total uses.\n\nEach claim's due comes from the same calculation the due-total already uses. So the two figures always add up to the person's untrimmed due-total before the cap. The sheet's two figures are everyone's added up, without leaving out the highest and lowest.\n\n**Where it lives:** the whole change is in the front end, in `src/main/frontend/src/app/features/people/people.ts`. The app already works out the due-total on the screen, and the spec expects no new audit lines, so I didn't touch the server or the database.\n\n**When the due-total shows n/a:** a claim with no due counts as 0, so the person shows numbers rather than n/a in both new columns. The spec doesn't test that case.",
+    "error": "",
+    "attempts": [
+      {
+        "ok": true,
+        "limit_reached": false,
+        "retryable": false,
+        "timed_out": false,
+        "cost_usd": 0.47211200000000003,
+        "num_turns": 13,
+        "duration_ms": 199635,
+        "duration_api_ms": 40990,
+        "error": ""
+      }
+    ]
+  },
+  "agent_stream_file": "cp82.agent.jsonl",
+  "agent_diff_file": "cp82.agent.diff",
+  "build_log_file": null,
+  "tests": {
+    "gated": false,
+    "queued": true
+  },
+  "probe": null,
+  "pinned_touched": [],
+  "acceptance_touched": [],
+  "impact_gate": null
+}
