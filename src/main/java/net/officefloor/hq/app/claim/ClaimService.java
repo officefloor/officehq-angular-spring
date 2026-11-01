@@ -612,6 +612,26 @@ public class ClaimService {
     }
 
     /**
+     * A steward waives the late charge of an OPEN or PENDING claim: from the sheet's today on it bears none,
+     * whether overdue or not. Refused for anyone else, a claim in any other status, or one already waived.
+     */
+    @Transactional
+    public Claim waive(String sheetId, String user, Long id) {
+        // The snapshot locks the sheet first, so the claim is read once no other change is under way.
+        RollupService.Snapshot before = rollup.snapshot(sheetId);
+        Claim claim = claims.findByIdAndSheetId(id, sheetId).orElseThrow(ClaimNotFoundException::new);
+        if (!claim.getStatus().isOpen()) throw new ClaimStatusRefusedException();
+        if (settings.roleOf(sheetId, user) != Role.STEWARD) throw new ClaimNotStewardException();
+        if (claim.isWaived()) throw new ClaimWaivedException();
+        Person person = people.findByIdAndSheetId(claim.getPersonId(), sheetId).orElseThrow(PersonNotFoundException::new);
+        claim.waive(sheets.today(sheetId));
+        Claim saved = claims.saveAndFlush(claim);
+        record("CLAIM_WAIVED", sheetId, user, person, saved);
+        rollup.recordChanges(sheetId, user, before);
+        return saved;
+    }
+
+    /**
      * Raise a claim's proofs count by one. Refused for a SETTLED, VOID or DELETED claim, or one due inside a closed period.
      */
     @Transactional

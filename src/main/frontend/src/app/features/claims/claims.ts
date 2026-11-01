@@ -65,6 +65,10 @@ export interface Claim {
   remindedOn: string | null;
   /** The sheet's today (yyyy-mm-dd) it went to REVIEW; null when it never did. */
   reviewOn: string | null;
+  /** Whether a steward waived its late charge; from the day it was waived on it bears none. */
+  waived: boolean;
+  /** The sheet's today (yyyy-mm-dd) its late charge was waived on; null unless waived. */
+  waivedOn: string | null;
   /** The number of the bulk settle batch that settled it; null when settled one at a time or not settled. */
   batch: number | null;
   /** Its comments, oldest first. */
@@ -224,11 +228,11 @@ function figureCents(c: Claim, pctOn: PctOn, halfUp: boolean): number | null {
  * The late charge in cents on an overdue claim with the given figure, worked out per 30-day boundary: for each full
  * 30 days past its due-by plus its grace days, the late percent in force on that boundary date (the due-by plus the
  * grace plus 30, 60, 90 ... days) of it plus the charges of the boundaries before it (compounding), rounded like a
- * due, and the charges added up; 0 when not overdue or a
- * correction. Never bound by a statement.
+ * due, and the charges added up; 0 when not overdue, a
+ * correction, or waived on or before today. Never bound by a statement.
  */
 export function lateChargeCents(c: Claim, figureCents: number, late: Late, halfUp: boolean, graceOn: GraceOn): number {
-  if (late.today === null || isCorrection(c) || !isOverdue(c, late.today, graceOn)) return 0;
+  if (late.today === null || isCorrection(c) || isWaivedAt(c, late.today) || !isOverdue(c, late.today, graceOn)) return 0;
   const dueBy = Date.parse(`${lateFrom(c, graceOn)}T00:00:00Z`);
   let total = 0;
   for (let step = 1; ; step++) {
@@ -239,6 +243,11 @@ export function lateChargeCents(c: Claim, figureCents: number, late: Late, halfU
 }
 
 /** The date (yyyy-mm-dd) past which a claim is late: its due-by plus its grace days; the due-by shown is unchanged. */
+/** Whether its late charge was waived on or before the date: it bears none from then on. */
+export function isWaivedAt(c: Claim, date: string): boolean {
+  return c.waived && (c.waivedOn === null || c.waivedOn <= date);
+}
+
 export function lateFrom(c: Claim, graceOn: GraceOn): string {
   const grace = graceOn(c.date);
   if (grace === 0) return c.dueBy;
@@ -363,6 +372,7 @@ function notEditable(status: ClaimStatus | undefined): string {
           <span>Review late <span data-testid="claim-review-late">{{ session.reviewLate(c) ? 'yes' : 'no' }}</span></span>
           <span>Reminded <span data-testid="claim-reminded">{{ c.remindedOn ?? '' }}</span></span>
           <span>Batch <span data-testid="claim-batch">{{ c.batch ?? '' }}</span></span>
+          <span>Waived <span data-testid="claim-waived">{{ c.waived ? 'yes' : 'no' }}</span></span>
           <ol [attr.aria-label]="'Status log of claim of ' + c.amount + ' on ' + c.date">
             @for (line of c.log; track $index) {
               <li data-testid="claim-log-line">{{ line.status }} by {{ line.by }} on {{ line.date }} due={{ line.due ?? na }}</li>
@@ -431,6 +441,8 @@ function notEditable(status: ClaimStatus | undefined): string {
                   [attr.aria-label]="'Add a proof to claim of ' + c.amount + ' on ' + c.date">Add proof</button>
           <button type="button" data-testid="claim-remind" (click)="remind(c)"
                   [attr.aria-label]="'Remind claim of ' + c.amount + ' on ' + c.date">Remind</button>
+          <button type="button" data-testid="claim-waive" (click)="waive(c)"
+                  [attr.aria-label]="'Waive the late charge of claim of ' + c.amount + ' on ' + c.date">Waive late charge</button>
           <button type="button" data-testid="claim-timeline" (click)="showTimeline(c)"
                   [attr.aria-label]="'Show the timeline of claim of ' + c.amount + ' on ' + c.date">Timeline</button>
           @if (timeline()?.id === c.id) {
@@ -861,6 +873,32 @@ export class Claims {
           ? 'This claim was already reminded today.'
           : `A ${c.status} claim cannot be reminded; only an OPEN or PENDING one can.`)
         : 'Could not remind that claim.';
+      this.claimError.set({ id: c.id, message });
+    }
+  }
+
+  /**
+   * A steward waives the late charge of an OPEN or PENDING claim; anyone else, a claim in any other status,
+   * or one already waived is refused.
+   */
+  protected async waive(c: Claim): Promise<void> {
+    this.claimError.set(null);
+    const sheet = this.session.sheetId();
+    if (!sheet) return;
+    const url = `/api/sheets/${encodeURIComponent(sheet)}/claims/${c.id}/waive`;
+    try {
+      const claim = await firstValueFrom(this.http.post<Claim>(url, null, { headers: this.headers() }));
+      if (this.session.sheetId() !== sheet) return;
+      this.saved.emit(claim);
+    } catch (e) {
+      if (this.session.sheetId() !== sheet) return;
+      const message = !(e instanceof HttpErrorResponse)
+        ? "Could not waive that claim's late charge."
+        : e.status === 403
+          ? 'Only a steward can waive a late charge.'
+          : c.status !== 'OPEN' && c.status !== 'PENDING'
+            ? `A ${c.status} claim's late charge cannot be waived; only an OPEN or PENDING one's can.`
+            : "This claim's late charge was already waived.";
       this.claimError.set({ id: c.id, message });
     }
   }

@@ -11,7 +11,7 @@ import java.util.function.Function;
  * late percent in force on that boundary date (the due-by plus the grace plus 30, 60, 90 ... days) of its
  * figure (the rate figure bound by a statement, else its rate figure, with no floor) plus the charges of the
  * boundaries before it (compounding), rounded to cents like its due ({@link Rounding}), and the charges added up; a boundary whose percent is 0.00 adds nothing. A
- * correction has none. It is never bound by a statement; settling freezes it into the settled due.
+ * correction has none, nor a claim whose charge was waived by today. It is never bound by a statement; settling freezes it into the settled due.
  */
 public final class LateCharge {
 
@@ -35,7 +35,7 @@ public final class LateCharge {
      */
     public static BigDecimal of(Claim claim, BigDecimal figure, LocalDate today, int graceDays,
             Function<LocalDate, BigDecimal> latePctOn, RoundingMode rounding) {
-        if (figure == null || claim.isCorrection() || !isOverdue(claim, today, graceDays)) return BigDecimal.ZERO.setScale(2);
+        if (figure == null || claim.isCorrection() || claim.isWaivedAt(today) || !isOverdue(claim, today, graceDays)) return BigDecimal.ZERO.setScale(2);
         return charge(claim, figure, today, graceDays, latePctOn, rounding);
     }
 
@@ -45,7 +45,7 @@ public final class LateCharge {
      */
     public static BigDecimal withChargeAsOpen(Claim claim, BigDecimal figure, LocalDate today, int graceDays,
             Function<LocalDate, BigDecimal> latePctOn, RoundingMode rounding) {
-        if (figure == null || claim.isCorrection() || today == null || !lateFrom(claim, graceDays).isBefore(today)) {
+        if (figure == null || claim.isCorrection() || today == null || claim.isWaivedAt(today) || !lateFrom(claim, graceDays).isBefore(today)) {
             return figure;
         }
         return figure.add(charge(claim, figure, today, graceDays, latePctOn, rounding));

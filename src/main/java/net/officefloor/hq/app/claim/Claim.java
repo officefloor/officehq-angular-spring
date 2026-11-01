@@ -170,6 +170,14 @@ public class Claim {
     @Column(name = "escalated", nullable = false)
     private boolean escalated;
 
+    /** Whether a steward waived its late charge; a claim is waived at most once. */
+    @Column(name = "waived", nullable = false)
+    private boolean waived;
+
+    /** The sheet's today when its late charge was waived; none unless waived. */
+    @Column(name = "waived_on")
+    private LocalDate waivedOn;
+
     /** The sheet's today when it last went to REVIEW; none unless it has. */
     @Column(name = "review_on")
     private LocalDate reviewOn;
@@ -405,6 +413,17 @@ public class Claim {
     public void setReviewOn(LocalDate reviewOn) { this.reviewOn = reviewOn; }
     /** Record that a reminder escalated it. */
     public void escalate() { this.escalated = true; }
+    public boolean isWaived() { return waived; }
+    public LocalDate getWaivedOn() { return waivedOn; }
+    /** Waive its late charge on the sheet's today. */
+    public void waive(LocalDate on) {
+        this.waived = true;
+        this.waivedOn = on;
+    }
+    /** Whether its late charge was waived on or before the date: it bears none from then on. */
+    public boolean isWaivedAt(LocalDate date) {
+        return waived && (waivedOn == null || date == null || !waivedOn.isAfter(date));
+    }
     public Integer getSettleBatch() { return settleBatch; }
     public void setSettleBatch(Integer settleBatch) { this.settleBatch = settleBatch; }
     public String getNumber() { return number; }
