@@ -1,0 +1,168 @@
+diff --git a/src/main/frontend/src/app/features/people/people.ts b/src/main/frontend/src/app/features/people/people.ts
+index 6452fda76..4a5d94528 100644
+--- a/src/main/frontend/src/app/features/people/people.ts
++++ b/src/main/frontend/src/app/features/people/people.ts
+@@ -228,7 +228,10 @@ function trimmedSum(figures: number[]): number {
+         <textarea id="import-people" data-testid="import-people" formControlName="text" rows="4"></textarea>
+         <button type="submit" data-testid="import-submit">Import</button>
+         @if (importAdded() !== null) {
+-          <p role="status">Added <span data-testid="import-added">{{ importAdded() }}</span></p>
++          <p role="status">
++            Added <span data-testid="import-added">{{ importAdded() }}</span>,
++            updated <span data-testid="import-updated">{{ importUpdated() }}</span>
++          </p>
+         }
+         @if (importError()) {
+           <p role="alert" class="error" data-testid="import-error">{{ importError() }}</p>
+@@ -863,6 +866,7 @@ export class People {
+   protected readonly importError = signal('');
+   /** How many people the last import added; null before one, and while one runs. */
+   protected readonly importAdded = signal<number | null>(null);
++  protected readonly importUpdated = signal<number | null>(null);
+   protected readonly importForm = new FormGroup({
+     text: new FormControl('', { nonNullable: true }),
+   });
+@@ -914,6 +918,7 @@ export class People {
+       this.importForm.reset({ text: '' }, { emitEvent: false });
+       this.importError.set('');
+       this.importAdded.set(null);
++      this.importUpdated.set(null);
+       if (id) void this.load(id);
+     });
+     // the ancestors' rates, read again whenever the sheet is loaded or its parent changes
+@@ -1718,12 +1723,14 @@ export class People {
+ 
+   /**
+    * Add a person per pasted line of name,grade,terms,contact, in order, each as the person form adds
+-   * one. Every line is checked first; if any is refused, none is added.
++   * one; a line naming a person on the sheet updates them as their edit form does instead. Every line
++   * is checked first; if any is refused, nothing is imported.
+    */
+   protected async importPeople(): Promise<void> {
+     if (this.importing) return;
+     this.importError.set('');
+     this.importAdded.set(null);
++    this.importUpdated.set(null);
+     const sheet = this.session.sheetId();
+     if (!sheet) return;
+     const text = this.importForm.getRawValue().text;
+@@ -1734,11 +1741,13 @@ export class People {
+     this.importing = true;
+     try {
+       const done = await firstValueFrom(
+-        this.http.post<{ added: number; people: Person[] }>(
++        this.http.post<{ added: number; updated: number; people: Person[]; updatedPeople: Person[] }>(
+           `${this.url(sheet)}/import`, { text }, { headers: this.headers() }),
+       );
+       if (this.session.sheetId() !== sheet) return;
+-      this.people.update((list) => [...list, ...done.people]);
++      const updated = new Map(done.updatedPeople.map((p) => [p.id, p]));
++      this.people.update((list) => [...list.map((p) => updated.get(p.id) ?? p), ...done.people]);
++      this.importUpdated.set(done.updated);
+       this.importAdded.set(done.added);
+       this.importForm.reset({ text: '' }, { emitEvent: false });
+     } catch (e) {
+diff --git a/src/main/java/net/officefloor/hq/app/person/PersonController.java b/src/main/java/net/officefloor/hq/app/person/PersonController.java
+index 72aa74355..3b8798f25 100644
+--- a/src/main/java/net/officefloor/hq/app/person/PersonController.java
++++ b/src/main/java/net/officefloor/hq/app/person/PersonController.java
+@@ -105,8 +105,8 @@ public class PersonController {
+     /** Pasted lines of name,grade,terms,contact, one person each. */
+     public record ImportRequest(@NotNull @Size(max = 200000) String text) {}
+ 
+-    /** The people an import added, in the order of their lines. */
+-    public record ImportView(int added, List<PersonView> people) {}
++    /** The people an import added, and those it updated, each in the order of their lines. */
++    public record ImportView(int added, int updated, List<PersonView> people, List<PersonView> updatedPeople) {}
+ 
+     /** Terms in days as the form gave them; blank or null: none. */
+     private static Integer termsOf(String terms) {
+@@ -150,15 +150,16 @@ public class PersonController {
+                 request.contact()), user);
+     }
+ 
+-    /** Add a person per pasted line, in order; a line refused refuses them all. */
++    /** Add, or update the person named, per pasted line, in order; a line refused refuses them all. */
+     @PostMapping("/import")
+     public ImportView importPeople(
+             @PathVariable @Size(max = 100) @Pattern(regexp = "[A-Za-z0-9._-]+") String sheetId,
+             @RequestHeader("X-User") @NotBlank @Size(max = 100) String user,
+             @RequestBody @Valid ImportRequest request) {
+-        List<PersonView> added = importer.importPeople(sheetId, user, request.text()).stream()
+-                .map(p -> view(p, user)).toList();
+-        return new ImportView(added.size(), added);
++        PersonImportService.Result result = importer.importPeople(sheetId, user, request.text());
++        List<PersonView> added = result.added().stream().map(p -> view(p, user)).toList();
++        List<PersonView> updated = result.updated().stream().map(p -> view(p, user)).toList();
++        return new ImportView(added.size(), updated.size(), added, updated);
+     }
+ 
+     @PutMapping("/{id}")
+diff --git a/src/main/java/net/officefloor/hq/app/person/PersonImportService.java b/src/main/java/net/officefloor/hq/app/person/PersonImportService.java
+index cc370feec..96e4be5f6 100644
+--- a/src/main/java/net/officefloor/hq/app/person/PersonImportService.java
++++ b/src/main/java/net/officefloor/hq/app/person/PersonImportService.java
+@@ -3,14 +3,17 @@ package net.officefloor.hq.app.person;
+ import java.util.ArrayList;
+ import java.util.HashSet;
+ import java.util.List;
++import java.util.Optional;
+ import java.util.Set;
+ import java.util.regex.Pattern;
+ import org.springframework.stereotype.Service;
+ import org.springframework.transaction.annotation.Transactional;
+ 
+ /**
+- * Imported people: lines of name,grade,terms,contact (the last two may be absent or blank), each a
+- * person added in order exactly as the person form adds one, with the form's rules. A name, or a
++ * Imported people: lines of name,grade,terms,contact (the last two may be absent or blank), taken in
++ * order with the person form's rules. A line whose name is a person's on the sheet (by name or alias, as
++ * names are compared) edits them exactly as the form does: name kept, the grade recorded from the
++ * sheet's today, and terms and contact set when the line gives them. Any other line adds a person. A name, or a
+  * contact, given twice in the paste (compared as the form compares them) refuses it. Blank lines are
+  * skipped; a paste with no line is refused. It is one change: a line that is refused refuses them all.
+  */
+@@ -24,14 +27,19 @@ public class PersonImportService {
+ 
+     private record Line(String name, String grade, Integer terms, String contact) {}
+ 
++    /** The people an import added, and those it updated, each in the order of their lines. */
++    public record Result(List<Person> added, List<Person> updated) {}
++
+     private final PersonService people;
++    private final PersonRepository repository;
+ 
+-    public PersonImportService(PersonService people) {
++    public PersonImportService(PersonService people, PersonRepository repository) {
+         this.people = people;
++        this.repository = repository;
+     }
+ 
+     @Transactional
+-    public List<Person> importPeople(String sheetId, String user, String text) {
++    public Result importPeople(String sheetId, String user, String text) {
+         List<Line> lines = new ArrayList<>();
+         Set<String> names = new HashSet<>();
+         Set<String> contacts = new HashSet<>();
+@@ -45,10 +53,19 @@ public class PersonImportService {
+         }
+         if (lines.isEmpty()) throw new PersonImportRefusedException();
+         List<Person> added = new ArrayList<>();
++        List<Person> updated = new ArrayList<>();
+         for (Line line : lines) {
+-            added.add(people.add(sheetId, user, line.name(), line.grade(), line.terms(), line.contact()));
++            Optional<Person> existing = repository.findByNameOrAlias(sheetId, line.name());
++            if (existing.isPresent()) {
++                Person person = existing.get();
++                updated.add(people.edit(sheetId, user, person.getId(), person.getVersion(), person.getName(),
++                        line.grade(), null, line.terms() != null ? line.terms() : person.getTerms(),
++                        line.contact() != null ? line.contact() : person.getContact()));
++            } else {
++                added.add(people.add(sheetId, user, line.name(), line.grade(), line.terms(), line.contact()));
++            }
+         }
+-        return added;
++        return new Result(added, updated);
+     }
+ 
+     private Line parse(String raw) {
