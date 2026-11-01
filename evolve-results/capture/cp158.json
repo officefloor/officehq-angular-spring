@@ -1,0 +1,64 @@
+{
+  "checkpoint": 158,
+  "stack": {
+    "repo": "/home/daniel/officehq-angular-spring",
+    "origin": "git@github.com:officefloor/officehq-angular-spring.git",
+    "name": "officehq-angular-spring",
+    "base_ref": "base-empty",
+    "base_commit": "65cb8233ea38b2dfa6cfd18709e30cd18fdf3250"
+  },
+  "checkpoint_id": "cp158_column-chooser",
+  "phase": "mid",
+  "type": "additive",
+  "mutates": [],
+  "replaced_tests": [],
+  "request": {
+    "spec": "Each user can choose which columns of the people list their screen shows: a checkbox per column\n(claimed, due-total, statement-count, stated-total, statement-date, overdue-count, overdue-total,\npatrons, backing, hold, retired, terms, contact, aliases), per user's screen. A column switched off has no cell on the screen at all; totals, the header, the summary and every other figure are\nunaffected.\n",
+    "prompt": "You are implementing ONE change to this application.\n\nFIRST read AGENTS.md \u2014 it states the working rules and how the app is tested, and sends you to\nDESIGN.md for the app's stack and conventions. Follow both.\n\nTHE CHANGE REQUEST:\nEach user can choose which columns of the people list their screen shows: a checkbox per column\n(claimed, due-total, statement-count, stated-total, statement-date, overdue-count, overdue-total,\npatrons, backing, hold, retired, terms, contact, aliases), per user's screen. A column switched off has no cell on the screen at all; totals, the header, the summary and every other figure are\nunaffected.\n\nYour work is verified by an automated Playwright UI test already installed under e2e/specs/.\nRead that spec: it declares the exact data-testid anchors, values, test data and any audit\nrecords it expects \u2014 match them. Run `bin/e2e` to build the app, start it, and run the test as\nyou work; iterate until it passes. Change whatever the request needs across the app \u2014 its stored\ndata, its server and its front end. Do NOT edit bin/build, bin/start, bin/stop, bin/e2e,\nAGENTS.md, CLAUDE.md, DESIGN.md, e2e/support/ or the test spec.\n"
+  },
+  "commit_sha": "9a89ee79443c63a8ac3af50728ebb5a7b0a4a2f2",
+  "reset_sha": "",
+  "preagent_sha": "fa686445877c4e898bcaea3c4e806779017d7e76",
+  "prev_sha": "fa686445877c4e898bcaea3c4e806779017d7e76",
+  "base_sha": "65cb8233ea38b2dfa6cfd18709e30cd18fdf3250",
+  "agent": {
+    "ok": true,
+    "cost_usd": 0.6120144000000001,
+    "input_tokens": 34,
+    "output_tokens": 7926,
+    "cache_read_tokens": 625992,
+    "cache_creation_tokens": 41020,
+    "num_turns": 17,
+    "duration_ms": 255431,
+    "duration_api_ms": 95721,
+    "model": "claude-opus-5-5",
+    "session_id": "7f5189c0-1850-4e8a-aaae-f872dc31f50f",
+    "stop_reason": "success",
+    "result_text": "The people list now has a column chooser, and `bin/e2e` passes all 4 tests.\n\n**What I built**\n- **Checkboxes:** above the people table there's a \"Columns shown\" group with one checkbox per column, each with the test id `column-<name>`. All are on when the screen opens.\n- **Turning a column off:** its cell is removed from every row, not just hidden. Where the column has its own table cell (terms, contact, claimed, due-total, excess), the header cell goes too. Totals, the header counts, the summary and the audit file don't change.\n- **Shared cells:** some columns share a cell with controls: the statement figures, the overdue count and total, patrons and backing, hold, retired and aliases. For these, only the value element is removed. The buttons and inputs in that cell (take statement, hold, add patron, retire, add alias) stay usable.\n- **Per user:** the choice is kept per screen, in `src/main/frontend/src/app/core/session.ts`, the same way \"show retired\" and \"sort by\" already work. Each user's screen keeps its own choice, it survives re-loading a sheet, and other users aren't affected. It isn't saved on the server, so it goes back to all columns on when the page is opened again or the user signs in afresh. No server or database changes were needed.\n\n**One addition to your list:** I added `excess` as a 15th column. The test switches `excess` off and expects that cell to disappear, so it needed a checkbox too.\n\nThe template changes are in `src/main/frontend/src/app/features/people/people.ts`.",
+    "error": "",
+    "attempts": [
+      {
+        "ok": true,
+        "limit_reached": false,
+        "retryable": false,
+        "timed_out": false,
+        "cost_usd": 0.6120144000000001,
+        "num_turns": 17,
+        "duration_ms": 255431,
+        "duration_api_ms": 95721,
+        "error": ""
+      }
+    ]
+  },
+  "agent_stream_file": "cp158.agent.jsonl",
+  "agent_diff_file": "cp158.agent.diff",
+  "build_log_file": null,
+  "tests": {
+    "gated": false,
+    "queued": true
+  },
+  "probe": null,
+  "pinned_touched": [],
+  "acceptance_touched": [],
+  "impact_gate": null
+}

@@ -1,0 +1,195 @@
+diff --git a/src/main/frontend/src/app/core/session.ts b/src/main/frontend/src/app/core/session.ts
+index 9d491ad0b..f4e1eed00 100644
+--- a/src/main/frontend/src/app/core/session.ts
++++ b/src/main/frontend/src/app/core/session.ts
+@@ -15,6 +15,13 @@ interface SheetView {
+   lastBatch: number | null;
+ }
+ 
++/** The people-list columns a user can switch off on their screen. */
++export const PEOPLE_COLUMNS = [
++  'claimed', 'due-total', 'excess', 'statement-count', 'stated-total', 'statement-date', 'overdue-count',
++  'overdue-total', 'patrons', 'backing', 'hold', 'retired', 'terms', 'contact', 'aliases',
++] as const;
++export type PeopleColumn = (typeof PEOPLE_COLUMNS)[number];
++
+ /** A value recorded for a dated setting from a date (yyyy-mm-dd) on; null when none. */
+ export interface DatedValue {
+   from: string;
+@@ -171,6 +178,18 @@ export class Session {
+   readonly showRetired = signal(false);
+   /** What the people list is sorted by on this screen: added (list order) when the screen opens, left as it is by loading a sheet. */
+   readonly sortBy = signal<PeopleSort>('added');
++  /** The people-list columns switched off on this screen: none when the screen opens, left as they are by loading a sheet. */
++  readonly hiddenColumns = signal<ReadonlySet<PeopleColumn>>(new Set());
++
++  /** Switch a people-list column on or off on this screen. */
++  showColumn(column: PeopleColumn, shown: boolean): void {
++    this.hiddenColumns.update((hidden) => {
++      const next = new Set(hidden);
++      if (shown) next.delete(column);
++      else next.add(column);
++      return next;
++    });
++  }
+ 
+   async signIn(name: string): Promise<void> {
+     const res = await firstValueFrom(this.http.post<{ name: string; locale: Locale }>('/api/session', { name }));
+diff --git a/src/main/frontend/src/app/features/people/people.ts b/src/main/frontend/src/app/features/people/people.ts
+index e6f5c42c0..a51b62802 100644
+--- a/src/main/frontend/src/app/features/people/people.ts
++++ b/src/main/frontend/src/app/features/people/people.ts
+@@ -4,7 +4,7 @@ import { FigurePipe } from '../../core/figure';
+ import { FormControl, FormGroup, ReactiveFormsModule } from '@angular/forms';
+ import { firstValueFrom } from 'rxjs';
+ import { LIVE } from '../../core/as-of';
+-import { Session } from '../../core/session';
++import { PEOPLE_COLUMNS, PeopleColumn, Session } from '../../core/session';
+ import { downloadCsv } from '../../core/csv';
+ import { Claim, Claims, DUPLICATE_REF, GraceOn, PctOn, RETIRED, cents, claimDueCents, countsAt, countsFor, isBound, isCorrection, isDuplicateRef, isOpen, isOverdue, money, roundsOn } from '../claims/claims';
+ import { Period, Periods, periodOn } from '../periods/periods';
+@@ -300,6 +300,16 @@ function trimmedSum(figures: number[]): number {
+                (change)="session.showRetired.set($any($event.target).checked)" />
+         Show retired
+       </label>
++      <fieldset>
++        <legend>Columns shown</legend>
++        @for (c of columns; track c) {
++          <label>
++            <input type="checkbox" [attr.data-testid]="'column-' + c" [checked]="shows(c)"
++                   (change)="session.showColumn(c, $any($event.target).checked)" />
++            {{ c }}
++          </label>
++        }
++      </fieldset>
+       <label for="sort-by">Sort by</label>
+       <select id="sort-by" data-testid="sort-by" [value]="session.sortBy()"
+               (change)="session.sortBy.set($any($event.target).value)">
+@@ -376,7 +386,7 @@ function trimmedSum(figures: number[]): number {
+       }
+       <table>
+         <thead>
+-          <tr><th scope="col"><span class="visually-hidden">Select</span></th><th scope="col">Name</th><th scope="col">Grade</th><th scope="col">Terms</th><th scope="col">Contact</th><th scope="col">Tags</th><th scope="col">Aliases</th><th scope="col">Came from</th><th scope="col">Claimed</th><th scope="col">Due total</th><th scope="col">Snapshots</th><th scope="col">Excess</th><th scope="col">Settled total</th><th scope="col">Open total</th><th scope="col">Cut total</th><th scope="col">Periods</th><th scope="col">Statements</th><th scope="col">Retired</th><th scope="col">Hold</th><th scope="col">Watched</th><th scope="col">Active</th><th scope="col">Clashing</th><th scope="col">Overdue</th><th scope="col">Aged</th><th scope="col">Patrons</th><th scope="col">Plans</th><th scope="col">Claims</th><th scope="col"><span class="visually-hidden">Actions</span></th></tr>
++          <tr><th scope="col"><span class="visually-hidden">Select</span></th><th scope="col">Name</th><th scope="col">Grade</th>@if (shows('terms')) {<th scope="col">Terms</th>}@if (shows('contact')) {<th scope="col">Contact</th>}<th scope="col">Tags</th><th scope="col">Aliases</th><th scope="col">Came from</th>@if (shows('claimed')) {<th scope="col">Claimed</th>}@if (shows('due-total')) {<th scope="col">Due total</th>}<th scope="col">Snapshots</th>@if (shows('excess')) {<th scope="col">Excess</th>}<th scope="col">Settled total</th><th scope="col">Open total</th><th scope="col">Cut total</th><th scope="col">Periods</th><th scope="col">Statements</th><th scope="col">Retired</th><th scope="col">Hold</th><th scope="col">Watched</th><th scope="col">Active</th><th scope="col">Clashing</th><th scope="col">Overdue</th><th scope="col">Aged</th><th scope="col">Patrons</th><th scope="col">Plans</th><th scope="col">Claims</th><th scope="col"><span class="visually-hidden">Actions</span></th></tr>
+         </thead>
+         <tbody>
+           @for (p of sorted(); track p.id) {
+@@ -405,11 +415,15 @@ function trimmedSum(figures: number[]): number {
+                 <button type="button" data-testid="person-inline-grade-save" (click)="saveGrade(p, inlineGrade.value)"
+                         [attr.aria-label]="'Save grade for ' + p.name">Save grade</button>
+               </td>
+-              <td data-testid="person-terms">{{ p.terms ?? '' }}</td>
+-              <td data-testid="person-contact">{{ p.contact ?? '' }}</td>
++              @if (shows('terms')) {
++                <td data-testid="person-terms">{{ p.terms ?? '' }}</td>
++              }
++              @if (shows('contact')) {
++                <td data-testid="person-contact">{{ p.contact ?? '' }}</td>
++              }
+               <td data-testid="person-tags">{{ p.tags.join(', ') }}</td>
+               <td>
+-                <span data-testid="person-aliases">{{ p.aliases.join(', ') }}</span>
++                @if (shows('aliases')) {<span data-testid="person-aliases">{{ p.aliases.join(', ') }}</span>}
+                 <label [for]="'person-alias-input-' + p.id" class="visually-hidden">Alias for {{ p.name }}</label>
+                 <input [id]="'person-alias-input-' + p.id" data-testid="person-alias-input"
+                        #aliasInput (input)="clearPersonError(p.id)" />
+@@ -417,8 +431,12 @@ function trimmedSum(figures: number[]): number {
+                         [attr.aria-label]="'Add alias for ' + p.name">Add alias</button>
+               </td>
+               <td data-testid="person-origin">{{ p.origin ?? '' }}</td>
+-              <td data-testid="person-claimed">{{ claimedOf(p.id) | figure }}</td>
+-              <td data-testid="person-due-total">{{ dueTotalOf(p) | figure }}</td>
++              @if (shows('claimed')) {
++                <td data-testid="person-claimed">{{ claimedOf(p.id) | figure }}</td>
++              }
++              @if (shows('due-total')) {
++                <td data-testid="person-due-total">{{ dueTotalOf(p) | figure }}</td>
++              }
+               <td>
+                 <ul>
+                   @for (s of p.snapshots; track $index) {
+@@ -426,7 +444,9 @@ function trimmedSum(figures: number[]): number {
+                   }
+                 </ul>
+               </td>
+-              <td data-testid="person-excess">{{ excessOf(p) | figure }}</td>
++              @if (shows('excess')) {
++                <td data-testid="person-excess">{{ excessOf(p) | figure }}</td>
++              }
+               <td data-testid="person-settled-total">{{ money(splitOf(p).settled) | figure }}</td>
+               <td data-testid="person-open-total">{{ money(splitOf(p).open) | figure }}</td>
+               <td data-testid="person-cut-total">{{ money(cutTotalOf(p.id)) | figure }}</td>
+@@ -436,9 +456,9 @@ function trimmedSum(figures: number[]): number {
+                 }
+               </td>
+               <td>
+-                <span data-testid="person-statement-count">{{ statementOf(p.id)?.count ?? 0 }}</span>
+-                <span>Last <span data-testid="person-stated-total">{{ statedTotalOf(p.id) | figure }}</span></span>
+-                <span>on <span data-testid="person-statement-date">{{ statementOf(p.id)?.lastDate ?? '' }}</span></span>
++                @if (shows('statement-count')) {<span data-testid="person-statement-count">{{ statementOf(p.id)?.count ?? 0 }}</span>}
++                @if (shows('stated-total')) {<span>Last <span data-testid="person-stated-total">{{ statedTotalOf(p.id) | figure }}</span></span>}
++                @if (shows('statement-date')) {<span>on <span data-testid="person-statement-date">{{ statementOf(p.id)?.lastDate ?? '' }}</span></span>}
+                 <label [for]="'person-statement-asof-' + p.id" class="visually-hidden">Statement for {{ p.name }} as of</label>
+                 <input type="date" [id]="'person-statement-asof-' + p.id" data-testid="person-statement-asof"
+                        #statementAsOf (input)="clearPersonError(p.id)" />
+@@ -451,7 +471,7 @@ function trimmedSum(figures: number[]): number {
+                 }
+               </td>
+               <td>
+-                <span data-testid="person-retired">{{ p.retired ? 'yes' : 'no' }}</span>
++                @if (shows('retired')) {<span data-testid="person-retired">{{ p.retired ? 'yes' : 'no' }}</span>}
+                 <span>from <span data-testid="person-retired-from">{{ p.retiredFrom ?? '' }}</span></span>
+                 <label [for]="'person-retire-date-' + p.id" class="visually-hidden">Retire {{ p.name }} from</label>
+                 <input type="date" [id]="'person-retire-date-' + p.id" data-testid="person-retire-date"
+@@ -467,7 +487,7 @@ function trimmedSum(figures: number[]): number {
+                 </ul>
+               </td>
+               <td>
+-                <span data-testid="person-hold">{{ p.held ? 'yes' : 'no' }}</span>
++                @if (shows('hold')) {<span data-testid="person-hold">{{ p.held ? 'yes' : 'no' }}</span>}
+                 <ul>
+                   @for (h of p.holds; track $index) {
+                     <li data-testid="person-hold-line">{{ h.from ?? 'start' }} to {{ h.to ?? 'open' }}</li>
+@@ -490,8 +510,8 @@ function trimmedSum(figures: number[]): number {
+               <td data-testid="person-active">{{ p.active ? 'yes' : 'no' }}</td>
+               <td data-testid="person-clashing">{{ p.clashing ? 'yes' : 'no' }}</td>
+               <td>
+-                <span data-testid="person-overdue-count">{{ overdueOf(p).count }}</span>
+-                <span>Total <span data-testid="person-overdue-total">{{ money(overdueOf(p).cents) | figure }}</span></span>
++                @if (shows('overdue-count')) {<span data-testid="person-overdue-count">{{ overdueOf(p).count }}</span>}
++                @if (shows('overdue-total')) {<span>Total <span data-testid="person-overdue-total">{{ money(overdueOf(p).cents) | figure }}</span></span>}
+               </td>
+               <td>
+                 <span>0-30 <span data-testid="person-aged-0-30">{{ money(agedOf(p).upTo30) | figure }}</span></span>
+@@ -499,8 +519,8 @@ function trimmedSum(figures: number[]): number {
+                 <span>61+ <span data-testid="person-aged-61">{{ money(agedOf(p).over60) | figure }}</span></span>
+               </td>
+               <td>
+-                <span data-testid="person-patrons">{{ patronsOf(p) }}</span>
+-                <span>Backing <span data-testid="person-backing">{{ backingOf(p) | figure }}</span></span>
++                @if (shows('patrons')) {<span data-testid="person-patrons">{{ patronsOf(p) }}</span>}
++                @if (shows('backing')) {<span>Backing <span data-testid="person-backing">{{ backingOf(p) | figure }}</span></span>}
+                 <label [for]="'person-patron-select-' + p.id" class="visually-hidden">Patron for {{ p.name }}</label>
+                 <select [id]="'person-patron-select-' + p.id" data-testid="person-patron-select" #patronSelect
+                         (change)="clearPatronError(p.id)">
+@@ -667,6 +687,8 @@ function trimmedSum(figures: number[]): number {
+ export class People {
+   private readonly http = inject(HttpClient);
+   protected readonly session = inject(Session);
++  /** The columns of the people list this screen can switch off. */
++  protected readonly columns = PEOPLE_COLUMNS;
+ 
+   protected readonly grades = GRADES;
+   protected readonly people = signal<Person[]>([]);
+@@ -1038,6 +1060,11 @@ export class People {
+     })),
+   );
+   protected readonly money = money;
++
++  /** Whether this screen shows the given people-list column. */
++  protected shows(column: PeopleColumn): boolean {
++    return !this.session.hiddenColumns().has(column);
++  }
+   protected readonly editingId = signal<number | null>(null);
+   /** The version of the person being edited, as the form loaded it. */
+   private editingVersion = 0;
