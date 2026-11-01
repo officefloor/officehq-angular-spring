@@ -578,7 +578,7 @@ public class SheetController {
     @PutMapping("/{id}/settings/perm/{action}")
     public SheetView setPermission(
             @PathVariable @NotBlank @Size(max = 100) @Pattern(regexp = "[A-Za-z0-9._-]+") String id,
-            @PathVariable @Pattern(regexp = "open|settle|void|reassign|close|reopen") String action,
+            @PathVariable @Pattern(regexp = "open|settle|void|reassign|close|reopen|today") String action,
             @RequestHeader("X-User") @NotBlank @Size(max = 100) String user,
             @Valid @RequestBody PermissionChange request) {
         return SheetView.of(sheets.setPermission(id, user, action, request.roles()));

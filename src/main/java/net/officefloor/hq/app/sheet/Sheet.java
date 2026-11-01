@@ -58,7 +58,8 @@ public class Sheet {
     /** The actions the permission matrix covers, and the roles that may take each while its entry is blank. */
     public static final Map<String, String> STANDING_PERMISSIONS = Map.of(
             "open", "clerk,steward", "settle", "clerk,steward", "void", "clerk,steward",
-            "reassign", "steward", "close", "clerk,steward", "reopen", "steward");
+            "reassign", "steward", "close", "clerk,steward", "reopen", "steward",
+            "today", "clerk,steward,restricted");
 
     @Id
     private String id;

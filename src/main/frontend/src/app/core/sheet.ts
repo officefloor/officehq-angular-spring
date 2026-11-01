@@ -117,13 +117,13 @@ export interface SheetView {
 }
 
 /** The actions the permission matrix covers. */
-export const PERM_ACTIONS = ['open', 'settle', 'void', 'reassign', 'close', 'reopen'] as const;
+export const PERM_ACTIONS = ['open', 'settle', 'void', 'reassign', 'close', 'reopen', 'today'] as const;
 export type PermAction = (typeof PERM_ACTIONS)[number];
 
 /** The roles that may take each action while its matrix entry is blank. */
 export const STANDING_PERMISSIONS: Record<PermAction, string> = {
   open: 'clerk,steward', settle: 'clerk,steward', void: 'clerk,steward',
-  reassign: 'steward', close: 'clerk,steward', reopen: 'steward',
+  reassign: 'steward', close: 'clerk,steward', reopen: 'steward', today: 'clerk,steward,restricted',
 };
 
 /** A setting's value in force on a date (yyyy-mm-dd): the one recorded with the latest from-date on or before it;

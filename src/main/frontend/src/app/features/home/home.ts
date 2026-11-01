@@ -1,4 +1,5 @@
 import { Component, inject, signal } from '@angular/core';
+import { HttpErrorResponse } from '@angular/common/http';
 import { FormControl, FormGroup, ReactiveFormsModule, Validators } from '@angular/forms';
 import { LOCALES, Locale, Session } from '../../core/session';
 import { Sheets } from '../../core/sheet';
@@ -358,9 +359,11 @@ export class Home {
     this.savingToday.set(true);
     this.sheets.setToday(sheet.id, today).subscribe({
       next: () => this.savingToday.set(false),
-      error: () => {
+      error: (e: unknown) => {
         this.savingToday.set(false);
-        this.todayError.set('Could not change the sheet\'s today.');
+        this.todayError.set(e instanceof HttpErrorResponse && e.status === 403
+          ? 'Your role may not change the sheet\'s today.'
+          : 'Could not change the sheet\'s today.');
       },
     });
   }

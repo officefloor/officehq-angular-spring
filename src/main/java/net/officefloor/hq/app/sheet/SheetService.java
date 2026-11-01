@@ -10,6 +10,7 @@ import net.officefloor.hq.app.Audit;
 import net.officefloor.hq.app.claim.ClaimRepository;
 import net.officefloor.hq.app.period.PeriodService;
 import net.officefloor.hq.app.role.Role;
+import net.officefloor.hq.app.role.RoleService;
 import net.officefloor.hq.app.rollup.Rollup;
 import net.officefloor.hq.app.snapshot.PersonSnapshotService;
 import org.springframework.context.annotation.Lazy;
@@ -30,10 +31,12 @@ public class SheetService {
     private final PeriodService periods;
     private final ClaimRepository claims;
     private final PersonSnapshotService snapshots;
+    private final RoleService roles;
 
-    // The period service loads sheets through this one, so it is taken lazily.
+    // The period and role services load sheets through this one, so they are taken lazily.
     public SheetService(SheetRepository sheets, Rollup rollup, Audit audit, @Lazy PeriodService periods,
-            ClaimRepository claims, PersonSnapshotService snapshots) {
+            ClaimRepository claims, PersonSnapshotService snapshots, @Lazy RoleService roles) {
+        this.roles = roles;
         this.sheets = sheets;
         this.snapshots = snapshots;
         this.claims = claims;
@@ -85,11 +88,15 @@ public class SheetService {
     /** Set the sheet's today, starting the sheet if it has never been loaded; then close every open period past its
      *  grace days. A change of today first records a SNAPSHOT line per person, in list order, with their due-total on
      *  the day being left (kept as the person's snapshot line), before them, while the score log is on, a SCORE line
-     *  per person, in list order, with their score on the day being left, and releases every claim editor's lock on the sheet. */
+     *  per person, in list order, with their score on the day being left, and releases every claim editor's lock on the sheet.
+     *  Refused for a role the permission matrix does not allow to change today. */
     @Transactional
     public Sheet setToday(String id, String user, LocalDate today) {
         load(id, user);
         Sheet sheet = sheets.findLockedById(id).orElseThrow();
+        if (!sheet.allows("today", roles.roleOf(id, user))) {
+            throw new ResponseStatusException(HttpStatus.FORBIDDEN, "Your role may not change the sheet's today");
+        }
         Rollup.Figures before = rollup.of(id);
         boolean changed = !today.equals(sheet.getToday());
         if (changed) {
@@ -479,13 +486,15 @@ public class SheetService {
         return record(id, user, Sheet.ROUNDING, from, mode, true);
     }
 
-    /** Set the roles that may take an action (a comma separated list of clerk and steward; blank: its standing
-     *  rule), starting the sheet if it has never been loaded. Not dated. Refused for a role that is neither. */
+    /** Set the roles that may take an action (a comma separated list of clerk and steward, and for today also
+     *  restricted; blank: its standing rule), starting the sheet if it has never been loaded. Not dated. Refused for
+     *  any other role. */
     @Transactional
     public Sheet setPermission(String id, String user, String action, String roles) {
         List<String> listed = roles == null ? List.of()
                 : Arrays.stream(roles.split(",")).map(String::trim).filter(r -> !r.isEmpty()).distinct().toList();
-        if (listed.stream().anyMatch(r -> !Role.CLERK.equals(r) && !Role.STEWARD.equals(r))) {
+        if (listed.stream().anyMatch(r -> !Role.CLERK.equals(r) && !Role.STEWARD.equals(r)
+                && !("today".equals(action) && Role.RESTRICTED.equals(r)))) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "A permission lists the roles clerk and steward");
         }
         String value = String.join(",", listed);
