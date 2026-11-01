@@ -1,0 +1,212 @@
+diff --git a/src/main/frontend/src/app/features/people/people.ts b/src/main/frontend/src/app/features/people/people.ts
+index d0cff472a..7569f3550 100644
+--- a/src/main/frontend/src/app/features/people/people.ts
++++ b/src/main/frontend/src/app/features/people/people.ts
+@@ -52,6 +52,8 @@ interface Person {
+   watched: boolean;
+   /** Their own terms in days, ahead of their grade's and the sheet's; null: none. */
+   terms: number | null;
++  /** Whether they have an open claim (OPEN or PENDING) that counts, dated within the 30 days up to and including the sheet's today. */
++  active: boolean;
+ }
+ 
+ /** The person's grade in force on the date: the one with the latest from-date on or before it. */
+@@ -207,7 +209,7 @@ function trimmedSum(figures: number[]): number {
+       }
+       <table>
+         <thead>
+-          <tr><th scope="col">Name</th><th scope="col">Grade</th><th scope="col">Terms</th><th scope="col">Claimed</th><th scope="col">Due total</th><th scope="col">Excess</th><th scope="col">Periods</th><th scope="col">Statements</th><th scope="col">Retired</th><th scope="col">Hold</th><th scope="col">Watched</th><th scope="col">Overdue</th><th scope="col">Patrons</th><th scope="col">Claims</th><th scope="col"><span class="visually-hidden">Actions</span></th></tr>
++          <tr><th scope="col">Name</th><th scope="col">Grade</th><th scope="col">Terms</th><th scope="col">Claimed</th><th scope="col">Due total</th><th scope="col">Excess</th><th scope="col">Periods</th><th scope="col">Statements</th><th scope="col">Retired</th><th scope="col">Hold</th><th scope="col">Watched</th><th scope="col">Active</th><th scope="col">Overdue</th><th scope="col">Patrons</th><th scope="col">Claims</th><th scope="col"><span class="visually-hidden">Actions</span></th></tr>
+         </thead>
+         <tbody>
+           @for (p of listed(); track p.id) {
+@@ -263,6 +265,7 @@ function trimmedSum(figures: number[]): number {
+                 <button type="button" data-testid="person-watch" (click)="watch(p)" [attr.aria-pressed]="p.watched"
+                         [attr.aria-label]="(p.watched ? 'Stop watching ' : 'Watch ') + p.name">{{ p.watched ? 'Unwatch' : 'Watch' }}</button>
+               </td>
++              <td data-testid="person-active">{{ p.active ? 'yes' : 'no' }}</td>
+               <td>
+                 <span data-testid="person-overdue-count">{{ overdueOf(p).count }}</span>
+                 <span>Total <span data-testid="person-overdue-total">{{ money(overdueOf(p).cents) }}</span></span>
+@@ -307,7 +310,7 @@ function trimmedSum(figures: number[]): number {
+       <table>
+         <caption>By grade today, retired people excluded</caption>
+         <thead>
+-          <tr><th scope="col">Grade</th><th scope="col">People</th><th scope="col">Due total</th></tr>
++          <tr><th scope="col">Grade</th><th scope="col">People</th><th scope="col">Due total</th><th scope="col">Active</th></tr>
+         </thead>
+         <tbody>
+           @for (g of gradeSummary(); track g.grade) {
+@@ -315,6 +318,7 @@ function trimmedSum(figures: number[]): number {
+               <th scope="row">{{ g.grade }}</th>
+               <td [attr.data-testid]="'summary-grade-' + g.grade + '-count'">{{ g.count }}</td>
+               <td [attr.data-testid]="'summary-grade-' + g.grade + '-due-total'">{{ g.dueTotal }}</td>
++              <td [attr.data-testid]="'summary-grade-' + g.grade + '-active'">{{ g.active }}</td>
+             </tr>
+           }
+         </tbody>
+@@ -469,11 +473,12 @@ export class People {
+     for (const o of this.overdueByPerson().values()) count += o.count;
+     return { count, cents: trimmedSum([...this.overdueByPerson().values()].map((o) => o.cents)) };
+   });
+-  /** Per grade: the people not retired on it today, and their due-totals added up, skipping n/a. */
++  /** Per grade: the people not retired on it today, their due-totals added up, skipping n/a, and how many are active. */
+   protected readonly gradeSummary = computed(() =>
+     GRADES.map((grade) => {
+       const on = this.people().filter((p) => !p.retired && this.gradeOf(p) === grade);
+-      return { grade, count: on.length, dueTotal: money(on.reduce((sum, p) => sum + (this.dueTotalCents(p) ?? 0), 0)) };
++      return { grade, count: on.length, dueTotal: money(on.reduce((sum, p) => sum + (this.dueTotalCents(p) ?? 0), 0)),
++        active: on.filter((p) => p.active).length };
+     }),
+   );
+   /** Per status: how many of the sheet's claims have it. */
+diff --git a/src/main/java/net/officefloor/hq/app/person/Person.java b/src/main/java/net/officefloor/hq/app/person/Person.java
+index 63d2bc9cc..968a4c1c9 100644
+--- a/src/main/java/net/officefloor/hq/app/person/Person.java
++++ b/src/main/java/net/officefloor/hq/app/person/Person.java
+@@ -159,6 +159,20 @@ public class Person {
+         return !claim.getStatus().isOpen() || claim.isBound() || !heldOn(claim.getDate());
+     }
+ 
++    /**
++     * Whether they are active on the date: they have an open claim (OPEN or PENDING) that counts, dated
++     * within the 30 days up to and including it.
++     */
++    public boolean activeOn(Iterable<Claim> claims, LocalDate today) {
++        if (today == null) return false;
++        LocalDate since = today.minusDays(29);
++        for (Claim claim : claims) {
++            if (!getId().equals(claim.getPersonId()) || !claim.getStatus().isOpen() || !counts(claim, today)) continue;
++            if (!claim.getDate().isBefore(since) && !claim.getDate().isAfter(today)) return true;
++        }
++        return false;
++    }
++
+     /** Moved on by each save; an edit is refused unless made from the current version. */
+     public long getVersion() { return version; }
+ }
+diff --git a/src/main/java/net/officefloor/hq/app/person/PersonController.java b/src/main/java/net/officefloor/hq/app/person/PersonController.java
+index 037a9b288..4b0ce1c5b 100644
+--- a/src/main/java/net/officefloor/hq/app/person/PersonController.java
++++ b/src/main/java/net/officefloor/hq/app/person/PersonController.java
+@@ -29,12 +29,14 @@ public class PersonController {
+      * A person as the screen shows them: grade is the one in force on the sheet's today, grades every
+      * grade recorded, earliest first (the first from null, the beginning of time); retiredFrom is null
+      * while not retired; held whether they have any hold, holds every hold, earliest first; patronIds
+-     * in the order named; watched whether the signed-in user watches them; terms their own, null for none.
++     * in the order named; watched whether the signed-in user watches them; terms their own, null for none;
++     * active whether they are active on the sheet's today ({@link Person#activeOn}).
+      */
+     public record PersonView(Long id, String name, String grade, List<GradeView> grades, long version,
+             boolean retired, LocalDate retiredFrom, boolean held, List<HoldView> holds, List<Long> patronIds,
+-            boolean watched, Integer terms) {
+-        public static PersonView of(Person person, LocalDate today, List<Long> patronIds, boolean watched) {
++            boolean watched, Integer terms, boolean active) {
++        public static PersonView of(Person person, LocalDate today, List<Long> patronIds, boolean watched,
++                boolean active) {
+             List<GradeView> grades = new ArrayList<>();
+             grades.add(new GradeView(null, person.getGrade()));
+             person.getDatedGrades().forEach((from, grade) -> grades.add(new GradeView(from, grade)));
+@@ -42,7 +44,7 @@ public class PersonController {
+                     today == null ? person.getGrade() : person.gradeOn(today), grades, person.getVersion(),
+                     person.isRetired(), person.getRetiredFrom(), person.isHeld(),
+                     person.getHolds().stream().map(h -> new HoldView(h.getFromDate(), h.getToDate())).toList(),
+-                    patronIds, watched, person.getTerms());
++                    patronIds, watched, person.getTerms(), active);
+         }
+     }
+ 
+@@ -95,9 +97,10 @@ public class PersonController {
+         Map<Long, List<Long>> patrons = service.patronIds(sheetId);
+         Set<Long> watched = service.watchedIds(sheetId, user);
+         LocalDate today = service.today(sheetId);
++        Set<Long> active = service.activeIds(sheetId);
+         return service.list(sheetId).stream()
+                 .map(p -> PersonView.of(p, today, patrons.getOrDefault(p.getId(), List.of()),
+-                        watched.contains(p.getId())))
++                        watched.contains(p.getId()), active.contains(p.getId())))
+                 .toList();
+     }
+ 
+@@ -160,6 +163,6 @@ public class PersonController {
+ 
+     private PersonView view(Person person, String user) {
+         return PersonView.of(person, service.today(person.getSheetId()), service.patronIdsOf(person.getId()),
+-                service.watches(person.getId(), user));
++                service.watches(person.getId(), user), service.isActive(person));
+     }
+ }
+diff --git a/src/main/java/net/officefloor/hq/app/person/PersonService.java b/src/main/java/net/officefloor/hq/app/person/PersonService.java
+index 41b8a79c4..49f449498 100644
+--- a/src/main/java/net/officefloor/hq/app/person/PersonService.java
++++ b/src/main/java/net/officefloor/hq/app/person/PersonService.java
+@@ -3,12 +3,15 @@ package net.officefloor.hq.app.person;
+ import java.time.LocalDate;
+ import java.util.ArrayList;
+ import java.util.HashMap;
++import java.util.HashSet;
+ import java.util.List;
+ import java.util.Map;
+ import java.util.Objects;
+ import java.util.Set;
+ import java.util.stream.Collectors;
+ import net.officefloor.hq.app.Audit;
++import net.officefloor.hq.app.claim.Claim;
++import net.officefloor.hq.app.claim.ClaimRepository;
+ import net.officefloor.hq.app.rollup.RollupService;
+ import net.officefloor.hq.app.sheet.Sheet;
+ import net.officefloor.hq.app.sheet.SheetNotFoundException;
+@@ -37,11 +40,14 @@ public class PersonService {
+     private final PersonPatronRepository patrons;
+     private final PersonWatchRepository watches;
+     private final SheetRepository sheets;
++    private final ClaimRepository claims;
+     private final RollupService rollup;
+     private final Audit audit;
+ 
+     public PersonService(PersonRepository people, PersonPatronRepository patrons,
+-            PersonWatchRepository watches, SheetRepository sheets, RollupService rollup, Audit audit) {
++            PersonWatchRepository watches, SheetRepository sheets, ClaimRepository claims, RollupService rollup,
++            Audit audit) {
++        this.claims = claims;
+         this.watches = watches;
+         this.people = people;
+         this.patrons = patrons;
+@@ -55,6 +61,25 @@ public class PersonService {
+         return people.findBySheetIdOrderByIdAsc(sheetId);
+     }
+ 
++    /** The ids of the sheet's people who are active on its today ({@link Person#activeOn}). */
++    @Transactional(readOnly = true)
++    public Set<Long> activeIds(String sheetId) {
++        LocalDate today = today(sheetId);
++        List<Claim> all = claims.findBySheetIdOrderByIdDesc(sheetId);
++        Set<Long> ids = new HashSet<>();
++        for (Person person : people.findBySheetIdOrderByIdAsc(sheetId)) {
++            if (person.activeOn(all, today)) ids.add(person.getId());
++        }
++        return ids;
++    }
++
++    /** Whether the person is active on their sheet's today. */
++    @Transactional(readOnly = true)
++    public boolean isActive(Person person) {
++        return person.activeOn(claims.findBySheetIdAndPersonIdOrderByIdDesc(person.getSheetId(), person.getId()),
++                today(person.getSheetId()));
++    }
++
+     /** The sheet's today, or null when there is no such sheet. */
+     @Transactional(readOnly = true)
+     public LocalDate today(String sheetId) {
+diff --git a/src/main/java/net/officefloor/hq/app/quickadd/QuickAddController.java b/src/main/java/net/officefloor/hq/app/quickadd/QuickAddController.java
+index 6757a22ca..9c920d273 100644
+--- a/src/main/java/net/officefloor/hq/app/quickadd/QuickAddController.java
++++ b/src/main/java/net/officefloor/hq/app/quickadd/QuickAddController.java
+@@ -50,6 +50,6 @@ public class QuickAddController {
+             @RequestBody @Valid QuickAddRequest request) {
+         QuickAddService.QuickAdded done = service.add(sheetId, user, request.name().strip(), request.amountValue());
+         return new QuickAddView(PersonView.of(done.person(), people.today(done.person().getSheetId()), people.patronIdsOf(done.person().getId()),
+-                people.watches(done.person().getId(), user)), done.added(), ClaimView.of(done.claim()));
++                people.watches(done.person().getId(), user), people.isActive(done.person())), done.added(), ClaimView.of(done.claim()));
+     }
+ }
