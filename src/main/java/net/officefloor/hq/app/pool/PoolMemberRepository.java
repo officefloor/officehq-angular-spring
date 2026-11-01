@@ -8,4 +8,6 @@ public interface PoolMemberRepository extends JpaRepository<PoolMember, Long> {
     List<PoolMember> findBySheetIdOrderByIdAsc(String sheetId);
 
     boolean existsByPoolIdAndPersonId(Long poolId, Long personId);
+
+    boolean existsByMemberPoolId(Long memberPoolId);
 }

@@ -1,8 +1,8 @@
 package net.officefloor.hq.app.pool;
 
 import jakarta.validation.Valid;
+import jakarta.validation.constraints.AssertTrue;
 import jakarta.validation.constraints.NotBlank;
-import jakarta.validation.constraints.NotNull;
 import jakarta.validation.constraints.Pattern;
 import jakarta.validation.constraints.Size;
 import java.util.List;
@@ -20,14 +20,17 @@ import org.springframework.web.bind.annotation.RestController;
 @RequestMapping("/api/sheets/{sheetId}/pools")
 public class PoolController {
 
-    /** A member of a pool: the person, their share (two decimals), whether they are retired, and their cut of the pot (two decimals, null: none). */
-    public record MemberView(Long personId, String name, String share, boolean retired, String cut) {}
+    /**
+     * A member of a pool: the person or the pool (the other null), its name, its share (two decimals),
+     * whether the person is retired, and its cut of the pot (two decimals, null: none).
+     */
+    public record MemberView(Long personId, Long poolId, String name, String share, boolean retired, String cut) {}
 
     /** A pool on the sheet, with its members, total share (two decimals) and whether it is balanced. */
     public record PoolView(Long id, String name, List<MemberView> members, String totalShare, boolean balanced) {
         static PoolView of(PoolService.PoolLine p) {
             return new PoolView(p.id(), p.name(),
-                    p.members().stream().map(m -> new MemberView(m.personId(), m.name(), m.share().toPlainString(), m.retired(),
+                    p.members().stream().map(m -> new MemberView(m.personId(), m.poolId(), m.name(), m.share().toPlainString(), m.retired(),
                             m.cut() == null ? null : m.cut().toPlainString())).toList(),
                     p.totalShare().toPlainString(), p.balanced());
         }
@@ -36,8 +39,13 @@ public class PoolController {
     /** A pool's name. */
     public record PoolRequest(@NotBlank @Size(max = 200) String name) {}
 
-    /** A member to add: a person of the sheet and their share percent. */
-    public record MemberRequest(@NotNull Long personId, @NotBlank @Size(max = 20) String share) {}
+    /** A member to add: a person, or another pool, of the sheet (exactly one of them) and its share percent. */
+    public record MemberRequest(Long personId, Long poolId, @NotBlank @Size(max = 20) String share) {
+        @AssertTrue
+        boolean isOneMember() {
+            return (personId == null) != (poolId == null);
+        }
+    }
 
     private final PoolService service;
 
@@ -67,7 +75,11 @@ public class PoolController {
             @PathVariable Long poolId,
             @RequestHeader("X-User") @NotBlank @Size(max = 100) String user,
             @RequestBody @Valid MemberRequest request) {
-        service.addMember(sheetId, user, poolId, request.personId(), request.share());
+        if (request.poolId() != null) {
+            service.addPoolMember(sheetId, user, poolId, request.poolId(), request.share());
+        } else {
+            service.addMember(sheetId, user, poolId, request.personId(), request.share());
+        }
         return list(sheetId, user);
     }
 }

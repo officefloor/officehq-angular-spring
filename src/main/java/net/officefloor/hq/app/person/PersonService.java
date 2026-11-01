@@ -350,9 +350,9 @@ public class PersonService {
         List<PoolMember> members = poolMembers.findBySheetIdOrderByIdAsc(sheetId);
         List<PoolMember> leaving = new ArrayList<>();
         for (PoolMember m : members) {
-            if (!m.getPersonId().equals(from.getId())) continue;
+            if (!from.getId().equals(m.getPersonId())) continue;
             PoolMember theirs = members.stream()
-                    .filter(o -> o.getPoolId().equals(m.getPoolId()) && o.getPersonId().equals(into.getId()))
+                    .filter(o -> o.getPoolId().equals(m.getPoolId()) && into.getId().equals(o.getPersonId()))
                     .findFirst().orElse(null);
             if (theirs != null) {
                 theirs.addShare(m.getShare());
@@ -431,7 +431,7 @@ public class PersonService {
                 .filter(p -> p.getPersonId().equals(id) || p.getPatronId().equals(id)).toList());
         patrons.flush();
         poolMembers.deleteAll(poolMembers.findBySheetIdOrderByIdAsc(sheetId).stream()
-                .filter(m -> m.getPersonId().equals(id)).toList());
+                .filter(m -> id.equals(m.getPersonId())).toList());
         poolMembers.flush();
         statements.deleteAll(statements.findBySheetIdAndPersonIdOrderByIdAsc(sheetId, id));
         statements.flush();

@@ -4,9 +4,10 @@ import { FormControl, FormGroup, ReactiveFormsModule } from '@angular/forms';
 import { firstValueFrom } from 'rxjs';
 import { Session } from '../../core/session';
 
-/** A member of a pool: the person, their share (two decimals), whether they were retired when read, and their cut of the pot (two decimals; null: none). */
+/** A member of a pool: the person or the pool (the other null), its name, its share (two decimals), whether the person was retired when read, and its cut of the pot (two decimals; null: none). */
 interface MemberView {
-  personId: number;
+  personId: number | null;
+  poolId: number | null;
   name: string;
   share: string;
   retired: boolean;
@@ -22,12 +23,21 @@ interface PoolView {
   balanced: boolean;
 }
 
-/** A pool as shown: its total share (two decimals), whether it is balanced, and each member's cut ('' when none). */
+/** A member as shown: the key of its row (the person's id, or pool-<name>) and its cut ('' when none). */
+interface MemberLine extends MemberView {
+  key: string;
+  shownCut: string;
+}
+
+/** A pool as shown: its members, its total share (two decimals) and whether it is balanced. */
 interface PoolLine extends PoolView {
+  lines: MemberLine[];
   total: string;
   isBalanced: boolean;
-  cuts: Map<number, string>;
 }
+
+/** The select's value for a pool as a member. */
+const POOL_VALUE = 'pool:';
 
 /** A share at most two decimals, more than 0.00 and at most 100.00. */
 const SHARE = /^\d{1,3}(\.\d{1,2})?$/;
@@ -43,9 +53,12 @@ function percent(hundredths: number): string {
 }
 
 // The sheet's pools, each name once, and their members: people of the sheet, each at most once in a
-// pool, with a share percent. A person can be in several pools. A pool shows its total share and is
+// pool, and other pools (chosen as pool:<name>), each a member of at most one pool, with a share percent.
+// A person can be in several pools. A pool cannot contain itself through any chain, and a chain of pools
+// is at most three deep (the server refuses either). A pool shows its total share and is
 // balanced when the shares total exactly 100.00; a retired member's share counts as 0.00 toward it. Each member of a
-// balanced pool shows their cut of the sheet's pot (worked out by the server); an unbalanced pool, or no pot, shows none.
+// balanced pool shows their cut of the pool's pot (worked out by the server): the sheet's pot for a pool that is a member
+// of none, else its cut in the pool above; an unbalanced pool, or no pot, shows none.
 @Component({
   selector: 'app-pools',
   imports: [ReactiveFormsModule],
@@ -67,19 +80,22 @@ function percent(hundredths: number): string {
             — total share <span data-testid="pool-total-share">{{ p.total }}</span>,
             balanced <span data-testid="pool-balanced">{{ p.isBalanced ? 'yes' : 'no' }}</span>
             <ul [attr.aria-label]="'Members of ' + p.name">
-              @for (m of p.members; track m.personId) {
-                <li [attr.data-testid]="'pool-member-' + p.name + '-' + m.personId">
-                  {{ m.name }}: <span data-testid="pool-share">{{ m.share }}</span>,
-                  cut <span data-testid="pool-cut">{{ p.cuts.get(m.personId) ?? '' }}</span>
+              @for (m of p.lines; track m.key) {
+                <li [attr.data-testid]="'pool-member-' + p.name + '-' + m.key">
+                  {{ m.poolId === null ? m.name : 'pool:' + m.name }}: <span data-testid="pool-share">{{ m.share }}</span>,
+                  cut <span data-testid="pool-cut">{{ m.shownCut }}</span>
                 </li>
               }
             </ul>
             <form [formGroup]="memberForm(p.id)" (ngSubmit)="addMember(p)" [attr.aria-label]="'Add a member to ' + p.name">
-              <label [for]="'pool-member-select-' + p.id">Person</label>
+              <label [for]="'pool-member-select-' + p.id">Person or pool</label>
               <select [id]="'pool-member-select-' + p.id" data-testid="pool-member-select" formControlName="personId">
-                <option value="">Choose a person</option>
+                <option value="">Choose a person or pool</option>
                 @for (person of session.people(); track person.id) {
                   <option [value]="person.id">{{ person.name }}</option>
+                }
+                @for (other of pools(); track other.id) {
+                  <option [value]="'pool:' + other.id">pool:{{ other.name }}</option>
                 }
               </select>
               <label [for]="'pool-member-share-' + p.id">Share %</label>
@@ -110,12 +126,19 @@ export class Pools {
   /** Each pool with its total share, a retired member's share counting 0.00, as the people now stand. */
   protected readonly lines = computed<PoolLine[]>(() => {
     const retired = new Map(this.session.people().map((p) => [p.id, p.retired]));
+    const isRetired = (m: MemberView) => m.personId !== null && (retired.get(m.personId) ?? m.retired);
+    // the cuts as read stand only while no member's retirement has changed since: a nested pool's pot
+    // is a cut in the pool above, so any change anywhere stales them all
+    const current = this.pools().every((p) => p.members.every((m) => isRetired(m) === m.retired));
     return this.pools().map((p) => {
-      const total = p.members.reduce((sum, m) => ((retired.get(m.personId) ?? m.retired) ? sum : sum + hundredths(m.share)), 0);
-      // the cuts as read stand only while no member's retirement has changed since
-      const current = p.members.every((m) => (retired.get(m.personId) ?? m.retired) === m.retired);
-      const cuts = new Map(current && total === 10_000 ? p.members.map((m) => [m.personId, m.cut ?? ''] as const) : []);
-      return { ...p, total: percent(total), isBalanced: total === 10_000, cuts };
+      const total = p.members.reduce((sum, m) => (isRetired(m) ? sum : sum + hundredths(m.share)), 0);
+      const shown = current && total === 10_000;
+      const lines = p.members.map((m) => ({
+        ...m,
+        key: m.poolId === null ? String(m.personId) : `pool-${m.name}`,
+        shownCut: shown ? (m.cut ?? '') : '',
+      }));
+      return { ...p, lines, total: percent(total), isBalanced: total === 10_000 };
     });
   });
 
@@ -199,32 +222,41 @@ export class Pools {
     }
   }
 
-  /** Add the chosen person to the pool with their share; one already in it, or a bad share, is refused. */
+  /**
+   * Add the chosen person, or pool, to the pool with its share; a person already in it, a pool already a
+   * member of a pool, a pool that would contain itself, a chain more than three deep, or a bad share, is refused.
+   */
   protected async addMember(pool: PoolView): Promise<void> {
     if (this.submitting) return;
     this.memberError.set(null);
     const sheet = this.session.sheetId();
     if (!sheet) return;
     const f = this.memberForm(pool.id);
-    const personId = Number(f.controls.personId.value);
+    const chosen = f.controls.personId.value;
+    const memberPoolId = chosen.startsWith(POOL_VALUE) ? Number(chosen.slice(POOL_VALUE.length)) : null;
+    const personId = memberPoolId === null ? Number(chosen) : null;
     const share = f.controls.share.value.trim();
     const refuse = (message: string) => this.memberError.set({ id: pool.id, message });
-    if (!personId) return refuse('Choose a person.');
+    if (!personId && !memberPoolId) return refuse('Choose a person or pool.');
     if (!SHARE.test(share) || hundredths(share) <= 0 || hundredths(share) > 10_000) {
       return refuse('Enter a share of two decimals, more than 0.00 and at most 100.00.');
     }
-    if (pool.members.some((m) => m.personId === personId)) return refuse('That person is already in the pool.');
+    const nesting = 'That pool cannot be a member here: it is already in a pool, would contain itself, or would make a chain more than three deep.';
+    if (personId !== null && pool.members.some((m) => m.personId === personId)) return refuse('That person is already in the pool.');
+    if (memberPoolId !== null && (memberPoolId === pool.id || this.pools().some((p) => p.members.some((m) => m.poolId === memberPoolId)))) {
+      return refuse(nesting);
+    }
     this.submitting = true;
     try {
+      const body = memberPoolId === null ? { personId, share } : { poolId: memberPoolId, share };
       const list = await firstValueFrom(
-        this.http.post<PoolView[]>(`${this.base(sheet)}/${pool.id}/members`, { personId, share }, { headers: this.headers() }),
+        this.http.post<PoolView[]>(`${this.base(sheet)}/${pool.id}/members`, body, { headers: this.headers() }),
       );
       if (this.session.sheetId() === sheet) this.pools.set(list);
     } catch (e) {
       if (this.session.sheetId() !== sheet) return;
-      refuse(e instanceof HttpErrorResponse && e.status === 409
-        ? 'That person is already in the pool.'
-        : 'Could not add that member.');
+      const status = e instanceof HttpErrorResponse ? e.status : 0;
+      refuse(status === 409 ? 'That person is already in the pool.' : status === 422 ? nesting : 'Could not add that member.');
     } finally {
       this.submitting = false;
     }
