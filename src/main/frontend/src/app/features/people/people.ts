@@ -171,6 +171,14 @@ interface StatementTaken {
       @if (bulkError()) {
         <p role="alert" class="error" data-testid="bulk-open-error">{{ bulkError() }}</p>
       }
+      <button type="button" data-testid="bulk-settle" (click)="bulkSettle()">Settle selected claims</button>
+      @if (bulkSettled(); as result) {
+        <p role="status">Settled <span data-testid="bulk-settled">{{ result.settled }}</span>,
+          refused <span data-testid="bulk-settle-refused">{{ result.refused }}</span></p>
+      }
+      @if (bulkSettleError()) {
+        <p role="alert" class="error" data-testid="bulk-settle-error">{{ bulkSettleError() }}</p>
+      }
       <table>
         <thead>
           <tr><th scope="col">Name</th><th scope="col">Grade</th><th scope="col">Claimed</th><th scope="col">Due total</th><th scope="col">Excess</th><th scope="col">Statements</th><th scope="col">Retired</th><th scope="col">Hold</th><th scope="col">Overdue</th><th scope="col">Patrons</th><th scope="col">Claims</th><th scope="col"><span class="visually-hidden">Actions</span></th></tr>
@@ -322,6 +330,9 @@ export class People {
   /** How many the last bulk open opened and refused; cleared while the next one runs. */
   protected readonly bulkOpened = signal<{ opened: number; refused: number } | null>(null);
   protected readonly bulkError = signal('');
+  /** How many the last bulk settle settled (or sent to PENDING) and refused; cleared while the next one runs. */
+  protected readonly bulkSettled = signal<{ settled: number; refused: number } | null>(null);
+  protected readonly bulkSettleError = signal('');
   private readonly claimsByPerson = computed(() => {
     const by = new Map<number, Claim[]>();
     for (const c of this.claims()) by.set(c.personId, [...(by.get(c.personId) ?? []), c]);
@@ -447,6 +458,8 @@ export class People {
       this.selectedIds.set(new Set());
       this.bulkOpened.set(null);
       this.bulkError.set('');
+      this.bulkSettled.set(null);
+      this.bulkSettleError.set('');
       this.rates.set([]);
       this.periods.set([]);
       this.statements.set([]);
@@ -467,7 +480,7 @@ export class People {
     return `/api/sheets/${encodeURIComponent(sheet)}/people`;
   }
 
-  /** A bulk open is under way; another press waits for its answer. */
+  /** A bulk open or settle is under way; another press waits for its answer. */
   private bulkRunning = false;
 
   private async load(sheet: string): Promise<void> {
@@ -770,6 +783,30 @@ export class People {
       this.bulkOpened.set(result);
     } catch {
       if (this.session.sheetId() === sheet) this.bulkError.set('Could not open the selected claims.');
+    } finally {
+      this.bulkRunning = false;
+    }
+  }
+
+  /** Settle every selected claim that can be settled, in list order; show how many settled and were refused. */
+  protected async bulkSettle(): Promise<void> {
+    if (this.bulkRunning) return;
+    this.bulkSettled.set(null);
+    this.bulkSettleError.set('');
+    const sheet = this.session.sheetId();
+    if (!sheet) return;
+    const base = `/api/sheets/${encodeURIComponent(sheet)}`;
+    this.bulkRunning = true;
+    try {
+      const result = await firstValueFrom(this.http.post<{ settled: number; refused: number }>(
+        `${base}/claims/settle`, { ids: [...this.selectedIds()] }, { headers: this.headers() }));
+      const claims = await firstValueFrom(this.http.get<Claim[]>(`${base}/claims`, { headers: this.headers() }));
+      if (this.session.sheetId() !== sheet) return;
+      this.claims.set(claims);
+      this.selectedIds.set(new Set());
+      this.bulkSettled.set(result);
+    } catch {
+      if (this.session.sheetId() === sheet) this.bulkSettleError.set('Could not settle the selected claims.');
     } finally {
       this.bulkRunning = false;
     }

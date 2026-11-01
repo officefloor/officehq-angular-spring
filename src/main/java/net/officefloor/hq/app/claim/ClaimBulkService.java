@@ -28,6 +28,18 @@ public class ClaimBulkService {
 
     /** Open each selected claim that can be opened, numbering them in list order. */
     public Result open(String sheetId, String user, Set<Long> ids) {
+        return change(sheetId, user, ids, ClaimStatus.OPEN);
+    }
+
+    /**
+     * Settle each selected claim that can be settled, by the rules of settling one: a claim over
+     * the user's clerk limit goes to PENDING and counts as settled.
+     */
+    public Result settle(String sheetId, String user, Set<Long> ids) {
+        return change(sheetId, user, ids, ClaimStatus.SETTLED);
+    }
+
+    private Result change(String sheetId, String user, Set<Long> ids, ClaimStatus next) {
         List<Claim> selected = repository.findBySheetIdOrderByListedDesc(sheetId).stream()
                 .filter(c -> ids.contains(c.getId()))
                 .sorted(Comparator.comparing(Claim::getPersonId).thenComparing(Claim::getListed, Comparator.reverseOrder()))
@@ -35,10 +47,10 @@ public class ClaimBulkService {
         int done = 0;
         for (Claim claim : selected) {
             try {
-                claims.changeStatus(sheetId, user, claim.getId(), ClaimStatus.OPEN);
+                claims.changeStatus(sheetId, user, claim.getId(), next);
                 done++;
-            } catch (ClaimStatusRefusedException | PeriodClosedException | ClaimNotFoundException
-                    | PersonNotFoundException refused) {
+            } catch (ClaimStatusRefusedException | ClaimSettledByOpenerException | PeriodClosedException
+                    | ClaimNotFoundException | PersonNotFoundException refused) {
                 // left as it is
             }
         }
