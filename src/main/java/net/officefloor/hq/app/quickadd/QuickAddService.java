@@ -10,7 +10,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 /**
- * Quick-add: a DRAFT claim of an amount, dated the sheet's today with an empty note, for the person
+ * Quick-add: a DRAFT claim of an amount, dated the entry date while set (else the sheet's today) with an empty note, for the person
  * of a name (ignoring case and surrounding spaces); with no such person on the sheet, they are added
  * first with grade A. It is one change: a refused claim rolls back the person added for it too.
  */

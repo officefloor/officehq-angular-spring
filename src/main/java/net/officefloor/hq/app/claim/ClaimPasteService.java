@@ -13,7 +13,7 @@ import org.springframework.transaction.annotation.Transactional;
 
 /**
  * Pasted claims: lines of name,amount,date,note (the note may hold commas and may be absent; a blank
- * date is the sheet's today), each a DRAFT claim for the person of the name on the sheet (ignoring
+ * date is the entry date while set, else the sheet's today), each a DRAFT claim for the person of the name on the sheet (ignoring
  * case and surrounding spaces), added in order exactly as the claim form adds one. Blank lines are
  * skipped; a paste with no line is refused. It is one change: a line that is refused refuses them all.
  */

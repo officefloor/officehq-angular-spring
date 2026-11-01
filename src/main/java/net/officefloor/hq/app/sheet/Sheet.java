@@ -89,6 +89,10 @@ public class Sheet {
     @Column(name = "grace_days")
     private Integer graceDays;
 
+    /** While set, a new claim given no date takes it rather than the sheet's today; null means off. */
+    @Column(name = "entry_date")
+    private LocalDate entryDate;
+
     /** Set once a steward archives the sheet: it stays visible and every change to it is refused. */
     @Column(name = "archived", nullable = false)
     private boolean archived;
@@ -242,6 +246,10 @@ public class Sheet {
     public Integer getGraceDays() { return graceDays; }
 
     public void setGraceDays(Integer graceDays) { this.graceDays = graceDays; }
+
+    public LocalDate getEntryDate() { return entryDate; }
+
+    public void setEntryDate(LocalDate entryDate) { this.entryDate = entryDate; }
 
     public boolean isArchived() { return archived; }
 

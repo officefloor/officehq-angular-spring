@@ -11,6 +11,7 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import net.officefloor.hq.app.setting.OpenToViewer;
 import org.springframework.validation.annotation.Validated;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
@@ -133,6 +134,7 @@ public class PersonController {
     }
 
     /** Give each selected person the grade from the date (blank: the sheet's today), in list order. */
+    @OpenToViewer
     @PostMapping("/grade")
     public BulkGradeResult bulkGrade(
             @PathVariable @Size(max = 100) @Pattern(regexp = "[A-Za-z0-9._-]+") String sheetId,

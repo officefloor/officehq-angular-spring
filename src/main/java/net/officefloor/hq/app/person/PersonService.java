@@ -13,6 +13,8 @@ import net.officefloor.hq.app.Audit;
 import net.officefloor.hq.app.claim.Claim;
 import net.officefloor.hq.app.claim.ClaimRepository;
 import net.officefloor.hq.app.rollup.RollupService;
+import net.officefloor.hq.app.setting.Role;
+import net.officefloor.hq.app.setting.SettingService;
 import net.officefloor.hq.app.sheet.Sheet;
 import net.officefloor.hq.app.sheet.SheetNotFoundException;
 import net.officefloor.hq.app.sheet.SheetRepository;
@@ -42,17 +44,19 @@ public class PersonService {
     private final SheetRepository sheets;
     private final ClaimRepository claims;
     private final RollupService rollup;
+    private final SettingService settings;
     private final Audit audit;
 
     public PersonService(PersonRepository people, PersonPatronRepository patrons,
             PersonWatchRepository watches, SheetRepository sheets, ClaimRepository claims, RollupService rollup,
-            Audit audit) {
+            SettingService settings, Audit audit) {
         this.claims = claims;
         this.watches = watches;
         this.people = people;
         this.patrons = patrons;
         this.sheets = sheets;
         this.rollup = rollup;
+        this.settings = settings;
         this.audit = audit;
     }
 
@@ -129,20 +133,23 @@ public class PersonService {
 
     /**
      * Give each of the people the grade from the date (blank: the sheet's today), in list order, each as
-     * its own edit would: name and terms kept, with its PERSON_EDITED and rollup lines. One not on the
-     * sheet refuses them all. Returns how many were changed.
+     * its own edit would: name and terms kept, with its PERSON_EDITED and rollup lines, and no grade
+     * recorded for one left on the grade in force today with the date blank. One not on the
+     * sheet refuses them all. A viewer's, or one on an archived sheet, goes through with nothing done.
+     * Returns how many were changed.
      */
     @Transactional
     public int bulkGrade(String sheetId, String user, Set<Long> ids, String grade, LocalDate from) {
-        LocalDate today = today(sheetId);
-        if (today == null) throw new SheetNotFoundException();
+        Sheet sheet = sheets.findById(sheetId).orElseThrow(SheetNotFoundException::new);
+        if (sheet.isArchived() || settings.roleOf(sheetId, user) == Role.VIEWER) return 0;
+        LocalDate today = sheet.getToday();
         List<Person> chosen = people.findBySheetIdOrderByIdAsc(sheetId).stream()
                 .filter(p -> ids.contains(p.getId())).toList();
         if (chosen.size() != ids.size()) throw new PersonNotFoundException();
         LocalDate on = from != null ? from : today;
         for (Person person : chosen) {
             RollupService.Snapshot before = rollup.snapshot(sheetId);
-            person.setGradeFrom(on, grade, today);
+            if (from != null || !grade.equals(person.gradeOn(today))) person.setGradeFrom(on, grade, today);
             Person saved = saveUnique(person);
             record("PERSON_EDITED", sheetId, user, saved, saved.gradeOn(today), "");
             rollup.recordChanges(sheetId, user, before);

@@ -26,7 +26,7 @@ import org.springframework.transaction.annotation.Transactional;
 
 /**
  * The claims on a sheet: listed newest first, added to a person and edited one at a time. A claim
- * given no date takes the sheet's today. Its due-by is fixed when it is added: its date plus its
+ * added with no date takes the entry date while one is set, else the sheet's today (an edit with none, the sheet's today). Its due-by is fixed when it is added: its date plus its
  * person's own terms, else the terms in force on that date of its person's grade then (else the
  * sheet's terms in force on it); it does not
  * move when its date or the terms change later. A claim is added as DRAFT and moves through its statuses
@@ -88,7 +88,7 @@ public class ClaimService {
         // The snapshot locks the sheet first, so the person is read as retired by any retirement before.
         RollupService.Snapshot before = rollup.snapshot(sheetId);
         Person person = people.findByIdAndSheetId(personId, sheetId).orElseThrow(PersonNotFoundException::new);
-        LocalDate on = dateOrToday(sheetId, date);
+        LocalDate on = dateOrEntryDate(sheetId, date);
         refuseIfClosed(sheetId, on);
         if (!person.mayClaimOn(on)) throw new PersonRetiredException();
         refuseUnlessCorrects(sheetId, personId, amount, corrects);
@@ -597,5 +597,12 @@ public class ClaimService {
 
     private LocalDate dateOrToday(String sheetId, LocalDate date) {
         return date != null ? date : sheets.today(sheetId);
+    }
+
+    /** A new claim's date: the one given, else the entry date while set, else the sheet's today. */
+    private LocalDate dateOrEntryDate(String sheetId, LocalDate date) {
+        if (date != null) return date;
+        LocalDate entryDate = settings.entryDate(sheetId);
+        return entryDate != null ? entryDate : sheets.today(sheetId);
     }
 }

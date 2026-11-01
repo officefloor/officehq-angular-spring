@@ -66,6 +66,8 @@ interface SettingsView {
   permissions: Partial<Record<PermAction, string>>;
   /** Past them, an open period closes when the sheet's today is changed; null when blank: off. */
   graceDays: number | null;
+  /** While set (yyyy-mm-dd), a new claim given no date takes it rather than the sheet's today; null when blank: off. */
+  entryDate: string | null;
 }
 
 /** A from-date field (yyyy-mm-dd) for a dated setting; blank: the sheet's today. */
@@ -76,7 +78,8 @@ const FROM = 'From (yyyy-mm-dd; blank: the sheet\'s today)';
 // sheet's for a person of that grade on the claim's date), the late percent (charged on an overdue claim's
 // figure for every full 30 days overdue, the one in force on each 30-day boundary), the policy date (blank: the sheet's today; a claim dated before it
 // rounds half up, else half to even), the period numbering from (blank: off; while the sheet's today is on or after it,
-// a claim opened is numbered within its period), the cap (blank: none; a person's due-total is at most it), the grace days (blank: off; not dated; when the
+// a claim opened is numbered within its period), the entry date (blank: off; not dated; while set, a new claim given no date,
+// from the claim form, the quick-add bar, a paste or a correction, takes it rather than the sheet's today), the cap (blank: none; a person's due-total is at most it), the grace days (blank: off; not dated; when the
 // sheet's today is changed, an open period whose to-date plus them is before it is closed), and the role given to each user name. Saving stores the settings whose
 // field was changed since the last save; clearing the clerk limit, the policy date, the period numbering from, the cap, the proof threshold or the note threshold (Delete or
 // Backspace) counts as a change even when it was already blank. The clerk limit, the floor, the terms, each grade's terms, the late
@@ -129,6 +132,10 @@ const FROM = 'From (yyyy-mm-dd; blank: the sheet\'s today)';
         <input id="setting-grace-days" data-testid="setting-grace-days" formControlName="graceDays" inputmode="numeric"
                (keydown.delete)="form.controls.graceDays.markAsDirty()"
                (keydown.backspace)="form.controls.graceDays.markAsDirty()" />
+        <label for="setting-entry-date">Entry date (a new claim's date when none is given; blank: off)</label>
+        <input id="setting-entry-date" data-testid="setting-entry-date" formControlName="entryDate" placeholder="yyyy-mm-dd"
+               (keydown.delete)="form.controls.entryDate.markAsDirty()"
+               (keydown.backspace)="form.controls.entryDate.markAsDirty()" />
         <label for="setting-cap">Cap (most a person's due-total can be; blank: none)</label>
         <input id="setting-cap" data-testid="setting-cap" formControlName="cap" inputmode="decimal"
                (keydown.delete)="form.controls.cap.markAsDirty()" (keydown.backspace)="form.controls.cap.markAsDirty()" />
@@ -174,6 +181,7 @@ const FROM = 'From (yyyy-mm-dd; blank: the sheet\'s today)';
       <p>Policy date now: <span data-testid="setting-policy-date-current">{{ session.policyDate() ?? '' }}</span></p>
       <p>Period numbering from now: <span data-testid="setting-period-numbering-from-current">{{ periodNumberingFrom() ?? '' }}</span></p>
       <p>Grace days now: <span data-testid="setting-grace-days-current">{{ graceDays() ?? '' }}</span></p>
+      <p>Entry date now: <span data-testid="setting-entry-date-current">{{ entryDate() ?? '' }}</span></p>
       <p>Cap now: <span data-testid="setting-cap-current">{{ session.cap() ?? '' }}</span></p>
       <p>Proof threshold now: <span data-testid="setting-proof-threshold-current">{{ session.proofThreshold() ?? '' }}</span></p>
       <p>Note threshold now: <span data-testid="setting-note-threshold-current">{{ session.noteThreshold() ?? '' }}</span></p>
@@ -252,6 +260,7 @@ export class Settings {
   });
   protected readonly periodNumberingFrom = signal<string | null>(null);
   protected readonly graceDays = signal<number | null>(null);
+  protected readonly entryDate = signal<string | null>(null);
   protected readonly userRoles = signal<RoleView[]>([]);
   protected readonly error = signal('');
   protected readonly roleError = signal('');
@@ -267,6 +276,7 @@ export class Settings {
     policyDate: new FormControl('', { nonNullable: true }),
     periodNumberingFrom: new FormControl('', { nonNullable: true }),
     graceDays: new FormControl('', { nonNullable: true }),
+    entryDate: new FormControl('', { nonNullable: true }),
     cap: new FormControl('', { nonNullable: true }),
     clerkLimitFrom: new FormControl('', { nonNullable: true }),
     floorFrom: new FormControl('', { nonNullable: true }),
@@ -318,6 +328,7 @@ export class Settings {
       this.session.loads();
       this.periodNumberingFrom.set(null);
       this.graceDays.set(null);
+      this.entryDate.set(null);
       this.userRoles.set([]);
       this.permissionsSet.set({});
       this.error.set('');
@@ -354,6 +365,7 @@ export class Settings {
   private show(view: SettingsView): void {
     this.periodNumberingFrom.set(view.periodNumberingFrom);
     this.graceDays.set(view.graceDays);
+    this.entryDate.set(view.entryDate);
     this.userRoles.set(view.roles);
     this.permissionsSet.set(view.permissions);
     this.session.dated.set(view.dated);
@@ -365,7 +377,7 @@ export class Settings {
     this.error.set('');
     const sheet = this.session.sheetId();
     if (!sheet) return;
-    const { clerkLimit, floor, terms, latePct, policyDate, periodNumberingFrom, graceDays, cap, proofThreshold, noteThreshold } = this.form.controls;
+    const { clerkLimit, floor, terms, latePct, policyDate, periodNumberingFrom, graceDays, entryDate, cap, proofThreshold, noteThreshold } = this.form.controls;
     const { clerkLimitFrom, floorFrom, termsFrom, latePctFrom, capFrom, proofThresholdFrom, noteThresholdFrom } = this.form.getRawValue();
     const value = clerkLimit.value.trim();
     const floorValue = floor.value.trim();
@@ -374,6 +386,7 @@ export class Settings {
     const policyDateValue = policyDate.value.trim();
     const periodNumberingFromValue = periodNumberingFrom.value.trim();
     const graceDaysValue = graceDays.value.trim();
+    const entryDateValue = entryDate.value.trim();
     const capValue = cap.value.trim();
     const proofThresholdValue = proofThreshold.value.trim();
     const noteThresholdValue = noteThreshold.value.trim();
@@ -420,6 +433,10 @@ export class Settings {
     }
     if (graceDays.dirty && graceDaysValue && !/^\d{1,4}$/.test(graceDaysValue)) {
       this.error.set('Enter grace days as a whole number of days, 0 or more, or leave it blank for off.');
+      return;
+    }
+    if (entryDate.dirty && entryDateValue && !isDate(entryDateValue)) {
+      this.error.set('Enter an entry date as yyyy-mm-dd, or leave it blank for off.');
       return;
     }
     if (cap.dirty && capValue && !/^\d{1,12}(\.\d{1,2})?$/.test(capValue)) {
@@ -499,6 +516,14 @@ export class Settings {
             { headers: this.headers() }),
         );
         graceDays.markAsPristine();
+        if (this.session.sheetId() === sheet) this.show(view);
+      }
+      if (entryDate.dirty) {
+        const view = await firstValueFrom(
+          this.http.put<SettingsView>(`${this.base(sheet)}/settings/entry-date`, { value: entryDateValue || null },
+            { headers: this.headers() }),
+        );
+        entryDate.markAsPristine();
         if (this.session.sheetId() === sheet) this.show(view);
       }
       if (cap.dirty) {

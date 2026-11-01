@@ -30,6 +30,7 @@ import org.springframework.transaction.annotation.Transactional;
  * and the period numbering from (none: off), from which a claim opened is numbered within its period;
  * and the cap (none: no cap), the most a person's due-total can be; and the proof threshold (none: none,
  * dated, taken on a claim's date), above which a claim's due needs a proof to be settled or approved;
+ * and the entry date (none: off, not dated), the date a new claim given none takes rather than the sheet's today;
  * and the grace days (none: off, not dated), past which an open period closes when the sheet's today changes;
  * and the permission matrix (not dated): for each action, the roles that may take it, blank keeping
  * its standing rule.
@@ -331,6 +332,23 @@ public class SettingService {
         audit.recordOnCommit("SETTING_CHANGED sheet=" + sheetId + " by=" + user.strip() + " key=grace-days value="
                 + (days == null ? "" : days.toString()));
         return days;
+    }
+
+    /** Change the entry date (null: off); no claim already added moves with it. */
+    @Transactional
+    public LocalDate setEntryDate(String sheetId, String user, LocalDate entryDate) {
+        Sheet sheet = sheets.findForUpdate(sheetId).orElseThrow(SheetNotFoundException::new);
+        sheet.setEntryDate(entryDate);
+        sheets.flush();
+        audit.recordOnCommit("SETTING_CHANGED sheet=" + sheetId + " by=" + user.strip() + " key=entry-date value="
+                + (entryDate == null ? "" : entryDate.toString()));
+        return entryDate;
+    }
+
+    /** The entry date as set; null when blank, which means off. */
+    @Transactional(readOnly = true)
+    public LocalDate entryDate(String sheetId) {
+        return sheets.findById(sheetId).orElseThrow(SheetNotFoundException::new).getEntryDate();
     }
 
     /** The grace days as set; null when blank, which means off. */
