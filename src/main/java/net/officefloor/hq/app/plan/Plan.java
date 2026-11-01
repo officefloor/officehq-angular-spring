@@ -46,11 +46,16 @@ public class Plan {
     @Column(name = "end_date", nullable = false)
     private LocalDate end;
 
+    /** The descendant sheet the plan makes its claims on, for the person of the same name there; empty for the
+     *  plan's own sheet. */
+    @Column(name = "target_sheet_id")
+    private String targetSheetId;
+
     protected Plan() {
     }
 
     public Plan(String sheetId, Long personId, BigDecimal amount, LocalDate start, Integer every, Integer day,
-            LocalDate end) {
+            LocalDate end, String targetSheetId) {
         this.sheetId = sheetId;
         this.personId = personId;
         this.amount = amount;
@@ -58,6 +63,7 @@ public class Plan {
         this.every = every;
         this.day = day;
         this.end = end;
+        this.targetSheetId = targetSheetId;
     }
 
     public Long getId() {
@@ -137,6 +143,10 @@ public class Plan {
 
     public LocalDate getEnd() {
         return end;
+    }
+
+    public String getTargetSheetId() {
+        return targetSheetId;
     }
 
     /** Change the amount the plan's claims are made with from now on. */

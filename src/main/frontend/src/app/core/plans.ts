@@ -13,6 +13,8 @@ export interface PlanView {
   every: number | null;
   day: number | null;
   end: string;
+  /** The descendant sheet the plan makes its claims on; null for the plan's own sheet. */
+  sheet: string | null;
   generated: number;
   /** The first five plan dates after the sheet's today and on or before the end, as of the last (re)load. */
   nextDates: string[];
@@ -36,6 +38,8 @@ export interface PlanForm {
   every: number | null;
   day: number | null;
   end: string;
+  /** The descendant sheet to make the claims on; null for the plan's own sheet. */
+  sheet: string | null;
 }
 
 /** What a generate did: how many claims it made, the claims in the order made, and the sheet's plans. */

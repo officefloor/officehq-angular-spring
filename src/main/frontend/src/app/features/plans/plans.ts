@@ -28,6 +28,9 @@ const DAY_PATTERN = /^\d{1,2}$/;
               every <span data-testid="plan-every">{{ pl.every }}</span> days
             }
             to <span data-testid="plan-end">{{ pl.end }}</span>
+            @if (pl.sheet) {
+              on sheet <span data-testid="plan-sheet">{{ pl.sheet }}</span>
+            }
             — made <span data-testid="plan-generated">{{ pl.generated }}</span>
             — next <span data-testid="plan-next-dates">{{ pl.nextDates.join(', ') }}</span>
             — paused <span data-testid="plan-paused">{{ pl.paused ? 'yes' : 'no' }}</span>
@@ -68,6 +71,9 @@ const DAY_PATTERN = /^\d{1,2}$/;
              inputmode="numeric" autocomplete="off" />
       <label [for]="'plan-form-end-' + personId()">end</label>
       <input [id]="'plan-form-end-' + personId()" type="date" data-testid="plan-form-end" formControlName="end" />
+      <label [for]="'plan-form-sheet-' + personId()">on sheet (blank: this one)</label>
+      <input [id]="'plan-form-sheet-' + personId()" data-testid="plan-form-sheet" formControlName="sheet"
+             autocomplete="off" />
       <button type="submit" data-testid="plan-form-submit" [disabled]="saving()">Add plan</button>
       @if (error(); as err) {
         <p role="alert" data-testid="plan-error">{{ err }}</p>
@@ -96,6 +102,7 @@ export class PersonPlans {
     every: new FormControl('', { nonNullable: true }),
     day: new FormControl('', { nonNullable: true }),
     end: new FormControl('', { nonNullable: true }),
+    sheet: new FormControl('', { nonNullable: true }),
   });
 
   constructor() {
@@ -104,7 +111,7 @@ export class PersonPlans {
       this.error.set(null);
       this.rowError.set(null);
       this.amountDraft.set({});
-      this.form.reset({ amount: '', start: '', every: '', day: '', end: '' }, { emitEvent: false });
+      this.form.reset({ amount: '', start: '', every: '', day: '', end: '', sheet: '' }, { emitEvent: false });
     });
     // An error is removed as soon as its form is changed.
     this.form.valueChanges.pipe(takeUntilDestroyed()).subscribe(() => this.error.set(null));
@@ -199,11 +206,12 @@ export class PersonPlans {
       every: every === '' ? null : Number(every),
       day: day === '' ? null : Number(day),
       end: value.end,
+      sheet: value.sheet.trim() === '' ? null : value.sheet.trim(),
     })
       .subscribe({
         next: () => {
           this.saving.set(false);
-          this.form.reset({ amount: '', start: '', every: '', day: '', end: '' }, { emitEvent: false });
+          this.form.reset({ amount: '', start: '', every: '', day: '', end: '', sheet: '' }, { emitEvent: false });
         },
         error: () => {
           this.saving.set(false);

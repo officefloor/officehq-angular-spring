@@ -27,12 +27,13 @@ public class PlanController {
     /** A plan as the screen shows it, with how many claims it has made so far and its next dates after the
      *  sheet's today. */
     public record PlanView(long id, long personId, String amount, LocalDate start, Integer every, Integer day,
-            LocalDate end, int generated, List<LocalDate> nextDates, boolean paused, List<ChangeView> changes) {
+            LocalDate end, String sheet, int generated, List<LocalDate> nextDates, boolean paused,
+            List<ChangeView> changes) {
 
         public static PlanView of(PlanService.Counted c) {
             Plan p = c.plan();
             return new PlanView(p.getId(), p.getPersonId(), p.getAmount().toPlainString(), p.getStart(), p.getEvery(),
-                    p.getDay(), p.getEnd(), c.generated(), c.nextDates(), c.paused(),
+                    p.getDay(), p.getEnd(), p.getTargetSheetId(), c.generated(), c.nextDates(), c.paused(),
                     c.changes().stream().map(ChangeView::of).toList());
         }
     }
@@ -50,9 +51,9 @@ public class PlanController {
     }
 
     /** A plan as the form submits it, with either an interval or a day of the month; a missing start takes the
-     *  sheet's today. */
+     *  sheet's today; a missing (or blank) sheet makes its claims on the plan's own sheet, else on that descendant. */
     public record PlanForm(@NotNull BigDecimal amount, LocalDate start, Integer every, Integer day,
-            @NotNull LocalDate end) {
+            @NotNull LocalDate end, @Size(max = 100) @Pattern(regexp = "[A-Za-z0-9._-]*") String sheet) {
     }
 
     /** What a generate did: how many claims it made, the claims in the order made, and the sheet's plans. */
@@ -78,7 +79,7 @@ public class PlanController {
             @RequestHeader("X-User") @NotBlank @Size(max = 100) String user,
             @Valid @RequestBody PlanForm request) {
         return PlanView.of(plans.add(sheetId, user, personId, request.amount(), request.start(), request.every(),
-                request.day(), request.end()));
+                request.day(), request.end(), request.sheet()));
     }
 
     @PostMapping("/plans/{planId}/pause")
@@ -111,7 +112,9 @@ public class PlanController {
             @PathVariable @NotBlank @Size(max = 100) @Pattern(regexp = "[A-Za-z0-9._-]+") String sheetId,
             @RequestHeader("X-User") @NotBlank @Size(max = 100) String user) {
         PlanService.Generated done = plans.generate(sheetId, user);
-        return new GeneratedView(done.claims().size(), done.claims().stream().map(ClaimView::of).toList(),
+        // Claims made on a descendant count, but only this sheet's are listed.
+        return new GeneratedView(done.claims().size(),
+                done.claims().stream().filter(c -> c.getSheetId().equals(sheetId)).map(ClaimView::of).toList(),
                 done.plans().stream().map(PlanView::of).toList());
     }
 }

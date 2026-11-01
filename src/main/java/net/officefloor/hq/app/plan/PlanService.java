@@ -156,10 +156,11 @@ public class PlanService {
     /** Add a plan for a person; a missing start takes the sheet's today. It runs either every so many days or
      *  monthly on a day of the month, not both. Refused when the amount is one the claim form refuses for a claim
      *  that corrects none (negative, or with more than two decimals), when the interval is not a whole number of days
-     *  of at least 1, when the day of the month is not 1 to 31, or when the end is before the start. */
+     *  of at least 1, when the day of the month is not 1 to 31, when the end is before the start, or when it names a
+     *  sheet (a blank one is none) that is not one of the sheet's descendants. */
     @Transactional
     public Counted add(String sheetId, String user, long personId, BigDecimal amount, LocalDate start, Integer every,
-            Integer day, LocalDate end) {
+            Integer day, LocalDate end, String target) {
         if (amount == null || amount.signum() < 0 || amount.stripTrailingZeros().scale() > 2) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "A plan's amount is not negative, with up to two decimals");
         }
@@ -183,13 +184,18 @@ public class PlanService {
         if (end.isBefore(from)) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "A plan's end is not before its start");
         }
+        String onSheet = target == null || target.isBlank() ? null : target.trim();
+        if (onSheet != null && !sheetStore.descendantsOf(sheetId).contains(onSheet)) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "A plan's sheet is one of this sheet's descendants");
+        }
         Plan plan = plans.saveAndFlush(new Plan(sheetId, personId, amount.setScale(2, RoundingMode.UNNECESSARY), from,
-                every, day, end));
+                every, day, end, onSheet));
         audit.recordChangeOnCommit(sheetId, user, "PLAN_ADDED sheet=" + sheetId + " by=" + user
                 + " name=" + person.getName() + " amount=" + plan.getAmount().toPlainString()
                 + " start=" + plan.getStart()
                 + (plan.getDay() != null ? " day=" + plan.getDay() : " every=" + plan.getEvery())
-                + " end=" + plan.getEnd());
+                + " end=" + plan.getEnd()
+                + (plan.getTargetSheetId() == null ? "" : " sheet=" + plan.getTargetSheetId()));
         return counted(plan, 0, sheet.getToday(), List.of(), List.of());
     }
 
@@ -198,7 +204,8 @@ public class PlanService {
      * plan date (its start, then every so many days; or its day in each month from the start's) up to its end and the
      * sheet's today that it has made none for yet and no pause of it skips, dated that day with an empty note, by the
      * claim form's rules: a date the form refuses is skipped, and tried again the next time. A viewer, who can change nothing, has every date
-     * refused, so makes none.
+     * refused, so makes none. A plan that names a descendant sheet makes its claims there instead, for the person of
+     * the same name on it (none when there is none), by that sheet's rules and written in its audit.
      */
     @Transactional
     public Generated generate(String sheetId, String user) {
@@ -215,13 +222,24 @@ public class PlanService {
         Map<Long, List<PlanPause>> paused = pausesOf(all);
         List<Claim> added = new ArrayList<>();
         for (Plan plan : all) {
+            String onSheet = plan.getTargetSheetId() == null ? sheetId : plan.getTargetSheetId();
+            Long personId = plan.getPersonId();
+            if (!onSheet.equals(sheetId)) {
+                String name = people.findByIdAndSheetId(plan.getPersonId(), sheetId).map(Person::getName).orElse(null);
+                personId = name == null || sheetStore.findById(onSheet).isEmpty() || roles.isViewer(onSheet, user.trim())
+                        ? null
+                        : people.findBySheetIdAndNameIgnoreCase(onSheet, name).map(Person::getId).orElse(null);
+                if (personId == null) {
+                    continue;
+                }
+            }
             List<PlanPause> its = paused.getOrDefault(plan.getId(), List.of());
             LocalDate last = plan.getEnd().isBefore(today) ? plan.getEnd() : today;
             for (LocalDate d : plan.datesUpTo(last)) {
-                if (done.contains(plan.getId() + "@" + d) || skips(its, d) || !claims.accepts(sheetId, plan.getPersonId(), d)) {
+                if (done.contains(plan.getId() + "@" + d) || skips(its, d) || !claims.accepts(onSheet, personId, d)) {
                     continue;
                 }
-                Claim claim = claims.add(sheetId, user, plan.getPersonId(), plan.getAmount(), d, "", null, null);
+                Claim claim = claims.add(onSheet, user, personId, plan.getAmount(), d, "", null, null);
                 made.saveAndFlush(new PlanClaim(plan.getId(), d, claim.getId()));
                 added.add(claim);
             }
