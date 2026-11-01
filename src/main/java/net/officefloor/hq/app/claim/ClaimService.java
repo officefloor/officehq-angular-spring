@@ -267,6 +267,47 @@ public class ClaimService {
         return saved;
     }
 
+    /** A split claim as it now is, and the new claim split off it. */
+    public record Split(Claim original, Claim split) {}
+
+    /**
+     * Split an amount (more than 0.00 and less than its amount) off an OPEN claim, by a user whose role may
+     * open a claim. The claim keeps the rest of its amount and loses any figure a statement bound it to; the
+     * new claim is OPEN with the split-off amount, the same date and note, the sheet's next number, opened
+     * by the user, with its due-by fixed now from the terms in force on the date, and names the original's
+     * number as split from. Refused for a claim not OPEN, a deferred one, or one dated inside a closed period.
+     */
+    @Transactional
+    public Split split(String sheetId, String user, Long id, BigDecimal amount) {
+        // Numbering locks the sheet first, so the claim is read once no other change is under way.
+        Sheet numbering = sheets.lockForNumbering(sheetId);
+        RollupService.Snapshot before = rollup.snapshot(sheetId);
+        Claim claim = claims.findByIdAndSheetId(id, sheetId).orElseThrow(ClaimNotFoundException::new);
+        if (claim.getStatus() != ClaimStatus.OPEN) throw new ClaimStatusRefusedException();
+        if (claim.isDeferredOn(sheets.today(sheetId))) throw new ClaimDeferredException();
+        if (!settings.mayDo(sheetId, user, "open")) throw new ClaimNotPermittedException();
+        refuseIfClosed(sheetId, claim.getDate());
+        if (amount.signum() <= 0 || amount.compareTo(claim.getAmount()) >= 0) throw new ClaimSplitRefusedException();
+        Person person = people.findByIdAndSheetId(claim.getPersonId(), sheetId).orElseThrow(PersonNotFoundException::new);
+        LocalDate on = claim.getDate();
+        claim.setAmount(claim.getAmount().subtract(amount));
+        claim.unstate();
+        Claim original = claims.saveAndFlush(claim);
+        LocalDate dueBy = on.plusDays(settings.termsFor(sheetId, person.gradeOn(on), on));
+        Claim split = new Claim(sheetId, person.getId(), amount, on, original.getNote(), dueBy);
+        split.setSplitFrom(original.getNumber());
+        number(numbering, split);
+        split.setOpenedBy(user.strip());
+        split.setStatus(ClaimStatus.OPEN);
+        split = claims.saveAndFlush(split);
+        logStatus(sheetId, user, person, split);
+        split = claims.saveAndFlush(split);
+        record("CLAIM_SPLIT", sheetId, user, person, original, original.getNumber(), " into=" + split.getNumber());
+        record("CLAIM_OPENED", sheetId, user, person, split);
+        rollup.recordChanges(sheetId, user, before);
+        return new Split(original, split);
+    }
+
     /**
      * Defer an OPEN claim until a date after the sheet's today: until the sheet's today reaches it the claim
      * counts in no total, is not overdue, cannot be settled and is left unbound by a statement. Refused for a

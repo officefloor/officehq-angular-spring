@@ -35,7 +35,7 @@ public class ClaimController {
     public record ClaimView(Long id, Long personId, String amount, LocalDate date, String note, ClaimStatus status,
             String number, String settledDue, String openedBy, boolean stated, String statedDue, String corrects,
             LocalDate dueBy, List<LogLineView> log, LocalDate deferredUntil,
-            int proofs) {
+            int proofs, String splitFrom) {
         public static ClaimView of(Claim claim) {
             return new ClaimView(claim.getId(), claim.getPersonId(), claim.getAmount().toPlainString(),
                     claim.getDate(), claim.getNote(), claim.getStatus(), claim.getNumber(),
@@ -43,7 +43,7 @@ public class ClaimController {
                     claim.getOpenedBy(), claim.isStated(),
                     claim.getStatedDue() == null ? null : claim.getStatedDue().setScale(2).toPlainString(),
                     claim.getCorrects(), claim.getDueBy(), claim.getLog().stream().map(LogLineView::of).toList(),
-                    claim.getDeferredUntil(), claim.getProofs());
+                    claim.getDeferredUntil(), claim.getProofs(), claim.getSplitFrom());
         }
     }
 
@@ -86,6 +86,17 @@ public class ClaimController {
 
     /** The person on the sheet a claim is moved to. */
     public record ReassignRequest(@NotNull Long personId) {}
+
+    /** The amount split off an OPEN claim: more than 0.00 and less than its amount. */
+    public record SplitRequest(@NotNull @Pattern(regexp = "\\d{1,12}(\\.\\d{1,2})?") String amount) {
+
+        BigDecimal amountValue() {
+            return new BigDecimal(amount).setScale(2);
+        }
+    }
+
+    /** A split claim as it now is, and the new claim split off it. */
+    public record SplitView(ClaimView original, ClaimView split) {}
 
     /** The claims selected for a bulk change, by id. */
     public record BulkRequest(@NotNull @Size(max = 1000) Set<@NotNull Long> ids) {}
@@ -241,5 +252,15 @@ public class ClaimController {
             @RequestHeader("X-User") @NotBlank @Size(max = 100) String user,
             @RequestBody @Valid ReassignRequest request) {
         return ClaimView.of(service.reassign(sheetId, user, id, request.personId()));
+    }
+
+    @PostMapping("/claims/{id}/split")
+    public SplitView split(
+            @PathVariable @Size(max = 100) @Pattern(regexp = "[A-Za-z0-9._-]+") String sheetId,
+            @PathVariable Long id,
+            @RequestHeader("X-User") @NotBlank @Size(max = 100) String user,
+            @RequestBody @Valid SplitRequest request) {
+        ClaimService.Split split = service.split(sheetId, user, id, request.amountValue());
+        return new SplitView(ClaimView.of(split.original()), ClaimView.of(split.split()));
     }
 }

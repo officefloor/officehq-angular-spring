@@ -45,6 +45,8 @@ export interface Claim {
   deferredUntil: string | null;
   /** How many proofs it has; one above the proof threshold in force on its date needs one to be settled or approved. */
   proofs: number;
+  /** The number of the claim it was split off; null unless split off one. */
+  splitFrom: string | null;
 }
 
 /** A status a claim was given, by whom, on the sheet's today then, with its due then (null: none). */
@@ -217,7 +219,7 @@ function notEditable(status: ClaimStatus | undefined): string {
 }
 
 // One person's claims, newest first, with one form to add a claim or edit one, and buttons to
-// open, settle or void each claim, approve or reject (with a reason) a PENDING one, re-settle a SETTLED one, move one to another person, and a checkbox to select each for a bulk change.
+// open, settle or void each claim, approve or reject (with a reason) a PENDING one, re-settle a SETTLED one, move one to another person, split an amount off an OPEN one, and a checkbox to select each for a bulk change.
 @Component({
   selector: 'app-claims',
   imports: [ReactiveFormsModule],
@@ -257,6 +259,7 @@ function notEditable(status: ClaimStatus | undefined): string {
           <span>Deferred until <span data-testid="claim-deferred-until">{{ c.deferredUntil ?? '' }}</span></span>
           <span>Proofs <span data-testid="claim-proofs">{{ c.proofs }}</span></span>
           <span>Corrects <span data-testid="claim-corrects">{{ c.corrects ?? '' }}</span></span>
+          <span>Split from <span data-testid="claim-split-from">{{ c.splitFrom ?? '' }}</span></span>
           <ol [attr.aria-label]="'Status log of claim of ' + c.amount + ' on ' + c.date">
             @for (line of c.log; track $index) {
               <li data-testid="claim-log-line">{{ line.status }} by {{ line.by }} on {{ line.date }} due={{ line.due ?? na }}</li>
@@ -292,6 +295,11 @@ function notEditable(status: ClaimStatus | undefined): string {
           </select>
           <button type="button" data-testid="claim-reassign" (click)="reassign(c, reassignTo.value)"
                   [attr.aria-label]="'Move claim of ' + c.amount + ' on ' + c.date">Move</button>
+          <label [for]="fieldId('split-' + c.id)">Split off</label>
+          <input [id]="fieldId('split-' + c.id)" data-testid="claim-split-amount" inputmode="decimal" #splitAmount
+                 (input)="clearClaimError(c.id)" />
+          <button type="button" data-testid="claim-split" (click)="split(c, splitAmount.value)"
+                  [attr.aria-label]="'Split claim of ' + c.amount + ' on ' + c.date">Split</button>
           @if (editingId() === c.id) {
             <button type="button" data-testid="claim-cancel" (click)="cancel()">Cancel</button>
           } @else {
@@ -528,6 +536,44 @@ export class Claims {
         : e instanceof HttpErrorResponse && e.status === 422
         ? RETIRED
         : 'Could not move that claim.';
+      this.claimError.set({ id: c.id, message });
+    }
+  }
+
+  /**
+   * Split an amount (more than 0.00 and less than its amount) off an OPEN claim into a new OPEN claim; a
+   * PENDING, deferred or settled claim, one dated inside a closed period, or a user whose role may not open a
+   * claim is refused.
+   */
+  protected async split(c: Claim, amount: string): Promise<void> {
+    this.claimError.set(null);
+    const sheet = this.session.sheetId();
+    if (!sheet) return;
+    const value = amount.trim();
+    if (!/^\d{1,12}(\.\d{1,2})?$/.test(value) || cents(value) <= 0 || cents(value) >= cents(c.amount)) {
+      this.claimError.set({ id: c.id, message: 'Enter an amount more than 0.00 and less than the claim\'s amount to split off.' });
+      return;
+    }
+    const url = `/api/sheets/${encodeURIComponent(sheet)}/claims/${c.id}/split`;
+    try {
+      const result = await firstValueFrom(
+        this.http.post<{ original: Claim; split: Claim }>(url, { amount: value }, { headers: this.headers() }));
+      if (this.session.sheetId() !== sheet) return;
+      this.saved.emit(result.original);
+      this.saved.emit(result.split);
+    } catch (e) {
+      if (this.session.sheetId() !== sheet) return;
+      const message = e instanceof HttpErrorResponse && e.status === 423
+        ? CLOSED
+        : e instanceof HttpErrorResponse && e.status === 409
+        ? `A ${c.status} claim cannot be split; only an OPEN one can.`
+        : e instanceof HttpErrorResponse && e.status === 412
+        ? `A deferred claim cannot be split until ${c.deferredUntil}.`
+        : e instanceof HttpErrorResponse && e.status === 403
+        ? 'Your role may not open a claim on this sheet, so it may not split one.'
+        : e instanceof HttpErrorResponse && e.status === 422
+        ? 'Enter an amount more than 0.00 and less than the claim\'s amount to split off.'
+        : 'Could not split that claim.';
       this.claimError.set({ id: c.id, message });
     }
   }

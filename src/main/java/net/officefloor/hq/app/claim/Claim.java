@@ -97,6 +97,10 @@ public class Claim {
     @Column(name = "corrects")
     private String corrects;
 
+    /** The number of the claim it was split from; none unless split off one. */
+    @Column(name = "split_from")
+    private String splitFrom;
+
     /** How many proofs it has; raised one at a time while not SETTLED or VOID. */
     @Column(name = "proofs", nullable = false)
     private int proofs;
@@ -130,6 +134,10 @@ public class Claim {
     public String getCorrects() { return corrects; }
 
     public void setCorrects(String corrects) { this.corrects = corrects; }
+
+    public String getSplitFrom() { return splitFrom; }
+
+    public void setSplitFrom(String splitFrom) { this.splitFrom = splitFrom; }
 
     public String getSheetId() { return sheetId; }
 
