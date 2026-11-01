@@ -18,4 +18,13 @@ export class Snapshots {
   list(sheetId: string): Observable<SnapshotView[]> {
     return this.http.get<SnapshotView[]>(`/api/sheets/${encodeURIComponent(sheetId)}/snapshots`);
   }
+
+  /** Two snapshot dates (yyyy-mm-dd) compared, a line per person in list order: name, due-total in the snapshot of
+   *  the from-date (blank: the sheet's today), and in that of the to-date (blank: their due-total now), trimmed. */
+  compare(sheetId: string, from: string, to: string): Observable<string[]> {
+    const params: Record<string, string> = {};
+    if (from !== '') params['from'] = from;
+    if (to !== '') params['to'] = to;
+    return this.http.get<string[]>(`/api/sheets/${encodeURIComponent(sheetId)}/snapshots/compare`, { params });
+  }
 }

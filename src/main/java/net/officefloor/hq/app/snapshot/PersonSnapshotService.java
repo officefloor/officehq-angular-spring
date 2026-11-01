@@ -1,7 +1,9 @@
 package net.officefloor.hq.app.snapshot;
 
 import java.time.LocalDate;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.Set;
 import java.util.stream.Collectors;
 import org.springframework.stereotype.Service;
@@ -25,6 +27,19 @@ public class PersonSnapshotService {
         return snapshots.findBySheetIdOrderByDayAscIdAsc(sheetId).stream()
                 .filter(s -> asOf == null || s.writtenBy(asOf))
                 .toList();
+    }
+
+    /** Each person's due-total in the snapshot line written when the sheet's today left the day, by person id: the
+     *  latest such line when it was left more than once; a person with none is missing. */
+    @Transactional(readOnly = true)
+    public Map<Long, String> on(String sheetId, LocalDate day) {
+        Map<Long, String> dueTotals = new HashMap<>();
+        for (PersonSnapshot s : snapshots.findBySheetIdOrderByDayAscIdAsc(sheetId)) {
+            if (s.getDay().equals(day)) {
+                dueTotals.put(s.getPersonId(), s.getDueTotal());
+            }
+        }
+        return dueTotals;
     }
 
     /** Record the person's due-total on the day being left for the sheet's new today. */

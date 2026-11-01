@@ -12,6 +12,7 @@ import { PeopleList } from '../people/people';
 import { RatesPanel } from '../rates/rates';
 import { SearchPanel } from '../search/search';
 import { SettingsPanel } from '../settings/settings';
+import { SnapshotComparePanel } from '../snapshots/snapshot-compare';
 import { TemplatesPanel } from '../templates/templates';
 import { VoidReasonsPanel } from '../void-reasons/void-reasons';
 
@@ -20,7 +21,7 @@ import { VoidReasonsPanel } from '../void-reasons/void-reasons';
   selector: 'app-home',
   imports: [ReactiveFormsModule, PeopleList, RatesPanel, SettingsPanel, DelegationsPanel, HolidaysPanel,
     VoidReasonsPanel, TemplatesPanel, NotesPanel, SearchPanel, AuditPanel,
-    ActivityPanel, DuplicatesPanel],
+    ActivityPanel, DuplicatesPanel, SnapshotComparePanel],
   template: `
     @if (session.user(); as user) {
       <p>Signed in as <strong data-testid="current-user">{{ user }}</strong></p>
@@ -94,6 +95,7 @@ import { VoidReasonsPanel } from '../void-reasons/void-reasons';
         <app-people />
         <app-duplicates />
         <app-search />
+        <app-snapshot-compare />
         <app-audit />
         <app-activity />
       } @else {
