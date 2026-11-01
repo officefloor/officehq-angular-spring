@@ -84,6 +84,8 @@ const DAY_PATTERN = /^\d{1,2}$/;
 export class PersonPlans {
   readonly personId = input.required<number>();
   readonly personName = input.required<string>();
+  /** The DRAFT claims a change of a plan's amount edited. */
+  readonly claimsEdited = output<ClaimView[]>();
 
   protected readonly plans = inject(Plans);
   private readonly sheets = inject(Sheets);
@@ -124,7 +126,8 @@ export class PersonPlans {
     if (this.rowError()?.planId === planId) this.rowError.set(null);
   }
 
-  /** Change the plan's amount for the claims generated from now on; refused when the amount is bad. */
+  /** Change the plan's amount for the claims generated from now on and its DRAFT claims; refused when the amount is
+   *  bad. */
   protected changeAmount(planId: number): void {
     if (this.busy() !== null) return;
     this.rowError.set(null);
@@ -137,8 +140,9 @@ export class PersonPlans {
     }
     this.busy.set(planId);
     this.plans.changeAmount(sheet.id, planId, amount).subscribe({
-      next: () => {
+      next: (done) => {
         this.busy.set(null);
+        this.claimsEdited.emit(done.claims);
         this.amountDraft.update((d) => ({ ...d, [planId]: '' }));
       },
       error: () => {

@@ -11,7 +11,9 @@ import java.util.Set;
 import java.util.stream.Collectors;
 import net.officefloor.hq.app.Audit;
 import net.officefloor.hq.app.claim.Claim;
+import net.officefloor.hq.app.claim.ClaimRepository;
 import net.officefloor.hq.app.claim.ClaimService;
+import net.officefloor.hq.app.claim.ClaimStatus;
 import net.officefloor.hq.app.person.Person;
 import net.officefloor.hq.app.person.PersonRepository;
 import net.officefloor.hq.app.role.RoleService;
@@ -33,6 +35,7 @@ public class PlanService {
     private final PlanChangeRepository changes;
     private final PersonRepository people;
     private final ClaimService claims;
+    private final ClaimRepository claimStore;
     private final SheetService sheets;
     private final SheetRepository sheetStore;
     private final RoleService roles;
@@ -40,13 +43,14 @@ public class PlanService {
 
     public PlanService(PlanRepository plans, PlanClaimRepository made, PlanPauseRepository pauses,
             PlanChangeRepository changes, PersonRepository people, ClaimService claims,
-            SheetService sheets, SheetRepository sheetStore, RoleService roles, Audit audit) {
+            ClaimRepository claimStore, SheetService sheets, SheetRepository sheetStore, RoleService roles, Audit audit) {
         this.plans = plans;
         this.made = made;
         this.pauses = pauses;
         this.changes = changes;
         this.people = people;
         this.claims = claims;
+        this.claimStore = claimStore;
         this.sheets = sheets;
         this.sheetStore = sheetStore;
         this.roles = roles;
@@ -64,6 +68,11 @@ public class PlanService {
 
     /** What a generate did: the claims it made, in the order made, and every plan on the sheet as it is now. */
     public record Generated(List<Claim> claims, List<Counted> plans) {
+    }
+
+    /** What a change of a plan's amount did: the plan as it is now, and the DRAFT claims it generated that took the
+     *  new amount, in the order they were made. */
+    public record Changed(Counted plan, List<Claim> edited) {
     }
 
     /** The sheet's plans in the order they were added, each with how many claims it has made. */
@@ -129,11 +138,12 @@ public class PlanService {
                 changes.findByPlanIdInOrderByIdAsc(List.of(planId)));
     }
 
-    /** Change the plan's amount from the sheet's today: the claims generated from then on take the new amount, those
-     *  already generated keep theirs. Refused when the amount is one the plan form refuses (negative, or with more
+    /** Change the plan's amount from the sheet's today: the claims generated from then on take the new amount, and
+     *  so do those it already generated that are still DRAFT, each edited as the claim form would edit it (on the
+     *  sheet it was made on); those in any other status keep theirs. Refused when one of those edits is refused, or when the amount is one the plan form refuses (negative, or with more
      *  than two decimals). */
     @Transactional
-    public Counted changeAmount(String sheetId, String user, long planId, BigDecimal amount) {
+    public Changed changeAmount(String sheetId, String user, long planId, BigDecimal amount) {
         if (amount == null || amount.signum() < 0 || amount.stripTrailingZeros().scale() > 2) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "A plan's amount is not negative, with up to two decimals");
         }
@@ -148,9 +158,19 @@ public class PlanService {
         changes.saveAndFlush(new PlanChange(planId, sheet.getToday(), now));
         audit.recordChangeOnCommit(sheetId, user, "PLAN_CHANGED sheet=" + sheetId + " by=" + user
                 + " name=" + person.getName() + " start=" + plan.getStart() + " amount=" + now.toPlainString());
-        int generated = made.findByPlanIdInOrderByIdAsc(List.of(planId)).size();
-        return counted(plan, generated, sheet.getToday(), pauses.findByPlanIdInOrderByIdAsc(List.of(planId)),
-                changes.findByPlanIdInOrderByIdAsc(List.of(planId)));
+        List<PlanClaim> its = made.findByPlanIdInOrderByIdAsc(List.of(planId));
+        List<Claim> edited = new ArrayList<>();
+        for (PlanClaim pc : its) {
+            Claim draft = claimStore.findById(pc.getClaimId()).filter(c -> c.getStatus() == ClaimStatus.DRAFT)
+                    .orElse(null);
+            if (draft != null) {
+                edited.add(claims.update(draft.getSheetId(), user, draft.getId(), now, draft.getDate(),
+                        draft.getNote(), draft.getCorrects(), draft.getRef(), draft.getTags()));
+            }
+        }
+        int generated = its.size();
+        return new Changed(counted(plan, generated, sheet.getToday(), pauses.findByPlanIdInOrderByIdAsc(List.of(planId)),
+                changes.findByPlanIdInOrderByIdAsc(List.of(planId))), edited);
     }
 
     /** Add a plan for a person; a missing start takes the sheet's today. It runs either every so many days or

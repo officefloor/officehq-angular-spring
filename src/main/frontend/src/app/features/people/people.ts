@@ -552,7 +552,7 @@ function csvField(value: string): string {
             @if (personError()?.id === p.id) {
               <p role="alert" data-testid="person-error">{{ personError()?.message }}</p>
             }
-            <app-person-plans [personId]="p.id" [personName]="p.name" />
+            <app-person-plans [personId]="p.id" [personName]="p.name" (claimsEdited)="plansGenerated($event)" />
             <app-person-claims [personId]="p.id" [personName]="p.name" [claims]="claimsOf(p.id)" [ratesByGrade]="rates.lineByGrade()" [grades]="p"
                                [periods]="periods.list()" [holds]="p.holds" [retiredFrom]="p.retiredFrom" [others]="othersOf(p.id)"
                                [selected]="selectedClaims()" (selectToggled)="toggleSelected($event)"
@@ -2010,7 +2010,7 @@ export class PeopleList {
     });
   }
 
-  /** Show the claims a generate of the sheet's plans made. */
+  /** Show the claims a generate of the sheet's plans made, or a change of a plan's amount edited. */
   protected plansGenerated(made: ClaimView[]): void {
     made.forEach((c) => this.claimSaved(c));
   }

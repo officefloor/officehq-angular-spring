@@ -60,6 +60,11 @@ public class PlanController {
     public record GeneratedView(int made, List<ClaimView> claims, List<PlanView> plans) {
     }
 
+    /** What a change of a plan's amount did: the plan as it is now, and the DRAFT claims on this sheet it generated
+     *  that took the new amount. */
+    public record ChangedView(PlanView plan, List<ClaimView> claims) {
+    }
+
     private final PlanService plans;
 
     public PlanController(PlanService plans) {
@@ -99,12 +104,15 @@ public class PlanController {
     }
 
     @PostMapping("/plans/{planId}/amount")
-    public PlanView changeAmount(
+    public ChangedView changeAmount(
             @PathVariable @NotBlank @Size(max = 100) @Pattern(regexp = "[A-Za-z0-9._-]+") String sheetId,
             @PathVariable long planId,
             @RequestHeader("X-User") @NotBlank @Size(max = 100) String user,
             @Valid @RequestBody AmountForm request) {
-        return PlanView.of(plans.changeAmount(sheetId, user, planId, request.amount()));
+        PlanService.Changed done = plans.changeAmount(sheetId, user, planId, request.amount());
+        // Drafts edited on a descendant change too, but only this sheet's are listed.
+        return new ChangedView(PlanView.of(done.plan()),
+                done.edited().stream().filter(c -> c.getSheetId().equals(sheetId)).map(ClaimView::of).toList());
     }
 
     @PostMapping("/plans/generate")

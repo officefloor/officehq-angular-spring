@@ -49,6 +49,13 @@ export interface GeneratedView {
   plans: PlanView[];
 }
 
+/** What a change of a plan's amount did: the plan as it is now, and the DRAFT claims on this sheet it generated that
+ *  took the new amount. */
+export interface ChangedView {
+  plan: PlanView;
+  claims: ClaimView[];
+}
+
 const NO_PLANS: PlanView[] = [];
 
 // The plans on the active sheet, in the order they were added.
@@ -92,10 +99,11 @@ export class Plans {
     );
   }
 
-  /** Change the plan's amount for the claims generated from now on; refused when the amount is bad. */
-  changeAmount(sheetId: string, planId: number, amount: string): Observable<PlanView> {
-    return this.http.post<PlanView>(`${this.base(sheetId)}/plans/${planId}/amount`, { amount }).pipe(
-      tap((changed) => this.list.update((list) => list.map((p) => (p.id === changed.id ? changed : p)))),
+  /** Change the plan's amount for the claims generated from now on and its DRAFT claims; refused when the amount is
+   *  bad or one of those drafts cannot be edited. */
+  changeAmount(sheetId: string, planId: number, amount: string): Observable<ChangedView> {
+    return this.http.post<ChangedView>(`${this.base(sheetId)}/plans/${planId}/amount`, { amount }).pipe(
+      tap(({ plan }) => this.list.update((list) => list.map((p) => (p.id === plan.id ? plan : p)))),
     );
   }
 
