@@ -1,0 +1,193 @@
+diff --git a/src/main/frontend/src/app/features/rates/rates.ts b/src/main/frontend/src/app/features/rates/rates.ts
+index b7dd04e17..3edac5974 100644
+--- a/src/main/frontend/src/app/features/rates/rates.ts
++++ b/src/main/frontend/src/app/features/rates/rates.ts
+@@ -76,6 +76,26 @@ export function rateOn(rates: Rate[], date: string): Rate | null {
+           <p role="alert" class="error" data-testid="rate-form-error">{{ error() }}</p>
+         }
+       </form>
++      <form [formGroup]="previewForm" (ngSubmit)="preview()" aria-label="Preview rate">
++        <label for="rate-preview-grade">Grade</label>
++        <select id="rate-preview-grade" data-testid="rate-preview-grade" formControlName="grade">
++          @for (g of grades; track g) {
++            <option [value]="g">{{ g }}</option>
++          }
++        </select>
++        <label for="rate-preview-pct">Candidate rate (%)</label>
++        <input id="rate-preview-pct" data-testid="rate-preview-pct" formControlName="pct" inputmode="decimal" />
++        <button type="submit" data-testid="rate-preview">Preview</button>
++        @if (previewed(); as p) {
++          <p aria-live="polite">
++            Claims changed <span data-testid="rate-preview-count">{{ p.count }}</span>,
++            difference <span data-testid="rate-preview-diff">{{ p.diff }}</span>
++          </p>
++        }
++        @if (previewError()) {
++          <p role="alert" class="error" data-testid="rate-preview-error">{{ previewError() }}</p>
++        }
++      </form>
+       <table>
+         <caption>In force today</caption>
+         <thead>
+@@ -130,6 +150,15 @@ export class Rates {
+     from: new FormControl('', { nonNullable: true }),
+     to: new FormControl('', { nonNullable: true }),
+   });
++  protected readonly previewForm = new FormGroup({
++    grade: new FormControl('A', { nonNullable: true }),
++    pct: new FormControl('', { nonNullable: true }),
++  });
++  /** The last preview's answer: how many open claims' dues would change, and the sum of the differences. */
++  protected readonly previewed = signal<{ count: number; diff: string } | null>(null);
++  protected readonly previewError = signal('');
++  /** Counts each preview, so only the latest one's answer is shown. */
++  private previewSeq = 0;
+   /** By grade, then from-date, the one from the start first. */
+   protected readonly sorted = computed(() =>
+     [...this.rates()].sort((a, b) =>
+@@ -139,6 +168,11 @@ export class Rates {
+ 
+   constructor() {
+     this.form.valueChanges.subscribe(() => this.error.set(''));
++    this.previewForm.valueChanges.subscribe(() => {
++      this.previewSeq++;
++      this.previewed.set(null);
++      this.previewError.set('');
++    });
+   }
+ 
+   protected currentOf(grade: string): string | null {
+@@ -190,4 +224,35 @@ export class Rates {
+       this.saving = false;
+     }
+   }
++
++  /** Ask the store what the candidate rate would change for the grade; nothing is saved. */
++  protected async preview(): Promise<void> {
++    const seq = ++this.previewSeq;
++    this.previewed.set(null);
++    this.previewError.set('');
++    const sheet = this.session.sheetId();
++    if (!sheet) return;
++    const raw = this.previewForm.getRawValue();
++    const pct = raw.pct.trim();
++    if (!GRADES.includes(raw.grade)) {
++      this.previewError.set('Choose a grade.');
++      return;
++    }
++    if (!/^\d{1,5}(\.\d{1,2})?$/.test(pct)) {
++      this.previewError.set('Enter a percent of 0.00 or more, with at most two decimals.');
++      return;
++    }
++    try {
++      const result = await firstValueFrom(
++        this.http.get<{ count: number; diff: string }>(`/api/sheets/${encodeURIComponent(sheet)}/rates/${raw.grade}/preview`, {
++          params: { pct },
++          headers: { 'X-User': this.session.user() ?? '' },
++        }),
++      );
++      if (seq !== this.previewSeq || this.session.sheetId() !== sheet) return;
++      this.previewed.set(result);
++    } catch {
++      if (seq === this.previewSeq) this.previewError.set('Could not preview that rate.');
++    }
++  }
+ }
+diff --git a/src/main/java/net/officefloor/hq/app/claim/ClaimService.java b/src/main/java/net/officefloor/hq/app/claim/ClaimService.java
+index 1953478fe..981384b6a 100644
+--- a/src/main/java/net/officefloor/hq/app/claim/ClaimService.java
++++ b/src/main/java/net/officefloor/hq/app/claim/ClaimService.java
+@@ -629,8 +629,43 @@ public class ClaimService {
+      * has none. A statement binds the figure, never the charge nor the floor.
+      */
+     public BigDecimal chargedFigureOf(String sheetId, Person person, Claim claim) {
+-        BigDecimal figure = figureOf(sheetId, person, claim);
+-        if (claim.getSettledDue() != null) return figure;
++        return charged(sheetId, person, claim, figureOf(sheetId, person, claim));
++    }
++
++    /** What a rate preview finds: how many claims' dues would change, and by how much in all. */
++    public record RatePreview(int count, BigDecimal diff) {}
++
++    /**
++     * How many OPEN and PENDING claims of people on the grade (the one in force on the claim's date) would show
++     * a different due were the percent the grade's rate on every date, and the sum of new minus current dues
++     * (a due of n/a counts as 0). A claim bound by a statement does not change. Nothing is stored.
++     */
++    @Transactional(readOnly = true)
++    public RatePreview previewRate(String sheetId, String grade, BigDecimal pct) {
++        int count = 0;
++        BigDecimal diff = BigDecimal.ZERO.setScale(2);
++        java.util.Map<Long, Person> byId = new java.util.HashMap<>();
++        for (Person p : people.findBySheetIdOrderByIdAsc(sheetId)) byId.put(p.getId(), p);
++        for (Claim claim : claims.findBySheetIdOrderByIdDesc(sheetId)) {
++            if (!claim.getStatus().isOpen() || claim.isBound()) continue;
++            Person person = byId.get(claim.getPersonId());
++            if (person == null || !grade.equals(person.gradeOn(claim.getDate()))) continue;
++            BigDecimal current = chargedFigureOf(sheetId, person, claim);
++            BigDecimal figure = claim.getAmount().multiply(pct).movePointLeft(2).setScale(2, roundingOf(sheetId, claim));
++            BigDecimal next = charged(sheetId, person, claim, figure);
++            BigDecimal was = current == null ? BigDecimal.ZERO.setScale(2) : current;
++            BigDecimal now = next == null ? BigDecimal.ZERO.setScale(2) : next;
++            if (current == null || now.compareTo(was) != 0) {
++                count++;
++                diff = diff.add(now.subtract(was));
++            }
++        }
++        return new RatePreview(count, diff.setScale(2));
++    }
++
++    /** The claim's due with the figure given: floored, with its late charge while overdue; a settled due as fixed. */
++    private BigDecimal charged(String sheetId, Person person, Claim claim, BigDecimal figure) {
++        if (claim.getSettledDue() != null) return claim.getSettledDue();
+         return floored(sheetId, claim, LateCharge.withCharge(claim, figure, sheets.today(sheetId),
+                 graceOf(sheetId, person, claim), d -> settings.latePctOn(sheetId, d), roundingOf(sheetId, claim)));
+     }
+diff --git a/src/main/java/net/officefloor/hq/app/rate/RateController.java b/src/main/java/net/officefloor/hq/app/rate/RateController.java
+index 4c904d4f3..b02e8e43e 100644
+--- a/src/main/java/net/officefloor/hq/app/rate/RateController.java
++++ b/src/main/java/net/officefloor/hq/app/rate/RateController.java
+@@ -8,6 +8,7 @@ import jakarta.validation.constraints.Size;
+ import java.math.BigDecimal;
+ import java.time.LocalDate;
+ import java.util.List;
++import net.officefloor.hq.app.claim.ClaimService;
+ import org.springframework.validation.annotation.Validated;
+ import org.springframework.web.bind.annotation.GetMapping;
+ import org.springframework.web.bind.annotation.PathVariable;
+@@ -15,6 +16,7 @@ import org.springframework.web.bind.annotation.PutMapping;
+ import org.springframework.web.bind.annotation.RequestBody;
+ import org.springframework.web.bind.annotation.RequestHeader;
+ import org.springframework.web.bind.annotation.RequestMapping;
++import org.springframework.web.bind.annotation.RequestParam;
+ import org.springframework.web.bind.annotation.RestController;
+ 
+ @RestController
+@@ -37,10 +39,26 @@ public class RateController {
+         }
+     }
+ 
++    /** A rate preview as the screen shows it: how many claims' dues would change, and the sum of the differences (two decimals). */
++    public record PreviewView(int count, String diff) {}
++
+     private final RateService service;
++    private final ClaimService claims;
+ 
+-    public RateController(RateService service) {
++    public RateController(RateService service, ClaimService claims) {
+         this.service = service;
++        this.claims = claims;
++    }
++
++    /** What the percent as the grade's rate on every date would change; nothing is stored. */
++    @GetMapping("/{grade}/preview")
++    public PreviewView preview(
++            @PathVariable @Size(max = 100) @Pattern(regexp = "[A-Za-z0-9._-]+") String sheetId,
++            @PathVariable @Pattern(regexp = "[ABC]") String grade,
++            @RequestHeader("X-User") @NotBlank @Size(max = 100) String user,
++            @RequestParam @Pattern(regexp = "\\d{1,5}(\\.\\d{1,2})?") String pct) {
++        ClaimService.RatePreview preview = claims.previewRate(sheetId, grade, new BigDecimal(pct).setScale(2));
++        return new PreviewView(preview.count(), preview.diff().setScale(2).toPlainString());
+     }
+ 
+     @GetMapping
