@@ -24,7 +24,9 @@ import org.springframework.transaction.annotation.Transactional;
 
 /**
  * The claims on a sheet: listed newest first, added to a person and edited one at a time. A claim
- * given no date takes the sheet's today. A claim is added as DRAFT and moves through its statuses
+ * given no date takes the sheet's today. Its due-by is fixed when it is added: its date plus the terms of its
+ * person's grade in force on that date (else the sheet's terms); it does not move when its date or the
+ * terms change later. A claim is added as DRAFT and moves through its statuses
  * as {@link ClaimStatus} allows; a change it does not allow is refused. Opening a claim gives it
  * the sheet's next number (or, while the sheet numbers by period, the next within its period), which it
  * keeps when voided and is never given again. Only a DRAFT claim
@@ -76,7 +78,8 @@ public class ClaimService {
         refuseIfClosed(sheetId, on);
         if (!person.mayClaimOn(on)) throw new PersonRetiredException();
         refuseUnlessCorrects(sheetId, personId, amount, corrects);
-        Claim draft = new Claim(sheetId, personId, amount, on, note);
+        LocalDate dueBy = on.plusDays(settings.termsFor(sheetId, person.gradeOn(on)));
+        Claim draft = new Claim(sheetId, personId, amount, on, note, dueBy);
         draft.setCorrects(corrects);
         Claim claim = claims.saveAndFlush(draft);
         record("CLAIM_ADDED", sheetId, user, person, claim);
@@ -253,7 +256,7 @@ public class ClaimService {
     public BigDecimal chargedFigureOf(String sheetId, Person person, Claim claim) {
         BigDecimal figure = figureOf(sheetId, person, claim);
         if (claim.getSettledDue() != null) return figure;
-        return LateCharge.withCharge(claim, figure, settings.terms(sheetId), sheets.today(sheetId),
+        return LateCharge.withCharge(claim, figure, sheets.today(sheetId),
                 settings.latePct(sheetId), roundingOf(sheetId, claim));
     }
 

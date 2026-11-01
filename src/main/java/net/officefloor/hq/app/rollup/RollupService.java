@@ -65,7 +65,6 @@ public class RollupService {
         Sheet sheet = sheets.findForUpdate(sheetId).orElse(null);
         LocalDate today = sheet == null ? null : sheet.getToday();
         BigDecimal floor = sheet == null ? zero() : sheet.getFloor();
-        int terms = sheet == null ? 0 : sheet.getTerms();
         BigDecimal latePct = sheet == null ? zero() : sheet.getLatePct();
         LocalDate policyDate = sheet == null ? null : sheet.getPolicyDate();
         Map<String, List<Rate>> ratesByGrade = new LinkedHashMap<>();
@@ -94,7 +93,7 @@ public class RollupService {
                 String grade = person.gradeOn(claim.getDate());
                 RoundingMode rounding = Rounding.of(Rounding.basisOf(claim, datesByNumber), policyDate, today);
                 BigDecimal figure = LateCharge.withCharge(claim,
-                        figureOf(claim, ratesByGrade.getOrDefault(grade, List.of()), floor, rounding), terms, today,
+                        figureOf(claim, ratesByGrade.getOrDefault(grade, List.of()), floor, rounding), today,
                         latePct, rounding);
                 // a due under a grade they had on its date but not today counts like a fixed one
                 if (figure != null && today != null && !grade.equals(person.gradeOn(today))) fixed = true;

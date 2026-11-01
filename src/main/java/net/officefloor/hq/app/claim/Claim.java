@@ -46,6 +46,10 @@ public class Claim {
     @Column(name = "note", nullable = false)
     private String note;
 
+    /** The date it is due by, fixed when added: its date plus the terms of its person's grade then. */
+    @Column(name = "due_by", nullable = false, updatable = false)
+    private LocalDate dueBy;
+
     @Enumerated(EnumType.STRING)
     @Column(name = "status", nullable = false)
     private ClaimStatus status = ClaimStatus.DRAFT;
@@ -87,12 +91,13 @@ public class Claim {
 
     protected Claim() {}
 
-    public Claim(String sheetId, Long personId, BigDecimal amount, LocalDate date, String note) {
+    public Claim(String sheetId, Long personId, BigDecimal amount, LocalDate date, String note, LocalDate dueBy) {
         this.sheetId = sheetId;
         this.personId = personId;
         this.amount = amount;
         this.date = date;
         this.note = note;
+        this.dueBy = dueBy;
     }
 
     public Long getId() { return id; }
@@ -125,6 +130,9 @@ public class Claim {
     public void setDate(LocalDate date) { this.date = date; }
 
     public String getNote() { return note; }
+
+    /** The date it is due by, fixed when added; it does not move with its date or the terms. */
+    public LocalDate getDueBy() { return dueBy; }
 
     public void setNote(String note) { this.note = note; }
 

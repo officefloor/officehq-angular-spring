@@ -3,6 +3,8 @@ package net.officefloor.hq.app.setting;
 import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.util.List;
+import java.util.Map;
+import java.util.TreeMap;
 import net.officefloor.hq.app.Audit;
 import net.officefloor.hq.app.rollup.RollupService;
 import net.officefloor.hq.app.sheet.Sheet;
@@ -14,13 +16,17 @@ import org.springframework.transaction.annotation.Transactional;
 /**
  * A sheet's settings: the role each user name has (clerk unless given another) and the clerk
  * limit, the highest due a clerk can settle (none: no limit); and the floor, the least a claim's
- * live due can be; and the terms, the days after its date by which a claim is due; and the late
+ * live due can be; and the terms, the days after its date by which a claim is due (fixed when it is
+ * added), set for the sheet and, overriding it, for any grade; and the late
  * percent, which an overdue claim's due gains of its figure for every full 30 days overdue; and the
  * policy date (none: the sheet's today), before which a claim's live figures round half up, else half to even;
  * and the period numbering from (none: off), from which a claim opened is numbered within its period.
  */
 @Service
 public class SettingService {
+
+    /** The grades a person can have, each of which can have its own terms. */
+    public static final List<String> GRADES = List.of("A", "B", "C");
 
     private final SheetRepository sheets;
     private final SheetRoleRepository roles;
@@ -53,6 +59,24 @@ public class SettingService {
     @Transactional(readOnly = true)
     public int terms(String sheetId) {
         return sheets.findById(sheetId).map(Sheet::getTerms).orElseThrow(SheetNotFoundException::new);
+    }
+
+    /** The terms set for each grade that has its own, by grade. */
+    @Transactional(readOnly = true)
+    public Map<String, Integer> gradeTerms(String sheetId) {
+        Sheet sheet = sheets.findById(sheetId).orElseThrow(SheetNotFoundException::new);
+        Map<String, Integer> byGrade = new TreeMap<>();
+        for (String grade : GRADES) {
+            Integer terms = sheet.getGradeTerms(grade);
+            if (terms != null) byGrade.put(grade, terms);
+        }
+        return byGrade;
+    }
+
+    /** The terms a claim of the grade is given when added: the grade's own, else the sheet's. */
+    @Transactional(readOnly = true)
+    public int termsFor(String sheetId, String grade) {
+        return sheets.findById(sheetId).orElseThrow(SheetNotFoundException::new).termsFor(grade);
     }
 
     @Transactional(readOnly = true)
@@ -100,13 +124,24 @@ public class SettingService {
         return limit;
     }
 
-    /** Change the terms; no figure moves with them. */
+    /** Change the terms; no figure, nor any claim's due-by, moves with them. */
     @Transactional
     public int setTerms(String sheetId, String user, int terms) {
         Sheet sheet = sheets.findForUpdate(sheetId).orElseThrow(SheetNotFoundException::new);
         sheet.setTerms(terms);
         sheets.flush();
         audit.recordOnCommit("SETTING_CHANGED sheet=" + sheetId + " by=" + user.strip() + " key=terms value=" + terms);
+        return terms;
+    }
+
+    /** Change the grade's terms; no claim's due-by moves with them. */
+    @Transactional
+    public int setGradeTerms(String sheetId, String user, String grade, int terms) {
+        Sheet sheet = sheets.findForUpdate(sheetId).orElseThrow(SheetNotFoundException::new);
+        sheet.setGradeTerms(grade, terms);
+        sheets.flush();
+        audit.recordOnCommit("SETTING_CHANGED sheet=" + sheetId + " by=" + user.strip() + " key=terms-" + grade
+                + " value=" + terms);
         return terms;
     }
 

@@ -346,7 +346,6 @@ export class People {
   );
   /** Each person's overdue claims that count, by id: how many and their dues in cents. */
   private readonly overdueByPerson = computed(() => {
-    const terms = this.session.terms();
     const today = this.session.today();
     const floor = cents(this.session.floor());
     const late = this.session.late();
@@ -354,7 +353,7 @@ export class People {
     for (const p of this.people()) {
       const pctOn = this.pctOnOf(p.id);
       const theirs = this.claimsOf(p.id);
-      const overdue = theirs.filter((c) => this.counts(c) && isOverdue(c, terms, today));
+      const overdue = theirs.filter((c) => this.counts(c) && isOverdue(c, today));
       by.set(p.id, { count: overdue.length, cents: overdue.reduce((sum, c) => sum + (claimDueCents(c, pctOn, floor, late, roundsOn(c, theirs)) ?? 0), 0) });
     }
     return by;

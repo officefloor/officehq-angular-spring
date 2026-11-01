@@ -8,6 +8,7 @@ import jakarta.validation.constraints.Size;
 import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.util.List;
+import java.util.Map;
 import org.springframework.validation.annotation.Validated;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
@@ -24,11 +25,12 @@ public class SettingController {
 
     /**
      * The sheet's settings as the screen shows them; the clerk limit has two decimals, null when none,
-     * and so has the floor; the terms are in days; the late percent has two decimals; the policy date
+     * and so has the floor; the terms are in days, and so are gradeTerms, by grade, for each grade with
+     * its own; the late percent has two decimals; the policy date
      * is null when blank (the sheet's today), and so is the period numbering from (off).
      */
     public record SettingsView(String clerkLimit, String floor, int terms, String latePct, LocalDate policyDate,
-            LocalDate periodNumberingFrom, List<RoleView> roles) {}
+            LocalDate periodNumberingFrom, List<RoleView> roles, Map<String, Integer> gradeTerms) {}
 
     /** A user name's role, as clerk or steward. */
     public record RoleView(String user, String role) {
@@ -106,7 +108,7 @@ public class SettingController {
         return new SettingsView(text(service.clerkLimit(sheetId)), text(service.floor(sheetId)),
                 service.terms(sheetId), text(service.latePct(sheetId)), service.policyDate(sheetId),
                 service.periodNumberingFrom(sheetId),
-                service.roles(sheetId).stream().map(RoleView::of).toList());
+                service.roles(sheetId).stream().map(RoleView::of).toList(), service.gradeTerms(sheetId));
     }
 
     @PutMapping("/settings/clerk-limit")
@@ -133,6 +135,16 @@ public class SettingController {
             @RequestHeader("X-User") @NotBlank @Size(max = 100) String user,
             @RequestBody @Valid TermsRequest request) {
         service.setTerms(sheetId, user, request.termsValue());
+        return get(sheetId, user);
+    }
+
+    @PutMapping("/settings/terms/{grade}")
+    public SettingsView setGradeTerms(
+            @PathVariable @Size(max = 100) @Pattern(regexp = "[A-Za-z0-9._-]+") String sheetId,
+            @PathVariable @Pattern(regexp = "[ABC]") String grade,
+            @RequestHeader("X-User") @NotBlank @Size(max = 100) String user,
+            @RequestBody @Valid TermsRequest request) {
+        service.setGradeTerms(sheetId, user, grade, request.termsValue());
         return get(sheetId, user);
     }
 

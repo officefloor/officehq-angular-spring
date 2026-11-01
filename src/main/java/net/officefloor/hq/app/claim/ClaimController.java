@@ -31,14 +31,15 @@ public class ClaimController {
      * correction has the number of the claim it corrects (null for any other claim).
      */
     public record ClaimView(Long id, Long personId, String amount, LocalDate date, String note, ClaimStatus status,
-            String number, String settledDue, String openedBy, boolean stated, String statedDue, String corrects) {
+            String number, String settledDue, String openedBy, boolean stated, String statedDue, String corrects,
+            LocalDate dueBy) {
         public static ClaimView of(Claim claim) {
             return new ClaimView(claim.getId(), claim.getPersonId(), claim.getAmount().toPlainString(),
                     claim.getDate(), claim.getNote(), claim.getStatus(), claim.getNumber(),
                     claim.getSettledDue() == null ? null : claim.getSettledDue().setScale(2).toPlainString(),
                     claim.getOpenedBy(), claim.isStated(),
                     claim.getStatedDue() == null ? null : claim.getStatedDue().setScale(2).toPlainString(),
-                    claim.getCorrects());
+                    claim.getCorrects(), claim.getDueBy());
         }
     }
 

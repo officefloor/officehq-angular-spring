@@ -7,6 +7,10 @@ import { Session } from '../../core/session';
 /** A role a user name can be given; any name not given one is a clerk. */
 export const ROLES = ['clerk', 'steward'];
 
+/** The grades a person can have; each can have its own terms. */
+export const GRADES = ['A', 'B', 'C'] as const;
+type Grade = (typeof GRADES)[number];
+
 /** A real calendar date written yyyy-mm-dd. */
 function isDate(value: string): boolean {
   const at = Date.parse(`${value}T00:00:00Z`);
@@ -23,8 +27,10 @@ interface SettingsView {
   clerkLimit: string | null;
   /** The least a claim's live due can be, two decimals. */
   floor: string;
-  /** The days after its date by which a claim is due. */
+  /** The days after its date by which a claim is due, for a grade without its own. */
   terms: number;
+  /** The terms set for each grade that has its own, by grade. */
+  gradeTerms: Partial<Record<Grade, number>>;
   /** The percent an overdue claim's due gains of its figure for every full 30 days overdue, two decimals. */
   latePct: string;
   /** Before it a claim's live figures round half up, else half to even (yyyy-mm-dd); null when blank: the sheet's today. */
@@ -35,7 +41,8 @@ interface SettingsView {
 }
 
 // The sheet's settings: the clerk limit (blank: no limit), the floor of a claim's live due, the terms
-// (the days after its date by which a claim is due), the late percent (charged on an overdue claim's
+// (the days after its date by which a claim is due, fixed when it is added), the terms of each grade (overriding the
+// sheet's for a person of that grade on the claim's date), the late percent (charged on an overdue claim's
 // figure for every full 30 days overdue), the policy date (blank: the sheet's today; a claim dated before it
 // rounds half up, else half to even), the period numbering from (blank: off; while the sheet's today is on or after it,
 // a claim opened is numbered within its period), and the role given to each user name. Saving stores the settings whose
@@ -55,6 +62,11 @@ interface SettingsView {
         <input id="setting-floor" data-testid="setting-floor" formControlName="floor" inputmode="decimal" />
         <label for="setting-terms">Terms (days)</label>
         <input id="setting-terms" data-testid="setting-terms" formControlName="terms" inputmode="numeric" />
+        @for (g of grades; track g) {
+          <label [for]="'setting-terms-' + g">Terms for grade {{ g }} (days)</label>
+          <input [id]="'setting-terms-' + g" [attr.data-testid]="'setting-terms-' + g" [formControl]="gradeTermsForm.controls[g]"
+                 inputmode="numeric" />
+        }
         <label for="setting-late-pct">Late percent (per full 30 days overdue)</label>
         <input id="setting-late-pct" data-testid="setting-late-pct" formControlName="latePct" inputmode="decimal" />
         <label for="setting-policy-date">Policy date (blank: the sheet's today; before it rounds half up)</label>
@@ -73,6 +85,10 @@ interface SettingsView {
       <p>Clerk limit now: <span data-testid="setting-clerk-limit-current">{{ clerkLimit() ?? '' }}</span></p>
       <p>Floor now: <span data-testid="setting-floor-current">{{ session.floor() }}</span></p>
       <p>Terms now: <span data-testid="setting-terms-current">{{ session.terms() }}</span></p>
+      @for (g of grades; track g) {
+        <p>Terms for grade {{ g }} now (blank: the sheet's terms):
+          <span [attr.data-testid]="'setting-terms-' + g + '-current'">{{ gradeTerms()[g] ?? '' }}</span></p>
+      }
       <p>Late percent now: <span data-testid="setting-late-pct-current">{{ session.latePct() }}</span></p>
       <p>Policy date now: <span data-testid="setting-policy-date-current">{{ session.policyDate() ?? '' }}</span></p>
       <p>Period numbering from now: <span data-testid="setting-period-numbering-from-current">{{ periodNumberingFrom() ?? '' }}</span></p>
@@ -113,6 +129,8 @@ export class Settings {
   protected readonly session = inject(Session);
 
   protected readonly roles = ROLES;
+  protected readonly grades = GRADES;
+  protected readonly gradeTerms = signal<Partial<Record<Grade, number>>>({});
   protected readonly clerkLimit = signal<string | null>(null);
   protected readonly periodNumberingFrom = signal<string | null>(null);
   protected readonly userRoles = signal<RoleView[]>([]);
@@ -128,6 +146,11 @@ export class Settings {
     policyDate: new FormControl('', { nonNullable: true }),
     periodNumberingFrom: new FormControl('', { nonNullable: true }),
   });
+  protected readonly gradeTermsForm = new FormGroup({
+    A: new FormControl('', { nonNullable: true }),
+    B: new FormControl('', { nonNullable: true }),
+    C: new FormControl('', { nonNullable: true }),
+  });
   protected readonly roleForm = new FormGroup({
     user: new FormControl('', { nonNullable: true }),
     role: new FormControl('', { nonNullable: true }),
@@ -135,12 +158,14 @@ export class Settings {
 
   constructor() {
     this.form.valueChanges.subscribe(() => this.error.set(''));
+    this.gradeTermsForm.valueChanges.subscribe(() => this.error.set(''));
     this.roleForm.valueChanges.subscribe(() => this.roleError.set(''));
     effect(() => {
       const id = this.session.sheetId();
       this.session.loads();
       this.clerkLimit.set(null);
       this.periodNumberingFrom.set(null);
+      this.gradeTerms.set({});
       this.userRoles.set([]);
       this.error.set('');
       this.roleError.set('');
@@ -169,6 +194,7 @@ export class Settings {
   private show(view: SettingsView): void {
     this.clerkLimit.set(view.clerkLimit);
     this.periodNumberingFrom.set(view.periodNumberingFrom);
+    this.gradeTerms.set(view.gradeTerms);
     this.userRoles.set(view.roles);
     this.session.floor.set(view.floor);
     this.session.terms.set(view.terms);
@@ -198,6 +224,11 @@ export class Settings {
     }
     if (terms.dirty && !/^\d{1,4}$/.test(termsValue)) {
       this.error.set('Enter terms as a whole number of days, 0 or more.');
+      return;
+    }
+    const gradeTermsChanged = GRADES.filter((g) => this.gradeTermsForm.controls[g].dirty);
+    if (gradeTermsChanged.some((g) => !/^\d{1,4}$/.test(this.gradeTermsForm.controls[g].value.trim()))) {
+      this.error.set('Enter a grade\'s terms as a whole number of days, 0 or more.');
       return;
     }
     if (latePct.dirty && !/^\d{1,5}(\.\d{1,2})?$/.test(latePctValue)) {
@@ -233,6 +264,14 @@ export class Settings {
           this.http.put<SettingsView>(`${this.base(sheet)}/settings/terms`, { value: termsValue }, { headers: this.headers() }),
         );
         terms.markAsPristine();
+        if (this.session.sheetId() === sheet) this.show(view);
+      }
+      for (const g of gradeTermsChanged) {
+        const control = this.gradeTermsForm.controls[g];
+        const view = await firstValueFrom(
+          this.http.put<SettingsView>(`${this.base(sheet)}/settings/terms/${g}`, { value: control.value.trim() }, { headers: this.headers() }),
+        );
+        control.markAsPristine();
         if (this.session.sheetId() === sheet) this.show(view);
       }
       if (latePct.dirty) {

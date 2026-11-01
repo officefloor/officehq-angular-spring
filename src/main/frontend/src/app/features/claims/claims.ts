@@ -37,6 +37,8 @@ export interface Claim {
   statedDue: string | null;
   /** A correction's (negative amount's) number of the SETTLED claim it corrects; null for any other claim. */
   corrects: string | null;
+  /** The date it is due by (yyyy-mm-dd), fixed when it was added; it does not move with its date or the terms. */
+  dueBy: string;
 }
 
 /** A person's rate on a date: the rate then of the grade they had then, or null when it has none. */
@@ -117,26 +119,14 @@ function figureCents(c: Claim, pctOn: PctOn, floorCents: number, halfUp: boolean
  * by a statement.
  */
 export function lateChargeCents(c: Claim, figureCents: number, late: Late, halfUp: boolean): number {
-  if (late.today === null || isCorrection(c) || !isOverdue(c, late.terms, late.today)) return 0;
-  const days = Math.round((Date.parse(`${late.today}T00:00:00Z`) - Date.parse(`${dueBy(c, late.terms)}T00:00:00Z`)) / 86_400_000);
+  if (late.today === null || isCorrection(c) || !isOverdue(c, late.today)) return 0;
+  const days = Math.round((Date.parse(`${late.today}T00:00:00Z`) - Date.parse(`${c.dueBy}T00:00:00Z`)) / 86_400_000);
   return dueCents(figureCents * Math.floor(days / 30), late.pct, halfUp);
 }
 
-/** A date (yyyy-mm-dd) the given number of days later. */
-export function addDays(date: string, days: number): string {
-  const d = new Date(`${date}T00:00:00Z`);
-  d.setUTCDate(d.getUTCDate() + days);
-  return d.toISOString().slice(0, 10);
-}
-
-/** A claim's due-by: its date plus the sheet's terms in days. */
-export function dueBy(c: Claim, terms: number): string {
-  return addDays(c.date, terms);
-}
-
 /** Overdue: OPEN or PENDING with its due-by before the sheet's today. */
-export function isOverdue(c: Claim, terms: number, today: string | null): boolean {
-  return isOpen(c) && today !== null && dueBy(c, terms) < today;
+export function isOverdue(c: Claim, today: string | null): boolean {
+  return isOpen(c) && today !== null && c.dueBy < today;
 }
 
 /** Why a change to a claim dated inside a closed period is refused. */
@@ -201,7 +191,7 @@ function notEditable(status: ClaimStatus | undefined): string {
           <span data-testid="claim-status">{{ c.status }}</span>
           <span>Opened by <span data-testid="claim-opened-by">{{ c.openedBy ?? '' }}</span></span>
           <span>Stated <span data-testid="claim-stated">{{ c.stated ? 'yes' : 'no' }}</span></span>
-          <span>Due by <span data-testid="claim-due-by">{{ dueByOf(c) }}</span></span>
+          <span>Due by <span data-testid="claim-due-by">{{ c.dueBy }}</span></span>
           <span>Overdue <span data-testid="claim-overdue">{{ overdueOf(c) ? 'yes' : 'no' }}</span></span>
           <span>Corrects <span data-testid="claim-corrects">{{ c.corrects ?? '' }}</span></span>
           <button type="button" data-testid="claim-open" (click)="act(c, 'open')"
@@ -288,12 +278,8 @@ export class Claims {
     return due === null ? NA : money(due);
   }
 
-  protected dueByOf(c: Claim): string {
-    return dueBy(c, this.session.terms());
-  }
-
   protected overdueOf(c: Claim): boolean {
-    return isOverdue(c, this.session.terms(), this.session.today());
+    return isOverdue(c, this.session.today());
   }
 
   /** The name of the period its date falls in, or blank when none. */
