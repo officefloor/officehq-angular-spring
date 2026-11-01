@@ -1,0 +1,74 @@
+{
+  "checkpoint": 136,
+  "stack": {
+    "repo": "/home/daniel/officehq-angular-spring",
+    "origin": "git@github.com:officefloor/officehq-angular-spring.git",
+    "name": "officehq-angular-spring",
+    "base_ref": "base-empty",
+    "base_commit": "65cb8233ea38b2dfa6cfd18709e30cd18fdf3250"
+  },
+  "checkpoint_id": "cp136_bindings-follow",
+  "phase": "mid",
+  "type": "mutative",
+  "mutates": [
+    107,
+    108,
+    111,
+    128
+  ],
+  "replaced_tests": [
+    "cp107_merge-people.spec.ts::merge people",
+    "cp108_patron-shares.spec.ts::patron shares scenario 1",
+    "cp111_transfer-person.spec.ts::transfer person",
+    "cp128_transfer-merges.spec.ts::transfer merges"
+  ],
+  "request": {
+    "spec": "Claims that move with a merge or a transfer now keep the figure a statement bound them to, and\nthe receiving person's statement count becomes their own plus the other's; the receiving person's\nlast statement stays theirs (or, having none, becomes the other's).\n",
+    "prompt": "You are implementing ONE change to this application.\n\nFIRST read AGENTS.md \u2014 it states the working rules and how the app is tested, and sends you to\nDESIGN.md for the app's stack and conventions. Follow both.\n\nTHE CHANGE REQUEST:\nClaims that move with a merge or a transfer now keep the figure a statement bound them to, and\nthe receiving person's statement count becomes their own plus the other's; the receiving person's\nlast statement stays theirs (or, having none, becomes the other's).\n\nYour work is verified by an automated Playwright UI test already installed under e2e/specs/.\nRead that spec: it declares the exact data-testid anchors, values, test data and any audit\nrecords it expects \u2014 match them. Run `bin/e2e` to build the app, start it, and run the test as\nyou work; iterate until it passes. Change whatever the request needs across the app \u2014 its stored\ndata, its server and its front end. Do NOT edit bin/build, bin/start, bin/stop, bin/e2e,\nAGENTS.md, CLAUDE.md, DESIGN.md, e2e/support/ or the test spec.\n"
+  },
+  "commit_sha": "468dfb7059de7b7a74ef81dcccf40befb0c816f0",
+  "reset_sha": "",
+  "preagent_sha": "5d79d4cd701d866af371f1dc7c4c68ab8dbe155c",
+  "prev_sha": "5d79d4cd701d866af371f1dc7c4c68ab8dbe155c",
+  "base_sha": "65cb8233ea38b2dfa6cfd18709e30cd18fdf3250",
+  "agent": {
+    "ok": true,
+    "cost_usd": 0.572315,
+    "input_tokens": 26,
+    "output_tokens": 6687,
+    "cache_read_tokens": 489675,
+    "cache_creation_tokens": 42567,
+    "num_turns": 14,
+    "duration_ms": 548361,
+    "duration_api_ms": 81675,
+    "model": "claude-opus-5-5",
+    "session_id": "f90935f5-2079-4d83-889f-bc60a597976b",
+    "stop_reason": "success",
+    "result_text": "When people are merged or transferred, their claims now keep the figure a statement bound them to, and their statements are combined. `bin/e2e` passes all 4 tests, including on the final run after cleanup.\n\nThe changes are all on the server; the front end and stored data didn't need anything:\n\n- **Claims keep their figure.** In `Claim.java`, `transferTo` no longer clears a claim's statement figure or its binding history. In `PersonService.java`, `absorb` no longer unbinds the claims it moves over.\n- **Merge combines statements.** The merged person's statements are reassigned to the receiving person, so the count becomes the two added together. Statements are ordered by id, so if the receiving person already had statements, their last one is deleted and saved again as a copy. That keeps it as their last statement. If they had none, the other person's last statement becomes theirs. I added two small helpers to `Statement.java` for this (`moveTo` and `copyFor`).\n- **Transfer carries statements.** Statements used to be deleted on transfer; now they move to the other sheet with the person. If the person is then merged into someone there, the merge rule above applies.\n- **Cleanup.** I removed a `today` value from `absorb` and `merge` that was no longer used. `merge` still locks the sheet as before.\n\n**Decision for you:** the request only spells out the merge case. For a transfer with no matching person on the other sheet, I chose to bring the person's statements along with them. Otherwise their claims would stay bound with no statement for a steward to cancel. The test doesn't cover this case, so say if you'd rather those statements be dropped.",
+    "error": "",
+    "attempts": [
+      {
+        "ok": true,
+        "limit_reached": false,
+        "retryable": false,
+        "timed_out": false,
+        "cost_usd": 0.572315,
+        "num_turns": 14,
+        "duration_ms": 548361,
+        "duration_api_ms": 81675,
+        "error": ""
+      }
+    ]
+  },
+  "agent_stream_file": "cp136.agent.jsonl",
+  "agent_diff_file": "cp136.agent.diff",
+  "build_log_file": null,
+  "tests": {
+    "gated": false,
+    "queued": true
+  },
+  "probe": null,
+  "pinned_touched": [],
+  "acceptance_touched": [],
+  "impact_gate": null
+}
