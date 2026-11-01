@@ -10,6 +10,7 @@ import org.springframework.validation.annotation.Validated;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestHeader;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
@@ -31,6 +32,9 @@ public class StatementController {
     /** A statement just taken: the person's statements and their claims as they now stand. */
     public record StatementTakenView(StatementSummaryView summary, List<ClaimView> claims) {}
 
+    /** The date a statement is taken as of (blank: now). */
+    public record StatementRequest(LocalDate asOf) {}
+
     private final StatementService service;
 
     public StatementController(StatementService service) {
@@ -48,8 +52,9 @@ public class StatementController {
     public StatementTakenView take(
             @PathVariable @Size(max = 100) @Pattern(regexp = "[A-Za-z0-9._-]+") String sheetId,
             @PathVariable Long personId,
-            @RequestHeader("X-User") @NotBlank @Size(max = 100) String user) {
-        StatementService.Taken taken = service.take(sheetId, user, personId);
+            @RequestHeader("X-User") @NotBlank @Size(max = 100) String user,
+            @RequestBody(required = false) StatementRequest request) {
+        StatementService.Taken taken = service.take(sheetId, user, personId, request == null ? null : request.asOf());
         return new StatementTakenView(StatementSummaryView.of(taken.summary()),
                 taken.claims().stream().map(ClaimView::of).toList());
     }

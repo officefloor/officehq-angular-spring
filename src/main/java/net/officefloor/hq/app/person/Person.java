@@ -11,6 +11,7 @@ import jakarta.persistence.Id;
 import jakarta.persistence.JoinColumn;
 import jakarta.persistence.MapKeyColumn;
 import jakarta.persistence.OrderBy;
+import jakarta.persistence.OrderColumn;
 import jakarta.persistence.Table;
 import jakarta.persistence.Version;
 import java.time.LocalDate;
@@ -58,6 +59,20 @@ public class Person {
     @Column(name = "grade", nullable = false)
     private Map<LocalDate, String> datedGrades = new TreeMap<>();
 
+    /** Each grade recorded after the first, oldest first, with the sheet's today it was recorded on. */
+    @ElementCollection(fetch = FetchType.EAGER)
+    @CollectionTable(name = "person_grade_log", joinColumns = @JoinColumn(name = "person_id"))
+    @OrderColumn(name = "seq")
+    private List<PersonGradeLine> gradeLog = new ArrayList<>();
+
+    /** The sheet's today when they were added; null when added before this was kept. */
+    @Column(name = "added_on", updatable = false)
+    private LocalDate addedOn;
+
+    /** The sheet's today when their retirement date was last set; null while not retired, or set before this was kept. */
+    @Column(name = "retired_on")
+    private LocalDate retiredOn;
+
     /** Their own terms in days, ahead of their grade's and the sheet's; null: none. */
     @Column(name = "terms")
     private Integer terms;
@@ -77,10 +92,11 @@ public class Person {
 
     protected Person() {}
 
-    public Person(String sheetId, String name, String grade) {
+    public Person(String sheetId, String name, String grade, LocalDate addedOn) {
         this.sheetId = sheetId;
         setName(name);
         this.grade = grade;
+        this.addedOn = addedOn;
     }
 
     /** The key a name is compared by for uniqueness: without surrounding spaces, lower-cased. */
@@ -108,8 +124,28 @@ public class Person {
         return on == null ? grade : on.getValue();
     }
 
-    /** Record the grade from the date, in place of any recorded from the same date. */
-    public void setGradeFrom(LocalDate from, String grade) { datedGrades.put(from, grade); }
+    /** Record the grade from the date on the sheet's today, in place of any recorded from the same date. */
+    public void setGradeFrom(LocalDate from, String grade, LocalDate on) {
+        datedGrades.put(from, grade);
+        gradeLog.add(new PersonGradeLine(from, grade, on));
+    }
+
+    /**
+     * The grade in force on the date as recorded by the end of the as-of date: of the grades recorded while
+     * the sheet's today was on or before it, the one with the latest from-date on or before the date.
+     */
+    public String gradeOn(LocalDate date, LocalDate asOf) {
+        TreeMap<LocalDate, String> then = new TreeMap<>();
+        for (PersonGradeLine line : gradeLog) if (line.recordedBy(asOf)) then.put(line.getFromDate(), line.getGrade());
+        Map.Entry<LocalDate, String> on = then.floorEntry(date);
+        return on == null ? grade : on.getValue();
+    }
+
+    /** The sheet's today when they were added; null when added before this was kept. */
+    public LocalDate getAddedOn() { return addedOn; }
+
+    /** Whether they were on the sheet at the end of the date: added while its today was on or before it. */
+    public boolean existedAt(LocalDate date) { return addedOn == null || !addedOn.isAfter(date); }
 
     /** The grades recorded after the first, by the date each is in force from, earliest first. */
     public Map<LocalDate, String> getDatedGrades() { return new TreeMap<>(datedGrades); }
@@ -122,7 +158,11 @@ public class Person {
     /** The date they are retired from, or null while not retired. */
     public LocalDate getRetiredFrom() { return retiredFrom; }
 
-    public void setRetiredFrom(LocalDate retiredFrom) { this.retiredFrom = retiredFrom; }
+    /** Retire them from the date, on the sheet's today. */
+    public void retireFrom(LocalDate retiredFrom, LocalDate on) {
+        this.retiredFrom = retiredFrom;
+        this.retiredOn = on;
+    }
 
     public boolean isRetired() { return retiredFrom != null; }
 
@@ -139,6 +179,19 @@ public class Person {
 
     /** Whether the date falls within any of their holds. */
     public boolean heldOn(LocalDate date) { return holds.stream().anyMatch(h -> h.contains(date)); }
+
+    /**
+     * Whether the date falls within any of their holds put on while the sheet's today was on or before the
+     * as-of date.
+     */
+    public boolean heldOn(LocalDate date, LocalDate asOf) {
+        return holds.stream().anyMatch(h -> h.putOnBy(asOf) && h.contains(date));
+    }
+
+    /** Whether, as it stood at the end of the date, they were retired by it: retired then, from on or before it. */
+    public boolean retiredAt(LocalDate date) {
+        return retiredOn(date) && (retiredOn == null || !retiredOn.isAfter(date));
+    }
 
     /** Whether their retirement date is reached on the date (the date on or after it). */
     public boolean retiredOn(LocalDate date) { return retiredFrom != null && date != null && !date.isBefore(retiredFrom); }

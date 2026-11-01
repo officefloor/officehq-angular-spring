@@ -230,7 +230,10 @@ function trimmedSum(figures: number[]): number {
                 <span data-testid="person-statement-count">{{ statementOf(p.id)?.count ?? 0 }}</span>
                 <span>Last <span data-testid="person-stated-total">{{ statedTotalOf(p.id) }}</span></span>
                 <span>on <span data-testid="person-statement-date">{{ statementOf(p.id)?.lastDate ?? '' }}</span></span>
-                <button type="button" data-testid="person-statement" (click)="takeStatement(p)"
+                <label [for]="'person-statement-asof-' + p.id" class="visually-hidden">Statement for {{ p.name }} as of</label>
+                <input type="date" [id]="'person-statement-asof-' + p.id" data-testid="person-statement-asof"
+                       #statementAsOf (input)="clearPersonError(p.id)" />
+                <button type="button" data-testid="person-statement" (click)="takeStatement(p, statementAsOf)"
                         [attr.aria-label]="'Take statement for ' + p.name">Statement</button>
                 <button type="button" data-testid="person-unstate" (click)="cancelStatement(p)"
                         [attr.aria-label]="'Cancel last statement for ' + p.name">Cancel statement</button>
@@ -766,17 +769,26 @@ export class People {
     return s === undefined ? '' : (s.lastDueTotal ?? NA);
   }
 
-  /** Take a statement for the person, binding their counting claims to their dues now. */
-  protected async takeStatement(p: Person): Promise<void> {
+  /**
+   * Take a statement for the person, binding their counting claims to their dues now, or as they stood
+   * at the end of the date entered (blank: now). The date is cleared once the statement is taken.
+   */
+  protected async takeStatement(p: Person, asOfInput: HTMLInputElement): Promise<void> {
     this.personError.set(null);
     this.clearPatronError(p.id);
     const sheet = this.session.sheetId();
     if (!sheet) return;
+    const asOf = asOfInput.value.trim();
+    if (asOf && !/^\d{4}-\d{2}-\d{2}$/.test(asOf)) {
+      this.personError.set({ id: p.id, message: 'Enter a date, or leave it blank for now.' });
+      return;
+    }
     try {
       const taken = await firstValueFrom(
-        this.http.post<StatementTaken>(`${this.url(sheet)}/${p.id}/statement`, null, { headers: this.headers() }),
+        this.http.post<StatementTaken>(`${this.url(sheet)}/${p.id}/statement`, { asOf: asOf || null }, { headers: this.headers() }),
       );
       if (this.session.sheetId() !== sheet) return;
+      asOfInput.value = '';
       this.statements.update((list) => [...list.filter((s) => s.personId !== p.id), taken.summary]);
       const byId = new Map(taken.claims.map((c) => [c.id, c]));
       this.claims.update((list) => list.map((c) => byId.get(c.id) ?? c));

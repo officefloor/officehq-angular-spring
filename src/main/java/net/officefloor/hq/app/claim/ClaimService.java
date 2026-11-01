@@ -362,7 +362,7 @@ public class ClaimService {
         if (from.getId().equals(to.getId())) throw new ClaimReassignRefusedException();
         refuseIfClosed(sheetId, claim.getDate());
         if (!to.mayClaimOn(claim.getDate())) throw new PersonRetiredException();
-        claim.unstate();
+        claim.unstate(sheets.today(sheetId));
         claim.moveTo(to.getId(), claims.nextListed());
         Claim saved = claims.saveAndFlush(claim);
         record("CLAIM_REASSIGNED", sheetId, user, to, saved, saved.getNumber(),
@@ -395,7 +395,7 @@ public class ClaimService {
         Person person = people.findByIdAndSheetId(claim.getPersonId(), sheetId).orElseThrow(PersonNotFoundException::new);
         LocalDate on = claim.getDate();
         claim.setAmount(claim.getAmount().subtract(amount));
-        claim.unstate();
+        claim.unstate(sheets.today(sheetId));
         Claim original = claims.saveAndFlush(claim);
         LocalDate dueBy = on.plusDays(person.getTerms() != null ? person.getTerms()
                 : settings.termsFor(sheetId, person.gradeOn(on), on));
@@ -427,7 +427,7 @@ public class ClaimService {
         if (!until.isAfter(sheets.today(sheetId))) throw new ClaimDeferDateException();
         refuseIfClosed(sheetId, claim.getDate());
         Person person = people.findByIdAndSheetId(claim.getPersonId(), sheetId).orElseThrow(PersonNotFoundException::new);
-        claim.setDeferredUntil(until);
+        claim.deferUntil(until, sheets.today(sheetId));
         Claim saved = claims.saveAndFlush(claim);
         record("CLAIM_DEFERRED", sheetId, user, person, saved, saved.getNumber(), " until=" + until);
         rollup.recordChanges(sheetId, user, before);

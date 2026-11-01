@@ -18,6 +18,7 @@ import java.time.LocalDate;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
+import java.util.Objects;
 
 /**
  * A claim by a person on a sheet: an amount (two decimals), a date, a note and a status (DRAFT when
@@ -109,6 +110,10 @@ public class Claim {
     @Column(name = "deferred_until")
     private LocalDate deferredUntil;
 
+    /** The sheet's today when it was deferred; none unless deferred (or deferred before this was kept). */
+    @Column(name = "deferred_on")
+    private LocalDate deferredOn;
+
     /** Whether it was added while the period its date falls in was soft-closed. */
     @Column(name = "late_entry", nullable = false)
     private boolean lateEntry;
@@ -121,6 +126,12 @@ public class Claim {
     @CollectionTable(name = "claim_log", joinColumns = @JoinColumn(name = "claim_id"))
     @OrderColumn(name = "seq")
     private List<ClaimLogEntry> log = new ArrayList<>();
+
+    /** Its binding log, oldest first: a line each time a statement bound it or it was left unbound again. */
+    @ElementCollection(fetch = FetchType.EAGER)
+    @CollectionTable(name = "claim_binding", joinColumns = @JoinColumn(name = "claim_id"))
+    @OrderColumn(name = "seq")
+    private List<ClaimBinding> bindings = new ArrayList<>();
 
     protected Claim() {}
 
@@ -196,6 +207,19 @@ public class Claim {
         return at;
     }
 
+    /**
+     * The due it was settled at, as its status log records it, when SETTLED at the end of the date: the
+     * due of its last SETTLED line dated on or before it; with no log lines, its settled due now.
+     */
+    public BigDecimal settledDueAt(LocalDate date) {
+        if (log.isEmpty()) return settledDue;
+        BigDecimal due = null;
+        for (ClaimLogEntry line : log) {
+            if (!line.getDate().isAfter(date) && line.getStatus() == ClaimStatus.SETTLED) due = line.getDue();
+        }
+        return due;
+    }
+
     /** The date it was last settled, as its status log records it; null when the log has no SETTLED line. */
     public LocalDate settledOn() {
         LocalDate on = null;
@@ -245,10 +269,22 @@ public class Claim {
      */
     public boolean isBound() { return stated && status != ClaimStatus.PENDING; }
 
-    /** Bind the claim to a due (null: it has none), as its person's statement does. */
-    public void state(BigDecimal due) {
+    /** Bind the claim to a due (null: it has none) on the sheet's today, as its person's statement does. */
+    public void state(BigDecimal due, LocalDate on) {
+        if (!stated || !Objects.equals(statedDue, due)) bindings.add(new ClaimBinding(on, true, due));
         this.stated = true;
         this.statedDue = due;
+    }
+
+    /**
+     * The binding it had at the end of the date, as its binding log records it: the last line dated on or
+     * before it, null when unbound then. With no log lines it is taken to have had its binding now.
+     */
+    public ClaimBinding bindingAt(LocalDate date) {
+        if (bindings.isEmpty()) return stated ? new ClaimBinding(date, true, statedDue) : null;
+        ClaimBinding at = null;
+        for (ClaimBinding line : bindings) if (!line.getDate().isAfter(date)) at = line;
+        return at != null && at.isStated() ? at : null;
     }
 
     public int getProofs() { return proofs; }
@@ -258,7 +294,20 @@ public class Claim {
 
     public LocalDate getDeferredUntil() { return deferredUntil; }
 
-    public void setDeferredUntil(LocalDate deferredUntil) { this.deferredUntil = deferredUntil; }
+    /** Defer it until the date, on the sheet's today. */
+    public void deferUntil(LocalDate deferredUntil, LocalDate on) {
+        this.deferredUntil = deferredUntil;
+        this.deferredOn = on;
+    }
+
+    /**
+     * Whether it was deferred at the end of the date, with the status it had then: OPEN, deferred on or
+     * before the date until a date after it.
+     */
+    public boolean isDeferredAt(ClaimStatus statusThen, LocalDate date) {
+        return statusThen == ClaimStatus.OPEN && deferredUntil != null && date.isBefore(deferredUntil)
+                && (deferredOn == null || !deferredOn.isAfter(date));
+    }
 
     /**
      * Whether it is deferred on the date: OPEN, with a deferred-until date after it. A deferred claim counts
@@ -268,8 +317,9 @@ public class Claim {
         return status == ClaimStatus.OPEN && deferredUntil != null && today != null && today.isBefore(deferredUntil);
     }
 
-    /** Leave the claim unbound, its due live again. */
-    public void unstate() {
+    /** Leave the claim unbound on the sheet's today, its due live again. */
+    public void unstate(LocalDate on) {
+        if (stated) bindings.add(new ClaimBinding(on, false, null));
         this.stated = false;
         this.statedDue = null;
     }

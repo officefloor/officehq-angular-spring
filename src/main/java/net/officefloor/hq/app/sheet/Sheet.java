@@ -8,6 +8,7 @@ import jakarta.persistence.FetchType;
 import jakarta.persistence.Id;
 import jakarta.persistence.JoinColumn;
 import jakarta.persistence.MapKeyColumn;
+import jakarta.persistence.OrderColumn;
 import jakarta.persistence.Table;
 import java.math.BigDecimal;
 import java.time.Instant;
@@ -59,6 +60,12 @@ public class Sheet {
     @ElementCollection(fetch = FetchType.EAGER)
     @CollectionTable(name = "sheet_setting", joinColumns = @JoinColumn(name = "sheet_id"))
     private List<DatedSetting> dated = new ArrayList<>();
+
+    /** Each value recorded for its dated settings, oldest first, with the sheet's today it was recorded on. */
+    @ElementCollection(fetch = FetchType.EAGER)
+    @CollectionTable(name = "sheet_setting_log", joinColumns = @JoinColumn(name = "sheet_id"))
+    @OrderColumn(name = "seq")
+    private List<DatedSettingLine> datedLog = new ArrayList<>();
 
     /**
      * The roles that may take each action whose standing rule was replaced, comma separated, by action
@@ -116,6 +123,40 @@ public class Sheet {
     public void record(String key, LocalDate from, String value) {
         dated.removeIf(d -> d.getKey().equals(key) && d.getFrom().equals(from));
         dated.add(new DatedSetting(key, from, value));
+        datedLog.add(new DatedSettingLine(key, from, value, today));
+    }
+
+    /**
+     * The key's value in force on the date as recorded by the end of the as-of date: of the values recorded
+     * while the sheet's today was on or before it, the last one with the latest from-date on or before the date.
+     */
+    private DatedSettingLine inForce(String key, LocalDate date, LocalDate asOf) {
+        DatedSettingLine found = null;
+        for (DatedSettingLine d : datedLog) {
+            if (d.getKey().equals(key) && d.recordedBy(asOf) && !d.getFrom().isAfter(date)
+                    && (found == null || !d.getFrom().isBefore(found.getFrom()))) {
+                found = d;
+            }
+        }
+        return found;
+    }
+
+    private BigDecimal decimalOn(String key, LocalDate date, LocalDate asOf, BigDecimal start) {
+        DatedSettingLine d = inForce(key, date, asOf);
+        if (d == null) return start;
+        return d.getValue() == null ? null : new BigDecimal(d.getValue()).setScale(2);
+    }
+
+    /** The floor in force on the date as recorded by the end of the as-of date. */
+    public BigDecimal floorOn(LocalDate date, LocalDate asOf) { return decimalOn(FLOOR, date, asOf, START_FLOOR); }
+
+    /** The late percent in force on the date as recorded by the end of the as-of date. */
+    public BigDecimal latePctOn(LocalDate date, LocalDate asOf) { return decimalOn(LATE_PCT, date, asOf, START_LATE_PCT); }
+
+    /** The due-total, at most the cap in force on the as-of date as recorded by its end; null (n/a) stays null. */
+    public BigDecimal cappedAsOf(BigDecimal dueTotal, LocalDate asOf) {
+        BigDecimal cap = decimalOn(CAP, asOf, asOf, null);
+        return dueTotal == null || cap == null ? dueTotal : dueTotal.min(cap);
     }
 
     /** The key's value recorded with the latest from-date on or before the date; null when none is. */

@@ -97,7 +97,7 @@ public class PersonService {
         if (!sheets.existsById(sheetId)) throw new SheetNotFoundException();
         requireUnused(sheetId, name, null);
         RollupService.Snapshot before = rollup.snapshot(sheetId);
-        Person draft = new Person(sheetId, name, grade);
+        Person draft = new Person(sheetId, name, grade, today(sheetId));
         draft.setTerms(terms);
         Person person = saveUnique(draft);
         record("PERSON_ADDED", sheetId, user, person, person.getGrade(),
@@ -118,7 +118,7 @@ public class PersonService {
         boolean termsChanged = !Objects.equals(terms, person.getTerms());
         person.setTerms(terms);
         if (gradeFrom != null || !grade.equals(person.gradeOn(today))) {
-            person.setGradeFrom(gradeFrom != null ? gradeFrom : today, grade);
+            person.setGradeFrom(gradeFrom != null ? gradeFrom : today, grade, today);
         }
         Person saved = saveUnique(person);
         record("PERSON_EDITED", sheetId, user, saved, saved.gradeOn(today),
@@ -135,7 +135,7 @@ public class PersonService {
         // Once the sheet's today reaches the date, their open claims leave the totals.
         RollupService.Snapshot before = rollup.snapshot(sheetId);
         LocalDate on = from != null ? from : today;
-        person.setRetiredFrom(on);
+        person.retireFrom(on, today);
         Person saved = saveUnique(person);
         audit.recordOnCommit("PERSON_RETIRED sheet=" + sheetId + " by=" + user.strip()
                 + " name=" + saved.getName() + " from=" + on);
@@ -154,7 +154,7 @@ public class PersonService {
         LocalDate on = from != null ? from : today(sheetId);
         if (on == null) throw new SheetNotFoundException();
         if (to != null && to.isBefore(on)) throw new HoldDatesException();
-        person.addHold(new PersonHold(on, to));
+        person.addHold(new PersonHold(on, to, today(sheetId)));
         Person saved = saveUnique(person);
         audit.recordOnCommit("PERSON_HELD sheet=" + sheetId + " by=" + user.strip()
                 + " name=" + saved.getName() + " from=" + on);

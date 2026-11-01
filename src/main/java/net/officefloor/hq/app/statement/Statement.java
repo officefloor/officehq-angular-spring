@@ -11,7 +11,8 @@ import java.time.LocalDate;
 
 /**
  * A statement taken for a person on a sheet: their due-total at that moment (none when it was n/a),
- * the sheet's today when it was taken, and who took it.
+ * the date it is as of (the sheet's today when it was taken, unless taken as of an earlier date), the
+ * sheet's today when it was taken, and who took it.
  */
 @Entity
 @Table(name = "statement")
@@ -33,16 +34,21 @@ public class Statement {
     @Column(name = "statement_date", nullable = false)
     private LocalDate date;
 
+    @Column(name = "taken_on")
+    private LocalDate takenOn;
+
     @Column(name = "taken_by", nullable = false, length = 100)
     private String takenBy;
 
     protected Statement() {}
 
-    public Statement(String sheetId, Long personId, BigDecimal dueTotal, LocalDate date, String takenBy) {
+    public Statement(String sheetId, Long personId, BigDecimal dueTotal, LocalDate date, LocalDate takenOn,
+            String takenBy) {
         this.sheetId = sheetId;
         this.personId = personId;
         this.dueTotal = dueTotal;
         this.date = date;
+        this.takenOn = takenOn;
         this.takenBy = takenBy;
     }
 
@@ -55,6 +61,9 @@ public class Statement {
     public BigDecimal getDueTotal() { return dueTotal; }
 
     public LocalDate getDate() { return date; }
+
+    /** The sheet's today when it was taken. */
+    public LocalDate getTakenOn() { return takenOn; }
 
     public String getTakenBy() { return takenBy; }
 }
