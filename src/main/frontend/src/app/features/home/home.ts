@@ -19,6 +19,12 @@ import { Session } from '../../core/session';
       </form>
       @if (session.sheetId(); as id) {
         <p>Sheet: <strong data-testid="sheet-current-id">{{ id }}</strong></p>
+        <p>Today: <strong data-testid="sheet-today">{{ session.today() }}</strong></p>
+        <form [formGroup]="todayForm" (ngSubmit)="saveToday()" aria-label="Sheet today">
+          <label for="sheet-today">Change today</label>
+          <input id="sheet-today" type="date" data-testid="sheet-today-input" formControlName="today" />
+          <button type="submit" data-testid="sheet-today-save">Set today</button>
+        </form>
       }
     } @else {
       <form [formGroup]="signinForm" (ngSubmit)="signIn()" aria-label="Sign in">
@@ -36,12 +42,14 @@ export class Home {
   protected readonly session = inject(Session);
   protected readonly signinForm = new FormGroup({ name: new FormControl('', { nonNullable: true }) });
   protected readonly sheetForm = new FormGroup({ id: new FormControl('', { nonNullable: true }) });
+  protected readonly todayForm = new FormGroup({ today: new FormControl('', { nonNullable: true }) });
   protected readonly signinError = signal('');
   protected readonly sheetError = signal('');
 
   constructor() {
     this.signinForm.valueChanges.subscribe(() => this.signinError.set(''));
     this.sheetForm.valueChanges.subscribe(() => this.sheetError.set(''));
+    this.todayForm.valueChanges.subscribe(() => this.sheetError.set(''));
   }
 
   protected async signIn(): Promise<void> {
@@ -69,6 +77,20 @@ export class Home {
       await this.session.loadSheet(id);
     } catch {
       this.sheetError.set('Could not load that sheet.');
+    }
+  }
+
+  protected async saveToday(): Promise<void> {
+    this.sheetError.set('');
+    const today = this.todayForm.controls.today.value.trim();
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(today)) {
+      this.sheetError.set('Enter a date.');
+      return;
+    }
+    try {
+      await this.session.setToday(today);
+    } catch {
+      this.sheetError.set('Could not change today.');
     }
   }
 }
