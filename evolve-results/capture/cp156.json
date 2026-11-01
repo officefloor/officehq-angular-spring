@@ -1,0 +1,69 @@
+{
+  "checkpoint": 156,
+  "stack": {
+    "repo": "/home/daniel/officehq-angular-spring",
+    "origin": "git@github.com:officefloor/officehq-angular-spring.git",
+    "name": "officehq-angular-spring",
+    "base_ref": "base-empty",
+    "base_commit": "65cb8233ea38b2dfa6cfd18709e30cd18fdf3250"
+  },
+  "checkpoint_id": "cp156_forward-only-rates",
+  "phase": "mid",
+  "type": "mutative",
+  "mutates": [
+    118
+  ],
+  "replaced_tests": [
+    "cp118_import-rates.spec.ts::import rates",
+    "cp118_import-rates.spec.ts::import rates scenario 3"
+  ],
+  "request": {
+    "spec": "A rate saved with a from-date on or after the sheet's today is forward-only: it applies only to\nclaims added after it was saved (by any path), and claims already on the sheet keep using the rates\nthat applied to them. A rate with no from-date, or with a from-date before the sheet's today when it\nis saved, applies to every claim as before. The rates panel, the rate preview and the rate calendar\nshow the rate in force without regard to this.\n",
+    "prompt": "You are implementing ONE change to this application.\n\nFIRST read AGENTS.md \u2014 it states the working rules and how the app is tested, and sends you to\nDESIGN.md for the app's stack and conventions. Follow both.\n\nTHE CHANGE REQUEST:\nA rate saved with a from-date on or after the sheet's today is forward-only: it applies only to\nclaims added after it was saved (by any path), and claims already on the sheet keep using the rates\nthat applied to them. A rate with no from-date, or with a from-date before the sheet's today when it\nis saved, applies to every claim as before. The rates panel, the rate preview and the rate calendar\nshow the rate in force without regard to this.\n\nYour work is verified by an automated Playwright UI test already installed under e2e/specs/.\nRead that spec: it declares the exact data-testid anchors, values, test data and any audit\nrecords it expects \u2014 match them. Run `bin/e2e` to build the app, start it, and run the test as\nyou work; iterate until it passes. Change whatever the request needs across the app \u2014 its stored\ndata, its server and its front end. Do NOT edit bin/build, bin/start, bin/stop, bin/e2e,\nAGENTS.md, CLAUDE.md, DESIGN.md, e2e/support/ or the test spec.\n"
+  },
+  "commit_sha": "31c4e996182facb84a9562a6f0b2d6d9796d748a",
+  "reset_sha": "",
+  "preagent_sha": "741f88b580fd23f3c7b674264aaffccb829f27ed",
+  "prev_sha": "741f88b580fd23f3c7b674264aaffccb829f27ed",
+  "base_sha": "65cb8233ea38b2dfa6cfd18709e30cd18fdf3250",
+  "agent": {
+    "ok": true,
+    "cost_usd": 2.0424214000000003,
+    "input_tokens": 86,
+    "output_tokens": 24763,
+    "cache_read_tokens": 3412647,
+    "cache_creation_tokens": 108036,
+    "num_turns": 44,
+    "duration_ms": 649523,
+    "duration_api_ms": 251092,
+    "model": "claude-opus-5-5",
+    "session_id": "c51ba09d-cfb6-4052-9e82-6c647f8d13bc",
+    "stop_reason": "success",
+    "result_text": "Forward-only rates are in, and `bin/e2e` passes all 4 tests in the spec (the main \"forward only rates\" test and scenarios 1\u20133).\n\n**How it works:** every claim now records when it was added, using a new database counter (`claim_added_seq`). When a rate is saved with a from-date on or after the sheet's today, it stores the counter's value at that moment. Claims added after that point use the rate. Claims already on the sheet skip it and fall back to the rate they were using before. Rates with no from-date, or with a from-date before today, apply to every claim as before. Re-saving a rate sets this from scratch.\n\n**Changes:**\n- **Stored data** (`V87__rate_forward_only.sql`): new `claim.added` column, filled from the new counter. Claims that already exist get 0, so they come before any forward-only rate. New nullable `forward_after` column on both `rate` and `rate_log`, so the as-of views and statements respect it too.\n- **Server:**\n  - `RateService.set` marks a rate forward-only when its from-date is on or after the sheet's today.\n  - Claim dues now skip rates that don't apply to the claim, wherever they are worked out: `ClaimService.dueOf`, `RollupService`, and both statement paths (current and as-of) in `StatementService`.\n  - Moving a person and their claims to another sheet counts as adding those claims to it. Cloning a sheet copies the stored values, so the clone keeps the same ordering.\n- **Front end:** it works out dues itself, so the API now also returns each claim's `added` and each rate's `forwardAfter`. `rateOn` and `rateInLevels` filter by them when given a claim. The rates panel, the rate preview and the rate calendar are unchanged and show the rate in force, as the request asks.\n\n**Behaviour to be aware of:** if a forward-only rate is saved again, the newest save sets the cut-off. Claims added between the first and second saves stop using it and fall back to the earlier rate. The spec doesn't test this case.",
+    "error": "",
+    "attempts": [
+      {
+        "ok": true,
+        "limit_reached": false,
+        "retryable": false,
+        "timed_out": false,
+        "cost_usd": 2.0424214000000003,
+        "num_turns": 44,
+        "duration_ms": 649523,
+        "duration_api_ms": 251092,
+        "error": ""
+      }
+    ]
+  },
+  "agent_stream_file": "cp156.agent.jsonl",
+  "agent_diff_file": "cp156.agent.diff",
+  "build_log_file": null,
+  "tests": {
+    "gated": false,
+    "queued": true
+  },
+  "probe": null,
+  "pinned_touched": [],
+  "acceptance_touched": [],
+  "impact_gate": null
+}
