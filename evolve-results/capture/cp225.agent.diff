@@ -1,0 +1,238 @@
+diff --git a/src/main/frontend/src/app/core/people.ts b/src/main/frontend/src/app/core/people.ts
+index dd63e3eb1..7e2fee21b 100644
+--- a/src/main/frontend/src/app/core/people.ts
++++ b/src/main/frontend/src/app/core/people.ts
+@@ -101,6 +101,12 @@ export interface BulkGradeView {
+   people: PersonView[];
+ }
+ 
++/** What a grade merge did: how many people it gave the other grade, and those people as saved. */
++export interface GradeMergeView {
++  merged: number;
++  people: PersonView[];
++}
++
+ /** What a bulk retire did: how many people it retired, and those people as saved. */
+ export interface BulkRetireView {
+   retired: number;
+@@ -213,6 +219,11 @@ export class People {
+     return this.http.post<BulkRetireView>(`${this.base(sheetId)}/bulk-retire`, { ids, from });
+   }
+ 
++  /** A steward merges grade `from` into `into`: everyone on `from` today is given `into` from the sheet's today. */
++  mergeGrade(sheetId: string, from: Grade, into: Grade): Observable<GradeMergeView> {
++    return this.http.post<GradeMergeView>(`${this.base(sheetId)}/merge-grade`, { from, into });
++  }
++
+   private base(sheetId: string): string {
+     return `/api/sheets/${encodeURIComponent(sheetId)}/people`;
+   }
+diff --git a/src/main/frontend/src/app/features/grades/grades.ts b/src/main/frontend/src/app/features/grades/grades.ts
+index 5e3c3844b..a6d8f63db 100644
+--- a/src/main/frontend/src/app/features/grades/grades.ts
++++ b/src/main/frontend/src/app/features/grades/grades.ts
+@@ -1,10 +1,10 @@
+ import { Component, computed, inject, signal } from '@angular/core';
+ import { takeUntilDestroyed, toObservable } from '@angular/core/rxjs-interop';
+ import { FormControl, FormGroup, ReactiveFormsModule } from '@angular/forms';
+-import { GRADES, Grade } from '../../core/people';
++import { GRADES, Grade, People } from '../../core/people';
+ import { Sheets } from '../../core/sheet';
+ 
+-// The sheet's grades, each shown retired or not, and a form to retire one.
++// The sheet's grades, each shown retired or not, a form to retire one and a form to merge one into another.
+ @Component({
+   selector: 'app-grades',
+   imports: [ReactiveFormsModule],
+@@ -30,27 +30,60 @@ import { Sheets } from '../../core/sheet';
+           <p role="alert" data-testid="grade-error">{{ err }}</p>
+         }
+       </form>
++      <form [formGroup]="mergeForm" (ngSubmit)="merge()" aria-label="Merge a grade into another">
++        <label for="grade-merge-from">Grade to merge</label>
++        <select id="grade-merge-from" data-testid="grade-merge-from" formControlName="from">
++          @for (g of grades; track g) {
++            <option [value]="g">{{ g }}</option>
++          }
++        </select>
++        <label for="grade-merge-into">Merge into</label>
++        <select id="grade-merge-into" data-testid="grade-merge-into" formControlName="into">
++          @for (g of grades; track g) {
++            <option [value]="g">{{ g }}</option>
++          }
++        </select>
++        <button type="submit" data-testid="grade-merge" [disabled]="merging()">Merge grade</button>
++        <p aria-live="polite">
++          @if (merged() !== null) {
++            Merged <span data-testid="grade-merged">{{ merged() }}</span>
++          }
++        </p>
++      </form>
+     </section>
+   `,
+ })
+ export class GradesPanel {
+   private readonly sheets = inject(Sheets);
++  private readonly people = inject(People);
+ 
+   protected readonly grades = GRADES;
+   protected readonly retired = computed(() => new Set(this.sheets.current()?.retiredGrades ?? []));
+   protected readonly error = signal<string | null>(null);
+   protected readonly saving = signal(false);
++  protected readonly merging = signal(false);
++  /** How many people the last merge gave the other grade; null before one, and while one runs. */
++  protected readonly merged = signal<number | null>(null);
+ 
+   protected readonly form = new FormGroup({
+     grade: new FormControl<Grade>('A', { nonNullable: true }),
+   });
+ 
++  protected readonly mergeForm = new FormGroup({
++    from: new FormControl<Grade>('A', { nonNullable: true }),
++    into: new FormControl<Grade>('B', { nonNullable: true }),
++  });
++
+   constructor() {
+     toObservable(this.sheets.loaded)
+       .pipe(takeUntilDestroyed())
+-      .subscribe(() => this.error.set(null));
++      .subscribe(() => {
++        this.error.set(null);
++        this.merged.set(null);
++      });
+     // An error is removed as soon as its form is changed.
+     this.form.valueChanges.pipe(takeUntilDestroyed()).subscribe(() => this.error.set(null));
++    this.mergeForm.valueChanges.pipe(takeUntilDestroyed()).subscribe(() => this.error.set(null));
+   }
+ 
+   protected retire(): void {
+@@ -68,4 +101,28 @@ export class GradesPanel {
+       },
+     });
+   }
++
++  protected merge(): void {
++    if (this.merging()) return;
++    this.error.set(null);
++    this.merged.set(null);
++    const sheet = this.sheets.current();
++    if (!sheet) return;
++    const { from, into } = this.mergeForm.getRawValue();
++    this.merging.set(true);
++    this.people.mergeGrade(sheet.id, from, into).subscribe({
++      next: ({ merged }) => {
++        this.merging.set(false);
++        this.merged.set(merged);
++      },
++      error: () => {
++        this.merging.set(false);
++        this.error.set(
++          from === into
++            ? `Grade ${from} cannot be merged into itself.`
++            : `Grade ${from} could not be merged into ${into}: only a steward may merge a grade, into one not retired.`,
++        );
++      },
++    });
++  }
+ }
+diff --git a/src/main/frontend/src/app/features/people/people.ts b/src/main/frontend/src/app/features/people/people.ts
+index 3d565fdc5..f65f4414e 100644
+--- a/src/main/frontend/src/app/features/people/people.ts
++++ b/src/main/frontend/src/app/features/people/people.ts
+@@ -1340,11 +1340,11 @@ export class PeopleList {
+   }
+ 
+   /** How far the person's figures (their due-total before the cap plus their cut total) add up above the cap, in
+-   *  whole cents; 0 when they do not, there is no cap, or they have no due-total. */
++   *  whole cents; 0 when they do not, there is no cap, or they have no due-total (none, or nothing due). */
+   protected excessOf(personId: number): number {
+     const sum = this.uncappedDueByPerson().get(personId) ?? null;
+     const cap = this.capCents();
+-    return sum === null || cap === null ? 0 : Math.max(0, sum + this.cutOf(personId) - cap);
++    return sum === null || sum === 0 || cap === null ? 0 : Math.max(0, sum + this.cutOf(personId) - cap);
+   }
+ 
+   /** Download the people as CSV, in list order, retired people included. */
+diff --git a/src/main/java/net/officefloor/hq/app/person/PersonController.java b/src/main/java/net/officefloor/hq/app/person/PersonController.java
+index 244a639c2..99e4f4a4c 100644
+--- a/src/main/java/net/officefloor/hq/app/person/PersonController.java
++++ b/src/main/java/net/officefloor/hq/app/person/PersonController.java
+@@ -161,6 +161,15 @@ public class PersonController {
+             LocalDate from) {
+     }
+ 
++    /** A grade to merge into another. */
++    public record GradeMerge(@NotNull @Pattern(regexp = "[ABC]") String from,
++            @NotNull @Pattern(regexp = "[ABC]") String into) {
++    }
++
++    /** What a grade merge did: how many people it gave the other grade, and those people as saved. */
++    public record GradeMergeView(int merged, List<PersonView> people) {
++    }
++
+     /** What a bulk grade did: how many people it changed, and those people as saved, in list order. */
+     public record BulkGradeView(int changed, List<PersonView> people) {
+     }
+@@ -251,6 +260,18 @@ public class PersonController {
+         return new BulkGradeView(changed.size(), changed);
+     }
+ 
++    /** A steward merges a grade into another: everyone whose grade in force on the sheet's today is {@code from} is
++     *  given {@code into} from the sheet's today, in list order, as the person form would. */
++    @PostMapping("/merge-grade")
++    public GradeMergeView mergeGrade(
++            @PathVariable @NotBlank @Size(max = 100) @Pattern(regexp = "[A-Za-z0-9._-]+") String sheetId,
++            @RequestHeader("X-User") @NotBlank @Size(max = 100) String user,
++            @Valid @RequestBody GradeMerge request) {
++        List<PersonView> merged = people.mergeGrade(sheetId, user, request.from(), request.into()).stream()
++                .map(p -> view(sheetId, p)).toList();
++        return new GradeMergeView(merged.size(), merged);
++    }
++
+     /**
+      * Retire the selected people together: each, in list order, is retired from the date given as the row's retire
+      * would; one not on the sheet, or refused, is skipped.
+diff --git a/src/main/java/net/officefloor/hq/app/person/PersonService.java b/src/main/java/net/officefloor/hq/app/person/PersonService.java
+index cb06562d2..d2c889153 100644
+--- a/src/main/java/net/officefloor/hq/app/person/PersonService.java
++++ b/src/main/java/net/officefloor/hq/app/person/PersonService.java
+@@ -237,6 +237,39 @@ public class PersonService {
+         return edited;
+     }
+ 
++    /**
++     * A steward merges grade {@code from} into grade {@code into}: everyone, in list order, whose grade in force on
++     * the sheet's today is {@code from} is given {@code into} from the sheet's today, each as an edit of them in the
++     * person form would. Refused for the same grade twice, for a retired {@code into}, and for anyone but a steward.
++     * The people so changed, in list order.
++     */
++    @Transactional
++    public List<Person> mergeGrade(String sheetId, String user, String from, String into) {
++        Sheet sheet = sheets.load(sheetId, user);
++        if (!Role.STEWARD.equals(roles.roleOf(sheetId, user))) {
++            throw new ResponseStatusException(HttpStatus.FORBIDDEN, "Only a steward may merge a grade");
++        }
++        if (from.equals(into)) {
++            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "A grade cannot be merged into itself");
++        }
++        if (sheet.isGradeRetired(into)) {
++            throw gradeRetired(into);
++        }
++        LocalDate today = sheet.getToday();
++        Rollup.Figures before = rollup.of(sheetId);
++        audit.recordChangeOnCommit(sheetId, user, "GRADE_MERGED sheet=" + sheetId + " by=" + user
++                + " from=" + from + " into=" + into);
++        List<Person> merged = new ArrayList<>();
++        for (Person person : list(sheetId)) {
++            if (from.equals(person.gradeOn(today))) {
++                merged.add(update(sheetId, user, person.getId(), person.getVersion(), person.getName(), into, null,
++                        person.getTerms(), null, person.getContact(), person.getTags(), false));
++            }
++        }
++        rollup.recordChanges(sheetId, user, before);
++        return merged;
++    }
++
+     /** Retire a person from a date; a missing date takes the sheet's today. They count as retired at once; the live
+      *  totals move with it once the sheet's today reaches the date. */
+     @Transactional
