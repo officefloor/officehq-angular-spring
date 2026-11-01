@@ -1,0 +1,144 @@
+diff --git a/src/main/frontend/src/app/core/sheet.ts b/src/main/frontend/src/app/core/sheet.ts
+index c0a758fce..619151c5a 100644
+--- a/src/main/frontend/src/app/core/sheet.ts
++++ b/src/main/frontend/src/app/core/sheet.ts
+@@ -26,6 +26,8 @@ export interface PolicyVersion {
+ export interface PolicyLine extends PolicyVersion {
+   version: number;
+   claims: number;
++  /** The dues of its claims that count, added up (two decimals). */
++  dueTotal: string;
+ }
+ 
+ export interface SheetView {
+diff --git a/src/main/frontend/src/app/features/settings/policy-viewer.ts b/src/main/frontend/src/app/features/settings/policy-viewer.ts
+index 1db408f79..e344dd5b0 100644
+--- a/src/main/frontend/src/app/features/settings/policy-viewer.ts
++++ b/src/main/frontend/src/app/features/settings/policy-viewer.ts
+@@ -3,13 +3,14 @@ import { takeUntilDestroyed, toObservable } from '@angular/core/rxjs-interop';
+ import { PolicyLine, Sheets } from '../../core/sheet';
+ 
+ // The sheet's policy versions: one line per version, oldest first, as its number, its from-date ("start" when it
+-// counts always), its setting=value and how many claims have it as their policy version.
++// counts always), its setting=value and how many claims have it as their policy version; and downloaded as CSV.
+ @Component({
+   selector: 'app-policy-viewer',
+   template: `
+     <section aria-labelledby="policy-heading">
+       <h3 id="policy-heading">Policy versions</h3>
+       <button type="button" data-testid="policy-show" [disabled]="loading()" (click)="show()">Show policy versions</button>
++      <button type="button" data-testid="export-policy" (click)="exportCsv()">Export policy versions as CSV</button>
+       @if (error(); as err) {
+         <p role="alert" data-testid="policy-error">{{ err }}</p>
+       }
+@@ -56,6 +57,34 @@ export class PolicyViewerPanel {
+       },
+     });
+   }
++
++  /** Download the policy versions as CSV, re-read from the store: one line per version, oldest first, with how many
++   *  claims have it as their policy version and the dues of those that count, added up. */
++  protected exportCsv(): void {
++    this.error.set(null);
++    const sheet = this.sheets.current();
++    if (!sheet) return;
++    this.sheets.policyLines(sheet.id).subscribe({
++      next: (versions) => {
++        const lines = [
++          ['version', 'from', 'key', 'value', 'claims', 'due-total'],
++          ...versions.map((v) => [String(v.version), v.from ?? '', v.key, v.value ?? '', String(v.claims), v.dueTotal]),
++        ].map((fields) => fields.map(csvField).join(',') + '\n');
++        const url = URL.createObjectURL(new Blob(lines, { type: 'text/csv' }));
++        const link = document.createElement('a');
++        link.href = url;
++        link.download = 'policy-' + sheet.id + '.csv';
++        link.click();
++        setTimeout(() => URL.revokeObjectURL(url));
++      },
++      error: () => this.error.set('Could not read the policy versions.'),
++    });
++  }
++}
++
++/** A CSV field: quoted, with its quotes doubled, when it has a comma, quote or line break. */
++function csvField(value: string): string {
++  return /[",\r\n]/.test(value) ? '"' + value.replaceAll('"', '""') + '"' : value;
+ }
+ 
+ function lineOf(v: PolicyLine): string {
+diff --git a/src/main/java/net/officefloor/hq/app/rollup/Rollup.java b/src/main/java/net/officefloor/hq/app/rollup/Rollup.java
+index 486d13c37..3b95bc24f 100644
+--- a/src/main/java/net/officefloor/hq/app/rollup/Rollup.java
++++ b/src/main/java/net/officefloor/hq/app/rollup/Rollup.java
+@@ -279,6 +279,28 @@ public class Rollup {
+         return byPerson;
+     }
+ 
++    /** The dues of the sheet's claims that count on its today (as for their person's due-total, not deferred), added
++     *  up by the policy version in force on each claim's date (0: before the first); a claim with no due adds none. */
++    public Map<Integer, BigDecimal> dueByPolicyVersion(Sheet sheet) {
++        RateChain sheetRates = rates.of(sheet.getId());
++        LocalDate today = sheet.getToday();
++        List<Claim> sheetClaims = claims.findBySheetIdOrderByListedDescIdDesc(sheet.getId());
++        Map<Integer, BigDecimal> dues = new LinkedHashMap<>();
++        for (Person person : people.findBySheetIdOrderByPositionAscIdAsc(sheet.getId())) {
++            for (Claim claim : sheetClaims) {
++                if (!claim.getPersonId().equals(person.getId()) || !person.counts(claim, today)
++                        || claim.isDeferredOn(today)) {
++                    continue;
++                }
++                BigDecimal due = dueOf(claim, person.gradeOn(claim.getDate()), sheetRates, sheet, sheetClaims);
++                if (due != null) {
++                    dues.merge(sheet.policyVersionOn(claim.getDate()), due, BigDecimal::add);
++                }
++            }
++        }
++        return dues;
++    }
++
+     /** The figures added up, leaving out the single highest and the single lowest when there are three or more. */
+     public static BigDecimal trimmedSum(List<BigDecimal> figures) {
+         BigDecimal sum = figures.stream().reduce(BigDecimal.ZERO.setScale(2), BigDecimal::add);
+diff --git a/src/main/java/net/officefloor/hq/app/sheet/SheetController.java b/src/main/java/net/officefloor/hq/app/sheet/SheetController.java
+index b273bed1d..b0af698d2 100644
+--- a/src/main/java/net/officefloor/hq/app/sheet/SheetController.java
++++ b/src/main/java/net/officefloor/hq/app/sheet/SheetController.java
+@@ -104,8 +104,9 @@ public class SheetController {
+     }
+ 
+     /** A line of the policy viewer: a policy version (numbered from 1), its setting, from-date (null: it counts
+-     *  always) and value, and how many of the sheet's claims (not deleted) have it as their policy version. */
+-    public record PolicyLineView(int version, String key, LocalDate from, String value, long claims) {
++     *  always) and value, how many of the sheet's claims (not deleted) have it as their policy version, and the dues
++     *  of those of them that count, added up (two decimals). */
++    public record PolicyLineView(int version, String key, LocalDate from, String value, long claims, String dueTotal) {
+     }
+ 
+     /** A dated setting's value from a from-date (null: from the beginning of time); a null value means none. */
+diff --git a/src/main/java/net/officefloor/hq/app/sheet/SheetService.java b/src/main/java/net/officefloor/hq/app/sheet/SheetService.java
+index 8a6c9e4ab..5d51daab5 100644
+--- a/src/main/java/net/officefloor/hq/app/sheet/SheetService.java
++++ b/src/main/java/net/officefloor/hq/app/sheet/SheetService.java
+@@ -63,17 +63,20 @@ public class SheetService {
+     }
+ 
+     /** The sheet's policy versions, oldest first, each with how many of its claims (not deleted) have it as their
+-     *  policy version (the one in force on the claim's date); starting the sheet if it has never been loaded. */
++     *  policy version (the one in force on the claim's date) and the dues of those of them that count, added up;
++     *  starting the sheet if it has never been loaded. */
+     @Transactional
+     public List<SheetController.PolicyLineView> policyLines(String id, String user) {
+         Sheet sheet = load(id, user);
+         Map<Integer, Long> counts = claims.findBySheetIdOrderByListedDescIdDesc(id).stream()
+                 .filter(c -> c.getStatus() != ClaimStatus.DELETED)
+                 .collect(Collectors.groupingBy(c -> sheet.policyVersionOn(c.getDate()), Collectors.counting()));
++        Map<Integer, BigDecimal> dues = rollup.dueByPolicyVersion(sheet);
+         List<PolicyVersion> versions = sheet.getPolicyVersions();
+         return IntStream.range(0, versions.size())
+                 .mapToObj(i -> new SheetController.PolicyLineView(i + 1, versions.get(i).getKey(),
+-                        versions.get(i).getFrom(), versions.get(i).getValue(), counts.getOrDefault(i + 1, 0L)))
++                        versions.get(i).getFrom(), versions.get(i).getValue(), counts.getOrDefault(i + 1, 0L),
++                        dues.getOrDefault(i + 1, BigDecimal.ZERO).setScale(2).toPlainString()))
+                 .toList();
+     }
+ 
