@@ -112,7 +112,8 @@ interface StatementTaken {
 // none); a claim's due-by is fixed when it is added from them, else their grade's, else the sheet's.
 // Each person can name other people on the sheet as their patrons, one at a time (not themselves, nor
 // the same person twice); the row shows their patrons' names, sorted, and their backing: their
-// patrons' due-totals added up, skipping n/a.
+// patrons' settled figures added up over their SETTLED claims dated within the 90 days up to and
+// including the sheet's today, each at its frozen figure (0.00 with none).
 // A person's due-total is at most the sheet's cap (blank: none); the row shows their excess, how far the
 // sum of their figures is above it (0.00 when not, or n/a). Every total of due-totals adds the capped ones.
 // Under it, a summary: per grade, the people on it today (retired people excluded) and their
@@ -686,9 +687,17 @@ export class People {
       .join(', ');
   }
 
-  /** Their patrons' due-totals added up, skipping n/a; 0.00 with no patrons. */
+  /**
+   * Their patrons' settled figures added up: each patron's SETTLED claims dated within the 90 days up to
+   * and including the sheet's today, at their frozen figures; 0.00 with none.
+   */
   protected backingOf(p: Person): string {
-    return money(this.patronsOfPerson(p).reduce((sum, x) => sum + (this.dueTotalCents(x) ?? 0), 0));
+    const today = this.session.today();
+    if (today === null) return money(0);
+    const from = new Date(Date.parse(`${today}T00:00:00Z`) - 89 * 86_400_000).toISOString().slice(0, 10);
+    const settled = (c: Claim) => c.status === 'SETTLED' && c.settledDue !== null && c.date >= from && c.date <= today;
+    return money(this.patronsOfPerson(p).reduce(
+      (sum, x) => sum + this.claimsOf(x.id).filter(settled).reduce((s, c) => s + cents(c.settledDue!), 0), 0));
   }
 
   private patronsOfPerson(p: Person): Person[] {
