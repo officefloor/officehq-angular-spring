@@ -4,7 +4,7 @@ import { FormControl, FormGroup, ReactiveFormsModule } from '@angular/forms';
 import { EMPTY, switchMap } from 'rxjs';
 import { money } from '../../core/claims';
 import { CrewView, Crews, crewDueCents } from '../../core/crews';
-import { PersonView } from '../../core/people';
+import { PersonView, nameWithGrade } from '../../core/people';
 import { Pools } from '../../core/pools';
 import { Sheets } from '../../core/sheet';
 import { FigurePipe } from '../../core/figure';
@@ -22,7 +22,7 @@ type MemberForm = FormGroup<{ personId: FormControl<string> }>;
         @for (crew of crews.all(); track crew.id) {
           <li [attr.data-testid]="'crew-row-' + crew.name">
             <span data-testid="crew-name">{{ crew.name }}</span>:
-            lead <span data-testid="crew-lead">{{ crew.lead?.name ?? '' }}</span>,
+            lead <span data-testid="crew-lead">{{ leadShown(crew) }}</span>,
             due <span data-testid="crew-due-total">{{ (dueOf(crew)) | figure }}</span>
             <ul [attr.aria-label]="'Members of ' + crew.name">
               @for (m of crew.members; track m.id) {
@@ -105,6 +105,13 @@ export class CrewsPanel {
   }
 
   /** The crew's due-total: its lead's and members' due-totals added up, skipping those with none. */
+  /** The crew's lead as the screen shows them: with their grade in force on the sheet's today; blank with none. */
+  protected leadShown(crew: CrewView): string {
+    if (!crew.lead) return '';
+    const lead = this.people().find((p) => p.id === crew.lead?.id);
+    return lead ? nameWithGrade(lead, this.sheets.current()?.today ?? '') : crew.lead.name;
+  }
+
   protected dueOf(crew: CrewView): string {
     return money(crewDueCents(crew, this.dueByPerson()));
   }

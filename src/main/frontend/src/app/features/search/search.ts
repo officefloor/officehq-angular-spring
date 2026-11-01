@@ -21,7 +21,7 @@ import { TreeFound, TreeSearch } from '../../core/tree-search';
       </form>
       <ul aria-label="People found">
         @for (f of found(); track $index) {
-          <li data-testid="search-line">{{ f.sheet }} {{ f.name }} {{ f.dueTotal }}</li>
+          <li data-testid="search-line">{{ f.sheet }} {{ f.name }} ({{ f.grade }}) {{ f.dueTotal }}</li>
         }
       </ul>
     </section>

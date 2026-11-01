@@ -121,6 +121,11 @@ export function gradeOn(p: Pick<PersonView, 'grade' | 'grades'>, date: string): 
   return inForce?.grade ?? p.grade;
 }
 
+/** How the screen shows a person's name: the name, then their grade in force on `date` (yyyy-mm-dd). */
+export function nameWithGrade(p: Pick<PersonView, 'name' | 'grade' | 'grades'>, date: string): string {
+  return `${p.name} (${gradeOn(p, date)})`;
+}
+
 // The people kept on a sheet, listed in their positions; new people go to the end.
 @Injectable({ providedIn: 'root' })
 export class People {

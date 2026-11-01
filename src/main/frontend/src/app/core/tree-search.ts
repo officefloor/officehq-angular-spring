@@ -2,11 +2,13 @@ import { HttpClient } from '@angular/common/http';
 import { Injectable, inject } from '@angular/core';
 import { Observable } from 'rxjs';
 
-/** A person found on a sheet's tree: the sheet they are on, their name, and their due-total as that sheet shows it. */
+/** A person found on a sheet's tree: the sheet they are on, their name, their due-total as that sheet shows it, and
+ *  their grade in force on that sheet's today. */
 export interface TreeFound {
   sheet: string;
   name: string;
   dueTotal: string;
+  grade: string;
 }
 
 // A search over a sheet's tree: the sheet at the top of its line of parents and all of that sheet's descendants.

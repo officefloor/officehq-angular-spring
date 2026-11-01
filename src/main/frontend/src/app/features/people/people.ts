@@ -4,7 +4,7 @@ import { takeUntilDestroyed, toObservable } from '@angular/core/rxjs-interop';
 import { FormControl, FormGroup, ReactiveFormsModule, Validators } from '@angular/forms';
 import { forkJoin, of, switchMap } from 'rxjs';
 import { AMOUNT_PATTERN, ClaimView, Claims, cents, countsAtEndWithHolds, countsClaimed, countsWithHolds, isOverdue, isReviewLate, money, roundingDate, statusAt } from '../../core/claims';
-import { GRADES, Grade, People, PersonView, gradeOn } from '../../core/people';
+import { GRADES, Grade, People, PersonView, gradeOn, nameWithGrade } from '../../core/people';
 import { PatronView, Patrons } from '../../core/patrons';
 import { Periods, periodOn } from '../../core/periods';
 import { DEFAULT_DUE_TERMS, DueTerms, NOT_AVAILABLE, RateLine, Rates, claimDueCents } from '../../core/rates';
@@ -345,7 +345,7 @@ function csvField(value: string): string {
           <li [attr.data-testid]="'person-row-' + p.id">
             <input type="checkbox" data-testid="person-select" [checked]="selectedPeople().has(p.id)"
                    (change)="togglePerson(p.id, $any($event.target).checked)" [attr.aria-label]="'Select ' + p.name" />
-            <span data-testid="person-name">{{ p.name }}</span>
+            <span data-testid="person-name">{{ nameShown(p) }}</span>
             <button type="button" data-testid="person-move-up" (click)="move(p, 'up')" [disabled]="moving() === p.id"
                     [attr.aria-label]="'Move ' + p.name + ' up'">Up</button>
             <button type="button" data-testid="person-move-down" (click)="move(p, 'down')" [disabled]="moving() === p.id"
@@ -1168,6 +1168,11 @@ export class PeopleList {
     return this.claimsByPerson().get(personId) ?? NO_CLAIMS;
   }
 
+  /** The person's name as the screen shows it: with their grade in force on the sheet's today. */
+  protected nameShown(p: PersonView): string {
+    return nameWithGrade(p, this.todayNow());
+  }
+
   /** The person's grade in force on the sheet's today. */
   protected gradeToday(p: PersonView): Grade {
     return gradeOn(p, this.sheets.current()?.today ?? '');
@@ -1237,7 +1242,8 @@ export class PeopleList {
 
   /** The person's patrons, each as <name> <share>, sorted by name, comma and space separated. */
   protected patronsOf(personId: number): string {
-    const nameOf = new Map(this.people().map((q) => [q.id, q.name]));
+    const today = this.todayNow();
+    const nameOf = new Map(this.people().map((q) => [q.id, nameWithGrade(q, today)]));
     return patronShares(this.patronIdsByPerson().get(personId) ?? [])
       .map(({ id, share }) => ({ name: nameOf.get(id) ?? '', share }))
       .sort((a, b) => a.name.localeCompare(b.name))

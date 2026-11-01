@@ -3,6 +3,7 @@ package net.officefloor.hq.app.search;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.Pattern;
 import jakarta.validation.constraints.Size;
+import java.time.LocalDate;
 import java.util.ArrayList;
 import java.util.HashSet;
 import java.util.List;
@@ -11,6 +12,7 @@ import java.util.Set;
 import net.officefloor.hq.app.person.Person;
 import net.officefloor.hq.app.person.PersonRepository;
 import net.officefloor.hq.app.rollup.Rollup;
+import net.officefloor.hq.app.sheet.Sheet;
 import net.officefloor.hq.app.sheet.SheetRepository;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.validation.annotation.Validated;
@@ -26,8 +28,9 @@ import org.springframework.web.bind.annotation.RestController;
 @RequestMapping("/api/sheets/{sheetId}/tree")
 public class TreeSearchController {
 
-    /** A person found: the sheet they are on, their name, and their due-total as that sheet shows it. */
-    public record Found(String sheet, String name, String dueTotal) {
+    /** A person found: the sheet they are on, their name, their due-total as that sheet shows it, and their grade in
+     *  force on that sheet's today. */
+    public record Found(String sheet, String name, String dueTotal, String grade) {
     }
 
     private final SheetRepository sheets;
@@ -60,10 +63,12 @@ public class TreeSearchController {
         List<Found> found = new ArrayList<>();
         for (String id : order) {
             Rollup.Figures figures = rollup.of(id);
+            LocalDate today = sheets.findById(id).map(Sheet::getToday).orElse(null);
             for (Person person : people.findBySheetIdOrderByPositionAscIdAsc(id)) {
                 if (matches(person, wanted)) {
                     Rollup.PersonFigures f = figures.people().get(person.getId());
-                    found.add(new Found(id, person.getName(), f == null ? "n/a" : f.dueTotal()));
+                    found.add(new Found(id, person.getName(), f == null ? "n/a" : f.dueTotal(),
+                            person.gradeOn(today)));
                 }
             }
         }
