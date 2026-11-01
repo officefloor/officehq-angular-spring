@@ -1,0 +1,64 @@
+{
+  "checkpoint": 169,
+  "stack": {
+    "repo": "/home/daniel/officehq-angular-spring",
+    "origin": "git@github.com:officefloor/officehq-angular-spring.git",
+    "name": "officehq-angular-spring",
+    "base_ref": "base-empty",
+    "base_commit": "65cb8233ea38b2dfa6cfd18709e30cd18fdf3250"
+  },
+  "checkpoint_id": "cp169_person-terms-dated",
+  "phase": "late",
+  "type": "additive",
+  "mutates": [],
+  "replaced_tests": [],
+  "request": {
+    "spec": "A person's own terms can be dated: the person form gains a terms from-date. A save with terms and\na from-date records those terms from that date, keeping the ones already recorded (a save for a\nfrom-date already recorded replaces it); a save with terms and no from-date records them, or clears\nthem when blank, from the beginning of time, as before. A claim's due-by uses the person's terms in\nforce on the claim's date (the latest from-date on or before it; none in force means the grade's or\nthe sheet's terms); the row shows the terms in force on the sheet's today.\n",
+    "prompt": "You are implementing ONE change to this application.\n\nFIRST read AGENTS.md \u2014 it states the working rules and how the app is tested, and sends you to\nDESIGN.md for the app's stack and conventions. Follow both.\n\nTHE CHANGE REQUEST:\nA person's own terms can be dated: the person form gains a terms from-date. A save with terms and\na from-date records those terms from that date, keeping the ones already recorded (a save for a\nfrom-date already recorded replaces it); a save with terms and no from-date records them, or clears\nthem when blank, from the beginning of time, as before. A claim's due-by uses the person's terms in\nforce on the claim's date (the latest from-date on or before it; none in force means the grade's or\nthe sheet's terms); the row shows the terms in force on the sheet's today.\n\nYour work is verified by an automated Playwright UI test already installed under e2e/specs/.\nRead that spec: it declares the exact data-testid anchors, values, test data and any audit\nrecords it expects \u2014 match them. Run `bin/e2e` to build the app, start it, and run the test as\nyou work; iterate until it passes. Change whatever the request needs across the app \u2014 its stored\ndata, its server and its front end. Do NOT edit bin/build, bin/start, bin/stop, bin/e2e,\nAGENTS.md, CLAUDE.md, DESIGN.md, e2e/support/ or the test spec.\n"
+  },
+  "commit_sha": "80a8507ed9efdae0347070a2302bfe6e6efa81a1",
+  "reset_sha": "",
+  "preagent_sha": "93348891276b6a98485baa14d49e20b4efd47026",
+  "prev_sha": "93348891276b6a98485baa14d49e20b4efd47026",
+  "base_sha": "65cb8233ea38b2dfa6cfd18709e30cd18fdf3250",
+  "agent": {
+    "ok": true,
+    "cost_usd": 1.0506586000000002,
+    "input_tokens": 44,
+    "output_tokens": 12374,
+    "cache_read_tokens": 1208733,
+    "cache_creation_tokens": 70157,
+    "num_turns": 24,
+    "duration_ms": 369460,
+    "duration_api_ms": 158372,
+    "model": "claude-opus-5-5",
+    "session_id": "a7959e05-9b2e-4d8d-9562-ba7034d4d999",
+    "stop_reason": "success",
+    "result_text": "A person's own terms can now be dated, and all 4 acceptance tests pass on `bin/e2e`.\n\n**How it behaves**\n- The person form has a new **Terms from** field (`person-form-terms-from`).\n- Saving terms with a from-date records them from that date and keeps the ones already recorded. Saving again for the same from-date replaces that entry.\n- Saving with no from-date sets the terms from the beginning of time, as before. A blank terms value clears them.\n- A claim's due-by uses the person's terms in force on the claim's date, which is the entry with the latest from-date on or before it. If none applies, it falls back to the grade's or the sheet's terms.\n- The row's `person-terms` shows the terms in force on the sheet's today.\n- The editor always opens with the from-date blank.\n\n**Changes**\n- **Stored data:** a new migration, `V92__person_terms_dated.sql`, adds a `person_terms` table with one row per person and from-date. A blank save with a from-date (\"no terms from this date\") is stored as `-1`, because Hibernate doesn't save null values in this kind of collection. The existing `person.terms` column still holds the terms from the beginning of time. Sheet cloning now copies the new table too.\n- **Server:**\n  - `Person` has the dated terms, plus `termsOn(date)` and `setTermsFrom(...)`.\n  - The edit endpoint accepts `termsFrom`.\n  - `ClaimService` works out due-by with `termsOn(claim date)`.\n  - The person's `terms` in the API is now the value in force today. A new `baseTerms` field carries the terms from the beginning of time.\n- **Audit:** `PERSON_EDITED ... terms=` is written whenever any recorded terms change, and shows the value in force on the sheet's today. So a base-terms save that a dated entry overrides today still writes `terms=3`, as the test expects.\n- **Front end:** the new form field and request field are in `people.ts`. The inline grade change now sends `baseTerms` back. Without that, it would have overwritten the base terms with whatever was in force today.\n\nTwo behaviours worth knowing:\n- The person editor still fills the terms box with the value in force today. Saving with the from-date blank therefore writes that value as the base terms.\n- Importing people only ever sets the base terms; there's no way to give a from-date there.",
+    "error": "",
+    "attempts": [
+      {
+        "ok": true,
+        "limit_reached": false,
+        "retryable": false,
+        "timed_out": false,
+        "cost_usd": 1.0506586000000002,
+        "num_turns": 24,
+        "duration_ms": 369460,
+        "duration_api_ms": 158372,
+        "error": ""
+      }
+    ]
+  },
+  "agent_stream_file": "cp169.agent.jsonl",
+  "agent_diff_file": "cp169.agent.diff",
+  "build_log_file": null,
+  "tests": {
+    "gated": false,
+    "queued": true
+  },
+  "probe": null,
+  "pinned_touched": [],
+  "acceptance_touched": [],
+  "impact_gate": null
+}
