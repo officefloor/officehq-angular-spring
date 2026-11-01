@@ -137,6 +137,14 @@ interface StatementTaken {
         Show retired
       </label>
       <button type="button" data-testid="export-people" (click)="exportCsv()">Export CSV</button>
+      <button type="button" data-testid="bulk-open" (click)="bulkOpen()">Open selected claims</button>
+      @if (bulkOpened(); as result) {
+        <p role="status">Opened <span data-testid="bulk-opened">{{ result.opened }}</span>,
+          refused <span data-testid="bulk-refused">{{ result.refused }}</span></p>
+      }
+      @if (bulkError()) {
+        <p role="alert" class="error" data-testid="bulk-open-error">{{ bulkError() }}</p>
+      }
       <table>
         <thead>
           <tr><th scope="col">Name</th><th scope="col">Grade</th><th scope="col">Claimed</th><th scope="col">Due total</th><th scope="col">Statements</th><th scope="col">Retired</th><th scope="col">Hold</th><th scope="col">Overdue</th><th scope="col">Patrons</th><th scope="col">Claims</th><th scope="col"><span class="visually-hidden">Actions</span></th></tr>
@@ -195,8 +203,8 @@ interface StatementTaken {
               </td>
               <td>
                 <app-claims [personId]="p.id" [personName]="p.name" [claims]="claimsOf(p.id)" [pctOn]="pctOnOf(p.id)"
-                            [periods]="periods()"
-                            (saved)="claimSaved($event)" />
+                            [periods]="periods()" [selected]="selectedIds()"
+                            (saved)="claimSaved($event)" (toggled)="claimToggled($event)" />
               </td>
               <td>
                 <button type="button" [attr.data-testid]="'person-edit-' + p.id" (click)="edit(p)"
@@ -271,6 +279,11 @@ export class People {
   );
   /** Every claim on the sheet, newest first. */
   protected readonly claims = signal<Claim[]>([]);
+  /** The ids of the claims selected for a bulk change. */
+  protected readonly selectedIds = signal<ReadonlySet<number>>(new Set());
+  /** How many the last bulk open opened and refused; cleared while the next one runs. */
+  protected readonly bulkOpened = signal<{ opened: number; refused: number } | null>(null);
+  protected readonly bulkError = signal('');
   private readonly claimsByPerson = computed(() => {
     const by = new Map<number, Claim[]>();
     for (const c of this.claims()) by.set(c.personId, [...(by.get(c.personId) ?? []), c]);
@@ -393,6 +406,9 @@ export class People {
       this.session.loads();
       this.people.set([]);
       this.claims.set([]);
+      this.selectedIds.set(new Set());
+      this.bulkOpened.set(null);
+      this.bulkError.set('');
       this.rates.set([]);
       this.periods.set([]);
       this.statements.set([]);
@@ -412,6 +428,9 @@ export class People {
   private url(sheet: string): string {
     return `/api/sheets/${encodeURIComponent(sheet)}/people`;
   }
+
+  /** A bulk open is under way; another press waits for its answer. */
+  private bulkRunning = false;
 
   private async load(sheet: string): Promise<void> {
     try {
@@ -655,6 +674,39 @@ export class People {
   }
 
   /** Put an added claim first, or an edited one in its place. */
+  protected claimToggled(e: { id: number; checked: boolean }): void {
+    this.selectedIds.update((ids) => {
+      const next = new Set(ids);
+      if (e.checked) next.add(e.id);
+      else next.delete(e.id);
+      return next;
+    });
+  }
+
+  /** Open every selected claim that can be opened, numbered in list order; show how many opened and were refused. */
+  protected async bulkOpen(): Promise<void> {
+    if (this.bulkRunning) return;
+    this.bulkOpened.set(null);
+    this.bulkError.set('');
+    const sheet = this.session.sheetId();
+    if (!sheet) return;
+    const base = `/api/sheets/${encodeURIComponent(sheet)}`;
+    this.bulkRunning = true;
+    try {
+      const result = await firstValueFrom(this.http.post<{ opened: number; refused: number }>(
+        `${base}/claims/open`, { ids: [...this.selectedIds()] }, { headers: this.headers() }));
+      const claims = await firstValueFrom(this.http.get<Claim[]>(`${base}/claims`, { headers: this.headers() }));
+      if (this.session.sheetId() !== sheet) return;
+      this.claims.set(claims);
+      this.selectedIds.set(new Set());
+      this.bulkOpened.set(result);
+    } catch {
+      if (this.session.sheetId() === sheet) this.bulkError.set('Could not open the selected claims.');
+    } finally {
+      this.bulkRunning = false;
+    }
+  }
+
   protected claimSaved(claim: Claim): void {
     this.claims.update((list) =>
       list.some((c) => c.id === claim.id) ? list.map((c) => (c.id === claim.id ? claim : c)) : [claim, ...list],

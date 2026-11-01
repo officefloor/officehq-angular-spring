@@ -147,7 +147,7 @@ function notEditable(status: ClaimStatus | undefined): string {
 }
 
 // One person's claims, newest first, with one form to add a claim or edit one, and buttons to
-// open, settle or void each claim.
+// open, settle or void each claim, and a checkbox to select each for a bulk change.
 @Component({
   selector: 'app-claims',
   imports: [ReactiveFormsModule],
@@ -169,6 +169,9 @@ function notEditable(status: ClaimStatus | undefined): string {
     <ul [attr.aria-label]="'Claims for ' + personName()">
       @for (c of claims(); track c.id) {
         <li [attr.data-testid]="'claim-row-' + c.id">
+          <input type="checkbox" data-testid="claim-select" [checked]="selected().has(c.id)"
+                 (change)="toggled.emit({ id: c.id, checked: $any($event.target).checked })"
+                 [attr.aria-label]="'Select claim of ' + c.amount + ' on ' + c.date" />
           <span>No. <span data-testid="claim-number">{{ c.number ?? '' }}</span></span>
           <span data-testid="claim-amount">{{ c.amount }}</span>
           <span data-testid="claim-date">{{ c.date }}</span>
@@ -214,6 +217,10 @@ export class Claims {
   readonly periods = input.required<Period[]>();
   /** A claim added, edited or given a new status, as the store now holds it. */
   readonly saved = output<Claim>();
+  /** The ids of the claims selected for a bulk change. */
+  readonly selected = input.required<ReadonlySet<number>>();
+  /** A claim's checkbox ticked or cleared. */
+  readonly toggled = output<{ id: number; checked: boolean }>();
 
   protected readonly editingId = signal<number | null>(null);
   /** A submit is under way; another one waits for its answer rather than storing twice. */

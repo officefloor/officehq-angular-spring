@@ -9,6 +9,7 @@ import jakarta.validation.constraints.Size;
 import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.util.List;
+import java.util.Set;
 import org.springframework.validation.annotation.Validated;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
@@ -61,10 +62,18 @@ public class ClaimController {
         }
     }
 
-    private final ClaimService service;
+    /** The claims selected for a bulk change, by id. */
+    public record BulkRequest(@NotNull @Size(max = 1000) Set<@NotNull Long> ids) {}
 
-    public ClaimController(ClaimService service) {
+    /** How many of the selected claims a bulk open opened, and how many it refused. */
+    public record BulkOpenView(int opened, int refused) {}
+
+    private final ClaimService service;
+    private final ClaimBulkService bulk;
+
+    public ClaimController(ClaimService service, ClaimBulkService bulk) {
         this.service = service;
+        this.bulk = bulk;
     }
 
     @GetMapping("/claims")
@@ -100,6 +109,15 @@ public class ClaimController {
             @PathVariable Long id,
             @RequestHeader("X-User") @NotBlank @Size(max = 100) String user) {
         return ClaimView.of(service.changeStatus(sheetId, user, id, ClaimStatus.OPEN));
+    }
+
+    @PostMapping("/claims/open")
+    public BulkOpenView bulkOpen(
+            @PathVariable @Size(max = 100) @Pattern(regexp = "[A-Za-z0-9._-]+") String sheetId,
+            @RequestHeader("X-User") @NotBlank @Size(max = 100) String user,
+            @RequestBody @Valid BulkRequest request) {
+        ClaimBulkService.Result result = bulk.open(sheetId, user, request.ids());
+        return new BulkOpenView(result.done(), result.refused());
     }
 
     @PostMapping("/claims/{id}/settle")
