@@ -5,6 +5,9 @@ import java.util.Collections;
 import java.util.List;
 import java.util.regex.Pattern;
 import net.officefloor.hq.app.Audit;
+import net.officefloor.hq.app.claim.Claim;
+import net.officefloor.hq.app.claim.ClaimNotFoundException;
+import net.officefloor.hq.app.claim.ClaimRepository;
 import net.officefloor.hq.app.person.Person;
 import net.officefloor.hq.app.person.PersonRepository;
 import net.officefloor.hq.app.sheet.SheetParentRepository;
@@ -21,11 +24,38 @@ public class AuditViewService {
     private final Audit audit;
     private final PersonRepository people;
     private final SheetParentRepository parents;
+    private final ClaimRepository claims;
 
-    public AuditViewService(Audit audit, PersonRepository people, SheetParentRepository parents) {
+    public AuditViewService(Audit audit, PersonRepository people, SheetParentRepository parents,
+            ClaimRepository claims) {
         this.audit = audit;
         this.people = people;
         this.parents = parents;
+        this.claims = claims;
+    }
+
+    /**
+     * A claim's timeline: the sheet's audit lines about it exactly as the file holds them, newest first.
+     * For a claim with a number those carrying number=<its number>; for one without, those without a
+     * number that name its person, amount and date together.
+     */
+    @Transactional(readOnly = true)
+    public List<String> claimLines(String sheetId, Long claimId) {
+        Claim claim = claims.findByIdAndSheetId(claimId, sheetId).orElseThrow(ClaimNotFoundException::new);
+        Pattern numbered = Pattern.compile(" number=[^ ]*(?= [^ =]+=|$)");
+        Pattern about;
+        if (claim.getNumber() != null) {
+            about = Pattern.compile(" number=" + Pattern.quote(claim.getNumber()) + "(?= [^ =]+=|$)");
+        } else {
+            String name = people.findByIdAndSheetId(claim.getPersonId(), sheetId).map(Person::getName).orElse(null);
+            if (name == null) return List.of();
+            about = Pattern.compile(" person=" + Pattern.quote(name)
+                    + " amount=" + Pattern.quote(claim.getAmount().setScale(2).toPlainString())
+                    + " date=" + Pattern.quote(claim.getDate().toString()) + "(?= [^ =]+=|$)");
+        }
+        List<String> out = linesOf(audit.lines(), sheetId, about);
+        if (claim.getNumber() == null) out.removeIf(line -> numbered.matcher(line).find());
+        return out;
     }
 
     /**

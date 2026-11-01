@@ -428,6 +428,15 @@ function notEditable(status: ClaimStatus | undefined): string {
                   [attr.aria-label]="'Add a proof to claim of ' + c.amount + ' on ' + c.date">Add proof</button>
           <button type="button" data-testid="claim-remind" (click)="remind(c)"
                   [attr.aria-label]="'Remind claim of ' + c.amount + ' on ' + c.date">Remind</button>
+          <button type="button" data-testid="claim-timeline" (click)="showTimeline(c)"
+                  [attr.aria-label]="'Show the timeline of claim of ' + c.amount + ' on ' + c.date">Timeline</button>
+          @if (timeline()?.id === c.id) {
+            <ol [attr.aria-label]="'Timeline of claim of ' + c.amount + ' on ' + c.date">
+              @for (line of timeline()?.lines; track $index) {
+                <li data-testid="claim-timeline-line">{{ line }}</li>
+              }
+            </ol>
+          }
           <label [for]="fieldId('defer-' + c.id)">Defer until</label>
           <input [id]="fieldId('defer-' + c.id)" type="date" data-testid="claim-defer-date" #deferDate
                  (input)="clearClaimError(c.id)" />
@@ -504,6 +513,10 @@ export class Claims {
   protected readonly error = signal('');
   /** The error from the last action on a claim's row, if it was refused. */
   protected readonly claimError = signal<{ id: number; message: string } | null>(null);
+  /** The timeline last asked for: the audit lines about that claim, newest first. */
+  protected readonly timeline = signal<{ id: number; lines: string[] } | null>(null);
+  /** Counts the presses of a timeline button, so only the answer to the latest is shown. */
+  private timelineRequest = 0;
   protected readonly form = new FormGroup({
     amount: new FormControl('', { nonNullable: true }),
     date: new FormControl('', { nonNullable: true }),
@@ -807,6 +820,24 @@ export class Claims {
         ? 'Enter a comment (at most 500 characters).'
         : 'Could not comment on that claim.';
       this.claimError.set({ id: c.id, message });
+    }
+  }
+
+  /** Show a claim's timeline: the audit lines about it, newest first, as the file holds them. */
+  protected async showTimeline(c: Claim): Promise<void> {
+    this.claimError.set(null);
+    const sheet = this.session.sheetId();
+    if (!sheet) return;
+    const request = ++this.timelineRequest;
+    this.timeline.set(null);
+    const url = `/api/sheets/${encodeURIComponent(sheet)}/claims/${c.id}/timeline`;
+    try {
+      const lines = await firstValueFrom(this.http.get<string[]>(url, { headers: this.headers() }));
+      if (this.session.sheetId() !== sheet || request !== this.timelineRequest) return;
+      this.timeline.set({ id: c.id, lines });
+    } catch {
+      if (this.session.sheetId() !== sheet || request !== this.timelineRequest) return;
+      this.claimError.set({ id: c.id, message: 'Could not read the timeline of that claim.' });
     }
   }
 
