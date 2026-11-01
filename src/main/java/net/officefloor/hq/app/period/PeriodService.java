@@ -25,9 +25,9 @@ import org.springframework.transaction.annotation.Transactional;
 /**
  * The sheet's periods: each named uniquely on the sheet, from and to a date inclusive, none
  * overlapping. Closing a period fixes, at that moment, each person's due-total for it (the figures
- * as shown then of their claims whose date falls in it that counted by the status they had at the
+ * as shown then of their claims whose due-by falls in it that counted by the status they had at the
  * end of its last day) and its own due-total, the sum of theirs. Soft-closing fixes them the same
- * way while claims dated inside it can still change; a soft-closed period can then be closed (fixing
+ * way while claims due inside it can still change; a soft-closed period can then be closed (fixing
  * them afresh). A steward can reopen a closed or soft-closed period, making its due-total live again.
  */
 @Service
@@ -144,7 +144,7 @@ public class PeriodService {
         for (Long personId : byId.keySet()) personDues.put(personId, BigDecimal.ZERO.setScale(2));
         for (Claim claim : claims.findBySheetIdOrderByIdDesc(sheetId)) {
             Person person = byId.get(claim.getPersonId());
-            if (person == null || !period.contains(claim.getDate()) || !person.countsAt(claim, period.getToDate(), today)) continue;
+            if (person == null || !period.contains(claim.getDueBy()) || !person.countsAt(claim, period.getToDate(), today)) continue;
             BigDecimal figure = claimService.chargedFigureOf(sheetId, person, claim);
             if (figure != null) personDues.merge(person.getId(), figure, BigDecimal::add);
         }

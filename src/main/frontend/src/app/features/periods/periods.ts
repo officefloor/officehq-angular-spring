@@ -11,9 +11,9 @@ export interface Period {
   /** The first and last dates (yyyy-mm-dd) in it, both inclusive. */
   from: string;
   to: string;
-  /** Once closed, no claim dated inside it can change. */
+  /** Once closed, no claim due inside it can change. */
   closed: boolean;
-  /** Soft-closed: its figures are fixed as for a close, but claims dated inside it can still change. */
+  /** Soft-closed: its figures are fixed as for a close, but claims due inside it can still change. */
   softClosed: boolean;
   /** The due-total fixed when it was closed or soft-closed, two decimals; null while open. */
   closedDueTotal: string | null;

@@ -20,7 +20,7 @@ import java.util.TreeMap;
  * A period of the sheet: a name unique on the sheet, from and to a date, both inclusive. Once
  * closed, its due-total and each person's due-total for it are fixed at what they were when it was
  * closed; reopened, they are live again. Soft-closed, its figures are fixed the same way, but claims
- * dated inside it can still change.
+ * due inside it can still change.
  */
 @Entity
 @Table(name = "period")

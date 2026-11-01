@@ -49,7 +49,7 @@ export interface Claim {
   splitFrom: string | null;
   /** The user whose open editor locks it for everyone else; null while no editor holds it. */
   lockedBy: string | null;
-  /** Whether it was added while the period its date falls in was soft-closed. */
+  /** Whether it was added while the period its due-by falls in was soft-closed. */
   lateEntry: boolean;
 }
 
@@ -195,8 +195,8 @@ export function isOverdue(c: Claim, today: string | null): boolean {
   return isOpen(c) && today !== null && c.dueBy < today && !isDeferred(c, today);
 }
 
-/** Why a change to a claim dated inside a closed period is refused. */
-const CLOSED = 'No claim dated inside a closed period can be changed.';
+/** Why a change to a claim due inside a closed period is refused. */
+const CLOSED = 'No claim due inside a closed period can be changed.';
 
 /** Why a claim dated after its person's retirement date is refused. */
 export const RETIRED = 'No claim can be dated after its person\'s retirement date.';
@@ -334,7 +334,7 @@ export class Claims {
   readonly claims = input.required<Claim[]>();
   /** The person's rate on a date, of the grade they had then. */
   readonly pctOn = input.required<PctOn>();
-  /** The sheet's periods, for the one each claim's date falls in. */
+  /** The sheet's periods, for the one each claim's due-by falls in. */
   readonly periods = input.required<Period[]>();
   /** A claim added, edited or given a new status, as the store now holds it. */
   readonly saved = output<Claim>();
@@ -393,9 +393,9 @@ export class Claims {
     return isDeferred(c, this.session.today());
   }
 
-  /** The name of the period its date falls in, or blank when none. */
+  /** The name of the period its due-by falls in, or blank when none. */
   protected periodOf(c: Claim): string {
-    return periodOn(this.periods(), c.date)?.name ?? '';
+    return periodOn(this.periods(), c.dueBy)?.name ?? '';
   }
 
   private headers(): Record<string, string> {
@@ -421,7 +421,7 @@ export class Claims {
    */
   protected async edit(c: Claim): Promise<void> {
     this.claimError.set(null);
-    if (closedOn(this.periods(), c.date)) {
+    if (closedOn(this.periods(), c.dueBy)) {
       this.claimError.set({ id: c.id, message: CLOSED });
       return;
     }
@@ -530,7 +530,7 @@ export class Claims {
     if (this.claimError()?.id === id) this.claimError.set(null);
   }
 
-  /** Raise a claim's proofs count by one; a SETTLED or VOID claim, or one dated inside a closed period, is refused. */
+  /** Raise a claim's proofs count by one; a SETTLED or VOID claim, or one due inside a closed period, is refused. */
   protected async addProof(c: Claim): Promise<void> {
     this.claimError.set(null);
     const sheet = this.session.sheetId();
@@ -553,7 +553,7 @@ export class Claims {
 
   /**
    * Defer an OPEN claim until a date after the sheet's today; a claim that is not OPEN, a date not after
-   * today, or a claim dated inside a closed period is refused.
+   * today, or a claim due inside a closed period is refused.
    */
   protected async defer(c: Claim, until: string): Promise<void> {
     this.claimError.set(null);
@@ -584,8 +584,8 @@ export class Claims {
   }
 
   /**
-   * A steward re-dates an OPEN or PENDING claim; anyone else, any other claim, a claim in or a new date
-   * inside a closed period, or a new date after its person's retirement is refused.
+   * A steward re-dates an OPEN or PENDING claim; anyone else, any other claim, a claim due inside a closed
+   * period, or a new date after its person's retirement is refused.
    */
   protected async redate(c: Claim, value: string): Promise<void> {
     this.claimError.set(null);
@@ -649,7 +649,7 @@ export class Claims {
 
   /**
    * Split an amount (more than 0.00 and less than its amount) off an OPEN claim into a new OPEN claim; a
-   * PENDING, deferred or settled claim, one dated inside a closed period, or a user whose role may not open a
+   * PENDING, deferred or settled claim, one due inside a closed period, or a user whose role may not open a
    * claim is refused.
    */
   protected async split(c: Claim, amount: string): Promise<void> {

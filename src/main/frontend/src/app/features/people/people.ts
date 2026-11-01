@@ -454,13 +454,13 @@ export class People {
   protected readonly periods = signal<Period[]>([]);
   /**
    * Each person's live due-total per period in cents, by person id then period id: the dues as shown now
-   * of their claims whose date falls in it that counted by the status they had at the end of its last day.
+   * of their claims whose due-by falls in it that counted by the status they had at the end of its last day.
    */
   private readonly personPeriodLiveCents = computed(() => {
     const by = new Map<number, Map<number, number>>();
     const today = this.session.today();
     for (const c of this.claims()) {
-      const period = periodOn(this.periods(), c.date);
+      const period = periodOn(this.periods(), c.dueBy);
       const pctOn = this.pctOnByPerson().get(c.personId);
       if (period === null || pctOn === undefined) continue;
       if (!countsAt(c, period.to, this.keptOut(c), today)) continue;
@@ -1205,7 +1205,7 @@ export class People {
       if (this.session.sheetId() !== sheet) return;
       this.quickError.set(
         e instanceof HttpErrorResponse && e.status === 423
-          ? 'No claim dated inside a closed period can be changed.'
+          ? 'No claim due inside a closed period can be changed.'
           : e instanceof HttpErrorResponse && e.status === 422
           ? RETIRED
           : e instanceof HttpErrorResponse && e.status === 409
@@ -1246,7 +1246,7 @@ export class People {
       if (this.session.sheetId() !== sheet) return;
       this.pasteError.set(
         e instanceof HttpErrorResponse && e.status === 423
-          ? 'No claim dated inside a closed period can be changed.'
+          ? 'No claim due inside a closed period can be changed.'
           : e instanceof HttpErrorResponse && e.status === 422
           ? RETIRED
           : 'Every line must be name,amount,date,note for a person on the sheet; nothing was added.',
