@@ -4,7 +4,7 @@ import { takeUntilDestroyed, toObservable } from '@angular/core/rxjs-interop';
 import { FormControl, FormGroup, ReactiveFormsModule, Validators } from '@angular/forms';
 import { forkJoin, of, switchMap } from 'rxjs';
 import { AMOUNT_PATTERN, ClaimView, Claims, cents, countsAtEndWithHolds, countsClaimed, countsWithHolds, isOverdue, isPendingLate, isReviewLate, money, holderPartCents, roundingDate, sharePartCents, statusAt } from '../../core/claims';
-import { Grade, People, PersonView, gradeOn, nameWithGrade } from '../../core/people';
+import { Grade, People, PersonView, gradeOn, nameWithGrade, timelineOf } from '../../core/people';
 import { PatronView, Patrons } from '../../core/patrons';
 import { Periods, periodOn } from '../../core/periods';
 import { DEFAULT_DUE_TERMS, DueTerms, NOT_AVAILABLE, RateLine, Rates, claimDueCents, rateOnLine, roundsHalfUp } from '../../core/rates';
@@ -564,6 +564,11 @@ function csvField(value: string): string {
             @if (personError()?.id === p.id) {
               <p role="alert" data-testid="person-error">{{ personError()?.message }}</p>
             }
+            <ol data-testid="person-timeline" [attr.aria-label]="'Timeline of ' + p.name">
+              @for (line of timelines().get(p.id) ?? []; track $index) {
+                <li data-testid="person-timeline-line">{{ line }}</li>
+              }
+            </ol>
             <app-person-plans [personId]="p.id" [personName]="p.name" (claimsEdited)="plansGenerated($event)" />
             <app-person-claims [personId]="p.id" [personName]="p.name" [claims]="claimsOf(p.id)" [ratesByGrade]="rates.lineByGrade()" [grades]="p"
                                [periods]="periods.list()" [holds]="p.holds" [retiredFrom]="p.retiredFrom" [others]="othersOf(p.id)"
@@ -790,6 +795,9 @@ export class PeopleList {
     for (const c of this.claims()) byPerson.set(c.personId, [...(byPerson.get(c.personId) ?? []), c]);
     return byPerson;
   });
+  /** Each person's timeline: a line for each dated thing about them, in date order. */
+  protected readonly timelines = computed(() =>
+    new Map(this.people().map((p) => [p.id, timelineOf(p, this.claimsOf(p.id))])));
   /** For each person, the other people on the sheet their claims can be moved to. */
   private readonly othersByPerson = computed(() => {
     const people = this.people();

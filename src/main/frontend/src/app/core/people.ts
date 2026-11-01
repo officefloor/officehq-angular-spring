@@ -143,6 +143,37 @@ export function nameWithGrade(p: Pick<PersonView, 'name' | 'grade' | 'grades'>, 
   return `${p.name} (${gradeOn(p, date)})`;
 }
 
+/** A claim as a person's timeline shows it. */
+export interface TimelineClaim {
+  date: string;
+  amount: string;
+  status: string;
+}
+
+/** The person's timeline: a line for each dated thing about them, in date order; on one date, their grade changes,
+ *  then their claims (by their amounts as written), then their holds, then their retirements, then their unretirements. */
+export function timelineOf(p: Pick<PersonView, 'grades' | 'holds' | 'retiredFrom' | 'pastRetirements'>,
+                           claims: readonly TimelineClaim[]): string[] {
+  const entries: { date: string; kind: number; order: string; text: string }[] = [];
+  for (const g of p.grades) {
+    if (g.from !== null) entries.push({ date: g.from, kind: 0, order: '', text: `grade ${g.grade}` });
+  }
+  for (const c of claims) {
+    entries.push({ date: c.date, kind: 1, order: c.amount, text: `claim ${c.amount} ${c.status}` });
+  }
+  for (const h of p.holds) {
+    entries.push({ date: h.from, kind: 2, order: '', text: h.to === null ? 'hold' : `hold to ${h.to}` });
+  }
+  const retirements = [...(p.pastRetirements ?? [])];
+  for (const r of retirements) entries.push({ date: r.from, kind: 3, order: '', text: 'retired' });
+  if (p.retiredFrom !== null) entries.push({ date: p.retiredFrom, kind: 3, order: '', text: 'retired' });
+  for (const r of retirements) entries.push({ date: r.to, kind: 4, order: '', text: 'unretired' });
+  return entries
+    .map((e, i) => ({ ...e, i }))
+    .sort((a, b) => a.date.localeCompare(b.date) || a.kind - b.kind || a.order.localeCompare(b.order) || a.i - b.i)
+    .map((e) => `${e.date} ${e.text}`);
+}
+
 // The people kept on a sheet, listed in their positions; new people go to the end.
 @Injectable({ providedIn: 'root' })
 export class People {

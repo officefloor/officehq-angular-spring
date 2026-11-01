@@ -1226,8 +1226,16 @@ export class PersonClaims {
       },
       error: (err: unknown) => {
         this.saving.set(false);
+        // A claim with lines has the amount of its lines: no save of another amount can go through, so its editor
+        // is closed (releasing the lock) and the form is back to adding, still showing why.
+        const edited = id === null ? undefined : this.claims().find((c) => c.id === id);
+        const linesFixAmount = err instanceof HttpErrorResponse && err.status === 409 && edited !== undefined
+          && edited.lines.length > 0 && cents(edited.amount) !== cents(amount);
+        if (linesFixAmount) this.cancel();
         this.error.set(
-          err instanceof HttpErrorResponse && err.status === 423
+          linesFixAmount
+            ? 'A claim with lines has the amount of its lines; it cannot be given another.'
+            : err instanceof HttpErrorResponse && err.status === 423
             ? 'That claim is due by inside a closed period.'
             : err instanceof HttpErrorResponse && err.status === 422
               ? 'That claim is dated after the person retired.'
