@@ -118,6 +118,20 @@ export class Periods {
     );
   }
 
+  /** Undo the sheet's last rollover: the periods it generated are removed and the openings it set taken back; only
+   *  the steward who made it may, on the sheet's today it was made, while no claim is in a period it generated. The
+   *  periods are re-read once it is done. */
+  undoRollover(sheetId: string): Observable<void> {
+    return this.http.post<void>(`${this.base(sheetId)}/rollover/undo`, {}).pipe(
+      switchMap(() =>
+        this.http.get<PeriodView[]>(this.base(sheetId)).pipe(
+          tap((periods) => this.periods.set(periods)),
+          map(() => undefined),
+        ),
+      ),
+    );
+  }
+
   private addMade(made: GenerateView): void {
     this.periods.update((list) => [...list, ...made.periods].sort((a, b) => (a.from < b.from ? -1 : 1)));
   }

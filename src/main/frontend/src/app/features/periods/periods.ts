@@ -90,6 +90,9 @@ import { FigurePipe } from '../../core/figure';
         <input id="rollover-year" data-testid="rollover-year" formControlName="year" inputmode="numeric"
                autocomplete="off" />
         <button type="submit" data-testid="rollover" [disabled]="rollingOver()">Roll the year over</button>
+        <button type="button" data-testid="rollover-undo" [disabled]="rollingOver()" (click)="undoRollover()">
+          Undo the last rollover
+        </button>
         @if (rolledOver() !== null) {
           <p role="status">Made <span data-testid="rollover-made">{{ rolledOver() }}</span> periods.</p>
         }
@@ -431,6 +434,28 @@ export class PeriodsPanel {
             : err instanceof HttpErrorResponse && err.status === 409
               ? 'That fiscal year has no periods on this sheet.'
               : 'Could not roll the year over.',
+        );
+      },
+    });
+  }
+
+  protected undoRollover(): void {
+    if (this.rollingOver()) return;
+    this.rolloverError.set(null);
+    this.rolledOver.set(null);
+    const sheet = this.sheets.current();
+    if (!sheet) return;
+    this.rollingOver.set(true);
+    this.periods.undoRollover(sheet.id).subscribe({
+      next: () => this.rollingOver.set(false),
+      error: (err: unknown) => {
+        this.rollingOver.set(false);
+        this.rolloverError.set(
+          err instanceof HttpErrorResponse && err.status === 403
+            ? 'Only the steward who rolled the year over may undo it.'
+            : err instanceof HttpErrorResponse && err.status === 409
+              ? 'The last rollover cannot be undone: it was undone already, made on another day, or a claim is in a period it made.'
+              : 'Could not undo the rollover.',
         );
       },
     });

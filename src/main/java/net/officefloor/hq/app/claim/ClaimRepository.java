@@ -27,6 +27,9 @@ public interface ClaimRepository extends JpaRepository<Claim, Long> {
     /** Whether a claim on the sheet other than this one has this external reference, without regard to case. */
     boolean existsBySheetIdAndRefIgnoreCaseAndIdNot(String sheetId, String ref, Long id);
 
+    /** Whether any claim on the sheet, of any status, is dated from {@code from} to {@code to} inclusive. */
+    boolean existsBySheetIdAndDateBetween(String sheetId, java.time.LocalDate from, java.time.LocalDate to);
+
     Optional<Claim> findByIdAndSheetId(Long id, String sheetId);
 
     /** Release every claim editor's lock on the sheet. */
