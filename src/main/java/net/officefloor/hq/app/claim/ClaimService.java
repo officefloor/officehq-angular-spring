@@ -26,8 +26,9 @@ import org.springframework.transaction.annotation.Transactional;
 
 /**
  * The claims on a sheet: listed newest first, added to a person and edited one at a time. A claim
- * given no date takes the sheet's today. Its due-by is fixed when it is added: its date plus the terms
- * in force on that date of its person's grade then (else the sheet's terms in force on it); it does not
+ * given no date takes the sheet's today. Its due-by is fixed when it is added: its date plus its
+ * person's own terms, else the terms in force on that date of its person's grade then (else the
+ * sheet's terms in force on it); it does not
  * move when its date or the terms change later. A claim is added as DRAFT and moves through its statuses
  * as {@link ClaimStatus} allows; a change it does not allow is refused. Opening a claim gives it
  * the sheet's next number (or, while the sheet numbers by period, the next within its period), which it
@@ -85,7 +86,8 @@ public class ClaimService {
         refuseIfClosed(sheetId, on);
         if (!person.mayClaimOn(on)) throw new PersonRetiredException();
         refuseUnlessCorrects(sheetId, personId, amount, corrects);
-        LocalDate dueBy = on.plusDays(settings.termsFor(sheetId, person.gradeOn(on), on));
+        LocalDate dueBy = on.plusDays(person.getTerms() != null ? person.getTerms()
+                : settings.termsFor(sheetId, person.gradeOn(on), on));
         Claim draft = new Claim(sheetId, personId, amount, on, note, dueBy);
         draft.setCorrects(corrects);
         Claim claim = claims.saveAndFlush(draft);
@@ -309,7 +311,8 @@ public class ClaimService {
         claim.setAmount(claim.getAmount().subtract(amount));
         claim.unstate();
         Claim original = claims.saveAndFlush(claim);
-        LocalDate dueBy = on.plusDays(settings.termsFor(sheetId, person.gradeOn(on), on));
+        LocalDate dueBy = on.plusDays(person.getTerms() != null ? person.getTerms()
+                : settings.termsFor(sheetId, person.gradeOn(on), on));
         Claim split = new Claim(sheetId, person.getId(), amount, on, original.getNote(), dueBy);
         split.setSplitFrom(original.getNumber());
         number(numbering, split);

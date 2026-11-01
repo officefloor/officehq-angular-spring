@@ -27,7 +27,8 @@ import net.officefloor.hq.app.claim.ClaimStatus;
  * spaces and is unique on the sheet without regard to case (by its {@link #keyOf key}). A person
  * given a retirement date is retired at once, whatever the date; none of their claims may be dated
  * after it. A person may have several holds over time, each from a from-date to an optional to-date. The grade is dated: the first one
- * given is in force from the beginning of time, and each later one from its from-date.
+ * given is in force from the beginning of time, and each later one from its from-date. A person may have
+ * their own terms in days, which their claims' due-by takes ahead of their grade's and the sheet's.
  */
 @Entity
 @Table(name = "person")
@@ -55,6 +56,10 @@ public class Person {
     @MapKeyColumn(name = "from_date")
     @Column(name = "grade", nullable = false)
     private Map<LocalDate, String> datedGrades = new TreeMap<>();
+
+    /** Their own terms in days, ahead of their grade's and the sheet's; null: none. */
+    @Column(name = "terms")
+    private Integer terms;
 
     @Column(name = "retired_from")
     private LocalDate retiredFrom;
@@ -107,6 +112,11 @@ public class Person {
 
     /** The grades recorded after the first, by the date each is in force from, earliest first. */
     public Map<LocalDate, String> getDatedGrades() { return new TreeMap<>(datedGrades); }
+
+    /** Their own terms in days, or null when they have none. */
+    public Integer getTerms() { return terms; }
+
+    public void setTerms(Integer terms) { this.terms = terms; }
 
     /** The date they are retired from, or null while not retired. */
     public LocalDate getRetiredFrom() { return retiredFrom; }

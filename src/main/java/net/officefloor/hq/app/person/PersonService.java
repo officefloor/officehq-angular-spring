@@ -5,6 +5,7 @@ import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import java.util.Set;
 import java.util.stream.Collectors;
 import net.officefloor.hq.app.Audit;
@@ -26,7 +27,8 @@ import org.springframework.transaction.annotation.Transactional;
  * person can name other people on the sheet as their patrons, one at a time; not themselves, and
  * not the same person twice. A person's grade is dated: the first one given is in force from the
  * beginning of time, and each edit records the grade from its from-date (blank: the sheet's today),
- * unless it leaves the grade as in force on the sheet's today with the from-date blank.
+ * unless it leaves the grade as in force on the sheet's today with the from-date blank. A person may
+ * have their own terms in days (null: none), given on the add and on each edit.
  */
 @Service
 public class PersonService {
@@ -61,29 +63,41 @@ public class PersonService {
 
     @Transactional
     public Person add(String sheetId, String user, String name, String grade) {
+        return add(sheetId, user, name, grade, null);
+    }
+
+    /** Add a person with their own terms in days (null: none). */
+    @Transactional
+    public Person add(String sheetId, String user, String name, String grade, Integer terms) {
         if (!sheets.existsById(sheetId)) throw new SheetNotFoundException();
         requireUnused(sheetId, name, null);
         RollupService.Snapshot before = rollup.snapshot(sheetId);
-        Person person = saveUnique(new Person(sheetId, name, grade));
-        record("PERSON_ADDED", sheetId, user, person, person.getGrade());
+        Person draft = new Person(sheetId, name, grade);
+        draft.setTerms(terms);
+        Person person = saveUnique(draft);
+        record("PERSON_ADDED", sheetId, user, person, person.getGrade(),
+                terms != null ? " terms=" + terms : "");
         rollup.recordChanges(sheetId, user, before);
         return person;
     }
 
     @Transactional
     public Person edit(String sheetId, String user, Long id, long version, String name, String grade,
-            LocalDate gradeFrom) {
+            LocalDate gradeFrom, Integer terms) {
         Person person = people.findByIdAndSheetId(id, sheetId).orElseThrow(PersonNotFoundException::new);
         if (person.getVersion() != version) throw new PersonVersionConflictException();
         requireUnused(sheetId, name, id);
         RollupService.Snapshot before = rollup.snapshot(sheetId);
         LocalDate today = today(sheetId);
         person.setName(name);
+        boolean termsChanged = !Objects.equals(terms, person.getTerms());
+        person.setTerms(terms);
         if (gradeFrom != null || !grade.equals(person.gradeOn(today))) {
             person.setGradeFrom(gradeFrom != null ? gradeFrom : today, grade);
         }
         Person saved = saveUnique(person);
-        record("PERSON_EDITED", sheetId, user, saved, saved.gradeOn(today));
+        record("PERSON_EDITED", sheetId, user, saved, saved.gradeOn(today),
+                termsChanged ? " terms=" + (terms != null ? terms : "") : "");
         rollup.recordChanges(sheetId, user, before);
         return saved;
     }
@@ -196,9 +210,9 @@ public class PersonService {
         return person;
     }
 
-    private void record(String event, String sheetId, String user, Person person, String grade) {
+    private void record(String event, String sheetId, String user, Person person, String grade, String tail) {
         audit.recordOnCommit(event + " sheet=" + sheetId + " by=" + user.strip()
-                + " name=" + person.getName() + " grade=" + grade);
+                + " name=" + person.getName() + " grade=" + grade + tail);
     }
 
     private void requireUnused(String sheetId, String name, Long self) {

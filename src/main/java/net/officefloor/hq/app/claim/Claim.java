@@ -54,7 +54,7 @@ public class Claim {
     @Column(name = "note", nullable = false)
     private String note;
 
-    /** The date it is due by, fixed when added: its date plus the terms of its person's grade then. */
+    /** The date it is due by, fixed when added: its date plus its person's own terms, else those of their grade then. */
     @Column(name = "due_by", nullable = false, updatable = false)
     private LocalDate dueBy;
 
