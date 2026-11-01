@@ -121,9 +121,9 @@ public class StatementService {
     /**
      * Take a statement of a person: record their due-total now (with the late charges their overdue claims have gained), bind each of their claims that counts
      * to the figure it has now (its settled figure, else the figure it is bound to, else its amount at
-     * its grade's rate in force on its date, not raised to the floor) with the late charge it has now (the one it is bound to, else the one it has gained by the
-     * sheet's today), and leave the rest unbound. While bound, its late charge no longer follows the sheet's today; the
-     * floor is applied last, to the figure with its charge. The sheet is locked first, so
+     * its grade's rate in force on its date, raised to the floor in force on its date) with the late charge it has now (the one it is bound to, else the one it has
+     * gained on that figure by the sheet's today), and leave the rest unbound. While bound, its late charge no longer follows
+     * the sheet's today. The sheet is locked first, so
      * a statement is not taken while a claim on it changes.
      * <p>
      * Taken as of a date ({@code asOf}, on or before the sheet's today), it reads the sheet as it stood at the end of
@@ -196,15 +196,15 @@ public class StatementService {
             BigDecimal fixed = then.getSettledDue() != null ? then.getSettledDue() : then.getBoundDue();
             BigDecimal figure = fixed != null || then.isBound() ? fixed
                     : sheetRates.inForceOn(person.gradeOn(then.getDate()), then.getDate(), claim.getId())
-                            .map(rate -> ClaimService.liveFigure(then, rate.getRate(),
-                                    sheet.roundingFor(ClaimService.roundingDate(then, roundingClaims))))
+                            .map(rate -> ClaimService.floored(then, ClaimService.liveFigure(then, rate.getRate(),
+                                    sheet.roundingFor(ClaimService.roundingDate(then, roundingClaims))), sheet))
                             .orElse(null);
             anyDue |= figure != null;
             grades.add(person.gradeOn(then.getDate()));
             BigDecimal late = figure == null || then.getSettledDue() != null ? null
                     : ClaimService.lateCharge(then, figure, sheet, person.gradeOn(then.getDate()));
             total = figure == null ? total
-                    : total.add(late == null ? figure : ClaimService.floored(then, figure.add(late), sheet));
+                    : total.add(late == null ? figure : figure.add(late));
             claim.bind(figure, late);
             counted++;
         }

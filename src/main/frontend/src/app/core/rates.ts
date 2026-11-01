@@ -162,8 +162,9 @@ export function lateChargeCents(
 }
 
 /** A claim's due in whole cents: the figure fixed when it was settled, else the figure its person's
- *  last statement binds it to (none: n/a), else its amount at its grade's rate in force on its date as the claim takes it (the sheet's own, else its nearest ancestor's), with any late
- *  charge added on top of it, the sum raised to the floor in force on its date (a correction is not); null when it has none. Its live
+ *  last statement binds it to (none: n/a), else its amount at its grade's rate in force on its date as the claim takes it (the sheet's own, else its nearest ancestor's) raised
+ *  to the floor in force on its date (a correction is not), with any late charge worked out on that figure added on top
+ *  of it; null when it has none. Its live
  *  figure rounds by `roundsOn`: its date, or for a correction the date of the claim it corrects. `grade` is its
  *  person's grade in force on its date, whose grace days delay its late charge. */
 export function claimDueCents(
@@ -183,6 +184,8 @@ export function claimDueCents(
     const rate = rateOnLine(gradeRates, c.date, c.id);
     if (rate === undefined) return null;
     figure = dueCents(cents(c.amount), rate, roundsHalfUp(roundsOn, sheet));
+    // The floor is applied before the late charge, which is worked out on the floored figure.
+    if (cents(c.amount) >= 0) figure = Math.max(figure, cents(floorOn(sheet, c.date)));
   }
   // A statement binds the late charge with the figure: while bound, it no longer follows the sheet's today.
   const boundLate = c.stated && c.statedLate != null ? c.statedLate : null;
@@ -190,8 +193,7 @@ export function claimDueCents(
     && !isDeferred(c, sheet.today) && cents(c.amount) >= 0 && !c.waived;
   const late = boundLate === null ? lateChargeCents(c, figure, sheet, graceOn(sheet.settings, grade, c.date))
     : charges ? cents(boundLate) : 0;
-  const due = figure + late;
-  return cents(c.amount) < 0 ? due : Math.max(due, cents(floorOn(sheet, c.date)));
+  return figure + late;
 }
 
 
