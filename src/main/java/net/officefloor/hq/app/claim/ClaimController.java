@@ -31,12 +31,12 @@ public class ClaimController {
      * when bound by its person's last statement, to the due it had then (null when it had none). A
      * correction has the number of the claim it corrects (null for any other claim). Its status log
      * is oldest first. Locked by the user whose open editor holds it (null when none). A late entry
-     * when added while its period was soft-closed.
+     * when added while its period was soft-closed. Reminded on the last day a reminder was written (null when none).
      */
     public record ClaimView(Long id, Long personId, String amount, LocalDate date, String note, ClaimStatus status,
             String number, String settledDue, String openedBy, boolean stated, String statedDue, String corrects,
             LocalDate dueBy, List<LogLineView> log, LocalDate deferredUntil,
-            int proofs, String splitFrom, String lockedBy, boolean lateEntry) {
+            int proofs, String splitFrom, String lockedBy, boolean lateEntry, LocalDate remindedOn) {
         public static ClaimView of(Claim claim) {
             return new ClaimView(claim.getId(), claim.getPersonId(), claim.getAmount().toPlainString(),
                     claim.getDate(), claim.getNote(), claim.getStatus(), claim.getNumber(),
@@ -45,7 +45,7 @@ public class ClaimController {
                     claim.getStatedDue() == null ? null : claim.getStatedDue().setScale(2).toPlainString(),
                     claim.getCorrects(), claim.getDueBy(), claim.getLog().stream().map(LogLineView::of).toList(),
                     claim.getDeferredUntil(), claim.getProofs(), claim.getSplitFrom(),
-                    claim.getLockedBy(), claim.isLateEntry());
+                    claim.getLockedBy(), claim.isLateEntry(), claim.getRemindedOn());
         }
     }
 
@@ -273,6 +273,14 @@ public class ClaimController {
             @PathVariable Long id,
             @RequestHeader("X-User") @NotBlank @Size(max = 100) String user) {
         return ClaimView.of(service.addProof(sheetId, user, id));
+    }
+
+    @PostMapping("/claims/{id}/remind")
+    public ClaimView remind(
+            @PathVariable @Size(max = 100) @Pattern(regexp = "[A-Za-z0-9._-]+") String sheetId,
+            @PathVariable Long id,
+            @RequestHeader("X-User") @NotBlank @Size(max = 100) String user) {
+        return ClaimView.of(service.remind(sheetId, user, id));
     }
 
     @PostMapping("/claims/{id}/reassign")

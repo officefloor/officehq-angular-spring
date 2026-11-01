@@ -51,6 +51,8 @@ export interface Claim {
   lockedBy: string | null;
   /** Whether it was added while the period its due-by falls in was soft-closed. */
   lateEntry: boolean;
+  /** The last sheet's today (yyyy-mm-dd) a reminder was written for it; null until reminded. */
+  remindedOn: string | null;
 }
 
 /** A status a claim was given, by whom, on the sheet's today then, with its due then (null: none). */
@@ -266,6 +268,7 @@ function notEditable(status: ClaimStatus | undefined): string {
           <span>Corrects <span data-testid="claim-corrects">{{ c.corrects ?? '' }}</span></span>
           <span>Split from <span data-testid="claim-split-from">{{ c.splitFrom ?? '' }}</span></span>
           <span>Late entry <span data-testid="claim-late-entry">{{ c.lateEntry ? 'yes' : 'no' }}</span></span>
+          <span>Reminded <span data-testid="claim-reminded">{{ c.remindedOn ?? '' }}</span></span>
           <ol [attr.aria-label]="'Status log of claim of ' + c.amount + ' on ' + c.date">
             @for (line of c.log; track $index) {
               <li data-testid="claim-log-line">{{ line.status }} by {{ line.by }} on {{ line.date }} due={{ line.due ?? na }}</li>
@@ -287,6 +290,8 @@ function notEditable(status: ClaimStatus | undefined): string {
                   [attr.aria-label]="'Reject claim of ' + c.amount + ' on ' + c.date">Reject</button>
           <button type="button" data-testid="claim-proof" (click)="addProof(c)"
                   [attr.aria-label]="'Add a proof to claim of ' + c.amount + ' on ' + c.date">Add proof</button>
+          <button type="button" data-testid="claim-remind" (click)="remind(c)"
+                  [attr.aria-label]="'Remind claim of ' + c.amount + ' on ' + c.date">Remind</button>
           <label [for]="fieldId('defer-' + c.id)">Defer until</label>
           <input [id]="fieldId('defer-' + c.id)" type="date" data-testid="claim-defer-date" #deferDate
                  (input)="clearClaimError(c.id)" />
@@ -547,6 +552,27 @@ export class Claims {
         : e instanceof HttpErrorResponse && e.status === 409
         ? `A ${c.status} claim cannot be given a proof.`
         : 'Could not add a proof to that claim.';
+      this.claimError.set({ id: c.id, message });
+    }
+  }
+
+  /** Remind an OPEN or PENDING claim, once per sheet's today; any other claim, or a second reminder that day, is refused. */
+  protected async remind(c: Claim): Promise<void> {
+    this.claimError.set(null);
+    const sheet = this.session.sheetId();
+    if (!sheet) return;
+    const url = `/api/sheets/${encodeURIComponent(sheet)}/claims/${c.id}/remind`;
+    try {
+      const claim = await firstValueFrom(this.http.post<Claim>(url, null, { headers: this.headers() }));
+      if (this.session.sheetId() !== sheet) return;
+      this.saved.emit(claim);
+    } catch (e) {
+      if (this.session.sheetId() !== sheet) return;
+      const message = e instanceof HttpErrorResponse && e.status === 409
+        ? (c.status === 'OPEN' || c.status === 'PENDING'
+          ? 'This claim was already reminded today.'
+          : `A ${c.status} claim cannot be reminded; only an OPEN or PENDING one can.`)
+        : 'Could not remind that claim.';
       this.claimError.set({ id: c.id, message });
     }
   }

@@ -455,6 +455,26 @@ public class ClaimService {
     }
 
     /**
+     * Remind an OPEN or PENDING claim: a REMIND line is written and the claim is reminded on the sheet's
+     * today. Refused for a claim in any other status, or one already reminded on the sheet's today.
+     */
+    @Transactional
+    public Claim remind(String sheetId, String user, Long id) {
+        // The snapshot locks the sheet first, so the claim is read once no other change is under way.
+        RollupService.Snapshot before = rollup.snapshot(sheetId);
+        Claim claim = claims.findByIdAndSheetId(id, sheetId).orElseThrow(ClaimNotFoundException::new);
+        if (!claim.getStatus().isOpen()) throw new ClaimStatusRefusedException();
+        LocalDate today = sheets.today(sheetId);
+        if (today.equals(claim.getRemindedOn())) throw new ClaimRemindedException();
+        Person person = people.findByIdAndSheetId(claim.getPersonId(), sheetId).orElseThrow(PersonNotFoundException::new);
+        claim.remind(today);
+        Claim saved = claims.saveAndFlush(claim);
+        record("REMIND", sheetId, user, person, saved);
+        rollup.recordChanges(sheetId, user, before);
+        return saved;
+    }
+
+    /**
      * Refuse settling or approving a claim with no proofs whose due is above the proof threshold in force on
      * its date; a due of n/a is within any, and no threshold means none is needed.
      */

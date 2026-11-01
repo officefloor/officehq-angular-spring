@@ -121,6 +121,11 @@ public class Claim {
     /** The user whose open editor locks it for everyone else; none while no editor holds it. */
     @Column(name = "locked_by", length = 100)
     private String lockedBy;
+
+    /** The last sheet's today a reminder was written for it; none until reminded. */
+    @Column(name = "reminded_on")
+    private LocalDate remindedOn;
+
     /** Its status log, oldest first: a line for each status it has had, DRAFT when added. */
     @ElementCollection(fetch = FetchType.EAGER)
     @CollectionTable(name = "claim_log", joinColumns = @JoinColumn(name = "claim_id"))
@@ -234,6 +239,9 @@ public class Claim {
     public void setLockedBy(String lockedBy) { this.lockedBy = lockedBy; }
     /** Locked by an open editor of a user other than this one. */
     public boolean isLockedAgainst(String user) { return lockedBy != null && !lockedBy.equals(user.strip()); }
+    public LocalDate getRemindedOn() { return remindedOn; }
+    /** Record a reminder written on the sheet's today. */
+    public void remind(LocalDate on) { this.remindedOn = on; }
     public String getNumber() { return number; }
 
     /** Number the claim sheet-wide. */
