@@ -175,7 +175,9 @@ interface StatementTaken {
 // The sheet's due-total and overdue-total leave out the single highest and the single lowest person's
 // figure when three or more people have one (an n/a due-total is no figure).
 // People can be selected and given a grade together from a from-date (blank: the sheet's today), each in
-// list order as the person form would; the count changed is shown.
+// list order as the person form would; the count changed is shown. Selected people can be retired
+// together from a date (blank: the sheet's today), each in list order as the row's retire would; the
+// count retired is shown.
 /** Figures in cents added up, leaving out the single highest and the single lowest when there are three or more. */
 function trimmedSum(figures: number[]): number {
   const sum = figures.reduce((total, c) => total + c, 0);
@@ -314,6 +316,13 @@ function trimmedSum(figures: number[]): number {
           <p role="status">Changed <span data-testid="bulk-graded">{{ bulkGraded() }}</span></p>
         }
       </form>
+      <label for="bulk-retire-date">Retire selected people from (blank: today)</label>
+      <input type="date" id="bulk-retire-date" data-testid="bulk-retire-date" #bulkRetireDate
+             (input)="personError.set(null)" />
+      <button type="button" data-testid="bulk-retire" (click)="bulkRetire(bulkRetireDate.value)">Retire selected people</button>
+      @if (bulkRetired() !== null) {
+        <p role="status">Retired <span data-testid="bulk-retired">{{ bulkRetired() }}</span></p>
+      }
       <table>
         <thead>
           <tr><th scope="col"><span class="visually-hidden">Select</span></th><th scope="col">Name</th><th scope="col">Grade</th><th scope="col">Terms</th><th scope="col">Contact</th><th scope="col">Aliases</th><th scope="col">Came from</th><th scope="col">Claimed</th><th scope="col">Due total</th><th scope="col">Excess</th><th scope="col">Settled total</th><th scope="col">Open total</th><th scope="col">Cut total</th><th scope="col">Periods</th><th scope="col">Statements</th><th scope="col">Retired</th><th scope="col">Hold</th><th scope="col">Watched</th><th scope="col">Active</th><th scope="col">Clashing</th><th scope="col">Overdue</th><th scope="col">Aged</th><th scope="col">Patrons</th><th scope="col">Claims</th><th scope="col"><span class="visually-hidden">Actions</span></th></tr>
@@ -604,6 +613,8 @@ export class People {
   protected readonly selectedPeople = signal<ReadonlySet<number>>(new Set());
   /** How many people the last bulk grade changed; null before one, and while one runs. */
   protected readonly bulkGraded = signal<number | null>(null);
+  /** How many people the last bulk retire retired; null before one, and while one runs. */
+  protected readonly bulkRetired = signal<number | null>(null);
   protected readonly bulkGradeForm = new FormGroup({
     grade: new FormControl('A', { nonNullable: true }),
     /** The date the grade is in force from; blank: the sheet's today. */
@@ -917,6 +928,7 @@ export class People {
       this.selectedIds.set(new Set());
       this.selectedPeople.set(new Set());
       this.bulkGraded.set(null);
+      this.bulkRetired.set(null);
       this.bulkGradeForm.reset({ grade: 'A', from: '' }, { emitEvent: false });
       this.bulkOpened.set(null);
       this.bulkError.set('');
@@ -1516,6 +1528,43 @@ export class People {
       this.bulkGraded.set(result.graded);
     } catch {
       if (this.session.sheetId() === sheet) refuse('Could not grade the selected people.');
+    } finally {
+      this.bulkRunning = false;
+    }
+  }
+
+  /** Retire the selected people from the date (blank: the sheet's today), in list order; show how many were retired. */
+  protected async bulkRetire(date: string): Promise<void> {
+    if (this.bulkRunning) return;
+    this.bulkRetired.set(null);
+    this.personError.set(null);
+    const sheet = this.session.sheetId();
+    if (!sheet) return;
+    const ids = this.listed().filter((p) => this.selectedPeople().has(p.id)).map((p) => p.id);
+    const from = date.trim();
+    const refuse = (message: string) => {
+      const first = ids[0] ?? this.listed()[0]?.id;
+      if (first !== undefined) this.personError.set({ id: first, message });
+    };
+    if (ids.length === 0) {
+      refuse('Select at least one person to retire.');
+      return;
+    }
+    if (from && !/^\d{4}-\d{2}-\d{2}$/.test(from)) {
+      refuse('Enter a date, or leave it blank for today.');
+      return;
+    }
+    this.bulkRunning = true;
+    try {
+      const result = await firstValueFrom(this.http.post<{ retired: number }>(
+        `${this.url(sheet)}/retire`, { ids, from: from || null }, { headers: this.headers() }));
+      const list = await firstValueFrom(this.http.get<Person[]>(this.url(sheet), { headers: this.headers() }));
+      if (this.session.sheetId() !== sheet) return;
+      this.people.set(list);
+      this.selectedPeople.set(new Set());
+      this.bulkRetired.set(result.retired);
+    } catch {
+      if (this.session.sheetId() === sheet) refuse('Could not retire the selected people.');
     } finally {
       this.bulkRunning = false;
     }

@@ -204,6 +204,33 @@ public class PersonService {
     }
 
     /**
+     * Retire each of the people from the date (blank: the sheet's today), in list order, each as its
+     * own retire would, with its PERSON_RETIRED and rollup lines. One not on the sheet refuses them
+     * all. A viewer's, or one on an archived sheet, goes through with nothing done. Returns how many
+     * were retired.
+     */
+    @Transactional
+    public int bulkRetire(String sheetId, String user, Set<Long> ids, LocalDate from) {
+        // Lock the sheet so no claim is added or edited for them meanwhile against the old date.
+        Sheet sheet = sheets.findForUpdate(sheetId).orElseThrow(SheetNotFoundException::new);
+        if (sheet.isArchived() || settings.roleOf(sheetId, user) == Role.VIEWER) return 0;
+        LocalDate today = sheet.getToday();
+        List<Person> chosen = people.findBySheetIdOrderByPositionAscIdAsc(sheetId).stream()
+                .filter(p -> ids.contains(p.getId())).toList();
+        if (chosen.size() != ids.size()) throw new PersonNotFoundException();
+        LocalDate on = from != null ? from : today;
+        for (Person person : chosen) {
+            RollupService.Snapshot before = rollup.snapshot(sheetId);
+            person.retireFrom(on, today);
+            Person saved = saveUnique(person);
+            audit.recordOnCommit("PERSON_RETIRED sheet=" + sheetId + " by=" + user.strip()
+                    + " name=" + saved.getName() + " from=" + on);
+            rollup.recordChanges(sheetId, user, before);
+        }
+        return chosen.size();
+    }
+
+    /**
      * Swap the person with the one above (up) or below (down) them in the list; the top one cannot move
      * up nor the bottom one down. Returns them in their new place.
      */
