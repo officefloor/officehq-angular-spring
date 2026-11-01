@@ -322,7 +322,7 @@ export class PeriodsPanel {
       this.error.set('Choose a to-date for the period.');
       return;
     }
-    if (to < (from === '' ? sheet.today : from)) {
+    if (to < (from === '' ? this.sheets.today() : from)) {
       this.error.set('A period cannot end before it starts.');
       return;
     }
@@ -364,7 +364,7 @@ export class PeriodsPanel {
       this.generateError.set('Choose a to-date.');
       return;
     }
-    if (to < (from === '' ? sheet.today : from)) {
+    if (to < (from === '' ? this.sheets.today() : from)) {
       this.generateError.set('The to-date cannot be before the from-date.');
       return;
     }

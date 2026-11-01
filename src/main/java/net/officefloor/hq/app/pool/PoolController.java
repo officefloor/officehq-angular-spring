@@ -10,6 +10,7 @@ import java.time.LocalDate;
 import java.util.List;
 import java.util.stream.IntStream;
 import net.officefloor.hq.app.history.SheetHistory;
+import net.officefloor.hq.app.sheet.Preview;
 import org.springframework.format.annotation.DateTimeFormat;
 import org.springframework.validation.annotation.Validated;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -93,9 +94,10 @@ public class PoolController {
     @GetMapping
     public List<PoolView> list(
             @PathVariable @NotBlank @Size(max = 100) @Pattern(regexp = "[A-Za-z0-9._-]+") String sheetId,
-            @RequestHeader(value = SheetHistory.AS_OF_HEADER, required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate asOf) {
-        // A sheet shown as of a date reads its pools with that date standing in for its today.
-        return pools.listWithHistory(sheetId, asOf).stream().map(PoolView::of).toList();
+            @RequestHeader(value = SheetHistory.AS_OF_HEADER, required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate asOf,
+            @RequestHeader(value = Preview.HEADER, required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate preview) {
+        // A sheet shown as of (or previewing) a date reads its pools with that date standing in for its today.
+        return pools.listWithHistory(sheetId, asOf, preview).stream().map(PoolView::of).toList();
     }
 
     @PostMapping

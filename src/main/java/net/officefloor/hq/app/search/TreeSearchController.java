@@ -12,12 +12,15 @@ import java.util.Set;
 import net.officefloor.hq.app.person.Person;
 import net.officefloor.hq.app.person.PersonRepository;
 import net.officefloor.hq.app.rollup.Rollup;
+import net.officefloor.hq.app.sheet.Preview;
 import net.officefloor.hq.app.sheet.Sheet;
 import net.officefloor.hq.app.sheet.SheetRepository;
+import org.springframework.format.annotation.DateTimeFormat;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.validation.annotation.Validated;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
+import org.springframework.web.bind.annotation.RequestHeader;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
@@ -45,12 +48,14 @@ public class TreeSearchController {
 
     /** Every person on the sheet's tree whose name or an alias contains the text, case ignored (an empty text finds
      *  everyone): the sheet's own people first in list order, then the other sheets' by sheet id, each in its list
-     *  order. Read from the store as it holds them now. */
+     *  order. Read from the store as it holds them now; while the screen previews a date, that date stands in for each
+     *  sheet's today. */
     @GetMapping("/search")
     @Transactional(readOnly = true)
     public List<Found> search(
             @PathVariable @NotBlank @Size(max = 100) @Pattern(regexp = "[A-Za-z0-9._-]+") String sheetId,
-            @RequestParam(defaultValue = "") @Size(max = 200) String text) {
+            @RequestParam(defaultValue = "") @Size(max = 200) String text,
+            @RequestHeader(value = Preview.HEADER, required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate preview) {
         List<String> ancestors = sheets.ancestorsOf(sheetId, Integer.MAX_VALUE);
         String top = ancestors.isEmpty() ? sheetId : ancestors.get(ancestors.size() - 1);
         Set<String> others = new HashSet<>(sheets.descendantsOf(top));
@@ -62,8 +67,8 @@ public class TreeSearchController {
         String wanted = text.trim().toLowerCase(Locale.ROOT);
         List<Found> found = new ArrayList<>();
         for (String id : order) {
-            Rollup.Figures figures = rollup.of(id);
-            LocalDate today = sheets.findById(id).map(Sheet::getToday).orElse(null);
+            Rollup.Figures figures = rollup.previewed(id, preview);
+            LocalDate today = Preview.today(sheets.findById(id).map(Sheet::getToday).orElse(null), preview);
             for (Person person : people.findBySheetIdOrderByPositionAscIdAsc(id)) {
                 if (matches(person, wanted)) {
                     Rollup.PersonFigures f = figures.people().get(person.getId());

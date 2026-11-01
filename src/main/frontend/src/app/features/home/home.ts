@@ -52,7 +52,7 @@ import { VoidReasonsPanel } from '../void-reasons/void-reasons';
 
       @if (sheets.current(); as sheet) {
         <p>Sheet: <strong data-testid="sheet-current-id">{{ sheet.id }}</strong></p>
-        <p>Today: <strong data-testid="sheet-today">{{ sheet.today }}</strong></p>
+        <p>Today: <strong data-testid="sheet-today">{{ sheets.today() }}</strong></p>
         <p>
           Archived: <strong data-testid="sheet-archived">{{ sheet.archived ? 'yes' : 'no' }}</strong>
           <button type="button" data-testid="sheet-archive" [disabled]="archiving()" (click)="archive()">Archive sheet</button>
@@ -74,6 +74,17 @@ import { VoidReasonsPanel } from '../void-reasons/void-reasons';
           <button type="button" data-testid="asof-clear" [disabled]="settingAsOf()" (click)="clearAsOf()">Clear as of</button>
           @if (asOfError(); as err) {
             <p role="alert" data-testid="asof-error">{{ err }}</p>
+          }
+        </form>
+
+        <form [formGroup]="previewForm" (ngSubmit)="setPreview()" aria-label="Preview the sheet on a date">
+          <p>Preview: <strong data-testid="sheet-preview">{{ sheets.preview() ?? '' }}</strong></p>
+          <label for="preview-date">Preview on</label>
+          <input id="preview-date" type="date" data-testid="preview-date" formControlName="date" />
+          <button type="submit" data-testid="preview-set" [disabled]="settingPreview()">Set preview</button>
+          <button type="button" data-testid="preview-clear" [disabled]="settingPreview()" (click)="clearPreview()">Clear preview</button>
+          @if (previewError(); as err) {
+            <p role="alert" data-testid="preview-error">{{ err }}</p>
           }
         </form>
 
@@ -146,6 +157,10 @@ export class Home {
   protected readonly asOfForm = new FormGroup({
     date: new FormControl('', { nonNullable: true }),
   });
+  /** The date to preview the sheet on. */
+  protected readonly previewForm = new FormGroup({
+    date: new FormControl('', { nonNullable: true }),
+  });
   protected readonly signInError = signal<string | null>(null);
   protected readonly sheetError = signal<string | null>(null);
   protected readonly todayError = signal<string | null>(null);
@@ -154,6 +169,8 @@ export class Home {
   protected readonly archiving = signal(false);
   protected readonly asOfError = signal<string | null>(null);
   protected readonly settingAsOf = signal(false);
+  protected readonly previewError = signal<string | null>(null);
+  protected readonly settingPreview = signal(false);
 
   constructor() {
     // An error is removed as soon as its form is changed.
@@ -162,6 +179,7 @@ export class Home {
     this.sheetForm.valueChanges.subscribe(() => this.sheetError.set(null));
     this.todayForm.valueChanges.subscribe(() => this.todayError.set(null));
     this.asOfForm.valueChanges.subscribe(() => this.asOfError.set(null));
+    this.previewForm.valueChanges.subscribe(() => this.previewError.set(null));
     this.cloneForm.valueChanges.subscribe(() => this.todayError.set(null));
   }
 
@@ -223,6 +241,38 @@ export class Home {
       error: () => {
         this.settingAsOf.set(false);
         this.asOfError.set('Could not show the sheet as of that date.');
+      },
+    });
+  }
+
+  /** Preview the sheet on the date typed: every figure on this screen as if it were the sheet's today. */
+  protected setPreview(): void {
+    this.previewError.set(null);
+    const date = this.previewForm.controls.date.value.trim();
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) {
+      this.previewError.set('Choose a date to preview the sheet on.');
+      return;
+    }
+    this.showPreview(date);
+  }
+
+  /** Show the figures on the sheet's real today again. */
+  protected clearPreview(): void {
+    this.previewError.set(null);
+    this.showPreview(null);
+  }
+
+  private showPreview(date: string | null): void {
+    // A second press before the first has answered is ignored.
+    if (this.settingPreview()) return;
+    const sheet = this.sheets.current();
+    if (!sheet) return;
+    this.settingPreview.set(true);
+    this.sheets.setPreview(sheet.id, date).subscribe({
+      next: () => this.settingPreview.set(false),
+      error: () => {
+        this.settingPreview.set(false);
+        this.previewError.set('Could not preview the sheet on that date.');
       },
     });
   }

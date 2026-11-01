@@ -226,6 +226,17 @@ public class Sheet {
         return copy;
     }
 
+    /** The sheet as a screen previewing a date reads it, unsaved: the same sheet (its id, every setting, its parent and
+     *  the sheet it was cloned from, whether archived) with that date standing in for its today. */
+    public Sheet previewedOn(LocalDate date) {
+        Sheet copy = copyTo(id, createdBy, createdAt);
+        copy.today = date;
+        copy.clonedFrom = clonedFrom;
+        copy.lastClaimNumber = lastClaimNumber;
+        copy.archived = archived;
+        return copy;
+    }
+
     public String getId() {
         return id;
     }

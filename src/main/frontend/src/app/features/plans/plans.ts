@@ -178,7 +178,7 @@ export class PersonPlans {
     const amount = value.amount.trim();
     const every = value.every.trim();
     const day = value.day.trim();
-    const start = value.start.trim() === '' ? sheet.today : value.start.trim();
+    const start = value.start.trim() === '' ? this.sheets.today() : value.start.trim();
     if (!AMOUNT_PATTERN.test(amount)) {
       this.error.set('Type an amount of zero or more with up to two decimals.');
       return;

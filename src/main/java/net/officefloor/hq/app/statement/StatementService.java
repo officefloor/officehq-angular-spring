@@ -150,8 +150,10 @@ public class StatementService {
         List<Claim> theirs = claims.findBySheetIdAndPersonIdOrderByListedDescIdDesc(sheetId, personId);
         Stated stated;
         if (asOf == null) {
-            stated = bind(sheet, rates.of(sheetId), person, theirs, Function.identity(),
-                    person::countsUnbound, theirs, cutOf(sheetId, personId, null));
+            RateChain sheetRates = rates.of(sheetId);
+            stated = bind(sheet, sheetRates, person, theirs, Function.identity(),
+                    person::countsUnbound, theirs, cutOf(sheetId, personId, null),
+                    rollup.heldParts(sheet, sheetRates, person));
         } else {
             SheetState then = history.asOf(sheetId, asOf).orElse(null);
             SheetState.PersonState personThen = then == null ? null : then.person(personId).orElse(null);
@@ -164,7 +166,8 @@ public class StatementService {
             then.claims().stream().filter(c -> c.personId() == personId)
                     .forEach(c -> claimsThen.put(c.id(), c.rebuild(sheetId)));
             stated = bind(then.rebuildSheet(sheet, asOf), ratesAsOf(sheetId, then, asOf), asThen, theirs,
-                    c -> claimsThen.get(c.getId()), asThen::counts, claimsThen.values(), cutOf(sheetId, personId, asOf));
+                    c -> claimsThen.get(c.getId()), asThen::counts, claimsThen.values(), cutOf(sheetId, personId, asOf),
+                    List.of());
         }
         LocalDate takenOn = asOf != null ? asOf : today;
         claims.saveAllAndFlush(theirs);
@@ -188,10 +191,12 @@ public class StatementService {
      * Bind each of the person's claims ({@code theirs}, as they are now) that counts on the {@code sheet}'s today to its
      * figure and unbind the rest, reading each as it stands on the sheet given ({@code asThen}; none when it was not
      * the person's then), with the person, the rates and the claims that decide its rounding as they stand there.
+     * As on screen, a shared claim adds its figure less its holders' parts, and the parts the person holds of other
+     * people's claims ({@code held}) are added in.
      */
     private static Stated bind(Sheet sheet, RateChain sheetRates, Person person, List<Claim> theirs,
             Function<Claim, Claim> asThen, BiPredicate<Claim, LocalDate> counts, Collection<Claim> roundingClaims,
-            BigDecimal cut) {
+            BigDecimal cut, List<BigDecimal> held) {
         LocalDate today = sheet.getToday();
         Set<String> grades = new HashSet<>(Set.of(person.gradeOn(today)));
         BigDecimal total = BigDecimal.ZERO.setScale(2);
@@ -213,10 +218,14 @@ public class StatementService {
             grades.add(person.gradeOn(then.getDate()));
             BigDecimal late = figure == null || then.getSettledDue() != null ? null
                     : ClaimService.lateCharge(then, figure, sheet, person.gradeOn(then.getDate()));
-            total = figure == null ? total
-                    : total.add(late == null ? figure : figure.add(late));
+            BigDecimal due = figure == null ? null : late == null ? figure : figure.add(late);
+            total = due == null ? total : total.add(due.subtract(then.sharedPartOf(due)));
             claim.bind(figure, late);
             counted++;
+        }
+        for (BigDecimal part : held) {
+            total = total.add(part);
+            anyDue = true;
         }
         // As on screen: with no rate in force today for their grade on the sheet's today, nor for the grade any
         // of their claims that count is at, and no claim that has a due, the person has no due-total.

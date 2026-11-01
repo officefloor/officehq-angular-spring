@@ -417,7 +417,7 @@ export class PersonClaims {
         message: err instanceof HttpErrorResponse && err.status === 423
           ? 'This claim is due by inside a closed period.'
           : err instanceof HttpErrorResponse && err.status === 400
-            ? `A claim is deferred to a day after today (${sheet.today}).`
+            ? `A claim is deferred to a day after today (${this.sheets.today()}).`
             : `A ${c.status} claim cannot be deferred; only an OPEN one can.`,
       }),
     });
@@ -563,8 +563,8 @@ export class PersonClaims {
       error: (err: unknown) => this.claimError.set({
         id: c.id,
         message: on !== '' && err instanceof HttpErrorResponse && err.status === 400
-          ? on > sheet.today
-            ? `A claim is settled as of a date on or before today (${sheet.today}).`
+          ? on > this.sheets.today()
+            ? `A claim is settled as of a date on or before today (${this.sheets.today()}).`
             : `This claim was not on the sheet by ${on}.`
           : status === 'VOID' && err instanceof HttpErrorResponse && err.status === 422
           ? 'Choose a reason from the sheet\'s list to void this claim.'

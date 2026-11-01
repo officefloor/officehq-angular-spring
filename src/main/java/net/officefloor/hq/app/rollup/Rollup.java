@@ -23,6 +23,7 @@ import net.officefloor.hq.app.person.PersonRepository;
 import net.officefloor.hq.app.rate.Rate;
 import net.officefloor.hq.app.rate.RateChain;
 import net.officefloor.hq.app.rate.RateChains;
+import net.officefloor.hq.app.sheet.Preview;
 import net.officefloor.hq.app.sheet.Sheet;
 import net.officefloor.hq.app.sheet.SheetRepository;
 import org.springframework.context.annotation.Lazy;
@@ -78,6 +79,25 @@ public class Rollup {
     public Figures of(Sheet sheet, RateChain sheetRates, List<Person> sheetPeople, List<Claim> sheetClaims) {
         return of(sheet, sheetRates, sheetPeople, sheetClaims,
                 sheet == null ? Map.of() : pools.cutTotals(sheet.getId(), null));
+    }
+
+    /** The sheet's figures as the store holds them now, worked out as a screen previewing a date reads them (null:
+     *  none), that date standing in for its today. */
+    public Figures previewed(String sheetId, LocalDate preview) {
+        return previewed(sheets.findById(sheetId).orElse(null), rates.of(sheetId),
+                people.findBySheetIdOrderByPositionAscIdAsc(sheetId), claims.findBySheetIdOrderByListedDescIdDesc(sheetId),
+                preview);
+    }
+
+    /** The figures of the live sheet as {@link #of(Sheet, RateChain, List, List)}, worked out as a screen previewing a
+     *  date reads them (null: none): over its current records, that date standing in for its today. */
+    public Figures previewed(Sheet sheet, RateChain sheetRates, List<Person> sheetPeople, List<Claim> sheetClaims,
+            LocalDate preview) {
+        if (sheet == null || preview == null) {
+            return of(sheet, sheetRates, sheetPeople, sheetClaims);
+        }
+        return of(Preview.of(sheet, preview), sheetRates, sheetPeople, sheetClaims,
+                pools.cutTotals(sheet.getId(), null, preview));
     }
 
     /** The figures of a sheet as {@link #of(Sheet, RateChain, List, List)}, with these cut totals by person id (a
@@ -137,6 +157,16 @@ public class Rollup {
         }
         return new Figures(byPerson, claimedTotal.toPlainString(), trimmedSum(dueFigures).toPlainString(),
                 trimmedSum(overdueFigures).toPlainString());
+    }
+
+    /** The parts a person holds of the live sheet's other people's claims that count on its today, as
+     *  {@link #heldParts}: what their due-total adds for the claims shared with them. */
+    public List<BigDecimal> heldParts(Sheet sheet, RateChain sheetRates, Person person) {
+        List<Person> sheetPeople = people.findBySheetIdOrderByPositionAscIdAsc(sheet.getId());
+        Map<Long, Person> ownerOf = new LinkedHashMap<>();
+        sheetPeople.forEach(p -> ownerOf.put(p.getId(), p));
+        return heldParts(person, ownerOf, sheet.getToday(), sheetRates, sheet,
+                claims.findBySheetIdOrderByListedDescIdDesc(sheet.getId()));
     }
 
     /** The parts a person holds of other people's claims that count (as for their own person), each the claim's

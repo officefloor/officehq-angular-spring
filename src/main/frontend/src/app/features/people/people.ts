@@ -619,7 +619,7 @@ export class PeopleList {
   private readonly visibleIds = computed<ReadonlySet<number> | null>(() => {
     const user = this.session.user();
     if (!user || !this.roles.all().some((r) => r.user === user && r.role === 'restricted')) return null;
-    const today = this.sheets.current()?.today;
+    const today = this.sheets.today();
     if (today && this.delegations.all().some((d) => d.user === user && d.from <= today && today <= d.to)) return null;
     const me = this.me();
     if (!me) return new Set();
@@ -1964,7 +1964,7 @@ export class PeopleList {
     this.bulkRedateError.set(null);
     const sheet = this.sheets.current();
     if (!sheet) return;
-    const date = this.bulkRedateDate().trim() || sheet.today;
+    const date = this.bulkRedateDate().trim() || this.sheets.today();
     if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) {
       this.bulkRedateError.set('Choose the new date of the selected claims.');
       return;

@@ -32,7 +32,7 @@ export class Dashboard {
    *  role assigned to them. */
   protected readonly steward = computed(() => {
     const user = this.session.user();
-    const today = this.sheets.current()?.today;
+    const today = this.sheets.today();
     if (!user || !today) return false;
     if (this.delegations.all().some((d) => d.user === user && d.from <= today && today <= d.to)) return true;
     return this.roles.all().some((r) => r.user === user && r.role === 'steward');

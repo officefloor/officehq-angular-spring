@@ -1,5 +1,5 @@
 import { HttpClient, HttpInterceptorFn } from '@angular/common/http';
-import { Injectable, inject, signal } from '@angular/core';
+import { Injectable, computed, inject, signal } from '@angular/core';
 import { Observable, tap } from 'rxjs';
 import { Grade } from './people';
 
@@ -148,7 +148,19 @@ export const DEFAULT_TERMS = 14;
 export class Sheets {
   private readonly http = inject(HttpClient);
   private readonly active = signal<SheetView | null>(null);
-  readonly current = this.active.asReadonly();
+  /** The date (yyyy-mm-dd) this screen previews; null: none. Belongs to the signed-in user's screen, so loading a
+   *  sheet leaves it as it is; while set, every figure on screen is worked out over the sheet's current records as if
+   *  it were the sheet's today, and every read carries it in the X-Preview header. Changes still use the real today. */
+  private readonly previewDate = signal<string | null>(null);
+  readonly preview = this.previewDate.asReadonly();
+  /** The active sheet as the screen works its figures out: while a preview date is set, it stands in for its today. */
+  readonly current = computed(() => {
+    const sheet = this.active();
+    const preview = this.previewDate();
+    return sheet && preview ? { ...sheet, today: preview } : sheet;
+  });
+  /** The active sheet's real today (yyyy-mm-dd), whatever the preview: every change and its defaults use it. */
+  readonly today = computed(() => this.active()?.today ?? '');
   /** The sheet as last (re)loaded: set on each load only, so changing its today re-reads nothing. */
   private readonly lastLoad = signal<SheetView | null>(null);
   readonly loaded = this.lastLoad.asReadonly();
@@ -160,6 +172,12 @@ export class Sheets {
   /** Show the sheet as of a date (null: as it is now), re-loading it so everything on screen is read that way. */
   setAsOf(id: string, asOf: string | null): Observable<SheetView> {
     this.asOfDate.set(asOf);
+    return this.load(id);
+  }
+
+  /** Preview a date (null: none), re-loading the sheet so everything on screen is worked out on it. */
+  setPreview(id: string, preview: string | null): Observable<SheetView> {
+    this.previewDate.set(preview);
     return this.load(id);
   }
 
@@ -420,4 +438,10 @@ export class Sheets {
 export const asOfHeader: HttpInterceptorFn = (req, next) => {
   const asOf = inject(Sheets).asOf();
   return next(asOf ? req.clone({ setHeaders: { 'X-As-Of': asOf } }) : req);
+};
+
+// While the screen previews a date, every API call carries it in the X-Preview header; only reads heed it.
+export const previewHeader: HttpInterceptorFn = (req, next) => {
+  const preview = inject(Sheets).preview();
+  return next(preview ? req.clone({ setHeaders: { 'X-Preview': preview } }) : req);
 };

@@ -161,10 +161,18 @@ public class PoolService {
      *  membership since moved by a merge counts for the person who held it then), else as they are now. */
     @Transactional(readOnly = true)
     public List<PoolWithMembers> list(String sheetId, LocalDate on) {
+        return list(sheetId, on, null);
+    }
+
+    /** The sheet's pools as {@link #list(String, LocalDate)}; read live with a {@code preview} date, that date stands
+     *  in for the sheet's today over its current records. */
+    @Transactional(readOnly = true)
+    public List<PoolWithMembers> list(String sheetId, LocalDate on, LocalDate preview) {
         Optional<SheetState> then = on == null ? Optional.empty() : history.asOf(sheetId, on);
         BigDecimal sheetPot = on != null ? then.map(SheetState::pot).orElse(null)
                 : sheetStore.findById(sheetId).map(Sheet::getPot).orElse(null);
-        LocalDate today = on != null ? on : sheetStore.findById(sheetId).map(Sheet::getToday).orElse(null);
+        LocalDate today = on != null ? on : preview != null ? preview
+                : sheetStore.findById(sheetId).map(Sheet::getToday).orElse(null);
         List<Person> sheetPeople = on != null ? then.map(s -> s.rebuildPeople(sheetId)).orElse(List.of())
                 : people.findBySheetIdOrderByPositionAscIdAsc(sheetId);
         List<Pool> list = pools.findBySheetIdOrderByIdAsc(sheetId);
@@ -244,8 +252,16 @@ public class PoolService {
      *  then, the pool showed no cuts or the membership was not in force on that day. */
     @Transactional(readOnly = true)
     public List<PoolWithHistory> listWithHistory(String sheetId, LocalDate on) {
-        List<PoolWithMembers> now = list(sheetId, on);
-        LocalDate today = on != null ? on : sheetStore.findById(sheetId).map(Sheet::getToday).orElse(null);
+        return listWithHistory(sheetId, on, null);
+    }
+
+    /** As {@link #listWithHistory(String, LocalDate)}; read live with a {@code preview} date, that date standing in for
+     *  the sheet's today over its current records. */
+    @Transactional(readOnly = true)
+    public List<PoolWithHistory> listWithHistory(String sheetId, LocalDate on, LocalDate preview) {
+        List<PoolWithMembers> now = list(sheetId, on, preview);
+        LocalDate today = on != null ? on : preview != null ? preview
+                : sheetStore.findById(sheetId).map(Sheet::getToday).orElse(null);
         Map<String, Period> stored = periods.findBySheetIdOrderByFromDateAsc(sheetId).stream()
                 .collect(Collectors.toMap(Period::getName, Function.identity()));
         List<ShownPeriod> shown = new ArrayList<>();
@@ -300,8 +316,15 @@ public class PoolService {
      *  up; a person with no cut shown is left out. */
     @Transactional(readOnly = true)
     public Map<Long, BigDecimal> cutTotals(String sheetId, LocalDate on) {
+        return cutTotals(sheetId, on, null);
+    }
+
+    /** As {@link #cutTotals(String, LocalDate)}; read live with a {@code preview} date, that date standing in for the
+     *  sheet's today. */
+    @Transactional(readOnly = true)
+    public Map<Long, BigDecimal> cutTotals(String sheetId, LocalDate on, LocalDate preview) {
         Map<Long, BigDecimal> byPerson = new HashMap<>();
-        for (PoolWithMembers p : list(sheetId, on)) {
+        for (PoolWithMembers p : list(sheetId, on, preview)) {
             List<BigDecimal> cuts = p.cuts();
             for (int i = 0; cuts != null && i < p.members().size(); i++) {
                 Member m = p.members().get(i);

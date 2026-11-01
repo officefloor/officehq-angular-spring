@@ -13,12 +13,15 @@ import net.officefloor.hq.app.claim.ClaimRepository;
 import net.officefloor.hq.app.person.Person;
 import net.officefloor.hq.app.person.PersonRepository;
 import net.officefloor.hq.app.rate.RateChains;
+import net.officefloor.hq.app.sheet.Preview;
 import net.officefloor.hq.app.sheet.Sheet;
 import net.officefloor.hq.app.sheet.SheetRepository;
+import org.springframework.format.annotation.DateTimeFormat;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.validation.annotation.Validated;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
+import org.springframework.web.bind.annotation.RequestHeader;
 import org.springframework.web.bind.annotation.RestController;
 
 /** A sheet's per-grade due-totals, as its summary shows them, which the screen compares another sheet's with. */
@@ -46,19 +49,20 @@ public class GradeDuesController {
         this.claims = claims;
     }
 
-    /** The sheet's per-grade due-totals as the store holds it now; a sheet never loaded exists not, with none. */
+    /** The sheet's per-grade due-totals as the store holds it now (while the screen previews a date, that date standing in for its today); a sheet never loaded exists not, with none. */
     @GetMapping("/api/sheets/{sheetId}/grade-dues")
     @Transactional(readOnly = true)
     public GradeDues gradeDues(
-            @PathVariable @NotBlank @Size(max = 100) @Pattern(regexp = "[A-Za-z0-9._-]+") String sheetId) {
+            @PathVariable @NotBlank @Size(max = 100) @Pattern(regexp = "[A-Za-z0-9._-]+") String sheetId,
+            @RequestHeader(value = Preview.HEADER, required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate preview) {
         Sheet sheet = sheets.findById(sheetId).orElse(null);
         if (sheet == null) {
             return new GradeDues(false, Map.of());
         }
         List<Person> sheetPeople = people.findBySheetIdOrderByPositionAscIdAsc(sheetId);
         List<Claim> sheetClaims = claims.findBySheetIdOrderByListedDescIdDesc(sheetId);
-        Rollup.Figures figures = rollup.of(sheet, rates.of(sheetId), sheetPeople, sheetClaims);
-        LocalDate today = sheet.getToday();
+        Rollup.Figures figures = rollup.previewed(sheet, rates.of(sheetId), sheetPeople, sheetClaims, preview);
+        LocalDate today = Preview.today(sheet.getToday(), preview);
         Map<String, BigDecimal> dueByGrade = new LinkedHashMap<>();
         for (Person person : sheetPeople) {
             Rollup.PersonFigures own = figures.people().get(person.getId());

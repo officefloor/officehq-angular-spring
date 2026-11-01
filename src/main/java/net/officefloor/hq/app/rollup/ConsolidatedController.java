@@ -21,6 +21,7 @@ import net.officefloor.hq.app.history.SheetState;
 import net.officefloor.hq.app.person.Person;
 import net.officefloor.hq.app.person.PersonRepository;
 import net.officefloor.hq.app.rate.RateChains;
+import net.officefloor.hq.app.sheet.Preview;
 import net.officefloor.hq.app.sheet.Sheet;
 import net.officefloor.hq.app.sheet.SheetRepository;
 import org.springframework.format.annotation.DateTimeFormat;
@@ -81,13 +82,15 @@ public class ConsolidatedController {
 
     /** With {@code self}, the sheet's own figures are added in too. While the screen shows the sheet as of a date,
      *  each sheet of the tree (as it names its parent now) counts as it stood at the end of that date, that date
-     *  standing in for its today; one with no change made on it by then has no one on it. */
+     *  standing in for its today; one with no change made on it by then has no one on it. While the screen previews a
+     *  date, each sheet of the tree counts over its current records with that date standing in for its today. */
     @GetMapping("/figures")
     @Transactional(readOnly = true)
     public DescendantFigures figures(
             @PathVariable @NotBlank @Size(max = 100) @Pattern(regexp = "[A-Za-z0-9._-]+") String sheetId,
             @RequestParam(defaultValue = "false") boolean self,
-            @RequestHeader(value = SheetHistory.AS_OF_HEADER, required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate asOf) {
+            @RequestHeader(value = SheetHistory.AS_OF_HEADER, required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate asOf,
+            @RequestHeader(value = Preview.HEADER, required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate preview) {
         List<PersonFigure> treePeople = new ArrayList<>();
         Map<String, BigDecimal> dueByGrade = new LinkedHashMap<>();
         Map<String, Integer> countByStatus = new LinkedHashMap<>();
@@ -97,7 +100,7 @@ public class ConsolidatedController {
             counted.add(0, sheetId);
         }
         for (String descendant : counted) {
-            Counted one = asOf == null ? live(descendant) : countedAsOf(descendant, asOf);
+            Counted one = asOf == null ? live(descendant, preview) : countedAsOf(descendant, asOf);
             if (one == null) {
                 continue;
             }
@@ -168,12 +171,13 @@ public class ConsolidatedController {
         return i;
     }
 
-    /** A sheet as the store holds it now. */
-    private Counted live(String sheetId) {
+    /** A sheet as the store holds it now; with a preview date (else null), that date standing in for its today. */
+    private Counted live(String sheetId, LocalDate preview) {
         Sheet sheet = sheets.findById(sheetId).orElse(null);
         List<Person> sheetPeople = people.findBySheetIdOrderByPositionAscIdAsc(sheetId);
         List<Claim> sheetClaims = claims.findBySheetIdOrderByListedDescIdDesc(sheetId);
-        return new Counted(sheet, rollup.of(sheet, rates.of(sheetId), sheetPeople, sheetClaims), sheetPeople,
+        return new Counted(Preview.of(sheet, preview),
+                rollup.previewed(sheet, rates.of(sheetId), sheetPeople, sheetClaims, preview), sheetPeople,
                 sheetClaims);
     }
 
