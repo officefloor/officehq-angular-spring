@@ -843,7 +843,13 @@ public class ClaimService {
 
     /** Keep each of the claim's tags among those ever used on the sheet. */
     private void keepTags(String sheetId, Claim claim) {
-        for (String tag : claim.getTags()) {
+        keepTags(sheetId, claim.getTags());
+    }
+
+    /** Keep each of the tags (a claim's or a person's) among those ever used on the sheet. */
+    @Transactional
+    public void keepTags(String sheetId, List<String> tagged) {
+        for (String tag : tagged) {
             if (!tags.existsBySheetIdAndTag(sheetId, tag)) tags.save(new ClaimTag(sheetId, tag));
         }
     }

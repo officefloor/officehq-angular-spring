@@ -73,6 +73,8 @@ interface Person {
   clashing: boolean;
   /** The sheet they were transferred from; null when never transferred. */
   origin: string | null;
+  /** Their tags, trimmed, lower-cased, each once and sorted; empty when they have none. */
+  tags: string[];
 }
 
 /** The person's grade in force on the date: the one with the latest from-date on or before it. */
@@ -173,7 +175,8 @@ interface StatementTaken {
 // showed it with the from-date blank. A claim takes the rate of the grade in force on its date; the
 // row shows the grade in force on the sheet's today. A person may have their own terms in days (blank:
 // none), and a contact (blank: none), kept trimmed and lower-cased and refused when another person on
-// the sheet has it; a claim's due-by is fixed when it is added from them, else their grade's, else the sheet's.
+// the sheet has it, and tags (comma separated; trimmed, lower-cased, repeats dropped, shown sorted);
+// a claim counts in a tag's total when it or its person carries the tag, once; a claim's due-by is fixed when it is added from them, else their grade's, else the sheet's.
 // A person may have aliases, added one at a time and shown sorted as names are compared; an alias may not
 // be any name or alias on the sheet, and the quick-add bar and the paste box find a person by one too.
 // No name or alias may be used that another sheet of the sheet's tree (the sheets reached through
@@ -244,6 +247,8 @@ function trimmedSum(figures: number[]): number {
         <input id="person-form-terms" data-testid="person-form-terms" formControlName="terms" inputmode="numeric" />
         <label for="person-form-contact">Contact (blank: none)</label>
         <input id="person-form-contact" data-testid="person-form-contact" formControlName="contact" />
+        <label for="person-form-tags">Tags (comma separated)</label>
+        <input id="person-form-tags" data-testid="person-form-tags" formControlName="tags" />
         <button type="submit" data-testid="person-form-submit">{{ editingId() === null ? 'Add' : 'Save' }}</button>
         @if (editingId() !== null) {
           <button type="button" data-testid="person-form-cancel" (click)="cancel()">Cancel</button>
@@ -356,7 +361,7 @@ function trimmedSum(figures: number[]): number {
       }
       <table>
         <thead>
-          <tr><th scope="col"><span class="visually-hidden">Select</span></th><th scope="col">Name</th><th scope="col">Grade</th><th scope="col">Terms</th><th scope="col">Contact</th><th scope="col">Aliases</th><th scope="col">Came from</th><th scope="col">Claimed</th><th scope="col">Due total</th><th scope="col">Excess</th><th scope="col">Settled total</th><th scope="col">Open total</th><th scope="col">Cut total</th><th scope="col">Periods</th><th scope="col">Statements</th><th scope="col">Retired</th><th scope="col">Hold</th><th scope="col">Watched</th><th scope="col">Active</th><th scope="col">Clashing</th><th scope="col">Overdue</th><th scope="col">Aged</th><th scope="col">Patrons</th><th scope="col">Plans</th><th scope="col">Claims</th><th scope="col"><span class="visually-hidden">Actions</span></th></tr>
+          <tr><th scope="col"><span class="visually-hidden">Select</span></th><th scope="col">Name</th><th scope="col">Grade</th><th scope="col">Terms</th><th scope="col">Contact</th><th scope="col">Tags</th><th scope="col">Aliases</th><th scope="col">Came from</th><th scope="col">Claimed</th><th scope="col">Due total</th><th scope="col">Excess</th><th scope="col">Settled total</th><th scope="col">Open total</th><th scope="col">Cut total</th><th scope="col">Periods</th><th scope="col">Statements</th><th scope="col">Retired</th><th scope="col">Hold</th><th scope="col">Watched</th><th scope="col">Active</th><th scope="col">Clashing</th><th scope="col">Overdue</th><th scope="col">Aged</th><th scope="col">Patrons</th><th scope="col">Plans</th><th scope="col">Claims</th><th scope="col"><span class="visually-hidden">Actions</span></th></tr>
         </thead>
         <tbody>
           @for (p of listed(); track p.id) {
@@ -376,6 +381,7 @@ function trimmedSum(figures: number[]): number {
               <td data-testid="person-grade">{{ gradeOf(p) }}</td>
               <td data-testid="person-terms">{{ p.terms ?? '' }}</td>
               <td data-testid="person-contact">{{ p.contact ?? '' }}</td>
+              <td data-testid="person-tags">{{ p.tags.join(', ') }}</td>
               <td>
                 <span data-testid="person-aliases">{{ p.aliases.join(', ') }}</span>
                 <label [for]="'person-alias-input-' + p.id" class="visually-hidden">Alias for {{ p.name }}</label>
@@ -878,25 +884,28 @@ export class People {
         active: on.filter((p) => p.active).length };
     }),
   );
-  /** Every tag ever used on a claim of the sheet, as the store last told, sorted. */
+  /** Every tag ever used on a claim or person of the sheet, as the store last told, sorted. */
   protected readonly usedTags = signal<string[]>([]);
   /**
-   * Per tag ever used on the sheet (those of the claims on screen too), sorted: the dues of the claims that
-   * count which carry it, added up; a claim with two tags counts in both.
+   * Per tag ever used on the sheet (those of the claims and people on screen too), sorted: the dues of the
+   * claims that count which carry it or whose person does, added up, each claim once per tag; a claim with
+   * two tags counts in both.
    */
   protected readonly tagSummary = computed(() => {
     const floor = this.session.floorCentsOn;
     const late = this.session.late();
     const totals = new Map<string, number>(this.usedTags().map((t) => [t, 0]));
     for (const c of this.claims()) for (const t of c.tags) if (!totals.has(t)) totals.set(t, 0);
+    for (const p of this.people()) for (const t of p.tags) if (!totals.has(t)) totals.set(t, 0);
     for (const p of this.people()) {
       const pctOn = this.pctOnOf(p.id);
       const graceOn = this.graceOnOf(p.id);
       const theirs = this.claimsOf(p.id);
       for (const c of theirs) {
-        if (c.tags.length === 0 || !this.counts(c)) continue;
+        const tags = new Set([...c.tags, ...p.tags]);
+        if (tags.size === 0 || !this.counts(c)) continue;
         const due = claimDueCents(c, pctOn, floor, late, roundsOn(c, theirs), graceOn) ?? 0;
-        for (const t of c.tags) totals.set(t, (totals.get(t) ?? 0) + due);
+        for (const t of tags) totals.set(t, (totals.get(t) ?? 0) + due);
       }
     }
     return [...totals.keys()].sort().map((tag) => ({ tag, dueTotal: money(totals.get(tag) ?? 0) }));
@@ -950,6 +959,8 @@ export class People {
     terms: new FormControl('', { nonNullable: true }),
     /** Their contact; blank: none. */
     contact: new FormControl('', { nonNullable: true }),
+    /** Their tags, comma separated; blank: none. */
+    tags: new FormControl('', { nonNullable: true }),
   });
 
   /** A quick-add is under way; another one waits for its answer rather than storing twice. */
@@ -1771,7 +1782,7 @@ export class People {
 
   private reset(): void {
     this.editingId.set(null);
-    this.form.reset({ name: '', grade: 'A', gradeFrom: '', terms: '', contact: '' }, { emitEvent: false });
+    this.form.reset({ name: '', grade: 'A', gradeFrom: '', terms: '', contact: '', tags: '' }, { emitEvent: false });
     this.error.set('');
   }
 
@@ -1779,7 +1790,7 @@ export class People {
     this.personError.set(null);
     this.editingId.set(p.id);
     this.editingVersion = p.version;
-    this.form.setValue({ name: p.name, grade: this.gradeOf(p), gradeFrom: '', terms: p.terms?.toString() ?? '', contact: p.contact ?? '' }, { emitEvent: false });
+    this.form.setValue({ name: p.name, grade: this.gradeOf(p), gradeFrom: '', terms: p.terms?.toString() ?? '', contact: p.contact ?? '', tags: p.tags.join(', ') }, { emitEvent: false });
     this.error.set('');
   }
 
@@ -1798,6 +1809,7 @@ export class People {
     const gradeFrom = raw.gradeFrom.trim() || null;
     const terms = raw.terms.trim();
     const contact = raw.contact.trim().toLowerCase();
+    const tags = raw.tags;
     if (!name) {
       this.error.set('Enter a name.');
       return;
@@ -1817,13 +1829,13 @@ export class People {
     try {
       if (id === null) {
         const added = await firstValueFrom(
-          this.http.post<Person>(this.url(sheet), { name, grade, terms, contact }, { headers: this.headers() }),
+          this.http.post<Person>(this.url(sheet), { name, grade, terms, contact, tags }, { headers: this.headers() }),
         );
         if (this.session.sheetId() !== sheet) return;
         this.people.update((list) => [...list, added]);
       } else {
         const saved = await firstValueFrom(
-          this.http.put<Person>(`${this.url(sheet)}/${id}`, { name, grade, gradeFrom, terms, contact, version: this.editingVersion }, { headers: this.headers() }),
+          this.http.put<Person>(`${this.url(sheet)}/${id}`, { name, grade, gradeFrom, terms, contact, tags, version: this.editingVersion }, { headers: this.headers() }),
         );
         if (this.session.sheetId() !== sheet) return;
         this.people.update((list) => list.map((p) => (p.id === saved.id ? saved : p)));
@@ -2024,7 +2036,7 @@ export class People {
       const current = list.find((p) => p.id === id);
       if (current && this.editingId() === id) {
         this.editingVersion = current.version;
-        this.form.setValue({ name: current.name, grade: this.gradeOf(current), gradeFrom: '', terms: current.terms?.toString() ?? '', contact: current.contact ?? '' }, { emitEvent: false });
+        this.form.setValue({ name: current.name, grade: this.gradeOf(current), gradeFrom: '', terms: current.terms?.toString() ?? '', contact: current.contact ?? '', tags: current.tags.join(', ') }, { emitEvent: false });
       }
     } catch {
       // the error already shown stands

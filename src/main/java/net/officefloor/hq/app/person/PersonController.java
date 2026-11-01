@@ -1,5 +1,7 @@
 package net.officefloor.hq.app.person;
 
+import net.officefloor.hq.app.claim.Claim;
+
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.NotEmpty;
@@ -35,12 +37,12 @@ public class PersonController {
      * in the order named; watched whether the signed-in user watches them; terms their own, null for none;
      * contact theirs, null for none; aliases theirs, sorted as names are compared; active whether they are active on the sheet's today ({@link Person#activeOn});
      * clashing whether their name or an alias is used on another sheet of the sheet's tree ({@link PersonService#clashingIds});
-     * origin the sheet they were transferred from, null when never transferred.
+     * origin the sheet they were transferred from, null when never transferred; tags theirs, sorted (empty when none).
      */
     public record PersonView(Long id, String name, String grade, List<GradeView> grades, long version,
             boolean retired, LocalDate retiredFrom, boolean held, List<HoldView> holds, List<Long> patronIds,
             boolean watched, Integer terms, boolean active, String contact, List<String> aliases,
-            boolean clashing, String origin, List<RetirementView> retirements) {
+            boolean clashing, String origin, List<RetirementView> retirements, List<String> tags) {
         public static PersonView of(Person person, LocalDate today, List<Long> patronIds, boolean watched,
                 boolean active, boolean clashing) {
             List<GradeView> grades = new ArrayList<>();
@@ -52,7 +54,8 @@ public class PersonController {
                     person.getHolds().stream().map(h -> new HoldView(h.getFromDate(), h.getToDate())).toList(),
                     patronIds, watched, person.getTerms(), active, person.getContact(),
                     person.getAliases(), clashing, person.getTransferredFrom(),
-                    person.getRetirements().stream().map(r -> new RetirementView(r.getFromDate(), r.getToDate())).toList());
+                    person.getRetirements().stream().map(r -> new RetirementView(r.getFromDate(), r.getToDate())).toList(),
+                    person.getTags());
         }
     }
 
@@ -87,7 +90,8 @@ public class PersonController {
             @NotBlank @Size(max = 200) String name,
             @NotNull @Pattern(regexp = "[ABC]") String grade,
             @Pattern(regexp = "\\d{0,4}") String terms,
-            @Size(max = 200) String contact) {}
+            @Size(max = 200) String contact,
+            @Size(max = 1000) String tags) {}
 
     /** An edit, made from the version of the person the form loaded. */
     public record PersonEditRequest(
@@ -96,6 +100,7 @@ public class PersonController {
             LocalDate gradeFrom,
             @Pattern(regexp = "\\d{0,4}") String terms,
             @Size(max = 200) String contact,
+            @Size(max = 1000) String tags,
             @NotNull Long version) {}
 
     /** The people to give the grade, from the date (blank: the sheet's today). */
@@ -161,7 +166,7 @@ public class PersonController {
             @RequestHeader("X-User") @NotBlank @Size(max = 100) String user,
             @RequestBody @Valid PersonRequest request) {
         return view(service.add(sheetId, user, request.name(), request.grade(), termsOf(request.terms()),
-                request.contact()), user);
+                request.contact(), Claim.tagsOf(request.tags())), user);
     }
 
     /** Add, or update the person named, per pasted line, in order; a line refused refuses them all. */
@@ -183,7 +188,8 @@ public class PersonController {
             @RequestHeader("X-User") @NotBlank @Size(max = 100) String user,
             @RequestBody @Valid PersonEditRequest request) {
         return view(service.edit(sheetId, user, id, request.version(), request.name(), request.grade(),
-                request.gradeFrom(), termsOf(request.terms()), request.contact()), user);
+                request.gradeFrom(), termsOf(request.terms()), request.contact(),
+                request.tags() == null ? null : Claim.tagsOf(request.tags())), user);
     }
 
     /** Give each selected person the grade from the date (blank: the sheet's today), in list order. */

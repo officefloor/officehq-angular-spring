@@ -132,6 +132,13 @@ public class PersonService {
     /** Add a person with their own terms in days (null: none) and contact (blank: none). */
     @Transactional
     public Person add(String sheetId, String user, String name, String grade, Integer terms, String contact) {
+        return add(sheetId, user, name, grade, terms, contact, List.of());
+    }
+
+    /** Add a person with their own terms, contact and tags (as {@link Claim#tagsOf} reads them; empty: none). */
+    @Transactional
+    public Person add(String sheetId, String user, String name, String grade, Integer terms, String contact,
+            List<String> tags) {
         if (sheets.findForUpdate(sheetId).isEmpty()) throw new SheetNotFoundException();
         requireUnused(sheetId, name, null);
         requireUnusedInTree(sheetId, name);
@@ -141,8 +148,10 @@ public class PersonService {
         Person draft = new Person(sheetId, name, grade, today(sheetId));
         draft.setTerms(terms);
         draft.setContact(key);
+        draft.setTags(tags);
         draft.setPosition(people.maxPosition(sheetId) + 1);
         Person person = saveUnique(draft);
+        claimService.keepTags(sheetId, person.getTags());
         record("PERSON_ADDED", sheetId, user, person, person.getGrade(),
                 (terms != null ? " terms=" + terms : "") + (key != null ? " contact=" + key : ""));
         rollup.recordChanges(sheetId, user, before);
@@ -152,6 +161,13 @@ public class PersonService {
     @Transactional
     public Person edit(String sheetId, String user, Long id, long version, String name, String grade,
             LocalDate gradeFrom, Integer terms, String contact) {
+        return edit(sheetId, user, id, version, name, grade, gradeFrom, terms, contact, null);
+    }
+
+    /** Edit a person, giving them the tags (as {@link Claim#tagsOf} reads them); null: their tags kept. */
+    @Transactional
+    public Person edit(String sheetId, String user, Long id, long version, String name, String grade,
+            LocalDate gradeFrom, Integer terms, String contact, List<String> tags) {
         Person person = people.findByIdAndSheetId(id, sheetId).orElseThrow(PersonNotFoundException::new);
         if (person.getVersion() != version) throw new PersonVersionConflictException();
         sheets.findForUpdate(sheetId).orElseThrow(SheetNotFoundException::new);
@@ -167,10 +183,12 @@ public class PersonService {
         person.setTerms(terms);
         boolean contactChanged = !Objects.equals(key, person.getContact());
         person.setContact(key);
+        if (tags != null) person.setTags(tags);
         if (gradeFrom != null || !grade.equals(person.gradeOn(today))) {
             person.setGradeFrom(gradeFrom != null ? gradeFrom : today, grade, today);
         }
         Person saved = saveUnique(person);
+        claimService.keepTags(sheetId, saved.getTags());
         record("PERSON_EDITED", sheetId, user, saved, saved.gradeOn(today),
                 (termsChanged ? " terms=" + (terms != null ? terms : "") : "")
                         + (contactChanged ? " contact=" + (key != null ? key : "") : ""));
@@ -549,6 +567,7 @@ public class PersonService {
         person.setPosition(people.maxPosition(toSheetId) + 1);
         Person saved = saveUnique(person);
         claimService.receive(there, moving);
+        claimService.keepTags(toSheetId, saved.getTags());
 
         audit.recordOnCommit("PERSON_TRANSFERRED sheet=" + sheetId + " by=" + user.strip()
                 + " name=" + name + " to=" + toSheetId);

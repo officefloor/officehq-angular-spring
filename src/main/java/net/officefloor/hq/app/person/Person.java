@@ -92,6 +92,10 @@ public class Person {
     @Column(name = "contact")
     private String contact;
 
+    /** Their tags, sorted and comma separated (see {@link Claim#tagsOf}); empty for none. */
+    @Column(name = "tags", nullable = false, length = 2000)
+    private String tags = "";
+
     @Column(name = "retired_from")
     private LocalDate retiredFrom;
 
@@ -203,6 +207,16 @@ public class Person {
     public static String contactOf(String contact) {
         if (contact == null || contact.isBlank()) return null;
         return contact.strip().toLowerCase(Locale.ROOT);
+    }
+
+    /** Their tags, sorted; empty for none. */
+    public List<String> getTags() {
+        return tags.isEmpty() ? List.of() : List.of(tags.split(","));
+    }
+
+    /** Give them tags, as {@link Claim#tagsOf} reads them. */
+    public void setTags(List<String> tags) {
+        this.tags = String.join(",", Claim.tagsOf(tags));
     }
 
     /** Their aliases, sorted as names are compared (by key, then as given). */
