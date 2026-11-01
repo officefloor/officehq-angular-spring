@@ -1,0 +1,64 @@
+{
+  "checkpoint": 71,
+  "stack": {
+    "repo": "/home/daniel/officehq-angular-spring",
+    "origin": "git@github.com:officefloor/officehq-angular-spring.git",
+    "name": "officehq-angular-spring",
+    "base_ref": "base-empty",
+    "base_commit": "65cb8233ea38b2dfa6cfd18709e30cd18fdf3250"
+  },
+  "checkpoint_id": "cp71_cancel-statement",
+  "phase": "early",
+  "type": "additive",
+  "mutates": [],
+  "replaced_tests": [],
+  "request": {
+    "spec": "A steward can cancel a person's last statement (a button on the row; STATEMENT_CANCELLED\nname=<name> due-total=<the cancelled statement's due-total>; anyone else, or a person with no\nstatement, is refused with an error on the row). The claims that statement bound become live\nagain; a figure bound by a statement before it is not restored. The statement count goes down by\none, and the row shows the statement before it (or nothing).\n",
+    "prompt": "You are implementing ONE change to this application.\n\nFIRST read AGENTS.md \u2014 it states the working rules and how the app is tested, and sends you to\nDESIGN.md for the app's stack and conventions. Follow both.\n\nTHE CHANGE REQUEST:\nA steward can cancel a person's last statement (a button on the row; STATEMENT_CANCELLED\nname=<name> due-total=<the cancelled statement's due-total>; anyone else, or a person with no\nstatement, is refused with an error on the row). The claims that statement bound become live\nagain; a figure bound by a statement before it is not restored. The statement count goes down by\none, and the row shows the statement before it (or nothing).\n\nYour work is verified by an automated Playwright UI test already installed under e2e/specs/.\nRead that spec: it declares the exact data-testid anchors, values, test data and any audit\nrecords it expects \u2014 match them. Run `bin/e2e` to build the app, start it, and run the test as\nyou work; iterate until it passes. Change whatever the request needs across the app \u2014 its stored\ndata, its server and its front end. Do NOT edit bin/build, bin/start, bin/stop, bin/e2e,\nAGENTS.md, CLAUDE.md, DESIGN.md, e2e/support/ or the test spec.\n"
+  },
+  "commit_sha": "b57ec37935523bc8c0ebfb25db47f070ce56a956",
+  "reset_sha": "",
+  "preagent_sha": "1b3d1af7e7a0c418913e05e3f514397b76008cee",
+  "prev_sha": "1b3d1af7e7a0c418913e05e3f514397b76008cee",
+  "base_sha": "65cb8233ea38b2dfa6cfd18709e30cd18fdf3250",
+  "agent": {
+    "ok": true,
+    "cost_usd": 1.0239092,
+    "input_tokens": 54,
+    "output_tokens": 10245,
+    "cache_read_tokens": 1433246,
+    "cache_creation_tokens": 66518,
+    "num_turns": 28,
+    "duration_ms": 445237,
+    "duration_api_ms": 158221,
+    "model": "claude-opus-5-5",
+    "session_id": "b45ef6e0-9e4c-4bfa-a67f-99cf936d1b8b",
+    "stop_reason": "success",
+    "result_text": "A steward can now cancel a person's last statement, and all 4 acceptance tests in `bin/e2e` pass.\n\n**How it works**\n- Each person's row has a **Cancel statement** button (`person-unstate`). It calls a new endpoint, `POST /api/sheets/{sheetId}/people/{personId}/statement/cancel`.\n- `StatementService.cancelLast` refuses anyone who isn't a steward, and any person with no statement. A steward via delegation counts as a steward. A refusal shows `person-error` on the row and writes nothing.\n- When it goes through:\n  - Every claim the last statement bound becomes live again. A figure bound by an earlier statement is not restored.\n  - The statement is deleted, so the count goes down by one and the row shows the previous statement, or nothing.\n  - It writes `STATEMENT_CANCELLED \u2026 name=<name> due-total=<that statement's due-total>`, followed by the usual `ROLLUP`/`TOTALS` lines if any figures changed.\n- There's no schema change. A person's claims are only ever bound by their latest statement, so cancelling just clears the `stated` flag on those claims.\n\n**A separate fix the test needed:** changing the sheet's today with grace days set was auto-closing *soft-closed* periods too. That rewrote their fixed figures (10.00 became 10.50 with the late charge) and turned them from \"soft\" into \"closed\". The existing migration describes auto-close as applying to \"every open period\", and a soft-closed period isn't open, so I excluded soft-closed periods in `PeriodService.autoClose`. This changes behaviour outside the cancel feature, so it's worth knowing about.\n\nFiles changed:\n- `StatementService.java`\n- `StatementController.java`\n- new `StatementCancelRefusedException.java`\n- `PeriodService.java`\n- `people.ts`",
+    "error": "",
+    "attempts": [
+      {
+        "ok": true,
+        "limit_reached": false,
+        "retryable": false,
+        "timed_out": false,
+        "cost_usd": 1.0239092,
+        "num_turns": 28,
+        "duration_ms": 445237,
+        "duration_api_ms": 158221,
+        "error": ""
+      }
+    ]
+  },
+  "agent_stream_file": "cp71.agent.jsonl",
+  "agent_diff_file": "cp71.agent.diff",
+  "build_log_file": null,
+  "tests": {
+    "gated": false,
+    "queued": true
+  },
+  "probe": null,
+  "pinned_touched": [],
+  "acceptance_touched": [],
+  "impact_gate": null
+}
