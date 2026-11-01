@@ -687,9 +687,11 @@ public class ClaimService {
             throw new ResponseStatusException(HttpStatus.CONFLICT, "The claim's late charge was already waived");
         }
         Person person = people.findByIdAndSheetId(claim.getPersonId(), sheetId).orElseThrow();
+        Rollup.Figures before = rollup.of(sheetId);
         claim.waive();
         Claim waived = claims.saveAndFlush(claim);
         audit.recordChangeOnCommit(sheetId, user, entry("CLAIM_WAIVED", user, person, waived, waived.getNumber()));
+        rollup.recordChanges(sheetId, user, before);
         return waived;
     }
 

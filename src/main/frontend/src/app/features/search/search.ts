@@ -3,6 +3,11 @@ import { FormControl, FormGroup, ReactiveFormsModule } from '@angular/forms';
 import { Sheets } from '../../core/sheet';
 import { TreeFound, TreeSearch } from '../../core/tree-search';
 
+/** A CSV field, quoted when it holds a quote, comma or line break. */
+function csvField(value: string): string {
+  return /[",\r\n]/.test(value) ? '"' + value.replaceAll('"', '""') + '"' : value;
+}
+
 // Search this sheet and every other sheet of its tree for people by name or alias.
 @Component({
   selector: 'app-search',
@@ -24,6 +29,12 @@ import { TreeFound, TreeSearch } from '../../core/tree-search';
           <li data-testid="search-line">{{ f.sheet }} {{ f.name }} ({{ f.grade }}) {{ f.dueTotal }}</li>
         }
       </ul>
+      <p>
+        <button type="button" data-testid="export-tree" (click)="exportTree()">Export the tree's people as CSV</button>
+        @if (exportError(); as err) {
+          <span role="alert" data-testid="export-tree-error">{{ err }}</span>
+        }
+      </p>
     </section>
   `,
 })
@@ -39,6 +50,7 @@ export class SearchPanel {
   protected readonly count = signal('');
   protected readonly searching = signal(false);
   protected readonly error = signal<string | null>(null);
+  protected readonly exportError = signal<string | null>(null);
 
   constructor() {
     // An error is removed as soon as its form is changed.
@@ -64,6 +76,29 @@ export class SearchPanel {
         this.searching.set(false);
         this.error.set('Could not search the tree.');
       },
+    });
+  }
+
+  /** Download the people of the whole tree as CSV, re-read from the store: this sheet's first in list order, then
+   *  the other sheets' by sheet id. */
+  protected exportTree(): void {
+    const sheet = this.sheets.current();
+    if (!sheet) return;
+    this.exportError.set(null);
+    this.tree.search(sheet.id, '').subscribe({
+      next: (found) => {
+        const lines = [
+          ['sheet', 'name', 'grade', 'due-total'],
+          ...found.map((f) => [f.sheet, f.name, f.grade, f.dueTotal]),
+        ].map((fields) => fields.map(csvField).join(',') + '\n');
+        const url = URL.createObjectURL(new Blob(lines, { type: 'text/csv' }));
+        const link = document.createElement('a');
+        link.href = url;
+        link.download = 'tree-' + sheet.id + '.csv';
+        link.click();
+        setTimeout(() => URL.revokeObjectURL(url));
+      },
+      error: () => this.exportError.set('Could not read the tree.'),
     });
   }
 }
