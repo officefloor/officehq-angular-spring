@@ -301,6 +301,17 @@ public class PersonController {
         history.capture(request.toSheetId().strip());
     }
 
+    /** Undo the transfer that brought the person to this sheet, sending them back to the sheet they came from. */
+    @PostMapping("/{id}/transfer-undo")
+    public void undoTransfer(
+            @PathVariable @Size(max = 100) @Pattern(regexp = "[A-Za-z0-9._-]+") String sheetId,
+            @PathVariable Long id,
+            @RequestHeader("X-User") @NotBlank @Size(max = 100) String user) {
+        String to = service.originOf(sheetId, id);
+        service.undoTransfer(sheetId, user, id);
+        if (to != null) history.capture(to);
+    }
+
     /** Start or stop watching the person as the signed-in user. */
     @PutMapping("/{id}/watch")
     public PersonView watch(

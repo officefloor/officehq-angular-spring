@@ -147,6 +147,10 @@ public class Person {
     @Column(name = "transferred_from")
     private String transferredFrom;
 
+    /** The sheet-today, on the sheet they arrived on, of their last transfer; null when never transferred. */
+    @Column(name = "transferred_on")
+    private LocalDate transferredOn;
+
     @Version
     @Column(name = "version", nullable = false)
     private long version;
@@ -287,9 +291,13 @@ public class Person {
         return theirs;
     }
 
-    /** Move them to another sheet, noting the one they came from, with their grades, terms, contact, aliases and holds. */
-    public void transferTo(String sheetId) {
+    /**
+     * Move them to another sheet, noting the one they came from and that sheet's today they arrive on, with
+     * their grades, terms, contact, aliases and holds.
+     */
+    public void transferTo(String sheetId, LocalDate arrivedOn) {
         this.transferredFrom = this.sheetId;
+        this.transferredOn = arrivedOn;
         this.sheetId = sheetId;
         List<PersonAlias> theirs = new ArrayList<>(aliases);
         aliases.clear();
@@ -298,6 +306,9 @@ public class Person {
 
     /** The sheet they were last transferred from, or null when never transferred. */
     public String getTransferredFrom() { return transferredFrom; }
+
+    /** The sheet-today they arrived on by their last transfer, or null when never transferred. */
+    public LocalDate getTransferredOn() { return transferredOn; }
 
     /** Their name and aliases, as given. */
     public List<String> namesAndAliases() {

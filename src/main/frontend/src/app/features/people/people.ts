@@ -580,6 +580,8 @@ function trimmedSum(figures: number[]): number {
                        placeholder="Sheet id" (input)="clearPersonError(p.id)" />
                 <button type="button" data-testid="person-transfer" (click)="transfer(p, transferTo)"
                         [attr.aria-label]="'Transfer ' + p.name">Transfer</button>
+                <button type="button" data-testid="person-transfer-undo" (click)="undoTransfer(p)"
+                        [attr.aria-label]="'Undo the transfer of ' + p.name">Undo transfer</button>
               </td>
             </tr>
           }
@@ -1664,6 +1666,32 @@ export class People {
         message: e instanceof HttpErrorResponse && e.status === 409
           ? 'Only a steward can transfer, not a retired person, to another sheet without their name, aliases or contact.'
           : 'Could not transfer ' + p.name + '.',
+      });
+    }
+  }
+
+  /**
+   * Undo the transfer that brought the person here (a steward only, on the sheet-today they arrived),
+   * sending them back to the sheet they came from. Once undone the people and their claims are read again.
+   */
+  protected async undoTransfer(p: Person): Promise<void> {
+    this.personError.set(null);
+    this.clearPatronError(p.id);
+    const sheet = this.session.sheetId();
+    if (!sheet) return;
+    try {
+      await firstValueFrom(
+        this.http.post<void>(`${this.url(sheet)}/${p.id}/transfer-undo`, {}, { headers: this.headers() }),
+      );
+      if (this.session.sheetId() !== sheet) return;
+      await this.load(sheet);
+    } catch (e) {
+      if (this.session.sheetId() !== sheet) return;
+      this.personError.set({
+        id: p.id,
+        message: e instanceof HttpErrorResponse && e.status === 409
+          ? 'Only a steward can undo a transfer, on the day the person arrived by it.'
+          : 'Could not undo the transfer of ' + p.name + '.',
       });
     }
   }

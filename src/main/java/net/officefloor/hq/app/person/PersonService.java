@@ -584,7 +584,7 @@ public class PersonService {
         List<Claim> moving = claims.findBySheetIdAndPersonIdOrderByIdDesc(sheetId, id);
         String name = person.getName();
         List<String> names = into != null ? leave(person, into) : List.of();
-        person.transferTo(toSheetId);
+        person.transferTo(toSheetId, there.getToday());
         person.setPosition(people.maxPosition(toSheetId) + 1);
         Person saved = saveUnique(person);
         List<Statement> theirStatements = statements.findBySheetIdAndPersonIdOrderByIdAsc(sheetId, id);
@@ -604,6 +604,35 @@ public class PersonService {
                     + " from=" + name + " into=" + merged.getName());
         }
         rollup.recordChanges(toSheetId, user, beforeThere);
+    }
+
+    /**
+     * A steward undoes the transfer that brought the person to this sheet, on the same sheet-today they
+     * arrived: they are transferred back to the sheet they came from, exactly as {@link #transfer} does
+     * (refused as it refuses), and this sheet then audits the undo, followed by its rollup lines. Refused
+     * on a later day, for anyone else, and for a person who did not arrive by transfer.
+     */
+    @Transactional
+    public void undoTransfer(String sheetId, String user, Long id) {
+        Person person = people.findByIdAndSheetId(id, sheetId).orElseThrow(PersonNotFoundException::new);
+        String from = person.getTransferredFrom();
+        if (from == null || person.getTransferredOn() == null
+                || !person.getTransferredOn().equals(today(sheetId))
+                || settings.roleOf(sheetId, user) != Role.STEWARD) {
+            throw new PersonTransferRefusedException();
+        }
+        String name = person.getName();
+        RollupService.Snapshot before = rollup.snapshot(sheetId);
+        transfer(sheetId, user, id, from);
+        audit.recordOnCommit("PERSON_TRANSFER_UNDONE sheet=" + sheetId + " by=" + user.strip()
+                + " name=" + name + " to=" + from);
+        rollup.recordChanges(sheetId, user, before);
+    }
+
+    /** The sheet the person was last transferred from, or null when never transferred or not on the sheet. */
+    @Transactional(readOnly = true)
+    public String originOf(String sheetId, Long id) {
+        return people.findByIdAndSheetId(id, sheetId).map(Person::getTransferredFrom).orElse(null);
     }
 
     /** The ids of the people on the sheet the user watches. */
