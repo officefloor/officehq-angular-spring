@@ -126,6 +126,9 @@ export class Session {
   /** The number of the sheet's last bulk settle batch, or null while there has been none. */
   readonly lastBatch = signal<number | null>(null);
 
+  /** The id of the last sheet this one was cloned to from this screen; null when none since it was loaded. */
+  readonly clonedTo = signal<string | null>(null);
+
   /** Bumped on every sheet load, so features re-read the sheet from the store even for the same id. */
   readonly loads = signal(0);
 
@@ -168,6 +171,7 @@ export class Session {
     this.policyDate.set(res.policyDate);
     this.archived.set(res.archived);
     this.lastBatch.set(res.lastBatch);
+    this.clonedTo.set(null);
     this.loads.update((n) => n + 1);
   }
 
@@ -204,5 +208,19 @@ export class Session {
       }),
     );
     if (this.sheetId() === res.id) this.archived.set(res.archived);
+  }
+
+  /** Clone the active sheet to another id, one never used; a steward only. */
+  async cloneTo(to: string): Promise<void> {
+    const user = this.user();
+    const id = this.sheetId();
+    if (!user || !id) throw new Error('no sheet loaded');
+    this.clonedTo.set(null);
+    const res = await firstValueFrom(
+      this.http.post<{ to: string }>(`/api/sheets/${encodeURIComponent(id)}/clone`, { to }, {
+        headers: { 'X-User': user },
+      }),
+    );
+    if (this.sheetId() === id) this.clonedTo.set(res.to);
   }
 }

@@ -799,33 +799,45 @@ public class ClaimService {
      */
     @Transactional
     public void receive(Sheet to, List<Claim> arriving) {
-        List<Claim> numbered = arriving.stream().filter(c -> c.getNumber() != null)
+        Map<Long, String> old = new HashMap<>();
+        for (Claim claim : arriving) {
+            old.put(claim.getId(), claim.getNumber());
+            claim.transferTo(to.getId());
+        }
+        claims.saveAllAndFlush(arriving);
+        numberAfresh(to, arriving, old);
+        for (Claim claim : arriving) keepTags(to.getId(), claim);
+        claims.saveAllAndFlush(arriving);
+    }
+
+    /**
+     * Number afresh, on the sheet (locked for numbering by the caller), the claims that had a number before
+     * ({@code oldNumbers}, by claim id): each takes the sheet's next, in the order they were opened (by the
+     * sheet's today each was first opened on, then in the order they were added). A correction, or a claim
+     * split off another, then names the number its claim was given.
+     */
+    @Transactional
+    public void numberAfresh(Sheet to, List<Claim> numbering, Map<Long, String> oldNumbers) {
+        List<Claim> numbered = numbering.stream().filter(c -> oldNumbers.get(c.getId()) != null)
                 .sorted(Comparator.comparing(Claim::openedOn,
                         Comparator.nullsFirst(Comparator.naturalOrder()))
                         .thenComparing(Claim::getId))
                 .toList();
-        Map<Claim, String> old = new HashMap<>();
-        for (Claim claim : arriving) {
-            old.put(claim, claim.getNumber());
-            claim.transferTo(to.getId());
-        }
-        claims.saveAllAndFlush(arriving);
         Map<String, String> renumbered = new HashMap<>();
         for (Claim claim : numbered) {
             number(to, claim);
             claims.saveAndFlush(claim);
-            renumbered.put(old.get(claim), claim.getNumber());
+            renumbered.put(oldNumbers.get(claim.getId()), claim.getNumber());
         }
-        for (Claim claim : arriving) {
+        for (Claim claim : numbering) {
             if (claim.getCorrects() != null) {
                 claim.setCorrects(renumbered.getOrDefault(claim.getCorrects(), claim.getCorrects()));
             }
             if (claim.getSplitFrom() != null) {
                 claim.setSplitFrom(renumbered.getOrDefault(claim.getSplitFrom(), claim.getSplitFrom()));
             }
-            keepTags(to.getId(), claim);
         }
-        claims.saveAllAndFlush(arriving);
+        claims.saveAllAndFlush(numbering);
     }
 
     /** Keep each of the claim's tags among those ever used on the sheet. */

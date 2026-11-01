@@ -47,10 +47,18 @@ public class SheetController {
 
     public record TodayRequest(@NotNull LocalDate today) {}
 
-    private final SheetService service;
+    /** The id of the sheet to clone this one to: one never used. */
+    public record CloneRequest(@NotBlank @Size(max = 100) @Pattern(regexp = "[A-Za-z0-9._-]+") String to) {}
 
-    public SheetController(SheetService service) {
+    /** A clone made: the id of the sheet it was made to. */
+    public record CloneView(String to) {}
+
+    private final SheetService service;
+    private final SheetCloneService clones;
+
+    public SheetController(SheetService service, SheetCloneService clones) {
         this.service = service;
+        this.clones = clones;
     }
 
     /** Load (or start) a sheet by id for the signed-in user. */
@@ -78,5 +86,15 @@ public class SheetController {
             @PathVariable @Size(max = 100) @Pattern(regexp = "[A-Za-z0-9._-]+") String id,
             @RequestHeader("X-User") @NotBlank @Size(max = 100) String user) {
         return SheetView.of(service.archive(id, user.trim()));
+    }
+
+    /** Clone the sheet to another id: a steward only, and only to a sheet never used. */
+    @PostMapping("/{id}/clone")
+    public CloneView cloneTo(
+            @PathVariable @Size(max = 100) @Pattern(regexp = "[A-Za-z0-9._-]+") String id,
+            @RequestHeader("X-User") @NotBlank @Size(max = 100) String user,
+            @RequestBody @Valid CloneRequest request) {
+        clones.cloneTo(id, user.trim(), request.to().trim());
+        return new CloneView(request.to().trim());
     }
 }

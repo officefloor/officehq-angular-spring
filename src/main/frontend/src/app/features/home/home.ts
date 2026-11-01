@@ -42,6 +42,12 @@ import { VoidReasons } from '../void-reasons/void-reasons';
         <p>Parent sheet: <strong data-testid="sheet-parent">{{ session.parent() ?? '' }}</strong></p>
         <p>Archived: <strong data-testid="sheet-archived">{{ session.archived() ? 'yes' : 'no' }}</strong></p>
         <button type="button" data-testid="sheet-archive" (click)="archive()">Archive sheet</button>
+        <form [formGroup]="cloneForm" (ngSubmit)="cloneSheet()" aria-label="Clone sheet">
+          <label for="sheet-clone-to">Clone to sheet id</label>
+          <input id="sheet-clone-to" data-testid="sheet-clone-to" formControlName="to" />
+          <button type="submit" data-testid="sheet-clone">Clone sheet</button>
+        </form>
+        <p>Last cloned to: <strong data-testid="sheet-cloned-to">{{ session.clonedTo() ?? '' }}</strong></p>
         <app-settings />
         <app-holidays />
         <app-void-reasons />
@@ -68,6 +74,7 @@ export class Home {
   protected readonly sheetForm = new FormGroup({ id: new FormControl('', { nonNullable: true }) });
   protected readonly todayForm = new FormGroup({ today: new FormControl('', { nonNullable: true }) });
   protected readonly asOfForm = new FormGroup({ date: new FormControl('', { nonNullable: true }) });
+  protected readonly cloneForm = new FormGroup({ to: new FormControl('', { nonNullable: true }) });
   protected readonly signinError = signal('');
   protected readonly sheetError = signal('');
   /** The forms with a submit under way; another submit of one waits for its answer. */
@@ -78,6 +85,7 @@ export class Home {
     this.sheetForm.valueChanges.subscribe(() => this.sheetError.set(''));
     this.todayForm.valueChanges.subscribe(() => this.sheetError.set(''));
     this.asOfForm.valueChanges.subscribe(() => this.sheetError.set(''));
+    this.cloneForm.valueChanges.subscribe(() => this.sheetError.set(''));
   }
 
   protected async signIn(): Promise<void> {
@@ -172,6 +180,24 @@ export class Home {
       this.sheetError.set('Could not archive the sheet.');
     } finally {
       this.submitting.delete('archive');
+    }
+  }
+
+  protected async cloneSheet(): Promise<void> {
+    if (this.submitting.has('clone')) return;
+    this.sheetError.set('');
+    const to = this.cloneForm.controls.to.value.trim();
+    if (!/^[A-Za-z0-9._-]+$/.test(to)) {
+      this.sheetError.set('Enter a sheet id to clone to.');
+      return;
+    }
+    this.submitting.add('clone');
+    try {
+      await this.session.cloneTo(to);
+    } catch {
+      this.sheetError.set('Could not clone the sheet to that id.');
+    } finally {
+      this.submitting.delete('clone');
     }
   }
 }

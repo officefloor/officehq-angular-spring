@@ -150,18 +150,21 @@ public class RollupService {
         }
     }
 
-    /** Audit, once the transaction commits, how the sheet's figures moved since {@code before}. */
+    /**
+     * Audit, once the transaction commits, how the sheet's figures moved since {@code before}; with none
+     * (null), every person's figures and the totals.
+     */
     public void recordChanges(String sheetId, String user, Snapshot before) {
         Snapshot after = snapshot(sheetId);
         String by = " sheet=" + sheetId + " by=" + user.strip();
         for (Map.Entry<Long, Figures> e : after.people().entrySet()) {
             Figures now = e.getValue();
-            if (now.sameAs(before.people().get(e.getKey()))) continue;
+            if (before != null && now.sameAs(before.people().get(e.getKey()))) continue;
             audit.recordOnCommit("ROLLUP" + by + " person=" + now.name() + " claimed=" + money(now.claimed())
                     + " due-total=" + (now.dueTotal() == null ? "n/a" : money(now.dueTotal()))
                     + " overdue-total=" + money(now.overdueTotal()));
         }
-        if (after.claimedTotal().compareTo(before.claimedTotal()) != 0
+        if (before == null || after.claimedTotal().compareTo(before.claimedTotal()) != 0
                 || after.dueTotal().compareTo(before.dueTotal()) != 0
                 || after.overdueTotal().compareTo(before.overdueTotal()) != 0) {
             audit.recordOnCommit("TOTALS" + by + " claimed-total=" + money(after.claimedTotal())
