@@ -129,7 +129,7 @@ public class ClaimService {
         LocalDate dueBy = holidays.businessDaysAfter(sheetId, on, terms);
         refuseIfClosed(sheetId, dueBy);
         if (!person.mayClaimOn(on)) throw new PersonRetiredException();
-        refuseUnlessCorrects(sheetId, personId, amount, corrects);
+        refuseUnlessCorrects(sheetId, personId, null, amount, corrects);
         refuseIfRefUsed(sheetId, null, ref);
         Claim draft = new Claim(sheetId, personId, amount, on, note, dueBy, terms);
         draft.setCorrects(corrects);
@@ -161,7 +161,7 @@ public class ClaimService {
         refuseIfClosed(sheetId, claim.getDueBy());
         Person person = people.findByIdAndSheetId(claim.getPersonId(), sheetId).orElseThrow(PersonNotFoundException::new);
         if (!person.mayClaimOn(on)) throw new PersonRetiredException();
-        refuseUnlessCorrects(sheetId, person.getId(), amount, corrects);
+        refuseUnlessCorrects(sheetId, person.getId(), claim.getId(), amount, corrects);
         refuseIfRefUsed(sheetId, claim.getId(), ref);
         if (!claim.getLines().isEmpty() && amount.compareTo(claim.getAmount()) != 0) {
             throw new ClaimLinedAmountException();
@@ -957,16 +957,26 @@ public class ClaimService {
 
     /**
      * Refuse a correction that names no SETTLED claim of its person by number, and a claim that names
-     * one but is not a correction.
+     * one but is not a correction. A correction may not exceed what remains of the claim it corrects: its
+     * amount less the corrections already made against it (VOID or DELETED ones, and this claim (null:
+     * none) itself, left out).
      */
-    private void refuseUnlessCorrects(String sheetId, Long personId, BigDecimal amount, String corrects) {
+    private void refuseUnlessCorrects(String sheetId, Long personId, Long self, BigDecimal amount, String corrects) {
         if (amount.signum() >= 0) {
             if (corrects != null) throw new CorrectionRefusedException();
             return;
         }
-        boolean settled = corrects != null && claims.findBySheetIdAndPersonIdOrderByIdDesc(sheetId, personId).stream()
-                .anyMatch(c -> corrects.equals(c.getNumber()) && c.getStatus() == ClaimStatus.SETTLED);
-        if (!settled) throw new CorrectionRefusedException();
+        if (corrects == null) throw new CorrectionRefusedException();
+        List<Claim> ofPerson = claims.findBySheetIdAndPersonIdOrderByIdDesc(sheetId, personId);
+        Claim target = ofPerson.stream()
+                .filter(c -> corrects.equals(c.getNumber()) && c.getStatus() == ClaimStatus.SETTLED)
+                .findFirst().orElseThrow(CorrectionRefusedException::new);
+        BigDecimal remaining = ofPerson.stream()
+                .filter(c -> corrects.equals(c.getCorrects()) && !c.getId().equals(self)
+                        && c.getStatus() != ClaimStatus.VOID && c.getStatus() != ClaimStatus.DELETED)
+                .map(Claim::getAmount)
+                .reduce(target.getAmount(), BigDecimal::add);
+        if (amount.negate().compareTo(remaining) > 0) throw new CorrectionRefusedException();
     }
 
     /** Whether a clerk settles a claim whose due is above the clerk limit; a due of n/a is within any. */
