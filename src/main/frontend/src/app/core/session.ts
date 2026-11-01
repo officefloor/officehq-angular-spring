@@ -174,6 +174,11 @@ export class Session {
    */
   readonly dueTotals = signal<ReadonlyMap<number, number | null>>(new Map());
   /**
+   * Each crew's lead (person id; null when no longer on the sheet) and due-total in cents as the crews
+   * section shows it. Kept by the crews section.
+   */
+  readonly crewTotals = signal<readonly { leadId: number | null; cents: number }[]>([]);
+  /**
    * The as-of date (yyyy-mm-dd) the signed-in user views the sheet at, or null: while it is set every
    * figure is shown as it stood at the end of that date, with it as the sheet's today, and every change
    * is refused. It belongs to this screen, and is left as it is by loading a sheet.

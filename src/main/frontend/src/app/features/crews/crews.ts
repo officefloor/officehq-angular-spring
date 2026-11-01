@@ -23,6 +23,7 @@ interface CrewView {
 /** A crew as shown, with its due-total (two decimals). */
 interface CrewLine extends CrewView {
   dueTotal: string;
+  cents: number;
 }
 
 // The sheet's crews, each name once (trimmed, not blank), each led by a person of the sheet, and their
@@ -101,12 +102,13 @@ export class Crews {
     return this.crews().map((c) => {
       const ids = [...(c.lead ? [c.lead.personId] : []), ...c.members.map((m) => m.personId)];
       const total = ids.reduce((sum, id) => sum + (dues.get(id) ?? 0), 0);
-      return { ...c, dueTotal: money(total) };
+      return { ...c, dueTotal: money(total), cents: total };
     });
   });
 
   constructor() {
     this.form.valueChanges.subscribe(() => this.error.set(''));
+    effect(() => this.session.crewTotals.set(this.lines().map((c) => ({ leadId: c.lead?.personId ?? null, cents: c.cents }))));
     effect(() => {
       const id = this.session.sheetId();
       this.session.loads();

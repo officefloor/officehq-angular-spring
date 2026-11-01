@@ -224,6 +224,7 @@ function trimmedSum(figures: number[]): number {
       <p>Overdue total: <strong data-testid="header-overdue-total">{{ money(overdueTotal().cents) | figure }}</strong></p>
       <p>My due total: <strong data-testid="my-due-total">{{ (me() ? dueTotalOf(me()!) : '') | figure }}</strong></p>
       <p>My overdue total: <strong data-testid="my-overdue-total">{{ (me() ? money(overdueOf(me()!).cents) : '') | figure }}</strong></p>
+      <p>My crew total: <strong data-testid="my-crew-due-total">{{ myCrewDueTotal() | figure }}</strong></p>
     </header>
     <section aria-labelledby="consolidated-heading">
       <h2 id="consolidated-heading">Consolidated (this sheet and its descendants)</h2>
@@ -886,6 +887,12 @@ export class People {
     if (period.closed || period.softClosed) return money(this.periodDueCents(period));
     return money(this.classicPeriodLiveCents().get(period.id) ?? 0);
   }
+  /** The due-totals of the crews the signed-in user's person leads, added up; blank when they lead none. */
+  protected readonly myCrewDueTotal = computed(() => {
+    const me = this.me();
+    const led = me ? this.session.crewTotals().filter((c) => c.leadId === me.id) : [];
+    return led.length ? money(led.reduce((sum, c) => sum + c.cents, 0)) : '';
+  });
   /** Everyone's due-total added up, skipping those whose due-total is n/a, not trimmed. */
   protected readonly classicDueTotal = computed(() =>
     money(this.people().reduce((sum, p) => sum + (this.dueTotalCents(p) ?? 0), 0)),
