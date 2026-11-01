@@ -1,7 +1,10 @@
 package net.officefloor.hq.app.person;
 
 import java.time.LocalDate;
+import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 import net.officefloor.hq.app.Audit;
 import net.officefloor.hq.app.rollup.RollupService;
 import net.officefloor.hq.app.sheet.SheetNotFoundException;
@@ -15,18 +18,23 @@ import org.springframework.transaction.annotation.Transactional;
  * The people on a sheet: listed in the order they were added, added and edited one at a time. A
  * name already used by another person on the sheet (ignoring case and surrounding spaces) is
  * refused, and so is an edit made from a version of the person someone else has saved since. A
- * person can be retired from a date (blank: the sheet's today), and put on hold or taken off it.
+ * person can be retired from a date (blank: the sheet's today), and put on hold or taken off it. A
+ * person can name other people on the sheet as their patrons, one at a time; not themselves, and
+ * not the same person twice.
  */
 @Service
 public class PersonService {
 
     private final PersonRepository people;
+    private final PersonPatronRepository patrons;
     private final SheetRepository sheets;
     private final RollupService rollup;
     private final Audit audit;
 
-    public PersonService(PersonRepository people, SheetRepository sheets, RollupService rollup, Audit audit) {
+    public PersonService(PersonRepository people, PersonPatronRepository patrons, SheetRepository sheets,
+            RollupService rollup, Audit audit) {
         this.people = people;
+        this.patrons = patrons;
         this.sheets = sheets;
         this.rollup = rollup;
         this.audit = audit;
@@ -86,6 +94,40 @@ public class PersonService {
                 + " by=" + user.strip() + " name=" + saved.getName());
         rollup.recordChanges(sheetId, user, before);
         return saved;
+    }
+
+    /** Each person's patrons' ids on the sheet, by person id, in the order they were named. */
+    @Transactional(readOnly = true)
+    public Map<Long, List<Long>> patronIds(String sheetId) {
+        Map<Long, List<Long>> by = new HashMap<>();
+        for (PersonPatron p : patrons.findBySheetIdOrderByIdAsc(sheetId)) {
+            by.computeIfAbsent(p.getPersonId(), k -> new ArrayList<>()).add(p.getPatronId());
+        }
+        return by;
+    }
+
+    /** The person's patrons' ids, in the order they were named. */
+    @Transactional(readOnly = true)
+    public List<Long> patronIdsOf(Long personId) {
+        return patrons.findByPersonIdOrderByIdAsc(personId).stream().map(PersonPatron::getPatronId).toList();
+    }
+
+    /** Name another person on the sheet as the person's patron; not themselves, nor one already named. */
+    @Transactional
+    public Person addPatron(String sheetId, String user, Long id, Long patronId) {
+        Person person = people.findByIdAndSheetId(id, sheetId).orElseThrow(PersonNotFoundException::new);
+        Person patron = people.findByIdAndSheetId(patronId, sheetId).orElseThrow(PersonNotFoundException::new);
+        if (person.getId().equals(patron.getId())) throw new PatronRefusedException();
+        if (patrons.existsByPersonIdAndPatronId(person.getId(), patron.getId())) throw new PatronRefusedException();
+        try {
+            patrons.saveAndFlush(new PersonPatron(sheetId, person.getId(), patron.getId()));
+        } catch (DataIntegrityViolationException e) {
+            // named by another user meanwhile
+            throw new PatronRefusedException();
+        }
+        audit.recordOnCommit("PATRON_ADDED sheet=" + sheetId + " by=" + user.strip()
+                + " name=" + person.getName() + " patron=" + patron.getName());
+        return person;
     }
 
     private void record(String event, String sheetId, String user, Person person) {

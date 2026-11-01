@@ -7,6 +7,7 @@ import jakarta.validation.constraints.Pattern;
 import jakarta.validation.constraints.Size;
 import java.time.LocalDate;
 import java.util.List;
+import java.util.Map;
 import org.springframework.validation.annotation.Validated;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
@@ -22,14 +23,17 @@ import org.springframework.web.bind.annotation.RestController;
 @RequestMapping("/api/sheets/{sheetId}/people")
 public class PersonController {
 
-    /** A person as the screen shows them; retiredFrom is null while not retired. */
+    /** A person as the screen shows them; retiredFrom is null while not retired; patronIds in the order named. */
     public record PersonView(Long id, String name, String grade, long version, boolean retired, LocalDate retiredFrom,
-            boolean held) {
-        public static PersonView of(Person person) {
+            boolean held, List<Long> patronIds) {
+        public static PersonView of(Person person, List<Long> patronIds) {
             return new PersonView(person.getId(), person.getName(), person.getGrade(), person.getVersion(),
-                    person.isRetired(), person.getRetiredFrom(), person.isHeld());
+                    person.isRetired(), person.getRetiredFrom(), person.isHeld(), patronIds);
         }
     }
+
+    /** The person to name as a patron. */
+    public record PatronRequest(@NotNull Long patronId) {}
 
     public record PersonRequest(
             @NotBlank @Size(max = 200) String name,
@@ -54,7 +58,8 @@ public class PersonController {
     public List<PersonView> list(
             @PathVariable @Size(max = 100) @Pattern(regexp = "[A-Za-z0-9._-]+") String sheetId,
             @RequestHeader("X-User") @NotBlank @Size(max = 100) String user) {
-        return service.list(sheetId).stream().map(PersonView::of).toList();
+        Map<Long, List<Long>> patrons = service.patronIds(sheetId);
+        return service.list(sheetId).stream().map(p -> PersonView.of(p, patrons.getOrDefault(p.getId(), List.of()))).toList();
     }
 
     @PostMapping
@@ -62,7 +67,7 @@ public class PersonController {
             @PathVariable @Size(max = 100) @Pattern(regexp = "[A-Za-z0-9._-]+") String sheetId,
             @RequestHeader("X-User") @NotBlank @Size(max = 100) String user,
             @RequestBody @Valid PersonRequest request) {
-        return PersonView.of(service.add(sheetId, user, request.name(), request.grade()));
+        return view(service.add(sheetId, user, request.name(), request.grade()));
     }
 
     @PutMapping("/{id}")
@@ -71,7 +76,7 @@ public class PersonController {
             @PathVariable Long id,
             @RequestHeader("X-User") @NotBlank @Size(max = 100) String user,
             @RequestBody @Valid PersonEditRequest request) {
-        return PersonView.of(service.edit(sheetId, user, id, request.version(), request.name(), request.grade()));
+        return view(service.edit(sheetId, user, id, request.version(), request.name(), request.grade()));
     }
 
     @PostMapping("/{id}/retire")
@@ -80,7 +85,7 @@ public class PersonController {
             @PathVariable Long id,
             @RequestHeader("X-User") @NotBlank @Size(max = 100) String user,
             @RequestBody RetireRequest request) {
-        return PersonView.of(service.retire(sheetId, user, id, request.from()));
+        return view(service.retire(sheetId, user, id, request.from()));
     }
 
     /** Put the person on hold, or take them off it when held. */
@@ -89,6 +94,20 @@ public class PersonController {
             @PathVariable @Size(max = 100) @Pattern(regexp = "[A-Za-z0-9._-]+") String sheetId,
             @PathVariable Long id,
             @RequestHeader("X-User") @NotBlank @Size(max = 100) String user) {
-        return PersonView.of(service.toggleHold(sheetId, user, id));
+        return view(service.toggleHold(sheetId, user, id));
+    }
+
+    /** Name another person on the sheet as the person's patron. */
+    @PostMapping("/{id}/patrons")
+    public PersonView addPatron(
+            @PathVariable @Size(max = 100) @Pattern(regexp = "[A-Za-z0-9._-]+") String sheetId,
+            @PathVariable Long id,
+            @RequestHeader("X-User") @NotBlank @Size(max = 100) String user,
+            @RequestBody @Valid PatronRequest request) {
+        return view(service.addPatron(sheetId, user, id, request.patronId()));
+    }
+
+    private PersonView view(Person person) {
+        return PersonView.of(person, service.patronIdsOf(person.getId()));
     }
 }
