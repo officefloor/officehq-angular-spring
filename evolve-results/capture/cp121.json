@@ -1,0 +1,64 @@
+{
+  "checkpoint": 121,
+  "stack": {
+    "repo": "/home/daniel/officehq-angular-spring",
+    "origin": "git@github.com:officefloor/officehq-angular-spring.git",
+    "name": "officehq-angular-spring",
+    "base_ref": "base-empty",
+    "base_commit": "65cb8233ea38b2dfa6cfd18709e30cd18fdf3250"
+  },
+  "checkpoint_id": "cp121_history-follows",
+  "phase": "mid",
+  "type": "additive",
+  "mutates": [],
+  "replaced_tests": [],
+  "request": {
+    "spec": "A transferred person shows the sheet they came from (nothing for anyone else), and the audit\nviewer, filtered by their name, lists after this sheet's lines about them the lines about them\nfrom the sheet they came from, newest first, each as that sheet's file holds it.\n",
+    "prompt": "You are implementing ONE change to this application.\n\nFIRST read AGENTS.md \u2014 it states the working rules and how the app is tested, and sends you to\nDESIGN.md for the app's stack and conventions. Follow both.\n\nTHE CHANGE REQUEST:\nA transferred person shows the sheet they came from (nothing for anyone else), and the audit\nviewer, filtered by their name, lists after this sheet's lines about them the lines about them\nfrom the sheet they came from, newest first, each as that sheet's file holds it.\n\nYour work is verified by an automated Playwright UI test already installed under e2e/specs/.\nRead that spec: it declares the exact data-testid anchors, values, test data and any audit\nrecords it expects \u2014 match them. Run `bin/e2e` to build the app, start it, and run the test as\nyou work; iterate until it passes. Change whatever the request needs across the app \u2014 its stored\ndata, its server and its front end. Do NOT edit bin/build, bin/start, bin/stop, bin/e2e,\nAGENTS.md, CLAUDE.md, DESIGN.md, e2e/support/ or the test spec.\n"
+  },
+  "commit_sha": "eefbb47940719668356f3fb6b40c01c51d879128",
+  "reset_sha": "",
+  "preagent_sha": "a63966c6322d9709878c749c3a63cd66bd6bb11e",
+  "prev_sha": "a63966c6322d9709878c749c3a63cd66bd6bb11e",
+  "base_sha": "65cb8233ea38b2dfa6cfd18709e30cd18fdf3250",
+  "agent": {
+    "ok": true,
+    "cost_usd": 0.6195063999999999,
+    "input_tokens": 36,
+    "output_tokens": 7612,
+    "cache_read_tokens": 667812,
+    "cache_creation_tokens": 41695,
+    "num_turns": 19,
+    "duration_ms": 308450,
+    "duration_api_ms": 102931,
+    "model": "claude-opus-5-5",
+    "session_id": "9d701ac3-66c4-449e-982d-7569e18dd4d3",
+    "stop_reason": "success",
+    "result_text": "The change is in, and `bin/e2e` passes all 4 tests in the acceptance spec.\n\n**What it does now**\n- **Where they came from:** when someone is transferred, their person record now keeps the id of the sheet they left. Their row shows it in a new \"Came from\" column (`person-origin`). For anyone who was never transferred it is blank.\n- **Audit viewer:** when you filter by a name and that name (or one of its aliases) belongs to someone transferred here, the list shows this sheet's lines about them first. After those come the lines about them from the sheet they came from, newest first, word for word as the file holds them. With no name filter, the viewer only shows this sheet's lines, as before.\n\n**Where the changes are**\n- `V72__person_transferred_from.sql` adds a `transferred_from` column to the person table, and `Person.transferTo` sets it.\n- `PersonView` returns it as `origin`, and `people.ts` shows it on the row.\n- `AuditViewService.lines` adds the other sheet's lines.\n\n**Choices I made that the request didn't settle**\n- **Only the most recent sheet.** If someone moves A \u2192 B \u2192 C, C's viewer adds B's lines but not A's.\n- **Nothing after they left.** The other sheet's lines stop at the line recording the transfer to this sheet. So if someone with the same name is added there later, their lines don't show up here.\n- **Filtering by an alias** finds the person, but the other sheet's lines are matched against the alias you typed. Since those lines usually carry the person's name, they may not appear.\n- **Renamed after the transfer:** filtering by the new name won't pick up the other sheet's lines, which carry the old name.\n\nThe test only transfers once and filters by name, so none of these four cases is tested. Any of them is easy to change if you want it to work differently.",
+    "error": "",
+    "attempts": [
+      {
+        "ok": true,
+        "limit_reached": false,
+        "retryable": false,
+        "timed_out": false,
+        "cost_usd": 0.6195063999999999,
+        "num_turns": 19,
+        "duration_ms": 308450,
+        "duration_api_ms": 102931,
+        "error": ""
+      }
+    ]
+  },
+  "agent_stream_file": "cp121.agent.jsonl",
+  "agent_diff_file": "cp121.agent.diff",
+  "build_log_file": null,
+  "tests": {
+    "gated": false,
+    "queued": true
+  },
+  "probe": null,
+  "pinned_touched": [],
+  "acceptance_touched": [],
+  "impact_gate": null
+}
