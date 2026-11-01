@@ -278,6 +278,24 @@ public class PersonService {
     }
 
     /**
+     * Unretire the retired person on the sheet's today; anyone not retired is refused. Their retirement
+     * is kept as a past one, and their open claims count in the totals again.
+     */
+    @Transactional
+    public Person unretire(String sheetId, String user, Long id) {
+        LocalDate today = sheets.findForUpdate(sheetId).orElseThrow(SheetNotFoundException::new).getToday();
+        Person person = people.findByIdAndSheetId(id, sheetId).orElseThrow(PersonNotFoundException::new);
+        if (!person.isRetired()) throw new PersonNotRetiredException();
+        RollupService.Snapshot before = rollup.snapshot(sheetId);
+        person.unretire(today);
+        Person saved = saveUnique(person);
+        audit.recordOnCommit("PERSON_UNRETIRED sheet=" + sheetId + " by=" + user.strip()
+                + " name=" + saved.getName() + " on=" + today);
+        rollup.recordChanges(sheetId, user, before);
+        return saved;
+    }
+
+    /**
      * Put the person on hold from the date (blank: the sheet's today) to the optional to-date; their
      * open (OPEN or PENDING) claims dated within it, unless bound by a statement, leave the totals.
      */

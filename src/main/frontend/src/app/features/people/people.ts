@@ -27,6 +27,12 @@ interface Hold {
   to: string | null;
 }
 
+/** A past retirement, from its date to the day they were unretired. */
+interface Retirement {
+  from: string;
+  to: string;
+}
+
 /** Whether the date falls within the hold. */
 function holdContains(h: Hold, date: string): boolean {
   return (h.from === null || h.from <= date) && (h.to === null || date <= h.to);
@@ -44,6 +50,8 @@ interface Person {
   /** Retired once given a retirement date, whatever the date; retiredFrom is null while not. */
   retired: boolean;
   retiredFrom: string | null;
+  /** Their past retirements, earliest first; none of their claims may be dated after one's from and before its to. */
+  retirements: Retirement[];
   /** Whether they have any hold, whatever its dates. */
   held: boolean;
   /** Their holds, earliest first; their open claims dated within one, unless bound by a statement, count in no live total. */
@@ -139,7 +147,8 @@ interface StatementTaken {
 // each with their claims, what they have claimed and their due-total (OPEN, PENDING and SETTLED claims only); the sheet's claimed-total and
 // due-total under the table. Above it, the sheet's rate for each grade. Each person can be given a
 // statement, which binds their counting claims' dues; the row shows how many statements they have
-// had and the last one's due-total and date. Each person can be retired from a date (blank: the sheet's
+// had and the last one's due-total and date. Each person can be unretired, their retirement kept on the row
+// as from to the day unretired. Each person can be retired from a date (blank: the sheet's
 // today); retired people are left out of the list unless show retired is on, but their claims
 // keep counting in every total. Each person can be put on hold from a from-date (blank: the sheet's
 // today) to an optional to-date, any number of times; their open (OPEN or PENDING) claims dated within
@@ -388,6 +397,13 @@ function trimmedSum(figures: number[]): number {
                        #retireDate (input)="clearPersonError(p.id)" />
                 <button type="button" data-testid="person-retire" (click)="retire(p, retireDate.value)"
                         [attr.aria-label]="'Retire ' + p.name">Retire</button>
+                <button type="button" data-testid="person-unretire" (click)="unretire(p)"
+                        [attr.aria-label]="'Unretire ' + p.name">Unretire</button>
+                <ul>
+                  @for (r of p.retirements; track $index) {
+                    <li data-testid="person-retirement-line">{{ r.from }} to {{ r.to }}</li>
+                  }
+                </ul>
               </td>
               <td>
                 <span data-testid="person-hold">{{ p.held ? 'yes' : 'no' }}</span>
@@ -1410,6 +1426,27 @@ export class People {
       this.people.update((list) => list.map((x) => (x.id === saved.id ? saved : x)));
     } catch {
       if (this.session.sheetId() === sheet) this.personError.set({ id: p.id, message: 'Could not retire ' + p.name + '.' });
+    }
+  }
+
+  /** Unretire the retired person on the sheet's today; anyone not retired is refused. */
+  protected async unretire(p: Person): Promise<void> {
+    this.personError.set(null);
+    this.clearPatronError(p.id);
+    const sheet = this.session.sheetId();
+    if (!sheet) return;
+    try {
+      const saved = await firstValueFrom(
+        this.http.post<Person>(`${this.url(sheet)}/${p.id}/unretire`, {}, { headers: this.headers() }),
+      );
+      if (this.session.sheetId() !== sheet) return;
+      this.people.update((list) => list.map((x) => (x.id === saved.id ? saved : x)));
+    } catch (e) {
+      if (this.session.sheetId() !== sheet) return;
+      const message = e instanceof HttpErrorResponse && e.status === 409
+        ? p.name + ' is not retired.'
+        : 'Could not unretire ' + p.name + '.';
+      this.personError.set({ id: p.id, message });
     }
   }
 

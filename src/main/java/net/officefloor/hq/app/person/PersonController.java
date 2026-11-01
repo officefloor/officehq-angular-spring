@@ -31,7 +31,7 @@ public class PersonController {
     /**
      * A person as the screen shows them: grade is the one in force on the sheet's today, grades every
      * grade recorded, earliest first (the first from null, the beginning of time); retiredFrom is null
-     * while not retired; held whether they have any hold, holds every hold, earliest first; patronIds
+     * while not retired; retirements their past ones, earliest first; held whether they have any hold, holds every hold, earliest first; patronIds
      * in the order named; watched whether the signed-in user watches them; terms their own, null for none;
      * contact theirs, null for none; aliases theirs, sorted as names are compared; active whether they are active on the sheet's today ({@link Person#activeOn});
      * clashing whether their name or an alias is used on another sheet of the sheet's tree ({@link PersonService#clashingIds});
@@ -40,7 +40,7 @@ public class PersonController {
     public record PersonView(Long id, String name, String grade, List<GradeView> grades, long version,
             boolean retired, LocalDate retiredFrom, boolean held, List<HoldView> holds, List<Long> patronIds,
             boolean watched, Integer terms, boolean active, String contact, List<String> aliases,
-            boolean clashing, String origin) {
+            boolean clashing, String origin, List<RetirementView> retirements) {
         public static PersonView of(Person person, LocalDate today, List<Long> patronIds, boolean watched,
                 boolean active, boolean clashing) {
             List<GradeView> grades = new ArrayList<>();
@@ -51,9 +51,13 @@ public class PersonController {
                     person.isRetired(), person.getRetiredFrom(), person.isHeld(),
                     person.getHolds().stream().map(h -> new HoldView(h.getFromDate(), h.getToDate())).toList(),
                     patronIds, watched, person.getTerms(), active, person.getContact(),
-                    person.getAliases(), clashing, person.getTransferredFrom());
+                    person.getAliases(), clashing, person.getTransferredFrom(),
+                    person.getRetirements().stream().map(r -> new RetirementView(r.getFromDate(), r.getToDate())).toList());
         }
     }
+
+    /** A past retirement, from its date to the day they were unretired. */
+    public record RetirementView(LocalDate from, LocalDate to) {}
 
     /** A grade in force from a date (null: the beginning of time). */
     public record GradeView(LocalDate from, String grade) {}
@@ -219,6 +223,15 @@ public class PersonController {
             @RequestHeader("X-User") @NotBlank @Size(max = 100) String user,
             @RequestBody RetireRequest request) {
         return view(service.retire(sheetId, user, id, request.from()), user);
+    }
+
+    /** Unretire the retired person on the sheet's today. */
+    @PostMapping("/{id}/unretire")
+    public PersonView unretire(
+            @PathVariable @Size(max = 100) @Pattern(regexp = "[A-Za-z0-9._-]+") String sheetId,
+            @PathVariable Long id,
+            @RequestHeader("X-User") @NotBlank @Size(max = 100) String user) {
+        return view(service.unretire(sheetId, user, id), user);
     }
 
     /** Put the person on hold from a date to an optional to-date. */

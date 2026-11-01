@@ -30,7 +30,9 @@ import org.hibernate.annotations.SQLRestriction;
  * spaces and is unique on the sheet without regard to case (by its {@link #keyOf key}). A person
  * given a retirement date is retired at once, whatever the date; none of their claims may be dated
  * after it, and from the day the sheet's today reaches it their open claims, unless bound by a
- * statement, leave the live totals as a hold's do. A person may have several holds over time, each from a from-date to an optional to-date. The grade is dated: the first one
+ * statement, leave the live totals as a hold's do. A retired person can be unretired: the retirement is
+ * kept as a past one, from its date to the sheet's today it ended on, and no claim of theirs may be
+ * dated after its from-date and before its to-date. A person may have several holds over time, each from a from-date to an optional to-date. The grade is dated: the first one
  * given is in force from the beginning of time, and each later one from its from-date. A person may have
  * their own terms in days, which their claims' due-by takes ahead of their grade's and the sheet's. A person
  * may have aliases, which share the names' uniqueness on the sheet. A person merged into another is kept,
@@ -88,6 +90,12 @@ public class Person {
 
     @Column(name = "retired_from")
     private LocalDate retiredFrom;
+
+    /** Their past retirements, earliest first. */
+    @ElementCollection(fetch = FetchType.EAGER)
+    @CollectionTable(name = "person_retirement", joinColumns = @JoinColumn(name = "person_id"))
+    @OrderBy("fromDate ASC, toDate ASC")
+    private List<PersonRetirement> retirements = new ArrayList<>();
 
     /** Their holds, earliest from-date first. */
     @ElementCollection(fetch = FetchType.EAGER)
@@ -251,8 +259,24 @@ public class Person {
 
     public boolean isRetired() { return retiredFrom != null; }
 
-    /** Whether a claim of theirs may be dated on the date: not after their retirement date. */
-    public boolean mayClaimOn(LocalDate date) { return retiredFrom == null || !date.isAfter(retiredFrom); }
+    /** Unretire them on the sheet's today, keeping the retirement as a past one from its date to today. */
+    public void unretire(LocalDate on) {
+        retirements.add(new PersonRetirement(retiredFrom, on, retiredOn));
+        this.retiredFrom = null;
+        this.retiredOn = null;
+    }
+
+    /** Their past retirements, earliest first. */
+    public List<PersonRetirement> getRetirements() { return List.copyOf(retirements); }
+
+    /**
+     * Whether a claim of theirs may be dated on the date: not after their retirement date, nor after the
+     * from-date and before the to-date of a past retirement.
+     */
+    public boolean mayClaimOn(LocalDate date) {
+        if (retiredFrom != null && date.isAfter(retiredFrom)) return false;
+        return retirements.stream().noneMatch(r -> r.bars(date));
+    }
 
     /** Whether they have any hold, whatever its dates. */
     public boolean isHeld() { return !holds.isEmpty(); }
@@ -275,6 +299,7 @@ public class Person {
 
     /** Whether, as it stood at the end of the date, they were retired by it: retired then, from on or before it. */
     public boolean retiredAt(LocalDate date) {
+        if (retirements.stream().anyMatch(r -> r.retiredAt(date))) return true;
         return retiredOn(date) && (retiredOn == null || !retiredOn.isAfter(date));
     }
 
