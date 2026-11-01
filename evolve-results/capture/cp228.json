@@ -1,0 +1,73 @@
+{
+  "checkpoint": 228,
+  "stack": {
+    "repo": "/home/daniel/officehq-angular-spring",
+    "origin": "git@github.com:officefloor/officehq-angular-spring.git",
+    "name": "officehq-angular-spring",
+    "base_ref": "base-empty",
+    "base_commit": "65cb8233ea38b2dfa6cfd18709e30cd18fdf3250"
+  },
+  "checkpoint_id": "cp228_rollover-soft-closes",
+  "phase": "late",
+  "type": "mutative",
+  "mutates": [
+    207,
+    215,
+    219
+  ],
+  "replaced_tests": [
+    "cp207_year-end-rollover.spec.ts::year end rollover",
+    "cp215_sheet-comparison.spec.ts::sheet comparison scenario 2",
+    "cp219_rollover-undo.spec.ts::rollover undo",
+    "cp219_rollover-undo.spec.ts::rollover undo scenario 1"
+  ],
+  "request": {
+    "spec": "The rollover now also soft-closes every period of the old fiscal year that is still open, in\nstart-date order, each as a soft close would (PERIOD_SOFT_CLOSED), after the ROLLOVER line.\n",
+    "prompt": "You are implementing ONE change to this application.\n\nFIRST read AGENTS.md \u2014 it states the working rules and how the app is tested, and sends you to\nDESIGN.md for the app's stack and conventions. Follow both.\n\nTHE CHANGE REQUEST:\nThe rollover now also soft-closes every period of the old fiscal year that is still open, in\nstart-date order, each as a soft close would (PERIOD_SOFT_CLOSED), after the ROLLOVER line.\n\nYour work is verified by an automated Playwright UI test already installed under e2e/specs/.\nRead that spec: it declares the exact data-testid anchors, values, test data and any audit\nrecords it expects \u2014 match them. Run `bin/e2e` to build the app, start it, and run the test as\nyou work; iterate until it passes. Change whatever the request needs across the app \u2014 its stored\ndata, its server and its front end. Do NOT edit bin/build, bin/start, bin/stop, bin/e2e,\nAGENTS.md, CLAUDE.md, DESIGN.md, e2e/support/ or the test spec.\n"
+  },
+  "commit_sha": "091130142b5da7ddc517547668846aaca1a08c13",
+  "reset_sha": "",
+  "preagent_sha": "b1c701405bb20ccb563c6ed74be0f1d47a470e70",
+  "prev_sha": "b1c701405bb20ccb563c6ed74be0f1d47a470e70",
+  "base_sha": "65cb8233ea38b2dfa6cfd18709e30cd18fdf3250",
+  "agent": {
+    "ok": true,
+    "cost_usd": 0.7363452,
+    "input_tokens": 6,
+    "output_tokens": 744,
+    "cache_read_tokens": 122457,
+    "cache_creation_tokens": 1038,
+    "num_turns": 2,
+    "duration_ms": 11601,
+    "duration_api_ms": 98743,
+    "model": "claude-opus-5-5",
+    "session_id": "0cc247b9-2ee6-46ed-b966-3fb52c99d620",
+    "stop_reason": "success",
+    "result_text": "Rollover now soft-closes every period of the old fiscal year that's still open, and all 4 tests in `bin/e2e` pass. Getting there also needed a fix to a separate, older bug, described below.\n\n**The requested change** (`PeriodService.java`):\n- After the `ROLLOVER` line is written, rollover goes through the old year's periods in start-date order and soft-closes each one that isn't already closed or soft-closed. Each writes its own `PERIOD_SOFT_CLOSED \u2026 period=\u2026 total=\u2026` line.\n- These soft closes use the same code as a normal soft close: I moved that logic into a shared private method so both paths fix the totals, per-person figures and pool cuts in the same way.\n- The rollover doesn't check the close permission again for each period; it relies on the steward check rollover already does.\n- The people's open figures are still worked out before any period is soft-closed, so the amounts carried into the new year are unchanged.\n\n**The bug outside the request** (`PoolService.java`):\n- Scenario 3 never runs a rollover, but it failed at first. Viewing the sheet as of a past date showed crew memberships as they are now rather than as they stood then.\n- The test views the sheet as of 2026-03-28, before Cam was merged into Ben, and expects crew C1 to still have three members (33.34% share). The app showed two (50.00%).\n- I made crews read their past memberships from the saved state, the same way pools already did. This changes what the as-of screen shows for crews.\n\n**Left unchanged:**\n- Undoing a rollover doesn't reopen the periods it soft-closed. The request didn't cover this; it can be added if undo should fully reverse a rollover.\n- In the as-of view, a crew's lead still comes from the current records. Only membership reads from the saved state.",
+    "error": "",
+    "attempts": [
+      {
+        "ok": true,
+        "limit_reached": false,
+        "retryable": false,
+        "timed_out": false,
+        "cost_usd": 0.7363452,
+        "num_turns": 2,
+        "duration_ms": 11601,
+        "duration_api_ms": 98743,
+        "error": ""
+      }
+    ]
+  },
+  "agent_stream_file": "cp228.agent.jsonl",
+  "agent_diff_file": "cp228.agent.diff",
+  "build_log_file": null,
+  "tests": {
+    "gated": false,
+    "queued": true
+  },
+  "probe": null,
+  "pinned_touched": [],
+  "acceptance_touched": [],
+  "impact_gate": null
+}

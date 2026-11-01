@@ -1,0 +1,61 @@
+diff --git a/src/main/java/net/officefloor/hq/app/period/PeriodService.java b/src/main/java/net/officefloor/hq/app/period/PeriodService.java
+index fea22bb35..f5ff2fa9b 100644
+--- a/src/main/java/net/officefloor/hq/app/period/PeriodService.java
++++ b/src/main/java/net/officefloor/hq/app/period/PeriodService.java
+@@ -137,7 +137,7 @@ public class PeriodService {
+      *  sheet has no period in that fiscal year. The next fiscal year's twelve periods are generated exactly as
+      *  {@link #generateFiscalYear} does, and each person's open figure at the end of the old year's last period, when not
+      *  0.00, is added to their opening balance for the new year's first period, unless the year was rolled over already
+-     *  and that rollover not undone. Each rollover is recorded so the last can be undone. Returns the periods made, in month order. */
++     *  and that rollover not undone. Every period of the old year still open is then soft-closed, in start-date order. Each rollover is recorded so the last can be undone. Returns the periods made, in month order. */
+     @Transactional
+     public List<Period> rollover(String sheetId, String user, int year) {
+         sheets.load(sheetId, user);
+@@ -175,6 +175,9 @@ public class PeriodService {
+                 made.stream().map(Period::getId).toList(), set));
+         audit.recordChangeOnCommit(sheetId, user, "ROLLOVER sheet=" + sheetId + " by=" + user + " fy=FY" + year
+                 + " periods=" + made.size());
++        // Every period of the old year still open is soft-closed, in start-date order.
++        oldYear.stream().filter(p -> !p.isClosed() && !p.isSoftClosed())
++                .forEach(p -> softCloseAndRecord(sheetId, user, p));
+         return made;
+     }
+ 
+@@ -269,6 +272,11 @@ public class PeriodService {
+         if (period.isClosed() || period.isSoftClosed()) {
+             throw new ResponseStatusException(HttpStatus.CONFLICT, "That period is already closed");
+         }
++        return softCloseAndRecord(sheetId, user, period);
++    }
++
++    /** Fix a period's due-total, each person's figure and each pool member's cut as they are now, and record the soft close. */
++    private Period softCloseAndRecord(String sheetId, String user, Period period) {
+         period.softClose(rollup.dueByPersonBetween(sheetId, period.getFromDate(), period.getToDate()),
+                 rollup.carriedByPerson(sheetId, period));
+         period.fixPoolCuts(pools.cutsNow(sheetId));
+diff --git a/src/main/java/net/officefloor/hq/app/pool/PoolService.java b/src/main/java/net/officefloor/hq/app/pool/PoolService.java
+index 8a24e8b50..2b2d80c8b 100644
+--- a/src/main/java/net/officefloor/hq/app/pool/PoolService.java
++++ b/src/main/java/net/officefloor/hq/app/pool/PoolService.java
+@@ -157,7 +157,7 @@ public class PoolService {
+     /** The sheet's pools as {@link #list(String)}, with {@code on} (null: the sheet's today) standing in for the
+      *  sheet's today, as a sheet shown as of a date reads them: then the pot and the people (retired or held) are as
+      *  they stood at the end of that date (see {@link SheetHistory}), a person not on the sheet by then is no member,
+-     *  and the pools are as they are now, each with its memberships as they stood then when the state kept them (so a
++     *  and the pools and crews are as they are now, each with its memberships as they stood then when the state kept them (so a
+      *  membership since moved by a merge counts for the person who held it then), else as they are now. */
+     @Transactional(readOnly = true)
+     public List<PoolWithMembers> list(String sheetId, LocalDate on) {
+@@ -188,6 +188,12 @@ public class PoolService {
+         Map<Long, List<CrewMember>> byCrew = crewMembers.findByCrewIdInOrderByIdAsc(
+                 sheetCrews.stream().map(Crew::getId).toList()).stream()
+                 .collect(Collectors.groupingBy(CrewMember::getCrewId));
++        if (then.isPresent() && then.get().crews() != null) {
++            byCrew = new HashMap<>(byCrew);
++            for (SheetState.CrewState c : then.get().crews()) {
++                byCrew.put(c.id(), c.members().stream().map(id -> new CrewMember(c.id(), id)).toList());
++            }
++        }
+         return build(sheetId, list, byPool, sheetCrews, byCrew, sheetPeople, sheetPot, today);
+     }
+ 
