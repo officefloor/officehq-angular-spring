@@ -1,0 +1,45 @@
+diff --git a/src/main/frontend/src/app/features/people/people.ts b/src/main/frontend/src/app/features/people/people.ts
+index edbea873c..5c23b67df 100644
+--- a/src/main/frontend/src/app/features/people/people.ts
++++ b/src/main/frontend/src/app/features/people/people.ts
+@@ -1245,6 +1245,14 @@ export class People {
+     }
+   }
+ 
++  /** Re-read the sheet before an export; false when another sheet was loaded meanwhile. */
++  private async reloadForExport(): Promise<boolean> {
++    const sheet = this.session.sheetId();
++    if (!sheet) return false;
++    await this.load(sheet);
++    return this.session.sheetId() === sheet;
++  }
++
+   protected claimsOf(personId: number): Claim[] {
+     return this.claimsByPerson().get(personId) ?? NO_CLAIMS;
+   }
+@@ -1347,9 +1355,11 @@ export class People {
+ 
+   /**
+    * Downloads everyone, retired people included, in list order as CSV: name, grade in force today,
+-   * retired-from (or nothing) and due-total as shown.
++   * retired-from (or nothing) and due-total as shown. Re-read from the store first, so while an as-of
++   * date is set it holds the as-of figures.
+    */
+-  protected exportCsv(): void {
++  protected async exportCsv(): Promise<void> {
++    if (!(await this.reloadForExport())) return;
+     const lines = [['name', 'grade', 'retired-from', 'due-total'], ...this.people().map((p) => [p.name, this.gradeOf(p), p.retiredFrom ?? '', this.dueTotalOf(p)])];
+     downloadCsv(lines, 'people.csv');
+   }
+@@ -1357,8 +1367,10 @@ export class People {
+   /**
+    * Downloads every claim as CSV, people in list order (retired people included) and each person's
+    * claims oldest first: person, number, date, amount, due, status and period, as the screen shows them.
++   * Re-read from the store first, so while an as-of date is set it holds the as-of figures.
+    */
+-  protected exportClaims(): void {
++  protected async exportClaims(): Promise<void> {
++    if (!(await this.reloadForExport())) return;
+     const lines = [['person', 'number', 'date', 'amount', 'due', 'status', 'period']];
+     for (const p of this.people()) {
+       const theirs = this.claimsOf(p.id);
