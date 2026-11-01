@@ -1,0 +1,64 @@
+{
+  "checkpoint": 239,
+  "stack": {
+    "repo": "/home/daniel/officehq-angular-spring",
+    "origin": "git@github.com:officefloor/officehq-angular-spring.git",
+    "name": "officehq-angular-spring",
+    "base_ref": "base-empty",
+    "base_commit": "65cb8233ea38b2dfa6cfd18709e30cd18fdf3250"
+  },
+  "checkpoint_id": "cp239_period-claim-counts",
+  "phase": "late",
+  "type": "additive",
+  "mutates": [],
+  "replaced_tests": [],
+  "request": {
+    "spec": "Show on each period the count of claims belonging to it (VOID and DELETED claims left out).\n",
+    "prompt": "You are implementing ONE change to this application.\n\nFIRST read AGENTS.md \u2014 it states the working rules and how the app is tested, and sends you to\nDESIGN.md for the app's stack and conventions. Follow both.\n\nTHE CHANGE REQUEST:\nShow on each period the count of claims belonging to it (VOID and DELETED claims left out).\n\nYour work is verified by an automated Playwright UI test already installed under e2e/specs/.\nRead that spec: it declares the exact data-testid anchors, values, test data and any audit\nrecords it expects \u2014 match them. Run `bin/e2e` to build the app, start it, and run the test as\nyou work; iterate until it passes. Change whatever the request needs across the app \u2014 its stored\ndata, its server and its front end. Do NOT edit bin/build, bin/start, bin/stop, bin/e2e,\nAGENTS.md, CLAUDE.md, DESIGN.md, e2e/support/ or the test spec.\n"
+  },
+  "commit_sha": "25808bf3c079e90341ff028679297e488ec5421b",
+  "reset_sha": "",
+  "preagent_sha": "dac9da0744ed7a7080b612f07235dc9dda07bf8e",
+  "prev_sha": "dac9da0744ed7a7080b612f07235dc9dda07bf8e",
+  "base_sha": "65cb8233ea38b2dfa6cfd18709e30cd18fdf3250",
+  "agent": {
+    "ok": true,
+    "cost_usd": 0.7164227999999999,
+    "input_tokens": 40,
+    "output_tokens": 7837,
+    "cache_read_tokens": 770614,
+    "cache_creation_tokens": 50675,
+    "num_turns": 22,
+    "duration_ms": 261890,
+    "duration_api_ms": 84071,
+    "model": "claude-opus-5-5",
+    "session_id": "a36ee3f1-289d-44ae-be23-12d41d0b32c2",
+    "stop_reason": "success",
+    "result_text": "Each period row now shows how many claims belong to it, with VOID and DELETED claims left out. All 4 Playwright tests pass with `bin/e2e`.\n\n**What \"belongs to a period\" means:** a claim counts toward a period when its due-by date falls inside the period's from\u2013to dates, not its claim date. This matches the existing per-period cap and due-totals, and it's what the test expects. For example, a draft claim dated inside P2 counts 0 for P2 because its due-by date falls after P2 ends.\n\n**Changes:**\n- **Server:**\n  - `Period.java` gets a computed `claimsCount`, which the database works out each time a period is loaded.\n  - `PeriodController.PeriodView` returns it as `claimsCount`.\n  - In `PeriodService`, adding or generating a period now reads the new period back after saving. Without that, a newly made period would show 0 even when claims already fall inside it, until the sheet was reloaded.\n- **Front end:** the period row shows `\u2014 claims <span data-testid=\"period-claims-count\">` (in `features/periods/periods.ts`), and `claimsCount` is an optional field on `PeriodView` in `core/periods.ts`. Periods saved before this change have no `claimsCount`, so the row shows 0 for them.\n\n**Limitations:**\n- No database migration was needed, since the count is worked out when it's read rather than stored.\n- When you view a sheet as of a past date, the count reflects the claims as they are now, not as they were on that date.\n- When claims are added or changed, a period's count on screen only updates after the sheet is reloaded, the same way the existing period figures behave.",
+    "error": "",
+    "attempts": [
+      {
+        "ok": true,
+        "limit_reached": false,
+        "retryable": false,
+        "timed_out": false,
+        "cost_usd": 0.7164227999999999,
+        "num_turns": 22,
+        "duration_ms": 261890,
+        "duration_api_ms": 84071,
+        "error": ""
+      }
+    ]
+  },
+  "agent_stream_file": "cp239.agent.jsonl",
+  "agent_diff_file": "cp239.agent.diff",
+  "build_log_file": null,
+  "tests": {
+    "gated": false,
+    "queued": true
+  },
+  "probe": null,
+  "pinned_touched": [],
+  "acceptance_touched": [],
+  "impact_gate": null
+}

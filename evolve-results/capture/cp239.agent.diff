@@ -1,0 +1,158 @@
+diff --git a/src/main/frontend/src/app/core/periods.ts b/src/main/frontend/src/app/core/periods.ts
+index ccd74daee..20c53e33e 100644
+--- a/src/main/frontend/src/app/core/periods.ts
++++ b/src/main/frontend/src/app/core/periods.ts
+@@ -31,6 +31,9 @@ export interface PeriodView {
+   /** Whether a steward has locked the period: while locked it cannot be reopened (absent from what was kept before
+    *  periods could be locked). */
+   locked?: boolean;
++  /** How many claims belong to the period (their due-by falls inside it), VOID and DELETED ones left out (absent
++   *  from what was kept before periods were counted). */
++  claimsCount?: number;
+ }
+ 
+ /** A period as the form submits it: a blank from-date takes the sheet's today. */
+diff --git a/src/main/frontend/src/app/features/periods/periods.ts b/src/main/frontend/src/app/features/periods/periods.ts
+index 82b0983e4..d1263ce42 100644
+--- a/src/main/frontend/src/app/features/periods/periods.ts
++++ b/src/main/frontend/src/app/features/periods/periods.ts
+@@ -23,6 +23,7 @@ import { FigurePipe } from '../../core/figure';
+             — due <span data-testid="period-due-total">{{ (dueTotals().get(p.id) ?? '0.00') | figure }}</span>
+             — <span data-testid="period-fy">{{ fiscalYearOf(p.from) }}</span>
+             — cap <span data-testid="period-cap">{{ (p.cap ?? '') | figure }}</span>
++            — claims <span data-testid="period-claims-count">{{ p.claimsCount ?? 0 }}</span>
+             — closed <span data-testid="period-closed">{{ p.closed ? 'yes' : p.softClosed ? 'soft' : 'no' }}</span>
+             <button type="button" data-testid="period-close" (click)="close(p)" [disabled]="closing() === p.id"
+                     [attr.aria-label]="'Close period ' + p.name">Close</button>
+diff --git a/src/main/java/net/officefloor/hq/app/period/Period.java b/src/main/java/net/officefloor/hq/app/period/Period.java
+index e3440f012..27dbe9e82 100644
+--- a/src/main/java/net/officefloor/hq/app/period/Period.java
++++ b/src/main/java/net/officefloor/hq/app/period/Period.java
+@@ -11,6 +11,7 @@ import jakarta.persistence.Id;
+ import jakarta.persistence.JoinColumn;
+ import jakarta.persistence.MapKeyColumn;
+ import jakarta.persistence.Table;
++import org.hibernate.annotations.Formula;
+ import java.math.BigDecimal;
+ import java.time.LocalDate;
+ import java.util.HashMap;
+@@ -90,6 +91,12 @@ public class Period {
+     @Column(name = "claim_cap")
+     private Integer claimCap;
+ 
++    /** How many claims of the sheet belong to the period (their due-by falls inside it), VOID and DELETED ones left
++     *  out; read from the store as the period is loaded. */
++    @Formula("(SELECT COUNT(*) FROM claim c WHERE c.sheet_id = sheet_id AND c.due_by >= from_date"
++            + " AND c.due_by <= to_date AND c.status NOT IN ('VOID', 'DELETED'))")
++    private long claimsCount;
++
+     protected Period() {
+     }
+ 
+@@ -139,6 +146,10 @@ public class Period {
+         return claimCap;
+     }
+ 
++    public long getClaimsCount() {
++        return claimsCount;
++    }
++
+     public boolean isClosed() {
+         return closed;
+     }
+diff --git a/src/main/java/net/officefloor/hq/app/period/PeriodController.java b/src/main/java/net/officefloor/hq/app/period/PeriodController.java
+index 06fbe43bd..1a2c215fa 100644
+--- a/src/main/java/net/officefloor/hq/app/period/PeriodController.java
++++ b/src/main/java/net/officefloor/hq/app/period/PeriodController.java
+@@ -32,10 +32,12 @@ public class PeriodController {
+      *  when it was closed or soft-closed (null while open), and closedPersonTotals each person's, by person id, fixed
+      *  then (empty while open; a person missing has 0.00), as closedPersonCarried is each person's carried figure;
+      *  personOpenings is each person's opening balance for it, by person id (a person missing has 0.00); locked is
+-     *  whether a steward has locked it. */
++     *  whether a steward has locked it; claimsCount is how many claims belong to it (due by inside it), VOID and
++     *  DELETED ones left out. */
+     public record PeriodView(long id, String name, LocalDate from, LocalDate to, boolean closed, boolean softClosed,
+             String closedTotal, Map<Long, String> closedPersonTotals, Integer cap,
+-            Map<Long, String> closedPersonCarried, Map<Long, String> personOpenings, boolean locked) {
++            Map<Long, String> closedPersonCarried, Map<Long, String> personOpenings, boolean locked,
++            long claimsCount) {
+ 
+         public static PeriodView of(Period period) {
+             Map<Long, String> personTotals = new TreeMap<>();
+@@ -46,7 +48,8 @@ public class PeriodController {
+             period.getPersonOpenings().forEach((id, opening) -> openings.put(id, opening.toPlainString()));
+             return new PeriodView(period.getId(), period.getName(), period.getFromDate(), period.getToDate(),
+                     period.isClosed(), period.isSoftClosed(), period.getClosedTotal() == null ? null : period.getClosedTotal().toPlainString(),
+-                    personTotals, period.getClaimCap(), personCarried, openings, period.isLocked());
++                    personTotals, period.getClaimCap(), personCarried, openings, period.isLocked(),
++                    period.getClaimsCount());
+         }
+     }
+ 
+diff --git a/src/main/java/net/officefloor/hq/app/period/PeriodService.java b/src/main/java/net/officefloor/hq/app/period/PeriodService.java
+index f5ff2fa9b..ae2159a69 100644
+--- a/src/main/java/net/officefloor/hq/app/period/PeriodService.java
++++ b/src/main/java/net/officefloor/hq/app/period/PeriodService.java
+@@ -8,6 +8,7 @@ import java.util.List;
+ import java.util.HashMap;
+ import java.util.Map;
+ import java.math.BigDecimal;
++import jakarta.persistence.EntityManager;
+ import net.officefloor.hq.app.Audit;
+ import net.officefloor.hq.app.claim.ClaimRepository;
+ import net.officefloor.hq.app.person.Person;
+@@ -40,10 +41,12 @@ public class PeriodService {
+     private final PoolService pools;
+     private final RolloverRepository rollovers;
+     private final ClaimRepository claims;
++    private final EntityManager entities;
+ 
+     public PeriodService(PeriodRepository periods, SheetService sheets, SheetRepository sheetStore, Audit audit,
+             Rollup rollup, RoleService roles, PersonRepository people, @Lazy PoolService pools,
+-            RolloverRepository rollovers, ClaimRepository claims) {
++            RolloverRepository rollovers, ClaimRepository claims, EntityManager entities) {
++        this.entities = entities;
+         this.rollovers = rollovers;
+         this.claims = claims;
+         this.pools = pools;
+@@ -56,6 +59,13 @@ public class PeriodService {
+         this.rollup = rollup;
+     }
+ 
++    /** Store a new period, then read it back so its claims count is the store's. */
++    private Period saveNew(Period period) {
++        Period saved = periods.saveAndFlush(period);
++        entities.refresh(saved);
++        return saved;
++    }
++
+     /** The sheet's periods, by from-date. */
+     @Transactional(readOnly = true)
+     public List<Period> list(String sheetId) {
+@@ -85,7 +95,7 @@ public class PeriodService {
+         }
+         Period added;
+         try {
+-            added = periods.saveAndFlush(new Period(sheetId, trimmed, from, to, cap));
++            added = saveNew(new Period(sheetId, trimmed, from, to, cap));
+         } catch (DataIntegrityViolationException raced) {
+             throw nameInUse();
+         }
+@@ -116,7 +126,7 @@ public class PeriodService {
+             if (existing.stream().anyMatch(p -> p.getName().equals(name) || p.overlaps(first, last))) {
+                 continue;
+             }
+-            Period added = periods.saveAndFlush(new Period(sheetId, name, first, last));
++            Period added = saveNew(new Period(sheetId, name, first, last));
+             audit.recordChangeOnCommit(sheetId, user, "PERIOD_ADDED sheet=" + sheetId + " by=" + user + " period=" + added.getName()
+                     + " from=" + added.getFromDate() + " to=" + added.getToDate());
+             made.add(added);
+@@ -232,7 +242,7 @@ public class PeriodService {
+             if (existing.stream().anyMatch(p -> p.getName().equals(name) || p.overlaps(first, last))) {
+                 continue;
+             }
+-            Period added = periods.saveAndFlush(new Period(sheetId, name, first, last));
++            Period added = saveNew(new Period(sheetId, name, first, last));
+             audit.recordChangeOnCommit(sheetId, user, "PERIOD_ADDED sheet=" + sheetId + " by=" + user + " period=" + added.getName()
+                     + " from=" + added.getFromDate() + " to=" + added.getToDate());
+             made.add(added);
