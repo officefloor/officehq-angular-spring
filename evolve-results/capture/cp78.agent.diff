@@ -1,0 +1,102 @@
+diff --git a/src/main/frontend/src/app/features/people/people.ts b/src/main/frontend/src/app/features/people/people.ts
+index 6cc532e42..13efb0dfd 100644
+--- a/src/main/frontend/src/app/features/people/people.ts
++++ b/src/main/frontend/src/app/features/people/people.ts
+@@ -3,7 +3,7 @@ import { Component, computed, effect, inject, signal } from '@angular/core';
+ import { FormControl, FormGroup, ReactiveFormsModule } from '@angular/forms';
+ import { firstValueFrom } from 'rxjs';
+ import { Session } from '../../core/session';
+-import { Claim, Claims, PctOn, RETIRED, cents, claimDueCents, countsAt, countsFor, isBound, isOverdue, money, roundsOn } from '../claims/claims';
++import { Claim, Claims, PctOn, RETIRED, cents, claimDueCents, countsAt, countsFor, isBound, isOpen, isOverdue, money, roundsOn } from '../claims/claims';
+ import { Period, Periods, periodOn } from '../periods/periods';
+ import { GRADES, NA, Rate, Rates, pctOn, rateOn } from '../rates/rates';
+ 
+@@ -82,6 +82,18 @@ interface Overdue {
+   cents: number;
+ }
+ 
++/** The dues in cents of open claims that count, by the claim's age on the sheet's today. */
++interface Aged {
++  upTo30: number;
++  upTo60: number;
++  over60: number;
++}
++
++/** The days from one date to a later one; negative when it is earlier. */
++function daysFrom(from: string, to: string): number {
++  return Math.round((Date.parse(to) - Date.parse(from)) / 86_400_000);
++}
++
+ /** A quick-add done: the person the claim went to, whether they were added for it, and the claim. */
+ interface QuickAdded {
+   person: Person;
+@@ -105,6 +117,8 @@ interface StatementTaken {
+ // today) to an optional to-date, any number of times; their open (OPEN or PENDING) claims dated within
+ // a hold count in no live total (theirs, the sheet's or a period's), unless bound by a statement.
+ // Each person, and the sheet, shows how many of the claims that count are overdue and their dues' total.
++// Each person shows the dues of their open (OPEN or PENDING) claims that count by the claim's age on the
++// sheet's today (days from its date): 0 to 30 (a claim dated after today too), 31 to 60, and 61 or more.
+ // A person's grade is dated: the first one given is in force from the start; each save records the
+ // form's grade from its from-date (blank: the sheet's today), unless it leaves the grade as the row
+ // showed it with the from-date blank. A claim takes the rate of the grade in force on its date; the
+@@ -226,7 +240,7 @@ function trimmedSum(figures: number[]): number {
+       </form>
+       <table>
+         <thead>
+-          <tr><th scope="col"><span class="visually-hidden">Select</span></th><th scope="col">Name</th><th scope="col">Grade</th><th scope="col">Terms</th><th scope="col">Claimed</th><th scope="col">Due total</th><th scope="col">Excess</th><th scope="col">Periods</th><th scope="col">Statements</th><th scope="col">Retired</th><th scope="col">Hold</th><th scope="col">Watched</th><th scope="col">Active</th><th scope="col">Overdue</th><th scope="col">Patrons</th><th scope="col">Claims</th><th scope="col"><span class="visually-hidden">Actions</span></th></tr>
++          <tr><th scope="col"><span class="visually-hidden">Select</span></th><th scope="col">Name</th><th scope="col">Grade</th><th scope="col">Terms</th><th scope="col">Claimed</th><th scope="col">Due total</th><th scope="col">Excess</th><th scope="col">Periods</th><th scope="col">Statements</th><th scope="col">Retired</th><th scope="col">Hold</th><th scope="col">Watched</th><th scope="col">Active</th><th scope="col">Overdue</th><th scope="col">Aged</th><th scope="col">Patrons</th><th scope="col">Claims</th><th scope="col"><span class="visually-hidden">Actions</span></th></tr>
+         </thead>
+         <tbody>
+           @for (p of listed(); track p.id) {
+@@ -297,6 +311,11 @@ function trimmedSum(figures: number[]): number {
+                 <span data-testid="person-overdue-count">{{ overdueOf(p).count }}</span>
+                 <span>Total <span data-testid="person-overdue-total">{{ money(overdueOf(p).cents) }}</span></span>
+               </td>
++              <td>
++                <span>0-30 <span data-testid="person-aged-0-30">{{ money(agedOf(p).upTo30) }}</span></span>
++                <span>31-60 <span data-testid="person-aged-31-60">{{ money(agedOf(p).upTo60) }}</span></span>
++                <span>61+ <span data-testid="person-aged-61">{{ money(agedOf(p).over60) }}</span></span>
++              </td>
+               <td>
+                 <span data-testid="person-patrons">{{ patronsOf(p) }}</span>
+                 <span>Backing <span data-testid="person-backing">{{ backingOf(p) }}</span></span>
+@@ -510,6 +529,28 @@ export class People {
+     }
+     return by;
+   });
++  /** Each person's open claims that count, by id: their dues in cents by the claim's age on the sheet's today. */
++  private readonly agedByPerson = computed(() => {
++    const today = this.session.today();
++    const floor = this.session.floorCentsOn;
++    const late = this.session.late();
++    const by = new Map<number, Aged>();
++    for (const p of this.people()) {
++      const pctOn = this.pctOnOf(p.id);
++      const theirs = this.claimsOf(p.id);
++      const aged: Aged = { upTo30: 0, upTo60: 0, over60: 0 };
++      for (const c of theirs) {
++        if (!isOpen(c) || !this.counts(c)) continue;
++        const due = claimDueCents(c, pctOn, floor, late, roundsOn(c, theirs)) ?? 0;
++        const age = today === null ? 0 : daysFrom(c.date, today);
++        if (age <= 30) aged.upTo30 += due;
++        else if (age <= 60) aged.upTo60 += due;
++        else aged.over60 += due;
++      }
++      by.set(p.id, aged);
++    }
++    return by;
++  });
+   /** The sheet's overdue claims that count: everyone's added up. */
+   protected readonly overdueTotal = computed(() => {
+     let count = 0;
+@@ -704,6 +745,10 @@ export class People {
+     return this.overdueByPerson().get(p.id) ?? { count: 0, cents: 0 };
+   }
+ 
++  protected agedOf(p: Person): Aged {
++    return this.agedByPerson().get(p.id) ?? { upTo30: 0, upTo60: 0, over60: 0 };
++  }
++
+   /** Their due-total, or n/a. */
+   protected dueTotalOf(p: Person): string {
+     const total = this.dueTotalCents(p);
