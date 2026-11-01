@@ -1,0 +1,64 @@
+{
+  "checkpoint": 122,
+  "stack": {
+    "repo": "/home/daniel/officehq-angular-spring",
+    "origin": "git@github.com:officefloor/officehq-angular-spring.git",
+    "name": "officehq-angular-spring",
+    "base_ref": "base-empty",
+    "base_commit": "65cb8233ea38b2dfa6cfd18709e30cd18fdf3250"
+  },
+  "checkpoint_id": "cp122_pool-membership-dated",
+  "phase": "mid",
+  "type": "additive",
+  "mutates": [],
+  "replaced_tests": [],
+  "request": {
+    "spec": "A pool membership may carry a from-date and a to-date (optional; a to-date before the from-date\nis refused; POOL_MEMBER_ADDED gains from=<date> and to=<date> at the end when given). A member whose\ndates do not include the sheet's today is left out entirely: not in the total share, not in the\nbalance, no cut.\n",
+    "prompt": "You are implementing ONE change to this application.\n\nFIRST read AGENTS.md \u2014 it states the working rules and how the app is tested, and sends you to\nDESIGN.md for the app's stack and conventions. Follow both.\n\nTHE CHANGE REQUEST:\nA pool membership may carry a from-date and a to-date (optional; a to-date before the from-date\nis refused; POOL_MEMBER_ADDED gains from=<date> and to=<date> at the end when given). A member whose\ndates do not include the sheet's today is left out entirely: not in the total share, not in the\nbalance, no cut.\n\nYour work is verified by an automated Playwright UI test already installed under e2e/specs/.\nRead that spec: it declares the exact data-testid anchors, values, test data and any audit\nrecords it expects \u2014 match them. Run `bin/e2e` to build the app, start it, and run the test as\nyou work; iterate until it passes. Change whatever the request needs across the app \u2014 its stored\ndata, its server and its front end. Do NOT edit bin/build, bin/start, bin/stop, bin/e2e,\nAGENTS.md, CLAUDE.md, DESIGN.md, e2e/support/ or the test spec.\n"
+  },
+  "commit_sha": "e381a1ce97e4a99cb9c03e2710b3ca61aee7406c",
+  "reset_sha": "",
+  "preagent_sha": "fc0fb8d37049edec15d61e4167e3eadb6cd0a489",
+  "prev_sha": "fc0fb8d37049edec15d61e4167e3eadb6cd0a489",
+  "base_sha": "65cb8233ea38b2dfa6cfd18709e30cd18fdf3250",
+  "agent": {
+    "ok": true,
+    "cost_usd": 0.7320211999999999,
+    "input_tokens": 34,
+    "output_tokens": 9700,
+    "cache_read_tokens": 688386,
+    "cache_creation_tokens": 50026,
+    "num_turns": 18,
+    "duration_ms": 280849,
+    "duration_api_ms": 111080,
+    "model": "claude-opus-5-5",
+    "session_id": "fd77521a-3167-4c57-843c-b671326b44fd",
+    "stop_reason": "success",
+    "result_text": "Pool memberships can now carry a from-date and a to-date, and `bin/e2e` passes all 4 tests in the spec.\n\n**What it does:**\n- **Adding a member:** the add-member form on each pool has two optional date fields, From and To. Both dates count as part of the membership. If the to-date is before the from-date, the form shows `pool-error` and nothing is saved or written to the audit file. The browser refuses this before sending, and the server refuses it too.\n- **Audit:** `POOL_MEMBER_ADDED` now ends with `from=<date>` and/or `to=<date>`, each only when given.\n- **When today is outside the dates:** the member still shows in the pool's list with its share. It adds nothing to the total share, so it doesn't count toward \"balanced\", and it gets no cut (the cut shows blank). The rest of the pot is split among the other members as before.\n\n**Changes:**\n- New migration `V73__pool_member_dates.sql` adds nullable `from_date` and `to_date` columns to `pool_member`.\n- `PoolMember`, `PoolService` and `PoolController` store the dates, check them, and leave members outside their dates out of the total share and the cuts. A new `PoolMemberDatesException` handles the refusal.\n- `pools.ts` adds the two date fields (`pool-member-from`, `pool-member-to`), the to-before-from check, and the same total-share rule.\n\n**Choices worth knowing:**\n- **Blank from-date:** this stays empty instead of defaulting to the sheet's today. The spec's audit line for Cam has no `from=`, so an empty from-date means the membership has no start date.\n- **Pools inside pools:** the dates work the same way when the member is another pool. If a nested pool is outside its dates, it gets no cut, so its own members get nothing either.\n- **Merging two people:** if both are already in the same pool, the shares are added together onto the remaining person's membership. That membership keeps its own dates, and the merged person's dates are dropped.\n\nThe server's own to-before-from refusal never ran in the tests, because the browser catches the bad dates before sending them.",
+    "error": "",
+    "attempts": [
+      {
+        "ok": true,
+        "limit_reached": false,
+        "retryable": false,
+        "timed_out": false,
+        "cost_usd": 0.7320211999999999,
+        "num_turns": 18,
+        "duration_ms": 280849,
+        "duration_api_ms": 111080,
+        "error": ""
+      }
+    ]
+  },
+  "agent_stream_file": "cp122.agent.jsonl",
+  "agent_diff_file": "cp122.agent.diff",
+  "build_log_file": null,
+  "tests": {
+    "gated": false,
+    "queued": true
+  },
+  "probe": null,
+  "pinned_touched": [],
+  "acceptance_touched": [],
+  "impact_gate": null
+}
