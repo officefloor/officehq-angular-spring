@@ -6,6 +6,7 @@ import jakarta.validation.constraints.NotNull;
 import jakarta.validation.constraints.Pattern;
 import jakarta.validation.constraints.Size;
 import java.math.BigDecimal;
+import java.time.LocalDate;
 import java.util.List;
 import org.springframework.validation.annotation.Validated;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -21,15 +22,15 @@ import org.springframework.web.bind.annotation.RestController;
 @RequestMapping("/api/sheets/{sheetId}/rates")
 public class RateController {
 
-    /** A grade's rate as the screen shows it; the percent always has two decimals. */
-    public record RateView(String grade, String pct) {
+    /** A grade's rate as the screen shows it; the percent always has two decimals; from is null from the start. */
+    public record RateView(String grade, LocalDate from, String pct) {
         static RateView of(Rate rate) {
-            return new RateView(rate.getGrade(), rate.getPct().setScale(2).toPlainString());
+            return new RateView(rate.getGrade(), rate.getFromDate(), rate.getPct().setScale(2).toPlainString());
         }
     }
 
-    /** A percent of 0.00 or more, with at most two decimals. */
-    public record RateRequest(@NotNull @Pattern(regexp = "\\d{1,5}(\\.\\d{1,2})?") String pct) {
+    /** A percent of 0.00 or more, with at most two decimals, from a date (none: from the beginning of time). */
+    public record RateRequest(@NotNull @Pattern(regexp = "\\d{1,5}(\\.\\d{1,2})?") String pct, LocalDate from) {
 
         BigDecimal pctValue() {
             return new BigDecimal(pct).setScale(2);
@@ -55,6 +56,6 @@ public class RateController {
             @PathVariable @Pattern(regexp = "[ABC]") String grade,
             @RequestHeader("X-User") @NotBlank @Size(max = 100) String user,
             @RequestBody @Valid RateRequest request) {
-        return RateView.of(service.set(sheetId, user, grade, request.pctValue()));
+        return RateView.of(service.set(sheetId, user, grade, request.from(), request.pctValue()));
     }
 }

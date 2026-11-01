@@ -1,5 +1,5 @@
 import { HttpClient } from '@angular/common/http';
-import { Component, inject, input, output, signal } from '@angular/core';
+import { Component, computed, inject, input, output, signal } from '@angular/core';
 import { FormControl, FormGroup, ReactiveFormsModule } from '@angular/forms';
 import { firstValueFrom } from 'rxjs';
 import { Session } from '../../core/session';
@@ -7,6 +7,8 @@ import { money } from '../claims/claims';
 
 export interface Rate {
   grade: string;
+  /** The first date (yyyy-mm-dd) it applies on; null when it applies from the beginning of time. */
+  from: string | null;
   /** A percent, always two decimals, e.g. "12.50". */
   pct: string;
 }
@@ -23,12 +25,24 @@ export function dueCents(amountCents: number, pct: string): number {
   return Number((BigInt(amountCents) * pctHundredths + 5000n) / 10000n);
 }
 
+/** Of one grade's rates, the percent in force on a date (the latest from-date on or before it), or null. */
+export function pctOn(rates: Rate[], date: string): string | null {
+  // No from-date sorts as '', before every date.
+  let best: Rate | null = null;
+  for (const r of rates) {
+    const from = r.from ?? '';
+    if (from <= date && (best === null || from > (best.from ?? ''))) best = r;
+  }
+  return best?.pct ?? null;
+}
+
 /** The due on an amount in cents at a grade's percent, or n/a when the grade has no rate. */
 export function due(amountCents: number, pct: string | null): string {
   return pct === null ? NA : money(dueCents(amountCents, pct));
 }
 
-// The sheet's rate for each grade, with one form to set a grade's rate.
+// The sheet's rates, each for a grade from a from-date (or from the start), with one form to set
+// a grade's rate from a date; and per grade, the rate in force on the sheet's today.
 @Component({
   selector: 'app-rates',
   imports: [ReactiveFormsModule],
@@ -44,20 +58,38 @@ export function due(amountCents: number, pct: string | null): string {
         </select>
         <label for="rate-form-pct">Rate (%)</label>
         <input id="rate-form-pct" data-testid="rate-form-pct" formControlName="pct" inputmode="decimal" />
+        <label for="rate-form-from">From (blank: from the start)</label>
+        <input id="rate-form-from" type="date" data-testid="rate-form-from" formControlName="from" />
         <button type="submit" data-testid="rate-form-submit">Set rate</button>
         @if (error()) {
           <p role="alert" class="error" data-testid="rate-form-error">{{ error() }}</p>
         }
       </form>
       <table>
+        <caption>In force today</caption>
         <thead>
           <tr><th scope="col">Grade</th><th scope="col">Rate (%)</th></tr>
         </thead>
         <tbody>
           @for (g of grades; track g) {
-            <tr [attr.data-testid]="'rate-row-' + g + '-start'">
+            <tr>
               <td>{{ g }}</td>
-              <td [attr.data-testid]="'rate-current-' + g"><span data-testid="rate-pct">{{ pctOf(g) ?? na }}</span></td>
+              <td [attr.data-testid]="'rate-current-' + g">{{ currentOf(g) ?? na }}</td>
+            </tr>
+          }
+        </tbody>
+      </table>
+      <table>
+        <caption>All rates</caption>
+        <thead>
+          <tr><th scope="col">Grade</th><th scope="col">From</th><th scope="col">Rate (%)</th></tr>
+        </thead>
+        <tbody>
+          @for (r of sorted(); track r.grade + '-' + (r.from ?? 'start')) {
+            <tr [attr.data-testid]="'rate-row-' + r.grade + '-' + (r.from ?? 'start')">
+              <td>{{ r.grade }}</td>
+              <td data-testid="rate-from">{{ r.from ?? 'start' }}</td>
+              <td data-testid="rate-pct">{{ r.pct }}</td>
             </tr>
           }
         </tbody>
@@ -70,6 +102,8 @@ export class Rates {
   private readonly session = inject(Session);
 
   readonly rates = input.required<Rate[]>();
+  /** The sheet's today, for the rate in force on it. */
+  readonly today = input.required<string | null>();
   /** A rate set, as the store now holds it. */
   readonly saved = output<Rate>();
 
@@ -79,14 +113,22 @@ export class Rates {
   protected readonly form = new FormGroup({
     grade: new FormControl('A', { nonNullable: true }),
     pct: new FormControl('', { nonNullable: true }),
+    from: new FormControl('', { nonNullable: true }),
   });
+  /** By grade, then from-date, the one from the start first. */
+  protected readonly sorted = computed(() =>
+    [...this.rates()].sort((a, b) =>
+      a.grade !== b.grade ? (a.grade < b.grade ? -1 : 1) : (a.from ?? '') < (b.from ?? '') ? -1 : 1,
+    ),
+  );
 
   constructor() {
     this.form.valueChanges.subscribe(() => this.error.set(''));
   }
 
-  protected pctOf(grade: string): string | null {
-    return this.rates().find((r) => r.grade === grade)?.pct ?? null;
+  protected currentOf(grade: string): string | null {
+    const today = this.today();
+    return today === null ? null : pctOn(this.rates().filter((r) => r.grade === grade), today);
   }
 
   protected async save(): Promise<void> {
@@ -95,6 +137,7 @@ export class Rates {
     if (!sheet) return;
     const raw = this.form.getRawValue();
     const pct = raw.pct.trim();
+    const from = raw.from.trim();
     if (!GRADES.includes(raw.grade)) {
       this.error.set('Choose a grade.');
       return;
@@ -103,9 +146,13 @@ export class Rates {
       this.error.set('Enter a percent of 0.00 or more, with at most two decimals.');
       return;
     }
+    if (from && !/^\d{4}-\d{2}-\d{2}$/.test(from)) {
+      this.error.set('Enter a from-date, or leave it blank for from the start.');
+      return;
+    }
     try {
       const rate = await firstValueFrom(
-        this.http.put<Rate>(`/api/sheets/${encodeURIComponent(sheet)}/rates/${raw.grade}`, { pct }, {
+        this.http.put<Rate>(`/api/sheets/${encodeURIComponent(sheet)}/rates/${raw.grade}`, { pct, from: from || null }, {
           headers: { 'X-User': this.session.user() ?? '' },
         }),
       );

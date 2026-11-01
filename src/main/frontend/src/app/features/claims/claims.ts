@@ -3,7 +3,7 @@ import { Component, inject, input, output, signal } from '@angular/core';
 import { FormControl, FormGroup, ReactiveFormsModule } from '@angular/forms';
 import { firstValueFrom } from 'rxjs';
 import { Session } from '../../core/session';
-import { due } from '../rates/rates';
+import { Rate, due, pctOn } from '../rates/rates';
 
 /** DRAFT when added, then OPEN, then SETTLED; a DRAFT or OPEN claim can be made VOID. */
 export type ClaimStatus = 'DRAFT' | 'OPEN' | 'SETTLED' | 'VOID';
@@ -95,8 +95,8 @@ export class Claims {
   readonly personId = input.required<number>();
   readonly personName = input.required<string>();
   readonly claims = input.required<Claim[]>();
-  /** The rate for the person's grade, or null when the grade has no rate. */
-  readonly pct = input.required<string | null>();
+  /** The rates for the person's grade, each from its from-date. */
+  readonly rates = input.required<Rate[]>();
   /** A claim added, edited or given a new status, as the store now holds it. */
   readonly saved = output<Claim>();
 
@@ -118,9 +118,9 @@ export class Claims {
     return `claim-${this.personId()}-${field}`;
   }
 
-  /** The due fixed when it was settled, else its amount times the grade's rate. */
+  /** The due fixed when it was settled, else its amount times the grade's rate on its date. */
   protected dueOf(c: Claim): string {
-    return c.settledDue ?? due(cents(c.amount), this.pct());
+    return c.settledDue ?? due(cents(c.amount), pctOn(this.rates(), c.date));
   }
 
   private headers(): Record<string, string> {

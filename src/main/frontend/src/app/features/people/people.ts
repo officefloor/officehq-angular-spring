@@ -4,9 +4,10 @@ import { FormControl, FormGroup, ReactiveFormsModule } from '@angular/forms';
 import { firstValueFrom } from 'rxjs';
 import { Session } from '../../core/session';
 import { Claim, Claims, cents, counts, money } from '../claims/claims';
-import { GRADES, Rate, Rates, due, dueCents } from '../rates/rates';
+import { GRADES, Rate, Rates, due, dueCents, pctOn } from '../rates/rates';
 
 const NO_CLAIMS: Claim[] = [];
+const NO_RATES: Rate[] = [];
 
 interface Person {
   id: number;
@@ -21,7 +22,7 @@ interface Person {
   selector: 'app-people',
   imports: [ReactiveFormsModule, Claims, Rates],
   template: `
-    <app-rates [rates]="rates()" (saved)="rateSaved($event)" />
+    <app-rates [rates]="rates()" [today]="session.today()" (saved)="rateSaved($event)" />
     <section aria-labelledby="people-heading">
       <h2 id="people-heading">People</h2>
       <form [formGroup]="form" (ngSubmit)="save()" [attr.aria-label]="editingId() === null ? 'Add person' : 'Edit person'">
@@ -53,7 +54,7 @@ interface Person {
               <td data-testid="person-claimed">{{ claimedOf(p.id) }}</td>
               <td data-testid="person-due-total">{{ dueTotalOf(p) }}</td>
               <td>
-                <app-claims [personId]="p.id" [personName]="p.name" [claims]="claimsOf(p.id)" [pct]="pctOf(p.grade)"
+                <app-claims [personId]="p.id" [personName]="p.name" [claims]="claimsOf(p.id)" [rates]="ratesOf(p.grade)"
                             (saved)="claimSaved($event)" />
               </td>
               <td>
@@ -71,7 +72,7 @@ interface Person {
 })
 export class People {
   private readonly http = inject(HttpClient);
-  private readonly session = inject(Session);
+  protected readonly session = inject(Session);
 
   protected readonly grades = GRADES;
   protected readonly people = signal<Person[]>([]);
@@ -83,10 +84,25 @@ export class People {
     return by;
   });
   protected readonly claimedTotal = computed(() => money(this.claims().filter(counts).reduce((sum, c) => sum + cents(c.amount), 0)));
-  /** The sheet's rate for each grade that has one. */
+  /** The sheet's rates, each for a grade from its from-date. */
   protected readonly rates = signal<Rate[]>([]);
-  private readonly pctByGrade = computed(() => new Map(this.rates().map((r) => [r.grade, r.pct])));
-  /** Everyone's due-total added up, skipping those whose grade has no rate. */
+  private readonly ratesByGrade = computed(() => {
+    const by = new Map<string, Rate[]>();
+    for (const r of this.rates()) by.set(r.grade, [...(by.get(r.grade) ?? []), r]);
+    return by;
+  });
+  /** Each grade's rate in force on the sheet's today, for the grades that have one. */
+  private readonly pctByGrade = computed(() => {
+    const today = this.session.today();
+    const by = new Map<string, string>();
+    if (today === null) return by;
+    for (const [grade, rates] of this.ratesByGrade()) {
+      const pct = pctOn(rates, today);
+      if (pct !== null) by.set(grade, pct);
+    }
+    return by;
+  });
+  /** Everyone's due-total added up, skipping those whose grade has no rate in force today. */
   protected readonly dueTotal = computed(() => {
     const byGrade = this.pctByGrade();
     let sum = 0;
@@ -152,18 +168,23 @@ export class People {
     return money(this.claimedCents(personId));
   }
 
+  protected ratesOf(grade: string): Rate[] {
+    return this.ratesByGrade().get(grade) ?? NO_RATES;
+  }
+
+  /** The grade's rate in force on the sheet's today, or null when none is. */
   protected pctOf(grade: string): string | null {
     return this.pctByGrade().get(grade) ?? null;
   }
 
-  /** What they have claimed times their grade's rate, or n/a when the grade has no rate. */
+  /** What they have claimed times their grade's rate in force today, or n/a when none is. */
   protected dueTotalOf(p: Person): string {
     return due(this.claimedCents(p.id), this.pctOf(p.grade));
   }
 
-  /** Put a set rate in place of the grade's old one. */
+  /** Put a set rate in place of the grade's old one from the same date. */
   protected rateSaved(rate: Rate): void {
-    this.rates.update((list) => [...list.filter((r) => r.grade !== rate.grade), rate]);
+    this.rates.update((list) => [...list.filter((r) => r.grade !== rate.grade || r.from !== rate.from), rate]);
   }
 
   /** Put an added claim first, or an edited one in its place. */

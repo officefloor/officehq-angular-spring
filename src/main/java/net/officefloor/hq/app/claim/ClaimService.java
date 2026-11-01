@@ -9,7 +9,7 @@ import net.officefloor.hq.app.person.Person;
 import net.officefloor.hq.app.person.PersonNotFoundException;
 import net.officefloor.hq.app.person.PersonRepository;
 import net.officefloor.hq.app.rate.Rate;
-import net.officefloor.hq.app.rate.RateRepository;
+import net.officefloor.hq.app.rate.RateService;
 import net.officefloor.hq.app.sheet.SheetService;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -19,18 +19,19 @@ import org.springframework.transaction.annotation.Transactional;
  * given no date takes the sheet's today. A claim is added as DRAFT and moves through its statuses
  * as {@link ClaimStatus} allows; a change it does not allow is refused. Opening a claim gives it
  * the sheet's next number; voiding it clears the number, which is never given again. Settling it
- * fixes its due at its person's grade rate of the moment; with no rate for the grade it stays live.
+ * fixes its due at its person's grade rate of the moment on the claim's date; with no such rate it
+ * stays live.
  */
 @Service
 public class ClaimService {
 
     private final ClaimRepository claims;
     private final PersonRepository people;
-    private final RateRepository rates;
+    private final RateService rates;
     private final SheetService sheets;
     private final Audit audit;
 
-    public ClaimService(ClaimRepository claims, PersonRepository people, RateRepository rates, SheetService sheets,
+    public ClaimService(ClaimRepository claims, PersonRepository people, RateService rates, SheetService sheets,
             Audit audit) {
         this.claims = claims;
         this.people = people;
@@ -99,9 +100,9 @@ public class ClaimService {
         return saved;
     }
 
-    /** A claim's amount times its person's grade rate, rounded half up to cents; null with no rate. */
+    /** A claim's amount times its person's grade rate on its date, rounded half up to cents; null with no rate. */
     private BigDecimal dueOf(String sheetId, Person person, Claim claim) {
-        return rates.findBySheetIdAndGrade(sheetId, person.getGrade())
+        return rates.on(sheetId, person.getGrade(), claim.getDate())
                 .map(Rate::getPct)
                 .map(pct -> claim.getAmount().multiply(pct).movePointLeft(2).setScale(2, RoundingMode.HALF_UP))
                 .orElse(null);
