@@ -16,8 +16,8 @@ function isDate(value: string): boolean {
   return /^\d{4}-\d{2}-\d{2}$/.test(value) && !Number.isNaN(at) && new Date(at).toISOString().slice(0, 10) === value;
 }
 
-// The sheet's holidays, each date at most once. A claim's due-by, fixed when it is added, is moved past
-// them to the next day that is not one; a holiday added later moves no due-by.
+// The sheet's holidays, each date at most once. A claim's due-by counts its terms in business days,
+// skipping weekends and them; adding one fixes again every due-by on or after it of a claim not SETTLED or VOID.
 @Component({
   selector: 'app-holidays',
   imports: [ReactiveFormsModule],

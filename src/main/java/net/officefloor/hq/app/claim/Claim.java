@@ -56,9 +56,16 @@ public class Claim {
     @Column(name = "note", nullable = false)
     private String note;
 
-    /** The date it is due by, fixed when added: the terms-th business day after its date, with its person's own terms, else those of their grade then. */
-    @Column(name = "due_by", nullable = false, updatable = false)
+    /**
+     * The date it is due by, fixed when added: the terms-th business day after its date, with its person's own
+     * terms, else those of their grade then. Fixed again, with the same terms, when a holiday is added.
+     */
+    @Column(name = "due_by", nullable = false)
     private LocalDate dueBy;
+
+    /** The terms, in business days, its due-by was fixed with. */
+    @Column(name = "terms", nullable = false, updatable = false)
+    private int terms;
 
     @Enumerated(EnumType.STRING)
     @Column(name = "status", nullable = false)
@@ -167,13 +174,15 @@ public class Claim {
 
     protected Claim() {}
 
-    public Claim(String sheetId, Long personId, BigDecimal amount, LocalDate date, String note, LocalDate dueBy) {
+    public Claim(String sheetId, Long personId, BigDecimal amount, LocalDate date, String note, LocalDate dueBy,
+            int terms) {
         this.sheetId = sheetId;
         this.personId = personId;
         this.amount = amount;
         this.date = date;
         this.note = note;
         this.dueBy = dueBy;
+        this.terms = terms;
     }
 
     public Long getId() { return id; }
@@ -249,8 +258,14 @@ public class Claim {
 
     public String getNote() { return note; }
 
-    /** The date it is due by, fixed when added; it does not move with its date or the terms. */
+    /** The date it is due by, fixed when added; it does not move with its date or the terms, only when a holiday is added. */
     public LocalDate getDueBy() { return dueBy; }
+
+    /** Fix the due-by again, as worked out over the sheet's holidays now. */
+    public void setDueBy(LocalDate dueBy) { this.dueBy = dueBy; }
+
+    /** The terms, in business days, its due-by was fixed with. */
+    public int getTerms() { return terms; }
 
     public void setNote(String note) { this.note = note; }
 
