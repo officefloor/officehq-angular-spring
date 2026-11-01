@@ -3,14 +3,17 @@ package net.officefloor.hq.app.person;
 import java.util.ArrayList;
 import java.util.HashSet;
 import java.util.List;
+import java.util.Optional;
 import java.util.Set;
 import java.util.regex.Pattern;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 /**
- * Imported people: lines of name,grade,terms,contact (the last two may be absent or blank), each a
- * person added in order exactly as the person form adds one, with the form's rules. A name, or a
+ * Imported people: lines of name,grade,terms,contact (the last two may be absent or blank), taken in
+ * order with the person form's rules. A line whose name is a person's on the sheet (by name or alias, as
+ * names are compared) edits them exactly as the form does: name kept, the grade recorded from the
+ * sheet's today, and terms and contact set when the line gives them. Any other line adds a person. A name, or a
  * contact, given twice in the paste (compared as the form compares them) refuses it. Blank lines are
  * skipped; a paste with no line is refused. It is one change: a line that is refused refuses them all.
  */
@@ -24,14 +27,19 @@ public class PersonImportService {
 
     private record Line(String name, String grade, Integer terms, String contact) {}
 
-    private final PersonService people;
+    /** The people an import added, and those it updated, each in the order of their lines. */
+    public record Result(List<Person> added, List<Person> updated) {}
 
-    public PersonImportService(PersonService people) {
+    private final PersonService people;
+    private final PersonRepository repository;
+
+    public PersonImportService(PersonService people, PersonRepository repository) {
         this.people = people;
+        this.repository = repository;
     }
 
     @Transactional
-    public List<Person> importPeople(String sheetId, String user, String text) {
+    public Result importPeople(String sheetId, String user, String text) {
         List<Line> lines = new ArrayList<>();
         Set<String> names = new HashSet<>();
         Set<String> contacts = new HashSet<>();
@@ -45,10 +53,19 @@ public class PersonImportService {
         }
         if (lines.isEmpty()) throw new PersonImportRefusedException();
         List<Person> added = new ArrayList<>();
+        List<Person> updated = new ArrayList<>();
         for (Line line : lines) {
-            added.add(people.add(sheetId, user, line.name(), line.grade(), line.terms(), line.contact()));
+            Optional<Person> existing = repository.findByNameOrAlias(sheetId, line.name());
+            if (existing.isPresent()) {
+                Person person = existing.get();
+                updated.add(people.edit(sheetId, user, person.getId(), person.getVersion(), person.getName(),
+                        line.grade(), null, line.terms() != null ? line.terms() : person.getTerms(),
+                        line.contact() != null ? line.contact() : person.getContact()));
+            } else {
+                added.add(people.add(sheetId, user, line.name(), line.grade(), line.terms(), line.contact()));
+            }
         }
-        return added;
+        return new Result(added, updated);
     }
 
     private Line parse(String raw) {

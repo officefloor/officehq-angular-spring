@@ -228,7 +228,10 @@ function trimmedSum(figures: number[]): number {
         <textarea id="import-people" data-testid="import-people" formControlName="text" rows="4"></textarea>
         <button type="submit" data-testid="import-submit">Import</button>
         @if (importAdded() !== null) {
-          <p role="status">Added <span data-testid="import-added">{{ importAdded() }}</span></p>
+          <p role="status">
+            Added <span data-testid="import-added">{{ importAdded() }}</span>,
+            updated <span data-testid="import-updated">{{ importUpdated() }}</span>
+          </p>
         }
         @if (importError()) {
           <p role="alert" class="error" data-testid="import-error">{{ importError() }}</p>
@@ -863,6 +866,7 @@ export class People {
   protected readonly importError = signal('');
   /** How many people the last import added; null before one, and while one runs. */
   protected readonly importAdded = signal<number | null>(null);
+  protected readonly importUpdated = signal<number | null>(null);
   protected readonly importForm = new FormGroup({
     text: new FormControl('', { nonNullable: true }),
   });
@@ -914,6 +918,7 @@ export class People {
       this.importForm.reset({ text: '' }, { emitEvent: false });
       this.importError.set('');
       this.importAdded.set(null);
+      this.importUpdated.set(null);
       if (id) void this.load(id);
     });
     // the ancestors' rates, read again whenever the sheet is loaded or its parent changes
@@ -1718,12 +1723,14 @@ export class People {
 
   /**
    * Add a person per pasted line of name,grade,terms,contact, in order, each as the person form adds
-   * one. Every line is checked first; if any is refused, none is added.
+   * one; a line naming a person on the sheet updates them as their edit form does instead. Every line
+   * is checked first; if any is refused, nothing is imported.
    */
   protected async importPeople(): Promise<void> {
     if (this.importing) return;
     this.importError.set('');
     this.importAdded.set(null);
+    this.importUpdated.set(null);
     const sheet = this.session.sheetId();
     if (!sheet) return;
     const text = this.importForm.getRawValue().text;
@@ -1734,11 +1741,13 @@ export class People {
     this.importing = true;
     try {
       const done = await firstValueFrom(
-        this.http.post<{ added: number; people: Person[] }>(
+        this.http.post<{ added: number; updated: number; people: Person[]; updatedPeople: Person[] }>(
           `${this.url(sheet)}/import`, { text }, { headers: this.headers() }),
       );
       if (this.session.sheetId() !== sheet) return;
-      this.people.update((list) => [...list, ...done.people]);
+      const updated = new Map(done.updatedPeople.map((p) => [p.id, p]));
+      this.people.update((list) => [...list.map((p) => updated.get(p.id) ?? p), ...done.people]);
+      this.importUpdated.set(done.updated);
       this.importAdded.set(done.added);
       this.importForm.reset({ text: '' }, { emitEvent: false });
     } catch (e) {

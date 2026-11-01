@@ -105,8 +105,8 @@ public class PersonController {
     /** Pasted lines of name,grade,terms,contact, one person each. */
     public record ImportRequest(@NotNull @Size(max = 200000) String text) {}
 
-    /** The people an import added, in the order of their lines. */
-    public record ImportView(int added, List<PersonView> people) {}
+    /** The people an import added, and those it updated, each in the order of their lines. */
+    public record ImportView(int added, int updated, List<PersonView> people, List<PersonView> updatedPeople) {}
 
     /** Terms in days as the form gave them; blank or null: none. */
     private static Integer termsOf(String terms) {
@@ -150,15 +150,16 @@ public class PersonController {
                 request.contact()), user);
     }
 
-    /** Add a person per pasted line, in order; a line refused refuses them all. */
+    /** Add, or update the person named, per pasted line, in order; a line refused refuses them all. */
     @PostMapping("/import")
     public ImportView importPeople(
             @PathVariable @Size(max = 100) @Pattern(regexp = "[A-Za-z0-9._-]+") String sheetId,
             @RequestHeader("X-User") @NotBlank @Size(max = 100) String user,
             @RequestBody @Valid ImportRequest request) {
-        List<PersonView> added = importer.importPeople(sheetId, user, request.text()).stream()
-                .map(p -> view(p, user)).toList();
-        return new ImportView(added.size(), added);
+        PersonImportService.Result result = importer.importPeople(sheetId, user, request.text());
+        List<PersonView> added = result.added().stream().map(p -> view(p, user)).toList();
+        List<PersonView> updated = result.updated().stream().map(p -> view(p, user)).toList();
+        return new ImportView(added.size(), updated.size(), added, updated);
     }
 
     @PutMapping("/{id}")
