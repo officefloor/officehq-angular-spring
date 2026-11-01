@@ -1,0 +1,80 @@
+{
+  "checkpoint": 224,
+  "stack": {
+    "repo": "/home/daniel/officehq-angular-spring",
+    "origin": "git@github.com:officefloor/officehq-angular-spring.git",
+    "name": "officehq-angular-spring",
+    "base_ref": "base-empty",
+    "base_commit": "65cb8233ea38b2dfa6cfd18709e30cd18fdf3250"
+  },
+  "checkpoint_id": "cp224_cap-includes-cuts",
+  "phase": "late",
+  "type": "mutative",
+  "mutates": [
+    106,
+    109,
+    119,
+    143,
+    154,
+    189,
+    207
+  ],
+  "replaced_tests": [
+    "cp106_pool-cuts.spec.ts::pool cuts scenario 2",
+    "cp109_parent-sheet-rates.spec.ts::parent sheet rates scenario 2",
+    "cp119_cut-totals.spec.ts::cut totals",
+    "cp143_fiscal-year.spec.ts::fiscal year scenario 3",
+    "cp154_classic-summary.spec.ts::classic summary scenario 1",
+    "cp189_default-grade.spec.ts::default grade scenario 2",
+    "cp207_year-end-rollover.spec.ts::year end rollover scenario 1"
+  ],
+  "request": {
+    "spec": "The cap now covers a person's due-total plus their cut total: their due-total is held to the cap\nless their cut total (not below 0.00), and the excess is what the figures exceed that by.\n",
+    "prompt": "You are implementing ONE change to this application.\n\nFIRST read AGENTS.md \u2014 it states the working rules and how the app is tested, and sends you to\nDESIGN.md for the app's stack and conventions. Follow both.\n\nTHE CHANGE REQUEST:\nThe cap now covers a person's due-total plus their cut total: their due-total is held to the cap\nless their cut total (not below 0.00), and the excess is what the figures exceed that by.\n\nYour work is verified by an automated Playwright UI test already installed under e2e/specs/.\nRead that spec: it declares the exact data-testid anchors, values, test data and any audit\nrecords it expects \u2014 match them. Run `bin/e2e` to build the app, start it, and run the test as\nyou work; iterate until it passes. Change whatever the request needs across the app \u2014 its stored\ndata, its server and its front end. Do NOT edit bin/build, bin/start, bin/stop, bin/e2e,\nAGENTS.md, CLAUDE.md, DESIGN.md, e2e/support/ or the test spec.\n"
+  },
+  "commit_sha": "f54e416d3dff92415b4456c0962a2c7c06c05d57",
+  "reset_sha": "",
+  "preagent_sha": "36b314a56bd53b3645f35f62e8d6600dc2db4e71",
+  "prev_sha": "36b314a56bd53b3645f35f62e8d6600dc2db4e71",
+  "base_sha": "65cb8233ea38b2dfa6cfd18709e30cd18fdf3250",
+  "agent": {
+    "ok": true,
+    "cost_usd": 1.2370984,
+    "input_tokens": 54,
+    "output_tokens": 13481,
+    "cache_read_tokens": 1611432,
+    "cache_creation_tokens": 80622,
+    "num_turns": 27,
+    "duration_ms": 519924,
+    "duration_api_ms": 170850,
+    "model": "claude-opus-5-5",
+    "session_id": "68c177a9-f861-441c-bf8a-294370c3462a",
+    "stop_reason": "success",
+    "result_text": "The cap now covers a person's due-total plus their cut total, and all 4 tests in `bin/e2e` pass.\n\n**The new rule**\n- **Due-total:** a person's due-total is now held to the cap less their cut total, and never goes below 0.00. Their cut total is their cuts added up across every pool they're a member of.\n- **Excess:** this is now what the person's dues before the cap plus their cut total exceed the cap by. It is 0 when there's no cap or they have no due-total.\n\n**Server**\n- `Sheet.capped(sum, cut)` applies the new limit.\n- I added `PoolService.cutTotals(sheetId, on)`, which works out each person's cut total for today or for a past date.\n- The rollup audit lines, the consolidated and grade figures (including the \"as of a date\" view) and statements all use the new limit now. The past-date versions use the cuts as they stood on that date.\n- Changing the pot or adding a pool member changes the cuts, so both now write `ROLLUP`/`TOTALS` lines when figures move. The test expects these after the pot change. I added the same for pool members for consistency; the tests don't check that part.\n\n**Front end** (`features/people/people.ts`): the person's due-total and `person-excess` use the same rule as the server.\n\n**Things to know**\n- **Ambiguous case:** the request doesn't say what excess should be when the cut total alone is more than the cap. I read \"the figures\" as dues plus cuts, so the excess is everything above the cap (dues 4, cut 5, cap 3 gives an excess of 6). Measuring only the dues that were trimmed would give 4 instead. The tests don't cover this case.\n- **Still no rollup lines:** these changes also move cuts but don't write rollup lines: changes to crew membership, holds, and the sheet's today moving past a membership's dates. The figures on screen are still right; only those audit lines are missing. I didn't touch them.\n\nTo avoid a circular dependency between the services, `Rollup` and `StatementService` get `PoolService` through `@Lazy`. The app starts cleanly with it.",
+    "error": "",
+    "attempts": [
+      {
+        "ok": true,
+        "limit_reached": false,
+        "retryable": false,
+        "timed_out": false,
+        "cost_usd": 1.2370984,
+        "num_turns": 27,
+        "duration_ms": 519924,
+        "duration_api_ms": 170850,
+        "error": ""
+      }
+    ]
+  },
+  "agent_stream_file": "cp224.agent.jsonl",
+  "agent_diff_file": "cp224.agent.diff",
+  "build_log_file": null,
+  "tests": {
+    "gated": false,
+    "queued": true
+  },
+  "probe": null,
+  "pinned_touched": [],
+  "acceptance_touched": [],
+  "impact_gate": null
+}
