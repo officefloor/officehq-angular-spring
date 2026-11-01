@@ -1,0 +1,369 @@
+diff --git a/src/main/frontend/src/app/features/people/people.ts b/src/main/frontend/src/app/features/people/people.ts
+index 837ba90c3..1486b7f5c 100644
+--- a/src/main/frontend/src/app/features/people/people.ts
++++ b/src/main/frontend/src/app/features/people/people.ts
+@@ -384,6 +384,16 @@ function trimmedSum(figures: number[]): number {
+               <td>
+                 <button type="button" [attr.data-testid]="'person-edit-' + p.id" (click)="edit(p)"
+                         [attr.aria-label]="'Edit ' + p.name">Edit</button>
++                <label [for]="'person-merge-into-' + p.id" class="visually-hidden">Merge {{ p.name }} into</label>
++                <select [id]="'person-merge-into-' + p.id" data-testid="person-merge-into" #mergeInto
++                        (change)="clearPersonError(p.id)">
++                  <option value="">Merge into</option>
++                  @for (o of people(); track o.id) {
++                    <option [value]="o.id">{{ o.name }}</option>
++                  }
++                </select>
++                <button type="button" data-testid="person-merge" (click)="merge(p, mergeInto)"
++                        [attr.aria-label]="'Merge ' + p.name">Merge</button>
+               </td>
+             </tr>
+           }
+@@ -1137,6 +1147,37 @@ export class People {
+     }
+   }
+ 
++  /**
++   * Merge the person into the one chosen in the select (a steward only; not into themselves, neither of
++   * them retired). Once merged the people and their claims are read again, as their claims and patrons moved.
++   */
++  protected async merge(p: Person, select: HTMLSelectElement): Promise<void> {
++    this.personError.set(null);
++    this.clearPatronError(p.id);
++    const sheet = this.session.sheetId();
++    if (!sheet) return;
++    const intoId = Number(select.value);
++    if (!select.value || !Number.isInteger(intoId)) {
++      this.personError.set({ id: p.id, message: 'Choose a person to merge into.' });
++      return;
++    }
++    try {
++      await firstValueFrom(
++        this.http.post<Person>(`${this.url(sheet)}/${p.id}/merge`, { intoId }, { headers: this.headers() }),
++      );
++      if (this.session.sheetId() !== sheet) return;
++      await this.load(sheet);
++    } catch (e) {
++      if (this.session.sheetId() !== sheet) return;
++      this.personError.set({
++        id: p.id,
++        message: e instanceof HttpErrorResponse && e.status === 409
++          ? 'Only a steward can merge, into another person, neither of them retired.'
++          : 'Could not merge ' + p.name + '.',
++      });
++    }
++  }
++
+   /** Retire the person from the date (blank: the sheet's today). */
+   protected async retire(p: Person, date: string): Promise<void> {
+     this.personError.set(null);
+diff --git a/src/main/java/net/officefloor/hq/app/person/Person.java b/src/main/java/net/officefloor/hq/app/person/Person.java
+index c84fe2cd8..62e88674c 100644
+--- a/src/main/java/net/officefloor/hq/app/person/Person.java
++++ b/src/main/java/net/officefloor/hq/app/person/Person.java
+@@ -23,6 +23,7 @@ import java.util.Map;
+ import java.util.TreeMap;
+ import net.officefloor.hq.app.claim.Claim;
+ import net.officefloor.hq.app.claim.ClaimStatus;
++import org.hibernate.annotations.SQLRestriction;
+ 
+ /**
+  * A person on a sheet, with a name and a grade (A, B or C). The name is kept without surrounding
+@@ -32,9 +33,11 @@ import net.officefloor.hq.app.claim.ClaimStatus;
+  * statement, leave the live totals as a hold's do. A person may have several holds over time, each from a from-date to an optional to-date. The grade is dated: the first one
+  * given is in force from the beginning of time, and each later one from its from-date. A person may have
+  * their own terms in days, which their claims' due-by takes ahead of their grade's and the sheet's. A person
+- * may have aliases, which share the names' uniqueness on the sheet.
++ * may have aliases, which share the names' uniqueness on the sheet. A person merged into another is kept,
++ * naming them, but leaves the sheet: no query reads them.
+  */
+ @Entity
++@SQLRestriction("merged_into is null")
+ @Table(name = "person")
+ public class Person {
+ 
+@@ -97,6 +100,10 @@ public class Person {
+     @CollectionTable(name = "person_alias", joinColumns = @JoinColumn(name = "person_id"))
+     private List<PersonAlias> aliases = new ArrayList<>();
+ 
++    /** The person they were merged into; null while not merged. */
++    @Column(name = "merged_into")
++    private Long mergedInto;
++
+     @Version
+     @Column(name = "version", nullable = false)
+     private long version;
+@@ -192,6 +199,19 @@ public class Person {
+ 
+     public void addAlias(String alias) { aliases.add(new PersonAlias(sheetId, alias)); }
+ 
++    /**
++     * Merge them into the other person: they name the other as merged into, and lose their aliases, holds
++     * and contact. Returns their aliases, as given, in the order they were added.
++     */
++    public List<String> mergeInto(Long otherId) {
++        List<String> theirs = aliases.stream().map(PersonAlias::getAlias).toList();
++        this.mergedInto = otherId;
++        aliases.clear();
++        holds.clear();
++        this.contact = null;
++        return theirs;
++    }
++
+     /** The date they are retired from, or null while not retired. */
+     public LocalDate getRetiredFrom() { return retiredFrom; }
+ 
+diff --git a/src/main/java/net/officefloor/hq/app/person/PersonController.java b/src/main/java/net/officefloor/hq/app/person/PersonController.java
+index 23cfc77dd..b3b6b73b5 100644
+--- a/src/main/java/net/officefloor/hq/app/person/PersonController.java
++++ b/src/main/java/net/officefloor/hq/app/person/PersonController.java
+@@ -66,6 +66,9 @@ public class PersonController {
+     /** An alias to give a person. */
+     public record AliasRequest(@NotBlank @Size(max = 200) String alias) {}
+ 
++    /** The person to merge a person into. */
++    public record MergeRequest(@NotNull Long intoId) {}
++
+     /** The person to name as a patron. */
+     public record PatronRequest(@NotNull Long patronId) {}
+ 
+@@ -190,6 +193,16 @@ public class PersonController {
+         return view(service.addPatron(sheetId, user, id, request.patronId()), user);
+     }
+ 
++    /** Merge the person into another on the sheet; answers with the person merged into. */
++    @PostMapping("/{id}/merge")
++    public PersonView merge(
++            @PathVariable @Size(max = 100) @Pattern(regexp = "[A-Za-z0-9._-]+") String sheetId,
++            @PathVariable Long id,
++            @RequestHeader("X-User") @NotBlank @Size(max = 100) String user,
++            @RequestBody @Valid MergeRequest request) {
++        return view(service.merge(sheetId, user, id, request.intoId()), user);
++    }
++
+     /** Start or stop watching the person as the signed-in user. */
+     @PutMapping("/{id}/watch")
+     public PersonView watch(
+diff --git a/src/main/java/net/officefloor/hq/app/person/PersonMergeRefusedException.java b/src/main/java/net/officefloor/hq/app/person/PersonMergeRefusedException.java
+new file mode 100644
+index 000000000..d091d06ed
+--- /dev/null
++++ b/src/main/java/net/officefloor/hq/app/person/PersonMergeRefusedException.java
+@@ -0,0 +1,8 @@
++package net.officefloor.hq.app.person;
++
++import org.springframework.http.HttpStatus;
++import org.springframework.web.bind.annotation.ResponseStatus;
++
++/** Only a steward can merge a person into another: not into themselves, and neither of them retired. */
++@ResponseStatus(HttpStatus.CONFLICT)
++public class PersonMergeRefusedException extends RuntimeException {}
+diff --git a/src/main/java/net/officefloor/hq/app/person/PersonPatron.java b/src/main/java/net/officefloor/hq/app/person/PersonPatron.java
+index a9fe51031..356e2507a 100644
+--- a/src/main/java/net/officefloor/hq/app/person/PersonPatron.java
++++ b/src/main/java/net/officefloor/hq/app/person/PersonPatron.java
+@@ -40,4 +40,7 @@ public class PersonPatron {
+     public Long getPersonId() { return personId; }
+ 
+     public Long getPatronId() { return patronId; }
++
++    /** Name another person as the patron in place of the one named. */
++    public void setPatronId(Long patronId) { this.patronId = patronId; }
+ }
+diff --git a/src/main/java/net/officefloor/hq/app/person/PersonService.java b/src/main/java/net/officefloor/hq/app/person/PersonService.java
+index 9bbfcab25..f95423fc4 100644
+--- a/src/main/java/net/officefloor/hq/app/person/PersonService.java
++++ b/src/main/java/net/officefloor/hq/app/person/PersonService.java
+@@ -1,7 +1,9 @@
+ package net.officefloor.hq.app.person;
+ 
++import java.math.BigDecimal;
+ import java.time.LocalDate;
+ import java.util.ArrayList;
++import java.util.Collections;
+ import java.util.HashMap;
+ import java.util.HashSet;
+ import java.util.List;
+@@ -12,12 +14,17 @@ import java.util.stream.Collectors;
+ import net.officefloor.hq.app.Audit;
+ import net.officefloor.hq.app.claim.Claim;
+ import net.officefloor.hq.app.claim.ClaimRepository;
++import net.officefloor.hq.app.period.Period;
++import net.officefloor.hq.app.period.PeriodRepository;
++import net.officefloor.hq.app.pool.PoolMember;
++import net.officefloor.hq.app.pool.PoolMemberRepository;
+ import net.officefloor.hq.app.rollup.RollupService;
+ import net.officefloor.hq.app.setting.Role;
+ import net.officefloor.hq.app.setting.SettingService;
+ import net.officefloor.hq.app.sheet.Sheet;
+ import net.officefloor.hq.app.sheet.SheetNotFoundException;
+ import net.officefloor.hq.app.sheet.SheetRepository;
++import net.officefloor.hq.app.statement.StatementRepository;
+ import org.springframework.dao.DataIntegrityViolationException;
+ import org.springframework.orm.ObjectOptimisticLockingFailureException;
+ import org.springframework.stereotype.Service;
+@@ -38,6 +45,7 @@ import org.springframework.transaction.annotation.Transactional;
+  * A person may have aliases, added one at a time; an alias shares the names' uniqueness: it may not be,
+  * as names are compared, any name or alias on the sheet, and no name may be an alias on the sheet. The
+  * sheet is locked while a name or alias is checked and written, so two users cannot take one at once.
++ * A steward can merge a person into another ({@link #merge}).
+  */
+ @Service
+ public class PersonService {
+@@ -49,11 +57,18 @@ public class PersonService {
+     private final ClaimRepository claims;
+     private final RollupService rollup;
+     private final SettingService settings;
++    private final StatementRepository statements;
++    private final PoolMemberRepository poolMembers;
++    private final PeriodRepository periods;
+     private final Audit audit;
+ 
+     public PersonService(PersonRepository people, PersonPatronRepository patrons,
+             PersonWatchRepository watches, SheetRepository sheets, ClaimRepository claims, RollupService rollup,
+-            SettingService settings, Audit audit) {
++            SettingService settings, StatementRepository statements, PoolMemberRepository poolMembers,
++            PeriodRepository periods, Audit audit) {
++        this.statements = statements;
++        this.poolMembers = poolMembers;
++        this.periods = periods;
+         this.claims = claims;
+         this.watches = watches;
+         this.people = people;
+@@ -254,6 +269,111 @@ public class PersonService {
+         return person;
+     }
+ 
++    /**
++     * A steward merges the person into another on the sheet; not into themselves, and neither of them
++     * retired. The person's claims move to the other, numbers, dates and due-bys kept, listed as the
++     * other's newest in the order they were added, each losing any figure a statement bound it to. Their
++     * name and aliases become the other's aliases; their patrons are added to the other's (not the other
++     * themselves, no repeats), and anyone naming them as patron names the other instead (no repeats, not
++     * themselves). Their pool memberships move to the other, a share added to the other's where the other
++     * is already a member, and their due-total fixed for a closed period is added to the other's. Their
++     * statements, holds, watchers and contact are dropped, and they leave the sheet.
++     */
++    @Transactional
++    public Person merge(String sheetId, String user, Long id, Long intoId) {
++        LocalDate today = sheets.findForUpdate(sheetId).orElseThrow(SheetNotFoundException::new).getToday();
++        Person from = people.findByIdAndSheetId(id, sheetId).orElseThrow(PersonNotFoundException::new);
++        Person into = people.findByIdAndSheetId(intoId, sheetId).orElseThrow(PersonNotFoundException::new);
++        if (settings.roleOf(sheetId, user) != Role.STEWARD || from.getId().equals(into.getId())
++                || from.isRetired() || into.isRetired()) {
++            throw new PersonMergeRefusedException();
++        }
++        RollupService.Snapshot before = rollup.snapshot(sheetId);
++
++        // claims: listed as the other's newest, in the order they were added
++        List<Claim> moving = new ArrayList<>(claims.findBySheetIdAndPersonIdOrderByIdDesc(sheetId, from.getId()));
++        Collections.reverse(moving);
++        for (Claim claim : moving) {
++            claim.unstate(today);
++            claim.moveTo(into.getId(), claims.nextListed());
++        }
++        claims.saveAllAndFlush(moving);
++
++        // patrons
++        List<PersonPatron> named = patrons.findBySheetIdOrderByIdAsc(sheetId);
++        Set<Long> intoPatrons = new HashSet<>();
++        for (PersonPatron p : named) if (p.getPersonId().equals(into.getId())) intoPatrons.add(p.getPatronId());
++        List<Long> added = new ArrayList<>();
++        List<PersonPatron> repointed = new ArrayList<>();
++        List<PersonPatron> dropped = new ArrayList<>();
++        Map<Long, Set<Long>> byPerson = new HashMap<>();
++        for (PersonPatron p : named) byPerson.computeIfAbsent(p.getPersonId(), k -> new HashSet<>()).add(p.getPatronId());
++        for (PersonPatron p : named) {
++            if (p.getPersonId().equals(from.getId())) {
++                dropped.add(p);
++                Long patron = p.getPatronId();
++                if (!patron.equals(into.getId()) && intoPatrons.add(patron)) added.add(patron);
++            } else if (p.getPatronId().equals(from.getId())) {
++                if (p.getPersonId().equals(into.getId()) || byPerson.get(p.getPersonId()).contains(into.getId())) {
++                    dropped.add(p);
++                } else {
++                    repointed.add(p);
++                }
++            }
++        }
++        patrons.deleteAll(dropped);
++        patrons.flush();
++        for (PersonPatron p : repointed) p.setPatronId(into.getId());
++        patrons.saveAll(repointed);
++        for (Long patron : added) patrons.save(new PersonPatron(sheetId, into.getId(), patron));
++        patrons.flush();
++
++        // pools
++        List<PoolMember> members = poolMembers.findBySheetIdOrderByIdAsc(sheetId);
++        List<PoolMember> leaving = new ArrayList<>();
++        for (PoolMember m : members) {
++            if (!m.getPersonId().equals(from.getId())) continue;
++            PoolMember theirs = members.stream()
++                    .filter(o -> o.getPoolId().equals(m.getPoolId()) && o.getPersonId().equals(into.getId()))
++                    .findFirst().orElse(null);
++            if (theirs != null) {
++                theirs.addShare(m.getShare());
++                leaving.add(m);
++            } else {
++                m.setPersonId(into.getId());
++            }
++        }
++        poolMembers.deleteAll(leaving);
++        poolMembers.flush();
++        poolMembers.saveAllAndFlush(members.stream().filter(m -> !leaving.contains(m)).toList());
++
++        // closed periods' due-totals
++        for (Period period : periods.findBySheetIdOrderByFromDateAsc(sheetId)) {
++            Map<Long, BigDecimal> dues = period.getClosedPersonDues();
++            BigDecimal theirs = dues.remove(from.getId());
++            if (theirs != null) dues.merge(into.getId(), theirs, BigDecimal::add);
++        }
++        periods.flush();
++
++        // statements and watchers dropped
++        statements.deleteAll(statements.findBySheetIdAndPersonIdOrderByIdAsc(sheetId, from.getId()));
++        statements.flush();
++        watches.deleteAll(watches.findByPersonIdOrderByIdAsc(from.getId()));
++        watches.flush();
++
++        // the person leaves, their name and aliases the other's aliases
++        List<String> aliases = new ArrayList<>();
++        aliases.add(from.getName());
++        aliases.addAll(from.mergeInto(into.getId()));
++        saveUnique(from);
++        for (String alias : aliases) if (!into.hasAlias(alias)) into.addAlias(alias);
++        Person saved = saveUnique(into);
++        audit.recordOnCommit("PERSON_MERGED sheet=" + sheetId + " by=" + user.strip()
++                + " from=" + from.getName() + " into=" + saved.getName());
++        rollup.recordChanges(sheetId, user, before);
++        return saved;
++    }
++
+     /** The ids of the people on the sheet the user watches. */
+     @Transactional(readOnly = true)
+     public Set<Long> watchedIds(String sheetId, String user) {
+diff --git a/src/main/java/net/officefloor/hq/app/pool/PoolMember.java b/src/main/java/net/officefloor/hq/app/pool/PoolMember.java
+index c33325da9..6737f2487 100644
+--- a/src/main/java/net/officefloor/hq/app/pool/PoolMember.java
++++ b/src/main/java/net/officefloor/hq/app/pool/PoolMember.java
+@@ -47,4 +47,10 @@ public class PoolMember {
+     public Long getPersonId() { return personId; }
+ 
+     public BigDecimal getShare() { return share; }
++
++    /** Make the membership another person's. */
++    public void setPersonId(Long personId) { this.personId = personId; }
++
++    /** Add a share to theirs. */
++    public void addShare(BigDecimal more) { this.share = share.add(more); }
+ }
+diff --git a/src/main/resources/db/migration/V67__person_merged_into.sql b/src/main/resources/db/migration/V67__person_merged_into.sql
+new file mode 100644
+index 000000000..070a332aa
+--- /dev/null
++++ b/src/main/resources/db/migration/V67__person_merged_into.sql
+@@ -0,0 +1,4 @@
++-- A person merged into another is kept, naming the person they were merged into, and leaves the
++-- sheet: no list, figure or lookup includes them. Not a reference, so the sheet's history can put
++-- its people back in any order.
++ALTER TABLE person ADD COLUMN merged_into BIGINT;
