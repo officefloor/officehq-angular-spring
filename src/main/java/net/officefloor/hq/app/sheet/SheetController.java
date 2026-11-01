@@ -28,16 +28,18 @@ public class SheetController {
      * A sheet as the screen shows it; the floor, the terms, the late percent and the cap are those in
      * force on its today: the floor has two decimals, the terms are in days, the late percent has two
      * decimals; the policy date is null when blank (the sheet's today); the cap has two decimals, null
-     * when none; dated has every value recorded for its dated settings, by key.
+     * when none; dated has every value recorded for its dated settings, by key; archived is whether a
+     * steward has archived it.
      */
     public record SheetView(String id, LocalDate today, String floor, int terms, String latePct,
-            LocalDate policyDate, String cap, Map<String, List<SettingController.DatedView>> dated) {
+            LocalDate policyDate, String cap, Map<String, List<SettingController.DatedView>> dated,
+            boolean archived) {
         static SheetView of(Sheet sheet) {
             LocalDate today = sheet.getToday();
             return new SheetView(sheet.getId(), today, sheet.floorOn(today).toPlainString(),
                     sheet.termsOn(today), sheet.latePctOn(today).toPlainString(), sheet.getPolicyDate(),
                     sheet.getCap() == null ? null : sheet.getCap().toPlainString(),
-                    SettingController.datedViews(sheet.getDated()));
+                    SettingController.datedViews(sheet.getDated()), sheet.isArchived());
         }
     }
 
@@ -65,5 +67,13 @@ public class SheetController {
             @RequestHeader("X-User") @NotBlank @Size(max = 100) String user,
             @RequestBody @Valid TodayRequest request) {
         return SheetView.of(service.setToday(id, user, request.today()));
+    }
+
+    /** Archive the sheet: a steward only; an archived sheet refuses it as it does every change. */
+    @PostMapping("/{id}/archive")
+    public SheetView archive(
+            @PathVariable @Size(max = 100) @Pattern(regexp = "[A-Za-z0-9._-]+") String id,
+            @RequestHeader("X-User") @NotBlank @Size(max = 100) String user) {
+        return SheetView.of(service.archive(id, user.trim()));
     }
 }

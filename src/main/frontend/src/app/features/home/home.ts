@@ -27,6 +27,8 @@ import { Settings } from '../settings/settings';
           <input id="sheet-today" type="date" data-testid="sheet-today-input" formControlName="today" />
           <button type="submit" data-testid="sheet-today-save">Set today</button>
         </form>
+        <p>Archived: <strong data-testid="sheet-archived">{{ session.archived() ? 'yes' : 'no' }}</strong></p>
+        <button type="button" data-testid="sheet-archive" (click)="archive()">Archive sheet</button>
         <app-settings />
         <app-people />
       }
@@ -109,6 +111,19 @@ export class Home {
       this.sheetError.set('Could not change today.');
     } finally {
       this.submitting.delete('saveToday');
+    }
+  }
+
+  protected async archive(): Promise<void> {
+    if (this.submitting.has('archive')) return;
+    this.sheetError.set('');
+    this.submitting.add('archive');
+    try {
+      await this.session.archive();
+    } catch {
+      this.sheetError.set('Could not archive the sheet.');
+    } finally {
+      this.submitting.delete('archive');
     }
   }
 }

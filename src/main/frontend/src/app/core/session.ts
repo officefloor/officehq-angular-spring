@@ -11,6 +11,7 @@ interface SheetView {
   policyDate: string | null;
   cap: string | null;
   dated: Dated;
+  archived: boolean;
 }
 
 /** A value recorded for a dated setting from a date (yyyy-mm-dd) on; null when none. */
@@ -85,6 +86,9 @@ export class Session {
     return found !== undefined ? found.value : (STARTING[key] ?? null);
   }
 
+  /** Whether a steward has archived the sheet: it stays visible and every change to it is refused. */
+  readonly archived = signal(false);
+
   /** Bumped on every sheet load, so features re-read the sheet from the store even for the same id. */
   readonly loads = signal(0);
   /** Whether retired people are listed: off when the screen opens, left as it is by loading a sheet. */
@@ -107,6 +111,7 @@ export class Session {
     this.today.set(res.today);
     this.dated.set(res.dated);
     this.policyDate.set(res.policyDate);
+    this.archived.set(res.archived);
     this.loads.update((n) => n + 1);
   }
 
@@ -120,5 +125,17 @@ export class Session {
       }),
     );
     if (this.sheetId() === res.id) this.today.set(res.today);
+  }
+
+  async archive(): Promise<void> {
+    const user = this.user();
+    const id = this.sheetId();
+    if (!user || !id) throw new Error('no sheet loaded');
+    const res = await firstValueFrom(
+      this.http.post<SheetView>(`/api/sheets/${encodeURIComponent(id)}/archive`, null, {
+        headers: { 'X-User': user },
+      }),
+    );
+    if (this.sheetId() === res.id) this.archived.set(res.archived);
   }
 }

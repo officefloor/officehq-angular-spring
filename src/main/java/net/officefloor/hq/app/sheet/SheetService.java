@@ -2,8 +2,11 @@ package net.officefloor.hq.app.sheet;
 
 import java.time.Instant;
 import java.time.LocalDate;
+import net.officefloor.hq.app.Audit;
 import net.officefloor.hq.app.period.PeriodService;
 import net.officefloor.hq.app.rollup.RollupService;
+import net.officefloor.hq.app.setting.Role;
+import net.officefloor.hq.app.setting.SettingService;
 import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.stereotype.Service;
@@ -20,11 +23,16 @@ public class SheetService {
     private final RollupService rollup;
     // looked up when used: the periods depend on the claims, which depend on the sheet
     private final ObjectProvider<PeriodService> periods;
+    private final ObjectProvider<SettingService> settings;
+    private final Audit audit;
 
-    public SheetService(SheetRepository sheets, RollupService rollup, ObjectProvider<PeriodService> periods) {
+    public SheetService(SheetRepository sheets, RollupService rollup, ObjectProvider<PeriodService> periods,
+            ObjectProvider<SettingService> settings, Audit audit) {
         this.sheets = sheets;
         this.rollup = rollup;
         this.periods = periods;
+        this.settings = settings;
+        this.audit = audit;
     }
 
     @Transactional
@@ -68,5 +76,22 @@ public class SheetService {
         if (sheet.getGraceDays() != null) periods.getObject().autoClose(id, user, today, sheet.getGraceDays());
         rollup.recordChanges(id, user, before);
         return sheet;
+    }
+
+    /** Archive the sheet, as a steward (or one acting for a steward); anyone else is refused. */
+    @Transactional
+    public Sheet archive(String id, String user) {
+        Sheet sheet = sheets.findForUpdate(id).orElseThrow(SheetNotFoundException::new);
+        if (sheet.isArchived()) throw new SheetArchivedException();
+        if (settings.getObject().roleOf(id, user) != Role.STEWARD) throw new SheetArchiveRefusedException();
+        sheet.archive();
+        audit.recordOnCommit("SHEET_ARCHIVED sheet=" + id + " by=" + user);
+        return sheet;
+    }
+
+    /** Whether the sheet has been archived: every change to it is refused. */
+    @Transactional(readOnly = true)
+    public boolean isArchived(String id) {
+        return sheets.findById(id).map(Sheet::isArchived).orElse(false);
     }
 }
