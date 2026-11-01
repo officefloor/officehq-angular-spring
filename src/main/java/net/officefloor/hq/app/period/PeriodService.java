@@ -26,7 +26,9 @@ import org.springframework.transaction.annotation.Transactional;
  * The sheet's periods: each named uniquely on the sheet, from and to a date inclusive, none
  * overlapping. Closing a period fixes, at that moment, each person's due-total for it (the figures
  * as shown then of their claims whose date falls in it that counted by the status they had at the
- * end of its last day) and its own due-total, the sum of theirs. A steward can reopen a closed period, making its due-total live again.
+ * end of its last day) and its own due-total, the sum of theirs. Soft-closing fixes them the same
+ * way while claims dated inside it can still change; a soft-closed period can then be closed (fixing
+ * them afresh). A steward can reopen a closed or soft-closed period, making its due-total live again.
  */
 @Service
 public class PeriodService {
@@ -106,7 +108,17 @@ public class PeriodService {
         Period period = periods.findByIdAndSheetId(id, sheetId).orElseThrow(PeriodNotFoundException::new);
         if (!settings.mayDo(sheetId, user, "close")) throw new PeriodNotPermittedException();
         if (period.isClosed()) throw new PeriodClosedException();
-        return fix(sheetId, user, period, today, false);
+        return fix(sheetId, user, period, today, false, false);
+    }
+
+    @Transactional
+    public Period softClose(String sheetId, String user, Long id) {
+        // Lock the sheet so no claim in the period changes while its due-total is fixed.
+        LocalDate today = sheets.findForUpdate(sheetId).orElseThrow(SheetNotFoundException::new).getToday();
+        Period period = periods.findByIdAndSheetId(id, sheetId).orElseThrow(PeriodNotFoundException::new);
+        if (!settings.mayDo(sheetId, user, "close")) throw new PeriodNotPermittedException();
+        if (period.isClosed() || period.isSoftClosed()) throw new PeriodClosedException();
+        return fix(sheetId, user, period, today, false, true);
     }
 
     /**
@@ -120,11 +132,11 @@ public class PeriodService {
                 .filter(p -> !p.isClosed() && p.getToDate().plusDays(graceDays).isBefore(today))
                 .sorted(Comparator.comparing(Period::getToDate))
                 .toList();
-        for (Period period : due) fix(sheetId, user, period, today, true);
+        for (Period period : due) fix(sheetId, user, period, today, true, false);
     }
 
-    /** Close the period, fixing each person's due-total for it and its own, and audit it. */
-    private Period fix(String sheetId, String user, Period period, LocalDate today, boolean auto) {
+    /** Close or soft-close the period, fixing each person's due-total for it and its own, and audit it. */
+    private Period fix(String sheetId, String user, Period period, LocalDate today, boolean auto, boolean soft) {
         Map<Long, Person> byId = people.findBySheetIdOrderByIdAsc(sheetId).stream()
                 .collect(Collectors.toMap(Person::getId, Function.identity()));
         // Every person on the sheet gets a figure, 0.00 when none of their claims falls in it.
@@ -136,9 +148,10 @@ public class PeriodService {
             BigDecimal figure = claimService.chargedFigureOf(sheetId, person, claim);
             if (figure != null) personDues.merge(person.getId(), figure, BigDecimal::add);
         }
-        period.close(personDues);
+        if (soft) period.softClose(personDues);
+        else period.close(personDues);
         Period saved = periods.saveAndFlush(period);
-        audit.recordOnCommit("PERIOD_CLOSED sheet=" + sheetId + " by=" + user.strip()
+        audit.recordOnCommit((soft ? "PERIOD_SOFT_CLOSED" : "PERIOD_CLOSED") + " sheet=" + sheetId + " by=" + user.strip()
                 + " period=" + saved.getName() + " total=" + saved.getClosedDueTotal().setScale(2).toPlainString()
                 + (auto ? " auto=yes" : ""));
         return saved;
@@ -149,7 +162,7 @@ public class PeriodService {
         sheets.findForUpdate(sheetId).orElseThrow(SheetNotFoundException::new);
         Period period = periods.findByIdAndSheetId(id, sheetId).orElseThrow(PeriodNotFoundException::new);
         if (!settings.mayDo(sheetId, user, "reopen")) throw new PeriodNotPermittedException();
-        if (!period.isClosed()) throw new PeriodOpenException();
+        if (!period.isClosed() && !period.isSoftClosed()) throw new PeriodOpenException();
         period.reopen();
         Period saved = periods.saveAndFlush(period);
         audit.recordOnCommit("PERIOD_REOPENED sheet=" + sheetId + " by=" + user.strip()

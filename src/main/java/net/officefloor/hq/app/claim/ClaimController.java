@@ -30,12 +30,13 @@ public class ClaimController {
      * when it was settled (null while its due is live). Who opened it is null while DRAFT. Stated
      * when bound by its person's last statement, to the due it had then (null when it had none). A
      * correction has the number of the claim it corrects (null for any other claim). Its status log
-     * is oldest first. Locked by the user whose open editor holds it (null when none).
+     * is oldest first. Locked by the user whose open editor holds it (null when none). A late entry
+     * when added while its period was soft-closed.
      */
     public record ClaimView(Long id, Long personId, String amount, LocalDate date, String note, ClaimStatus status,
             String number, String settledDue, String openedBy, boolean stated, String statedDue, String corrects,
             LocalDate dueBy, List<LogLineView> log, LocalDate deferredUntil,
-            int proofs, String splitFrom, String lockedBy) {
+            int proofs, String splitFrom, String lockedBy, boolean lateEntry) {
         public static ClaimView of(Claim claim) {
             return new ClaimView(claim.getId(), claim.getPersonId(), claim.getAmount().toPlainString(),
                     claim.getDate(), claim.getNote(), claim.getStatus(), claim.getNumber(),
@@ -44,7 +45,7 @@ public class ClaimController {
                     claim.getStatedDue() == null ? null : claim.getStatedDue().setScale(2).toPlainString(),
                     claim.getCorrects(), claim.getDueBy(), claim.getLog().stream().map(LogLineView::of).toList(),
                     claim.getDeferredUntil(), claim.getProofs(), claim.getSplitFrom(),
-                    claim.getLockedBy());
+                    claim.getLockedBy(), claim.isLateEntry());
         }
     }
 

@@ -19,7 +19,8 @@ import java.util.TreeMap;
 /**
  * A period of the sheet: a name unique on the sheet, from and to a date, both inclusive. Once
  * closed, its due-total and each person's due-total for it are fixed at what they were when it was
- * closed; reopened, they are live again.
+ * closed; reopened, they are live again. Soft-closed, its figures are fixed the same way, but claims
+ * dated inside it can still change.
  */
 @Entity
 @Table(name = "period")
@@ -44,7 +45,11 @@ public class Period {
     @Column(name = "closed", nullable = false)
     private boolean closed;
 
-    /** The due-total fixed when the period was closed; none while it is open. */
+    /** Whether it is soft-closed: its figures fixed, its claims still free to change. Never with closed. */
+    @Column(name = "soft_closed", nullable = false)
+    private boolean softClosed;
+
+    /** The due-total fixed when the period was closed or soft-closed; none while it is open. */
     @Column(name = "closed_due_total", precision = 14, scale = 2)
     private BigDecimal closedDueTotal;
 
@@ -76,13 +81,26 @@ public class Period {
 
     public boolean isClosed() { return closed; }
 
+    public boolean isSoftClosed() { return softClosed; }
+
     public BigDecimal getClosedDueTotal() { return closedDueTotal; }
 
     public Map<Long, BigDecimal> getClosedPersonDues() { return closedPersonDues; }
 
     /** Close it, fixing each person's due-total for it and its own, the sum of theirs. */
     public void close(Map<Long, BigDecimal> personDues) {
+        fix(personDues);
         this.closed = true;
+        this.softClosed = false;
+    }
+
+    /** Soft-close it, fixing its figures as a close does while its claims can still change. */
+    public void softClose(Map<Long, BigDecimal> personDues) {
+        fix(personDues);
+        this.softClosed = true;
+    }
+
+    private void fix(Map<Long, BigDecimal> personDues) {
         this.closedPersonDues.clear();
         this.closedPersonDues.putAll(personDues);
         this.closedDueTotal = personDues.values().stream().reduce(BigDecimal.ZERO.setScale(2), BigDecimal::add);
@@ -91,6 +109,7 @@ public class Period {
     /** Reopen it: its due-total is live again. */
     public void reopen() {
         this.closed = false;
+        this.softClosed = false;
         this.closedDueTotal = null;
         this.closedPersonDues.clear();
     }

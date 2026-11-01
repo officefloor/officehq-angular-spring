@@ -409,9 +409,9 @@ export class People {
     }
     return by;
   });
-  /** A person's due-total for a period in cents: fixed when it was closed (0 for someone added later), else live. */
+  /** A person's due-total for a period in cents: fixed when it was closed or soft-closed (0 for someone added later), else live. */
   private personPeriodCents(personId: number, period: Period): number {
-    if (period.closed) return cents(period.closedPersonDues?.[personId] ?? '0.00');
+    if (period.closed || period.softClosed) return cents(period.closedPersonDues?.[personId] ?? '0.00');
     return this.personPeriodLiveCents().get(personId)?.get(period.id) ?? 0;
   }
   protected personPeriodDueOf(p: Person, period: Period): string {

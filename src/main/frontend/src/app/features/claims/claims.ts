@@ -49,6 +49,8 @@ export interface Claim {
   splitFrom: string | null;
   /** The user whose open editor locks it for everyone else; null while no editor holds it. */
   lockedBy: string | null;
+  /** Whether it was added while the period its date falls in was soft-closed. */
+  lateEntry: boolean;
 }
 
 /** A status a claim was given, by whom, on the sheet's today then, with its due then (null: none). */
@@ -263,6 +265,7 @@ function notEditable(status: ClaimStatus | undefined): string {
           <span>Proofs <span data-testid="claim-proofs">{{ c.proofs }}</span></span>
           <span>Corrects <span data-testid="claim-corrects">{{ c.corrects ?? '' }}</span></span>
           <span>Split from <span data-testid="claim-split-from">{{ c.splitFrom ?? '' }}</span></span>
+          <span>Late entry <span data-testid="claim-late-entry">{{ c.lateEntry ? 'yes' : 'no' }}</span></span>
           <ol [attr.aria-label]="'Status log of claim of ' + c.amount + ' on ' + c.date">
             @for (line of c.log; track $index) {
               <li data-testid="claim-log-line">{{ line.status }} by {{ line.by }} on {{ line.date }} due={{ line.due ?? na }}</li>

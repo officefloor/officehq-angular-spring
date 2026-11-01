@@ -25,15 +25,16 @@ public class PeriodController {
 
     /**
      * A period as the screen shows it; once closed, with the due-total fixed then and each person's
-     * due-total for it fixed then, by person id (two decimals; empty while open).
+     * due-total for it fixed then, by person id (two decimals; empty while open). Soft-closed, the
+     * figures are fixed the same way while it is not closed.
      */
     public record PeriodView(long id, String name, LocalDate from, LocalDate to, boolean closed,
-            String closedDueTotal, Map<Long, String> closedPersonDues) {
+            boolean softClosed, String closedDueTotal, Map<Long, String> closedPersonDues) {
         static PeriodView of(Period period) {
             Map<Long, String> personDues = new TreeMap<>();
             period.getClosedPersonDues().forEach((personId, due) -> personDues.put(personId, due.setScale(2).toPlainString()));
             return new PeriodView(period.getId(), period.getName(), period.getFromDate(), period.getToDate(),
-                    period.isClosed(),
+                    period.isClosed(), period.isSoftClosed(),
                     period.getClosedDueTotal() == null ? null : period.getClosedDueTotal().setScale(2).toPlainString(),
                     personDues);
         }
@@ -84,6 +85,14 @@ public class PeriodController {
             @PathVariable Long id,
             @RequestHeader("X-User") @NotBlank @Size(max = 100) String user) {
         return PeriodView.of(service.close(sheetId, user, id));
+    }
+
+    @PostMapping("/{id}/soft-close")
+    public PeriodView softClose(
+            @PathVariable @Size(max = 100) @Pattern(regexp = "[A-Za-z0-9._-]+") String sheetId,
+            @PathVariable Long id,
+            @RequestHeader("X-User") @NotBlank @Size(max = 100) String user) {
+        return PeriodView.of(service.softClose(sheetId, user, id));
     }
 
     @PostMapping("/{id}/reopen")

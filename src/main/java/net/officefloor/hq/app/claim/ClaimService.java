@@ -95,10 +95,12 @@ public class ClaimService {
                 : settings.termsFor(sheetId, person.gradeOn(on), on));
         Claim draft = new Claim(sheetId, personId, amount, on, note, dueBy);
         draft.setCorrects(corrects);
+        draft.setLateEntry(periods.softClosedOn(sheetId, on));
         Claim claim = claims.saveAndFlush(draft);
         logStatus(sheetId, user, person, claim);
         claim = claims.saveAndFlush(claim);
         record("CLAIM_ADDED", sheetId, user, person, claim);
+        if (claim.isLateEntry()) record("LATE_ENTRY", sheetId, user, person, claim);
         rollup.recordChanges(sheetId, user, before);
         return claim;
     }

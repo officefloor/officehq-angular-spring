@@ -109,6 +109,10 @@ public class Claim {
     @Column(name = "deferred_until")
     private LocalDate deferredUntil;
 
+    /** Whether it was added while the period its date falls in was soft-closed. */
+    @Column(name = "late_entry", nullable = false)
+    private boolean lateEntry;
+
     /** The user whose open editor locks it for everyone else; none while no editor holds it. */
     @Column(name = "locked_by", length = 100)
     private String lockedBy;
@@ -198,6 +202,9 @@ public class Claim {
         for (ClaimLogEntry line : log) if (line.getStatus() == ClaimStatus.SETTLED) on = line.getDate();
         return on;
     }
+
+    public boolean isLateEntry() { return lateEntry; }
+    public void setLateEntry(boolean lateEntry) { this.lateEntry = lateEntry; }
 
     public String getLockedBy() { return lockedBy; }
     public void setLockedBy(String lockedBy) { this.lockedBy = lockedBy; }

@@ -13,7 +13,9 @@ export interface Period {
   to: string;
   /** Once closed, no claim dated inside it can change. */
   closed: boolean;
-  /** The due-total fixed when it was closed, two decimals; null while open. */
+  /** Soft-closed: its figures are fixed as for a close, but claims dated inside it can still change. */
+  softClosed: boolean;
+  /** The due-total fixed when it was closed or soft-closed, two decimals; null while open. */
   closedDueTotal: string | null;
   /** Each person's due-total for it fixed when it was closed, two decimals, by person id; empty while open. */
   closedPersonDues: Record<string, string>;
@@ -30,7 +32,8 @@ export function closedOn(periods: Period[], date: string): boolean {
 }
 
 // The sheet's periods, with one form to add one, each period's due-total and whether it is
-// closed, a form to generate one per month over a date range, and a button to close each and to reopen each (by the roles the sheet's permission matrix allows).
+// closed (or soft-closed), a form to generate one per month over a date range, and a button to close, to soft-close
+// and to reopen each (by the roles the sheet's permission matrix allows).
 @Component({
   selector: 'app-periods',
   imports: [ReactiveFormsModule],
@@ -73,10 +76,12 @@ export function closedOn(periods: Period[], date: string): boolean {
               <td data-testid="period-from">{{ p.from }}</td>
               <td data-testid="period-to">{{ p.to }}</td>
               <td data-testid="period-due-total">{{ dueTotalOf()(p) }}</td>
-              <td data-testid="period-closed">{{ p.closed ? 'yes' : 'no' }}</td>
+              <td data-testid="period-closed">{{ p.closed ? 'yes' : p.softClosed ? 'soft' : 'no' }}</td>
               <td>
                 <button type="button" data-testid="period-close" (click)="close(p)"
                         [attr.aria-label]="'Close period ' + p.name">Close</button>
+                <button type="button" data-testid="period-soft-close" (click)="softClose(p)"
+                        [attr.aria-label]="'Soft-close period ' + p.name">Soft close</button>
                 <button type="button" data-testid="period-reopen" (click)="reopen(p)"
                         [attr.aria-label]="'Reopen period ' + p.name">Reopen</button>
                 @if (periodError()?.id === p.id) {
@@ -163,14 +168,23 @@ export class Periods {
     }
   }
 
-  /** Close a period, fixing its due-total; a closed one cannot be closed again. */
-  protected async close(p: Period): Promise<void> {
+  /** Close a period, fixing its due-total (afresh when soft-closed); a closed one cannot be closed again. */
+  protected close(p: Period): Promise<void> {
+    return this.fix(p, 'close');
+  }
+
+  /** Soft-close a period, fixing its due-total while its claims can still change; not one already closed or soft-closed. */
+  protected softClose(p: Period): Promise<void> {
+    return this.fix(p, 'soft-close');
+  }
+
+  private async fix(p: Period, action: 'close' | 'soft-close'): Promise<void> {
     this.periodError.set(null);
     const sheet = this.session.sheetId();
     if (!sheet) return;
     try {
       const period = await firstValueFrom(
-        this.http.post<Period>(`/api/sheets/${encodeURIComponent(sheet)}/periods/${p.id}/close`, null, {
+        this.http.post<Period>(`/api/sheets/${encodeURIComponent(sheet)}/periods/${p.id}/${action}`, null, {
           headers: { 'X-User': this.session.user() ?? '' },
         }),
       );
@@ -180,7 +194,7 @@ export class Periods {
       if (this.session.sheetId() !== sheet) return;
       const status = e instanceof HttpErrorResponse ? e.status : 0;
       const message = status === 423
-        ? 'That period is already closed.'
+        ? (action === 'close' ? 'That period is already closed.' : 'That period is already closed or soft-closed.')
         : status === 403
         ? 'Your role may not close a period on this sheet.'
         : 'Could not close that period.';
