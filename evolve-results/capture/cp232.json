@@ -1,0 +1,68 @@
+{
+  "checkpoint": 232,
+  "stack": {
+    "repo": "/home/daniel/officehq-angular-spring",
+    "origin": "git@github.com:officefloor/officehq-angular-spring.git",
+    "name": "officehq-angular-spring",
+    "base_ref": "base-empty",
+    "base_commit": "65cb8233ea38b2dfa6cfd18709e30cd18fdf3250"
+  },
+  "checkpoint_id": "cp232_grade-merge-retroactive",
+  "phase": "late",
+  "type": "mutative",
+  "mutates": [
+    225
+  ],
+  "replaced_tests": [
+    "cp225_grade-merge.spec.ts::grade merge"
+  ],
+  "request": {
+    "spec": "A grade merge is now retroactive: for every person it moves, every grade record of theirs on the\nmerged grade becomes the other grade, so all their claims, whatever their date, use the other\ngrade's rates (and its terms and thresholds) from then on. Frozen figures and figures bound by a\nstatement are unchanged.\n",
+    "prompt": "You are implementing ONE change to this application.\n\nFIRST read AGENTS.md \u2014 it states the working rules and how the app is tested, and sends you to\nDESIGN.md for the app's stack and conventions. Follow both.\n\nTHE CHANGE REQUEST:\nA grade merge is now retroactive: for every person it moves, every grade record of theirs on the\nmerged grade becomes the other grade, so all their claims, whatever their date, use the other\ngrade's rates (and its terms and thresholds) from then on. Frozen figures and figures bound by a\nstatement are unchanged.\n\nYour work is verified by an automated Playwright UI test already installed under e2e/specs/.\nRead that spec: it declares the exact data-testid anchors, values, test data and any audit\nrecords it expects \u2014 match them. Run `bin/e2e` to build the app, start it, and run the test as\nyou work; iterate until it passes. Change whatever the request needs across the app \u2014 its stored\ndata, its server and its front end. Do NOT edit bin/build, bin/start, bin/stop, bin/e2e,\nAGENTS.md, CLAUDE.md, DESIGN.md, e2e/support/ or the test spec.\n"
+  },
+  "commit_sha": "10ac45a1632f0ef61d6e5ef997e862dd4c197bd5",
+  "reset_sha": "",
+  "preagent_sha": "ca8d1f605d18af36d3a6423cf953cbe547ea0d60",
+  "prev_sha": "ca8d1f605d18af36d3a6423cf953cbe547ea0d60",
+  "base_sha": "65cb8233ea38b2dfa6cfd18709e30cd18fdf3250",
+  "agent": {
+    "ok": true,
+    "cost_usd": 0.4133808,
+    "input_tokens": 26,
+    "output_tokens": 4435,
+    "cache_read_tokens": 375724,
+    "cache_creation_tokens": 31179,
+    "num_turns": 13,
+    "duration_ms": 254701,
+    "duration_api_ms": 67410,
+    "model": "claude-opus-5-5",
+    "session_id": "139eb227-8073-445f-a1ef-ae529efa0912",
+    "stop_reason": "success",
+    "result_text": "Grade merges are now retroactive, and all 4 acceptance tests pass in `bin/e2e`.\n\n**What changed** (server only; the front end, data schema and migrations didn't need to change):\n- **`Person.java`**: a new `regrade(from, into)` method rewrites every grade record of the person that is on `from` to `into`, keeping each record's from-date.\n- **`PersonService.mergeGrade`**: who gets moved is the same as before (people whose grade on the sheet's today is the merged grade). Each one is still edited as before, which gives them the other grade from today. After that edit, `regrade` rewrites all their older records too, and the person is saved again.\n\n**Why the rest follows:** the server always works out a claim's grade from the person's records on the claim's date, both for each claim and for the totals. So after the rewrite, all of a moved person's claims use the other grade's rates, terms and thresholds, whatever their date. Frozen figures and figures bound by a statement come from their own saved values, so they stay the same.\n\n**Audit file:** a merge writes `GRADE_MERGED`, then for each moved person their `PERSON_EDITED` line and a set of rollup lines. A second `ROLLUP`/`TOTALS` pair then records the change from the retroactive rewrite. This is the order the spec expects.\n\n**One side effect:** the person keeps the redundant record of the other grade dated today, added by the edit step. It doesn't change any figure.",
+    "error": "",
+    "attempts": [
+      {
+        "ok": true,
+        "limit_reached": false,
+        "retryable": false,
+        "timed_out": false,
+        "cost_usd": 0.4133808,
+        "num_turns": 13,
+        "duration_ms": 254701,
+        "duration_api_ms": 67410,
+        "error": ""
+      }
+    ]
+  },
+  "agent_stream_file": "cp232.agent.jsonl",
+  "agent_diff_file": "cp232.agent.diff",
+  "build_log_file": null,
+  "tests": {
+    "gated": false,
+    "queued": true
+  },
+  "probe": null,
+  "pinned_touched": [],
+  "acceptance_touched": [],
+  "impact_gate": null
+}
