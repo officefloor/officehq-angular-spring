@@ -4,6 +4,7 @@ import { FormControl, FormGroup, ReactiveFormsModule } from '@angular/forms';
 import { firstValueFrom } from 'rxjs';
 import { Session } from '../../core/session';
 import { Claim, Claims, cents, claimDueCents, counts, money } from '../claims/claims';
+import { Period, Periods, periodOn } from '../periods/periods';
 import { GRADES, NA, Rate, Rates, pctOn } from '../rates/rates';
 
 const NO_CLAIMS: Claim[] = [];
@@ -38,9 +39,10 @@ interface StatementTaken {
 // had and the last one's due-total and date.
 @Component({
   selector: 'app-people',
-  imports: [ReactiveFormsModule, Claims, Rates],
+  imports: [ReactiveFormsModule, Claims, Periods, Rates],
   template: `
     <app-rates [rates]="rates()" [today]="session.today()" (saved)="rateSaved($event)" />
+    <app-periods [periods]="periods()" [dueTotalOf]="periodDueTotalOf" (saved)="periodSaved($event)" />
     <section aria-labelledby="people-heading">
       <h2 id="people-heading">People</h2>
       <form [formGroup]="form" (ngSubmit)="save()" [attr.aria-label]="editingId() === null ? 'Add person' : 'Edit person'">
@@ -83,6 +85,7 @@ interface StatementTaken {
               </td>
               <td>
                 <app-claims [personId]="p.id" [personName]="p.name" [claims]="claimsOf(p.id)" [rates]="ratesOf(p.grade)"
+                            [periods]="periods()"
                             (saved)="claimSaved($event)" />
               </td>
               <td>
@@ -114,6 +117,21 @@ export class People {
   protected readonly claimedTotal = computed(() => money(this.claims().filter(counts).reduce((sum, c) => sum + cents(c.amount), 0)));
   /** The sheet's rates, each for a grade from its from-date. */
   protected readonly rates = signal<Rate[]>([]);
+  /** The sheet's periods, earliest first. */
+  protected readonly periods = signal<Period[]>([]);
+  /** Each period's due-total in cents, by id: the dues of the claims that count whose date falls in it. */
+  private readonly periodDueCents = computed(() => {
+    const grades = new Map(this.people().map((p) => [p.id, p.grade]));
+    const by = new Map<number, number>();
+    for (const c of this.claims().filter(counts)) {
+      const period = periodOn(this.periods(), c.date);
+      const grade = grades.get(c.personId);
+      if (period === null || grade === undefined) continue;
+      by.set(period.id, (by.get(period.id) ?? 0) + (claimDueCents(c, this.ratesOf(grade)) ?? 0));
+    }
+    return by;
+  });
+  protected readonly periodDueTotalOf = (p: Period): string => money(this.periodDueCents().get(p.id) ?? 0);
   /** Each person's statements, for those who have had any. */
   protected readonly statements = signal<StatementSummary[]>([]);
   private readonly statementByPerson = computed(() => new Map(this.statements().map((s) => [s.personId, s])));
@@ -158,6 +176,7 @@ export class People {
       this.people.set([]);
       this.claims.set([]);
       this.rates.set([]);
+      this.periods.set([]);
       this.statements.set([]);
       this.personError.set(null);
       this.reset();
@@ -175,17 +194,19 @@ export class People {
 
   private async load(sheet: string): Promise<void> {
     try {
-      const [list, claims, rates, statements] = await Promise.all([
+      const [list, claims, rates, statements, periods] = await Promise.all([
         firstValueFrom(this.http.get<Person[]>(this.url(sheet), { headers: this.headers() })),
         firstValueFrom(this.http.get<Claim[]>(`/api/sheets/${encodeURIComponent(sheet)}/claims`, { headers: this.headers() })),
         firstValueFrom(this.http.get<Rate[]>(`/api/sheets/${encodeURIComponent(sheet)}/rates`, { headers: this.headers() })),
         firstValueFrom(this.http.get<StatementSummary[]>(`/api/sheets/${encodeURIComponent(sheet)}/statements`, { headers: this.headers() })),
+        firstValueFrom(this.http.get<Period[]>(`/api/sheets/${encodeURIComponent(sheet)}/periods`, { headers: this.headers() })),
       ]);
       if (this.session.sheetId() !== sheet) return;
       this.people.set(list);
       this.claims.set(claims);
       this.rates.set(rates);
       this.statements.set(statements);
+      this.periods.set(periods);
     } catch {
       if (this.session.sheetId() === sheet) this.error.set('Could not load the people on this sheet.');
     }
@@ -261,6 +282,11 @@ export class People {
   /** Put a set rate in place of the grade's old one from the same date. */
   protected rateSaved(rate: Rate): void {
     this.rates.update((list) => [...list.filter((r) => r.grade !== rate.grade || r.from !== rate.from), rate]);
+  }
+
+  /** Put an added period in its place by from-date. */
+  protected periodSaved(period: Period): void {
+    this.periods.update((list) => [...list, period].sort((a, b) => (a.from < b.from ? -1 : 1)));
   }
 
   /** Put an added claim first, or an edited one in its place. */

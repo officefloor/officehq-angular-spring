@@ -3,6 +3,7 @@ import { Component, inject, input, output, signal } from '@angular/core';
 import { FormControl, FormGroup, ReactiveFormsModule } from '@angular/forms';
 import { firstValueFrom } from 'rxjs';
 import { Session } from '../../core/session';
+import { Period, periodOn } from '../periods/periods';
 import { NA, Rate, dueCents, pctOn } from '../rates/rates';
 
 /** DRAFT when added, then OPEN, then SETTLED; a DRAFT or OPEN claim can be made VOID. */
@@ -84,6 +85,7 @@ export function money(cents: number): string {
           <span data-testid="claim-amount">{{ c.amount }}</span>
           <span data-testid="claim-date">{{ c.date }}</span>
           <span data-testid="claim-note">{{ c.note }}</span>
+          <span>Period <span data-testid="claim-period">{{ periodOf(c) }}</span></span>
           <span>Due <span data-testid="claim-due">{{ dueOf(c) }}</span></span>
           <span data-testid="claim-status">{{ c.status }}</span>
           <span>Opened by <span data-testid="claim-opened-by">{{ c.openedBy ?? '' }}</span></span>
@@ -117,6 +119,8 @@ export class Claims {
   readonly claims = input.required<Claim[]>();
   /** The rates for the person's grade, each from its from-date. */
   readonly rates = input.required<Rate[]>();
+  /** The sheet's periods, for the one each claim's date falls in. */
+  readonly periods = input.required<Period[]>();
   /** A claim added, edited or given a new status, as the store now holds it. */
   readonly saved = output<Claim>();
 
@@ -144,6 +148,11 @@ export class Claims {
   protected dueOf(c: Claim): string {
     const due = claimDueCents(c, this.rates());
     return due === null ? NA : money(due);
+  }
+
+  /** The name of the period its date falls in, or blank when none. */
+  protected periodOf(c: Claim): string {
+    return periodOn(this.periods(), c.date)?.name ?? '';
   }
 
   private headers(): Record<string, string> {

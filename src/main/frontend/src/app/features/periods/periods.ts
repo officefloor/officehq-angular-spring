@@ -1,0 +1,128 @@
+import { HttpClient, HttpErrorResponse } from '@angular/common/http';
+import { Component, inject, input, output, signal } from '@angular/core';
+import { FormControl, FormGroup, ReactiveFormsModule } from '@angular/forms';
+import { firstValueFrom } from 'rxjs';
+import { Session } from '../../core/session';
+
+export interface Period {
+  id: number;
+  /** Unique on the sheet. */
+  name: string;
+  /** The first and last dates (yyyy-mm-dd) in it, both inclusive. */
+  from: string;
+  to: string;
+}
+
+/** Of the sheet's periods, the one whose dates contain the date, or null. */
+export function periodOn(periods: Period[], date: string): Period | null {
+  return periods.find((p) => p.from <= date && date <= p.to) ?? null;
+}
+
+// The sheet's periods, with one form to add one, and each period's due-total.
+@Component({
+  selector: 'app-periods',
+  imports: [ReactiveFormsModule],
+  template: `
+    <section aria-labelledby="periods-heading">
+      <h2 id="periods-heading">Periods</h2>
+      <form [formGroup]="form" (ngSubmit)="save()" aria-label="Add period">
+        <label for="period-form-name">Name</label>
+        <input id="period-form-name" data-testid="period-form-name" formControlName="name" />
+        <label for="period-form-from">From</label>
+        <input id="period-form-from" type="date" data-testid="period-form-from" formControlName="from" />
+        <label for="period-form-to">To</label>
+        <input id="period-form-to" type="date" data-testid="period-form-to" formControlName="to" />
+        <button type="submit" data-testid="period-form-submit">Add period</button>
+        @if (error()) {
+          <p role="alert" class="error" data-testid="period-form-error">{{ error() }}</p>
+        }
+      </form>
+      <table>
+        <thead>
+          <tr><th scope="col">Name</th><th scope="col">From</th><th scope="col">To</th><th scope="col">Due total</th></tr>
+        </thead>
+        <tbody>
+          @for (p of periods(); track p.id) {
+            <tr [attr.data-testid]="'period-row-' + p.name">
+              <td data-testid="period-name">{{ p.name }}</td>
+              <td data-testid="period-from">{{ p.from }}</td>
+              <td data-testid="period-to">{{ p.to }}</td>
+              <td data-testid="period-due-total">{{ dueTotalOf()(p) }}</td>
+            </tr>
+          }
+        </tbody>
+      </table>
+    </section>
+  `,
+})
+export class Periods {
+  private readonly http = inject(HttpClient);
+  private readonly session = inject(Session);
+
+  /** The sheet's periods, earliest first. */
+  readonly periods = input.required<Period[]>();
+  /** A period's due-total, two decimals. */
+  readonly dueTotalOf = input.required<(p: Period) => string>();
+  /** A period added, as the store now holds it. */
+  readonly saved = output<Period>();
+
+  protected readonly error = signal('');
+  /** A submit is under way; another one waits for its answer rather than storing twice. */
+  private saving = false;
+  protected readonly form = new FormGroup({
+    name: new FormControl('', { nonNullable: true }),
+    from: new FormControl('', { nonNullable: true }),
+    to: new FormControl('', { nonNullable: true }),
+  });
+
+  constructor() {
+    this.form.valueChanges.subscribe(() => this.error.set(''));
+  }
+
+  protected async save(): Promise<void> {
+    if (this.saving) return;
+    this.error.set('');
+    const sheet = this.session.sheetId();
+    if (!sheet) return;
+    const raw = this.form.getRawValue();
+    const name = raw.name.trim();
+    const from = raw.from.trim() || (this.session.today() ?? '');
+    const to = raw.to.trim();
+    if (!/^[A-Za-z0-9._-]{1,100}$/.test(name)) {
+      this.error.set('Enter a name of letters, digits, ".", "_" or "-".');
+      return;
+    }
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(from) || !/^\d{4}-\d{2}-\d{2}$/.test(to)) {
+      this.error.set('Enter a from and a to date.');
+      return;
+    }
+    if (to < from) {
+      this.error.set('The to date cannot be before the from date.');
+      return;
+    }
+    if (this.periods().some((p) => p.name === name)) {
+      this.error.set('That name is already in use on this sheet.');
+      return;
+    }
+    this.saving = true;
+    try {
+      const period = await firstValueFrom(
+        this.http.post<Period>(`/api/sheets/${encodeURIComponent(sheet)}/periods`, { name, from, to }, {
+          headers: { 'X-User': this.session.user() ?? '' },
+        }),
+      );
+      if (this.session.sheetId() !== sheet) return;
+      this.saved.emit(period);
+      this.form.reset({ name: '', from: '', to: '' }, { emitEvent: false });
+    } catch (e) {
+      if (this.session.sheetId() !== sheet) return;
+      this.error.set(
+        e instanceof HttpErrorResponse && e.status === 409
+          ? 'That name is in use, or those dates overlap another period.'
+          : 'Could not add that period.',
+      );
+    } finally {
+      this.saving = false;
+    }
+  }
+}
