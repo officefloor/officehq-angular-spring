@@ -1,0 +1,74 @@
+{
+  "checkpoint": 216,
+  "stack": {
+    "repo": "/home/daniel/officehq-angular-spring",
+    "origin": "git@github.com:officefloor/officehq-angular-spring.git",
+    "name": "officehq-angular-spring",
+    "base_ref": "base-empty",
+    "base_commit": "65cb8233ea38b2dfa6cfd18709e30cd18fdf3250"
+  },
+  "checkpoint_id": "cp216_cuts-frozen-at-close",
+  "phase": "late",
+  "type": "mutative",
+  "mutates": [
+    187,
+    191,
+    201,
+    213
+  ],
+  "replaced_tests": [
+    "cp187_cut-history.spec.ts::cut history",
+    "cp191_clerk-limit-per-grade.spec.ts::clerk limit per grade scenario 2",
+    "cp201_consolidated-grades.spec.ts::consolidated grades scenario 3",
+    "cp213_parent-plans.spec.ts::parent plans scenario 3"
+  ],
+  "request": {
+    "spec": "Closing or soft-closing a period now fixes every pool member's cut for that period as it stood at\nthat moment (the per-period cut cell shows the fixed figure from then on, even when the period\nclosed after its to-date), and reopening makes it live again.\n",
+    "prompt": "You are implementing ONE change to this application.\n\nFIRST read AGENTS.md \u2014 it states the working rules and how the app is tested, and sends you to\nDESIGN.md for the app's stack and conventions. Follow both.\n\nTHE CHANGE REQUEST:\nClosing or soft-closing a period now fixes every pool member's cut for that period as it stood at\nthat moment (the per-period cut cell shows the fixed figure from then on, even when the period\nclosed after its to-date), and reopening makes it live again.\n\nYour work is verified by an automated Playwright UI test already installed under e2e/specs/.\nRead that spec: it declares the exact data-testid anchors, values, test data and any audit\nrecords it expects \u2014 match them. Run `bin/e2e` to build the app, start it, and run the test as\nyou work; iterate until it passes. Change whatever the request needs across the app \u2014 its stored\ndata, its server and its front end. Do NOT edit bin/build, bin/start, bin/stop, bin/e2e,\nAGENTS.md, CLAUDE.md, DESIGN.md, e2e/support/ or the test spec.\n"
+  },
+  "commit_sha": "c4a3d6926c238b859ba047f0dc44b2266eafd8f7",
+  "reset_sha": "",
+  "preagent_sha": "82828819e02b6b7dc681b863c4cf25b6522a6629",
+  "prev_sha": "82828819e02b6b7dc681b863c4cf25b6522a6629",
+  "base_sha": "65cb8233ea38b2dfa6cfd18709e30cd18fdf3250",
+  "agent": {
+    "ok": true,
+    "cost_usd": 0.7712927999999998,
+    "input_tokens": 32,
+    "output_tokens": 9470,
+    "cache_read_tokens": 661064,
+    "cache_creation_tokens": 56194,
+    "num_turns": 17,
+    "duration_ms": 322203,
+    "duration_api_ms": 88700,
+    "model": "claude-opus-5-5",
+    "session_id": "1ea6366e-d221-48f8-a73e-97f7c3968ffb",
+    "stop_reason": "success",
+    "result_text": "Closing or soft-closing a period now saves every pool member's cut as it stands at that moment, and reopening clears it so the cut goes back to being worked out live. All 4 tests in `bin/e2e` pass.\n\nAll the changes are on the server; the front end didn't need any.\n\n- **Stored data:** a new migration, `V113__period_pool_cut.sql`, adds a `period_pool_cut` table. `Period.java` holds those cuts, keyed by pool and member, and empties them when the period is reopened.\n- **Close and soft-close:** `PeriodService` now saves the members' current cuts when a period is closed by hand, soft-closed, or closed automatically after its grace days. To do that it calls a new `PoolService.cutsNow`.\n- **Per-period cut cell:** `PoolService.listWithHistory` shows the saved cut for a closed or soft-closed period. Open periods are worked out from the end of the period, as before.\n\nTwo behaviours to be aware of:\n- **Early close:** a period closed before its to-date now gets a per-period cut cell straight away. Before, the cell only appeared once the sheet's today reached the to-date.\n- **Viewing the sheet as of a past date:** if the period was closed on that date, the cell shows the cut saved at its most recent close. That can differ from what was saved at an earlier close if the period has been reopened and closed again since.\n\nThe saved cuts are keyed by person id, so a member merged into someone else after the close won't show their saved figure for that period.",
+    "error": "",
+    "attempts": [
+      {
+        "ok": true,
+        "limit_reached": false,
+        "retryable": false,
+        "timed_out": false,
+        "cost_usd": 0.7712927999999998,
+        "num_turns": 17,
+        "duration_ms": 322203,
+        "duration_api_ms": 88700,
+        "error": ""
+      }
+    ]
+  },
+  "agent_stream_file": "cp216.agent.jsonl",
+  "agent_diff_file": "cp216.agent.diff",
+  "build_log_file": null,
+  "tests": {
+    "gated": false,
+    "queued": true
+  },
+  "probe": null,
+  "pinned_touched": [],
+  "acceptance_touched": [],
+  "impact_gate": null
+}
