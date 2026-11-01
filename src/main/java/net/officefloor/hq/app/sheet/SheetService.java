@@ -81,6 +81,20 @@ public class SheetService {
     }
 
     /**
+     * Take the next claim number in the fiscal year on the sheet's tree: the next after the last given in that
+     * year on any sheet of the tree (its topmost sheet locked as for {@link #lastClaimNumberInTree}), kept as
+     * the sheet's last in that year.
+     */
+    @Transactional
+    public long nextFiscalNumberInTree(String id, int year) {
+        String root = parents.rootOf(id);
+        if (!root.equals(id)) sheets.findForUpdate(root);
+        long next = sheets.lastFiscalNumberAmong(parents.treeOf(id), year) + 1;
+        sheets.keepFiscalNumber(id, year, next);
+        return next;
+    }
+
+    /**
      * Change the sheet's today; it has no audit line of its own, but a new today first audits a SNAPSHOT
      * line per person, in list order, with their due-total on the day being left. With grace days set, the open periods
      * past them are closed first, then the figures it moves are audited. A new today releases every

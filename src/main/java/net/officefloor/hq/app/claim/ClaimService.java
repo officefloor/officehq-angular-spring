@@ -684,17 +684,24 @@ public class ClaimService {
     }
 
     /**
-     * Give an opened claim its number: the next after the last sheet-wide number given anywhere in the
-     * sheet's tree (its topmost ancestor and every descendant of that), or while the sheet numbers by period, the next
+     * Give an opened claim its number: FY&lt;year&gt;-&lt;n&gt;, the next in the fiscal year its due-by falls in
+     * (by the sheet's fiscal start month) after the last given in that year anywhere in the sheet's tree
+     * (its topmost ancestor and every descendant of that), or while the sheet numbers by period, the next
      * within the period its due-by falls in (in no period: the next in the sheet's X sequence).
      */
     private void number(Sheet sheet, Claim claim) {
         if (!sheet.numbersByPeriod()) {
-            claim.setNumber(sheet.nextClaimNumberAfter(sheets.lastClaimNumberInTree(sheet.getId())));
+            int year = fiscalYearOf(sheet, claim.getDueBy() != null ? claim.getDueBy() : claim.getDate());
+            claim.setFiscalNumber(year, sheets.nextFiscalNumberInTree(sheet.getId(), year));
             return;
         }
         String period = periodOn(sheet.getId(), claim.getDueBy());
         claim.setNumberWithin(period, claims.lastNumberWithin(sheet.getId(), period) + 1);
+    }
+
+    /** The fiscal year the date falls in, by the calendar year of its first day (the sheet's start month). */
+    private static int fiscalYearOf(Sheet sheet, LocalDate date) {
+        return date.getMonthValue() >= sheet.getFiscalStartMonth() ? date.getYear() : date.getYear() - 1;
     }
 
     /**

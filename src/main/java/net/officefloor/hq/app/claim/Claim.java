@@ -382,6 +382,9 @@ public class Claim {
     /** Number the claim sheet-wide. */
     public void setNumber(long number) { this.number = String.valueOf(number); }
 
+    /** Number the claim within a fiscal year: FY&lt;year&gt;-&lt;n&gt;. */
+    public void setFiscalNumber(int year, long n) { this.number = "FY" + year + "-" + n; }
+
     /** Number the claim within a period (empty name: in no period): <period name>-<n>, or X-<n>. */
     public void setNumberWithin(String period, int seq) {
         this.numberPeriod = period;
