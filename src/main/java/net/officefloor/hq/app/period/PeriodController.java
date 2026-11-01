@@ -32,10 +32,12 @@ public class PeriodController {
      *  when it was closed or soft-closed (null while open), and closedPersonTotals each person's, by person id, fixed
      *  then (empty while open; a person missing has 0.00), as closedPersonCarried is each person's carried figure;
      *  personOpenings is each person's opening balance for it, by person id (a person missing has 0.00); locked is
-     *  whether a steward has locked it. */
+     *  whether a steward has locked it; claimsCount is how many claims belong to it (due by inside it), VOID and
+     *  DELETED ones left out. */
     public record PeriodView(long id, String name, LocalDate from, LocalDate to, boolean closed, boolean softClosed,
             String closedTotal, Map<Long, String> closedPersonTotals, Integer cap,
-            Map<Long, String> closedPersonCarried, Map<Long, String> personOpenings, boolean locked) {
+            Map<Long, String> closedPersonCarried, Map<Long, String> personOpenings, boolean locked,
+            long claimsCount) {
 
         public static PeriodView of(Period period) {
             Map<Long, String> personTotals = new TreeMap<>();
@@ -46,7 +48,8 @@ public class PeriodController {
             period.getPersonOpenings().forEach((id, opening) -> openings.put(id, opening.toPlainString()));
             return new PeriodView(period.getId(), period.getName(), period.getFromDate(), period.getToDate(),
                     period.isClosed(), period.isSoftClosed(), period.getClosedTotal() == null ? null : period.getClosedTotal().toPlainString(),
-                    personTotals, period.getClaimCap(), personCarried, openings, period.isLocked());
+                    personTotals, period.getClaimCap(), personCarried, openings, period.isLocked(),
+                    period.getClaimsCount());
         }
     }
 

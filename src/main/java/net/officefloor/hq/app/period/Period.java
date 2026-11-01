@@ -11,6 +11,7 @@ import jakarta.persistence.Id;
 import jakarta.persistence.JoinColumn;
 import jakarta.persistence.MapKeyColumn;
 import jakarta.persistence.Table;
+import org.hibernate.annotations.Formula;
 import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.util.HashMap;
@@ -90,6 +91,12 @@ public class Period {
     @Column(name = "claim_cap")
     private Integer claimCap;
 
+    /** How many claims of the sheet belong to the period (their due-by falls inside it), VOID and DELETED ones left
+     *  out; read from the store as the period is loaded. */
+    @Formula("(SELECT COUNT(*) FROM claim c WHERE c.sheet_id = sheet_id AND c.due_by >= from_date"
+            + " AND c.due_by <= to_date AND c.status NOT IN ('VOID', 'DELETED'))")
+    private long claimsCount;
+
     protected Period() {
     }
 
@@ -137,6 +144,10 @@ public class Period {
 
     public Integer getClaimCap() {
         return claimCap;
+    }
+
+    public long getClaimsCount() {
+        return claimsCount;
     }
 
     public boolean isClosed() {

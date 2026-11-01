@@ -23,6 +23,7 @@ import { FigurePipe } from '../../core/figure';
             — due <span data-testid="period-due-total">{{ (dueTotals().get(p.id) ?? '0.00') | figure }}</span>
             — <span data-testid="period-fy">{{ fiscalYearOf(p.from) }}</span>
             — cap <span data-testid="period-cap">{{ (p.cap ?? '') | figure }}</span>
+            — claims <span data-testid="period-claims-count">{{ p.claimsCount ?? 0 }}</span>
             — closed <span data-testid="period-closed">{{ p.closed ? 'yes' : p.softClosed ? 'soft' : 'no' }}</span>
             <button type="button" data-testid="period-close" (click)="close(p)" [disabled]="closing() === p.id"
                     [attr.aria-label]="'Close period ' + p.name">Close</button>

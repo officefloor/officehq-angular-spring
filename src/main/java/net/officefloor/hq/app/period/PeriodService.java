@@ -8,6 +8,7 @@ import java.util.List;
 import java.util.HashMap;
 import java.util.Map;
 import java.math.BigDecimal;
+import jakarta.persistence.EntityManager;
 import net.officefloor.hq.app.Audit;
 import net.officefloor.hq.app.claim.ClaimRepository;
 import net.officefloor.hq.app.person.Person;
@@ -40,10 +41,12 @@ public class PeriodService {
     private final PoolService pools;
     private final RolloverRepository rollovers;
     private final ClaimRepository claims;
+    private final EntityManager entities;
 
     public PeriodService(PeriodRepository periods, SheetService sheets, SheetRepository sheetStore, Audit audit,
             Rollup rollup, RoleService roles, PersonRepository people, @Lazy PoolService pools,
-            RolloverRepository rollovers, ClaimRepository claims) {
+            RolloverRepository rollovers, ClaimRepository claims, EntityManager entities) {
+        this.entities = entities;
         this.rollovers = rollovers;
         this.claims = claims;
         this.pools = pools;
@@ -54,6 +57,13 @@ public class PeriodService {
         this.sheetStore = sheetStore;
         this.audit = audit;
         this.rollup = rollup;
+    }
+
+    /** Store a new period, then read it back so its claims count is the store's. */
+    private Period saveNew(Period period) {
+        Period saved = periods.saveAndFlush(period);
+        entities.refresh(saved);
+        return saved;
     }
 
     /** The sheet's periods, by from-date. */
@@ -85,7 +95,7 @@ public class PeriodService {
         }
         Period added;
         try {
-            added = periods.saveAndFlush(new Period(sheetId, trimmed, from, to, cap));
+            added = saveNew(new Period(sheetId, trimmed, from, to, cap));
         } catch (DataIntegrityViolationException raced) {
             throw nameInUse();
         }
@@ -116,7 +126,7 @@ public class PeriodService {
             if (existing.stream().anyMatch(p -> p.getName().equals(name) || p.overlaps(first, last))) {
                 continue;
             }
-            Period added = periods.saveAndFlush(new Period(sheetId, name, first, last));
+            Period added = saveNew(new Period(sheetId, name, first, last));
             audit.recordChangeOnCommit(sheetId, user, "PERIOD_ADDED sheet=" + sheetId + " by=" + user + " period=" + added.getName()
                     + " from=" + added.getFromDate() + " to=" + added.getToDate());
             made.add(added);
@@ -232,7 +242,7 @@ public class PeriodService {
             if (existing.stream().anyMatch(p -> p.getName().equals(name) || p.overlaps(first, last))) {
                 continue;
             }
-            Period added = periods.saveAndFlush(new Period(sheetId, name, first, last));
+            Period added = saveNew(new Period(sheetId, name, first, last));
             audit.recordChangeOnCommit(sheetId, user, "PERIOD_ADDED sheet=" + sheetId + " by=" + user + " period=" + added.getName()
                     + " from=" + added.getFromDate() + " to=" + added.getToDate());
             made.add(added);

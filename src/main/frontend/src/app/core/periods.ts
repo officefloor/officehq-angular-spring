@@ -31,6 +31,9 @@ export interface PeriodView {
   /** Whether a steward has locked the period: while locked it cannot be reopened (absent from what was kept before
    *  periods could be locked). */
   locked?: boolean;
+  /** How many claims belong to the period (their due-by falls inside it), VOID and DELETED ones left out (absent
+   *  from what was kept before periods were counted). */
+  claimsCount?: number;
 }
 
 /** A period as the form submits it: a blank from-date takes the sheet's today. */
