@@ -21,6 +21,8 @@ export interface Claim {
   status: ClaimStatus;
   /** Given when the claim is opened; null while DRAFT and once VOID. */
   number: number | null;
+  /** The due fixed when it was settled, two decimals; null while its due is live. */
+  settledDue: string | null;
 }
 
 /** Only OPEN and SETTLED claims count toward what is claimed and due. */
@@ -116,8 +118,9 @@ export class Claims {
     return `claim-${this.personId()}-${field}`;
   }
 
+  /** The due fixed when it was settled, else its amount times the grade's rate. */
   protected dueOf(c: Claim): string {
-    return due(cents(c.amount), this.pct());
+    return c.settledDue ?? due(cents(c.amount), this.pct());
   }
 
   private headers(): Record<string, string> {

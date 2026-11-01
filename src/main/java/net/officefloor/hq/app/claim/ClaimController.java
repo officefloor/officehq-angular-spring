@@ -23,12 +23,16 @@ import org.springframework.web.bind.annotation.RestController;
 @RequestMapping("/api/sheets/{sheetId}")
 public class ClaimController {
 
-    /** A claim as the screen shows it; the amount always has two decimals. */
+    /**
+     * A claim as the screen shows it; the amount always has two decimals, and so does the due fixed
+     * when it was settled (null while its due is live).
+     */
     public record ClaimView(Long id, Long personId, String amount, LocalDate date, String note, ClaimStatus status,
-            Long number) {
+            Long number, String settledDue) {
         static ClaimView of(Claim claim) {
             return new ClaimView(claim.getId(), claim.getPersonId(), claim.getAmount().toPlainString(),
-                    claim.getDate(), claim.getNote(), claim.getStatus(), claim.getNumber());
+                    claim.getDate(), claim.getNote(), claim.getStatus(), claim.getNumber(),
+                    claim.getSettledDue() == null ? null : claim.getSettledDue().setScale(2).toPlainString());
         }
     }
 
