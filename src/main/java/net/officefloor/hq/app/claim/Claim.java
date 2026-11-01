@@ -83,6 +83,10 @@ public class Claim {
     @Column(name = "opened_by", length = 100)
     private String openedBy;
 
+    /** The user who last edited the claim; none while never edited. */
+    @Column(name = "edited_by", length = 100)
+    private String editedBy;
+
     /** The due fixed when the claim was settled; none while not settled, or settled with no rate. */
     @Column(name = "settled_due", precision = 14, scale = 2)
     private BigDecimal settledDue;
@@ -330,6 +334,16 @@ public class Claim {
     public String getOpenedBy() { return openedBy; }
 
     public void setOpenedBy(String openedBy) { this.openedBy = openedBy; }
+
+    public String getEditedBy() { return editedBy; }
+
+    public void setEditedBy(String editedBy) { this.editedBy = editedBy; }
+
+    /** Whether the user opened or last edited the claim, so may neither settle nor approve it. */
+    public boolean isOpenedOrEditedBy(String user) {
+        String name = user.strip();
+        return name.equals(openedBy) || name.equals(editedBy);
+    }
 
     public BigDecimal getSettledDue() { return settledDue; }
 

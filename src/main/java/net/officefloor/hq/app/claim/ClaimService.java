@@ -163,6 +163,7 @@ public class ClaimService {
         claim.setDate(on);
         claim.setNote(note);
         claim.setLockedBy(null);
+        claim.setEditedBy(user.strip());
         Claim saved = claims.saveAndFlush(claim);
         record("CLAIM_EDITED", sheetId, user, person, saved);
         keepTags(sheetId, saved);
@@ -228,7 +229,7 @@ public class ClaimService {
         if (next == ClaimStatus.SETTLED && claim.isDeferredOn(sheets.today(sheetId))) {
             throw new ClaimDeferredException();
         }
-        if (next == ClaimStatus.SETTLED && user.strip().equals(claim.getOpenedBy())) {
+        if (next == ClaimStatus.SETTLED && claim.isOpenedOrEditedBy(user)) {
             throw new ClaimSettledByOpenerException();
         }
         Person person = people.findByIdAndSheetId(claim.getPersonId(), sheetId).orElseThrow(PersonNotFoundException::new);
@@ -270,13 +271,13 @@ public class ClaimService {
         return saved;
     }
 
-    /** A steward other than its opener approves a PENDING claim: SETTLED, its due fixed at its live due now. */
+    /** A steward other than its opener or last editor approves a PENDING claim: SETTLED, its due fixed at its live due now. */
     @Transactional
     public Claim approve(String sheetId, String user, Long id) {
         // The snapshot locks the sheet first, so the claim is read once no other change is under way.
         RollupService.Snapshot before = rollup.snapshot(sheetId);
         Claim claim = pendingForSteward(sheetId, user, id);
-        if (user.strip().equals(claim.getOpenedBy())) throw new ClaimApprovedByOpenerException();
+        if (claim.isOpenedOrEditedBy(user)) throw new ClaimApprovedByOpenerException();
         Person person = people.findByIdAndSheetId(claim.getPersonId(), sheetId).orElseThrow(PersonNotFoundException::new);
         refuseIfClosed(sheetId, claim.getDueBy());
         BigDecimal settling = chargedFigureOf(sheetId, person, claim);
@@ -458,6 +459,7 @@ public class ClaimService {
         split.setLateEntry(periods.softClosedOn(sheetId, dueBy));
         number(numbering, split);
         split.setOpenedBy(user.strip());
+        split.setEditedBy(original.getEditedBy());
         split.setStatus(ClaimStatus.OPEN);
         split = claims.saveAndFlush(split);
         logStatus(sheetId, user, person, split);
