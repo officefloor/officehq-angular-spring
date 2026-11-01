@@ -1,0 +1,92 @@
+{
+  "checkpoint": 100,
+  "stack": {
+    "repo": "/home/daniel/officehq-angular-spring",
+    "origin": "git@github.com:officefloor/officehq-angular-spring.git",
+    "name": "officehq-angular-spring",
+    "base_ref": "base-empty",
+    "base_commit": "65cb8233ea38b2dfa6cfd18709e30cd18fdf3250"
+  },
+  "checkpoint_id": "cp100_batch-all-or-nothing",
+  "phase": "mid",
+  "type": "mutative",
+  "mutates": [
+    45,
+    48,
+    58,
+    62,
+    65,
+    67,
+    68,
+    95,
+    98
+  ],
+  "replaced_tests": [
+    "cp45_bulk-settle.spec.ts::bulk settle",
+    "cp48_dated-settings.spec.ts::dated settings scenario 2",
+    "cp58_watch-and-notify.spec.ts::watch and notify scenario 1",
+    "cp62_archive-sheet.spec.ts::archive sheet scenario 2",
+    "cp65_void-settled.spec.ts::void settled scenario 3",
+    "cp67_active-people.spec.ts::active people scenario 1",
+    "cp67_active-people.spec.ts::active people scenario 3",
+    "cp68_backing-recent-settled.spec.ts::backing recent settled scenario 1",
+    "cp68_backing-recent-settled.spec.ts::backing recent settled scenario 2",
+    "cp95_rate-preview.spec.ts::rate preview scenario 1",
+    "cp98_settle-batches.spec.ts::settle batches"
+  ],
+  "request": {
+    "spec": "A bulk settle is now all-or-nothing: if any selected claim cannot be settled by the signed-in\nuser (any refusal the single settle would give; going to PENDING is not a refusal), none of them is\nsettled, every one counts as refused and nothing is written. Otherwise every selected claim is\nsettled in list order as before, and after the claims' own lines one line BATCH_SETTLED\nbatch=<batch number> count=<claims in the batch> total=<the frozen figures of those SETTLED, added\nup> is written.\n",
+    "prompt": "You are implementing ONE change to this application.\n\nFIRST read AGENTS.md \u2014 it states the working rules and how the app is tested, and sends you to\nDESIGN.md for the app's stack and conventions. Follow both.\n\nTHE CHANGE REQUEST:\nA bulk settle is now all-or-nothing: if any selected claim cannot be settled by the signed-in\nuser (any refusal the single settle would give; going to PENDING is not a refusal), none of them is\nsettled, every one counts as refused and nothing is written. Otherwise every selected claim is\nsettled in list order as before, and after the claims' own lines one line BATCH_SETTLED\nbatch=<batch number> count=<claims in the batch> total=<the frozen figures of those SETTLED, added\nup> is written.\n\nYour work is verified by an automated Playwright UI test already installed under e2e/specs/.\nRead that spec: it declares the exact data-testid anchors, values, test data and any audit\nrecords it expects \u2014 match them. Run `bin/e2e` to build the app, start it, and run the test as\nyou work; iterate until it passes. Change whatever the request needs across the app \u2014 its stored\ndata, its server and its front end. Do NOT edit bin/build, bin/start, bin/stop, bin/e2e,\nAGENTS.md, CLAUDE.md, DESIGN.md, e2e/support/ or the test spec.\n"
+  },
+  "commit_sha": "48ecdef9ae520fca7f02f142eece5d02d899e9df",
+  "reset_sha": "",
+  "preagent_sha": "829ec4d70bf4b0f766c94097e17435628e031599",
+  "prev_sha": "829ec4d70bf4b0f766c94097e17435628e031599",
+  "base_sha": "65cb8233ea38b2dfa6cfd18709e30cd18fdf3250",
+  "agent": {
+    "ok": true,
+    "cost_usd": 0.4410514,
+    "input_tokens": 20,
+    "output_tokens": 5155,
+    "cache_read_tokens": 300317,
+    "cache_creation_tokens": 34726,
+    "num_turns": 11,
+    "duration_ms": 229049,
+    "duration_api_ms": 72681,
+    "model": "claude-opus-5-5",
+    "session_id": "848a7ef7-4f72-486d-83d8-b794e30c5173",
+    "stop_reason": "success",
+    "result_text": "Bulk settle is now all-or-nothing, and all 4 tests in `bin/e2e` pass.\n\nThe change is all in `src/main/java/net/officefloor/hq/app/claim/ClaimBulkService.java`, in `settle`:\n\n- **One transaction:** the whole bulk settle now runs as a single transaction. Each claim still goes through the same `settleInBatch` checks as a single settle, so going to PENDING because of the clerk limit still counts as settled.\n- **Any refusal undoes everything:** the transaction is rolled back and every selected claim is reported as refused. Audit lines are only written once a transaction commits, so a refused bulk settle writes nothing, and no batch number is used up.\n- **Unknown claims:** if a selected id isn't on the sheet, the whole bulk is refused too. The request didn't cover this case; I treated it like any other refusal.\n- **When it goes through:** the claims are settled in list order and share one batch number. After their own lines, one more line is written: `BATCH_SETTLED sheet=<id> by=<user> batch=<n> count=<claims in the batch> total=<frozen figures of the SETTLED ones, added up>`. Claims that went to PENDING count towards `count` but add nothing to `total`.\n- **Unchanged:** a viewer, or an archived sheet, still has every selected claim refused. Bulk open and bulk reassign still work one claim at a time.\n\nNo front-end or database changes were needed, since batch numbers and the bulk-settle screen were already in place.",
+    "error": "",
+    "attempts": [
+      {
+        "ok": true,
+        "limit_reached": false,
+        "retryable": false,
+        "timed_out": false,
+        "cost_usd": 0.4410514,
+        "num_turns": 11,
+        "duration_ms": 229049,
+        "duration_api_ms": 72681,
+        "error": ""
+      }
+    ]
+  },
+  "agent_stream_file": "cp100.agent.jsonl",
+  "agent_diff_file": "cp100.agent.diff",
+  "build_log_file": null,
+  "tests": {
+    "gated": false,
+    "queued": true
+  },
+  "probe": {
+    "probe_cost_usd": 1.726175,
+    "probe_input_tokens": 46,
+    "probe_cache_read_tokens": 2252435,
+    "probe_recall": 0.4411764705882353,
+    "probe_text": "I changed nothing. Names below are as the code uses them; most of the logic is in `ClaimService`, `Claim`, `LateCharge`, `Rounding`, `RollupService`, `Person`, `Sheet`, `StatementService` and `PeriodService` on the server, and `claims.ts`, `people.ts`, `rates.ts` and `session.ts` in the front end.\n\n## 1. Figures and the rules behind them\n\n### Per claim (`claim-row-<id>`)\n\n**Stored values, shown as they are**\n- **Number, amount, date, note, ref, tags, opened-by, proofs, corrects, split-from, batch, reminded, log, comments.**\n- **`number`** is given at open:\n  - normally the sheet's next number (`Sheet.nextClaimNumber`);\n  - while `numbersByPeriod()` (meaning `periodNumberingFrom` is set and today is on or after it), it is `<period>-<n>`, or `X-<n>` when the claim falls in no period. The period is the one its **due-by** falls in.\n  - A voided claim keeps its number, and no number is reused. `redate` can renumber a claim and retire its old number.\n\n**`dueBy`, fixed once when the claim is added**\n- It is `HolidayService.businessDaysAfter(date, terms)`, which skips Saturdays, Sundays and the sheet's holidays.\n- `terms` comes from `ClaimService.termsOf`: the person's own terms, else `terms-<grade>` in force on the claim's date, else the sheet's `terms` (14 to start).\n- It does not move when the claim is edited, redated or the terms change.\n- The one exception is adding a holiday. Every claim that is not SETTLED or VOID and whose due-by is on or after that holiday gets its due-by worked out again with its stored terms.\n\n**`claim-due`**: on the server this is `chargedFigureOf`; in the front end it is a separate copy, `claimDueCents`.\n1. **Figure** (`figureOf`): `settledDue` if there is one; else `statedDue` if `isBound()` (stated and not PENDING); else the rate figure.\n   - The rate figure is amount \u00d7 the rate of the person's grade **on the claim's date** (`Person.gradeOn`), using the rate in force on that date (`Rate.inForce`, which respects a rate's to-date).\n   - With no rate the figure is null and the claim shows `n/a`.\n2. **Rounding** (`Rounding.of`): `HALF_UP` if the claim's basis date is before `policyDate`, else `HALF_EVEN`. A blank policy date means the sheet's today. A correction uses the date of the claim it corrects.\n3. **Late charge** (`LateCharge`):\n   - It applies only when the claim is overdue (see below).\n   - For each full 30-day boundary after `dueBy` + grace, it adds the `late-pct` in force on that boundary date, applied to figure + the charges so far (it compounds). Each step is rounded the same way as the figure.\n   - A percent of 0 adds nothing.\n   - A statement never binds the charge.\n4. **Floor**: the result is at least `floorOn(claim date)` (1.00 to start).\n5. **Corrections** (negative amounts) get no floor and no late charge.\n6. **Settled claims**: `settledDue` is returned as it is, with no floor and no charge.\n\n**Flags on the row**\n- **`claim-overdue`** (`isOverdue`): the claim is OPEN or PENDING, not deferred, and `dueBy + graceOn(grade on claim date, claim date)` is before today.\n- **`claim-deferred`** (`isDeferredOn`): the claim is OPEN and today is before `deferredUntil`. A deferred claim counts in no total, is not overdue, cannot be settled and is not bound by a statement.\n- **`claim-stated`**: the raw `stated` flag. The figure only uses it through `isBound()`, which ignores it while the claim is PENDING.\n- **`claim-late-entry`**: set at add or split when the period the due-by falls in is soft-closed.\n- **`claim-period`**: the period that contains `dueBy`.\n\n**What is frozen, and when**\n- **Settle** freezes `settledDue = chargedFigureOf` at that moment, with the late charge included.\n- **Approve** freezes the live due at that moment.\n- **Re-settle** sets the figure as if the claim were open and unbound today (`withChargeAsOpen`), then floors it.\n- **A statement** freezes `statedDue`: the figure only, without the charge or floor.\n- **Cancelling a statement**, **reassigning** a claim, or **splitting** it unbinds it (`unstate`).\n- **Each status log line** stores the due at that moment.\n\n**Status changes** (`ClaimStatus.canBecome`)\n- DRAFT \u2192 OPEN; OPEN \u2192 SETTLED or PENDING.\n- DRAFT, OPEN or PENDING \u2192 VOID.\n- PENDING \u2192 SETTLED (approve) or OPEN (reject).\n- Only a DRAFT claim can be edited, and only by the user holding its edit lock (`isLockedAgainst`).\n\n### Who may do what\n- **Roles** (`Role`): `CLERK` is the default for any name, plus `STEWARD` and `VIEWER`.\n  - A `Delegation` that covers today makes a non-steward act as a steward (`roleOf`).\n  - `ViewerGuard` refuses every write by a viewer.\n  - `ArchivedGuard` refuses every write on an archived sheet.\n  - `AsOfGuard` refuses every write while an as-of date is set.\n  - Bulk actions marked `@OpenToViewer` are not refused outright; they report every item as refused.\n- **`mayDo` and the permission matrix**: open, settle, void and close default to clerk and steward; reassign and reopen default to steward only. Each sheet can override these in its permission matrix.\n- **Steward only** (hard-coded):\n  - approve and reject;\n  - re-settle;\n  - redate an OPEN or PENDING claim;\n  - void a SETTLED claim, only within 7 days of `settledOn()` (`VOID_SETTLED_DAYS`);\n  - cancel the last statement;\n  - archive the sheet;\n  - delegate, which requires being a steward in one's own right.\n- **Opener or last editor**: cannot settle or approve the claim (`isOpenedOrEditedBy`).\n- **Clerk limit**: a clerk settling a due above `clerkLimit` (in force today) sends the claim to **PENDING** instead of SETTLED.\n- **Proof threshold**: settling or approving is refused when the claim has 0 proofs and its due is above `proofThresholdFor`. That is the grade's own threshold, else the sheet's, in force on the claim's date.\n- **Note threshold**: opening is refused when the note is blank and the due is above `noteThresholdOn(claim date)`.\n- **Void reasons**: while the sheet's list of void reasons is not empty, a void must name one of them.\n- **Settings and roles**: changing them has **no role check** beyond the viewer and archive guards.\n\n### Dates, closed periods, holds, retirement\n- **Default dates**:\n  - A new claim with no date takes `entryDate` while one is set, else today.\n  - An edit with no date takes **today**, not the entry date.\n  - Every date decision uses the sheet's stored `today`, never the clock.\n- **Closed period** (`refuseIfClosed`): a claim whose `dueBy` falls in a closed period is refused for add, edit, lock, open, settle, approve, reject, re-settle, redate, reassign, split, defer and add-proof.\n  - **Soft-closed** fixes the period's figures but still allows changes.\n  - Changing today auto-closes open periods whose to-date + `graceDays` is before it.\n  - Closing fixes `closedPersonDues` from claims whose due-by falls in the period and that counted by their status at the period's end (`countsAt`). These figures are **not capped**.\n- **Counting** (`Person.counts` on the server, `countsFor` in the front end):\n  - Only OPEN, PENDING and SETTLED claims count.\n  - Deferred claims do not count.\n  - An open claim that is not bound does not count if it is dated inside a hold, or if the person's `retiredFrom` has been reached by today.\n- **Retirement**:\n  - `retired` shows as yes as soon as any retirement date is set.\n  - No claim may be dated after `retiredFrom` (`mayClaimOn`).\n  - Retired people drop out of the grade summary and the list, unless show retired is on.\n- **`person-active`** (`activeOn`): the person has an open claim that counts, dated within the last 30 days up to today.\n\n### Per person and sheet totals\n- **`person-claimed`**: the sum of the amounts of claims that count.\n- **`person-due-total`**: the sum of the claims' dues.\n  - It is `n/a` when the person's grade today has no rate **and** no counted claim has a fixed due. A claim counts as fixed if it is settled or bound, or if its due is under a different grade or a rate not in force today.\n  - It is then capped at the `cap` in force today.\n- **`excess`**: how far the uncapped total is above the cap.\n- **Settled total and open total**: the same dues split by status.\n- **`person-overdue-count` and `person-overdue-total`**: from the overdue claims that count.\n- **Aged buckets**: open claims by age in days: up to 30, up to 60, over 60.\n- **Per-period dues**: live, or the fixed `closedPersonDues` once the period is closed or soft-closed.\n- **`person-stated-total`**: the last statement's due-total. A statement takes the capped total including charges and records `STATEMENT`. Taking one as of an earlier date (`bindAsOf`) rebuilds the history.\n- **Sheet `due-total` and `overdue-total`**: `trimmedSum`, which drops the single highest and single lowest person when three or more people have a figure. **`claimed-total` is not trimmed.**\n- **Summaries**:\n  - by grade: people not retired, using capped totals;\n  - by period;\n  - by tag: a claim counts under each of its tags;\n  - by month;\n  - by status, and by void reason: raw counts.\n\n### Paste, quick-add and bulk actions\n- **Paste** (`ClaimPasteService`):\n  - Each line is `name,amount,date,note`; a trailing ` #ref` in the note becomes the reference.\n  - Every line becomes a DRAFT claim through `ClaimService.add`.\n  - It is all or nothing: one bad line, or a duplicate reference, refuses the whole paste.\n- **Quick-add**: makes a DRAFT claim with an empty note. If the name is not on the sheet, it first adds the person with grade A.\n- **Bulk open and bulk reassign**: each claim is tried in turn and refusals are counted.\n- **Bulk settle**: all or nothing, with one batch number (`BATCH_SETTLED`).\n- **Rate preview** (`previewRate`): counts the unbound open claims whose due would change, and the total difference.\n\n## 2. How hard this was to follow\n\nIt is scattered and tangled. The same rules (counting, the \"fixed\" test that decides `n/a`, floor, rounding, late charge, cap) are written out separately in `ClaimService`, `RollupService`, `StatementService.bindNow`/`bindAsOf` and again in TypeScript in `claims.ts` and `people.ts`. Each copy has small differences (for example `withCharge` vs `withChargeAsOpen`, which rates lookup is used, and edit vs add default dates), so a new developer has to read every copy and keep them in step by hand. There is no single place to learn the rules from."
+  },
+  "pinned_touched": [],
+  "acceptance_touched": [],
+  "impact_gate": null
+}
