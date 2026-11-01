@@ -13,6 +13,13 @@ export interface DatedSetting {
 }
 
 /** The sheet as the screen shows it: each dated setting as it is in force on its today. */
+/** A policy version: the policy setting whose change made it, and the from-date (yyyy-mm-dd) it was changed from;
+ *  null: it counts always. */
+export interface PolicyVersion {
+  key: string;
+  from: string | null;
+}
+
 export interface SheetView {
   id: string;
   /** The sheet's today (yyyy-mm-dd): every date-dependent decision and default uses it, never the clock. */
@@ -60,6 +67,11 @@ export interface SheetView {
   settleBatch: number | null;
   /** Every dated value recorded for the settings that carry a figure. */
   settings: DatedSetting[];
+  /** The current policy version: how many changes have been made to the policy settings (the rounding mode, the
+   *  floor, the cap, the terms, the late percent and the clerk limit); 0 before the first. */
+  policyVersion: number;
+  /** The policy versions, in the order made (version n first made by the n-th change). */
+  policyVersions: PolicyVersion[];
   /** The permission matrix entries set: for an action, the roles that may take it (comma separated); an action
    *  missing keeps its standing rule. Not dated. */
   permissions: Partial<Record<PermAction, string>>;
@@ -135,6 +147,12 @@ export function settingOn(settings: readonly DatedSetting[], key: string, date: 
         || (s.from !== null && s.from > inForce.from))) inForce = s;
   }
   return inForce?.value ?? start;
+}
+
+/** The policy version in force on a date (yyyy-mm-dd): how many versions have a from-date on or before it, one with
+ *  none counting always. */
+export function policyVersionOn(versions: readonly PolicyVersion[], date: string): number {
+  return versions.filter((v) => v.from === null || v.from <= date).length;
 }
 
 /** The grace days of a grade in force on a date (yyyy-mm-dd): a claim dated then whose person is of that grade

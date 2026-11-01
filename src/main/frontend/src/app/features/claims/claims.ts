@@ -7,7 +7,7 @@ import { Grade, HoldView, PersonView, gradeOn } from '../../core/people';
 import { PeriodView, periodOn } from '../../core/periods';
 import { DEFAULT_DUE_TERMS, NOT_AVAILABLE, RateLine, claimDueCents } from '../../core/rates';
 import { Session } from '../../core/session';
-import { Sheets, graceOn } from '../../core/sheet';
+import { Sheets, graceOn, policyVersionOn } from '../../core/sheet';
 import { Templates } from '../../core/templates';
 import { VoidReasons } from '../../core/void-reasons';
 import { FigurePipe } from '../../core/figure';
@@ -78,6 +78,7 @@ const UNPROVEN = 'This claim\'s due is above the proof threshold, so it needs a 
           No. <span data-testid="claim-number">{{ c.number ?? '' }}</span>
           <span data-testid="claim-amount">{{ (c.amount) | figure }}</span>
           on <span data-testid="claim-date">{{ c.date }}</span>
+          policy version <span data-testid="claim-policy">{{ policyOf(c) }}</span>
           — due <span data-testid="claim-due">{{ (dueOf(c)) | figure }}</span>
           by <span data-testid="claim-due-by">{{ dueByOf(c) }}</span>
           — overdue <span data-testid="claim-overdue">{{ overdueOf(c) ? 'yes' : 'no' }}</span>
@@ -373,6 +374,11 @@ export class PersonClaims {
     const rates = this.ratesByGrade().get(grade) ?? NO_RATES;
     const due = claimDueCents(c, rates, this.sheets.current() ?? DEFAULT_DUE_TERMS, roundingDate(c, this.claims()), grade);
     return due === null ? NOT_AVAILABLE : money(due);
+  }
+
+  /** The policy version in force on the claim's date. */
+  protected policyOf(c: ClaimView): number {
+    return policyVersionOn(this.sheets.current()?.policyVersions ?? [], c.date);
   }
 
   protected dueByOf(c: ClaimView): string {

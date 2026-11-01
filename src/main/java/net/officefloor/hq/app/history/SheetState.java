@@ -23,6 +23,7 @@ import net.officefloor.hq.app.person.PastRetirement;
 import net.officefloor.hq.app.person.Person;
 import net.officefloor.hq.app.rate.Rate;
 import net.officefloor.hq.app.rate.RateVersion;
+import net.officefloor.hq.app.sheet.PolicyVersion;
 import net.officefloor.hq.app.sheet.Sheet;
 
 /** What a sheet held at a moment. As far as a person's figures depend on it (its dated settings and policy date, its
@@ -35,7 +36,12 @@ public record SheetState(List<SettingState> settings, LocalDate policyDate, List
         Integer lastSettleBatch, BigDecimal pot, Integer fiscalStartMonth, BigDecimal alertThreshold,
         Integer escalateAfter, Integer reviewSla, String proofKinds, List<AncestorState> ancestors,
         List<PoolState> pools, List<CrewState> crews, String defaultGrade, Integer scoreMid, Integer scoreHigh,
-        Boolean scoreLog, Integer maxOpen, Integer pendingSla) {
+        Boolean scoreLog, Integer maxOpen, Integer pendingSla, List<PolicyVersionState> policyVersions) {
+
+    /** A policy version as it stood: the setting whose change made it and the from-date it was changed from
+     *  (policy versions are null in a state kept before they were recorded). */
+    public record PolicyVersionState(String key, LocalDate from) {
+    }
 
     /** A pool as it stood, with its memberships in the order they were added (pools and crews are null in a state
      *  kept before they were recorded). */
@@ -176,7 +182,8 @@ public record SheetState(List<SettingState> settings, LocalDate policyDate, List
                 sheet.isArchived(), views, sheet.getEntryDate(), sheet.getLastSettleBatch(),
                 sheet.getPot(), sheet.getFiscalStartMonth(), sheet.getAlertThreshold(),
                 sheet.getEscalateAfter(), sheet.getReviewSla(), sheet.getProofKinds(), ancestors, pools, crews,
-                sheet.getDefaultGrade(), sheet.getScoreMid(), sheet.getScoreHigh(), sheet.isScoreLog(), sheet.getMaxOpen(), sheet.getPendingSla());
+                sheet.getDefaultGrade(), sheet.getScoreMid(), sheet.getScoreHigh(), sheet.isScoreLog(), sheet.getMaxOpen(), sheet.getPendingSla(),
+                sheet.getPolicyVersions().stream().map(v -> new PolicyVersionState(v.getKey(), v.getFrom())).toList());
     }
 
     /** The rates as they stand now. */
@@ -208,7 +215,10 @@ public record SheetState(List<SettingState> settings, LocalDate policyDate, List
     /** The sheet as it stood then, unsaved, with {@code today} standing in for its today. */
     public Sheet rebuildSheet(Sheet live, LocalDate today) {
         Sheet sheet = new Sheet(live.getId(), live.getCreatedBy(), live.getCreatedAt(), today);
-        settings.forEach(s -> sheet.record(s.key(), s.from(), s.value()));
+        settings.forEach(s -> sheet.restore(s.key(), s.from(), s.value()));
+        if (policyVersions != null) {
+            sheet.restorePolicyVersions(policyVersions.stream().map(v -> new PolicyVersion(v.key(), v.from())).toList());
+        }
         sheet.setPolicyDate(policyDate);
         if (permissions != null) {
             permissions.forEach(sheet::setPermission);

@@ -325,7 +325,7 @@ public class ClaimService {
             refuseOverMaxOpen(sheet, claim);
             refuseFlagged(sheet, user, person);
         }
-        if (next == ClaimStatus.SETTLED && overClerkLimit(sheet, user, person, due)) {
+        if (next == ClaimStatus.SETTLED && overClerkLimit(sheet, user, person, claim, due)) {
             next = ClaimStatus.PENDING;
         }
         if (next == ClaimStatus.OPEN && overReviewThreshold(sheet, claim, due)) {
@@ -1188,10 +1188,10 @@ public class ClaimService {
     }
 
     /** Whether a settle by this user must wait for a steward: they are a clerk and the due is above the clerk limit
-     *  in force on the sheet's today for the person's grade then (its own, else the sheet's; a claim with no due is
-     *  within any limit). */
-    private boolean overClerkLimit(Sheet sheet, String user, Person person, BigDecimal due) {
-        BigDecimal limit = sheet.clerkLimitFor(person.gradeOn(sheet.getToday()));
+     *  in force on the claim's date for the person's grade on the sheet's today (its own, else the sheet's; a claim
+     *  with no due is within any limit). */
+    private boolean overClerkLimit(Sheet sheet, String user, Person person, Claim claim, BigDecimal due) {
+        BigDecimal limit = sheet.clerkLimitFor(person.gradeOn(sheet.getToday()), claim.getDate());
         if (limit == null || due == null || due.compareTo(limit) <= 0) {
             return false;
         }

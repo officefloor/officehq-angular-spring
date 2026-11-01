@@ -104,11 +104,14 @@ function isDate(value: string): boolean {
       <p>Note threshold: <span data-testid="setting-note-threshold-current">{{ (sheets.current()?.noteThreshold ?? '') | figure }}</span></p>
       <p>Review threshold: <span data-testid="setting-review-threshold-current">{{ (sheets.current()?.reviewThreshold ?? '') | figure }}</span></p>
       <p>Rounding mode: <span data-testid="setting-rounding-current">{{ sheets.current()?.rounding ?? '' }}</span></p>
+      <p>Policy version: <span data-testid="policy-version">{{ sheets.current()?.policyVersion ?? 0 }}</span></p>
       @for (a of permActions; track a) {
         <p>Who may {{ a }}: <span [attr.data-testid]="'setting-perm-' + a + '-current'">{{ sheets.current()?.permissions?.[a] ?? '' }}</span></p>
       }
       <p>Each setting with a figure is saved from its from-date (blank: the sheet's today), keeping the values saved from
-        other dates; a claim takes the floor, late percent and terms in force on its date.</p>
+        other dates; a claim takes the floor, late percent, terms and clerk limit in force on its date, and a person's due-total the
+        cap in force on the date of their latest claim that counts. Every change to the rounding mode, floor, cap,
+        terms, late percent or clerk limit is a new policy version.</p>
 
       <form [formGroup]="settingsForm" (ngSubmit)="saveSettings()" aria-label="Change the sheet's settings">
         <label for="setting-clerk-limit">Clerk limit (blank: no limit)</label>

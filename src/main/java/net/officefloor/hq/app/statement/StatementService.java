@@ -203,6 +203,7 @@ public class StatementService {
         BigDecimal total = BigDecimal.ZERO.setScale(2);
         boolean anyDue = false;
         int counted = 0;
+        LocalDate latest = null;
         for (Claim claim : theirs) {
             Claim then = asThen.apply(claim);
             if (then == null || !counts.test(then, today) || then.isDeferredOn(today)) {
@@ -224,6 +225,7 @@ public class StatementService {
                     Rollup.sharedPartOf(then, due, holders, sheetRates, sheet, roundingClaims)));
             claim.bind(figure, late);
             counted++;
+            latest = latest == null || then.getDate().isAfter(latest) ? then.getDate() : latest;
         }
         for (BigDecimal part : held) {
             total = total.add(part);
@@ -232,7 +234,7 @@ public class StatementService {
         // As on screen: with no rate in force today for their grade on the sheet's today, nor for the grade any
         // of their claims that count is at, and no claim that has a due, the person has no due-total.
         boolean anyRate = grades.stream().anyMatch(g -> sheetRates.inForceOn(g, today).isPresent());
-        return new Stated(!anyRate && !anyDue ? "n/a" : sheet.capped(total, cut).toPlainString(), counted);
+        return new Stated(!anyRate && !anyDue ? "n/a" : sheet.capped(total, cut, latest).toPlainString(), counted);
     }
 
     /**

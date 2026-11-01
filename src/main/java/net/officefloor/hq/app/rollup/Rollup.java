@@ -5,6 +5,7 @@ import java.math.RoundingMode;
 import java.time.LocalDate;
 import java.util.ArrayList;
 import java.util.Collection;
+import java.util.Comparator;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -157,7 +158,8 @@ public class Rollup {
             if (!dues.isEmpty() || anyRate) {
                 BigDecimal sum = dues.stream().reduce(BigDecimal.ZERO.setScale(2), BigDecimal::add);
                 BigDecimal total = sheet == null ? sum : sheet.capped(sum,
-                        cutTotals.getOrDefault(person.getId(), BigDecimal.ZERO.setScale(2)));
+                        cutTotals.getOrDefault(person.getId(), BigDecimal.ZERO.setScale(2)),
+                        counting.stream().map(Claim::getDate).max(Comparator.naturalOrder()).orElse(null));
                 dueFigures.add(total);
                 due = total.toPlainString();
             }

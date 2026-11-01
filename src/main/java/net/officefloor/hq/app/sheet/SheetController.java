@@ -55,7 +55,9 @@ public class SheetController {
      *  defaultGrade is the sheet's default grade, null when it sets none (then A);
      *  retiredGrades is the grades retired on the sheet, in order;
      *  grades is the sheet's grades: A, B and C, then those added, in order;
-     *  asOf is the date the sheet is shown as of, when it is (then the sheet is as it stood at the end of it, and today is that date), else null. */
+     *  asOf is the date the sheet is shown as of, when it is (then the sheet is as it stood at the end of it, and today is that date), else null;
+     *  policyVersion is the current policy version (how many have been made, 0 before the first); policyVersions are
+     *  the policy versions in the order made. */
     public record SheetView(String id, LocalDate today, String clerkLimit, String floor, int terms, String latePct,
             LocalDate policyDate, LocalDate periodNumberingFrom, Map<String, Integer> gradeTerms, String cap,
             List<DatedSettingView> settings, String proofThreshold, Map<String, String> permissions, Integer graceDays, boolean archived,
@@ -64,7 +66,7 @@ public class SheetController {
             String alertThreshold, String rounding, String reviewThreshold, Integer escalateAfter, Integer reviewSla,
             String proofKinds, String defaultGrade, Map<String, String> gradeClerkLimit, Integer scoreMid, Integer scoreHigh,
             String scoreLog, Integer maxOpen, List<String> retiredGrades,
-            List<String> grades, Integer pendingSla) {
+            List<String> grades, Integer pendingSla, int policyVersion, List<PolicyVersionView> policyVersions) {
 
         static SheetView of(Sheet sheet) {
             return of(sheet, null);
@@ -90,8 +92,14 @@ public class SheetController {
                     sheet.getEscalateAfter(), sheet.getReviewSla(), sheet.getProofKinds(),
                     sheet.getDefaultGrade(), sheet.getGradeClerkLimits(), sheet.getScoreMid(), sheet.getScoreHigh(),
                     sheet.isScoreLog() ? "on" : null, sheet.getMaxOpen(), sheet.getRetiredGrades(),
-                    sheet.getGrades(), sheet.getPendingSla());
+                    sheet.getGrades(), sheet.getPendingSla(), sheet.getPolicyVersion(),
+                    sheet.getPolicyVersions().stream().map(v -> new PolicyVersionView(v.getKey(), v.getFrom())).toList());
         }
+    }
+
+    /** A policy version: the policy setting whose change made it and the from-date it was changed from (null: it
+     *  counts always). */
+    public record PolicyVersionView(String key, LocalDate from) {
     }
 
     /** A dated setting's value from a from-date (null: from the beginning of time); a null value means none. */

@@ -8,7 +8,7 @@ import { Grade, People, PersonView, gradeOn, nameWithGrade, timelineOf } from '.
 import { PatronView, Patrons } from '../../core/patrons';
 import { Periods, periodOn } from '../../core/periods';
 import { DEFAULT_DUE_TERMS, DueTerms, NOT_AVAILABLE, RateLine, Rates, claimDueCents, rateOnLine, roundsHalfUp } from '../../core/rates';
-import { Sheets, graceOn } from '../../core/sheet';
+import { Sheets, graceOn, settingOn } from '../../core/sheet';
 import { SnapshotView, Snapshots } from '../../core/snapshots';
 import { StatementSummary, Statements } from '../../core/statements';
 import { Watches } from '../../core/watches';
@@ -837,17 +837,31 @@ export class PeopleList {
     money(this.claims().filter(this.countsClaimedNow()).filter((c) => c.corrects === null).reduce((sum, c) => sum + cents(c.amount), 0)),
   );
   /** Each person's due-total in whole cents: the sum of the dues of their claims that count (0 with none),
-   *  at most the sheet's cap less their cut total (not below 0); null when neither their grade in force today nor the grade any of those claims is at has a rate in
+   *  at most the cap in force on the date of their latest claim that counts (with none, the sheet's today) less their
+   *  cut total (not below 0); null when neither their grade in force today nor the grade any of those claims is at has a rate in
    *  force today, and none of those claims has a due. */
   protected readonly dueByPerson = computed(() => {
-    const cap = this.capCents();
-    return new Map([...this.uncappedDueByPerson()].map(([id, due]) =>
-      [id, due === null || cap === null ? due : Math.min(due, Math.max(0, cap - this.cutOf(id)))]));
+    const latest = this.latestCountingDate();
+    return new Map([...this.uncappedDueByPerson()].map(([id, due]) => {
+      const cap = this.capCentsOn(latest.get(id) ?? this.todayNow());
+      return [id, due === null || cap === null ? due : Math.min(due, Math.max(0, cap - this.cutOf(id)))];
+    }));
   });
-  /** The sheet's cap in whole cents; null with none. */
-  private readonly capCents = computed(() => {
-    const cap = this.sheets.current()?.cap;
-    return cap === null || cap === undefined ? null : cents(cap);
+  /** The cap in force on a date (yyyy-mm-dd) in whole cents; null with none. */
+  private capCentsOn(date: string): number | null {
+    const cap = settingOn(this.sheets.current()?.settings ?? [], 'cap', date, '');
+    return cap === '' ? null : cents(cap);
+  }
+  /** The date of each person's latest claim that counts, by person id; a person with none is left out. */
+  private readonly latestCountingDate = computed(() => {
+    const byPerson = new Map<number, string>();
+    for (const p of this.people()) {
+      for (const c of this.claimsOf(p.id).filter(countsWithHolds(p.holds, this.todayNow(), p.retiredFrom))) {
+        const latest = byPerson.get(p.id);
+        if (latest === undefined || c.date > latest) byPerson.set(p.id, c.date);
+      }
+    }
+    return byPerson;
   });
   /** Each person's due-total before the cap, in whole cents; null as for the due-total. */
   private readonly uncappedDueByPerson = computed(() => {
@@ -1433,11 +1447,12 @@ export class PeopleList {
     return this.splitByPerson().get(personId) ?? NO_SPLIT;
   }
 
-  /** How far the person's figures (their due-total before the cap plus their cut total) add up above the cap, in
-   *  whole cents; 0 when they do not, there is no cap, or they have no due-total (none, or nothing due). */
+  /** How far the person's figures (their due-total before the cap plus their cut total) add up above their cap (as
+   *  for their due-total), in whole cents; 0 when they do not, there is no cap, or they have no due-total (none, or
+   *  nothing due). */
   protected excessOf(personId: number): number {
     const sum = this.uncappedDueByPerson().get(personId) ?? null;
-    const cap = this.capCents();
+    const cap = this.capCentsOn(this.latestCountingDate().get(personId) ?? this.todayNow());
     return sum === null || sum === 0 || cap === null ? 0 : Math.max(0, sum + this.cutOf(personId) - cap);
   }
 
