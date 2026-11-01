@@ -47,6 +47,8 @@ export class Home {
   protected readonly todayForm = new FormGroup({ today: new FormControl('', { nonNullable: true }) });
   protected readonly signinError = signal('');
   protected readonly sheetError = signal('');
+  /** The forms with a submit under way; another submit of one waits for its answer. */
+  private readonly submitting = new Set<string>();
 
   constructor() {
     this.signinForm.valueChanges.subscribe(() => this.signinError.set(''));
@@ -55,44 +57,56 @@ export class Home {
   }
 
   protected async signIn(): Promise<void> {
+    if (this.submitting.has('signIn')) return;
     this.signinError.set('');
     const name = this.signinForm.controls.name.value.trim();
     if (!name) {
       this.signinError.set('Enter a name.');
       return;
     }
+    this.submitting.add('signIn');
     try {
       await this.session.signIn(name);
     } catch {
       this.signinError.set('Could not sign in.');
+    } finally {
+      this.submitting.delete('signIn');
     }
   }
 
   protected async loadSheet(): Promise<void> {
+    if (this.submitting.has('loadSheet')) return;
     this.sheetError.set('');
     const id = this.sheetForm.controls.id.value.trim();
     if (!id) {
       this.sheetError.set('Enter a sheet id.');
       return;
     }
+    this.submitting.add('loadSheet');
     try {
       await this.session.loadSheet(id);
     } catch {
       this.sheetError.set('Could not load that sheet.');
+    } finally {
+      this.submitting.delete('loadSheet');
     }
   }
 
   protected async saveToday(): Promise<void> {
+    if (this.submitting.has('saveToday')) return;
     this.sheetError.set('');
     const today = this.todayForm.controls.today.value.trim();
     if (!/^\d{4}-\d{2}-\d{2}$/.test(today)) {
       this.sheetError.set('Enter a date.');
       return;
     }
+    this.submitting.add('saveToday');
     try {
       await this.session.setToday(today);
     } catch {
       this.sheetError.set('Could not change today.');
+    } finally {
+      this.submitting.delete('saveToday');
     }
   }
 }

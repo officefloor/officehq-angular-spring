@@ -108,6 +108,8 @@ export class Rates {
   protected readonly grades = GRADES;
   protected readonly na = NA;
   protected readonly error = signal('');
+  /** A submit is under way; another one waits for its answer rather than storing twice. */
+  private saving = false;
   protected readonly form = new FormGroup({
     grade: new FormControl('A', { nonNullable: true }),
     pct: new FormControl('', { nonNullable: true }),
@@ -130,6 +132,7 @@ export class Rates {
   }
 
   protected async save(): Promise<void> {
+    if (this.saving) return;
     this.error.set('');
     const sheet = this.session.sheetId();
     if (!sheet) return;
@@ -148,6 +151,7 @@ export class Rates {
       this.error.set('Enter a from-date, or leave it blank for from the start.');
       return;
     }
+    this.saving = true;
     try {
       const rate = await firstValueFrom(
         this.http.put<Rate>(`/api/sheets/${encodeURIComponent(sheet)}/rates/${raw.grade}`, { pct, from: from || null }, {
@@ -158,6 +162,8 @@ export class Rates {
       this.saved.emit(rate);
     } catch {
       this.error.set('Could not set that rate.');
+    } finally {
+      this.saving = false;
     }
   }
 }

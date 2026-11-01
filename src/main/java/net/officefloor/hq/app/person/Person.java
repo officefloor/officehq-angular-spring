@@ -6,6 +6,7 @@ import jakarta.persistence.GeneratedValue;
 import jakarta.persistence.GenerationType;
 import jakarta.persistence.Id;
 import jakarta.persistence.Table;
+import jakarta.persistence.Version;
 import java.util.Locale;
 
 /**
@@ -31,6 +32,10 @@ public class Person {
 
     @Column(name = "grade", nullable = false)
     private String grade;
+
+    @Version
+    @Column(name = "version", nullable = false)
+    private long version;
 
     protected Person() {}
 
@@ -59,4 +64,7 @@ public class Person {
     public String getGrade() { return grade; }
 
     public void setGrade(String grade) { this.grade = grade; }
+
+    /** Moved on by each save; an edit is refused unless made from the current version. */
+    public long getVersion() { return version; }
 }

@@ -5,13 +5,14 @@ import net.officefloor.hq.app.Audit;
 import net.officefloor.hq.app.sheet.SheetNotFoundException;
 import net.officefloor.hq.app.sheet.SheetRepository;
 import org.springframework.dao.DataIntegrityViolationException;
+import org.springframework.orm.ObjectOptimisticLockingFailureException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 /**
  * The people on a sheet: listed in the order they were added, added and edited one at a time. A
  * name already used by another person on the sheet (ignoring case and surrounding spaces) is
- * refused.
+ * refused, and so is an edit made from a version of the person someone else has saved since.
  */
 @Service
 public class PersonService {
@@ -41,8 +42,9 @@ public class PersonService {
     }
 
     @Transactional
-    public Person edit(String sheetId, String user, Long id, String name, String grade) {
+    public Person edit(String sheetId, String user, Long id, long version, String name, String grade) {
         Person person = people.findByIdAndSheetId(id, sheetId).orElseThrow(PersonNotFoundException::new);
+        if (person.getVersion() != version) throw new PersonVersionConflictException();
         requireUnused(sheetId, name, id);
         person.setName(name);
         person.setGrade(grade);
@@ -68,6 +70,8 @@ public class PersonService {
             return people.saveAndFlush(person);
         } catch (DataIntegrityViolationException e) {
             throw new DuplicatePersonNameException();
+        } catch (ObjectOptimisticLockingFailureException e) {
+            throw new PersonVersionConflictException();
         }
     }
 }

@@ -13,6 +13,8 @@ interface Person {
   id: number;
   name: string;
   grade: string;
+  /** Moved on by each save; an edit is made from the version the form loaded. */
+  version: number;
 }
 
 // The people on the active sheet, in the order they were added, with one form to add or edit,
@@ -107,6 +109,10 @@ export class People {
     money(this.people().reduce((sum, p) => sum + (this.dueTotalCents(p) ?? 0), 0)),
   );
   protected readonly editingId = signal<number | null>(null);
+  /** The version of the person being edited, as the form loaded it. */
+  private editingVersion = 0;
+  /** A submit is under way; another one waits for its answer rather than storing twice. */
+  private saving = false;
   protected readonly error = signal('');
   protected readonly form = new FormGroup({
     name: new FormControl('', { nonNullable: true }),
@@ -208,6 +214,7 @@ export class People {
 
   protected edit(p: Person): void {
     this.editingId.set(p.id);
+    this.editingVersion = p.version;
     this.form.setValue({ name: p.name, grade: p.grade }, { emitEvent: false });
     this.error.set('');
   }
@@ -217,6 +224,7 @@ export class People {
   }
 
   protected async save(): Promise<void> {
+    if (this.saving) return;
     this.error.set('');
     const sheet = this.session.sheetId();
     if (!sheet) return;
@@ -232,6 +240,7 @@ export class People {
       return;
     }
     const id = this.editingId();
+    this.saving = true;
     try {
       if (id === null) {
         const added = await firstValueFrom(
@@ -241,18 +250,39 @@ export class People {
         this.people.update((list) => [...list, added]);
       } else {
         const saved = await firstValueFrom(
-          this.http.put<Person>(`${this.url(sheet)}/${id}`, { name, grade }, { headers: this.headers() }),
+          this.http.put<Person>(`${this.url(sheet)}/${id}`, { name, grade, version: this.editingVersion }, { headers: this.headers() }),
         );
         if (this.session.sheetId() !== sheet) return;
         this.people.update((list) => list.map((p) => (p.id === saved.id ? saved : p)));
       }
       this.reset();
     } catch (e) {
-      if (e instanceof HttpErrorResponse && e.status === 409) {
+      if (e instanceof HttpErrorResponse && e.status === 412 && id !== null) {
+        await this.showCurrent(sheet, id);
+      } else if (e instanceof HttpErrorResponse && e.status === 409) {
         this.error.set('That name is already in use on this sheet.');
       } else {
         this.error.set(id === null ? 'Could not add that person.' : 'Could not save that person.');
       }
+    } finally {
+      this.saving = false;
+    }
+  }
+
+  /** After a save refused as made from an old version: refuse it, and show the person as now stored. */
+  private async showCurrent(sheet: string, id: number): Promise<void> {
+    this.error.set('Someone else saved this person meanwhile; it now shows their values.');
+    try {
+      const list = await firstValueFrom(this.http.get<Person[]>(this.url(sheet), { headers: this.headers() }));
+      if (this.session.sheetId() !== sheet) return;
+      this.people.set(list);
+      const current = list.find((p) => p.id === id);
+      if (current && this.editingId() === id) {
+        this.editingVersion = current.version;
+        this.form.setValue({ name: current.name, grade: current.grade }, { emitEvent: false });
+      }
+    } catch {
+      // the error already shown stands
     }
   }
 }

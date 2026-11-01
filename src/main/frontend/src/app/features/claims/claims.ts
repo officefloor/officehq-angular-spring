@@ -114,6 +114,8 @@ export class Claims {
   readonly saved = output<Claim>();
 
   protected readonly editingId = signal<number | null>(null);
+  /** A submit is under way; another one waits for its answer rather than storing twice. */
+  private saving = false;
   protected readonly error = signal('');
   /** The error from the last action on a claim's row, if it was refused. */
   protected readonly claimError = signal<{ id: number; message: string } | null>(null);
@@ -180,6 +182,7 @@ export class Claims {
   }
 
   protected async save(): Promise<void> {
+    if (this.saving) return;
     this.error.set('');
     this.claimError.set(null);
     const sheet = this.session.sheetId();
@@ -198,6 +201,7 @@ export class Claims {
     const body = { amount, date: date || null, note: raw.note.trim() };
     const id = this.editingId();
     const base = `/api/sheets/${encodeURIComponent(sheet)}`;
+    this.saving = true;
     try {
       const claim = await firstValueFrom(
         id === null
@@ -209,6 +213,8 @@ export class Claims {
       this.reset();
     } catch {
       this.error.set(id === null ? 'Could not add that claim.' : 'Could not save that claim.');
+    } finally {
+      this.saving = false;
     }
   }
 }
