@@ -1,0 +1,146 @@
+diff --git a/src/main/java/net/officefloor/hq/app/claim/Claim.java b/src/main/java/net/officefloor/hq/app/claim/Claim.java
+index 817a1d4d7..8f7c749cb 100644
+--- a/src/main/java/net/officefloor/hq/app/claim/Claim.java
++++ b/src/main/java/net/officefloor/hq/app/claim/Claim.java
+@@ -438,7 +438,7 @@ public class Claim {
+         return splitFrom;
+     }
+ 
+-    /** Make the claim OPEN as one split off another: numbered, opened by this user and naming the claim it was
++    /** Make the claim OPEN as one split off another: with this number (none until settled), opened by this user and naming the claim it was
+      *  split from. */
+     public void openAsSplit(String number, String openedBy, String splitFrom) {
+         this.status = ClaimStatus.OPEN;
+diff --git a/src/main/java/net/officefloor/hq/app/claim/ClaimService.java b/src/main/java/net/officefloor/hq/app/claim/ClaimService.java
+index 2cce1892c..baabc40ce 100644
+--- a/src/main/java/net/officefloor/hq/app/claim/ClaimService.java
++++ b/src/main/java/net/officefloor/hq/app/claim/ClaimService.java
+@@ -232,8 +232,8 @@ public class ClaimService {
+ 
+     /**
+      * Move a claim to a new status; a move its current status does not allow is refused. Opening a
+-     * claim gives it its next number (the sheet's next, or the next in its period while the sheet numbers per
+-     * period) and records who opened it; voiding it keeps its number, which is
++     * claim records who opened it, giving it no number; settling it gives it its next number (the sheet's next, or
++     * the next in its period while the sheet numbers per period) unless it has one; voiding it keeps its number, which is
+      * never given again; settling it fixes its due: the figure a statement binds it to, else its amount
+      * at the rate in force on its date of its person's grade in force on that date, as rates are now, with the late charge it has gained
+      * added on top, so later rate changes leave it as it is. The user
+@@ -336,11 +336,10 @@ public class ClaimService {
+         if (next == ClaimStatus.REVIEW) {
+             claim.setOpenedBy(user);
+         } else if (next == ClaimStatus.OPEN) {
+-            number = nextNumber(sheet, claim.getDueBy());
+-            claim.setNumber(number);
+             claim.setOpenedBy(user);
+         } else if (next == ClaimStatus.SETTLED) {
+             claim.setSettledDue(due);
++            number = numberAtSettlement(sheet, claim);
+         } else if (next == ClaimStatus.VOID) {
+             claim.setVoidReason(voidReason);
+         }
+@@ -663,7 +662,7 @@ public class ClaimService {
+         return waived;
+     }
+ 
+-    /** A steward approves a PENDING claim: it becomes SETTLED, its due fixed as it is at this moment (its bound figure, else its live
++    /** A steward approves a PENDING claim: it becomes SETTLED, taking its next number as settling does, its due fixed as it is at this moment (its bound figure, else its live
+      *  one, with the late charge it has gained). Refused for a clerk, for the user who opened the claim or last edited it, for a
+      *  claim that is not PENDING and for one due by inside a closed period. */
+     @Transactional
+@@ -681,6 +680,7 @@ public class ClaimService {
+         Rollup.Figures before = rollup.of(sheetId);
+         claim.setStatus(ClaimStatus.SETTLED);
+         claim.setSettledDue(due);
++        numberAtSettlement(sheet, claim);
+         claim.logStatus(user, sheet.getToday(), shownDue(sheet, claim, person));
+         Claim changed = claims.saveAndFlush(claim);
+         audit.recordChangeOnCommit(sheetId, user, entry("CLAIM_APPROVED", user, person, changed, changed.getNumber())
+@@ -690,8 +690,8 @@ public class ClaimService {
+         return changed;
+     }
+ 
+-    /** A steward reviews a REVIEW claim: it becomes OPEN, taking its next number as opening it does, and keeps who
+-     *  opened it. CLAIM_REVIEWED is recorded, then CLAIM_OPENED with its number. Refused for anyone but a steward,
++    /** A steward reviews a REVIEW claim: it becomes OPEN, with no number yet as opening it gives none, and keeps who
++     *  opened it. CLAIM_REVIEWED is recorded, then CLAIM_OPENED. Refused for anyone but a steward,
+      *  for a claim that is not REVIEW, for one due by inside a closed period, and for one whose period's cap its
+      *  person already has that many open claims in. */
+     @Transactional
+@@ -712,7 +712,6 @@ public class ClaimService {
+         Person person = people.findByIdAndSheetId(claim.getPersonId(), sheetId).orElseThrow();
+         Rollup.Figures before = rollup.of(sheetId);
+         claim.setStatus(ClaimStatus.OPEN);
+-        claim.setNumber(nextNumber(sheet, claim.getDueBy()));
+         claim.logStatus(user, sheet.getToday(), shownDue(sheet, claim, person));
+         Claim changed = claims.saveAndFlush(claim);
+         audit.recordChangeOnCommit(sheetId, user, entry("CLAIM_REVIEWED", user, person, changed, null));
+@@ -829,7 +828,7 @@ public class ClaimService {
+ 
+     /** Split an amount (more than 0.00 and less than its amount) off an OPEN claim: it keeps the rest and loses any
+      *  figure a statement bound it to; a new OPEN claim of the same person with the amount split off, the same date
+-     *  and note, the next number, opened by this user, a due-by fixed now from the terms in force on the sheet's today and
++     *  and note, no number (it takes one when settled), opened by this user, a due-by fixed now from the terms in force on the sheet's today and
+      *  naming the original as the claim it was split from, is listed as the person's newest; it is a late entry when
+      *  the original is, and is numbered within the period of its own due-by. Refused for a claim
+      *  that is not OPEN or is deferred, one with lines, one due by inside a closed period, an amount out of range, and a role the
+@@ -868,7 +867,7 @@ public class ClaimService {
+         Claim added = new Claim(sheetId, person.getId(), part, date, dueBy, original.getNote(), null,
+                 claims.lastListed(sheetId) + 1);
+         added.setTerms(terms);
+-        added.openAsSplit(nextNumber(sheet, dueBy), user, original.getNumber());
++        added.openAsSplit(null, user, original.getNumber());
+         added.setTags(original.getTags());
+         if (original.isLateEntry()) {
+             added.markLateEntry();
+@@ -876,7 +875,7 @@ public class ClaimService {
+         added.logStatus(user, sheet.getToday(), shownDue(sheet, added, person));
+         added = claims.saveAndFlush(added);
+         audit.recordChangeOnCommit(sheetId, user, entry("CLAIM_SPLIT", user, person, original, original.getNumber())
+-                + " into=" + added.getNumber());
++                + " into=" + (added.getNumber() == null ? "" : added.getNumber()));
+         audit.recordChangeOnCommit(sheetId, user, entry("CLAIM_OPENED", user, person, added, added.getNumber()));
+         rollup.recordChanges(sheetId, user, before);
+         return new Split(original, added);
+@@ -992,6 +991,16 @@ public class ClaimService {
+         return claim.getSettledDue() == null ? "n/a" : claim.getSettledDue().toPlainString();
+     }
+ 
++    /** Give a claim being settled (or approved) its number, the next in its sequence by its due-by as the sheet
++     *  stands now, unless it already has one (a claim numbered before numbers were given at settlement keeps it).
++     *  The claim's number. */
++    private String numberAtSettlement(Sheet sheet, Claim claim) {
++        if (claim.getNumber() == null) {
++            claim.setNumber(nextNumber(sheet, claim.getDueBy()));
++        }
++        return claim.getNumber();
++    }
++
+     /** The next number on a sheet, locked by the caller, for a claim due by this day arriving there now, as
+      *  {@link #nextNumber(Sheet, LocalDate)} gives it. */
+     public String nextNumberOn(Sheet sheet, LocalDate dueBy) {
+diff --git a/src/main/java/net/officefloor/hq/app/period/PeriodService.java b/src/main/java/net/officefloor/hq/app/period/PeriodService.java
+index 3150c4164..db2d92fd0 100644
+--- a/src/main/java/net/officefloor/hq/app/period/PeriodService.java
++++ b/src/main/java/net/officefloor/hq/app/period/PeriodService.java
+@@ -124,8 +124,8 @@ public class PeriodService {
+ 
+     /** Roll the fiscal year starting in the given calendar year over; only a steward may, and it is refused when the
+      *  sheet has no period in that fiscal year. The next fiscal year's twelve periods are generated exactly as
+-     *  {@link #generateFiscalYear} does, and each person's open figure at the end of the old year's last period is
+-     *  added to their opening balance for the new year's first period. Returns the periods made, in month order. */
++     *  {@link #generateFiscalYear} does, and each person's open figure at the end of the old year's last period, when not
++     *  0.00, is added to their opening balance for the new year's first period. Returns the periods made, in month order. */
+     @Transactional
+     public List<Period> rollover(String sheetId, String user, int year) {
+         sheets.load(sheetId, user);
+@@ -147,6 +147,9 @@ public class PeriodService {
+                         "The next fiscal year has no period to carry into"));
+         for (Person person : people.findBySheetIdOrderByPositionAscIdAsc(sheetId)) {
+             BigDecimal amount = open.getOrDefault(person.getId(), BigDecimal.ZERO.setScale(2));
++            if (amount.signum() == 0) {
++                continue;
++            }
+             first.addOpening(person.getId(), amount);
+             audit.recordChangeOnCommit(sheetId, user, "OPENING_SET sheet=" + sheetId + " by=" + user + " name="
+                     + person.getName() + " period=" + first.getName() + " amount=" + amount.toPlainString());
