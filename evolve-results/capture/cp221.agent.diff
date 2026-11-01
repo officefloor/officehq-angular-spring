@@ -1,0 +1,55 @@
+diff --git a/src/main/frontend/src/app/features/header/header.ts b/src/main/frontend/src/app/features/header/header.ts
+index 56adf3e57..ff5d85e92 100644
+--- a/src/main/frontend/src/app/features/header/header.ts
++++ b/src/main/frontend/src/app/features/header/header.ts
+@@ -4,7 +4,7 @@ import { FigurePipe } from '../../core/figure';
+ 
+ // The sheet's counters, always on show: its people (retired included), its claims per status and
+ // its due-total and overdue-total,
+-// the signed-in user's own due-total and overdue-total, the due-totals of the crews they lead and how many REVIEW claims are assigned to them. Each repeats a figure shown elsewhere and is fed from the same source.
++// the signed-in user's own due-total and overdue-total, the due-totals of the crews they lead, how many REVIEW claims are assigned to them and the due-totals of the people they watch. Each repeats a figure shown elsewhere and is fed from the same source.
+ @Component({
+   selector: 'app-header',
+   imports: [FigurePipe],
+@@ -21,6 +21,7 @@ import { FigurePipe } from '../../core/figure';
+         <li>My overdue: <strong data-testid="my-overdue-total">{{ (myOverdueTotal()) | figure }}</strong></li>
+         <li>My reviews: <strong data-testid="my-reviews-count">{{ myReviewsCount() }}</strong></li>
+         <li>My crews' due: <strong data-testid="my-crew-due-total">{{ (myCrewDueTotal()) | figure }}</strong></li>
++        <li>Watched due: <strong data-testid="watched-due-total">{{ (watchedDueTotal()) | figure }}</strong></li>
+       </ul>
+     </header>
+   `,
+@@ -37,4 +38,6 @@ export class SheetHeader {
+   readonly myCrewDueTotal = input.required<string>();
+   /** How many REVIEW claims are assigned to the signed-in user to review. */
+   readonly myReviewsCount = input.required<number>();
++  /** The due-totals of the people the signed-in user watches, added up; 0.00 when they watch no one. */
++  readonly watchedDueTotal = input.required<string>();
+ }
+diff --git a/src/main/frontend/src/app/features/people/people.ts b/src/main/frontend/src/app/features/people/people.ts
+index b06febd81..2cfc2a813 100644
+--- a/src/main/frontend/src/app/features/people/people.ts
++++ b/src/main/frontend/src/app/features/people/people.ts
+@@ -108,7 +108,8 @@ function csvField(value: string): string {
+     <app-header [peopleCount]="people().length" [statuses]="summaryByStatus()" [dueTotal]="dueTotal()"
+                 [overdueTotal]="money(overdueTotals().cents)" [myDueTotal]="me() ? dueOf(me()!) : ''"
+                 [myOverdueTotal]="me() ? money(overdueOf(me()!.id).cents) : ''"
+-                [myCrewDueTotal]="myCrewDueTotal()" [myReviewsCount]="myReviewsCount()" />
++                [myCrewDueTotal]="myCrewDueTotal()" [myReviewsCount]="myReviewsCount()"
++                [watchedDueTotal]="watchedDueTotal()" />
+     <app-dashboard [pending]="statusCount('PENDING')" [review]="statusCount('REVIEW')"
+                    [overdue]="overdueTotals().count" />
+     <app-periods [dueTotals]="dueByPeriod()" />
+@@ -596,6 +597,12 @@ export class PeopleList {
+     return money(led.reduce((sum, crew) => sum + crewDueCents(crew, due), 0));
+   });
+ 
++  /** The due-totals of the people the signed-in user watches, added up; 0.00 when they watch no one. */
++  protected readonly watchedDueTotal = computed(() => {
++    const due = this.dueByPerson();
++    return money([...this.watched()].reduce((sum, id) => sum + (due.get(id) ?? 0), 0));
++  });
++
+   protected readonly grades = GRADES;
+   protected readonly money = money;
+   protected readonly people = signal<PersonView[]>([]);
