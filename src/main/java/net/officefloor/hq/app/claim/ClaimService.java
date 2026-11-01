@@ -31,7 +31,8 @@ import org.springframework.transaction.annotation.Transactional;
  * stays live. The user who opened a claim cannot settle it, and a clerk cannot settle one whose
  * due is above the sheet's clerk limit (a steward can). No claim dated inside a closed period can
  * be added, edited (to or from such a date), opened, settled or voided. No claim can be added
- * or edited to a date after its person's retirement date.
+ * or edited to a date after its person's retirement date. A claim with a negative amount is a
+ * correction: it must name, by number, a SETTLED claim of the same person; only a correction may name one.
  */
 @Service
 public class ClaimService {
@@ -63,21 +64,26 @@ public class ClaimService {
     }
 
     @Transactional
-    public Claim add(String sheetId, String user, Long personId, BigDecimal amount, LocalDate date, String note) {
+    public Claim add(String sheetId, String user, Long personId, BigDecimal amount, LocalDate date, String note,
+            Long corrects) {
         // The snapshot locks the sheet first, so the person is read as retired by any retirement before.
         RollupService.Snapshot before = rollup.snapshot(sheetId);
         Person person = people.findByIdAndSheetId(personId, sheetId).orElseThrow(PersonNotFoundException::new);
         LocalDate on = dateOrToday(sheetId, date);
         refuseIfClosed(sheetId, on);
         if (!person.mayClaimOn(on)) throw new PersonRetiredException();
-        Claim claim = claims.saveAndFlush(new Claim(sheetId, personId, amount, on, note));
+        refuseUnlessCorrects(sheetId, personId, amount, corrects);
+        Claim draft = new Claim(sheetId, personId, amount, on, note);
+        draft.setCorrects(corrects);
+        Claim claim = claims.saveAndFlush(draft);
         record("CLAIM_ADDED", sheetId, user, person, claim);
         rollup.recordChanges(sheetId, user, before);
         return claim;
     }
 
     @Transactional
-    public Claim edit(String sheetId, String user, Long id, BigDecimal amount, LocalDate date, String note) {
+    public Claim edit(String sheetId, String user, Long id, BigDecimal amount, LocalDate date, String note,
+            Long corrects) {
         Claim claim = claims.findByIdAndSheetId(id, sheetId).orElseThrow(ClaimNotFoundException::new);
         if (claim.getStatus() != ClaimStatus.DRAFT) {
             throw new ClaimStatusRefusedException();
@@ -88,7 +94,9 @@ public class ClaimService {
         refuseIfClosed(sheetId, on);
         Person person = people.findByIdAndSheetId(claim.getPersonId(), sheetId).orElseThrow(PersonNotFoundException::new);
         if (!person.mayClaimOn(on)) throw new PersonRetiredException();
+        refuseUnlessCorrects(sheetId, person.getId(), amount, corrects);
         claim.setAmount(amount);
+        claim.setCorrects(corrects);
         claim.setDate(on);
         claim.setNote(note);
         Claim saved = claims.saveAndFlush(claim);
@@ -164,14 +172,14 @@ public class ClaimService {
 
     /**
      * A claim's live due: its amount times the rate on its date of its person's grade in force on it, rounded half to even
-     * to cents, and at least the sheet's floor; null with no rate.
+     * to cents, and at least the sheet's floor unless a correction; null with no rate.
      */
     private BigDecimal dueOf(String sheetId, Person person, Claim claim) {
-        BigDecimal floor = settings.floor(sheetId);
+        BigDecimal floor = claim.isCorrection() ? null : settings.floor(sheetId);
         return rates.on(sheetId, person.gradeOn(claim.getDate()), claim.getDate())
                 .map(Rate::getPct)
                 .map(pct -> claim.getAmount().multiply(pct).movePointLeft(2).setScale(2, RoundingMode.HALF_EVEN))
-                .map(due -> due.max(floor))
+                .map(due -> floor == null ? due : due.max(floor))
                 .orElse(null);
     }
 
@@ -185,6 +193,20 @@ public class ClaimService {
         audit.recordOnCommit(event + " sheet=" + sheetId + " by=" + user.strip() + " person=" + person.getName()
                 + " amount=" + claim.getAmount().setScale(2).toPlainString() + " date=" + claim.getDate()
                 + (number != null ? " number=" + number : "") + extra);
+    }
+
+    /**
+     * Refuse a correction that names no SETTLED claim of its person by number, and a claim that names
+     * one but is not a correction.
+     */
+    private void refuseUnlessCorrects(String sheetId, Long personId, BigDecimal amount, Long corrects) {
+        if (amount.signum() >= 0) {
+            if (corrects != null) throw new CorrectionRefusedException();
+            return;
+        }
+        boolean settled = corrects != null && claims.findBySheetIdAndPersonIdOrderByIdDesc(sheetId, personId).stream()
+                .anyMatch(c -> corrects.equals(c.getNumber()) && c.getStatus() == ClaimStatus.SETTLED);
+        if (!settled) throw new CorrectionRefusedException();
     }
 
     /** Refuse a clerk's settling of a claim whose due is above the clerk limit; a due of n/a is within any. */

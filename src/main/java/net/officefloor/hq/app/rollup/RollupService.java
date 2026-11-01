@@ -124,15 +124,16 @@ public class RollupService {
     }
 
     /**
-     * A claim's figure: its settled due, else its stated due, else its live due, at least the floor;
-     * null when it has none.
+     * A claim's figure: its settled due, else its stated due, else its live due, at least the floor
+     * unless a correction; null when it has none.
      */
     private static BigDecimal figureOf(Claim claim, List<Rate> rates, BigDecimal floor) {
         if (claim.getSettledDue() != null) return claim.getSettledDue();
         if (claim.isStated()) return claim.getStatedDue();
         BigDecimal pct = pctOn(rates, claim.getDate());
-        return pct == null ? null
-                : claim.getAmount().multiply(pct).movePointLeft(2).setScale(2, RoundingMode.HALF_EVEN).max(floor);
+        if (pct == null) return null;
+        BigDecimal due = claim.getAmount().multiply(pct).movePointLeft(2).setScale(2, RoundingMode.HALF_EVEN);
+        return claim.isCorrection() ? due : due.max(floor);
     }
 
     /** Of one grade's rates, the percent in force on the date, or null. */

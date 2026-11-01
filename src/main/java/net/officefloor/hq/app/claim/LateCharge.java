@@ -8,7 +8,7 @@ import java.time.temporal.ChronoUnit;
 /**
  * The late charge on an overdue claim: the sheet's late percent of its figure (the due bound by a
  * statement, else its floored live due) for every full 30 days past its due-by, rounded half to even
- * to cents like a due. It is never bound by a statement; settling freezes it into the settled due.
+ * to cents like a due. A correction has none. It is never bound by a statement; settling freezes it into the settled due.
  */
 public final class LateCharge {
 
@@ -22,10 +22,10 @@ public final class LateCharge {
         return claim.getStatus() == ClaimStatus.OPEN && today != null && claim.getDate().plusDays(terms).isBefore(today);
     }
 
-    /** The charge on the claim with the given figure (null: none) as of today; zero when not overdue. */
+    /** The charge on the claim with the given figure (null: none) as of today; zero when not overdue or a correction. */
     public static BigDecimal of(Claim claim, BigDecimal figure, int terms, LocalDate today, BigDecimal latePct) {
         BigDecimal zero = BigDecimal.ZERO.setScale(2);
-        if (figure == null || !isOverdue(claim, terms, today)) return zero;
+        if (figure == null || claim.isCorrection() || !isOverdue(claim, terms, today)) return zero;
         long steps = ChronoUnit.DAYS.between(claim.getDate().plusDays(terms), today) / STEP_DAYS;
         return figure.multiply(latePct).multiply(BigDecimal.valueOf(steps)).movePointLeft(2)
                 .setScale(2, RoundingMode.HALF_EVEN);

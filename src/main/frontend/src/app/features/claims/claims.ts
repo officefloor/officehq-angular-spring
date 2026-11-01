@@ -30,6 +30,8 @@ export interface Claim {
   stated: boolean;
   /** The due bound by its person's last statement, two decimals; null while not stated, or stated with none. */
   statedDue: string | null;
+  /** A correction's (negative amount's) number of the SETTLED claim it corrects; null for any other claim. */
+  corrects: number | null;
 }
 
 /** A person's rate on a date: the rate then of the grade they had then, or null when it has none. */
@@ -45,16 +47,23 @@ export function countsFor(c: Claim, held: boolean): boolean {
   return held ? c.status === 'SETTLED' : counts(c);
 }
 
-/** A claim's amount as cents, so sums are exact. */
+/** A claim's amount as cents, so sums are exact; a correction's is negative. */
 export function cents(amount: string): number {
-  const [whole, frac = ''] = amount.split('.');
-  return Number(whole) * 100 + Number(frac.padEnd(2, '0'));
+  const negative = amount.startsWith('-');
+  const [whole, frac = ''] = (negative ? amount.slice(1) : amount).split('.');
+  const size = Number(whole) * 100 + Number(frac.padEnd(2, '0'));
+  return negative ? -size : size;
+}
+
+/** A correction: a claim with a negative amount. Its due has no floor and no late charge. */
+export function isCorrection(c: Claim): boolean {
+  return cents(c.amount) < 0;
 }
 
 /**
  * A claim's due in cents: the due fixed when it was settled (late charge frozen in), else its figure
  * — the due bound by its person's last statement, else its amount times its person's rate on its
- * date (as `pctOn` gives it), at least the floor (in cents) — with its late charge on top;
+ * date (as `pctOn` gives it), at least the floor (in cents) unless a correction — with its late charge on top;
  * null when it has none.
  */
 export function claimDueCents(c: Claim, pctOn: PctOn, floorCents: number, late: Late): number | null {
@@ -67,15 +76,18 @@ export function claimDueCents(c: Claim, pctOn: PctOn, floorCents: number, late: 
 function figureCents(c: Claim, pctOn: PctOn, floorCents: number): number | null {
   if (c.stated) return c.statedDue === null ? null : cents(c.statedDue);
   const pct = pctOn(c.date);
-  return pct === null ? null : Math.max(dueCents(cents(c.amount), pct), floorCents);
+  if (pct === null) return null;
+  const due = dueCents(cents(c.amount), pct);
+  return isCorrection(c) ? due : Math.max(due, floorCents);
 }
 
 /**
  * The late charge in cents on an overdue claim with the given figure: the late percent of it for
- * every full 30 days past its due-by, rounded like a due; 0 when not overdue. Never bound by a statement.
+ * every full 30 days past its due-by, rounded like a due; 0 when not overdue or a correction. Never bound
+ * by a statement.
  */
 export function lateChargeCents(c: Claim, figureCents: number, late: Late): number {
-  if (late.today === null || !isOverdue(c, late.terms, late.today)) return 0;
+  if (late.today === null || isCorrection(c) || !isOverdue(c, late.terms, late.today)) return 0;
   const days = Math.round((Date.parse(`${late.today}T00:00:00Z`) - Date.parse(`${dueBy(c, late.terms)}T00:00:00Z`)) / 86_400_000);
   return dueCents(figureCents * Math.floor(days / 30), late.pct);
 }
@@ -103,10 +115,14 @@ const CLOSED = 'No claim dated inside a closed period can be changed.';
 /** Why a claim dated after its person's retirement date is refused. */
 export const RETIRED = 'No claim can be dated after its person\'s retirement date.';
 
-/** Cents as an amount with two decimals. */
+/** Cents as an amount with two decimals; a minus sign when negative. */
 export function money(cents: number): string {
-  return `${Math.floor(cents / 100)}.${String(cents % 100).padStart(2, '0')}`;
+  const size = Math.abs(cents);
+  return `${cents < 0 ? '-' : ''}${Math.floor(size / 100)}.${String(size % 100).padStart(2, '0')}`;
 }
+
+/** Why a claim's correction is refused. */
+const CORRECTION = 'A negative amount is a correction: name the number of a SETTLED claim of this person that it corrects.';
 
 /** Why a claim cannot be edited: only a DRAFT can; an OPEN one is voided and added again. */
 function notEditable(status: ClaimStatus | undefined): string {
@@ -128,6 +144,8 @@ function notEditable(status: ClaimStatus | undefined): string {
       <input [id]="fieldId('date')" type="date" data-testid="claim-form-date" formControlName="date" />
       <label [for]="fieldId('note')">Note</label>
       <input [id]="fieldId('note')" data-testid="claim-form-note" formControlName="note" />
+      <label [for]="fieldId('corrects')">Corrects claim no.</label>
+      <input [id]="fieldId('corrects')" data-testid="claim-form-corrects" formControlName="corrects" inputmode="numeric" />
       <button type="submit" data-testid="claim-form-submit">{{ editingId() === null ? 'Add claim' : 'Save claim' }}</button>
       @if (error()) {
         <p role="alert" class="error" data-testid="claim-form-error">{{ error() }}</p>
@@ -147,6 +165,7 @@ function notEditable(status: ClaimStatus | undefined): string {
           <span>Stated <span data-testid="claim-stated">{{ c.stated ? 'yes' : 'no' }}</span></span>
           <span>Due by <span data-testid="claim-due-by">{{ dueByOf(c) }}</span></span>
           <span>Overdue <span data-testid="claim-overdue">{{ overdueOf(c) ? 'yes' : 'no' }}</span></span>
+          <span>Corrects <span data-testid="claim-corrects">{{ c.corrects ?? '' }}</span></span>
           <button type="button" data-testid="claim-open" (click)="act(c, 'open')"
                   [attr.aria-label]="'Open claim of ' + c.amount + ' on ' + c.date">Open</button>
           <button type="button" data-testid="claim-settle" (click)="act(c, 'settle')"
@@ -191,6 +210,7 @@ export class Claims {
     amount: new FormControl('', { nonNullable: true }),
     date: new FormControl('', { nonNullable: true }),
     note: new FormControl('', { nonNullable: true }),
+    corrects: new FormControl('', { nonNullable: true }),
   });
 
   constructor() {
@@ -226,7 +246,7 @@ export class Claims {
 
   private reset(): void {
     this.editingId.set(null);
-    this.form.reset({ amount: '', date: '', note: '' }, { emitEvent: false });
+    this.form.reset({ amount: '', date: '', note: '', corrects: '' }, { emitEvent: false });
     this.error.set('');
   }
 
@@ -241,7 +261,8 @@ export class Claims {
       return;
     }
     this.editingId.set(c.id);
-    this.form.setValue({ amount: c.amount, date: c.date, note: c.note }, { emitEvent: false });
+    this.form.setValue({ amount: c.amount, date: c.date, note: c.note, corrects: c.corrects === null ? '' : String(c.corrects) },
+      { emitEvent: false });
     this.error.set('');
   }
 
@@ -283,15 +304,21 @@ export class Claims {
     const raw = this.form.getRawValue();
     const amount = raw.amount.trim();
     const date = raw.date.trim();
-    if (!/^\d{1,12}(\.\d{1,2})?$/.test(amount)) {
-      this.error.set('Enter an amount of 0.00 or more, with at most two decimals.');
+    const corrects = raw.corrects.trim();
+    if (!/^-?\d{1,12}(\.\d{1,2})?$/.test(amount)) {
+      this.error.set('Enter an amount with at most two decimals, negative only for a correction.');
+      return;
+    }
+    const correction = amount.startsWith('-') && cents(amount) < 0;
+    if (correction ? !/^[1-9]\d{0,17}$/.test(corrects) : corrects !== '') {
+      this.error.set(correction ? CORRECTION : 'Only a correction (a negative amount) names a claim it corrects.');
       return;
     }
     if (date && !/^\d{4}-\d{2}-\d{2}$/.test(date)) {
       this.error.set('Enter a date, or leave it blank for today.');
       return;
     }
-    const body = { amount, date: date || null, note: raw.note.trim() };
+    const body = { amount, date: date || null, note: raw.note.trim(), corrects: corrects ? Number(corrects) : null };
     const id = this.editingId();
     const base = `/api/sheets/${encodeURIComponent(sheet)}`;
     this.saving = true;
@@ -316,6 +343,8 @@ export class Claims {
           ? CLOSED
           : e instanceof HttpErrorResponse && e.status === 422
           ? RETIRED
+          : e instanceof HttpErrorResponse && e.status === 400 && correction
+          ? CORRECTION
           : id === null ? 'Could not add that claim.' : 'Could not save that claim.',
       );
     } finally {
