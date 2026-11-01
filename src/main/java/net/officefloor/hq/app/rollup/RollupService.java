@@ -100,7 +100,8 @@ public class RollupService {
             boolean fixed = false;
             for (Claim claim : claimsByPerson.getOrDefault(person.getId(), List.of())) {
                 if (!person.counts(claim, today)) continue;
-                claimed = claimed.add(claim.getAmount());
+                // a correction counts toward due but not toward what is claimed
+                if (!claim.isCorrection()) claimed = claimed.add(claim.getAmount());
                 if (claim.getSettledDue() != null || (claim.isBound() && claim.getStatedDue() != null)) fixed = true;
                 String grade = person.gradeOn(claim.getDate());
                 RoundingMode rounding = Rounding.of(Rounding.basisOf(claim, datesByNumber), policyDate, today);

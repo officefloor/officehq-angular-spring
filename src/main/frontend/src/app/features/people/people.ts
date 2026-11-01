@@ -5,7 +5,7 @@ import { firstValueFrom } from 'rxjs';
 import { LIVE } from '../../core/as-of';
 import { Session } from '../../core/session';
 import { downloadCsv } from '../../core/csv';
-import { Claim, Claims, DUPLICATE_REF, GraceOn, PctOn, RETIRED, cents, claimDueCents, countsAt, countsFor, isBound, isDuplicateRef, isOpen, isOverdue, money, roundsOn } from '../claims/claims';
+import { Claim, Claims, DUPLICATE_REF, GraceOn, PctOn, RETIRED, cents, claimDueCents, countsAt, countsFor, isBound, isCorrection, isDuplicateRef, isOpen, isOverdue, money, roundsOn } from '../claims/claims';
 import { Period, Periods, periodOn } from '../periods/periods';
 import { Plan, Plans } from '../plans/plans';
 import { GRADES, NA, Rate, Rates, dueCents, rateInLevels } from '../rates/rates';
@@ -151,7 +151,7 @@ interface StatementTaken {
 }
 
 // The people on the active sheet, in their list positions (moved up or down a place at a time), with one form to add or edit,
-// each with their claims, what they have claimed and their due-total (OPEN, PENDING and SETTLED claims only); the sheet's claimed-total and
+// each with their claims, what they have claimed (corrections left out) and their due-total (OPEN, PENDING and SETTLED claims only); the sheet's claimed-total and
 // due-total under the table. Above it, the sheet's rate for each grade. Each person can be given a
 // statement, which binds their counting claims' dues; the row shows how many statements they have
 // had and the last one's due-total and date. Each person can be unretired, their retirement kept on the row
@@ -746,7 +746,9 @@ export class People {
   }
   /** Whether the claim counts in the live totals: OPEN, PENDING or SETTLED, less open ones kept out by a hold or retirement and not bound, and deferred ones. */
   private readonly counts = (c: Claim): boolean => countsFor(c, this.keptOut(c), this.session.today());
-  protected readonly claimedTotal = computed(() => money(this.claims().filter(this.counts).reduce((sum, c) => sum + cents(c.amount), 0)));
+  /** Whether the claim counts toward what is claimed: one that counts and does not correct another. */
+  private readonly countsClaimed = (c: Claim): boolean => this.counts(c) && !isCorrection(c);
+  protected readonly claimedTotal = computed(() => money(this.claims().filter(this.countsClaimed).reduce((sum, c) => sum + cents(c.amount), 0)));
   /** The sheet's rates, each for a grade from its from-date. */
   protected readonly rates = signal<Rate[]>([]);
   /** The rates of the sheet's ancestors, nearest first: a grade with none of its own in force on a date takes theirs. */
@@ -1153,7 +1155,7 @@ export class People {
   }
 
   private claimedCents(personId: number): number {
-    return this.claimsOf(personId).filter(this.counts).reduce((sum, c) => sum + cents(c.amount), 0);
+    return this.claimsOf(personId).filter(this.countsClaimed).reduce((sum, c) => sum + cents(c.amount), 0);
   }
 
   protected claimedOf(personId: number): string {
