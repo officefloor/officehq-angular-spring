@@ -89,6 +89,12 @@ interface Aged {
   over60: number;
 }
 
+/** The dues in cents of claims that count, split into SETTLED ones and open (OPEN or PENDING) ones. */
+interface Split {
+  settled: number;
+  open: number;
+}
+
 /** The days from one date to a later one; negative when it is earlier. */
 function daysFrom(from: string, to: string): number {
   return Math.round((Date.parse(to) - Date.parse(from)) / 86_400_000);
@@ -240,7 +246,7 @@ function trimmedSum(figures: number[]): number {
       </form>
       <table>
         <thead>
-          <tr><th scope="col"><span class="visually-hidden">Select</span></th><th scope="col">Name</th><th scope="col">Grade</th><th scope="col">Terms</th><th scope="col">Claimed</th><th scope="col">Due total</th><th scope="col">Excess</th><th scope="col">Periods</th><th scope="col">Statements</th><th scope="col">Retired</th><th scope="col">Hold</th><th scope="col">Watched</th><th scope="col">Active</th><th scope="col">Overdue</th><th scope="col">Aged</th><th scope="col">Patrons</th><th scope="col">Claims</th><th scope="col"><span class="visually-hidden">Actions</span></th></tr>
+          <tr><th scope="col"><span class="visually-hidden">Select</span></th><th scope="col">Name</th><th scope="col">Grade</th><th scope="col">Terms</th><th scope="col">Claimed</th><th scope="col">Due total</th><th scope="col">Excess</th><th scope="col">Settled total</th><th scope="col">Open total</th><th scope="col">Periods</th><th scope="col">Statements</th><th scope="col">Retired</th><th scope="col">Hold</th><th scope="col">Watched</th><th scope="col">Active</th><th scope="col">Overdue</th><th scope="col">Aged</th><th scope="col">Patrons</th><th scope="col">Claims</th><th scope="col"><span class="visually-hidden">Actions</span></th></tr>
         </thead>
         <tbody>
           @for (p of listed(); track p.id) {
@@ -256,6 +262,8 @@ function trimmedSum(figures: number[]): number {
               <td data-testid="person-claimed">{{ claimedOf(p.id) }}</td>
               <td data-testid="person-due-total">{{ dueTotalOf(p) }}</td>
               <td data-testid="person-excess">{{ excessOf(p) }}</td>
+              <td data-testid="person-settled-total">{{ money(splitOf(p).settled) }}</td>
+              <td data-testid="person-open-total">{{ money(splitOf(p).open) }}</td>
               <td>
                 @for (period of periods(); track period.id) {
                   <span>{{ period.name }} <span [attr.data-testid]="'person-period-' + period.name + '-due-total'">{{ personPeriodDueOf(p, period) }}</span></span>
@@ -350,6 +358,8 @@ function trimmedSum(figures: number[]): number {
       <p>Due total: <strong data-testid="rollup-due-total">{{ dueTotal() }}</strong></p>
       <p>Overdue: <strong data-testid="rollup-overdue-count">{{ overdueTotal().count }}</strong>
         totalling <strong data-testid="rollup-overdue-total">{{ money(overdueTotal().cents) }}</strong></p>
+      <p>Settled total: <strong data-testid="rollup-settled-total">{{ money(splitTotal().settled) }}</strong></p>
+      <p>Open total: <strong data-testid="rollup-open-total">{{ money(splitTotal().open) }}</strong></p>
     </section>
     <section aria-labelledby="summary-heading">
       <h2 id="summary-heading">Summary</h2>
@@ -551,6 +561,37 @@ export class People {
     }
     return by;
   });
+  /**
+   * Each person's dues of the claims that count, by id, split in cents: SETTLED ones (at their frozen
+   * figures, corrections included) and open ones (OPEN or PENDING). The two add up to the uncapped due-total.
+   */
+  private readonly splitByPerson = computed(() => {
+    const floor = this.session.floorCentsOn;
+    const late = this.session.late();
+    const by = new Map<number, Split>();
+    for (const p of this.people()) {
+      const pctOn = this.pctOnOf(p.id);
+      const theirs = this.claimsOf(p.id);
+      const split: Split = { settled: 0, open: 0 };
+      for (const c of theirs) {
+        if (!this.counts(c)) continue;
+        const due = claimDueCents(c, pctOn, floor, late, roundsOn(c, theirs)) ?? 0;
+        if (c.status === 'SETTLED') split.settled += due;
+        else split.open += due;
+      }
+      by.set(p.id, split);
+    }
+    return by;
+  });
+  /** The sheet's settled-total and open-total: everyone's added up, not trimmed. */
+  protected readonly splitTotal = computed(() => {
+    const total: Split = { settled: 0, open: 0 };
+    for (const s of this.splitByPerson().values()) {
+      total.settled += s.settled;
+      total.open += s.open;
+    }
+    return total;
+  });
   /** The sheet's overdue claims that count: everyone's added up. */
   protected readonly overdueTotal = computed(() => {
     let count = 0;
@@ -743,6 +784,10 @@ export class People {
 
   protected overdueOf(p: Person): Overdue {
     return this.overdueByPerson().get(p.id) ?? { count: 0, cents: 0 };
+  }
+
+  protected splitOf(p: Person): Split {
+    return this.splitByPerson().get(p.id) ?? { settled: 0, open: 0 };
   }
 
   protected agedOf(p: Person): Aged {
