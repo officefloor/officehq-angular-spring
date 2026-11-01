@@ -1,0 +1,174 @@
+diff --git a/src/main/frontend/src/app/core/people.ts b/src/main/frontend/src/app/core/people.ts
+index 4a1b77e72..39fb6bf83 100644
+--- a/src/main/frontend/src/app/core/people.ts
++++ b/src/main/frontend/src/app/core/people.ts
+@@ -121,6 +121,11 @@ export function gradeOn(p: Pick<PersonView, 'grade' | 'grades'>, date: string):
+   return inForce?.grade ?? p.grade;
+ }
+ 
++/** How the screen shows a person's name: the name, then their grade in force on `date` (yyyy-mm-dd). */
++export function nameWithGrade(p: Pick<PersonView, 'name' | 'grade' | 'grades'>, date: string): string {
++  return `${p.name} (${gradeOn(p, date)})`;
++}
++
+ // The people kept on a sheet, listed in their positions; new people go to the end.
+ @Injectable({ providedIn: 'root' })
+ export class People {
+diff --git a/src/main/frontend/src/app/core/tree-search.ts b/src/main/frontend/src/app/core/tree-search.ts
+index 88b56ff6d..30c8101a9 100644
+--- a/src/main/frontend/src/app/core/tree-search.ts
++++ b/src/main/frontend/src/app/core/tree-search.ts
+@@ -2,11 +2,13 @@ import { HttpClient } from '@angular/common/http';
+ import { Injectable, inject } from '@angular/core';
+ import { Observable } from 'rxjs';
+ 
+-/** A person found on a sheet's tree: the sheet they are on, their name, and their due-total as that sheet shows it. */
++/** A person found on a sheet's tree: the sheet they are on, their name, their due-total as that sheet shows it, and
++ *  their grade in force on that sheet's today. */
+ export interface TreeFound {
+   sheet: string;
+   name: string;
+   dueTotal: string;
++  grade: string;
+ }
+ 
+ // A search over a sheet's tree: the sheet at the top of its line of parents and all of that sheet's descendants.
+diff --git a/src/main/frontend/src/app/features/crews/crews.ts b/src/main/frontend/src/app/features/crews/crews.ts
+index f6c2a3f83..aac7cab23 100644
+--- a/src/main/frontend/src/app/features/crews/crews.ts
++++ b/src/main/frontend/src/app/features/crews/crews.ts
+@@ -4,7 +4,7 @@ import { FormControl, FormGroup, ReactiveFormsModule } from '@angular/forms';
+ import { EMPTY, switchMap } from 'rxjs';
+ import { money } from '../../core/claims';
+ import { CrewView, Crews, crewDueCents } from '../../core/crews';
+-import { PersonView } from '../../core/people';
++import { PersonView, nameWithGrade } from '../../core/people';
+ import { Pools } from '../../core/pools';
+ import { Sheets } from '../../core/sheet';
+ import { FigurePipe } from '../../core/figure';
+@@ -22,7 +22,7 @@ type MemberForm = FormGroup<{ personId: FormControl<string> }>;
+         @for (crew of crews.all(); track crew.id) {
+           <li [attr.data-testid]="'crew-row-' + crew.name">
+             <span data-testid="crew-name">{{ crew.name }}</span>:
+-            lead <span data-testid="crew-lead">{{ crew.lead?.name ?? '' }}</span>,
++            lead <span data-testid="crew-lead">{{ leadShown(crew) }}</span>,
+             due <span data-testid="crew-due-total">{{ (dueOf(crew)) | figure }}</span>
+             <ul [attr.aria-label]="'Members of ' + crew.name">
+               @for (m of crew.members; track m.id) {
+@@ -105,6 +105,13 @@ export class CrewsPanel {
+   }
+ 
+   /** The crew's due-total: its lead's and members' due-totals added up, skipping those with none. */
++  /** The crew's lead as the screen shows them: with their grade in force on the sheet's today; blank with none. */
++  protected leadShown(crew: CrewView): string {
++    if (!crew.lead) return '';
++    const lead = this.people().find((p) => p.id === crew.lead?.id);
++    return lead ? nameWithGrade(lead, this.sheets.current()?.today ?? '') : crew.lead.name;
++  }
++
+   protected dueOf(crew: CrewView): string {
+     return money(crewDueCents(crew, this.dueByPerson()));
+   }
+diff --git a/src/main/frontend/src/app/features/people/people.ts b/src/main/frontend/src/app/features/people/people.ts
+index 12e39740d..8cdca5fd3 100644
+--- a/src/main/frontend/src/app/features/people/people.ts
++++ b/src/main/frontend/src/app/features/people/people.ts
+@@ -4,7 +4,7 @@ import { takeUntilDestroyed, toObservable } from '@angular/core/rxjs-interop';
+ import { FormControl, FormGroup, ReactiveFormsModule, Validators } from '@angular/forms';
+ import { forkJoin, of, switchMap } from 'rxjs';
+ import { AMOUNT_PATTERN, ClaimView, Claims, cents, countsAtEndWithHolds, countsClaimed, countsWithHolds, isOverdue, isReviewLate, money, roundingDate, statusAt } from '../../core/claims';
+-import { GRADES, Grade, People, PersonView, gradeOn } from '../../core/people';
++import { GRADES, Grade, People, PersonView, gradeOn, nameWithGrade } from '../../core/people';
+ import { PatronView, Patrons } from '../../core/patrons';
+ import { Periods, periodOn } from '../../core/periods';
+ import { DEFAULT_DUE_TERMS, DueTerms, NOT_AVAILABLE, RateLine, Rates, claimDueCents } from '../../core/rates';
+@@ -345,7 +345,7 @@ function csvField(value: string): string {
+           <li [attr.data-testid]="'person-row-' + p.id">
+             <input type="checkbox" data-testid="person-select" [checked]="selectedPeople().has(p.id)"
+                    (change)="togglePerson(p.id, $any($event.target).checked)" [attr.aria-label]="'Select ' + p.name" />
+-            <span data-testid="person-name">{{ p.name }}</span>
++            <span data-testid="person-name">{{ nameShown(p) }}</span>
+             <button type="button" data-testid="person-move-up" (click)="move(p, 'up')" [disabled]="moving() === p.id"
+                     [attr.aria-label]="'Move ' + p.name + ' up'">Up</button>
+             <button type="button" data-testid="person-move-down" (click)="move(p, 'down')" [disabled]="moving() === p.id"
+@@ -1168,6 +1168,11 @@ export class PeopleList {
+     return this.claimsByPerson().get(personId) ?? NO_CLAIMS;
+   }
+ 
++  /** The person's name as the screen shows it: with their grade in force on the sheet's today. */
++  protected nameShown(p: PersonView): string {
++    return nameWithGrade(p, this.todayNow());
++  }
++
+   /** The person's grade in force on the sheet's today. */
+   protected gradeToday(p: PersonView): Grade {
+     return gradeOn(p, this.sheets.current()?.today ?? '');
+@@ -1237,7 +1242,8 @@ export class PeopleList {
+ 
+   /** The person's patrons, each as <name> <share>, sorted by name, comma and space separated. */
+   protected patronsOf(personId: number): string {
+-    const nameOf = new Map(this.people().map((q) => [q.id, q.name]));
++    const today = this.todayNow();
++    const nameOf = new Map(this.people().map((q) => [q.id, nameWithGrade(q, today)]));
+     return patronShares(this.patronIdsByPerson().get(personId) ?? [])
+       .map(({ id, share }) => ({ name: nameOf.get(id) ?? '', share }))
+       .sort((a, b) => a.name.localeCompare(b.name))
+diff --git a/src/main/frontend/src/app/features/search/search.ts b/src/main/frontend/src/app/features/search/search.ts
+index 5d807be02..1e364791a 100644
+--- a/src/main/frontend/src/app/features/search/search.ts
++++ b/src/main/frontend/src/app/features/search/search.ts
+@@ -21,7 +21,7 @@ import { TreeFound, TreeSearch } from '../../core/tree-search';
+       </form>
+       <ul aria-label="People found">
+         @for (f of found(); track $index) {
+-          <li data-testid="search-line">{{ f.sheet }} {{ f.name }} {{ f.dueTotal }}</li>
++          <li data-testid="search-line">{{ f.sheet }} {{ f.name }} ({{ f.grade }}) {{ f.dueTotal }}</li>
+         }
+       </ul>
+     </section>
+diff --git a/src/main/java/net/officefloor/hq/app/search/TreeSearchController.java b/src/main/java/net/officefloor/hq/app/search/TreeSearchController.java
+index 9afc1e579..1dc08704c 100644
+--- a/src/main/java/net/officefloor/hq/app/search/TreeSearchController.java
++++ b/src/main/java/net/officefloor/hq/app/search/TreeSearchController.java
+@@ -3,6 +3,7 @@ package net.officefloor.hq.app.search;
+ import jakarta.validation.constraints.NotBlank;
+ import jakarta.validation.constraints.Pattern;
+ import jakarta.validation.constraints.Size;
++import java.time.LocalDate;
+ import java.util.ArrayList;
+ import java.util.HashSet;
+ import java.util.List;
+@@ -11,6 +12,7 @@ import java.util.Set;
+ import net.officefloor.hq.app.person.Person;
+ import net.officefloor.hq.app.person.PersonRepository;
+ import net.officefloor.hq.app.rollup.Rollup;
++import net.officefloor.hq.app.sheet.Sheet;
+ import net.officefloor.hq.app.sheet.SheetRepository;
+ import org.springframework.transaction.annotation.Transactional;
+ import org.springframework.validation.annotation.Validated;
+@@ -26,8 +28,9 @@ import org.springframework.web.bind.annotation.RestController;
+ @RequestMapping("/api/sheets/{sheetId}/tree")
+ public class TreeSearchController {
+ 
+-    /** A person found: the sheet they are on, their name, and their due-total as that sheet shows it. */
+-    public record Found(String sheet, String name, String dueTotal) {
++    /** A person found: the sheet they are on, their name, their due-total as that sheet shows it, and their grade in
++     *  force on that sheet's today. */
++    public record Found(String sheet, String name, String dueTotal, String grade) {
+     }
+ 
+     private final SheetRepository sheets;
+@@ -60,10 +63,12 @@ public class TreeSearchController {
+         List<Found> found = new ArrayList<>();
+         for (String id : order) {
+             Rollup.Figures figures = rollup.of(id);
++            LocalDate today = sheets.findById(id).map(Sheet::getToday).orElse(null);
+             for (Person person : people.findBySheetIdOrderByPositionAscIdAsc(id)) {
+                 if (matches(person, wanted)) {
+                     Rollup.PersonFigures f = figures.people().get(person.getId());
+-                    found.add(new Found(id, person.getName(), f == null ? "n/a" : f.dueTotal()));
++                    found.add(new Found(id, person.getName(), f == null ? "n/a" : f.dueTotal(),
++                            person.gradeOn(today)));
+                 }
+             }
+         }
