@@ -11,7 +11,7 @@ import org.springframework.transaction.annotation.Transactional;
 
 /**
  * Quick-add: a DRAFT claim of an amount, dated the entry date while set (else the sheet's today) with an empty note, for the person
- * of a name (ignoring case and surrounding spaces); with no such person on the sheet, they are added
+ * of a name or alias (ignoring case and surrounding spaces); with no such person on the sheet, they are added
  * first with grade A. It is one change: a refused claim rolls back the person added for it too.
  */
 @Service
@@ -34,7 +34,7 @@ public class QuickAddService {
 
     @Transactional
     public QuickAdded add(String sheetId, String user, String name, BigDecimal amount) {
-        Person existing = people.findBySheetIdAndNameKey(sheetId, Person.keyOf(name)).orElse(null);
+        Person existing = people.findByNameOrAlias(sheetId, name).orElse(null);
         Person person = existing != null ? existing : personService.add(sheetId, user, name, GRADE);
         Claim claim = claimService.add(sheetId, user, person.getId(), amount, null, "", null);
         return new QuickAdded(person, existing == null, claim);

@@ -476,8 +476,13 @@ export class Claims {
     return isOverdue(c, this.session.today(), this.graceOn());
   }
 
+  /**
+   * Shown as deferred while its deferred-until date is after the sheet's today, whatever its status since
+   * (a deferred claim voided stays marked); only an OPEN one is kept out of the totals ({@link isDeferred}).
+   */
   protected deferredOf(c: Claim): boolean {
-    return isDeferred(c, this.session.today());
+    const today = this.session.today();
+    return c.deferredUntil !== null && today !== null && today < c.deferredUntil;
   }
 
   /** The name of the period its due-by falls in, or blank when none. */

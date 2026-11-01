@@ -55,6 +55,8 @@ interface Person {
   terms: number | null;
   /** Their contact, without surrounding spaces and lower-cased; null: none. */
   contact: string | null;
+  /** Their aliases, sorted as names are compared. */
+  aliases: string[];
   /** Whether they have an open claim (OPEN or PENDING) that counts, dated within the 30 days up to and including the sheet's today. */
   active: boolean;
 }
@@ -134,6 +136,8 @@ interface StatementTaken {
 // row shows the grade in force on the sheet's today. A person may have their own terms in days (blank:
 // none), and a contact (blank: none), kept trimmed and lower-cased and refused when another person on
 // the sheet has it; a claim's due-by is fixed when it is added from them, else their grade's, else the sheet's.
+// A person may have aliases, added one at a time and shown sorted as names are compared; an alias may not
+// be any name or alias on the sheet, and the quick-add bar and the paste box find a person by one too.
 // Each person can name other people on the sheet as their patrons, one at a time (not themselves, nor
 // the same person twice); the row shows their patrons' names, sorted, and their backing: their
 // patrons' settled figures added up over their SETTLED claims dated within the 90 days up to and
@@ -268,7 +272,7 @@ function trimmedSum(figures: number[]): number {
       </form>
       <table>
         <thead>
-          <tr><th scope="col"><span class="visually-hidden">Select</span></th><th scope="col">Name</th><th scope="col">Grade</th><th scope="col">Terms</th><th scope="col">Contact</th><th scope="col">Claimed</th><th scope="col">Due total</th><th scope="col">Excess</th><th scope="col">Settled total</th><th scope="col">Open total</th><th scope="col">Periods</th><th scope="col">Statements</th><th scope="col">Retired</th><th scope="col">Hold</th><th scope="col">Watched</th><th scope="col">Active</th><th scope="col">Overdue</th><th scope="col">Aged</th><th scope="col">Patrons</th><th scope="col">Claims</th><th scope="col"><span class="visually-hidden">Actions</span></th></tr>
+          <tr><th scope="col"><span class="visually-hidden">Select</span></th><th scope="col">Name</th><th scope="col">Grade</th><th scope="col">Terms</th><th scope="col">Contact</th><th scope="col">Aliases</th><th scope="col">Claimed</th><th scope="col">Due total</th><th scope="col">Excess</th><th scope="col">Settled total</th><th scope="col">Open total</th><th scope="col">Periods</th><th scope="col">Statements</th><th scope="col">Retired</th><th scope="col">Hold</th><th scope="col">Watched</th><th scope="col">Active</th><th scope="col">Overdue</th><th scope="col">Aged</th><th scope="col">Patrons</th><th scope="col">Claims</th><th scope="col"><span class="visually-hidden">Actions</span></th></tr>
         </thead>
         <tbody>
           @for (p of listed(); track p.id) {
@@ -282,6 +286,14 @@ function trimmedSum(figures: number[]): number {
               <td data-testid="person-grade">{{ gradeOf(p) }}</td>
               <td data-testid="person-terms">{{ p.terms ?? '' }}</td>
               <td data-testid="person-contact">{{ p.contact ?? '' }}</td>
+              <td>
+                <span data-testid="person-aliases">{{ p.aliases.join(', ') }}</span>
+                <label [for]="'person-alias-input-' + p.id" class="visually-hidden">Alias for {{ p.name }}</label>
+                <input [id]="'person-alias-input-' + p.id" data-testid="person-alias-input"
+                       #aliasInput (input)="clearPersonError(p.id)" />
+                <button type="button" data-testid="person-alias-add" (click)="addAlias(p, aliasInput)"
+                        [attr.aria-label]="'Add alias for ' + p.name">Add alias</button>
+              </td>
               <td data-testid="person-claimed">{{ claimedOf(p.id) }}</td>
               <td data-testid="person-due-total">{{ dueTotalOf(p) }}</td>
               <td data-testid="person-excess">{{ excessOf(p) }}</td>
@@ -1090,6 +1102,38 @@ export class People {
 
   protected clearPersonError(id: number): void {
     if (this.personError()?.id === id) this.personError.set(null);
+  }
+
+  /**
+   * Give the person an alias; one blank, or already a name or an alias on the sheet as names are
+   * compared, is refused. The entry is cleared once the alias is added.
+   */
+  protected async addAlias(p: Person, input: HTMLInputElement): Promise<void> {
+    this.personError.set(null);
+    this.clearPatronError(p.id);
+    const sheet = this.session.sheetId();
+    if (!sheet) return;
+    const alias = input.value.trim();
+    if (!alias) {
+      this.personError.set({ id: p.id, message: 'Enter an alias.' });
+      return;
+    }
+    try {
+      const saved = await firstValueFrom(
+        this.http.post<Person>(`${this.url(sheet)}/${p.id}/aliases`, { alias }, { headers: this.headers() }),
+      );
+      if (this.session.sheetId() !== sheet) return;
+      input.value = '';
+      this.people.update((list) => list.map((x) => (x.id === saved.id ? saved : x)));
+    } catch (e) {
+      if (this.session.sheetId() !== sheet) return;
+      this.personError.set({
+        id: p.id,
+        message: e instanceof HttpErrorResponse && e.status === 409
+          ? 'That alias is already a name or an alias on this sheet.'
+          : 'Could not add that alias for ' + p.name + '.',
+      });
+    }
   }
 
   /** Retire the person from the date (blank: the sheet's today). */

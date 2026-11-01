@@ -32,11 +32,11 @@ public class PersonController {
      * grade recorded, earliest first (the first from null, the beginning of time); retiredFrom is null
      * while not retired; held whether they have any hold, holds every hold, earliest first; patronIds
      * in the order named; watched whether the signed-in user watches them; terms their own, null for none;
-     * contact theirs, null for none; active whether they are active on the sheet's today ({@link Person#activeOn}).
+     * contact theirs, null for none; aliases theirs, sorted as names are compared; active whether they are active on the sheet's today ({@link Person#activeOn}).
      */
     public record PersonView(Long id, String name, String grade, List<GradeView> grades, long version,
             boolean retired, LocalDate retiredFrom, boolean held, List<HoldView> holds, List<Long> patronIds,
-            boolean watched, Integer terms, boolean active, String contact) {
+            boolean watched, Integer terms, boolean active, String contact, List<String> aliases) {
         public static PersonView of(Person person, LocalDate today, List<Long> patronIds, boolean watched,
                 boolean active) {
             List<GradeView> grades = new ArrayList<>();
@@ -46,7 +46,8 @@ public class PersonController {
                     today == null ? person.getGrade() : person.gradeOn(today), grades, person.getVersion(),
                     person.isRetired(), person.getRetiredFrom(), person.isHeld(),
                     person.getHolds().stream().map(h -> new HoldView(h.getFromDate(), h.getToDate())).toList(),
-                    patronIds, watched, person.getTerms(), active, person.getContact());
+                    patronIds, watched, person.getTerms(), active, person.getContact(),
+                    person.getAliases());
         }
     }
 
@@ -61,6 +62,9 @@ public class PersonController {
 
     /** Whether the signed-in user is to watch the person. */
     public record WatchRequest(@NotNull Boolean watched) {}
+
+    /** An alias to give a person. */
+    public record AliasRequest(@NotBlank @Size(max = 200) String alias) {}
 
     /** The person to name as a patron. */
     public record PatronRequest(@NotNull Long patronId) {}
@@ -164,6 +168,16 @@ public class PersonController {
             @RequestHeader("X-User") @NotBlank @Size(max = 100) String user,
             @RequestBody HoldRequest request) {
         return view(service.hold(sheetId, user, id, request.from(), request.to()), user);
+    }
+
+    /** Give the person an alias. */
+    @PostMapping("/{id}/aliases")
+    public PersonView addAlias(
+            @PathVariable @Size(max = 100) @Pattern(regexp = "[A-Za-z0-9._-]+") String sheetId,
+            @PathVariable Long id,
+            @RequestHeader("X-User") @NotBlank @Size(max = 100) String user,
+            @RequestBody @Valid AliasRequest request) {
+        return view(service.addAlias(sheetId, user, id, request.alias()), user);
     }
 
     /** Name another person on the sheet as the person's patron. */

@@ -35,6 +35,9 @@ import org.springframework.transaction.annotation.Transactional;
  * unless it leaves the grade as in force on the sheet's today with the from-date blank. A person may
  * have their own terms in days (null: none), given on the add and on each edit, and a contact (blank:
  * none), kept without surrounding spaces and lower-cased; one another person on the sheet has is refused.
+ * A person may have aliases, added one at a time; an alias shares the names' uniqueness: it may not be,
+ * as names are compared, any name or alias on the sheet, and no name may be an alias on the sheet. The
+ * sheet is locked while a name or alias is checked and written, so two users cannot take one at once.
  */
 @Service
 public class PersonService {
@@ -99,7 +102,7 @@ public class PersonService {
     /** Add a person with their own terms in days (null: none) and contact (blank: none). */
     @Transactional
     public Person add(String sheetId, String user, String name, String grade, Integer terms, String contact) {
-        if (!sheets.existsById(sheetId)) throw new SheetNotFoundException();
+        if (sheets.findForUpdate(sheetId).isEmpty()) throw new SheetNotFoundException();
         requireUnused(sheetId, name, null);
         String key = Person.contactOf(contact);
         requireContactUnused(sheetId, key, null);
@@ -119,6 +122,7 @@ public class PersonService {
             LocalDate gradeFrom, Integer terms, String contact) {
         Person person = people.findByIdAndSheetId(id, sheetId).orElseThrow(PersonNotFoundException::new);
         if (person.getVersion() != version) throw new PersonVersionConflictException();
+        sheets.findForUpdate(sheetId).orElseThrow(SheetNotFoundException::new);
         requireUnused(sheetId, name, id);
         String key = Person.contactOf(contact);
         requireContactUnused(sheetId, key, id);
@@ -198,6 +202,21 @@ public class PersonService {
         audit.recordOnCommit("PERSON_HELD sheet=" + sheetId + " by=" + user.strip()
                 + " name=" + saved.getName() + " from=" + on);
         rollup.recordChanges(sheetId, user, before);
+        return saved;
+    }
+
+    /** Give the person an alias, unless it is, as names are compared, a name or an alias on the sheet. */
+    @Transactional
+    public Person addAlias(String sheetId, String user, Long id, String alias) {
+        sheets.findForUpdate(sheetId).orElseThrow(SheetNotFoundException::new);
+        Person person = people.findByIdAndSheetId(id, sheetId).orElseThrow(PersonNotFoundException::new);
+        if (alias.isBlank() || people.findByNameOrAlias(sheetId, alias).isPresent()) {
+            throw new DuplicatePersonNameException();
+        }
+        person.addAlias(alias);
+        Person saved = saveUnique(person);
+        audit.recordOnCommit("PERSON_ALIAS_ADDED sheet=" + sheetId + " by=" + user.strip()
+                + " name=" + saved.getName() + " alias=" + alias.strip());
         return saved;
     }
 
@@ -286,6 +305,9 @@ public class PersonService {
         people.findBySheetIdAndNameKey(sheetId, Person.keyOf(name))
                 .filter(other -> !other.getId().equals(self))
                 .ifPresent(other -> { throw new DuplicatePersonNameException(); });
+        if (people.findBySheetIdAndAliasKey(sheetId, Person.keyOf(name)).isPresent()) {
+            throw new DuplicatePersonNameException();
+        }
     }
 
     private void requireContactUnused(String sheetId, String contact, Long self) {

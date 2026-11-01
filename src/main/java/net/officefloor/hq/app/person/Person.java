@@ -16,6 +16,7 @@ import jakarta.persistence.Table;
 import jakarta.persistence.Version;
 import java.time.LocalDate;
 import java.util.ArrayList;
+import java.util.Comparator;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
@@ -30,7 +31,8 @@ import net.officefloor.hq.app.claim.ClaimStatus;
  * after it, and from the day the sheet's today reaches it their open claims, unless bound by a
  * statement, leave the live totals as a hold's do. A person may have several holds over time, each from a from-date to an optional to-date. The grade is dated: the first one
  * given is in force from the beginning of time, and each later one from its from-date. A person may have
- * their own terms in days, which their claims' due-by takes ahead of their grade's and the sheet's.
+ * their own terms in days, which their claims' due-by takes ahead of their grade's and the sheet's. A person
+ * may have aliases, which share the names' uniqueness on the sheet.
  */
 @Entity
 @Table(name = "person")
@@ -89,6 +91,11 @@ public class Person {
     @CollectionTable(name = "person_hold", joinColumns = @JoinColumn(name = "person_id"))
     @OrderBy("fromDate ASC, toDate ASC")
     private List<PersonHold> holds = new ArrayList<>();
+
+    /** Their aliases, in the order they were added. */
+    @ElementCollection(fetch = FetchType.EAGER)
+    @CollectionTable(name = "person_alias", joinColumns = @JoinColumn(name = "person_id"))
+    private List<PersonAlias> aliases = new ArrayList<>();
 
     @Version
     @Column(name = "version", nullable = false)
@@ -169,6 +176,21 @@ public class Person {
         if (contact == null || contact.isBlank()) return null;
         return contact.strip().toLowerCase(Locale.ROOT);
     }
+
+    /** Their aliases, sorted as names are compared (by key, then as given). */
+    public List<String> getAliases() {
+        return aliases.stream()
+                .sorted(Comparator.comparing(PersonAlias::getAliasKey).thenComparing(PersonAlias::getAlias))
+                .map(PersonAlias::getAlias).toList();
+    }
+
+    /** Whether they have the name, as names are compared, as an alias. */
+    public boolean hasAlias(String name) {
+        String key = keyOf(name);
+        return aliases.stream().anyMatch(a -> a.getAliasKey().equals(key));
+    }
+
+    public void addAlias(String alias) { aliases.add(new PersonAlias(sheetId, alias)); }
 
     /** The date they are retired from, or null while not retired. */
     public LocalDate getRetiredFrom() { return retiredFrom; }

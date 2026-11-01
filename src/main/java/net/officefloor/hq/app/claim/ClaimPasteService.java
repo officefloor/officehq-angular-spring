@@ -78,7 +78,7 @@ public class ClaimPasteService {
                 || (ref != null && ref.length() > REF_MAX)) {
             throw new ClaimPasteRefusedException();
         }
-        Person person = people.findBySheetIdAndNameKey(sheetId, Person.keyOf(name))
+        Person person = people.findByNameOrAlias(sheetId, name)
                 .orElseThrow(ClaimPasteRefusedException::new);
         LocalDate on;
         try {
