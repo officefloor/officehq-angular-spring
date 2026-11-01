@@ -1,6 +1,7 @@
 package net.officefloor.hq.app.setting;
 
 import java.math.BigDecimal;
+import java.math.RoundingMode;
 import java.time.LocalDate;
 import java.util.EnumSet;
 import java.util.HashSet;
@@ -308,6 +309,26 @@ public class SettingService {
         record(sheet, user, Sheet.FLOOR, floor.toPlainString(), from);
         rollup.recordChanges(sheetId, user, before);
         return floor;
+    }
+
+    /**
+     * Record the rounding mode (half-up or half-even; null: none, the policy date decides) from the date (null: the
+     * sheet's today); the live dues it moves are audited after its own line.
+     */
+    @Transactional
+    public String setRounding(String sheetId, String user, String mode, LocalDate from) {
+        Sheet sheet = sheets.findForUpdate(sheetId).orElseThrow(SheetNotFoundException::new);
+        RollupService.Snapshot before = rollup.snapshot(sheetId);
+        record(sheet, user, Sheet.ROUNDING, mode, from);
+        rollup.recordChanges(sheetId, user, before);
+        return mode;
+    }
+
+    /** The rounding mode in force on the date; null when none. */
+    @Transactional(readOnly = true)
+    public RoundingMode roundingOn(String sheetId, LocalDate date) {
+        // not mapped through the Optional: a null mode (none) would read as no sheet
+        return sheets.findById(sheetId).orElseThrow(SheetNotFoundException::new).roundingOn(date);
     }
 
     /** Record the late percent from the date (null: the sheet's today); the dues it moves are audited after its own line. */

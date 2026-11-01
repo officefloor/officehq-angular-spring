@@ -129,6 +129,19 @@ public class SettingController {
         }
     }
 
+    /** A rounding mode, half-up or half-even; blank or null: none; recorded from the from-date (yyyy-mm-dd), blank or null: the sheet's today. */
+    public record RoundingRequest(@Pattern(regexp = "(half-up|half-even)?") String value,
+            @Pattern(regexp = "(\\d{4}-\\d{2}-\\d{2})?") String from) {
+
+        LocalDate fromValue() {
+            return from == null || from.isEmpty() ? null : LocalDate.parse(from);
+        }
+
+        String roundingValue() {
+            return value == null || value.isEmpty() ? null : value;
+        }
+    }
+
     /** A late percent with at most two decimals; recorded from the from-date (yyyy-mm-dd), blank or null: the sheet's today. */
     public record LatePctRequest(@NotNull @Pattern(regexp = "\\d{1,5}(\\.\\d{1,2})?") String value,
             @Pattern(regexp = "(\\d{4}-\\d{2}-\\d{2})?") String from) {
@@ -305,6 +318,15 @@ public class SettingController {
             @RequestHeader("X-User") @NotBlank @Size(max = 100) String user,
             @RequestBody @Valid FloorRequest request) {
         service.setFloor(sheetId, user, request.floorValue(), request.fromValue());
+        return get(sheetId, user);
+    }
+
+    @PutMapping("/settings/rounding")
+    public SettingsView setRounding(
+            @PathVariable @Size(max = 100) @Pattern(regexp = "[A-Za-z0-9._-]+") String sheetId,
+            @RequestHeader("X-User") @NotBlank @Size(max = 100) String user,
+            @RequestBody @Valid RoundingRequest request) {
+        service.setRounding(sheetId, user, request.roundingValue(), request.fromValue());
         return get(sheetId, user);
     }
 

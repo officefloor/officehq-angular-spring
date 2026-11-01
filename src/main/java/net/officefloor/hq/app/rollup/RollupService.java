@@ -104,7 +104,8 @@ public class RollupService {
                 if (!claim.isCorrection()) claimed = claimed.add(claim.getAmount());
                 if (claim.getSettledDue() != null || (claim.isBound() && claim.getStatedDue() != null)) fixed = true;
                 String grade = person.gradeOn(claim.getDate());
-                RoundingMode rounding = Rounding.of(Rounding.basisOf(claim, datesByNumber), policyDate, today);
+                LocalDate basis = Rounding.basisOf(claim, datesByNumber);
+                RoundingMode rounding = Rounding.of(basis, sheet == null ? null : sheet.roundingOn(basis), policyDate, today);
                 // the floor in force on the claim's date, the late percent in force on each 30-day boundary
                 BigDecimal floor = sheet == null ? zero() : sheet.floorOn(claim.getDate());
                 // and the grace days of their grade on the claim's date, in force on it

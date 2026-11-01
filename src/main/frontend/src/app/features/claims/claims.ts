@@ -177,8 +177,13 @@ export function roundsOn(c: Claim, theirs: Claim[]): string {
   return theirs.find((o) => o.number === c.corrects)?.date ?? c.date;
 }
 
-/** Whether a claim rounding by the given date rounds half up: dated before the policy date; else half to even. */
+/**
+ * Whether a claim rounding by the given date rounds half up: by the rounding mode in force on it, when one is;
+ * else when dated before the policy date; else half to even.
+ */
 function halfUp(basis: string, late: Late): boolean {
+  const mode = late.roundingOn(basis);
+  if (mode !== null) return mode === 'half-up';
   return late.policy !== null && basis < late.policy;
 }
 

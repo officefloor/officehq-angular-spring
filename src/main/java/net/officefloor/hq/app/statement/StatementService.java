@@ -170,7 +170,8 @@ public class StatementService {
                 continue;
             }
             String grade = person.gradeOn(claim.getDate(), asOf);
-            RoundingMode rounding = Rounding.of(Rounding.basisOf(claim, datesByNumber), sheet.getPolicyDate(), asOf);
+            LocalDate basis = Rounding.basisOf(claim, datesByNumber);
+            RoundingMode rounding = Rounding.of(basis, sheet.roundingOn(basis, asOf), sheet.getPolicyDate(), asOf);
             BigDecimal settled = status == ClaimStatus.SETTLED ? claim.settledDueAt(asOf) : null;
             BigDecimal figure = settled != null ? settled
                     : binding != null ? binding.getDue()

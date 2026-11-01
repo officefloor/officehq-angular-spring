@@ -810,7 +810,7 @@ public class ClaimService {
     private RoundingMode roundingOf(String sheetId, Claim claim) {
         LocalDate basis = Rounding.basisOf(claim,
                 Rounding.datesByNumber(claims.findBySheetIdAndPersonIdOrderByIdDesc(sheetId, claim.getPersonId())));
-        return Rounding.of(basis, settings.policyDate(sheetId), sheets.today(sheetId));
+        return Rounding.of(basis, settings.roundingOn(sheetId, basis), settings.policyDate(sheetId), sheets.today(sheetId));
     }
 
     /**

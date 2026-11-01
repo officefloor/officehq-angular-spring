@@ -11,6 +11,7 @@ import jakarta.persistence.MapKeyColumn;
 import jakarta.persistence.OrderColumn;
 import jakarta.persistence.Table;
 import java.math.BigDecimal;
+import java.math.RoundingMode;
 import java.time.Instant;
 import java.time.LocalDate;
 import java.util.ArrayList;
@@ -29,7 +30,8 @@ public class Sheet {
      * its proof threshold {@code proof-threshold-<grade>}.
      */
     public static final String FLOOR = "floor", LATE_PCT = "late-pct", TERMS = "terms", CLERK_LIMIT = "clerk-limit",
-            CAP = "cap", PROOF_THRESHOLD = "proof-threshold", NOTE_THRESHOLD = "note-threshold", GRACE = "grace";
+            CAP = "cap", PROOF_THRESHOLD = "proof-threshold", NOTE_THRESHOLD = "note-threshold", GRACE = "grace",
+            ROUNDING = "rounding";
 
     /** The values in force before any is recorded. */
     public static final BigDecimal START_FLOOR = new BigDecimal("1.00"), START_LATE_PCT = new BigDecimal("0.00");
@@ -183,6 +185,12 @@ public class Sheet {
         return d == null || d.getValue() == null ? 0 : Integer.parseInt(d.getValue());
     }
 
+    /** The rounding mode in force on the date as recorded by the end of the as-of date; null when none. */
+    public RoundingMode roundingOn(LocalDate date, LocalDate asOf) {
+        DatedSettingLine d = inForce(ROUNDING, date, asOf);
+        return d == null ? null : roundingMode(d.getValue());
+    }
+
     /** The due-total, at most the cap in force on the as-of date as recorded by its end; null (n/a) stays null. */
     public BigDecimal cappedAsOf(BigDecimal dueTotal, LocalDate asOf) {
         BigDecimal cap = decimalOn(CAP, asOf, asOf, null);
@@ -205,6 +213,19 @@ public class Sheet {
         DatedSetting d = inForce(key, date);
         if (d == null) return start;
         return d.getValue() == null ? null : new BigDecimal(d.getValue()).setScale(2);
+    }
+
+    /** The rounding mode in force on the date; null when none, when the policy date decides. */
+    public RoundingMode roundingOn(LocalDate date) {
+        DatedSetting d = inForce(ROUNDING, date);
+        return d == null ? null : roundingMode(d.getValue());
+    }
+
+    /** A rounding mode as recorded: half-up or half-even; null (none) otherwise. */
+    private static RoundingMode roundingMode(String value) {
+        if ("half-up".equals(value)) return RoundingMode.HALF_UP;
+        if ("half-even".equals(value)) return RoundingMode.HALF_EVEN;
+        return null;
     }
 
     /** The clerk limit in force today; null means no limit. */

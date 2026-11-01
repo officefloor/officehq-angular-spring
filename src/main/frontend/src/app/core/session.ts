@@ -22,20 +22,22 @@ export interface DatedValue {
 }
 
 /** The values recorded for each dated setting (floor, late-pct, terms, terms-<grade>, grace-<grade>, clerk-limit, cap,
- * proof-threshold, proof-threshold-<grade>, note-threshold), by key. */
+ * proof-threshold, proof-threshold-<grade>, note-threshold, rounding), by key. */
 export type Dated = Partial<Record<string, DatedValue[]>>;
 
 /** The values in force before any is recorded: a key without one has none. */
 const STARTING: Partial<Record<string, string>> = { floor: '1.00', 'late-pct': '0.00', terms: '14' };
 
 /**
- * What a claim's late charge and rounding depend on: the sheet's late percent in force on a date, its today, and
- * the policy date in force (the sheet's today when blank), before which a claim's live figures round half up.
+ * What a claim's late charge and rounding depend on: the sheet's late percent in force on a date, its today,
+ * the rounding mode in force on a date (half-up or half-even; null when none), and the policy date in force
+ * (the sheet's today when blank), before which a claim with no rounding mode in force rounds half up.
  */
 export interface Late {
   pctOn: (date: string) => string;
   today: string | null;
   policy: string | null;
+  roundingOn: (date: string) => string | null;
 }
 
 /** A claim template on the sheet: a claim made from it takes its amount (two decimals) and note then. */
@@ -88,7 +90,10 @@ export class Session {
     pctOn: (date) => this.valueOn('late-pct', date) ?? '0.00',
     today: this.today(),
     policy: this.policyDate() ?? this.today(),
+    roundingOn: (date) => this.valueOn('rounding', date) || null,
   }));
+  /** The sheet's rounding mode in force today (half-up or half-even); null when none, when the policy date decides. */
+  readonly rounding = computed(() => this.valueOn('rounding', this.today()) || null);
   /** The grade's grace days in force on a date: a claim of a person of that grade then is overdue only past its due-by plus them; 0 when none. */
   graceOn(grade: string, date: string): number {
     return Number(this.valueOn(`grace-${grade}`, date) ?? '0');

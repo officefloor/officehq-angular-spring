@@ -7,9 +7,10 @@ import java.util.List;
 import java.util.Map;
 
 /**
- * How a claim's live figures (the rate step and the late charge) round to cents: half up when the
- * claim is dated before the sheet's policy date (none: the sheet's today), else half to even. A
- * correction rounds by the date of the claim it corrects, not its own.
+ * How a claim's live figures (the rate step and the late charge) round to cents: by the sheet's rounding
+ * mode in force on the date it rounds by, when one is; else half up when the claim is dated before the
+ * sheet's policy date (none: the sheet's today), else half to even. A correction rounds by the date of
+ * the claim it corrects, not its own.
  */
 public final class Rounding {
 
@@ -24,8 +25,9 @@ public final class Rounding {
         return claim.getDate();
     }
 
-    /** The rounding of a claim rounding by the given date. */
-    public static RoundingMode of(LocalDate basis, LocalDate policyDate, LocalDate today) {
+    /** The rounding of a claim rounding by the given date, with the sheet's rounding mode in force on it (null: none). */
+    public static RoundingMode of(LocalDate basis, RoundingMode mode, LocalDate policyDate, LocalDate today) {
+        if (mode != null) return mode;
         LocalDate policy = policyDate != null ? policyDate : today;
         return policy != null && basis.isBefore(policy) ? RoundingMode.HALF_UP : RoundingMode.HALF_EVEN;
     }
