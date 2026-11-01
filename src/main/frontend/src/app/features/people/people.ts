@@ -5,7 +5,7 @@ import { firstValueFrom } from 'rxjs';
 import { Session } from '../../core/session';
 import { Claim, Claims, DUPLICATE_REF, GraceOn, PctOn, RETIRED, cents, claimDueCents, countsAt, countsFor, isBound, isDuplicateRef, isOpen, isOverdue, money, roundsOn } from '../claims/claims';
 import { Period, Periods, periodOn } from '../periods/periods';
-import { GRADES, NA, Rate, Rates, pctOn, rateOn } from '../rates/rates';
+import { GRADES, NA, Rate, Rates, dueCents, pctOn, rateOn } from '../rates/rates';
 
 const NO_CLAIMS: Claim[] = [];
 const NO_RATES: Rate[] = [];
@@ -139,9 +139,11 @@ interface StatementTaken {
 // A person may have aliases, added one at a time and shown sorted as names are compared; an alias may not
 // be any name or alias on the sheet, and the quick-add bar and the paste box find a person by one too.
 // Each person can name other people on the sheet as their patrons, one at a time (not themselves, nor
-// the same person twice); the row shows their patrons' names, sorted, and their backing: their
-// patrons' settled figures added up over their SETTLED claims dated within the 90 days up to and
-// including the sheet's today, each at its frozen figure (0.00 with none).
+// the same person twice). The patrons carry shares: 100.00 split equally in the order named, each rounded
+// half to even to two decimals, the remainder going to the first named. The row shows each patron as
+// <name> <share>, sorted by name, and their backing: over the patrons, the patron's figure (their frozen
+// figures of their SETTLED claims dated within the 90 days up to and including the sheet's today) times
+// their share divided by 100, rounded half to even, added up (0.00 with none).
 // A person's due-total is at most the sheet's cap (blank: none); the row shows their excess, how far the
 // sum of their figures is above it (0.00 when not, or n/a). Every total of due-totals adds the capped ones.
 // Under it, a summary: per grade, the people on it today (retired people excluded) and their
@@ -980,25 +982,42 @@ export class People {
     setTimeout(() => URL.revokeObjectURL(url));
   }
 
-  /** Their patrons' names, comma and space separated, sorted. */
+  /** Their patrons as <name> <share>, sorted by name, comma and space separated. */
   protected patronsOf(p: Person): string {
-    return this.patronsOfPerson(p)
-      .map((x) => x.name)
-      .sort((a, b) => (a < b ? -1 : a > b ? 1 : 0))
+    return this.patronShares(p)
+      .sort((a, b) => (a.patron.name < b.patron.name ? -1 : a.patron.name > b.patron.name ? 1 : 0))
+      .map((x) => `${x.patron.name} ${money(x.share)}`)
       .join(', ');
   }
 
   /**
-   * Their patrons' settled figures added up: each patron's SETTLED claims dated within the 90 days up to
-   * and including the sheet's today, at their frozen figures; 0.00 with none.
+   * Their backing: over their patrons, the patron's settled figures (SETTLED claims dated within the 90
+   * days up to and including the sheet's today, at their frozen figures) times the patron's share divided
+   * by 100, rounded half to even, added up; 0.00 with none.
    */
   protected backingOf(p: Person): string {
     const today = this.session.today();
     if (today === null) return money(0);
     const from = new Date(Date.parse(`${today}T00:00:00Z`) - 89 * 86_400_000).toISOString().slice(0, 10);
     const settled = (c: Claim) => c.status === 'SETTLED' && c.settledDue !== null && c.date >= from && c.date <= today;
-    return money(this.patronsOfPerson(p).reduce(
-      (sum, x) => sum + this.claimsOf(x.id).filter(settled).reduce((s, c) => s + cents(c.settledDue!), 0), 0));
+    return money(this.patronShares(p).reduce((sum, x) => {
+      const figure = this.claimsOf(x.patron.id).filter(settled).reduce((s, c) => s + cents(c.settledDue!), 0);
+      return sum + dueCents(figure, money(x.share));
+    }, 0));
+  }
+
+  /**
+   * Their patrons in the order named, each with their share in hundredths: 100.00 split equally, each
+   * rounded half to even, the remainder to the first named.
+   */
+  private patronShares(p: Person): { patron: Person; share: number }[] {
+    const patrons = this.patronsOfPerson(p);
+    const n = patrons.length;
+    if (n === 0) return [];
+    const quotient = Math.floor(10000 / n);
+    const twice = (10000 % n) * 2;
+    const each = twice > n || (twice === n && quotient % 2 === 1) ? quotient + 1 : quotient;
+    return patrons.map((patron, i) => ({ patron, share: i === 0 ? 10000 - each * (n - 1) : each }));
   }
 
   private patronsOfPerson(p: Person): Person[] {
