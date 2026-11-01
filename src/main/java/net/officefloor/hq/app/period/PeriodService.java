@@ -10,12 +10,14 @@ import java.math.BigDecimal;
 import net.officefloor.hq.app.Audit;
 import net.officefloor.hq.app.person.Person;
 import net.officefloor.hq.app.person.PersonRepository;
+import net.officefloor.hq.app.pool.PoolService;
 import net.officefloor.hq.app.role.Role;
 import net.officefloor.hq.app.role.RoleService;
 import net.officefloor.hq.app.rollup.Rollup;
 import net.officefloor.hq.app.sheet.Sheet;
 import net.officefloor.hq.app.sheet.SheetRepository;
 import net.officefloor.hq.app.sheet.SheetService;
+import org.springframework.context.annotation.Lazy;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
@@ -33,9 +35,11 @@ public class PeriodService {
     private final Rollup rollup;
     private final RoleService roles;
     private final PersonRepository people;
+    private final PoolService pools;
 
     public PeriodService(PeriodRepository periods, SheetService sheets, SheetRepository sheetStore, Audit audit,
-            Rollup rollup, RoleService roles, PersonRepository people) {
+            Rollup rollup, RoleService roles, PersonRepository people, @Lazy PoolService pools) {
+        this.pools = pools;
         this.roles = roles;
         this.people = people;
         this.periods = periods;
@@ -185,7 +189,7 @@ public class PeriodService {
         return made;
     }
 
-    /** Close a period, open or soft-closed, fixing its due-total afresh as it is now; refused for a role the
+    /** Close a period, open or soft-closed, fixing its due-total and each pool member's cut afresh as they are now; refused for a role the
      *  permission matrix does not allow, and when it is already closed. The sheet is locked so no claim in it changes while its total is taken. */
     @Transactional
     public Period close(String sheetId, String user, String name) {
@@ -202,7 +206,7 @@ public class PeriodService {
         return closeAndRecord(sheetId, user, period, "");
     }
 
-    /** Soft-close an open period, fixing its due-total and each person's figure for it as they are now, while its
+    /** Soft-close an open period, fixing its due-total and each person's figure and each pool member's cut for it as they are now, while its
      *  claims can still be changed; refused for a role the permission matrix does not allow to close, and when it is
      *  already closed or soft-closed. */
     @Transactional
@@ -219,6 +223,7 @@ public class PeriodService {
         }
         period.softClose(rollup.dueByPersonBetween(sheetId, period.getFromDate(), period.getToDate()),
                 rollup.carriedByPerson(sheetId, period));
+        period.fixPoolCuts(pools.cutsNow(sheetId));
         Period closed = periods.saveAndFlush(period);
         audit.recordChangeOnCommit(sheetId, user, "PERIOD_SOFT_CLOSED sheet=" + sheetId + " by=" + user + " period="
                 + closed.getName() + " total=" + closed.getClosedTotal().toPlainString());
@@ -242,6 +247,7 @@ public class PeriodService {
     private Period closeAndRecord(String sheetId, String user, Period period, String suffix) {
         period.close(rollup.dueByPersonBetween(sheetId, period.getFromDate(), period.getToDate()),
                 rollup.carriedByPerson(sheetId, period));
+        period.fixPoolCuts(pools.cutsNow(sheetId));
         Period closed = periods.saveAndFlush(period);
         BigDecimal total = closed.getClosedTotal();
         audit.recordChangeOnCommit(sheetId, user, "PERIOD_CLOSED sheet=" + sheetId + " by=" + user + " period=" + closed.getName()
@@ -249,7 +255,7 @@ public class PeriodService {
         return closed;
     }
 
-    /** Reopen a closed or soft-closed period, making its due-total live again; only a role the permission matrix allows may (by
+    /** Reopen a closed or soft-closed period, making its due-total and its pool cuts live again; only a role the permission matrix allows may (by
      *  default a steward), and it is refused when the period is open or locked. */
     @Transactional
     public Period reopen(String sheetId, String user, String name) {

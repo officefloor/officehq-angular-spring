@@ -70,6 +70,14 @@ public class Period {
     @Column(name = "carried", nullable = false, precision = 14, scale = 2)
     private Map<Long, BigDecimal> closedPersonCarried = new HashMap<>();
 
+    /** Each pool member's cut fixed when the period was closed or soft-closed, as it stood at that moment, by the
+     *  pool's id and the member's key within it ({@code <pool id>/<member key>}); empty while it is open. */
+    @ElementCollection(fetch = FetchType.EAGER)
+    @CollectionTable(name = "period_pool_cut", joinColumns = @JoinColumn(name = "period_id"))
+    @MapKeyColumn(name = "cut_key")
+    @Column(name = "cut", nullable = false, precision = 14, scale = 2)
+    private Map<String, BigDecimal> closedPoolCuts = new HashMap<>();
+
     /** Each person's opening balance for the period, by person id: the sum of the amounts pasted for them, added to
      *  their carried figure for it. */
     @ElementCollection(fetch = FetchType.EAGER)
@@ -164,6 +172,21 @@ public class Period {
         return Map.copyOf(personOpenings);
     }
 
+    public Map<String, BigDecimal> getClosedPoolCuts() {
+        return Map.copyOf(closedPoolCuts);
+    }
+
+    /** Whether the period's figures are fixed: closed or soft-closed. */
+    public boolean isFixed() {
+        return closed || softClosed;
+    }
+
+    /** Fix each pool member's cut for the period as it stands now; called as the period is closed or soft-closed. */
+    public void fixPoolCuts(Map<String, BigDecimal> poolCuts) {
+        this.closedPoolCuts.clear();
+        this.closedPoolCuts.putAll(poolCuts);
+    }
+
     /** A person's opening balance for the period; 0.00 when none was pasted. */
     public BigDecimal openingOf(Long personId) {
         return personOpenings.getOrDefault(personId, BigDecimal.ZERO.setScale(2));
@@ -205,5 +228,6 @@ public class Period {
         this.closedTotal = null;
         this.closedPersonTotals.clear();
         this.closedPersonCarried.clear();
+        this.closedPoolCuts.clear();
     }
 }

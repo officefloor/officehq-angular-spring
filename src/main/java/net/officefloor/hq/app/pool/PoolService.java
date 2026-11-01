@@ -18,6 +18,7 @@ import net.officefloor.hq.app.crew.CrewMemberRepository;
 import net.officefloor.hq.app.crew.CrewRepository;
 import net.officefloor.hq.app.history.SheetHistory;
 import net.officefloor.hq.app.history.SheetState;
+import net.officefloor.hq.app.period.Period;
 import net.officefloor.hq.app.period.PeriodController.PeriodView;
 import net.officefloor.hq.app.period.PeriodRepository;
 import net.officefloor.hq.app.person.Person;
@@ -222,44 +223,78 @@ public class PoolService {
     public record PeriodCut(String period, BigDecimal cut) {
     }
 
-    /** A pool with, for each of its members in their order, the member's cut at the end of each period whose to-date
-     *  is on or before the sheet's today, in the order of the periods' from-dates. */
+    /** A pool with, for each of its members in their order, the member's cut for each period whose to-date is on or
+     *  before the sheet's today or that is closed or soft-closed, in the order of the periods' from-dates. */
     public record PoolWithHistory(PoolWithMembers pool, List<List<PeriodCut>> periodCuts) {
     }
 
-    /** The sheet's pools as {@link #list(String, LocalDate)}, each member with its cut as it stood at the end of
-     *  each period whose to-date is on or before the sheet's today (or {@code on}): the pool, its members, the pot and
-     *  the holds as they were then, with that day as the sheet's today (see {@link #stoodOn}); none when the member
-     *  was not in the pool then, the pool showed no cuts or the membership was not in force on that day. */
+    /** A period whose cuts are shown: its name, its to-date and, when closed or soft-closed, the cuts fixed then (by
+     *  {@code <pool id>/<member key>}; null while live). */
+    private record ShownPeriod(String name, LocalDate to, Map<String, BigDecimal> fixed) {
+    }
+
+    /** The sheet's pools as {@link #list(String, LocalDate)}, each member with its cut for each period whose to-date
+     *  is on or before the sheet's today (or {@code on}) or that is closed or soft-closed. A closed or soft-closed
+     *  period shows the cut fixed at the moment it was closed (none when the member had no cut shown then); any
+     *  other shows the cut as it stood at the end of the period: the pool, its members, the pot and the holds as they
+     *  were then, with that day as the sheet's today (see {@link #stoodOn}); none when the member was not in the pool
+     *  then, the pool showed no cuts or the membership was not in force on that day. */
     @Transactional(readOnly = true)
     public List<PoolWithHistory> listWithHistory(String sheetId, LocalDate on) {
         List<PoolWithMembers> now = list(sheetId, on);
         LocalDate today = on != null ? on : sheetStore.findById(sheetId).map(Sheet::getToday).orElse(null);
-        List<Map.Entry<String, LocalDate>> ended = new ArrayList<>();
+        Map<String, Period> stored = periods.findBySheetIdOrderByFromDateAsc(sheetId).stream()
+                .collect(Collectors.toMap(Period::getName, Function.identity()));
+        List<ShownPeriod> shown = new ArrayList<>();
         if (today != null) {
             if (on != null) {
-                history.viewsAsOf(sheetId, on).periods().stream().filter(p -> !p.to().isAfter(today))
+                history.viewsAsOf(sheetId, on).periods().stream()
+                        .filter(p -> p.closed() || p.softClosed() || !p.to().isAfter(today))
                         .sorted(Comparator.comparing(PeriodView::from))
-                        .forEach(p -> ended.add(Map.entry(p.name(), p.to())));
+                        .forEach(p -> {
+                            Period current = stored.get(p.name());
+                            boolean fixed = (p.closed() || p.softClosed()) && current != null && current.isFixed();
+                            if (fixed || !p.to().isAfter(today)) {
+                                shown.add(new ShownPeriod(p.name(), p.to(), fixed ? current.getClosedPoolCuts() : null));
+                            }
+                        });
             } else {
-                periods.findBySheetIdOrderByFromDateAsc(sheetId).stream().filter(p -> !p.getToDate().isAfter(today))
-                        .forEach(p -> ended.add(Map.entry(p.getName(), p.getToDate())));
+                stored.values().stream().sorted(Comparator.comparing(Period::getFromDate))
+                        .filter(p -> p.isFixed() || !p.getToDate().isAfter(today))
+                        .forEach(p -> shown.add(new ShownPeriod(p.getName(), p.getToDate(),
+                                p.isFixed() ? p.getClosedPoolCuts() : null)));
             }
         }
-        // Each ended period's cuts, by pool id then by member key.
-        List<Map<Long, Map<String, BigDecimal>>> cutsThen = new ArrayList<>();
+        // Each live period's cuts, by pool id then by member key.
         Map<LocalDate, Map<Long, Map<String, BigDecimal>>> byDay = new HashMap<>();
-        for (Map.Entry<String, LocalDate> period : ended) {
-            cutsThen.add(byDay.computeIfAbsent(period.getValue(), day -> cutsOf(stoodOn(sheetId, day))));
+        for (ShownPeriod period : shown) {
+            if (period.fixed() == null) {
+                byDay.computeIfAbsent(period.to(), day -> cutsOf(stoodOn(sheetId, day)));
+            }
         }
         return now.stream().map(p -> new PoolWithHistory(p, p.members().stream().map(m -> {
             List<PeriodCut> cuts = new ArrayList<>();
-            for (int i = 0; i < ended.size(); i++) {
-                cuts.add(new PeriodCut(ended.get(i).getKey(),
-                        cutsThen.get(i).getOrDefault(p.pool().getId(), Map.of()).get(keyOf(m))));
+            for (ShownPeriod period : shown) {
+                cuts.add(new PeriodCut(period.name(), period.fixed() != null
+                        ? period.fixed().get(fixedKey(p.pool().getId(), m))
+                        : byDay.get(period.to()).getOrDefault(p.pool().getId(), Map.of()).get(keyOf(m))));
             }
             return cuts;
         }).toList())).toList();
+    }
+
+    /** Each pool member's shown cut as it stands now, by {@code <pool id>/<member key>}: what a period closed or
+     *  soft-closed now fixes. */
+    public Map<String, BigDecimal> cutsNow(String sheetId) {
+        Map<String, BigDecimal> made = new HashMap<>();
+        cutsOf(list(sheetId, null)).forEach((poolId, of) ->
+                of.forEach((key, cut) -> made.put(poolId + "/" + key, cut)));
+        return made;
+    }
+
+    /** A member's key among the cuts a closed period fixed. */
+    private static String fixedKey(Long poolId, Member m) {
+        return poolId + "/" + keyOf(m);
     }
 
     /** Each pool's shown cuts, by pool id then by member key; a member with no cut shown is left out. */
