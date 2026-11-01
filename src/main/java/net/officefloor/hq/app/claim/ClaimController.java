@@ -174,6 +174,12 @@ public class ClaimController {
     /** The claims selected for a bulk move, by id, and the person on the sheet they are moved to. */
     public record BulkReassignRequest(@NotNull @Size(max = 1000) Set<@NotNull Long> ids, @NotNull Long personId) {}
 
+    /** The claims selected for a bulk re-date, by id, and the date they are re-dated to. */
+    public record BulkRedateRequest(@NotNull @Size(max = 1000) Set<@NotNull Long> ids, @NotNull LocalDate date) {}
+
+    /** How many of the selected claims a bulk re-date re-dated, and how many it refused. */
+    public record BulkRedateView(int redated, int refused) {}
+
     /** How many of the selected claims a bulk move moved, and how many it refused. */
     public record BulkReassignView(int reassigned, int refused) {}
 
@@ -307,6 +313,16 @@ public class ClaimController {
             @RequestBody @Valid BulkReassignRequest request) {
         ClaimBulkService.Result result = bulk.reassign(sheetId, user, request.ids(), request.personId());
         return new BulkReassignView(result.done(), result.refused());
+    }
+
+    @OpenToViewer
+    @PostMapping("/claims/redate")
+    public BulkRedateView bulkRedate(
+            @PathVariable @Size(max = 100) @Pattern(regexp = "[A-Za-z0-9._-]+") String sheetId,
+            @RequestHeader("X-User") @NotBlank @Size(max = 100) String user,
+            @RequestBody @Valid BulkRedateRequest request) {
+        ClaimBulkService.Result result = bulk.redate(sheetId, user, request.ids(), request.date());
+        return new BulkRedateView(result.done(), result.refused());
     }
 
     @PostMapping("/claims/{id}/settle")

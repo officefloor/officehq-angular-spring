@@ -2,6 +2,7 @@ package net.officefloor.hq.app.claim;
 
 import java.math.BigDecimal;
 import java.math.RoundingMode;
+import java.time.LocalDate;
 import java.util.Comparator;
 import java.util.HashMap;
 import java.util.List;
@@ -114,6 +115,25 @@ public class ClaimBulkService {
             } catch (ClaimStatusRefusedException | ClaimNotPermittedException | ClaimReassignRefusedException
                     | PeriodClosedException | PersonRetiredException
                     | ClaimNotFoundException | PersonNotFoundException refused) {
+                // left as it is
+            }
+        }
+        return new Result(done, ids.size() - done);
+    }
+
+    /**
+     * Re-date each selected claim that can be re-dated, by the rules of re-dating one (who may, which
+     * statuses, closed periods, retirement, renumbering on a period change), with its own CLAIM_REDATED line.
+     */
+    public Result redate(String sheetId, String user, Set<Long> ids, LocalDate date) {
+        if (refusesAll(sheetId, user)) return new Result(0, ids.size());
+        int done = 0;
+        for (Claim claim : selected(sheetId, ids)) {
+            try {
+                claims.redate(sheetId, user, claim.getId(), date);
+                done++;
+            } catch (ClaimStatusRefusedException | ClaimNotStewardException | PeriodClosedException
+                    | PersonRetiredException | ClaimNotFoundException | PersonNotFoundException refused) {
                 // left as it is
             }
         }
