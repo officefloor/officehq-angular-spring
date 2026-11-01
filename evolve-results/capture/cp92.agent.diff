@@ -1,0 +1,110 @@
+diff --git a/src/main/java/net/officefloor/hq/app/claim/Claim.java b/src/main/java/net/officefloor/hq/app/claim/Claim.java
+index c223e0aa8..76e6ced6e 100644
+--- a/src/main/java/net/officefloor/hq/app/claim/Claim.java
++++ b/src/main/java/net/officefloor/hq/app/claim/Claim.java
+@@ -83,6 +83,10 @@ public class Claim {
+     @Column(name = "opened_by", length = 100)
+     private String openedBy;
+ 
++    /** The user who last edited the claim; none while never edited. */
++    @Column(name = "edited_by", length = 100)
++    private String editedBy;
++
+     /** The due fixed when the claim was settled; none while not settled, or settled with no rate. */
+     @Column(name = "settled_due", precision = 14, scale = 2)
+     private BigDecimal settledDue;
+@@ -331,6 +335,16 @@ public class Claim {
+ 
+     public void setOpenedBy(String openedBy) { this.openedBy = openedBy; }
+ 
++    public String getEditedBy() { return editedBy; }
++
++    public void setEditedBy(String editedBy) { this.editedBy = editedBy; }
++
++    /** Whether the user opened or last edited the claim, so may neither settle nor approve it. */
++    public boolean isOpenedOrEditedBy(String user) {
++        String name = user.strip();
++        return name.equals(openedBy) || name.equals(editedBy);
++    }
++
+     public BigDecimal getSettledDue() { return settledDue; }
+ 
+     public void setSettledDue(BigDecimal settledDue) { this.settledDue = settledDue; }
+diff --git a/src/main/java/net/officefloor/hq/app/claim/ClaimApprovedByOpenerException.java b/src/main/java/net/officefloor/hq/app/claim/ClaimApprovedByOpenerException.java
+index 17d2e0ee2..4e9e09522 100644
+--- a/src/main/java/net/officefloor/hq/app/claim/ClaimApprovedByOpenerException.java
++++ b/src/main/java/net/officefloor/hq/app/claim/ClaimApprovedByOpenerException.java
+@@ -3,6 +3,6 @@ package net.officefloor.hq.app.claim;
+ import org.springframework.http.HttpStatus;
+ import org.springframework.web.bind.annotation.ResponseStatus;
+ 
+-/** The user who opened a claim cannot approve it; another steward must. */
++/** The user who opened or last edited a claim cannot approve it; another steward must. */
+ @ResponseStatus(HttpStatus.FORBIDDEN)
+ public class ClaimApprovedByOpenerException extends RuntimeException {}
+diff --git a/src/main/java/net/officefloor/hq/app/claim/ClaimService.java b/src/main/java/net/officefloor/hq/app/claim/ClaimService.java
+index cb7d09d88..4a612f751 100644
+--- a/src/main/java/net/officefloor/hq/app/claim/ClaimService.java
++++ b/src/main/java/net/officefloor/hq/app/claim/ClaimService.java
+@@ -163,6 +163,7 @@ public class ClaimService {
+         claim.setDate(on);
+         claim.setNote(note);
+         claim.setLockedBy(null);
++        claim.setEditedBy(user.strip());
+         Claim saved = claims.saveAndFlush(claim);
+         record("CLAIM_EDITED", sheetId, user, person, saved);
+         keepTags(sheetId, saved);
+@@ -228,7 +229,7 @@ public class ClaimService {
+         if (next == ClaimStatus.SETTLED && claim.isDeferredOn(sheets.today(sheetId))) {
+             throw new ClaimDeferredException();
+         }
+-        if (next == ClaimStatus.SETTLED && user.strip().equals(claim.getOpenedBy())) {
++        if (next == ClaimStatus.SETTLED && claim.isOpenedOrEditedBy(user)) {
+             throw new ClaimSettledByOpenerException();
+         }
+         Person person = people.findByIdAndSheetId(claim.getPersonId(), sheetId).orElseThrow(PersonNotFoundException::new);
+@@ -270,13 +271,13 @@ public class ClaimService {
+         return saved;
+     }
+ 
+-    /** A steward other than its opener approves a PENDING claim: SETTLED, its due fixed at its live due now. */
++    /** A steward other than its opener or last editor approves a PENDING claim: SETTLED, its due fixed at its live due now. */
+     @Transactional
+     public Claim approve(String sheetId, String user, Long id) {
+         // The snapshot locks the sheet first, so the claim is read once no other change is under way.
+         RollupService.Snapshot before = rollup.snapshot(sheetId);
+         Claim claim = pendingForSteward(sheetId, user, id);
+-        if (user.strip().equals(claim.getOpenedBy())) throw new ClaimApprovedByOpenerException();
++        if (claim.isOpenedOrEditedBy(user)) throw new ClaimApprovedByOpenerException();
+         Person person = people.findByIdAndSheetId(claim.getPersonId(), sheetId).orElseThrow(PersonNotFoundException::new);
+         refuseIfClosed(sheetId, claim.getDueBy());
+         BigDecimal settling = chargedFigureOf(sheetId, person, claim);
+@@ -458,6 +459,7 @@ public class ClaimService {
+         split.setLateEntry(periods.softClosedOn(sheetId, dueBy));
+         number(numbering, split);
+         split.setOpenedBy(user.strip());
++        split.setEditedBy(original.getEditedBy());
+         split.setStatus(ClaimStatus.OPEN);
+         split = claims.saveAndFlush(split);
+         logStatus(sheetId, user, person, split);
+diff --git a/src/main/java/net/officefloor/hq/app/claim/ClaimSettledByOpenerException.java b/src/main/java/net/officefloor/hq/app/claim/ClaimSettledByOpenerException.java
+index 035dbf1a5..7f61b92ca 100644
+--- a/src/main/java/net/officefloor/hq/app/claim/ClaimSettledByOpenerException.java
++++ b/src/main/java/net/officefloor/hq/app/claim/ClaimSettledByOpenerException.java
+@@ -3,6 +3,6 @@ package net.officefloor.hq.app.claim;
+ import org.springframework.http.HttpStatus;
+ import org.springframework.web.bind.annotation.ResponseStatus;
+ 
+-/** The user who opened a claim cannot settle it; someone else must. */
++/** The user who opened or last edited a claim cannot settle it; someone else must. */
+ @ResponseStatus(HttpStatus.FORBIDDEN)
+ public class ClaimSettledByOpenerException extends RuntimeException {}
+diff --git a/src/main/resources/db/migration/V59__claim_edited_by.sql b/src/main/resources/db/migration/V59__claim_edited_by.sql
+new file mode 100644
+index 000000000..b1ab9f927
+--- /dev/null
++++ b/src/main/resources/db/migration/V59__claim_edited_by.sql
+@@ -0,0 +1,3 @@
++-- Who last edited a claim (its form or its row's amount entry); none while never edited.
++-- That user cannot settle or approve it.
++ALTER TABLE claim ADD COLUMN edited_by VARCHAR(100);
