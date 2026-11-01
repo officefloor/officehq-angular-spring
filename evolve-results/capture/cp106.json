@@ -1,0 +1,64 @@
+{
+  "checkpoint": 106,
+  "stack": {
+    "repo": "/home/daniel/officehq-angular-spring",
+    "origin": "git@github.com:officefloor/officehq-angular-spring.git",
+    "name": "officehq-angular-spring",
+    "base_ref": "base-empty",
+    "base_commit": "65cb8233ea38b2dfa6cfd18709e30cd18fdf3250"
+  },
+  "checkpoint_id": "cp106_pool-cuts",
+  "phase": "mid",
+  "type": "additive",
+  "mutates": [],
+  "replaced_tests": [],
+  "request": {
+    "spec": "The sheet has a pot (two decimals, settings, blank means none, not dated; SETTING_CHANGED key=pot\nvalue=<pot>). Each member of a balanced pool shows a cut: the pot times their share divided by\n100, rounded half to even to two decimals; a retired member cuts 0.00. The remainder, the pot minus\nthe cuts added up, goes to the member with the largest share, the earliest added on a tie, so the\ncuts total exactly the pot. An unbalanced pool, or no pot, shows no cut (an empty cell).\n",
+    "prompt": "You are implementing ONE change to this application.\n\nFIRST read AGENTS.md \u2014 it states the working rules and how the app is tested, and sends you to\nDESIGN.md for the app's stack and conventions. Follow both.\n\nTHE CHANGE REQUEST:\nThe sheet has a pot (two decimals, settings, blank means none, not dated; SETTING_CHANGED key=pot\nvalue=<pot>). Each member of a balanced pool shows a cut: the pot times their share divided by\n100, rounded half to even to two decimals; a retired member cuts 0.00. The remainder, the pot minus\nthe cuts added up, goes to the member with the largest share, the earliest added on a tie, so the\ncuts total exactly the pot. An unbalanced pool, or no pot, shows no cut (an empty cell).\n\nYour work is verified by an automated Playwright UI test already installed under e2e/specs/.\nRead that spec: it declares the exact data-testid anchors, values, test data and any audit\nrecords it expects \u2014 match them. Run `bin/e2e` to build the app, start it, and run the test as\nyou work; iterate until it passes. Change whatever the request needs across the app \u2014 its stored\ndata, its server and its front end. Do NOT edit bin/build, bin/start, bin/stop, bin/e2e,\nAGENTS.md, CLAUDE.md, DESIGN.md, e2e/support/ or the test spec.\n"
+  },
+  "commit_sha": "b377545c2e93b649d5a9b3ef5538153a1f15a7c7",
+  "reset_sha": "",
+  "preagent_sha": "52c849d34785c0c686134e66112df89f50da03c5",
+  "prev_sha": "52c849d34785c0c686134e66112df89f50da03c5",
+  "base_sha": "65cb8233ea38b2dfa6cfd18709e30cd18fdf3250",
+  "agent": {
+    "ok": true,
+    "cost_usd": 1.1393602,
+    "input_tokens": 40,
+    "output_tokens": 13066,
+    "cache_read_tokens": 1226881,
+    "cache_creation_tokens": 79063,
+    "num_turns": 21,
+    "duration_ms": 832601,
+    "duration_api_ms": 119309,
+    "model": "claude-opus-5-5",
+    "session_id": "5f2770be-2522-4043-95cb-12a815305f62",
+    "stop_reason": "success",
+    "result_text": "The sheet now has a pot, and each member of a balanced pool shows their cut. `bin/e2e` passes: all 4 tests in the spec, including the audit-record checks.\n\n**Storage and server**\n- Migration `V66__sheet_pot.sql` adds a nullable `pot` column to the sheet, with the matching field on `Sheet`. It isn't dated, so it works the same way as grace days.\n- `PUT /api/sheets/{id}/settings/pot` saves it. Blank means no pot. The settings view now includes `pot`, and each save writes `SETTING_CHANGED sheet=\u2026 by=\u2026 key=pot value=<pot>` to the audit file.\n- `PoolService` works out the cuts, and `PoolController` sends each member's `cut` with the pool. A member's cut is pot \u00d7 share \u00f7 100, rounded half to even to two decimals; a retired member cuts 0.00. Whatever is left over (positive or negative) goes to the member with the largest share, the earliest added on a tie, so the cuts always total the pot. An unbalanced pool, or no pot, gets no cuts.\n\n**Front end**\n- **Settings:** there is a new Pot field (`setting-pot`) and a \"Pot now\" line (`setting-pot-current`). The value is checked for at most two decimals, and clearing it with Delete or Backspace counts as a change, like the other optional settings.\n- **Pools:** each member row has a `pool-cut` cell. It is empty when the pool is unbalanced or there is no pot.\n\n**Two behaviours to know about**\n- After saving a new pot, the pools section re-reads its cuts straight away; I added a small `potSaves` counter to `Session` for this. Without it, the new cuts would only appear when the sheet is reloaded.\n- If someone in a pool is retired or un-retired after the pools were read, that pool's cuts show empty until the sheet is reloaded. I chose this so the screen never shows cuts that were worked out from out-of-date membership.",
+    "error": "",
+    "attempts": [
+      {
+        "ok": true,
+        "limit_reached": false,
+        "retryable": false,
+        "timed_out": false,
+        "cost_usd": 1.1393602,
+        "num_turns": 21,
+        "duration_ms": 832601,
+        "duration_api_ms": 119309,
+        "error": ""
+      }
+    ]
+  },
+  "agent_stream_file": "cp106.agent.jsonl",
+  "agent_diff_file": "cp106.agent.diff",
+  "build_log_file": null,
+  "tests": {
+    "gated": false,
+    "queued": true
+  },
+  "probe": null,
+  "pinned_touched": [],
+  "acceptance_touched": [],
+  "impact_gate": null
+}
