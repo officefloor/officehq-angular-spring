@@ -1,0 +1,123 @@
+diff --git a/src/main/frontend/src/app/features/plans/plans.ts b/src/main/frontend/src/app/features/plans/plans.ts
+index 275716dc8..cc7da0305 100644
+--- a/src/main/frontend/src/app/features/plans/plans.ts
++++ b/src/main/frontend/src/app/features/plans/plans.ts
+@@ -6,7 +6,8 @@ import { Session } from '../../core/session';
+ 
+ /**
+  * A person's plan: an amount (two decimals) from its start, every so many days or monthly on a day of the month
+- * (one set, the other null), up to its end; how many claims it has made.
++ * (one set, the other null), up to its end; how many claims it has made, and its next five dates after the sheet's
++ * today (comma and space separated).
+  */
+ export interface Plan {
+   id: number;
+@@ -17,6 +18,7 @@ export interface Plan {
+   day: number | null;
+   end: string;
+   generated: number;
++  nextDates: string;
+ }
+ 
+ const AMOUNT = /^\d{1,12}(\.\d{1,2})?$/;
+@@ -40,7 +42,8 @@ const DATE = /^\d{4}-\d{2}-\d{2}$/;
+             every <span data-testid="plan-every">{{ pl.every }}</span> days
+           }
+           to <span data-testid="plan-end">{{ pl.end }}</span>,
+-          made <span data-testid="plan-generated">{{ pl.generated }}</span>
++          made <span data-testid="plan-generated">{{ pl.generated }}</span>,
++          next <span data-testid="plan-next-dates">{{ pl.nextDates }}</span>
+         </li>
+       }
+     </ul>
+diff --git a/src/main/java/net/officefloor/hq/app/plan/ClaimPlan.java b/src/main/java/net/officefloor/hq/app/plan/ClaimPlan.java
+index c92496b0e..3f91d4507 100644
+--- a/src/main/java/net/officefloor/hq/app/plan/ClaimPlan.java
++++ b/src/main/java/net/officefloor/hq/app/plan/ClaimPlan.java
+@@ -94,4 +94,23 @@ public class ClaimPlan {
+         }
+         return dates;
+     }
++
++    /** The plan's first so many dates after the day given, on or before its end. */
++    public List<LocalDate> datesAfter(LocalDate after, int count) {
++        List<LocalDate> next = new ArrayList<>();
++        if (day != null) {
++            YearMonth m = YearMonth.from(start.isAfter(after) ? start : after);
++            for (; next.size() < count && !m.atDay(1).isAfter(end); m = m.plusMonths(1)) {
++                LocalDate d = m.atDay(Math.min(day, m.lengthOfMonth()));
++                if (!d.isBefore(start) && d.isAfter(after) && !d.isAfter(end)) next.add(d);
++            }
++        } else {
++            LocalDate d = start;
++            if (after.isAfter(start)) d = start.plusDays((after.toEpochDay() - start.toEpochDay()) / every * every);
++            for (; next.size() < count && !d.isAfter(end); d = d.plusDays(every)) {
++                if (d.isAfter(after)) next.add(d);
++            }
++        }
++        return next;
++    }
+ }
+diff --git a/src/main/java/net/officefloor/hq/app/plan/ClaimPlanController.java b/src/main/java/net/officefloor/hq/app/plan/ClaimPlanController.java
+index 96e028622..9cf93891a 100644
+--- a/src/main/java/net/officefloor/hq/app/plan/ClaimPlanController.java
++++ b/src/main/java/net/officefloor/hq/app/plan/ClaimPlanController.java
+@@ -27,13 +27,15 @@ public class ClaimPlanController {
+ 
+     /**
+      * A plan on the sheet; its amount has two decimals, every or day is set (the other null), and generated is how
+-     * many claims it has made so far.
++     * many claims it has made so far; nextDates are its first five dates after the sheet's today, on or before its
++     * end, comma and space separated.
+      */
+     public record PlanView(Long id, Long personId, String amount, LocalDate start, Integer every, Integer day,
+-            LocalDate end, int generated) {
+-        static PlanView of(ClaimPlan plan, int generated) {
++            LocalDate end, int generated, String nextDates) {
++        static PlanView of(ClaimPlan plan, int generated, LocalDate today) {
++            String next = String.join(", ", plan.datesAfter(today, 5).stream().map(LocalDate::toString).toList());
+             return new PlanView(plan.getId(), plan.getPersonId(), plan.getAmount().setScale(2).toPlainString(),
+-                    plan.getStart(), plan.getEvery(), plan.getDay(), plan.getEnd(), generated);
++                    plan.getStart(), plan.getEvery(), plan.getDay(), plan.getEnd(), generated, next);
+         }
+     }
+ 
+@@ -68,7 +70,9 @@ public class ClaimPlanController {
+             @PathVariable @Size(max = 100) @Pattern(regexp = "[A-Za-z0-9._-]+") String sheetId,
+             @RequestHeader("X-User") @NotBlank @Size(max = 100) String user) {
+         Map<Long, Integer> made = service.made(sheetId);
+-        return service.plans(sheetId).stream().map(p -> PlanView.of(p, made.getOrDefault(p.getId(), 0))).toList();
++        LocalDate today = service.today(sheetId);
++        return service.plans(sheetId).stream()
++                .map(p -> PlanView.of(p, made.getOrDefault(p.getId(), 0), today)).toList();
+     }
+ 
+     @PostMapping("/people/{personId}/plans")
+@@ -77,8 +81,9 @@ public class ClaimPlanController {
+             @PathVariable Long personId,
+             @RequestHeader("X-User") @NotBlank @Size(max = 100) String user,
+             @RequestBody @Valid PlanRequest request) {
+-        return PlanView.of(service.add(sheetId, user, personId, request.amountValue(), request.start(),
+-                request.every(), request.day(), request.end()), 0);
++        ClaimPlan plan = service.add(sheetId, user, personId, request.amountValue(), request.start(),
++                request.every(), request.day(), request.end());
++        return PlanView.of(plan, 0, service.today(sheetId));
+     }
+ 
+     @PostMapping("/plans/generate")
+diff --git a/src/main/java/net/officefloor/hq/app/plan/ClaimPlanService.java b/src/main/java/net/officefloor/hq/app/plan/ClaimPlanService.java
+index 4aede1ed7..2b862b50a 100644
+--- a/src/main/java/net/officefloor/hq/app/plan/ClaimPlanService.java
++++ b/src/main/java/net/officefloor/hq/app/plan/ClaimPlanService.java
+@@ -68,6 +68,11 @@ public class ClaimPlanService {
+         return made;
+     }
+ 
++    /** The sheet's today, from which a plan's next dates are counted. */
++    public LocalDate today(String sheetId) {
++        return sheets.today(sheetId);
++    }
++
+     @Transactional
+     public ClaimPlan add(String sheetId, String user, Long personId, BigDecimal amount, LocalDate start,
+             Integer every, Integer day, LocalDate end) {
