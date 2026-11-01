@@ -3,7 +3,7 @@ import { Component, computed, effect, inject, signal } from '@angular/core';
 import { FormControl, FormGroup, ReactiveFormsModule } from '@angular/forms';
 import { firstValueFrom } from 'rxjs';
 import { Session } from '../../core/session';
-import { Claim, Claims, cents, money } from '../claims/claims';
+import { Claim, Claims, cents, counts, money } from '../claims/claims';
 import { GRADES, Rate, Rates, due, dueCents } from '../rates/rates';
 
 const NO_CLAIMS: Claim[] = [];
@@ -15,7 +15,7 @@ interface Person {
 }
 
 // The people on the active sheet, in the order they were added, with one form to add or edit,
-// each with their claims, what they have claimed and their due-total; the sheet's claimed-total and
+// each with their claims, what they have claimed and their due-total (OPEN and SETTLED claims only); the sheet's claimed-total and
 // due-total under the table. Above it, the sheet's rate for each grade.
 @Component({
   selector: 'app-people',
@@ -82,7 +82,7 @@ export class People {
     for (const c of this.claims()) by.set(c.personId, [...(by.get(c.personId) ?? []), c]);
     return by;
   });
-  protected readonly claimedTotal = computed(() => money(this.claims().reduce((sum, c) => sum + cents(c.amount), 0)));
+  protected readonly claimedTotal = computed(() => money(this.claims().filter(counts).reduce((sum, c) => sum + cents(c.amount), 0)));
   /** The sheet's rate for each grade that has one. */
   protected readonly rates = signal<Rate[]>([]);
   private readonly pctByGrade = computed(() => new Map(this.rates().map((r) => [r.grade, r.pct])));
@@ -145,7 +145,7 @@ export class People {
   }
 
   private claimedCents(personId: number): number {
-    return this.claimsOf(personId).reduce((sum, c) => sum + cents(c.amount), 0);
+    return this.claimsOf(personId).filter(counts).reduce((sum, c) => sum + cents(c.amount), 0);
   }
 
   protected claimedOf(personId: number): string {

@@ -13,7 +13,8 @@ import org.springframework.transaction.annotation.Transactional;
 
 /**
  * The claims on a sheet: listed newest first, added to a person and edited one at a time. A claim
- * given no date takes the sheet's today.
+ * given no date takes the sheet's today. A claim is added as DRAFT and moves through its statuses
+ * as {@link ClaimStatus} allows; a change it does not allow is refused.
  */
 @Service
 public class ClaimService {
@@ -52,6 +53,25 @@ public class ClaimService {
         Claim saved = claims.saveAndFlush(claim);
         Person person = people.findByIdAndSheetId(saved.getPersonId(), sheetId).orElseThrow(PersonNotFoundException::new);
         record("CLAIM_EDITED", sheetId, user, person, saved);
+        return saved;
+    }
+
+    @Transactional
+    public Claim changeStatus(String sheetId, String user, Long id, ClaimStatus next) {
+        Claim claim = claims.findByIdAndSheetId(id, sheetId).orElseThrow(ClaimNotFoundException::new);
+        if (!claim.getStatus().canBecome(next)) {
+            throw new ClaimStatusRefusedException();
+        }
+        claim.setStatus(next);
+        Claim saved = claims.saveAndFlush(claim);
+        Person person = people.findByIdAndSheetId(saved.getPersonId(), sheetId).orElseThrow(PersonNotFoundException::new);
+        String event = switch (next) {
+            case OPEN -> "CLAIM_OPENED";
+            case SETTLED -> "CLAIM_SETTLED";
+            case VOID -> "CLAIM_VOIDED";
+            case DRAFT -> throw new IllegalStateException();
+        };
+        record(event, sheetId, user, person, saved);
         return saved;
     }
 

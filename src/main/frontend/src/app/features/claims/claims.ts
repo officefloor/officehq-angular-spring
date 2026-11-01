@@ -1,9 +1,15 @@
-import { HttpClient } from '@angular/common/http';
+import { HttpClient, HttpErrorResponse } from '@angular/common/http';
 import { Component, inject, input, output, signal } from '@angular/core';
 import { FormControl, FormGroup, ReactiveFormsModule } from '@angular/forms';
 import { firstValueFrom } from 'rxjs';
 import { Session } from '../../core/session';
 import { due } from '../rates/rates';
+
+/** DRAFT when added, then OPEN, then SETTLED; a DRAFT or OPEN claim can be made VOID. */
+export type ClaimStatus = 'DRAFT' | 'OPEN' | 'SETTLED' | 'VOID';
+
+/** A status change a claim's buttons ask for. */
+type ClaimAction = 'open' | 'settle' | 'void';
 
 export interface Claim {
   id: number;
@@ -12,6 +18,12 @@ export interface Claim {
   amount: string;
   date: string;
   note: string;
+  status: ClaimStatus;
+}
+
+/** Only OPEN and SETTLED claims count toward what is claimed and due. */
+export function counts(c: Claim): boolean {
+  return c.status === 'OPEN' || c.status === 'SETTLED';
 }
 
 /** A claim's amount as cents, so sums are exact. */
@@ -25,7 +37,8 @@ export function money(cents: number): string {
   return `${Math.floor(cents / 100)}.${String(cents % 100).padStart(2, '0')}`;
 }
 
-// One person's claims, newest first, with one form to add a claim or edit one.
+// One person's claims, newest first, with one form to add a claim or edit one, and buttons to
+// open, settle or void each claim.
 @Component({
   selector: 'app-claims',
   imports: [ReactiveFormsModule],
@@ -49,11 +62,21 @@ export function money(cents: number): string {
           <span data-testid="claim-date">{{ c.date }}</span>
           <span data-testid="claim-note">{{ c.note }}</span>
           <span>Due <span data-testid="claim-due">{{ dueOf(c) }}</span></span>
+          <span data-testid="claim-status">{{ c.status }}</span>
+          <button type="button" data-testid="claim-open" (click)="act(c, 'open')"
+                  [attr.aria-label]="'Open claim of ' + c.amount + ' on ' + c.date">Open</button>
+          <button type="button" data-testid="claim-settle" (click)="act(c, 'settle')"
+                  [attr.aria-label]="'Settle claim of ' + c.amount + ' on ' + c.date">Settle</button>
+          <button type="button" data-testid="claim-void" (click)="act(c, 'void')"
+                  [attr.aria-label]="'Void claim of ' + c.amount + ' on ' + c.date">Void</button>
           @if (editingId() === c.id) {
             <button type="button" data-testid="claim-cancel" (click)="cancel()">Cancel</button>
           } @else {
             <button type="button" data-testid="claim-edit" (click)="edit(c)"
                     [attr.aria-label]="'Edit claim of ' + c.amount + ' on ' + c.date">Edit</button>
+          }
+          @if (claimError()?.id === c.id) {
+            <p role="alert" class="error" data-testid="claim-error">{{ claimError()?.message }}</p>
           }
         </li>
       }
@@ -69,11 +92,13 @@ export class Claims {
   readonly claims = input.required<Claim[]>();
   /** The rate for the person's grade, or null when the grade has no rate. */
   readonly pct = input.required<string | null>();
-  /** A claim added or edited, as the store now holds it. */
+  /** A claim added, edited or given a new status, as the store now holds it. */
   readonly saved = output<Claim>();
 
   protected readonly editingId = signal<number | null>(null);
   protected readonly error = signal('');
+  /** The error from the last action on a claim's row, if it was refused. */
+  protected readonly claimError = signal<{ id: number; message: string } | null>(null);
   protected readonly form = new FormGroup({
     amount: new FormControl('', { nonNullable: true }),
     date: new FormControl('', { nonNullable: true }),
@@ -103,6 +128,7 @@ export class Claims {
   }
 
   protected edit(c: Claim): void {
+    this.claimError.set(null);
     this.editingId.set(c.id);
     this.form.setValue({ amount: c.amount, date: c.date, note: c.note }, { emitEvent: false });
     this.error.set('');
@@ -112,8 +138,28 @@ export class Claims {
     this.reset();
   }
 
+  /** Open, settle or void a claim; a change its status does not allow is refused. */
+  protected async act(c: Claim, action: ClaimAction): Promise<void> {
+    this.claimError.set(null);
+    const sheet = this.session.sheetId();
+    if (!sheet) return;
+    const url = `/api/sheets/${encodeURIComponent(sheet)}/claims/${c.id}/${action}`;
+    try {
+      const claim = await firstValueFrom(this.http.post<Claim>(url, null, { headers: this.headers() }));
+      if (this.session.sheetId() !== sheet) return;
+      this.saved.emit(claim);
+    } catch (e) {
+      if (this.session.sheetId() !== sheet) return;
+      const message = e instanceof HttpErrorResponse && e.status === 409
+        ? `A ${c.status} claim cannot be ${action === 'open' ? 'opened' : action === 'settle' ? 'settled' : 'voided'}.`
+        : 'Could not change that claim.';
+      this.claimError.set({ id: c.id, message });
+    }
+  }
+
   protected async save(): Promise<void> {
     this.error.set('');
+    this.claimError.set(null);
     const sheet = this.session.sheetId();
     if (!sheet) return;
     const raw = this.form.getRawValue();
