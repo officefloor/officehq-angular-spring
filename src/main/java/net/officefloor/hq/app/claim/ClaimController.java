@@ -36,13 +36,14 @@ public class ClaimController {
      * when bound by its person's last statement, to the due it had then (null when it had none). A
      * correction has the number of the claim it corrects (null for any other claim). Its status log
      * is oldest first. Locked by the user whose open editor holds it (null when none). A late entry
-     * when added while its period was soft-closed. Reminded on the last day a reminder was written (null when none). Its external reference is null when it has none. Its tags are sorted (empty when none). Its void reason is null unless voided with one. Its comments are oldest first.
+     * when added while its period was soft-closed. Reminded on the last day a reminder was written (null when none). Its external reference is null when it has none. Its tags are sorted (empty when none). Its void reason is null unless voided with one. Its comments are oldest first. Its batch is the number of the bulk settle that settled it (null when none).
      */
     public record ClaimView(Long id, Long personId, String amount, LocalDate date, String note, ClaimStatus status,
             String number, String settledDue, String openedBy, boolean stated, String statedDue, String corrects,
             LocalDate dueBy, List<LogLineView> log, LocalDate deferredUntil,
             int proofs, String splitFrom, String lockedBy, boolean lateEntry, LocalDate remindedOn,
-            String ref, List<String> tags, String voidReason, List<CommentView> comments) {
+            String ref, List<String> tags, String voidReason, List<CommentView> comments,
+            Integer batch) {
         public static ClaimView of(Claim claim) {
             return new ClaimView(claim.getId(), claim.getPersonId(), claim.getAmount().toPlainString(),
                     claim.getDate(), claim.getNote(), claim.getStatus(), claim.getNumber(),
@@ -53,7 +54,8 @@ public class ClaimController {
                     claim.getDeferredUntil(), claim.getProofs(), claim.getSplitFrom(),
                     claim.getLockedBy(), claim.isLateEntry(), claim.getRemindedOn(),
                     claim.getRef(), claim.getTags(), claim.getVoidReason(),
-                    claim.getComments().stream().map(CommentView::of).toList());
+                    claim.getComments().stream().map(CommentView::of).toList(),
+                    claim.getSettleBatch());
         }
     }
 
@@ -140,8 +142,11 @@ public class ClaimController {
     /** How many of the selected claims a bulk open opened, and how many it refused. */
     public record BulkOpenView(int opened, int refused) {}
 
-    /** How many of the selected claims a bulk settle settled (or sent to PENDING), and how many it refused. */
-    public record BulkSettleView(int settled, int refused) {}
+    /**
+     * How many of the selected claims a bulk settle settled (or sent to PENDING), and how many it refused;
+     * the sheet's last batch number after it (null while there has been none).
+     */
+    public record BulkSettleView(int settled, int refused, Integer lastBatch) {}
 
     /** The claims selected for a bulk move, by id, and the person on the sheet they are moved to. */
     public record BulkReassignRequest(@NotNull @Size(max = 1000) Set<@NotNull Long> ids, @NotNull Long personId) {}
@@ -259,7 +264,7 @@ public class ClaimController {
             @RequestHeader("X-User") @NotBlank @Size(max = 100) String user,
             @RequestBody @Valid BulkRequest request) {
         ClaimBulkService.Result result = bulk.settle(sheetId, user, request.ids());
-        return new BulkSettleView(result.done(), result.refused());
+        return new BulkSettleView(result.done(), result.refused(), bulk.lastSettleBatch(sheetId));
     }
 
     @OpenToViewer

@@ -154,6 +154,10 @@ public class Claim {
     @Column(name = "reminded_on")
     private LocalDate remindedOn;
 
+    /** The number of the bulk settle batch that settled it (or sent it to PENDING); none when settled one at a time. */
+    @Column(name = "settle_batch")
+    private Integer settleBatch;
+
     /** Its status log, oldest first: a line for each status it has had, DRAFT when added. */
     @ElementCollection(fetch = FetchType.EAGER)
     @CollectionTable(name = "claim_log", joinColumns = @JoinColumn(name = "claim_id"))
@@ -329,6 +333,8 @@ public class Claim {
     public LocalDate getRemindedOn() { return remindedOn; }
     /** Record a reminder written on the sheet's today. */
     public void remind(LocalDate on) { this.remindedOn = on; }
+    public Integer getSettleBatch() { return settleBatch; }
+    public void setSettleBatch(Integer settleBatch) { this.settleBatch = settleBatch; }
     public String getNumber() { return number; }
 
     /** Number the claim sheet-wide. */

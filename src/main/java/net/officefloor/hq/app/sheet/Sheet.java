@@ -101,6 +101,10 @@ public class Sheet {
     @Column(name = "archived", nullable = false)
     private boolean archived;
 
+    /** The number of its last settle batch; 0 while there has been none. */
+    @Column(name = "last_settle_batch", nullable = false)
+    private int lastSettleBatch;
+
     protected Sheet() {}
 
     public Sheet(String id, String createdBy, Instant createdAt, LocalDate today) {
@@ -281,6 +285,11 @@ public class Sheet {
     public boolean isArchived() { return archived; }
 
     public void archive() { this.archived = true; }
+
+    public int getLastSettleBatch() { return lastSettleBatch; }
+
+    /** Take the next settle batch number on the sheet. */
+    public int nextSettleBatch() { return ++lastSettleBatch; }
 
     /** Whether a claim opened now is numbered within its period rather than sheet-wide. */
     public boolean numbersByPeriod() {

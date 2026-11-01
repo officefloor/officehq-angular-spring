@@ -12,6 +12,7 @@ interface SheetView {
   cap: string | null;
   dated: Dated;
   archived: boolean;
+  lastBatch: number | null;
 }
 
 /** A value recorded for a dated setting from a date (yyyy-mm-dd) on; null when none. */
@@ -101,6 +102,9 @@ export class Session {
   /** Whether a steward has archived the sheet: it stays visible and every change to it is refused. */
   readonly archived = signal(false);
 
+  /** The number of the sheet's last bulk settle batch, or null while there has been none. */
+  readonly lastBatch = signal<number | null>(null);
+
   /** Bumped on every sheet load, so features re-read the sheet from the store even for the same id. */
   readonly loads = signal(0);
   /**
@@ -130,6 +134,7 @@ export class Session {
     this.dated.set(res.dated);
     this.policyDate.set(res.policyDate);
     this.archived.set(res.archived);
+    this.lastBatch.set(res.lastBatch);
     this.loads.update((n) => n + 1);
   }
 

@@ -100,6 +100,12 @@ public class SheetService {
         return sheet;
     }
 
+    /** The number of the sheet's last settle batch; 0 while there has been none. */
+    @Transactional(readOnly = true)
+    public int lastSettleBatch(String id) {
+        return sheets.findById(id).map(Sheet::getLastSettleBatch).orElse(0);
+    }
+
     /** Whether the sheet has been archived: every change to it is refused. */
     @Transactional(readOnly = true)
     public boolean isArchived(String id) {

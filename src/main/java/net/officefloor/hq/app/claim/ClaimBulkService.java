@@ -3,6 +3,7 @@ package net.officefloor.hq.app.claim;
 import java.util.Comparator;
 import java.util.List;
 import java.util.Set;
+import java.util.function.Consumer;
 import net.officefloor.hq.app.period.PeriodClosedException;
 import net.officefloor.hq.app.person.PersonNotFoundException;
 import net.officefloor.hq.app.person.PersonRetiredException;
@@ -38,15 +39,24 @@ public class ClaimBulkService {
 
     /** Open each selected claim that can be opened, numbering them in list order. */
     public Result open(String sheetId, String user, Set<Long> ids) {
-        return change(sheetId, user, ids, ClaimStatus.OPEN);
+        return change(sheetId, user, ids, id -> claims.changeStatus(sheetId, user, id, ClaimStatus.OPEN));
     }
 
     /**
      * Settle each selected claim that can be settled, by the rules of settling one: a claim over
-     * the user's clerk limit goes to PENDING and counts as settled.
+     * the user's clerk limit goes to PENDING and counts as settled. One that settles any is a batch:
+     * the sheet's next batch number, given to each claim it settled.
      */
     public Result settle(String sheetId, String user, Set<Long> ids) {
-        return change(sheetId, user, ids, ClaimStatus.SETTLED);
+        Integer[] batch = {null};
+        return change(sheetId, user, ids,
+                id -> batch[0] = claims.settleInBatch(sheetId, user, id, batch[0]).getSettleBatch());
+    }
+
+    /** The number of the sheet's last settle batch, or null while there has been none. */
+    public Integer lastSettleBatch(String sheetId) {
+        int last = sheets.lastSettleBatch(sheetId);
+        return last == 0 ? null : last;
     }
 
     /**
@@ -81,12 +91,12 @@ public class ClaimBulkService {
                 .toList();
     }
 
-    private Result change(String sheetId, String user, Set<Long> ids, ClaimStatus next) {
+    private Result change(String sheetId, String user, Set<Long> ids, Consumer<Long> change) {
         if (refusesAll(sheetId, user)) return new Result(0, ids.size());
         int done = 0;
         for (Claim claim : selected(sheetId, ids)) {
             try {
-                claims.changeStatus(sheetId, user, claim.getId(), next);
+                change.accept(claim.getId());
                 done++;
             } catch (ClaimStatusRefusedException | ClaimSettledByOpenerException | ClaimDeferredException | ClaimProofRequiredException
                     | ClaimNoteRequiredException

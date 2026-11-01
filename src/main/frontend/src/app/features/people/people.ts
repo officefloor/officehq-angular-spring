@@ -224,6 +224,7 @@ function trimmedSum(figures: number[]): number {
         <p role="alert" class="error" data-testid="bulk-open-error">{{ bulkError() }}</p>
       }
       <button type="button" data-testid="bulk-settle" (click)="bulkSettle()">Settle selected claims</button>
+      <span>Last batch <span data-testid="bulk-settle-batch">{{ session.lastBatch() ?? '' }}</span></span>
       @if (bulkSettled(); as result) {
         <p role="status">Settled <span data-testid="bulk-settled">{{ result.settled }}</span>,
           refused <span data-testid="bulk-settle-refused">{{ result.refused }}</span></p>
@@ -1253,12 +1254,13 @@ export class People {
     const base = `/api/sheets/${encodeURIComponent(sheet)}`;
     this.bulkRunning = true;
     try {
-      const result = await firstValueFrom(this.http.post<{ settled: number; refused: number }>(
+      const { lastBatch, ...result } = await firstValueFrom(this.http.post<{ settled: number; refused: number; lastBatch: number | null }>(
         `${base}/claims/settle`, { ids: [...this.selectedIds()] }, { headers: this.headers() }));
       const claims = await firstValueFrom(this.http.get<Claim[]>(`${base}/claims`, { headers: this.headers() }));
       if (this.session.sheetId() !== sheet) return;
       this.claims.set(claims);
       this.selectedIds.set(new Set());
+      this.session.lastBatch.set(lastBatch);
       this.bulkSettled.set(result);
     } catch {
       if (this.session.sheetId() === sheet) this.bulkSettleError.set('Could not settle the selected claims.');

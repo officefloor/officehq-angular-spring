@@ -204,6 +204,17 @@ public class ClaimService {
         return changeStatus(sheetId, user, id, next, null);
     }
 
+    /**
+     * Settle a claim as part of a bulk settle: by the rules of settling one, then given the bulk's
+     * batch number, the sheet's next one when the bulk has none yet (its first claim settled).
+     */
+    @Transactional
+    public Claim settleInBatch(String sheetId, String user, Long id, Integer batch) {
+        Claim claim = changeStatus(sheetId, user, id, ClaimStatus.SETTLED, null);
+        claim.setSettleBatch(batch != null ? batch : sheets.lockForNumbering(sheetId).nextSettleBatch());
+        return claims.saveAndFlush(claim);
+    }
+
     /** Void a claim; while the sheet's list of void reasons is not empty, only with a reason on it. */
     @Transactional
     public Claim voidClaim(String sheetId, String user, Long id, String reason) {
@@ -247,7 +258,11 @@ public class ClaimService {
                 number(numbering, claim);
                 claim.setOpenedBy(user.strip());
             }
-            case SETTLED -> claim.setSettledDue(settling);
+            case SETTLED -> {
+                claim.setSettledDue(settling);
+                claim.setSettleBatch(null);
+            }
+            case PENDING -> claim.setSettleBatch(null);
             case VOID -> claim.setVoidReason(voidReason);
             default -> {}
         }

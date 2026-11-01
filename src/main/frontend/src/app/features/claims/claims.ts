@@ -59,6 +59,8 @@ export interface Claim {
   lateEntry: boolean;
   /** The last sheet's today (yyyy-mm-dd) a reminder was written for it; null until reminded. */
   remindedOn: string | null;
+  /** The number of the bulk settle batch that settled it; null when settled one at a time or not settled. */
+  batch: number | null;
   /** Its comments, oldest first. */
   comments: ClaimComment[];
 }
@@ -314,6 +316,7 @@ function notEditable(status: ClaimStatus | undefined): string {
           <span>Split from <span data-testid="claim-split-from">{{ c.splitFrom ?? '' }}</span></span>
           <span>Late entry <span data-testid="claim-late-entry">{{ c.lateEntry ? 'yes' : 'no' }}</span></span>
           <span>Reminded <span data-testid="claim-reminded">{{ c.remindedOn ?? '' }}</span></span>
+          <span>Batch <span data-testid="claim-batch">{{ c.batch ?? '' }}</span></span>
           <ol [attr.aria-label]="'Status log of claim of ' + c.amount + ' on ' + c.date">
             @for (line of c.log; track $index) {
               <li data-testid="claim-log-line">{{ line.status }} by {{ line.by }} on {{ line.date }} due={{ line.due ?? na }}</li>
