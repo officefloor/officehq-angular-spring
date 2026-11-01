@@ -1,0 +1,77 @@
+diff --git a/src/main/frontend/src/app/core/claims.ts b/src/main/frontend/src/app/core/claims.ts
+index 024aa9917..5fa17d122 100644
+--- a/src/main/frontend/src/app/core/claims.ts
++++ b/src/main/frontend/src/app/core/claims.ts
+@@ -120,14 +120,11 @@ export function isDeferred(c: Pick<ClaimView, 'deferredUntil' | 'status'>, today
+   return c.status === 'OPEN' && c.deferredUntil !== null && today < c.deferredUntil;
+ }
+ 
+-/** Whether an unstated OPEN or PENDING claim is left out of the live totals on the sheet's today: dated within one
+- *  of these holds or held itself, or its person's retirement date (null: not retired) reached by today. */
+-function heldOn(c: ClaimView, holds: readonly HoldView[], today: string, retiredFrom: string | null, ownHold = true): boolean {
+-  return (
+-    (ownHold && c.held) ||
+-    (retiredFrom !== null && today !== '' && retiredFrom <= today) ||
+-    holds.some((h) => h.from <= c.date && (h.to === null || c.date <= h.to))
+-  );
++/** Whether an unstated OPEN or PENDING claim is left out of the live totals on the sheet's today: its person's
++ *  retirement date (null: not retired) reached by today. A hold (the person's or the claim's own) does not take
++ *  it out: holds only change the pools' cuts. */
++function heldOn(_c: ClaimView, _holds: readonly HoldView[], today: string, retiredFrom: string | null, _ownHold = true): boolean {
++  return retiredFrom !== null && today !== '' && retiredFrom <= today;
+ }
+ 
+ /** Whether the claim counts in the live totals on the sheet's today for a person with these holds and retirement
+diff --git a/src/main/frontend/src/app/features/claims/claims.ts b/src/main/frontend/src/app/features/claims/claims.ts
+index d08ab3e99..d46586d58 100644
+--- a/src/main/frontend/src/app/features/claims/claims.ts
++++ b/src/main/frontend/src/app/features/claims/claims.ts
+@@ -258,7 +258,7 @@ export class PersonClaims {
+   readonly periods = input.required<readonly PeriodView[]>();
+   /** The other people on the sheet a claim can be moved to. */
+   readonly others = input<readonly Pick<PersonView, 'id' | 'name'>[]>([]);
+-  /** The person's holds: their open claims dated within one, and not bound by a statement, count in no total. */
++  /** The person's holds: they no longer take any claim out of a total; only the pools' cuts heed them. */
+   readonly holds = input<readonly HoldView[]>([]);
+   /** The person's retirement date (null: not retired): once the sheet's today reaches it, their open claims not
+    *  bound by a statement count in no total. */
+diff --git a/src/main/java/net/officefloor/hq/app/person/Person.java b/src/main/java/net/officefloor/hq/app/person/Person.java
+index b741ae38f..b4ed9e6c9 100644
+--- a/src/main/java/net/officefloor/hq/app/person/Person.java
++++ b/src/main/java/net/officefloor/hq/app/person/Person.java
+@@ -342,9 +342,9 @@ public class Person {
+                 ? flagReason : null;
+     }
+ 
+-    /** Whether a claim of this person counts in the live totals on the sheet's {@code today}: an OPEN or PENDING one
+-     *  dated within a hold, or any once {@code today} reaches the retirement date, does not, unless a statement
+-     *  binds it. */
++    /** Whether a claim of this person counts in the live totals on the sheet's {@code today}: an OPEN one does not
++     *  once {@code today} reaches the retirement date, unless a statement binds it. A hold (theirs or the claim's
++     *  own) does not take it out: holds only change the pools' cuts. */
+     public boolean counts(Claim claim, LocalDate today) {
+         return claim.getStatus().counts() && (claim.isStated() || !heldOn(claim, today));
+     }
+@@ -357,7 +357,7 @@ public class Person {
+     }
+ 
+     /** Whether a claim of this person counts in the figures of a period ending {@code end}: by the status it had at
+-     *  the end of that day, left out when held or retired as the live totals on the sheet's {@code today} say. */
++     *  the end of that day, left out when retired as the live totals on the sheet's {@code today} say. */
+     public boolean countsAtEnd(Claim claim, LocalDate end, LocalDate today) {
+         ClaimStatus at = claim.statusAt(end);
+         return at != null && at.counts() && (claim.isStated() || !heldOn(claim, today));
+@@ -371,11 +371,9 @@ public class Person {
+                         || holds.stream().anyMatch(h -> h.covers(claim.getDate()))));
+     }
+ 
+-    /** Whether the claim is open and held itself or dated within one of the person's holds, or open once {@code today} reaches
+-     *  the person's retirement date. */
++    /** Whether the claim is open once {@code today} reaches the person's retirement date. */
+     private boolean heldOn(Claim claim, LocalDate today) {
+-        return claim.getStatus().isOpen()
+-                && (retiredOn(today) || claim.isHeld() || holds.stream().anyMatch(h -> h.covers(claim.getDate())));
++        return claim.getStatus().isOpen() && retiredOn(today);
+     }
+ 
+     /** Whether a hold of the person is in force on {@code date}: one whose dates include it. */
