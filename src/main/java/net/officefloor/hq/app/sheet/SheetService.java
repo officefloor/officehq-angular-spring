@@ -2,6 +2,8 @@ package net.officefloor.hq.app.sheet;
 
 import java.math.BigDecimal;
 import java.time.LocalDate;
+import java.util.ArrayDeque;
+import java.util.Deque;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
@@ -469,6 +471,29 @@ public class SheetService {
     @Transactional(readOnly = true)
     public List<String> ancestors(String id) {
         return sheets.ancestors(id);
+    }
+
+    /** The ids of the other sheets of the sheet's tree, among the sheets that exist: its ancestors,
+     *  however many levels up, and its descendants, however many levels down. */
+    @Transactional(readOnly = true)
+    public Set<String> tree(String id) {
+        Set<String> tree = new HashSet<>();
+        String at = sheets.findById(id).map(Sheet::getParentId).orElse(null);
+        while (at != null && !at.equals(id) && tree.add(at)) {
+            at = sheets.findById(at).map(Sheet::getParentId).orElse(null);
+        }
+        Set<String> below = new HashSet<>();
+        Deque<String> next = new ArrayDeque<>(List.of(id));
+        while (!next.isEmpty()) {
+            for (Sheet child : sheets.findByParentId(next.pop())) {
+                if (!child.getId().equals(id) && below.add(child.getId())) {
+                    next.add(child.getId());
+                }
+            }
+        }
+        tree.addAll(below);
+        tree.retainAll(sheets.findAllById(tree).stream().map(Sheet::getId).toList());
+        return tree;
     }
 
     /** Whether a sheet has another among its ancestors, however many levels up. */

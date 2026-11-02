@@ -6,6 +6,7 @@ import java.time.LocalDate;
 import java.util.List;
 import net.officefloor.hq.app.claim.ClaimController.ClaimView;
 import net.officefloor.hq.app.person.PersonController.PersonView;
+import net.officefloor.hq.app.person.PersonService;
 import net.officefloor.hq.app.sheet.SheetService;
 import org.springframework.http.HttpStatus;
 import org.springframework.validation.annotation.Validated;
@@ -33,10 +34,12 @@ public class StatementController {
 
     private final StatementService service;
     private final SheetService sheets;
+    private final PersonService people;
 
-    public StatementController(StatementService service, SheetService sheets) {
+    public StatementController(StatementService service, SheetService sheets, PersonService people) {
         this.service = service;
         this.sheets = sheets;
+        this.people = people;
     }
 
     @PostMapping
@@ -47,7 +50,8 @@ public class StatementController {
             @RequestBody(required = false) StatementForm form) {
         StatementService.Taken taken = service.take(sheetId.trim(), user.trim(), personId,
                 form == null ? null : form.asOf());
-        return new TakenView(PersonView.of(taken.person(), taken.summary(), sheets.today(sheetId.trim())),
+        return new TakenView(PersonView.of(taken.person(), taken.summary(), sheets.today(sheetId.trim()),
+                people.clashing(sheetId.trim(), taken.person())),
                 taken.claims().stream().map(ClaimView::of).toList());
     }
 
@@ -57,7 +61,8 @@ public class StatementController {
             @PathVariable long personId,
             @RequestHeader("X-User") @NotBlank @Size(max = 100) String user) {
         StatementService.Taken cancelled = service.cancelLast(sheetId.trim(), user.trim(), personId);
-        return new TakenView(PersonView.of(cancelled.person(), cancelled.summary(), sheets.today(sheetId.trim())),
+        return new TakenView(PersonView.of(cancelled.person(), cancelled.summary(), sheets.today(sheetId.trim()),
+                people.clashing(sheetId.trim(), cancelled.person())),
                 cancelled.claims().stream().map(ClaimView::of).toList());
     }
 }

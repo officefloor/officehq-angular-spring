@@ -1,10 +1,12 @@
 package net.officefloor.hq.app.person;
 
 import java.time.LocalDate;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Locale;
 import java.util.Objects;
 import java.util.Set;
+import java.util.function.Predicate;
 import net.officefloor.hq.app.Audit;
 import net.officefloor.hq.app.role.RoleService;
 import net.officefloor.hq.app.role.SheetRole;
@@ -53,7 +55,8 @@ public class PersonService {
     @Transactional
     public Person add(String sheetId, String user, String name, String grade, Integer terms, String contact) {
         sheets.load(sheetId, user);
-        if (people.existsBySheetIdAndNameIgnoreCase(sheetId, name) || people.existsAlias(sheetId, name)) {
+        if (people.existsBySheetIdAndNameIgnoreCase(sheetId, name) || people.existsAlias(sheetId, name)
+                || inTree(treeNames(sheetId), name)) {
             throw nameInUse();
         }
         if (contact != null && people.existsBySheetIdAndContact(sheetId, contact)) {
@@ -86,6 +89,10 @@ public class PersonService {
         }
         if (people.existsBySheetIdAndNameIgnoreCaseAndIdNot(sheetId, name, personId)
                 || people.existsAlias(sheetId, name)) {
+            throw nameInUse();
+        }
+        Set<String> tree = treeNames(sheetId);
+        if (inTree(tree, name) || person.getAliases().stream().anyMatch(a -> inTree(tree, a))) {
             throw nameInUse();
         }
         if (contact != null && people.existsBySheetIdAndContactAndIdNot(sheetId, contact, personId)) {
@@ -140,7 +147,8 @@ public class PersonService {
     public Person addAlias(String sheetId, String user, long personId, String alias) {
         Person person = people.findByIdAndSheetId(personId, sheetId)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "No such person on this sheet"));
-        if (people.existsBySheetIdAndNameIgnoreCase(sheetId, alias) || people.existsAlias(sheetId, alias)) {
+        if (people.existsBySheetIdAndNameIgnoreCase(sheetId, alias) || people.existsAlias(sheetId, alias)
+                || inTree(treeNames(sheetId), alias)) {
             throw nameInUse();
         }
         person.addAlias(alias);
@@ -148,6 +156,38 @@ public class PersonService {
         audit.recordOnCommit("PERSON_ALIAS_ADDED sheet=" + sheetId + " by=" + user + " name=" + saved.getName()
                 + " alias=" + alias);
         return saved;
+    }
+
+    /** Whether the person clashes: their name or an alias is used as a name or alias on another
+     *  sheet of their sheet's tree (see {@link SheetService#tree}). */
+    @Transactional(readOnly = true)
+    public boolean clashing(String sheetId, Person person) {
+        return clashing(sheetId).test(person);
+    }
+
+    /** A test of whether a person on the sheet clashes, reading the sheet's tree once. */
+    @Transactional(readOnly = true)
+    public Predicate<Person> clashing(String sheetId) {
+        Set<String> tree = treeNames(sheetId);
+        if (tree.isEmpty()) {
+            return p -> false;
+        }
+        return p -> inTree(tree, p.getName()) || p.getAliases().stream().anyMatch(a -> inTree(tree, a));
+    }
+
+    /** The names and aliases used on the other sheets of the sheet's tree, lower-cased. */
+    private Set<String> treeNames(String sheetId) {
+        Set<String> tree = sheets.tree(sheetId);
+        if (tree.isEmpty()) {
+            return Set.of();
+        }
+        Set<String> names = new HashSet<>(people.namesOn(tree));
+        names.addAll(people.aliasesOn(tree));
+        return names;
+    }
+
+    private static boolean inTree(Set<String> treeNames, String name) {
+        return treeNames.contains(name.toLowerCase(Locale.ROOT));
     }
 
     /** Retire a person from a day; a day left out takes the sheet's today. */

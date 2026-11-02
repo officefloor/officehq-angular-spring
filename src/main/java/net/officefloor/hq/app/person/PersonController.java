@@ -11,6 +11,7 @@ import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 import java.util.Set;
+import java.util.function.Predicate;
 import net.officefloor.hq.app.history.History;
 import net.officefloor.hq.app.role.ViewerAllowed;
 import net.officefloor.hq.app.sheet.AsOfGuard;
@@ -38,20 +39,22 @@ public class PersonController {
 
     /** What the screen shows of a person; with how many statements were taken of them, and the
      *  last one's due-total (text with two decimals, null when n/a or none) and day (null when none);
-     *  whether they are retired, and from which day (null when not); and whether they have any hold, and their holds, earliest first; and their own terms in days (null: none); and their contact (null: none); and their aliases, sorted as names are compared.
+     *  whether they are retired, and from which day (null when not); and whether they have any hold, and their holds, earliest first; and their own terms in days (null: none); and their contact (null: none); and their aliases, sorted as names are compared; and whether they clash (see
+     *  {@link PersonService#clashing}).
      *  The grade is the one in force on the sheet's today; grades are all those recorded, each from
      *  its from-date (null: the beginning of time), earliest first. */
     public record PersonView(long id, String name, String grade, List<GradeView> grades, long version,
             int statementCount, String statedTotal, LocalDate statementDate, boolean retired, LocalDate retiredFrom,
-            boolean held, List<HoldView> holds, Integer terms, String contact, List<String> aliases) {
-        public static PersonView of(Person person, StatementSummary statements, LocalDate today) {
+            boolean held, List<HoldView> holds, Integer terms, String contact, List<String> aliases, boolean clashing) {
+        public static PersonView of(Person person, StatementSummary statements, LocalDate today,
+                boolean clashing) {
             return new PersonView(person.getId(), person.getName(), person.gradeOn(today),
                     person.getGrades().stream().map(g -> new GradeView(g.getGrade(), g.getFromDate())).toList(),
                     person.getVersion(), statements.count(),
                     statements.lastDueTotal() == null ? null : statements.lastDueTotal().setScale(2).toPlainString(),
                     statements.lastTakenOn(), person.isRetired(), person.getRetiredFrom(), person.isHeld(),
                     person.getHolds().stream().map(h -> new HoldView(h.getFromDate(), h.getToDate())).toList(),
-                    person.getTerms(), person.getContact(), person.getAliases());
+                    person.getTerms(), person.getContact(), person.getAliases(), clashing);
         }
     }
 
@@ -136,15 +139,19 @@ public class PersonController {
         String sheet = sheetId.trim();
         if (asOf != null) {
             Map<Long, StatementSummary> then = statements.summaries(sheet, asOf);
+            Predicate<Person> clashingThen = service.clashing(sheet);
             return history.asOf(sheet, asOf).people().values().stream()
                     .sorted(Comparator.comparing(Person::getId))
-                    .map(p -> PersonView.of(p, then.getOrDefault(p.getId(), StatementSummary.NONE), asOf))
+                    .map(p -> PersonView.of(p, then.getOrDefault(p.getId(), StatementSummary.NONE), asOf,
+                            clashingThen.test(p)))
                     .toList();
         }
         Map<Long, StatementSummary> summaries = statements.summaries(sheet);
         LocalDate today = sheets.today(sheet);
+        Predicate<Person> clashing = service.clashing(sheet);
         return service.list(sheet).stream()
-                .map(p -> PersonView.of(p, summaries.getOrDefault(p.getId(), StatementSummary.NONE), today))
+                .map(p -> PersonView.of(p, summaries.getOrDefault(p.getId(), StatementSummary.NONE), today,
+                        clashing.test(p)))
                 .toList();
     }
 
@@ -153,9 +160,10 @@ public class PersonController {
     public PersonView add(@PathVariable @NotBlank @Size(max = 100) String sheetId,
             @RequestHeader("X-User") @NotBlank @Size(max = 100) String user,
             @Valid @RequestBody PersonForm form) {
-        return PersonView.of(service.add(sheetId.trim(), user.trim(), form.name().trim(), form.grade(),
-                form.termsValue(), form.contactValue()),
-                StatementSummary.NONE, sheets.today(sheetId.trim()));
+        Person added = service.add(sheetId.trim(), user.trim(), form.name().trim(), form.grade(),
+                form.termsValue(), form.contactValue());
+        return PersonView.of(added, StatementSummary.NONE, sheets.today(sheetId.trim()),
+                service.clashing(sheetId.trim(), added));
     }
 
     @PutMapping("/{personId}")
@@ -168,7 +176,8 @@ public class PersonController {
         }
         Person saved = service.edit(sheetId.trim(), user.trim(), personId, form.version(), form.name().trim(),
                 form.grade(), form.gradeFrom(), form.termsValue(), form.contactValue());
-        return PersonView.of(saved, statements.summary(sheetId.trim(), personId), sheets.today(sheetId.trim()));
+        return PersonView.of(saved, statements.summary(sheetId.trim(), personId), sheets.today(sheetId.trim()),
+                service.clashing(sheetId.trim(), saved));
     }
 
     @ViewerAllowed
@@ -180,8 +189,10 @@ public class PersonController {
         List<Person> saved = service.grade(sheet, user.trim(), form.personIds(), form.grade(), form.from());
         Map<Long, StatementSummary> summaries = statements.summaries(sheet);
         LocalDate today = sheets.today(sheet);
+        Predicate<Person> clashing = service.clashing(sheet);
         return new Graded(saved.size(), saved.stream()
-                .map(p -> PersonView.of(p, summaries.getOrDefault(p.getId(), StatementSummary.NONE), today))
+                .map(p -> PersonView.of(p, summaries.getOrDefault(p.getId(), StatementSummary.NONE), today,
+                        clashing.test(p)))
                 .toList());
     }
 
@@ -191,7 +202,8 @@ public class PersonController {
             @RequestHeader("X-User") @NotBlank @Size(max = 100) String user,
             @Valid @RequestBody AliasForm form) {
         Person saved = service.addAlias(sheetId.trim(), user.trim(), personId, form.alias().trim());
-        return PersonView.of(saved, statements.summary(sheetId.trim(), personId), sheets.today(sheetId.trim()));
+        return PersonView.of(saved, statements.summary(sheetId.trim(), personId), sheets.today(sheetId.trim()),
+                service.clashing(sheetId.trim(), saved));
     }
 
     /** Merge the person into another; answers with the other as they now stand. */
@@ -201,7 +213,8 @@ public class PersonController {
             @RequestHeader("X-User") @NotBlank @Size(max = 100) String user,
             @Valid @RequestBody MergeForm form) {
         Person saved = merges.merge(sheetId.trim(), user.trim(), personId, form.intoId());
-        return PersonView.of(saved, statements.summary(sheetId.trim(), saved.getId()), sheets.today(sheetId.trim()));
+        return PersonView.of(saved, statements.summary(sheetId.trim(), saved.getId()), sheets.today(sheetId.trim()),
+                service.clashing(sheetId.trim(), saved));
     }
 
     /** Transfer the person to another sheet; they leave this one. */
@@ -219,7 +232,8 @@ public class PersonController {
             @RequestHeader("X-User") @NotBlank @Size(max = 100) String user,
             @RequestBody RetireForm form) {
         Person saved = service.retire(sheetId.trim(), user.trim(), personId, form.from());
-        return PersonView.of(saved, statements.summary(sheetId.trim(), personId), sheets.today(sheetId.trim()));
+        return PersonView.of(saved, statements.summary(sheetId.trim(), personId), sheets.today(sheetId.trim()),
+                service.clashing(sheetId.trim(), saved));
     }
 
     @PostMapping("/{personId}/hold")
@@ -228,6 +242,7 @@ public class PersonController {
             @RequestHeader("X-User") @NotBlank @Size(max = 100) String user,
             @RequestBody HoldForm form) {
         Person saved = service.hold(sheetId.trim(), user.trim(), personId, form.from(), form.to());
-        return PersonView.of(saved, statements.summary(sheetId.trim(), personId), sheets.today(sheetId.trim()));
+        return PersonView.of(saved, statements.summary(sheetId.trim(), personId), sheets.today(sheetId.trim()),
+                service.clashing(sheetId.trim(), saved));
     }
 }

@@ -19,7 +19,6 @@ import net.officefloor.hq.app.pool.PoolRepository;
 import net.officefloor.hq.app.role.RoleService;
 import net.officefloor.hq.app.role.SheetRole;
 import net.officefloor.hq.app.rollup.Rollup;
-import net.officefloor.hq.app.sheet.SheetRepository;
 import net.officefloor.hq.app.sheet.SheetService;
 import net.officefloor.hq.app.statement.StatementRepository;
 import net.officefloor.hq.app.watch.WatchRepository;
@@ -41,7 +40,6 @@ public class PersonTransferService {
     private final StatementRepository statements;
     private final WatchRepository watches;
     private final PeriodRepository periods;
-    private final SheetRepository sheetStore;
     private final SheetService sheets;
     private final RoleService roles;
     private final Rollup rollup;
@@ -50,7 +48,7 @@ public class PersonTransferService {
     public PersonTransferService(PersonRepository people, ClaimRepository claims, ClaimService claimService,
             PatronRepository patrons, PoolRepository pools, PoolMemberRepository members,
             StatementRepository statements, WatchRepository watches, PeriodRepository periods,
-            SheetRepository sheetStore, SheetService sheets, RoleService roles, Rollup rollup, Audit audit) {
+            SheetService sheets, RoleService roles, Rollup rollup, Audit audit) {
         this.people = people;
         this.claims = claims;
         this.claimService = claimService;
@@ -60,7 +58,6 @@ public class PersonTransferService {
         this.statements = statements;
         this.watches = watches;
         this.periods = periods;
-        this.sheetStore = sheetStore;
         this.sheets = sheets;
         this.roles = roles;
         this.rollup = rollup;
@@ -73,9 +70,9 @@ public class PersonTransferService {
      *  were opened (by the sheet's today then, then by the order they were added); figures a
      *  statement bound and references are not carried, and they have no statements there. They
      *  leave this sheet entirely (patron links, pool memberships, watches and statements dropped).
-     *  Refused unless the user is a steward, and for a retired person, this sheet's own id, a sheet
-     *  never loaded or archived, or when their name, an alias or their contact is already on the
-     *  other sheet. */
+     *  A sheet never loaded is started empty, as loading it would. Refused unless the user is a
+     *  steward, and for a retired person, this sheet's own id, an archived sheet, or when their
+     *  name, an alias or their contact is already on the other sheet. */
     @Transactional
     public void transfer(String sheetId, String user, long personId, String toSheetId) {
         if (!SheetRole.STEWARD.equals(roles.roleOf(sheetId, user))) {
@@ -84,7 +81,7 @@ public class PersonTransferService {
         if (toSheetId.equals(sheetId)) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "A person cannot be transferred to their own sheet");
         }
-        if (!sheetStore.existsById(toSheetId) || sheets.archived(toSheetId)) {
+        if (sheets.archived(toSheetId)) {
             throw new ResponseStatusException(HttpStatus.CONFLICT, "No sheet to transfer to");
         }
         Person from = people.lockByIdAndSheetId(personId, sheetId)
@@ -92,6 +89,7 @@ public class PersonTransferService {
         if (from.isRetired()) {
             throw new ResponseStatusException(HttpStatus.CONFLICT, "A retired person cannot be transferred");
         }
+        sheets.load(toSheetId, user);
         boolean nameTaken = Stream.concat(Stream.of(from.getName()), from.getAliases().stream())
                 .anyMatch(n -> people.existsBySheetIdAndNameIgnoreCase(toSheetId, n) || people.existsAlias(toSheetId, n));
         if (nameTaken || (from.getContact() != null && people.existsBySheetIdAndContact(toSheetId, from.getContact()))) {

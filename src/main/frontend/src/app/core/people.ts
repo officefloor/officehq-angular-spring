@@ -75,6 +75,10 @@ export interface Person {
   contact: string | null;
   /** Their aliases, sorted as names are compared. */
   aliases: string[];
+  /** Whether their name or an alias is used as a name or alias on another sheet of the sheet's
+   *  tree (its ancestors and descendants): every edit of them is refused until it renames them
+   *  clear of the clash. */
+  clashing: boolean;
 }
 
 /** A statement just taken: the person as they now show, and their claims (newest first) as it
