@@ -1,0 +1,108 @@
+diff --git a/src/main/frontend/src/app/core/claims.ts b/src/main/frontend/src/app/core/claims.ts
+index 1b813ca23..08705a594 100644
+--- a/src/main/frontend/src/app/core/claims.ts
++++ b/src/main/frontend/src/app/core/claims.ts
+@@ -8,7 +8,8 @@ import { Session } from './session';
+ 
+ /** Where a claim is in its life: DRAFT, then OPEN, then SETTLED; a clerk's settle above the clerk
+  *  limit leaves it PENDING until a steward approves it (SETTLED) or rejects it (OPEN again); a
+- *  DRAFT, OPEN or PENDING claim may be VOID. */
++ *  DRAFT, OPEN or PENDING claim may be VOID, and a steward may void a SETTLED one within 7 days of
++ *  its settlement. */
+ export type ClaimStatus = 'DRAFT' | 'OPEN' | 'PENDING' | 'SETTLED' | 'VOID';
+ 
+ /** A change of status a claim can be asked for. */
+diff --git a/src/main/frontend/src/app/features/claims/person-claims.ts b/src/main/frontend/src/app/features/claims/person-claims.ts
+index f00516e73..58751e2ea 100644
+--- a/src/main/frontend/src/app/features/claims/person-claims.ts
++++ b/src/main/frontend/src/app/features/claims/person-claims.ts
+@@ -12,7 +12,7 @@ const REFUSALS: Record<ClaimAction, string> = {
+   open: 'Only a draft claim can be opened.',
+   settle: 'Only an open claim that is not deferred can be settled.',
+   resettle: 'Only a settled claim can be re-settled.',
+-  void: 'Only a draft, open or pending claim can be voided.',
++  void: 'Only a draft, open or pending claim can be voided, or a settled one within 7 days of its settlement.',
+   approve: 'Only a pending claim can be approved.',
+   reject: 'Only a pending claim can be rejected.',
+ };
+@@ -33,6 +33,9 @@ function refusal(e: unknown, action: ClaimAction): string {
+   if (e instanceof HttpErrorResponse && e.status === 403 && action === 'settle') {
+     return 'The user who opened a claim cannot settle it.';
+   }
++  if (e instanceof HttpErrorResponse && e.status === 403 && action === 'void') {
++    return 'Your role may not void this claim; only a steward may void a settled claim.';
++  }
+   if (e instanceof HttpErrorResponse && e.status === 403 && action === 'resettle') {
+     return 'Only a steward can re-settle a claim.';
+   }
+diff --git a/src/main/java/net/officefloor/hq/app/claim/ClaimService.java b/src/main/java/net/officefloor/hq/app/claim/ClaimService.java
+index a63b0bbc6..5c977878d 100644
+--- a/src/main/java/net/officefloor/hq/app/claim/ClaimService.java
++++ b/src/main/java/net/officefloor/hq/app/claim/ClaimService.java
+@@ -32,6 +32,9 @@ public class ClaimService {
+     private final WatchService watches;
+     private final Audit audit;
+ 
++    /** How many days after its settlement a steward may still void a settled claim. */
++    static final int VOID_SETTLED_DAYS = 7;
++
+     public ClaimService(ClaimRepository claims, PersonRepository people, Dues dues, SheetService sheets,
+             Rollup rollup, PeriodRepository periods, RoleService roles, WatchService watches,
+             Audit audit) {
+@@ -119,6 +122,9 @@ public class ClaimService {
+     public Claim changeStatus(String sheetId, String user, long claimId, ClaimStatus to) {
+         Claim claim = lock(sheetId, claimId);
+         refuseClosed(sheetId, claim.getDate());
++        if (to == ClaimStatus.VOID && claim.getStatus() == ClaimStatus.SETTLED) {
++            return voidSettled(sheetId, user, claim);
++        }
+         if (!claim.getStatus().canBecome(to) || to == ClaimStatus.PENDING) {
+             throw new ResponseStatusException(HttpStatus.CONFLICT,
+                     "A " + claim.getStatus() + " claim cannot become " + to);
+@@ -179,6 +185,31 @@ public class ClaimService {
+         });
+     }
+ 
++    /** Void a settled claim: only a steward may, within {@value #VOID_SETTLED_DAYS} days of its
++     *  settlement (the first SETTLED line of its status log) by the sheet's today. It keeps its
++     *  number and settled due, which leaves every total; the record ends with the figure reversed. */
++    private Claim voidSettled(String sheetId, String user, Claim claim) {
++        if (!SheetRole.STEWARD.equals(roles.roleOf(sheetId, user))) {
++            throw new ResponseStatusException(HttpStatus.FORBIDDEN, "Only a steward can void a settled claim");
++        }
++        LocalDate today = sheets.today(sheetId);
++        LocalDate settled = claim.getLog().stream().filter(l -> l.getStatus() == ClaimStatus.SETTLED)
++                .map(ClaimLog::getOn).findFirst().orElse(null);
++        if (settled == null || today.isBefore(settled) || today.isAfter(settled.plusDays(VOID_SETTLED_DAYS))) {
++            throw new ResponseStatusException(HttpStatus.CONFLICT,
++                    "A settled claim can only be voided within " + VOID_SETTLED_DAYS + " days of its settlement");
++        }
++        return rollup.tracking(sheetId, user, () -> {
++            Person person = person(sheetId, claim.getPersonId());
++            BigDecimal reversed = dues.figure(sheetId, person, claim);
++            claim.setStatus(ClaimStatus.VOID);
++            logStatus(sheetId, user, person, claim);
++            Claim saved = claims.saveAndFlush(claim);
++            audit.recordOnCommit(record("CLAIM_VOIDED", sheetId, user, person, saved) + " reversed=" + dueText(reversed));
++            return saved;
++        });
++    }
++
+     /** Defer an open claim until a day after the sheet's today: until the sheet's today reaches it,
+      *  the claim counts in no total, is not overdue, cannot be settled and a statement leaves it
+      *  unbound. Refused when the claim's period is closed, the claim is not open, or the day is not
+diff --git a/src/main/java/net/officefloor/hq/app/claim/ClaimStatus.java b/src/main/java/net/officefloor/hq/app/claim/ClaimStatus.java
+index 4b0bd7bf6..2befb1e48 100644
+--- a/src/main/java/net/officefloor/hq/app/claim/ClaimStatus.java
++++ b/src/main/java/net/officefloor/hq/app/claim/ClaimStatus.java
+@@ -2,8 +2,8 @@ package net.officefloor.hq.app.claim;
+ 
+ /** Where a claim is in its life: it starts as a draft, is opened and then settled; a clerk's settle
+  *  above the clerk limit leaves it pending until a steward approves it (settled) or rejects it (open
+- *  again); a draft, open or pending claim may be voided. A settled or voided claim cannot change
+- *  status. */
++ *  again); a draft, open or pending claim may be voided, and a steward may void a settled claim
++ *  within days of its settlement (see {@code ClaimService}). A voided claim cannot change status. */
+ public enum ClaimStatus {
+     DRAFT, OPEN, PENDING, SETTLED, VOID;
+ 
