@@ -1,6 +1,7 @@
 import { Component, inject, input, output, signal } from '@angular/core';
 import { FormControl, FormGroup, ReactiveFormsModule } from '@angular/forms';
 import { AMOUNT, Claim, Claims } from '../../core/claims';
+import { due } from '../../core/rates';
 
 // A person's claims, newest first, and the form that adds a claim for them or, once a claim's
 // editor is opened, edits it.
@@ -27,6 +28,7 @@ import { AMOUNT, Claim, Claims } from '../../core/claims';
           <span data-testid="claim-amount">{{ c.amount }}</span>
           <span data-testid="claim-date">{{ c.date }}</span>
           <span data-testid="claim-note">{{ c.note }}</span>
+          <span data-testid="claim-due">{{ dueOf(c) }}</span>
           <button type="button" data-testid="claim-edit" (click)="open(c)"
             [attr.aria-label]="'Edit claim of ' + c.amount + ' on ' + c.date">Edit</button>
           @if (editing() === c.id) {
@@ -43,6 +45,8 @@ export class PersonClaims {
   readonly personId = input.required<number>();
   /** This person's claims, newest first. */
   readonly claims = input.required<Claim[]>();
+  /** The rate for this person's grade, or undefined when it has none. */
+  readonly pct = input<string | undefined>();
   /** A claim added or saved through the form. */
   readonly saved = output<Claim>();
 
@@ -57,6 +61,10 @@ export class PersonClaims {
 
   constructor() {
     this.form.valueChanges.subscribe(() => this.error.set(''));
+  }
+
+  protected dueOf(c: Claim): string {
+    return due(c.amount, this.pct()) ?? 'n/a';
   }
 
   protected open(c: Claim): void {
