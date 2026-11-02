@@ -124,6 +124,14 @@ public class ClaimService {
         });
     }
 
+    /** Change only a draft claim's amount (the row's inline entry), keeping its date, note and the
+     *  number it corrects; refused exactly as {@link #edit} refuses, and recorded as it records. */
+    @Transactional
+    public Claim editAmount(String sheetId, String user, long claimId, BigDecimal amount) {
+        Claim claim = lock(sheetId, claimId);
+        return edit(sheetId, user, claimId, amount, claim.getDate(), claim.getNote(), claim.getCorrects());
+    }
+
     /** Open a claim's editor for the user, locking the claim for every other user until it is saved
      *  or cancelled or the sheet's today changes; an editor the user had open on another claim of the
      *  same person is closed. Refused when the claim is not a draft or another user has its editor

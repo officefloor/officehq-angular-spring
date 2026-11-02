@@ -171,6 +171,22 @@ public class ClaimController {
                 form.correctsValue()));
     }
 
+    /** A draft's amount changed in its row: the claim form's amount, alone. */
+    public record AmountForm(@NotNull @Pattern(regexp = "\\s*-?\\d{1,12}(\\.\\d{1,2})?\\s*") String amount) {
+
+        BigDecimal amountValue() {
+            return new BigDecimal(amount.trim()).setScale(2);
+        }
+    }
+
+    @PutMapping("/claims/{claimId}/amount")
+    public ClaimView editAmount(@PathVariable @NotBlank @Size(max = 100) String sheetId,
+            @PathVariable long claimId,
+            @RequestHeader("X-User") @NotBlank @Size(max = 100) String user,
+            @Valid @RequestBody AmountForm form) {
+        return ClaimView.of(service.editAmount(sheetId.trim(), user.trim(), claimId, form.amountValue()));
+    }
+
     @PostMapping("/claims/{claimId}/editor")
     public ClaimView openEditor(@PathVariable @NotBlank @Size(max = 100) String sheetId,
             @PathVariable long claimId,

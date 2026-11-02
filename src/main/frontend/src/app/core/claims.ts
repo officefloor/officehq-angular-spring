@@ -313,6 +313,14 @@ export class Claims {
     );
   }
 
+  /** Change only a draft's amount (the row's inline entry); refused as an edit is. */
+  editAmount(id: number, amount: string): Promise<Claim> {
+    const { sheetId, user } = this.active();
+    return firstValueFrom(
+      this.http.put<Claim>(`${this.url(sheetId)}/claims/${id}/amount`, { amount }, { headers: { 'X-User': user } }),
+    );
+  }
+
   /** Open the claim's editor, locking it for every other user until it is saved or cancelled or the
    *  sheet's today changes; refused (409) when it is not a draft or another user has it open, (423)
    *  when its period is closed, and (403) for a viewer. */

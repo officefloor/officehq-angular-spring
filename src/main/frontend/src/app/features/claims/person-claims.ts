@@ -105,6 +105,19 @@ const REDATE_DATE = 'Enter the new date for the claim.';
 /** The message when a defer's date is missing or not after the sheet's today. */
 const DEFER_DATE = 'Enter a date after the sheet\'s today to defer the claim to.';
 
+/** The message when a row's amount entry is not an amount. */
+const INLINE_AMOUNT = 'Enter an amount with up to two decimals; a negative amount is a correction.';
+
+/** The message for a refused change of a claim's amount from its row. */
+function amountRefusal(e: unknown, c: Claim, amount: string): string {
+  if (e instanceof HttpErrorResponse && e.status === 400 && amount.startsWith('-')) return CORRECTS;
+  if (e instanceof HttpErrorResponse && e.status === 422) return RETIRED;
+  if (e instanceof HttpErrorResponse && (e.status === 403 || e.status === 409 || e.status === 423)) {
+    return editorRefusal(e, c);
+  }
+  return 'The claim\'s amount could not be saved.';
+}
+
 /** The message for a refused reassign of a claim. */
 function reassignRefusal(e: unknown): string {
   if (e instanceof HttpErrorResponse && e.status === 403) return 'Only a steward can reassign a claim.';
@@ -221,6 +234,11 @@ function splitRefusal(e: unknown): string {
             inputmode="decimal" (input)="clearError(c)" />
           <button type="button" data-testid="claim-split" (click)="split(c, splitAmount.value)"
             [attr.aria-label]="'Split claim of ' + c.amount + ' on ' + c.date">Split</button>
+          <label [for]="'claim-inline-amount-' + c.id">Amount</label>
+          <input [id]="'claim-inline-amount-' + c.id" data-testid="claim-inline-amount" #inlineAmount
+            inputmode="decimal" (input)="clearError(c)" />
+          <button type="button" data-testid="claim-inline-save" (click)="saveAmount(c, inlineAmount.value)"
+            [attr.aria-label]="'Save amount of claim of ' + c.amount + ' on ' + c.date">Save amount</button>
           <button type="button" data-testid="claim-edit" (click)="open(c)"
             [attr.aria-label]="'Edit claim of ' + c.amount + ' on ' + c.date">Edit</button>
           @if (editing() === c.id) {
@@ -462,6 +480,23 @@ export class PersonClaims {
       this.saved.emit(split);
     } catch (e) {
       this.claimError.set({ id: c.id, message: splitRefusal(e) });
+    }
+  }
+
+  /** Change a draft's amount from its row, under the claim form's rules. */
+  protected async saveAmount(c: Claim, amount: string): Promise<void> {
+    this.claimError.set(null);
+    const value = amount.trim();
+    if (!CLAIM_AMOUNT.test(value)) {
+      this.claimError.set({ id: c.id, message: INLINE_AMOUNT });
+      return;
+    }
+    try {
+      const claim = await this.api.editAmount(c.id, value);
+      if (this.editing() === c.id) this.reset();
+      this.saved.emit(claim);
+    } catch (e) {
+      this.claimError.set({ id: c.id, message: amountRefusal(e, c, value) });
     }
   }
 
