@@ -3,7 +3,7 @@ import { Component, computed, effect, inject, signal } from '@angular/core';
 import { FormControl, FormGroup, ReactiveFormsModule } from '@angular/forms';
 import { Claim, Claims, QuickAdded, backingFigure, claimDue, countsAsOf, countsLive, keepsActive, overdue, sumAmounts, trimmedSum } from '../../core/claims';
 import { Patron, Patrons } from '../../core/patrons';
-import { Grade, People, Person, Taken, gradeOn } from '../../core/people';
+import { Grade, Leave, People, Person, Taken, gradeOn } from '../../core/people';
 import { Period, Periods, periodOf } from '../../core/periods';
 import { Rate, Rates, pctOn } from '../../core/rates';
 import { Session } from '../../core/session';
@@ -17,12 +17,16 @@ import { HeaderCounters } from '../summary/header-counters';
 import { QuickAddBar } from './quick-add-bar';
 import { PasteClaimsBox } from './paste-claims-box';
 
+/** What leaves no claim out: no holds, not retired. */
+const NO_LEAVE: Leave = { holds: [], retiredFrom: null };
+
 // The people on the sheet, in the order they were added, and the form that adds a person or,
 // once a person's editor is opened, edits them. Each person's row lists their claims and what
 // they have claimed and are due at their grade's rate; the sheet's totals add everyone's up.
 // Retired people are left out of the list unless "show retired" is on; their claims still count.
 // A person's open claims dated within one of their holds count in no total, unless a statement
-// bound them; their settled claims and other open claims still do.
+// bound them; their settled claims and other open claims still do. From the day the sheet's today
+// reaches a person's retirement day, none of their open claims a statement did not bind counts either.
 // A person may name other people on the sheet as their patrons; their backing is the settled
 // figures of their patrons' settled claims dated within the 90 days up to the sheet's today.
 // The signed-in user may watch a person: they are told when a claim of theirs is settled.
@@ -216,16 +220,16 @@ export class PeopleList {
   protected readonly watches = signal<Watch[]>([]);
   /** The ids of the people the signed-in user watches. */
   protected readonly watched = computed(() => new Set(this.watches().map((w) => w.personId)));
-  /** Each person's holds, by id. */
-  private readonly holds = computed(() => new Map(this.people().map((p) => [p.id, p.holds])));
+  /** Each person, by id: their holds and retirement leave claims out of the live totals. */
+  private readonly byId = computed(() => new Map(this.people().map((p) => [p.id, p])));
   /** The claims that count in the live totals, newest first. */
-  private readonly live = computed(() => this.claims().filter((c) => countsLive(c, this.holds().get(c.personId) ?? [], this.session.today())));
+  private readonly live = computed(() => this.claims().filter((c) => countsLive(c, this.byId().get(c.personId) ?? NO_LEAVE, this.session.today())));
   /** What each person has claimed: the sum of their open and settled claims' amounts, leaving out
    *  the open ones dated within one of their holds and unbound by a statement. */
   protected readonly claimed = computed(() => {
     const by = new Map<number, string>();
     for (const [id, cs] of this.claimsByPerson()) {
-      by.set(id, sumAmounts(cs.filter((c) => countsLive(c, this.holds().get(id) ?? [], this.session.today())).map((c) => c.amount)));
+      by.set(id, sumAmounts(cs.filter((c) => countsLive(c, this.byId().get(id) ?? NO_LEAVE, this.session.today())).map((c) => c.amount)));
     }
     return by;
   });
@@ -263,7 +267,7 @@ export class PeopleList {
       const period = periodOf(this.periods(), c.date);
       const person = people.get(c.personId);
       if (period === undefined || person === undefined) continue;
-      if (!countsAsOf(c, person.holds, period.to, this.session.today())) continue;
+      if (!countsAsOf(c, person, period.to, this.session.today())) continue;
       const d = claimDue(c, this.rates(), gradeOn(person.grades, c.date), this.floor(), this.lateness());
       if (d === null) continue;
       const theirs = figures.get(person.id) ?? new Map<number, string[]>();
@@ -718,7 +722,7 @@ export class PeopleList {
    *  when their grade on the sheet's today has no rate on it and no claim that counts has a figure
    *  (one kept by settling or a statement, or a live due at the grade in force on its date). */
   private figuresOf(p: Person): string | null {
-    const counted = (this.claimsByPerson().get(p.id) ?? []).filter((c) => countsLive(c, p.holds, this.session.today()));
+    const counted = (this.claimsByPerson().get(p.id) ?? []).filter((c) => countsLive(c, p, this.session.today()));
     const figures = counted.map((c) => claimDue(c, this.rates(), gradeOn(p.grades, c.date), this.floor(), this.lateness())).filter((d): d is string => d !== null);
     if (!this.pctOf().has(this.gradeOf(p)) && figures.length === 0) {
       return null;
@@ -749,13 +753,13 @@ export class PeopleList {
   /** Whether a person is active: they have an open (or pending) claim that counts, dated within
    *  the 30 days up to and including the sheet's today. */
   protected activeOf(p: Person): boolean {
-    return (this.claimsByPerson().get(p.id) ?? []).some((c) => keepsActive(c, p.holds, this.session.today()));
+    return (this.claimsByPerson().get(p.id) ?? []).some((c) => keepsActive(c, p, this.session.today()));
   }
 
   /** A person's overdue claims among those that count in the live totals. */
   protected overdueOf(p: Person): Claim[] {
     return (this.claimsByPerson().get(p.id) ?? [])
-      .filter((c) => countsLive(c, p.holds, this.session.today()) && overdue(c, this.session.today()));
+      .filter((c) => countsLive(c, p, this.session.today()) && overdue(c, this.session.today()));
   }
 
   /** A person's overdue-total: the due figures of their overdue claims that count, skipping those

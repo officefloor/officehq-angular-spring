@@ -117,6 +117,12 @@ public class Person {
         return retiredFrom != null;
     }
 
+    /** Whether the person is retired on a day: their retirement day is set and the day is on or after it.
+     *  From then their open claims unbound by a statement count in no live total. */
+    public boolean isRetiredOn(LocalDate day) {
+        return retiredFrom != null && !day.isBefore(retiredFrom);
+    }
+
     /** The person's holds, earliest from-date first, those with none first of all. */
     public List<Hold> getHolds() {
         return holds.stream()

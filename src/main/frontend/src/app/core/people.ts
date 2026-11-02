@@ -29,6 +29,18 @@ export interface Hold {
   to: string | null;
 }
 
+/** What leaves a person's open claims, unbound by a statement, out of the live totals: their
+ *  holds, and their retirement once the sheet's today reaches it. */
+export interface Leave {
+  holds: Hold[];
+  retiredFrom: string | null;
+}
+
+/** Whether a person retired from a day (null: not retired) is retired on another. */
+export function retiredOn(retiredFrom: string | null, day: string | null): boolean {
+  return retiredFrom !== null && day !== null && retiredFrom <= day;
+}
+
 /** Whether one of the holds covers a day. */
 export function heldOn(holds: Hold[], day: string): boolean {
   return holds.some((h) => (h.from === null || h.from <= day) && (h.to === null || day <= h.to));

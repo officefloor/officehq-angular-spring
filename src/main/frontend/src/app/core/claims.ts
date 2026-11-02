@@ -1,7 +1,7 @@
 import { HttpClient } from '@angular/common/http';
 import { Injectable, inject } from '@angular/core';
 import { firstValueFrom } from 'rxjs';
-import { Grade, Hold, Person, heldOn } from './people';
+import { Grade, Leave, Person, heldOn, retiredOn } from './people';
 import { Rate, atLeast, due, pctOn } from './rates';
 import { DatedValue, STARTING_FLOOR, STARTING_LATE_PCT, valueOn } from './settings';
 import { Session } from './session';
@@ -33,9 +33,15 @@ export function deferred(c: Claim, today: string | null): boolean {
 
 /** Whether a claim counts in the live totals on the sheet's today: it counts, it is not deferred,
  *  and it is not an open (or pending) claim, unbound by a statement, dated within one of its
- *  person's holds. */
-export function countsLive(c: Claim, holds: Hold[], today: string | null): boolean {
-  return counts(c) && !deferred(c, today) && !(isOpen(c) && !c.stated && heldOn(holds, c.date));
+ *  person's holds or of a person retired on that day. */
+export function countsLive(c: Claim, leave: Leave, today: string | null): boolean {
+  return counts(c) && !deferred(c, today) && !leftOut(c, leave, today);
+}
+
+/** Whether the live rules leave a claim out: it is open (or pending), unbound by a statement, and
+ *  dated within one of its person's holds or its person is retired on the sheet's today. */
+function leftOut(c: Claim, leave: Leave, today: string | null): boolean {
+  return isOpen(c) && !c.stated && (heldOn(leave.holds, c.date) || retiredOn(leave.retiredFrom, today));
 }
 
 /** The day (yyyy-mm-dd) a number of days after another (before it when negative). */
@@ -47,8 +53,8 @@ export function addDays(day: string, days: number): string {
 
 /** Whether a claim keeps its person active on the sheet's today: it is open (or pending), it
  *  counts in the live totals, and it is dated within the 30 days up to and including today. */
-export function keepsActive(c: Claim, holds: Hold[], today: string | null): boolean {
-  return today !== null && isOpen(c) && countsLive(c, holds, today)
+export function keepsActive(c: Claim, leave: Leave, today: string | null): boolean {
+  return today !== null && isOpen(c) && countsLive(c, leave, today)
     && addDays(today, -29) <= c.date && c.date <= today;
 }
 
@@ -72,11 +78,11 @@ export function statusOn(c: Claim, day: string): ClaimStatus | null {
 /** Whether a claim counts in a period's totals: by the status it had at the end of the period's
  *  last day it counts, and the live rules do not leave it out: it is not deferred on the sheet's
  *  today, and it is not a claim open (or pending) now, unbound by a statement, dated within one of
- *  its person's holds. */
-export function countsAsOf(c: Claim, holds: Hold[], end: string, today: string | null): boolean {
+ *  its person's holds or of a person retired on the sheet's today. */
+export function countsAsOf(c: Claim, leave: Leave, end: string, today: string | null): boolean {
   const then = statusOn(c, end);
   if (then === null || !(then === 'OPEN' || then === 'PENDING' || then === 'SETTLED')) return false;
-  return !deferred(c, today) && !(isOpen(c) && !c.stated && heldOn(holds, c.date));
+  return !deferred(c, today) && !leftOut(c, leave, today);
 }
 
 export interface Claim {
