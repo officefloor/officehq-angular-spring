@@ -59,6 +59,7 @@ import { QuickAddBar } from './quick-add-bar';
           (change)="showRetired.set($any($event.target).checked)" />
         Show retired
       </label>
+      <button type="button" data-testid="export-people" (click)="exportCsv()">Export people (CSV)</button>
       <table data-testid="people">
         <thead>
           <tr><th scope="col">Name</th><th scope="col">Grade</th><th scope="col">Claimed</th><th scope="col">Due</th><th scope="col">Statements</th><th scope="col">Last stated</th><th scope="col">Stated on</th><th scope="col">Retired</th><th scope="col">Retired from</th><th scope="col">On hold</th><th scope="col">Overdue</th><th scope="col">Overdue due</th><th scope="col">Patrons</th><th scope="col">Backing</th><th scope="col">Claims</th><th scope="col"><span class="visually-hidden">Actions</span></th></tr>
@@ -505,6 +506,21 @@ export class PeopleList {
   }
 
   /** The grade a person shows: the one in force on the sheet's today. */
+  /** Downloads everyone, retired included, in list order as CSV: name, grade in force today,
+   *  retired-from and due-total as shown. */
+  protected exportCsv(): void {
+    const lines = [['name', 'grade', 'retired-from', 'due-total']].concat(
+      this.people().map((p) => [p.name, this.gradeOf(p), p.retiredFrom ?? '', this.dueOf(p) ?? 'n/a']),
+    );
+    const text = lines.map((l) => l.map(csvField).join(',') + '\n').join('');
+    const url = URL.createObjectURL(new Blob([text], { type: 'text/csv;charset=utf-8' }));
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = 'people.csv';
+    a.click();
+    setTimeout(() => URL.revokeObjectURL(url), 1000);
+  }
+
   protected gradeOf(p: Person): Grade {
     return gradeOn(p.grades, this.session.today()) ?? p.grade;
   }
@@ -554,4 +570,9 @@ export class PeopleList {
       // the list stays empty; the next load reads it again
     }
   }
+}
+
+/** A CSV field: quoted, with quotes doubled, when it holds a comma, a quote or a line break. */
+function csvField(v: string): string {
+  return /[",\r\n]/.test(v) ? '"' + v.replace(/"/g, '""') + '"' : v;
 }
