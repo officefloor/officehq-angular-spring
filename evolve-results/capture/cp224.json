@@ -1,0 +1,80 @@
+{
+  "checkpoint": 224,
+  "stack": {
+    "repo": "/home/daniel/officehq-angular-spring",
+    "origin": "git@github.com:officefloor/officehq-angular-spring.git",
+    "name": "officehq-angular-spring",
+    "base_ref": "base-empty",
+    "base_commit": "65cb8233ea38b2dfa6cfd18709e30cd18fdf3250"
+  },
+  "checkpoint_id": "cp224_cap-includes-cuts",
+  "phase": "late",
+  "type": "mutative",
+  "mutates": [
+    106,
+    109,
+    119,
+    143,
+    154,
+    189,
+    207
+  ],
+  "replaced_tests": [
+    "cp106_pool-cuts.spec.ts::pool cuts scenario 2",
+    "cp109_parent-sheet-rates.spec.ts::parent sheet rates scenario 2",
+    "cp119_cut-totals.spec.ts::cut totals",
+    "cp143_fiscal-year.spec.ts::fiscal year scenario 3",
+    "cp154_classic-summary.spec.ts::classic summary scenario 1",
+    "cp189_default-grade.spec.ts::default grade scenario 2",
+    "cp207_year-end-rollover.spec.ts::year end rollover scenario 1"
+  ],
+  "request": {
+    "spec": "The cap now covers a person's due-total plus their cut total: their due-total is held to the cap\nless their cut total (not below 0.00), and the excess is what the figures exceed that by.\n",
+    "prompt": "You are implementing ONE change to this application.\n\nFIRST read AGENTS.md \u2014 it states the working rules and how the app is tested, and sends you to\nDESIGN.md for the app's stack and conventions. Follow both.\n\nTHE CHANGE REQUEST:\nThe cap now covers a person's due-total plus their cut total: their due-total is held to the cap\nless their cut total (not below 0.00), and the excess is what the figures exceed that by.\n\nYour work is verified by an automated Playwright UI test already installed under e2e/specs/.\nRead that spec: it declares the exact data-testid anchors, values, test data and any audit\nrecords it expects \u2014 match them. Run `bin/e2e` to build the app, start it, and run the test as\nyou work; iterate until it passes. Change whatever the request needs across the app \u2014 its stored\ndata, its server and its front end. Do NOT edit bin/build, bin/start, bin/stop, bin/e2e,\nAGENTS.md, CLAUDE.md, DESIGN.md, e2e/support/ or the test spec.\n"
+  },
+  "commit_sha": "e443ac7d83736c55492fcc816f1aace5134b0dbc",
+  "reset_sha": "",
+  "preagent_sha": "cf1c3a9d11a5d1fdf23c66f46c814504999671d5",
+  "prev_sha": "cf1c3a9d11a5d1fdf23c66f46c814504999671d5",
+  "base_sha": "65cb8233ea38b2dfa6cfd18709e30cd18fdf3250",
+  "agent": {
+    "ok": true,
+    "cost_usd": 1.1317802,
+    "input_tokens": 60,
+    "output_tokens": 13619,
+    "cache_read_tokens": 1540881,
+    "cache_creation_tokens": 68873,
+    "num_turns": 31,
+    "duration_ms": 531818,
+    "duration_api_ms": 204903,
+    "model": "claude-opus-5-5",
+    "session_id": "45e42a20-e35c-4b8b-9e20-51aa94e33669",
+    "stop_reason": "success",
+    "result_text": "The cap now counts a person's cut total. Their due-total is held to the cap less their cut total, never below 0.00, and their excess is how far their figures plus their cut total go over the cap. `bin/e2e` passes all 4 tests in the spec. The only edit after that run was one doc comment.\n\n**Front end** (`features/people/people.ts`): `dueTotalCents` and `excessOf` now subtract the cut total the pools section already provides. Every total built from due-totals (header, rollup, summaries, crews, watched) picks this up on its own.\n\n**Server:**\n- **New helper:** `PoolService.cutTotals(sheetId)` adds up each person's cuts across the balanced pools and crews, the same way the screen does.\n- **Cap rule:** `Sheet.capped(dueTotal, cutTotal)` applies the new rule. `RollupService` uses it for the ROLLUP/TOTALS records, and `StatementService` uses it for statements taken now.\n- **New audit records:** changing the pot, adding a pool or a pool member, and adding a crew or a crew member now write ROLLUP/TOTALS lines when they shift anyone's capped due-total. The spec expects this after the pot change. Holds, retirement and changing the sheet's today already wrote these lines.\n- **Dependency loop:** `PoolService` gets `RollupService` through `@Lazy`, because the rollup now reads cut totals from the pools.\n\nOne gap: a statement taken **as of a past date** still uses that date's cap without the cut total. Working out cuts as they stood then would mean rebuilding the pools from history inside the statement's transaction (as `PoolCutHistory` does for periods). The spec doesn't cover this, so I left it out.\n\nNo data or schema change was needed, because cut totals are worked out from the pools when needed rather than stored.",
+    "error": "",
+    "attempts": [
+      {
+        "ok": true,
+        "limit_reached": false,
+        "retryable": false,
+        "timed_out": false,
+        "cost_usd": 1.1317802,
+        "num_turns": 31,
+        "duration_ms": 531818,
+        "duration_api_ms": 204903,
+        "error": ""
+      }
+    ]
+  },
+  "agent_stream_file": "cp224.agent.jsonl",
+  "agent_diff_file": "cp224.agent.diff",
+  "build_log_file": null,
+  "tests": {
+    "gated": false,
+    "queued": true
+  },
+  "probe": null,
+  "pinned_touched": [],
+  "acceptance_touched": [],
+  "impact_gate": null
+}
