@@ -50,6 +50,19 @@ export class Periods {
     return firstValueFrom(this.http.post<Period>(this.url(sheetId), form, { headers: { 'X-User': user } }));
   }
 
+  /** Generate one period per calendar month from the from-date's month to the to-date's month,
+   *  leaving out a month whose name is in use or that overlaps a period; the from-date is the
+   *  sheet's today when blank. Refused when the to-date is before the from-date. */
+  generate(from: string, to: string): Promise<Period[]> {
+    const sheetId = this.session.sheetId();
+    const user = this.session.user();
+    if (!sheetId || !user) throw new Error('no sheet loaded');
+    return firstValueFrom(
+      this.http.post<Period[]>(`${this.url(sheetId)}/generate`, { from: from || null, to },
+        { headers: { 'X-User': user } }),
+    );
+  }
+
   /** Close a period, fixing its due-total; refused when it is already closed. */
   close(id: number): Promise<Period> {
     const sheetId = this.session.sheetId();

@@ -2,6 +2,8 @@ package net.officefloor.hq.app.period;
 
 import java.math.BigDecimal;
 import java.time.LocalDate;
+import java.time.YearMonth;
+import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -74,6 +76,35 @@ public class PeriodService {
         audit.recordOnCommit("PERIOD_ADDED sheet=" + sheetId + " by=" + user + " period=" + saved.getName()
                 + " from=" + saved.getFromDate() + " to=" + saved.getToDate());
         return saved;
+    }
+
+    /** Generate one period per calendar month from the from-date's month to the to-date's month
+     *  (the from-date the sheet's today when none is given), each running from the first to the last
+     *  day of its month and named yyyy-mm; a month whose name is in use on the sheet, or whose days
+     *  overlap a period on it, is left out. Refused when the to-date is before the from-date. */
+    @Transactional
+    public synchronized List<Period> generate(String sheetId, String user, LocalDate from, LocalDate to) {
+        sheets.load(sheetId, user);
+        if (from == null) {
+            from = sheets.today(sheetId);
+        }
+        if (to.isBefore(from)) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "The to-date cannot be before the from-date");
+        }
+        List<Period> made = new ArrayList<>();
+        for (YearMonth month = YearMonth.from(from); !month.isAfter(YearMonth.from(to)); month = month.plusMonths(1)) {
+            String name = month.toString();
+            LocalDate first = month.atDay(1);
+            LocalDate last = month.atEndOfMonth();
+            if (periods.existsBySheetIdAndNameIgnoreCase(sheetId, name) || periods.overlaps(sheetId, first, last)) {
+                continue;
+            }
+            Period saved = periods.saveAndFlush(new Period(sheetId, name, first, last));
+            audit.recordOnCommit("PERIOD_ADDED sheet=" + sheetId + " by=" + user + " period=" + saved.getName()
+                    + " from=" + saved.getFromDate() + " to=" + saved.getToDate());
+            made.add(saved);
+        }
+        return made;
     }
 
     /** Close a period, fixing its due-total at what it is now; refused when the permission matrix does

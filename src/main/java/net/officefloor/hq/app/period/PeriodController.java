@@ -44,6 +44,11 @@ public class PeriodController {
             @NotNull LocalDate to) {
     }
 
+    /** The generate form: the day whose month the periods start from (the sheet's today when none
+     *  is given), and the required day whose month they end with. */
+    public record GenerateForm(LocalDate from, @NotNull LocalDate to) {
+    }
+
     private final PeriodService service;
 
     public PeriodController(PeriodService service) {
@@ -61,6 +66,14 @@ public class PeriodController {
             @RequestHeader("X-User") @NotBlank @Size(max = 100) String user,
             @Valid @RequestBody PeriodForm form) {
         return PeriodView.of(service.add(sheetId.trim(), user.trim(), form.name().trim(), form.from(), form.to()));
+    }
+
+    @PostMapping("/generate")
+    public List<PeriodView> generate(@PathVariable @NotBlank @Size(max = 100) String sheetId,
+            @RequestHeader("X-User") @NotBlank @Size(max = 100) String user,
+            @Valid @RequestBody GenerateForm form) {
+        return service.generate(sheetId.trim(), user.trim(), form.from(), form.to()).stream()
+                .map(PeriodView::of).toList();
     }
 
     @PostMapping("/{periodId}/close")

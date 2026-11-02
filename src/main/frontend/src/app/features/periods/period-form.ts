@@ -24,6 +24,19 @@ const DAY = /^\d{4}-\d{2}-\d{2}$/;
           <p role="alert" data-testid="period-form-error">{{ error() }}</p>
         }
       </form>
+      <form data-testid="period-generate-form" [formGroup]="generateForm" (ngSubmit)="generate()">
+        <label for="period-generate-from">Generate from</label>
+        <input id="period-generate-from" type="date" data-testid="period-generate-from" formControlName="from" />
+        <label for="period-generate-to">Generate to</label>
+        <input id="period-generate-to" type="date" data-testid="period-generate-to" formControlName="to" />
+        <button type="submit" data-testid="period-generate">Generate monthly periods</button>
+        @if (generated() !== null) {
+          <p role="status">Made <span data-testid="period-generated">{{ generated() }}</span></p>
+        }
+        @if (generateError()) {
+          <p role="alert" data-testid="period-generate-error">{{ generateError() }}</p>
+        }
+      </form>
       <table data-testid="periods">
         <thead>
           <tr><th scope="col">Name</th><th scope="col">From</th><th scope="col">To</th><th scope="col">Due</th><th scope="col">Closed</th><th scope="col"><span class="visually-hidden">Actions</span></th></tr>
@@ -75,8 +88,44 @@ export class PeriodForm {
     to: new FormControl('', { nonNullable: true }),
   });
 
+  protected readonly generateError = signal('');
+  /** How many periods the last generate made; null while one runs or before the first. */
+  protected readonly generated = signal<number | null>(null);
+  private generating = false;
+  protected readonly generateForm = new FormGroup({
+    from: new FormControl('', { nonNullable: true }),
+    to: new FormControl('', { nonNullable: true }),
+  });
+
   constructor() {
     this.form.valueChanges.subscribe(() => this.error.set(''));
+    this.generateForm.valueChanges.subscribe(() => this.generateError.set(''));
+  }
+
+  protected async generate(): Promise<void> {
+    if (this.generating) return;
+    this.generateError.set('');
+    this.generated.set(null);
+    const from = this.generateForm.getRawValue().from.trim();
+    const to = this.generateForm.getRawValue().to.trim();
+    if ((from && !DAY.test(from)) || !DAY.test(to)) {
+      this.generateError.set('Enter the day to generate to.');
+      return;
+    }
+    if (from && to < from) {
+      this.generateError.set('The to-date cannot be before the from-date.');
+      return;
+    }
+    this.generating = true;
+    try {
+      const made = await this.api.generate(from, to);
+      for (const p of made) this.saved.emit(p);
+      this.generated.set(made.length);
+    } catch {
+      this.generateError.set('The periods could not be generated.');
+    } finally {
+      this.generating = false;
+    }
   }
 
   protected async close(p: Period): Promise<void> {
