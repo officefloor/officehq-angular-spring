@@ -1,0 +1,38 @@
+diff --git a/src/main/frontend/src/app/features/people/people.ts b/src/main/frontend/src/app/features/people/people.ts
+index bb3672ee0..727eec20b 100644
+--- a/src/main/frontend/src/app/features/people/people.ts
++++ b/src/main/frontend/src/app/features/people/people.ts
+@@ -515,6 +515,8 @@ function trimmedSum(figures: number[]): number {
+                         [attr.aria-label]="'Take statement for ' + p.name">Statement</button>
+                 <button type="button" data-testid="person-unstate" (click)="cancelStatement(p)"
+                         [attr.aria-label]="'Cancel last statement for ' + p.name">Cancel statement</button>
++                <button type="button" data-testid="person-export-statement" (click)="exportStatement(p)"
++                        [attr.aria-label]="'Export statement for ' + p.name">Export statement</button>
+                 @if (personError()?.id === p.id) {
+                   <p role="alert" class="error" data-testid="person-error">{{ personError()?.message }}</p>
+                 }
+@@ -1498,6 +1500,24 @@ export class People {
+     downloadCsv(lines, 'claims.csv');
+   }
+ 
++  /**
++   * Downloads the person's statement as CSV: each claim of theirs bound by their last statement, oldest
++   * first, with its number, date, amount, bound figure as the claim shows it, and status. Re-read from
++   * the store first.
++   */
++  protected async exportStatement(p: Person): Promise<void> {
++    if (!(await this.reloadForExport())) return;
++    const theirs = this.claimsOf(p.id);
++    const pctOn = this.pctOnOf(p.id);
++    const graceOn = this.graceOnOf(p.id);
++    const lines = [['number', 'date', 'amount', 'figure', 'status']];
++    for (const c of [...theirs].reverse().filter(isBound)) {
++      const due = claimDueCents(c, pctOn, this.session.floorCentsOn, this.session.late(), roundsOn(c, theirs), graceOn);
++      lines.push([c.number ?? '', c.date, c.amount, due === null ? NA : money(due), c.status]);
++    }
++    downloadCsv(lines, `statement-${p.name}.csv`);
++  }
++
+   /** Their patrons as <name> <share>, sorted by name, comma and space separated. */
+   protected patronsOf(p: Person): string {
+     return this.patronShares(p)

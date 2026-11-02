@@ -1,0 +1,64 @@
+{
+  "checkpoint": 195,
+  "stack": {
+    "repo": "/home/daniel/officehq-angular-spring",
+    "origin": "git@github.com:officefloor/officehq-angular-spring.git",
+    "name": "officehq-angular-spring",
+    "base_ref": "base-empty",
+    "base_commit": "65cb8233ea38b2dfa6cfd18709e30cd18fdf3250"
+  },
+  "checkpoint_id": "cp195_statement-export",
+  "phase": "late",
+  "type": "additive",
+  "mutates": [],
+  "replaced_tests": [],
+  "request": {
+    "spec": "A button on each person's row downloads their statement as a CSV file: a header line\nnumber,date,amount,figure,status then one line per claim of theirs bound by their last statement,\noldest first, with the bound figure as the claim shows it.\n",
+    "prompt": "You are implementing ONE change to this application.\n\nFIRST read AGENTS.md \u2014 it states the working rules and how the app is tested, and sends you to\nDESIGN.md for the app's stack and conventions. Follow both.\n\nTHE CHANGE REQUEST:\nA button on each person's row downloads their statement as a CSV file: a header line\nnumber,date,amount,figure,status then one line per claim of theirs bound by their last statement,\noldest first, with the bound figure as the claim shows it.\n\nYour work is verified by an automated Playwright UI test already installed under e2e/specs/.\nRead that spec: it declares the exact data-testid anchors, values, test data and any audit\nrecords it expects \u2014 match them. Run `bin/e2e` to build the app, start it, and run the test as\nyou work; iterate until it passes. Change whatever the request needs across the app \u2014 its stored\ndata, its server and its front end. Do NOT edit bin/build, bin/start, bin/stop, bin/e2e,\nAGENTS.md, CLAUDE.md, DESIGN.md, e2e/support/ or the test spec.\n"
+  },
+  "commit_sha": "c1c3e1a7f907b4b3f9bdf1ac73b32a10ed436720",
+  "reset_sha": "",
+  "preagent_sha": "ff145062fd3f10942b6fdf971de34ba61df77b21",
+  "prev_sha": "ff145062fd3f10942b6fdf971de34ba61df77b21",
+  "base_sha": "65cb8233ea38b2dfa6cfd18709e30cd18fdf3250",
+  "agent": {
+    "ok": true,
+    "cost_usd": 1.1068676,
+    "input_tokens": 70,
+    "output_tokens": 11071,
+    "cache_read_tokens": 1752158,
+    "cache_creation_tokens": 66842,
+    "num_turns": 35,
+    "duration_ms": 750624,
+    "duration_api_ms": 123869,
+    "model": "claude-opus-5-5",
+    "session_id": "ee78ca58-7b45-44cc-8e46-d53678f0b8ee",
+    "stop_reason": "success",
+    "result_text": "I added the export button. The main \"statement export\" test passes, and so does scenario 2, which also uses the button. Scenario 3 fails every time with the real clock. As far as I can tell that's caused by the machine's date, not by this change, but it means `bin/e2e` doesn't fully pass yet: 3 tests pass and 1 fails.\n\n**The change** (front end only, in `src/main/frontend/src/app/features/people/people.ts`):\n- Each person's row has a new **Export statement** button (`person-export-statement`) next to the Statement and Cancel statement buttons.\n- `exportStatement(p)` follows the existing claims export. It re-reads the sheet from the store, then writes `number,date,amount,figure,status` and one line for each of the person's claims bound by their last statement, oldest first. The figure is worked out the same way the claim's Due field is on screen, so a claim settled after the statement shows its settled figure. The file is saved as `statement-<name>.csv`.\n- No server or database changes were needed: the screen already receives everything required.\n\n**The scenario 3 failure:**\n- **Where:** after setting an as-of date of 2026-03-20, the test expects the April cell for grade A in the rate calendar (`rate-month-A-2026-04`) to show `12.50`, taken from the parent sheet. The app shows `n/a`.\n- **Cause:** the parent sheet is never given a today, so its today defaults to the machine's date (`LocalDate.now()` in `SheetService.java:47`), currently 2026-11-02. Its rates are therefore recorded as set on 2026-11-02, and the as-of view correctly leaves them out because that is after 2026-03-20.\n- **Check:** I temporarily made new sheets start on 2026-01-01. Scenario 3 then passed, but scenario 1 failed instead. So the two scenarios each rely on a different real date, and no one clock passes both. I removed that temporary edit and the code is back to the original.\n\nI didn't change how as-of rates work, because that's existing behaviour outside this request and the failure doesn't come from the export.\n\n**Decision for you:** whether to treat scenario 3 as a known date-dependent failure or have me change the as-of rate rules. Changing them would alter how the app treats rates set on other sheets, and I'd need you to say what the intended rule is.",
+    "error": "",
+    "attempts": [
+      {
+        "ok": true,
+        "limit_reached": false,
+        "retryable": false,
+        "timed_out": false,
+        "cost_usd": 1.1068676,
+        "num_turns": 35,
+        "duration_ms": 750624,
+        "duration_api_ms": 123869,
+        "error": ""
+      }
+    ]
+  },
+  "agent_stream_file": "cp195.agent.jsonl",
+  "agent_diff_file": "cp195.agent.diff",
+  "build_log_file": null,
+  "tests": {
+    "gated": false,
+    "queued": true
+  },
+  "probe": null,
+  "pinned_touched": [],
+  "acceptance_touched": [],
+  "impact_gate": null
+}
