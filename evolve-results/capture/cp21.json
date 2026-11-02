@@ -1,0 +1,64 @@
+{
+  "checkpoint": 21,
+  "stack": {
+    "repo": "/home/daniel/officehq-angular-spring",
+    "origin": "git@github.com:officefloor/officehq-angular-spring.git",
+    "name": "officehq-angular-spring",
+    "base_ref": "base-empty",
+    "base_commit": "65cb8233ea38b2dfa6cfd18709e30cd18fdf3250"
+  },
+  "checkpoint_id": "cp21_retire",
+  "phase": "early",
+  "type": "additive",
+  "mutates": [],
+  "replaced_tests": [],
+  "request": {
+    "spec": "A person can be retired from a date (defaults to the sheet's today). A claim dated after a person's\nretirement date is refused with an error; claims dated on or before it are allowed even if added\nlater. Retired people are left out of the list (no row for them on the screen at all) unless \"show\nretired\" is on: a toggle on the screen, off when the screen is first opened and left as it is by\nloading a sheet. Their claims keep counting in every total. Show retired yes/no and retired-from.\nRetiring writes PERSON_RETIRED name=<name> from=<date>. A person with a retirement date set counts\nas retired at once, whatever the date, even one after the sheet's today: the row shows retired yes,\nthe list hides it, and every rule that speaks of a retired person or member applies to them.\n",
+    "prompt": "You are implementing ONE change to this application.\n\nFIRST read AGENTS.md \u2014 it states the working rules and how the app is tested, and sends you to\nDESIGN.md for the app's stack and conventions. Follow both.\n\nTHE CHANGE REQUEST:\nA person can be retired from a date (defaults to the sheet's today). A claim dated after a person's\nretirement date is refused with an error; claims dated on or before it are allowed even if added\nlater. Retired people are left out of the list (no row for them on the screen at all) unless \"show\nretired\" is on: a toggle on the screen, off when the screen is first opened and left as it is by\nloading a sheet. Their claims keep counting in every total. Show retired yes/no and retired-from.\nRetiring writes PERSON_RETIRED name=<name> from=<date>. A person with a retirement date set counts\nas retired at once, whatever the date, even one after the sheet's today: the row shows retired yes,\nthe list hides it, and every rule that speaks of a retired person or member applies to them.\n\nYour work is verified by an automated Playwright UI test already installed under e2e/specs/.\nRead that spec: it declares the exact data-testid anchors, values, test data and any audit\nrecords it expects \u2014 match them. Run `bin/e2e` to build the app, start it, and run the test as\nyou work; iterate until it passes. Change whatever the request needs across the app \u2014 its stored\ndata, its server and its front end. Do NOT edit bin/build, bin/start, bin/stop, bin/e2e,\nAGENTS.md, CLAUDE.md, DESIGN.md, e2e/support/ or the test spec.\n"
+  },
+  "commit_sha": "344030710139b5b1c391c913e649d23080de9e43",
+  "reset_sha": "",
+  "preagent_sha": "d61f86e5d8ee2504c524083d8cb660517064df3a",
+  "prev_sha": "d61f86e5d8ee2504c524083d8cb660517064df3a",
+  "base_sha": "65cb8233ea38b2dfa6cfd18709e30cd18fdf3250",
+  "agent": {
+    "ok": true,
+    "cost_usd": 0.8074111999999999,
+    "input_tokens": 32,
+    "output_tokens": 8947,
+    "cache_read_tokens": 804636,
+    "cache_creation_tokens": 58427,
+    "num_turns": 18,
+    "duration_ms": 190176,
+    "duration_api_ms": 80686,
+    "model": "claude-opus-5-5",
+    "session_id": "3ed8e48d-4a9c-45ec-9c95-3ef0e83015b6",
+    "stop_reason": "success",
+    "result_text": "Retiring people now works, and all 4 acceptance tests pass in `bin/e2e`.\n\n**What changed**\n\n- **Stored data:** the new migration `V16__person_retired.sql` adds a `retired_from` date to each person. A person counts as retired as soon as that date is set, even if it's later than the sheet's today.\n- **Server:**\n  - There's a new `POST /api/sheets/{sheetId}/people/{personId}/retire` endpoint that takes `{ from }`. If the date is left blank it uses the sheet's today. It writes `PERSON_RETIRED sheet=\u2026 by=\u2026 name=\u2026 from=\u2026` to the audit file.\n  - The person data the screen gets now includes `retired` and `retiredFrom`, so the statement and quick-add responses carry them too.\n  - Adding a claim dated after the person's retirement date is refused, and so is editing one to such a date. A claim on or before that date is still allowed. Quick-add uses the same check, so it can't get around it.\n- **Front end:**\n  - A \"Show retired\" checkbox (`show-retired`), off when the screen first opens. It keeps its setting when you load a sheet.\n  - When it's off, retired people get no row at all. Totals still count everyone's claims, retired or not.\n  - Each row now shows `person-retired` (yes/no) and `person-retired-from`, plus a retire date field (`person-retire-date`) and a Retire button (`person-retire`). If retiring fails, the row shows `person-error`.\n\n**One choice you might want to know about:** a claim refused because of retirement comes back as HTTP 422, not 409. The front end already reads 409 on a claim edit as \"this claim is no longer a draft\", so a 409 would have shown the wrong message. With 422 the claim form shows its own message: \"A claim cannot be dated after the person's retirement.\"\n\nThere's no way to undo a retirement yet; the request didn't ask for one.",
+    "error": "",
+    "attempts": [
+      {
+        "ok": true,
+        "limit_reached": false,
+        "retryable": false,
+        "timed_out": false,
+        "cost_usd": 0.8074111999999999,
+        "num_turns": 18,
+        "duration_ms": 190176,
+        "duration_api_ms": 80686,
+        "error": ""
+      }
+    ]
+  },
+  "agent_stream_file": "cp21.agent.jsonl",
+  "agent_diff_file": "cp21.agent.diff",
+  "build_log_file": null,
+  "tests": {
+    "gated": false,
+    "queued": true
+  },
+  "probe": null,
+  "pinned_touched": [],
+  "acceptance_touched": [],
+  "impact_gate": null
+}
