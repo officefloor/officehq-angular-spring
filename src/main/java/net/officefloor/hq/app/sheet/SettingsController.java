@@ -39,22 +39,24 @@ public class SettingsController {
      *  first (a claim takes the one in force on its date, or else the sheet's starting one); and the
      *  proof threshold as text with two decimals (null when there is none); and the permission matrix:
      *  for each action, the comma separated roles that may take it (blank: the standing rule); and the
-     *  grace days (null when blank: off). */
+     *  grace days (null when blank: off); and the note threshold as text with two decimals (null when
+     *  there is none). */
     public record SettingsView(String clerkLimit, String floor, int terms, String latePct, LocalDate policyDate,
             LocalDate periodNumberingFrom, Map<String, Integer> gradeTerms, String cap, List<DatedValue> floors,
             List<DatedValue> latePcts, List<DatedValue> caps, String proofThreshold,
-            Map<String, String> permissions, Integer graceDays) {
+            Map<String, String> permissions, Integer graceDays, String noteThreshold) {
         static SettingsView of(BigDecimal clerkLimit, BigDecimal floor, int terms, BigDecimal latePct,
                 LocalDate policyDate, LocalDate periodNumberingFrom, Map<String, Integer> gradeTerms,
                 BigDecimal cap, List<SettingValue> floors, List<SettingValue> latePcts,
                 List<SettingValue> caps, BigDecimal proofThreshold, Map<String, String> permissions,
-                Integer graceDays) {
+                Integer graceDays, BigDecimal noteThreshold) {
             return new SettingsView(clerkLimit == null ? null : clerkLimit.setScale(2).toPlainString(),
                     floor.setScale(2).toPlainString(), terms, latePct.setScale(2).toPlainString(), policyDate,
                     periodNumberingFrom, gradeTerms, cap == null ? null : cap.setScale(2).toPlainString(),
                     floors.stream().map(DatedValue::of).toList(), latePcts.stream().map(DatedValue::of).toList(),
                     caps.stream().map(DatedValue::of).toList(),
-                    proofThreshold == null ? null : proofThreshold.setScale(2).toPlainString(), permissions, graceDays);
+                    proofThreshold == null ? null : proofThreshold.setScale(2).toPlainString(), permissions, graceDays,
+                    noteThreshold == null ? null : noteThreshold.setScale(2).toPlainString());
         }
     }
 
@@ -112,6 +114,16 @@ public class SettingsController {
     /** The proof threshold form: 0.00 or more with up to two decimals, or blank for none; from a
      *  date, or blank for the sheet's today. */
     public record ProofThresholdForm(@Pattern(regexp = "\\s*(\\d{1,12}(\\.\\d{1,2})?)?\\s*") String value,
+            @Pattern(regexp = DATE) String from) implements Dated {
+
+        BigDecimal thresholdValue() {
+            return value == null || value.isBlank() ? null : new BigDecimal(value.trim()).setScale(2);
+        }
+    }
+
+    /** The note threshold form: 0.00 or more with up to two decimals, or blank for none; from a
+     *  date, or blank for the sheet's today. */
+    public record NoteThresholdForm(@Pattern(regexp = "\\s*(\\d{1,12}(\\.\\d{1,2})?)?\\s*") String value,
             @Pattern(regexp = DATE) String from) implements Dated {
 
         BigDecimal thresholdValue() {
@@ -214,7 +226,8 @@ public class SettingsController {
         return SettingsView.of(value.apply("clerk-limit"), then.basis().floor(day), terms, then.basis().latePct(day),
                 then.policyDate(), service.periodNumberingFrom(id), gradeTerms, then.basis().cap(),
                 then.recorded("floor"), then.recorded("late-pct"), then.recorded("cap"),
-                value.apply("proof-threshold"), service.permissions(id), service.graceDays(id));
+                value.apply("proof-threshold"), service.permissions(id), service.graceDays(id),
+                value.apply("note-threshold"));
     }
 
     /** The settings view of a sheet as the store holds it now. */
@@ -223,7 +236,7 @@ public class SettingsController {
                 service.policyDate(id), service.periodNumberingFrom(id), service.gradeTerms(id), service.cap(id),
                 service.recorded(id, "floor"), service.recorded(id, "late-pct"),
                 service.recorded(id, "cap"), service.proofThreshold(id), service.permissions(id),
-                service.graceDays(id));
+                service.graceDays(id), service.noteThreshold(id));
     }
 
     /** The settings view of a sheet just saved. */
@@ -293,6 +306,13 @@ public class SettingsController {
             @RequestHeader("X-User") @NotBlank @Size(max = 100) String user,
             @Valid @RequestBody ProofThresholdForm form) {
         return view(service.setProofThreshold(sheetId.trim(), user.trim(), form.thresholdValue(), form.fromValue()));
+    }
+
+    @PutMapping("/note-threshold")
+    public SettingsView setNoteThreshold(@PathVariable @NotBlank @Size(max = 100) String sheetId,
+            @RequestHeader("X-User") @NotBlank @Size(max = 100) String user,
+            @Valid @RequestBody NoteThresholdForm form) {
+        return view(service.setNoteThreshold(sheetId.trim(), user.trim(), form.thresholdValue(), form.fromValue()));
     }
 
     @PutMapping("/grace-days")

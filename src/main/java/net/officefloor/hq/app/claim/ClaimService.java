@@ -173,6 +173,9 @@ public class ClaimService {
         if (!roles.may(sheetId, user, action)) {
             throw new ResponseStatusException(HttpStatus.FORBIDDEN, "Your role may not " + action + " a claim");
         }
+        if (to == ClaimStatus.OPEN) {
+            refuseUnnoted(sheetId, claim);
+        }
         if (to == ClaimStatus.SETTLED && claim.isDeferredOn(sheets.today(sheetId))) {
             throw new ResponseStatusException(HttpStatus.CONFLICT,
                     "A claim deferred until " + claim.getDeferredUntil() + " cannot be settled before then");
@@ -547,6 +550,20 @@ public class ClaimService {
         if (due != null && due.compareTo(threshold) > 0) {
             throw new ResponseStatusException(HttpStatus.PRECONDITION_REQUIRED,
                     "A claim whose due is above the proof threshold needs a proof first");
+        }
+    }
+
+    /** Refuse opening a claim with an empty note whose due is above the sheet's note threshold in
+     *  force on the claim's date; a claim with no due (n/a) and a sheet with no threshold need none. */
+    private void refuseUnnoted(String sheetId, Claim claim) {
+        BigDecimal threshold = sheets.noteThreshold(sheetId, claim.getDate());
+        if (threshold == null || (claim.getNote() != null && !claim.getNote().isBlank())) {
+            return;
+        }
+        BigDecimal due = dues.figure(sheetId, person(sheetId, claim.getPersonId()), claim);
+        if (due != null && due.compareTo(threshold) > 0) {
+            throw new ResponseStatusException(HttpStatus.UNPROCESSABLE_CONTENT,
+                    "A claim whose due is above the note threshold needs a note before it is opened");
         }
     }
 

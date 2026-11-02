@@ -42,6 +42,9 @@ function refusal(e: unknown, action: ClaimAction): string {
   if (e instanceof HttpErrorResponse && e.status === 423) return CLOSED;
   if (e instanceof HttpErrorResponse && e.status === 409) return REFUSALS[action];
   if (e instanceof HttpErrorResponse && e.status === 428) return NEEDS_PROOF;
+  if (e instanceof HttpErrorResponse && e.status === 422 && action === 'open') {
+    return 'A claim whose due is above the note threshold needs a note before it is opened.';
+  }
   if (e instanceof HttpErrorResponse && e.status === 403 && action === 'settle') {
     return 'The user who opened a claim cannot settle it.';
   }

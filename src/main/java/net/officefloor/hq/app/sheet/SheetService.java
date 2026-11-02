@@ -378,6 +378,27 @@ public class SheetService {
                 threshold == null ? "" : threshold.setScale(2).toPlainString(), from);
     }
 
+    /** The due above which a claim on the sheet dated on the day cannot be opened with an empty
+     *  note: the note threshold in force on it; null when there is none. */
+    @Transactional(readOnly = true)
+    public BigDecimal noteThreshold(String id, LocalDate day) {
+        return inForce(id, "note-threshold", day).map(SettingValue::getValue).orElse(null);
+    }
+
+    /** The note threshold in force on the sheet's today. */
+    @Transactional(readOnly = true)
+    public BigDecimal noteThreshold(String id) {
+        return noteThreshold(id, today(id));
+    }
+
+    /** Record the sheet's note threshold (null: none) from a date (null: the sheet's today). It
+     *  changes no figure. */
+    @Transactional
+    public synchronized Sheet setNoteThreshold(String id, String user, BigDecimal threshold, LocalDate from) {
+        return record(id, user, "note-threshold", threshold,
+                threshold == null ? "" : threshold.setScale(2).toPlainString(), from);
+    }
+
     /** The actions the permission matrix covers. */
     public static final List<String> ACTIONS = List.of("open", "settle", "void", "reassign", "close", "reopen");
 
