@@ -2,6 +2,7 @@ package net.officefloor.hq.app.person;
 
 import java.util.List;
 import net.officefloor.hq.app.sheet.SheetService;
+import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -29,7 +30,10 @@ public class PersonService {
     @Transactional
     public Person add(String sheetId, String user, String name, String grade) {
         sheets.load(sheetId, user);
-        return people.save(new Person(sheetId, name, grade));
+        if (people.existsBySheetIdAndNameIgnoreCase(sheetId, name)) {
+            throw nameInUse();
+        }
+        return saveUnique(new Person(sheetId, name, grade));
     }
 
     /** Change a person's name and grade. */
@@ -37,8 +41,24 @@ public class PersonService {
     public Person edit(String sheetId, long personId, String name, String grade) {
         Person person = people.findByIdAndSheetId(personId, sheetId)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "No such person on this sheet"));
+        if (people.existsBySheetIdAndNameIgnoreCaseAndIdNot(sheetId, name, personId)) {
+            throw nameInUse();
+        }
         person.setName(name);
         person.setGrade(grade);
-        return people.save(person);
+        return saveUnique(person);
+    }
+
+    /** Save, refusing a name another user took on the sheet in the meantime. */
+    private Person saveUnique(Person person) {
+        try {
+            return people.saveAndFlush(person);
+        } catch (DataIntegrityViolationException e) {
+            throw nameInUse();
+        }
+    }
+
+    private static ResponseStatusException nameInUse() {
+        return new ResponseStatusException(HttpStatus.CONFLICT, "That name is already in use on this sheet");
     }
 }

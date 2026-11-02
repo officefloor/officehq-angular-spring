@@ -1,3 +1,4 @@
+import { HttpErrorResponse } from '@angular/common/http';
 import { Component, effect, inject, signal } from '@angular/core';
 import { FormControl, FormGroup, ReactiveFormsModule } from '@angular/forms';
 import { Grade, People, Person } from '../../core/people';
@@ -106,8 +107,12 @@ export class PeopleList {
         this.people.update((ps) => ps.map((p) => (p.id === saved.id ? saved : p)));
       }
       this.reset();
-    } catch {
-      this.error.set(id === null ? 'The person could not be added.' : 'The person could not be saved.');
+    } catch (e) {
+      if (e instanceof HttpErrorResponse && e.status === 409) {
+        this.error.set('That name is already in use on this sheet.');
+      } else {
+        this.error.set(id === null ? 'The person could not be added.' : 'The person could not be saved.');
+      }
     }
   }
 
