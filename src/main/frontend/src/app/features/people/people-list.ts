@@ -1,5 +1,5 @@
 import { HttpErrorResponse } from '@angular/common/http';
-import { Component, computed, effect, inject, signal } from '@angular/core';
+import { Component, computed, effect, inject, signal, untracked } from '@angular/core';
 import { FormControl, FormGroup, ReactiveFormsModule } from '@angular/forms';
 import { Claim, Claims, QuickAdded, addDays, backingFigure, claimDue, countsAsOf, countsLive, isOpen, keepsActive, overdue, sumAmounts, trimmedSum } from '../../core/claims';
 import { Patron, Patrons, patronShares } from '../../core/patrons';
@@ -24,6 +24,9 @@ import { ImportPeopleBox } from './import-people-box';
 import { PoolList } from '../pools/pool-list';
 import { PersonPlans } from '../plans/person-plans';
 import { PlanGenerateBox } from '../plans/plan-generate-box';
+
+/** What the people list can be sorted by on the screen. */
+type SortKey = 'added' | 'name' | 'grade' | 'due-total';
 
 /** What leaves no claim out: no holds, not retired. */
 const NO_LEAVE: Leave = { holds: [], retiredFrom: null };
@@ -115,6 +118,14 @@ const NO_LEAVE: Leave = { holds: [], retiredFrom: null };
           (change)="showRetired.set($any($event.target).checked)" />
         Show retired
       </label>
+      <label for="sort-by">Sort by</label>
+      <select id="sort-by" data-testid="sort-by" [value]="sortBy()"
+        (change)="sortBy.set($any($event.target).value)">
+        <option value="added">Added</option>
+        <option value="name">Name</option>
+        <option value="grade">Grade</option>
+        <option value="due-total">Due total</option>
+      </select>
       <button type="button" data-testid="bulk-open" (click)="bulkOpen()">Open selected claims</button>
       @if (bulkOpened(); as b) {
         <p role="status">Opened <strong data-testid="bulk-opened">{{ b.opened }}</strong>,
@@ -179,7 +190,7 @@ const NO_LEAVE: Leave = { holds: [], retiredFrom: null };
           <tr><th scope="col"><span class="visually-hidden">Select</span></th><th scope="col">Name</th><th scope="col">Grade</th><th scope="col">Active</th><th scope="col">Terms</th><th scope="col">Contact</th><th scope="col">Tags</th><th scope="col">Aliases</th><th scope="col">Clashing</th><th scope="col">Came from</th><th scope="col">Claimed</th><th scope="col">Due</th><th scope="col">Settled due</th><th scope="col">Open due</th>@for (pd of periods(); track pd.id) {<th scope="col">Due in {{ pd.name }}</th>}<th scope="col">Excess</th><th scope="col">Cut total</th><th scope="col">Statements</th><th scope="col">Last stated</th><th scope="col">Stated on</th><th scope="col">Retired</th><th scope="col">Retired from</th><th scope="col">Past retirements</th><th scope="col">On hold</th><th scope="col">Overdue</th><th scope="col">Overdue due</th><th scope="col">Due aged 0–30 days</th><th scope="col">Due aged 31–60 days</th><th scope="col">Due aged 61+ days</th><th scope="col">Patrons</th><th scope="col">Backing</th><th scope="col">Watched</th><th scope="col">Plans</th><th scope="col">Claims</th><th scope="col"><span class="visually-hidden">Actions</span></th></tr>
         </thead>
         <tbody>
-          @for (p of shown(); track p.id) {
+          @for (p of sorted(); track p.id) {
             <tr [attr.data-testid]="'person-row-' + p.id">
               <td>
                 <input type="checkbox" data-testid="person-select" [checked]="selectedPeople().has(p.id)"
@@ -344,6 +355,34 @@ export class PeopleList {
   protected readonly shown = computed(() =>
     this.showRetired() ? this.people() : this.people().filter((p) => !p.retired),
   );
+  /** The key this screen sorts the listed people by; added (list order) when the screen opens,
+   *  kept as it is across loads. Only what is shown is sorted: actions keep the list order. */
+  protected readonly sortBy = signal<SortKey>('added');
+  /** The people listed, in the order the screen shows them: a stable sort, so equal keys keep
+   *  list order. */
+  protected readonly sorted = computed(() => {
+    const key = this.sortBy();
+    const people = this.shown();
+    if (key === 'added') return people;
+    const compare = (a: Person, b: Person): number => {
+      switch (key) {
+        case 'name': {
+          const x = a.name.trim().toLowerCase();
+          const y = b.name.trim().toLowerCase();
+          return x < y ? -1 : x > y ? 1 : 0;
+        }
+        case 'grade':
+          return this.gradeOf(a).localeCompare(this.gradeOf(b));
+        case 'due-total': {
+          const x = this.dueOf(a);
+          const y = this.dueOf(b);
+          if (x === null || y === null) return (x === null ? 1 : 0) - (y === null ? 1 : 0);
+          return Number(x) - Number(y);
+        }
+      }
+    };
+    return [...people].sort(compare);
+  });
   /** Every claim on the sheet, newest first. */
   protected readonly claims = signal<Claim[]>([]);
   /** Every tag the store keeps as ever used on the sheet. */
@@ -721,6 +760,15 @@ export class PeopleList {
       this.patronError.set(null);
       this.reset();
       if (sheetId) void this.reload(sheetId);
+    });
+    effect(() => {
+      const saved = this.settingsApi.saved();
+      if (saved === null || saved.sheetId !== untracked(this.session.sheetId)) return;
+      this.floor.set(saved.settings.floors);
+      this.caps.set(saved.settings.caps);
+      this.latePct.set(saved.settings.latePcts);
+      this.graces.set(saved.settings.graces);
+      this.policyDate.set(saved.settings.policyDate);
     });
   }
 

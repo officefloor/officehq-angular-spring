@@ -1,5 +1,5 @@
 import { HttpClient } from '@angular/common/http';
-import { Injectable, inject } from '@angular/core';
+import { Injectable, inject, signal } from '@angular/core';
 import { firstValueFrom } from 'rxjs';
 import { Grade } from './people';
 import { Session } from './session';
@@ -141,6 +141,9 @@ export const LATE_PCT = /^\d{1,5}(\.\d{1,2})?$/;
 export class SheetSettings {
   private readonly http = inject(HttpClient);
   private readonly session = inject(Session);
+  /** The settings a save on this screen came back with last, and the sheet they belong to, so what
+   *  is figured from the dated settings shows them without re-reading the sheet. */
+  readonly saved = signal<{ sheetId: string; settings: Settings } | null>(null);
 
   get(sheetId: string): Promise<Settings> {
     return firstValueFrom(this.http.get<Settings>(`${this.url(sheetId)}/settings`));
@@ -159,7 +162,7 @@ export class SheetSettings {
   /** Record the cap (null for no cap) from a date (null for the sheet's today). */
   setCap(value: string | null, from: string | null): Promise<Settings> {
     const [sheetId, headers] = this.active();
-    return firstValueFrom(this.http.put<Settings>(`${this.url(sheetId)}/settings/cap`, { value, from }, { headers }));
+    return firstValueFrom(this.http.put<Settings>(`${this.url(sheetId)}/settings/cap`, { value, from }, { headers })).then((settings) => this.record(sheetId, settings));
   }
 
   /** Record the proof threshold (null for none) from a date (null for the sheet's today). */
@@ -191,7 +194,7 @@ export class SheetSettings {
   /** Record the floor from a date (null for the sheet's today). */
   setFloor(value: string, from: string | null): Promise<Settings> {
     const [sheetId, headers] = this.active();
-    return firstValueFrom(this.http.put<Settings>(`${this.url(sheetId)}/settings/floor`, { value, from }, { headers }));
+    return firstValueFrom(this.http.put<Settings>(`${this.url(sheetId)}/settings/floor`, { value, from }, { headers })).then((settings) => this.record(sheetId, settings));
   }
 
   /** Record the terms from a date (null for the sheet's today). */
@@ -213,19 +216,19 @@ export class SheetSettings {
     const [sheetId, headers] = this.active();
     return firstValueFrom(
       this.http.put<Settings>(`${this.url(sheetId)}/settings/grace/${encodeURIComponent(grade)}`, { value, from }, { headers }),
-    );
+    ).then((settings) => this.record(sheetId, settings));
   }
 
   /** Record the late percent from a date (null for the sheet's today). */
   setLatePct(value: string, from: string | null): Promise<Settings> {
     const [sheetId, headers] = this.active();
-    return firstValueFrom(this.http.put<Settings>(`${this.url(sheetId)}/settings/late-pct`, { value, from }, { headers }));
+    return firstValueFrom(this.http.put<Settings>(`${this.url(sheetId)}/settings/late-pct`, { value, from }, { headers })).then((settings) => this.record(sheetId, settings));
   }
 
   /** Set the policy date; null for blank (the sheet's today). */
   setPolicyDate(value: string | null): Promise<Settings> {
     const [sheetId, headers] = this.active();
-    return firstValueFrom(this.http.put<Settings>(`${this.url(sheetId)}/settings/policy-date`, { value }, { headers }));
+    return firstValueFrom(this.http.put<Settings>(`${this.url(sheetId)}/settings/policy-date`, { value }, { headers })).then((settings) => this.record(sheetId, settings));
   }
 
   /** Set the period numbering from date; null for blank (off). */
@@ -274,6 +277,11 @@ export class SheetSettings {
     return firstValueFrom(
       this.http.put<Role>(`${this.url(sheetId)}/roles/${encodeURIComponent(user)}`, { role }, { headers }),
     );
+  }
+
+  private record(sheetId: string, settings: Settings): Settings {
+    this.saved.set({ sheetId, settings });
+    return settings;
   }
 
   private active(): [string, { 'X-User': string }] {
