@@ -49,7 +49,7 @@ function refusal(e: unknown, action: ClaimAction): string {
     return 'A claim whose due is above the note threshold needs a note before it is opened.';
   }
   if (e instanceof HttpErrorResponse && e.status === 403 && action === 'settle') {
-    return 'The user who opened a claim cannot settle it.';
+    return 'The user who opened or last edited a claim cannot settle it.';
   }
   if (e instanceof HttpErrorResponse && e.status === 403 && action === 'void') {
     return 'Your role may not void this claim; only a steward may void a settled claim.';
@@ -58,7 +58,7 @@ function refusal(e: unknown, action: ClaimAction): string {
     return 'Only a steward can re-settle a claim.';
   }
   if (e instanceof HttpErrorResponse && e.status === 403 && (action === 'approve' || action === 'reject')) {
-    return action === 'approve' ? 'Only a steward who did not open the claim can approve it.'
+    return action === 'approve' ? 'Only a steward who did not open or last edit the claim can approve it.'
       : 'Only a steward can reject a claim.';
   }
   if (e instanceof HttpErrorResponse && e.status === 400 && action === 'reject') {

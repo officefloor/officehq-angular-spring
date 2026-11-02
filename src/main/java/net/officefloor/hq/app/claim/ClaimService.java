@@ -147,6 +147,7 @@ public class ClaimService {
             claim.setRef(ref);
             claim.setTags(tags);
             claim.setEditLockedBy(null);
+            claim.setEditedBy(user);
             keepTags(sheetId, tags);
             Claim saved = claims.saveAndFlush(claim);
             audit.recordOnCommit(record("CLAIM_EDITED", sheetId, user, person(sheetId, saved.getPersonId()), saved));
@@ -193,7 +194,7 @@ public class ClaimService {
     }
 
     /** Move a claim to a new status; a change its current status does not allow is refused, and so
-     *  is settling a claim by the user who opened it, and any change to a claim whose due-by falls inside a
+     *  is settling a claim by the user who opened or last edited it, and any change to a claim whose due-by falls inside a
      *  closed period, and any change the permission matrix does not allow the user's role. A clerk settling a claim whose due is above the sheet's clerk limit leaves it pending
      *  a steward's approval instead; but settling a claim that needs a proof and has none is refused
      *  before the clerk limit is considered. */
@@ -235,9 +236,9 @@ public class ClaimService {
             throw new ResponseStatusException(HttpStatus.CONFLICT,
                     "A claim deferred until " + claim.getDeferredUntil() + " cannot be settled before then");
         }
-        if (to == ClaimStatus.SETTLED && user.equals(claim.getOpenedBy())) {
+        if (to == ClaimStatus.SETTLED && claim.openedOrEditedBy(user)) {
             throw new ResponseStatusException(HttpStatus.FORBIDDEN,
-                    "The user who opened a claim cannot settle it");
+                    "The user who opened or last edited a claim cannot settle it");
         }
         if (to == ClaimStatus.SETTLED) {
             refuseUnproved(sheetId, claim);
@@ -392,13 +393,13 @@ public class ClaimService {
 
     /** Approve a pending claim: it becomes settled, its due fixed at the figure it has now (its live
      *  figure and late charge). Refused unless the claim is pending, the user is a steward and is not
-     *  the one who opened it, the claim's period is open, and it has a proof if it needs one. */
+     *  the one who opened or last edited it, the claim's period is open, and it has a proof if it needs one. */
     @Transactional
     public Claim approve(String sheetId, String user, long claimId) {
         Claim claim = lockPending(sheetId, user, claimId);
-        if (user.equals(claim.getOpenedBy())) {
+        if (claim.openedOrEditedBy(user)) {
             throw new ResponseStatusException(HttpStatus.FORBIDDEN,
-                    "The user who opened a claim cannot approve it");
+                    "The user who opened or last edited a claim cannot approve it");
         }
         refuseUnproved(sheetId, claim);
         return rollup.tracking(sheetId, user, () -> {

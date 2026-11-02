@@ -63,6 +63,10 @@ public class Claim {
     @Column(name = "opened_by")
     private String openedBy;
 
+    /** Who last edited the claim; null for a claim never edited. */
+    @Column(name = "edited_by")
+    private String editedBy;
+
     /** Whether the person's last statement bound this claim to the due it had then. */
     @Column(name = "stated", nullable = false)
     private boolean stated;
@@ -215,6 +219,7 @@ public class Claim {
         split.status = ClaimStatus.OPEN;
         split.number = number;
         split.openedBy = openedBy;
+        split.editedBy = this.editedBy;
         split.splitFrom = this.number;
         split.lateEntry = this.lateEntry;
         split.tags = this.tags;
@@ -387,6 +392,19 @@ public class Claim {
 
     public void setOpenedBy(String openedBy) {
         this.openedBy = openedBy;
+    }
+
+    public String getEditedBy() {
+        return editedBy;
+    }
+
+    public void setEditedBy(String editedBy) {
+        this.editedBy = editedBy;
+    }
+
+    /** Whether the user opened or last edited the claim, so may not settle or approve it. */
+    public boolean openedOrEditedBy(String user) {
+        return user.equals(openedBy) || user.equals(editedBy);
     }
 
     public boolean isStated() {
