@@ -3,6 +3,8 @@ package net.officefloor.hq.app.audit;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
+import java.util.Map;
+import java.util.TreeMap;
 import java.util.regex.Pattern;
 import net.officefloor.hq.app.Audit;
 import net.officefloor.hq.app.claim.Claim;
@@ -90,6 +92,23 @@ public class AuditViewService {
                 break;
             }
         }
+        return out;
+    }
+
+    /**
+     * The sheet's activity: for every user and every event in the sheet's audit lines, one line
+     * {@code <user> <EVENT> <count>}, sorted by user then event.
+     */
+    public List<String> activity(String sheetId) {
+        Map<String, Map<String, Integer>> counts = new TreeMap<>();
+        for (String line : linesOf(audit.lines(), sheetId, null)) {
+            String[] fields = line.split(" ", 4);
+            if (fields.length < 3 || !fields[2].startsWith("by=")) continue;
+            String user = fields[2].substring("by=".length());
+            counts.computeIfAbsent(user, u -> new TreeMap<>()).merge(fields[0], 1, Integer::sum);
+        }
+        List<String> out = new ArrayList<>();
+        counts.forEach((user, events) -> events.forEach((event, n) -> out.add(user + " " + event + " " + n)));
         return out;
     }
 

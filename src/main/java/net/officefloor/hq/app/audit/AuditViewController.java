@@ -32,6 +32,14 @@ public class AuditViewController {
         return service.lines(sheetId, name);
     }
 
+    /** The sheet's activity: one line per user and event, {@code <user> <EVENT> <count>}, by user then event. */
+    @GetMapping("/activity")
+    public List<String> activity(
+            @PathVariable @Size(max = 100) @Pattern(regexp = "[A-Za-z0-9._-]+") String sheetId,
+            @RequestHeader("X-User") @NotBlank @Size(max = 100) String user) {
+        return service.activity(sheetId);
+    }
+
     /** A claim's timeline: the audit lines about it, newest first. */
     @GetMapping("/claims/{id}/timeline")
     public List<String> claimTimeline(
