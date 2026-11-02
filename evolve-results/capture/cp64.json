@@ -1,0 +1,86 @@
+{
+  "checkpoint": 64,
+  "stack": {
+    "repo": "/home/daniel/officehq-angular-spring",
+    "origin": "git@github.com:officefloor/officehq-angular-spring.git",
+    "name": "officehq-angular-spring",
+    "base_ref": "base-empty",
+    "base_commit": "65cb8233ea38b2dfa6cfd18709e30cd18fdf3250"
+  },
+  "checkpoint_id": "cp64_floor-after-late",
+  "phase": "early",
+  "type": "mutative",
+  "mutates": [
+    24,
+    32,
+    43,
+    45,
+    49,
+    50,
+    51,
+    52,
+    53
+  ],
+  "replaced_tests": [
+    "cp24_floor.spec.ts::floor",
+    "cp32_rounding-policy-date.spec.ts::rounding policy date scenario 1",
+    "cp43_cap.spec.ts::cap scenario 2",
+    "cp45_bulk-settle.spec.ts::bulk settle scenario 2",
+    "cp49_paste-claims.spec.ts::paste claims scenario 3",
+    "cp50_deferred-claims.spec.ts::deferred claims scenario 3",
+    "cp51_proofs.spec.ts::proofs scenario 1",
+    "cp51_proofs.spec.ts::proofs scenario 2",
+    "cp52_period-status-as-of-end.spec.ts::period status as of end scenario 3",
+    "cp53_permission-matrix.spec.ts::permission matrix scenario 2",
+    "cp53_permission-matrix.spec.ts::permission matrix scenario 3"
+  ],
+  "request": {
+    "spec": "The order of the due steps changes: the late charge is now worked out on the rate figure alone,\nor on the figure a statement bound, and the floor is applied last: a claim's live due is the\ngreater of the floor in force on its date and its figure plus its late charge. A statement now\nbinds the rate figure, not the floored one. Settled figures stay frozen; a correction is unchanged\n(no floor, no charge).\n",
+    "prompt": "You are implementing ONE change to this application.\n\nFIRST read AGENTS.md \u2014 it states the working rules and how the app is tested, and sends you to\nDESIGN.md for the app's stack and conventions. Follow both.\n\nTHE CHANGE REQUEST:\nThe order of the due steps changes: the late charge is now worked out on the rate figure alone,\nor on the figure a statement bound, and the floor is applied last: a claim's live due is the\ngreater of the floor in force on its date and its figure plus its late charge. A statement now\nbinds the rate figure, not the floored one. Settled figures stay frozen; a correction is unchanged\n(no floor, no charge).\n\nYour work is verified by an automated Playwright UI test already installed under e2e/specs/.\nRead that spec: it declares the exact data-testid anchors, values, test data and any audit\nrecords it expects \u2014 match them. Run `bin/e2e` to build the app, start it, and run the test as\nyou work; iterate until it passes. Change whatever the request needs across the app \u2014 its stored\ndata, its server and its front end. Do NOT edit bin/build, bin/start, bin/stop, bin/e2e,\nAGENTS.md, CLAUDE.md, DESIGN.md, e2e/support/ or the test spec.\n"
+  },
+  "commit_sha": "7808c9379f3700ed61a0883a1b6f2488c3e79e08",
+  "reset_sha": "",
+  "preagent_sha": "eb040c2b28f23c054421825a2fd1eb3e28d3bed6",
+  "prev_sha": "eb040c2b28f23c054421825a2fd1eb3e28d3bed6",
+  "base_sha": "65cb8233ea38b2dfa6cfd18709e30cd18fdf3250",
+  "agent": {
+    "ok": true,
+    "cost_usd": 0.528364,
+    "input_tokens": 28,
+    "output_tokens": 6926,
+    "cache_read_tokens": 499620,
+    "cache_creation_tokens": 36226,
+    "num_turns": 15,
+    "duration_ms": 294851,
+    "duration_api_ms": 100204,
+    "model": "claude-opus-5-5",
+    "session_id": "a52f26fe-9b94-437a-9d52-37e43e5aadc8",
+    "stop_reason": "success",
+    "result_text": "The floor is now applied last: a claim's live due is the greater of the floor in force on its date and its rate figure plus its late charge. `bin/e2e` passes all 4 tests in the spec.\n\n**What changed:**\n- **Server (`claim/Dues.java`):**\n  - The basic due is now just amount \u00d7 rate, rounded, with no floor. A new helper, `floored`, adds the late charge (worked out on that figure) and then raises the result to the floor. A correction gets neither the charge nor the floor.\n  - The shown figure and the figure used on re-settle both go through `floored`.\n  - Statements now bind the plain rate figure, without the floor or the late charge.\n  - Settled figures are still returned exactly as they were frozen.\n- **Front end (`core/claims.ts`, `claimDue`):** the same order is mirrored here: the bound figure (or the live rate figure), plus the late charge on it, then the floor. The screen computes dues itself, so it had to match the server.\n- **Comment:** the statement's doc comment in `StatementService.java` now says it binds the rate figure, without the floor. I changed it after the test run, but it touches no code.\n\n**One limitation:** statements taken before this change stored the old floored figure, and those claims will keep it. I didn't add a data migration because the original rate figure can't be recovered from a floored one. The tests use fresh sheets, so this doesn't affect them.",
+    "error": "",
+    "attempts": [
+      {
+        "ok": true,
+        "limit_reached": false,
+        "retryable": false,
+        "timed_out": false,
+        "cost_usd": 0.528364,
+        "num_turns": 15,
+        "duration_ms": 294851,
+        "duration_api_ms": 100204,
+        "error": ""
+      }
+    ]
+  },
+  "agent_stream_file": "cp64.agent.jsonl",
+  "agent_diff_file": "cp64.agent.diff",
+  "build_log_file": null,
+  "tests": {
+    "gated": false,
+    "queued": true
+  },
+  "probe": null,
+  "pinned_touched": [],
+  "acceptance_touched": [],
+  "impact_gate": null
+}
