@@ -29,6 +29,7 @@ const CORRECTS = 'A negative amount must name the number of a settled claim of t
 function refusal(e: unknown, action: ClaimAction): string {
   if (e instanceof HttpErrorResponse && e.status === 423) return CLOSED;
   if (e instanceof HttpErrorResponse && e.status === 409) return REFUSALS[action];
+  if (e instanceof HttpErrorResponse && e.status === 428) return NEEDS_PROOF;
   if (e instanceof HttpErrorResponse && e.status === 403 && action === 'settle') {
     return 'The user who opened a claim cannot settle it.';
   }
@@ -43,6 +44,16 @@ function refusal(e: unknown, action: ClaimAction): string {
     return 'Enter a reason for rejecting the claim.';
   }
   return 'The claim could not be changed.';
+}
+
+/** The message when a claim due above the proof threshold has no proof to be settled or approved. */
+const NEEDS_PROOF = 'The claim\'s due is above the proof threshold: add a proof first.';
+
+/** The message for a refused proof of a claim. */
+function proofRefusal(e: unknown): string {
+  if (e instanceof HttpErrorResponse && e.status === 423) return CLOSED;
+  if (e instanceof HttpErrorResponse && e.status === 409) return 'A settled or void claim cannot be given a proof.';
+  return 'The proof could not be added.';
 }
 
 /** The message for a refused defer of a claim. */
@@ -106,7 +117,8 @@ function reassignRefusal(e: unknown): string {
           <span data-testid="claim-due-by">{{ dueByOf(c) }}</span>
           <span data-testid="claim-overdue">{{ overdueOf(c) ? 'yes' : 'no' }}</span>
           <span data-testid="claim-deferred">{{ deferredOf(c) ? 'yes' : 'no' }}</span>
-          <span data-testid="claim-deferred-until">{{ deferredOf(c) ? c.deferredUntil : '' }}</span>
+          <span data-testid="claim-deferred-until">{{ c.deferredUntil ?? '' }}</span>
+          <span data-testid="claim-proofs">{{ c.proofs }}</span>
           <ol data-testid="claim-log" [attr.aria-label]="'Status log of claim of ' + c.amount + ' on ' + c.date">
             @for (l of c.log; track $index) {
               <li data-testid="claim-log-line">{{ l.status }} by {{ l.by }} on {{ l.on }} due={{ l.due ?? 'n/a' }}</li>
@@ -127,6 +139,8 @@ function reassignRefusal(e: unknown): string {
             (input)="clearError(c)" />
           <button type="button" data-testid="claim-reject" (click)="act(c, 'reject', reason.value)"
             [attr.aria-label]="'Reject claim of ' + c.amount + ' on ' + c.date">Reject</button>
+          <button type="button" data-testid="claim-proof" (click)="addProof(c)"
+            [attr.aria-label]="'Add a proof to claim of ' + c.amount + ' on ' + c.date">Add proof</button>
           <label [for]="'claim-defer-date-' + c.id">Defer until</label>
           <input [id]="'claim-defer-date-' + c.id" type="date" data-testid="claim-defer-date" #deferDate
             (input)="clearError(c)" />
@@ -255,6 +269,15 @@ export class PersonClaims {
         id: c.id,
         message: refusal(e, action),
       });
+    }
+  }
+
+  protected async addProof(c: Claim): Promise<void> {
+    this.claimError.set(null);
+    try {
+      this.saved.emit(await this.api.addProof(c.id));
+    } catch (e) {
+      this.claimError.set({ id: c.id, message: proofRefusal(e) });
     }
   }
 

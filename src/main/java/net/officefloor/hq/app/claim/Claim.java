@@ -96,6 +96,10 @@ public class Claim {
     @Column(name = "deferred_until")
     private LocalDate deferredUntil;
 
+    /** How many proofs the claim has; raised by one at a time (see {@link #addProof}). */
+    @Column(name = "proofs", nullable = false)
+    private int proofs;
+
     /** Where the claim is listed: newest first by this. A new claim takes the next from the
      *  database, and a moved claim takes the next again (see {@link #moveTo}). */
     @Generated
@@ -194,6 +198,15 @@ public class Claim {
 
     public void deferUntil(LocalDate until) {
         this.deferredUntil = until;
+    }
+
+    public int getProofs() {
+        return proofs;
+    }
+
+    /** Raise the claim's proofs count by one. */
+    public void addProof() {
+        this.proofs++;
     }
 
     /** Whether the claim is deferred on the day: it is open and the day is before the one it is

@@ -31,19 +31,21 @@ public class SettingsController {
      *  period numbering from date (null when it is blank: off), and the terms each grade has of its own
      *  (a grade not in it takes the sheet's terms), and the cap as text with two decimals (null when
      *  there is no cap), and the floors, late percents and caps recorded, each from its from-date, earliest
-     *  first (a claim takes the one in force on its date, or else the sheet's starting one). */
+     *  first (a claim takes the one in force on its date, or else the sheet's starting one); and the
+     *  proof threshold as text with two decimals (null when there is none). */
     public record SettingsView(String clerkLimit, String floor, int terms, String latePct, LocalDate policyDate,
             LocalDate periodNumberingFrom, Map<String, Integer> gradeTerms, String cap, List<DatedValue> floors,
-            List<DatedValue> latePcts, List<DatedValue> caps) {
+            List<DatedValue> latePcts, List<DatedValue> caps, String proofThreshold) {
         static SettingsView of(BigDecimal clerkLimit, BigDecimal floor, int terms, BigDecimal latePct,
                 LocalDate policyDate, LocalDate periodNumberingFrom, Map<String, Integer> gradeTerms,
                 BigDecimal cap, List<SettingValue> floors, List<SettingValue> latePcts,
-                List<SettingValue> caps) {
+                List<SettingValue> caps, BigDecimal proofThreshold) {
             return new SettingsView(clerkLimit == null ? null : clerkLimit.setScale(2).toPlainString(),
                     floor.setScale(2).toPlainString(), terms, latePct.setScale(2).toPlainString(), policyDate,
                     periodNumberingFrom, gradeTerms, cap == null ? null : cap.setScale(2).toPlainString(),
                     floors.stream().map(DatedValue::of).toList(), latePcts.stream().map(DatedValue::of).toList(),
-                    caps.stream().map(DatedValue::of).toList());
+                    caps.stream().map(DatedValue::of).toList(),
+                    proofThreshold == null ? null : proofThreshold.setScale(2).toPlainString());
         }
     }
 
@@ -94,6 +96,16 @@ public class SettingsController {
             @Pattern(regexp = DATE) String from) implements Dated {
 
         BigDecimal capValue() {
+            return value == null || value.isBlank() ? null : new BigDecimal(value.trim()).setScale(2);
+        }
+    }
+
+    /** The proof threshold form: 0.00 or more with up to two decimals, or blank for none; from a
+     *  date, or blank for the sheet's today. */
+    public record ProofThresholdForm(@Pattern(regexp = "\\s*(\\d{1,12}(\\.\\d{1,2})?)?\\s*") String value,
+            @Pattern(regexp = DATE) String from) implements Dated {
+
+        BigDecimal thresholdValue() {
             return value == null || value.isBlank() ? null : new BigDecimal(value.trim()).setScale(2);
         }
     }
@@ -160,7 +172,7 @@ public class SettingsController {
         return SettingsView.of(service.clerkLimit(id), service.floor(id), service.terms(id), service.latePct(id),
                 service.policyDate(id), service.periodNumberingFrom(id), service.gradeTerms(id), service.cap(id),
                 service.recorded(id, "floor"), service.recorded(id, "late-pct"),
-                service.recorded(id, "cap"));
+                service.recorded(id, "cap"), service.proofThreshold(id));
     }
 
     /** The settings view of a sheet just saved. */
@@ -223,5 +235,12 @@ public class SettingsController {
             @RequestHeader("X-User") @NotBlank @Size(max = 100) String user,
             @Valid @RequestBody CapForm form) {
         return view(service.setCap(sheetId.trim(), user.trim(), form.capValue(), form.fromValue()));
+    }
+
+    @PutMapping("/proof-threshold")
+    public SettingsView setProofThreshold(@PathVariable @NotBlank @Size(max = 100) String sheetId,
+            @RequestHeader("X-User") @NotBlank @Size(max = 100) String user,
+            @Valid @RequestBody ProofThresholdForm form) {
+        return view(service.setProofThreshold(sheetId.trim(), user.trim(), form.thresholdValue(), form.fromValue()));
     }
 }

@@ -76,6 +76,9 @@ export interface Claim {
   log: ClaimLogLine[];
   /** The day (yyyy-mm-dd) it is deferred until; null when it was never deferred. */
   deferredUntil: string | null;
+  /** How many proofs it has. One whose due is above the proof threshold in force on its date cannot
+   *  be settled or approved while it has none. */
+  proofs: number;
 }
 
 /** A line of a claim's status log: the status, who changed it to that, the sheet's today then
@@ -240,6 +243,15 @@ export class Claims {
     const { sheetId, user } = this.active();
     return firstValueFrom(
       this.http.post<Claim>(`${this.url(sheetId)}/claims/${id}/defer`, { until }, { headers: { 'X-User': user } }),
+    );
+  }
+
+  /** Raise a claim's proofs count by one; refused (409) when it is settled or void, and (423) when
+   *  its period is closed. */
+  addProof(id: number): Promise<Claim> {
+    const { sheetId, user } = this.active();
+    return firstValueFrom(
+      this.http.post<Claim>(`${this.url(sheetId)}/claims/${id}/proof`, null, { headers: { 'X-User': user } }),
     );
   }
 

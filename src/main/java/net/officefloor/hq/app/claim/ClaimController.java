@@ -33,11 +33,11 @@ public class ClaimController {
      *  of the claim it corrects (null when it is not a correction); the date its figures round by
      *  (that of the claim a correction corrects, or else its own); and where it is listed (newest
      *  first by this); and its status log, oldest first; and the day it is deferred until (null when
-     *  never deferred). */
+     *  never deferred); and how many proofs it has. */
     public record ClaimView(long id, long personId, String amount, LocalDate date, String note,
             ClaimStatus status, String number, String settledDue, String openedBy, boolean stated,
             String statedDue, boolean statedNa, String corrects, LocalDate roundsBy, long listed, LocalDate dueBy,
-            List<LogLineView> log, LocalDate deferredUntil) {
+            List<LogLineView> log, LocalDate deferredUntil, int proofs) {
         public static ClaimView of(Claim claim) {
             return new ClaimView(claim.getId(), claim.getPersonId(), claim.getAmount().setScale(2).toPlainString(),
                     claim.getDate(), claim.getNote(), claim.getStatus(), claim.getNumber(),
@@ -45,7 +45,8 @@ public class ClaimController {
                     claim.getOpenedBy(), claim.isStated(),
                     claim.getStatedDue() == null ? null : claim.getStatedDue().setScale(2).toPlainString(),
                     claim.isStatedNa(), claim.getCorrects(), claim.roundsBy(), claim.getListed(), claim.getDueBy(),
-                    claim.getLog().stream().map(LogLineView::of).toList(), claim.getDeferredUntil());
+                    claim.getLog().stream().map(LogLineView::of).toList(), claim.getDeferredUntil(),
+                    claim.getProofs());
         }
     }
 
@@ -170,6 +171,13 @@ public class ClaimController {
             @RequestHeader("X-User") @NotBlank @Size(max = 100) String user,
             @Valid @RequestBody DeferForm form) {
         return ClaimView.of(service.defer(sheetId.trim(), user.trim(), claimId, form.until()));
+    }
+
+    @PostMapping("/claims/{claimId}/proof")
+    public ClaimView addProof(@PathVariable @NotBlank @Size(max = 100) String sheetId,
+            @PathVariable long claimId,
+            @RequestHeader("X-User") @NotBlank @Size(max = 100) String user) {
+        return ClaimView.of(service.addProof(sheetId.trim(), user.trim(), claimId));
     }
 
     /** The reason a steward gives for rejecting a pending claim. */

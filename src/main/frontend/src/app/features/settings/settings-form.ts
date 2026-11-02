@@ -4,7 +4,7 @@ import { Session } from '../../core/session';
 import { Grade } from '../../core/people';
 import { LATE_PCT, LIMIT, POLICY_DATE, ROLES, TERMS, Role, RoleName, SheetSettings } from '../../core/settings';
 
-// The sheet's settings (the clerk limit, the cap, the floor, the terms, the late percent, the policy date and period numbering from) and the roles it gives user names: clerk, the default for
+// The sheet's settings (the clerk limit, the cap, the proof threshold, the floor, the terms, the late percent, the policy date and period numbering from) and the roles it gives user names: clerk, the default for
 // any name, or steward. The settings that carry a figure are dated: each is saved from a from-date
 // (blank: the sheet's today), and what shows in force is the value on the sheet's today.
 @Component({
@@ -23,6 +23,12 @@ import { LATE_PCT, LIMIT, POLICY_DATE, ROLES, TERMS, Role, RoleName, SheetSettin
         <input id="setting-cap" data-testid="setting-cap" formControlName="cap" inputmode="decimal" />
         <label for="setting-cap-from">Cap from (blank: today)</label>
         <input id="setting-cap-from" data-testid="setting-cap-from" type="date" formControlName="capFrom" />
+        <label for="setting-proof-threshold">Proof threshold (a claim due above it needs a proof; blank: none)</label>
+        <input id="setting-proof-threshold" data-testid="setting-proof-threshold" formControlName="proofThreshold"
+               inputmode="decimal" />
+        <label for="setting-proof-threshold-from">Proof threshold from (blank: today)</label>
+        <input id="setting-proof-threshold-from" data-testid="setting-proof-threshold-from" type="date"
+               formControlName="proofThresholdFrom" />
         <label for="setting-floor">Floor</label>
         <input id="setting-floor" data-testid="setting-floor" formControlName="floor" inputmode="decimal" />
         <label for="setting-floor-from">Floor from (blank: today)</label>
@@ -58,6 +64,7 @@ import { LATE_PCT, LIMIT, POLICY_DATE, ROLES, TERMS, Role, RoleName, SheetSettin
       </form>
       <p>Clerk limit in force: <span data-testid="setting-clerk-limit-current">{{ clerkLimit() ?? '' }}</span></p>
       <p>Cap in force: <span data-testid="setting-cap-current">{{ cap() ?? '' }}</span></p>
+      <p>Proof threshold in force: <span data-testid="setting-proof-threshold-current">{{ proofThreshold() ?? '' }}</span></p>
       <p>Floor in force: <span data-testid="setting-floor-current">{{ floor() ?? '' }}</span></p>
       <p>Terms in force: <span data-testid="setting-terms-current">{{ terms() ?? '' }}</span></p>
       @for (g of grades; track g) {
@@ -107,6 +114,7 @@ export class SettingsForm {
   protected readonly roleNames = ROLES;
   protected readonly clerkLimit = signal<string | null>(null);
   protected readonly cap = signal<string | null>(null);
+  protected readonly proofThreshold = signal<string | null>(null);
   protected readonly floor = signal<string | null>(null);
   protected readonly terms = signal<number | null>(null);
   protected readonly grades: Grade[] = ['A', 'B', 'C'];
@@ -127,6 +135,8 @@ export class SettingsForm {
     clerkLimitFrom: new FormControl('', { nonNullable: true }),
     cap: new FormControl('', { nonNullable: true }),
     capFrom: new FormControl('', { nonNullable: true }),
+    proofThreshold: new FormControl('', { nonNullable: true }),
+    proofThresholdFrom: new FormControl('', { nonNullable: true }),
     floor: new FormControl('', { nonNullable: true }),
     floorFrom: new FormControl('', { nonNullable: true }),
     terms: new FormControl('', { nonNullable: true }),
@@ -158,6 +168,7 @@ export class SettingsForm {
       const sheetId = this.session.sheetId();
       this.clerkLimit.set(null);
       this.cap.set(null);
+      this.proofThreshold.set(null);
       this.floor.set(null);
       this.terms.set(null);
       this.gradeTerms.set({});
@@ -174,10 +185,11 @@ export class SettingsForm {
   protected async saveSettings(): Promise<void> {
     if (this.submitting) return;
     this.settingsError.set('');
-    const { clerkLimit, clerkLimitFrom, cap, capFrom, floor, floorFrom, terms, termsFrom, gradeTerms, latePct,
+    const { clerkLimit, clerkLimitFrom, cap, capFrom, proofThreshold, proofThresholdFrom, floor, floorFrom, terms, termsFrom, gradeTerms, latePct,
       latePctFrom, policyDate, periodNumberingFrom } = this.settingsForm.controls;
     const changed = (...cs: AbstractControl[]) => cs.some((c) => c.dirty || c.touched);
-    const none = !changed(clerkLimit, clerkLimitFrom) && !changed(cap, capFrom) && !changed(floor, floorFrom)
+    const none = !changed(clerkLimit, clerkLimitFrom) && !changed(cap, capFrom)
+      && !changed(proofThreshold, proofThresholdFrom) && !changed(floor, floorFrom)
       && !changed(terms, termsFrom) && !changed(gradeTerms) && !changed(latePct, latePctFrom) && !changed(policyDate)
       && !changed(periodNumberingFrom);
     /** A from-date typed, or null when blank (the sheet's today). */
@@ -186,6 +198,8 @@ export class SettingsForm {
     const limitValue = clerkLimit.value.trim();
     const capValue = cap.value.trim();
     const saveCap = changed(cap, capFrom) || (none && capValue !== '');
+    const thresholdValue = proofThreshold.value.trim();
+    const saveThreshold = changed(proofThreshold, proofThresholdFrom) || (none && thresholdValue !== '');
     const floorValue = floor.value.trim();
     const saveLimit = none || changed(clerkLimit, clerkLimitFrom);
     const saveFloor = none || changed(floor, floorFrom);
@@ -205,6 +219,7 @@ export class SettingsForm {
     const saveNumbering = none || changed(periodNumberingFrom);
     if (saveLimit) fromsToSave.push(clerkLimitFrom);
     if (saveCap) fromsToSave.push(capFrom);
+    if (saveThreshold) fromsToSave.push(proofThresholdFrom);
     if (saveFloor && floorValue !== '') fromsToSave.push(floorFrom);
     if (saveTerms && termsValue !== '') fromsToSave.push(termsFrom);
     gradeTermsToSave.forEach((t) => fromsToSave.push(t.fromControl));
@@ -219,6 +234,10 @@ export class SettingsForm {
     }
     if (saveCap && capValue !== '' && !LIMIT.test(capValue)) {
       this.settingsError.set('Enter a cap of 0.00 or more with up to two decimals, or leave it blank for no cap.');
+      return;
+    }
+    if (saveThreshold && thresholdValue !== '' && !LIMIT.test(thresholdValue)) {
+      this.settingsError.set('Enter a proof threshold of 0.00 or more with up to two decimals, or leave it blank for none.');
       return;
     }
     if (saveFloor && !(none && floorValue === '') && !LIMIT.test(floorValue)) {
@@ -259,6 +278,15 @@ export class SettingsForm {
         const saved = await this.api.setCap(capValue === '' ? null : capValue, from(capFrom));
         this.cap.set(saved.cap);
         for (const c of [cap, capFrom]) {
+          c.markAsPristine();
+          c.markAsUntouched();
+        }
+      }
+      if (saveThreshold) {
+        const saved = await this.api.setProofThreshold(thresholdValue === '' ? null : thresholdValue,
+          from(proofThresholdFrom));
+        this.proofThreshold.set(saved.proofThreshold);
+        for (const c of [proofThreshold, proofThresholdFrom]) {
           c.markAsPristine();
           c.markAsUntouched();
         }
@@ -355,6 +383,7 @@ export class SettingsForm {
       if (read === this.reads) {
         this.clerkLimit.set(settings.clerkLimit);
         this.cap.set(settings.cap);
+        this.proofThreshold.set(settings.proofThreshold);
         this.floor.set(settings.floor);
         this.terms.set(settings.terms);
         this.gradeTerms.set(settings.gradeTerms);

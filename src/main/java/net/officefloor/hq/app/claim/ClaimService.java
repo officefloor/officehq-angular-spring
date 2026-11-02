@@ -109,7 +109,8 @@ public class ClaimService {
     /** Move a claim to a new status; a change its current status does not allow is refused, and so
      *  is settling a claim by the user who opened it, and any change to a claim dated inside a closed
      *  period. A clerk settling a claim whose due is above the sheet's clerk limit leaves it pending
-     *  a steward's approval instead. */
+     *  a steward's approval instead; but settling a claim that needs a proof and has none is refused
+     *  before the clerk limit is considered. */
     @Transactional
     public Claim changeStatus(String sheetId, String user, long claimId, ClaimStatus to) {
         Claim claim = lock(sheetId, claimId);
@@ -125,6 +126,9 @@ public class ClaimService {
         if (to == ClaimStatus.SETTLED && user.equals(claim.getOpenedBy())) {
             throw new ResponseStatusException(HttpStatus.FORBIDDEN,
                     "The user who opened a claim cannot settle it");
+        }
+        if (to == ClaimStatus.SETTLED) {
+            refuseUnproved(sheetId, claim);
         }
         ClaimStatus becomes = to == ClaimStatus.SETTLED && overClerkLimit(sheetId, user, claim)
                 ? ClaimStatus.PENDING : to;
@@ -185,9 +189,26 @@ public class ClaimService {
         });
     }
 
+    /** Raise a claim's proofs count by one. Refused when the claim is settled or void, or its period
+     *  is closed. It changes no figure. */
+    @Transactional
+    public Claim addProof(String sheetId, String user, long claimId) {
+        Claim claim = lock(sheetId, claimId);
+        refuseClosed(sheetId, claim.getDate());
+        if (claim.getStatus() == ClaimStatus.SETTLED || claim.getStatus() == ClaimStatus.VOID) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT,
+                    "A " + claim.getStatus() + " claim cannot be given a proof");
+        }
+        Person person = person(sheetId, claim.getPersonId());
+        claim.addProof();
+        Claim saved = claims.saveAndFlush(claim);
+        audit.recordOnCommit(record("CLAIM_PROOF_ADDED", sheetId, user, person, saved) + " proofs=" + saved.getProofs());
+        return saved;
+    }
+
     /** Approve a pending claim: it becomes settled, its due fixed at the figure it has now (its live
      *  figure and late charge). Refused unless the claim is pending, the user is a steward and is not
-     *  the one who opened it, and the claim's period is open. */
+     *  the one who opened it, the claim's period is open, and it has a proof if it needs one. */
     @Transactional
     public Claim approve(String sheetId, String user, long claimId) {
         Claim claim = lockPending(sheetId, user, claimId);
@@ -195,6 +216,7 @@ public class ClaimService {
             throw new ResponseStatusException(HttpStatus.FORBIDDEN,
                     "The user who opened a claim cannot approve it");
         }
+        refuseUnproved(sheetId, claim);
         return rollup.tracking(sheetId, user, () -> {
             Person person = person(sheetId, claim.getPersonId());
             claim.setSettledDue(dues.figure(sheetId, person, claim));
@@ -354,6 +376,21 @@ public class ClaimService {
         }
         BigDecimal due = dues.figure(sheetId, person(sheetId, claim.getPersonId()), claim);
         return due != null && due.compareTo(limit) > 0;
+    }
+
+    /** Refuse settling or approving a claim with no proofs whose due is above the sheet's proof
+     *  threshold in force on the claim's date; a claim with no due (n/a) and a sheet with no threshold
+     *  need none. */
+    private void refuseUnproved(String sheetId, Claim claim) {
+        BigDecimal threshold = sheets.proofThreshold(sheetId, claim.getDate());
+        if (threshold == null || claim.getProofs() > 0) {
+            return;
+        }
+        BigDecimal due = dues.figure(sheetId, person(sheetId, claim.getPersonId()), claim);
+        if (due != null && due.compareTo(threshold) > 0) {
+            throw new ResponseStatusException(HttpStatus.PRECONDITION_REQUIRED,
+                    "A claim whose due is above the proof threshold needs a proof first");
+        }
     }
 
     /** Refuse a claim of the person dated after the day they are retired from. */

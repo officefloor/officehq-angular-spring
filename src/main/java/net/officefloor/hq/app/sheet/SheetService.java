@@ -281,4 +281,25 @@ public class SheetService {
         return rollup.tracking(id, user,
                 () -> record(id, user, "cap", cap, cap == null ? "" : cap.setScale(2).toPlainString(), from));
     }
+
+    /** The due above which a claim on the sheet dated on the day needs a proof before it is settled
+     *  or approved: the proof threshold in force on it; null when there is none. */
+    @Transactional(readOnly = true)
+    public BigDecimal proofThreshold(String id, LocalDate day) {
+        return inForce(id, "proof-threshold", day).map(SettingValue::getValue).orElse(null);
+    }
+
+    /** The proof threshold in force on the sheet's today. */
+    @Transactional(readOnly = true)
+    public BigDecimal proofThreshold(String id) {
+        return proofThreshold(id, today(id));
+    }
+
+    /** Record the sheet's proof threshold (null: none) from a date (null: the sheet's today). It
+     *  changes no figure. */
+    @Transactional
+    public synchronized Sheet setProofThreshold(String id, String user, BigDecimal threshold, LocalDate from) {
+        return record(id, user, "proof-threshold", threshold,
+                threshold == null ? "" : threshold.setScale(2).toPlainString(), from);
+    }
 }

@@ -29,6 +29,9 @@ export interface Settings {
   latePcts: DatedValue[];
   /** The caps recorded (null: no cap), each from its from-date, earliest first. */
   caps: DatedValue<string | null>[];
+  /** The due above which a claim needs a proof before it is settled or approved, as text with two
+   *  decimals; null when there is none. */
+  proofThreshold: string | null;
 }
 
 /** A value a dated setting takes from a date on, as text with two decimals; null when blank. */
@@ -100,6 +103,14 @@ export class SheetSettings {
   setCap(value: string | null, from: string | null): Promise<Settings> {
     const [sheetId, headers] = this.active();
     return firstValueFrom(this.http.put<Settings>(`${this.url(sheetId)}/settings/cap`, { value, from }, { headers }));
+  }
+
+  /** Record the proof threshold (null for none) from a date (null for the sheet's today). */
+  setProofThreshold(value: string | null, from: string | null): Promise<Settings> {
+    const [sheetId, headers] = this.active();
+    return firstValueFrom(
+      this.http.put<Settings>(`${this.url(sheetId)}/settings/proof-threshold`, { value, from }, { headers }),
+    );
   }
 
   /** Record the floor from a date (null for the sheet's today). */
