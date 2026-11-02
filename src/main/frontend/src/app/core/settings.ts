@@ -8,6 +8,8 @@ export interface Settings {
   clerkLimit: string | null;
   /** The least live due a claim has, as text with two decimals. */
   floor: string;
+  /** The days after its date a claim is due by. */
+  terms: number;
 }
 
 export type RoleName = 'clerk' | 'steward';
@@ -22,6 +24,9 @@ export const ROLES: RoleName[] = ['clerk', 'steward'];
 
 /** A limit with up to two decimals, 0.00 or more. */
 export const LIMIT = /^\d{1,12}(\.\d{1,2})?$/;
+
+/** Terms: a whole number of days, 0 or more. */
+export const TERMS = /^\d{1,4}$/;
 
 // The settings of the active sheet and the roles it gives user names.
 @Injectable({ providedIn: 'root' })
@@ -47,6 +52,12 @@ export class SheetSettings {
   setFloor(value: string): Promise<Settings> {
     const [sheetId, headers] = this.active();
     return firstValueFrom(this.http.put<Settings>(`${this.url(sheetId)}/settings/floor`, { value }, { headers }));
+  }
+
+  /** Set the terms. */
+  setTerms(value: string): Promise<Settings> {
+    const [sheetId, headers] = this.active();
+    return firstValueFrom(this.http.put<Settings>(`${this.url(sheetId)}/settings/terms`, { value }, { headers }));
   }
 
   /** Give a user name a role, replacing the one it had. */

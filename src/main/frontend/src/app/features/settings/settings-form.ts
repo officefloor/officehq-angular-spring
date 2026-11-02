@@ -1,9 +1,9 @@
 import { Component, effect, inject, signal } from '@angular/core';
 import { FormControl, FormGroup, ReactiveFormsModule } from '@angular/forms';
 import { Session } from '../../core/session';
-import { LIMIT, ROLES, Role, RoleName, SheetSettings } from '../../core/settings';
+import { LIMIT, ROLES, TERMS, Role, RoleName, SheetSettings } from '../../core/settings';
 
-// The sheet's settings (the clerk limit and the floor) and the roles it gives user names: clerk, the default for
+// The sheet's settings (the clerk limit, the floor and the terms) and the roles it gives user names: clerk, the default for
 // any name, or steward.
 @Component({
   selector: 'app-settings-form',
@@ -17,6 +17,8 @@ import { LIMIT, ROLES, Role, RoleName, SheetSettings } from '../../core/settings
                inputmode="decimal" />
         <label for="setting-floor">Floor</label>
         <input id="setting-floor" data-testid="setting-floor" formControlName="floor" inputmode="decimal" />
+        <label for="setting-terms">Terms (days)</label>
+        <input id="setting-terms" data-testid="setting-terms" formControlName="terms" inputmode="numeric" />
         <button type="submit" data-testid="settings-save">Save settings</button>
         @if (settingsError()) {
           <p role="alert" data-testid="settings-error">{{ settingsError() }}</p>
@@ -24,6 +26,7 @@ import { LIMIT, ROLES, Role, RoleName, SheetSettings } from '../../core/settings
       </form>
       <p>Clerk limit in force: <span data-testid="setting-clerk-limit-current">{{ clerkLimit() ?? '' }}</span></p>
       <p>Floor in force: <span data-testid="setting-floor-current">{{ floor() ?? '' }}</span></p>
+      <p>Terms in force: <span data-testid="setting-terms-current">{{ terms() ?? '' }}</span></p>
       <h3>Roles</h3>
       <form data-testid="role-form" [formGroup]="roleForm" (ngSubmit)="saveRole()">
         <label for="role-form-user">User</label>
@@ -64,6 +67,7 @@ export class SettingsForm {
   protected readonly roleNames = ROLES;
   protected readonly clerkLimit = signal<string | null>(null);
   protected readonly floor = signal<string | null>(null);
+  protected readonly terms = signal<number | null>(null);
   protected readonly roles = signal<Role[]>([]);
   protected readonly settingsError = signal('');
   protected readonly roleError = signal('');
@@ -74,6 +78,7 @@ export class SettingsForm {
   protected readonly settingsForm = new FormGroup({
     clerkLimit: new FormControl('', { nonNullable: true }),
     floor: new FormControl('', { nonNullable: true }),
+    terms: new FormControl('', { nonNullable: true }),
   });
   protected readonly roleForm = new FormGroup({
     user: new FormControl('', { nonNullable: true }),
@@ -88,6 +93,7 @@ export class SettingsForm {
       const sheetId = this.session.sheetId();
       this.clerkLimit.set(null);
       this.floor.set(null);
+      this.terms.set(null);
       this.roles.set([]);
       if (sheetId) void this.reload(sheetId);
     });
@@ -97,18 +103,24 @@ export class SettingsForm {
   protected async saveSettings(): Promise<void> {
     if (this.submitting) return;
     this.settingsError.set('');
-    const { clerkLimit, floor } = this.settingsForm.controls;
-    const none = !clerkLimit.dirty && !floor.dirty;
+    const { clerkLimit, floor, terms } = this.settingsForm.controls;
+    const none = !clerkLimit.dirty && !floor.dirty && !terms.dirty;
     const limitValue = clerkLimit.value.trim();
     const floorValue = floor.value.trim();
     const saveLimit = none || clerkLimit.dirty;
     const saveFloor = none || floor.dirty;
+    const termsValue = terms.value.trim();
+    const saveTerms = none || terms.dirty;
     if (saveLimit && limitValue !== '' && !LIMIT.test(limitValue)) {
       this.settingsError.set('Enter a clerk limit of 0.00 or more with up to two decimals, or leave it blank for no limit.');
       return;
     }
     if (saveFloor && !(none && floorValue === '') && !LIMIT.test(floorValue)) {
       this.settingsError.set('Enter a floor of 0.00 or more with up to two decimals.');
+      return;
+    }
+    if (saveTerms && !(none && termsValue === '') && !TERMS.test(termsValue)) {
+      this.settingsError.set('Enter terms of 0 or more whole days.');
       return;
     }
     this.submitting = true;
@@ -122,6 +134,11 @@ export class SettingsForm {
         const saved = await this.api.setFloor(floorValue);
         this.floor.set(saved.floor);
         floor.markAsPristine();
+      }
+      if (saveTerms && termsValue !== '') {
+        const saved = await this.api.setTerms(termsValue);
+        this.terms.set(saved.terms);
+        terms.markAsPristine();
       }
     } catch {
       this.settingsError.set('The settings could not be saved.');
@@ -164,6 +181,7 @@ export class SettingsForm {
       if (read === this.reads) {
         this.clerkLimit.set(settings.clerkLimit);
         this.floor.set(settings.floor);
+        this.terms.set(settings.terms);
         this.roles.set(roles);
       }
     } catch {

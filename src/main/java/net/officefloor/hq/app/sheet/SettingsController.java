@@ -20,15 +20,15 @@ import org.springframework.web.bind.annotation.RestController;
 public class SettingsController {
 
     /** What the screen shows of a sheet's settings; the clerk limit as text with two decimals
-     *  (null when there is no limit), and the floor as text with two decimals. */
-    public record SettingsView(String clerkLimit, String floor) {
+     *  (null when there is no limit), the floor as text with two decimals, and the terms in days. */
+    public record SettingsView(String clerkLimit, String floor, int terms) {
         static SettingsView of(Sheet sheet) {
-            return of(sheet.getClerkLimit(), sheet.getFloor());
+            return of(sheet.getClerkLimit(), sheet.getFloor(), sheet.getTerms());
         }
 
-        static SettingsView of(BigDecimal clerkLimit, BigDecimal floor) {
+        static SettingsView of(BigDecimal clerkLimit, BigDecimal floor, int terms) {
             return new SettingsView(clerkLimit == null ? null : clerkLimit.setScale(2).toPlainString(),
-                    floor.setScale(2).toPlainString());
+                    floor.setScale(2).toPlainString(), terms);
         }
     }
 
@@ -48,6 +48,14 @@ public class SettingsController {
         }
     }
 
+    /** The terms form: a whole number of days, 0 or more. */
+    public record TermsForm(@NotBlank @Pattern(regexp = "\\s*\\d{1,4}\\s*") String value) {
+
+        int termsValue() {
+            return Integer.parseInt(value.trim());
+        }
+    }
+
     private final SheetService service;
 
     public SettingsController(SheetService service) {
@@ -57,7 +65,7 @@ public class SettingsController {
     @GetMapping
     public SettingsView get(@PathVariable @NotBlank @Size(max = 100) String sheetId) {
         String id = sheetId.trim();
-        return SettingsView.of(service.clerkLimit(id), service.floor(id));
+        return SettingsView.of(service.clerkLimit(id), service.floor(id), service.terms(id));
     }
 
     @PutMapping("/clerk-limit")
@@ -72,5 +80,12 @@ public class SettingsController {
             @RequestHeader("X-User") @NotBlank @Size(max = 100) String user,
             @Valid @RequestBody FloorForm form) {
         return SettingsView.of(service.setFloor(sheetId.trim(), user.trim(), form.floorValue()));
+    }
+
+    @PutMapping("/terms")
+    public SettingsView setTerms(@PathVariable @NotBlank @Size(max = 100) String sheetId,
+            @RequestHeader("X-User") @NotBlank @Size(max = 100) String user,
+            @Valid @RequestBody TermsForm form) {
+        return SettingsView.of(service.setTerms(sheetId.trim(), user.trim(), form.termsValue()));
     }
 }

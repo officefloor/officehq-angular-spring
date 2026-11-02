@@ -89,4 +89,20 @@ public class SheetService {
             return saved;
         });
     }
+
+    /** The days after its date a claim on the sheet is due by; 14 for a sheet never loaded. */
+    @Transactional(readOnly = true)
+    public int terms(String id) {
+        return sheets.findById(id).map(Sheet::getTerms).orElse(14);
+    }
+
+    /** Change the sheet's terms; recorded even when they are unchanged. They move no rolled-up figure. */
+    @Transactional
+    public synchronized Sheet setTerms(String id, String user, int terms) {
+        Sheet sheet = load(id, user);
+        sheet.setTerms(terms);
+        Sheet saved = sheets.saveAndFlush(sheet);
+        audit.recordOnCommit("SETTING_CHANGED sheet=" + id + " by=" + user + " key=terms value=" + terms);
+        return saved;
+    }
 }

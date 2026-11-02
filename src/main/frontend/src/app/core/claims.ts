@@ -82,6 +82,17 @@ export function claimDue(c: Claim, rates: Rate[], grade: Grade, floor: string): 
   return c.settledDue ?? (c.stated ? c.statedDue : null) ?? (live === null ? null : atLeast(live, floor));
 }
 
+/** The day (yyyy-mm-dd) a claim is due by: its date plus the sheet's terms in days. */
+export function dueBy(c: Claim, terms: number): string {
+  const [y, m, d] = c.date.split('-').map(Number);
+  return new Date(Date.UTC(y, m - 1, d + terms)).toISOString().slice(0, 10);
+}
+
+/** Whether a claim is overdue: it is open and its due-by is before the sheet's today. */
+export function overdue(c: Claim, terms: number, today: string | null): boolean {
+  return c.status === 'OPEN' && today !== null && dueBy(c, terms) < today;
+}
+
 // The claims people make on the active sheet.
 @Injectable({ providedIn: 'root' })
 export class Claims {

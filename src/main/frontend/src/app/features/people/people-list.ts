@@ -1,7 +1,7 @@
 import { HttpErrorResponse } from '@angular/common/http';
 import { Component, computed, effect, inject, signal } from '@angular/core';
 import { FormControl, FormGroup, ReactiveFormsModule } from '@angular/forms';
-import { Claim, Claims, QuickAdded, claimDue, countsLive, fixed, sumAmounts } from '../../core/claims';
+import { Claim, Claims, QuickAdded, claimDue, countsLive, fixed, overdue, sumAmounts } from '../../core/claims';
 import { Grade, People, Person } from '../../core/people';
 import { Period, Periods, periodOf } from '../../core/periods';
 import { Rate, Rates, pctOn } from '../../core/rates';
@@ -45,6 +45,8 @@ import { QuickAddBar } from './quick-add-bar';
       <app-quick-add-bar (added)="quickAdded($event)" />
       <p>Claimed in total: <strong data-testid="rollup-claimed-total">{{ claimedTotal() }}</strong></p>
       <p>Due in total: <strong data-testid="rollup-due-total">{{ dueTotal() }}</strong></p>
+      <p>Overdue claims: <strong data-testid="rollup-overdue-count">{{ overdueCount() }}</strong></p>
+      <p>Overdue in total: <strong data-testid="rollup-overdue-total">{{ overdueTotal() }}</strong></p>
       <label>
         <input type="checkbox" data-testid="show-retired" [checked]="showRetired()"
           (change)="showRetired.set($any($event.target).checked)" />
@@ -52,7 +54,7 @@ import { QuickAddBar } from './quick-add-bar';
       </label>
       <table data-testid="people">
         <thead>
-          <tr><th scope="col">Name</th><th scope="col">Grade</th><th scope="col">Claimed</th><th scope="col">Due</th><th scope="col">Statements</th><th scope="col">Last stated</th><th scope="col">Stated on</th><th scope="col">Retired</th><th scope="col">Retired from</th><th scope="col">On hold</th><th scope="col">Claims</th><th scope="col"><span class="visually-hidden">Actions</span></th></tr>
+          <tr><th scope="col">Name</th><th scope="col">Grade</th><th scope="col">Claimed</th><th scope="col">Due</th><th scope="col">Statements</th><th scope="col">Last stated</th><th scope="col">Stated on</th><th scope="col">Retired</th><th scope="col">Retired from</th><th scope="col">On hold</th><th scope="col">Overdue</th><th scope="col">Overdue due</th><th scope="col">Claims</th><th scope="col"><span class="visually-hidden">Actions</span></th></tr>
         </thead>
         <tbody>
           @for (p of shown(); track p.id) {
@@ -67,9 +69,12 @@ import { QuickAddBar } from './quick-add-bar';
               <td data-testid="person-retired">{{ p.retired ? 'yes' : 'no' }}</td>
               <td data-testid="person-retired-from">{{ p.retiredFrom ?? '' }}</td>
               <td data-testid="person-hold">{{ p.held ? 'yes' : 'no' }}</td>
+              <td data-testid="person-overdue-count">{{ overdueOf(p).length }}</td>
+              <td data-testid="person-overdue-total">{{ overdueTotalOf(p) }}</td>
               <td>
                 <app-person-claims [personId]="p.id" [claims]="claimsByPerson().get(p.id) ?? []"
                   [rates]="rates()" [floor]="floor()" [grade]="p.grade" [periods]="periods()"
+                  [terms]="terms()" [today]="session.today()"
                   (saved)="claimSaved($event)" />
               </td>
               <td>
@@ -95,7 +100,7 @@ import { QuickAddBar } from './quick-add-bar';
   `,
 })
 export class PeopleList {
-  private readonly session = inject(Session);
+  protected readonly session = inject(Session);
   private readonly api = inject(People);
   private readonly claimsApi = inject(Claims);
   private readonly ratesApi = inject(Rates);
@@ -135,6 +140,8 @@ export class PeopleList {
   protected readonly rates = signal<Rate[]>([]);
   /** The sheet's floor: the least live due a claim has. */
   protected readonly floor = signal('1.00');
+  /** The sheet's terms: the days after its date a claim is due by. */
+  protected readonly terms = signal(14);
   /** The periods on the sheet, earliest first. */
   protected readonly periods = signal<Period[]>([]);
   /** Each period's due-total by its id: the due figures of the claims that count whose date falls
@@ -167,6 +174,15 @@ export class PeopleList {
   /** The sheet's due-total: everyone's due-total added up, skipping those that are n/a. */
   protected readonly dueTotal = computed(() =>
     sumAmounts(this.people().map((p) => this.dueOf(p)).filter((d): d is string => d !== null)),
+  );
+  /** How many claims on the sheet are overdue among those that count in the live totals. */
+  protected readonly overdueCount = computed(() =>
+    this.people().reduce((n, p) => n + this.overdueOf(p).length, 0),
+  );
+  /** The sheet's overdue-total: the due figures of the overdue claims that count, skipping those
+   *  with no due. */
+  protected readonly overdueTotal = computed(() =>
+    sumAmounts(this.people().map((p) => this.overdueTotalOf(p))),
   );
   /** The id of the person whose editor is open, or null when the form adds a person. */
   protected readonly editing = signal<number | null>(null);
@@ -359,6 +375,19 @@ export class PeopleList {
     return sumAmounts(figures);
   }
 
+  /** A person's overdue claims among those that count in the live totals. */
+  protected overdueOf(p: Person): Claim[] {
+    return (this.claimsByPerson().get(p.id) ?? [])
+      .filter((c) => countsLive(c, p.held) && overdue(c, this.terms(), this.session.today()));
+  }
+
+  /** A person's overdue-total: the due figures of their overdue claims that count, skipping those
+   *  with no due. */
+  protected overdueTotalOf(p: Person): string {
+    return sumAmounts(this.overdueOf(p).map((c) => claimDue(c, this.rates(), p.grade, this.floor()))
+      .filter((d): d is string => d !== null));
+  }
+
   private reset(): void {
     this.editing.set(null);
     this.form.reset({ name: '', grade: 'A' }, { emitEvent: false });
@@ -378,6 +407,7 @@ export class PeopleList {
       if (read === this.reads) {
         this.rates.set(rates);
         this.floor.set(settings.floor);
+        this.terms.set(settings.terms);
         this.periods.set(periods);
         this.claims.set(claims);
         this.people.set(people);

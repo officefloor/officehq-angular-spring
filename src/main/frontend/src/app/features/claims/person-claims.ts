@@ -1,7 +1,7 @@
 import { HttpErrorResponse } from '@angular/common/http';
 import { Component, inject, input, output, signal } from '@angular/core';
 import { FormControl, FormGroup, ReactiveFormsModule } from '@angular/forms';
-import { AMOUNT, Claim, ClaimAction, Claims, claimDue } from '../../core/claims';
+import { AMOUNT, Claim, ClaimAction, Claims, claimDue, dueBy, overdue } from '../../core/claims';
 import { Grade } from '../../core/people';
 import { Period, periodOf } from '../../core/periods';
 import { Rate } from '../../core/rates';
@@ -64,6 +64,8 @@ function refusal(e: unknown, action: ClaimAction): string {
           <span data-testid="claim-opened-by">{{ c.openedBy ?? '' }}</span>
           <span data-testid="claim-stated">{{ c.stated ? 'yes' : 'no' }}</span>
           <span data-testid="claim-period">{{ periodName(c) }}</span>
+          <span data-testid="claim-due-by">{{ dueByOf(c) }}</span>
+          <span data-testid="claim-overdue">{{ overdueOf(c) ? 'yes' : 'no' }}</span>
           <button type="button" data-testid="claim-open" (click)="act(c, 'open')"
             [attr.aria-label]="'Open claim of ' + c.amount + ' on ' + c.date">Open</button>
           <button type="button" data-testid="claim-settle" (click)="act(c, 'settle')"
@@ -96,6 +98,10 @@ export class PersonClaims {
   readonly grade = input.required<Grade>();
   /** The periods on the sheet; a claim belongs to the one whose days contain its date. */
   readonly periods = input.required<Period[]>();
+  /** The sheet's terms: the days after its date a claim is due by. */
+  readonly terms = input.required<number>();
+  /** The sheet's today; a claim is overdue once its due-by is before it. */
+  readonly today = input.required<string | null>();
   /** A claim added or saved through the form. */
   readonly saved = output<Claim>();
 
@@ -118,6 +124,14 @@ export class PersonClaims {
 
   protected dueOf(c: Claim): string {
     return claimDue(c, this.rates(), this.grade(), this.floor()) ?? 'n/a';
+  }
+
+  protected dueByOf(c: Claim): string {
+    return dueBy(c, this.terms());
+  }
+
+  protected overdueOf(c: Claim): boolean {
+    return overdue(c, this.terms(), this.today());
   }
 
   /** The name of the period the claim belongs to; empty when it belongs to none. */
