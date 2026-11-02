@@ -1,0 +1,149 @@
+diff --git a/src/main/frontend/src/app/features/periods/periods.ts b/src/main/frontend/src/app/features/periods/periods.ts
+index c64ebfafd..7de412b53 100644
+--- a/src/main/frontend/src/app/features/periods/periods.ts
++++ b/src/main/frontend/src/app/features/periods/periods.ts
+@@ -52,7 +52,7 @@ export function closedOn(periods: Period[], date: string): boolean {
+ 
+ // The sheet's periods, with one form to add one, each period's due-total and whether it is
+ // closed (or soft-closed) and its fiscal year, a form to generate one per month over a date range, one to generate a
+-// fiscal year's months, and a button to close, to soft-close
++// fiscal year's months, one to generate a calendar year's quarters, and a button to close, to soft-close
+ // and to reopen each (by the roles the sheet's permission matrix allows).
+ @Component({
+   selector: 'app-periods',
+@@ -92,6 +92,11 @@ export function closedOn(periods: Period[], date: string): boolean {
+         <input id="period-generate-fy-year" data-testid="period-generate-fy-year" formControlName="year" inputmode="numeric" />
+         <button type="submit" data-testid="period-generate-fy">Generate fiscal year</button>
+       </form>
++      <form [formGroup]="quartersForm" (ngSubmit)="generateQuarters()" aria-label="Generate a year's quarterly periods">
++        <label for="period-generate-quarters-year">Year (yyyy)</label>
++        <input id="period-generate-quarters-year" data-testid="period-generate-quarters-year" formControlName="year" inputmode="numeric" />
++        <button type="submit" data-testid="period-generate-quarters">Generate quarters</button>
++      </form>
+       <form [formGroup]="openingForm" (ngSubmit)="importOpenings()" aria-label="Paste opening balances">
+         <label for="opening-import">Opening balances (name,period,amount per line)</label>
+         <textarea id="opening-import" data-testid="opening-import" formControlName="text" rows="4"></textarea>
+@@ -176,6 +181,10 @@ export class Periods {
+     year: new FormControl('', { nonNullable: true }),
+   });
+ 
++  protected readonly quartersForm = new FormGroup({
++    year: new FormControl('', { nonNullable: true }),
++  });
++
+   protected readonly openingError = signal('');
+   /** How many lines the last opening paste took; null while one runs or before any. */
+   protected readonly openingDone = signal<number | null>(null);
+@@ -187,6 +196,7 @@ export class Periods {
+   constructor() {
+     this.openingForm.valueChanges.subscribe(() => this.openingError.set(''));
+     this.fyForm.valueChanges.subscribe(() => this.generateError.set(''));
++    this.quartersForm.valueChanges.subscribe(() => this.generateError.set(''));
+     this.form.valueChanges.subscribe(() => this.error.set(''));
+     this.generateForm.valueChanges.subscribe(() => this.generateError.set(''));
+   }
+@@ -226,6 +236,36 @@ export class Periods {
+     }
+   }
+ 
++  /** Make the year's four quarterly periods <yyyy>-Q1 to -Q4, leaving out taken or overlapped quarters. */
++  protected async generateQuarters(): Promise<void> {
++    if (this.generating) return;
++    this.generateError.set('');
++    this.generated.set(null);
++    const sheet = this.session.sheetId();
++    if (!sheet) return;
++    const year = this.quartersForm.getRawValue().year.trim();
++    if (!/^\d{4}$/.test(year)) {
++      this.generateError.set('Enter a year as yyyy.');
++      return;
++    }
++    this.generating = true;
++    try {
++      const made = await firstValueFrom(
++        this.http.post<Period[]>(`/api/sheets/${encodeURIComponent(sheet)}/periods/generate-quarters`, { year }, {
++          headers: { 'X-User': this.session.user() ?? '' },
++        }),
++      );
++      if (this.session.sheetId() !== sheet) return;
++      for (const period of made) this.saved.emit(period);
++      this.generated.set(made.length);
++    } catch {
++      if (this.session.sheetId() !== sheet) return;
++      this.generateError.set('Could not generate that year\'s quarters.');
++    } finally {
++      this.generating = false;
++    }
++  }
++
+   /** Make a period for each month from the from-date's to the to-date's, leaving out taken or overlapped months. */
+   protected async generate(): Promise<void> {
+     if (this.generating) return;
+diff --git a/src/main/java/net/officefloor/hq/app/period/PeriodController.java b/src/main/java/net/officefloor/hq/app/period/PeriodController.java
+index 6cda14b51..19413985a 100644
+--- a/src/main/java/net/officefloor/hq/app/period/PeriodController.java
++++ b/src/main/java/net/officefloor/hq/app/period/PeriodController.java
+@@ -62,6 +62,9 @@ public class PeriodController {
+     /** A fiscal year by the calendar year its first day falls in (yyyy). */
+     public record GenerateFiscalYearRequest(@NotNull @Pattern(regexp = "\\d{4}") String year) {}
+ 
++    /** A calendar year whose quarters get a period each (yyyy). */
++    public record GenerateQuartersRequest(@NotNull @Pattern(regexp = "\\d{4}") String year) {}
++
+     /** Lines of name,period,amount to add to people's opening balances. */
+     public record OpeningImportRequest(@NotNull @Size(max = 100_000) String text) {}
+ 
+@@ -110,6 +113,16 @@ public class PeriodController {
+                 .map(PeriodView::of).toList();
+     }
+ 
++    /** Make the calendar year's four quarterly periods, leaving out taken or overlapped ones: those made, earliest first. */
++    @PostMapping("/generate-quarters")
++    public List<PeriodView> generateQuarters(
++            @PathVariable @Size(max = 100) @Pattern(regexp = "[A-Za-z0-9._-]+") String sheetId,
++            @RequestHeader("X-User") @NotBlank @Size(max = 100) String user,
++            @RequestBody @Valid GenerateQuartersRequest request) {
++        return service.generateQuarters(sheetId, user, Integer.parseInt(request.year())).stream()
++                .map(PeriodView::of).toList();
++    }
++
+     /** Add each pasted line's amount to the person's opening balance for the period; any bad line refuses them all. */
+     @PostMapping("/openings")
+     public OpeningImportView importOpenings(
+diff --git a/src/main/java/net/officefloor/hq/app/period/PeriodService.java b/src/main/java/net/officefloor/hq/app/period/PeriodService.java
+index 8c090ca2b..206c6351e 100644
+--- a/src/main/java/net/officefloor/hq/app/period/PeriodService.java
++++ b/src/main/java/net/officefloor/hq/app/period/PeriodService.java
+@@ -116,6 +116,32 @@ public class PeriodService {
+         return generate(sheetId, user, first.atDay(1), first.plusMonths(11).atEndOfMonth());
+     }
+ 
++    /**
++     * Make the four calendar quarters of the year as periods named &lt;yyyy&gt;-Q1 to &lt;yyyy&gt;-Q4, each from
++     * the first day of its first month to the last day of its third, as the period form would add it. A
++     * quarter whose name is already a period, or whose days overlap one on the sheet, is left out; the
++     * others are still made.
++     */
++    @Transactional
++    public List<Period> generateQuarters(String sheetId, String user, int year) {
++        // Lock the sheet so two users adding periods at once cannot overlap or share a name.
++        sheets.findForUpdate(sheetId).orElseThrow(SheetNotFoundException::new);
++        List<Period> existing = new ArrayList<>(periods.findBySheetIdOrderByFromDateAsc(sheetId));
++        List<Period> made = new ArrayList<>();
++        for (int quarter = 1; quarter <= 4; quarter++) {
++            String name = year + "-Q" + quarter;
++            LocalDate first = YearMonth.of(year, quarter * 3 - 2).atDay(1);
++            LocalDate last = YearMonth.of(year, quarter * 3).atEndOfMonth();
++            if (existing.stream().anyMatch(p -> p.getName().equals(name) || p.overlaps(first, last))) continue;
++            Period saved = periods.saveAndFlush(new Period(sheetId, name, first, last));
++            existing.add(saved);
++            made.add(saved);
++            audit.recordOnCommit("PERIOD_ADDED sheet=" + sheetId + " by=" + user.strip()
++                    + " period=" + saved.getName() + " from=" + saved.getFromDate() + " to=" + saved.getToDate());
++        }
++        return made;
++    }
++
+     @Transactional
+     public Period close(String sheetId, String user, Long id) {
+         // Lock the sheet so no claim in the period changes while its due-total is fixed.
