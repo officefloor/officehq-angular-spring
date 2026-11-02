@@ -3,7 +3,7 @@ import { Injectable, inject } from '@angular/core';
 import { firstValueFrom } from 'rxjs';
 import { Grade, Leave, Person, heldOn, retiredOn } from './people';
 import { Rate, atLeast, due, pctOn } from './rates';
-import { DatedValue, STARTING_FLOOR, STARTING_LATE_PCT, valueOn } from './settings';
+import { DatedValue, Graces, STARTING_FLOOR, STARTING_LATE_PCT, graceOn, valueOn } from './settings';
 import { Session } from './session';
 
 /** Where a claim is in its life: DRAFT, then OPEN, then SETTLED; a clerk's settle above the clerk
@@ -203,11 +203,14 @@ export function fixed(c: Claim): boolean {
 }
 
 /** What a claim's late charge follows: the sheet's today and its late percents (each 30-day boundary
- *  takes the one in force on it); and the sheet's policy date, which decides how its live figures round. */
+ *  takes the one in force on it), and the grace days of each grade; and the sheet's policy date, which
+ *  decides how its live figures round. */
 export interface Lateness {
   today: string | null;
   /** The late percents recorded, each from its from-date, earliest first. */
   pcts: DatedValue[];
+  /** The grace days recorded for each grade. */
+  graces: Graces;
   /** The policy date set (yyyy-mm-dd); null when blank, the sheet's today then stands in. */
   policyDate: string | null;
 }
@@ -231,32 +234,41 @@ export function claimDue(c: Claim, rates: Rate[], grade: Grade | undefined, floo
   const live = due(c.amount, grade === undefined ? undefined : pctOn(rates, grade, c.date), roundsHalfUp(c, late));
   const figure = (bound(c) ? c.statedDue : null) ?? live;
   if (figure === null) return null;
-  const charged = sumAmounts([figure, lateCharge(c, figure, late)]);
+  const charged = sumAmounts([figure, lateCharge(c, figure, late, grade)]);
   return correction(c) ? charged : atLeast(charged, valueOn(floors, c.date, STARTING_FLOOR));
 }
 
-/** The late charge on an overdue claim: for each full 30 days it is overdue, the late percent in force on that
- *  boundary (its due-by plus 30, 60, 90 ... days) of its figure, rounded like a due, the charges added up (a
- *  boundary whose percent is 0.00 adds nothing); 0.00 when it is not overdue, and on a correction. */
-export function lateCharge(c: Claim, figure: string, late: Lateness): string {
+/** The late charge on an overdue claim (its grade being its person's grade in force on its date): for each full
+ *  30 days it is overdue, the late percent in force on that boundary (its late-from plus 30, 60, 90 ... days) of its
+ *  figure, rounded like a due, the charges added up (a boundary whose percent is 0.00 adds nothing); 0.00 when it is
+ *  not overdue, and on a correction. */
+export function lateCharge(c: Claim, figure: string, late: Lateness, grade: Grade | undefined): string {
   if (correction(c)) return '0.00';
-  if (!overdue(c, late.today) || late.today === null) return '0.00';
-  const days = (Date.parse(late.today) - Date.parse(c.dueBy)) / 86_400_000;
+  const grace = graceOn(late.graces, grade, c.date);
+  if (!overdue(c, late.today, grace) || late.today === null) return '0.00';
+  const from = Date.parse(lateFrom(c, grace));
+  const days = (Date.parse(late.today) - from) / 86_400_000;
   const periods = Math.floor(days / 30);
   if (periods <= 0) return '0.00';
   const charges: string[] = [];
   for (let n = 1; n <= periods; n++) {
-    const boundary = new Date(Date.parse(c.dueBy) + n * 30 * 86_400_000).toISOString().slice(0, 10);
+    const boundary = new Date(from + n * 30 * 86_400_000).toISOString().slice(0, 10);
     const pct = valueOn(late.pcts, boundary, STARTING_LATE_PCT);
     if (Number(pct) !== 0) charges.push(due(figure, pct, roundsHalfUp(c, late)) ?? '0.00');
   }
   return sumAmounts(charges);
 }
 
-/** Whether a claim is overdue: it is open (or pending), not deferred, and its due-by is before the
- *  sheet's today. */
-export function overdue(c: Claim, today: string | null): boolean {
-  return isOpen(c) && !deferred(c, today) && today !== null && c.dueBy < today;
+/** The day a claim's lateness counts from: its due-by plus its grace days (those in force on its date
+ *  for its person's grade in force on that date). The due-by it shows is unchanged. */
+export function lateFrom(c: Claim, grace: number): string {
+  return grace === 0 ? c.dueBy : addDays(c.dueBy, grace);
+}
+
+/** Whether a claim is overdue: it is open (or pending), not deferred, and its due-by plus its grace
+ *  days is before the sheet's today. */
+export function overdue(c: Claim, today: string | null, grace = 0): boolean {
+  return isOpen(c) && !deferred(c, today) && today !== null && lateFrom(c, grace) < today;
 }
 
 // The claims people make on the active sheet.

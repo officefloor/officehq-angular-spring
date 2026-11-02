@@ -7,7 +7,7 @@ import {
   SheetSettings,
 } from '../../core/settings';
 
-// The sheet's settings (the clerk limit, the cap, the proof threshold, the note threshold, the floor, the terms, the late percent, the policy date, period numbering from, the grace days, the entry date and the permission matrix) and the roles it gives user names: clerk, the default for
+// The sheet's settings (the clerk limit, the cap, the proof threshold, the note threshold, the floor, the terms, the grace days per grade, the late percent, the policy date, period numbering from, the grace days, the entry date and the permission matrix) and the roles it gives user names: clerk, the default for
 // any name, steward, or viewer (who may change nothing). The settings that carry a figure are dated: each is saved from a from-date
 // (blank: the sheet's today), and what shows in force is the value on the sheet's today.
 @Component({
@@ -57,6 +57,17 @@ import {
                    type="date" [formControlName]="g + 'From'" />
           }
         </fieldset>
+        <fieldset formGroupName="gradeGraces">
+          <legend>Grace days per grade (a claim is overdue only once its due-by plus them is before today; blank: none)</legend>
+          @for (g of grades; track g) {
+            <label [for]="'setting-grace-' + g">Grade {{ g }} grace days</label>
+            <input [id]="'setting-grace-' + g" [attr.data-testid]="'setting-grace-' + g" [formControlName]="g"
+                   inputmode="numeric" />
+            <label [for]="'setting-grace-' + g + '-from'">Grade {{ g }} grace days from (blank: today)</label>
+            <input [id]="'setting-grace-' + g + '-from'" [attr.data-testid]="'setting-grace-' + g + '-from'"
+                   type="date" [formControlName]="g + 'From'" />
+          }
+        </fieldset>
         <label for="setting-late-pct">Late percent (per 30 days overdue)</label>
         <input id="setting-late-pct" data-testid="setting-late-pct" formControlName="latePct" inputmode="decimal" />
         <label for="setting-late-pct-from">Late percent from (blank: today)</label>
@@ -91,6 +102,10 @@ import {
       @for (g of grades; track g) {
         <p>Terms in force for grade {{ g }}:
           <span [attr.data-testid]="'setting-terms-' + g + '-current'">{{ termsOf(g) ?? '' }}</span></p>
+      }
+      @for (g of grades; track g) {
+        <p>Grace days in force for grade {{ g }}:
+          <span [attr.data-testid]="'setting-grace-' + g + '-current'">{{ gradeGraces()[g] ?? '' }}</span></p>
       }
       <p>Late percent in force: <span data-testid="setting-late-pct-current">{{ latePct() ?? '' }}</span></p>
       <p>Policy date in force: <span data-testid="setting-policy-date-current">{{ policyDate() ?? '' }}</span></p>
@@ -148,6 +163,8 @@ export class SettingsForm {
   protected readonly grades: Grade[] = ['A', 'B', 'C'];
   /** The terms each grade has of its own; a grade not in it takes the sheet's terms. */
   protected readonly gradeTerms = signal<Partial<Record<Grade, number>>>({});
+  /** The grace days each grade has in force; a grade not in it has none. */
+  protected readonly gradeGraces = signal<Partial<Record<Grade, number>>>({});
   protected readonly latePct = signal<string | null>(null);
   protected readonly policyDate = signal<string | null>(null);
   protected readonly periodNumberingFrom = signal<string | null>(null);
@@ -178,6 +195,14 @@ export class SettingsForm {
     terms: new FormControl('', { nonNullable: true }),
     termsFrom: new FormControl('', { nonNullable: true }),
     gradeTerms: new FormGroup({
+      A: new FormControl('', { nonNullable: true }),
+      AFrom: new FormControl('', { nonNullable: true }),
+      B: new FormControl('', { nonNullable: true }),
+      BFrom: new FormControl('', { nonNullable: true }),
+      C: new FormControl('', { nonNullable: true }),
+      CFrom: new FormControl('', { nonNullable: true }),
+    }),
+    gradeGraces: new FormGroup({
       A: new FormControl('', { nonNullable: true }),
       AFrom: new FormControl('', { nonNullable: true }),
       B: new FormControl('', { nonNullable: true }),
@@ -219,6 +244,7 @@ export class SettingsForm {
       this.floor.set(null);
       this.terms.set(null);
       this.gradeTerms.set({});
+      this.gradeGraces.set({});
       this.latePct.set(null);
       this.policyDate.set(null);
       this.periodNumberingFrom.set(null);
@@ -235,13 +261,13 @@ export class SettingsForm {
   protected async saveSettings(): Promise<void> {
     if (this.submitting) return;
     this.settingsError.set('');
-    const { clerkLimit, clerkLimitFrom, cap, capFrom, proofThreshold, proofThresholdFrom, noteThreshold, noteThresholdFrom, floor, floorFrom, terms, termsFrom, gradeTerms, latePct,
+    const { clerkLimit, clerkLimitFrom, cap, capFrom, proofThreshold, proofThresholdFrom, noteThreshold, noteThresholdFrom, floor, floorFrom, terms, termsFrom, gradeTerms, gradeGraces, latePct,
       latePctFrom, policyDate, periodNumberingFrom, graceDays, entryDate, permissions } = this.settingsForm.controls;
     const changed = (...cs: AbstractControl[]) => cs.some((c) => c.dirty || c.touched);
     const none = !changed(clerkLimit, clerkLimitFrom) && !changed(cap, capFrom)
       && !changed(proofThreshold, proofThresholdFrom) && !changed(noteThreshold, noteThresholdFrom)
       && !changed(floor, floorFrom)
-      && !changed(terms, termsFrom) && !changed(gradeTerms) && !changed(latePct, latePctFrom) && !changed(policyDate)
+      && !changed(terms, termsFrom) && !changed(gradeTerms) && !changed(gradeGraces) && !changed(latePct, latePctFrom) && !changed(policyDate)
       && !changed(periodNumberingFrom) && !changed(graceDays) && !changed(entryDate) && !changed(permissions);
     /** A from-date typed, or null when blank (the sheet's today). */
     const from = (c: AbstractControl<string>) => c.value.trim() || null;
@@ -264,6 +290,12 @@ export class SettingsForm {
         value: gradeTerms.controls[g].value.trim(),
       }))
       .filter((t) => (none || changed(t.control, t.fromControl)) && t.value !== '');
+    const gracesToSave = this.grades
+      .map((g) => ({
+        grade: g, control: gradeGraces.controls[g], fromControl: gradeGraces.controls[`${g}From`],
+        value: gradeGraces.controls[g].value.trim(),
+      }))
+      .filter((t) => changed(t.control, t.fromControl) || (none && t.value !== ''));
     const latePctValue = latePct.value.trim();
     const saveLatePct = none || changed(latePct, latePctFrom);
     const policyDateValue = policyDate.value.trim();
@@ -284,6 +316,7 @@ export class SettingsForm {
     if (saveFloor && floorValue !== '') fromsToSave.push(floorFrom);
     if (saveTerms && termsValue !== '') fromsToSave.push(termsFrom);
     gradeTermsToSave.forEach((t) => fromsToSave.push(t.fromControl));
+    gracesToSave.forEach((t) => fromsToSave.push(t.fromControl));
     if (saveLatePct && latePctValue !== '') fromsToSave.push(latePctFrom);
     if (fromsToSave.some((c) => c.value.trim() !== '' && !POLICY_DATE.test(c.value.trim()))) {
       this.settingsError.set('Enter a from-date, or leave it blank for the sheet\'s today.');
@@ -315,6 +348,10 @@ export class SettingsForm {
     }
     if (gradeTermsToSave.some((t) => !TERMS.test(t.value))) {
       this.settingsError.set('Enter terms for a grade of 0 or more whole days, or leave them blank.');
+      return;
+    }
+    if (gracesToSave.some((t) => t.value !== '' && !TERMS.test(t.value))) {
+      this.settingsError.set('Enter grace days for a grade of 0 or more whole days, or leave them blank for none.');
       return;
     }
     if (saveLatePct && !(none && latePctValue === '') && !LATE_PCT.test(latePctValue)) {
@@ -396,6 +433,14 @@ export class SettingsForm {
       for (const t of gradeTermsToSave) {
         const saved = await this.api.setGradeTerms(t.grade, t.value, from(t.fromControl));
         this.gradeTerms.set(saved.gradeTerms);
+        for (const c of [t.control, t.fromControl]) {
+          c.markAsPristine();
+          c.markAsUntouched();
+        }
+      }
+      for (const t of gracesToSave) {
+        const saved = await this.api.setGrace(t.grade, t.value === '' ? null : t.value, from(t.fromControl));
+        this.gradeGraces.set(saved.gradeGraces);
         for (const c of [t.control, t.fromControl]) {
           c.markAsPristine();
           c.markAsUntouched();
@@ -492,6 +537,7 @@ export class SettingsForm {
         this.floor.set(settings.floor);
         this.terms.set(settings.terms);
         this.gradeTerms.set(settings.gradeTerms);
+        this.gradeGraces.set(settings.gradeGraces);
         this.latePct.set(settings.latePct);
         this.policyDate.set(settings.policyDate);
         this.periodNumberingFrom.set(settings.periodNumberingFrom);

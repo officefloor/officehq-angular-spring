@@ -40,23 +40,37 @@ public class SettingsController {
      *  proof threshold as text with two decimals (null when there is none); and the permission matrix:
      *  for each action, the comma separated roles that may take it (blank: the standing rule); and the
      *  grace days (null when blank: off); and the note threshold as text with two decimals (null when
-     *  there is none); and the entry date (null when blank: off). */
+     *  there is none); and the entry date (null when blank: off); and the grace days each grade has in
+     *  force (a grade not in it has none), and the grace days recorded for each grade, each from its
+     *  from-date, earliest first (null: blank, none). */
     public record SettingsView(String clerkLimit, String floor, int terms, String latePct, LocalDate policyDate,
             LocalDate periodNumberingFrom, Map<String, Integer> gradeTerms, String cap, List<DatedValue> floors,
             List<DatedValue> latePcts, List<DatedValue> caps, String proofThreshold,
-            Map<String, String> permissions, Integer graceDays, String noteThreshold, LocalDate entryDate) {
+            Map<String, String> permissions, Integer graceDays, String noteThreshold, LocalDate entryDate,
+            Map<String, Integer> gradeGraces, Map<String, List<DatedDays>> graces) {
         static SettingsView of(BigDecimal clerkLimit, BigDecimal floor, int terms, BigDecimal latePct,
                 LocalDate policyDate, LocalDate periodNumberingFrom, Map<String, Integer> gradeTerms,
                 BigDecimal cap, List<SettingValue> floors, List<SettingValue> latePcts,
                 List<SettingValue> caps, BigDecimal proofThreshold, Map<String, String> permissions,
-                Integer graceDays, BigDecimal noteThreshold, LocalDate entryDate) {
+                Integer graceDays, BigDecimal noteThreshold, LocalDate entryDate, Map<String, Integer> gradeGraces,
+                Map<String, List<SettingValue>> graces) {
+            Map<String, List<DatedDays>> gracesView = new TreeMap<>();
+            graces.forEach((grade, values) -> gracesView.put(grade, values.stream().map(DatedDays::of).toList()));
             return new SettingsView(clerkLimit == null ? null : clerkLimit.setScale(2).toPlainString(),
                     floor.setScale(2).toPlainString(), terms, latePct.setScale(2).toPlainString(), policyDate,
                     periodNumberingFrom, gradeTerms, cap == null ? null : cap.setScale(2).toPlainString(),
                     floors.stream().map(DatedValue::of).toList(), latePcts.stream().map(DatedValue::of).toList(),
                     caps.stream().map(DatedValue::of).toList(),
                     proofThreshold == null ? null : proofThreshold.setScale(2).toPlainString(), permissions, graceDays,
-                    noteThreshold == null ? null : noteThreshold.setScale(2).toPlainString(), entryDate);
+                    noteThreshold == null ? null : noteThreshold.setScale(2).toPlainString(), entryDate, gradeGraces,
+                    gracesView);
+        }
+    }
+
+    /** A whole number of days a dated setting takes from a date; null when blank. */
+    public record DatedDays(LocalDate from, Integer value) {
+        static DatedDays of(SettingValue v) {
+            return new DatedDays(v.getFrom(), v.getValue() == null ? null : v.getValue().intValue());
         }
     }
 
@@ -193,6 +207,16 @@ public class SettingsController {
         }
     }
 
+    /** A grade's grace days form: a whole number of days, 0 or more, or blank for none; from a date,
+     *  or blank for the sheet's today. */
+    public record GradeGraceForm(@Pattern(regexp = "\\s*(\\d{1,4})?\\s*") String value,
+            @Pattern(regexp = DATE) String from) implements Dated {
+
+        Integer daysValue() {
+            return value == null || value.isBlank() ? null : Integer.valueOf(value.trim());
+        }
+    }
+
     /** The permission form: a comma separated list of roles (clerk, steward), or blank for the
      *  standing rule. */
     public record PermissionForm(@Size(max = 200)
@@ -231,11 +255,18 @@ public class SettingsController {
             then.setting("terms-" + grade, day).ifPresent(v -> gradeTerms.put(grade, v.getValue().intValue()));
         }
         int terms = then.setting("terms", day).map(v -> v.getValue().intValue()).orElse(SheetService.STARTING_TERMS);
+        Map<String, Integer> gradeGraces = new TreeMap<>();
+        Map<String, List<SettingValue>> graces = new TreeMap<>();
+        for (String grade : List.of("A", "B", "C")) {
+            then.setting("grace-" + grade, day).map(SettingValue::getValue)
+                    .ifPresent(v -> gradeGraces.put(grade, v.intValue()));
+            graces.put(grade, then.recorded("grace-" + grade));
+        }
         return SettingsView.of(value.apply("clerk-limit"), then.basis().floor(day), terms, then.basis().latePct(day),
                 then.policyDate(), service.periodNumberingFrom(id), gradeTerms, then.basis().cap(),
                 then.recorded("floor"), then.recorded("late-pct"), then.recorded("cap"),
                 value.apply("proof-threshold"), service.permissions(id), service.graceDays(id),
-                value.apply("note-threshold"), service.entryDate(id));
+                value.apply("note-threshold"), service.entryDate(id), gradeGraces, graces);
     }
 
     /** The settings view of a sheet as the store holds it now. */
@@ -244,7 +275,17 @@ public class SettingsController {
                 service.policyDate(id), service.periodNumberingFrom(id), service.gradeTerms(id), service.cap(id),
                 service.recorded(id, "floor"), service.recorded(id, "late-pct"),
                 service.recorded(id, "cap"), service.proofThreshold(id), service.permissions(id),
-                service.graceDays(id), service.noteThreshold(id), service.entryDate(id));
+                service.graceDays(id), service.noteThreshold(id), service.entryDate(id), service.gradeGraces(id),
+                gracesOf(id));
+    }
+
+    /** The grace days recorded for each grade of a sheet, earliest from-date first. */
+    private Map<String, List<SettingValue>> gracesOf(String id) {
+        Map<String, List<SettingValue>> graces = new TreeMap<>();
+        for (String grade : List.of("A", "B", "C")) {
+            graces.put(grade, service.recorded(id, "grace-" + grade));
+        }
+        return graces;
     }
 
     /** The settings view of a sheet just saved. */
@@ -279,6 +320,14 @@ public class SettingsController {
             @RequestHeader("X-User") @NotBlank @Size(max = 100) String user,
             @Valid @RequestBody TermsForm form) {
         return view(service.setGradeTerms(sheetId.trim(), user.trim(), grade, form.termsValue(), form.fromValue()));
+    }
+
+    @PutMapping("/grace/{grade}")
+    public SettingsView setGrace(@PathVariable @NotBlank @Size(max = 100) String sheetId,
+            @PathVariable @Pattern(regexp = "[ABC]") String grade,
+            @RequestHeader("X-User") @NotBlank @Size(max = 100) String user,
+            @Valid @RequestBody GradeGraceForm form) {
+        return view(service.setGrace(sheetId.trim(), user.trim(), grade, form.daysValue(), form.fromValue()));
     }
 
     @PutMapping("/late-pct")

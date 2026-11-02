@@ -247,6 +247,35 @@ public class SheetService {
         return record(id, user, "terms-" + grade, BigDecimal.valueOf(terms), String.valueOf(terms), from);
     }
 
+    /** The grace days each grade on the sheet has in force on its today, by grade; a grade not in it
+     *  has none (blank, or never set). */
+    @Transactional(readOnly = true)
+    public Map<String, Integer> gradeGraces(String id) {
+        LocalDate today = today(id);
+        Map<String, Integer> graces = new TreeMap<>();
+        for (String grade : GRADES) {
+            inForce(id, "grace-" + grade, today).map(SettingValue::getValue)
+                    .ifPresent(v -> graces.put(grade, v.intValue()));
+        }
+        return graces;
+    }
+
+    /** The grace days a claim on the sheet dated on the day has for a grade: the grade's grace in
+     *  force on it; 0 when none is (blank, or never set). */
+    @Transactional(readOnly = true)
+    public int grace(String id, String grade, LocalDate day) {
+        return inForce(id, "grace-" + grade, day).map(SettingValue::getValue).map(BigDecimal::intValue).orElse(0);
+    }
+
+    /** Record a grade's grace days (null: blank, none) from a date (null: the sheet's today), then the
+     *  figures they move. They change no claim's due-by. */
+    @Transactional
+    public synchronized Sheet setGrace(String id, String user, String grade, Integer days, LocalDate from) {
+        load(id, user);
+        return rollup.tracking(id, user, () -> record(id, user, "grace-" + grade,
+                days == null ? null : BigDecimal.valueOf(days), days == null ? "" : days.toString(), from));
+    }
+
     /** The percent of its figure an overdue claim on the sheet gains for a full 30 days overdue ending
      *  on the day: the late percent in force on it, or else the sheet's starting one. */
     @Transactional(readOnly = true)

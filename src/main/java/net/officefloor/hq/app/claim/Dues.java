@@ -36,6 +36,9 @@ public class Dues {
 
         /** The rates of a grade, the latest from-date first and the one with none last. */
         List<Rate> rates(String grade);
+
+        /** The grace days of a grade in force on a day; 0 when none is (blank, or never set). */
+        int grace(String grade, LocalDate day);
     }
 
     private final RateRepository rates;
@@ -78,6 +81,11 @@ public class Dues {
             public List<Rate> rates(String grade) {
                 return rates.findLatestFirst(sheetId, grade);
             }
+
+            @Override
+            public int grace(String grade, LocalDate day) {
+                return sheets.grace(sheetId, grade, day);
+            }
         };
     }
 
@@ -94,7 +102,7 @@ public class Dues {
         if (claim.getSettledDue() != null) {
             return claim.getSettledDue();
         }
-        return floored(basis, claim, bindable(basis, person, claim), claim.getStatus().isOpen());
+        return floored(basis, person, claim, bindable(basis, person, claim), claim.getStatus().isOpen());
     }
 
     /** The figure a claim would have today as an open claim bound by no statement: its rate figure
@@ -102,16 +110,16 @@ public class Dues {
      *  when there is none. */
     public BigDecimal openFigure(String sheetId, Person person, Claim claim) {
         Basis basis = now(sheetId);
-        return floored(basis, claim, due(basis, person, claim), true);
+        return floored(basis, person, claim, due(basis, person, claim), true);
     }
 
     /** A rate figure with its late charge (taken as open or not) on top, then at least the sheet's
      *  floor in force on the claim's date (a correction has no floor); null when the figure is. */
-    private BigDecimal floored(Basis basis, Claim claim, BigDecimal figure, boolean open) {
+    private BigDecimal floored(Basis basis, Person person, Claim claim, BigDecimal figure, boolean open) {
         if (figure == null) {
             return null;
         }
-        BigDecimal charged = figure.add(lateCharge(basis, claim, figure, open));
+        BigDecimal charged = figure.add(lateCharge(basis, person, claim, figure, open));
         return claim.isCorrection() ? charged : charged.max(basis.floor(claim.getDate()));
     }
 
@@ -151,24 +159,39 @@ public class Dues {
         return claim.isStated() && claim.getStatus() != ClaimStatus.PENDING;
     }
 
-    /** The late charge on a claim taken as open (or pending) or not, overdue on the sheet's today (its due-by, fixed when it was
-     *  made, before today; a correction has none): for each full 30 days it is overdue, the late percent in force on
-     *  that boundary (its due-by plus 30, 60, 90 ... days) of its figure, rounded to two decimals by the claim's
+    /** The day a claim's lateness is counted from: its due-by (fixed when it was made) plus the grace
+     *  days in force on the claim's date for its person's grade in force on that date. */
+    public LocalDate lateFrom(Basis basis, Person person, Claim claim) {
+        return claim.getDueBy().plusDays(basis.grace(person.gradeOn(claim.getDate()), claim.getDate()));
+    }
+
+    /** Whether a claim is overdue on the sheet's today: it is open (or pending), not deferred on it,
+     *  and its {@link #lateFrom} is before it. */
+    public boolean overdue(String sheetId, Person person, Claim claim) {
+        Basis basis = now(sheetId);
+        LocalDate today = basis.today();
+        return claim.getStatus().isOpen() && !claim.isDeferredOn(today) && lateFrom(basis, person, claim).isBefore(today);
+    }
+
+    /** The late charge on a claim taken as open (or pending) or not, overdue on the sheet's today (its {@link #lateFrom}
+     *  before today; a correction has none): for each full 30 days it is overdue, the late percent in force on
+     *  that boundary (its late-from plus 30, 60, 90 ... days) of its figure, rounded to two decimals by the claim's
      *  {@link #rounding}, the charges added up (a boundary whose percent is 0.00 adds nothing); 0.00 when it is not overdue. */
-    private BigDecimal lateCharge(Basis basis, Claim claim, BigDecimal figure, boolean open) {
+    private BigDecimal lateCharge(Basis basis, Person person, Claim claim, BigDecimal figure, boolean open) {
         BigDecimal none = BigDecimal.ZERO.setScale(2);
         LocalDate today = basis.today();
         if (!open || claim.isCorrection() || claim.isDeferredOn(today)) {
             return none;
         }
-        long periods = ChronoUnit.DAYS.between(claim.getDueBy(), today) / 30;
+        LocalDate lateFrom = lateFrom(basis, person, claim);
+        long periods = ChronoUnit.DAYS.between(lateFrom, today) / 30;
         if (periods <= 0) {
             return none;
         }
         RoundingMode rounding = rounding(basis, claim);
         BigDecimal charge = none;
         for (long n = 1; n <= periods; n++) {
-            BigDecimal pct = basis.latePct(claim.getDueBy().plusDays(30 * n));
+            BigDecimal pct = basis.latePct(lateFrom.plusDays(30 * n));
             if (pct.signum() != 0) {
                 charge = charge.add(figure.multiply(pct).movePointLeft(2).setScale(2, rounding));
             }

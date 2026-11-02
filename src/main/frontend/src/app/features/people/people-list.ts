@@ -7,7 +7,7 @@ import { Grade, Leave, People, Person, Taken, gradeOn } from '../../core/people'
 import { Period, Periods, periodOf } from '../../core/periods';
 import { Rate, Rates, pctOn } from '../../core/rates';
 import { Session } from '../../core/session';
-import { DatedValue, SheetSettings, valueOn } from '../../core/settings';
+import { DatedValue, Graces, SheetSettings, graceOn, valueOn } from '../../core/settings';
 import { Watch, Watches } from '../../core/watches';
 import { PersonClaims } from '../claims/person-claims';
 import { PeriodForm } from '../periods/period-form';
@@ -157,7 +157,7 @@ const NO_LEAVE: Leave = { holds: [], retiredFrom: null };
               <td>
                 <app-person-claims [personId]="p.id" [claims]="claimsByPerson().get(p.id) ?? []"
                   [rates]="rates()" [floor]="floor()" [grades]="p.grades" [periods]="periods()"
-                  [today]="session.today()" [latePct]="latePct()"
+                  [today]="session.today()" [latePct]="latePct()" [graces]="graces()"
                   [policyDate]="policyDate()" [selected]="selected()"
                   (selectedChange)="select($event.id, $event.selected)"
                   [others]="patronChoices(p)" (saved)="claimSaved($event)" />
@@ -284,11 +284,14 @@ export class PeopleList {
   /** The sheet's late percents recorded: what an overdue claim gains for every full 30 days it is
    *  overdue is the one in force on its date. */
   protected readonly latePct = signal<DatedValue[]>([]);
+  /** The grace days recorded for each grade: a claim is overdue only once its due-by plus those in
+   *  force on its date for its person's grade then is before the sheet's today. */
+  protected readonly graces = signal<Graces>({});
   /** The sheet's policy date (null when blank): it decides how a claim's live figures round. */
   protected readonly policyDate = signal<string | null>(null);
   /** What the late charges of overdue claims, and the rounding of live figures, follow. */
   private readonly lateness = computed(() => ({
-    today: this.session.today(), pcts: this.latePct(), policyDate: this.policyDate(),
+    today: this.session.today(), pcts: this.latePct(), graces: this.graces(), policyDate: this.policyDate(),
   }));
   /** The periods on the sheet, earliest first. */
   protected readonly periods = signal<Period[]>([]);
@@ -880,7 +883,8 @@ export class PeopleList {
   /** A person's overdue claims among those that count in the live totals. */
   protected overdueOf(p: Person): Claim[] {
     return (this.claimsByPerson().get(p.id) ?? [])
-      .filter((c) => countsLive(c, p, this.session.today()) && overdue(c, this.session.today()));
+      .filter((c) => countsLive(c, p, this.session.today())
+        && overdue(c, this.session.today(), graceOn(this.graces(), gradeOn(p.grades, c.date), c.date)));
   }
 
   /** A person's overdue-total: the due figures of their overdue claims that count, skipping those
@@ -931,6 +935,7 @@ export class PeopleList {
         this.floor.set(settings.floors);
         this.caps.set(settings.caps);
         this.latePct.set(settings.latePcts);
+        this.graces.set(settings.graces);
         this.policyDate.set(settings.policyDate);
         this.periods.set(periods);
         this.claims.set(claims);

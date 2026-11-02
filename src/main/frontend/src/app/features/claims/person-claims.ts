@@ -6,7 +6,7 @@ import { GradeFrom, Person, gradeOn } from '../../core/people';
 import { Period, periodOf } from '../../core/periods';
 import { Rate } from '../../core/rates';
 import { Session } from '../../core/session';
-import { DatedValue } from '../../core/settings';
+import { DatedValue, Graces, graceOn } from '../../core/settings';
 
 /** Why the server refused an action: the claim's status does not allow it. */
 const REFUSALS: Record<ClaimAction, string> = {
@@ -249,11 +249,14 @@ export class PersonClaims {
   readonly grades = input.required<GradeFrom[]>();
   /** The periods on the sheet; a claim belongs to the one whose days contain its due-by. */
   readonly periods = input.required<Period[]>();
-  /** The sheet's today; a claim is overdue once its due-by is before it. */
+  /** The sheet's today; a claim is overdue once its due-by (plus its grace days) is before it. */
   readonly today = input.required<string | null>();
   /** The sheet's late percents recorded: what an overdue claim gains for every full 30 days it is
    *  overdue is the one in force on its date. */
   readonly latePct = input.required<DatedValue[]>();
+  /** The grace days recorded for each grade: a claim is overdue only once its due-by plus those in
+   *  force on its date for the person's grade then is before the sheet's today. */
+  readonly graces = input.required<Graces>();
   /** The sheet's policy date (null when blank): it decides how a claim's live figures round. */
   readonly policyDate = input.required<string | null>();
   /** The other people on the sheet, whom a claim can be reassigned to. */
@@ -303,7 +306,7 @@ export class PersonClaims {
 
   protected dueOf(c: Claim): string {
     return claimDue(c, this.rates(), gradeOn(this.grades(), c.date), this.floor(),
-      { today: this.today(), pcts: this.latePct(), policyDate: this.policyDate() }) ?? 'n/a';
+      { today: this.today(), pcts: this.latePct(), graces: this.graces(), policyDate: this.policyDate() }) ?? 'n/a';
   }
 
   protected dueByOf(c: Claim): string {
@@ -311,7 +314,7 @@ export class PersonClaims {
   }
 
   protected overdueOf(c: Claim): boolean {
-    return overdue(c, this.today());
+    return overdue(c, this.today(), graceOn(this.graces(), gradeOn(this.grades(), c.date), c.date));
   }
 
   protected deferredOf(c: Claim): boolean {

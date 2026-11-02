@@ -44,6 +44,27 @@ export interface Settings {
   /** The entry date (yyyy-mm-dd): while it is set, a new claim's date when none is given; null when
    *  blank (off, the sheet's today then stands in). */
   entryDate: string | null;
+  /** The grace days each grade has in force on the sheet's today, by grade; a grade not in it has
+   *  none. */
+  gradeGraces: Partial<Record<Grade, number>>;
+  /** The grace days recorded for each grade (null: blank, none), each from its from-date, earliest
+   *  first. */
+  graces: Graces;
+}
+
+/** The grace days recorded for each grade (null: blank, none), each from its from-date, earliest
+ *  first: a claim whose person's grade on its date has grace on that date is overdue only once its
+ *  due-by plus them is before the sheet's today. */
+export type Graces = Partial<Record<Grade, { from: string; value: number | null }[]>>;
+
+/** The grace days a grade has in force on a day (yyyy-mm-dd); 0 when none (blank, or never set). */
+export function graceOn(graces: Graces, grade: Grade | undefined, day: string): number {
+  if (grade === undefined) return 0;
+  let value: number | null = null;
+  for (const v of graces[grade] ?? []) {
+    if (v.from <= day) value = v.value;
+  }
+  return value ?? 0;
 }
 
 /** The actions the permission matrix covers. */
@@ -165,6 +186,14 @@ export class SheetSettings {
     const [sheetId, headers] = this.active();
     return firstValueFrom(
       this.http.put<Settings>(`${this.url(sheetId)}/settings/terms/${encodeURIComponent(grade)}`, { value, from }, { headers }),
+    );
+  }
+
+  /** Record a grade's grace days (null for blank, none) from a date (null for the sheet's today). */
+  setGrace(grade: Grade, value: string | null, from: string | null): Promise<Settings> {
+    const [sheetId, headers] = this.active();
+    return firstValueFrom(
+      this.http.put<Settings>(`${this.url(sheetId)}/settings/grace/${encodeURIComponent(grade)}`, { value, from }, { headers }),
     );
   }
 

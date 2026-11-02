@@ -222,6 +222,12 @@ public class History {
             public List<Rate> rates(String grade) {
                 return ratesThen.stream().filter(r -> r.getGrade().equals(grade)).toList();
             }
+
+            @Override
+            public int grace(String grade, LocalDate on) {
+                return inForce(settingsThen, "grace-" + grade, on).map(SettingValue::getValue)
+                        .map(BigDecimal::intValue).orElse(0);
+            }
         };
         return new SheetAsOf(day, basis, then, claimsThen, ratesListed, settingsThen, policyDate, periodsThen);
     }

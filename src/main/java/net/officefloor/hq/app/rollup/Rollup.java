@@ -111,7 +111,7 @@ public class Rollup {
             BigDecimal claimed = theirs.stream().map(Claim::getAmount)
                     .reduce(BigDecimal.ZERO.setScale(2), BigDecimal::add);
             BigDecimal due = dues.dueTotal(sheetId, person, theirs);
-            BigDecimal overdue = theirs.stream().filter(c -> c.getStatus().isOpen() && c.getDueBy().isBefore(today))
+            BigDecimal overdue = theirs.stream().filter(c -> dues.overdue(sheetId, person, c))
                     .map(c -> dues.figure(sheetId, person, c)).filter(Objects::nonNull)
                     .reduce(BigDecimal.ZERO.setScale(2), BigDecimal::add);
             claimedTotal = claimedTotal.add(claimed);
