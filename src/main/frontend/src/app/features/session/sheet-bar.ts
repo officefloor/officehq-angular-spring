@@ -27,6 +27,12 @@ import { Session } from '../../core/session';
       <p>Archived: <strong data-testid="sheet-archived">{{ session.archived() ? 'yes' : 'no' }}</strong></p>
       <p>Parent sheet: <strong data-testid="sheet-parent">{{ session.parent() ?? '' }}</strong></p>
       <button type="button" data-testid="sheet-archive" (click)="archive()">Archive sheet</button>
+      <form data-testid="sheet-clone-form" [formGroup]="cloneForm" (ngSubmit)="cloneSheet()">
+        <label for="sheet-clone-to">Clone the sheet to id</label>
+        <input id="sheet-clone-to" data-testid="sheet-clone-to" formControlName="to" />
+        <button type="submit" data-testid="sheet-clone">Clone sheet</button>
+      </form>
+      <p>Cloned to: <strong data-testid="sheet-cloned-to">{{ clonedTo() }}</strong></p>
       @if (sheetError()) {
         <p role="alert" data-testid="sheet-error">{{ sheetError() }}</p>
       }
@@ -49,6 +55,9 @@ export class SheetBar {
   protected readonly error = signal('');
   protected readonly todayForm = new FormGroup({ today: new FormControl('', { nonNullable: true }) });
   protected readonly sheetError = signal('');
+  protected readonly cloneForm = new FormGroup({ to: new FormControl('', { nonNullable: true }) });
+  /** The id the sheet was last cloned to from this screen; blank while a clone runs. */
+  protected readonly clonedTo = signal('');
   protected readonly asOfForm = new FormGroup({ day: new FormControl('', { nonNullable: true }) });
   protected readonly asOfError = signal('');
 
@@ -56,6 +65,7 @@ export class SheetBar {
     this.form.valueChanges.subscribe(() => this.error.set(''));
     this.todayForm.valueChanges.subscribe(() => this.sheetError.set(''));
     this.asOfForm.valueChanges.subscribe(() => this.asOfError.set(''));
+    this.cloneForm.valueChanges.subscribe(() => this.sheetError.set(''));
   }
 
   /** Show the sheet, on this screen only, as it stood at the end of the day entered. */
@@ -113,6 +123,21 @@ export class SheetBar {
       await this.session.archive();
     } catch {
       this.sheetError.set('The sheet could not be archived.');
+    }
+  }
+
+  async cloneSheet(): Promise<void> {
+    this.sheetError.set('');
+    this.clonedTo.set('');
+    const to = this.cloneForm.controls.to.value.trim();
+    if (!to) {
+      this.sheetError.set('Enter a sheet id to clone to.');
+      return;
+    }
+    try {
+      this.clonedTo.set(await this.session.cloneSheet(to));
+    } catch {
+      this.sheetError.set('The sheet could not be cloned.');
     }
   }
 }

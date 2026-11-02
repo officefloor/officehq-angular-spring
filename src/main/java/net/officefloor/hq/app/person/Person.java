@@ -115,6 +115,18 @@ public class Person {
         return copy;
     }
 
+    /** A copy of the person for a clone of their sheet: their name, place in the list, every grade
+     *  they were given (and its from-date), terms, contact, aliases, holds, retirement and past
+     *  retirements, and the sheet they were transferred from. */
+    public Person clonedTo(String toSheetId) {
+        Person copy = transferredTo(toSheetId, position);
+        copy.origin = origin;
+        copy.retiredFrom = retiredFrom;
+        retirements.forEach(r -> copy.retirements.add(new Retirement(r.getFromDate(), r.getToDate())));
+        holds.forEach(h -> copy.holds.add(new Hold(h.getFromDate(), h.getToDate())));
+        return copy;
+    }
+
     public Long getId() {
         return id;
     }

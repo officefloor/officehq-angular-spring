@@ -253,6 +253,14 @@ public class Claim {
         return copy;
     }
 
+    /** A copy of this claim for a person on a clone of its sheet: as {@link #transferredTo}, keeping
+     *  its reference too. */
+    public Claim clonedTo(String toSheetId, Long toPersonId, UnaryOperator<String> renumber) {
+        Claim copy = transferredTo(toSheetId, toPersonId, renumber);
+        copy.ref = ref;
+        return copy;
+    }
+
     /** The sheet's today when the claim was opened, as its status log records it; null when it was
      *  never opened (or has no log of it). */
     public LocalDate openedOn() {

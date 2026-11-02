@@ -93,6 +93,19 @@ export class Session {
     this.show(res);
   }
 
+  /** Clone the active sheet to another id, never used before (a steward only); the id cloned to. */
+  async cloneSheet(to: string): Promise<string> {
+    const user = this.user();
+    const id = this.sheetId();
+    if (!user || !id) throw new Error('no sheet loaded');
+    const res = await firstValueFrom(
+      this.http.post<{ to: string }>(`/api/sheets/${encodeURIComponent(id)}/clone`, { to }, {
+        headers: { 'X-User': user },
+      }),
+    );
+    return res.to;
+  }
+
   /** Show every sheet as it stood at the end of a day (null: as it is now), re-reading it. */
   setAsOf(day: string | null): void {
     this.asOf.set(day);
