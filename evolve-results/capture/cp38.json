@@ -1,0 +1,64 @@
+{
+  "checkpoint": 38,
+  "stack": {
+    "repo": "/home/daniel/officehq-angular-spring",
+    "origin": "git@github.com:officefloor/officehq-angular-spring.git",
+    "name": "officehq-angular-spring",
+    "base_ref": "base-empty",
+    "base_commit": "65cb8233ea38b2dfa6cfd18709e30cd18fdf3250"
+  },
+  "checkpoint_id": "cp38_terms-per-grade",
+  "phase": "early",
+  "type": "additive",
+  "mutates": [],
+  "replaced_tests": [],
+  "request": {
+    "spec": "Terms can be set per grade (settings, SETTING_CHANGED key=terms-<grade> value=<days>); a grade\nwithout its own terms uses the sheet's terms. A claim's due-by is now fixed when the claim is\ncreated, from the terms of its person's grade in force on the claim's date; it does not change\nwhen the terms or the claim's date change later.\n",
+    "prompt": "You are implementing ONE change to this application.\n\nFIRST read AGENTS.md \u2014 it states the working rules and how the app is tested, and sends you to\nDESIGN.md for the app's stack and conventions. Follow both.\n\nTHE CHANGE REQUEST:\nTerms can be set per grade (settings, SETTING_CHANGED key=terms-<grade> value=<days>); a grade\nwithout its own terms uses the sheet's terms. A claim's due-by is now fixed when the claim is\ncreated, from the terms of its person's grade in force on the claim's date; it does not change\nwhen the terms or the claim's date change later.\n\nYour work is verified by an automated Playwright UI test already installed under e2e/specs/.\nRead that spec: it declares the exact data-testid anchors, values, test data and any audit\nrecords it expects \u2014 match them. Run `bin/e2e` to build the app, start it, and run the test as\nyou work; iterate until it passes. Change whatever the request needs across the app \u2014 its stored\ndata, its server and its front end. Do NOT edit bin/build, bin/start, bin/stop, bin/e2e,\nAGENTS.md, CLAUDE.md, DESIGN.md, e2e/support/ or the test spec.\n"
+  },
+  "commit_sha": "a5e312911461d39058529735e85e14c22da0ff66",
+  "reset_sha": "",
+  "preagent_sha": "1f89d7f7d2aeed6585b5b174a254874c62a803b9",
+  "prev_sha": "1f89d7f7d2aeed6585b5b174a254874c62a803b9",
+  "base_sha": "65cb8233ea38b2dfa6cfd18709e30cd18fdf3250",
+  "agent": {
+    "ok": true,
+    "cost_usd": 1.2332667999999996,
+    "input_tokens": 52,
+    "output_tokens": 15285,
+    "cache_read_tokens": 1536874,
+    "cache_creation_tokens": 77498,
+    "num_turns": 27,
+    "duration_ms": 294519,
+    "duration_api_ms": 136679,
+    "model": "claude-opus-5-5",
+    "session_id": "b08829d4-c755-45d5-88e6-c647c7950c5d",
+    "stop_reason": "success",
+    "result_text": "Each grade can now have its own terms, and a claim's due-by is fixed when the claim is created. All 4 acceptance tests pass with `bin/e2e`.\n\n**What changed**\n- **Data:** a new migration, `V29__terms_per_grade.sql`, adds a `grade_terms` table (one value per sheet and grade) and a `due_by` column on claims. Existing claims get their date plus the sheet's terms (14 days if the sheet has none).\n- **Server:**\n  - A new endpoint, `PUT /api/sheets/{id}/settings/terms/{grade}` (grade A, B or C), saves a grade's terms. Each save writes `SETTING_CHANGED \u2026 key=terms-<grade> value=<days>` to the audit file.\n  - The settings response now includes each grade's own terms.\n  - When a claim is created, its due-by is the claim's date plus the terms of the person's grade on that date. A grade with no terms of its own falls back to the sheet's terms.\n  - The late charge now works from that stored due-by. So changing the terms, or editing the claim's date later, doesn't move it.\n- **Front end:**\n  - The settings form has a terms field for each of grades A, B and C (`setting-terms-<grade>`) and shows the terms in force for each (`setting-terms-<grade>-current`). That shows the sheet's terms when the grade has none of its own.\n  - A claim's due-by, its overdue flag and the overdue totals all come from the stored due-by.\n\n**Behaviour to be aware of**\n- Changing the sheet's terms no longer recalculates any figures, because no existing claim's due-by changes.\n- A grade's own terms can be set or changed but not removed. Leaving the field blank just leaves the current value as it is.",
+    "error": "",
+    "attempts": [
+      {
+        "ok": true,
+        "limit_reached": false,
+        "retryable": false,
+        "timed_out": false,
+        "cost_usd": 1.2332667999999996,
+        "num_turns": 27,
+        "duration_ms": 294519,
+        "duration_api_ms": 136679,
+        "error": ""
+      }
+    ]
+  },
+  "agent_stream_file": "cp38.agent.jsonl",
+  "agent_diff_file": "cp38.agent.diff",
+  "build_log_file": null,
+  "tests": {
+    "gated": false,
+    "queued": true
+  },
+  "probe": null,
+  "pinned_touched": [],
+  "acceptance_touched": [],
+  "impact_gate": null
+}
