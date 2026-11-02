@@ -1,0 +1,72 @@
+diff --git a/src/main/frontend/src/app/features/people/people.ts b/src/main/frontend/src/app/features/people/people.ts
+index f933a3043..c28fba8f4 100644
+--- a/src/main/frontend/src/app/features/people/people.ts
++++ b/src/main/frontend/src/app/features/people/people.ts
+@@ -322,7 +322,7 @@ function trimmedSum(figures: number[]): number {
+       </table>
+     </section>
+     <app-rates [rates]="rates()" [inherited]="inheritedRates()" [today]="session.today()" (saved)="rateSaved($event)" (imported)="ratesImported($event)" />
+-    <app-periods [periods]="periods()" [dueTotalOf]="periodDueTotalOf" (saved)="periodSaved($event)" (replaced)="periodsReplaced($event)" />
++    <app-periods [periods]="periods()" [dueTotalOf]="periodDueTotalOf" [claimsCountOf]="periodClaimsCountOf" (saved)="periodSaved($event)" (replaced)="periodsReplaced($event)" />
+     <section aria-labelledby="people-heading">
+       <h2 id="people-heading">People</h2>
+       <form [formGroup]="form" (ngSubmit)="save()" [attr.aria-label]="editingId() === null ? 'Add person' : 'Edit person'">
+@@ -1093,6 +1093,19 @@ export class People {
+     if (period.closed || period.softClosed) return money(cents(period.closedPersonCarried?.[p.id] ?? '0.00'));
+     return money((this.personPeriodCarriedCents().get(p.id)?.get(period.id) ?? 0) + cents(period.openings?.[p.id] ?? '0.00'));
+   }
++  /** Each period's count of claims whose due-by falls in it, VOID and DELETED ones left out, by period id. */
++  private readonly periodClaimsCounts = computed(() => {
++    const by = new Map<number, number>();
++    for (const c of this.claims()) {
++      if (c.status === 'VOID' || c.status === 'DELETED') continue;
++      const period = periodOn(this.periods(), c.dueBy);
++      if (period !== null) by.set(period.id, (by.get(period.id) ?? 0) + 1);
++    }
++    return by;
++  });
++  /** A period's count of claims belonging to it, VOID and DELETED ones left out. */
++  protected readonly periodClaimsCountOf = (period: Period): number =>
++    this.periodClaimsCounts().get(period.id) ?? 0;
+   /** A period's due-total: the people's figures for it added up. */
+   protected readonly periodDueTotalOf = (period: Period): string =>
+     money(this.periodDueCents(period));
+diff --git a/src/main/frontend/src/app/features/periods/periods.ts b/src/main/frontend/src/app/features/periods/periods.ts
+index 25aa7604d..bbb7655ad 100644
+--- a/src/main/frontend/src/app/features/periods/periods.ts
++++ b/src/main/frontend/src/app/features/periods/periods.ts
+@@ -51,7 +51,7 @@ export function closedOn(periods: Period[], date: string): boolean {
+ }
+ 
+ // The sheet's periods, with one form to add one, each period's due-total and whether it is
+-// closed (or soft-closed) and its fiscal year, a form to generate one per month over a date range, one to generate a
++// closed (or soft-closed) and its fiscal year, its count of claims, a form to generate one per month over a date range, one to generate a
+ // fiscal year's months, one to generate a calendar year's quarters, and a button to close, to soft-close
+ // and to reopen each (by the roles the sheet's permission matrix allows).
+ @Component({
+@@ -122,7 +122,7 @@ export function closedOn(periods: Period[], date: string): boolean {
+       </form>
+       <table>
+         <thead>
+-          <tr><th scope="col">Name</th><th scope="col">From</th><th scope="col">To</th><th scope="col">Due total</th><th scope="col">Closed</th><th scope="col">Fiscal year</th><th scope="col">Cap</th><th scope="col">Locked</th><th scope="col"><span class="visually-hidden">Actions</span></th></tr>
++          <tr><th scope="col">Name</th><th scope="col">From</th><th scope="col">To</th><th scope="col">Due total</th><th scope="col">Closed</th><th scope="col">Fiscal year</th><th scope="col">Cap</th><th scope="col">Locked</th><th scope="col">Claims</th><th scope="col"><span class="visually-hidden">Actions</span></th></tr>
+         </thead>
+         <tbody>
+           @for (p of periods(); track p.id) {
+@@ -135,6 +135,7 @@ export function closedOn(periods: Period[], date: string): boolean {
+               <td data-testid="period-fy">{{ fyOf(p) }}</td>
+               <td data-testid="period-cap">{{ p.cap ?? '' | figure }}</td>
+               <td data-testid="period-locked">{{ p.locked ? 'yes' : 'no' }}</td>
++              <td data-testid="period-claims-count">{{ claimsCountOf()(p) }}</td>
+               <td>
+                 <button type="button" data-testid="period-close" (click)="close(p)"
+                         [attr.aria-label]="'Close period ' + p.name">Close</button>
+@@ -165,6 +166,8 @@ export class Periods {
+   readonly periods = input.required<Period[]>();
+   /** A period's due-total, two decimals: the people's figures for it added up, fixed ones once closed. */
+   readonly dueTotalOf = input.required<(p: Period) => string>();
++  /** How many claims belong to a period (due-by inside it), VOID and DELETED ones left out. */
++  readonly claimsCountOf = input.required<(p: Period) => number>();
+   /** A period added, closed or reopened, as the store now holds it. */
+   readonly saved = output<Period>();
+   /** The sheet's whole period list, as the store now holds it, after periods were removed. */
