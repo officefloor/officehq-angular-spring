@@ -29,7 +29,8 @@ import org.springframework.transaction.annotation.Transactional;
  * aliases, holds, retirements, snapshot lines and patrons), pools, periods (all open) and claims (with their status,
  * frozen figures, dates, notes, tags and logs, numbered afresh by the clone's own numbering). Statements,
  * and the figures they bound, are not copied; nor are watches, delegations or the sheet's parent. Rows are
- * copied column by column as the store holds them, so a column added later is copied too.
+ * copied column by column as the store holds them, so a column added later is copied too. The clone remembers
+ * this sheet as its source: a grade with no rate in force on the clone nor its parents takes the source's.
  */
 @Service
 public class SheetCloneService {
@@ -41,11 +42,12 @@ public class SheetCloneService {
     private final ClaimService claimService;
     private final RollupService rollup;
     private final SheetHistory history;
+    private final SheetSourceRepository sources;
     private final Audit audit;
 
     public SheetCloneService(DataSource dataSource, SheetRepository sheets, SettingService settings,
             ClaimRepository claims, ClaimService claimService, RollupService rollup, SheetHistory history,
-            Audit audit) {
+            SheetSourceRepository sources, Audit audit) {
         this.jdbc = new JdbcTemplate(dataSource);
         this.sheets = sheets;
         this.settings = settings;
@@ -53,6 +55,7 @@ public class SheetCloneService {
         this.claimService = claimService;
         this.rollup = rollup;
         this.history = history;
+        this.sources = sources;
         this.audit = audit;
     }
 
@@ -76,6 +79,8 @@ public class SheetCloneService {
         sheet.put("LAST_CLAIM_NUMBER", 0L);
         sheet.put("ARCHIVED", false);
         insert("sheet", sheet);
+        // the sheet it was cloned from, whose rates (then its parents' and source's) a grade with none in force takes
+        sources.saveAndFlush(new SheetSource(toSheetId, sheetId));
 
         for (String table : List.of("sheet_setting", "sheet_setting_log", "sheet_permission", "sheet_role", "rate",
                 "rate_log", "holiday", "void_reason", "claim_template", "claim_tag")) {

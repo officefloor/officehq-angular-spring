@@ -2,18 +2,23 @@ package net.officefloor.hq.app.rate;
 
 import java.time.LocalDate;
 import java.util.ArrayList;
+import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import java.util.Set;
 import net.officefloor.hq.app.sheet.SheetParent;
 import net.officefloor.hq.app.sheet.SheetParentRepository;
+import net.officefloor.hq.app.sheet.SheetSource;
+import net.officefloor.hq.app.sheet.SheetSourceRepository;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 /**
  * The rates a sheet's figures use: its own, then, for a grade and date it has none in force on, its
- * parent's, its parent's parent's, up to {@link SheetParent#LEVELS} levels up.
+ * parent's, its parent's parent's, up to {@link SheetParent#LEVELS} levels up; then, for a clone, those of
+ * the sheet it was cloned from ({@link SheetSource}) in the same way: its own, its parents', its source's.
  */
 @Service
 public class InheritedRates {
@@ -21,11 +26,31 @@ public class InheritedRates {
     private final RateRepository rates;
     private final RateLogRepository log;
     private final SheetParentRepository parents;
+    private final SheetSourceRepository sources;
 
-    public InheritedRates(RateRepository rates, RateLogRepository log, SheetParentRepository parents) {
+    public InheritedRates(RateRepository rates, RateLogRepository log, SheetParentRepository parents,
+            SheetSourceRepository sources) {
         this.rates = rates;
         this.log = log;
         this.parents = parents;
+        this.sources = sources;
+    }
+
+    /**
+     * The sheets whose rates the sheet takes, nearest first: its parents (up to {@link SheetParent#LEVELS}
+     * levels up), then the sheet it was cloned from, that sheet's parents, its source, and so on; each once.
+     */
+    private List<String> inheritedFrom(String sheetId) {
+        List<String> from = new ArrayList<>();
+        Set<String> seen = new HashSet<>(Set.of(sheetId));
+        for (String at = sheetId; at != null; ) {
+            for (String ancestor : parents.ancestorsOf(at, SheetParent.LEVELS)) if (seen.add(ancestor)) from.add(ancestor);
+            String source = sources.sourceOf(at);
+            if (source == null || !seen.add(source)) break;
+            from.add(source);
+            at = source;
+        }
+        return from;
     }
 
     /** The sheet's rates and its ancestors', as they are now. */
@@ -41,7 +66,7 @@ public class InheritedRates {
     @Transactional(readOnly = true)
     public List<Map<String, List<Rate>>> ancestors(String sheetId) {
         List<Map<String, List<Rate>>> levels = new ArrayList<>();
-        for (String ancestor : parents.ancestorsOf(sheetId, SheetParent.LEVELS)) {
+        for (String ancestor : inheritedFrom(sheetId)) {
             levels.add(byGrade(rates.findBySheetIdOrderByGradeAscFromDateAsc(ancestor)));
         }
         return levels;
@@ -60,7 +85,7 @@ public class InheritedRates {
     @Transactional(readOnly = true)
     public List<Map<String, List<Rate>>> ancestorsAsOf(String sheetId, LocalDate date) {
         List<Map<String, List<Rate>>> levels = new ArrayList<>();
-        for (String ancestor : parents.ancestorsOf(sheetId, SheetParent.LEVELS)) levels.add(asOf(ancestor, date));
+        for (String ancestor : inheritedFrom(sheetId)) levels.add(asOf(ancestor, date));
         return levels;
     }
 

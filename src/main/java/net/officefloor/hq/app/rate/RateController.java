@@ -84,8 +84,8 @@ public class RateController {
     }
 
     /**
-     * The rates of the sheet's ancestors, nearest first (up to three levels up), that a grade with no rate
-     * of its own in force on a date takes; as of the user's as-of date, each as it stood at the end of it.
+     * The rates of the sheet's ancestors, nearest first (up to three levels up, then for a clone the sheet it was
+     * cloned from, its parents and its source, and so on), that a grade with no rate of its own in force on a date takes; as of the user's as-of date, each as it stood at the end of it.
      */
     @GetMapping("/inherited")
     public List<List<RateView>> inherited(
