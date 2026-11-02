@@ -71,7 +71,7 @@ export interface Claim {
   reviewOn: string | null;
   /** Whether a steward waived its late charge; from the day it was waived on it bears none. */
   waived: boolean;
-  /** Whether it is held: while open and not bound by a statement it is kept out of the live totals. */
+  /** Whether it is held: it still counts in every total. */
   held: boolean;
   /** The sheet's today (yyyy-mm-dd) its late charge was waived on; null unless waived. */
   waivedOn: string | null;

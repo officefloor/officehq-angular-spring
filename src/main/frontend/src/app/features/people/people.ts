@@ -41,11 +41,6 @@ interface Snapshot {
   dueTotal: string | null;
 }
 
-/** Whether the date falls within the hold. */
-function holdContains(h: Hold, date: string): boolean {
-  return (h.from === null || h.from <= date) && (h.to === null || date <= h.to);
-}
-
 interface Person {
   id: number;
   name: string;
@@ -853,22 +848,19 @@ export class People {
     for (const c of this.claims()) by.set(c.personId, [...(by.get(c.personId) ?? []), c]);
     return by;
   });
-  /** Each person's holds, by id, for those with any. */
-  private readonly holdsById = computed(() => new Map(this.people().filter((p) => p.held).map((p) => [p.id, p.holds])));
   /** The sheet's today, those whose retirement date it has reached, by id. */
   private readonly retiredTodayIds = computed(() => {
     const today = this.session.today();
     return new Set(this.people().filter((p) => today !== null && p.retiredFrom !== null && p.retiredFrom <= today).map((p) => p.id));
   });
-  /** Whether the claim is kept out of the live totals while open: held itself, dated within a hold of its person's, or they are retired on the sheet's today. */
+  /** Whether the claim is kept out of the live totals while open: its person is retired on the sheet's today (a hold keeps nothing out). */
   private keptOut(c: Claim): boolean {
-    return c.held || this.retiredTodayIds().has(c.personId) || (this.holdsById().get(c.personId) ?? []).some((h) => holdContains(h, c.date));
+    return this.retiredTodayIds().has(c.personId);
   }
-  /** Whether the claim counts in the live totals: OPEN, PENDING or SETTLED, less open ones kept out by a hold or retirement and not bound, and deferred ones. */
+  /** Whether the claim counts in the live totals: OPEN, PENDING or SETTLED, less open ones kept out by retirement and not bound, and deferred ones. */
   private readonly counts = (c: Claim): boolean => countsFor(c, this.keptOut(c), this.session.today());
-  /** Whether the claim counts toward what is claimed: one that counts, a hold aside (a held claim stays claimed), and does not correct another. */
-  private readonly countsClaimed = (c: Claim): boolean =>
-    countsFor(c, this.retiredTodayIds().has(c.personId), this.session.today()) && !isCorrection(c);
+  /** Whether the claim counts toward what is claimed: one that counts and does not correct another. */
+  private readonly countsClaimed = (c: Claim): boolean => this.counts(c) && !isCorrection(c);
   protected readonly claimedTotal = computed(() => money(this.claims().filter(this.countsClaimed).reduce((sum, c) => sum + cents(c.amount), 0)));
   /** The sheet's rates, each for a grade from its from-date. */
   protected readonly rates = signal<Rate[]>([]);

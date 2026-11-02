@@ -333,8 +333,8 @@ public class PersonService {
     }
 
     /**
-     * Put the person on hold from the date (blank: the sheet's today) to the optional to-date; their
-     * open (OPEN or PENDING) claims dated within it, unless bound by a statement, leave the totals.
+     * Put the person on hold from the date (blank: the sheet's today) to the optional to-date; while it
+     * is in force on the sheet's today they get no cut in a pool, and their claims still count in every total.
      */
     @Transactional
     public Person hold(String sheetId, String user, Long id, LocalDate from, LocalDate to) {

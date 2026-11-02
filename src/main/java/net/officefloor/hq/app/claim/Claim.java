@@ -188,7 +188,7 @@ public class Claim {
     @Column(name = "waived", nullable = false)
     private boolean waived;
 
-    /** Whether it is held: while open and not bound by a statement it is kept out of the live due figures (it stays claimed). */
+    /** Whether it is held: it still counts in every figure. */
     @Column(name = "held", nullable = false)
     private boolean held;
 

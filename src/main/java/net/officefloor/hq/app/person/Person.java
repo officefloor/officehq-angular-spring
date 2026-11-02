@@ -32,7 +32,7 @@ import org.hibernate.annotations.SQLRestriction;
  * spaces and is unique on the sheet without regard to case (by its {@link #keyOf key}). A person
  * given a retirement date is retired at once, whatever the date; none of their claims may be dated
  * after it, and from the day the sheet's today reaches it their open claims, unless bound by a
- * statement, leave the live totals as a hold's do. A retired person can be unretired: the retirement is
+ * statement, leave the live totals. A retired person can be unretired: the retirement is
  * kept as a past one, from its date to the sheet's today it ended on, and no claim of theirs may be
  * dated after its from-date and before its to-date. A person may have several holds over time, each from a from-date to an optional to-date. The grade is dated: the first one
  * given is in force from the beginning of time, and each later one from its from-date. A person may have
@@ -414,13 +414,13 @@ public class Person {
     /** Whether their retirement date is reached on the date (the date on or after it). */
     public boolean retiredOn(LocalDate date) { return retiredFrom != null && date != null && !date.isBefore(retiredFrom); }
 
-    /** Whether an open claim of theirs is kept out of the live totals: held itself, dated within a hold, or retired by the sheet's today. */
-    private boolean keptOut(Claim claim, LocalDate today) { return claim.isHeld() || heldOn(claim.getDate()) || retiredOn(today); }
+    /** Whether an open claim of theirs is kept out of the live totals: theirs once retired by the sheet's today (a hold keeps nothing out). */
+    private boolean keptOut(Claim claim, LocalDate today) { return retiredOn(today); }
 
     /**
      * Whether a claim of theirs counts in the live totals: it counts by its status, unless it is open
-     * (OPEN or PENDING), held, dated within a hold or theirs once their retirement date is reached on the
-     * sheet's today, and not bound by a statement, or deferred on the sheet's today.
+     * (OPEN or PENDING), theirs once their retirement date is reached on the sheet's today, and not bound
+     * by a statement, or deferred on the sheet's today. A hold (theirs or the claim's) takes nothing out.
      */
     public boolean counts(Claim claim, LocalDate today) {
         if (!claim.getStatus().counts() || claim.isDeferredOn(today)) return false;
@@ -428,8 +428,7 @@ public class Person {
     }
 
     /**
-     * Whether a claim of theirs counts toward what they have claimed: as {@link #counts}, except that a hold
-     * (theirs or the claim's) does not take it out; only its due leaves the totals while held.
+     * Whether a claim of theirs counts toward what they have claimed: as {@link #counts}.
      */
     public boolean countsClaimed(Claim claim, LocalDate today) {
         if (!claim.getStatus().counts() || claim.isDeferredOn(today)) return false;
@@ -438,8 +437,8 @@ public class Person {
 
     /**
      * Whether a claim of theirs counts for a period ending on the date: by the status it had at the end
-     * of that date, less a deferred one and one still open now (OPEN or PENDING) dated within a hold, or
-     * theirs once retired on the sheet's today, and not bound, as the live rules say: a claim since settled or voided is no longer kept out by a hold.
+     * of that date, less a deferred one and one still open now (OPEN or PENDING) of theirs once retired on
+     * the sheet's today, and not bound, as the live rules say.
      */
     public boolean countsAt(Claim claim, LocalDate end, LocalDate today) {
         ClaimStatus at = claim.statusAt(end);

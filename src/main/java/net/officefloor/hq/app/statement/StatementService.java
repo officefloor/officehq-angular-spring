@@ -170,7 +170,7 @@ public class StatementService {
             }
             ClaimBinding binding = claim.bindingAt(asOf);
             if (status.isOpen() && binding == null
-                    && (person.heldOn(claim.getDate(), asOf) || person.retiredAt(asOf))) {
+                    && person.retiredAt(asOf)) {
                 claim.unstate(today);
                 continue;
             }
