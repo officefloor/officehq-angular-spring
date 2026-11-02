@@ -204,6 +204,8 @@ interface StatementTaken {
 // people included), the claims per status, and the sheet's due-total and overdue-total.
 // The sheet's due-total and overdue-total leave out the single highest and the single lowest person's
 // figure when three or more people have one (an n/a due-total is no figure).
+// Under the header, a steward's dashboard: the count of PENDING claims, of REVIEW claims and of overdue
+// claims that count, over the sheet; empty for a user who does not act as a steward (as of the as-of date).
 // People can be selected and given a grade together from a from-date (blank: the sheet's today), each in
 // list order as the person form would; the count changed is shown. Selected people can be retired
 // together from a date (blank: the sheet's today), each in list order as the row's retire would; the
@@ -229,6 +231,12 @@ function trimmedSum(figures: number[]): number {
       <p>My overdue total: <strong data-testid="my-overdue-total">{{ (me() ? money(overdueOf(me()!).cents) : '') | figure }}</strong></p>
       <p>My crew total: <strong data-testid="my-crew-due-total">{{ myCrewDueTotal() | figure }}</strong></p>
     </header>
+    <section aria-labelledby="dash-heading">
+      <h2 id="dash-heading">Steward's dashboard</h2>
+      <p>Pending: <strong data-testid="dash-pending-count">{{ dashboard()?.pending ?? '' }}</strong></p>
+      <p>For review: <strong data-testid="dash-review-count">{{ dashboard()?.review ?? '' }}</strong></p>
+      <p>Overdue: <strong data-testid="dash-overdue-count">{{ dashboard()?.overdue ?? '' }}</strong></p>
+    </section>
     <section aria-labelledby="consolidated-heading">
       <h2 id="consolidated-heading">Consolidated (this sheet and its descendants)</h2>
       <p>People: <strong data-testid="consolidated-people-count">{{ consolidated().people }}</strong></p>
@@ -1110,6 +1118,15 @@ export class People {
   protected readonly statusSummary = computed(() =>
     SUMMARY_STATUSES.map((status) => ({ status, count: this.claims().filter((c) => c.status === status).length })),
   );
+  /**
+   * The steward's dashboard: how many of the sheet's claims are PENDING, how many REVIEW, and how many
+   * overdue claims count; null (the cells empty) for a user who does not act as a steward.
+   */
+  protected readonly dashboard = computed(() => {
+    if (this.session.role() !== 'steward') return null;
+    const count = (status: string) => this.claims().filter((c) => c.status === status).length;
+    return { pending: count('PENDING'), review: count('REVIEW'), overdue: this.overdueTotal().count };
+  });
   /** How many of the sheet's REVIEW claims are late for review. */
   protected readonly reviewLateCount = computed(() => this.claims().filter((c) => this.session.reviewLate(c)).length);
   /** Per reason on the sheet's list: how many VOID claims were voided with it. */

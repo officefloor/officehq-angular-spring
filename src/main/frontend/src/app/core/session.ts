@@ -14,7 +14,11 @@ interface SheetView {
   archived: boolean;
   lastBatch: number | null;
   reviewSla: number | null;
+  role: Role;
 }
+
+/** The role a user acts in on a sheet. */
+export type Role = 'clerk' | 'steward' | 'viewer';
 
 /** The people-list columns a user can switch off on their screen. */
 export const PEOPLE_COLUMNS = [
@@ -79,6 +83,8 @@ export class Session {
   /** The signed-in user's locale, saved per user: how the screen shows them figures (en unless chosen). */
   readonly locale = signal<Locale>('en');
   readonly sheetId = signal<string | null>(null);
+  /** The role the signed-in user acts in on the sheet on its today (as of the as-of date while one is set). */
+  readonly role = signal<Role | null>(null);
   /** The sheet's today (yyyy-mm-dd): every date decision and default date uses it, never the clock. */
   readonly today = signal<string | null>(null);
   /** The values recorded for the sheet's dated settings, by key. */
@@ -248,6 +254,7 @@ export class Session {
     this.archived.set(res.archived);
     this.lastBatch.set(res.lastBatch);
     this.reviewSla.set(res.reviewSla);
+    this.role.set(res.role);
     this.clonedTo.set(null);
     this.loads.update((n) => n + 1);
   }
@@ -271,6 +278,7 @@ export class Session {
     );
     if (this.sheetId() === res.id) {
       this.today.set(res.today);
+      this.role.set(res.role);
       this.holdChanges.update((n) => n + 1);
     }
   }
