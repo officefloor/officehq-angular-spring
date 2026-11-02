@@ -1423,6 +1423,14 @@ export class Claims {
         return;
       }
       if (isLinedAmount(e)) {
+        // A lined claim's amount cannot be changed in its editor, so the editor closes (releasing the
+        // lock) and the form is back to adding, the refusal still showing.
+        if (id !== null) {
+          this.reset();
+          this.error.set(LINED_AMOUNT);
+          await this.release(sheet, id);
+          return;
+        }
         this.error.set(LINED_AMOUNT);
         return;
       }

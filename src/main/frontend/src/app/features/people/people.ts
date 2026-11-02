@@ -529,7 +529,7 @@ function trimmedSum(figures: number[]): number {
       }
       <table>
         <thead>
-          <tr><th scope="col"><span class="visually-hidden">Select</span></th><th scope="col">Name</th><th scope="col">Grade</th>@if (shows('terms')) {<th scope="col">Terms</th>}@if (shows('contact')) {<th scope="col">Contact</th>}<th scope="col">Tags</th><th scope="col">Aliases</th><th scope="col">Came from</th>@if (shows('claimed')) {<th scope="col">Claimed</th>}@if (shows('due-total')) {<th scope="col">Due total</th>}<th scope="col">Snapshots</th>@if (shows('excess')) {<th scope="col">Excess</th>}<th scope="col">Settled total</th><th scope="col">Score</th><th scope="col">Band</th><th scope="col">Open total</th><th scope="col">Cut total</th><th scope="col">Periods</th><th scope="col">Statements</th><th scope="col">Retired</th><th scope="col">Hold</th><th scope="col">Flag</th><th scope="col">Approver</th><th scope="col">Watched</th><th scope="col">Active</th><th scope="col">Clashing</th><th scope="col">Overdue</th><th scope="col">Aged</th><th scope="col">Patrons</th><th scope="col">Plans</th><th scope="col">Claims</th><th scope="col"><span class="visually-hidden">Actions</span></th></tr>
+          <tr><th scope="col"><span class="visually-hidden">Select</span></th><th scope="col">Name</th><th scope="col">Grade</th>@if (shows('terms')) {<th scope="col">Terms</th>}@if (shows('contact')) {<th scope="col">Contact</th>}<th scope="col">Tags</th><th scope="col">Aliases</th><th scope="col">Came from</th>@if (shows('claimed')) {<th scope="col">Claimed</th>}@if (shows('due-total')) {<th scope="col">Due total</th>}<th scope="col">Snapshots</th><th scope="col">Timeline</th>@if (shows('excess')) {<th scope="col">Excess</th>}<th scope="col">Settled total</th><th scope="col">Score</th><th scope="col">Band</th><th scope="col">Open total</th><th scope="col">Cut total</th><th scope="col">Periods</th><th scope="col">Statements</th><th scope="col">Retired</th><th scope="col">Hold</th><th scope="col">Flag</th><th scope="col">Approver</th><th scope="col">Watched</th><th scope="col">Active</th><th scope="col">Clashing</th><th scope="col">Overdue</th><th scope="col">Aged</th><th scope="col">Patrons</th><th scope="col">Plans</th><th scope="col">Claims</th><th scope="col"><span class="visually-hidden">Actions</span></th></tr>
         </thead>
         <tbody>
           @for (p of sorted(); track p.id) {
@@ -584,6 +584,13 @@ function trimmedSum(figures: number[]): number {
                 <ul>
                   @for (s of p.snapshots; track $index) {
                     <li data-testid="person-snapshot-line">{{ s.day }} {{ s.dueTotal ?? 'n/a' }}</li>
+                  }
+                </ul>
+              </td>
+              <td>
+                <ul>
+                  @for (line of timelineOf(p); track $index) {
+                    <li data-testid="person-timeline-line">{{ line }}</li>
                   }
                 </ul>
               </td>
@@ -1591,6 +1598,27 @@ export class People {
     if (!sheet) return false;
     await this.load(sheet);
     return this.session.sheetId() === sheet;
+  }
+
+  /**
+   * Their timeline: a line per dated thing about them in date order, and on a date their grade changes, then
+   * their claims, then holds, then retirements, then unretirements; lines of a kind on a date in text order.
+   */
+  protected timelineOf(p: Person): string[] {
+    const lines: { date: string; rank: number; text: string }[] = [];
+    for (const g of p.grades) if (g.from !== null) lines.push({ date: g.from, rank: 0, text: `grade ${g.grade}` });
+    for (const c of this.claimsOf(p.id)) lines.push({ date: c.date, rank: 1, text: `claim ${c.amount} ${c.status}` });
+    for (const h of p.holds) {
+      if (h.from !== null) lines.push({ date: h.from, rank: 2, text: h.to === null ? 'hold' : `hold to ${h.to}` });
+    }
+    for (const r of p.retirements) {
+      lines.push({ date: r.from, rank: 3, text: 'retired' }, { date: r.to, rank: 4, text: 'unretired' });
+    }
+    if (p.retiredFrom !== null) lines.push({ date: p.retiredFrom, rank: 3, text: 'retired' });
+    const order = (a: string, b: string) => (a < b ? -1 : a > b ? 1 : 0);
+    return lines
+      .sort((a, b) => order(a.date, b.date) || a.rank - b.rank || order(a.text, b.text))
+      .map((line) => `${line.date} ${line.text}`);
   }
 
   protected claimsOf(personId: number): Claim[] {
