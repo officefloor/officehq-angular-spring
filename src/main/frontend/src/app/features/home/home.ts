@@ -3,6 +3,7 @@ import { FormControl, FormGroup, ReactiveFormsModule } from '@angular/forms';
 import { LOCALES, Locale, Session } from '../../core/session';
 import { Activity } from '../activity/activity';
 import { AuditView } from '../audit-view/audit-view';
+import { Duplicates } from '../duplicates/duplicates';
 import { TreeSearch } from '../tree-search/tree-search';
 import { Holidays } from '../holidays/holidays';
 import { Notes } from '../notes/notes';
@@ -16,7 +17,7 @@ import { VoidReasons } from '../void-reasons/void-reasons';
 // The one screen: sign in by name, then load a sheet by id.
 @Component({
   selector: 'app-home',
-  imports: [ReactiveFormsModule, Activity, AuditView, Crews, Holidays, Notes, People, Pools, Settings, Templates, TreeSearch, VoidReasons],
+  imports: [ReactiveFormsModule, Activity, AuditView, Crews, Duplicates, Holidays, Notes, People, Pools, Settings, Templates, TreeSearch, VoidReasons],
   template: `
     @if (session.user(); as user) {
       <p>Signed in as <strong data-testid="current-user">{{ user }}</strong></p>
@@ -76,6 +77,7 @@ import { VoidReasons } from '../void-reasons/void-reasons';
         <app-tree-search />
         <app-audit-view />
         <app-activity />
+        <app-duplicates />
       }
     } @else {
       <form [formGroup]="signinForm" (ngSubmit)="signIn()" aria-label="Sign in">
