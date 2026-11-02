@@ -52,7 +52,7 @@ export function closedOn(periods: Period[], date: string): boolean {
 
 // The sheet's periods, with one form to add one, each period's due-total and whether it is
 // closed (or soft-closed) and its fiscal year, a form to generate one per month over a date range, one to generate a
-// fiscal year's months, and a button to close, to soft-close
+// fiscal year's months, one to generate a calendar year's quarters, and a button to close, to soft-close
 // and to reopen each (by the roles the sheet's permission matrix allows).
 @Component({
   selector: 'app-periods',
@@ -91,6 +91,11 @@ export function closedOn(periods: Period[], date: string): boolean {
         <label for="period-generate-fy-year">Fiscal year (yyyy)</label>
         <input id="period-generate-fy-year" data-testid="period-generate-fy-year" formControlName="year" inputmode="numeric" />
         <button type="submit" data-testid="period-generate-fy">Generate fiscal year</button>
+      </form>
+      <form [formGroup]="quartersForm" (ngSubmit)="generateQuarters()" aria-label="Generate a year's quarterly periods">
+        <label for="period-generate-quarters-year">Year (yyyy)</label>
+        <input id="period-generate-quarters-year" data-testid="period-generate-quarters-year" formControlName="year" inputmode="numeric" />
+        <button type="submit" data-testid="period-generate-quarters">Generate quarters</button>
       </form>
       <form [formGroup]="openingForm" (ngSubmit)="importOpenings()" aria-label="Paste opening balances">
         <label for="opening-import">Opening balances (name,period,amount per line)</label>
@@ -176,6 +181,10 @@ export class Periods {
     year: new FormControl('', { nonNullable: true }),
   });
 
+  protected readonly quartersForm = new FormGroup({
+    year: new FormControl('', { nonNullable: true }),
+  });
+
   protected readonly openingError = signal('');
   /** How many lines the last opening paste took; null while one runs or before any. */
   protected readonly openingDone = signal<number | null>(null);
@@ -187,6 +196,7 @@ export class Periods {
   constructor() {
     this.openingForm.valueChanges.subscribe(() => this.openingError.set(''));
     this.fyForm.valueChanges.subscribe(() => this.generateError.set(''));
+    this.quartersForm.valueChanges.subscribe(() => this.generateError.set(''));
     this.form.valueChanges.subscribe(() => this.error.set(''));
     this.generateForm.valueChanges.subscribe(() => this.generateError.set(''));
   }
@@ -221,6 +231,36 @@ export class Periods {
     } catch {
       if (this.session.sheetId() !== sheet) return;
       this.generateError.set('Could not generate that fiscal year.');
+    } finally {
+      this.generating = false;
+    }
+  }
+
+  /** Make the year's four quarterly periods <yyyy>-Q1 to -Q4, leaving out taken or overlapped quarters. */
+  protected async generateQuarters(): Promise<void> {
+    if (this.generating) return;
+    this.generateError.set('');
+    this.generated.set(null);
+    const sheet = this.session.sheetId();
+    if (!sheet) return;
+    const year = this.quartersForm.getRawValue().year.trim();
+    if (!/^\d{4}$/.test(year)) {
+      this.generateError.set('Enter a year as yyyy.');
+      return;
+    }
+    this.generating = true;
+    try {
+      const made = await firstValueFrom(
+        this.http.post<Period[]>(`/api/sheets/${encodeURIComponent(sheet)}/periods/generate-quarters`, { year }, {
+          headers: { 'X-User': this.session.user() ?? '' },
+        }),
+      );
+      if (this.session.sheetId() !== sheet) return;
+      for (const period of made) this.saved.emit(period);
+      this.generated.set(made.length);
+    } catch {
+      if (this.session.sheetId() !== sheet) return;
+      this.generateError.set('Could not generate that year\'s quarters.');
     } finally {
       this.generating = false;
     }

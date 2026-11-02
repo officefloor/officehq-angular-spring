@@ -116,6 +116,32 @@ public class PeriodService {
         return generate(sheetId, user, first.atDay(1), first.plusMonths(11).atEndOfMonth());
     }
 
+    /**
+     * Make the four calendar quarters of the year as periods named &lt;yyyy&gt;-Q1 to &lt;yyyy&gt;-Q4, each from
+     * the first day of its first month to the last day of its third, as the period form would add it. A
+     * quarter whose name is already a period, or whose days overlap one on the sheet, is left out; the
+     * others are still made.
+     */
+    @Transactional
+    public List<Period> generateQuarters(String sheetId, String user, int year) {
+        // Lock the sheet so two users adding periods at once cannot overlap or share a name.
+        sheets.findForUpdate(sheetId).orElseThrow(SheetNotFoundException::new);
+        List<Period> existing = new ArrayList<>(periods.findBySheetIdOrderByFromDateAsc(sheetId));
+        List<Period> made = new ArrayList<>();
+        for (int quarter = 1; quarter <= 4; quarter++) {
+            String name = year + "-Q" + quarter;
+            LocalDate first = YearMonth.of(year, quarter * 3 - 2).atDay(1);
+            LocalDate last = YearMonth.of(year, quarter * 3).atEndOfMonth();
+            if (existing.stream().anyMatch(p -> p.getName().equals(name) || p.overlaps(first, last))) continue;
+            Period saved = periods.saveAndFlush(new Period(sheetId, name, first, last));
+            existing.add(saved);
+            made.add(saved);
+            audit.recordOnCommit("PERIOD_ADDED sheet=" + sheetId + " by=" + user.strip()
+                    + " period=" + saved.getName() + " from=" + saved.getFromDate() + " to=" + saved.getToDate());
+        }
+        return made;
+    }
+
     @Transactional
     public Period close(String sheetId, String user, Long id) {
         // Lock the sheet so no claim in the period changes while its due-total is fixed.
