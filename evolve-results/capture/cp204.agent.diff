@@ -1,0 +1,126 @@
+diff --git a/src/main/frontend/src/app/features/people/people.ts b/src/main/frontend/src/app/features/people/people.ts
+index eabb8863b..1fc3ffa34 100644
+--- a/src/main/frontend/src/app/features/people/people.ts
++++ b/src/main/frontend/src/app/features/people/people.ts
+@@ -109,6 +109,8 @@ interface Descendants {
+   gradeDueTotals: Record<string, string>;
+   /** Per status, how many of the descendants' claims have it. */
+   statusCounts: Record<string, number>;
++  /** Each descendant person's figures, with the keys of their name and aliases as names are compared. */
++  personFigures: { keys: string[]; dueTotal: string | null; overdueTotal: string }[];
+ }
+ 
+ interface StatementSummary {
+@@ -214,6 +216,21 @@ interface StatementTaken {
+ // together from a date (blank: the sheet's today), each in list order as the row's retire would; the
+ // count retired is shown.
+ /** Figures in cents added up, leaving out the single highest and the single lowest when there are three or more. */
++/** How many people there are, those sharing a name or alias key (directly or through others) being one. */
++function distinctPeople(keySets: string[][]): number {
++  const parent = keySets.map((_, i) => i);
++  const find = (i: number): number => (parent[i] === i ? i : (parent[i] = find(parent[i])));
++  const owner = new Map<string, number>();
++  keySets.forEach((keys, i) => {
++    for (const key of keys) {
++      const j = owner.get(key);
++      if (j === undefined) owner.set(key, i);
++      else parent[find(i)] = find(j);
++    }
++  });
++  return keySets.filter((_, i) => find(i) === i).length;
++}
++
+ function trimmedSum(figures: number[]): number {
+   const sum = figures.reduce((total, c) => total + c, 0);
+   return figures.length < 3 ? sum : sum - Math.max(...figures) - Math.min(...figures);
+@@ -842,10 +859,18 @@ export class People {
+    */
+   protected readonly consolidated = computed(() => {
+     const d = this.descendants();
++    const others = d?.personFigures ?? [];
++    const key = (name: string) => name.trim().toLowerCase();
++    const dues = this.people().map((p) => this.dueTotalCents(p)).filter((c): c is number => c !== null)
++      .concat(others.filter((o) => o.dueTotal !== null).map((o) => cents(o.dueTotal as string)));
++    const overdues = [...this.overdueByPerson().values()].map((o) => o.cents)
++      .concat(others.map((o) => cents(o.overdueTotal)));
+     return {
+-      people: this.people().length + (d?.people ?? 0),
+-      dueCents: this.dueTotalAllCents() + (d ? cents(d.dueTotal) : 0),
+-      overdueCents: this.overdueTotal().cents + (d ? cents(d.overdueTotal) : 0),
++      // each person once over the tree, the trim over every person's figure of the tree
++      people: distinctPeople(this.people().map((p) => [key(p.name), ...p.aliases.map(key)])
++        .concat(others.map((o) => o.keys))),
++      dueCents: trimmedSum(dues),
++      overdueCents: trimmedSum(overdues),
+       grades: this.gradeSummary().map((g) => ({
+         grade: g.grade,
+         dueCents: cents(g.dueTotal) + cents(d?.gradeDueTotals?.[g.grade] ?? '0.00'),
+diff --git a/src/main/java/net/officefloor/hq/app/rollup/ConsolidatedController.java b/src/main/java/net/officefloor/hq/app/rollup/ConsolidatedController.java
+index 2ebe59d95..53493f2af 100644
+--- a/src/main/java/net/officefloor/hq/app/rollup/ConsolidatedController.java
++++ b/src/main/java/net/officefloor/hq/app/rollup/ConsolidatedController.java
+@@ -5,6 +5,7 @@ import jakarta.validation.constraints.Pattern;
+ import jakarta.validation.constraints.Size;
+ import java.math.BigDecimal;
+ import java.time.LocalDate;
++import java.util.ArrayList;
+ import java.util.LinkedHashMap;
+ import java.util.List;
+ import java.util.Map;
+@@ -31,7 +32,9 @@ import org.springframework.web.bind.annotation.RestController;
+  * the end of that date, with that date as its today. Per grade, the due-totals of the people on it on
+  * their sheet's today (retired people left out, an n/a due-total no figure) added up, and per status the
+  * count of claims in it. The screen adds the sheet's own figures, as shown,
+- * to make the consolidated ones.
++ * to make the consolidated ones; for that each descendant person's figures are given too, with the keys
++ * their name and aliases are compared by, so the screen can trim over the whole tree and count each
++ * person once.
+  */
+ @RestController
+ @Validated
+@@ -48,7 +51,13 @@ public class ConsolidatedController {
+      */
+     public record DescendantsView(int sheets, int people, String dueTotal, String overdueTotal, int ownPeople,
+             String ownDueTotal, String ownOverdueTotal, Map<String, String> gradeDueTotals,
+-            Map<String, Integer> statusCounts) {}
++            Map<String, Integer> statusCounts, List<PersonFigures> personFigures) {}
++
++    /**
++     * A descendant person's figures as their sheet shows them: the keys of their name and aliases (as names
++     * are compared), their due-total (null when n/a) and overdue-total.
++     */
++    public record PersonFigures(List<String> keys, String dueTotal, String overdueTotal) {}
+ 
+     private final SheetParentRepository parents;
+     private final RollupService rollup;
+@@ -79,6 +88,7 @@ public class ConsolidatedController {
+         for (String grade : GRADES) gradeDues.put(grade, BigDecimal.ZERO.setScale(2));
+         Map<String, Integer> statusCounts = new LinkedHashMap<>();
+         for (String status : STATUSES) statusCounts.put(status, 0);
++        List<PersonFigures> personFigures = new ArrayList<>();
+         for (String descendant : parents.descendantsOf(sheetId)) {
+             RollupService.Snapshot figures = rollup.current(descendant);
+             sheets++;
+@@ -87,8 +97,13 @@ public class ConsolidatedController {
+             overdue = overdue.add(figures.overdueTotal());
+             LocalDate today = sheetRepository.findById(descendant).map(Sheet::getToday).orElse(null);
+             for (Person person : persons.findBySheetIdOrderByPositionAscIdAsc(descendant)) {
+-                if (person.isRetired()) continue;
+                 RollupService.Figures theirs = figures.people().get(person.getId());
++                if (theirs != null) {
++                    personFigures.add(new PersonFigures(person.namesAndAliases().stream().map(Person::keyOf).toList(),
++                            theirs.dueTotal() == null ? null : theirs.dueTotal().setScale(2).toPlainString(),
++                            theirs.overdueTotal().setScale(2).toPlainString()));
++                }
++                if (person.isRetired()) continue;
+                 if (theirs == null || theirs.dueTotal() == null) continue;
+                 String grade = today == null ? person.getGrade() : person.gradeOn(today);
+                 gradeDues.computeIfPresent(grade, (g, total) -> total.add(theirs.dueTotal()));
+@@ -102,6 +117,6 @@ public class ConsolidatedController {
+         RollupService.Snapshot own = rollup.current(sheetId);
+         return new DescendantsView(sheets, people, due.toPlainString(), overdue.toPlainString(), own.people().size(),
+                 own.dueTotal().setScale(2).toPlainString(), own.overdueTotal().setScale(2).toPlainString(),
+-                gradeDueTotals, statusCounts);
++                gradeDueTotals, statusCounts, personFigures);
+     }
+ }
