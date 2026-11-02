@@ -1,0 +1,60 @@
+diff --git a/src/main/frontend/src/app/features/people/people-list.ts b/src/main/frontend/src/app/features/people/people-list.ts
+index d9c44d01b..8673ec7e9 100644
+--- a/src/main/frontend/src/app/features/people/people-list.ts
++++ b/src/main/frontend/src/app/features/people/people-list.ts
+@@ -12,6 +12,7 @@ import { PersonClaims } from '../claims/person-claims';
+ import { PeriodForm } from '../periods/period-form';
+ import { RateForm } from '../rates/rate-form';
+ import { GradeSummary, PeriodSummary, StatusSummary, SummaryPanel } from '../summary/summary-panel';
++import { HeaderCounters } from '../summary/header-counters';
+ import { QuickAddBar } from './quick-add-bar';
+ 
+ // The people on the sheet, in the order they were added, and the form that adds a person or,
+@@ -24,8 +25,10 @@ import { QuickAddBar } from './quick-add-bar';
+ // due-totals added up, skipping those that are n/a.
+ @Component({
+   selector: 'app-people-list',
+-  imports: [ReactiveFormsModule, PersonClaims, RateForm, PeriodForm, QuickAddBar, SummaryPanel],
++  imports: [ReactiveFormsModule, PersonClaims, RateForm, PeriodForm, QuickAddBar, SummaryPanel, HeaderCounters],
+   template: `
++    <app-header-counters [peopleCount]="people().length" [statuses]="statusSummary()"
++      [dueTotal]="dueTotal()" [overdueTotal]="overdueTotal()" />
+     <app-rate-form [rates]="rates()" (saved)="rateSaved($event)" />
+     <app-period-form [periods]="periods()" [dueTotals]="periodDueTotals()" (saved)="periodSaved($event)" />
+     <section aria-labelledby="people-heading">
+diff --git a/src/main/frontend/src/app/features/summary/header-counters.ts b/src/main/frontend/src/app/features/summary/header-counters.ts
+new file mode 100644
+index 000000000..f36c565fa
+--- /dev/null
++++ b/src/main/frontend/src/app/features/summary/header-counters.ts
+@@ -0,0 +1,30 @@
++import { Component, input } from '@angular/core';
++import { StatusSummary } from './summary-panel';
++
++// The sheet's counters, always on top: how many people it has (retired included), how many
++// claims are in each status, and its due-total and overdue-total, each the figure it repeats.
++@Component({
++  selector: 'app-header-counters',
++  template: `
++    <header aria-label="Sheet counters" data-testid="header">
++      <dl>
++        <dt>People</dt>
++        <dd data-testid="header-people-count">{{ peopleCount() }}</dd>
++        @for (s of statuses(); track s.status) {
++          <dt>{{ s.status }}</dt>
++          <dd [attr.data-testid]="'header-claims-' + s.status + '-count'">{{ s.count }}</dd>
++        }
++        <dt>Due</dt>
++        <dd data-testid="header-due-total">{{ dueTotal() }}</dd>
++        <dt>Overdue</dt>
++        <dd data-testid="header-overdue-total">{{ overdueTotal() }}</dd>
++      </dl>
++    </header>
++  `,
++})
++export class HeaderCounters {
++  readonly peopleCount = input.required<number>();
++  readonly statuses = input.required<StatusSummary[]>();
++  readonly dueTotal = input.required<string>();
++  readonly overdueTotal = input.required<string>();
++}
