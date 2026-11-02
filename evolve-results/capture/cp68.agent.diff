@@ -1,0 +1,61 @@
+diff --git a/src/main/frontend/src/app/core/claims.ts b/src/main/frontend/src/app/core/claims.ts
+index feacba81c..42826c12c 100644
+--- a/src/main/frontend/src/app/core/claims.ts
++++ b/src/main/frontend/src/app/core/claims.ts
+@@ -52,6 +52,13 @@ export function keepsActive(c: Claim, holds: Hold[], today: string | null): bool
+     && addDays(today, -29) <= c.date && c.date <= today;
+ }
+ 
++/** A claim's part in its patron's backing: its frozen figure when it is settled and dated within
++ *  the 90 days up to and including the sheet's today; null otherwise. */
++export function backingFigure(c: Claim, today: string | null): string | null {
++  return today !== null && c.status === 'SETTLED' && addDays(today, -89) <= c.date && c.date <= today
++    ? c.settledDue : null;
++}
++
+ /** The status a claim had at the end of the day, as its status log records it: that of the last
+  *  line logged on or before the day; null when it was not yet made then. A claim with no log has
+  *  its status now. */
+diff --git a/src/main/frontend/src/app/features/people/people-list.ts b/src/main/frontend/src/app/features/people/people-list.ts
+index bf3023156..2c9f16a7f 100644
+--- a/src/main/frontend/src/app/features/people/people-list.ts
++++ b/src/main/frontend/src/app/features/people/people-list.ts
+@@ -1,7 +1,7 @@
+ import { HttpErrorResponse } from '@angular/common/http';
+ import { Component, computed, effect, inject, signal } from '@angular/core';
+ import { FormControl, FormGroup, ReactiveFormsModule } from '@angular/forms';
+-import { Claim, Claims, QuickAdded, claimDue, countsAsOf, countsLive, keepsActive, overdue, sumAmounts, trimmedSum } from '../../core/claims';
++import { Claim, Claims, QuickAdded, backingFigure, claimDue, countsAsOf, countsLive, keepsActive, overdue, sumAmounts, trimmedSum } from '../../core/claims';
+ import { Patron, Patrons } from '../../core/patrons';
+ import { Grade, People, Person, gradeOn } from '../../core/people';
+ import { Period, Periods, periodOf } from '../../core/periods';
+@@ -23,8 +23,8 @@ import { PasteClaimsBox } from './paste-claims-box';
+ // Retired people are left out of the list unless "show retired" is on; their claims still count.
+ // A person's open claims dated within one of their holds count in no total, unless a statement
+ // bound them; their settled claims and other open claims still do.
+-// A person may name other people on the sheet as their patrons; their backing is their patrons'
+-// due-totals added up, skipping those that are n/a.
++// A person may name other people on the sheet as their patrons; their backing is the settled
++// figures of their patrons' settled claims dated within the 90 days up to the sheet's today.
+ // The signed-in user may watch a person: they are told when a claim of theirs is settled.
+ @Component({
+   selector: 'app-people-list',
+@@ -469,13 +469,13 @@ export class PeopleList {
+     return this.people().filter((x) => x.id !== p.id);
+   }
+ 
+-  /** A person's backing: their patrons' due-totals added up, skipping those that are n/a. */
++  /** A person's backing: the frozen figures of their patrons' settled claims dated within the 90
++   *  days up to and including the sheet's today, added up; 0.00 with none. */
+   protected backingOf(p: Person): string {
+-    const byId = new Map(this.people().map((x) => [x.id, x]));
++    const today = this.session.today();
+     return sumAmounts((this.patronIds().get(p.id) ?? [])
+-      .map((id) => byId.get(id))
+-      .filter((x): x is Person => x !== undefined)
+-      .map((x) => this.dueOf(x))
++      .flatMap((id) => this.claimsByPerson().get(id) ?? [])
++      .map((c) => backingFigure(c, today))
+       .filter((d): d is string => d !== null));
+   }
+ 

@@ -1,0 +1,97 @@
+{
+  "checkpoint": 68,
+  "stack": {
+    "repo": "/home/daniel/officehq-angular-spring",
+    "origin": "git@github.com:officefloor/officehq-angular-spring.git",
+    "name": "officehq-angular-spring",
+    "base_ref": "base-empty",
+    "base_commit": "65cb8233ea38b2dfa6cfd18709e30cd18fdf3250"
+  },
+  "checkpoint_id": "cp68_backing-recent-settled",
+  "phase": "early",
+  "type": "mutative",
+  "mutates": [
+    27,
+    29,
+    32,
+    39,
+    43,
+    45,
+    47,
+    49,
+    50,
+    53,
+    54,
+    58,
+    59,
+    60,
+    61
+  ],
+  "replaced_tests": [
+    "cp27_patrons-and-backing.spec.ts::patrons and backing",
+    "cp29_reopen-period.spec.ts::reopen period scenario 1",
+    "cp32_rounding-policy-date.spec.ts::rounding policy date scenario 1",
+    "cp39_claim-log.spec.ts::claim log scenario 2",
+    "cp43_cap.spec.ts::cap",
+    "cp45_bulk-settle.spec.ts::bulk settle scenario 2",
+    "cp47_person-period-figures.spec.ts::person period figures scenario 2",
+    "cp47_person-period-figures.spec.ts::person period figures scenario 3",
+    "cp49_paste-claims.spec.ts::paste claims scenario 3",
+    "cp50_deferred-claims.spec.ts::deferred claims scenario 1",
+    "cp53_permission-matrix.spec.ts::permission matrix scenario 2",
+    "cp54_viewer-role.spec.ts::viewer role scenario 3",
+    "cp58_watch-and-notify.spec.ts::watch and notify scenario 2",
+    "cp59_period-templates.spec.ts::period templates scenario 2",
+    "cp60_trimmed-totals.spec.ts::trimmed totals scenario 3",
+    "cp61_delegation.spec.ts::delegation scenario 1"
+  ],
+  "request": {
+    "spec": "Backing is now the sum of the patrons' settled figures over their SETTLED claims dated within the\n90 days up to and including the sheet's today (each at its frozen figure), 0.00 with none.\n",
+    "prompt": "You are implementing ONE change to this application.\n\nFIRST read AGENTS.md \u2014 it states the working rules and how the app is tested, and sends you to\nDESIGN.md for the app's stack and conventions. Follow both.\n\nTHE CHANGE REQUEST:\nBacking is now the sum of the patrons' settled figures over their SETTLED claims dated within the\n90 days up to and including the sheet's today (each at its frozen figure), 0.00 with none.\n\nYour work is verified by an automated Playwright UI test already installed under e2e/specs/.\nRead that spec: it declares the exact data-testid anchors, values, test data and any audit\nrecords it expects \u2014 match them. Run `bin/e2e` to build the app, start it, and run the test as\nyou work; iterate until it passes. Change whatever the request needs across the app \u2014 its stored\ndata, its server and its front end. Do NOT edit bin/build, bin/start, bin/stop, bin/e2e,\nAGENTS.md, CLAUDE.md, DESIGN.md, e2e/support/ or the test spec.\n"
+  },
+  "commit_sha": "8c9bd21c9a1fabf51a98c02a067b6f9e4dbe1ab8",
+  "reset_sha": "",
+  "preagent_sha": "4acb994fc0c8a75aad49273e87dc5e3ac415e7c0",
+  "prev_sha": "4acb994fc0c8a75aad49273e87dc5e3ac415e7c0",
+  "base_sha": "65cb8233ea38b2dfa6cfd18709e30cd18fdf3250",
+  "agent": {
+    "ok": true,
+    "cost_usd": 0.366508,
+    "input_tokens": 24,
+    "output_tokens": 3450,
+    "cache_read_tokens": 330100,
+    "cache_creation_tokens": 28924,
+    "num_turns": 12,
+    "duration_ms": 766537,
+    "duration_api_ms": 44207,
+    "model": "claude-opus-5-5",
+    "session_id": "251e2f0e-3e2d-43c1-9b5e-5a6b2a1d5b9e",
+    "stop_reason": "success",
+    "result_text": "Backing now uses the new rule, and all 4 acceptance tests pass in `bin/e2e`.\n\nA person's backing is now the sum of the frozen settled figures from their patrons' SETTLED claims dated in the last 90 days, counting the sheet's today. The window runs from today minus 89 days through today. With no such claims it shows 0.00. Because it uses each claim's frozen figure, a later rate change doesn't move it.\n\nBacking was already worked out in the browser, so this was a front-end change only. The server, stored data and audit records are unchanged.\n- **`src/main/frontend/src/app/core/claims.ts`:** a new helper, `backingFigure(c, today)`, gives a claim's frozen figure when it's settled and inside the window, and nothing otherwise.\n- **`src/main/frontend/src/app/features/people/people-list.ts`:** `backingOf` now adds up those figures across the patrons' claims instead of the patrons' due-totals. I updated its comment and the header comment to match.\n\nA settled claim is counted even if it's dated within one of the patron's holds; I read the request that way. A settled claim with no frozen figure (one that was n/a) adds nothing.\n\nThe one failed background task you may see was a wait loop I started and then stopped myself. It wasn't the test run.",
+    "error": "",
+    "attempts": [
+      {
+        "ok": true,
+        "limit_reached": false,
+        "retryable": false,
+        "timed_out": false,
+        "cost_usd": 0.366508,
+        "num_turns": 12,
+        "duration_ms": 766537,
+        "duration_api_ms": 44207,
+        "error": ""
+      }
+    ]
+  },
+  "agent_stream_file": "cp68.agent.jsonl",
+  "agent_diff_file": "cp68.agent.diff",
+  "build_log_file": null,
+  "tests": {
+    "gated": false,
+    "queued": true
+  },
+  "probe": null,
+  "pinned_touched": [],
+  "acceptance_touched": [],
+  "impact_gate": null
+}
