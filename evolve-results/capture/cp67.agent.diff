@@ -1,0 +1,122 @@
+diff --git a/src/main/frontend/src/app/core/claims.ts b/src/main/frontend/src/app/core/claims.ts
+index d69bf7da5..feacba81c 100644
+--- a/src/main/frontend/src/app/core/claims.ts
++++ b/src/main/frontend/src/app/core/claims.ts
+@@ -38,6 +38,20 @@ export function countsLive(c: Claim, holds: Hold[], today: string | null): boole
+   return counts(c) && !deferred(c, today) && !(isOpen(c) && !c.stated && heldOn(holds, c.date));
+ }
+ 
++/** The day (yyyy-mm-dd) a number of days after another (before it when negative). */
++export function addDays(day: string, days: number): string {
++  const d = new Date(day + 'T00:00:00Z');
++  d.setUTCDate(d.getUTCDate() + days);
++  return d.toISOString().slice(0, 10);
++}
++
++/** Whether a claim keeps its person active on the sheet's today: it is open (or pending), it
++ *  counts in the live totals, and it is dated within the 30 days up to and including today. */
++export function keepsActive(c: Claim, holds: Hold[], today: string | null): boolean {
++  return today !== null && isOpen(c) && countsLive(c, holds, today)
++    && addDays(today, -29) <= c.date && c.date <= today;
++}
++
+ /** The status a claim had at the end of the day, as its status log records it: that of the last
+  *  line logged on or before the day; null when it was not yet made then. A claim with no log has
+  *  its status now. */
+diff --git a/src/main/frontend/src/app/features/people/people-list.ts b/src/main/frontend/src/app/features/people/people-list.ts
+index b7cf7886c..bf3023156 100644
+--- a/src/main/frontend/src/app/features/people/people-list.ts
++++ b/src/main/frontend/src/app/features/people/people-list.ts
+@@ -1,7 +1,7 @@
+ import { HttpErrorResponse } from '@angular/common/http';
+ import { Component, computed, effect, inject, signal } from '@angular/core';
+ import { FormControl, FormGroup, ReactiveFormsModule } from '@angular/forms';
+-import { Claim, Claims, QuickAdded, claimDue, countsAsOf, countsLive, overdue, sumAmounts, trimmedSum } from '../../core/claims';
++import { Claim, Claims, QuickAdded, claimDue, countsAsOf, countsLive, keepsActive, overdue, sumAmounts, trimmedSum } from '../../core/claims';
+ import { Patron, Patrons } from '../../core/patrons';
+ import { Grade, People, Person, gradeOn } from '../../core/people';
+ import { Period, Periods, periodOf } from '../../core/periods';
+@@ -82,13 +82,14 @@ import { PasteClaimsBox } from './paste-claims-box';
+       <button type="button" data-testid="export-people" (click)="exportCsv()">Export people (CSV)</button>
+       <table data-testid="people">
+         <thead>
+-          <tr><th scope="col">Name</th><th scope="col">Grade</th><th scope="col">Terms</th><th scope="col">Claimed</th><th scope="col">Due</th>@for (pd of periods(); track pd.id) {<th scope="col">Due in {{ pd.name }}</th>}<th scope="col">Excess</th><th scope="col">Statements</th><th scope="col">Last stated</th><th scope="col">Stated on</th><th scope="col">Retired</th><th scope="col">Retired from</th><th scope="col">On hold</th><th scope="col">Overdue</th><th scope="col">Overdue due</th><th scope="col">Patrons</th><th scope="col">Backing</th><th scope="col">Watched</th><th scope="col">Claims</th><th scope="col"><span class="visually-hidden">Actions</span></th></tr>
++          <tr><th scope="col">Name</th><th scope="col">Grade</th><th scope="col">Active</th><th scope="col">Terms</th><th scope="col">Claimed</th><th scope="col">Due</th>@for (pd of periods(); track pd.id) {<th scope="col">Due in {{ pd.name }}</th>}<th scope="col">Excess</th><th scope="col">Statements</th><th scope="col">Last stated</th><th scope="col">Stated on</th><th scope="col">Retired</th><th scope="col">Retired from</th><th scope="col">On hold</th><th scope="col">Overdue</th><th scope="col">Overdue due</th><th scope="col">Patrons</th><th scope="col">Backing</th><th scope="col">Watched</th><th scope="col">Claims</th><th scope="col"><span class="visually-hidden">Actions</span></th></tr>
+         </thead>
+         <tbody>
+           @for (p of shown(); track p.id) {
+             <tr [attr.data-testid]="'person-row-' + p.id">
+               <td data-testid="person-name">{{ p.name }}</td>
+               <td data-testid="person-grade">{{ gradeOf(p) }}</td>
++              <td data-testid="person-active">{{ activeOf(p) ? 'yes' : 'no' }}</td>
+               <td data-testid="person-terms">{{ p.terms ?? '' }}</td>
+               <td data-testid="person-claimed">{{ claimed().get(p.id) ?? '0.00' }}</td>
+               <td data-testid="person-due-total">{{ dueOf(p) ?? 'n/a' }}</td>
+@@ -300,8 +301,8 @@ export class PeopleList {
+   protected readonly overdueTotal = computed(() =>
+     trimmedSum(this.people().map((p) => this.overdueTotalOf(p))),
+   );
+-  /** Per grade: the people not retired on it on the sheet's today, and their due-totals added up,
+-   *  skipping those that are n/a. */
++  /** Per grade: the people not retired on it on the sheet's today, their due-totals added up,
++   *  skipping those that are n/a, and how many of them are active. */
+   protected readonly gradeSummary = computed((): GradeSummary[] =>
+     this.grades.map((grade) => {
+       const on = this.people().filter((p) => !p.retired && this.gradeOf(p) === grade);
+@@ -309,6 +310,7 @@ export class PeopleList {
+         grade,
+         count: on.length,
+         dueTotal: sumAmounts(on.map((p) => this.dueOf(p)).filter((d): d is string => d !== null)),
++        active: on.filter((p) => this.activeOf(p)).length,
+       };
+     }),
+   );
+@@ -724,6 +726,12 @@ export class PeopleList {
+     return gradeOn(p.grades, this.session.today()) ?? p.grade;
+   }
+ 
++  /** Whether a person is active: they have an open (or pending) claim that counts, dated within
++   *  the 30 days up to and including the sheet's today. */
++  protected activeOf(p: Person): boolean {
++    return (this.claimsByPerson().get(p.id) ?? []).some((c) => keepsActive(c, p.holds, this.session.today()));
++  }
++
+   /** A person's overdue claims among those that count in the live totals. */
+   protected overdueOf(p: Person): Claim[] {
+     return (this.claimsByPerson().get(p.id) ?? [])
+diff --git a/src/main/frontend/src/app/features/summary/summary-panel.ts b/src/main/frontend/src/app/features/summary/summary-panel.ts
+index 0e556d5ad..824144ebb 100644
+--- a/src/main/frontend/src/app/features/summary/summary-panel.ts
++++ b/src/main/frontend/src/app/features/summary/summary-panel.ts
+@@ -1,11 +1,13 @@
+ import { Component, input } from '@angular/core';
+ import { Grade } from '../../core/people';
+ 
+-/** A grade's line of the summary: how many people are on it and their due-totals added up. */
++/** A grade's line of the summary: how many people are on it, their due-totals added up, and how
++ *  many of them are active. */
+ export interface GradeSummary {
+   grade: Grade;
+   count: number;
+   dueTotal: string;
++  active: number;
+ }
+ 
+ /** A period's line of the summary: its due-total. */
+@@ -29,7 +31,7 @@ export interface StatusSummary {
+       <table>
+         <caption>By grade</caption>
+         <thead>
+-          <tr><th scope="col">Grade</th><th scope="col">People</th><th scope="col">Due</th></tr>
++          <tr><th scope="col">Grade</th><th scope="col">People</th><th scope="col">Due</th><th scope="col">Active</th></tr>
+         </thead>
+         <tbody>
+           @for (g of grades(); track g.grade) {
+@@ -37,6 +39,7 @@ export interface StatusSummary {
+               <th scope="row">{{ g.grade }}</th>
+               <td [attr.data-testid]="'summary-grade-' + g.grade + '-count'">{{ g.count }}</td>
+               <td [attr.data-testid]="'summary-grade-' + g.grade + '-due-total'">{{ g.dueTotal }}</td>
++              <td [attr.data-testid]="'summary-grade-' + g.grade + '-active'">{{ g.active }}</td>
+             </tr>
+           }
+         </tbody>
