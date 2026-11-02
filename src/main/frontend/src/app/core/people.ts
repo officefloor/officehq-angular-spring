@@ -9,6 +9,8 @@ export interface Person {
   id: number;
   name: string;
   grade: Grade;
+  /** Raised each time the person is saved. */
+  version: number;
 }
 
 export interface PersonForm {
@@ -31,10 +33,12 @@ export class People {
     return firstValueFrom(this.http.post<Person>(this.url(sheetId), form, { headers: { 'X-User': user } }));
   }
 
-  edit(id: number, form: PersonForm): Promise<Person> {
+  /** Save over the version of the person the editor loaded; refused (412) when another user has
+   *  saved them since. */
+  edit(id: number, version: number, form: PersonForm): Promise<Person> {
     const { sheetId, user } = this.active();
     return firstValueFrom(
-      this.http.put<Person>(`${this.url(sheetId)}/${id}`, form, { headers: { 'X-User': user } }),
+      this.http.put<Person>(`${this.url(sheetId)}/${id}`, { ...form, version }, { headers: { 'X-User': user } }),
     );
   }
 

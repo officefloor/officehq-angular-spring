@@ -71,6 +71,8 @@ export class RateForm {
 
   protected readonly grades: Grade[] = ['A', 'B', 'C'];
   protected readonly error = signal('');
+  /** Whether a submit is waiting for its answer: a second submit meanwhile is ignored. */
+  private submitting = false;
   protected readonly form = new FormGroup({
     grade: new FormControl<Grade>('A', { nonNullable: true }),
     pct: new FormControl('', { nonNullable: true }),
@@ -93,6 +95,7 @@ export class RateForm {
   }
 
   protected async submit(): Promise<void> {
+    if (this.submitting) return;
     this.error.set('');
     const { grade, pct, from } = this.form.getRawValue();
     if (!this.grades.includes(grade)) {
@@ -108,11 +111,14 @@ export class RateForm {
       this.error.set('Enter a from-date, or leave it blank for a rate that always applied.');
       return;
     }
+    this.submitting = true;
     try {
       this.saved.emit(await this.api.set(grade, pct.trim(), day === '' ? null : day));
       this.form.reset({ grade: 'A', pct: '', from: '' }, { emitEvent: false });
     } catch {
       this.error.set('The rate could not be set.');
+    } finally {
+      this.submitting = false;
     }
   }
 }

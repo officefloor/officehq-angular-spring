@@ -4,6 +4,7 @@ import java.util.List;
 import net.officefloor.hq.app.Audit;
 import net.officefloor.hq.app.sheet.SheetService;
 import org.springframework.dao.DataIntegrityViolationException;
+import org.springframework.dao.OptimisticLockingFailureException;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -41,11 +42,15 @@ public class PersonService {
         return person;
     }
 
-    /** Change a person's name and grade. */
+    /** Change a person's name and grade, refused when the person is no longer at the version the
+     *  editor loaded: another user saved them in the meantime. */
     @Transactional
-    public Person edit(String sheetId, String user, long personId, String name, String grade) {
+    public Person edit(String sheetId, String user, long personId, long version, String name, String grade) {
         Person person = people.findByIdAndSheetId(personId, sheetId)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "No such person on this sheet"));
+        if (person.getVersion() != version) {
+            throw changedMeanwhile();
+        }
         if (people.existsBySheetIdAndNameIgnoreCaseAndIdNot(sheetId, name, personId)) {
             throw nameInUse();
         }
@@ -60,13 +65,21 @@ public class PersonService {
         return event + " sheet=" + sheetId + " by=" + user + " name=" + person.getName() + " grade=" + person.getGrade();
     }
 
-    /** Save, refusing a name another user took on the sheet in the meantime. */
+    /** Save, refusing a name another user took on the sheet in the meantime, or a person another
+     *  user saved in the meantime. */
     private Person saveUnique(Person person) {
         try {
             return people.saveAndFlush(person);
         } catch (DataIntegrityViolationException e) {
             throw nameInUse();
+        } catch (OptimisticLockingFailureException e) {
+            throw changedMeanwhile();
         }
+    }
+
+    private static ResponseStatusException changedMeanwhile() {
+        return new ResponseStatusException(HttpStatus.PRECONDITION_FAILED,
+                "Someone else saved this person in the meantime");
     }
 
     private static ResponseStatusException nameInUse() {

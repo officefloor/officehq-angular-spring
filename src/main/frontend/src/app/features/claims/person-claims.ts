@@ -84,6 +84,8 @@ export class PersonClaims {
   /** The id of the claim whose editor is open, or null when the form adds a claim. */
   protected readonly editing = signal<number | null>(null);
   protected readonly error = signal('');
+  /** Whether a submit is waiting for its answer: a second submit meanwhile is ignored. */
+  private submitting = false;
   /** The refusal of the last action taken on a claim's row, shown on that row. */
   protected readonly claimError = signal<{ id: number; message: string } | null>(null);
   protected readonly form = new FormGroup({
@@ -124,6 +126,7 @@ export class PersonClaims {
   }
 
   protected async submit(): Promise<void> {
+    if (this.submitting) return;
     this.error.set('');
     const { amount, date, note } = this.form.getRawValue();
     if (!AMOUNT.test(amount.trim())) {
@@ -137,12 +140,15 @@ export class PersonClaims {
     }
     const form = { amount: amount.trim(), date: day === '' ? null : day, note };
     const id = this.editing();
+    this.submitting = true;
     try {
       const claim = id === null ? await this.api.add(this.personId(), form) : await this.api.edit(id, form);
       this.saved.emit(claim);
       this.reset();
     } catch {
       this.error.set(id === null ? 'The claim could not be added.' : 'The claim could not be saved.');
+    } finally {
+      this.submitting = false;
     }
   }
 

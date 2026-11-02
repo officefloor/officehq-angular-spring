@@ -105,6 +105,10 @@ export class PeopleList {
   );
   /** The id of the person whose editor is open, or null when the form adds a person. */
   protected readonly editing = signal<number | null>(null);
+  /** The version of the person the open editor loaded. */
+  private version = 0;
+  /** Whether a submit is waiting for its answer: a second submit meanwhile is ignored. */
+  private submitting = false;
   protected readonly error = signal('');
   protected readonly form = new FormGroup({
     name: new FormControl('', { nonNullable: true }),
@@ -128,6 +132,7 @@ export class PeopleList {
 
   protected open(p: Person): void {
     this.editing.set(p.id);
+    this.version = p.version;
     this.form.setValue({ name: p.name, grade: p.grade });
     this.error.set('');
   }
@@ -137,6 +142,7 @@ export class PeopleList {
   }
 
   protected async submit(): Promise<void> {
+    if (this.submitting) return;
     this.error.set('');
     const { name, grade } = this.form.getRawValue();
     if (!name.trim()) {
@@ -148,21 +154,43 @@ export class PeopleList {
       return;
     }
     const id = this.editing();
+    this.submitting = true;
     try {
       if (id === null) {
         const added = await this.api.add({ name, grade });
         this.people.update((ps) => [...ps, added]);
       } else {
-        const saved = await this.api.edit(id, { name, grade });
+        const saved = await this.api.edit(id, this.version, { name, grade });
         this.people.update((ps) => ps.map((p) => (p.id === saved.id ? saved : p)));
       }
       this.reset();
     } catch (e) {
-      if (e instanceof HttpErrorResponse && e.status === 409) {
+      if (id !== null && e instanceof HttpErrorResponse && e.status === 412) {
+        await this.showCurrent(id);
+        this.error.set('Someone else saved this person in the meantime. The form now shows their current values.');
+      } else if (e instanceof HttpErrorResponse && e.status === 409) {
         this.error.set('That name is already in use on this sheet.');
       } else {
         this.error.set(id === null ? 'The person could not be added.' : 'The person could not be saved.');
       }
+    } finally {
+      this.submitting = false;
+    }
+  }
+
+  /** Re-read the person whose save was overtaken and show them as they are now, in their row and in
+   *  the still-open editor, which then saves over that version. */
+  private async showCurrent(id: number): Promise<void> {
+    const sheetId = this.session.sheetId();
+    if (!sheetId) return;
+    try {
+      const current = (await this.api.list(sheetId)).find((p) => p.id === id);
+      if (!current || this.editing() !== id) return;
+      this.people.update((ps) => ps.map((p) => (p.id === id ? current : p)));
+      this.version = current.version;
+      this.form.setValue({ name: current.name, grade: current.grade }, { emitEvent: false });
+    } catch {
+      // the editor keeps what was typed; reopening it reads the person again
     }
   }
 
