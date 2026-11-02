@@ -25,12 +25,14 @@ import org.springframework.web.bind.annotation.RestController;
 @Validated
 public class ClaimController {
 
-    /** What the screen shows of a claim; the amount as text with two decimals. */
+    /** What the screen shows of a claim; the amount, and the due fixed when it was settled (null
+     *  when there is none), as text with two decimals. */
     public record ClaimView(long id, long personId, String amount, LocalDate date, String note,
-            ClaimStatus status, Integer number) {
+            ClaimStatus status, Integer number, String settledDue) {
         static ClaimView of(Claim claim) {
             return new ClaimView(claim.getId(), claim.getPersonId(), claim.getAmount().setScale(2).toPlainString(),
-                    claim.getDate(), claim.getNote(), claim.getStatus(), claim.getNumber());
+                    claim.getDate(), claim.getNote(), claim.getStatus(), claim.getNumber(),
+                    claim.getSettledDue() == null ? null : claim.getSettledDue().setScale(2).toPlainString());
         }
     }
 

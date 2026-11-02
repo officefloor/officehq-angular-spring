@@ -24,6 +24,9 @@ export interface Claim {
   status: ClaimStatus;
   /** The claim's number on the sheet, given when it is opened; null for a draft or a void claim. */
   number: number | null;
+  /** The due fixed when the claim was settled, as text with two decimals; null when it is not
+   *  settled, or was settled while its person's grade had no rate (its due then stays live). */
+  settledDue: string | null;
 }
 
 export interface ClaimForm {

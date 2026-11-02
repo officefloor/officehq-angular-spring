@@ -85,7 +85,7 @@ export class PersonClaims {
   }
 
   protected dueOf(c: Claim): string {
-    return due(c.amount, this.pct()) ?? 'n/a';
+    return c.settledDue ?? due(c.amount, this.pct()) ?? 'n/a';
   }
 
   protected open(c: Claim): void {

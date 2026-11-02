@@ -1,11 +1,14 @@
 package net.officefloor.hq.app.claim;
 
 import java.math.BigDecimal;
+import java.math.RoundingMode;
 import java.time.LocalDate;
 import java.util.List;
 import net.officefloor.hq.app.Audit;
 import net.officefloor.hq.app.person.Person;
 import net.officefloor.hq.app.person.PersonRepository;
+import net.officefloor.hq.app.rate.Rate;
+import net.officefloor.hq.app.rate.RateRepository;
 import net.officefloor.hq.app.sheet.SheetService;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
@@ -18,12 +21,15 @@ public class ClaimService {
 
     private final ClaimRepository claims;
     private final PersonRepository people;
+    private final RateRepository rates;
     private final SheetService sheets;
     private final Audit audit;
 
-    public ClaimService(ClaimRepository claims, PersonRepository people, SheetService sheets, Audit audit) {
+    public ClaimService(ClaimRepository claims, PersonRepository people, RateRepository rates,
+            SheetService sheets, Audit audit) {
         this.claims = claims;
         this.people = people;
+        this.rates = rates;
         this.sheets = sheets;
         this.audit = audit;
     }
@@ -74,6 +80,11 @@ public class ClaimService {
         } else if (to == ClaimStatus.VOID) {
             claim.setNumber(null);
         }
+        Person person = person(sheetId, claim.getPersonId());
+        if (to == ClaimStatus.SETTLED) {
+            // Settling fixes the due at what it is now; later changes to rates do not alter it.
+            claim.setSettledDue(due(sheetId, person, claim.getAmount()));
+        }
         Claim saved = claims.saveAndFlush(claim);
         String event = switch (to) {
             case OPEN -> "CLAIM_OPENED";
@@ -81,9 +92,21 @@ public class ClaimService {
             case VOID -> "CLAIM_VOIDED";
             case DRAFT -> throw new IllegalStateException("a claim never returns to DRAFT");
         };
-        audit.recordOnCommit(record(event, sheetId, user, person(sheetId, saved.getPersonId()), saved,
-                to == ClaimStatus.VOID ? number : saved.getNumber()));
+        String line = record(event, sheetId, user, person, saved, to == ClaimStatus.VOID ? number : saved.getNumber());
+        if (to == ClaimStatus.SETTLED) {
+            line += " due=" + (saved.getSettledDue() == null ? "n/a" : saved.getSettledDue().setScale(2).toPlainString());
+        }
+        audit.recordOnCommit(line);
         return saved;
+    }
+
+    /** An amount's due at the rate for the person's grade: amount times pct divided by 100, rounded
+     *  half up to two decimals; null when the grade has no rate. */
+    private BigDecimal due(String sheetId, Person person, BigDecimal amount) {
+        return rates.findBySheetIdAndGrade(sheetId, person.getGrade())
+                .map(Rate::getPct)
+                .map(pct -> amount.multiply(pct).movePointLeft(2).setScale(2, RoundingMode.HALF_UP))
+                .orElse(null);
     }
 
     private Person person(String sheetId, long personId) {
