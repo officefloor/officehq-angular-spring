@@ -57,17 +57,18 @@ public class StatementService {
      *  missing. */
     @Transactional(readOnly = true)
     public Map<Long, StatementSummary> summaries(String sheetId) {
-        return statements.findBySheetIdOrderByIdAsc(sheetId).stream()
+        return statements.findBySheetIdAndCancelledOnIsNullOrderByIdAsc(sheetId).stream()
                 .collect(Collectors.groupingBy(Statement::getPersonId,
                         Collectors.collectingAndThen(Collectors.toList(), StatementSummary::of)));
     }
 
     /** What each person's statements on the sheet came to at the end of a day: those taken while the
-     *  sheet's today was on or before it, by person id; a person with none is missing. */
+     *  sheet's today was on or before it and not cancelled by then, by person id; a person with none
+     *  is missing. */
     @Transactional(readOnly = true)
     public Map<Long, StatementSummary> summaries(String sheetId, LocalDate day) {
         return statements.findBySheetIdOrderByIdAsc(sheetId).stream()
-                .filter(s -> !s.getTakenOn().isAfter(day))
+                .filter(s -> s.stoodOn(day))
                 .collect(Collectors.groupingBy(Statement::getPersonId,
                         Collectors.collectingAndThen(Collectors.toList(), StatementSummary::of)));
     }
@@ -75,7 +76,7 @@ public class StatementService {
     /** What one person's statements come to. */
     @Transactional(readOnly = true)
     public StatementSummary summary(String sheetId, long personId) {
-        return StatementSummary.of(statements.findBySheetIdAndPersonIdOrderByIdAsc(sheetId, personId));
+        return StatementSummary.of(statements.findBySheetIdAndPersonIdAndCancelledOnIsNullOrderByIdAsc(sheetId, personId));
     }
 
     /** Take a statement of a person: record their due-total now and bind each of their claims that
@@ -132,7 +133,8 @@ public class StatementService {
 
     /** Cancel a person's last statement: only a steward may, and only when one was taken. The claims
      *  it bound become live again (a figure an earlier statement bound is not restored), and the
-     *  statement before it, if any, becomes their last. */
+     *  statement before it, if any, becomes their last. The cancelled statement is kept, marked with
+     *  the sheet's today, so the sheet as of an earlier day still shows it. */
     @Transactional
     public Taken cancelLast(String sheetId, String user, long personId) {
         if (!SheetRole.STEWARD.equals(roles.roleOf(sheetId, user))) {
@@ -140,7 +142,7 @@ public class StatementService {
         }
         Person person = people.lockByIdAndSheetId(personId, sheetId)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "No such person on this sheet"));
-        List<Statement> taken = statements.findBySheetIdAndPersonIdOrderByIdAsc(sheetId, personId);
+        List<Statement> taken = statements.findBySheetIdAndPersonIdAndCancelledOnIsNullOrderByIdAsc(sheetId, personId);
         if (taken.isEmpty()) {
             throw new ResponseStatusException(HttpStatus.CONFLICT, "No statement has been taken of this person");
         }
@@ -149,8 +151,8 @@ public class StatementService {
             List<Claim> theirs = claims.findBySheetIdAndPersonIdOrderByListedDesc(sheetId, personId);
             theirs.forEach(claim -> claim.bind(false, null));
             claims.saveAllAndFlush(theirs);
-            statements.delete(last);
-            statements.flush();
+            last.cancel(sheets.today(sheetId));
+            statements.saveAndFlush(last);
             audit.recordOnCommit("STATEMENT_CANCELLED sheet=" + sheetId + " by=" + user + " name=" + person.getName()
                     + " due-total=" + (last.getDueTotal() == null ? "n/a" : last.getDueTotal().setScale(2).toPlainString()));
             return theirs;

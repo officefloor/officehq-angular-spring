@@ -43,6 +43,10 @@ public class Statement {
     @Column(name = "as_of")
     private LocalDate asOf;
 
+    /** The sheet's today when the statement was cancelled; null while it stands. */
+    @Column(name = "cancelled_on")
+    private LocalDate cancelledOn;
+
     protected Statement() {
     }
 
@@ -71,6 +75,20 @@ public class Statement {
 
     public LocalDate getTakenOn() {
         return takenOn;
+    }
+
+    public LocalDate getCancelledOn() {
+        return cancelledOn;
+    }
+
+    /** Cancel the statement on a day (the sheet's today). */
+    public void cancel(LocalDate day) {
+        this.cancelledOn = day;
+    }
+
+    /** Whether the statement stood at the end of a day: taken on or before it and not cancelled by then. */
+    public boolean stoodOn(LocalDate day) {
+        return !takenOn.isAfter(day) && (cancelledOn == null || cancelledOn.isAfter(day));
     }
 
     public LocalDate getAsOf() {

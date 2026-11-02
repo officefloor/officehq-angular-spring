@@ -2,6 +2,7 @@ package net.officefloor.hq.app.pool;
 
 import java.math.BigDecimal;
 import java.math.RoundingMode;
+import java.time.LocalDate;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
@@ -32,8 +33,9 @@ public class PoolService {
     /** The most levels a chain of pools may have, the top pool counting as one. */
     public static final int MAX_DEPTH = 3;
 
-    /** A member as the pool shows them: the person, or the pool (exactly one of them), and their share. */
-    public record Member(PoolMember member, Person person, Pool pool) {
+    /** A member as the pool shows them: the person, or the pool (exactly one of them), and their share;
+     *  and whether the member is a person with a hold in force on the sheet's today. */
+    public record Member(PoolMember member, Person person, Pool pool, boolean held) {
 
         /** Whether the member is a person with a retirement day set: their share then counts as 0.00. */
         public boolean retired() {
@@ -60,19 +62,24 @@ public class PoolService {
         }
 
         /** Each member's cut of the pot, in the members' order: the pot times their share divided by
-         *  100, rounded half to even to two decimals (a retired member's 0.00), with the remainder of
-         *  the pot going to the member with the largest share (the earliest added on a tie), so the
-         *  cuts total exactly the pot; none (an empty list) when there is no pot or the pool is not
-         *  balanced. */
+         *  the shares of the members with a cut added up, rounded half to even to two decimals (a
+         *  retired member's share counting as 0.00, a held member getting no cut: 0.00), with the
+         *  remainder of the pot going to the member with a cut with the largest share (the earliest
+         *  added on a tie), so the cuts total exactly the pot (each 0.00 when no member has a cut);
+         *  none (an empty list) when there is no pot or the pool is not balanced. */
         public List<BigDecimal> cuts() {
             if (pot == null || !balanced()) {
                 return List.of();
             }
             List<BigDecimal> shares = members.stream()
-                    .map(m -> m.retired() ? BigDecimal.ZERO.setScale(2) : m.member().getShare())
+                    .map(m -> m.retired() || m.held() ? BigDecimal.ZERO.setScale(2) : m.member().getShare())
                     .toList();
+            BigDecimal withCut = shares.stream().reduce(BigDecimal.ZERO.setScale(2), BigDecimal::add);
+            if (withCut.signum() == 0) {
+                return shares;
+            }
             List<BigDecimal> cuts = new ArrayList<>(shares.stream()
-                    .map(sh -> pot.multiply(sh).divide(WHOLE, 2, RoundingMode.HALF_EVEN))
+                    .map(sh -> pot.multiply(sh).divide(withCut, 2, RoundingMode.HALF_EVEN))
                     .toList());
             int largest = 0;
             for (int i = 1; i < shares.size(); i++) {
@@ -110,13 +117,15 @@ public class PoolService {
                 .collect(Collectors.toMap(Person::getId, Function.identity()));
         List<PoolMember> memberships = members.findByPoolIdInOrderByIdAsc(poolsById.keySet());
         Map<Long, List<PoolMember>> byPool = memberships.stream().collect(Collectors.groupingBy(PoolMember::getPoolId));
+        LocalDate today = sheets.today(sheetId);
         Map<Long, List<Member>> membersOf = new HashMap<>();
         for (Pool p : all) {
             membersOf.put(p.getId(), byPool.getOrDefault(p.getId(), List.of()).stream()
                     .filter(m -> m.getPersonId() != null ? byId.containsKey(m.getPersonId())
                             : poolsById.containsKey(m.getMemberPoolId()))
                     .map(m -> new Member(m, m.getPersonId() == null ? null : byId.get(m.getPersonId()),
-                            m.getMemberPoolId() == null ? null : poolsById.get(m.getMemberPoolId())))
+                            m.getMemberPoolId() == null ? null : poolsById.get(m.getMemberPoolId()),
+                            m.getPersonId() != null && byId.get(m.getPersonId()).isHeldOn(today)))
                     .toList());
         }
         Map<Long, Long> above = memberships.stream().filter(m -> m.getMemberPoolId() != null)
