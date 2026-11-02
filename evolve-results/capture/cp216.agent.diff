@@ -1,0 +1,255 @@
+diff --git a/src/main/java/net/officefloor/hq/app/period/Period.java b/src/main/java/net/officefloor/hq/app/period/Period.java
+index 01954c88c..34b14a682 100644
+--- a/src/main/java/net/officefloor/hq/app/period/Period.java
++++ b/src/main/java/net/officefloor/hq/app/period/Period.java
+@@ -13,13 +13,15 @@ import jakarta.persistence.MapKeyColumn;
+ import jakarta.persistence.Table;
+ import java.math.BigDecimal;
+ import java.time.LocalDate;
++import java.util.ArrayList;
++import java.util.List;
+ import java.util.Map;
+ import java.util.TreeMap;
+ 
+ /**
+  * A period of the sheet: a name unique on the sheet, from and to a date, both inclusive. Once
+  * closed, its due-total and each person's due-total and carried figure for it are fixed at what they were when it was
+- * closed; reopened, they are live again. Soft-closed, its figures are fixed the same way, but claims
++ * closed, as are its pool members' cuts; reopened, they are live again. Soft-closed, its figures are fixed the same way, but claims
+  * due inside it can still change.
+  */
+ @Entity
+@@ -71,6 +73,11 @@ public class Period {
+     @Column(name = "carried", nullable = false, precision = 14, scale = 2)
+     private Map<Long, BigDecimal> closedPersonCarried = new TreeMap<>();
+ 
++    /** Each pool member's cut for it fixed when it was closed or soft-closed; empty while it is open. */
++    @ElementCollection(fetch = FetchType.EAGER)
++    @CollectionTable(name = "period_pool_cut", joinColumns = @JoinColumn(name = "period_id"))
++    private List<PoolCutLine> closedPoolCuts = new ArrayList<>();
++
+     /** Each person's opening balance for it, the pasted amounts added up, by person id; part of their carried figure. */
+     @ElementCollection(fetch = FetchType.EAGER)
+     @CollectionTable(name = "period_person_opening", joinColumns = @JoinColumn(name = "period_id"))
+@@ -121,6 +128,14 @@ public class Period {
+ 
+     public Map<Long, BigDecimal> getClosedPersonCarried() { return closedPersonCarried; }
+ 
++    public List<PoolCutLine> getClosedPoolCuts() { return closedPoolCuts; }
++
++    /** Fix each pool member's cut for it, as it stands now. */
++    public void fixPoolCuts(List<PoolCutLine> cuts) {
++        this.closedPoolCuts.clear();
++        this.closedPoolCuts.addAll(cuts);
++    }
++
+     public Integer getCap() { return cap; }
+ 
+     public Map<Long, BigDecimal> getOpenings() { return openings; }
+@@ -158,6 +173,7 @@ public class Period {
+         this.closedDueTotal = null;
+         this.closedPersonDues.clear();
+         this.closedPersonCarried.clear();
++        this.closedPoolCuts.clear();
+     }
+ 
+     /** Whether the date falls in it, both ends inclusive. */
+diff --git a/src/main/java/net/officefloor/hq/app/period/PeriodService.java b/src/main/java/net/officefloor/hq/app/period/PeriodService.java
+index 0ce3d7765..ca8abec2e 100644
+--- a/src/main/java/net/officefloor/hq/app/period/PeriodService.java
++++ b/src/main/java/net/officefloor/hq/app/period/PeriodService.java
+@@ -17,6 +17,7 @@ import net.officefloor.hq.app.claim.ClaimService;
+ import net.officefloor.hq.app.claim.ClaimStatus;
+ import net.officefloor.hq.app.person.Person;
+ import net.officefloor.hq.app.person.PersonRepository;
++import net.officefloor.hq.app.pool.PoolService;
+ import net.officefloor.hq.app.setting.Role;
+ import net.officefloor.hq.app.setting.SettingService;
+ import net.officefloor.hq.app.sheet.SheetNotFoundException;
+@@ -31,7 +32,8 @@ import org.springframework.transaction.annotation.Transactional;
+  * end of its last day) and carried figure (the same of their claims due in an earlier period and still
+  * open at the end of its last day), and its own due-total, the sum of their due-totals. Soft-closing fixes them the same
+  * way while claims due inside it can still change; a soft-closed period can then be closed (fixing
+- * them afresh). A steward can reopen a closed or soft-closed period, making its figures live again.
++ * them afresh). Closing or soft-closing also fixes every pool member's cut for it as it stands at that
++ * moment. A steward can reopen a closed or soft-closed period, making its figures live again.
+  * A steward can lock a period, and unlock it; a locked period cannot be reopened.
+  */
+ @Service
+@@ -43,10 +45,13 @@ public class PeriodService {
+     private final PersonRepository people;
+     private final ClaimService claimService;
+     private final SettingService settings;
++    private final PoolService pools;
+     private final Audit audit;
+ 
+     public PeriodService(PeriodRepository periods, SheetRepository sheets, ClaimRepository claims,
+-            PersonRepository people, ClaimService claimService, SettingService settings, Audit audit) {
++            PersonRepository people, ClaimService claimService, SettingService settings, PoolService pools,
++            Audit audit) {
++        this.pools = pools;
+         this.settings = settings;
+         this.periods = periods;
+         this.sheets = sheets;
+@@ -255,6 +260,14 @@ public class PeriodService {
+                 if (figure != null) personCarried.merge(person.getId(), figure, BigDecimal::add);
+             }
+         }
++        // every pool member's cut as it stands now
++        List<PoolCutLine> cuts = new ArrayList<>();
++        for (PoolService.PoolLine pool : pools.pools(sheetId)) {
++            for (PoolService.Member m : pool.members()) {
++                cuts.add(new PoolCutLine(pool.id(), pool.crewId(), m.personId(), m.poolId(), m.cut()));
++            }
++        }
++        period.fixPoolCuts(cuts);
+         if (soft) period.softClose(personDues, personCarried);
+         else period.close(personDues, personCarried);
+         Period saved = periods.saveAndFlush(period);
+diff --git a/src/main/java/net/officefloor/hq/app/period/PoolCutLine.java b/src/main/java/net/officefloor/hq/app/period/PoolCutLine.java
+new file mode 100644
+index 000000000..2d69c1699
+--- /dev/null
++++ b/src/main/java/net/officefloor/hq/app/period/PoolCutLine.java
+@@ -0,0 +1,48 @@
++package net.officefloor.hq.app.period;
++
++import jakarta.persistence.Column;
++import jakarta.persistence.Embeddable;
++import java.math.BigDecimal;
++
++/**
++ * A pool member's cut fixed when its period was closed or soft-closed: the pool (or the crew, for a
++ * crew's pool), the member (a person or a pool), and its cut (null: none).
++ */
++@Embeddable
++public class PoolCutLine {
++
++    @Column(name = "pool_id")
++    private Long poolId;
++
++    @Column(name = "crew_id")
++    private Long crewId;
++
++    @Column(name = "person_id")
++    private Long personId;
++
++    @Column(name = "member_pool_id")
++    private Long memberPoolId;
++
++    @Column(name = "cut", precision = 14, scale = 2)
++    private BigDecimal cut;
++
++    protected PoolCutLine() {}
++
++    public PoolCutLine(Long poolId, Long crewId, Long personId, Long memberPoolId, BigDecimal cut) {
++        this.poolId = poolId;
++        this.crewId = crewId;
++        this.personId = personId;
++        this.memberPoolId = memberPoolId;
++        this.cut = cut;
++    }
++
++    public Long getPoolId() { return poolId; }
++
++    public Long getCrewId() { return crewId; }
++
++    public Long getPersonId() { return personId; }
++
++    public Long getMemberPoolId() { return memberPoolId; }
++
++    public BigDecimal getCut() { return cut; }
++}
+diff --git a/src/main/java/net/officefloor/hq/app/pool/PoolCutHistory.java b/src/main/java/net/officefloor/hq/app/pool/PoolCutHistory.java
+index 6e057f724..164864ff3 100644
+--- a/src/main/java/net/officefloor/hq/app/pool/PoolCutHistory.java
++++ b/src/main/java/net/officefloor/hq/app/pool/PoolCutHistory.java
+@@ -6,11 +6,15 @@ import java.sql.SQLException;
+ import java.sql.Savepoint;
+ import java.time.LocalDate;
+ import java.util.ArrayList;
++import java.util.Arrays;
++import java.util.LinkedHashMap;
+ import java.util.List;
++import java.util.Map;
+ import java.util.concurrent.locks.ReentrantLock;
+ import net.officefloor.hq.app.asof.SheetHistory;
+ import net.officefloor.hq.app.period.Period;
+ import net.officefloor.hq.app.period.PeriodRepository;
++import net.officefloor.hq.app.period.PoolCutLine;
+ import net.officefloor.hq.app.sheet.Sheet;
+ import net.officefloor.hq.app.sheet.SheetRepository;
+ import javax.sql.DataSource;
+@@ -21,8 +25,9 @@ import org.springframework.transaction.support.TransactionSynchronizationManager
+ import org.springframework.transaction.support.TransactionTemplate;
+ 
+ /**
+- * The pools as they stood at the end of each period whose to-date is on or before the sheet's today:
+- * the sheet is put back from its {@link SheetHistory} as it stood at the end of the to-date, with that
++ * The pools as they stood for each period that is closed or soft-closed, or whose to-date is on or before
++ * the sheet's today. A closed or soft-closed period's cuts are those fixed when it was closed. For any
++ * other, the pools as they stood at the end of it: the sheet is put back from its {@link SheetHistory} as it stood at the end of the to-date, with that
+  * date as its today, in a transaction of its own (a savepoint, within an as-of read's transaction) that
+  * is rolled back once its pools are read, so it changes nothing.
+  */
+@@ -51,14 +56,38 @@ public class PoolCutHistory {
+         this.transaction = new TransactionTemplate(transactions);
+     }
+ 
+-    /** Each ended period, by from-date, with the sheet's pools as they stood at the end of it. */
++    /**
++     * Each closed or soft-closed period with the cuts fixed when it was closed, and each other ended period
++     * with the sheet's pools as they stood at the end of it, by from-date.
++     */
+     public List<PeriodPools> history(String sheetId) {
+         LocalDate today = sheets.findById(sheetId).map(Sheet::getToday).orElse(null);
+         if (today == null || !history.exists(sheetId)) return List.of();
+-        List<Period> ended = periods.findBySheetIdOrderByFromDateAsc(sheetId).stream()
+-                .filter(p -> !p.getToDate().isAfter(today)).toList();
++        List<Period> shown = periods.findBySheetIdOrderByFromDateAsc(sheetId).stream()
++                .filter(p -> fixed(p) || !p.getToDate().isAfter(today)).toList();
+         List<PeriodPools> out = new ArrayList<>();
+-        for (Period period : ended) out.add(new PeriodPools(period.getName(), asOf(sheetId, period.getToDate())));
++        for (Period period : shown) {
++            out.add(new PeriodPools(period.getName(),
++                    fixed(period) ? fixedPools(period) : asOf(sheetId, period.getToDate())));
++        }
++        return out;
++    }
++
++    private static boolean fixed(Period period) {
++        return period.isClosed() || period.isSoftClosed();
++    }
++
++    /** The pools, each with just its members' fixed cuts, as the period's close fixed them. */
++    private static List<PoolService.PoolLine> fixedPools(Period period) {
++        Map<List<Long>, List<PoolService.Member>> byPool = new LinkedHashMap<>();
++        for (PoolCutLine line : period.getClosedPoolCuts()) {
++            byPool.computeIfAbsent(Arrays.asList(line.getPoolId(), line.getCrewId()), k -> new ArrayList<>())
++                    .add(new PoolService.Member(line.getPersonId(), line.getMemberPoolId(), null, null, false, false,
++                            true, line.getCut()));
++        }
++        List<PoolService.PoolLine> out = new ArrayList<>();
++        byPool.forEach((key, members) -> out.add(
++                new PoolService.PoolLine(key.get(0), key.get(1), null, members, null, false)));
+         return out;
+     }
+ 
+diff --git a/src/main/resources/db/migration/V113__period_pool_cut.sql b/src/main/resources/db/migration/V113__period_pool_cut.sql
+new file mode 100644
+index 000000000..ab24a2ce7
+--- /dev/null
++++ b/src/main/resources/db/migration/V113__period_pool_cut.sql
+@@ -0,0 +1,12 @@
++-- Closing or soft-closing a period also fixes every pool member's cut for it as it stood at that
++-- moment: one line per member of a pool (pool_id) or of a crew's pool (crew_id), the member a person
++-- (person_id) or a pool (member_pool_id), with its cut (null: none). Reopening the period removes its
++-- lines: the cuts are live again.
++CREATE TABLE period_pool_cut (
++    period_id      BIGINT         NOT NULL REFERENCES period (id),
++    pool_id        BIGINT,
++    crew_id        BIGINT,
++    person_id      BIGINT,
++    member_pool_id BIGINT,
++    cut            DECIMAL(14, 2)
++);
