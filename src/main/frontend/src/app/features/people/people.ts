@@ -277,7 +277,7 @@ function trimmedSum(figures: number[]): number {
         }
       </form>
       <form [formGroup]="importForm" (ngSubmit)="importPeople()" aria-label="Import people">
-        <label for="import-people">Import people (name,grade,terms,contact per line; terms and contact may be left out)</label>
+        <label for="import-people">Import people (name,grade,terms,contact per line; terms and contact may be left out; a blank grade takes the default grade)</label>
         <textarea id="import-people" data-testid="import-people" formControlName="text" rows="4"></textarea>
         <button type="submit" data-testid="import-submit">Import</button>
         @if (importAdded() !== null) {

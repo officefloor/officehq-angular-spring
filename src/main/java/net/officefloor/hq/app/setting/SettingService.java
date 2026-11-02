@@ -478,6 +478,30 @@ public class SettingService {
         return kinds;
     }
 
+    /** Change the default grade (null: A); not dated. */
+    @Transactional
+    public String setDefaultGrade(String sheetId, String user, String grade) {
+        Sheet sheet = sheets.findForUpdate(sheetId).orElseThrow(SheetNotFoundException::new);
+        sheet.setDefaultGrade(grade);
+        sheets.flush();
+        audit.recordOnCommit("SETTING_CHANGED sheet=" + sheetId + " by=" + user.strip() + " key=default-grade value="
+                + (grade == null ? "" : grade));
+        return grade;
+    }
+
+    /** The default grade as set; null when blank, which means A. */
+    @Transactional(readOnly = true)
+    public String defaultGrade(String sheetId) {
+        return sheets.findById(sheetId).map(Sheet::getDefaultGrade).orElse(null);
+    }
+
+    /** The grade a new person given none takes: the default grade, else A. */
+    @Transactional(readOnly = true)
+    public String gradeForNew(String sheetId) {
+        String grade = defaultGrade(sheetId);
+        return grade == null ? "A" : grade;
+    }
+
     /** The proof kinds as set, in order; empty when none. */
     @Transactional(readOnly = true)
     public List<String> proofKinds(String sheetId) {

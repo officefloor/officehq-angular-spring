@@ -39,13 +39,14 @@ public class SettingController {
      * days are a whole number of days, null when blank (off); the entry date is null when blank (off); the pot has two decimals, null when none;
      * the parent is the id of the sheet it names as its parent, null when none; the fiscal start month
      * is the month (1 to 12) a fiscal year starts in; the alert threshold has two decimals, null when off;
-     * the escalate after is a whole number of days, null when blank (off); so is the review SLA (none).
+     * the escalate after is a whole number of days, null when blank (off); so is the review SLA (none); the
+     * default grade is one of the grades, null when blank (A).
      */
     public record SettingsView(String clerkLimit, String floor, int terms, String latePct, LocalDate policyDate,
             LocalDate periodNumberingFrom, List<RoleView> roles, Map<String, Integer> gradeTerms, String cap,
             Map<String, List<DatedView>> dated, Map<String, String> permissions, Integer graceDays,
             LocalDate entryDate, String pot, String parent, int fiscalStartMonth, String alertThreshold,
-            Integer escalateAfter, Integer reviewSla, String proofKinds) {}
+            Integer escalateAfter, Integer reviewSla, String proofKinds, String defaultGrade) {}
 
     /** A value recorded for a dated setting from a date on; null when none. */
     public record DatedView(LocalDate from, String value) {}
@@ -228,6 +229,14 @@ public class SettingController {
         }
     }
 
+    /** A default grade: one of the grades; blank or null: A. */
+    public record DefaultGradeRequest(@Pattern(regexp = "\\s*([ABC])?\\s*") String value) {
+
+        String gradeValue() {
+            return value == null || value.isBlank() ? null : value.strip();
+        }
+    }
+
     /** Grace days: a whole number of days; blank or null: off. */
     public record GraceDaysRequest(@Pattern(regexp = "(\\d{1,4})?") String value) {
 
@@ -343,7 +352,7 @@ public class SettingController {
                 service.graceDays(sheetId), service.entryDate(sheetId), text(service.pot(sheetId)),
                 service.parent(sheetId), service.fiscalStartMonth(sheetId), text(service.alertThreshold(sheetId)),
                 service.escalateAfter(sheetId), service.reviewSla(sheetId),
-                String.join(",", service.proofKinds(sheetId)));
+                String.join(",", service.proofKinds(sheetId)), service.defaultGrade(sheetId));
     }
 
     @PutMapping("/settings/clerk-limit")
@@ -479,6 +488,15 @@ public class SettingController {
             @RequestHeader("X-User") @NotBlank @Size(max = 100) String user,
             @RequestBody @Valid ProofKindsRequest request) {
         service.setProofKinds(sheetId, user, request.kindsValue());
+        return get(sheetId, user);
+    }
+
+    @PutMapping("/settings/default-grade")
+    public SettingsView setDefaultGrade(
+            @PathVariable @Size(max = 100) @Pattern(regexp = "[A-Za-z0-9._-]+") String sheetId,
+            @RequestHeader("X-User") @NotBlank @Size(max = 100) String user,
+            @RequestBody @Valid DefaultGradeRequest request) {
+        service.setDefaultGrade(sheetId, user, request.gradeValue());
         return get(sheetId, user);
     }
 

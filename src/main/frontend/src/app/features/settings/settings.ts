@@ -83,6 +83,7 @@ interface SettingsView {
   reviewSla: number | null;
   /** The proof kinds (not dated), comma separated: a claim above the proof threshold needs a proof of each; empty when none. */
   proofKinds: string;
+  defaultGrade: string | null;
 }
 
 /** A from-date field (yyyy-mm-dd) for a dated setting; blank: the sheet's today. */
@@ -191,6 +192,9 @@ const FROM = 'From (yyyy-mm-dd; blank: the sheet\'s today)';
         <label for="setting-proof-kinds">Proof kinds (comma separated receipt, photo: a claim above the proof threshold needs a proof of each; blank: none)</label>
         <input id="setting-proof-kinds" data-testid="setting-proof-kinds" formControlName="proofKinds"
                (keydown.delete)="form.controls.proofKinds.markAsDirty()" (keydown.backspace)="form.controls.proofKinds.markAsDirty()" />
+        <label for="setting-default-grade">Default grade (A, B or C: quick-add and an import line with no grade give it; blank: A)</label>
+        <input id="setting-default-grade" data-testid="setting-default-grade" formControlName="defaultGrade"
+               (keydown.delete)="form.controls.defaultGrade.markAsDirty()" (keydown.backspace)="form.controls.defaultGrade.markAsDirty()" />
         <label for="setting-parent">Parent sheet id (its rates apply where this sheet has none; blank: none)</label>
         <input id="setting-parent" data-testid="setting-parent" formControlName="parent"
                (keydown.delete)="form.controls.parent.markAsDirty()" (keydown.backspace)="form.controls.parent.markAsDirty()" />
@@ -271,6 +275,7 @@ const FROM = 'From (yyyy-mm-dd; blank: the sheet\'s today)';
       <p>Entry date now: <span data-testid="setting-entry-date-current">{{ entryDate() ?? '' }}</span></p>
       <p>Pot now: <span data-testid="setting-pot-current">{{ pot() ?? '' | figure }}</span></p>
       <p>Proof kinds now: <span data-testid="setting-proof-kinds-current">{{ session.proofKinds() }}</span></p>
+      <p>Default grade now (blank: A): <span data-testid="setting-default-grade-current">{{ defaultGrade() ?? '' }}</span></p>
       <p>Alert threshold now: <span data-testid="setting-alert-threshold-current">{{ alertThreshold() ?? '' | figure }}</span></p>
       <p>Parent sheet now: <span data-testid="setting-parent-current">{{ session.parent() ?? '' }}</span></p>
       <p>Cap now: <span data-testid="setting-cap-current">{{ session.cap() ?? '' | figure }}</span></p>
@@ -381,6 +386,8 @@ export class Settings {
   protected readonly entryDate = signal<string | null>(null);
   protected readonly pot = signal<string | null>(null);
   protected readonly alertThreshold = signal<string | null>(null);
+  /** The default grade (not dated): quick-add and an import line with a blank grade give it; null when blank (A). */
+  protected readonly defaultGrade = signal<string | null>(null);
   protected readonly userRoles = signal<RoleView[]>([]);
   protected readonly error = signal('');
   protected readonly roleError = signal('');
@@ -404,6 +411,7 @@ export class Settings {
     pot: new FormControl('', { nonNullable: true }),
     alertThreshold: new FormControl('', { nonNullable: true }),
     proofKinds: new FormControl('', { nonNullable: true }),
+    defaultGrade: new FormControl('', { nonNullable: true }),
     parent: new FormControl('', { nonNullable: true }),
     clerkLimitFrom: new FormControl('', { nonNullable: true }),
     floorFrom: new FormControl('', { nonNullable: true }),
@@ -490,6 +498,7 @@ export class Settings {
       this.pot.set(null);
       this.alertThreshold.set(null);
       this.session.proofKinds.set('');
+      this.defaultGrade.set(null);
       this.session.parent.set(null);
       this.userRoles.set([]);
       this.permissionsSet.set({});
@@ -534,6 +543,7 @@ export class Settings {
     this.pot.set(view.pot);
     this.alertThreshold.set(view.alertThreshold);
     this.session.proofKinds.set(view.proofKinds);
+    this.defaultGrade.set(view.defaultGrade);
     this.session.parent.set(view.parent);
     this.userRoles.set(view.roles);
     this.permissionsSet.set(view.permissions);
@@ -546,7 +556,7 @@ export class Settings {
     this.error.set('');
     const sheet = this.session.sheetId();
     if (!sheet) return;
-    const { clerkLimit, floor, terms, latePct, policyDate, periodNumberingFrom, graceDays, escalateAfter, reviewSla, fiscalStartMonth, entryDate, cap, pot, alertThreshold, proofKinds, parent, proofThreshold, noteThreshold, reviewThreshold, rounding } = this.form.controls;
+    const { clerkLimit, floor, terms, latePct, policyDate, periodNumberingFrom, graceDays, escalateAfter, reviewSla, fiscalStartMonth, entryDate, cap, pot, alertThreshold, proofKinds, defaultGrade, parent, proofThreshold, noteThreshold, reviewThreshold, rounding } = this.form.controls;
     const { clerkLimitFrom, floorFrom, termsFrom, latePctFrom, capFrom, proofThresholdFrom, noteThresholdFrom, reviewThresholdFrom, roundingFrom } = this.form.getRawValue();
     const value = clerkLimit.value.trim();
     const floorValue = floor.value.trim();
@@ -654,6 +664,10 @@ export class Settings {
     }
     if (proofKinds.dirty && proofKinds.value.trim() && !/^\s*(receipt|photo)(\s*,\s*(receipt|photo))*\s*$/.test(proofKinds.value)) {
       this.error.set('Enter proof kinds as a comma separated list of receipt and photo, or leave it blank for none.');
+      return;
+    }
+    if (defaultGrade.dirty && defaultGrade.value.trim() && !/^[ABC]$/.test(defaultGrade.value.trim())) {
+      this.error.set('Enter a default grade of A, B or C, or leave it blank for A.');
       return;
     }
     if (proofThreshold.dirty && proofThresholdValue && !/^\d{1,12}(\.\d{1,2})?$/.test(proofThresholdValue)) {
@@ -816,6 +830,14 @@ export class Settings {
             { headers: this.headers() }),
         );
         proofKinds.markAsPristine();
+        if (this.session.sheetId() === sheet) this.show(view);
+      }
+      if (defaultGrade.dirty) {
+        const view = await firstValueFrom(
+          this.http.put<SettingsView>(`${this.base(sheet)}/settings/default-grade`, { value: defaultGrade.value.trim() || null },
+            { headers: this.headers() }),
+        );
+        defaultGrade.markAsPristine();
         if (this.session.sheetId() === sheet) this.show(view);
       }
       if (parent.dirty) {

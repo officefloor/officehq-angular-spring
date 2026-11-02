@@ -20,6 +20,10 @@ import net.officefloor.hq.app.period.Period;
 import net.officefloor.hq.app.period.PeriodRepository;
 import net.officefloor.hq.app.pool.PoolMember;
 import net.officefloor.hq.app.pool.PoolMemberRepository;
+import net.officefloor.hq.app.crew.Crew;
+import net.officefloor.hq.app.crew.CrewMember;
+import net.officefloor.hq.app.crew.CrewMemberRepository;
+import net.officefloor.hq.app.crew.CrewRepository;
 import net.officefloor.hq.app.rollup.RollupService;
 import net.officefloor.hq.app.setting.Role;
 import net.officefloor.hq.app.setting.SettingService;
@@ -69,6 +73,8 @@ public class PersonService {
     private final SettingService settings;
     private final StatementRepository statements;
     private final PoolMemberRepository poolMembers;
+    private final CrewRepository crews;
+    private final CrewMemberRepository crewMembers;
     private final PeriodRepository periods;
     private final ClaimService claimService;
     private final SheetParentRepository parents;
@@ -78,7 +84,10 @@ public class PersonService {
     public PersonService(PersonRepository people, PersonPatronRepository patrons,
             PersonWatchRepository watches, SheetRepository sheets, ClaimRepository claims, RollupService rollup,
             SettingService settings, StatementRepository statements, PoolMemberRepository poolMembers,
-            PeriodRepository periods, ClaimService claimService, SheetParentRepository parents, SheetService sheetService, Audit audit) {
+            PeriodRepository periods, ClaimService claimService, SheetParentRepository parents, SheetService sheetService,
+            CrewRepository crews, CrewMemberRepository crewMembers, Audit audit) {
+        this.crews = crews;
+        this.crewMembers = crewMembers;
         this.parents = parents;
         this.sheetService = sheetService;
         this.claimService = claimService;
@@ -419,7 +428,8 @@ public class PersonService {
      * name and aliases become the other's aliases; their patrons are added to the other's (not the other
      * themselves, no repeats), and anyone naming them as patron names the other instead (no repeats, not
      * themselves). Their pool memberships move to the other, a share added to the other's where the other
-     * is already a member, and their due-total fixed for a closed period is added to the other's. Their
+     * is already a member; the crews they lead are led by the other, and their crew memberships move to
+     * the other (once, never in a crew the other leads), and their due-total fixed for a closed period is added to the other's. Their
      * statements become the other's: the other's count is their own plus theirs, and the other's last
      * statement stays the other's (or, the other having none, becomes their last). Their holds, watchers
      * and contact are dropped, and they leave the sheet.
@@ -511,6 +521,34 @@ public class PersonService {
         poolMembers.deleteAll(leaving);
         poolMembers.flush();
         poolMembers.saveAllAndFlush(members.stream().filter(m -> !leaving.contains(m)).toList());
+
+        // crews: the other leads those they led, and is a member of those they were in (once, never as its lead)
+        List<Crew> sheetCrews = crews.findBySheetIdOrderByIdAsc(sheetId);
+        Set<Long> led = new HashSet<>();
+        for (Crew crew : sheetCrews) {
+            if (crew.getLeadPersonId().equals(from.getId())) crew.setLeadPersonId(into.getId());
+            if (crew.getLeadPersonId().equals(into.getId())) led.add(crew.getId());
+        }
+        crews.saveAllAndFlush(sheetCrews);
+        List<CrewMember> inCrews = crewMembers.findBySheetIdOrderByIdAsc(sheetId);
+        Set<Long> intoIn = new HashSet<>();
+        List<CrewMember> outOfCrews = new ArrayList<>();
+        List<CrewMember> movingIn = new ArrayList<>();
+        for (CrewMember m : inCrews) {
+            if (m.getPersonId().equals(into.getId())) {
+                if (led.contains(m.getCrewId())) outOfCrews.add(m);
+                else intoIn.add(m.getCrewId());
+            }
+        }
+        for (CrewMember m : inCrews) {
+            if (!m.getPersonId().equals(from.getId())) continue;
+            if (led.contains(m.getCrewId()) || !intoIn.add(m.getCrewId())) outOfCrews.add(m);
+            else movingIn.add(m);
+        }
+        crewMembers.deleteAll(outOfCrews);
+        crewMembers.flush();
+        for (CrewMember m : movingIn) m.setPersonId(into.getId());
+        crewMembers.saveAllAndFlush(movingIn);
 
         // closed periods' due-totals and carried figures, and opening balances
         for (Period period : periods.findBySheetIdOrderByFromDateAsc(sheetId)) {

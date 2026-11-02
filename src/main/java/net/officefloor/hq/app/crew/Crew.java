@@ -40,4 +40,6 @@ public class Crew {
     public String getName() { return name; }
 
     public Long getLeadPersonId() { return leadPersonId; }
+
+    public void setLeadPersonId(Long leadPersonId) { this.leadPersonId = leadPersonId; }
 }

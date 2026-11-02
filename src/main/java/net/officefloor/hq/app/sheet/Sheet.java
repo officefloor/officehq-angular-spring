@@ -120,6 +120,10 @@ public class Sheet {
     @Column(name = "proof_kinds", length = 100)
     private String proofKinds;
 
+    /** The default grade (not dated): quick-add gives a person it adds it, and an import line with a blank grade takes it; null means A. */
+    @Column(name = "default_grade", length = 1)
+    private String defaultGrade;
+
     /** While set, a new claim given no date takes it rather than the sheet's today; null means off. */
     @Column(name = "entry_date")
     private LocalDate entryDate;
@@ -348,6 +352,10 @@ public class Sheet {
     public String getProofKinds() { return proofKinds; }
 
     public void setProofKinds(String proofKinds) { this.proofKinds = proofKinds; }
+
+    public String getDefaultGrade() { return defaultGrade; }
+
+    public void setDefaultGrade(String defaultGrade) { this.defaultGrade = defaultGrade; }
 
     public LocalDate getEntryDate() { return entryDate; }
 

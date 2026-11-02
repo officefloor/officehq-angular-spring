@@ -6,11 +6,13 @@ import java.util.List;
 import java.util.Optional;
 import java.util.Set;
 import java.util.regex.Pattern;
+import net.officefloor.hq.app.setting.SettingService;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 /**
- * Imported people: lines of name,grade,terms,contact (the last two may be absent or blank), taken in
+ * Imported people: lines of name,grade,terms,contact (the last two may be absent or blank; a blank grade
+ * takes the sheet's default grade, A when blank), taken in
  * order with the person form's rules. A line whose name is a person's on the sheet (by name or alias, as
  * names are compared) edits them exactly as the form does: name kept, the grade recorded from the
  * sheet's today, and terms and contact set when the line gives them. Any other line adds a person. A name, or a
@@ -22,7 +24,7 @@ public class PersonImportService {
 
     private static final int NAME_MAX = 200;
     private static final int CONTACT_MAX = 200;
-    private static final Pattern GRADE = Pattern.compile("[ABC]");
+    private static final Pattern GRADE = Pattern.compile("[ABC]?");
     private static final Pattern TERMS = Pattern.compile("\\d{0,4}");
 
     private record Line(String name, String grade, Integer terms, String contact) {}
@@ -32,10 +34,12 @@ public class PersonImportService {
 
     private final PersonService people;
     private final PersonRepository repository;
+    private final SettingService settings;
 
-    public PersonImportService(PersonService people, PersonRepository repository) {
+    public PersonImportService(PersonService people, PersonRepository repository, SettingService settings) {
         this.people = people;
         this.repository = repository;
+        this.settings = settings;
     }
 
     @Transactional
@@ -52,9 +56,12 @@ public class PersonImportService {
             lines.add(line);
         }
         if (lines.isEmpty()) throw new PersonImportRefusedException();
+        String defaultGrade = settings.gradeForNew(sheetId);
         List<Person> added = new ArrayList<>();
         List<Person> updated = new ArrayList<>();
-        for (Line line : lines) {
+        for (Line parsed : lines) {
+            Line line = parsed.grade().isEmpty()
+                    ? new Line(parsed.name(), defaultGrade, parsed.terms(), parsed.contact()) : parsed;
             Optional<Person> existing = repository.findByNameOrAlias(sheetId, line.name());
             if (existing.isPresent()) {
                 Person person = existing.get();
