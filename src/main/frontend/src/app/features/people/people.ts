@@ -109,6 +109,8 @@ interface Descendants {
   gradeDueTotals: Record<string, string>;
   /** Per status, how many of the descendants' claims have it. */
   statusCounts: Record<string, number>;
+  /** Each descendant person's figures, with the keys of their name and aliases as names are compared. */
+  personFigures: { keys: string[]; dueTotal: string | null; overdueTotal: string }[];
 }
 
 interface StatementSummary {
@@ -214,6 +216,21 @@ interface StatementTaken {
 // together from a date (blank: the sheet's today), each in list order as the row's retire would; the
 // count retired is shown.
 /** Figures in cents added up, leaving out the single highest and the single lowest when there are three or more. */
+/** How many people there are, those sharing a name or alias key (directly or through others) being one. */
+function distinctPeople(keySets: string[][]): number {
+  const parent = keySets.map((_, i) => i);
+  const find = (i: number): number => (parent[i] === i ? i : (parent[i] = find(parent[i])));
+  const owner = new Map<string, number>();
+  keySets.forEach((keys, i) => {
+    for (const key of keys) {
+      const j = owner.get(key);
+      if (j === undefined) owner.set(key, i);
+      else parent[find(i)] = find(j);
+    }
+  });
+  return keySets.filter((_, i) => find(i) === i).length;
+}
+
 function trimmedSum(figures: number[]): number {
   const sum = figures.reduce((total, c) => total + c, 0);
   return figures.length < 3 ? sum : sum - Math.max(...figures) - Math.min(...figures);
@@ -842,10 +859,18 @@ export class People {
    */
   protected readonly consolidated = computed(() => {
     const d = this.descendants();
+    const others = d?.personFigures ?? [];
+    const key = (name: string) => name.trim().toLowerCase();
+    const dues = this.people().map((p) => this.dueTotalCents(p)).filter((c): c is number => c !== null)
+      .concat(others.filter((o) => o.dueTotal !== null).map((o) => cents(o.dueTotal as string)));
+    const overdues = [...this.overdueByPerson().values()].map((o) => o.cents)
+      .concat(others.map((o) => cents(o.overdueTotal)));
     return {
-      people: this.people().length + (d?.people ?? 0),
-      dueCents: this.dueTotalAllCents() + (d ? cents(d.dueTotal) : 0),
-      overdueCents: this.overdueTotal().cents + (d ? cents(d.overdueTotal) : 0),
+      // each person once over the tree, the trim over every person's figure of the tree
+      people: distinctPeople(this.people().map((p) => [key(p.name), ...p.aliases.map(key)])
+        .concat(others.map((o) => o.keys))),
+      dueCents: trimmedSum(dues),
+      overdueCents: trimmedSum(overdues),
       grades: this.gradeSummary().map((g) => ({
         grade: g.grade,
         dueCents: cents(g.dueTotal) + cents(d?.gradeDueTotals?.[g.grade] ?? '0.00'),

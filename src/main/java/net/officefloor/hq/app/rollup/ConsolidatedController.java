@@ -5,6 +5,7 @@ import jakarta.validation.constraints.Pattern;
 import jakarta.validation.constraints.Size;
 import java.math.BigDecimal;
 import java.time.LocalDate;
+import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -31,7 +32,9 @@ import org.springframework.web.bind.annotation.RestController;
  * the end of that date, with that date as its today. Per grade, the due-totals of the people on it on
  * their sheet's today (retired people left out, an n/a due-total no figure) added up, and per status the
  * count of claims in it. The screen adds the sheet's own figures, as shown,
- * to make the consolidated ones.
+ * to make the consolidated ones; for that each descendant person's figures are given too, with the keys
+ * their name and aliases are compared by, so the screen can trim over the whole tree and count each
+ * person once.
  */
 @RestController
 @Validated
@@ -48,7 +51,13 @@ public class ConsolidatedController {
      */
     public record DescendantsView(int sheets, int people, String dueTotal, String overdueTotal, int ownPeople,
             String ownDueTotal, String ownOverdueTotal, Map<String, String> gradeDueTotals,
-            Map<String, Integer> statusCounts) {}
+            Map<String, Integer> statusCounts, List<PersonFigures> personFigures) {}
+
+    /**
+     * A descendant person's figures as their sheet shows them: the keys of their name and aliases (as names
+     * are compared), their due-total (null when n/a) and overdue-total.
+     */
+    public record PersonFigures(List<String> keys, String dueTotal, String overdueTotal) {}
 
     private final SheetParentRepository parents;
     private final RollupService rollup;
@@ -79,6 +88,7 @@ public class ConsolidatedController {
         for (String grade : GRADES) gradeDues.put(grade, BigDecimal.ZERO.setScale(2));
         Map<String, Integer> statusCounts = new LinkedHashMap<>();
         for (String status : STATUSES) statusCounts.put(status, 0);
+        List<PersonFigures> personFigures = new ArrayList<>();
         for (String descendant : parents.descendantsOf(sheetId)) {
             RollupService.Snapshot figures = rollup.current(descendant);
             sheets++;
@@ -87,8 +97,13 @@ public class ConsolidatedController {
             overdue = overdue.add(figures.overdueTotal());
             LocalDate today = sheetRepository.findById(descendant).map(Sheet::getToday).orElse(null);
             for (Person person : persons.findBySheetIdOrderByPositionAscIdAsc(descendant)) {
-                if (person.isRetired()) continue;
                 RollupService.Figures theirs = figures.people().get(person.getId());
+                if (theirs != null) {
+                    personFigures.add(new PersonFigures(person.namesAndAliases().stream().map(Person::keyOf).toList(),
+                            theirs.dueTotal() == null ? null : theirs.dueTotal().setScale(2).toPlainString(),
+                            theirs.overdueTotal().setScale(2).toPlainString()));
+                }
+                if (person.isRetired()) continue;
                 if (theirs == null || theirs.dueTotal() == null) continue;
                 String grade = today == null ? person.getGrade() : person.gradeOn(today);
                 gradeDues.computeIfPresent(grade, (g, total) -> total.add(theirs.dueTotal()));
@@ -102,6 +117,6 @@ public class ConsolidatedController {
         RollupService.Snapshot own = rollup.current(sheetId);
         return new DescendantsView(sheets, people, due.toPlainString(), overdue.toPlainString(), own.people().size(),
                 own.dueTotal().setScale(2).toPlainString(), own.overdueTotal().setScale(2).toPlainString(),
-                gradeDueTotals, statusCounts);
+                gradeDueTotals, statusCounts, personFigures);
     }
 }
