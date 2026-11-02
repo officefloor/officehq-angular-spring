@@ -6,10 +6,14 @@ import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.StandardOpenOption;
+import java.util.Set;
+import java.util.function.Supplier;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.support.TransactionSynchronization;
 import org.springframework.transaction.support.TransactionSynchronizationManager;
+import org.springframework.web.context.request.RequestAttributes;
+import org.springframework.web.context.request.RequestContextHolder;
 
 /**
  * Audit sink: appends one record per line to a KNOWN FILE (app.audit.file, default .run/audit.log)
@@ -22,6 +26,14 @@ import org.springframework.transaction.support.TransactionSynchronizationManager
  */
 @Service
 public class Audit {
+
+    /** The request attribute holding a {@code Supplier<String>} of the steward the requesting user
+     *  acts for by delegation (null when none, as of the sheet's today when asked): each record of
+     *  the change, but those that only report figures, then ends with {@code for=<steward>}. */
+    public static final String ACTING_FOR = Audit.class.getName() + ".actingFor";
+
+    /** The records that only report figures, never marked with who a change was made for. */
+    private static final Set<String> FIGURES_ONLY = Set.of("ROLLUP", "TOTALS", "ALERT");
 
     private final Path file;
 
@@ -47,7 +59,8 @@ public class Audit {
      * Append one audit record once the current transaction commits, so a change that is refused or
      * rolled back writes nothing. Outside a transaction the record is appended at once.
      */
-    public void recordOnCommit(String entry) {
+    public void recordOnCommit(String line) {
+        String entry = withActingFor(line);
         if (!TransactionSynchronizationManager.isSynchronizationActive()) {
             record(entry);
             return;
@@ -58,6 +71,20 @@ public class Audit {
                 record(entry);
             }
         });
+    }
+
+    /** The record ending with who the change was made for, when the requesting user acts for a
+     *  steward by delegation and the record is not one that only reports figures. */
+    private static String withActingFor(String entry) {
+        RequestAttributes request = RequestContextHolder.getRequestAttributes();
+        if (request == null || FIGURES_ONLY.contains(entry.split(" ", 2)[0])) {
+            return entry;
+        }
+        if (request.getAttribute(ACTING_FOR, RequestAttributes.SCOPE_REQUEST) instanceof Supplier<?> actingFor
+                && actingFor.get() instanceof String steward) {
+            return entry + " for=" + steward;
+        }
+        return entry;
     }
 
     /** Truncate the audit file. */
