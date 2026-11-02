@@ -17,6 +17,7 @@ export const PERMISSIONS = [
   { action: 'reassign', standing: 'steward' },
   { action: 'close', standing: 'clerk,steward' },
   { action: 'reopen', standing: 'steward' },
+  { action: 'today', standing: 'clerk,steward' },
 ] as const;
 type PermAction = (typeof PERMISSIONS)[number]['action'];
 
@@ -120,7 +121,7 @@ const FROM = 'From (yyyy-mm-dd; blank: the sheet\'s today)';
 // are dated: a save records the value from its from-date (blank: the sheet's today), keeping those recorded from
 // other dates; a claim takes the floor and terms in force on its date, the late percent in force on each 30-day boundary, and the clerk limit and cap are those in force on
 // the sheet's today. Each shows the value in force on the sheet's today. The permission matrix (not dated) gives, for each
-// of open, settle, void, reassign, close and reopen, the roles that may take it, comma separated; blank keeps its standing rule.
+// of open, settle, void, reassign, close, reopen and today (changing the sheet's today), the roles that may take it, comma separated; blank keeps its standing rule.
 @Component({
   selector: 'app-settings',
   imports: [FigurePipe, ReactiveFormsModule],
@@ -540,6 +541,7 @@ export class Settings {
     reassign: new FormControl('', { nonNullable: true }),
     close: new FormControl('', { nonNullable: true }),
     reopen: new FormControl('', { nonNullable: true }),
+    today: new FormControl('', { nonNullable: true }),
   });
   protected readonly roleForm = new FormGroup({
     user: new FormControl('', { nonNullable: true }),

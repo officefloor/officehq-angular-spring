@@ -55,6 +55,8 @@ public class SettingService {
         Map<String, Set<Role>> standing = new LinkedHashMap<>();
         for (String action : List.of("open", "settle", "void", "close")) standing.put(action, EnumSet.of(Role.CLERK, Role.STEWARD));
         for (String action : List.of("reassign", "reopen")) standing.put(action, EnumSet.of(Role.STEWARD));
+        // changing the sheet's today: anyone but a viewer
+        standing.put("today", EnumSet.of(Role.CLERK, Role.STEWARD));
         STANDING_PERMISSIONS = Map.copyOf(standing);
     }
 

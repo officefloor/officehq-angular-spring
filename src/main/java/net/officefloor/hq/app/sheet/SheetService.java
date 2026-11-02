@@ -99,11 +99,13 @@ public class SheetService {
      * line per person, in list order, with their due-total on the day being left; while the score log is on, a
      * SCORE line per person, with their score on that day, comes before them. With grace days set, the open periods
      * past them are closed first, then the figures it moves are audited. A new today releases every
-     * claim editor's lock on the sheet.
+     * claim editor's lock on the sheet. A user whose role may not change it (by the permission matrix: anyone but
+     * a viewer, unless it says otherwise) is refused.
      */
     @Transactional
     public Sheet setToday(String id, String user, LocalDate today) {
         Sheet sheet = sheets.findForUpdate(id).orElseThrow(SheetNotFoundException::new);
+        if (!settings.getObject().mayDo(id, user, "today")) throw new SheetTodayRefusedException();
         boolean changed = !today.equals(sheet.getToday());
         if (changed) {
             claims.getObject().unlockAll(id);

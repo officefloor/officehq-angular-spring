@@ -704,7 +704,7 @@ public class SettingController {
     @PutMapping("/settings/perm/{action}")
     public SettingsView setPermission(
             @PathVariable @Size(max = 100) @Pattern(regexp = "[A-Za-z0-9._-]+") String sheetId,
-            @PathVariable @Pattern(regexp = "open|settle|void|reassign|close|reopen") String action,
+            @PathVariable @Pattern(regexp = "open|settle|void|reassign|close|reopen|today") String action,
             @RequestHeader("X-User") @NotBlank @Size(max = 100) String user,
             @RequestBody @Valid PermissionRequest request) {
         service.setPermission(sheetId, user, action, request.rolesValue());
