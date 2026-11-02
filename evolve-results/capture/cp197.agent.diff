@@ -1,0 +1,152 @@
+diff --git a/src/main/frontend/src/app/features/activity/activity.ts b/src/main/frontend/src/app/features/activity/activity.ts
+new file mode 100644
+index 000000000..8f52ff501
+--- /dev/null
++++ b/src/main/frontend/src/app/features/activity/activity.ts
+@@ -0,0 +1,61 @@
++import { HttpClient } from '@angular/common/http';
++import { Component, effect, inject, signal } from '@angular/core';
++import { firstValueFrom } from 'rxjs';
++import { Session } from '../../core/session';
++
++// The sheet's activity: for every user and event in its audit lines, "<user> <EVENT> <count>",
++// sorted by user then event.
++@Component({
++  selector: 'app-activity',
++  template: `
++    <section aria-labelledby="activity-heading">
++      <h2 id="activity-heading">Activity</h2>
++      <button type="button" data-testid="activity-show" (click)="show()">Show activity</button>
++      @if (error()) {
++        <p role="alert" class="error" data-testid="activity-error">{{ error() }}</p>
++      }
++      <ol aria-label="Activity lines">
++        @for (line of lines(); track $index) {
++          <li data-testid="activity-line">{{ line }}</li>
++        }
++      </ol>
++    </section>
++  `,
++})
++export class Activity {
++  private readonly http = inject(HttpClient);
++  private readonly session = inject(Session);
++
++  protected readonly lines = signal<string[]>([]);
++  protected readonly error = signal('');
++  /** Counts the presses of show, so only the answer to the latest is shown. */
++  private request = 0;
++
++  constructor() {
++    effect(() => {
++      this.session.sheetId();
++      this.session.loads();
++      this.request++;
++      this.lines.set([]);
++      this.error.set('');
++    });
++  }
++
++  protected async show(): Promise<void> {
++    const sheet = this.session.sheetId();
++    if (!sheet) return;
++    const request = ++this.request;
++    this.lines.set([]);
++    this.error.set('');
++    try {
++      const list = await firstValueFrom(
++        this.http.get<string[]>(`/api/sheets/${encodeURIComponent(sheet)}/activity`, {
++          headers: { 'X-User': this.session.user() ?? '' },
++        }),
++      );
++      if (request === this.request) this.lines.set(list);
++    } catch {
++      if (request === this.request) this.error.set('Could not read the activity.');
++    }
++  }
++}
+diff --git a/src/main/frontend/src/app/features/home/home.ts b/src/main/frontend/src/app/features/home/home.ts
+index d560e3740..cd9ba6df4 100644
+--- a/src/main/frontend/src/app/features/home/home.ts
++++ b/src/main/frontend/src/app/features/home/home.ts
+@@ -1,6 +1,7 @@
+ import { Component, inject, signal } from '@angular/core';
+ import { FormControl, FormGroup, ReactiveFormsModule } from '@angular/forms';
+ import { LOCALES, Locale, Session } from '../../core/session';
++import { Activity } from '../activity/activity';
+ import { AuditView } from '../audit-view/audit-view';
+ import { TreeSearch } from '../tree-search/tree-search';
+ import { Holidays } from '../holidays/holidays';
+@@ -15,7 +16,7 @@ import { VoidReasons } from '../void-reasons/void-reasons';
+ // The one screen: sign in by name, then load a sheet by id.
+ @Component({
+   selector: 'app-home',
+-  imports: [ReactiveFormsModule, AuditView, Crews, Holidays, Notes, People, Pools, Settings, Templates, TreeSearch, VoidReasons],
++  imports: [ReactiveFormsModule, Activity, AuditView, Crews, Holidays, Notes, People, Pools, Settings, Templates, TreeSearch, VoidReasons],
+   template: `
+     @if (session.user(); as user) {
+       <p>Signed in as <strong data-testid="current-user">{{ user }}</strong></p>
+@@ -74,6 +75,7 @@ import { VoidReasons } from '../void-reasons/void-reasons';
+         <app-crews />
+         <app-tree-search />
+         <app-audit-view />
++        <app-activity />
+       }
+     } @else {
+       <form [formGroup]="signinForm" (ngSubmit)="signIn()" aria-label="Sign in">
+diff --git a/src/main/java/net/officefloor/hq/app/audit/AuditViewController.java b/src/main/java/net/officefloor/hq/app/audit/AuditViewController.java
+index c55c23449..2bc008357 100644
+--- a/src/main/java/net/officefloor/hq/app/audit/AuditViewController.java
++++ b/src/main/java/net/officefloor/hq/app/audit/AuditViewController.java
+@@ -32,6 +32,14 @@ public class AuditViewController {
+         return service.lines(sheetId, name);
+     }
+ 
++    /** The sheet's activity: one line per user and event, {@code <user> <EVENT> <count>}, by user then event. */
++    @GetMapping("/activity")
++    public List<String> activity(
++            @PathVariable @Size(max = 100) @Pattern(regexp = "[A-Za-z0-9._-]+") String sheetId,
++            @RequestHeader("X-User") @NotBlank @Size(max = 100) String user) {
++        return service.activity(sheetId);
++    }
++
+     /** A claim's timeline: the audit lines about it, newest first. */
+     @GetMapping("/claims/{id}/timeline")
+     public List<String> claimTimeline(
+diff --git a/src/main/java/net/officefloor/hq/app/audit/AuditViewService.java b/src/main/java/net/officefloor/hq/app/audit/AuditViewService.java
+index 4d03530a7..614917355 100644
+--- a/src/main/java/net/officefloor/hq/app/audit/AuditViewService.java
++++ b/src/main/java/net/officefloor/hq/app/audit/AuditViewService.java
+@@ -3,6 +3,8 @@ package net.officefloor.hq.app.audit;
+ import java.util.ArrayList;
+ import java.util.Collections;
+ import java.util.List;
++import java.util.Map;
++import java.util.TreeMap;
+ import java.util.regex.Pattern;
+ import net.officefloor.hq.app.Audit;
+ import net.officefloor.hq.app.claim.Claim;
+@@ -93,6 +95,23 @@ public class AuditViewService {
+         return out;
+     }
+ 
++    /**
++     * The sheet's activity: for every user and every event in the sheet's audit lines, one line
++     * {@code <user> <EVENT> <count>}, sorted by user then event.
++     */
++    public List<String> activity(String sheetId) {
++        Map<String, Map<String, Integer>> counts = new TreeMap<>();
++        for (String line : linesOf(audit.lines(), sheetId, null)) {
++            String[] fields = line.split(" ", 4);
++            if (fields.length < 3 || !fields[2].startsWith("by=")) continue;
++            String user = fields[2].substring("by=".length());
++            counts.computeIfAbsent(user, u -> new TreeMap<>()).merge(fields[0], 1, Integer::sum);
++        }
++        List<String> out = new ArrayList<>();
++        counts.forEach((user, events) -> events.forEach((event, n) -> out.add(user + " " + event + " " + n)));
++        return out;
++    }
++
+     /** The sheet's lines, newest first; with a pattern only those it finds. */
+     private static List<String> linesOf(List<String> all, String sheetId, Pattern about) {
+         String sheetField = "sheet=" + sheetId;
