@@ -29,6 +29,8 @@ export interface Claim {
   /** The due fixed when the claim was settled, as text with two decimals; null when it is not
    *  settled, or was settled while its person's grade had no rate (its due then stays live). */
   settledDue: string | null;
+  /** Who opened the claim; null when it was never opened. That user cannot settle it. */
+  openedBy: string | null;
 }
 
 export interface ClaimForm {

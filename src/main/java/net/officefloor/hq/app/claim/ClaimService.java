@@ -63,7 +63,8 @@ public class ClaimService {
         return saved;
     }
 
-    /** Move a claim to a new status; a change its current status does not allow is refused. */
+    /** Move a claim to a new status; a change its current status does not allow is refused, and so
+     *  is settling a claim by the user who opened it. */
     @Transactional
     public Claim changeStatus(String sheetId, String user, long claimId, ClaimStatus to) {
         Claim claim = claims.lockByIdAndSheetId(claimId, sheetId)
@@ -72,11 +73,16 @@ public class ClaimService {
             throw new ResponseStatusException(HttpStatus.CONFLICT,
                     "A " + claim.getStatus() + " claim cannot become " + to);
         }
+        if (to == ClaimStatus.SETTLED && user.equals(claim.getOpenedBy())) {
+            throw new ResponseStatusException(HttpStatus.FORBIDDEN,
+                    "The user who opened a claim cannot settle it");
+        }
         // The number recorded for a void claim is the one it had.
         Integer number = claim.getNumber();
         claim.setStatus(to);
         if (to == ClaimStatus.OPEN) {
             claim.setNumber(sheets.nextClaimNumber(sheetId));
+            claim.setOpenedBy(user);
         } else if (to == ClaimStatus.VOID) {
             claim.setNumber(null);
         }

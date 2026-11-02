@@ -12,6 +12,15 @@ const REFUSALS: Record<ClaimAction, string> = {
   void: 'Only a draft or open claim can be voided.',
 };
 
+/** The message for a refused action on a claim. */
+function refusal(e: unknown, action: ClaimAction): string {
+  if (e instanceof HttpErrorResponse && e.status === 409) return REFUSALS[action];
+  if (e instanceof HttpErrorResponse && e.status === 403 && action === 'settle') {
+    return 'The user who opened a claim cannot settle it.';
+  }
+  return 'The claim could not be changed.';
+}
+
 // A person's claims, newest first, and the form that adds a claim for them or, once a claim's
 // editor is opened, edits it.
 @Component({
@@ -40,6 +49,7 @@ const REFUSALS: Record<ClaimAction, string> = {
           <span data-testid="claim-note">{{ c.note }}</span>
           <span data-testid="claim-due">{{ dueOf(c) }}</span>
           <span data-testid="claim-status">{{ c.status }}</span>
+          <span data-testid="claim-opened-by">{{ c.openedBy ?? '' }}</span>
           <button type="button" data-testid="claim-open" (click)="act(c, 'open')"
             [attr.aria-label]="'Open claim of ' + c.amount + ' on ' + c.date">Open</button>
           <button type="button" data-testid="claim-settle" (click)="act(c, 'settle')"
@@ -104,7 +114,7 @@ export class PersonClaims {
     } catch (e) {
       this.claimError.set({
         id: c.id,
-        message: e instanceof HttpErrorResponse && e.status === 409 ? REFUSALS[action] : 'The claim could not be changed.',
+        message: refusal(e, action),
       });
     }
   }
