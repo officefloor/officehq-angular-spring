@@ -52,6 +52,10 @@ public class Sheet {
     @Column(name = "period_numbering_from")
     private LocalDate periodNumberingFrom;
 
+    /** The most a person's due-total comes to; null when there is no cap. */
+    @Column(name = "cap", precision = 14, scale = 2)
+    private BigDecimal cap;
+
     /** The last X-number given to a claim in no period; only ever moved on by
      *  {@link SheetRepository#advanceUnperiodNumber}. */
     @Column(name = "last_unperiod_number", insertable = false, updatable = false)
@@ -128,5 +132,13 @@ public class Sheet {
 
     public void setPeriodNumberingFrom(LocalDate periodNumberingFrom) {
         this.periodNumberingFrom = periodNumberingFrom;
+    }
+
+    public BigDecimal getCap() {
+        return cap;
+    }
+
+    public void setCap(BigDecimal cap) {
+        this.cap = cap;
     }
 }

@@ -225,4 +225,24 @@ public class SheetService {
                 + (from == null ? "" : from.toString()));
         return saved;
     }
+
+    /** The most a person's due-total on the sheet comes to; null when there is no cap. */
+    @Transactional(readOnly = true)
+    public BigDecimal cap(String id) {
+        return sheets.findById(id).map(Sheet::getCap).orElse(null);
+    }
+
+    /** Change the sheet's cap (null: no cap); recorded even when it is unchanged, then the figures
+     *  it moves. */
+    @Transactional
+    public synchronized Sheet setCap(String id, String user, BigDecimal cap) {
+        Sheet sheet = load(id, user);
+        return rollup.tracking(id, user, () -> {
+            sheet.setCap(cap);
+            Sheet saved = sheets.saveAndFlush(sheet);
+            audit.recordOnCommit("SETTING_CHANGED sheet=" + id + " by=" + user + " key=cap value="
+                    + (cap == null ? "" : cap.setScale(2).toPlainString()));
+            return saved;
+        });
+    }
 }

@@ -28,19 +28,21 @@ public class SettingsController {
      *  (null when there is no limit), the floor as text with two decimals, the terms in days, and the late percent as text with two
      *  decimals, and the policy date (null when it is blank: the sheet's today stands in), and the
      *  period numbering from date (null when it is blank: off), and the terms each grade has of its own
-     *  (a grade not in it takes the sheet's terms). */
+     *  (a grade not in it takes the sheet's terms), and the cap as text with two decimals (null when
+     *  there is no cap). */
     public record SettingsView(String clerkLimit, String floor, int terms, String latePct, LocalDate policyDate,
-            LocalDate periodNumberingFrom, Map<String, Integer> gradeTerms) {
+            LocalDate periodNumberingFrom, Map<String, Integer> gradeTerms, String cap) {
         static SettingsView of(Sheet sheet, Map<String, Integer> gradeTerms) {
             return of(sheet.getClerkLimit(), sheet.getFloor(), sheet.getTerms(), sheet.getLatePct(),
-                    sheet.getPolicyDate(), sheet.getPeriodNumberingFrom(), gradeTerms);
+                    sheet.getPolicyDate(), sheet.getPeriodNumberingFrom(), gradeTerms, sheet.getCap());
         }
 
         static SettingsView of(BigDecimal clerkLimit, BigDecimal floor, int terms, BigDecimal latePct,
-                LocalDate policyDate, LocalDate periodNumberingFrom, Map<String, Integer> gradeTerms) {
+                LocalDate policyDate, LocalDate periodNumberingFrom, Map<String, Integer> gradeTerms,
+                BigDecimal cap) {
             return new SettingsView(clerkLimit == null ? null : clerkLimit.setScale(2).toPlainString(),
                     floor.setScale(2).toPlainString(), terms, latePct.setScale(2).toPlainString(), policyDate,
-                    periodNumberingFrom, gradeTerms);
+                    periodNumberingFrom, gradeTerms, cap == null ? null : cap.setScale(2).toPlainString());
         }
     }
 
@@ -48,6 +50,14 @@ public class SettingsController {
     public record ClerkLimitForm(@Pattern(regexp = "\\s*(\\d{1,12}(\\.\\d{1,2})?)?\\s*") String value) {
 
         BigDecimal limitValue() {
+            return value == null || value.isBlank() ? null : new BigDecimal(value.trim()).setScale(2);
+        }
+    }
+
+    /** The cap form: 0.00 or more with up to two decimals, or blank for no cap. */
+    public record CapForm(@Pattern(regexp = "\\s*(\\d{1,12}(\\.\\d{1,2})?)?\\s*") String value) {
+
+        BigDecimal capValue() {
             return value == null || value.isBlank() ? null : new BigDecimal(value.trim()).setScale(2);
         }
     }
@@ -116,7 +126,7 @@ public class SettingsController {
     public SettingsView get(@PathVariable @NotBlank @Size(max = 100) String sheetId) {
         String id = sheetId.trim();
         return SettingsView.of(service.clerkLimit(id), service.floor(id), service.terms(id), service.latePct(id),
-                service.policyDate(id), service.periodNumberingFrom(id), service.gradeTerms(id));
+                service.policyDate(id), service.periodNumberingFrom(id), service.gradeTerms(id), service.cap(id));
     }
 
     /** The settings view of a sheet just saved. */
@@ -172,5 +182,12 @@ public class SettingsController {
             @RequestHeader("X-User") @NotBlank @Size(max = 100) String user,
             @Valid @RequestBody PeriodNumberingFromForm form) {
         return view(service.setPeriodNumberingFrom(sheetId.trim(), user.trim(), form.fromValue()));
+    }
+
+    @PutMapping("/cap")
+    public SettingsView setCap(@PathVariable @NotBlank @Size(max = 100) String sheetId,
+            @RequestHeader("X-User") @NotBlank @Size(max = 100) String user,
+            @Valid @RequestBody CapForm form) {
+        return view(service.setCap(sheetId.trim(), user.trim(), form.capValue()));
     }
 }

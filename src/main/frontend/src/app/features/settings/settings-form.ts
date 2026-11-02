@@ -4,7 +4,7 @@ import { Session } from '../../core/session';
 import { Grade } from '../../core/people';
 import { LATE_PCT, LIMIT, POLICY_DATE, ROLES, TERMS, Role, RoleName, SheetSettings } from '../../core/settings';
 
-// The sheet's settings (the clerk limit, the floor, the terms, the late percent, the policy date and period numbering from) and the roles it gives user names: clerk, the default for
+// The sheet's settings (the clerk limit, the cap, the floor, the terms, the late percent, the policy date and period numbering from) and the roles it gives user names: clerk, the default for
 // any name, or steward.
 @Component({
   selector: 'app-settings-form',
@@ -16,6 +16,8 @@ import { LATE_PCT, LIMIT, POLICY_DATE, ROLES, TERMS, Role, RoleName, SheetSettin
         <label for="setting-clerk-limit">Clerk limit</label>
         <input id="setting-clerk-limit" data-testid="setting-clerk-limit" formControlName="clerkLimit"
                inputmode="decimal" />
+        <label for="setting-cap">Cap on a person's due-total (blank: none)</label>
+        <input id="setting-cap" data-testid="setting-cap" formControlName="cap" inputmode="decimal" />
         <label for="setting-floor">Floor</label>
         <input id="setting-floor" data-testid="setting-floor" formControlName="floor" inputmode="decimal" />
         <label for="setting-terms">Terms (days)</label>
@@ -41,6 +43,7 @@ import { LATE_PCT, LIMIT, POLICY_DATE, ROLES, TERMS, Role, RoleName, SheetSettin
         }
       </form>
       <p>Clerk limit in force: <span data-testid="setting-clerk-limit-current">{{ clerkLimit() ?? '' }}</span></p>
+      <p>Cap in force: <span data-testid="setting-cap-current">{{ cap() ?? '' }}</span></p>
       <p>Floor in force: <span data-testid="setting-floor-current">{{ floor() ?? '' }}</span></p>
       <p>Terms in force: <span data-testid="setting-terms-current">{{ terms() ?? '' }}</span></p>
       @for (g of grades; track g) {
@@ -89,6 +92,7 @@ export class SettingsForm {
 
   protected readonly roleNames = ROLES;
   protected readonly clerkLimit = signal<string | null>(null);
+  protected readonly cap = signal<string | null>(null);
   protected readonly floor = signal<string | null>(null);
   protected readonly terms = signal<number | null>(null);
   protected readonly grades: Grade[] = ['A', 'B', 'C'];
@@ -106,6 +110,7 @@ export class SettingsForm {
   private reads = 0;
   protected readonly settingsForm = new FormGroup({
     clerkLimit: new FormControl('', { nonNullable: true }),
+    cap: new FormControl('', { nonNullable: true }),
     floor: new FormControl('', { nonNullable: true }),
     terms: new FormControl('', { nonNullable: true }),
     gradeTerms: new FormGroup({
@@ -129,6 +134,7 @@ export class SettingsForm {
       this.session.loads();
       const sheetId = this.session.sheetId();
       this.clerkLimit.set(null);
+      this.cap.set(null);
       this.floor.set(null);
       this.terms.set(null);
       this.gradeTerms.set({});
@@ -144,10 +150,12 @@ export class SettingsForm {
   protected async saveSettings(): Promise<void> {
     if (this.submitting) return;
     this.settingsError.set('');
-    const { clerkLimit, floor, terms, gradeTerms, latePct, policyDate, periodNumberingFrom } = this.settingsForm.controls;
-    const none = !clerkLimit.dirty && !floor.dirty && !terms.dirty && !gradeTerms.dirty && !latePct.dirty
+    const { clerkLimit, cap, floor, terms, gradeTerms, latePct, policyDate, periodNumberingFrom } = this.settingsForm.controls;
+    const none = !clerkLimit.dirty && !cap.dirty && !floor.dirty && !terms.dirty && !gradeTerms.dirty && !latePct.dirty
       && !policyDate.dirty && !periodNumberingFrom.dirty;
     const limitValue = clerkLimit.value.trim();
+    const capValue = cap.value.trim();
+    const saveCap = cap.dirty || (none && capValue !== '');
     const floorValue = floor.value.trim();
     const saveLimit = none || clerkLimit.dirty;
     const saveFloor = none || floor.dirty;
@@ -164,6 +172,10 @@ export class SettingsForm {
     const saveNumbering = none || periodNumberingFrom.dirty;
     if (saveLimit && limitValue !== '' && !LIMIT.test(limitValue)) {
       this.settingsError.set('Enter a clerk limit of 0.00 or more with up to two decimals, or leave it blank for no limit.');
+      return;
+    }
+    if (saveCap && capValue !== '' && !LIMIT.test(capValue)) {
+      this.settingsError.set('Enter a cap of 0.00 or more with up to two decimals, or leave it blank for no cap.');
       return;
     }
     if (saveFloor && !(none && floorValue === '') && !LIMIT.test(floorValue)) {
@@ -196,6 +208,11 @@ export class SettingsForm {
         const saved = await this.api.setClerkLimit(limitValue === '' ? null : limitValue);
         this.clerkLimit.set(saved.clerkLimit);
         clerkLimit.markAsPristine();
+      }
+      if (saveCap) {
+        const saved = await this.api.setCap(capValue === '' ? null : capValue);
+        this.cap.set(saved.cap);
+        cap.markAsPristine();
       }
       if (saveFloor && floorValue !== '') {
         const saved = await this.api.setFloor(floorValue);
@@ -272,6 +289,7 @@ export class SettingsForm {
       const [settings, roles] = await Promise.all([this.api.get(sheetId), this.api.roles(sheetId)]);
       if (read === this.reads) {
         this.clerkLimit.set(settings.clerkLimit);
+        this.cap.set(settings.cap);
         this.floor.set(settings.floor);
         this.terms.set(settings.terms);
         this.gradeTerms.set(settings.gradeTerms);

@@ -19,6 +19,8 @@ export interface Settings {
   periodNumberingFrom: string | null;
   /** The terms each grade has of its own, by grade; a grade not in it takes the sheet's terms. */
   gradeTerms: Partial<Record<Grade, number>>;
+  /** The most a person's due-total comes to, as text with two decimals; null when there is no cap. */
+  cap: string | null;
 }
 
 export type RoleName = 'clerk' | 'steward';
@@ -61,6 +63,12 @@ export class SheetSettings {
   setClerkLimit(value: string | null): Promise<Settings> {
     const [sheetId, headers] = this.active();
     return firstValueFrom(this.http.put<Settings>(`${this.url(sheetId)}/settings/clerk-limit`, { value }, { headers }));
+  }
+
+  /** Set the cap; null for no cap. */
+  setCap(value: string | null): Promise<Settings> {
+    const [sheetId, headers] = this.active();
+    return firstValueFrom(this.http.put<Settings>(`${this.url(sheetId)}/settings/cap`, { value }, { headers }));
   }
 
   /** Set the floor. */

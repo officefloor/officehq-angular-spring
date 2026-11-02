@@ -71,7 +71,7 @@ import { QuickAddBar } from './quick-add-bar';
       <button type="button" data-testid="export-people" (click)="exportCsv()">Export people (CSV)</button>
       <table data-testid="people">
         <thead>
-          <tr><th scope="col">Name</th><th scope="col">Grade</th><th scope="col">Claimed</th><th scope="col">Due</th><th scope="col">Statements</th><th scope="col">Last stated</th><th scope="col">Stated on</th><th scope="col">Retired</th><th scope="col">Retired from</th><th scope="col">On hold</th><th scope="col">Overdue</th><th scope="col">Overdue due</th><th scope="col">Patrons</th><th scope="col">Backing</th><th scope="col">Claims</th><th scope="col"><span class="visually-hidden">Actions</span></th></tr>
+          <tr><th scope="col">Name</th><th scope="col">Grade</th><th scope="col">Claimed</th><th scope="col">Due</th><th scope="col">Excess</th><th scope="col">Statements</th><th scope="col">Last stated</th><th scope="col">Stated on</th><th scope="col">Retired</th><th scope="col">Retired from</th><th scope="col">On hold</th><th scope="col">Overdue</th><th scope="col">Overdue due</th><th scope="col">Patrons</th><th scope="col">Backing</th><th scope="col">Claims</th><th scope="col"><span class="visually-hidden">Actions</span></th></tr>
         </thead>
         <tbody>
           @for (p of shown(); track p.id) {
@@ -80,6 +80,7 @@ import { QuickAddBar } from './quick-add-bar';
               <td data-testid="person-grade">{{ gradeOf(p) }}</td>
               <td data-testid="person-claimed">{{ claimed().get(p.id) ?? '0.00' }}</td>
               <td data-testid="person-due-total">{{ dueOf(p) ?? 'n/a' }}</td>
+              <td data-testid="person-excess">{{ excessOf(p) }}</td>
               <td data-testid="person-statement-count">{{ p.statementCount }}</td>
               <td data-testid="person-stated-total">{{ p.statementCount > 0 ? (p.statedTotal ?? 'n/a') : '' }}</td>
               <td data-testid="person-statement-date">{{ p.statementDate ?? '' }}</td>
@@ -206,6 +207,8 @@ export class PeopleList {
   protected readonly rates = signal<Rate[]>([]);
   /** The sheet's floor: the least live due a claim has. */
   protected readonly floor = signal('1.00');
+  /** The sheet's cap: the most a person's due-total comes to; null when there is no cap. */
+  protected readonly cap = signal<string | null>(null);
   /** The sheet's late percent: what an overdue claim gains for every full 30 days it is overdue. */
   protected readonly latePct = signal('0.00');
   /** The sheet's policy date (null when blank): it decides how a claim's live figures round. */
@@ -551,11 +554,28 @@ export class PeopleList {
     this.periods.update((ps) => [...ps.filter((p) => p.id !== period.id), period].sort((a, b) => (a.from < b.from ? -1 : a.from > b.from ? 1 : 0)));
   }
 
-  /** A person's due-total: the sum of the due figures of their open and settled claims, leaving out
+  /** A person's due-total: the sum of their figures ({@link figuresOf}), at most the sheet's cap.
+   *  Null (n/a) when the sum is; n/a is not capped. */
+  protected dueOf(p: Person): string | null {
+    const sum = this.figuresOf(p);
+    const cap = this.cap();
+    if (sum === null || cap === null) return sum;
+    return Number(sum) > Number(cap) ? cap : sum;
+  }
+
+  /** A person's excess: how far the sum of their figures is above the sheet's cap; 0.00 when it is
+   *  not, or when it is n/a. */
+  protected excessOf(p: Person): string {
+    const sum = this.figuresOf(p);
+    const due = this.dueOf(p);
+    return sum === null || due === null ? '0.00' : sumAmounts([sum, '-' + due]);
+  }
+
+  /** The sum of the due figures of a person's open and settled claims, leaving out
    *  the open ones dated within one of their holds and unbound by a statement. Null (n/a)
    *  when their grade on the sheet's today has no rate on it and no claim that counts has a figure
    *  (one kept by settling or a statement, or a live due at the grade in force on its date). */
-  protected dueOf(p: Person): string | null {
+  private figuresOf(p: Person): string | null {
     const counted = (this.claimsByPerson().get(p.id) ?? []).filter((c) => countsLive(c, p.holds));
     const figures = counted.map((c) => claimDue(c, this.rates(), gradeOn(p.grades, c.date), this.floor(), this.lateness())).filter((d): d is string => d !== null);
     if (!this.pctOf().has(this.gradeOf(p)) && figures.length === 0) {
@@ -617,6 +637,7 @@ export class PeopleList {
       if (read === this.reads) {
         this.rates.set(rates);
         this.floor.set(settings.floor);
+        this.cap.set(settings.cap);
         this.latePct.set(settings.latePct);
         this.policyDate.set(settings.policyDate);
         this.periods.set(periods);

@@ -89,9 +89,9 @@ public class Dues {
         return theirs.stream().filter(c -> countsLive(person, c)).toList();
     }
 
-    /** A person's due-total: the sum of the figures of their claims that count; null (n/a) when
-     *  their grade on the sheet's today has no rate on it and no counting claim has a figure (one
-     *  fixed, or a live due at the grade in force on its date). */
+    /** A person's due-total: the sum of the figures of their claims that count, at most the sheet's
+     *  cap; null (n/a) when their grade on the sheet's today has no rate on it and no counting claim
+     *  has a figure (one fixed, or a live due at the grade in force on its date). */
     public BigDecimal dueTotal(String sheetId, Person person, List<Claim> theirs) {
         List<BigDecimal> figures = theirs.stream().filter(c -> c.getStatus().counts())
                 .map(c -> figure(sheetId, person, c)).filter(d -> d != null).toList();
@@ -100,7 +100,9 @@ public class Dues {
         if (!rated && figures.isEmpty()) {
             return null;
         }
-        return figures.stream().reduce(BigDecimal.ZERO.setScale(2), BigDecimal::add);
+        BigDecimal sum = figures.stream().reduce(BigDecimal.ZERO.setScale(2), BigDecimal::add);
+        BigDecimal cap = sheets.cap(sheetId);
+        return cap == null ? sum : sum.min(cap);
     }
 
     /** A claim's live due at the rate, in force on the claim's date, for the person's grade in force
