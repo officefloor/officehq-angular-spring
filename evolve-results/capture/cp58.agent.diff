@@ -1,0 +1,488 @@
+diff --git a/src/main/frontend/src/app/core/watches.ts b/src/main/frontend/src/app/core/watches.ts
+new file mode 100644
+index 000000000..95386a9aa
+--- /dev/null
++++ b/src/main/frontend/src/app/core/watches.ts
+@@ -0,0 +1,46 @@
++import { HttpClient } from '@angular/common/http';
++import { Injectable, inject } from '@angular/core';
++import { firstValueFrom } from 'rxjs';
++import { Session } from './session';
++
++/** A person the signed-in user watches, by id. */
++export interface Watch {
++  id: number;
++  personId: number;
++}
++
++// The people the signed-in user watches on the active sheet: they are told when a claim of one is
++// settled, approved or re-settled.
++@Injectable({ providedIn: 'root' })
++export class Watches {
++  private readonly http = inject(HttpClient);
++  private readonly session = inject(Session);
++
++  /** The people the signed-in user watches on the sheet, in the order they started watching. */
++  list(sheetId: string): Promise<Watch[]> {
++    const user = this.session.user();
++    if (!user) throw new Error('not signed in');
++    return firstValueFrom(
++      this.http.get<Watch[]>(`/api/sheets/${encodeURIComponent(sheetId)}/watches`, { headers: { 'X-User': user } }),
++    );
++  }
++
++  /** Start watching the person; refused when the user already does. */
++  watch(personId: number): Promise<Watch> {
++    const { url, user } = this.active(personId);
++    return firstValueFrom(this.http.post<Watch>(url, null, { headers: { 'X-User': user } }));
++  }
++
++  /** Stop watching the person; refused when the user does not. */
++  unwatch(personId: number): Promise<void> {
++    const { url, user } = this.active(personId);
++    return firstValueFrom(this.http.delete<void>(url, { headers: { 'X-User': user } }));
++  }
++
++  private active(personId: number): { url: string; user: string } {
++    const sheetId = this.session.sheetId();
++    const user = this.session.user();
++    if (!sheetId || !user) throw new Error('no sheet loaded');
++    return { url: `/api/sheets/${encodeURIComponent(sheetId)}/people/${personId}/watch`, user };
++  }
++}
+diff --git a/src/main/frontend/src/app/features/people/people-list.ts b/src/main/frontend/src/app/features/people/people-list.ts
+index 5705f8f27..ab76d6922 100644
+--- a/src/main/frontend/src/app/features/people/people-list.ts
++++ b/src/main/frontend/src/app/features/people/people-list.ts
+@@ -8,6 +8,7 @@ import { Period, Periods, periodOf } from '../../core/periods';
+ import { Rate, Rates, pctOn } from '../../core/rates';
+ import { Session } from '../../core/session';
+ import { DatedValue, SheetSettings, valueOn } from '../../core/settings';
++import { Watch, Watches } from '../../core/watches';
+ import { PersonClaims } from '../claims/person-claims';
+ import { PeriodForm } from '../periods/period-form';
+ import { RateForm } from '../rates/rate-form';
+@@ -24,6 +25,7 @@ import { PasteClaimsBox } from './paste-claims-box';
+ // bound them; their settled claims and other open claims still do.
+ // A person may name other people on the sheet as their patrons; their backing is their patrons'
+ // due-totals added up, skipping those that are n/a.
++// The signed-in user may watch a person: they are told when a claim of theirs is settled.
+ @Component({
+   selector: 'app-people-list',
+   imports: [ReactiveFormsModule, PersonClaims, RateForm, PeriodForm, QuickAddBar, PasteClaimsBox, SummaryPanel, HeaderCounters],
+@@ -78,7 +80,7 @@ import { PasteClaimsBox } from './paste-claims-box';
+       <button type="button" data-testid="export-people" (click)="exportCsv()">Export people (CSV)</button>
+       <table data-testid="people">
+         <thead>
+-          <tr><th scope="col">Name</th><th scope="col">Grade</th><th scope="col">Claimed</th><th scope="col">Due</th>@for (pd of periods(); track pd.id) {<th scope="col">Due in {{ pd.name }}</th>}<th scope="col">Excess</th><th scope="col">Statements</th><th scope="col">Last stated</th><th scope="col">Stated on</th><th scope="col">Retired</th><th scope="col">Retired from</th><th scope="col">On hold</th><th scope="col">Overdue</th><th scope="col">Overdue due</th><th scope="col">Patrons</th><th scope="col">Backing</th><th scope="col">Claims</th><th scope="col"><span class="visually-hidden">Actions</span></th></tr>
++          <tr><th scope="col">Name</th><th scope="col">Grade</th><th scope="col">Claimed</th><th scope="col">Due</th>@for (pd of periods(); track pd.id) {<th scope="col">Due in {{ pd.name }}</th>}<th scope="col">Excess</th><th scope="col">Statements</th><th scope="col">Last stated</th><th scope="col">Stated on</th><th scope="col">Retired</th><th scope="col">Retired from</th><th scope="col">On hold</th><th scope="col">Overdue</th><th scope="col">Overdue due</th><th scope="col">Patrons</th><th scope="col">Backing</th><th scope="col">Watched</th><th scope="col">Claims</th><th scope="col"><span class="visually-hidden">Actions</span></th></tr>
+         </thead>
+         <tbody>
+           @for (p of shown(); track p.id) {
+@@ -110,6 +112,7 @@ import { PasteClaimsBox } from './paste-claims-box';
+               <td data-testid="person-overdue-total">{{ overdueTotalOf(p) }}</td>
+               <td data-testid="person-patrons">{{ patronNames().get(p.id) ?? '' }}</td>
+               <td data-testid="person-backing">{{ backingOf(p) }}</td>
++              <td data-testid="person-watched">{{ watched().has(p.id) ? 'yes' : 'no' }}</td>
+               <td>
+                 <app-person-claims [personId]="p.id" [claims]="claimsByPerson().get(p.id) ?? []"
+                   [rates]="rates()" [floor]="floor()" [grades]="p.grades" [periods]="periods()"
+@@ -143,6 +146,9 @@ import { PasteClaimsBox } from './paste-claims-box';
+                 </select>
+                 <button type="button" data-testid="person-patron-add" (click)="addPatron(p, patronSelect.value)"
+                   [attr.aria-label]="'Add a patron of ' + p.name">Add patron</button>
++                <button type="button" data-testid="person-watch" (click)="toggleWatch(p)"
++                  [attr.aria-pressed]="watched().has(p.id)"
++                  [attr.aria-label]="'Watch ' + p.name">{{ watched().has(p.id) ? 'Unwatch' : 'Watch' }}</button>
+                 @if (patronError()?.id === p.id) {
+                   <p role="alert" data-testid="person-patron-error">{{ patronError()?.message }}</p>
+                 }
+@@ -165,6 +171,7 @@ export class PeopleList {
+   private readonly periodsApi = inject(Periods);
+   private readonly settingsApi = inject(SheetSettings);
+   private readonly patronsApi = inject(Patrons);
++  private readonly watchesApi = inject(Watches);
+ 
+   protected readonly grades: Grade[] = ['A', 'B', 'C'];
+   protected readonly people = signal<Person[]>([]);
+@@ -199,6 +206,10 @@ export class PeopleList {
+     }
+     return by;
+   });
++  /** The people the signed-in user watches, in the order they started watching. */
++  protected readonly watches = signal<Watch[]>([]);
++  /** The ids of the people the signed-in user watches. */
++  protected readonly watched = computed(() => new Set(this.watches().map((w) => w.personId)));
+   /** Each person's holds, by id. */
+   private readonly holds = computed(() => new Map(this.people().map((p) => [p.id, p.holds])));
+   /** The claims that count in the live totals, newest first. */
+@@ -334,6 +345,8 @@ export class PeopleList {
+   private readonly stating = new Set<number>();
+   /** The people whose hold is waiting for its answer: a second press meanwhile is ignored. */
+   private readonly holding = new Set<number>();
++  /** The people whose watch is waiting for its answer: a second press meanwhile is ignored. */
++  private readonly watching = new Set<number>();
+   /** The people whose retirement is waiting for its answer: a second press meanwhile is ignored. */
+   private readonly retiring = new Set<number>();
+   protected readonly form = new FormGroup({
+@@ -355,6 +368,7 @@ export class PeopleList {
+       this.rates.set([]);
+       this.periods.set([]);
+       this.patrons.set([]);
++      this.watches.set([]);
+       this.selected.set(new Set());
+       this.bulkOpened.set(null);
+       this.bulkSettled.set(null);
+@@ -420,6 +434,28 @@ export class PeopleList {
+     }
+   }
+ 
++  /** Start watching the person as the signed-in user, or stop when they already do. */
++  protected async toggleWatch(p: Person): Promise<void> {
++    if (this.watching.has(p.id)) return;
++    this.watching.add(p.id);
++    this.personError.set(null);
++    this.patronError.set(null);
++    const on = !this.watched().has(p.id);
++    try {
++      if (on) {
++        const added = await this.watchesApi.watch(p.id);
++        this.watches.update((ws) => [...ws.filter((w) => w.personId !== p.id), added]);
++      } else {
++        await this.watchesApi.unwatch(p.id);
++        this.watches.update((ws) => ws.filter((w) => w.personId !== p.id));
++      }
++    } catch {
++      this.personError.set({ id: p.id, message: on ? 'The person could not be watched.' : 'The person could not be unwatched.' });
++    } finally {
++      this.watching.delete(p.id);
++    }
++  }
++
+   /** The people a person may name as patron: everyone else on the sheet. */
+   protected patronChoices(p: Person): Person[] {
+     return this.people().filter((x) => x.id !== p.id);
+@@ -691,13 +727,14 @@ export class PeopleList {
+   private async reload(sheetId: string): Promise<void> {
+     const read = ++this.reads;
+     try {
+-      const [people, claims, rates, periods, settings, patrons] = await Promise.all([
++      const [people, claims, rates, periods, settings, patrons, watches] = await Promise.all([
+         this.api.list(sheetId),
+         this.claimsApi.list(sheetId),
+         this.ratesApi.list(sheetId),
+         this.periodsApi.list(sheetId),
+         this.settingsApi.get(sheetId),
+         this.patronsApi.list(sheetId),
++        this.watchesApi.list(sheetId),
+       ]);
+       if (read === this.reads) {
+         this.rates.set(rates);
+@@ -708,6 +745,7 @@ export class PeopleList {
+         this.periods.set(periods);
+         this.claims.set(claims);
+         this.patrons.set(patrons);
++        this.watches.set(watches);
+         this.people.set(people);
+       }
+     } catch {
+diff --git a/src/main/java/net/officefloor/hq/app/claim/ClaimService.java b/src/main/java/net/officefloor/hq/app/claim/ClaimService.java
+index bf1b4fbd8..f5c494845 100644
+--- a/src/main/java/net/officefloor/hq/app/claim/ClaimService.java
++++ b/src/main/java/net/officefloor/hq/app/claim/ClaimService.java
+@@ -12,6 +12,7 @@ import net.officefloor.hq.app.role.RoleService;
+ import net.officefloor.hq.app.role.SheetRole;
+ import net.officefloor.hq.app.rollup.Rollup;
+ import net.officefloor.hq.app.sheet.SheetService;
++import net.officefloor.hq.app.watch.WatchService;
+ import org.springframework.http.HttpStatus;
+ import org.springframework.stereotype.Service;
+ import org.springframework.transaction.annotation.Transactional;
+@@ -28,10 +29,12 @@ public class ClaimService {
+     private final Rollup rollup;
+     private final PeriodRepository periods;
+     private final RoleService roles;
++    private final WatchService watches;
+     private final Audit audit;
+ 
+     public ClaimService(ClaimRepository claims, PersonRepository people, Dues dues, SheetService sheets,
+-            Rollup rollup, PeriodRepository periods, RoleService roles, Audit audit) {
++            Rollup rollup, PeriodRepository periods, RoleService roles, WatchService watches,
++            Audit audit) {
+         this.claims = claims;
+         this.people = people;
+         this.dues = dues;
+@@ -39,6 +42,7 @@ public class ClaimService {
+         this.rollup = rollup;
+         this.periods = periods;
+         this.roles = roles;
++        this.watches = watches;
+         this.audit = audit;
+     }
+ 
+@@ -168,6 +172,9 @@ public class ClaimService {
+                 line += " due=" + dueText(saved.getSettledDue());
+             }
+             audit.recordOnCommit(line);
++            if (becomes == ClaimStatus.SETTLED) {
++                watches.notifyWatchers(sheetId, user, person, saved.getNumber());
++            }
+             return saved;
+         });
+     }
+@@ -233,6 +240,7 @@ public class ClaimService {
+             Claim saved = claims.saveAndFlush(claim);
+             audit.recordOnCommit(record("CLAIM_APPROVED", sheetId, user, person, saved)
+                     + " due=" + dueText(saved.getSettledDue()));
++            watches.notifyWatchers(sheetId, user, person, saved.getNumber());
+             return saved;
+         });
+     }
+@@ -259,6 +267,7 @@ public class ClaimService {
+             Claim saved = claims.saveAndFlush(claim);
+             audit.recordOnCommit(record("CLAIM_RESETTLED", sheetId, user, person, saved)
+                     + " old=" + dueText(old) + " new=" + dueText(now));
++            watches.notifyWatchers(sheetId, user, person, saved.getNumber());
+             return saved;
+         });
+     }
+diff --git a/src/main/java/net/officefloor/hq/app/watch/Watch.java b/src/main/java/net/officefloor/hq/app/watch/Watch.java
+new file mode 100644
+index 000000000..f282500d4
+--- /dev/null
++++ b/src/main/java/net/officefloor/hq/app/watch/Watch.java
+@@ -0,0 +1,52 @@
++package net.officefloor.hq.app.watch;
++
++import jakarta.persistence.Column;
++import jakarta.persistence.Entity;
++import jakarta.persistence.GeneratedValue;
++import jakarta.persistence.GenerationType;
++import jakarta.persistence.Id;
++import jakarta.persistence.Table;
++
++/** A user watching a person on a sheet: they are told when the person's claims are settled. */
++@Entity
++@Table(name = "person_watch")
++public class Watch {
++
++    @Id
++    @GeneratedValue(strategy = GenerationType.IDENTITY)
++    private Long id;
++
++    @Column(name = "sheet_id", nullable = false)
++    private String sheetId;
++
++    @Column(name = "person_id", nullable = false)
++    private Long personId;
++
++    @Column(name = "user_name", nullable = false)
++    private String user;
++
++    protected Watch() {
++    }
++
++    public Watch(String sheetId, Long personId, String user) {
++        this.sheetId = sheetId;
++        this.personId = personId;
++        this.user = user;
++    }
++
++    public Long getId() {
++        return id;
++    }
++
++    public String getSheetId() {
++        return sheetId;
++    }
++
++    public Long getPersonId() {
++        return personId;
++    }
++
++    public String getUser() {
++        return user;
++    }
++}
+diff --git a/src/main/java/net/officefloor/hq/app/watch/WatchController.java b/src/main/java/net/officefloor/hq/app/watch/WatchController.java
+new file mode 100644
+index 000000000..7228b9ee4
+--- /dev/null
++++ b/src/main/java/net/officefloor/hq/app/watch/WatchController.java
+@@ -0,0 +1,52 @@
++package net.officefloor.hq.app.watch;
++
++import jakarta.validation.constraints.NotBlank;
++import jakarta.validation.constraints.Size;
++import java.util.List;
++import org.springframework.http.HttpStatus;
++import org.springframework.validation.annotation.Validated;
++import org.springframework.web.bind.annotation.DeleteMapping;
++import org.springframework.web.bind.annotation.GetMapping;
++import org.springframework.web.bind.annotation.PathVariable;
++import org.springframework.web.bind.annotation.PostMapping;
++import org.springframework.web.bind.annotation.RequestHeader;
++import org.springframework.web.bind.annotation.ResponseStatus;
++import org.springframework.web.bind.annotation.RestController;
++
++@RestController
++@Validated
++public class WatchController {
++
++    /** A person the signed-in user watches, by id. */
++    public record WatchView(long id, long personId) {
++        static WatchView of(Watch watch) {
++            return new WatchView(watch.getId(), watch.getPersonId());
++        }
++    }
++
++    private final WatchService service;
++
++    public WatchController(WatchService service) {
++        this.service = service;
++    }
++
++    @GetMapping("/api/sheets/{sheetId}/watches")
++    public List<WatchView> list(@PathVariable @NotBlank @Size(max = 100) String sheetId,
++            @RequestHeader("X-User") @NotBlank @Size(max = 100) String user) {
++        return service.list(sheetId.trim(), user.trim()).stream().map(WatchView::of).toList();
++    }
++
++    @PostMapping("/api/sheets/{sheetId}/people/{personId}/watch")
++    @ResponseStatus(HttpStatus.CREATED)
++    public WatchView watch(@PathVariable @NotBlank @Size(max = 100) String sheetId, @PathVariable long personId,
++            @RequestHeader("X-User") @NotBlank @Size(max = 100) String user) {
++        return WatchView.of(service.watch(sheetId.trim(), user.trim(), personId));
++    }
++
++    @DeleteMapping("/api/sheets/{sheetId}/people/{personId}/watch")
++    @ResponseStatus(HttpStatus.NO_CONTENT)
++    public void unwatch(@PathVariable @NotBlank @Size(max = 100) String sheetId, @PathVariable long personId,
++            @RequestHeader("X-User") @NotBlank @Size(max = 100) String user) {
++        service.unwatch(sheetId.trim(), user.trim(), personId);
++    }
++}
+diff --git a/src/main/java/net/officefloor/hq/app/watch/WatchRepository.java b/src/main/java/net/officefloor/hq/app/watch/WatchRepository.java
+new file mode 100644
+index 000000000..1af321b35
+--- /dev/null
++++ b/src/main/java/net/officefloor/hq/app/watch/WatchRepository.java
+@@ -0,0 +1,16 @@
++package net.officefloor.hq.app.watch;
++
++import java.util.List;
++import java.util.Optional;
++import org.springframework.data.jpa.repository.JpaRepository;
++
++public interface WatchRepository extends JpaRepository<Watch, Long> {
++
++    /** The people a user watches on a sheet, in the order they started watching. */
++    List<Watch> findBySheetIdAndUserOrderByIdAsc(String sheetId, String user);
++
++    /** The users watching a person, in the order they started watching. */
++    List<Watch> findByPersonIdOrderByIdAsc(Long personId);
++
++    Optional<Watch> findByPersonIdAndUser(Long personId, String user);
++}
+diff --git a/src/main/java/net/officefloor/hq/app/watch/WatchService.java b/src/main/java/net/officefloor/hq/app/watch/WatchService.java
+new file mode 100644
+index 000000000..fe122edd3
+--- /dev/null
++++ b/src/main/java/net/officefloor/hq/app/watch/WatchService.java
+@@ -0,0 +1,80 @@
++package net.officefloor.hq.app.watch;
++
++import java.util.List;
++import net.officefloor.hq.app.Audit;
++import net.officefloor.hq.app.person.Person;
++import net.officefloor.hq.app.person.PersonRepository;
++import org.springframework.dao.DataIntegrityViolationException;
++import org.springframework.http.HttpStatus;
++import org.springframework.stereotype.Service;
++import org.springframework.transaction.annotation.Propagation;
++import org.springframework.transaction.annotation.Transactional;
++import org.springframework.web.server.ResponseStatusException;
++
++/** The people each user watches on a sheet, and the notices sent them. */
++@Service
++public class WatchService {
++
++    private final WatchRepository watches;
++    private final PersonRepository people;
++    private final Audit audit;
++
++    public WatchService(WatchRepository watches, PersonRepository people, Audit audit) {
++        this.watches = watches;
++        this.people = people;
++        this.audit = audit;
++    }
++
++    /** The people the user watches on the sheet, in the order they started watching. */
++    @Transactional(readOnly = true)
++    public List<Watch> list(String sheetId, String user) {
++        return watches.findBySheetIdAndUserOrderByIdAsc(sheetId, user);
++    }
++
++    /** Start watching a person; refused when the user already watches them. */
++    @Transactional
++    public Watch watch(String sheetId, String user, long personId) {
++        Person person = person(sheetId, personId);
++        if (watches.findByPersonIdAndUser(person.getId(), user).isPresent()) {
++            throw alreadyWatching();
++        }
++        Watch saved;
++        try {
++            saved = watches.saveAndFlush(new Watch(sheetId, person.getId(), user));
++        } catch (DataIntegrityViolationException e) {
++            throw alreadyWatching();
++        }
++        audit.recordOnCommit("PERSON_WATCHED sheet=" + sheetId + " by=" + user + " name=" + person.getName());
++        return saved;
++    }
++
++    /** Stop watching a person; refused when the user does not watch them. */
++    @Transactional
++    public void unwatch(String sheetId, String user, long personId) {
++        Person person = person(sheetId, personId);
++        Watch watch = watches.findByPersonIdAndUser(person.getId(), user)
++                .orElseThrow(() -> new ResponseStatusException(HttpStatus.CONFLICT, "You do not watch this person"));
++        watches.delete(watch);
++        watches.flush();
++        audit.recordOnCommit("PERSON_UNWATCHED sheet=" + sheetId + " by=" + user + " name=" + person.getName());
++    }
++
++    /** Tell each user watching the person, in the order they started watching, that a claim of
++     *  theirs was settled. Recorded once the change commits, after the records made before it. */
++    @Transactional(propagation = Propagation.MANDATORY)
++    public void notifyWatchers(String sheetId, String user, Person person, String number) {
++        for (Watch watch : watches.findByPersonIdOrderByIdAsc(person.getId())) {
++            audit.recordOnCommit("NOTIFY sheet=" + sheetId + " by=" + user + " user=" + watch.getUser()
++                    + " person=" + person.getName() + " number=" + number);
++        }
++    }
++
++    private Person person(String sheetId, long personId) {
++        return people.findByIdAndSheetId(personId, sheetId)
++                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "No such person on this sheet"));
++    }
++
++    private static ResponseStatusException alreadyWatching() {
++        return new ResponseStatusException(HttpStatus.CONFLICT, "You already watch this person");
++    }
++}
+diff --git a/src/main/resources/db/migration/V43__person_watch.sql b/src/main/resources/db/migration/V43__person_watch.sql
+new file mode 100644
+index 000000000..9bcb8d127
+--- /dev/null
++++ b/src/main/resources/db/migration/V43__person_watch.sql
+@@ -0,0 +1,10 @@
++-- The people a user watches, each at most once per user; the id keeps the order they started
++-- watching (watching again after stopping starts over at the end).
++CREATE TABLE person_watch (
++    id        BIGINT AUTO_INCREMENT PRIMARY KEY,
++    sheet_id  VARCHAR(100) NOT NULL REFERENCES sheet (id),
++    person_id BIGINT       NOT NULL REFERENCES person (id),
++    user_name VARCHAR(100) NOT NULL,
++    CONSTRAINT person_watch_unique UNIQUE (person_id, user_name)
++);
++CREATE INDEX person_watch_sheet ON person_watch (sheet_id, user_name);
