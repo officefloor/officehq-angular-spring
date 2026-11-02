@@ -1,0 +1,160 @@
+diff --git a/src/main/frontend/src/app/features/people/people.ts b/src/main/frontend/src/app/features/people/people.ts
+index 9852cf195..69f39a2d7 100644
+--- a/src/main/frontend/src/app/features/people/people.ts
++++ b/src/main/frontend/src/app/features/people/people.ts
+@@ -386,6 +386,26 @@ function trimmedSum(figures: number[]): number {
+       @if (bulkRedateError()) {
+         <p role="alert" class="error" data-testid="bulk-redate-error">{{ bulkRedateError() }}</p>
+       }
++      @if (session.voidReasons().length > 0) {
++        <label for="bulk-void-reason">Void reason for selected claims</label>
++        <select id="bulk-void-reason" data-testid="bulk-void-reason" #bulkVoidReason
++                (change)="bulkVoidError.set('')">
++          <option value="">Choose a reason</option>
++          @for (r of session.voidReasons(); track r) {
++            <option [value]="r">{{ r }}</option>
++          }
++        </select>
++        <button type="button" data-testid="bulk-void" (click)="bulkVoid(bulkVoidReason.value)">Void selected claims</button>
++      } @else {
++        <button type="button" data-testid="bulk-void" (click)="bulkVoid('')">Void selected claims</button>
++      }
++      @if (bulkVoided(); as result) {
++        <p role="status">Voided <span data-testid="bulk-voided">{{ result.voided }}</span>,
++          refused <span data-testid="bulk-void-refused">{{ result.refused }}</span></p>
++      }
++      @if (bulkVoidError()) {
++        <p role="alert" class="error" data-testid="bulk-void-error">{{ bulkVoidError() }}</p>
++      }
+       <form [formGroup]="bulkGradeForm" (ngSubmit)="bulkGrade()" aria-label="Grade selected people">
+         <label for="bulk-grade">Grade selected people</label>
+         <select id="bulk-grade" data-testid="bulk-grade" formControlName="grade">
+@@ -799,6 +819,9 @@ export class People {
+   /** How many the last bulk re-date re-dated and refused; cleared while the next one runs. */
+   protected readonly bulkRedated = signal<{ redated: number; refused: number } | null>(null);
+   protected readonly bulkRedateError = signal('');
++  /** How many the last bulk void voided and refused; cleared while the next one runs. */
++  protected readonly bulkVoided = signal<{ voided: number; refused: number } | null>(null);
++  protected readonly bulkVoidError = signal('');
+   /** The ids of the people selected for a bulk grade. */
+   protected readonly selectedPeople = signal<ReadonlySet<number>>(new Set());
+   /** How many people the last bulk grade changed; null before one, and while one runs. */
+@@ -1239,6 +1262,8 @@ export class People {
+       this.bulkReassignError.set('');
+       this.bulkRedated.set(null);
+       this.bulkRedateError.set('');
++      this.bulkVoided.set(null);
++      this.bulkVoidError.set('');
+       this.rates.set([]);
+       this.periods.set([]);
+       this.usedTags.set([]);
+@@ -2111,6 +2136,35 @@ export class People {
+     }
+   }
+ 
++  /**
++   * Void every selected claim that can be voided, in list order, with the reason (none while the sheet
++   * has no void reasons); show how many were voided and refused.
++   */
++  protected async bulkVoid(reason: string): Promise<void> {
++    if (this.bulkRunning) return;
++    this.bulkVoided.set(null);
++    this.bulkVoidError.set('');
++    const sheet = this.session.sheetId();
++    if (!sheet) return;
++    const base = `/api/sheets/${encodeURIComponent(sheet)}`;
++    this.bulkRunning = true;
++    try {
++      const result = await firstValueFrom(this.http.post<{ voided: number; refused: number }>(
++        `${base}/claims/void`, { ids: [...this.selectedIds()], reason: reason || null }, { headers: this.headers() }));
++      const claims = await firstValueFrom(this.http.get<Claim[]>(`${base}/claims`, { headers: this.headers() }));
++      const list = await firstValueFrom(this.http.get<Person[]>(this.url(sheet), { headers: this.headers() }));
++      if (this.session.sheetId() !== sheet) return;
++      this.claims.set(claims);
++      this.people.set(list);
++      this.selectedIds.set(new Set());
++      this.bulkVoided.set(result);
++    } catch {
++      if (this.session.sheetId() === sheet) this.bulkVoidError.set('Could not void the selected claims.');
++    } finally {
++      this.bulkRunning = false;
++    }
++  }
++
+   protected claimSaved(claim: Claim): void {
+     this.claims.update((list) =>
+       list.some((c) => c.id === claim.id) ? list.map((c) => (c.id === claim.id ? claim : c)) : [claim, ...list],
+diff --git a/src/main/java/net/officefloor/hq/app/claim/ClaimBulkService.java b/src/main/java/net/officefloor/hq/app/claim/ClaimBulkService.java
+index 54277548d..adbfdf60d 100644
+--- a/src/main/java/net/officefloor/hq/app/claim/ClaimBulkService.java
++++ b/src/main/java/net/officefloor/hq/app/claim/ClaimBulkService.java
+@@ -18,6 +18,7 @@ import net.officefloor.hq.app.person.PersonRetiredException;
+ import net.officefloor.hq.app.setting.Role;
+ import net.officefloor.hq.app.setting.SettingService;
+ import net.officefloor.hq.app.sheet.SheetService;
++import net.officefloor.hq.app.voidreason.VoidReasonRequiredException;
+ import org.springframework.stereotype.Service;
+ import org.springframework.transaction.annotation.Transactional;
+ import org.springframework.transaction.interceptor.TransactionAspectSupport;
+@@ -95,6 +96,27 @@ public class ClaimBulkService {
+         return new Result(selected.size(), 0);
+     }
+ 
++    /**
++     * Void each selected claim that can be voided, by the rules of voiding one (who may, which statuses,
++     * a settled claim only by a steward, closed periods, the reason while the sheet has void reasons),
++     * with its own CLAIM_VOIDED and rollup lines.
++     */
++    public Result voidAll(String sheetId, String user, Set<Long> ids, String reason) {
++        if (refusesAll(sheetId, user)) return new Result(0, ids.size());
++        int done = 0;
++        for (Claim claim : selected(sheetId, ids)) {
++            try {
++                claims.voidClaim(sheetId, user, claim.getId(), reason);
++                done++;
++            } catch (ClaimStatusRefusedException | ClaimNotPermittedException | ClaimNotStewardException
++                    | ClaimVoidWindowException | VoidReasonRequiredException | PeriodClosedException
++                    | ClaimNotFoundException | PersonNotFoundException refused) {
++                // left as it is
++            }
++        }
++        return new Result(done, ids.size() - done);
++    }
++
+     /** The number of the sheet's last settle batch, or null while there has been none. */
+     public Integer lastSettleBatch(String sheetId) {
+         int last = sheets.lastSettleBatch(sheetId);
+diff --git a/src/main/java/net/officefloor/hq/app/claim/ClaimController.java b/src/main/java/net/officefloor/hq/app/claim/ClaimController.java
+index 6043f5ffd..fd0c61aa0 100644
+--- a/src/main/java/net/officefloor/hq/app/claim/ClaimController.java
++++ b/src/main/java/net/officefloor/hq/app/claim/ClaimController.java
+@@ -191,6 +191,12 @@ public class ClaimController {
+     /** How many of the selected claims a bulk re-date re-dated, and how many it refused. */
+     public record BulkRedateView(int redated, int refused) {}
+ 
++    /** The claims selected for a bulk void, by id, and the reason they are voided with (none for a sheet without reasons). */
++    public record BulkVoidRequest(@NotNull @Size(max = 1000) Set<@NotNull Long> ids, @Size(max = 200) String reason) {}
++
++    /** How many of the selected claims a bulk void voided, and how many it refused. */
++    public record BulkVoidView(int voided, int refused) {}
++
+     /** How many of the selected claims a bulk move moved, and how many it refused. */
+     public record BulkReassignView(int reassigned, int refused) {}
+ 
+@@ -345,6 +351,16 @@ public class ClaimController {
+         return new BulkRedateView(result.done(), result.refused());
+     }
+ 
++    @OpenToViewer
++    @PostMapping("/claims/void")
++    public BulkVoidView bulkVoid(
++            @PathVariable @Size(max = 100) @Pattern(regexp = "[A-Za-z0-9._-]+") String sheetId,
++            @RequestHeader("X-User") @NotBlank @Size(max = 100) String user,
++            @RequestBody @Valid BulkVoidRequest request) {
++        ClaimBulkService.Result result = bulk.voidAll(sheetId, user, request.ids(), request.reason());
++        return new BulkVoidView(result.done(), result.refused());
++    }
++
+     @PostMapping("/claims/{id}/settle")
+     public ClaimView settle(
+             @PathVariable @Size(max = 100) @Pattern(regexp = "[A-Za-z0-9._-]+") String sheetId,

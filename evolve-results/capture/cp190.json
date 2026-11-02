@@ -1,0 +1,64 @@
+{
+  "checkpoint": 190,
+  "stack": {
+    "repo": "/home/daniel/officehq-angular-spring",
+    "origin": "git@github.com:officefloor/officehq-angular-spring.git",
+    "name": "officehq-angular-spring",
+    "base_ref": "base-empty",
+    "base_commit": "65cb8233ea38b2dfa6cfd18709e30cd18fdf3250"
+  },
+  "checkpoint_id": "cp190_bulk-void",
+  "phase": "late",
+  "type": "additive",
+  "mutates": [],
+  "replaced_tests": [],
+  "request": {
+    "spec": "Selected claims can be voided together: a reason select (when the sheet has void reasons) and a\nbutton beside the bulk buttons; each selected claim is voided in list order exactly as the row's\nvoid does (with its CLAIM_VOIDED and rollup lines); show how many were voided and how many\nrefused.\n",
+    "prompt": "You are implementing ONE change to this application.\n\nFIRST read AGENTS.md \u2014 it states the working rules and how the app is tested, and sends you to\nDESIGN.md for the app's stack and conventions. Follow both.\n\nTHE CHANGE REQUEST:\nSelected claims can be voided together: a reason select (when the sheet has void reasons) and a\nbutton beside the bulk buttons; each selected claim is voided in list order exactly as the row's\nvoid does (with its CLAIM_VOIDED and rollup lines); show how many were voided and how many\nrefused.\n\nYour work is verified by an automated Playwright UI test already installed under e2e/specs/.\nRead that spec: it declares the exact data-testid anchors, values, test data and any audit\nrecords it expects \u2014 match them. Run `bin/e2e` to build the app, start it, and run the test as\nyou work; iterate until it passes. Change whatever the request needs across the app \u2014 its stored\ndata, its server and its front end. Do NOT edit bin/build, bin/start, bin/stop, bin/e2e,\nAGENTS.md, CLAUDE.md, DESIGN.md, e2e/support/ or the test spec.\n"
+  },
+  "commit_sha": "2e30b2582c814c7fc65139967eda7643e2776036",
+  "reset_sha": "",
+  "preagent_sha": "454cb452e38e8c95580b962a77287feb2f4168f1",
+  "prev_sha": "454cb452e38e8c95580b962a77287feb2f4168f1",
+  "base_sha": "65cb8233ea38b2dfa6cfd18709e30cd18fdf3250",
+  "agent": {
+    "ok": true,
+    "cost_usd": 0.8355157999999999,
+    "input_tokens": 8,
+    "output_tokens": 816,
+    "cache_read_tokens": 199355,
+    "cache_creation_tokens": 3035,
+    "num_turns": 3,
+    "duration_ms": 14109,
+    "duration_api_ms": 120325,
+    "model": "claude-opus-5-5",
+    "session_id": "5789d446-9336-43c3-b31d-616fdb6676fd",
+    "stop_reason": "success",
+    "result_text": "You can now void selected claims together. I ran `bin/e2e` and all 4 tests passed: the new bulk-void test and the three existing scenarios.\n\n**Server**\n- **`ClaimBulkService.voidAll`** works like the other bulk actions. It goes through the selected claims in list order (people in list position, each person's claims newest first) and voids each one through `ClaimService.voidClaim`, the same call a row's Void button makes. So every claim gets its own transaction, its own `CLAIM_VOIDED` line and its own rollup lines, and follows the same rules as a single void:\n  - only a steward can void a settled claim (and it's logged with `reversed=`);\n  - claims due in a closed period are refused;\n  - when the sheet has void reasons, a missing or unknown reason is refused.\n- A refused claim is left unchanged and counted. As with the other bulk actions, a viewer or an archived sheet gets every selected claim counted as refused.\n- **`POST /claims/void`** in `ClaimController` takes `{ ids, reason }` and returns `{ voided, refused }`.\n\n**Front end (`people.ts`)**\n- A \"Void selected claims\" button sits next to the other bulk buttons. When the sheet has void reasons, a reason select (`bulk-void-reason`) appears beside it, defaulting to \"Choose a reason\".\n- Pressing the button clears the old counts, then shows the new ones in `bulk-voided` and `bulk-void-refused`.\n- `bulk-void-error` only appears if the request itself fails. A missing reason doesn't show an error: those claims are counted as refused, which is what the test expects.\n- Afterwards it reloads the claims and people and clears the selection. The other bulk claim actions reload only the claims; I added the people reload so totals update without re-loading the sheet.",
+    "error": "",
+    "attempts": [
+      {
+        "ok": true,
+        "limit_reached": false,
+        "retryable": false,
+        "timed_out": false,
+        "cost_usd": 0.8355157999999999,
+        "num_turns": 3,
+        "duration_ms": 14109,
+        "duration_api_ms": 120325,
+        "error": ""
+      }
+    ]
+  },
+  "agent_stream_file": "cp190.agent.jsonl",
+  "agent_diff_file": "cp190.agent.diff",
+  "build_log_file": null,
+  "tests": {
+    "gated": false,
+    "queued": true
+  },
+  "probe": null,
+  "pinned_touched": [],
+  "acceptance_touched": [],
+  "impact_gate": null
+}
