@@ -114,7 +114,10 @@ public class Claim {
     @Column(name = "stated", nullable = false)
     private boolean stated;
 
-    /** The due it had at its person's last statement; none while not stated, or stated with no due. */
+    /**
+     * The due it had as shown at its person's last statement, late charge and floor included; none while not
+     * stated, or stated with no due.
+     */
     @Column(name = "stated_due", precision = 14, scale = 2)
     private BigDecimal statedDue;
 

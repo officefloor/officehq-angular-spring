@@ -811,8 +811,9 @@ public class ClaimService {
     }
 
     /**
-     * A claim's figure now: the due fixed when it was settled, else the rate figure bound by its person's
-     * last statement, else its rate figure (no floor, no charge); null when it has none.
+     * A claim's figure now: the due fixed when it was settled, else the due bound by its person's last
+     * statement (late charge and floor included), else its rate figure (no floor, no charge); null when it
+     * has none.
      */
     public BigDecimal figureOf(String sheetId, Person person, Claim claim) {
         if (claim.getSettledDue() != null) return claim.getSettledDue();
@@ -823,7 +824,7 @@ public class ClaimService {
     /**
      * A claim's due now: the greater of the floor in force on its date and its figure with the late
      * charge on top while it is overdue (a correction: neither); a settled due as fixed; null when it
-     * has none. A statement binds the figure, never the charge nor the floor.
+     * has none. A due bound by a statement is shown as bound, its charge no longer following today.
      */
     public BigDecimal chargedFigureOf(String sheetId, Person person, Claim claim) {
         return charged(sheetId, person, claim, figureOf(sheetId, person, claim));
@@ -860,9 +861,13 @@ public class ClaimService {
         return new RatePreview(count, diff.setScale(2));
     }
 
-    /** The claim's due with the figure given: floored, with its late charge while overdue; a settled due as fixed. */
+    /**
+     * The claim's due with the figure given: floored, with its late charge while overdue; a settled due as
+     * fixed, a due bound by a statement as bound.
+     */
     private BigDecimal charged(String sheetId, Person person, Claim claim, BigDecimal figure) {
         if (claim.getSettledDue() != null) return claim.getSettledDue();
+        if (claim.isBound()) return claim.getStatedDue();
         return floored(sheetId, claim, LateCharge.withCharge(claim, figure, sheets.today(sheetId),
                 graceOf(sheetId, person, claim), d -> settings.latePctOn(sheetId, d), roundingOf(sheetId, claim)));
     }

@@ -110,11 +110,13 @@ public class RollupService {
                 BigDecimal floor = sheet == null ? zero() : sheet.floorOn(claim.getDate());
                 // and the grace days of their grade on the claim's date, in force on it
                 int grace = sheet == null ? 0 : sheet.graceOn(grade, claim.getDate());
-                BigDecimal figure = LateCharge.withCharge(claim,
+                // a settled due is frozen and a due bound by a statement shown as bound, charge and floor included
+                boolean frozen = claim.getSettledDue() != null || claim.isBound();
+                BigDecimal figure = frozen ? figureOf(claim, levels, grade, rounding) : LateCharge.withCharge(claim,
                         figureOf(claim, levels, grade, rounding), today, grace,
                         d -> sheet == null ? zero() : sheet.latePctOn(d), rounding);
-                // the floor last, over the figure and its charge; a settled due is frozen, a correction has none
-                if (figure != null && claim.getSettledDue() == null && !claim.isCorrection()) figure = figure.max(floor);
+                // the floor last, over the figure and its charge; a correction has none
+                if (figure != null && !frozen && !claim.isCorrection()) figure = figure.max(floor);
                 // a due under a grade they had on its date but not today counts like a fixed one
                 if (figure != null && today != null && !grade.equals(person.gradeOn(today))) fixed = true;
                 // and so does a due under a rate that is not the one in force today
@@ -197,7 +199,7 @@ public class RollupService {
     }
 
     /**
-     * A claim's figure: its settled due, else its stated rate figure, else its rate figure (no floor; of the rates
+     * A claim's figure: its settled due, else its stated due (charge and floor included), else its rate figure (no floor; of the rates
      * that apply to it, no forward-only one saved after it was added),
      * rounded as given; null when it has none.
      */

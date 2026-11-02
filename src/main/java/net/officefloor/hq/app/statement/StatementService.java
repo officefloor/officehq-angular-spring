@@ -33,9 +33,10 @@ import org.springframework.transaction.annotation.Transactional;
 
 /**
  * The statements taken for people on a sheet. Taking one records the person's due-total at that
- * moment (late charges included, at most the sheet's cap) and binds each of their claims that counts to the figure it has
- * then, without its late charge, which keeps following the sheet's today; their other claims
- * are left unbound, their due live again. A claim's due fixed when settled stays as it is.
+ * moment (late charges included, at most the sheet's cap) and binds each of their claims that counts to its due as
+ * shown then, late charge and floor included: while bound, the claim shows and totals that figure and its charge no
+ * longer follows the sheet's today (a later statement binds it as shown then, so a bound due stays as it is); their
+ * other claims are left unbound, their due live again. A claim's due fixed when settled stays as it is.
  * A steward can cancel a person's last statement: the claims it bound are live again (a figure bound
  * by a statement before it is not restored) and the statement before it is their last.
  * A statement can also be taken as of an earlier date ({@link #take}); it shows that date as its date.
@@ -132,7 +133,6 @@ public class StatementService {
                 claim.unstate(today);
                 continue;
             }
-            BigDecimal figure = claimService.figureOf(sheetId, person, claim);
             BigDecimal due = claimService.chargedFigureOf(sheetId, person, claim);
             if (claim.getSettledDue() != null || (claim.isBound() && claim.getStatedDue() != null)) fixed = true;
             // a due under a grade they had on its date but not today counts like a fixed one
@@ -141,7 +141,7 @@ public class StatementService {
             String grade = person.gradeOn(claim.getDate());
             if (due != null && !levels.inForceFor(grade, claim.getDate(), claim.getAdded()).map(Rate::getId)
                     .equals(levels.inForce(grade, today).map(Rate::getId))) fixed = true;
-            claim.state(figure, today);
+            claim.state(due, today);
             if (due != null) total = total.add(due);
             counted++;
         }
@@ -185,7 +185,8 @@ public class StatementService {
                             .map(rate -> claim.getAmount().multiply(rate.getPct()).movePointLeft(2).setScale(2, rounding))
                             .orElse(null);
             BigDecimal due = figure;
-            if (settled == null) {
+            // a settled due is frozen, a bound one as bound (charge and floor included)
+            if (settled == null && binding == null) {
                 if (status.isOpen()) {
                     due = LateCharge.withChargeAsOpen(claim, due, asOf, sheet.graceOn(grade, claim.getDate(), asOf),
                             d -> sheet.latePctOn(d, asOf), rounding);
@@ -200,7 +201,7 @@ public class StatementService {
                     .equals(ratesThen.inForce(grade, asOf))) {
                 fixed = true;
             }
-            claim.state(figure, today);
+            claim.state(due, today);
             if (due != null) total = total.add(due);
             counted++;
         }

@@ -200,15 +200,17 @@ function halfUp(basis: string, late: Late): boolean {
 }
 
 /**
- * A claim's due in cents: the due fixed when it was settled (late charge frozen in), else the greater of
- * the floor in force on its date (`floorOn`, in cents) and its figure — the rate figure bound by its
- * person's last statement, else its amount times its person's rate on its date (as `pctOn` gives it) —
+ * A claim's due in cents: the due fixed when it was settled (late charge frozen in), else the due bound by
+ * its person's last statement as shown then (late charge and floor included), else the greater of
+ * the floor in force on its date (`floorOn`, in cents) and its figure — its amount times its person's
+ * rate on its date (as `pctOn` gives it) —
  * with its late charge (by the late percent in force on each 30-day boundary) on top; a correction has
  * no floor and no charge. Null when it has none. Its live figures round by the date `basis` (see {@link roundsOn}).
  * Its grace days (`graceOn`) put off when it is overdue and its charge's 30-day boundaries.
  */
 export function claimDueCents(c: Claim, pctOn: PctOn, floorOn: FloorOn, late: Late, basis: string, graceOn: GraceOn): number | null {
   if (c.settledDue !== null) return cents(c.settledDue);
+  if (isBound(c)) return c.statedDue === null ? null : cents(c.statedDue);
   const up = halfUp(basis, late);
   const figure = figureCents(c, pctOn, up);
   if (figure === null) return null;
@@ -216,9 +218,8 @@ export function claimDueCents(c: Claim, pctOn: PctOn, floorOn: FloorOn, late: La
   return isCorrection(c) ? charged : Math.max(charged, floorOn(c.date));
 }
 
-/** A claim's figure in cents: the rate figure bound by its person's last statement, else its rate figure (no floor). */
+/** A claim's rate figure in cents (no floor). */
 function figureCents(c: Claim, pctOn: PctOn, halfUp: boolean): number | null {
-  if (isBound(c)) return c.statedDue === null ? null : cents(c.statedDue);
   const pct = pctOn(c.date, c.added);
   if (pct === null) return null;
   return dueCents(cents(c.amount), pct, halfUp);
@@ -229,7 +230,7 @@ function figureCents(c: Claim, pctOn: PctOn, halfUp: boolean): number | null {
  * 30 days past its due-by plus its grace days, the late percent in force on that boundary date (the due-by plus the
  * grace plus 30, 60, 90 ... days) of it plus the charges of the boundaries before it (compounding), rounded like a
  * due, and the charges added up; 0 when not overdue, a
- * correction, or waived on or before today. Never bound by a statement.
+ * correction, or waived on or before today. A statement binds it into the claim's due (see {@link claimDueCents}).
  */
 export function lateChargeCents(c: Claim, figureCents: number, late: Late, halfUp: boolean, graceOn: GraceOn): number {
   if (late.today === null || isCorrection(c) || isWaivedAt(c, late.today) || !isOverdue(c, late.today, graceOn)) return 0;

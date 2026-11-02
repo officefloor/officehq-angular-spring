@@ -9,9 +9,9 @@ import java.util.function.Function;
  * The late charge on an overdue claim, worked out per 30-day boundary: for each full 30 days past its
  * due-by plus its grace days (those of its person's grade on its date, in force on its date; 0 when none), the
  * late percent in force on that boundary date (the due-by plus the grace plus 30, 60, 90 ... days) of its
- * figure (the rate figure bound by a statement, else its rate figure, with no floor) plus the charges of the
+ * rate figure (with no floor) plus the charges of the
  * boundaries before it (compounding), rounded to cents like its due ({@link Rounding}), and the charges added up; a boundary whose percent is 0.00 adds nothing. A
- * correction has none, nor a claim whose charge was waived by today. It is never bound by a statement; settling freezes it into the settled due.
+ * correction has none, nor a claim whose charge was waived by today. A statement binds it into the due it binds, which then no longer follows today; settling freezes it into the settled due.
  */
 public final class LateCharge {
 
