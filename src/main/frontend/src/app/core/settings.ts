@@ -53,6 +53,9 @@ export interface Settings {
   /** The proof threshold each grade has of its own in force on the sheet's today, as text with two
    *  decimals, by grade; a grade not in it takes the sheet's. */
   gradeProofThresholds: Partial<Record<Grade, string>>;
+  /** The pot a balanced pool's members cut by their shares, as text with two decimals; null when
+   *  blank (none). Not dated. */
+  pot: string | null;
 }
 
 /** The grace days recorded for each grade (null: blank, none), each from its from-date, earliest
@@ -240,6 +243,12 @@ export class SheetSettings {
   setEntryDate(value: string | null): Promise<Settings> {
     const [sheetId, headers] = this.active();
     return firstValueFrom(this.http.put<Settings>(`${this.url(sheetId)}/settings/entry-date`, { value }, { headers }));
+  }
+
+  /** Set the pot; null for blank (none). */
+  setPot(value: string | null): Promise<Settings> {
+    const [sheetId, headers] = this.active();
+    return firstValueFrom(this.http.put<Settings>(`${this.url(sheetId)}/settings/pot`, { value }, { headers }));
   }
 
   /** Set the roles (comma separated; null for blank, the standing rule) that may take an action. */

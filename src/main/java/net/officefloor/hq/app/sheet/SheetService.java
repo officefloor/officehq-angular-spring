@@ -413,6 +413,23 @@ public class SheetService {
         return saved;
     }
 
+    /** The sheet's pot; null when blank (none). */
+    @Transactional(readOnly = true)
+    public BigDecimal pot(String id) {
+        return sheets.findById(id).map(Sheet::getPot).orElse(null);
+    }
+
+    /** Change the sheet's pot (null: blank, none); recorded even when unchanged. */
+    @Transactional
+    public synchronized Sheet setPot(String id, String user, BigDecimal pot) {
+        Sheet sheet = load(id, user);
+        sheet.setPot(pot);
+        Sheet saved = sheets.saveAndFlush(sheet);
+        audit.recordOnCommit("SETTING_CHANGED sheet=" + id + " by=" + user + " key=pot value="
+                + (pot == null ? "" : pot.setScale(2).toPlainString()));
+        return saved;
+    }
+
     /** The most a person's due-total on the sheet comes to: the cap in force on the sheet's today;
      *  null when there is no cap. */
     @Transactional(readOnly = true)

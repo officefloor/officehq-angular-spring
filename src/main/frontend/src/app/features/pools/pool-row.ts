@@ -5,7 +5,8 @@ import { Person } from '../../core/people';
 import { Pool, Pools, formatCents, shareCents } from '../../core/pools';
 
 // A pool's row: its members with their shares, the total and whether it is balanced (exactly
-// 100.00), and the entry a member is added with. A retired member's share counts as 0.00.
+// 100.00), each member's cut of the sheet's pot (blank unless the pool is balanced and there is a
+// pot), and the entry a member is added with. A retired member's share counts as 0.00.
 @Component({
   selector: 'app-pool-row',
   imports: [ReactiveFormsModule],
@@ -19,7 +20,8 @@ import { Pool, Pools, formatCents, shareCents } from '../../core/pools';
     <ul>
       @for (m of pool().members; track m.personId) {
         <li [attr.data-testid]="'pool-member-' + pool().name + '-' + m.personId">
-          {{ nameOf(m.personId, m.name) }}: <span data-testid="pool-share">{{ m.share }}</span>
+          {{ nameOf(m.personId, m.name) }}: <span data-testid="pool-share">{{ m.share }}</span>,
+          cut <span data-testid="pool-cut">{{ m.cut ?? '' }}</span>
           @if (isRetired(m.personId, m.retired)) { (retired) }
         </li>
       }

@@ -10,6 +10,9 @@ export interface PoolMember {
   share: string;
   /** Whether the person has a retirement day set, whatever the day: their share then counts as 0.00. */
   retired: boolean;
+  /** Their cut of the sheet's pot, as text with two decimals; null when the pool shows no cut (it is
+   *  not balanced, or there is no pot). */
+  cut: string | null;
 }
 
 /** A pool on the sheet: its members in the order they were added, their shares' total and whether
@@ -57,6 +60,12 @@ export class Pools {
       this.list.set([]);
       if (sheetId) void this.reload(sheetId);
     });
+  }
+
+  /** Read the active sheet's pools again (the pot they cut has changed). */
+  refresh(): void {
+    const sheetId = this.session.sheetId();
+    if (sheetId) void this.reload(sheetId);
   }
 
   /** Add a pool; refused (400) when the name is blank and (409) when it is already a pool. */

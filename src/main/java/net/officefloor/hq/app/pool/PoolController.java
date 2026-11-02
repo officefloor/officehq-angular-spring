@@ -4,7 +4,9 @@ import jakarta.validation.Valid;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.NotNull;
 import jakarta.validation.constraints.Size;
+import java.math.BigDecimal;
 import java.util.List;
+import java.util.stream.IntStream;
 import org.springframework.http.HttpStatus;
 import org.springframework.validation.annotation.Validated;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -21,19 +23,24 @@ import org.springframework.web.bind.annotation.RestController;
 @Validated
 public class PoolController {
 
-    /** A member as the screen shows them: the person, their share, and whether they are retired. */
-    public record MemberView(long personId, String name, String share, boolean retired) {
-        static MemberView of(PoolService.Member m) {
+    /** A member as the screen shows them: the person, their share, whether they are retired, and
+     *  their cut of the pot as text with two decimals (null when the pool shows no cut). */
+    public record MemberView(long personId, String name, String share, boolean retired, String cut) {
+        static MemberView of(PoolService.Member m, BigDecimal cut) {
             return new MemberView(m.person().getId(), m.person().getName(),
-                    m.member().getShare().toPlainString(), m.person().isRetired());
+                    m.member().getShare().toPlainString(), m.person().isRetired(),
+                    cut == null ? null : cut.toPlainString());
         }
     }
 
     /** A pool as the screen shows it: its members, their shares' total and whether it is 100.00. */
     public record PoolView(long id, String name, List<MemberView> members, String totalShare, boolean balanced) {
         static PoolView of(PoolService.Listed l) {
+            List<BigDecimal> cuts = l.cuts();
             return new PoolView(l.pool().getId(), l.pool().getName(),
-                    l.members().stream().map(MemberView::of).toList(),
+                    IntStream.range(0, l.members().size())
+                            .mapToObj(i -> MemberView.of(l.members().get(i), cuts.isEmpty() ? null : cuts.get(i)))
+                            .toList(),
                     l.totalShare().toPlainString(), l.balanced());
         }
     }
