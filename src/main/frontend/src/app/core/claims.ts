@@ -148,6 +148,14 @@ export function sumAmounts(amounts: string[]): string {
   return (cents / 100).toFixed(2);
 }
 
+/** Amounts added up, leaving out the single highest and the single lowest when there are three or
+ *  more. */
+export function trimmedSum(amounts: string[]): string {
+  if (amounts.length < 3) return sumAmounts(amounts);
+  const sorted = [...amounts].sort((a, b) => Number(a) - Number(b));
+  return sumAmounts(sorted.slice(1, -1));
+}
+
 /** Whether a claim is bound by its person's last statement now: it was bound, and it is not
  *  pending (a pending claim shows its live figure). */
 function bound(c: Claim): boolean {

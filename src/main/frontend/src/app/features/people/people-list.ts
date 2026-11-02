@@ -1,7 +1,7 @@
 import { HttpErrorResponse } from '@angular/common/http';
 import { Component, computed, effect, inject, signal } from '@angular/core';
 import { FormControl, FormGroup, ReactiveFormsModule } from '@angular/forms';
-import { Claim, Claims, QuickAdded, claimDue, countsAsOf, countsLive, overdue, sumAmounts } from '../../core/claims';
+import { Claim, Claims, QuickAdded, claimDue, countsAsOf, countsLive, overdue, sumAmounts, trimmedSum } from '../../core/claims';
 import { Patron, Patrons } from '../../core/patrons';
 import { Grade, People, Person, gradeOn } from '../../core/people';
 import { Period, Periods, periodOf } from '../../core/periods';
@@ -283,18 +283,19 @@ export class PeopleList {
     }
     return by;
   });
-  /** The sheet's due-total: everyone's due-total added up, skipping those that are n/a. */
+  /** The sheet's due-total: everyone's due-total added up, skipping those that are n/a, and leaving
+   *  out the single highest and lowest when three or more have one. */
   protected readonly dueTotal = computed(() =>
-    sumAmounts(this.people().map((p) => this.dueOf(p)).filter((d): d is string => d !== null)),
+    trimmedSum(this.people().map((p) => this.dueOf(p)).filter((d): d is string => d !== null)),
   );
   /** How many claims on the sheet are overdue among those that count in the live totals. */
   protected readonly overdueCount = computed(() =>
     this.people().reduce((n, p) => n + this.overdueOf(p).length, 0),
   );
   /** The sheet's overdue-total: the due figures of the overdue claims that count, skipping those
-   *  with no due. */
+   *  with no due, and leaving out the single highest and lowest person's when there are three or more. */
   protected readonly overdueTotal = computed(() =>
-    sumAmounts(this.people().map((p) => this.overdueTotalOf(p))),
+    trimmedSum(this.people().map((p) => this.overdueTotalOf(p))),
   );
   /** Per grade: the people not retired on it on the sheet's today, and their due-totals added up,
    *  skipping those that are n/a. */
