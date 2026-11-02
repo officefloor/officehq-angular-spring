@@ -95,7 +95,7 @@ public class RateService {
                 return g.equals(grade) ? Optional.empty() : now.inherited(g, day);
             }
         };
-        Map<Long, Person> byId = people.findBySheetIdOrderByIdAsc(sheetId).stream()
+        Map<Long, Person> byId = people.findBySheetIdOrderByPositionAscIdAsc(sheetId).stream()
                 .collect(Collectors.toMap(Person::getId, Function.identity()));
         BigDecimal zero = BigDecimal.ZERO.setScale(2);
         int count = 0;

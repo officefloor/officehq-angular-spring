@@ -193,7 +193,7 @@ public class PeriodService {
      *  whose due-by falls in it and that count by their status at its end, skipping those with no due
      *  and those the live rules leave out (see Dues#countsAsOf). */
     private Map<Long, BigDecimal> personTotals(String sheetId, Period period) {
-        Map<Long, Person> byId = people.findBySheetIdOrderByIdAsc(sheetId).stream()
+        Map<Long, Person> byId = people.findBySheetIdOrderByPositionAscIdAsc(sheetId).stream()
                 .collect(Collectors.toMap(Person::getId, Function.identity()));
         Map<Long, BigDecimal> totals = new HashMap<>();
         for (Long id : byId.keySet()) {

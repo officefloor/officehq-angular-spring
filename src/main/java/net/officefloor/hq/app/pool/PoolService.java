@@ -106,7 +106,7 @@ public class PoolService {
     public List<Listed> list(String sheetId) {
         List<Pool> all = pools.findBySheetIdOrderByIdAsc(sheetId);
         Map<Long, Pool> poolsById = all.stream().collect(Collectors.toMap(Pool::getId, Function.identity()));
-        Map<Long, Person> byId = people.findBySheetIdOrderByIdAsc(sheetId).stream()
+        Map<Long, Person> byId = people.findBySheetIdOrderByPositionAscIdAsc(sheetId).stream()
                 .collect(Collectors.toMap(Person::getId, Function.identity()));
         List<PoolMember> memberships = members.findByPoolIdInOrderByIdAsc(poolsById.keySet());
         Map<Long, List<PoolMember>> byPool = memberships.stream().collect(Collectors.groupingBy(PoolMember::getPoolId));

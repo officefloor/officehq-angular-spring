@@ -168,6 +168,15 @@ export class People {
     );
   }
 
+  /** Swap the person with the one above (up) or below (down) them in the list; answers the people
+   *  in their new list order. Refused at the top moving up and at the bottom moving down. */
+  move(id: number, direction: 'up' | 'down'): Promise<Person[]> {
+    const { sheetId, user } = this.active();
+    return firstValueFrom(
+      this.http.post<Person[]>(`${this.url(sheetId)}/${id}/move`, { direction }, { headers: { 'X-User': user } }),
+    );
+  }
+
   /** Retire the person from a day; null takes the sheet's today. */
   retire(id: number, from: string | null): Promise<Person> {
     const { sheetId, user } = this.active();

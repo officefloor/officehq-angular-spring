@@ -103,7 +103,7 @@ public class PersonTransferService {
             rollup.tracking(toSheetId, user, () -> {
                 audit.recordOnCommit("PERSON_TRANSFERRED sheet=" + toSheetId + " by=" + user + " name="
                         + from.getName() + " from=" + sheetId);
-                Person arrived = people.saveAndFlush(from.transferredTo(toSheetId));
+                Person arrived = people.saveAndFlush(from.transferredTo(toSheetId, people.nextPosition(toSheetId)));
                 Map<String, String> numbers = renumber(toSheetId, theirs);
                 for (Claim claim : theirs) {
                     Claim copy = claims.saveAndFlush(claim.transferredTo(toSheetId, arrived.getId(), numbers::get));

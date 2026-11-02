@@ -6,12 +6,23 @@ import java.util.Optional;
 import jakarta.persistence.LockModeType;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Lock;
+import org.springframework.data.jpa.repository.Modifying;
 import org.springframework.data.jpa.repository.Query;
 
 public interface PersonRepository extends JpaRepository<Person, Long> {
 
-    /** The people on a sheet in the order they were added. */
-    List<Person> findBySheetIdOrderByIdAsc(String sheetId);
+    /** The people on a sheet in list order: by position, then in the order they were added. */
+    List<Person> findBySheetIdOrderByPositionAscIdAsc(String sheetId);
+
+    /** The position after the last on the sheet's list: where a new person goes. */
+    @Query("select coalesce(max(p.position), 0) + 1 from Person p where p.sheetId = :sheetId")
+    long nextPosition(String sheetId);
+
+    /** Put a person at a position in the list. Moving a person is no edit of them: their version
+     *  stays as it is. */
+    @Modifying(flushAutomatically = true, clearAutomatically = true)
+    @Query("update Person p set p.position = :position where p.id = :id")
+    void placeAt(Long id, long position);
 
     Optional<Person> findByIdAndSheetId(Long id, String sheetId);
 

@@ -35,6 +35,10 @@ public class Person {
     @Column(name = "name", nullable = false)
     private String name;
 
+    /** The person's place in the sheet's list, smallest first; a new person goes to the end. */
+    @Column(name = "position", nullable = false)
+    private long position;
+
     /** The grades the person was given, each from its from-date; the first has none. */
     @ElementCollection(fetch = FetchType.EAGER)
     @CollectionTable(name = "person_grade", joinColumns = @JoinColumn(name = "person_id"))
@@ -80,16 +84,19 @@ public class Person {
         this.name = name;
     }
 
-    public Person(String sheetId, String name, String grade) {
+    public Person(String sheetId, String name, String grade, long position) {
         this.sheetId = sheetId;
         this.name = name;
+        this.position = position;
         this.grades.add(new GradeFrom(null, grade));
     }
 
     /** A copy of the person for another sheet (they were transferred there): their name, every
-     *  grade they were given (and its from-date), terms, contact and aliases; no holds. */
-    public Person transferredTo(String toSheetId) {
+     *  grade they were given (and its from-date), terms, contact and aliases; no holds. They take
+     *  the place given in that sheet's list. */
+    public Person transferredTo(String toSheetId, long toPosition) {
         Person copy = new Person(toSheetId, (Long) null, name);
+        copy.position = toPosition;
         grades.forEach(g -> copy.grades.add(new GradeFrom(g.getFromDate(), g.getGrade())));
         copy.terms = terms;
         copy.contact = contact;
@@ -111,6 +118,10 @@ public class Person {
 
     public void setName(String name) {
         this.name = name;
+    }
+
+    public long getPosition() {
+        return position;
     }
 
     /** The grades the person was given, earliest from-date first, the one with none first of all. */

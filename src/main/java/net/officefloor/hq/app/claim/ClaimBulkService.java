@@ -130,7 +130,7 @@ public class ClaimBulkService {
      *  claim first within a person. */
     private List<Claim> inListOrder(String sheetId, Set<Long> claimIds) {
         Map<Long, Integer> rank = new HashMap<>();
-        List<Person> listed = people.findBySheetIdOrderByIdAsc(sheetId);
+        List<Person> listed = people.findBySheetIdOrderByPositionAscIdAsc(sheetId);
         for (int i = 0; i < listed.size(); i++) {
             rank.put(listed.get(i).getId(), i);
         }

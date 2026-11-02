@@ -126,7 +126,7 @@ public class History {
             }
             Map<Long, PersonRevision> peopleWere = last(personRevisions.findBySheetIdOrderByIdAsc(sheetId),
                     PersonRevision::getPersonId);
-            for (Person person : people.findBySheetIdOrderByIdAsc(sheetId)) {
+            for (Person person : people.findBySheetIdOrderByPositionAscIdAsc(sheetId)) {
                 PersonRevision was = peopleWere.get(person.getId());
                 if (was == null || !was.matches(person)) {
                     personRevisions.save(new PersonRevision(person, today));

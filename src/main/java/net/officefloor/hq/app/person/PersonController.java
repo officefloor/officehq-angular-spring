@@ -7,6 +7,7 @@ import jakarta.validation.constraints.Pattern;
 import jakarta.validation.constraints.Size;
 import java.time.LocalDate;
 import java.util.Comparator;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
@@ -103,6 +104,10 @@ public class PersonController {
     public record HoldForm(LocalDate from, LocalDate to) {
     }
 
+    /** The move form: up or down the list. */
+    public record MoveForm(@NotNull @Pattern(regexp = "up|down") String direction) {
+    }
+
     /** The bulk grade form: the people to give the grade, a grade of A, B or C, and the day it
      *  applies from (left out, the sheet's today). */
     public record GradeForm(@NotNull @Size(max = 1000) Set<@NotNull Long> personIds,
@@ -140,8 +145,14 @@ public class PersonController {
         if (asOf != null) {
             Map<Long, StatementSummary> then = statements.summaries(sheet, asOf);
             Predicate<Person> clashingThen = service.clashing(sheet);
+            Map<Long, Integer> place = new HashMap<>();
+            List<Person> listed = service.list(sheet);
+            for (int i = 0; i < listed.size(); i++) {
+                place.put(listed.get(i).getId(), i);
+            }
             return history.asOf(sheet, asOf).people().values().stream()
-                    .sorted(Comparator.comparing(Person::getId))
+                    .sorted(Comparator.comparing((Person p) -> place.getOrDefault(p.getId(), Integer.MAX_VALUE))
+                            .thenComparing(Person::getId))
                     .map(p -> PersonView.of(p, then.getOrDefault(p.getId(), StatementSummary.NONE), asOf,
                             clashingThen.test(p)))
                     .toList();
@@ -224,6 +235,23 @@ public class PersonController {
             @RequestHeader("X-User") @NotBlank @Size(max = 100) String user,
             @Valid @RequestBody TransferForm form) {
         transfers.transfer(sheetId.trim(), user.trim(), personId, form.toSheet().trim());
+    }
+
+    /** Swap the person with the one above or below them; answers the people in their new order. */
+    @PostMapping("/{personId}/move")
+    public List<PersonView> move(@PathVariable @NotBlank @Size(max = 100) String sheetId,
+            @PathVariable long personId,
+            @RequestHeader("X-User") @NotBlank @Size(max = 100) String user,
+            @Valid @RequestBody MoveForm form) {
+        String sheet = sheetId.trim();
+        List<Person> listed = service.move(sheet, user.trim(), personId, "up".equals(form.direction()));
+        Map<Long, StatementSummary> summaries = statements.summaries(sheet);
+        LocalDate today = sheets.today(sheet);
+        Predicate<Person> clashing = service.clashing(sheet);
+        return listed.stream()
+                .map(p -> PersonView.of(p, summaries.getOrDefault(p.getId(), StatementSummary.NONE), today,
+                        clashing.test(p)))
+                .toList();
     }
 
     @PostMapping("/{personId}/retire")

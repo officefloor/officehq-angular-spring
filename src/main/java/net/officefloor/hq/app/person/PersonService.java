@@ -1,6 +1,8 @@
 package net.officefloor.hq.app.person;
 
 import java.time.LocalDate;
+import java.util.ArrayList;
+import java.util.Collections;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Locale;
@@ -38,10 +40,10 @@ public class PersonService {
         this.roles = roles;
     }
 
-    /** The people on the sheet in the order they were added. */
+    /** The people on the sheet in list order. */
     @Transactional(readOnly = true)
     public List<Person> list(String sheetId) {
-        return people.findBySheetIdOrderByIdAsc(sheetId);
+        return people.findBySheetIdOrderByPositionAscIdAsc(sheetId);
     }
 
     /** Add a person to the sheet. */
@@ -63,7 +65,7 @@ public class PersonService {
             throw contactInUse();
         }
         return rollup.tracking(sheetId, user, () -> {
-            Person fresh = new Person(sheetId, name, grade);
+            Person fresh = new Person(sheetId, name, grade, people.nextPosition(sheetId));
             fresh.setTerms(terms);
             fresh.setContact(contact);
             Person person = saveUnique(fresh);
@@ -101,8 +103,7 @@ public class PersonService {
         return save(sheetId, user, person, name, grade, gradeFrom, terms, contact);
     }
 
-    /** Give each of the people a grade from a day (null: the sheet's today), in list order (the
-     *  order they were added), exactly as the person form would: each keeps their name, terms and contact and
+    /** Give each of the people a grade from a day (null: the sheet's today), in list order, exactly as the person form would: each keeps their name, terms and contact and
      *  is followed by their own PERSON_EDITED and rollup lines. Refused as a whole, changing no one,
      *  when an id names no person on the sheet. A viewer has each of them refused: no one changes. */
     @Transactional
@@ -110,7 +111,7 @@ public class PersonService {
         if (SheetRole.VIEWER.equals(roles.roleOf(sheetId, user))) {
             return List.of();
         }
-        List<Person> chosen = people.findBySheetIdOrderByIdAsc(sheetId).stream()
+        List<Person> chosen = people.findBySheetIdOrderByPositionAscIdAsc(sheetId).stream()
                 .filter(p -> personIds.contains(p.getId())).toList();
         if (chosen.size() != personIds.size()) {
             throw new ResponseStatusException(HttpStatus.NOT_FOUND, "No such person on this sheet");
@@ -188,6 +189,39 @@ public class PersonService {
 
     private static boolean inTree(Set<String> treeNames, String name) {
         return treeNames.contains(name.toLowerCase(Locale.ROOT));
+    }
+
+    /** Swap a person with the one above them in the list (up) or below them (down), recording their
+     *  new position counting from 1; refused when they are at the top and moving up, or at the
+     *  bottom and moving down. Answers the people in their new list order. */
+    @Transactional
+    public List<Person> move(String sheetId, String user, long personId, boolean up) {
+        List<Person> listed = new ArrayList<>(people.findBySheetIdOrderByPositionAscIdAsc(sheetId));
+        int at = -1;
+        for (int i = 0; i < listed.size(); i++) {
+            if (listed.get(i).getId() == personId) {
+                at = i;
+            }
+        }
+        if (at < 0) {
+            throw new ResponseStatusException(HttpStatus.NOT_FOUND, "No such person on this sheet");
+        }
+        int to = up ? at - 1 : at + 1;
+        if (to < 0 || to >= listed.size()) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT,
+                    up ? "The person at the top cannot move up" : "The person at the bottom cannot move down");
+        }
+        Person moved = listed.get(at);
+        Collections.swap(listed, at, to);
+        // Number the whole list afresh from 1, so people who shared a position are told apart.
+        for (int i = 0; i < listed.size(); i++) {
+            if (listed.get(i).getPosition() != i + 1) {
+                people.placeAt(listed.get(i).getId(), i + 1);
+            }
+        }
+        audit.recordOnCommit("PERSON_MOVED sheet=" + sheetId + " by=" + user + " name=" + moved.getName()
+                + " position=" + (to + 1));
+        return people.findBySheetIdOrderByPositionAscIdAsc(sheetId);
     }
 
     /** Retire a person from a day; a day left out takes the sheet's today. */

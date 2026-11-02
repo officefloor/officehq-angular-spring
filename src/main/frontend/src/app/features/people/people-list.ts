@@ -213,6 +213,10 @@ const NO_LEAVE: Leave = { holds: [], retiredFrom: null };
               <td>
                 <button type="button" [attr.data-testid]="'person-edit-' + p.id" (click)="open(p)"
                   [attr.aria-label]="'Edit ' + p.name">Edit</button>
+                <button type="button" data-testid="person-move-up" (click)="move(p, 'up')"
+                  [attr.aria-label]="'Move ' + p.name + ' up'">Up</button>
+                <button type="button" data-testid="person-move-down" (click)="move(p, 'down')"
+                  [attr.aria-label]="'Move ' + p.name + ' down'">Down</button>
                 <label [for]="'person-statement-asof-' + p.id" class="visually-hidden">Take the statement of {{ p.name }} as of</label>
                 <input #statementAsOf type="date" [id]="'person-statement-asof-' + p.id" data-testid="person-statement-asof" />
                 <button type="button" data-testid="person-statement" (click)="statement(p, statementAsOf)"
@@ -565,6 +569,7 @@ export class PeopleList {
   private readonly watching = new Set<number>();
   /** The people whose retirement is waiting for its answer: a second press meanwhile is ignored. */
   private readonly retiring = new Set<number>();
+  private readonly moving = new Set<number>();
   /** The people whose merge is waiting for its answer: a second press meanwhile is ignored. */
   private readonly merging = new Set<number>();
   /** The people whose transfer is waiting for its answer: a second press meanwhile is ignored. */
@@ -727,6 +732,21 @@ export class PeopleList {
         .filter((d): d is string => d !== null)),
       pct: formatCents(x.share),
     })));
+  }
+
+  /** Swap the person with the one above or below them; the list then shows the new order. */
+  protected async move(p: Person, direction: 'up' | 'down'): Promise<void> {
+    if (this.moving.has(p.id)) return;
+    this.moving.add(p.id);
+    this.personError.set(null);
+    this.patronError.set(null);
+    try {
+      this.people.set(await this.api.move(p.id, direction));
+    } catch {
+      this.personError.set({ id: p.id, message: `The person could not be moved ${direction}.` });
+    } finally {
+      this.moving.delete(p.id);
+    }
   }
 
   /** Retire the person from the day given, or the sheet's today when it is left blank. */
@@ -943,6 +963,8 @@ export class PeopleList {
     this.bulkGraded.set(null);
     this.bulkGradeError.set('');
     const ids = this.shown().filter((p) => this.selectedPeople().has(p.id)).map((p) => p.id);
+    // Grading is the next action on each selected row: an error left on one of them goes.
+    ids.forEach((id) => this.clearPersonError(id));
     if (ids.length === 0) {
       this.bulkGradeError.set('Select the people to grade.');
       return;
@@ -1034,6 +1056,7 @@ export class PeopleList {
   }
 
   protected claimSaved(claim: Claim): void {
+    this.clearPersonError(claim.personId);
     this.claims.update((cs) =>
       (cs.some((c) => c.id === claim.id)
         ? cs.map((c) => (c.id === claim.id ? claim : c))
