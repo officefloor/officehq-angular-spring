@@ -1,6 +1,8 @@
 package net.officefloor.hq.app.sheet;
 
+import java.math.BigDecimal;
 import java.time.LocalDate;
+import net.officefloor.hq.app.Audit;
 import net.officefloor.hq.app.rollup.Rollup;
 import org.springframework.context.annotation.Lazy;
 import org.springframework.stereotype.Service;
@@ -13,10 +15,12 @@ public class SheetService {
     private final SheetRepository sheets;
     /** Lazy: the rollup reads the sheet's today through this service. */
     private final Rollup rollup;
+    private final Audit audit;
 
-    public SheetService(SheetRepository sheets, @Lazy Rollup rollup) {
+    public SheetService(SheetRepository sheets, @Lazy Rollup rollup, Audit audit) {
         this.sheets = sheets;
         this.rollup = rollup;
+        this.audit = audit;
     }
 
     /** The sheet with this id, created empty the first time it is loaded, its today the real date. */
@@ -48,5 +52,22 @@ public class SheetService {
             sheet.setToday(today);
             return sheets.saveAndFlush(sheet);
         });
+    }
+
+    /** The most due a clerk may settle on a claim on the sheet; null when there is no limit. */
+    @Transactional(readOnly = true)
+    public BigDecimal clerkLimit(String id) {
+        return sheets.findById(id).map(Sheet::getClerkLimit).orElse(null);
+    }
+
+    /** Change the sheet's clerk limit (null: no limit); recorded even when it is unchanged. */
+    @Transactional
+    public synchronized Sheet setClerkLimit(String id, String user, BigDecimal limit) {
+        Sheet sheet = load(id, user);
+        sheet.setClerkLimit(limit);
+        Sheet saved = sheets.saveAndFlush(sheet);
+        audit.recordOnCommit("SETTING_CHANGED sheet=" + id + " by=" + user + " key=clerk-limit value="
+                + (limit == null ? "" : limit.setScale(2).toPlainString()));
+        return saved;
     }
 }

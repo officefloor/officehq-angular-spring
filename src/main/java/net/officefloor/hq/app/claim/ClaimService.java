@@ -7,6 +7,8 @@ import net.officefloor.hq.app.Audit;
 import net.officefloor.hq.app.period.PeriodRepository;
 import net.officefloor.hq.app.person.Person;
 import net.officefloor.hq.app.person.PersonRepository;
+import net.officefloor.hq.app.role.RoleService;
+import net.officefloor.hq.app.role.SheetRole;
 import net.officefloor.hq.app.rollup.Rollup;
 import net.officefloor.hq.app.sheet.SheetService;
 import org.springframework.http.HttpStatus;
@@ -24,16 +26,18 @@ public class ClaimService {
     private final SheetService sheets;
     private final Rollup rollup;
     private final PeriodRepository periods;
+    private final RoleService roles;
     private final Audit audit;
 
     public ClaimService(ClaimRepository claims, PersonRepository people, Dues dues, SheetService sheets,
-            Rollup rollup, PeriodRepository periods, Audit audit) {
+            Rollup rollup, PeriodRepository periods, RoleService roles, Audit audit) {
         this.claims = claims;
         this.people = people;
         this.dues = dues;
         this.sheets = sheets;
         this.rollup = rollup;
         this.periods = periods;
+        this.roles = roles;
         this.audit = audit;
     }
 
@@ -85,8 +89,8 @@ public class ClaimService {
     }
 
     /** Move a claim to a new status; a change its current status does not allow is refused, and so
-     *  is settling a claim by the user who opened it, and any change to a claim dated inside a closed
-     *  period. */
+     *  is settling a claim by the user who opened it, settling by a clerk a claim whose due is above
+     *  the sheet's clerk limit, and any change to a claim dated inside a closed period. */
     @Transactional
     public Claim changeStatus(String sheetId, String user, long claimId, ClaimStatus to) {
         Claim claim = claims.lockByIdAndSheetId(claimId, sheetId)
@@ -99,6 +103,9 @@ public class ClaimService {
         if (to == ClaimStatus.SETTLED && user.equals(claim.getOpenedBy())) {
             throw new ResponseStatusException(HttpStatus.FORBIDDEN,
                     "The user who opened a claim cannot settle it");
+        }
+        if (to == ClaimStatus.SETTLED) {
+            refuseOverClerkLimit(sheetId, user, claim);
         }
         return rollup.tracking(sheetId, user, () -> {
             // A void claim keeps the number it had (never reused).
@@ -133,6 +140,20 @@ public class ClaimService {
     private void refuseClosed(String sheetId, LocalDate day) {
         if (periods.closedOn(sheetId, day)) {
             throw new ResponseStatusException(HttpStatus.LOCKED, "That claim's period is closed");
+        }
+    }
+
+    /** Refuse a clerk settling a claim whose due is above the sheet's clerk limit; a claim with no
+     *  due (n/a) is within any limit, and a steward settles anything. */
+    private void refuseOverClerkLimit(String sheetId, String user, Claim claim) {
+        BigDecimal limit = sheets.clerkLimit(sheetId);
+        if (limit == null || SheetRole.STEWARD.equals(roles.roleOf(sheetId, user))) {
+            return;
+        }
+        BigDecimal due = dues.figure(sheetId, person(sheetId, claim.getPersonId()), claim);
+        if (due != null && due.compareTo(limit) > 0) {
+            throw new ResponseStatusException(HttpStatus.UNPROCESSABLE_CONTENT,
+                    "A clerk cannot settle a claim whose due is above the clerk limit");
         }
     }
 

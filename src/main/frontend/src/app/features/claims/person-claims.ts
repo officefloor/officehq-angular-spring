@@ -27,6 +27,9 @@ function refusal(e: unknown, action: ClaimAction): string {
   if (e instanceof HttpErrorResponse && e.status === 403 && action === 'settle') {
     return 'The user who opened a claim cannot settle it.';
   }
+  if (e instanceof HttpErrorResponse && e.status === 422 && action === 'settle') {
+    return 'A clerk cannot settle a claim whose due is above the clerk limit.';
+  }
   return 'The claim could not be changed.';
 }
 
