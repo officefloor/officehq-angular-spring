@@ -49,7 +49,7 @@ public class SettingController {
             Map<String, List<DatedView>> dated, Map<String, String> permissions, Integer graceDays,
             LocalDate entryDate, String pot, String parent, int fiscalStartMonth, String alertThreshold,
             Integer escalateAfter, Integer reviewSla, String proofKinds, String defaultGrade, Integer scoreMid,
-            Integer scoreHigh, String scoreLog, Integer maxOpen, Integer pendingSla) {}
+            Integer scoreHigh, String scoreLog, Integer maxOpen, Integer pendingSla, List<LocalDate> policyVersions) {}
 
     /** A value recorded for a dated setting from a date on; null when none. */
     public record DatedView(LocalDate from, String value) {}
@@ -389,7 +389,7 @@ public class SettingController {
                 service.escalateAfter(sheetId), service.reviewSla(sheetId),
                 String.join(",", service.proofKinds(sheetId)), service.defaultGrade(sheetId),
                 service.scoreMid(sheetId), service.scoreHigh(sheetId), service.scoreLog(sheetId) ? "on" : "",
-                service.maxOpen(sheetId), service.pendingSla(sheetId));
+                service.maxOpen(sheetId), service.pendingSla(sheetId), service.policyVersions(sheetId));
     }
 
     @PutMapping("/settings/clerk-limit")

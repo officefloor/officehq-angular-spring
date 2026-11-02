@@ -36,6 +36,9 @@ public class Sheet {
             REVIEW_THRESHOLD = "review-threshold",
             ROUNDING = "rounding";
 
+    /** The policy settings: every value recorded for one of them is a new policy version. */
+    public static final Set<String> POLICY_KEYS = Set.of(ROUNDING, FLOOR, CAP, TERMS, LATE_PCT, CLERK_LIMIT);
+
     /** The values in force before any is recorded. */
     public static final BigDecimal START_FLOOR = new BigDecimal("1.00"), START_LATE_PCT = new BigDecimal("0.00");
     public static final int START_TERMS = 14;
@@ -204,6 +207,19 @@ public class Sheet {
         datedLog.add(new DatedSettingLine(key, from, value, today));
     }
 
+    /** The from-date of each policy version, numbered from 1 in the order recorded (null: none, which counts always). */
+    public List<LocalDate> getPolicyVersions() {
+        return datedLog.stream().filter(d -> POLICY_KEYS.contains(d.getKey())).map(DatedSettingLine::getFrom).toList();
+    }
+
+    /** The current policy version: how many have been recorded; 0 before any. */
+    public int policyVersion() { return getPolicyVersions().size(); }
+
+    /** The policy version in force on the date: how many have a from-date on or before it (or none). */
+    public int policyVersionOn(LocalDate date) {
+        return (int) getPolicyVersions().stream().filter(from -> from == null || !from.isAfter(date)).count();
+    }
+
     /**
      * The key's value in force on the date as recorded by the end of the as-of date: of the values recorded
      * while the sheet's today was on or before it, the last one with the latest from-date on or before the date.
@@ -243,9 +259,12 @@ public class Sheet {
         return d == null ? null : roundingMode(d.getValue());
     }
 
-    /** The due-total, at most the cap in force on the as-of date as recorded by its end; null (n/a) stays null. */
-    public BigDecimal cappedAsOf(BigDecimal dueTotal, LocalDate asOf) {
-        BigDecimal cap = decimalOn(CAP, asOf, asOf, null);
+    /**
+     * The due-total, at most the cap in force on the cap date (the date of the person's latest claim that
+     * counts; null: the as-of date) as recorded by the end of the as-of date; null (n/a) stays null.
+     */
+    public BigDecimal cappedAsOf(BigDecimal dueTotal, LocalDate capDate, LocalDate asOf) {
+        BigDecimal cap = decimalOn(CAP, capDate != null ? capDate : asOf, asOf, null);
         return dueTotal == null || cap == null ? dueTotal : dueTotal.min(cap);
     }
 
@@ -283,13 +302,16 @@ public class Sheet {
     /** The clerk limit in force today; null means no limit. */
     public BigDecimal getClerkLimit() { return decimalOn(CLERK_LIMIT, today, null); }
 
-    /** The grade's own clerk limit in force today; null means none (the sheet's applies). */
-    public BigDecimal gradeClerkLimit(String grade) { return decimalOn(CLERK_LIMIT + "-" + grade, today, null); }
+    /** The grade's own clerk limit in force on the date; null means none (the sheet's applies). */
+    public BigDecimal gradeClerkLimit(String grade, LocalDate date) { return decimalOn(CLERK_LIMIT + "-" + grade, date, null); }
 
-    /** The clerk limit in force today for a claim of the grade: the grade's own, else the sheet's; null means no limit. */
-    public BigDecimal clerkLimitFor(String grade) {
-        BigDecimal own = gradeClerkLimit(grade);
-        return own != null ? own : getClerkLimit();
+    /**
+     * The clerk limit for a claim of the grade dated on the date: the grade's own in force then, else the
+     * sheet's then; null means no limit.
+     */
+    public BigDecimal clerkLimitFor(String grade, LocalDate date) {
+        BigDecimal own = gradeClerkLimit(grade, date);
+        return own != null ? own : decimalOn(CLERK_LIMIT, date, null);
     }
 
     /** The floor in force on the date: 1.00 before any is recorded. */
@@ -297,6 +319,9 @@ public class Sheet {
 
     /** The cap in force today; null means none. */
     public BigDecimal getCap() { return decimalOn(CAP, today, null); }
+
+    /** The cap in force on the date; null means none. */
+    public BigDecimal capOn(LocalDate date) { return decimalOn(CAP, date, null); }
 
     /** The proof threshold in force on the date; null means none. */
     public BigDecimal proofThresholdOn(LocalDate date) { return decimalOn(PROOF_THRESHOLD, date, null); }
@@ -319,11 +344,11 @@ public class Sheet {
     public BigDecimal reviewThresholdOn(LocalDate date) { return decimalOn(REVIEW_THRESHOLD, date, null); }
 
     /**
-     * The due-total, at most the cap in force today less the person's cut total (not below 0.00); null (n/a)
-     * stays null.
+     * The due-total, at most the cap in force on the cap date (the date of the person's latest claim that
+     * counts; null: the sheet's today) less the person's cut total (not below 0.00); null (n/a) stays null.
      */
-    public BigDecimal capped(BigDecimal dueTotal, BigDecimal cutTotal) {
-        BigDecimal cap = getCap();
+    public BigDecimal capped(BigDecimal dueTotal, BigDecimal cutTotal, LocalDate capDate) {
+        BigDecimal cap = capOn(capDate != null ? capDate : today);
         return dueTotal == null || cap == null ? dueTotal
                 : dueTotal.min(cap.subtract(cutTotal).max(BigDecimal.ZERO.setScale(2)));
     }

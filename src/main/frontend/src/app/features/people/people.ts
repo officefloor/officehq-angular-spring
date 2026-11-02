@@ -208,7 +208,8 @@ interface StatementTaken {
 // <name> <share>, sorted by name, and their backing: over the patrons, the patron's figure (their frozen
 // figures of their SETTLED claims dated within the 90 days up to and including the sheet's today) times
 // their share divided by 100, rounded half to even, added up (0.00 with none).
-// A person's due-total is at most the sheet's cap (blank: none) less their cut total, not below 0.00; the
+// A person's due-total is at most the sheet's cap (blank: none) in force on the date of their latest claim that
+// counts (the sheet's today while none does) less their cut total, not below 0.00; the
 // row shows their excess, how far the sum of their figures plus their cut total is above the cap, at most the
 // sum of their figures (0.00 when not, or n/a). Every total of due-totals adds the capped ones.
 // Each row shows the person's cut total: their cuts as the pools show them, across every pool they are a
@@ -1756,16 +1757,21 @@ export class People {
       + held.reduce((sum, h) => sum + h.cents, 0);
   }
 
-  /** The sheet's cap in cents, or null when there is none. */
-  private readonly capCents = computed(() => {
-    const cap = this.session.cap();
+  /**
+   * Their cap in cents: the one in force on the date of their latest claim that counts (the sheet's today
+   * while none does); null when there is none.
+   */
+  private capCentsOf(p: Person): number | null {
+    const latest = this.claimsOf(p.id).filter(this.counts).reduce<string | null>(
+      (at, c) => (at === null || c.date > at ? c.date : at), null);
+    const cap = latest === null ? this.session.cap() : this.session.valueOn('cap', latest);
     return cap === null ? null : cents(cap);
-  });
+  }
 
-  /** Their due-total in cents, at most the cap less their cut total (not below 0.00); null (n/a) is not capped. */
+  /** Their due-total in cents, at most their cap less their cut total (not below 0.00); null (n/a) is not capped. */
   private dueTotalCents(p: Person): number | null {
     const total = this.uncappedDueCents(p);
-    const cap = this.capCents();
+    const cap = this.capCentsOf(p);
     return total === null || cap === null ? total : Math.min(total, Math.max(0, cap - this.cutTotalOf(p.id)));
   }
 

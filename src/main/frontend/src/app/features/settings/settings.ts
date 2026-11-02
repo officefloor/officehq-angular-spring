@@ -65,6 +65,8 @@ interface SettingsView {
   roles: RoleView[];
   /** The values recorded for each dated setting, by key; those above are the ones in force on the sheet's today. */
   dated: Dated;
+  /** The from-date of each policy version (null: none), in the order made. */
+  policyVersions: (string | null)[];
   /** The roles set for each action of the permission matrix, comma separated; an action not in it keeps its standing rule. */
   permissions: Partial<Record<PermAction, string>>;
   /** Past them, an open period closes when the sheet's today is changed; null when blank: off. */
@@ -113,14 +115,17 @@ const FROM = 'From (yyyy-mm-dd; blank: the sheet\'s today)';
 // rate in force on a date takes), and the role given to each user name. Saving stores the settings whose
 // field was changed since the last save; the proof threshold of each grade (blank: none, the sheet's applies; dated) overrides the sheet's for a
 // claim whose person has that grade on its date; the clerk limit of each grade (blank: none, the sheet's applies; dated) overrides the
-// sheet's for a claim whose person has that grade on the sheet's today, the one in force then; clearing the clerk limit, the policy date, the period numbering from, the cap, the proof threshold or the note threshold (Delete or
+// sheet's for a claim whose person has that grade on the sheet's today, the one in force on the claim's date; clearing the clerk limit, the policy date, the period numbering from, the cap, the proof threshold or the note threshold (Delete or
 // Backspace) counts as a change even when it was already blank. The clerk limit, the floor, the terms, each grade's terms, the late
 // percent, the cap, the proof threshold, the rounding mode (half-up or half-even; blank: none; a claim whose date has one in force
 // rounds its live figures by it, rather than by the policy date) and the note threshold (blank: none; a claim with an empty note whose due is above the one in force on its date
 // cannot be opened) and the review threshold (blank: none; a claim whose due is above the one in force on its date goes to REVIEW when opened)
 // are dated: a save records the value from its from-date (blank: the sheet's today), keeping those recorded from
-// other dates; a claim takes the floor and terms in force on its date, the late percent in force on each 30-day boundary, and the clerk limit and cap are those in force on
-// the sheet's today. Each shows the value in force on the sheet's today. The permission matrix (not dated) gives, for each
+// other dates; a claim takes the floor, terms and clerk limit in force on its date, the late percent in force on each 30-day boundary, and
+// a person's cap is the one in force on the date of their latest claim that counts. Each shows the value in force on the sheet's today.
+// The policy settings (the rounding mode, the floor, the cap, the terms, the late percent and the clerk limit) are versioned together:
+// every change to one of them is a new policy version, numbered from 1 in the order made; the current version is shown, and each claim
+// shows the version in force on its date (how many versions have a from-date on or before it). The permission matrix (not dated) gives, for each
 // of open, settle, void, reassign, close, reopen and today (changing the sheet's today), the roles that may take it, comma separated; blank keeps its standing rule.
 @Component({
   selector: 'app-settings',
@@ -328,6 +333,7 @@ const FROM = 'From (yyyy-mm-dd; blank: the sheet\'s today)';
       <p>Default grade now (blank: A): <span data-testid="setting-default-grade-current">{{ defaultGrade() ?? '' }}</span></p>
       <p>Alert threshold now: <span data-testid="setting-alert-threshold-current">{{ alertThreshold() ?? '' | figure }}</span></p>
       <p>Parent sheet now: <span data-testid="setting-parent-current">{{ session.parent() ?? '' }}</span></p>
+      <p>Policy version now: <span data-testid="policy-version">{{ session.policyVersion() }}</span></p>
       <p>Cap now: <span data-testid="setting-cap-current">{{ session.cap() ?? '' | figure }}</span></p>
       <p>Proof threshold now: <span data-testid="setting-proof-threshold-current">{{ session.proofThreshold() ?? '' | figure }}</span></p>
       @for (g of grades; track g) {
@@ -638,6 +644,7 @@ export class Settings {
     this.userRoles.set(view.roles);
     this.permissionsSet.set(view.permissions);
     this.session.dated.set(view.dated);
+    this.session.policyVersions.set(view.policyVersions);
     this.session.policyDate.set(view.policyDate);
   }
 

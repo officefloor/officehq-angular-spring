@@ -19,6 +19,7 @@ interface SheetView {
   role: Role;
   scoreMid: number | null;
   scoreHigh: number | null;
+  policyVersions: (string | null)[];
 }
 
 /** The role a user acts in on a sheet. */
@@ -103,6 +104,17 @@ export class Session {
   readonly today = computed(() => this.preview() ?? this.sheetToday());
   /** The values recorded for the sheet's dated settings, by key. */
   readonly dated = signal<Dated>({});
+  /**
+   * The from-date (yyyy-mm-dd; null: none) of each policy version, numbered from 1 in the order made: every change
+   * to the rounding mode, the floor, the cap, the terms, the late percent or the clerk limit is a new one.
+   */
+  readonly policyVersions = signal<(string | null)[]>([]);
+  /** The current policy version: how many have been made; 0 before any. */
+  readonly policyVersion = computed(() => this.policyVersions().length);
+  /** The policy version in force on a date: how many versions have a from-date on or before it (one with none counts always). */
+  policyVersionOn(date: string): number {
+    return this.policyVersions().filter((from) => from === null || from <= date).length;
+  }
   /** The sheet's floor in force today, two decimals: a claim's live due is at least the one in force on its date. */
   readonly floor = computed(() => this.valueOn('floor', this.today()) ?? '1.00');
   /** The sheet's terms in days in force today: a claim of a grade without its own is due by its date plus those in force then. */
@@ -292,6 +304,7 @@ export class Session {
     this.sheetId.set(res.id);
     this.sheetToday.set(res.today);
     this.dated.set(res.dated);
+    this.policyVersions.set(res.policyVersions);
     this.policyDate.set(res.policyDate);
     this.archived.set(res.archived);
     this.lastBatch.set(res.lastBatch);

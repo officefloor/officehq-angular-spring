@@ -310,7 +310,7 @@ public class ClaimService {
         if (next == ClaimStatus.SETTLED && !judgedOnOriginal) refuseUnproved(sheetId, person, claim, settling);
         BigDecimal opening = next == ClaimStatus.OPEN ? chargedFigureOf(sheetId, person, claim) : null;
         if (next == ClaimStatus.OPEN) refuseUnnoted(sheetId, claim, opening);
-        if (next == ClaimStatus.SETTLED && overClerkLimit(sheetId, user, person, settling)) next = ClaimStatus.PENDING;
+        if (next == ClaimStatus.SETTLED && overClerkLimit(sheetId, user, person, claim, settling)) next = ClaimStatus.PENDING;
         String voidReason = next == ClaimStatus.VOID ? voidReasons.reasonForVoid(sheetId, reason) : null;
         RollupService.Snapshot before = rollup.snapshot(sheetId);
         refuseIfClosed(sheetId, claim.getDueBy());
@@ -1200,12 +1200,13 @@ public class ClaimService {
     }
 
     /**
-     * Whether a clerk settles a claim whose due is above the clerk limit in force: its person's grade's on the
-     * sheet's today when one is set, else the sheet's; a due of n/a is within any.
+     * Whether a clerk settles a claim whose due is above the clerk limit in force on the claim's date: its
+     * person's grade's (their grade on the sheet's today) when one is set then, else the sheet's; a due of
+     * n/a is within any.
      */
-    private boolean overClerkLimit(String sheetId, String user, Person person, BigDecimal due) {
+    private boolean overClerkLimit(String sheetId, String user, Person person, Claim claim, BigDecimal due) {
         if (settings.roleOf(sheetId, user) == Role.STEWARD) return false;
-        BigDecimal limit = settings.clerkLimitFor(sheetId, person.gradeOn(sheets.today(sheetId)));
+        BigDecimal limit = settings.clerkLimitFor(sheetId, person.gradeOn(sheets.today(sheetId)), claim.getDate());
         return limit != null && due != null && due.compareTo(limit) > 0;
     }
 

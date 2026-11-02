@@ -39,7 +39,7 @@ public class SheetController {
     public record SheetView(String id, LocalDate today, String floor, int terms, String latePct,
             LocalDate policyDate, String cap, Map<String, List<SettingController.DatedView>> dated,
             boolean archived, Integer lastBatch, Integer reviewSla, String role, Integer scoreMid,
-            Integer scoreHigh, Integer pendingSla) {
+            Integer scoreHigh, Integer pendingSla, List<LocalDate> policyVersions) {
         static SheetView of(Sheet sheet, Role role) {
             LocalDate today = sheet.getToday();
             return new SheetView(sheet.getId(), today, sheet.floorOn(today).toPlainString(),
@@ -47,7 +47,8 @@ public class SheetController {
                     sheet.getCap() == null ? null : sheet.getCap().toPlainString(),
                     SettingController.datedViews(sheet.getDated()), sheet.isArchived(),
                     sheet.getLastSettleBatch() == 0 ? null : sheet.getLastSettleBatch(), sheet.getReviewSla(),
-                    role.label(), sheet.getScoreMid(), sheet.getScoreHigh(), sheet.getPendingSla());
+                    role.label(), sheet.getScoreMid(), sheet.getScoreHigh(), sheet.getPendingSla(),
+                    sheet.getPolicyVersions());
         }
     }
 

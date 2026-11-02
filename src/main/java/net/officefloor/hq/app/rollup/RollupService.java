@@ -118,6 +118,8 @@ public class RollupService {
         Map<Long, BigDecimal> shared = new LinkedHashMap<>();
         Map<Long, BigDecimal> heldSettled = new LinkedHashMap<>();
         Map<Long, BigDecimal> heldOpen = new LinkedHashMap<>();
+        // the date of each person's latest claim that counts: their cap is the one in force on it
+        Map<Long, LocalDate> capDates = new LinkedHashMap<>();
         Map<Long, Person> byId = new LinkedHashMap<>();
         for (Person person : listed) byId.put(person.getId(), person);
         for (Person person : listed) {
@@ -133,6 +135,7 @@ public class RollupService {
                 // a correction counts toward due but not toward what is claimed
                 if (!claim.isCorrection() && person.countsClaimed(claim, today)) claimed = claimed.add(claim.getAmount());
                 if (!person.counts(claim, today)) continue;
+                capDates.merge(person.getId(), claim.getDate(), (a, b) -> b.isAfter(a) ? b : a);
                 if (claim.getSettledDue() != null || (claim.isBound() && claim.getStatedDue() != null)) fixed = true;
                 String grade = person.gradeOn(claim.getDate());
                 LocalDate basis = Rounding.basisOf(claim, datesByNumber);
@@ -199,7 +202,7 @@ public class RollupService {
             // a part held of another's claim makes a due-total of its own, n/a or not
             BigDecimal part = shared.get(e.getKey());
             BigDecimal personDue = part == null ? f.dueTotal() : (f.dueTotal() == null ? zero() : f.dueTotal()).add(part);
-            if (sheet != null) personDue = sheet.capped(personDue, cuts.getOrDefault(e.getKey(), zero()));
+            if (sheet != null) personDue = sheet.capped(personDue, cuts.getOrDefault(e.getKey(), zero()), capDates.get(e.getKey()));
             figures.put(e.getKey(), new Figures(f.name(), f.claimed(), personDue, f.overdueTotal(), f.settled(), f.overdueCount(),
                     f.settledTotal().add(heldSettled.getOrDefault(e.getKey(), zero())),
                     f.openTotal().add(heldOpen.getOrDefault(e.getKey(), zero()))));

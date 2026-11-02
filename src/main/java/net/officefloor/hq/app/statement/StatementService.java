@@ -134,11 +134,14 @@ public class StatementService {
         boolean fixed = false;
         BigDecimal total = BigDecimal.ZERO.setScale(2);
         int counted = 0;
+        // the cap in force on the date of their latest claim that counts
+        LocalDate capDate = null;
         for (Claim claim : theirs) {
             if (!person.counts(claim, today)) {
                 claim.unstate(today);
                 continue;
             }
+            if (capDate == null || claim.getDate().isAfter(capDate)) capDate = claim.getDate();
             BigDecimal due = claimService.chargedFigureOf(sheetId, person, claim);
             if (claim.getSettledDue() != null || (claim.isBound() && claim.getStatedDue() != null)) fixed = true;
             // a due under a grade they had on its date but not today counts like a fixed one
@@ -155,7 +158,7 @@ public class StatementService {
         // due, nor a due under another grade they had on its date or under a rate not in force today.
         return new Bound(sheet.capped(
                 fixed || levels.inForce(person.gradeOn(today), today).isPresent() ? total : null,
-                pools.cutTotals(sheetId).getOrDefault(person.getId(), BigDecimal.ZERO.setScale(2))), counted);
+                pools.cutTotals(sheetId).getOrDefault(person.getId(), BigDecimal.ZERO.setScale(2)), capDate), counted);
     }
 
     /**
@@ -170,6 +173,8 @@ public class StatementService {
         boolean fixed = false;
         BigDecimal total = BigDecimal.ZERO.setScale(2);
         int counted = 0;
+        // the cap in force on the date of their latest claim that counted
+        LocalDate capDate = null;
         for (Claim claim : theirs) {
             ClaimStatus status = claim.statusAt(asOf);
             if (status == null || !status.counts() || claim.isDeferredAt(status, asOf)) {
@@ -212,9 +217,10 @@ public class StatementService {
             claim.state(due, today);
             if (due != null) total = total.add(due);
             counted++;
+            if (capDate == null || claim.getDate().isAfter(capDate)) capDate = claim.getDate();
         }
         boolean rated = ratesThen.inForce(person.gradeOn(asOf, asOf), asOf).isPresent();
-        return new Bound(sheet.cappedAsOf(fixed || rated ? total : null, asOf), counted);
+        return new Bound(sheet.cappedAsOf(fixed || rated ? total : null, capDate, asOf), counted);
     }
 
     /** A steward cancels the person's last statement, unbinding the claims it bound. */

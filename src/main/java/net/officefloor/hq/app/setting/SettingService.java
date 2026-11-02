@@ -89,10 +89,10 @@ public class SettingService {
         return sheets.findById(sheetId).orElseThrow(SheetNotFoundException::new).getClerkLimit();
     }
 
-    /** The clerk limit in force on the sheet's today for a claim of the grade: the grade's own, else the sheet's; null means no limit. */
+    /** The clerk limit for a claim of the grade dated on the date: the grade's own in force then, else the sheet's; null means no limit. */
     @Transactional(readOnly = true)
-    public BigDecimal clerkLimitFor(String sheetId, String grade) {
-        return sheets.findById(sheetId).orElseThrow(SheetNotFoundException::new).clerkLimitFor(grade);
+    public BigDecimal clerkLimitFor(String sheetId, String grade, LocalDate date) {
+        return sheets.findById(sheetId).orElseThrow(SheetNotFoundException::new).clerkLimitFor(grade, date);
     }
 
     /** The floor in force on the sheet's today. */
@@ -147,6 +147,12 @@ public class SettingService {
     @Transactional(readOnly = true)
     public BigDecimal latePctOn(String sheetId, LocalDate date) {
         return sheets.findById(sheetId).map(s -> s.latePctOn(date)).orElseThrow(SheetNotFoundException::new);
+    }
+
+    /** The from-date of each policy version, in the order recorded. */
+    @Transactional(readOnly = true)
+    public List<LocalDate> policyVersions(String sheetId) {
+        return sheets.findById(sheetId).map(Sheet::getPolicyVersions).orElseThrow(SheetNotFoundException::new);
     }
 
     /** The values recorded for the sheet's dated settings, by key and then from-date. */
