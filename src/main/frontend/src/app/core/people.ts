@@ -73,6 +73,8 @@ export interface Person {
   terms: number | null;
   /** Their contact, trimmed and lower-cased; null when they have none. */
   contact: string | null;
+  /** Their aliases, sorted as names are compared. */
+  aliases: string[];
 }
 
 /** A statement just taken: the person as they now show, and their claims (newest first) as it
@@ -124,6 +126,14 @@ export class People {
     return firstValueFrom(
       this.http.post<{ graded: number; people: Person[] }>(`${this.url(sheetId)}/grade`, { personIds, grade, from },
         { headers: { 'X-User': user } }),
+    );
+  }
+
+  /** Give the person an alias; refused when it equals any name or alias on the sheet. */
+  addAlias(id: number, alias: string): Promise<Person> {
+    const { sheetId, user } = this.active();
+    return firstValueFrom(
+      this.http.post<Person>(`${this.url(sheetId)}/${id}/aliases`, { alias }, { headers: { 'X-User': user } }),
     );
   }
 

@@ -38,12 +38,12 @@ public class PersonController {
 
     /** What the screen shows of a person; with how many statements were taken of them, and the
      *  last one's due-total (text with two decimals, null when n/a or none) and day (null when none);
-     *  whether they are retired, and from which day (null when not); and whether they have any hold, and their holds, earliest first; and their own terms in days (null: none); and their contact (null: none).
+     *  whether they are retired, and from which day (null when not); and whether they have any hold, and their holds, earliest first; and their own terms in days (null: none); and their contact (null: none); and their aliases, sorted as names are compared.
      *  The grade is the one in force on the sheet's today; grades are all those recorded, each from
      *  its from-date (null: the beginning of time), earliest first. */
     public record PersonView(long id, String name, String grade, List<GradeView> grades, long version,
             int statementCount, String statedTotal, LocalDate statementDate, boolean retired, LocalDate retiredFrom,
-            boolean held, List<HoldView> holds, Integer terms, String contact) {
+            boolean held, List<HoldView> holds, Integer terms, String contact, List<String> aliases) {
         public static PersonView of(Person person, StatementSummary statements, LocalDate today) {
             return new PersonView(person.getId(), person.getName(), person.gradeOn(today),
                     person.getGrades().stream().map(g -> new GradeView(g.getGrade(), g.getFromDate())).toList(),
@@ -51,7 +51,7 @@ public class PersonController {
                     statements.lastDueTotal() == null ? null : statements.lastDueTotal().setScale(2).toPlainString(),
                     statements.lastTakenOn(), person.isRetired(), person.getRetiredFrom(), person.isHeld(),
                     person.getHolds().stream().map(h -> new HoldView(h.getFromDate(), h.getToDate())).toList(),
-                    person.getTerms(), person.getContact());
+                    person.getTerms(), person.getContact(), person.getAliases());
         }
     }
 
@@ -77,6 +77,10 @@ public class PersonController {
         String contactValue() {
             return contact == null || contact.isBlank() ? null : contact.trim().toLowerCase(Locale.ROOT);
         }
+    }
+
+    /** The alias form: a required alias, kept trimmed. */
+    public record AliasForm(@NotBlank @Size(max = 200) String alias) {
     }
 
     /** The retire form: the day the person is retired from; left out, the sheet's today. */
@@ -167,6 +171,15 @@ public class PersonController {
         return new Graded(saved.size(), saved.stream()
                 .map(p -> PersonView.of(p, summaries.getOrDefault(p.getId(), StatementSummary.NONE), today))
                 .toList());
+    }
+
+    @PostMapping("/{personId}/aliases")
+    public PersonView addAlias(@PathVariable @NotBlank @Size(max = 100) String sheetId,
+            @PathVariable long personId,
+            @RequestHeader("X-User") @NotBlank @Size(max = 100) String user,
+            @Valid @RequestBody AliasForm form) {
+        Person saved = service.addAlias(sheetId.trim(), user.trim(), personId, form.alias().trim());
+        return PersonView.of(saved, statements.summary(sheetId.trim(), personId), sheets.today(sheetId.trim()));
     }
 
     @PostMapping("/{personId}/retire")

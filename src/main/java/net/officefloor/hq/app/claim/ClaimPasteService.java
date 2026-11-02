@@ -88,7 +88,7 @@ public class ClaimPasteService {
         }
         String name = fields[0].trim();
         Person person = name.isEmpty() ? null
-                : people.findBySheetIdAndNameIgnoreCase(sheetId, name).orElse(null);
+                : people.findByNameOrAlias(sheetId, name).orElse(null);
         if (person == null) {
             throw refused(n, "no one named \"" + name + "\" on this sheet");
         }

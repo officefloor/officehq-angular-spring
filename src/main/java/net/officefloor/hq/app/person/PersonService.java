@@ -53,7 +53,7 @@ public class PersonService {
     @Transactional
     public Person add(String sheetId, String user, String name, String grade, Integer terms, String contact) {
         sheets.load(sheetId, user);
-        if (people.existsBySheetIdAndNameIgnoreCase(sheetId, name)) {
+        if (people.existsBySheetIdAndNameIgnoreCase(sheetId, name) || people.existsAlias(sheetId, name)) {
             throw nameInUse();
         }
         if (contact != null && people.existsBySheetIdAndContact(sheetId, contact)) {
@@ -84,7 +84,8 @@ public class PersonService {
         if (person.getVersion() != version) {
             throw changedMeanwhile();
         }
-        if (people.existsBySheetIdAndNameIgnoreCaseAndIdNot(sheetId, name, personId)) {
+        if (people.existsBySheetIdAndNameIgnoreCaseAndIdNot(sheetId, name, personId)
+                || people.existsAlias(sheetId, name)) {
             throw nameInUse();
         }
         if (contact != null && people.existsBySheetIdAndContactAndIdNot(sheetId, contact, personId)) {
@@ -131,6 +132,22 @@ public class PersonService {
                     + (Objects.equals(contactBefore, contact) ? "" : " contact=" + (contact != null ? contact : "")));
             return saved;
         });
+    }
+
+    /** Give a person an alias, keeping their others; refused when it equals, as names are compared,
+     *  any name or alias on the sheet. */
+    @Transactional
+    public Person addAlias(String sheetId, String user, long personId, String alias) {
+        Person person = people.findByIdAndSheetId(personId, sheetId)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "No such person on this sheet"));
+        if (people.existsBySheetIdAndNameIgnoreCase(sheetId, alias) || people.existsAlias(sheetId, alias)) {
+            throw nameInUse();
+        }
+        person.addAlias(alias);
+        Person saved = saveUnique(person);
+        audit.recordOnCommit("PERSON_ALIAS_ADDED sheet=" + sheetId + " by=" + user + " name=" + saved.getName()
+                + " alias=" + alias);
+        return saved;
     }
 
     /** Retire a person from a day; a day left out takes the sheet's today. */

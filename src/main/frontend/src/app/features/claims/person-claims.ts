@@ -384,8 +384,11 @@ export class PersonClaims {
     return overdue(c, this.today(), graceOn(this.graces(), gradeOn(this.grades(), c.date), c.date));
   }
 
+  /** Whether the row shows the claim as deferred: open and deferred, or closed off (voided) while
+   *  its deferral still runs. */
   protected deferredOf(c: Claim): boolean {
-    return deferred(c, this.today());
+    const today = this.today();
+    return deferred(c, today) || (c.deferredUntil !== null && today !== null && today < c.deferredUntil);
   }
 
   /** The name of the period the claim belongs to; empty when it belongs to none. */

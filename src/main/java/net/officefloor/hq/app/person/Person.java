@@ -13,6 +13,9 @@ import jakarta.persistence.Table;
 import jakarta.persistence.Version;
 import java.time.LocalDate;
 import java.util.ArrayList;
+import java.util.HashSet;
+import java.util.Locale;
+import java.util.Set;
 import java.util.Comparator;
 import java.util.List;
 import java.util.Objects;
@@ -53,6 +56,13 @@ public class Person {
     /** The person's contact, trimmed and lower-cased; null when they have none. */
     @Column(name = "contact")
     private String contact;
+
+    /** The person's aliases, each trimmed; unique on the sheet among names and aliases as names are
+     *  compared. */
+    @ElementCollection(fetch = FetchType.EAGER)
+    @CollectionTable(name = "person_alias", joinColumns = @JoinColumn(name = "person_id"))
+    @Column(name = "alias")
+    private Set<String> aliases = new HashSet<>();
 
     /** Raised each time the person is saved. */
     @Version
@@ -175,6 +185,18 @@ public class Person {
 
     public void setContact(String contact) {
         this.contact = contact;
+    }
+
+    /** The person's aliases, sorted as names are compared: without regard to case. */
+    public List<String> getAliases() {
+        return aliases.stream()
+                .sorted(Comparator.comparing((String a) -> a.toLowerCase(Locale.ROOT)).thenComparing(Comparator.naturalOrder()))
+                .toList();
+    }
+
+    /** Add an alias, keeping the others. */
+    public void addAlias(String alias) {
+        aliases.add(alias);
     }
 
     public long getVersion() {

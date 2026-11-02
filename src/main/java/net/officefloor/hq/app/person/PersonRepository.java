@@ -34,4 +34,18 @@ public interface PersonRepository extends JpaRepository<Person, Long> {
 
     /** Whether the name is in use on the sheet by anyone but this person. */
     boolean existsBySheetIdAndNameIgnoreCaseAndIdNot(String sheetId, String name, Long id);
+
+    /** Whether the text is an alias of anyone on the sheet, compared as names are. */
+    @Query("select count(p) > 0 from Person p join p.aliases a where p.sheetId = :sheetId"
+            + " and lower(a) = lower(:alias)")
+    boolean existsAlias(String sheetId, String alias);
+
+    /** The person on the sheet with the alias, compared as names are. */
+    @Query("select p from Person p join p.aliases a where p.sheetId = :sheetId and lower(a) = lower(:alias)")
+    Optional<Person> findByAlias(String sheetId, String alias);
+
+    /** The person on the sheet with the name or else the alias, compared without regard to case. */
+    default Optional<Person> findByNameOrAlias(String sheetId, String name) {
+        return findBySheetIdAndNameIgnoreCase(sheetId, name).or(() -> findByAlias(sheetId, name));
+    }
 }
