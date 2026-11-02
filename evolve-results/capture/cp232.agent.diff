@@ -1,0 +1,128 @@
+diff --git a/src/main/frontend/src/app/features/grades/grades.ts b/src/main/frontend/src/app/features/grades/grades.ts
+index 73791ed94..264403e7d 100644
+--- a/src/main/frontend/src/app/features/grades/grades.ts
++++ b/src/main/frontend/src/app/features/grades/grades.ts
+@@ -14,7 +14,7 @@ interface GradeView {
+ // The sheet's grades: A, B and C, and any added (a code of one to three capital letters not yet a
+ // grade). A grade can be retired (once): it can then no longer be chosen for a new person
+ // or in an edit; people already on it keep it. A steward can merge a grade into another: everyone on
+-// it on the sheet's today is given the other from today.
++// it on the sheet's today has every grade record of theirs on it made the other, whatever its date.
+ @Component({
+   selector: 'app-grades',
+   imports: [ReactiveFormsModule],
+diff --git a/src/main/java/net/officefloor/hq/app/person/Person.java b/src/main/java/net/officefloor/hq/app/person/Person.java
+index dbc823b24..cf9ce682b 100644
+--- a/src/main/java/net/officefloor/hq/app/person/Person.java
++++ b/src/main/java/net/officefloor/hq/app/person/Person.java
+@@ -65,6 +65,13 @@ public class Person {
+     @Column(name = "grade", nullable = false)
+     private String grade;
+ 
++    /** The first grade as they were added with, before a grade merge gave them another; null: still it. */
++    @Column(name = "first_grade_was")
++    private String firstGradeWas;
++
++    /** The from-date a grade log line giving the first grade carries: the beginning of time. */
++    private static final LocalDate FIRST = LocalDate.of(1, 1, 1);
++
+     /** The grades recorded after the first, by the date each is in force from. */
+     @ElementCollection(fetch = FetchType.EAGER)
+     @CollectionTable(name = "person_grade", joinColumns = @JoinColumn(name = "person_id"))
+@@ -211,15 +218,37 @@ public class Person {
+         gradeLog.add(new PersonGradeLine(from, grade, on));
+     }
+ 
++    /**
++     * Give them the other grade in place of the grade wherever it is recorded, on the sheet's today: their
++     * first grade and each recorded from a date, so every date that had it now has the other.
++     */
++    public void regrade(String from, String into, LocalDate on) {
++        if (from.equals(grade)) {
++            if (firstGradeWas == null) firstGradeWas = grade;
++            grade = into;
++            gradeLog.add(new PersonGradeLine(FIRST, into, on));
++        }
++        for (Map.Entry<LocalDate, String> dated : new TreeMap<>(datedGrades).entrySet()) {
++            if (!from.equals(dated.getValue())) continue;
++            datedGrades.put(dated.getKey(), into);
++            gradeLog.add(new PersonGradeLine(dated.getKey(), into, on));
++        }
++    }
++
+     /**
+      * The grade in force on the date as recorded by the end of the as-of date: of the grades recorded while
+      * the sheet's today was on or before it, the one with the latest from-date on or before the date.
+      */
+     public String gradeOn(LocalDate date, LocalDate asOf) {
++        String first = firstGradeWas != null ? firstGradeWas : grade;
+         TreeMap<LocalDate, String> then = new TreeMap<>();
+-        for (PersonGradeLine line : gradeLog) if (line.recordedBy(asOf)) then.put(line.getFromDate(), line.getGrade());
++        for (PersonGradeLine line : gradeLog) {
++            if (!line.recordedBy(asOf)) continue;
++            if (line.getFromDate().equals(FIRST)) first = line.getGrade();
++            else then.put(line.getFromDate(), line.getGrade());
++        }
+         Map.Entry<LocalDate, String> on = then.floorEntry(date);
+-        return on == null ? grade : on.getValue();
++        return on == null ? first : on.getValue();
+     }
+ 
+     /** The sheet's today when they were added; null when added before this was kept. */
+diff --git a/src/main/java/net/officefloor/hq/app/person/PersonController.java b/src/main/java/net/officefloor/hq/app/person/PersonController.java
+index 604b5af6e..fb37cac42 100644
+--- a/src/main/java/net/officefloor/hq/app/person/PersonController.java
++++ b/src/main/java/net/officefloor/hq/app/person/PersonController.java
+@@ -228,7 +228,7 @@ public class PersonController {
+                 request.from()));
+     }
+ 
+-    /** Merge a grade into another: a steward only; everyone on it today is given the other from today. */
++    /** Merge a grade into another: a steward only; everyone on it today has every record of it made the other. */
+     @PostMapping("/grade-merge")
+     public GradeMergeResult mergeGrade(
+             @PathVariable @Size(max = 100) @Pattern(regexp = "[A-Za-z0-9._-]+") String sheetId,
+diff --git a/src/main/java/net/officefloor/hq/app/person/PersonService.java b/src/main/java/net/officefloor/hq/app/person/PersonService.java
+index 901138778..f9c2752dc 100644
+--- a/src/main/java/net/officefloor/hq/app/person/PersonService.java
++++ b/src/main/java/net/officefloor/hq/app/person/PersonService.java
+@@ -248,10 +248,12 @@ public class PersonService {
+ 
+     /**
+      * Merge a grade into another: everyone whose grade in force on the sheet's today is the one merged is
+-     * given the other from the sheet's today, in list order, each as its own edit would, with its
+-     * PERSON_EDITED and rollup lines, after the GRADE_MERGED line; then the merge's own rollup lines, of
+-     * how the figures moved over all of it. Only a steward may, and not a grade into
+-     * itself, nor into a retired grade. Returns how many people were given the other grade.
++     * given the other retroactively. In list order, each is first given it from the sheet's today as its own
++     * edit would, with its PERSON_EDITED and rollup lines, after the GRADE_MERGED line; then every grade
++     * record of theirs on the merged grade, their first and each from a date, becomes the other, so all their
++     * claims whatever their date take its rates, terms and thresholds (figures frozen or bound by a statement
++     * are kept); then the merge's own rollup lines, of how the figures moved over all of it. Only a steward
++     * may, and not a grade into itself, nor into a retired grade. Returns how many people were given the other grade.
+      */
+     @Transactional
+     public int mergeGrade(String sheetId, String user, String from, String into) {
+@@ -270,6 +272,12 @@ public class PersonService {
+             record("PERSON_EDITED", sheetId, user, saved, saved.gradeOn(today), "");
+             rollup.recordChanges(sheetId, user, before);
+         }
++        // then retroactively: every record of theirs on the merged grade, whatever its date, becomes the other
++        for (Person person : chosen) {
++            Person saved = people.findById(person.getId()).orElseThrow(PersonNotFoundException::new);
++            saved.regrade(from, into, today);
++            saveUnique(saved);
++        }
+         // then the merge's own rollup lines: how the figures moved over all of it
+         rollup.recordChanges(sheetId, user, merging);
+         return chosen.size();
+diff --git a/src/main/resources/db/migration/V121__person_first_grade_was.sql b/src/main/resources/db/migration/V121__person_first_grade_was.sql
+new file mode 100644
+index 000000000..b1abb95a1
+--- /dev/null
++++ b/src/main/resources/db/migration/V121__person_first_grade_was.sql
+@@ -0,0 +1,4 @@
++-- A grade merge is retroactive: it gives a person's first grade (in force from the beginning of time)
++-- the other grade. The first grade they were given is kept for what was recorded before that, and the
++-- change is logged in person_grade_log with the from-date 0001-01-01, standing for the beginning of time.
++ALTER TABLE person ADD COLUMN first_grade_was VARCHAR(3);
