@@ -1,0 +1,349 @@
+diff --git a/src/main/frontend/src/app/app.config.ts b/src/main/frontend/src/app/app.config.ts
+index c1d67211a..4de86e197 100644
+--- a/src/main/frontend/src/app/app.config.ts
++++ b/src/main/frontend/src/app/app.config.ts
+@@ -3,8 +3,9 @@ import { provideHttpClient, withInterceptors } from '@angular/common/http';
+ import { provideRouter } from '@angular/router';
+ import { routes } from './app.routes';
+ import { asOfInterceptor } from './core/as-of';
++import { previewInterceptor } from './core/preview';
+ 
+-// The app's wiring: the router and the HTTP client, whose calls carry the user's as-of date.
++// The app's wiring: the router and the HTTP client, whose calls carry the user's as-of and preview dates.
+ export const appConfig: ApplicationConfig = {
+-  providers: [provideBrowserGlobalErrorListeners(), provideRouter(routes), provideHttpClient(withInterceptors([asOfInterceptor]))],
++  providers: [provideBrowserGlobalErrorListeners(), provideRouter(routes), provideHttpClient(withInterceptors([asOfInterceptor, previewInterceptor]))],
+ };
+diff --git a/src/main/frontend/src/app/core/preview.ts b/src/main/frontend/src/app/core/preview.ts
+new file mode 100644
+index 000000000..403d36da2
+--- /dev/null
++++ b/src/main/frontend/src/app/core/preview.ts
+@@ -0,0 +1,16 @@
++import { HttpContextToken, HttpInterceptorFn } from '@angular/common/http';
++import { inject } from '@angular/core';
++import { Session } from './session';
++
++/** Marks a call that must see the sheet's real today, whatever the user's preview date. */
++export const REAL_TODAY = new HttpContextToken<boolean>(() => false);
++
++/**
++ * While the signed-in user has a preview date set, every call to a sheet carries it: the server shows
++ * each read as if the sheet's today were that date, and makes every change on its real today.
++ */
++export const previewInterceptor: HttpInterceptorFn = (req, next) => {
++  const preview = inject(Session).preview();
++  if (preview === null || req.context.get(REAL_TODAY) || !req.url.startsWith('/api/sheets/')) return next(req);
++  return next(req.clone({ setHeaders: { 'X-Preview': preview } }));
++};
+diff --git a/src/main/frontend/src/app/core/session.ts b/src/main/frontend/src/app/core/session.ts
+index e148d7eb0..0a3f489f1 100644
+--- a/src/main/frontend/src/app/core/session.ts
++++ b/src/main/frontend/src/app/core/session.ts
+@@ -1,4 +1,5 @@
+-import { HttpClient } from '@angular/common/http';
++import { HttpClient, HttpContext } from '@angular/common/http';
++import { REAL_TODAY } from './preview';
+ import { Injectable, computed, inject, signal } from '@angular/core';
+ import { firstValueFrom } from 'rxjs';
+ 
+@@ -89,8 +90,16 @@ export class Session {
+   readonly sheetId = signal<string | null>(null);
+   /** The role the signed-in user acts in on the sheet on its today (as of the as-of date while one is set). */
+   readonly role = signal<Role | null>(null);
+-  /** The sheet's today (yyyy-mm-dd): every date decision and default date uses it, never the clock. */
+-  readonly today = signal<string | null>(null);
++  /** The sheet's real today (yyyy-mm-dd): every change and default date uses it, never the clock. */
++  readonly sheetToday = signal<string | null>(null);
++  /**
++   * The preview date (yyyy-mm-dd) the signed-in user views the sheet at, or null: while it is set every
++   * figure is shown over the sheet's current records as if its today were that date, while every change
++   * still uses its real today. It belongs to this screen, and is left as it is by loading a sheet.
++   */
++  readonly preview = signal<string | null>(null);
++  /** The today the screen's figures are shown on: the preview date while one is set, else the sheet's today. */
++  readonly today = computed(() => this.preview() ?? this.sheetToday());
+   /** The values recorded for the sheet's dated settings, by key. */
+   readonly dated = signal<Dated>({});
+   /** The sheet's floor in force today, two decimals: a claim's live due is at least the one in force on its date. */
+@@ -261,10 +270,11 @@ export class Session {
+     const res = await firstValueFrom(
+       this.http.post<SheetView>(`/api/sheets/${encodeURIComponent(id)}/load`, null, {
+         headers: { 'X-User': user },
++        context: new HttpContext().set(REAL_TODAY, true),
+       }),
+     );
+     this.sheetId.set(res.id);
+-    this.today.set(res.today);
++    this.sheetToday.set(res.today);
+     this.dated.set(res.dated);
+     this.policyDate.set(res.policyDate);
+     this.archived.set(res.archived);
+@@ -285,6 +295,14 @@ export class Session {
+     await this.loadSheet(id);
+   }
+ 
++  /** Preview the active sheet as if its today were a date (yyyy-mm-dd), or stop (null): it is loaded again. */
++  async setPreview(preview: string | null): Promise<void> {
++    const id = this.sheetId();
++    if (!id) throw new Error('no sheet loaded');
++    this.preview.set(preview);
++    await this.loadSheet(id);
++  }
++
+   async setToday(today: string): Promise<void> {
+     const user = this.user();
+     const id = this.sheetId();
+@@ -295,7 +313,7 @@ export class Session {
+       }),
+     );
+     if (this.sheetId() === res.id) {
+-      this.today.set(res.today);
++      this.sheetToday.set(res.today);
+       this.role.set(res.role);
+       this.holdChanges.update((n) => n + 1);
+     }
+diff --git a/src/main/frontend/src/app/features/claims/claims.ts b/src/main/frontend/src/app/features/claims/claims.ts
+index cf68b3ef6..b609916e3 100644
+--- a/src/main/frontend/src/app/features/claims/claims.ts
++++ b/src/main/frontend/src/app/features/claims/claims.ts
+@@ -1030,7 +1030,7 @@ export class Claims {
+     const sheet = this.session.sheetId();
+     if (!sheet) return;
+     const date = until.trim();
+-    const today = this.session.today();
++    const today = this.session.sheetToday();
+     if (!/^\d{4}-\d{2}-\d{2}$/.test(date) || (today !== null && date <= today)) {
+       this.claimError.set({ id: c.id, message: 'Enter a date after today to defer the claim until.' });
+       return;
+diff --git a/src/main/frontend/src/app/features/home/home.ts b/src/main/frontend/src/app/features/home/home.ts
+index 51dd61a1c..770a21824 100644
+--- a/src/main/frontend/src/app/features/home/home.ts
++++ b/src/main/frontend/src/app/features/home/home.ts
+@@ -45,7 +45,7 @@ import { VoidReasons } from '../void-reasons/void-reasons';
+       </form>
+       @if (session.sheetId(); as id) {
+         <p>Sheet: <strong data-testid="sheet-current-id">{{ id }}</strong></p>
+-        <p>Today: <strong data-testid="sheet-today">{{ session.today() }}</strong></p>
++        <p>Today: <strong data-testid="sheet-today">{{ session.sheetToday() }}</strong></p>
+         <form [formGroup]="todayForm" (ngSubmit)="saveToday()" aria-label="Sheet today">
+           <label for="sheet-today">Change today</label>
+           <input id="sheet-today" type="date" data-testid="sheet-today-input" formControlName="today" />
+@@ -58,6 +58,13 @@ import { VoidReasons } from '../void-reasons/void-reasons';
+           <button type="button" data-testid="asof-clear" (click)="clearAsOf()">Clear as of</button>
+         </form>
+         <p>As of: <strong data-testid="sheet-asof">{{ session.asOf() ?? '' }}</strong></p>
++        <form [formGroup]="previewForm" (ngSubmit)="setPreview()" aria-label="Preview date">
++          <label for="preview-date">Preview as if today were</label>
++          <input id="preview-date" type="date" data-testid="preview-date" formControlName="date" />
++          <button type="submit" data-testid="preview-set">Set preview</button>
++          <button type="button" data-testid="preview-clear" (click)="clearPreview()">Clear preview</button>
++        </form>
++        <p>Preview: <strong data-testid="sheet-preview">{{ session.preview() ?? '' }}</strong></p>
+         <p>Parent sheet: <strong data-testid="sheet-parent">{{ session.parent() ?? '' }}</strong></p>
+         <p>Archived: <strong data-testid="sheet-archived">{{ session.archived() ? 'yes' : 'no' }}</strong></p>
+         <button type="button" data-testid="sheet-archive" (click)="archive()">Archive sheet</button>
+@@ -99,6 +106,7 @@ export class Home {
+   protected readonly sheetForm = new FormGroup({ id: new FormControl('', { nonNullable: true }) });
+   protected readonly todayForm = new FormGroup({ today: new FormControl('', { nonNullable: true }) });
+   protected readonly asOfForm = new FormGroup({ date: new FormControl('', { nonNullable: true }) });
++  protected readonly previewForm = new FormGroup({ date: new FormControl('', { nonNullable: true }) });
+   protected readonly cloneForm = new FormGroup({ to: new FormControl('', { nonNullable: true }) });
+   protected readonly localeForm = new FormGroup({ locale: new FormControl<Locale>('en', { nonNullable: true }) });
+   protected readonly locales = LOCALES;
+@@ -114,6 +122,7 @@ export class Home {
+     this.sheetForm.valueChanges.subscribe(() => this.sheetError.set(''));
+     this.todayForm.valueChanges.subscribe(() => this.sheetError.set(''));
+     this.asOfForm.valueChanges.subscribe(() => this.sheetError.set(''));
++    this.previewForm.valueChanges.subscribe(() => this.sheetError.set(''));
+     this.cloneForm.valueChanges.subscribe(() => this.sheetError.set(''));
+   }
+ 
+@@ -213,6 +222,34 @@ export class Home {
+     }
+   }
+ 
++  protected async setPreview(): Promise<void> {
++    if (this.submitting.has('preview')) return;
++    this.sheetError.set('');
++    const date = this.previewForm.controls.date.value.trim();
++    if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) {
++      this.sheetError.set('Enter a date.');
++      return;
++    }
++    await this.changePreview(date);
++  }
++
++  protected async clearPreview(): Promise<void> {
++    if (this.submitting.has('preview')) return;
++    this.sheetError.set('');
++    await this.changePreview(null);
++  }
++
++  private async changePreview(date: string | null): Promise<void> {
++    this.submitting.add('preview');
++    try {
++      await this.session.setPreview(date);
++    } catch {
++      this.sheetError.set('Could not preview the sheet on that date.');
++    } finally {
++      this.submitting.delete('preview');
++    }
++  }
++
+   protected async archive(): Promise<void> {
+     if (this.submitting.has('archive')) return;
+     this.sheetError.set('');
+diff --git a/src/main/frontend/src/app/features/periods/periods.ts b/src/main/frontend/src/app/features/periods/periods.ts
+index 7674b3a0f..25aa7604d 100644
+--- a/src/main/frontend/src/app/features/periods/periods.ts
++++ b/src/main/frontend/src/app/features/periods/periods.ts
+@@ -370,7 +370,7 @@ export class Periods {
+     const sheet = this.session.sheetId();
+     if (!sheet) return;
+     const raw = this.generateForm.getRawValue();
+-    const today = this.session.today() ?? '';
++    const today = this.session.sheetToday() ?? '';
+     const from = raw.from.trim() || today;
+     const to = raw.to.trim() || today;
+     if (!/^\d{4}-\d{2}-\d{2}$/.test(from) || !/^\d{4}-\d{2}-\d{2}$/.test(to)) {
+@@ -536,7 +536,7 @@ export class Periods {
+     if (!sheet) return;
+     const raw = this.form.getRawValue();
+     const name = raw.name.trim();
+-    const from = raw.from.trim() || (this.session.today() ?? '');
++    const from = raw.from.trim() || (this.session.sheetToday() ?? '');
+     const to = raw.to.trim();
+     const capText = raw.cap.trim();
+     if (!/^[A-Za-z0-9._-]{1,100}$/.test(name)) {
+diff --git a/src/main/frontend/src/app/features/plans/plans.ts b/src/main/frontend/src/app/features/plans/plans.ts
+index 7c8cf1bbc..e261169c4 100644
+--- a/src/main/frontend/src/app/features/plans/plans.ts
++++ b/src/main/frontend/src/app/features/plans/plans.ts
+@@ -234,7 +234,7 @@ export class Plans {
+     const amount = v.amount.trim();
+     const every = v.every.trim();
+     const day = v.day.trim();
+-    const start = v.start || this.session.today() || '';
++    const start = v.start || this.session.sheetToday() || '';
+     const end = v.end;
+     const target = v.sheet.trim();
+     if (!AMOUNT.test(amount)) {
+diff --git a/src/main/java/net/officefloor/hq/app/asof/PreviewGuard.java b/src/main/java/net/officefloor/hq/app/asof/PreviewGuard.java
+new file mode 100644
+index 000000000..abcb6e556
+--- /dev/null
++++ b/src/main/java/net/officefloor/hq/app/asof/PreviewGuard.java
+@@ -0,0 +1,97 @@
++package net.officefloor.hq.app.asof;
++
++import jakarta.servlet.http.HttpServletRequest;
++import jakarta.servlet.http.HttpServletResponse;
++import java.sql.Date;
++import java.time.LocalDate;
++import java.time.format.DateTimeParseException;
++import java.util.Map;
++import javax.sql.DataSource;
++import org.springframework.context.annotation.Configuration;
++import org.springframework.http.HttpMethod;
++import org.springframework.jdbc.core.JdbcTemplate;
++import org.springframework.transaction.PlatformTransactionManager;
++import org.springframework.transaction.TransactionStatus;
++import org.springframework.transaction.support.DefaultTransactionDefinition;
++import org.springframework.web.method.HandlerMethod;
++import org.springframework.web.servlet.HandlerInterceptor;
++import org.springframework.web.servlet.HandlerMapping;
++import org.springframework.web.servlet.config.annotation.InterceptorRegistry;
++import org.springframework.web.servlet.config.annotation.WebMvcConfigurer;
++
++/**
++ * The preview date, which belongs to the user's screen: a read of a sheet carrying an
++ * {@value #HEADER} date is shown over the sheet's current records as if its today were that date.
++ * A change ignores it: every change uses the sheet's real today.
++ *
++ * <p>A read with a preview date runs in a transaction that sets the sheet's today to it (nothing a
++ * change of today does happens: no snapshots, scores or auto-closing), rolled back once the read is
++ * answered, so it changes nothing and audits nothing. Under an as-of view (see {@link AsOfGuard}) it
++ * joins the as-of transaction and moves the restored sheet's today.
++ */
++@Configuration
++public class PreviewGuard implements WebMvcConfigurer, HandlerInterceptor {
++
++    /** The request header carrying the user's preview date (yyyy-mm-dd). */
++    public static final String HEADER = "X-Preview";
++
++    private static final String VIEW = PreviewGuard.class.getName() + ".view";
++
++    private final JdbcTemplate jdbc;
++    private final PlatformTransactionManager transactions;
++
++    public PreviewGuard(DataSource dataSource, PlatformTransactionManager transactions) {
++        this.jdbc = new JdbcTemplate(dataSource);
++        this.transactions = transactions;
++    }
++
++    @Override
++    public void addInterceptors(InterceptorRegistry registry) {
++        // after the as-of guard, so a preview moves the today of a sheet it has put back
++        registry.addInterceptor(this).addPathPatterns("/api/sheets/*/**").order(1);
++    }
++
++    @Override
++    public boolean preHandle(HttpServletRequest request, HttpServletResponse response, Object handler) {
++        if (!(handler instanceof HandlerMethod method)) return true;
++        String sheetId = sheetId(request);
++        String header = request.getHeader(HEADER);
++        if (sheetId == null || header == null || header.isBlank()) return true;
++        if (!isRead(request) && !method.hasMethodAnnotation(AsOfRead.class)) return true;
++        LocalDate preview;
++        try {
++            preview = LocalDate.parse(header.trim());
++        } catch (DateTimeParseException e) {
++            return true;
++        }
++        TransactionStatus transaction = transactions.getTransaction(new DefaultTransactionDefinition());
++        try {
++            jdbc.update("UPDATE sheet SET today = ? WHERE id = ?", Date.valueOf(preview), sheetId);
++        } catch (RuntimeException e) {
++            transactions.rollback(transaction);
++            throw e;
++        }
++        request.setAttribute(VIEW, transaction);
++        return true;
++    }
++
++    @Override
++    public void afterCompletion(HttpServletRequest request, HttpServletResponse response, Object handler, Exception ex) {
++        if (request.getAttribute(VIEW) instanceof TransactionStatus transaction) {
++            request.removeAttribute(VIEW);
++            transactions.rollback(transaction);
++        }
++    }
++
++    private static boolean isRead(HttpServletRequest request) {
++        return HttpMethod.GET.matches(request.getMethod()) || HttpMethod.HEAD.matches(request.getMethod());
++    }
++
++    /** The sheet the request is for: its sheetId path variable, or the id of a request to the sheet itself. */
++    private static String sheetId(HttpServletRequest request) {
++        @SuppressWarnings("unchecked")
++        Map<String, String> vars = (Map<String, String>) request.getAttribute(HandlerMapping.URI_TEMPLATE_VARIABLES_ATTRIBUTE);
++        if (vars == null) return null;
++        return vars.getOrDefault("sheetId", vars.get("id"));
++    }
++}
+diff --git a/src/main/java/net/officefloor/hq/app/statement/StatementService.java b/src/main/java/net/officefloor/hq/app/statement/StatementService.java
+index 4ddfba3bb..314a3b7bd 100644
+--- a/src/main/java/net/officefloor/hq/app/statement/StatementService.java
++++ b/src/main/java/net/officefloor/hq/app/statement/StatementService.java
+@@ -108,6 +108,10 @@ public class StatementService {
+         RollupService.Snapshot before = rollup.snapshot(sheetId);
+         List<Claim> theirs = claims.findBySheetIdAndPersonIdOrderByIdDesc(sheetId, personId);
+         Bound bound = asOf == null ? bindNow(sheet, person, theirs) : bindAsOf(sheet, person, theirs, asOf);
++        // now, their due-total is the one the screen shows: the parts of their claims others hold left out,
++        // the parts they hold of others' claims counted in
++        RollupService.Figures shown = asOf == null ? before.people().get(personId) : null;
++        if (shown != null) bound = new Bound(shown.dueTotal(), bound.counted());
+         claims.saveAllAndFlush(theirs);
+         statements.saveAndFlush(new Statement(sheetId, personId, bound.dueTotal(), asOf != null ? asOf : today, today,
+                 user.strip()));
