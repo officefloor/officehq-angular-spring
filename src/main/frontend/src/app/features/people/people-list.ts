@@ -11,6 +11,7 @@ import { SheetSettings } from '../../core/settings';
 import { PersonClaims } from '../claims/person-claims';
 import { PeriodForm } from '../periods/period-form';
 import { RateForm } from '../rates/rate-form';
+import { GradeSummary, PeriodSummary, StatusSummary, SummaryPanel } from '../summary/summary-panel';
 import { QuickAddBar } from './quick-add-bar';
 
 // The people on the sheet, in the order they were added, and the form that adds a person or,
@@ -22,7 +23,7 @@ import { QuickAddBar } from './quick-add-bar';
 // due-totals added up, skipping those that are n/a.
 @Component({
   selector: 'app-people-list',
-  imports: [ReactiveFormsModule, PersonClaims, RateForm, PeriodForm, QuickAddBar],
+  imports: [ReactiveFormsModule, PersonClaims, RateForm, PeriodForm, QuickAddBar, SummaryPanel],
   template: `
     <app-rate-form [rates]="rates()" (saved)="rateSaved($event)" />
     <app-period-form [periods]="periods()" [dueTotals]="periodDueTotals()" (saved)="periodSaved($event)" />
@@ -52,6 +53,7 @@ import { QuickAddBar } from './quick-add-bar';
       <p>Due in total: <strong data-testid="rollup-due-total">{{ dueTotal() }}</strong></p>
       <p>Overdue claims: <strong data-testid="rollup-overdue-count">{{ overdueCount() }}</strong></p>
       <p>Overdue in total: <strong data-testid="rollup-overdue-total">{{ overdueTotal() }}</strong></p>
+      <app-summary-panel [grades]="gradeSummary()" [periods]="periodSummary()" [statuses]="statusSummary()" />
       <label>
         <input type="checkbox" data-testid="show-retired" [checked]="showRetired()"
           (change)="showRetired.set($any($event.target).checked)" />
@@ -227,6 +229,28 @@ export class PeopleList {
   protected readonly overdueTotal = computed(() =>
     sumAmounts(this.people().map((p) => this.overdueTotalOf(p))),
   );
+  /** Per grade: the people not retired on it on the sheet's today, and their due-totals added up,
+   *  skipping those that are n/a. */
+  protected readonly gradeSummary = computed((): GradeSummary[] =>
+    this.grades.map((grade) => {
+      const on = this.people().filter((p) => !p.retired && this.gradeOf(p) === grade);
+      return {
+        grade,
+        count: on.length,
+        dueTotal: sumAmounts(on.map((p) => this.dueOf(p)).filter((d): d is string => d !== null)),
+      };
+    }),
+  );
+  /** Per period, earliest first: the due-total its row shows. */
+  protected readonly periodSummary = computed((): PeriodSummary[] =>
+    this.periods().map((p) => ({ name: p.name, dueTotal: p.closedTotal ?? this.periodDueTotals().get(p.id) ?? '0.00' })),
+  );
+  /** Per status: how many claims on the sheet have it. */
+  protected readonly statusSummary = computed((): StatusSummary[] =>
+    PeopleList.statuses.map((status) => ({ status, count: this.claims().filter((c) => c.status === status).length })),
+  );
+  /** The statuses the summary counts claims of. */
+  private static readonly statuses = ['DRAFT', 'OPEN', 'PENDING', 'SETTLED', 'VOID'];
   /** The id of the person whose editor is open, or null when the form adds a person. */
   protected readonly editing = signal<number | null>(null);
   /** The version of the person the open editor loaded. */
