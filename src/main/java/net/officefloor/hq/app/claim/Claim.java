@@ -78,6 +78,10 @@ public class Claim {
     @Column(name = "due_by", nullable = false)
     private LocalDate dueBy;
 
+    /** Whether a steward set its due-by directly: it then stays as set when a holiday is added. */
+    @Column(name = "due_by_set", nullable = false)
+    private boolean dueBySet;
+
     /** The terms, in business days, its due-by was fixed with. */
     @Column(name = "terms", nullable = false, updatable = false)
     private int terms;
@@ -359,6 +363,15 @@ public class Claim {
 
     /** Fix the due-by again, as worked out over the sheet's holidays now. */
     public void setDueBy(LocalDate dueBy) { this.dueBy = dueBy; }
+
+    /** Whether its due-by was set directly by a steward, so a holiday added later does not move it. */
+    public boolean isDueBySet() { return dueBySet; }
+
+    /** Set its due-by directly: it stays as set when a holiday is added. */
+    public void overrideDueBy(LocalDate dueBy) {
+        this.dueBy = dueBy;
+        this.dueBySet = true;
+    }
 
     /** The terms, in business days, its due-by was fixed with. */
     public int getTerms() { return terms; }

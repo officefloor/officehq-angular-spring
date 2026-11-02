@@ -177,6 +177,8 @@ public class ClaimController {
     /** The new date of an OPEN or PENDING claim a steward re-dates. */
     public record RedateRequest(@NotNull LocalDate date) {}
 
+    public record DueByRequest(@NotNull LocalDate dueBy) {}
+
     /** The person on the sheet a claim is moved to. */
     public record ReassignRequest(@NotNull Long personId) {}
 
@@ -490,6 +492,15 @@ public class ClaimController {
             @RequestHeader("X-User") @NotBlank @Size(max = 100) String user,
             @RequestBody @Valid RedateRequest request) {
         return ClaimView.of(service.redate(sheetId, user, id, request.date()));
+    }
+
+    @PostMapping("/claims/{id}/due-by")
+    public ClaimView setDueBy(
+            @PathVariable @Size(max = 100) @Pattern(regexp = "[A-Za-z0-9._-]+") String sheetId,
+            @PathVariable Long id,
+            @RequestHeader("X-User") @NotBlank @Size(max = 100) String user,
+            @RequestBody @Valid DueByRequest request) {
+        return ClaimView.of(service.setDueBy(sheetId, user, id, request.dueBy()));
     }
 
     @PostMapping("/claims/{id}/hold")

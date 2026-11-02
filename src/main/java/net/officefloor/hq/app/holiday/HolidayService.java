@@ -18,7 +18,8 @@ import org.springframework.transaction.annotation.Transactional;
 /**
  * A sheet's list of holidays, each date at most once. A claim's due-by, fixed when it is added, counts
  * its terms in business days, skipping weekends and these holidays. Adding a holiday fixes again, with the
- * same terms, the due-by of every claim not SETTLED or VOID whose due-by is on or after it.
+ * same terms, the due-by of every claim not SETTLED or VOID whose due-by is on or after it, except one whose
+ * due-by a steward set directly.
  */
 @Service
 public class HolidayService {
@@ -59,7 +60,7 @@ public class HolidayService {
                 .map(Holiday::getDate).collect(Collectors.toSet());
         for (Claim claim : claims.findBySheetIdOrderByIdDesc(sheetId)) {
             if (claim.getStatus() == ClaimStatus.SETTLED || claim.getStatus() == ClaimStatus.VOID) continue;
-            if (claim.getDueBy().isBefore(date)) continue;
+            if (claim.isDueBySet() || claim.getDueBy().isBefore(date)) continue;
             LocalDate dueBy = businessDaysAfter(claim.getDate(), claim.getTerms(), days);
             if (!dueBy.equals(claim.getDueBy())) claim.setDueBy(dueBy);
         }

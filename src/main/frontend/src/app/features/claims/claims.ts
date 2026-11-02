@@ -509,6 +509,11 @@ function notEditable(status: ClaimStatus | undefined): string {
                  (input)="clearClaimError(c.id)" />
           <button type="button" data-testid="claim-redate" (click)="redate(c, redateDate.value)"
                   [attr.aria-label]="'Re-date claim of ' + c.amount + ' on ' + c.date">Re-date</button>
+          <label [for]="fieldId('due-by-' + c.id)">New due-by</label>
+          <input [id]="fieldId('due-by-' + c.id)" type="date" data-testid="claim-due-by-new" #dueByDate
+                 (input)="clearClaimError(c.id)" />
+          <button type="button" data-testid="claim-set-due-by" (click)="setDueBy(c, dueByDate.value)"
+                  [attr.aria-label]="'Set due-by of claim of ' + c.amount + ' on ' + c.date">Set due-by</button>
           <label [for]="fieldId('reassign-' + c.id)">Move to</label>
           <select [id]="fieldId('reassign-' + c.id)" data-testid="claim-reassign-to" #reassignTo
                   (change)="clearClaimError(c.id)">
@@ -1085,6 +1090,37 @@ export class Claims {
         : e instanceof HttpErrorResponse && e.status === 422
         ? 'The new date is after the person\'s retirement date.'
         : 'Could not re-date that claim.';
+      this.claimError.set({ id: c.id, message });
+    }
+  }
+
+  /**
+   * A steward sets a DRAFT, OPEN or PENDING claim's due-by directly; anyone else, any other claim, or a
+   * due-by inside a closed period is refused.
+   */
+  protected async setDueBy(c: Claim, value: string): Promise<void> {
+    this.claimError.set(null);
+    const sheet = this.session.sheetId();
+    if (!sheet) return;
+    const dueBy = value.trim();
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(dueBy)) {
+      this.claimError.set({ id: c.id, message: 'Enter the new due-by of the claim.' });
+      return;
+    }
+    const url = `/api/sheets/${encodeURIComponent(sheet)}/claims/${c.id}/due-by`;
+    try {
+      const claim = await firstValueFrom(this.http.post<Claim>(url, { dueBy }, { headers: this.headers() }));
+      if (this.session.sheetId() !== sheet) return;
+      this.saved.emit(claim);
+    } catch (e) {
+      if (this.session.sheetId() !== sheet) return;
+      const message = e instanceof HttpErrorResponse && e.status === 423
+        ? CLOSED
+        : e instanceof HttpErrorResponse && e.status === 409
+        ? `A ${c.status} claim's due-by cannot be set; only a DRAFT, OPEN or PENDING one's can.`
+        : e instanceof HttpErrorResponse && e.status === 403
+        ? 'Only a steward can set a claim\'s due-by.'
+        : 'Could not set that claim\'s due-by.';
       this.claimError.set({ id: c.id, message });
     }
   }

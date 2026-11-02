@@ -53,7 +53,8 @@ import org.springframework.transaction.annotation.Transactional;
  * correction: it must name, by number, a SETTLED claim of the same person; only a correction may name one.
  * A claim whose due is above the review threshold in force on its date goes to REVIEW when opened, with no
  * number, until a steward reviews it ({@link #review}).
- * A steward can re-date an OPEN or PENDING claim ({@link #redate}). A DRAFT claim can be deleted, and
+ * A steward can re-date an OPEN or PENDING claim ({@link #redate}), and set a DRAFT, OPEN or PENDING
+ * claim's due-by directly ({@link #setDueBy}). A DRAFT claim can be deleted, and
  * restored to DRAFT on the same sheet's today ({@link #delete}, {@link #restore}).
  */
 @Service
@@ -546,6 +547,31 @@ public class ClaimService {
         }
         Claim saved = claims.saveAndFlush(claim);
         record("CLAIM_REDATED", sheetId, user, person, saved, saved.getNumber(), " old=" + old + " new=" + date);
+        rollup.recordChanges(sheetId, user, before);
+        return saved;
+    }
+
+    /**
+     * A steward sets a DRAFT, OPEN or PENDING claim's due-by directly. It stays as set: a holiday added later
+     * does not move it; overdue, its late charge, grace and its period follow it. Refused for anyone else, a
+     * claim in any other status, or one due, before or after, inside a closed period.
+     */
+    @Transactional
+    public Claim setDueBy(String sheetId, String user, Long id, LocalDate dueBy) {
+        sheets.lockForNumbering(sheetId);
+        RollupService.Snapshot before = rollup.snapshot(sheetId);
+        Claim claim = claims.findByIdAndSheetId(id, sheetId).orElseThrow(ClaimNotFoundException::new);
+        if (claim.getStatus() != ClaimStatus.DRAFT && !claim.getStatus().isOpen()) {
+            throw new ClaimStatusRefusedException();
+        }
+        if (settings.roleOf(sheetId, user) != Role.STEWARD) throw new ClaimNotStewardException();
+        refuseIfClosed(sheetId, claim.getDueBy());
+        refuseIfClosed(sheetId, dueBy);
+        Person person = people.findByIdAndSheetId(claim.getPersonId(), sheetId).orElseThrow(PersonNotFoundException::new);
+        LocalDate old = claim.getDueBy();
+        claim.overrideDueBy(dueBy);
+        Claim saved = claims.saveAndFlush(claim);
+        record("CLAIM_DUE_BY_SET", sheetId, user, person, saved, saved.getNumber(), " old=" + old + " new=" + dueBy);
         rollup.recordChanges(sheetId, user, before);
         return saved;
     }
