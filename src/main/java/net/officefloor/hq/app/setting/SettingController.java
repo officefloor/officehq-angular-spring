@@ -233,7 +233,7 @@ public class SettingController {
     }
 
     /** A default grade: one of the grades; blank or null: A. */
-    public record DefaultGradeRequest(@Pattern(regexp = "\\s*([ABC])?\\s*") String value) {
+    public record DefaultGradeRequest(@Pattern(regexp = "\\s*([A-Z]{1,3})?\\s*") String value) {
 
         String gradeValue() {
             return value == null || value.isBlank() ? null : value.strip();
@@ -396,7 +396,7 @@ public class SettingController {
     @PutMapping("/settings/clerk-limit/{grade}")
     public SettingsView setGradeClerkLimit(
             @PathVariable @Size(max = 100) @Pattern(regexp = "[A-Za-z0-9._-]+") String sheetId,
-            @PathVariable @Pattern(regexp = "[ABC]") String grade,
+            @PathVariable @Pattern(regexp = "[A-Z]{1,3}") String grade,
             @RequestHeader("X-User") @NotBlank @Size(max = 100) String user,
             @RequestBody @Valid ClerkLimitRequest request) {
         service.setGradeClerkLimit(sheetId, user, grade, request.limitValue(), request.fromValue());
@@ -433,7 +433,7 @@ public class SettingController {
     @PutMapping("/settings/terms/{grade}")
     public SettingsView setGradeTerms(
             @PathVariable @Size(max = 100) @Pattern(regexp = "[A-Za-z0-9._-]+") String sheetId,
-            @PathVariable @Pattern(regexp = "[ABC]") String grade,
+            @PathVariable @Pattern(regexp = "[A-Z]{1,3}") String grade,
             @RequestHeader("X-User") @NotBlank @Size(max = 100) String user,
             @RequestBody @Valid TermsRequest request) {
         service.setGradeTerms(sheetId, user, grade, request.termsValue(), request.fromValue());
@@ -584,7 +584,20 @@ public class SettingController {
             @PathVariable @Size(max = 100) @Pattern(regexp = "[A-Za-z0-9._-]+") String sheetId,
             @RequestHeader("X-User") @NotBlank @Size(max = 100) String user) {
         Set<String> retired = service.retiredGrades(sheetId);
-        return SettingService.GRADES.stream().map(g -> new GradeView(g, retired.contains(g))).toList();
+        return service.grades(sheetId).stream().map(g -> new GradeView(g, retired.contains(g))).toList();
+    }
+
+    /** A grade to add: its code, spaces around it ignored. */
+    public record GradeAddRequest(@Size(max = 100) String code) {}
+
+    /** Add a grade; refused unless one to three capital letters not yet a grade of the sheet. */
+    @PostMapping("/grades")
+    public List<GradeView> addGrade(
+            @PathVariable @Size(max = 100) @Pattern(regexp = "[A-Za-z0-9._-]+") String sheetId,
+            @RequestHeader("X-User") @NotBlank @Size(max = 100) String user,
+            @RequestBody @Valid GradeAddRequest request) {
+        service.addGrade(sheetId, user, request.code());
+        return grades(sheetId, user);
     }
 
     /** Retire the grade; refused when it is retired already. */
@@ -592,7 +605,7 @@ public class SettingController {
     public List<GradeView> retireGrade(
             @PathVariable @Size(max = 100) @Pattern(regexp = "[A-Za-z0-9._-]+") String sheetId,
             @RequestHeader("X-User") @NotBlank @Size(max = 100) String user,
-            @PathVariable @Pattern(regexp = "[ABC]") String grade) {
+            @PathVariable @Pattern(regexp = "[A-Z]{1,3}") String grade) {
         service.retireGrade(sheetId, user, grade);
         return grades(sheetId, user);
     }
@@ -609,7 +622,7 @@ public class SettingController {
     @PutMapping("/settings/grace/{grade}")
     public SettingsView setGradeGrace(
             @PathVariable @Size(max = 100) @Pattern(regexp = "[A-Za-z0-9._-]+") String sheetId,
-            @PathVariable @Pattern(regexp = "[ABC]") String grade,
+            @PathVariable @Pattern(regexp = "[A-Z]{1,3}") String grade,
             @RequestHeader("X-User") @NotBlank @Size(max = 100) String user,
             @RequestBody @Valid GradeGraceRequest request) {
         service.setGradeGrace(sheetId, user, grade, request.daysValue(), request.fromValue());
@@ -646,7 +659,7 @@ public class SettingController {
     @PutMapping("/settings/proof-threshold/{grade}")
     public SettingsView setGradeProofThreshold(
             @PathVariable @Size(max = 100) @Pattern(regexp = "[A-Za-z0-9._-]+") String sheetId,
-            @PathVariable @Pattern(regexp = "[ABC]") String grade,
+            @PathVariable @Pattern(regexp = "[A-Z]{1,3}") String grade,
             @RequestHeader("X-User") @NotBlank @Size(max = 100) String user,
             @RequestBody @Valid ProofThresholdRequest request) {
         service.setGradeProofThreshold(sheetId, user, grade, request.thresholdValue(), request.fromValue());

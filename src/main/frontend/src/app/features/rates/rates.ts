@@ -26,6 +26,7 @@ function appliesTo(rate: Rate, added: number | null | undefined): boolean {
     || added > rate.forwardAfter;
 }
 
+/** The grades every sheet has; the sheet's own, with those added, are the session's. */
 export const GRADES = ['A', 'B', 'C'];
 
 /** Shown for a due that has no rate. */
@@ -87,7 +88,7 @@ export function rateInLevels(levels: Rate[][], date: string, added?: number | nu
       <form [formGroup]="form" (ngSubmit)="save()" aria-label="Set rate">
         <label for="rate-form-grade">Grade</label>
         <select id="rate-form-grade" data-testid="rate-form-grade" formControlName="grade">
-          @for (g of grades; track g) {
+          @for (g of grades(); track g) {
             <option [value]="g">{{ g }}</option>
           }
         </select>
@@ -116,7 +117,7 @@ export function rateInLevels(levels: Rate[][], date: string, added?: number | nu
       <form [formGroup]="previewForm" (ngSubmit)="preview()" aria-label="Preview rate">
         <label for="rate-preview-grade">Grade</label>
         <select id="rate-preview-grade" data-testid="rate-preview-grade" formControlName="grade">
-          @for (g of grades; track g) {
+          @for (g of grades(); track g) {
             <option [value]="g">{{ g }}</option>
           }
         </select>
@@ -139,7 +140,7 @@ export function rateInLevels(levels: Rate[][], date: string, added?: number | nu
           <tr><th scope="col">Grade</th><th scope="col">Rate (%)</th></tr>
         </thead>
         <tbody>
-          @for (g of grades; track g) {
+          @for (g of grades(); track g) {
             <tr>
               <td>{{ g }}</td>
               <td [attr.data-testid]="'rate-current-' + g">{{ currentOf(g) ?? na | figure }}</td>
@@ -204,7 +205,7 @@ export class Rates {
   /** The rates an import set, as the store now holds them, in the order of their lines. */
   readonly imported = output<Rate[]>();
 
-  protected readonly grades = GRADES;
+  protected readonly grades = this.session.grades;
   protected readonly na = NA;
   protected readonly error = signal('');
   /** A submit is under way; another one waits for its answer rather than storing twice. */
@@ -245,7 +246,7 @@ export class Rates {
     const year = today.slice(0, 4);
     const months = Array.from({ length: 12 }, (_, i) => `${year}-${String(i + 1).padStart(2, '0')}`);
     const all = [this.rates(), ...this.inherited()];
-    const rows = GRADES.map((grade) => {
+    const rows = this.grades().map((grade) => {
       const levels = all.map((rates) => rates.filter((r) => r.grade === grade));
       return { grade, cells: months.map((month) => ({ month, pct: rateInLevels(levels, `${month}-01`)?.pct ?? null })) };
     });
@@ -278,7 +279,7 @@ export class Rates {
     const pct = raw.pct.trim();
     const from = raw.from.trim();
     const to = raw.to.trim();
-    if (!GRADES.includes(raw.grade)) {
+    if (!this.grades().includes(raw.grade)) {
       this.error.set('Choose a grade.');
       return;
     }
@@ -357,7 +358,7 @@ export class Rates {
     if (!sheet) return;
     const raw = this.previewForm.getRawValue();
     const pct = raw.pct.trim();
-    if (!GRADES.includes(raw.grade)) {
+    if (!this.grades().includes(raw.grade)) {
       this.previewError.set('Choose a grade.');
       return;
     }

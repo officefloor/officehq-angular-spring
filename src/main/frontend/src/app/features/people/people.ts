@@ -8,7 +8,7 @@ import { downloadCsv } from '../../core/csv';
 import { Claim, Claims, DUPLICATE_REF, GraceOn, PctOn, RETIRED, cents, claimDueCents, countsAt, countsFor, isBound, isCorrection, isDuplicateRef, isOpen, isOverdue, money, roundsOn, statusAt } from '../claims/claims';
 import { Period, Periods, periodOn } from '../periods/periods';
 import { Plan, Plans } from '../plans/plans';
-import { GRADES, NA, Rate, Rates, dueCents, rateInLevels } from '../rates/rates';
+import { NA, Rate, Rates, dueCents, rateInLevels } from '../rates/rates';
 
 const NO_CLAIMS: Claim[] = [];
 const NO_RATES: Rate[][] = [];
@@ -202,8 +202,8 @@ interface StatementTaken {
 // figures of their SETTLED claims dated within the 90 days up to and including the sheet's today) times
 // their share divided by 100, rounded half to even, added up (0.00 with none).
 // A person's due-total is at most the sheet's cap (blank: none) less their cut total, not below 0.00; the
-// row shows their excess, how far the sum of their figures plus their cut total is above the cap (0.00 when
-// not, or n/a). Every total of due-totals adds the capped ones.
+// row shows their excess, how far the sum of their figures plus their cut total is above the cap, at most the
+// sum of their figures (0.00 when not, or n/a). Every total of due-totals adds the capped ones.
 // Each row shows the person's cut total: their cuts as the pools show them, across every pool they are a
 // member of, added up (a pool that shows no cuts adds nothing); the sheet's cut total adds up everyone's.
 // Under it, a summary: per grade, the people on it today (retired people excluded) and their
@@ -330,7 +330,7 @@ function trimmedSum(figures: number[]): number {
         <input id="person-form-name" data-testid="person-form-name" formControlName="name" />
         <label for="person-form-grade">Grade</label>
         <select id="person-form-grade" data-testid="person-form-grade" formControlName="grade">
-          @for (g of grades; track g) {
+          @for (g of grades(); track g) {
             <option [value]="g">{{ g }}</option>
           }
         </select>
@@ -485,7 +485,7 @@ function trimmedSum(figures: number[]): number {
       <form [formGroup]="bulkGradeForm" (ngSubmit)="bulkGrade()" aria-label="Grade selected people">
         <label for="bulk-grade">Grade selected people</label>
         <select id="bulk-grade" data-testid="bulk-grade" formControlName="grade">
-          @for (g of grades; track g) {
+          @for (g of grades(); track g) {
             <option [value]="g">{{ g }}</option>
           }
         </select>
@@ -527,7 +527,7 @@ function trimmedSum(figures: number[]): number {
                 <label [for]="'person-inline-grade-' + p.id" class="visually-hidden">Grade for {{ p.name }}</label>
                 <select [id]="'person-inline-grade-' + p.id" data-testid="person-inline-grade" #inlineGrade
                         (change)="clearPersonError(p.id)">
-                  @for (g of grades; track g) {
+                  @for (g of grades(); track g) {
                     <option [value]="g" [selected]="g === gradeOf(p)">{{ g }}</option>
                   }
                 </select>
@@ -861,7 +861,8 @@ export class People {
   /** The columns of the people list this screen can switch off. */
   protected readonly columns = PEOPLE_COLUMNS;
 
-  protected readonly grades = GRADES;
+  /** The sheet's grades, in order: the standing ones, then those added. */
+  protected readonly grades = this.session.grades;
   protected readonly people = signal<Person[]>([]);
   /** The dates of the last snapshot comparison asked for; to is blank for now; null until one is asked. */
   private readonly snapshotDates = signal<{ from: string; to: string } | null>(null);
@@ -1136,7 +1137,8 @@ export class People {
   private readonly ratesByGrade = computed(() => {
     const by = new Map<string, Rate[][]>();
     const levels = [this.rates(), ...this.inheritedRates()];
-    for (const g of GRADES) by.set(g, levels.map((rates) => rates.filter((r) => r.grade === g)));
+    const grades = new Set([...this.grades(), ...levels.flat().map((r) => r.grade)]);
+    for (const g of grades) by.set(g, levels.map((rates) => rates.filter((r) => r.grade === g)));
     return by;
   });
   /** Each person's rate on a date, by id: the rate then of the grade in force for them then. */
@@ -1277,7 +1279,7 @@ export class People {
   });
   /** Per grade: the people not retired on it today, their due-totals added up, skipping n/a, and how many are active. */
   protected readonly gradeSummary = computed(() =>
-    GRADES.map((grade) => {
+    this.grades().map((grade) => {
       const on = this.people().filter((p) => !p.retired && this.gradeOf(p) === grade);
       return { grade, count: on.length, dueTotal: money(on.reduce((sum, p) => sum + (this.dueTotalCents(p) ?? 0), 0)),
         active: on.filter((p) => p.active).length };
@@ -1655,11 +1657,14 @@ export class People {
     return total === null || cap === null ? total : Math.min(total, Math.max(0, cap - this.cutTotalOf(p.id)));
   }
 
-  /** How far the sum of their figures plus their cut total is above the cap; 0.00 when it is not, or is n/a. */
+  /**
+   * How far the sum of their figures plus their cut total is above the cap, at most the sum of their figures:
+   * what the cap takes off their due-total; 0.00 when it is not above, or is n/a.
+   */
   protected excessOf(p: Person): string {
     const total = this.uncappedDueCents(p);
-    const cap = this.capCents();
-    return money(total === null || cap === null ? 0 : Math.max(0, total + this.cutTotalOf(p.id) - cap));
+    const capped = this.dueTotalCents(p);
+    return money(total === null || capped === null ? 0 : Math.max(0, total - capped));
   }
 
   protected overdueOf(p: Person): Overdue {
@@ -2191,7 +2196,7 @@ export class People {
     this.clearPatronError(p.id);
     const sheet = this.session.sheetId();
     if (!sheet) return;
-    if (!this.grades.includes(grade)) {
+    if (!this.grades().includes(grade)) {
       this.personError.set({ id: p.id, message: 'Choose a grade.' });
       return;
     }
@@ -2293,7 +2298,7 @@ export class People {
       refuse('Select at least one person to grade.');
       return;
     }
-    if (!this.grades.includes(grade) || (from && !/^\d{4}-\d{2}-\d{2}$/.test(from))) {
+    if (!this.grades().includes(grade) || (from && !/^\d{4}-\d{2}-\d{2}$/.test(from))) {
       refuse('Choose a grade, and enter a date or leave it blank for today.');
       return;
     }
@@ -2531,7 +2536,7 @@ export class People {
       this.error.set('Enter a name.');
       return;
     }
-    if (!this.grades.includes(grade)) {
+    if (!this.grades().includes(grade)) {
       this.error.set('Choose a grade.');
       return;
     }

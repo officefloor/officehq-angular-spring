@@ -24,7 +24,7 @@ public class PersonImportService {
 
     private static final int NAME_MAX = 200;
     private static final int CONTACT_MAX = 200;
-    private static final Pattern GRADE = Pattern.compile("[ABC]?");
+    private static final Pattern GRADE = Pattern.compile("[A-Z]{0,3}");
     private static final Pattern TERMS = Pattern.compile("\\d{0,4}");
 
     private record Line(String name, String grade, Integer terms, String contact) {}

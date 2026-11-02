@@ -771,8 +771,8 @@ export class Settings {
       this.error.set('Enter proof kinds as a comma separated list of receipt and photo, or leave it blank for none.');
       return;
     }
-    if (defaultGrade.dirty && defaultGrade.value.trim() && !/^[ABC]$/.test(defaultGrade.value.trim())) {
-      this.error.set('Enter a default grade of A, B or C, or leave it blank for A.');
+    if (defaultGrade.dirty && defaultGrade.value.trim() && !this.session.grades().includes(defaultGrade.value.trim())) {
+      this.error.set('Enter a default grade that is a grade of the sheet, or leave it blank for A.');
       return;
     }
     if (proofThreshold.dirty && proofThresholdValue && !/^\d{1,12}(\.\d{1,2})?$/.test(proofThresholdValue)) {

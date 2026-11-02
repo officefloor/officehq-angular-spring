@@ -69,7 +69,7 @@ public class RateController {
     @GetMapping("/{grade}/preview")
     public PreviewView preview(
             @PathVariable @Size(max = 100) @Pattern(regexp = "[A-Za-z0-9._-]+") String sheetId,
-            @PathVariable @Pattern(regexp = "[ABC]") String grade,
+            @PathVariable @Pattern(regexp = "[A-Z]{1,3}") String grade,
             @RequestHeader("X-User") @NotBlank @Size(max = 100) String user,
             @RequestParam @Pattern(regexp = "\\d{1,5}(\\.\\d{1,2})?") String pct) {
         ClaimService.RatePreview preview = claims.previewRate(sheetId, grade, new BigDecimal(pct).setScale(2));
@@ -101,7 +101,7 @@ public class RateController {
     @PutMapping("/{grade}")
     public RateView set(
             @PathVariable @Size(max = 100) @Pattern(regexp = "[A-Za-z0-9._-]+") String sheetId,
-            @PathVariable @Pattern(regexp = "[ABC]") String grade,
+            @PathVariable @Pattern(regexp = "[A-Z]{1,3}") String grade,
             @RequestHeader("X-User") @NotBlank @Size(max = 100) String user,
             @RequestBody @Valid RateRequest request) {
         return RateView.of(service.set(sheetId, user, grade, request.from(), request.to(), request.pctValue()));

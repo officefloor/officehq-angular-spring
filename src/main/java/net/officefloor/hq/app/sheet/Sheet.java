@@ -39,6 +39,8 @@ public class Sheet {
     /** The values in force before any is recorded. */
     public static final BigDecimal START_FLOOR = new BigDecimal("1.00"), START_LATE_PCT = new BigDecimal("0.00");
     public static final int START_TERMS = 14;
+    /** The grades every sheet has; more can be added to a sheet. */
+    public static final List<String> STANDING_GRADES = List.of("A", "B", "C");
 
     @Id
     private String id;
@@ -139,14 +141,20 @@ public class Sheet {
     private String proofKinds;
 
     /** The default grade (not dated): quick-add gives a person it adds it, and an import line with a blank grade takes it; null means A. */
-    @Column(name = "default_grade", length = 1)
+    @Column(name = "default_grade", length = 3)
     private String defaultGrade;
 
     /** The grades retired on the sheet (not dated): none can be chosen for a new person or in an edit. */
     @ElementCollection(fetch = FetchType.EAGER)
     @CollectionTable(name = "sheet_retired_grade", joinColumns = @JoinColumn(name = "sheet_id"))
-    @Column(name = "grade", nullable = false, length = 1)
+    @Column(name = "grade", nullable = false, length = 3)
     private Set<String> retiredGrades = new TreeSet<>();
+
+    /** The grades added on the sheet (not dated), beyond the standing A, B and C. */
+    @ElementCollection(fetch = FetchType.EAGER)
+    @CollectionTable(name = "sheet_grade", joinColumns = @JoinColumn(name = "sheet_id"))
+    @Column(name = "grade", nullable = false, length = 3)
+    private Set<String> addedGrades = new TreeSet<>();
 
     /** While set, a new claim given no date takes it rather than the sheet's today; null means off. */
     @Column(name = "entry_date")
@@ -415,6 +423,17 @@ public class Sheet {
     public boolean isGradeRetired(String grade) { return retiredGrades.contains(grade); }
 
     public void retireGrade(String grade) { retiredGrades.add(grade); }
+
+    /** The sheet's grades: the standing A, B and C, then those added, in code order. */
+    public List<String> getGrades() {
+        List<String> grades = new ArrayList<>(STANDING_GRADES);
+        grades.addAll(new TreeSet<>(addedGrades));
+        return grades;
+    }
+
+    public boolean hasGrade(String grade) { return STANDING_GRADES.contains(grade) || addedGrades.contains(grade); }
+
+    public void addGrade(String grade) { if (!STANDING_GRADES.contains(grade)) addedGrades.add(grade); }
 
     public LocalDate getEntryDate() { return entryDate; }
 

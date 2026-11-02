@@ -40,8 +40,11 @@ import org.springframework.transaction.annotation.Transactional;
 public class SheetHistory {
 
     private static final String ROOT = "SHEET";
-    /** Tables that are not the sheet's data: the schema's history and this history itself. */
-    private static final Set<String> NOT_SHEET_DATA = Set.of("FLYWAY_SCHEMA_HISTORY", "SHEET_SNAPSHOT");
+    /**
+     * Tables that are not the sheet's data: the schema's history and this history itself; and the grades
+     * added on a sheet, which are not dated, so a sheet shown as it stood at a date has every grade it has now.
+     */
+    private static final Set<String> NOT_SHEET_DATA = Set.of("FLYWAY_SCHEMA_HISTORY", "SHEET_SNAPSHOT", "SHEET_GRADE");
 
     /**
      * A table the sheet owns rows of: its columns, its primary key's columns (empty: none) and the

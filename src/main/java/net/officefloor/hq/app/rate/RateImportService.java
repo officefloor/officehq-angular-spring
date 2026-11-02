@@ -18,7 +18,7 @@ import org.springframework.transaction.annotation.Transactional;
 @Service
 public class RateImportService {
 
-    private static final Pattern GRADE = Pattern.compile("[ABC]");
+    private static final Pattern GRADE = Pattern.compile("[A-Z]{1,3}");
     private static final Pattern PCT = Pattern.compile("\\d{1,5}(\\.\\d{1,2})?");
     private static final Pattern DATE = Pattern.compile("\\d{4}-\\d{2}-\\d{2}");
 

@@ -9,6 +9,8 @@ import java.util.Map;
 import java.util.Optional;
 import net.officefloor.hq.app.Audit;
 import net.officefloor.hq.app.rollup.RollupService;
+import net.officefloor.hq.app.setting.GradeAddRefusedException;
+import net.officefloor.hq.app.sheet.Sheet;
 import net.officefloor.hq.app.sheet.SheetNotFoundException;
 import net.officefloor.hq.app.sheet.SheetRepository;
 import org.springframework.stereotype.Service;
@@ -95,7 +97,9 @@ public class RateService {
     public Rate set(String sheetId, String user, String grade, LocalDate from, LocalDate to, BigDecimal pct) {
         if (to != null && from != null && to.isBefore(from)) throw new RateDatesException();
         // Lock the sheet so two users setting the same grade and from-date at once replace one rate.
-        LocalDate today = sheets.findForUpdate(sheetId).orElseThrow(SheetNotFoundException::new).getToday();
+        Sheet sheet = sheets.findForUpdate(sheetId).orElseThrow(SheetNotFoundException::new);
+        if (!sheet.hasGrade(grade)) throw new GradeAddRefusedException();
+        LocalDate today = sheet.getToday();
         RollupService.Snapshot before = rollup.snapshot(sheetId);
         Optional<Rate> existing = from == null
                 ? rates.findBySheetIdAndGradeAndFromDateIsNull(sheetId, grade)

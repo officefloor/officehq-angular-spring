@@ -41,8 +41,7 @@ import org.springframework.web.bind.annotation.RestController;
 @RequestMapping("/api/sheets/{sheetId}/descendants")
 public class ConsolidatedController {
 
-    /** The grades and statuses the descendants' figures are given per. */
-    private static final List<String> GRADES = List.of("A", "B", "C");
+    /** The statuses the descendants' figures are given per (and the grades: the sheet's, then any other a descendant has). */
     private static final List<String> STATUSES = List.of("DRAFT", "OPEN", "PENDING", "SETTLED", "VOID", "REVIEW");
 
     /**
@@ -87,7 +86,9 @@ public class ConsolidatedController {
         BigDecimal due = BigDecimal.ZERO.setScale(2);
         BigDecimal overdue = BigDecimal.ZERO.setScale(2);
         Map<String, BigDecimal> gradeDues = new LinkedHashMap<>();
-        for (String grade : GRADES) gradeDues.put(grade, BigDecimal.ZERO.setScale(2));
+        for (String grade : sheetRepository.findById(sheetId).map(Sheet::getGrades).orElse(Sheet.STANDING_GRADES)) {
+            gradeDues.put(grade, BigDecimal.ZERO.setScale(2));
+        }
         Map<String, Integer> statusCounts = new LinkedHashMap<>();
         for (String status : STATUSES) statusCounts.put(status, 0);
         List<PersonFigures> personFigures = new ArrayList<>();
@@ -109,7 +110,7 @@ public class ConsolidatedController {
                 if (person.isRetired()) continue;
                 if (theirs == null || theirs.dueTotal() == null) continue;
                 String grade = today == null ? person.getGrade() : person.gradeOn(today);
-                gradeDues.computeIfPresent(grade, (g, total) -> total.add(theirs.dueTotal()));
+                gradeDues.merge(grade, theirs.dueTotal(), BigDecimal::add);
             }
             for (Claim claim : claims.findBySheetIdOrderByIdDesc(descendant)) {
                 statusCounts.computeIfPresent(claim.getStatus().name(), (st, count) -> count + 1);

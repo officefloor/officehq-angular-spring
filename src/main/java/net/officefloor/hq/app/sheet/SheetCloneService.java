@@ -83,7 +83,7 @@ public class SheetCloneService {
         sources.saveAndFlush(new SheetSource(toSheetId, sheetId));
 
         for (String table : List.of("sheet_setting", "sheet_setting_log", "sheet_permission", "sheet_role", "rate",
-                "rate_log", "holiday", "void_reason", "claim_template", "claim_tag")) {
+                "rate_log", "holiday", "void_reason", "claim_template", "claim_tag", "sheet_grade")) {
             for (Map<String, Object> row : rows("SELECT * FROM " + table + " WHERE sheet_id = ? ORDER BY 1, 2", sheetId)) {
                 row.put("SHEET_ID", toSheetId);
                 if (row.containsKey("ID")) insertNew(table, row);

@@ -104,7 +104,7 @@ public class PersonController {
 
     public record PersonRequest(
             @NotBlank @Size(max = 200) String name,
-            @NotNull @Pattern(regexp = "[ABC]") String grade,
+            @NotNull @Pattern(regexp = "[A-Z]{1,3}") String grade,
             @Pattern(regexp = "\\d{0,4}") String terms,
             @Size(max = 200) String contact,
             @Size(max = 1000) String tags) {}
@@ -112,7 +112,7 @@ public class PersonController {
     /** An edit, made from the version of the person the form loaded. */
     public record PersonEditRequest(
             @NotBlank @Size(max = 200) String name,
-            @NotNull @Pattern(regexp = "[ABC]") String grade,
+            @NotNull @Pattern(regexp = "[A-Z]{1,3}") String grade,
             LocalDate gradeFrom,
             @Pattern(regexp = "\\d{0,4}") String terms,
             LocalDate termsFrom,
@@ -123,7 +123,7 @@ public class PersonController {
     /** The people to give the grade, from the date (blank: the sheet's today). */
     public record BulkGradeRequest(
             @NotEmpty List<@NotNull Long> ids,
-            @NotNull @Pattern(regexp = "[ABC]") String grade,
+            @NotNull @Pattern(regexp = "[A-Z]{1,3}") String grade,
             LocalDate from) {}
 
     /** How many people a bulk grade changed. */
@@ -131,8 +131,8 @@ public class PersonController {
 
     /** The grade to merge into another. */
     public record GradeMergeRequest(
-            @NotNull @Pattern(regexp = "[ABC]") String from,
-            @NotNull @Pattern(regexp = "[ABC]") String into) {}
+            @NotNull @Pattern(regexp = "[A-Z]{1,3}") String from,
+            @NotNull @Pattern(regexp = "[A-Z]{1,3}") String into) {}
 
     /** How many people a grade merge gave the other grade. */
     public record GradeMergeResult(int merged) {}

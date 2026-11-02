@@ -157,6 +157,12 @@ export class Session {
    */
   readonly voidReasons = signal<string[]>([]);
 
+  /**
+   * The sheet's grades, in order: the standing A, B and C, then those added on the sheet. Kept by the
+   * grades section as it reads and adds them.
+   */
+  readonly grades = signal<string[]>(['A', 'B', 'C']);
+
   /** The sheet's claim templates, by name. Kept by the templates section as it reads and saves them. */
   readonly templates = signal<ClaimTemplate[]>([]);
 

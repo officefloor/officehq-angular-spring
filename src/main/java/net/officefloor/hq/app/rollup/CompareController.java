@@ -31,9 +31,6 @@ import org.springframework.web.bind.annotation.RestController;
 @RequestMapping("/api/sheets/{sheetId}/compare")
 public class CompareController {
 
-    /** The grades the figures are given per. */
-    private static final List<String> GRADES = List.of("A", "B", "C");
-
     /** Whether the other sheet exists and, when it does, its due-total per grade with two decimals. */
     public record CompareView(boolean exists, Map<String, String> gradeDueTotals) {}
 
@@ -58,13 +55,17 @@ public class CompareController {
         LocalDate today = other.get().getToday();
         RollupService.Snapshot figures = rollup.current(otherId);
         Map<String, BigDecimal> gradeDues = new LinkedHashMap<>();
-        for (String grade : GRADES) gradeDues.put(grade, BigDecimal.ZERO.setScale(2));
+        // per grade of this sheet, then any other the other sheet has
+        for (String grade : sheets.findById(sheetId).map(Sheet::getGrades).orElse(Sheet.STANDING_GRADES)) {
+            gradeDues.put(grade, BigDecimal.ZERO.setScale(2));
+        }
+        for (String grade : other.get().getGrades()) gradeDues.putIfAbsent(grade, BigDecimal.ZERO.setScale(2));
         for (Person person : persons.findBySheetIdOrderByPositionAscIdAsc(otherId)) {
             if (person.isRetired()) continue;
             RollupService.Figures theirs = figures.people().get(person.getId());
             if (theirs == null || theirs.dueTotal() == null) continue;
             String grade = today == null ? person.getGrade() : person.gradeOn(today);
-            gradeDues.computeIfPresent(grade, (g, total) -> total.add(theirs.dueTotal()));
+            gradeDues.merge(grade, theirs.dueTotal(), BigDecimal::add);
         }
         Map<String, String> gradeDueTotals = new LinkedHashMap<>();
         gradeDues.forEach((grade, total) -> gradeDueTotals.put(grade, total.setScale(2).toPlainString()));

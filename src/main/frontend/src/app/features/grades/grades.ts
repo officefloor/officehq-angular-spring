@@ -3,6 +3,7 @@ import { Component, effect, inject, signal } from '@angular/core';
 import { FormControl, FormGroup, ReactiveFormsModule } from '@angular/forms';
 import { firstValueFrom } from 'rxjs';
 import { Session } from '../../core/session';
+import { GRADES } from '../rates/rates';
 
 /** A grade on the sheet and whether it is retired. */
 interface GradeView {
@@ -10,7 +11,8 @@ interface GradeView {
   retired: boolean;
 }
 
-// The sheet's grades. A grade can be retired (once): it can then no longer be chosen for a new person
+// The sheet's grades: A, B and C, and any added (a code of one to three capital letters not yet a
+// grade). A grade can be retired (once): it can then no longer be chosen for a new person
 // or in an edit; people already on it keep it. A steward can merge a grade into another: everyone on
 // it on the sheet's today is given the other from today.
 @Component({
@@ -19,6 +21,11 @@ interface GradeView {
   template: `
     <section aria-labelledby="grades-heading">
       <h2 id="grades-heading">Grades</h2>
+      <form [formGroup]="addForm" (ngSubmit)="add()" aria-label="Add a grade">
+        <label for="grade-add-code">New grade (one to three capital letters)</label>
+        <input id="grade-add-code" data-testid="grade-add-code" formControlName="code" autocomplete="off" />
+        <button type="submit" data-testid="grade-add">Add grade</button>
+      </form>
       <form [formGroup]="form" (ngSubmit)="retire()" aria-label="Retire a grade">
         <label for="grade-retire-select">Grade to retire</label>
         <select id="grade-retire-select" data-testid="grade-retire-select" formControlName="grade">
@@ -67,6 +74,7 @@ export class Grades {
 
   protected readonly grades = signal<GradeView[]>([]);
   protected readonly error = signal('');
+  protected readonly addForm = new FormGroup({ code: new FormControl('', { nonNullable: true }) });
   protected readonly form = new FormGroup({ grade: new FormControl('A', { nonNullable: true }) });
   protected readonly mergeForm = new FormGroup({
     from: new FormControl('A', { nonNullable: true }),
@@ -77,12 +85,14 @@ export class Grades {
   private submitting = false;
 
   constructor() {
+    this.addForm.valueChanges.subscribe(() => this.error.set(''));
     this.form.valueChanges.subscribe(() => this.error.set(''));
     this.mergeForm.valueChanges.subscribe(() => this.error.set(''));
     effect(() => {
       const id = this.session.sheetId();
       this.session.loads();
       this.grades.set([]);
+      this.session.grades.set([...GRADES]);
       this.error.set('');
       this.merged.set('');
       if (id) void this.load(id);
@@ -100,9 +110,41 @@ export class Grades {
   private async load(sheet: string): Promise<void> {
     try {
       const list = await firstValueFrom(this.http.get<GradeView[]>(this.base(sheet), { headers: this.headers() }));
-      if (this.session.sheetId() === sheet) this.grades.set(list);
+      if (this.session.sheetId() === sheet) this.show(list);
     } catch {
       if (this.session.sheetId() === sheet) this.error.set('Could not load the grades of this sheet.');
+    }
+  }
+
+  /** Show the grades, and give every grade select of the screen them. */
+  private show(list: GradeView[]): void {
+    this.grades.set(list);
+    this.session.grades.set(list.map((g) => g.grade));
+  }
+
+  /** Add a grade: one to three capital letters (spaces around ignored) not yet a grade of the sheet. */
+  protected async add(): Promise<void> {
+    if (this.submitting) return;
+    this.error.set('');
+    const sheet = this.session.sheetId();
+    if (!sheet) return;
+    const code = this.addForm.controls.code.value.trim();
+    if (!/^[A-Z]{1,3}$/.test(code)) {
+      this.error.set('A grade is one to three capital letters.');
+      return;
+    }
+    if (this.grades().some((g) => g.grade === code)) {
+      this.error.set(`Grade ${code} is already a grade.`);
+      return;
+    }
+    this.submitting = true;
+    try {
+      const list = await firstValueFrom(this.http.post<GradeView[]>(this.base(sheet), { code }, { headers: this.headers() }));
+      if (this.session.sheetId() === sheet) this.show(list);
+    } catch {
+      if (this.session.sheetId() === sheet) this.error.set(`Could not add grade ${code}: it may already be a grade.`);
+    } finally {
+      this.submitting = false;
     }
   }
 
@@ -121,7 +163,7 @@ export class Grades {
     try {
       const list = await firstValueFrom(
         this.http.post<GradeView[]>(`${this.base(sheet)}/${encodeURIComponent(grade)}/retire`, {}, { headers: this.headers() }));
-      if (this.session.sheetId() === sheet) this.grades.set(list);
+      if (this.session.sheetId() === sheet) this.show(list);
     } catch {
       if (this.session.sheetId() === sheet) this.error.set(`Could not retire grade ${grade}: it may already be retired.`);
     } finally {

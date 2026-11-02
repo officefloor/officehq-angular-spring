@@ -46,8 +46,8 @@ import org.springframework.transaction.annotation.Transactional;
 @Service
 public class SettingService {
 
-    /** The grades a person can have, each of which can have its own terms. */
-    public static final List<String> GRADES = List.of("A", "B", "C");
+    /** The grades every sheet has, each of which can have its own terms; a sheet can add more. */
+    public static final List<String> GRADES = Sheet.STANDING_GRADES;
 
     /** The actions of the permission matrix, each with its standing rule: the roles that may take it while none are set. */
     public static final Map<String, Set<Role>> STANDING_PERMISSIONS;
@@ -116,7 +116,7 @@ public class SettingService {
     public Map<String, Integer> gradeTerms(String sheetId) {
         Sheet sheet = sheets.findById(sheetId).orElseThrow(SheetNotFoundException::new);
         Map<String, Integer> byGrade = new TreeMap<>();
-        for (String grade : GRADES) {
+        for (String grade : sheet.getGrades()) {
             Integer terms = sheet.gradeTermsOn(grade, sheet.getToday());
             if (terms != null) byGrade.put(grade, terms);
         }
@@ -547,6 +547,7 @@ public class SettingService {
     @Transactional
     public String setDefaultGrade(String sheetId, String user, String grade) {
         Sheet sheet = sheets.findForUpdate(sheetId).orElseThrow(SheetNotFoundException::new);
+        if (grade != null && !sheet.hasGrade(grade)) throw new GradeAddRefusedException();
         sheet.setDefaultGrade(grade);
         sheets.flush();
         audit.recordOnCommit("SETTING_CHANGED sheet=" + sheetId + " by=" + user.strip() + " key=default-grade value="
@@ -577,6 +578,27 @@ public class SettingService {
         audit.recordOnCommit("GRADE_RETIRED sheet=" + sheetId + " by=" + user.strip() + " grade=" + grade);
     }
 
+    /**
+     * Add a grade (not dated): a code of one to three capital letters, given with spaces around it or
+     * not, that is not a grade of the sheet yet; anything else is refused.
+     */
+    @Transactional
+    public String addGrade(String sheetId, String user, String code) {
+        String grade = code == null ? "" : code.strip();
+        Sheet sheet = sheets.findForUpdate(sheetId).orElseThrow(SheetNotFoundException::new);
+        if (!grade.matches("[A-Z]{1,3}") || sheet.hasGrade(grade)) throw new GradeAddRefusedException();
+        sheet.addGrade(grade);
+        sheets.flush();
+        audit.recordOnCommit("GRADE_ADDED sheet=" + sheetId + " by=" + user.strip() + " grade=" + grade);
+        return grade;
+    }
+
+    /** The sheet's grades, in order: the standing ones, then those added; the standing ones for a sheet never loaded. */
+    @Transactional(readOnly = true)
+    public List<String> grades(String sheetId) {
+        return sheets.findById(sheetId).map(Sheet::getGrades).orElse(GRADES);
+    }
+
     /** The grades retired on the sheet, in grade order. */
     @Transactional(readOnly = true)
     public Set<String> retiredGrades(String sheetId) {
@@ -589,9 +611,10 @@ public class SettingService {
         return sheets.findById(sheetId).map(s -> s.isGradeRetired(grade)).orElse(false);
     }
 
-    /** Refuses a grade retired on the sheet. */
+    /** Refuses a grade retired on the sheet, or one that is not a grade of the sheet. */
     @Transactional(readOnly = true)
     public void requireGradeNotRetired(String sheetId, String grade) {
+        if (!grades(sheetId).contains(grade)) throw new GradeAddRefusedException();
         if (isGradeRetired(sheetId, grade)) throw new GradeRetiredException();
     }
 

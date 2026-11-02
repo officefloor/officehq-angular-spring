@@ -690,6 +690,9 @@ public class PersonService {
         watches.flush();
 
         // they, their statements and their claims arrive on the other sheet
+        // with every grade they have had, added there when it is not a grade there yet
+        there.addGrade(person.getGrade());
+        person.getDatedGrades().values().forEach(there::addGrade);
         List<Claim> moving = claims.findBySheetIdAndPersonIdOrderByIdDesc(sheetId, id);
         String name = person.getName();
         List<String> names = into != null ? leave(person, into) : List.of();
