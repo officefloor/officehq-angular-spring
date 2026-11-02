@@ -212,6 +212,11 @@ public class Sheet {
         return datedLog.stream().filter(d -> POLICY_KEYS.contains(d.getKey())).map(DatedSettingLine::getFrom).toList();
     }
 
+    /** Each policy version's recorded value, numbered from 1 in the order recorded. */
+    public List<DatedSettingLine> getPolicyLog() {
+        return datedLog.stream().filter(d -> POLICY_KEYS.contains(d.getKey())).toList();
+    }
+
     /** The current policy version: how many have been recorded; 0 before any. */
     public int policyVersion() { return getPolicyVersions().size(); }
 

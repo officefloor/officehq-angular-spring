@@ -11,6 +11,7 @@ import { Notes } from '../notes/notes';
 import { People } from '../people/people';
 import { Crews } from '../crews/crews';
 import { Pools } from '../pools/pools';
+import { PolicyVersions } from '../policy-versions/policy-versions';
 import { Settings } from '../settings/settings';
 import { Templates } from '../templates/templates';
 import { VoidReasons } from '../void-reasons/void-reasons';
@@ -18,7 +19,7 @@ import { VoidReasons } from '../void-reasons/void-reasons';
 // The one screen: sign in by name, then load a sheet by id.
 @Component({
   selector: 'app-home',
-  imports: [ReactiveFormsModule, Activity, AuditView, Crews, Duplicates, Grades, Holidays, Notes, People, Pools, Settings, Templates, TreeSearch, VoidReasons],
+  imports: [ReactiveFormsModule, Activity, AuditView, Crews, Duplicates, Grades, Holidays, Notes, People, Pools, PolicyVersions, Settings, Templates, TreeSearch, VoidReasons],
   template: `
     @if (session.user(); as user) {
       <p>Signed in as <strong data-testid="current-user">{{ user }}</strong></p>
@@ -75,6 +76,7 @@ import { VoidReasons } from '../void-reasons/void-reasons';
         </form>
         <p>Last cloned to: <strong data-testid="sheet-cloned-to">{{ session.clonedTo() ?? '' }}</strong></p>
         <app-settings />
+        <app-policy-versions />
         <app-grades />
         <app-holidays />
         <app-notes />
