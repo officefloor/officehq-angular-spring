@@ -1,0 +1,409 @@
+diff --git a/src/main/frontend/src/app/core/settings.ts b/src/main/frontend/src/app/core/settings.ts
+index 21e8da577..a495e7c15 100644
+--- a/src/main/frontend/src/app/core/settings.ts
++++ b/src/main/frontend/src/app/core/settings.ts
+@@ -41,6 +41,9 @@ export interface Settings {
+   /** The grace days: when the sheet's today is changed, an open period whose to-date plus them is
+    *  before it is closed; null when blank (off). */
+   graceDays: number | null;
++  /** The entry date (yyyy-mm-dd): while it is set, a new claim's date when none is given; null when
++   *  blank (off, the sheet's today then stands in). */
++  entryDate: string | null;
+ }
+ 
+ /** The actions the permission matrix covers. */
+@@ -191,6 +194,12 @@ export class SheetSettings {
+     return firstValueFrom(this.http.put<Settings>(`${this.url(sheetId)}/settings/grace-days`, { value }, { headers }));
+   }
+ 
++  /** Set the entry date; null for blank (off). */
++  setEntryDate(value: string | null): Promise<Settings> {
++    const [sheetId, headers] = this.active();
++    return firstValueFrom(this.http.put<Settings>(`${this.url(sheetId)}/settings/entry-date`, { value }, { headers }));
++  }
++
+   /** Set the roles (comma separated; null for blank, the standing rule) that may take an action. */
+   setPermission(action: PermAction, value: string | null): Promise<Settings> {
+     const [sheetId, headers] = this.active();
+diff --git a/src/main/frontend/src/app/features/people/quick-add-bar.ts b/src/main/frontend/src/app/features/people/quick-add-bar.ts
+index c084ba55a..80be65925 100644
+--- a/src/main/frontend/src/app/features/people/quick-add-bar.ts
++++ b/src/main/frontend/src/app/features/people/quick-add-bar.ts
+@@ -10,7 +10,8 @@ function refusal(e: unknown): string {
+   return 'The claim could not be added.';
+ }
+ 
+-// The quick-add bar: a name and an amount make a draft claim dated the sheet's today for the
++// The quick-add bar: a name and an amount make a draft claim dated the sheet's entry date (or its
++// today when none is set) for the
+ // person of that name, who is added at grade A when the name is not on the sheet.
+ @Component({
+   selector: 'app-quick-add-bar',
+diff --git a/src/main/frontend/src/app/features/settings/settings-form.ts b/src/main/frontend/src/app/features/settings/settings-form.ts
+index 2ce76bf9b..ff137424e 100644
+--- a/src/main/frontend/src/app/features/settings/settings-form.ts
++++ b/src/main/frontend/src/app/features/settings/settings-form.ts
+@@ -7,7 +7,7 @@ import {
+   SheetSettings,
+ } from '../../core/settings';
+ 
+-// The sheet's settings (the clerk limit, the cap, the proof threshold, the note threshold, the floor, the terms, the late percent, the policy date, period numbering from, the grace days and the permission matrix) and the roles it gives user names: clerk, the default for
++// The sheet's settings (the clerk limit, the cap, the proof threshold, the note threshold, the floor, the terms, the late percent, the policy date, period numbering from, the grace days, the entry date and the permission matrix) and the roles it gives user names: clerk, the default for
+ // any name, steward, or viewer (who may change nothing). The settings that carry a figure are dated: each is saved from a from-date
+ // (blank: the sheet's today), and what shows in force is the value on the sheet's today.
+ @Component({
+@@ -68,6 +68,8 @@ import {
+                formControlName="periodNumberingFrom" />
+         <label for="setting-grace-days">Grace days (a period still open this many days after its end closes when today is changed; blank: off)</label>
+         <input id="setting-grace-days" data-testid="setting-grace-days" formControlName="graceDays" inputmode="numeric" />
++        <label for="setting-entry-date">Entry date (a new claim's date when none is given; blank: off, the sheet's today)</label>
++        <input id="setting-entry-date" data-testid="setting-entry-date" type="date" formControlName="entryDate" />
+         <fieldset formGroupName="permissions">
+           <legend>Permissions (roles that may take each action, comma separated; blank: the standing rule)</legend>
+           @for (a of permActions; track a) {
+@@ -94,6 +96,7 @@ import {
+       <p>Policy date in force: <span data-testid="setting-policy-date-current">{{ policyDate() ?? '' }}</span></p>
+       <p>Period numbering from: <span data-testid="setting-period-numbering-from-current">{{ periodNumberingFrom() ?? '' }}</span></p>
+       <p>Grace days: <span data-testid="setting-grace-days-current">{{ graceDays() ?? '' }}</span></p>
++      <p>Entry date: <span data-testid="setting-entry-date-current">{{ entryDate() ?? '' }}</span></p>
+       @for (a of permActions; track a) {
+         <p>Roles that may {{ a }}:
+           <span [attr.data-testid]="'setting-perm-' + a + '-current'">{{ permissions()[a] ?? '' }}</span></p>
+@@ -149,6 +152,7 @@ export class SettingsForm {
+   protected readonly policyDate = signal<string | null>(null);
+   protected readonly periodNumberingFrom = signal<string | null>(null);
+   protected readonly graceDays = signal<number | null>(null);
++  protected readonly entryDate = signal<string | null>(null);
+   protected readonly permActions = PERM_ACTIONS;
+   protected readonly standing = STANDING_PERMISSIONS;
+   /** The permission matrix as set; an action's entry is blank when it keeps the standing rule. */
+@@ -186,6 +190,7 @@ export class SettingsForm {
+     policyDate: new FormControl('', { nonNullable: true }),
+     periodNumberingFrom: new FormControl('', { nonNullable: true }),
+     graceDays: new FormControl('', { nonNullable: true }),
++    entryDate: new FormControl('', { nonNullable: true }),
+     permissions: new FormGroup({
+       open: new FormControl('', { nonNullable: true }),
+       settle: new FormControl('', { nonNullable: true }),
+@@ -218,6 +223,7 @@ export class SettingsForm {
+       this.policyDate.set(null);
+       this.periodNumberingFrom.set(null);
+       this.graceDays.set(null);
++      this.entryDate.set(null);
+       this.permissions.set({});
+       this.roles.set([]);
+       if (sheetId) void this.reload(sheetId);
+@@ -230,13 +236,13 @@ export class SettingsForm {
+     if (this.submitting) return;
+     this.settingsError.set('');
+     const { clerkLimit, clerkLimitFrom, cap, capFrom, proofThreshold, proofThresholdFrom, noteThreshold, noteThresholdFrom, floor, floorFrom, terms, termsFrom, gradeTerms, latePct,
+-      latePctFrom, policyDate, periodNumberingFrom, graceDays, permissions } = this.settingsForm.controls;
++      latePctFrom, policyDate, periodNumberingFrom, graceDays, entryDate, permissions } = this.settingsForm.controls;
+     const changed = (...cs: AbstractControl[]) => cs.some((c) => c.dirty || c.touched);
+     const none = !changed(clerkLimit, clerkLimitFrom) && !changed(cap, capFrom)
+       && !changed(proofThreshold, proofThresholdFrom) && !changed(noteThreshold, noteThresholdFrom)
+       && !changed(floor, floorFrom)
+       && !changed(terms, termsFrom) && !changed(gradeTerms) && !changed(latePct, latePctFrom) && !changed(policyDate)
+-      && !changed(periodNumberingFrom) && !changed(graceDays) && !changed(permissions);
++      && !changed(periodNumberingFrom) && !changed(graceDays) && !changed(entryDate) && !changed(permissions);
+     /** A from-date typed, or null when blank (the sheet's today). */
+     const from = (c: AbstractControl<string>) => c.value.trim() || null;
+     const fromsToSave: AbstractControl<string>[] = [];
+@@ -266,6 +272,8 @@ export class SettingsForm {
+     const saveNumbering = none || changed(periodNumberingFrom);
+     const graceValue = graceDays.value.trim();
+     const saveGrace = changed(graceDays) || (none && graceValue !== '');
++    const entryDateValue = entryDate.value.trim();
++    const saveEntryDate = changed(entryDate) || (none && entryDateValue !== '');
+     const permsToSave = this.permActions
+       .map((a) => ({ action: a, control: permissions.controls[a], value: permissions.controls[a].value.trim() }))
+       .filter((p) => changed(p.control) || (none && p.value !== ''));
+@@ -325,6 +333,10 @@ export class SettingsForm {
+       this.settingsError.set('Enter grace days of 0 or more whole days, or leave them blank for off.');
+       return;
+     }
++    if (saveEntryDate && entryDateValue !== '' && !POLICY_DATE.test(entryDateValue)) {
++      this.settingsError.set('Enter an entry date, or leave it blank for off.');
++      return;
++    }
+     if (permsToSave.some((p) => p.value !== '' && !PERM_ROLES.test(p.value))) {
+       this.settingsError.set('Enter the roles that may take an action as clerk, steward or both, comma separated, or leave it blank for the standing rule.');
+       return;
+@@ -415,6 +427,12 @@ export class SettingsForm {
+         graceDays.markAsPristine();
+         graceDays.markAsUntouched();
+       }
++      if (saveEntryDate) {
++        const saved = await this.api.setEntryDate(entryDateValue === '' ? null : entryDateValue);
++        this.entryDate.set(saved.entryDate);
++        entryDate.markAsPristine();
++        entryDate.markAsUntouched();
++      }
+       for (const p of permsToSave) {
+         const saved = await this.api.setPermission(p.action, p.value === '' ? null : p.value);
+         this.permissions.set(saved.permissions);
+@@ -478,6 +496,7 @@ export class SettingsForm {
+         this.policyDate.set(settings.policyDate);
+         this.periodNumberingFrom.set(settings.periodNumberingFrom);
+         this.graceDays.set(settings.graceDays);
++        this.entryDate.set(settings.entryDate);
+         this.permissions.set(settings.permissions);
+         this.roles.set(roles);
+       }
+diff --git a/src/main/java/net/officefloor/hq/app/claim/ClaimService.java b/src/main/java/net/officefloor/hq/app/claim/ClaimService.java
+index a727cabf3..3bec7a0fb 100644
+--- a/src/main/java/net/officefloor/hq/app/claim/ClaimService.java
++++ b/src/main/java/net/officefloor/hq/app/claim/ClaimService.java
+@@ -55,7 +55,8 @@ public class ClaimService {
+         return claims.findBySheetIdOrderByListedDesc(sheetId);
+     }
+ 
+-    /** Add a claim for a person; a date left out takes the sheet's today. Refused when the date falls
++    /** Add a claim for a person; a date left out takes the sheet's entry date, or its today when none
++     *  is set. Refused when the date falls
+      *  inside a closed period, or after the person's retirement day, and when a correction (a negative
+      *  amount) does not name a settled claim of the person. */
+     @Transactional
+@@ -67,7 +68,7 @@ public class ClaimService {
+     @Transactional
+     public Claim add(String sheetId, String user, long personId, BigDecimal amount, LocalDate date, String note,
+             String corrects) {
+-        LocalDate on = date != null ? date : sheets.today(sheetId);
++        LocalDate on = date != null ? date : sheets.entryDay(sheetId);
+         refuseClosed(sheetId, on);
+         refuseRetired(person(sheetId, personId), on);
+         Claim corrected = corrected(sheetId, personId, amount, corrects);
+diff --git a/src/main/java/net/officefloor/hq/app/person/PersonController.java b/src/main/java/net/officefloor/hq/app/person/PersonController.java
+index be4b26a58..30fc61c76 100644
+--- a/src/main/java/net/officefloor/hq/app/person/PersonController.java
++++ b/src/main/java/net/officefloor/hq/app/person/PersonController.java
+@@ -11,6 +11,7 @@ import java.util.List;
+ import java.util.Map;
+ import java.util.Set;
+ import net.officefloor.hq.app.history.History;
++import net.officefloor.hq.app.role.ViewerAllowed;
+ import net.officefloor.hq.app.sheet.AsOfGuard;
+ import net.officefloor.hq.app.sheet.SheetService;
+ import net.officefloor.hq.app.statement.StatementService;
+@@ -148,6 +149,7 @@ public class PersonController {
+         return PersonView.of(saved, statements.summary(sheetId.trim(), personId), sheets.today(sheetId.trim()));
+     }
+ 
++    @ViewerAllowed
+     @PostMapping("/grade")
+     public Graded grade(@PathVariable @NotBlank @Size(max = 100) String sheetId,
+             @RequestHeader("X-User") @NotBlank @Size(max = 100) String user,
+diff --git a/src/main/java/net/officefloor/hq/app/person/PersonService.java b/src/main/java/net/officefloor/hq/app/person/PersonService.java
+index 591dd87eb..10e1b736e 100644
+--- a/src/main/java/net/officefloor/hq/app/person/PersonService.java
++++ b/src/main/java/net/officefloor/hq/app/person/PersonService.java
+@@ -5,6 +5,8 @@ import java.util.List;
+ import java.util.Objects;
+ import java.util.Set;
+ import net.officefloor.hq.app.Audit;
++import net.officefloor.hq.app.role.RoleService;
++import net.officefloor.hq.app.role.SheetRole;
+ import net.officefloor.hq.app.rollup.Rollup;
+ import net.officefloor.hq.app.sheet.SheetService;
+ import org.springframework.dao.DataIntegrityViolationException;
+@@ -22,12 +24,15 @@ public class PersonService {
+     private final SheetService sheets;
+     private final Rollup rollup;
+     private final Audit audit;
++    private final RoleService roles;
+ 
+-    public PersonService(PersonRepository people, SheetService sheets, Rollup rollup, Audit audit) {
++    public PersonService(PersonRepository people, SheetService sheets, Rollup rollup, Audit audit,
++            RoleService roles) {
+         this.people = people;
+         this.sheets = sheets;
+         this.rollup = rollup;
+         this.audit = audit;
++        this.roles = roles;
+     }
+ 
+     /** The people on the sheet in the order they were added. */
+@@ -74,9 +79,12 @@ public class PersonService {
+     /** Give each of the people a grade from a day (null: the sheet's today), in list order (the
+      *  order they were added), exactly as the person form would: each keeps their name and terms and
+      *  is followed by their own PERSON_EDITED and rollup lines. Refused as a whole, changing no one,
+-     *  when an id names no person on the sheet. */
++     *  when an id names no person on the sheet. A viewer has each of them refused: no one changes. */
+     @Transactional
+     public List<Person> grade(String sheetId, String user, Set<Long> personIds, String grade, LocalDate gradeFrom) {
++        if (SheetRole.VIEWER.equals(roles.roleOf(sheetId, user))) {
++            return List.of();
++        }
+         List<Person> chosen = people.findBySheetIdOrderByIdAsc(sheetId).stream()
+                 .filter(p -> personIds.contains(p.getId())).toList();
+         if (chosen.size() != personIds.size()) {
+diff --git a/src/main/java/net/officefloor/hq/app/quickadd/QuickAddService.java b/src/main/java/net/officefloor/hq/app/quickadd/QuickAddService.java
+index 1da993cdf..a58ae9879 100644
+--- a/src/main/java/net/officefloor/hq/app/quickadd/QuickAddService.java
++++ b/src/main/java/net/officefloor/hq/app/quickadd/QuickAddService.java
+@@ -31,7 +31,8 @@ public class QuickAddService {
+         this.claimService = claimService;
+     }
+ 
+-    /** Add a draft claim of the amount, dated the sheet's today with an empty note, for the person of
++    /** Add a draft claim of the amount, dated the sheet's entry date (or its today when none is set)
++     *  with an empty note, for the person of
+      *  the name. One change: when the claim is refused, the person added for it is rolled back too
+      *  and nothing is recorded. */
+     @Transactional
+diff --git a/src/main/java/net/officefloor/hq/app/sheet/SettingsController.java b/src/main/java/net/officefloor/hq/app/sheet/SettingsController.java
+index 299d72f9b..4b90387bc 100644
+--- a/src/main/java/net/officefloor/hq/app/sheet/SettingsController.java
++++ b/src/main/java/net/officefloor/hq/app/sheet/SettingsController.java
+@@ -40,23 +40,23 @@ public class SettingsController {
+      *  proof threshold as text with two decimals (null when there is none); and the permission matrix:
+      *  for each action, the comma separated roles that may take it (blank: the standing rule); and the
+      *  grace days (null when blank: off); and the note threshold as text with two decimals (null when
+-     *  there is none). */
++     *  there is none); and the entry date (null when blank: off). */
+     public record SettingsView(String clerkLimit, String floor, int terms, String latePct, LocalDate policyDate,
+             LocalDate periodNumberingFrom, Map<String, Integer> gradeTerms, String cap, List<DatedValue> floors,
+             List<DatedValue> latePcts, List<DatedValue> caps, String proofThreshold,
+-            Map<String, String> permissions, Integer graceDays, String noteThreshold) {
++            Map<String, String> permissions, Integer graceDays, String noteThreshold, LocalDate entryDate) {
+         static SettingsView of(BigDecimal clerkLimit, BigDecimal floor, int terms, BigDecimal latePct,
+                 LocalDate policyDate, LocalDate periodNumberingFrom, Map<String, Integer> gradeTerms,
+                 BigDecimal cap, List<SettingValue> floors, List<SettingValue> latePcts,
+                 List<SettingValue> caps, BigDecimal proofThreshold, Map<String, String> permissions,
+-                Integer graceDays, BigDecimal noteThreshold) {
++                Integer graceDays, BigDecimal noteThreshold, LocalDate entryDate) {
+             return new SettingsView(clerkLimit == null ? null : clerkLimit.setScale(2).toPlainString(),
+                     floor.setScale(2).toPlainString(), terms, latePct.setScale(2).toPlainString(), policyDate,
+                     periodNumberingFrom, gradeTerms, cap == null ? null : cap.setScale(2).toPlainString(),
+                     floors.stream().map(DatedValue::of).toList(), latePcts.stream().map(DatedValue::of).toList(),
+                     caps.stream().map(DatedValue::of).toList(),
+                     proofThreshold == null ? null : proofThreshold.setScale(2).toPlainString(), permissions, graceDays,
+-                    noteThreshold == null ? null : noteThreshold.setScale(2).toPlainString());
++                    noteThreshold == null ? null : noteThreshold.setScale(2).toPlainString(), entryDate);
+         }
+     }
+ 
+@@ -177,6 +177,14 @@ public class SettingsController {
+         }
+     }
+ 
++    /** The entry date form: a date (yyyy-mm-dd), or blank for off. */
++    public record EntryDateForm(@Pattern(regexp = "\\s*(\\d{4}-\\d{2}-\\d{2})?\\s*") String value) {
++
++        LocalDate entryDateValue() {
++            return date(value);
++        }
++    }
++
+     /** The grace days form: a whole number of days, 0 or more, or blank for off. */
+     public record GraceDaysForm(@Pattern(regexp = "\\s*(\\d{1,4})?\\s*") String value) {
+ 
+@@ -227,7 +235,7 @@ public class SettingsController {
+                 then.policyDate(), service.periodNumberingFrom(id), gradeTerms, then.basis().cap(),
+                 then.recorded("floor"), then.recorded("late-pct"), then.recorded("cap"),
+                 value.apply("proof-threshold"), service.permissions(id), service.graceDays(id),
+-                value.apply("note-threshold"));
++                value.apply("note-threshold"), service.entryDate(id));
+     }
+ 
+     /** The settings view of a sheet as the store holds it now. */
+@@ -236,7 +244,7 @@ public class SettingsController {
+                 service.policyDate(id), service.periodNumberingFrom(id), service.gradeTerms(id), service.cap(id),
+                 service.recorded(id, "floor"), service.recorded(id, "late-pct"),
+                 service.recorded(id, "cap"), service.proofThreshold(id), service.permissions(id),
+-                service.graceDays(id), service.noteThreshold(id));
++                service.graceDays(id), service.noteThreshold(id), service.entryDate(id));
+     }
+ 
+     /** The settings view of a sheet just saved. */
+@@ -322,6 +330,13 @@ public class SettingsController {
+         return view(service.setGraceDays(sheetId.trim(), user.trim(), form.graceDaysValue()));
+     }
+ 
++    @PutMapping("/entry-date")
++    public SettingsView setEntryDate(@PathVariable @NotBlank @Size(max = 100) String sheetId,
++            @RequestHeader("X-User") @NotBlank @Size(max = 100) String user,
++            @Valid @RequestBody EntryDateForm form) {
++        return view(service.setEntryDate(sheetId.trim(), user.trim(), form.entryDateValue()));
++    }
++
+     @PutMapping("/permissions/{action}")
+     public SettingsView setPermission(@PathVariable @NotBlank @Size(max = 100) String sheetId,
+             @PathVariable @Pattern(regexp = "open|settle|void|reassign|close|reopen") String action,
+diff --git a/src/main/java/net/officefloor/hq/app/sheet/Sheet.java b/src/main/java/net/officefloor/hq/app/sheet/Sheet.java
+index 35417fcb0..cac5b6b0e 100644
+--- a/src/main/java/net/officefloor/hq/app/sheet/Sheet.java
++++ b/src/main/java/net/officefloor/hq/app/sheet/Sheet.java
+@@ -45,6 +45,11 @@ public class Sheet {
+     @Column(name = "grace_days")
+     private Integer graceDays;
+ 
++    /** Entry date: while it is set, the default date of a new claim in place of the sheet's today;
++     *  null (blank) is off. */
++    @Column(name = "entry_date")
++    private LocalDate entryDate;
++
+     /** Whether a steward has archived the sheet: it stays visible and refuses every change. */
+     @Column(name = "archived", nullable = false)
+     private boolean archived;
+@@ -98,6 +103,14 @@ public class Sheet {
+         this.graceDays = graceDays;
+     }
+ 
++    public LocalDate getEntryDate() {
++        return entryDate;
++    }
++
++    public void setEntryDate(LocalDate entryDate) {
++        this.entryDate = entryDate;
++    }
++
+     public boolean isArchived() {
+         return archived;
+     }
+diff --git a/src/main/java/net/officefloor/hq/app/sheet/SheetService.java b/src/main/java/net/officefloor/hq/app/sheet/SheetService.java
+index 7a745e147..8074059f9 100644
+--- a/src/main/java/net/officefloor/hq/app/sheet/SheetService.java
++++ b/src/main/java/net/officefloor/hq/app/sheet/SheetService.java
+@@ -341,6 +341,32 @@ public class SheetService {
+         return saved;
+     }
+ 
++    /** The sheet's entry date; null when blank (off). */
++    @Transactional(readOnly = true)
++    public LocalDate entryDate(String id) {
++        return sheets.findById(id).map(Sheet::getEntryDate).orElse(null);
++    }
++
++    /** The default date of a new claim on the sheet: its entry date while one is set, or else its
++     *  today. */
++    @Transactional(readOnly = true)
++    public LocalDate entryDay(String id) {
++        return sheets.findById(id).map(s -> s.getEntryDate() != null ? s.getEntryDate() : s.getToday())
++                .orElseGet(LocalDate::now);
++    }
++
++    /** Change the sheet's entry date (null: blank, off); recorded even when unchanged. It changes no
++     *  claim already added. */
++    @Transactional
++    public synchronized Sheet setEntryDate(String id, String user, LocalDate entryDate) {
++        Sheet sheet = load(id, user);
++        sheet.setEntryDate(entryDate);
++        Sheet saved = sheets.saveAndFlush(sheet);
++        audit.recordOnCommit("SETTING_CHANGED sheet=" + id + " by=" + user + " key=entry-date value="
++                + (entryDate == null ? "" : entryDate.toString()));
++        return saved;
++    }
++
+     /** The most a person's due-total on the sheet comes to: the cap in force on the sheet's today;
+      *  null when there is no cap. */
+     @Transactional(readOnly = true)
+diff --git a/src/main/resources/db/migration/V51__sheet_entry_date.sql b/src/main/resources/db/migration/V51__sheet_entry_date.sql
+new file mode 100644
+index 000000000..e7165f202
+--- /dev/null
++++ b/src/main/resources/db/migration/V51__sheet_entry_date.sql
+@@ -0,0 +1,3 @@
++-- The sheet's entry date: while it is set, the default date of a new claim in place of the sheet's
++-- today; null (blank) is off.
++ALTER TABLE sheet ADD COLUMN entry_date DATE;
