@@ -180,6 +180,18 @@ public class ClaimController {
         return ClaimView.of(service.defer(sheetId.trim(), user.trim(), claimId, form.until()));
     }
 
+    /** The new date a steward gives an open or pending claim. */
+    public record RedateForm(@NotNull LocalDate date) {
+    }
+
+    @PostMapping("/claims/{claimId}/redate")
+    public ClaimView redate(@PathVariable @NotBlank @Size(max = 100) String sheetId,
+            @PathVariable long claimId,
+            @RequestHeader("X-User") @NotBlank @Size(max = 100) String user,
+            @Valid @RequestBody RedateForm form) {
+        return ClaimView.of(service.redate(sheetId.trim(), user.trim(), claimId, form.date()));
+    }
+
     @PostMapping("/claims/{claimId}/proof")
     public ClaimView addProof(@PathVariable @NotBlank @Size(max = 100) String sheetId,
             @PathVariable long claimId,

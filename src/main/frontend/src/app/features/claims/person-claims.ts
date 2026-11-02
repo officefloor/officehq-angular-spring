@@ -67,6 +67,19 @@ function deferRefusal(e: unknown): string {
   return 'The claim could not be deferred.';
 }
 
+/** The message for a refused re-date of a claim. */
+function redateRefusal(e: unknown): string {
+  if (e instanceof HttpErrorResponse && e.status === 403) return 'Only a steward can re-date a claim.';
+  if (e instanceof HttpErrorResponse && e.status === 423) return 'That claim\'s period, or the new date\'s, is closed.';
+  if (e instanceof HttpErrorResponse && e.status === 409) return 'Only an open or pending claim can be re-dated.';
+  if (e instanceof HttpErrorResponse && e.status === 422) return 'A claim cannot be dated after the person\'s retirement.';
+  if (e instanceof HttpErrorResponse && e.status === 400) return REDATE_DATE;
+  return 'The claim could not be re-dated.';
+}
+
+/** The message when a re-date's date is missing. */
+const REDATE_DATE = 'Enter the new date for the claim.';
+
 /** The message when a defer's date is missing or not after the sheet's today. */
 const DEFER_DATE = 'Enter a date after the sheet\'s today to defer the claim to.';
 
@@ -162,6 +175,11 @@ function splitRefusal(e: unknown): string {
             (input)="clearError(c)" />
           <button type="button" data-testid="claim-defer" (click)="defer(c, deferDate.value)"
             [attr.aria-label]="'Defer claim of ' + c.amount + ' on ' + c.date">Defer</button>
+          <label [for]="'claim-date-new-' + c.id">New date</label>
+          <input [id]="'claim-date-new-' + c.id" type="date" data-testid="claim-date-new" #redateDate
+            (input)="clearError(c)" />
+          <button type="button" data-testid="claim-redate" (click)="redate(c, redateDate.value)"
+            [attr.aria-label]="'Re-date claim of ' + c.amount + ' on ' + c.date">Re-date</button>
           <label [for]="'claim-reassign-to-' + c.id">Reassign to</label>
           <select [id]="'claim-reassign-to-' + c.id" data-testid="claim-reassign-to" #reassignTo
             (change)="clearError(c)">
@@ -312,6 +330,19 @@ export class PersonClaims {
       this.saved.emit(await this.api.defer(c.id, until));
     } catch (e) {
       this.claimError.set({ id: c.id, message: deferRefusal(e) });
+    }
+  }
+
+  protected async redate(c: Claim, date: string): Promise<void> {
+    this.claimError.set(null);
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) {
+      this.claimError.set({ id: c.id, message: REDATE_DATE });
+      return;
+    }
+    try {
+      this.saved.emit(await this.api.redate(c.id, date));
+    } catch (e) {
+      this.claimError.set({ id: c.id, message: redateRefusal(e) });
     }
   }
 

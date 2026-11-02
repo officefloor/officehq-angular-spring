@@ -350,7 +350,41 @@ public class ClaimService {
         });
     }
 
-    /** What a split leaves: the original claim, with the rest of its amount, and the new open claim
+    /** Re-date an open or pending claim: it keeps the due-by it was fixed with and any figure a
+     *  statement bound it to, and its period follows the new date; under period numbering, a claim
+     *  whose period changes takes the next number of its new period (its old one is never reused).
+     *  Refused unless the user is a steward, and when the claim is not open or pending, its period or
+     *  the new date's is closed, or the new date is after the person's retirement day. */
+    @Transactional
+    public Claim redate(String sheetId, String user, long claimId, LocalDate date) {
+        Claim claim = lock(sheetId, claimId);
+        if (!SheetRole.STEWARD.equals(roles.roleOf(sheetId, user))) {
+            throw new ResponseStatusException(HttpStatus.FORBIDDEN, "Only a steward can re-date a claim");
+        }
+        if (claim.getStatus() != ClaimStatus.OPEN && claim.getStatus() != ClaimStatus.PENDING) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT,
+                    "A " + claim.getStatus() + " claim cannot be re-dated");
+        }
+        refuseClosed(sheetId, claim.getDate());
+        refuseClosed(sheetId, date);
+        refuseRetired(person(sheetId, claim.getPersonId()), date);
+        LocalDate old = claim.getDate();
+        return rollup.tracking(sheetId, user, () -> {
+            Person person = person(sheetId, claim.getPersonId());
+            boolean periodChanges = !periods.findOn(sheetId, old).map(p -> p.getId())
+                    .equals(periods.findOn(sheetId, date).map(p -> p.getId()));
+            claim.setDate(date);
+            if (periodChanges && sheets.periodNumbering(sheetId)) {
+                claim.setNumber(nextNumber(sheetId, date));
+            }
+            Claim saved = claims.saveAndFlush(claim);
+            audit.recordOnCommit(record("CLAIM_REDATED", sheetId, user, person, saved)
+                    + " old=" + old + " new=" + date);
+            return saved;
+        });
+    }
+
+    /** What a split leaves:the original claim, with the rest of its amount, and the new open claim
      *  split off it. */
     public record Split(Claim original, Claim split) {
     }
