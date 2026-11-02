@@ -18,7 +18,7 @@ interface SheetView {
 }
 
 /** The role a user acts in on a sheet. */
-export type Role = 'clerk' | 'steward' | 'viewer';
+export type Role = 'clerk' | 'steward' | 'viewer' | 'restricted';
 
 /** The people-list columns a user can switch off on their screen. */
 export const PEOPLE_COLUMNS = [
@@ -200,6 +200,8 @@ export class Session {
    * section shows it. Kept by the crews section.
    */
   readonly crewTotals = signal<readonly { leadId: number | null; cents: number }[]>([]);
+  /** Each crew's people (person ids): its lead, when still on the sheet, and its members. Kept by the crews section. */
+  readonly crewPeople = signal<readonly (readonly number[])[]>([]);
   /**
    * The as-of date (yyyy-mm-dd) the signed-in user views the sheet at, or null: while it is set every
    * figure is shown as it stood at the end of that date, with it as the sheet's today, and every change

@@ -108,6 +108,9 @@ export class Crews {
 
   constructor() {
     this.form.valueChanges.subscribe(() => this.error.set(''));
+    effect(() => this.session.crewPeople.set(this.crews().map((c) => [
+      ...(c.lead ? [c.lead.personId] : []), ...c.members.map((m) => m.personId),
+    ])));
     effect(() => this.session.crewTotals.set(this.lines().map((c) => ({ leadId: c.lead?.personId ?? null, cents: c.cents }))));
     effect(() => {
       const id = this.session.sheetId();

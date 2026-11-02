@@ -207,6 +207,7 @@ public class SettingService {
         Sheet sheet = sheets.findById(sheetId).orElseThrow(SheetNotFoundException::new);
         Role role = roleOf(sheetId, user);
         if (role == Role.VIEWER) return false;
+        if (role == Role.RESTRICTED) role = Role.CLERK;
         String set = sheet.permission(action);
         if (set == null) return STANDING_PERMISSIONS.get(action).contains(role);
         return parseRoles(set).contains(role);

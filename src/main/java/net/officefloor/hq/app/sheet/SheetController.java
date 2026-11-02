@@ -33,7 +33,7 @@ public class SheetController {
      * decimals; the policy date is null when blank (the sheet's today); the cap has two decimals, null
      * when none; dated has every value recorded for its dated settings, by key; archived is whether a
      * steward has archived it; last batch is the number of its last bulk settle batch, null when none; the review SLA is in days, null when none;
-     * role is the role the signed-in user acts in on it (clerk, steward or viewer) on its today.
+     * role is the role the signed-in user acts in on it (clerk, steward, viewer or restricted) on its today.
      */
     public record SheetView(String id, LocalDate today, String floor, int terms, String latePct,
             LocalDate policyDate, String cap, Map<String, List<SettingController.DatedView>> dated,

@@ -878,10 +878,23 @@ export class People {
       statuses: this.statusSummary().map((s) => ({ status: s.status, count: s.count + (d?.statusCounts?.[s.status] ?? 0) })),
     };
   });
-  /** The people on screen: everyone, less the retired unless show retired is on. */
-  protected readonly listed = computed(() =>
-    this.session.showRetired() ? this.people() : this.people().filter((p) => !p.retired),
-  );
+  /**
+   * The people a restricted user may see: the person with their name and the people of the crews that
+   * person leads or belongs to; null for any other role (everyone).
+   */
+  private readonly visibleIds = computed<ReadonlySet<number> | null>(() => {
+    if (this.session.role() !== 'restricted') return null;
+    const user = this.session.user()?.trim();
+    const self = this.people().find((p) => p.name.trim() === user);
+    if (!self) return new Set();
+    return new Set([self.id, ...this.session.crewPeople().filter((ids) => ids.includes(self.id)).flat()]);
+  });
+  /** The people on screen: everyone (a restricted user: those they may see), less the retired unless show retired is on. */
+  protected readonly listed = computed(() => {
+    const visible = this.visibleIds();
+    const people = visible ? this.people().filter((p) => visible.has(p.id)) : this.people();
+    return this.session.showRetired() ? people : people.filter((p) => !p.retired);
+  });
   /**
    * The people on screen as this screen sorts them: by name as names are compared, by the grade in
    * force today, or by due-total with n/a last; equal keys keep list order. Only the screen is sorted.
