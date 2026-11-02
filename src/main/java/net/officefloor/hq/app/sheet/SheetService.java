@@ -3,6 +3,7 @@ package net.officefloor.hq.app.sheet;
 import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.util.ArrayDeque;
+import java.util.ArrayList;
 import java.util.Deque;
 import java.util.HashSet;
 import java.util.List;
@@ -93,13 +94,22 @@ public class SheetService {
         return sheets.findById(id).map(Sheet::getToday).orElseGet(LocalDate::now);
     }
 
-    /** The next claim number on the sheet: 1 for its first opened claim, then 2, and so on. */
+    /** The next claim number on the sheet: the sheets of a tree share one sequence, so it is the
+     *  next after the last number given on any sheet of the sheet's tree (1 for the tree's first). */
     @Transactional
     public int nextClaimNumber(String id) {
-        if (sheets.advanceClaimNumber(id) != 1) {
+        // the tree's root row is locked until the transaction ends, so two claims opened on its
+        // sheets at once get one number each
+        String root = sheets.root(id);
+        sheets.lockClaimNumber(root);
+        if (sheets.lockClaimNumber(id) != 1) {
             throw new IllegalStateException("No sheet " + id);
         }
-        return sheets.lastClaimNumber(id);
+        List<String> tree = new ArrayList<>(sheets.descendants(root));
+        tree.add(root);
+        int next = sheets.lastClaimNumber(tree) + 1;
+        sheets.setLastClaimNumber(id, next);
+        return next;
     }
 
     /** The next settle batch number on the sheet: 1 for its first bulk settle that settled a claim,

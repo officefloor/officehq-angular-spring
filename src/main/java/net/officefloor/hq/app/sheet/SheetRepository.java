@@ -1,6 +1,9 @@
 package net.officefloor.hq.app.sheet;
 
 import java.util.ArrayList;
+import java.util.Collection;
+import java.util.HashSet;
+import java.util.Set;
 import java.util.List;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Modifying;
@@ -8,14 +11,22 @@ import org.springframework.data.jpa.repository.Query;
 
 public interface SheetRepository extends JpaRepository<Sheet, String> {
 
-    /** Move the sheet's last claim number on by one; the row stays locked until the transaction
-     *  ends, so two claims opened at once get one number each. */
-    @Modifying
-    @Query("update Sheet s set s.lastClaimNumber = s.lastClaimNumber + 1 where s.id = :id")
-    int advanceClaimNumber(String id);
-
     @Query("select s.lastClaimNumber from Sheet s where s.id = :id")
     int lastClaimNumber(String id);
+
+    /** Lock the sheet's row until the transaction ends (a no-op update); 0 when there is no such sheet. */
+    @Modifying
+    @Query("update Sheet s set s.lastClaimNumber = s.lastClaimNumber where s.id = :id")
+    int lockClaimNumber(String id);
+
+    /** The last claim number given on any of the sheets. */
+    @Query("select coalesce(max(s.lastClaimNumber), 0) from Sheet s where s.id in :ids")
+    int lastClaimNumber(Collection<String> ids);
+
+    /** Set the sheet's last claim number. */
+    @Modifying
+    @Query("update Sheet s set s.lastClaimNumber = :number where s.id = :id")
+    int setLastClaimNumber(String id, int number);
 
     /** Move the sheet's last X-number (for claims in no period) on by one; the row stays locked
      *  until the transaction ends. */
@@ -56,6 +67,21 @@ public interface SheetRepository extends JpaRepository<Sheet, String> {
             at = next;
         }
         return down;
+    }
+
+    /** The id of the root of the sheet's tree: its topmost ancestor, or the sheet itself when it has
+     *  no parent (a cycle of parents stops where it comes round again). */
+    default String root(String id) {
+        Set<String> seen = new HashSet<>();
+        String at = id;
+        while (seen.add(at)) {
+            String parent = findById(at).map(Sheet::getParentId).orElse(null);
+            if (parent == null || seen.contains(parent)) {
+                break;
+            }
+            at = parent;
+        }
+        return at;
     }
 
     /** How many levels up a sheet's rates are taken from: its parent, its parent's parent, and so on. */
