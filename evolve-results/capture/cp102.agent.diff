@@ -1,0 +1,332 @@
+diff --git a/src/main/frontend/src/app/core/people.ts b/src/main/frontend/src/app/core/people.ts
+index 263a4846f..47190013b 100644
+--- a/src/main/frontend/src/app/core/people.ts
++++ b/src/main/frontend/src/app/core/people.ts
+@@ -73,6 +73,8 @@ export interface Person {
+   terms: number | null;
+   /** Their contact, trimmed and lower-cased; null when they have none. */
+   contact: string | null;
++  /** Their aliases, sorted as names are compared. */
++  aliases: string[];
+ }
+ 
+ /** A statement just taken: the person as they now show, and their claims (newest first) as it
+@@ -127,6 +129,14 @@ export class People {
+     );
+   }
+ 
++  /** Give the person an alias; refused when it equals any name or alias on the sheet. */
++  addAlias(id: number, alias: string): Promise<Person> {
++    const { sheetId, user } = this.active();
++    return firstValueFrom(
++      this.http.post<Person>(`${this.url(sheetId)}/${id}/aliases`, { alias }, { headers: { 'X-User': user } }),
++    );
++  }
++
+   /** Retire the person from a day; null takes the sheet's today. */
+   retire(id: number, from: string | null): Promise<Person> {
+     const { sheetId, user } = this.active();
+diff --git a/src/main/frontend/src/app/features/claims/person-claims.ts b/src/main/frontend/src/app/features/claims/person-claims.ts
+index c176e6117..959025b4f 100644
+--- a/src/main/frontend/src/app/features/claims/person-claims.ts
++++ b/src/main/frontend/src/app/features/claims/person-claims.ts
+@@ -384,8 +384,11 @@ export class PersonClaims {
+     return overdue(c, this.today(), graceOn(this.graces(), gradeOn(this.grades(), c.date), c.date));
+   }
+ 
++  /** Whether the row shows the claim as deferred: open and deferred, or closed off (voided) while
++   *  its deferral still runs. */
+   protected deferredOf(c: Claim): boolean {
+-    return deferred(c, this.today());
++    const today = this.today();
++    return deferred(c, today) || (c.deferredUntil !== null && today !== null && today < c.deferredUntil);
+   }
+ 
+   /** The name of the period the claim belongs to; empty when it belongs to none. */
+diff --git a/src/main/frontend/src/app/features/people/people-list.ts b/src/main/frontend/src/app/features/people/people-list.ts
+index 1b0a1c3d6..ed6bbe353 100644
+--- a/src/main/frontend/src/app/features/people/people-list.ts
++++ b/src/main/frontend/src/app/features/people/people-list.ts
+@@ -139,7 +139,7 @@ const NO_LEAVE: Leave = { holds: [], retiredFrom: null };
+       <button type="button" data-testid="export-people" (click)="exportCsv()">Export people (CSV)</button>
+       <table data-testid="people">
+         <thead>
+-          <tr><th scope="col"><span class="visually-hidden">Select</span></th><th scope="col">Name</th><th scope="col">Grade</th><th scope="col">Active</th><th scope="col">Terms</th><th scope="col">Contact</th><th scope="col">Claimed</th><th scope="col">Due</th><th scope="col">Settled due</th><th scope="col">Open due</th>@for (pd of periods(); track pd.id) {<th scope="col">Due in {{ pd.name }}</th>}<th scope="col">Excess</th><th scope="col">Statements</th><th scope="col">Last stated</th><th scope="col">Stated on</th><th scope="col">Retired</th><th scope="col">Retired from</th><th scope="col">On hold</th><th scope="col">Overdue</th><th scope="col">Overdue due</th><th scope="col">Due aged 0–30 days</th><th scope="col">Due aged 31–60 days</th><th scope="col">Due aged 61+ days</th><th scope="col">Patrons</th><th scope="col">Backing</th><th scope="col">Watched</th><th scope="col">Claims</th><th scope="col"><span class="visually-hidden">Actions</span></th></tr>
++          <tr><th scope="col"><span class="visually-hidden">Select</span></th><th scope="col">Name</th><th scope="col">Grade</th><th scope="col">Active</th><th scope="col">Terms</th><th scope="col">Contact</th><th scope="col">Aliases</th><th scope="col">Claimed</th><th scope="col">Due</th><th scope="col">Settled due</th><th scope="col">Open due</th>@for (pd of periods(); track pd.id) {<th scope="col">Due in {{ pd.name }}</th>}<th scope="col">Excess</th><th scope="col">Statements</th><th scope="col">Last stated</th><th scope="col">Stated on</th><th scope="col">Retired</th><th scope="col">Retired from</th><th scope="col">On hold</th><th scope="col">Overdue</th><th scope="col">Overdue due</th><th scope="col">Due aged 0–30 days</th><th scope="col">Due aged 31–60 days</th><th scope="col">Due aged 61+ days</th><th scope="col">Patrons</th><th scope="col">Backing</th><th scope="col">Watched</th><th scope="col">Claims</th><th scope="col"><span class="visually-hidden">Actions</span></th></tr>
+         </thead>
+         <tbody>
+           @for (p of shown(); track p.id) {
+@@ -154,6 +154,7 @@ const NO_LEAVE: Leave = { holds: [], retiredFrom: null };
+               <td data-testid="person-active">{{ activeOf(p) ? 'yes' : 'no' }}</td>
+               <td data-testid="person-terms">{{ p.terms ?? '' }}</td>
+               <td data-testid="person-contact">{{ p.contact ?? '' }}</td>
++              <td data-testid="person-aliases">{{ p.aliases.join(', ') }}</td>
+               <td data-testid="person-claimed">{{ claimed().get(p.id) ?? '0.00' }}</td>
+               <td data-testid="person-due-total">{{ dueOf(p) ?? 'n/a' }}</td>
+               <td data-testid="person-settled-total">{{ settledTotalOf(p) }}</td>
+@@ -213,6 +214,11 @@ const NO_LEAVE: Leave = { holds: [], retiredFrom: null };
+                 <input #holdTo type="date" [id]="'person-hold-to-' + p.id" data-testid="person-hold-to" />
+                 <button type="button" data-testid="person-hold-toggle" (click)="hold(p, holdFrom.value, holdTo.value)"
+                   [attr.aria-label]="'Hold ' + p.name">Hold</button>
++                <label [for]="'person-alias-input-' + p.id" class="visually-hidden">Alias of {{ p.name }}</label>
++                <input #aliasInput [id]="'person-alias-input-' + p.id" data-testid="person-alias-input"
++                  (input)="clearPersonError(p.id)" />
++                <button type="button" data-testid="person-alias-add" (click)="addAlias(p, aliasInput)"
++                  [attr.aria-label]="'Add an alias of ' + p.name">Add alias</button>
+                 <label [for]="'person-patron-select-' + p.id" class="visually-hidden">Patron of {{ p.name }}</label>
+                 <select #patronSelect [id]="'person-patron-select-' + p.id" data-testid="person-patron-select"
+                   (change)="patronError.set(null)">
+@@ -493,6 +499,8 @@ export class PeopleList {
+   private readonly watching = new Set<number>();
+   /** The people whose retirement is waiting for its answer: a second press meanwhile is ignored. */
+   private readonly retiring = new Set<number>();
++  /** The people whose alias is being added: a second press meanwhile is ignored. */
++  private readonly aliasing = new Set<number>();
+   protected readonly form = new FormGroup({
+     name: new FormControl('', { nonNullable: true }),
+     grade: new FormControl<Grade>('A', { nonNullable: true }),
+@@ -665,6 +673,34 @@ export class PeopleList {
+     }
+   }
+ 
++  /** Give the person the alias typed; a blank one is refused on the row. */
++  protected async addAlias(p: Person, input: HTMLInputElement): Promise<void> {
++    if (this.aliasing.has(p.id)) return;
++    this.personError.set(null);
++    this.patronError.set(null);
++    const alias = input.value.trim();
++    if (!alias) {
++      this.personError.set({ id: p.id, message: 'Enter an alias.' });
++      return;
++    }
++    this.aliasing.add(p.id);
++    try {
++      const saved = await this.api.addAlias(p.id, alias);
++      this.people.update((ps) => ps.map((x) => (x.id === saved.id ? saved : x)));
++      if (this.editing() === saved.id) this.version = saved.version;
++      input.value = '';
++    } catch {
++      this.personError.set({ id: p.id, message: 'That alias is already a name or alias on this sheet.' });
++    } finally {
++      this.aliasing.delete(p.id);
++    }
++  }
++
++  /** Clear the row's error once its alias entry is changed. */
++  protected clearPersonError(id: number): void {
++    if (this.personError()?.id === id) this.personError.set(null);
++  }
++
+   /** Put the person on hold from the day given (blank: the sheet's today) to the day given (blank:
+    *  open-ended). */
+   protected async hold(p: Person, from: string, to: string): Promise<void> {
+diff --git a/src/main/java/net/officefloor/hq/app/claim/ClaimPasteService.java b/src/main/java/net/officefloor/hq/app/claim/ClaimPasteService.java
+index f2f5e25d0..2a29e4016 100644
+--- a/src/main/java/net/officefloor/hq/app/claim/ClaimPasteService.java
++++ b/src/main/java/net/officefloor/hq/app/claim/ClaimPasteService.java
+@@ -88,7 +88,7 @@ public class ClaimPasteService {
+         }
+         String name = fields[0].trim();
+         Person person = name.isEmpty() ? null
+-                : people.findBySheetIdAndNameIgnoreCase(sheetId, name).orElse(null);
++                : people.findByNameOrAlias(sheetId, name).orElse(null);
+         if (person == null) {
+             throw refused(n, "no one named \"" + name + "\" on this sheet");
+         }
+diff --git a/src/main/java/net/officefloor/hq/app/person/Person.java b/src/main/java/net/officefloor/hq/app/person/Person.java
+index 1e7c8489f..7908368bd 100644
+--- a/src/main/java/net/officefloor/hq/app/person/Person.java
++++ b/src/main/java/net/officefloor/hq/app/person/Person.java
+@@ -13,6 +13,9 @@ import jakarta.persistence.Table;
+ import jakarta.persistence.Version;
+ import java.time.LocalDate;
+ import java.util.ArrayList;
++import java.util.HashSet;
++import java.util.Locale;
++import java.util.Set;
+ import java.util.Comparator;
+ import java.util.List;
+ import java.util.Objects;
+@@ -54,6 +57,13 @@ public class Person {
+     @Column(name = "contact")
+     private String contact;
+ 
++    /** The person's aliases, each trimmed; unique on the sheet among names and aliases as names are
++     *  compared. */
++    @ElementCollection(fetch = FetchType.EAGER)
++    @CollectionTable(name = "person_alias", joinColumns = @JoinColumn(name = "person_id"))
++    @Column(name = "alias")
++    private Set<String> aliases = new HashSet<>();
++
+     /** Raised each time the person is saved. */
+     @Version
+     @Column(name = "version", nullable = false)
+@@ -177,6 +187,18 @@ public class Person {
+         this.contact = contact;
+     }
+ 
++    /** The person's aliases, sorted as names are compared: without regard to case. */
++    public List<String> getAliases() {
++        return aliases.stream()
++                .sorted(Comparator.comparing((String a) -> a.toLowerCase(Locale.ROOT)).thenComparing(Comparator.naturalOrder()))
++                .toList();
++    }
++
++    /** Add an alias, keeping the others. */
++    public void addAlias(String alias) {
++        aliases.add(alias);
++    }
++
+     public long getVersion() {
+         return version;
+     }
+diff --git a/src/main/java/net/officefloor/hq/app/person/PersonController.java b/src/main/java/net/officefloor/hq/app/person/PersonController.java
+index 780123585..4f6a0babc 100644
+--- a/src/main/java/net/officefloor/hq/app/person/PersonController.java
++++ b/src/main/java/net/officefloor/hq/app/person/PersonController.java
+@@ -38,12 +38,12 @@ public class PersonController {
+ 
+     /** What the screen shows of a person; with how many statements were taken of them, and the
+      *  last one's due-total (text with two decimals, null when n/a or none) and day (null when none);
+-     *  whether they are retired, and from which day (null when not); and whether they have any hold, and their holds, earliest first; and their own terms in days (null: none); and their contact (null: none).
++     *  whether they are retired, and from which day (null when not); and whether they have any hold, and their holds, earliest first; and their own terms in days (null: none); and their contact (null: none); and their aliases, sorted as names are compared.
+      *  The grade is the one in force on the sheet's today; grades are all those recorded, each from
+      *  its from-date (null: the beginning of time), earliest first. */
+     public record PersonView(long id, String name, String grade, List<GradeView> grades, long version,
+             int statementCount, String statedTotal, LocalDate statementDate, boolean retired, LocalDate retiredFrom,
+-            boolean held, List<HoldView> holds, Integer terms, String contact) {
++            boolean held, List<HoldView> holds, Integer terms, String contact, List<String> aliases) {
+         public static PersonView of(Person person, StatementSummary statements, LocalDate today) {
+             return new PersonView(person.getId(), person.getName(), person.gradeOn(today),
+                     person.getGrades().stream().map(g -> new GradeView(g.getGrade(), g.getFromDate())).toList(),
+@@ -51,7 +51,7 @@ public class PersonController {
+                     statements.lastDueTotal() == null ? null : statements.lastDueTotal().setScale(2).toPlainString(),
+                     statements.lastTakenOn(), person.isRetired(), person.getRetiredFrom(), person.isHeld(),
+                     person.getHolds().stream().map(h -> new HoldView(h.getFromDate(), h.getToDate())).toList(),
+-                    person.getTerms(), person.getContact());
++                    person.getTerms(), person.getContact(), person.getAliases());
+         }
+     }
+ 
+@@ -79,6 +79,10 @@ public class PersonController {
+         }
+     }
+ 
++    /** The alias form: a required alias, kept trimmed. */
++    public record AliasForm(@NotBlank @Size(max = 200) String alias) {
++    }
++
+     /** The retire form: the day the person is retired from; left out, the sheet's today. */
+     public record RetireForm(LocalDate from) {
+     }
+@@ -169,6 +173,15 @@ public class PersonController {
+                 .toList());
+     }
+ 
++    @PostMapping("/{personId}/aliases")
++    public PersonView addAlias(@PathVariable @NotBlank @Size(max = 100) String sheetId,
++            @PathVariable long personId,
++            @RequestHeader("X-User") @NotBlank @Size(max = 100) String user,
++            @Valid @RequestBody AliasForm form) {
++        Person saved = service.addAlias(sheetId.trim(), user.trim(), personId, form.alias().trim());
++        return PersonView.of(saved, statements.summary(sheetId.trim(), personId), sheets.today(sheetId.trim()));
++    }
++
+     @PostMapping("/{personId}/retire")
+     public PersonView retire(@PathVariable @NotBlank @Size(max = 100) String sheetId,
+             @PathVariable long personId,
+diff --git a/src/main/java/net/officefloor/hq/app/person/PersonRepository.java b/src/main/java/net/officefloor/hq/app/person/PersonRepository.java
+index 587584d54..9d8a8990e 100644
+--- a/src/main/java/net/officefloor/hq/app/person/PersonRepository.java
++++ b/src/main/java/net/officefloor/hq/app/person/PersonRepository.java
+@@ -34,4 +34,18 @@ public interface PersonRepository extends JpaRepository<Person, Long> {
+ 
+     /** Whether the name is in use on the sheet by anyone but this person. */
+     boolean existsBySheetIdAndNameIgnoreCaseAndIdNot(String sheetId, String name, Long id);
++
++    /** Whether the text is an alias of anyone on the sheet, compared as names are. */
++    @Query("select count(p) > 0 from Person p join p.aliases a where p.sheetId = :sheetId"
++            + " and lower(a) = lower(:alias)")
++    boolean existsAlias(String sheetId, String alias);
++
++    /** The person on the sheet with the alias, compared as names are. */
++    @Query("select p from Person p join p.aliases a where p.sheetId = :sheetId and lower(a) = lower(:alias)")
++    Optional<Person> findByAlias(String sheetId, String alias);
++
++    /** The person on the sheet with the name or else the alias, compared without regard to case. */
++    default Optional<Person> findByNameOrAlias(String sheetId, String name) {
++        return findBySheetIdAndNameIgnoreCase(sheetId, name).or(() -> findByAlias(sheetId, name));
++    }
+ }
+diff --git a/src/main/java/net/officefloor/hq/app/person/PersonService.java b/src/main/java/net/officefloor/hq/app/person/PersonService.java
+index 58ed496b5..cdf1879b3 100644
+--- a/src/main/java/net/officefloor/hq/app/person/PersonService.java
++++ b/src/main/java/net/officefloor/hq/app/person/PersonService.java
+@@ -53,7 +53,7 @@ public class PersonService {
+     @Transactional
+     public Person add(String sheetId, String user, String name, String grade, Integer terms, String contact) {
+         sheets.load(sheetId, user);
+-        if (people.existsBySheetIdAndNameIgnoreCase(sheetId, name)) {
++        if (people.existsBySheetIdAndNameIgnoreCase(sheetId, name) || people.existsAlias(sheetId, name)) {
+             throw nameInUse();
+         }
+         if (contact != null && people.existsBySheetIdAndContact(sheetId, contact)) {
+@@ -84,7 +84,8 @@ public class PersonService {
+         if (person.getVersion() != version) {
+             throw changedMeanwhile();
+         }
+-        if (people.existsBySheetIdAndNameIgnoreCaseAndIdNot(sheetId, name, personId)) {
++        if (people.existsBySheetIdAndNameIgnoreCaseAndIdNot(sheetId, name, personId)
++                || people.existsAlias(sheetId, name)) {
+             throw nameInUse();
+         }
+         if (contact != null && people.existsBySheetIdAndContactAndIdNot(sheetId, contact, personId)) {
+@@ -133,6 +134,22 @@ public class PersonService {
+         });
+     }
+ 
++    /** Give a person an alias, keeping their others; refused when it equals, as names are compared,
++     *  any name or alias on the sheet. */
++    @Transactional
++    public Person addAlias(String sheetId, String user, long personId, String alias) {
++        Person person = people.findByIdAndSheetId(personId, sheetId)
++                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "No such person on this sheet"));
++        if (people.existsBySheetIdAndNameIgnoreCase(sheetId, alias) || people.existsAlias(sheetId, alias)) {
++            throw nameInUse();
++        }
++        person.addAlias(alias);
++        Person saved = saveUnique(person);
++        audit.recordOnCommit("PERSON_ALIAS_ADDED sheet=" + sheetId + " by=" + user + " name=" + saved.getName()
++                + " alias=" + alias);
++        return saved;
++    }
++
+     /** Retire a person from a day; a day left out takes the sheet's today. */
+     @Transactional
+     public Person retire(String sheetId, String user, long personId, LocalDate from) {
+diff --git a/src/main/java/net/officefloor/hq/app/quickadd/QuickAddService.java b/src/main/java/net/officefloor/hq/app/quickadd/QuickAddService.java
+index a58ae9879..bbd32d847 100644
+--- a/src/main/java/net/officefloor/hq/app/quickadd/QuickAddService.java
++++ b/src/main/java/net/officefloor/hq/app/quickadd/QuickAddService.java
+@@ -37,7 +37,7 @@ public class QuickAddService {
+      *  and nothing is recorded. */
+     @Transactional
+     public Added add(String sheetId, String user, String name, BigDecimal amount) {
+-        Person existing = people.findBySheetIdAndNameIgnoreCase(sheetId, name).orElse(null);
++        Person existing = people.findByNameOrAlias(sheetId, name).orElse(null);
+         Person person = existing != null ? existing : personService.add(sheetId, user, name, GRADE, null);
+         Claim claim = claimService.add(sheetId, user, person.getId(), amount, null, "");
+         return new Added(person, existing == null, claim);
+diff --git a/src/main/resources/db/migration/V63__person_alias.sql b/src/main/resources/db/migration/V63__person_alias.sql
+new file mode 100644
+index 000000000..3218a4748
+--- /dev/null
++++ b/src/main/resources/db/migration/V63__person_alias.sql
+@@ -0,0 +1,7 @@
++-- A person's aliases: each stored with surrounding spaces removed. An alias shares the names'
++-- uniqueness on the sheet (compared without regard to case), which the service keeps.
++CREATE TABLE person_alias (
++    person_id BIGINT       NOT NULL REFERENCES person (id),
++    alias     VARCHAR(200) NOT NULL,
++    PRIMARY KEY (person_id, alias)
++);
