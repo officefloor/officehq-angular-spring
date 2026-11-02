@@ -1,0 +1,64 @@
+{
+  "checkpoint": 127,
+  "stack": {
+    "repo": "/home/daniel/officehq-angular-spring",
+    "origin": "git@github.com:officefloor/officehq-angular-spring.git",
+    "name": "officehq-angular-spring",
+    "base_ref": "base-empty",
+    "base_commit": "65cb8233ea38b2dfa6cfd18709e30cd18fdf3250"
+  },
+  "checkpoint_id": "cp127_my-figures",
+  "phase": "mid",
+  "type": "additive",
+  "mutates": [],
+  "replaced_tests": [],
+  "request": {
+    "spec": "The header shows the signed-in user's own figures when a person on the sheet has the user's name\n(by name or alias, as names are compared): that person's due-total and overdue-total; nothing when\nthere is no such person.\n",
+    "prompt": "You are implementing ONE change to this application.\n\nFIRST read AGENTS.md \u2014 it states the working rules and how the app is tested, and sends you to\nDESIGN.md for the app's stack and conventions. Follow both.\n\nTHE CHANGE REQUEST:\nThe header shows the signed-in user's own figures when a person on the sheet has the user's name\n(by name or alias, as names are compared): that person's due-total and overdue-total; nothing when\nthere is no such person.\n\nYour work is verified by an automated Playwright UI test already installed under e2e/specs/.\nRead that spec: it declares the exact data-testid anchors, values, test data and any audit\nrecords it expects \u2014 match them. Run `bin/e2e` to build the app, start it, and run the test as\nyou work; iterate until it passes. Change whatever the request needs across the app \u2014 its stored\ndata, its server and its front end. Do NOT edit bin/build, bin/start, bin/stop, bin/e2e,\nAGENTS.md, CLAUDE.md, DESIGN.md, e2e/support/ or the test spec.\n"
+  },
+  "commit_sha": "58b64094a3b8870d7b22be63bdf1479d426a0262",
+  "reset_sha": "",
+  "preagent_sha": "64131ee7838cd81413ec4500b1affeb5c0def77b",
+  "prev_sha": "64131ee7838cd81413ec4500b1affeb5c0def77b",
+  "base_sha": "65cb8233ea38b2dfa6cfd18709e30cd18fdf3250",
+  "agent": {
+    "ok": true,
+    "cost_usd": 0.3794098,
+    "input_tokens": 22,
+    "output_tokens": 3470,
+    "cache_read_tokens": 300169,
+    "cache_creation_tokens": 31236,
+    "num_turns": 11,
+    "duration_ms": 260770,
+    "duration_api_ms": 50604,
+    "model": "claude-opus-5-5",
+    "session_id": "107a597b-20d5-482f-a365-d14fb65777f0",
+    "stop_reason": "success",
+    "result_text": "The header now shows the signed-in user's own due-total and overdue-total, and `bin/e2e` passes all 4 tests.\n\n**How it works**\n- **Which person counts as you:** the person whose name or one of their aliases matches your sign-in name, ignoring case and spaces at either end. That's the same rule the server uses when it compares names.\n- **What's shown:** that person's due-total in `my-due-total` and overdue-total in `my-overdue-total`, using the same figures as their own row, cap included. If no person on the sheet has your name, both are blank. The test needs the elements present even when there's nothing to show, so they're never removed.\n- **One case the test doesn't cover:** if your person's due-total is n/a, the header shows `n/a`, as their row does.\n\n**Changes**\n- `features/people/people-list.ts`: works out which person is you and their two totals, and passes them to the header.\n- `features/summary/header-counters.ts`: two new inputs and the two \"My due\" / \"My overdue\" entries.\n\nI didn't change the server or the stored data, because both totals are already worked out on the screen from the sheet's people and claims. Nothing new goes to the audit file, and the test expects nothing new there.",
+    "error": "",
+    "attempts": [
+      {
+        "ok": true,
+        "limit_reached": false,
+        "retryable": false,
+        "timed_out": false,
+        "cost_usd": 0.3794098,
+        "num_turns": 11,
+        "duration_ms": 260770,
+        "duration_api_ms": 50604,
+        "error": ""
+      }
+    ]
+  },
+  "agent_stream_file": "cp127.agent.jsonl",
+  "agent_diff_file": "cp127.agent.diff",
+  "build_log_file": null,
+  "tests": {
+    "gated": false,
+    "queued": true
+  },
+  "probe": null,
+  "pinned_touched": [],
+  "acceptance_touched": [],
+  "impact_gate": null
+}
