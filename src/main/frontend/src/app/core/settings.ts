@@ -35,6 +35,9 @@ export interface Settings {
   /** The permission matrix: for each action, the comma separated roles that may take it; blank when
    *  it keeps the standing rule. */
   permissions: Record<PermAction, string>;
+  /** The grace days: when the sheet's today is changed, an open period whose to-date plus them is
+   *  before it is closed; null when blank (off). */
+  graceDays: number | null;
 }
 
 /** The actions the permission matrix covers. */
@@ -169,6 +172,12 @@ export class SheetSettings {
     return firstValueFrom(
       this.http.put<Settings>(`${this.url(sheetId)}/settings/period-numbering-from`, { value }, { headers }),
     );
+  }
+
+  /** Set the grace days; null for blank (off). */
+  setGraceDays(value: string | null): Promise<Settings> {
+    const [sheetId, headers] = this.active();
+    return firstValueFrom(this.http.put<Settings>(`${this.url(sheetId)}/settings/grace-days`, { value }, { headers }));
   }
 
   /** Set the roles (comma separated; null for blank, the standing rule) that may take an action. */

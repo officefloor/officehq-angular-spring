@@ -7,7 +7,7 @@ import {
   SheetSettings,
 } from '../../core/settings';
 
-// The sheet's settings (the clerk limit, the cap, the proof threshold, the floor, the terms, the late percent, the policy date, period numbering from and the permission matrix) and the roles it gives user names: clerk, the default for
+// The sheet's settings (the clerk limit, the cap, the proof threshold, the floor, the terms, the late percent, the policy date, period numbering from, the grace days and the permission matrix) and the roles it gives user names: clerk, the default for
 // any name, steward, or viewer (who may change nothing). The settings that carry a figure are dated: each is saved from a from-date
 // (blank: the sheet's today), and what shows in force is the value on the sheet's today.
 @Component({
@@ -60,6 +60,8 @@ import {
         <label for="setting-period-numbering-from">Period numbering from (claims opened from it are numbered within their period; blank: off)</label>
         <input id="setting-period-numbering-from" data-testid="setting-period-numbering-from" type="date"
                formControlName="periodNumberingFrom" />
+        <label for="setting-grace-days">Grace days (a period still open this many days after its end closes when today is changed; blank: off)</label>
+        <input id="setting-grace-days" data-testid="setting-grace-days" formControlName="graceDays" inputmode="numeric" />
         <fieldset formGroupName="permissions">
           <legend>Permissions (roles that may take each action, comma separated; blank: the standing rule)</legend>
           @for (a of permActions; track a) {
@@ -84,6 +86,7 @@ import {
       <p>Late percent in force: <span data-testid="setting-late-pct-current">{{ latePct() ?? '' }}</span></p>
       <p>Policy date in force: <span data-testid="setting-policy-date-current">{{ policyDate() ?? '' }}</span></p>
       <p>Period numbering from: <span data-testid="setting-period-numbering-from-current">{{ periodNumberingFrom() ?? '' }}</span></p>
+      <p>Grace days: <span data-testid="setting-grace-days-current">{{ graceDays() ?? '' }}</span></p>
       @for (a of permActions; track a) {
         <p>Roles that may {{ a }}:
           <span [attr.data-testid]="'setting-perm-' + a + '-current'">{{ permissions()[a] ?? '' }}</span></p>
@@ -137,6 +140,7 @@ export class SettingsForm {
   protected readonly latePct = signal<string | null>(null);
   protected readonly policyDate = signal<string | null>(null);
   protected readonly periodNumberingFrom = signal<string | null>(null);
+  protected readonly graceDays = signal<number | null>(null);
   protected readonly permActions = PERM_ACTIONS;
   protected readonly standing = STANDING_PERMISSIONS;
   /** The permission matrix as set; an action's entry is blank when it keeps the standing rule. */
@@ -171,6 +175,7 @@ export class SettingsForm {
     latePctFrom: new FormControl('', { nonNullable: true }),
     policyDate: new FormControl('', { nonNullable: true }),
     periodNumberingFrom: new FormControl('', { nonNullable: true }),
+    graceDays: new FormControl('', { nonNullable: true }),
     permissions: new FormGroup({
       open: new FormControl('', { nonNullable: true }),
       settle: new FormControl('', { nonNullable: true }),
@@ -201,6 +206,7 @@ export class SettingsForm {
       this.latePct.set(null);
       this.policyDate.set(null);
       this.periodNumberingFrom.set(null);
+      this.graceDays.set(null);
       this.permissions.set({});
       this.roles.set([]);
       if (sheetId) void this.reload(sheetId);
@@ -213,12 +219,12 @@ export class SettingsForm {
     if (this.submitting) return;
     this.settingsError.set('');
     const { clerkLimit, clerkLimitFrom, cap, capFrom, proofThreshold, proofThresholdFrom, floor, floorFrom, terms, termsFrom, gradeTerms, latePct,
-      latePctFrom, policyDate, periodNumberingFrom, permissions } = this.settingsForm.controls;
+      latePctFrom, policyDate, periodNumberingFrom, graceDays, permissions } = this.settingsForm.controls;
     const changed = (...cs: AbstractControl[]) => cs.some((c) => c.dirty || c.touched);
     const none = !changed(clerkLimit, clerkLimitFrom) && !changed(cap, capFrom)
       && !changed(proofThreshold, proofThresholdFrom) && !changed(floor, floorFrom)
       && !changed(terms, termsFrom) && !changed(gradeTerms) && !changed(latePct, latePctFrom) && !changed(policyDate)
-      && !changed(periodNumberingFrom) && !changed(permissions);
+      && !changed(periodNumberingFrom) && !changed(graceDays) && !changed(permissions);
     /** A from-date typed, or null when blank (the sheet's today). */
     const from = (c: AbstractControl<string>) => c.value.trim() || null;
     const fromsToSave: AbstractControl<string>[] = [];
@@ -244,6 +250,8 @@ export class SettingsForm {
     const savePolicyDate = none || changed(policyDate);
     const numberingValue = periodNumberingFrom.value.trim();
     const saveNumbering = none || changed(periodNumberingFrom);
+    const graceValue = graceDays.value.trim();
+    const saveGrace = changed(graceDays) || (none && graceValue !== '');
     const permsToSave = this.permActions
       .map((a) => ({ action: a, control: permissions.controls[a], value: permissions.controls[a].value.trim() }))
       .filter((p) => changed(p.control) || (none && p.value !== ''));
@@ -292,6 +300,10 @@ export class SettingsForm {
     }
     if (saveNumbering && numberingValue !== '' && !POLICY_DATE.test(numberingValue)) {
       this.settingsError.set('Enter a period numbering from date, or leave it blank for off.');
+      return;
+    }
+    if (saveGrace && graceValue !== '' && !TERMS.test(graceValue)) {
+      this.settingsError.set('Enter grace days of 0 or more whole days, or leave them blank for off.');
       return;
     }
     if (permsToSave.some((p) => p.value !== '' && !PERM_ROLES.test(p.value))) {
@@ -369,6 +381,12 @@ export class SettingsForm {
         periodNumberingFrom.markAsPristine();
         periodNumberingFrom.markAsUntouched();
       }
+      if (saveGrace) {
+        const saved = await this.api.setGraceDays(graceValue === '' ? null : graceValue);
+        this.graceDays.set(saved.graceDays);
+        graceDays.markAsPristine();
+        graceDays.markAsUntouched();
+      }
       for (const p of permsToSave) {
         const saved = await this.api.setPermission(p.action, p.value === '' ? null : p.value);
         this.permissions.set(saved.permissions);
@@ -430,6 +448,7 @@ export class SettingsForm {
         this.latePct.set(settings.latePct);
         this.policyDate.set(settings.policyDate);
         this.periodNumberingFrom.set(settings.periodNumberingFrom);
+        this.graceDays.set(settings.graceDays);
         this.permissions.set(settings.permissions);
         this.roles.set(roles);
       }

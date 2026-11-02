@@ -18,6 +18,7 @@ import net.officefloor.hq.app.sheet.SheetService;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Propagation;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.server.ResponseStatusException;
 
@@ -88,10 +89,24 @@ public class PeriodService {
         if (period.isClosed()) {
             throw new ResponseStatusException(HttpStatus.CONFLICT, "That period is already closed");
         }
+        return closeOpen(sheetId, user, period, "");
+    }
+
+    /** Close every open period on the sheet whose to-date plus the grace days is before the day,
+     *  earliest to-date first, each as a close by hand would, its record marked auto=yes. */
+    @Transactional(propagation = Propagation.MANDATORY)
+    public void autoClose(String sheetId, String user, int graceDays, LocalDate day) {
+        for (Period period : periods.findOpenEndingBefore(sheetId, day.minusDays(graceDays))) {
+            closeOpen(sheetId, user, period, " auto=yes");
+        }
+    }
+
+    /** Close an open period, fixing its due-total at what it is now; the suffix ends its record. */
+    private Period closeOpen(String sheetId, String user, Period period, String suffix) {
         period.close(personTotals(sheetId, period));
         Period saved = periods.saveAndFlush(period);
         audit.recordOnCommit("PERIOD_CLOSED sheet=" + sheetId + " by=" + user + " period=" + saved.getName()
-                + " total=" + saved.getClosedTotal().toPlainString());
+                + " total=" + saved.getClosedTotal().toPlainString() + suffix);
         return saved;
     }
 

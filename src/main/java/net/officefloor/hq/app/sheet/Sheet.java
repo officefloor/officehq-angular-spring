@@ -40,6 +40,11 @@ public class Sheet {
     @Column(name = "last_unperiod_number", insertable = false, updatable = false)
     private int lastUnperiodNumber;
 
+    /** Grace days: when the sheet's today is changed, an open period whose to-date plus them is
+     *  before the new today is closed; null (blank) is off. */
+    @Column(name = "grace_days")
+    private Integer graceDays;
+
     protected Sheet() {
     }
 
@@ -81,4 +86,11 @@ public class Sheet {
         this.periodNumberingFrom = periodNumberingFrom;
     }
 
+    public Integer getGraceDays() {
+        return graceDays;
+    }
+
+    public void setGraceDays(Integer graceDays) {
+        this.graceDays = graceDays;
+    }
 }

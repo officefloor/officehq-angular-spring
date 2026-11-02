@@ -7,6 +7,7 @@ import java.util.Map;
 import java.util.Optional;
 import java.util.TreeMap;
 import net.officefloor.hq.app.Audit;
+import net.officefloor.hq.app.period.PeriodService;
 import net.officefloor.hq.app.rollup.Rollup;
 import org.springframework.context.annotation.Lazy;
 import org.springframework.stereotype.Service;
@@ -24,14 +25,17 @@ public class SheetService {
     private final SheetPermissionRepository permissions;
     /** Lazy: the rollup reads the sheet's today through this service. */
     private final Rollup rollup;
+    /** Lazy: closing a period reads the sheet through this service. */
+    private final PeriodService periods;
     private final Audit audit;
 
     public SheetService(SheetRepository sheets, SettingValueRepository settingValues,
-            SheetPermissionRepository permissions, @Lazy Rollup rollup, Audit audit) {
+            SheetPermissionRepository permissions, @Lazy Rollup rollup, @Lazy PeriodService periods, Audit audit) {
         this.sheets = sheets;
         this.settingValues = settingValues;
         this.permissions = permissions;
         this.rollup = rollup;
+        this.periods = periods;
         this.audit = audit;
     }
 
@@ -66,13 +70,18 @@ public class SheetService {
         return sheets.lastUnperiodNumber(id);
     }
 
-    /** Change the sheet's today; the figures it moves are recorded, with no record of its own. */
+    /** Change the sheet's today, with no record of its own; then, when the sheet has grace days, close
+     *  the open periods they have run out on; then the figures it moves are recorded. */
     @Transactional
     public synchronized Sheet setToday(String id, String user, LocalDate today) {
         Sheet sheet = load(id, user);
         return rollup.tracking(id, user, () -> {
             sheet.setToday(today);
-            return sheets.saveAndFlush(sheet);
+            Sheet saved = sheets.saveAndFlush(sheet);
+            if (saved.getGraceDays() != null) {
+                periods.autoClose(id, user, saved.getGraceDays(), today);
+            }
+            return saved;
         });
     }
 
@@ -266,6 +275,24 @@ public class SheetService {
         Sheet saved = sheets.saveAndFlush(sheet);
         audit.recordOnCommit("SETTING_CHANGED sheet=" + id + " by=" + user + " key=period-numbering-from value="
                 + (from == null ? "" : from.toString()));
+        return saved;
+    }
+
+    /** The sheet's grace days; null when blank (off). */
+    @Transactional(readOnly = true)
+    public Integer graceDays(String id) {
+        return sheets.findById(id).map(Sheet::getGraceDays).orElse(null);
+    }
+
+    /** Change the sheet's grace days (null: blank, off); recorded even when unchanged. It closes no
+     *  period until the sheet's today is next changed. */
+    @Transactional
+    public synchronized Sheet setGraceDays(String id, String user, Integer graceDays) {
+        Sheet sheet = load(id, user);
+        sheet.setGraceDays(graceDays);
+        Sheet saved = sheets.saveAndFlush(sheet);
+        audit.recordOnCommit("SETTING_CHANGED sheet=" + id + " by=" + user + " key=grace-days value="
+                + (graceDays == null ? "" : graceDays.toString()));
         return saved;
     }
 

@@ -34,21 +34,23 @@ public class SettingsController {
      *  there is no cap), and the floors, late percents and caps recorded, each from its from-date, earliest
      *  first (a claim takes the one in force on its date, or else the sheet's starting one); and the
      *  proof threshold as text with two decimals (null when there is none); and the permission matrix:
-     *  for each action, the comma separated roles that may take it (blank: the standing rule). */
+     *  for each action, the comma separated roles that may take it (blank: the standing rule); and the
+     *  grace days (null when blank: off). */
     public record SettingsView(String clerkLimit, String floor, int terms, String latePct, LocalDate policyDate,
             LocalDate periodNumberingFrom, Map<String, Integer> gradeTerms, String cap, List<DatedValue> floors,
             List<DatedValue> latePcts, List<DatedValue> caps, String proofThreshold,
-            Map<String, String> permissions) {
+            Map<String, String> permissions, Integer graceDays) {
         static SettingsView of(BigDecimal clerkLimit, BigDecimal floor, int terms, BigDecimal latePct,
                 LocalDate policyDate, LocalDate periodNumberingFrom, Map<String, Integer> gradeTerms,
                 BigDecimal cap, List<SettingValue> floors, List<SettingValue> latePcts,
-                List<SettingValue> caps, BigDecimal proofThreshold, Map<String, String> permissions) {
+                List<SettingValue> caps, BigDecimal proofThreshold, Map<String, String> permissions,
+                Integer graceDays) {
             return new SettingsView(clerkLimit == null ? null : clerkLimit.setScale(2).toPlainString(),
                     floor.setScale(2).toPlainString(), terms, latePct.setScale(2).toPlainString(), policyDate,
                     periodNumberingFrom, gradeTerms, cap == null ? null : cap.setScale(2).toPlainString(),
                     floors.stream().map(DatedValue::of).toList(), latePcts.stream().map(DatedValue::of).toList(),
                     caps.stream().map(DatedValue::of).toList(),
-                    proofThreshold == null ? null : proofThreshold.setScale(2).toPlainString(), permissions);
+                    proofThreshold == null ? null : proofThreshold.setScale(2).toPlainString(), permissions, graceDays);
         }
     }
 
@@ -159,6 +161,14 @@ public class SettingsController {
         }
     }
 
+    /** The grace days form: a whole number of days, 0 or more, or blank for off. */
+    public record GraceDaysForm(@Pattern(regexp = "\\s*(\\d{1,4})?\\s*") String value) {
+
+        Integer graceDaysValue() {
+            return value == null || value.isBlank() ? null : Integer.valueOf(value.trim());
+        }
+    }
+
     /** The permission form: a comma separated list of roles (clerk, steward), or blank for the
      *  standing rule. */
     public record PermissionForm(@Size(max = 200)
@@ -187,7 +197,8 @@ public class SettingsController {
         return SettingsView.of(service.clerkLimit(id), service.floor(id), service.terms(id), service.latePct(id),
                 service.policyDate(id), service.periodNumberingFrom(id), service.gradeTerms(id), service.cap(id),
                 service.recorded(id, "floor"), service.recorded(id, "late-pct"),
-                service.recorded(id, "cap"), service.proofThreshold(id), service.permissions(id));
+                service.recorded(id, "cap"), service.proofThreshold(id), service.permissions(id),
+                service.graceDays(id));
     }
 
     /** The settings view of a sheet just saved. */
@@ -257,6 +268,13 @@ public class SettingsController {
             @RequestHeader("X-User") @NotBlank @Size(max = 100) String user,
             @Valid @RequestBody ProofThresholdForm form) {
         return view(service.setProofThreshold(sheetId.trim(), user.trim(), form.thresholdValue(), form.fromValue()));
+    }
+
+    @PutMapping("/grace-days")
+    public SettingsView setGraceDays(@PathVariable @NotBlank @Size(max = 100) String sheetId,
+            @RequestHeader("X-User") @NotBlank @Size(max = 100) String user,
+            @Valid @RequestBody GraceDaysForm form) {
+        return view(service.setGraceDays(sheetId.trim(), user.trim(), form.graceDaysValue()));
     }
 
     @PutMapping("/permissions/{action}")
