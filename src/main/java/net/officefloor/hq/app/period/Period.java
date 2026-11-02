@@ -18,7 +18,8 @@ import java.util.Map;
 
 /** A period on a sheet: a named run of days from its from-date to its to-date, both inclusive. A
  *  claim belongs to the period whose days contain its date. A closed period keeps the due-total it
- *  had when it was closed, and no claim dated inside it can be changed. */
+ *  had when it was closed, and no claim dated inside it can be changed. A soft-closed period keeps
+ *  its due-total as a closed one does, but claims dated inside it can still be added and changed. */
 @Entity
 @Table(name = "period")
 public class Period {
@@ -41,6 +42,9 @@ public class Period {
 
     @Column(name = "closed", nullable = false)
     private boolean closed;
+
+    @Column(name = "soft_closed", nullable = false)
+    private boolean softClosed;
 
     @Column(name = "closed_total")
     private BigDecimal closedTotal;
@@ -92,7 +96,11 @@ public class Period {
         return closed;
     }
 
-    /** The due-total fixed when the period was closed; null while it is open. */
+    public boolean isSoftClosed() {
+        return softClosed;
+    }
+
+    /** The due-total fixed when the period was closed or soft-closed; null while it is open. */
     public BigDecimal getClosedTotal() {
         return closedTotal;
     }
@@ -107,6 +115,18 @@ public class Period {
      *  due-total at their sum. */
     public void close(Map<Long, BigDecimal> personTotals) {
         this.closed = true;
+        this.softClosed = false;
+        fix(personTotals);
+    }
+
+    /** Soft-close the period, fixing its due-totals as {@link #close} does while leaving claims dated
+     *  inside it open to change. */
+    public void softClose(Map<Long, BigDecimal> personTotals) {
+        this.softClosed = true;
+        fix(personTotals);
+    }
+
+    private void fix(Map<Long, BigDecimal> personTotals) {
         this.personTotals.clear();
         this.personTotals.putAll(personTotals);
         this.closedTotal = personTotals.values().stream().reduce(BigDecimal.ZERO.setScale(2), BigDecimal::add);
@@ -115,6 +135,7 @@ public class Period {
     /** Reopen the period: its due-total is live again. */
     public void reopen() {
         this.closed = false;
+        this.softClosed = false;
         this.closedTotal = null;
         this.personTotals.clear();
     }

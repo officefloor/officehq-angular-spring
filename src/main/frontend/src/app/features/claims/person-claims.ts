@@ -154,6 +154,7 @@ function splitRefusal(e: unknown): string {
           <span data-testid="claim-opened-by">{{ c.openedBy ?? '' }}</span>
           <span data-testid="claim-stated">{{ c.stated ? 'yes' : 'no' }}</span>
           <span data-testid="claim-period">{{ periodName(c) }}</span>
+          <span data-testid="claim-late-entry">{{ c.lateEntry ? 'yes' : 'no' }}</span>
           <span data-testid="claim-due-by">{{ dueByOf(c) }}</span>
           <span data-testid="claim-overdue">{{ overdueOf(c) ? 'yes' : 'no' }}</span>
           <span data-testid="claim-deferred">{{ deferredOf(c) ? 'yes' : 'no' }}</span>

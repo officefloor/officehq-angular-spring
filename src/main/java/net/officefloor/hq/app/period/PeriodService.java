@@ -107,7 +107,7 @@ public class PeriodService {
         return made;
     }
 
-    /** Close a period, fixing its due-total at what it is now; refused when the permission matrix does
+    /** Close a period (an open or a soft-closed one), fixing its due-total at what it is now; refused when the permission matrix does
      *  not allow the user's role to close, or it is already closed. */
     @Transactional
     public Period close(String sheetId, String user, long periodId) {
@@ -121,6 +121,27 @@ public class PeriodService {
             throw new ResponseStatusException(HttpStatus.CONFLICT, "That period is already closed");
         }
         return closeOpen(sheetId, user, period, "");
+    }
+
+    /** Soft-close a period, fixing its due-total and each person's for it at what they are now while
+     *  claims dated inside it stay open to change; refused when the permission matrix does not allow
+     *  the user's role to close, or it is already closed or soft-closed. */
+    @Transactional
+    public Period softClose(String sheetId, String user, long periodId) {
+        sheets.load(sheetId, user);
+        if (!roles.may(sheetId, user, "close")) {
+            throw new ResponseStatusException(HttpStatus.FORBIDDEN, "Your role may not close a period");
+        }
+        Period period = periods.lockByIdAndSheetId(periodId, sheetId)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "No such period on this sheet"));
+        if (period.isClosed() || period.isSoftClosed()) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT, "That period is already closed");
+        }
+        period.softClose(personTotals(sheetId, period));
+        Period saved = periods.saveAndFlush(period);
+        audit.recordOnCommit("PERIOD_SOFT_CLOSED sheet=" + sheetId + " by=" + user + " period=" + saved.getName()
+                + " total=" + saved.getClosedTotal().toPlainString());
+        return saved;
     }
 
     /** Close every open period on the sheet whose to-date plus the grace days is before the day,
@@ -141,7 +162,7 @@ public class PeriodService {
         return saved;
     }
 
-    /** Reopen a closed period, making its due-total live again; refused when the permission matrix
+    /** Reopen a closed or soft-closed period, making its due-total live again; refused when the permission matrix
      *  does not allow the user's role to reopen, or the period is not closed. */
     @Transactional
     public Period reopen(String sheetId, String user, long periodId) {
@@ -151,7 +172,7 @@ public class PeriodService {
         }
         Period period = periods.lockByIdAndSheetId(periodId, sheetId)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "No such period on this sheet"));
-        if (!period.isClosed()) {
+        if (!period.isClosed() && !period.isSoftClosed()) {
             throw new ResponseStatusException(HttpStatus.CONFLICT, "That period is not closed");
         }
         period.reopen();

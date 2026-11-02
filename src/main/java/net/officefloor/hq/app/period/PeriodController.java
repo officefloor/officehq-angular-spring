@@ -25,15 +25,15 @@ import org.springframework.web.bind.annotation.RestController;
 public class PeriodController {
 
     /** What the screen shows of a period: its name, the days it runs from and to, inclusive, whether
-     *  it is closed, the due-total fixed when it was closed (null while it is open), and each
+     *  it is closed or soft-closed, the due-total fixed when it was closed (null while it is open), and each
      *  person's due-total for it fixed then, by the person's id (empty while it is open). */
     public record PeriodView(long id, String name, LocalDate from, LocalDate to, boolean closed,
-            String closedTotal, Map<Long, String> closedPersonTotals) {
+            boolean softClosed, String closedTotal, Map<Long, String> closedPersonTotals) {
         static PeriodView of(Period period) {
             Map<Long, String> personTotals = new TreeMap<>();
             period.getPersonTotals().forEach((id, total) -> personTotals.put(id, total.setScale(2).toPlainString()));
             return new PeriodView(period.getId(), period.getName(), period.getFromDate(), period.getToDate(),
-                    period.isClosed(),
+                    period.isClosed(), period.isSoftClosed(),
                     period.getClosedTotal() == null ? null : period.getClosedTotal().setScale(2).toPlainString(),
                     personTotals);
         }
@@ -80,6 +80,12 @@ public class PeriodController {
     public PeriodView close(@PathVariable @NotBlank @Size(max = 100) String sheetId,
             @RequestHeader("X-User") @NotBlank @Size(max = 100) String user, @PathVariable long periodId) {
         return PeriodView.of(service.close(sheetId.trim(), user.trim(), periodId));
+    }
+
+    @PostMapping("/{periodId}/soft-close")
+    public PeriodView softClose(@PathVariable @NotBlank @Size(max = 100) String sheetId,
+            @RequestHeader("X-User") @NotBlank @Size(max = 100) String user, @PathVariable long periodId) {
+        return PeriodView.of(service.softClose(sheetId.trim(), user.trim(), periodId));
     }
 
     @PostMapping("/{periodId}/reopen")

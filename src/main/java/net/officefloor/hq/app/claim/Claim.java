@@ -110,6 +110,10 @@ public class Claim {
     @Column(name = "edit_locked_by")
     private String editLockedBy;
 
+    /** Whether the claim was added while the period its date falls in was soft-closed. */
+    @Column(name = "late_entry", nullable = false)
+    private boolean lateEntry;
+
     /** Where the claim is listed: newest first by this. A new claim takes the next from the
      *  database, and a moved claim takes the next again (see {@link #moveTo}). */
     @Generated
@@ -179,6 +183,14 @@ public class Claim {
 
     public String getSplitFrom() {
         return splitFrom;
+    }
+
+    public boolean isLateEntry() {
+        return lateEntry;
+    }
+
+    public void markLateEntry() {
+        this.lateEntry = true;
     }
 
     public String getEditLockedBy() {

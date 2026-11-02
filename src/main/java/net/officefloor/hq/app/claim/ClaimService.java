@@ -76,9 +76,16 @@ public class ClaimService {
             Claim draft = new Claim(sheetId, personId, amount, on, note,
                     corrected == null ? null : corrected.getNumber(), corrected == null ? null : corrected.getDate(),
                     dueBy(sheetId, person, on));
+            boolean late = periods.softClosedOn(sheetId, on);
+            if (late) {
+                draft.markLateEntry();
+            }
             logStatus(sheetId, user, person, draft);
             Claim claim = claims.saveAndFlush(draft);
             audit.recordOnCommit(record("CLAIM_ADDED", sheetId, user, person, claim));
+            if (late) {
+                audit.recordOnCommit(record("LATE_ENTRY", sheetId, user, person, claim));
+            }
             return claim;
         });
     }

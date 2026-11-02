@@ -671,10 +671,10 @@ export class PeopleList {
 
   /** A person's due-total: the sum of their figures ({@link figuresOf}), at most the sheet's cap.
    *  Null (n/a) when the sum is; n/a is not capped. */
-  /** A person's due-total for a period: the one fixed when it was closed (0.00 for a person added
-   *  since), or else the live one. */
+  /** A person's due-total for a period: the one fixed when it was closed or soft-closed (0.00 for a
+   *  person added since), or else the live one. */
   protected periodDueOf(personId: number, period: Period): string {
-    if (period.closed) return period.closedPersonTotals[personId] ?? '0.00';
+    if (period.closed || period.softClosed) return period.closedPersonTotals[personId] ?? '0.00';
     return this.livePeriodDues().get(personId)?.get(period.id) ?? '0.00';
   }
 

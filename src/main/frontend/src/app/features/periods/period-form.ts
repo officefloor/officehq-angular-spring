@@ -48,11 +48,13 @@ const DAY = /^\d{4}-\d{2}-\d{2}$/;
               <td data-testid="period-from">{{ p.from }}</td>
               <td data-testid="period-to">{{ p.to }}</td>
               <td data-testid="period-due-total">{{ dueTotals().get(p.id) ?? '0.00' }}</td>
-              <td data-testid="period-closed">{{ p.closed ? 'yes' : 'no' }}</td>
+              <td data-testid="period-closed">{{ p.closed ? 'yes' : p.softClosed ? 'soft' : 'no' }}</td>
               <td>
                 @if (!p.closed) {
                   <button type="button" data-testid="period-close" (click)="close(p)"
                     [attr.aria-label]="'Close period ' + p.name">Close</button>
+                  <button type="button" data-testid="period-soft-close" (click)="softClose(p)"
+                    [attr.aria-label]="'Soft-close period ' + p.name">Soft-close</button>
                 }
                 <button type="button" data-testid="period-reopen" (click)="reopen(p)"
                   [attr.aria-label]="'Reopen period ' + p.name">Reopen</button>
@@ -134,6 +136,15 @@ export class PeriodForm {
       this.saved.emit(await this.api.close(p.id));
     } catch {
       this.periodError.set({ id: p.id, message: 'The period could not be closed.' });
+    }
+  }
+
+  protected async softClose(p: Period): Promise<void> {
+    this.periodError.set(null);
+    try {
+      this.saved.emit(await this.api.softClose(p.id));
+    } catch {
+      this.periodError.set({ id: p.id, message: 'The period could not be soft-closed.' });
     }
   }
 

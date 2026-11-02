@@ -13,7 +13,10 @@ export interface Period {
   to: string;
   /** Whether the period is closed: no claim dated inside it can be changed. */
   closed: boolean;
-  /** The due-total fixed when it was closed, as text with two decimals; null while it is open. */
+  /** Whether the period is soft-closed: its due-totals are fixed as for a closed one, but claims
+   *  dated inside it can still be changed. */
+  softClosed: boolean;
+  /** The due-total fixed when it was closed or soft-closed, as text with two decimals; null while it is open. */
   closedTotal: string | null;
   /** Each person's due-total for the period fixed when it was closed, by the person's id, as text
    *  with two decimals; empty while it is open. A person missing from it has 0.00. */
@@ -73,7 +76,18 @@ export class Periods {
     );
   }
 
-  /** Reopen a closed period, making its due-total live again; refused when the user is not a
+  /** Soft-close a period, fixing its due-totals while its claims stay open to change; refused when
+   *  it is already closed or soft-closed. */
+  softClose(id: number): Promise<Period> {
+    const sheetId = this.session.sheetId();
+    const user = this.session.user();
+    if (!sheetId || !user) throw new Error('no sheet loaded');
+    return firstValueFrom(
+      this.http.post<Period>(`${this.url(sheetId)}/${id}/soft-close`, null, { headers: { 'X-User': user } }),
+    );
+  }
+
+  /** Reopen a closed or soft-closed period, making its due-total live again; refused when the user is not a
    *  steward or the period is not closed. */
   reopen(id: number): Promise<Period> {
     const sheetId = this.session.sheetId();
