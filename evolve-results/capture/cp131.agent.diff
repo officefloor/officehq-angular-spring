@@ -1,0 +1,843 @@
+diff --git a/src/main/frontend/src/app/core/plans.ts b/src/main/frontend/src/app/core/plans.ts
+new file mode 100644
+index 000000000..67d5c5396
+--- /dev/null
++++ b/src/main/frontend/src/app/core/plans.ts
+@@ -0,0 +1,62 @@
++import { HttpClient } from '@angular/common/http';
++import { Injectable, inject } from '@angular/core';
++import { firstValueFrom } from 'rxjs';
++import { Session } from './session';
++
++/** A person's plan: a draft claim of its amount on its start and every so many days after, up to
++ *  its end; with how many claims it has made so far. */
++export interface Plan {
++  id: number;
++  personId: number;
++  amount: string;
++  start: string;
++  every: number;
++  end: string;
++  generated: number;
++}
++
++/** The plan form as typed: a blank start takes the sheet's today. */
++export interface PlanFields {
++  amount: string;
++  start: string;
++  every: string;
++  end: string;
++}
++
++// The plans of the people on the active sheet, and the generate that makes their claims.
++@Injectable({ providedIn: 'root' })
++export class Plans {
++  private readonly http = inject(HttpClient);
++  private readonly session = inject(Session);
++
++  /** The plans on the sheet in the order they were added. */
++  list(sheetId: string): Promise<Plan[]> {
++    return firstValueFrom(this.http.get<Plan[]>(`/api/sheets/${encodeURIComponent(sheetId)}/plans`));
++  }
++
++  /** Add a plan for the person; refused for a bad amount or interval, or an end before the start. */
++  add(personId: number, f: PlanFields): Promise<Plan> {
++    const { sheetId, user } = this.active();
++    return firstValueFrom(
++      this.http.post<Plan>(`/api/sheets/${encodeURIComponent(sheetId)}/people/${personId}/plans`,
++        { amount: f.amount, start: f.start || null, every: f.every, end: f.end || null },
++        { headers: { 'X-User': user } }),
++    );
++  }
++
++  /** Make the claims every plan on the sheet is due: how many were made. */
++  generate(): Promise<{ made: number }> {
++    const { sheetId, user } = this.active();
++    return firstValueFrom(
++      this.http.post<{ made: number }>(`/api/sheets/${encodeURIComponent(sheetId)}/plans/generate`, null,
++        { headers: { 'X-User': user } }),
++    );
++  }
++
++  private active(): { sheetId: string; user: string } {
++    const sheetId = this.session.sheetId();
++    const user = this.session.user();
++    if (!sheetId || !user) throw new Error('no sheet loaded');
++    return { sheetId, user };
++  }
++}
+diff --git a/src/main/frontend/src/app/features/people/people-list.ts b/src/main/frontend/src/app/features/people/people-list.ts
+index b2c0c3b30..c484dc54c 100644
+--- a/src/main/frontend/src/app/features/people/people-list.ts
++++ b/src/main/frontend/src/app/features/people/people-list.ts
+@@ -10,6 +10,7 @@ import { Rate, Rates, pctOn, weightedSum } from '../../core/rates';
+ import { Session } from '../../core/session';
+ import { DatedValue, Graces, SheetSettings, graceOn, valueOn } from '../../core/settings';
+ import { Watch, Watches } from '../../core/watches';
++import { Plan, Plans } from '../../core/plans';
+ import { DescendantFigures, Descendants, NO_DESCENDANTS } from '../../core/descendants';
+ import { VoidReasons } from '../../core/void-reasons';
+ import { PersonClaims } from '../claims/person-claims';
+@@ -21,6 +22,8 @@ import { QuickAddBar } from './quick-add-bar';
+ import { PasteClaimsBox } from './paste-claims-box';
+ import { ImportPeopleBox } from './import-people-box';
+ import { PoolList } from '../pools/pool-list';
++import { PersonPlans } from '../plans/person-plans';
++import { PlanGenerateBox } from '../plans/plan-generate-box';
+ 
+ /** What leaves no claim out: no holds, not retired. */
+ const NO_LEAVE: Leave = { holds: [], retiredFrom: null };
+@@ -38,7 +41,7 @@ const NO_LEAVE: Leave = { holds: [], retiredFrom: null };
+ // The signed-in user may watch a person: they are told when a claim of theirs is settled.
+ @Component({
+   selector: 'app-people-list',
+-  imports: [ReactiveFormsModule, PersonClaims, RateForm, PeriodForm, QuickAddBar, PasteClaimsBox, ImportPeopleBox, SummaryPanel, HeaderCounters, PoolList],
++  imports: [ReactiveFormsModule, PersonClaims, RateForm, PeriodForm, QuickAddBar, PasteClaimsBox, ImportPeopleBox, SummaryPanel, HeaderCounters, PoolList, PersonPlans, PlanGenerateBox],
+   template: `
+     <app-header-counters [peopleCount]="people().length" [statuses]="statusSummary()"
+       [dueTotal]="dueTotal()" [overdueTotal]="overdueTotal()"
+@@ -72,6 +75,7 @@ const NO_LEAVE: Leave = { holds: [], retiredFrom: null };
+       </form>
+       <app-quick-add-bar (added)="quickAdded($event)" />
+       <app-paste-claims-box (pasted)="claimsPasted()" />
++      <app-plan-generate-box [refresh]="plansGenerated" />
+       <app-import-people-box (imported)="peopleImported($event)" />
+       <p>Claimed in total: <strong data-testid="rollup-claimed-total">{{ claimedTotal() }}</strong></p>
+       <p>Due in total: <strong data-testid="rollup-due-total">{{ dueTotal() }}</strong></p>
+@@ -170,7 +174,7 @@ const NO_LEAVE: Leave = { holds: [], retiredFrom: null };
+       <button type="button" data-testid="export-claims" (click)="exportClaimsCsv()">Export claims (CSV)</button>
+       <table data-testid="people">
+         <thead>
+-          <tr><th scope="col"><span class="visually-hidden">Select</span></th><th scope="col">Name</th><th scope="col">Grade</th><th scope="col">Active</th><th scope="col">Terms</th><th scope="col">Contact</th><th scope="col">Aliases</th><th scope="col">Clashing</th><th scope="col">Came from</th><th scope="col">Claimed</th><th scope="col">Due</th><th scope="col">Settled due</th><th scope="col">Open due</th>@for (pd of periods(); track pd.id) {<th scope="col">Due in {{ pd.name }}</th>}<th scope="col">Excess</th><th scope="col">Cut total</th><th scope="col">Statements</th><th scope="col">Last stated</th><th scope="col">Stated on</th><th scope="col">Retired</th><th scope="col">Retired from</th><th scope="col">Past retirements</th><th scope="col">On hold</th><th scope="col">Overdue</th><th scope="col">Overdue due</th><th scope="col">Due aged 0–30 days</th><th scope="col">Due aged 31–60 days</th><th scope="col">Due aged 61+ days</th><th scope="col">Patrons</th><th scope="col">Backing</th><th scope="col">Watched</th><th scope="col">Claims</th><th scope="col"><span class="visually-hidden">Actions</span></th></tr>
++          <tr><th scope="col"><span class="visually-hidden">Select</span></th><th scope="col">Name</th><th scope="col">Grade</th><th scope="col">Active</th><th scope="col">Terms</th><th scope="col">Contact</th><th scope="col">Aliases</th><th scope="col">Clashing</th><th scope="col">Came from</th><th scope="col">Claimed</th><th scope="col">Due</th><th scope="col">Settled due</th><th scope="col">Open due</th>@for (pd of periods(); track pd.id) {<th scope="col">Due in {{ pd.name }}</th>}<th scope="col">Excess</th><th scope="col">Cut total</th><th scope="col">Statements</th><th scope="col">Last stated</th><th scope="col">Stated on</th><th scope="col">Retired</th><th scope="col">Retired from</th><th scope="col">Past retirements</th><th scope="col">On hold</th><th scope="col">Overdue</th><th scope="col">Overdue due</th><th scope="col">Due aged 0–30 days</th><th scope="col">Due aged 31–60 days</th><th scope="col">Due aged 61+ days</th><th scope="col">Patrons</th><th scope="col">Backing</th><th scope="col">Watched</th><th scope="col">Plans</th><th scope="col">Claims</th><th scope="col"><span class="visually-hidden">Actions</span></th></tr>
+         </thead>
+         <tbody>
+           @for (p of shown(); track p.id) {
+@@ -230,6 +234,10 @@ const NO_LEAVE: Leave = { holds: [], retiredFrom: null };
+               <td data-testid="person-patrons">{{ patronNames().get(p.id) ?? '' }}</td>
+               <td data-testid="person-backing">{{ backingOf(p) }}</td>
+               <td data-testid="person-watched">{{ watched().has(p.id) ? 'yes' : 'no' }}</td>
++              <td>
++                <app-person-plans [personId]="p.id" [name]="p.name" [plans]="plansByPerson().get(p.id) ?? []"
++                  (added)="planAdded($event)" />
++              </td>
+               <td>
+                 <app-person-claims [personId]="p.id" [claims]="claimsByPerson().get(p.id) ?? []"
+                   [rates]="rates()" [floor]="floor()" [grades]="p.grades" [periods]="periods()"
+@@ -321,6 +329,7 @@ export class PeopleList {
+   private readonly settingsApi = inject(SheetSettings);
+   private readonly patronsApi = inject(Patrons);
+   private readonly watchesApi = inject(Watches);
++  private readonly plansApi = inject(Plans);
+   private readonly poolsApi = inject(Pools);
+   private readonly descendantsApi = inject(Descendants);
+ 
+@@ -374,6 +383,14 @@ export class PeopleList {
+     }
+     return by;
+   });
++  /** The plans on the sheet, in the order they were added. */
++  protected readonly plans = signal<Plan[]>([]);
++  /** Each person's plans, in the order they were added, by the person's id. */
++  protected readonly plansByPerson = computed(() => {
++    const by = new Map<number, Plan[]>();
++    for (const x of this.plans()) by.set(x.personId, [...(by.get(x.personId) ?? []), x]);
++    return by;
++  });
+   /** The people the signed-in user watches, in the order they started watching. */
+   protected readonly watches = signal<Watch[]>([]);
+   /** The ids of the people the signed-in user watches. */
+@@ -683,6 +700,7 @@ export class PeopleList {
+       this.periods.set([]);
+       this.patrons.set([]);
+       this.watches.set([]);
++      this.plans.set([]);
+       this.selected.set(new Set());
+       this.bulkOpened.set(null);
+       this.bulkSettled.set(null);
+@@ -1211,6 +1229,26 @@ export class PeopleList {
+     ]);
+   }
+ 
++  /** Show a plan just added at the end of its person's plans. */
++  protected planAdded(plan: Plan): void {
++    this.plans.update((xs) => [...xs.filter((x) => x.id !== plan.id), plan]);
++  }
++
++  /** Read the sheet's claims and plans again once a generate has made claims. */
++  protected readonly plansGenerated = async (): Promise<void> => {
++    const sheetId = this.session.sheetId();
++    if (!sheetId) return;
++    try {
++      const [claims, plans] = await Promise.all([this.claimsApi.list(sheetId), this.plansApi.list(sheetId)]);
++      if (this.session.sheetId() === sheetId) {
++        this.claims.set(claims);
++        this.plans.set(plans);
++      }
++    } catch {
++      // the claims show again on the next load
++    }
++  };
++
+   /** Read the sheet's claims again once a paste has added some. */
+   protected async claimsPasted(): Promise<void> {
+     const sheetId = this.session.sheetId();
+@@ -1377,7 +1415,7 @@ export class PeopleList {
+   private async reload(sheetId: string): Promise<void> {
+     const read = ++this.reads;
+     try {
+-      const [people, claims, tags, rates, periods, settings, patrons, watches, lastBatch, descendants] = await Promise.all([
++      const [people, claims, tags, rates, periods, settings, patrons, watches, lastBatch, descendants, plans] = await Promise.all([
+         this.api.list(sheetId),
+         this.claimsApi.list(sheetId),
+         this.claimsApi.tags(sheetId),
+@@ -1388,6 +1426,7 @@ export class PeopleList {
+         this.watchesApi.list(sheetId),
+         this.claimsApi.lastSettleBatch(sheetId),
+         this.descendantsApi.figures(sheetId),
++        this.plansApi.list(sheetId),
+       ]);
+       if (read === this.reads) {
+         this.rates.set(rates);
+@@ -1401,6 +1440,7 @@ export class PeopleList {
+         this.storedTags.set(tags);
+         this.patrons.set(patrons);
+         this.watches.set(watches);
++        this.plans.set(plans);
+         this.lastSettleBatch.set(lastBatch);
+         this.descendants.set(descendants);
+         this.people.set(people);
+diff --git a/src/main/frontend/src/app/features/plans/person-plans.ts b/src/main/frontend/src/app/features/plans/person-plans.ts
+new file mode 100644
+index 000000000..ebad8f9d2
+--- /dev/null
++++ b/src/main/frontend/src/app/features/plans/person-plans.ts
+@@ -0,0 +1,93 @@
++import { Component, inject, input, output, signal } from '@angular/core';
++import { FormControl, FormGroup, ReactiveFormsModule } from '@angular/forms';
++import { Plan, Plans } from '../../core/plans';
++
++// A person's plans, in the order they were added, each with how many claims it has made so far;
++// and the form that adds one.
++@Component({
++  selector: 'app-person-plans',
++  imports: [ReactiveFormsModule],
++  template: `
++    <ul aria-label="Plans">
++      @for (pl of plans(); track pl.id) {
++        <li [attr.data-testid]="'plan-row-' + pl.id">
++          <span data-testid="plan-amount-shown">{{ pl.amount }}</span>
++          from <span data-testid="plan-start">{{ pl.start }}</span>
++          every <span data-testid="plan-every">{{ pl.every }}</span> days
++          to <span data-testid="plan-end">{{ pl.end }}</span>;
++          made <span data-testid="plan-generated">{{ pl.generated }}</span>
++        </li>
++      }
++    </ul>
++    <form [formGroup]="form" (ngSubmit)="submit()" [attr.aria-label]="'Add a plan of ' + name()">
++      <label [for]="'plan-form-amount-' + personId()">Plan amount</label>
++      <input [id]="'plan-form-amount-' + personId()" inputmode="decimal" data-testid="plan-form-amount"
++        formControlName="amount" />
++      <label [for]="'plan-form-start-' + personId()">Start</label>
++      <input [id]="'plan-form-start-' + personId()" type="date" data-testid="plan-form-start" formControlName="start" />
++      <label [for]="'plan-form-every-' + personId()">Every (days)</label>
++      <input [id]="'plan-form-every-' + personId()" inputmode="numeric" data-testid="plan-form-every"
++        formControlName="every" />
++      <label [for]="'plan-form-end-' + personId()">End</label>
++      <input [id]="'plan-form-end-' + personId()" type="date" data-testid="plan-form-end" formControlName="end" />
++      <button type="submit" data-testid="plan-form-submit">Add plan</button>
++      @if (error()) {
++        <p role="alert" data-testid="plan-error">{{ error() }}</p>
++      }
++    </form>
++  `,
++})
++export class PersonPlans {
++  private readonly api = inject(Plans);
++
++  readonly personId = input.required<number>();
++  readonly name = input.required<string>();
++  readonly plans = input.required<Plan[]>();
++  readonly added = output<Plan>();
++
++  protected readonly form = new FormGroup({
++    amount: new FormControl('', { nonNullable: true }),
++    start: new FormControl('', { nonNullable: true }),
++    every: new FormControl('', { nonNullable: true }),
++    end: new FormControl('', { nonNullable: true }),
++  });
++  protected readonly error = signal('');
++  /** Whether an add is waiting for its answer: a second submit meanwhile is ignored. */
++  private submitting = false;
++
++  constructor() {
++    this.form.valueChanges.subscribe(() => this.error.set(''));
++  }
++
++  protected async submit(): Promise<void> {
++    if (this.submitting) return;
++    this.error.set('');
++    const f = this.form.getRawValue();
++    const amount = f.amount.trim();
++    const every = f.every.trim();
++    if (!/^\d{1,12}(\.\d{1,2})?$/.test(amount) || Number(amount) <= 0) {
++      this.error.set('Enter an amount above zero with up to two decimals.');
++      return;
++    }
++    if (!/^\d{1,5}$/.test(every) || Number(every) < 1) {
++      this.error.set('Enter a whole number of days, at least 1.');
++      return;
++    }
++    if (!f.end) {
++      this.error.set('Enter the day the plan ends.');
++      return;
++    }
++    if (f.start && f.end < f.start) {
++      this.error.set('The end cannot be before the start.');
++      return;
++    }
++    this.submitting = true;
++    try {
++      this.added.emit(await this.api.add(this.personId(), { amount, start: f.start, every, end: f.end }));
++    } catch {
++      this.error.set('The plan could not be added.');
++    } finally {
++      this.submitting = false;
++    }
++  }
++}
+diff --git a/src/main/frontend/src/app/features/plans/plan-generate-box.ts b/src/main/frontend/src/app/features/plans/plan-generate-box.ts
+new file mode 100644
+index 000000000..f8bbcc84f
+--- /dev/null
++++ b/src/main/frontend/src/app/features/plans/plan-generate-box.ts
+@@ -0,0 +1,59 @@
++import { Component, effect, inject, input, signal } from '@angular/core';
++import { Plans } from '../../core/plans';
++import { Session } from '../../core/session';
++
++// The generate button: every plan on the sheet makes the draft claims it is due. The count shows
++// once the screen has read the sheet's claims and plans again.
++@Component({
++  selector: 'app-plan-generate-box',
++  template: `
++    <div role="group" aria-label="Generate plan claims">
++      <button type="button" data-testid="plan-generate" (click)="generate()">Generate plan claims</button>
++      @if (made() !== null) {
++        <p role="status">Made <strong data-testid="plan-generated-count">{{ made() }}</strong></p>
++      }
++      @if (error()) {
++        <p role="alert" data-testid="plan-generate-error">{{ error() }}</p>
++      }
++    </div>
++  `,
++})
++export class PlanGenerateBox {
++  private readonly api = inject(Plans);
++
++  private readonly session = inject(Session);
++
++  /** Reads the sheet's claims and plans again once a generate is done. */
++  readonly refresh = input.required<() => Promise<void>>();
++
++  protected readonly error = signal('');
++  /** How many claims the last generate made; null while one runs or before the first. */
++  protected readonly made = signal<number | null>(null);
++  /** Whether a generate is waiting for its answer: a second press meanwhile is ignored. */
++  private running = false;
++
++  constructor() {
++    effect(() => {
++      this.session.sheetId();
++      this.session.loads();
++      this.made.set(null);
++      this.error.set('');
++    });
++  }
++
++  protected async generate(): Promise<void> {
++    if (this.running) return;
++    this.running = true;
++    this.error.set('');
++    this.made.set(null);
++    try {
++      const { made } = await this.api.generate();
++      await this.refresh()();
++      this.made.set(made);
++    } catch {
++      this.error.set('The plans\' claims could not be generated.');
++    } finally {
++      this.running = false;
++    }
++  }
++}
+diff --git a/src/main/java/net/officefloor/hq/app/person/PersonMergeService.java b/src/main/java/net/officefloor/hq/app/person/PersonMergeService.java
+index a89071c48..3b45c7c75 100644
+--- a/src/main/java/net/officefloor/hq/app/person/PersonMergeService.java
++++ b/src/main/java/net/officefloor/hq/app/person/PersonMergeService.java
+@@ -10,6 +10,7 @@ import net.officefloor.hq.app.claim.ClaimRepository;
+ import net.officefloor.hq.app.patron.Patron;
+ import net.officefloor.hq.app.patron.PatronRepository;
+ import net.officefloor.hq.app.period.PeriodRepository;
++import net.officefloor.hq.app.plan.PlanRepository;
+ import net.officefloor.hq.app.pool.PoolMember;
+ import net.officefloor.hq.app.pool.PoolMemberRepository;
+ import net.officefloor.hq.app.pool.PoolRepository;
+@@ -35,13 +36,15 @@ public class PersonMergeService {
+     private final StatementRepository statements;
+     private final WatchRepository watches;
+     private final PeriodRepository periods;
++    private final PlanRepository plans;
+     private final RoleService roles;
+     private final Rollup rollup;
+     private final Audit audit;
+ 
+     public PersonMergeService(PersonRepository people, ClaimRepository claims, PatronRepository patrons,
+             PoolRepository pools, PoolMemberRepository members, StatementRepository statements,
+-            WatchRepository watches, PeriodRepository periods, RoleService roles, Rollup rollup, Audit audit) {
++            WatchRepository watches, PeriodRepository periods, PlanRepository plans, RoleService roles, Rollup rollup,
++            Audit audit) {
+         this.people = people;
+         this.claims = claims;
+         this.patrons = patrons;
+@@ -50,6 +53,7 @@ public class PersonMergeService {
+         this.statements = statements;
+         this.watches = watches;
+         this.periods = periods;
++        this.plans = plans;
+         this.roles = roles;
+         this.rollup = rollup;
+         this.audit = audit;
+@@ -60,7 +64,7 @@ public class PersonMergeService {
+      *  order they were added, each losing any figure a statement bound); their name and aliases
+      *  become aliases of the other; their patrons are added to the other's (not the other
+      *  themselves, no repeats), anyone naming them as patron names the other instead (no repeats);
+-     *  their pool memberships move to the other (shares added where the other is already a member)
++     *  their plans and pool memberships move to the other (shares added where the other is already a member)
+      *  and their fixed due-totals of closed periods fold into the other's. Their statements, holds,
+      *  watchers and contact are dropped, and they leave the sheet. Refused unless the user is a
+      *  steward, and for the same person, or when either of them is retired. */
+@@ -85,6 +89,8 @@ public class PersonMergeService {
+             moveClaims(sheetId, from, into);
+             movePatrons(sheetId, from, into);
+             movePoolMemberships(sheetId, from, into);
++            plans.findByPersonIdOrderByIdAsc(from.getId()).forEach(plan -> plan.setPersonId(into.getId()));
++            plans.flush();
+             periods.findBySheetIdOrderByFromDateAsc(sheetId)
+                     .forEach(period -> period.mergePersonTotal(from.getId(), into.getId()));
+             statements.deleteAll(statements.findBySheetIdAndPersonIdOrderByIdAsc(sheetId, from.getId()));
+diff --git a/src/main/java/net/officefloor/hq/app/person/PersonTransferService.java b/src/main/java/net/officefloor/hq/app/person/PersonTransferService.java
+index bf666c4b3..dfcb87b9b 100644
+--- a/src/main/java/net/officefloor/hq/app/person/PersonTransferService.java
++++ b/src/main/java/net/officefloor/hq/app/person/PersonTransferService.java
+@@ -13,6 +13,7 @@ import net.officefloor.hq.app.claim.ClaimRepository;
+ import net.officefloor.hq.app.claim.ClaimService;
+ import net.officefloor.hq.app.patron.PatronRepository;
+ import net.officefloor.hq.app.period.PeriodRepository;
++import net.officefloor.hq.app.plan.PlanRepository;
+ import net.officefloor.hq.app.pool.PoolMember;
+ import net.officefloor.hq.app.pool.PoolMemberRepository;
+ import net.officefloor.hq.app.pool.PoolRepository;
+@@ -40,6 +41,7 @@ public class PersonTransferService {
+     private final StatementRepository statements;
+     private final WatchRepository watches;
+     private final PeriodRepository periods;
++    private final PlanRepository plans;
+     private final SheetService sheets;
+     private final RoleService roles;
+     private final Rollup rollup;
+@@ -48,7 +50,7 @@ public class PersonTransferService {
+     public PersonTransferService(PersonRepository people, ClaimRepository claims, ClaimService claimService,
+             PatronRepository patrons, PoolRepository pools, PoolMemberRepository members,
+             StatementRepository statements, WatchRepository watches, PeriodRepository periods,
+-            SheetService sheets, RoleService roles, Rollup rollup, Audit audit) {
++            PlanRepository plans, SheetService sheets, RoleService roles, Rollup rollup, Audit audit) {
+         this.people = people;
+         this.claims = claims;
+         this.claimService = claimService;
+@@ -58,6 +60,7 @@ public class PersonTransferService {
+         this.statements = statements;
+         this.watches = watches;
+         this.periods = periods;
++        this.plans = plans;
+         this.sheets = sheets;
+         this.roles = roles;
+         this.rollup = rollup;
+@@ -69,7 +72,7 @@ public class PersonTransferService {
+      *  kept): each claim that had a number takes the other sheet's next one, in the order the claims
+      *  were opened (by the sheet's today then, then by the order they were added); figures a
+      *  statement bound and references are not carried, and they have no statements there. They
+-     *  leave this sheet entirely (patron links, pool memberships, watches and statements dropped).
++     *  leave this sheet entirely (patron links, pool memberships, plans, watches and statements dropped).
+      *  A sheet never loaded is started empty, as loading it would. When their name or an alias is
+      *  already the name or an alias of someone on the other sheet (compared as names are), they
+      *  are merged into that person there instead, exactly as a merge does (their claims listed
+@@ -171,6 +174,7 @@ public class PersonTransferService {
+         periods.findBySheetIdOrderByFromDateAsc(sheetId).forEach(period -> period.dropPersonTotal(from.getId()));
+         statements.deleteAll(statements.findBySheetIdAndPersonIdOrderByIdAsc(sheetId, from.getId()));
+         watches.deleteAll(watches.findByPersonIdOrderByIdAsc(from.getId()));
++        plans.deleteAll(plans.findByPersonIdOrderByIdAsc(from.getId()));
+         claims.deleteAll(theirs);
+         people.flush();
+         people.delete(from);
+diff --git a/src/main/java/net/officefloor/hq/app/plan/Plan.java b/src/main/java/net/officefloor/hq/app/plan/Plan.java
+new file mode 100644
+index 000000000..2c0c7f142
+--- /dev/null
++++ b/src/main/java/net/officefloor/hq/app/plan/Plan.java
+@@ -0,0 +1,121 @@
++package net.officefloor.hq.app.plan;
++
++import jakarta.persistence.CollectionTable;
++import jakarta.persistence.Column;
++import jakarta.persistence.ElementCollection;
++import jakarta.persistence.Entity;
++import jakarta.persistence.FetchType;
++import jakarta.persistence.GeneratedValue;
++import jakarta.persistence.GenerationType;
++import jakarta.persistence.Id;
++import jakarta.persistence.JoinColumn;
++import jakarta.persistence.Table;
++import java.math.BigDecimal;
++import java.time.LocalDate;
++import java.util.ArrayList;
++import java.util.HashSet;
++import java.util.List;
++import java.util.Set;
++
++/** A person's plan: a draft claim of its amount on its start date and every so many days after,
++ *  up to its end date. */
++@Entity
++@Table(name = "plan")
++public class Plan {
++
++    @Id
++    @GeneratedValue(strategy = GenerationType.IDENTITY)
++    private Long id;
++
++    @Column(name = "sheet_id", nullable = false)
++    private String sheetId;
++
++    @Column(name = "person_id", nullable = false)
++    private Long personId;
++
++    @Column(nullable = false, precision = 14, scale = 2)
++    private BigDecimal amount;
++
++    @Column(name = "start_date", nullable = false)
++    private LocalDate startDate;
++
++    @Column(name = "every_days", nullable = false)
++    private int everyDays;
++
++    @Column(name = "end_date", nullable = false)
++    private LocalDate endDate;
++
++    /** The plan dates it has made its claim for. */
++    @ElementCollection(fetch = FetchType.EAGER)
++    @CollectionTable(name = "plan_date", joinColumns = @JoinColumn(name = "plan_id"))
++    @Column(name = "on_date", nullable = false)
++    private Set<LocalDate> made = new HashSet<>();
++
++    protected Plan() {
++    }
++
++    public Plan(String sheetId, Long personId, BigDecimal amount, LocalDate startDate, int everyDays,
++            LocalDate endDate) {
++        this.sheetId = sheetId;
++        this.personId = personId;
++        this.amount = amount;
++        this.startDate = startDate;
++        this.everyDays = everyDays;
++        this.endDate = endDate;
++    }
++
++    public Long getId() {
++        return id;
++    }
++
++    public String getSheetId() {
++        return sheetId;
++    }
++
++    public Long getPersonId() {
++        return personId;
++    }
++
++    /** Make the plan another person's (the one it was for was merged into them). */
++    public void setPersonId(Long personId) {
++        this.personId = personId;
++    }
++
++    public BigDecimal getAmount() {
++        return amount;
++    }
++
++    public LocalDate getStartDate() {
++        return startDate;
++    }
++
++    public int getEveryDays() {
++        return everyDays;
++    }
++
++    public LocalDate getEndDate() {
++        return endDate;
++    }
++
++    /** How many claims the plan has made so far. */
++    public int getGenerated() {
++        return made.size();
++    }
++
++    /** The plan dates up to its end and the day given, oldest first, that it has made no claim for. */
++    public List<LocalDate> dueUpTo(LocalDate today) {
++        LocalDate last = endDate.isBefore(today) ? endDate : today;
++        List<LocalDate> due = new ArrayList<>();
++        for (LocalDate d = startDate; !d.isAfter(last); d = d.plusDays(everyDays)) {
++            if (!made.contains(d)) {
++                due.add(d);
++            }
++        }
++        return due;
++    }
++
++    /** Note that the plan has made its claim for the date. */
++    public void markMade(LocalDate date) {
++        made.add(date);
++    }
++}
+diff --git a/src/main/java/net/officefloor/hq/app/plan/PlanController.java b/src/main/java/net/officefloor/hq/app/plan/PlanController.java
+new file mode 100644
+index 000000000..488ffe5d9
+--- /dev/null
++++ b/src/main/java/net/officefloor/hq/app/plan/PlanController.java
+@@ -0,0 +1,80 @@
++package net.officefloor.hq.app.plan;
++
++import jakarta.validation.Valid;
++import jakarta.validation.constraints.NotBlank;
++import jakarta.validation.constraints.NotNull;
++import jakarta.validation.constraints.Pattern;
++import jakarta.validation.constraints.Size;
++import java.math.BigDecimal;
++import java.time.LocalDate;
++import java.util.List;
++import org.springframework.http.HttpStatus;
++import org.springframework.validation.annotation.Validated;
++import org.springframework.web.bind.annotation.GetMapping;
++import org.springframework.web.bind.annotation.PathVariable;
++import org.springframework.web.bind.annotation.PostMapping;
++import org.springframework.web.bind.annotation.RequestBody;
++import org.springframework.web.bind.annotation.RequestHeader;
++import org.springframework.web.bind.annotation.RequestMapping;
++import org.springframework.web.bind.annotation.ResponseStatus;
++import org.springframework.web.bind.annotation.RestController;
++
++@RestController
++@RequestMapping("/api/sheets/{sheetId}")
++@Validated
++public class PlanController {
++
++    /** What the screen shows of a plan: its amount as text with two decimals, its dates and interval,
++     *  and how many claims it has made so far. */
++    public record PlanView(long id, long personId, String amount, LocalDate start, int every, LocalDate end,
++            int generated) {
++        static PlanView of(Plan plan) {
++            return new PlanView(plan.getId(), plan.getPersonId(), plan.getAmount().setScale(2).toPlainString(),
++                    plan.getStartDate(), plan.getEveryDays(), plan.getEndDate(), plan.getGenerated());
++        }
++    }
++
++    /** The plan form: a required amount with up to two decimals, an optional start (the sheet's today
++     *  when left out), a whole number of days it repeats every, and a required end. */
++    public record PlanForm(@NotNull @Pattern(regexp = "\\s*\\d{1,12}(\\.\\d{1,2})?\\s*") String amount,
++            LocalDate start, @NotNull @Pattern(regexp = "\\s*\\d{1,5}\\s*") String every, @NotNull LocalDate end) {
++
++        BigDecimal amountValue() {
++            return new BigDecimal(amount.trim()).setScale(2);
++        }
++
++        int everyValue() {
++            return Integer.parseInt(every.trim());
++        }
++    }
++
++    /** How many claims a generate made. */
++    public record Generated(int made) {
++    }
++
++    private final PlanService service;
++
++    public PlanController(PlanService service) {
++        this.service = service;
++    }
++
++    @GetMapping("/plans")
++    public List<PlanView> list(@PathVariable @NotBlank @Size(max = 100) String sheetId) {
++        return service.list(sheetId.trim()).stream().map(PlanView::of).toList();
++    }
++
++    @PostMapping("/people/{personId}/plans")
++    @ResponseStatus(HttpStatus.CREATED)
++    public PlanView add(@PathVariable @NotBlank @Size(max = 100) String sheetId, @PathVariable long personId,
++            @RequestHeader("X-User") @NotBlank @Size(max = 100) String user,
++            @Valid @RequestBody PlanForm form) {
++        return PlanView.of(service.add(sheetId.trim(), user.trim(), personId, form.amountValue(), form.start(),
++                form.everyValue(), form.end()));
++    }
++
++    @PostMapping("/plans/generate")
++    public Generated generate(@PathVariable @NotBlank @Size(max = 100) String sheetId,
++            @RequestHeader("X-User") @NotBlank @Size(max = 100) String user) {
++        return new Generated(service.generate(sheetId.trim(), user.trim()));
++    }
++}
+diff --git a/src/main/java/net/officefloor/hq/app/plan/PlanRepository.java b/src/main/java/net/officefloor/hq/app/plan/PlanRepository.java
+new file mode 100644
+index 000000000..ea6b0d84d
+--- /dev/null
++++ b/src/main/java/net/officefloor/hq/app/plan/PlanRepository.java
+@@ -0,0 +1,13 @@
++package net.officefloor.hq.app.plan;
++
++import java.util.List;
++import org.springframework.data.jpa.repository.JpaRepository;
++
++public interface PlanRepository extends JpaRepository<Plan, Long> {
++
++    /** The plans on a sheet in the order they were added. */
++    List<Plan> findBySheetIdOrderByIdAsc(String sheetId);
++
++    /** A person's plans in the order they were added. */
++    List<Plan> findByPersonIdOrderByIdAsc(Long personId);
++}
+diff --git a/src/main/java/net/officefloor/hq/app/plan/PlanService.java b/src/main/java/net/officefloor/hq/app/plan/PlanService.java
+new file mode 100644
+index 000000000..21f41cba9
+--- /dev/null
++++ b/src/main/java/net/officefloor/hq/app/plan/PlanService.java
+@@ -0,0 +1,97 @@
++package net.officefloor.hq.app.plan;
++
++import java.math.BigDecimal;
++import java.time.LocalDate;
++import java.util.List;
++import net.officefloor.hq.app.Audit;
++import net.officefloor.hq.app.claim.ClaimService;
++import net.officefloor.hq.app.person.Person;
++import net.officefloor.hq.app.person.PersonRepository;
++import net.officefloor.hq.app.sheet.SheetService;
++import org.springframework.http.HttpStatus;
++import org.springframework.stereotype.Service;
++import org.springframework.transaction.PlatformTransactionManager;
++import org.springframework.transaction.annotation.Transactional;
++import org.springframework.transaction.support.TransactionTemplate;
++import org.springframework.web.server.ResponseStatusException;
++
++/** The plans people on a sheet have, and the draft claims they make. */
++@Service
++public class PlanService {
++
++    private final PlanRepository plans;
++    private final PersonRepository people;
++    private final ClaimService claims;
++    private final SheetService sheets;
++    private final TransactionTemplate transaction;
++    private final Audit audit;
++
++    public PlanService(PlanRepository plans, PersonRepository people, ClaimService claims, SheetService sheets,
++            PlatformTransactionManager transactions, Audit audit) {
++        this.plans = plans;
++        this.people = people;
++        this.claims = claims;
++        this.sheets = sheets;
++        this.transaction = new TransactionTemplate(transactions);
++        this.audit = audit;
++    }
++
++    /** The plans on the sheet in the order they were added. */
++    @Transactional(readOnly = true)
++    public List<Plan> list(String sheetId) {
++        return plans.findBySheetIdOrderByIdAsc(sheetId);
++    }
++
++    /** Add a plan for a person; a start left out takes the sheet's today. Refused for an amount that
++     *  is not above zero, an interval below one day, and an end before the start. */
++    @Transactional
++    public Plan add(String sheetId, String user, long personId, BigDecimal amount, LocalDate start, int every,
++            LocalDate end) {
++        Person person = people.findByIdAndSheetId(personId, sheetId)
++                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "No such person on this sheet"));
++        if (amount.signum() <= 0) {
++            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "A plan's amount must be above zero");
++        }
++        if (every < 1) {
++            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "A plan repeats every one day or more");
++        }
++        LocalDate from = start != null ? start : sheets.today(sheetId);
++        if (end.isBefore(from)) {
++            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "A plan cannot end before it starts");
++        }
++        Plan saved = plans.saveAndFlush(new Plan(sheetId, person.getId(), amount, from, every, end));
++        audit.recordOnCommit("PLAN_ADDED sheet=" + sheetId + " by=" + user + " name=" + person.getName()
++                + " amount=" + amount.setScale(2).toPlainString() + " start=" + from + " every=" + every
++                + " end=" + end);
++        return saved;
++    }
++
++    /** Make, for every plan on the sheet in the order they were added, a draft claim of its amount
++     *  with an empty note for each of its dates up to its end and the sheet's today that has none
++     *  yet, oldest first. Each claim is added as the claim form adds it, in a transaction of its
++     *  own: a date the form refuses is skipped, and tried again by the next generate. Returns how
++     *  many claims were made. */
++    public int generate(String sheetId, String user) {
++        LocalDate today = sheets.today(sheetId);
++        int made = 0;
++        for (Plan plan : plans.findBySheetIdOrderByIdAsc(sheetId)) {
++            for (LocalDate date : plan.dueUpTo(today)) {
++                try {
++                    transaction.executeWithoutResult(status -> {
++                        Plan locked = plans.findById(plan.getId()).orElseThrow();
++                        if (!locked.dueUpTo(date).contains(date)) {
++                            return;
++                        }
++                        claims.add(sheetId, user, locked.getPersonId(), locked.getAmount(), date, "");
++                        locked.markMade(date);
++                        plans.saveAndFlush(locked);
++                    });
++                    made++;
++                } catch (ResponseStatusException refused) {
++                    // the claim form refused the date: it is tried again next time
++                }
++            }
++        }
++        return made;
++    }
++}
+diff --git a/src/main/resources/db/migration/V78__plan.sql b/src/main/resources/db/migration/V78__plan.sql
+new file mode 100644
+index 000000000..a67693ac6
+--- /dev/null
++++ b/src/main/resources/db/migration/V78__plan.sql
+@@ -0,0 +1,20 @@
++-- A person's plans: an amount claimed every so many days from a start date to an end date.
++CREATE TABLE plan (
++    id         BIGINT AUTO_INCREMENT PRIMARY KEY,
++    sheet_id   VARCHAR(100)   NOT NULL REFERENCES sheet (id),
++    person_id  BIGINT         NOT NULL REFERENCES person (id),
++    amount     DECIMAL(14, 2) NOT NULL,
++    start_date DATE           NOT NULL,
++    every_days INT            NOT NULL,
++    end_date   DATE           NOT NULL,
++    CONSTRAINT plan_every CHECK (every_days >= 1),
++    CONSTRAINT plan_dates CHECK (end_date >= start_date)
++);
++CREATE INDEX plan_sheet ON plan (sheet_id, id);
++
++-- The plan dates a plan has made its claim for, each at most once.
++CREATE TABLE plan_date (
++    plan_id BIGINT NOT NULL REFERENCES plan (id) ON DELETE CASCADE,
++    on_date DATE   NOT NULL,
++    CONSTRAINT plan_date_unique UNIQUE (plan_id, on_date)
++);
