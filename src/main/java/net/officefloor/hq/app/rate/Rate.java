@@ -123,6 +123,14 @@ public class Rate {
         this.forwardAfter = forwardAfter;
     }
 
+    /** Withdraw the newest version: the older one given (its percent, to-date and forward-only) is in force again. */
+    public void withdrawVersion(Rate older) {
+        this.versions--;
+        this.pct = older.pct;
+        this.toDate = older.toDate;
+        this.forwardAfter = older.forwardAfter;
+    }
+
     /** Make it forward-only from the last place in the order claims were added (null: it applies to every claim). */
     public void setForwardAfter(Long forwardAfter) { this.forwardAfter = forwardAfter; }
 }

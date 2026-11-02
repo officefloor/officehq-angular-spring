@@ -345,7 +345,7 @@ function trimmedSum(figures: number[]): number {
         </tbody>
       </table>
     </section>
-    <app-rates [rates]="rates()" [inherited]="inheritedRates()" [today]="session.today()" (saved)="rateSaved($event)" (imported)="ratesImported($event)" />
+    <app-rates [rates]="rates()" [inherited]="inheritedRates()" [today]="session.today()" (saved)="rateSaved($event)" (imported)="ratesImported($event)" (withdrawn)="rateWithdrawn($event)" />
     <app-periods [periods]="periods()" [dueTotalOf]="periodDueTotalOf" [claimsCountOf]="periodClaimsCountOf" (saved)="periodSaved($event)" (replaced)="periodsReplaced($event)" />
     <section aria-labelledby="people-heading">
       <h2 id="people-heading">People</h2>
@@ -2402,6 +2402,11 @@ export class People {
   /** Put a set rate in place of the grade's old one from the same date. */
   protected rateSaved(rate: Rate): void {
     this.rates.update((list) => [...list.filter((r) => r.grade !== rate.grade || r.from !== rate.from), rate]);
+  }
+
+  /** Take a withdrawn rate's newest version away: the version in force again takes its place, if any. */
+  protected rateWithdrawn(w: { grade: string; from: string | null; rate: Rate | null }): void {
+    this.rates.update((list) => [...list.filter((r) => r.grade !== w.grade || r.from !== w.from), ...(w.rate ? [w.rate] : [])]);
   }
 
   /** Put each imported rate in place, in the order they were set. */

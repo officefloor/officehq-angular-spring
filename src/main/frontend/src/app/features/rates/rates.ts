@@ -174,7 +174,7 @@ export function rateInLevels(levels: Rate[][], date: string, added?: number | nu
       <table>
         <caption>All rates</caption>
         <thead>
-          <tr><th scope="col">Grade</th><th scope="col">From</th><th scope="col">To</th><th scope="col">Rate (%)</th><th scope="col">Versions</th></tr>
+          <tr><th scope="col">Grade</th><th scope="col">From</th><th scope="col">To</th><th scope="col">Rate (%)</th><th scope="col">Versions</th><th scope="col"><span class="visually-hidden">Actions</span></th></tr>
         </thead>
         <tbody>
           @for (r of sorted(); track r.grade + '-' + (r.from ?? 'start')) {
@@ -184,6 +184,10 @@ export function rateInLevels(levels: Rate[][], date: string, added?: number | nu
               <td data-testid="rate-to">{{ r.to ?? '' }}</td>
               <td data-testid="rate-pct">{{ r.pct | figure }}</td>
               <td data-testid="rate-version">{{ r.versions }}</td>
+              <td>
+                <button type="button" data-testid="rate-withdraw" (click)="withdraw(r)"
+                  [attr.aria-label]="'Withdraw rate ' + r.grade + ' from ' + (r.from ?? 'the start')">Withdraw</button>
+              </td>
             </tr>
           }
         </tbody>
@@ -202,6 +206,8 @@ export class Rates {
   readonly today = input.required<string | null>();
   /** A rate set, as the store now holds it. */
   readonly saved = output<Rate>();
+  /** A rate withdrawn: its grade and from-date, and the version in force again (null: the rate is gone). */
+  readonly withdrawn = output<{ grade: string; from: string | null; rate: Rate | null }>();
   /** The rates an import set, as the store now holds them, in the order of their lines. */
   readonly imported = output<Rate[]>();
 
@@ -310,6 +316,30 @@ export class Rates {
       this.saved.emit(rate);
     } catch {
       this.error.set('Could not set that rate.');
+    } finally {
+      this.saving = false;
+    }
+  }
+
+  /** Withdraw the rate's newest version (a steward only): the version before it, if any, applies again. */
+  protected async withdraw(r: Rate): Promise<void> {
+    if (this.saving) return;
+    this.error.set('');
+    const sheet = this.session.sheetId();
+    if (!sheet) return;
+    this.saving = true;
+    try {
+      const params: Record<string, string> = r.from ? { from: r.from } : {};
+      const done = await firstValueFrom(
+        this.http.delete<{ rate: Rate | null }>(`/api/sheets/${encodeURIComponent(sheet)}/rates/${r.grade}`, {
+          params,
+          headers: { 'X-User': this.session.user() ?? '' },
+        }),
+      );
+      if (this.session.sheetId() !== sheet) return;
+      this.withdrawn.emit({ grade: r.grade, from: r.from, rate: done.rate });
+    } catch {
+      if (this.session.sheetId() === sheet) this.error.set('Could not withdraw that rate; only a steward can.');
     } finally {
       this.saving = false;
     }

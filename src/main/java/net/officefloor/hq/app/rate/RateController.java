@@ -11,6 +11,8 @@ import java.util.List;
 import net.officefloor.hq.app.asof.AsOfGuard;
 import net.officefloor.hq.app.claim.ClaimService;
 import org.springframework.validation.annotation.Validated;
+import org.springframework.format.annotation.DateTimeFormat;
+import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
@@ -45,6 +47,9 @@ public class RateController {
             return new BigDecimal(pct).setScale(2);
         }
     }
+
+    /** What withdrawing a rate left of its grade and from-date: the version in force again, or null when it is gone. */
+    public record WithdrawView(RateView rate) {}
 
     /** Pasted lines of grade,rate,from,to, one rate each. */
     public record ImportRequest(@NotNull @Size(max = 200000) String text) {}
@@ -115,5 +120,15 @@ public class RateController {
             @RequestBody @Valid ImportRequest request) {
         List<RateView> set = importer.importRates(sheetId, user, request.text()).stream().map(RateView::of).toList();
         return new ImportView(set.size(), set);
+    }
+
+    /** Withdraw the newest version of the grade's rate from the date (none: from the start). */
+    @DeleteMapping("/{grade}")
+    public WithdrawView withdraw(
+            @PathVariable @Size(max = 100) @Pattern(regexp = "[A-Za-z0-9._-]+") String sheetId,
+            @PathVariable @Pattern(regexp = "[A-Z]{1,3}") String grade,
+            @RequestHeader("X-User") @NotBlank @Size(max = 100) String user,
+            @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate from) {
+        return new WithdrawView(service.withdraw(sheetId, user, grade, from).map(RateView::of).orElse(null));
     }
 }
