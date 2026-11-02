@@ -12,6 +12,7 @@ import { PersonClaims } from '../claims/person-claims';
 import { PeriodForm } from '../periods/period-form';
 import { RateForm } from '../rates/rate-form';
 import { GradeSummary, PeriodSummary, StatusSummary, SummaryPanel } from '../summary/summary-panel';
+import { HeaderCounters } from '../summary/header-counters';
 import { QuickAddBar } from './quick-add-bar';
 
 // The people on the sheet, in the order they were added, and the form that adds a person or,
@@ -24,8 +25,10 @@ import { QuickAddBar } from './quick-add-bar';
 // due-totals added up, skipping those that are n/a.
 @Component({
   selector: 'app-people-list',
-  imports: [ReactiveFormsModule, PersonClaims, RateForm, PeriodForm, QuickAddBar, SummaryPanel],
+  imports: [ReactiveFormsModule, PersonClaims, RateForm, PeriodForm, QuickAddBar, SummaryPanel, HeaderCounters],
   template: `
+    <app-header-counters [peopleCount]="people().length" [statuses]="statusSummary()"
+      [dueTotal]="dueTotal()" [overdueTotal]="overdueTotal()" />
     <app-rate-form [rates]="rates()" (saved)="rateSaved($event)" />
     <app-period-form [periods]="periods()" [dueTotals]="periodDueTotals()" (saved)="periodSaved($event)" />
     <section aria-labelledby="people-heading">
