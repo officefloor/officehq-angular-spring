@@ -209,8 +209,8 @@ function halfUp(basis: string, late: Late): boolean {
  * A claim's due in cents: the due fixed when it was settled (late charge frozen in), else the due bound by
  * its person's last statement as shown then (late charge and floor included), else the greater of
  * the floor in force on its date (`floorOn`, in cents) and its figure — its amount times its person's
- * rate on its date (as `pctOn` gives it) —
- * with its late charge (by the late percent in force on each 30-day boundary) on top; a correction has
+ * rate on its date (as `pctOn` gives it) — with the late charge worked out on that floored figure
+ * (by the late percent in force on each 30-day boundary) on top; a correction has
  * no floor and no charge. Null when it has none. Its live figures round by the date `basis` (see {@link roundsOn}).
  * Its grace days (`graceOn`) put off when it is overdue and its charge's 30-day boundaries.
  */
@@ -220,8 +220,8 @@ export function claimDueCents(c: Claim, pctOn: PctOn, floorOn: FloorOn, late: La
   const up = halfUp(basis, late);
   const figure = figureCents(c, pctOn, up);
   if (figure === null) return null;
-  const charged = figure + lateChargeCents(c, figure, late, up, graceOn);
-  return isCorrection(c) ? charged : Math.max(charged, floorOn(c.date));
+  const floored = isCorrection(c) ? figure : Math.max(figure, floorOn(c.date));
+  return floored + lateChargeCents(c, floored, late, up, graceOn);
 }
 
 /** A claim's rate figure in cents (no floor). */

@@ -186,11 +186,12 @@ public class StatementService {
             BigDecimal due = figure;
             // a settled due is frozen, a bound one as bound (charge and floor included)
             if (settled == null && binding == null) {
+                // the floor first, then the late charge worked out on the floored figure
+                if (due != null && !claim.isCorrection()) due = due.max(sheet.floorOn(claim.getDate(), asOf));
                 if (status.isOpen()) {
                     due = LateCharge.withChargeAsOpen(claim, due, asOf, sheet.graceOn(grade, claim.getDate(), asOf),
                             d -> sheet.latePctOn(d, asOf), rounding);
                 }
-                if (due != null && !claim.isCorrection()) due = due.max(sheet.floorOn(claim.getDate(), asOf));
             }
             if (settled != null || (binding != null && binding.getDue() != null)) fixed = true;
             // a due under a grade they had on its date but not on the date counts like a fixed one

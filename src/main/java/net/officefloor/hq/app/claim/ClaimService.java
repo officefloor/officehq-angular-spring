@@ -476,9 +476,9 @@ public class ClaimService {
         Person person = people.findByIdAndSheetId(claim.getPersonId(), sheetId).orElseThrow(PersonNotFoundException::new);
         refuseIfClosed(sheetId, claim.getDueBy());
         BigDecimal old = claim.getSettledDue();
-        BigDecimal figure = floored(sheetId, claim, LateCharge.withChargeAsOpen(claim, dueOf(sheetId, person, claim),
+        BigDecimal figure = LateCharge.withChargeAsOpen(claim, floored(sheetId, claim, dueOf(sheetId, person, claim)),
                 sheets.today(sheetId), graceOf(sheetId, person, claim), d -> settings.latePctOn(sheetId, d),
-                roundingOf(sheetId, claim)));
+                roundingOf(sheetId, claim));
         claim.setSettledDue(figure);
         logStatus(sheetId, user, person, claim);
         Claim saved = claims.saveAndFlush(claim);
@@ -896,8 +896,8 @@ public class ClaimService {
     }
 
     /**
-     * A claim's due now: the greater of the floor in force on its date and its figure with the late
-     * charge on top while it is overdue (a correction: neither); a settled due as fixed; null when it
+     * A claim's due now: the greater of the floor in force on its date and its figure, with the late
+     * charge worked out on that floored figure on top while it is overdue (a correction: neither); a settled due as fixed; null when it
      * has none. A due bound by a statement is shown as bound, its charge no longer following today.
      */
     public BigDecimal chargedFigureOf(String sheetId, Person person, Claim claim) {
@@ -936,14 +936,14 @@ public class ClaimService {
     }
 
     /**
-     * The claim's due with the figure given: floored, with its late charge while overdue; a settled due as
+     * The claim's due with the figure given: floored, with its late charge on the floored figure while overdue; a settled due as
      * fixed, a due bound by a statement as bound.
      */
     private BigDecimal charged(String sheetId, Person person, Claim claim, BigDecimal figure) {
         if (claim.getSettledDue() != null) return claim.getSettledDue();
         if (claim.isBound()) return claim.getStatedDue();
-        return floored(sheetId, claim, LateCharge.withCharge(claim, figure, sheets.today(sheetId),
-                graceOf(sheetId, person, claim), d -> settings.latePctOn(sheetId, d), roundingOf(sheetId, claim)));
+        return LateCharge.withCharge(claim, floored(sheetId, claim, figure), sheets.today(sheetId),
+                graceOf(sheetId, person, claim), d -> settings.latePctOn(sheetId, d), roundingOf(sheetId, claim));
     }
 
     /** The grace days of the person's grade on the claim's date, in force on it; 0 when none. */
