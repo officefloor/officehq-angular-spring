@@ -1,0 +1,530 @@
+diff --git a/src/main/frontend/src/app/core/people.ts b/src/main/frontend/src/app/core/people.ts
+index 84445f044..095301cc5 100644
+--- a/src/main/frontend/src/app/core/people.ts
++++ b/src/main/frontend/src/app/core/people.ts
+@@ -46,6 +46,13 @@ export function heldOn(holds: Hold[], day: string): boolean {
+   return holds.some((h) => (h.from === null || h.from <= day) && (h.to === null || day <= h.to));
+ }
+ 
++/** A past retirement of a person: from the day they were retired from to the day they were
++ *  unretired (yyyy-mm-dd). */
++export interface Retirement {
++  from: string;
++  to: string;
++}
++
+ export interface Person {
+   id: number;
+   name: string;
+@@ -65,6 +72,8 @@ export interface Person {
+   retired: boolean;
+   /** The day (yyyy-mm-dd) they are retired from; null when they are not retired. */
+   retiredFrom: string | null;
++  /** Their past retirements, earliest first. */
++  retirements: Retirement[];
+   /** Whether they have any hold, whatever its days. */
+   held: boolean;
+   /** Their holds, earliest first: their open claims dated within one count in no live total. */
+@@ -197,6 +206,14 @@ export class People {
+     );
+   }
+ 
++  /** Unretire the person on the sheet's today; refused when they are not retired. */
++  unretire(id: number): Promise<Person> {
++    const { sheetId, user } = this.active();
++    return firstValueFrom(
++      this.http.post<Person>(`${this.url(sheetId)}/${id}/unretire`, {}, { headers: { 'X-User': user } }),
++    );
++  }
++
+   /** Put the person on hold from a day (null: the sheet's today) to a day (null: open-ended). */
+   hold(id: number, from: string | null, to: string | null): Promise<Person> {
+     const { sheetId, user } = this.active();
+diff --git a/src/main/frontend/src/app/features/people/people-list.ts b/src/main/frontend/src/app/features/people/people-list.ts
+index 1359fb38e..4241e008d 100644
+--- a/src/main/frontend/src/app/features/people/people-list.ts
++++ b/src/main/frontend/src/app/features/people/people-list.ts
+@@ -168,7 +168,7 @@ const NO_LEAVE: Leave = { holds: [], retiredFrom: null };
+       <button type="button" data-testid="export-people" (click)="exportCsv()">Export people (CSV)</button>
+       <table data-testid="people">
+         <thead>
+-          <tr><th scope="col"><span class="visually-hidden">Select</span></th><th scope="col">Name</th><th scope="col">Grade</th><th scope="col">Active</th><th scope="col">Terms</th><th scope="col">Contact</th><th scope="col">Aliases</th><th scope="col">Clashing</th><th scope="col">Came from</th><th scope="col">Claimed</th><th scope="col">Due</th><th scope="col">Settled due</th><th scope="col">Open due</th>@for (pd of periods(); track pd.id) {<th scope="col">Due in {{ pd.name }}</th>}<th scope="col">Excess</th><th scope="col">Cut total</th><th scope="col">Statements</th><th scope="col">Last stated</th><th scope="col">Stated on</th><th scope="col">Retired</th><th scope="col">Retired from</th><th scope="col">On hold</th><th scope="col">Overdue</th><th scope="col">Overdue due</th><th scope="col">Due aged 0–30 days</th><th scope="col">Due aged 31–60 days</th><th scope="col">Due aged 61+ days</th><th scope="col">Patrons</th><th scope="col">Backing</th><th scope="col">Watched</th><th scope="col">Claims</th><th scope="col"><span class="visually-hidden">Actions</span></th></tr>
++          <tr><th scope="col"><span class="visually-hidden">Select</span></th><th scope="col">Name</th><th scope="col">Grade</th><th scope="col">Active</th><th scope="col">Terms</th><th scope="col">Contact</th><th scope="col">Aliases</th><th scope="col">Clashing</th><th scope="col">Came from</th><th scope="col">Claimed</th><th scope="col">Due</th><th scope="col">Settled due</th><th scope="col">Open due</th>@for (pd of periods(); track pd.id) {<th scope="col">Due in {{ pd.name }}</th>}<th scope="col">Excess</th><th scope="col">Cut total</th><th scope="col">Statements</th><th scope="col">Last stated</th><th scope="col">Stated on</th><th scope="col">Retired</th><th scope="col">Retired from</th><th scope="col">Past retirements</th><th scope="col">On hold</th><th scope="col">Overdue</th><th scope="col">Overdue due</th><th scope="col">Due aged 0–30 days</th><th scope="col">Due aged 31–60 days</th><th scope="col">Due aged 61+ days</th><th scope="col">Patrons</th><th scope="col">Backing</th><th scope="col">Watched</th><th scope="col">Claims</th><th scope="col"><span class="visually-hidden">Actions</span></th></tr>
+         </thead>
+         <tbody>
+           @for (p of shown(); track p.id) {
+@@ -200,6 +200,15 @@ const NO_LEAVE: Leave = { holds: [], retiredFrom: null };
+               <td data-testid="person-statement-date">{{ p.statementDate ?? '' }}</td>
+               <td data-testid="person-retired">{{ p.retired ? 'yes' : 'no' }}</td>
+               <td data-testid="person-retired-from">{{ p.retiredFrom ?? '' }}</td>
++              <td>
++                @if (p.retirements.length > 0) {
++                  <ul>
++                    @for (r of p.retirements; track $index) {
++                      <li data-testid="person-retirement-line">{{ r.from }} to {{ r.to }}</li>
++                    }
++                  </ul>
++                }
++              </td>
+               <td>
+                 <span data-testid="person-hold">{{ p.held ? 'yes' : 'no' }}</span>
+                 @if (p.holds.length > 0) {
+@@ -244,6 +253,8 @@ const NO_LEAVE: Leave = { holds: [], retiredFrom: null };
+                 <input #retireDate type="date" [id]="'person-retire-date-' + p.id" data-testid="person-retire-date" />
+                 <button type="button" data-testid="person-retire" (click)="retire(p, retireDate.value)"
+                   [attr.aria-label]="'Retire ' + p.name">Retire</button>
++                <button type="button" data-testid="person-unretire" (click)="unretire(p)"
++                  [attr.aria-label]="'Unretire ' + p.name">Unretire</button>
+                 <label [for]="'person-hold-from-' + p.id" class="visually-hidden">Hold {{ p.name }} from</label>
+                 <input #holdFrom type="date" [id]="'person-hold-from-' + p.id" data-testid="person-hold-from" />
+                 <label [for]="'person-hold-to-' + p.id" class="visually-hidden">Hold {{ p.name }} to</label>
+@@ -807,6 +818,23 @@ export class PeopleList {
+     }
+   }
+ 
++  /** Unretire the person on the sheet's today; refused when they are not retired. */
++  protected async unretire(p: Person): Promise<void> {
++    if (this.retiring.has(p.id)) return;
++    this.retiring.add(p.id);
++    this.personError.set(null);
++    this.patronError.set(null);
++    try {
++      const saved = await this.api.unretire(p.id);
++      this.people.update((ps) => ps.map((x) => (x.id === saved.id ? saved : x)));
++      if (this.editing() === saved.id) this.version = saved.version;
++    } catch {
++      this.personError.set({ id: p.id, message: 'The person could not be unretired.' });
++    } finally {
++      this.retiring.delete(p.id);
++    }
++  }
++
+   /** Merge the person into the one chosen, then read the sheet again: the merged person is gone
+    *  and their claims, patrons and pool memberships are the other's. */
+   protected async merge(p: Person, intoId: string): Promise<void> {
+diff --git a/src/main/java/net/officefloor/hq/app/claim/Claim.java b/src/main/java/net/officefloor/hq/app/claim/Claim.java
+index 8c4ffbd7f..6096b40e6 100644
+--- a/src/main/java/net/officefloor/hq/app/claim/Claim.java
++++ b/src/main/java/net/officefloor/hq/app/claim/Claim.java
+@@ -1,7 +1,9 @@
+ package net.officefloor.hq.app.claim;
+ 
+ import jakarta.persistence.CascadeType;
++import jakarta.persistence.CollectionTable;
+ import jakarta.persistence.Column;
++import jakarta.persistence.ElementCollection;
+ import jakarta.persistence.Entity;
+ import jakarta.persistence.EnumType;
+ import jakarta.persistence.Enumerated;
+@@ -115,6 +117,12 @@ public class Claim {
+     @Column(name = "proofs", nullable = false)
+     private int proofs;
+ 
++    /** The day each proof was given; proofs given before these were kept have none. */
++    @ElementCollection(fetch = FetchType.EAGER)
++    @CollectionTable(name = "claim_proof", joinColumns = @JoinColumn(name = "claim_id"))
++    @Column(name = "added_on")
++    private List<LocalDate> proofDays = new ArrayList<>();
++
+     /** The number of the claim this claim was split off (see {@link #splitOff}); null for a claim
+      *  that was not split off one. */
+     @Column(name = "split_from")
+@@ -233,6 +241,7 @@ public class Claim {
+         copy.terms = terms;
+         copy.deferredUntil = deferredUntil;
+         copy.proofs = proofs;
++        copy.proofDays.addAll(proofDays);
+         copy.splitFrom = renumber.apply(splitFrom);
+         copy.remindedOn = remindedOn;
+         copy.tags = tags;
+@@ -391,9 +400,15 @@ public class Claim {
+         return proofs;
+     }
+ 
+-    /** Raise the claim's proofs count by one. */
+-    public void addProof() {
++    /** How many proofs the claim had at the end of a day: those given after it are left out. */
++    public int getProofsOn(LocalDate day) {
++        return proofs - (int) proofDays.stream().filter(d -> d.isAfter(day)).count();
++    }
++
++    /** Raise the claim's proofs count by one, given on the day. */
++    public void addProof(LocalDate on) {
+         this.proofs++;
++        this.proofDays.add(on);
+     }
+ 
+     /** Whether the claim is deferred on the day: it is open and the day is before the one it is
+diff --git a/src/main/java/net/officefloor/hq/app/claim/ClaimController.java b/src/main/java/net/officefloor/hq/app/claim/ClaimController.java
+index 4f798c6c9..956d01f4d 100644
+--- a/src/main/java/net/officefloor/hq/app/claim/ClaimController.java
++++ b/src/main/java/net/officefloor/hq/app/claim/ClaimController.java
+@@ -73,7 +73,7 @@ public class ClaimController {
+ 
+         /** The claim as it stood at the end of a day: its figures as its revision then has them (see
+          *  {@link History}), its log as far as that day, and its number and who opened it only once it
+-         *  had been opened by then; what no revision keeps (its note, reference, tags, proofs, where it is listed) as it is
++         *  had been opened by then; its proofs as given by that day; what no revision keeps (its note, reference, tags, where it is listed) as it is
+          *  now (null: the claim is gone now). No one has its editor open then. */
+         static ClaimView asOf(Claim then, Claim now, LocalDate day) {
+             Claim kept = now != null ? now : then;
+@@ -86,7 +86,7 @@ public class ClaimController {
+                     opened ? kept.getOpenedBy() : null, then.isStated(),
+                     then.getStatedDue() == null ? null : then.getStatedDue().setScale(2).toPlainString(),
+                     then.isStatedNa(), kept.getCorrects(), then.roundsBy(), kept.getListed(), then.getDueBy(),
+-                    log.stream().map(LogLineView::of).toList(), then.getDeferredUntil(), kept.getProofs(),
++                    log.stream().map(LogLineView::of).toList(), then.getDeferredUntil(), kept.getProofsOn(day),
+                     kept.getSplitFrom(), null, kept.isLateEntry(),
+                     kept.getRemindedOn() == null || kept.getRemindedOn().isAfter(day) ? null : kept.getRemindedOn(),
+                     kept.getRef(), tagsText(kept.getTags()),
+diff --git a/src/main/java/net/officefloor/hq/app/claim/ClaimService.java b/src/main/java/net/officefloor/hq/app/claim/ClaimService.java
+index 0f7325ea8..4e3be3f8f 100644
+--- a/src/main/java/net/officefloor/hq/app/claim/ClaimService.java
++++ b/src/main/java/net/officefloor/hq/app/claim/ClaimService.java
+@@ -413,7 +413,7 @@ public class ClaimService {
+                     "A " + claim.getStatus() + " claim cannot be given a proof");
+         }
+         Person person = person(sheetId, claim.getPersonId());
+-        claim.addProof();
++        claim.addProof(sheets.today(sheetId));
+         Claim saved = claims.saveAndFlush(claim);
+         audit.recordOnCommit(record("CLAIM_PROOF_ADDED", sheetId, user, person, saved) + " proofs=" + saved.getProofs());
+         return saved;
+@@ -744,9 +744,11 @@ public class ClaimService {
+         }
+     }
+ 
+-    /** Refuse a claim of the person dated after the day they are retired from. */
++    /** Refuse a claim of the person dated after the day they are retired from, or after the from-date
++     *  and before the to-date of one of their past retirements. */
+     private static void refuseRetired(Person person, LocalDate day) {
+-        if (person.getRetiredFrom() != null && day.isAfter(person.getRetiredFrom())) {
++        if ((person.getRetiredFrom() != null && day.isAfter(person.getRetiredFrom()))
++                || person.isWithinPastRetirement(day)) {
+             throw new ResponseStatusException(HttpStatus.UNPROCESSABLE_CONTENT,
+                     "A claim cannot be dated after the person's retirement");
+         }
+diff --git a/src/main/java/net/officefloor/hq/app/person/Person.java b/src/main/java/net/officefloor/hq/app/person/Person.java
+index a644320a8..e45dfacf5 100644
+--- a/src/main/java/net/officefloor/hq/app/person/Person.java
++++ b/src/main/java/net/officefloor/hq/app/person/Person.java
+@@ -48,6 +48,12 @@ public class Person {
+     @Column(name = "retired_from")
+     private LocalDate retiredFrom;
+ 
++    /** The person's past retirements: each from the day they were retired from to the day they were
++     *  unretired. */
++    @ElementCollection(fetch = FetchType.EAGER)
++    @CollectionTable(name = "person_retirement", joinColumns = @JoinColumn(name = "person_id"))
++    private List<Retirement> retirements = new ArrayList<>();
++
+     /** The person's holds: their open claims dated within one count in no live total. */
+     @ElementCollection(fetch = FetchType.EAGER)
+     @CollectionTable(name = "person_hold", joinColumns = @JoinColumn(name = "person_id"))
+@@ -174,6 +180,28 @@ public class Person {
+         return retiredFrom != null && !day.isBefore(retiredFrom);
+     }
+ 
++    /** The person's past retirements, earliest from-date first. */
++    public List<Retirement> getRetirements() {
++        return retirements.stream().sorted(Comparator.comparing(Retirement::getFromDate)
++                .thenComparing(Retirement::getToDate)).toList();
++    }
++
++    /** Add a past retirement, keeping the others. */
++    public void addRetirement(LocalDate from, LocalDate to) {
++        retirements.add(new Retirement(from, to));
++    }
++
++    /** Unretire the person on a day: their retirement is kept as a past one, to that day. */
++    public void unretire(LocalDate on) {
++        retirements.add(new Retirement(retiredFrom, on));
++        retiredFrom = null;
++    }
++
++    /** Whether a day falls after the from-date and before the to-date of a past retirement. */
++    public boolean isWithinPastRetirement(LocalDate day) {
++        return retirements.stream().anyMatch(r -> r.within(day));
++    }
++
+     /** The person's holds, earliest from-date first, those with none first of all. */
+     public List<Hold> getHolds() {
+         return holds.stream()
+diff --git a/src/main/java/net/officefloor/hq/app/person/PersonController.java b/src/main/java/net/officefloor/hq/app/person/PersonController.java
+index 9698a9b17..102d94579 100644
+--- a/src/main/java/net/officefloor/hq/app/person/PersonController.java
++++ b/src/main/java/net/officefloor/hq/app/person/PersonController.java
+@@ -40,20 +40,22 @@ public class PersonController {
+ 
+     /** What the screen shows of a person; with how many statements were taken of them, and the
+      *  last one's due-total (text with two decimals, null when n/a or none) and day (null when none);
+-     *  whether they are retired, and from which day (null when not); and whether they have any hold, and their holds, earliest first; and their own terms in days (null: none); and their contact (null: none); and their aliases, sorted as names are compared; and whether they clash; and the sheet they were transferred from (null: none) (see
++     *  whether they are retired, and from which day (null when not); and their past retirements, earliest first; and whether they have any hold, and their holds, earliest first; and their own terms in days (null: none); and their contact (null: none); and their aliases, sorted as names are compared; and whether they clash; and the sheet they were transferred from (null: none) (see
+      *  {@link PersonService#clashing}).
+      *  The grade is the one in force on the sheet's today; grades are all those recorded, each from
+      *  its from-date (null: the beginning of time), earliest first. */
+     public record PersonView(long id, String name, String grade, List<GradeView> grades, long version,
+             int statementCount, String statedTotal, LocalDate statementDate, boolean retired, LocalDate retiredFrom,
+-            boolean held, List<HoldView> holds, Integer terms, String contact, List<String> aliases, boolean clashing, String origin) {
++            List<RetirementView> retirements, boolean held, List<HoldView> holds, Integer terms, String contact, List<String> aliases, boolean clashing, String origin) {
+         public static PersonView of(Person person, StatementSummary statements, LocalDate today,
+                 boolean clashing) {
+             return new PersonView(person.getId(), person.getName(), person.gradeOn(today),
+                     person.getGrades().stream().map(g -> new GradeView(g.getGrade(), g.getFromDate())).toList(),
+                     person.getVersion(), statements.count(),
+                     statements.lastDueTotal() == null ? null : statements.lastDueTotal().setScale(2).toPlainString(),
+-                    statements.lastTakenOn(), person.isRetired(), person.getRetiredFrom(), person.isHeld(),
++                    statements.lastTakenOn(), person.isRetired(), person.getRetiredFrom(),
++                    person.getRetirements().stream().map(r -> new RetirementView(r.getFromDate(), r.getToDate())).toList(),
++                    person.isHeld(),
+                     person.getHolds().stream().map(h -> new HoldView(h.getFromDate(), h.getToDate())).toList(),
+                     person.getTerms(), person.getContact(), person.getAliases(), clashing, person.getOrigin());
+         }
+@@ -63,6 +65,11 @@ public class PersonController {
+     public record GradeView(String grade, LocalDate from) {
+     }
+ 
++    /** A past retirement of a person, from the day they were retired from to the day they were
++     *  unretired. */
++    public record RetirementView(LocalDate from, LocalDate to) {
++    }
++
+     /** A hold on a person, from a day (null: from the beginning of time) to a day (null: open-ended). */
+     public record HoldView(LocalDate from, LocalDate to) {
+     }
+@@ -289,6 +296,15 @@ public class PersonController {
+                 service.clashing(sheetId.trim(), saved));
+     }
+ 
++    @PostMapping("/{personId}/unretire")
++    public PersonView unretire(@PathVariable @NotBlank @Size(max = 100) String sheetId,
++            @PathVariable long personId,
++            @RequestHeader("X-User") @NotBlank @Size(max = 100) String user) {
++        Person saved = service.unretire(sheetId.trim(), user.trim(), personId);
++        return PersonView.of(saved, statements.summary(sheetId.trim(), personId), sheets.today(sheetId.trim()),
++                service.clashing(sheetId.trim(), saved));
++    }
++
+     @PostMapping("/{personId}/hold")
+     public PersonView hold(@PathVariable @NotBlank @Size(max = 100) String sheetId,
+             @PathVariable long personId,
+diff --git a/src/main/java/net/officefloor/hq/app/person/PersonRevision.java b/src/main/java/net/officefloor/hq/app/person/PersonRevision.java
+index 7074056c0..00f166869 100644
+--- a/src/main/java/net/officefloor/hq/app/person/PersonRevision.java
++++ b/src/main/java/net/officefloor/hq/app/person/PersonRevision.java
+@@ -12,7 +12,7 @@ import java.util.stream.Collectors;
+ 
+ /** A revision of a person in their sheet's history: their name, grades, holds, retirement, terms and
+  *  contact  *  after a change, recorded on the sheet's today then. Grades are kept as "from:grade" and holds as
+- *  "from..to" (a day left blank when there is none), separated by ";". */
++ *  "from..to" (a day left blank when there is none), separated by ";"; past retirements likewise as "from..to". */
+ @Entity
+ @Table(name = "person_revision")
+ public class PersonRevision {
+@@ -43,6 +43,9 @@ public class PersonRevision {
+     @Column(name = "retired_from")
+     private LocalDate retiredFrom;
+ 
++    @Column(name = "retirements", nullable = false)
++    private String retirements;
++
+     @Column(name = "terms")
+     private Integer terms;
+ 
+@@ -61,6 +64,7 @@ public class PersonRevision {
+         this.grades = grades(person);
+         this.holds = holds(person);
+         this.retiredFrom = person.getRetiredFrom();
++        this.retirements = retirements(person);
+         this.terms = person.getTerms();
+         this.contact = person.getContact();
+     }
+@@ -68,7 +72,8 @@ public class PersonRevision {
+     /** Whether the person is now as this revision has them. */
+     public boolean matches(Person person) {
+         return name.equals(person.getName()) && grades.equals(grades(person)) && holds.equals(holds(person))
+-                && Objects.equals(retiredFrom, person.getRetiredFrom()) && Objects.equals(terms, person.getTerms())
++                && Objects.equals(retiredFrom, person.getRetiredFrom())
++                && retirements.equals(retirements(person)) && Objects.equals(terms, person.getTerms())
+                 && Objects.equals(contact, person.getContact());
+     }
+ 
+@@ -84,6 +89,10 @@ public class PersonRevision {
+             person.addHold(day(hold.substring(0, at)), day(hold.substring(at + 2)));
+         }
+         person.setRetiredFrom(retiredFrom);
++        for (String retirement : split(retirements)) {
++            int at = retirement.indexOf("..");
++            person.addRetirement(day(retirement.substring(0, at)), day(retirement.substring(at + 2)));
++        }
+         person.setTerms(terms);
+         person.setContact(contact);
+         return person;
+@@ -107,6 +116,11 @@ public class PersonRevision {
+                 .collect(Collectors.joining(";"));
+     }
+ 
++    private static String retirements(Person person) {
++        return person.getRetirements().stream().map(r -> text(r.getFromDate()) + ".." + text(r.getToDate()))
++                .collect(Collectors.joining(";"));
++    }
++
+     private static String text(LocalDate day) {
+         return day == null ? "" : day.toString();
+     }
+diff --git a/src/main/java/net/officefloor/hq/app/person/PersonService.java b/src/main/java/net/officefloor/hq/app/person/PersonService.java
+index c8cacf4a7..00aed3ae3 100644
+--- a/src/main/java/net/officefloor/hq/app/person/PersonService.java
++++ b/src/main/java/net/officefloor/hq/app/person/PersonService.java
+@@ -261,6 +261,25 @@ public class PersonService {
+         });
+     }
+ 
++    /** Unretire a person on the sheet's today: their retirement is kept as a past one, to that day.
++     *  Refused when they are not retired. */
++    @Transactional
++    public Person unretire(String sheetId, String user, long personId) {
++        Person person = people.findByIdAndSheetId(personId, sheetId)
++                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "No such person on this sheet"));
++        if (!person.isRetired()) {
++            throw new ResponseStatusException(HttpStatus.CONFLICT, "Only a retired person can be unretired");
++        }
++        LocalDate on = sheets.today(sheetId);
++        return rollup.tracking(sheetId, user, () -> {
++            person.unretire(on);
++            Person saved = saveUnique(person);
++            audit.recordOnCommit("PERSON_UNRETIRED sheet=" + sheetId + " by=" + user + " name=" + saved.getName()
++                    + " on=" + on);
++            return saved;
++        });
++    }
++
+     /** Put a person on hold from a day (null: the sheet's today) to a day (null: open-ended),
+      *  keeping their other holds; refused when the to-date is before the from-date. */
+     @Transactional
+diff --git a/src/main/java/net/officefloor/hq/app/person/Retirement.java b/src/main/java/net/officefloor/hq/app/person/Retirement.java
+new file mode 100644
+index 000000000..c78c1b8b3
+--- /dev/null
++++ b/src/main/java/net/officefloor/hq/app/person/Retirement.java
+@@ -0,0 +1,38 @@
++package net.officefloor.hq.app.person;
++
++import jakarta.persistence.Column;
++import jakarta.persistence.Embeddable;
++import java.time.LocalDate;
++
++/** A past retirement of a person: from the day they were retired from to the day they were
++ *  unretired. */
++@Embeddable
++public class Retirement {
++
++    @Column(name = "from_date", nullable = false)
++    private LocalDate fromDate;
++
++    @Column(name = "to_date", nullable = false)
++    private LocalDate toDate;
++
++    protected Retirement() {
++    }
++
++    public Retirement(LocalDate fromDate, LocalDate toDate) {
++        this.fromDate = fromDate;
++        this.toDate = toDate;
++    }
++
++    public LocalDate getFromDate() {
++        return fromDate;
++    }
++
++    public LocalDate getToDate() {
++        return toDate;
++    }
++
++    /** Whether a day falls after the from-date and before the to-date. */
++    public boolean within(LocalDate day) {
++        return day.isAfter(fromDate) && day.isBefore(toDate);
++    }
++}
+diff --git a/src/main/java/net/officefloor/hq/app/pool/PoolController.java b/src/main/java/net/officefloor/hq/app/pool/PoolController.java
+index 860ce4535..8b73aa298 100644
+--- a/src/main/java/net/officefloor/hq/app/pool/PoolController.java
++++ b/src/main/java/net/officefloor/hq/app/pool/PoolController.java
+@@ -7,6 +7,8 @@ import java.math.BigDecimal;
+ import java.time.LocalDate;
+ import java.util.List;
+ import java.util.stream.IntStream;
++import net.officefloor.hq.app.sheet.AsOfGuard;
++import org.springframework.format.annotation.DateTimeFormat;
+ import org.springframework.http.HttpStatus;
+ import org.springframework.validation.annotation.Validated;
+ import org.springframework.web.bind.annotation.GetMapping;
+@@ -69,8 +71,10 @@ public class PoolController {
+     }
+ 
+     @GetMapping
+-    public List<PoolView> list(@PathVariable @NotBlank @Size(max = 100) String sheetId) {
+-        return service.list(sheetId.trim()).stream().map(PoolView::of).toList();
++    public List<PoolView> list(@PathVariable @NotBlank @Size(max = 100) String sheetId,
++            @RequestHeader(value = AsOfGuard.HEADER, required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE)
++            LocalDate asOf) {
++        return service.list(sheetId.trim(), asOf).stream().map(PoolView::of).toList();
+     }
+ 
+     @PostMapping
+diff --git a/src/main/java/net/officefloor/hq/app/pool/PoolService.java b/src/main/java/net/officefloor/hq/app/pool/PoolService.java
+index 1351f7a49..96a40f0da 100644
+--- a/src/main/java/net/officefloor/hq/app/pool/PoolService.java
++++ b/src/main/java/net/officefloor/hq/app/pool/PoolService.java
+@@ -123,13 +123,20 @@ public class PoolService {
+     /** The pools of the sheet in the order they were added, each with its members and its pot. */
+     @Transactional(readOnly = true)
+     public List<Listed> list(String sheetId) {
++        return list(sheetId, null);
++    }
++
++    /** The pools as {@link #list(String)} has them, with holds and memberships' dates taken on a day
++     *  (null: the sheet's today): the sheet as of that day. */
++    @Transactional(readOnly = true)
++    public List<Listed> list(String sheetId, LocalDate asOf) {
+         List<Pool> all = pools.findBySheetIdOrderByIdAsc(sheetId);
+         Map<Long, Pool> poolsById = all.stream().collect(Collectors.toMap(Pool::getId, Function.identity()));
+         Map<Long, Person> byId = people.findBySheetIdOrderByPositionAscIdAsc(sheetId).stream()
+                 .collect(Collectors.toMap(Person::getId, Function.identity()));
+         List<PoolMember> memberships = members.findByPoolIdInOrderByIdAsc(poolsById.keySet());
+         Map<Long, List<PoolMember>> byPool = memberships.stream().collect(Collectors.groupingBy(PoolMember::getPoolId));
+-        LocalDate today = sheets.today(sheetId);
++        LocalDate today = asOf != null ? asOf : sheets.today(sheetId);
+         Map<Long, List<Member>> membersOf = new HashMap<>();
+         for (Pool p : all) {
+             membersOf.put(p.getId(), byPool.getOrDefault(p.getId(), List.of()).stream()
+diff --git a/src/main/resources/db/migration/V75__person_retirement.sql b/src/main/resources/db/migration/V75__person_retirement.sql
+new file mode 100644
+index 000000000..88348d0ed
+--- /dev/null
++++ b/src/main/resources/db/migration/V75__person_retirement.sql
+@@ -0,0 +1,11 @@
++-- A person's past retirements: each kept from the day they were retired from to the day they were
++-- unretired. No claim of theirs may be dated after the from-date and before the to-date of one.
++CREATE TABLE person_retirement (
++    person_id BIGINT NOT NULL REFERENCES person (id),
++    from_date DATE   NOT NULL,
++    to_date   DATE   NOT NULL
++);
++CREATE INDEX person_retirement_person ON person_retirement (person_id);
++
++-- A person revision keeps the past retirements as text: each "from..to", separated by ";".
++ALTER TABLE person_revision ADD COLUMN retirements VARCHAR(4000) DEFAULT '' NOT NULL;
+diff --git a/src/main/resources/db/migration/V76__claim_proof_added.sql b/src/main/resources/db/migration/V76__claim_proof_added.sql
+new file mode 100644
+index 000000000..1bb6ad96f
+--- /dev/null
++++ b/src/main/resources/db/migration/V76__claim_proof_added.sql
+@@ -0,0 +1,7 @@
++-- The day each proof was given to a claim, so the sheet as it stood at the end of a day counts only
++-- the proofs given by then. Proofs given before this was kept have no day: they count on every day.
++CREATE TABLE claim_proof (
++    claim_id BIGINT NOT NULL REFERENCES claim (id),
++    added_on DATE   NOT NULL
++);
++CREATE INDEX claim_proof_claim ON claim_proof (claim_id);
