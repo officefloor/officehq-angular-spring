@@ -1,7 +1,7 @@
 import { HttpErrorResponse } from '@angular/common/http';
 import { Component, computed, effect, inject, signal } from '@angular/core';
 import { FormControl, FormGroup, ReactiveFormsModule } from '@angular/forms';
-import { Claim, Claims, QuickAdded, claimDue, countsLive, overdue, sumAmounts } from '../../core/claims';
+import { Claim, Claims, QuickAdded, claimDue, countsAsOf, countsLive, overdue, sumAmounts } from '../../core/claims';
 import { Patron, Patrons } from '../../core/patrons';
 import { Grade, People, Person, gradeOn } from '../../core/people';
 import { Period, Periods, periodOf } from '../../core/periods';
@@ -237,14 +237,16 @@ export class PeopleList {
   /** The periods on the sheet, earliest first. */
   protected readonly periods = signal<Period[]>([]);
   /** Each person's live due-total for each period, by the person's id then the period's id: the due
-   *  figures of their claims that count whose date falls in it, skipping those with no due. */
+   *  figures of their claims whose date falls in it and that count by their status at its end,
+   *  skipping those with no due. */
   private readonly livePeriodDues = computed(() => {
     const people = new Map(this.people().map((p) => [p.id, p]));
     const figures = new Map<number, Map<number, string[]>>();
-    for (const c of this.live()) {
+    for (const c of this.claims()) {
       const period = periodOf(this.periods(), c.date);
       const person = people.get(c.personId);
       if (period === undefined || person === undefined) continue;
+      if (!countsAsOf(c, person.holds, period.to, this.session.today())) continue;
       const d = claimDue(c, this.rates(), gradeOn(person.grades, c.date), this.floor(), this.lateness());
       if (d === null) continue;
       const theirs = figures.get(person.id) ?? new Map<number, string[]>();

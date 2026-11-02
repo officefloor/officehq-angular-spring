@@ -288,6 +288,22 @@ public class Claim {
         this.statedNa = stated && statedDue == null && na;
     }
 
+    /** The status the claim had at the end of the day, as its status log records it: that of the
+     *  last line logged on or before the day; null when it was not yet made then. A claim with no
+     *  log has its status now. */
+    public ClaimStatus statusOn(LocalDate day) {
+        if (log.isEmpty()) {
+            return status;
+        }
+        ClaimStatus then = null;
+        for (ClaimLog line : log) {
+            if (!line.getOn().isAfter(day)) {
+                then = line.getStatus();
+            }
+        }
+        return then;
+    }
+
     public List<ClaimLog> getLog() {
         return List.copyOf(log);
     }

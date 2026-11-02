@@ -37,6 +37,27 @@ export function countsLive(c: Claim, holds: Hold[], today: string | null): boole
   return counts(c) && !deferred(c, today) && !(isOpen(c) && !c.stated && heldOn(holds, c.date));
 }
 
+/** The status a claim had at the end of the day, as its status log records it: that of the last
+ *  line logged on or before the day; null when it was not yet made then. A claim with no log has
+ *  its status now. */
+export function statusOn(c: Claim, day: string): ClaimStatus | null {
+  if (c.log.length === 0) return c.status;
+  let then: ClaimStatus | null = null;
+  for (const line of c.log) if (line.on <= day) then = line.status;
+  return then;
+}
+
+/** Whether a claim counts in a period's totals: by the status it had at the end of the period's
+ *  last day it counts, and the live rules do not leave it out: it is not deferred on the sheet's
+ *  today, and it is not a claim open (or pending) then, unbound by a statement, dated within one of
+ *  its person's holds. */
+export function countsAsOf(c: Claim, holds: Hold[], end: string, today: string | null): boolean {
+  const then = statusOn(c, end);
+  if (then === null || !(then === 'OPEN' || then === 'PENDING' || then === 'SETTLED')) return false;
+  const open = then === 'OPEN' || then === 'PENDING';
+  return !deferred(c, today) && !(open && !c.stated && heldOn(holds, c.date));
+}
+
 export interface Claim {
   id: number;
   personId: number;
