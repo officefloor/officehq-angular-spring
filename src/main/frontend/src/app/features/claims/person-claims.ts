@@ -3,6 +3,7 @@ import { Component, inject, input, output, signal } from '@angular/core';
 import { FormControl, FormGroup, ReactiveFormsModule } from '@angular/forms';
 import { AMOUNT, Claim, ClaimAction, Claims, claimDue } from '../../core/claims';
 import { Grade } from '../../core/people';
+import { Period, periodOf } from '../../core/periods';
 import { Rate } from '../../core/rates';
 
 /** Why the server refused an action: the claim's status does not allow it. */
@@ -51,6 +52,7 @@ function refusal(e: unknown, action: ClaimAction): string {
           <span data-testid="claim-status">{{ c.status }}</span>
           <span data-testid="claim-opened-by">{{ c.openedBy ?? '' }}</span>
           <span data-testid="claim-stated">{{ c.stated ? 'yes' : 'no' }}</span>
+          <span data-testid="claim-period">{{ periodName(c) }}</span>
           <button type="button" data-testid="claim-open" (click)="act(c, 'open')"
             [attr.aria-label]="'Open claim of ' + c.amount + ' on ' + c.date">Open</button>
           <button type="button" data-testid="claim-settle" (click)="act(c, 'settle')"
@@ -79,6 +81,8 @@ export class PersonClaims {
   /** The rates set on the sheet; a claim's due uses its person's grade's rate on the claim's date. */
   readonly rates = input.required<Rate[]>();
   readonly grade = input.required<Grade>();
+  /** The periods on the sheet; a claim belongs to the one whose days contain its date. */
+  readonly periods = input.required<Period[]>();
   /** A claim added or saved through the form. */
   readonly saved = output<Claim>();
 
@@ -101,6 +105,11 @@ export class PersonClaims {
 
   protected dueOf(c: Claim): string {
     return claimDue(c, this.rates(), this.grade()) ?? 'n/a';
+  }
+
+  /** The name of the period the claim belongs to; empty when it belongs to none. */
+  protected periodName(c: Claim): string {
+    return periodOf(this.periods(), c.date)?.name ?? '';
   }
 
   protected open(c: Claim): void {

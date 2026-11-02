@@ -3,9 +3,11 @@ import { Component, computed, effect, inject, signal } from '@angular/core';
 import { FormControl, FormGroup, ReactiveFormsModule } from '@angular/forms';
 import { Claim, Claims, claimDue, counts, fixed, sumAmounts } from '../../core/claims';
 import { Grade, People, Person } from '../../core/people';
+import { Period, Periods, periodOf } from '../../core/periods';
 import { Rate, Rates, pctOn } from '../../core/rates';
 import { Session } from '../../core/session';
 import { PersonClaims } from '../claims/person-claims';
+import { PeriodForm } from '../periods/period-form';
 import { RateForm } from '../rates/rate-form';
 
 // The people on the sheet, in the order they were added, and the form that adds a person or,
@@ -13,9 +15,10 @@ import { RateForm } from '../rates/rate-form';
 // they have claimed and are due at their grade's rate; the sheet's totals add everyone's up.
 @Component({
   selector: 'app-people-list',
-  imports: [ReactiveFormsModule, PersonClaims, RateForm],
+  imports: [ReactiveFormsModule, PersonClaims, RateForm, PeriodForm],
   template: `
     <app-rate-form [rates]="rates()" (saved)="rateSaved($event)" />
+    <app-period-form [periods]="periods()" [dueTotals]="periodDueTotals()" (saved)="periodSaved($event)" />
     <section aria-labelledby="people-heading">
       <h2 id="people-heading">People</h2>
       <form data-testid="person-form" [formGroup]="form" (ngSubmit)="submit()">
@@ -53,7 +56,7 @@ import { RateForm } from '../rates/rate-form';
               <td data-testid="person-statement-date">{{ p.statementDate ?? '' }}</td>
               <td>
                 <app-person-claims [personId]="p.id" [claims]="claimsByPerson().get(p.id) ?? []"
-                  [rates]="rates()" [grade]="p.grade"
+                  [rates]="rates()" [grade]="p.grade" [periods]="periods()"
                   (saved)="claimSaved($event)" />
               </td>
               <td>
@@ -77,6 +80,7 @@ export class PeopleList {
   private readonly api = inject(People);
   private readonly claimsApi = inject(Claims);
   private readonly ratesApi = inject(Rates);
+  private readonly periodsApi = inject(Periods);
 
   protected readonly grades: Grade[] = ['A', 'B', 'C'];
   protected readonly people = signal<Person[]>([]);
@@ -96,6 +100,24 @@ export class PeopleList {
   protected readonly claimedTotal = computed(() => sumAmounts(this.claims().filter(counts).map((c) => c.amount)));
   /** The rates set on the sheet. */
   protected readonly rates = signal<Rate[]>([]);
+  /** The periods on the sheet, earliest first. */
+  protected readonly periods = signal<Period[]>([]);
+  /** Each period's due-total by its id: the due figures of the claims that count whose date falls
+   *  in it, skipping those with no due. */
+  protected readonly periodDueTotals = computed(() => {
+    const grades = new Map(this.people().map((p) => [p.id, p.grade]));
+    const figures = new Map<number, string[]>(this.periods().map((p) => [p.id, []]));
+    for (const c of this.claims().filter(counts)) {
+      const period = periodOf(this.periods(), c.date);
+      const grade = grades.get(c.personId);
+      if (period === undefined || grade === undefined) continue;
+      const d = claimDue(c, this.rates(), grade);
+      if (d !== null) figures.get(period.id)?.push(d);
+    }
+    const by = new Map<number, string>();
+    for (const [id, ds] of figures) by.set(id, sumAmounts(ds));
+    return by;
+  });
   /** Each grade's rate in force on the sheet's today; a grade with none is missing. */
   protected readonly pctOf = computed(() => {
     const today = this.session.today();
@@ -137,6 +159,7 @@ export class PeopleList {
       this.people.set([]);
       this.claims.set([]);
       this.rates.set([]);
+      this.periods.set([]);
       this.personError.set(null);
       this.reset();
       if (sheetId) void this.reload(sheetId);
@@ -242,6 +265,10 @@ export class PeopleList {
     );
   }
 
+  protected periodSaved(period: Period): void {
+    this.periods.update((ps) => [...ps, period].sort((a, b) => (a.from < b.from ? -1 : a.from > b.from ? 1 : 0)));
+  }
+
   /** A person's due-total: the sum of the due figures of their open and settled claims. Null (n/a)
    *  when their grade has no rate on the sheet's today and no settled or stated claim keeps a figure. */
   protected dueOf(p: Person): string | null {
@@ -262,13 +289,15 @@ export class PeopleList {
   private async reload(sheetId: string): Promise<void> {
     const read = ++this.reads;
     try {
-      const [people, claims, rates] = await Promise.all([
+      const [people, claims, rates, periods] = await Promise.all([
         this.api.list(sheetId),
         this.claimsApi.list(sheetId),
         this.ratesApi.list(sheetId),
+        this.periodsApi.list(sheetId),
       ]);
       if (read === this.reads) {
         this.rates.set(rates);
+        this.periods.set(periods);
         this.claims.set(claims);
         this.people.set(people);
       }

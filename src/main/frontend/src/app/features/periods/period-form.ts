@@ -1,0 +1,98 @@
+import { HttpErrorResponse } from '@angular/common/http';
+import { Component, inject, input, output, signal } from '@angular/core';
+import { FormControl, FormGroup, ReactiveFormsModule } from '@angular/forms';
+import { Period, Periods } from '../../core/periods';
+
+const DAY = /^\d{4}-\d{2}-\d{2}$/;
+
+// The periods on the sheet with each one's due-total, and the form that adds a period.
+@Component({
+  selector: 'app-period-form',
+  imports: [ReactiveFormsModule],
+  template: `
+    <section aria-labelledby="periods-heading">
+      <h2 id="periods-heading">Periods</h2>
+      <form data-testid="period-form" [formGroup]="form" (ngSubmit)="submit()">
+        <label for="period-form-name">Name</label>
+        <input id="period-form-name" data-testid="period-form-name" formControlName="name" />
+        <label for="period-form-from">From</label>
+        <input id="period-form-from" type="date" data-testid="period-form-from" formControlName="from" />
+        <label for="period-form-to">To</label>
+        <input id="period-form-to" type="date" data-testid="period-form-to" formControlName="to" />
+        <button type="submit" data-testid="period-form-submit">Add period</button>
+        @if (error()) {
+          <p role="alert" data-testid="period-form-error">{{ error() }}</p>
+        }
+      </form>
+      <table data-testid="periods">
+        <thead>
+          <tr><th scope="col">Name</th><th scope="col">From</th><th scope="col">To</th><th scope="col">Due</th></tr>
+        </thead>
+        <tbody>
+          @for (p of periods(); track p.id) {
+            <tr [attr.data-testid]="'period-row-' + p.name">
+              <th scope="row" data-testid="period-name">{{ p.name }}</th>
+              <td data-testid="period-from">{{ p.from }}</td>
+              <td data-testid="period-to">{{ p.to }}</td>
+              <td data-testid="period-due-total">{{ dueTotals().get(p.id) ?? '0.00' }}</td>
+            </tr>
+          }
+        </tbody>
+      </table>
+    </section>
+  `,
+})
+export class PeriodForm {
+  private readonly api = inject(Periods);
+
+  /** The periods on the sheet, earliest first. */
+  readonly periods = input.required<Period[]>();
+  /** Each period's due-total by its id. */
+  readonly dueTotals = input.required<Map<number, string>>();
+  /** A period added through the form. */
+  readonly saved = output<Period>();
+
+  protected readonly error = signal('');
+  /** Whether a submit is waiting for its answer: a second submit meanwhile is ignored. */
+  private submitting = false;
+  protected readonly form = new FormGroup({
+    name: new FormControl('', { nonNullable: true }),
+    from: new FormControl('', { nonNullable: true }),
+    to: new FormControl('', { nonNullable: true }),
+  });
+
+  constructor() {
+    this.form.valueChanges.subscribe(() => this.error.set(''));
+  }
+
+  protected async submit(): Promise<void> {
+    if (this.submitting) return;
+    this.error.set('');
+    const { name, from, to } = this.form.getRawValue();
+    if (!name.trim()) {
+      this.error.set('Enter a name.');
+      return;
+    }
+    if (!DAY.test(from.trim()) || !DAY.test(to.trim())) {
+      this.error.set('Enter the day the period runs from and the day it runs to.');
+      return;
+    }
+    if (to.trim() < from.trim()) {
+      this.error.set('A period cannot end before it starts.');
+      return;
+    }
+    this.submitting = true;
+    try {
+      this.saved.emit(await this.api.add({ name: name.trim(), from: from.trim(), to: to.trim() }));
+      this.form.reset({ name: '', from: '', to: '' }, { emitEvent: false });
+    } catch (e) {
+      this.error.set(
+        e instanceof HttpErrorResponse && e.status === 409
+          ? 'That name is in use, or the period overlaps another on this sheet.'
+          : 'The period could not be added.',
+      );
+    } finally {
+      this.submitting = false;
+    }
+  }
+}
