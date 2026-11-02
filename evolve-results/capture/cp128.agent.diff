@@ -1,0 +1,147 @@
+diff --git a/src/main/java/net/officefloor/hq/app/person/PersonRevision.java b/src/main/java/net/officefloor/hq/app/person/PersonRevision.java
+index 00f166869..fdd4eaefc 100644
+--- a/src/main/java/net/officefloor/hq/app/person/PersonRevision.java
++++ b/src/main/java/net/officefloor/hq/app/person/PersonRevision.java
+@@ -11,8 +11,8 @@ import java.util.Objects;
+ import java.util.stream.Collectors;
+ 
+ /** A revision of a person in their sheet's history: their name, grades, holds, retirement, terms and
+- *  contact  *  after a change, recorded on the sheet's today then. Grades are kept as "from:grade" and holds as
+- *  "from..to" (a day left blank when there is none), separated by ";"; past retirements likewise as "from..to". */
++ *  contact and aliases after a change, recorded on the sheet's today then. Grades are kept as "from:grade" and holds as
++ *  "from..to" (a day left blank when there is none), separated by ";"; past retirements likewise as "from..to", and aliases separated by ";". */
+ @Entity
+ @Table(name = "person_revision")
+ public class PersonRevision {
+@@ -52,6 +52,9 @@ public class PersonRevision {
+     @Column(name = "contact")
+     private String contact;
+ 
++    @Column(name = "aliases", nullable = false)
++    private String aliases;
++
+     protected PersonRevision() {
+     }
+ 
+@@ -67,6 +70,7 @@ public class PersonRevision {
+         this.retirements = retirements(person);
+         this.terms = person.getTerms();
+         this.contact = person.getContact();
++        this.aliases = aliases(person);
+     }
+ 
+     /** Whether the person is now as this revision has them. */
+@@ -74,7 +78,7 @@ public class PersonRevision {
+         return name.equals(person.getName()) && grades.equals(grades(person)) && holds.equals(holds(person))
+                 && Objects.equals(retiredFrom, person.getRetiredFrom())
+                 && retirements.equals(retirements(person)) && Objects.equals(terms, person.getTerms())
+-                && Objects.equals(contact, person.getContact());
++                && Objects.equals(contact, person.getContact()) && aliases.equals(aliases(person));
+     }
+ 
+     /** The person as this revision has them, detached: for working out figures only, never saved. */
+@@ -95,6 +99,9 @@ public class PersonRevision {
+         }
+         person.setTerms(terms);
+         person.setContact(contact);
++        for (String alias : split(aliases)) {
++            person.addAlias(alias);
++        }
+         return person;
+     }
+ 
+@@ -121,6 +128,10 @@ public class PersonRevision {
+                 .collect(Collectors.joining(";"));
+     }
+ 
++    private static String aliases(Person person) {
++        return String.join(";", person.getAliases());
++    }
++
+     private static String text(LocalDate day) {
+         return day == null ? "" : day.toString();
+     }
+diff --git a/src/main/java/net/officefloor/hq/app/person/PersonTransferService.java b/src/main/java/net/officefloor/hq/app/person/PersonTransferService.java
+index 0339b7341..bf666c4b3 100644
+--- a/src/main/java/net/officefloor/hq/app/person/PersonTransferService.java
++++ b/src/main/java/net/officefloor/hq/app/person/PersonTransferService.java
+@@ -70,9 +70,14 @@ public class PersonTransferService {
+      *  were opened (by the sheet's today then, then by the order they were added); figures a
+      *  statement bound and references are not carried, and they have no statements there. They
+      *  leave this sheet entirely (patron links, pool memberships, watches and statements dropped).
+-     *  A sheet never loaded is started empty, as loading it would. Refused unless the user is a
+-     *  steward, and for a retired person, this sheet's own id, an archived sheet, or when their
+-     *  name, an alias or their contact is already on the other sheet. */
++     *  A sheet never loaded is started empty, as loading it would. When their name or an alias is
++     *  already the name or an alias of someone on the other sheet (compared as names are), they
++     *  are merged into that person there instead, exactly as a merge does (their claims listed
++     *  after that person's, their name and aliases joining that person's aliases, their grades,
++     *  terms and contact not kept). Refused unless
++     *  the user is a steward, and for a retired person, this sheet's own id, an archived sheet,
++     *  when their names match more than one person there or a retired one, or when their contact is
++     *  held there by anyone but the person they merge into. */
+     @Transactional
+     public void transfer(String sheetId, String user, long personId, String toSheetId) {
+         if (!SheetRole.STEWARD.equals(roles.roleOf(sheetId, user))) {
+@@ -90,10 +95,22 @@ public class PersonTransferService {
+             throw new ResponseStatusException(HttpStatus.CONFLICT, "A retired person cannot be transferred");
+         }
+         sheets.load(toSheetId, user);
+-        boolean nameTaken = Stream.concat(Stream.of(from.getName()), from.getAliases().stream())
+-                .anyMatch(n -> people.existsBySheetIdAndNameIgnoreCase(toSheetId, n) || people.existsAlias(toSheetId, n));
+-        if (nameTaken || (from.getContact() != null && people.existsBySheetIdAndContact(toSheetId, from.getContact()))) {
+-            throw new ResponseStatusException(HttpStatus.CONFLICT, "The name, an alias or the contact is on the other sheet");
++        List<Person> matches = Stream.concat(Stream.of(from.getName()), from.getAliases().stream())
++                .flatMap(n -> people.findByNameOrAlias(toSheetId, n).stream())
++                .map(Person::getId).distinct()
++                .map(id -> people.lockByIdAndSheetId(id, toSheetId).orElseThrow())
++                .toList();
++        if (matches.size() > 1) {
++            throw new ResponseStatusException(HttpStatus.CONFLICT, "The names match more than one person on the other sheet");
++        }
++        Person into = matches.isEmpty() ? null : matches.get(0);
++        if (into != null && into.isRetired()) {
++            throw new ResponseStatusException(HttpStatus.CONFLICT, "A retired person cannot be merged");
++        }
++        if (from.getContact() != null && (into == null
++                ? people.existsBySheetIdAndContact(toSheetId, from.getContact())
++                : people.existsBySheetIdAndContactAndIdNot(toSheetId, from.getContact(), into.getId()))) {
++            throw new ResponseStatusException(HttpStatus.CONFLICT, "The contact is on the other sheet");
+         }
+         rollup.tracking(sheetId, user, () -> {
+             audit.recordOnCommit("PERSON_TRANSFERRED sheet=" + sheetId + " by=" + user + " name=" + from.getName()
+@@ -103,12 +120,25 @@ public class PersonTransferService {
+             rollup.tracking(toSheetId, user, () -> {
+                 audit.recordOnCommit("PERSON_TRANSFERRED sheet=" + toSheetId + " by=" + user + " name="
+                         + from.getName() + " from=" + sheetId);
+-                Person arrived = people.saveAndFlush(from.transferredTo(toSheetId, people.nextPosition(toSheetId)));
++                if (into != null) {
++                    audit.recordOnCommit("PERSON_MERGED sheet=" + toSheetId + " by=" + user + " from="
++                            + from.getName() + " into=" + into.getName());
++                }
++                Person arrived = into != null ? into
++                        : people.saveAndFlush(from.transferredTo(toSheetId, people.nextPosition(toSheetId)));
+                 Map<String, String> numbers = renumber(toSheetId, theirs);
+                 for (Claim claim : theirs) {
+                     Claim copy = claims.saveAndFlush(claim.transferredTo(toSheetId, arrived.getId(), numbers::get));
+                     claimService.keepTags(toSheetId, copy.getTags());
+                 }
++                if (into != null) {
++                    // Merged as a merge would: their claims after the other's (no figure a statement
++                    // bound), their name and aliases joining the other's aliases.
++                    Stream.concat(Stream.of(from.getName()), from.getAliases().stream())
++                            .filter(n -> !n.equalsIgnoreCase(into.getName()))
++                            .forEach(into::addAlias);
++                    people.saveAndFlush(into);
++                }
+                 return arrived;
+             });
+             leave(sheetId, from, theirs);
+diff --git a/src/main/resources/db/migration/V77__person_revision_aliases.sql b/src/main/resources/db/migration/V77__person_revision_aliases.sql
+new file mode 100644
+index 000000000..0bb0cacde
+--- /dev/null
++++ b/src/main/resources/db/migration/V77__person_revision_aliases.sql
+@@ -0,0 +1,2 @@
++-- A person revision keeps the aliases as text, separated by ";".
++ALTER TABLE person_revision ADD COLUMN aliases VARCHAR(4000) DEFAULT '' NOT NULL;
