@@ -234,6 +234,16 @@ export class Claims {
     );
   }
 
+  /** Settle each of the claims that can be settled, in list order, as settling one does (one left
+   *  pending a steward's approval counts as settled); the rest are refused and left as they are. */
+  settleAll(claimIds: number[]): Promise<{ settled: number; refused: number }> {
+    const { sheetId, user } = this.active();
+    return firstValueFrom(
+      this.http.post<{ settled: number; refused: number }>(`${this.url(sheetId)}/claims/settle`, { claimIds },
+        { headers: { 'X-User': user } }),
+    );
+  }
+
   private url(sheetId: string): string {
     return `/api/sheets/${encodeURIComponent(sheetId)}`;
   }

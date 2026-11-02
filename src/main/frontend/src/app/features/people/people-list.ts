@@ -68,6 +68,11 @@ import { QuickAddBar } from './quick-add-bar';
         <p role="status">Opened <strong data-testid="bulk-opened">{{ b.opened }}</strong>,
           refused <strong data-testid="bulk-refused">{{ b.refused }}</strong></p>
       }
+      <button type="button" data-testid="bulk-settle" (click)="bulkSettle()">Settle selected claims</button>
+      @if (bulkSettled(); as b) {
+        <p role="status">Settled <strong data-testid="bulk-settled">{{ b.settled }}</strong>,
+          refused <strong data-testid="bulk-settle-refused">{{ b.refused }}</strong></p>
+      }
       <button type="button" data-testid="export-people" (click)="exportCsv()">Export people (CSV)</button>
       <table data-testid="people">
         <thead>
@@ -287,6 +292,10 @@ export class PeopleList {
   protected readonly bulkOpened = signal<{ opened: number; refused: number } | null>(null);
   /** Whether a bulk open is waiting for its answer: a second press meanwhile is ignored. */
   private opening = false;
+  /** What the last bulk settle did; null while one runs and before the first. */
+  protected readonly bulkSettled = signal<{ settled: number; refused: number } | null>(null);
+  /** Whether a bulk settle is waiting for its answer: a second press meanwhile is ignored. */
+  private settling = false;
   /** The id of the person whose editor is open, or null when the form adds a person. */
   protected readonly editing = signal<number | null>(null);
   /** The version of the person the open editor loaded. */
@@ -327,6 +336,7 @@ export class PeopleList {
       this.patrons.set([]);
       this.selected.set(new Set());
       this.bulkOpened.set(null);
+      this.bulkSettled.set(null);
       this.personError.set(null);
       this.patronError.set(null);
       this.reset();
@@ -523,6 +533,25 @@ export class PeopleList {
       this.bulkOpened.set({ opened: 0, refused: ids.size });
     } finally {
       this.opening = false;
+    }
+  }
+
+  /** Settle the selected claims that can be settled, then show the claims as they are now and how
+   *  many were settled and refused. */
+  protected async bulkSettle(): Promise<void> {
+    const sheetId = this.session.sheetId();
+    if (this.settling || !sheetId) return;
+    this.settling = true;
+    this.bulkSettled.set(null);
+    try {
+      const result = await this.claimsApi.settleAll([...this.selected()]);
+      this.selected.set(new Set());
+      this.claims.set(await this.claimsApi.list(sheetId));
+      this.bulkSettled.set(result);
+    } catch {
+      this.bulkSettled.set({ settled: 0, refused: this.selected().size });
+    } finally {
+      this.settling = false;
     }
   }
 

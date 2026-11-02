@@ -85,6 +85,11 @@ public class ClaimController {
     public record BulkOpened(int opened, int refused) {
     }
 
+    /** How many claims a bulk settle settled (or left pending a steward's approval), and how many it
+     *  refused. */
+    public record BulkSettled(int settled, int refused) {
+    }
+
     private final ClaimService service;
     private final ClaimBulkService bulk;
 
@@ -137,6 +142,14 @@ public class ClaimController {
             @PathVariable long claimId,
             @RequestHeader("X-User") @NotBlank @Size(max = 100) String user) {
         return ClaimView.of(service.changeStatus(sheetId.trim(), user.trim(), claimId, ClaimStatus.SETTLED));
+    }
+
+    @PostMapping("/claims/settle")
+    public BulkSettled settleAll(@PathVariable @NotBlank @Size(max = 100) String sheetId,
+            @RequestHeader("X-User") @NotBlank @Size(max = 100) String user,
+            @Valid @RequestBody BulkForm form) {
+        ClaimBulkService.Outcome outcome = bulk.settle(sheetId.trim(), user.trim(), form.claimIds());
+        return new BulkSettled(outcome.done(), outcome.refused());
     }
 
     /** The reason a steward gives for rejecting a pending claim. */
