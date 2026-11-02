@@ -43,12 +43,13 @@ public class ClaimController {
      *  (that of the claim a correction corrects, or else its own); and where it is listed (newest
      *  first by this); and its status log, oldest first; and the day it is deferred until (null when
      *  never deferred); and how many proofs it has; and the number of the claim it was split off
-     *  (null when none); and who has its editor open (null when no one). */
+     *  (null when none); and who has its editor open (null when no one); and the last day a reminder
+     *  was written for it (null when never). */
     public record ClaimView(long id, long personId, String amount, LocalDate date, String note,
             ClaimStatus status, String number, String settledDue, String openedBy, boolean stated,
             String statedDue, boolean statedNa, String corrects, LocalDate roundsBy, long listed, LocalDate dueBy,
             List<LogLineView> log, LocalDate deferredUntil, int proofs, String splitFrom,
-            String editLockedBy, boolean lateEntry) {
+            String editLockedBy, boolean lateEntry, LocalDate remindedOn) {
         public static ClaimView of(Claim claim) {
             return new ClaimView(claim.getId(), claim.getPersonId(), claim.getAmount().setScale(2).toPlainString(),
                     claim.getDate(), claim.getNote(), claim.getStatus(), claim.getNumber(),
@@ -57,7 +58,8 @@ public class ClaimController {
                     claim.getStatedDue() == null ? null : claim.getStatedDue().setScale(2).toPlainString(),
                     claim.isStatedNa(), claim.getCorrects(), claim.roundsBy(), claim.getListed(), claim.getDueBy(),
                     claim.getLog().stream().map(LogLineView::of).toList(), claim.getDeferredUntil(),
-                    claim.getProofs(), claim.getSplitFrom(), claim.getEditLockedBy(), claim.isLateEntry());
+                    claim.getProofs(), claim.getSplitFrom(), claim.getEditLockedBy(), claim.isLateEntry(),
+                    claim.getRemindedOn());
         }
 
         /** The claim as it stood at the end of a day: its figures as its revision then has them (see
@@ -76,7 +78,8 @@ public class ClaimController {
                     then.getStatedDue() == null ? null : then.getStatedDue().setScale(2).toPlainString(),
                     then.isStatedNa(), kept.getCorrects(), then.roundsBy(), kept.getListed(), then.getDueBy(),
                     log.stream().map(LogLineView::of).toList(), then.getDeferredUntil(), kept.getProofs(),
-                    kept.getSplitFrom(), null, kept.isLateEntry());
+                    kept.getSplitFrom(), null, kept.isLateEntry(),
+                    kept.getRemindedOn() == null || kept.getRemindedOn().isAfter(day) ? null : kept.getRemindedOn());
         }
     }
 
@@ -252,6 +255,13 @@ public class ClaimController {
             @PathVariable long claimId,
             @RequestHeader("X-User") @NotBlank @Size(max = 100) String user) {
         return ClaimView.of(service.addProof(sheetId.trim(), user.trim(), claimId));
+    }
+
+    @PostMapping("/claims/{claimId}/remind")
+    public ClaimView remind(@PathVariable @NotBlank @Size(max = 100) String sheetId,
+            @PathVariable long claimId,
+            @RequestHeader("X-User") @NotBlank @Size(max = 100) String user) {
+        return ClaimView.of(service.remind(sheetId.trim(), user.trim(), claimId));
     }
 
     /** The reason a steward gives for rejecting a pending claim. */

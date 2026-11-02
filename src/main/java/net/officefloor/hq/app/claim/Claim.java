@@ -110,6 +110,10 @@ public class Claim {
     @Column(name = "edit_locked_by")
     private String editLockedBy;
 
+    /** The last day (the sheet's today then) a reminder was written for the claim; null when never. */
+    @Column(name = "reminded_on")
+    private LocalDate remindedOn;
+
     /** Whether the claim was added while the period its due-by falls in was soft-closed. */
     @Column(name = "late_entry", nullable = false)
     private boolean lateEntry;
@@ -265,6 +269,14 @@ public class Claim {
 
     public void deferUntil(LocalDate until) {
         this.deferredUntil = until;
+    }
+
+    public LocalDate getRemindedOn() {
+        return remindedOn;
+    }
+
+    public void remindOn(LocalDate day) {
+        this.remindedOn = day;
     }
 
     public int getProofs() {

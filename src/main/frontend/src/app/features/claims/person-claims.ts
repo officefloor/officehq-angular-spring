@@ -74,6 +74,13 @@ function proofRefusal(e: unknown): string {
   return 'The proof could not be added.';
 }
 
+/** The message for a refused reminder of a claim. */
+function remindRefusal(e: unknown): string {
+  if (e instanceof HttpErrorResponse && e.status === 409) return 'Only an open or pending claim can be reminded.';
+  if (e instanceof HttpErrorResponse && e.status === 429) return 'The claim was already reminded today.';
+  return 'The reminder could not be sent.';
+}
+
 /** The message for a refused defer of a claim. */
 function deferRefusal(e: unknown): string {
   if (e instanceof HttpErrorResponse && e.status === 423) return CLOSED;
@@ -164,6 +171,7 @@ function splitRefusal(e: unknown): string {
           <span data-testid="claim-deferred-until">{{ c.deferredUntil ?? '' }}</span>
           <span data-testid="claim-proofs">{{ c.proofs }}</span>
           <span data-testid="claim-split-from">{{ c.splitFrom ?? '' }}</span>
+          <span data-testid="claim-reminded">{{ c.remindedOn ?? '' }}</span>
           <ol data-testid="claim-log" [attr.aria-label]="'Status log of claim of ' + c.amount + ' on ' + c.date">
             @for (l of c.log; track $index) {
               <li data-testid="claim-log-line">{{ l.status }} by {{ l.by }} on {{ l.on }} due={{ l.due ?? 'n/a' }}</li>
@@ -186,6 +194,8 @@ function splitRefusal(e: unknown): string {
             [attr.aria-label]="'Reject claim of ' + c.amount + ' on ' + c.date">Reject</button>
           <button type="button" data-testid="claim-proof" (click)="addProof(c)"
             [attr.aria-label]="'Add a proof to claim of ' + c.amount + ' on ' + c.date">Add proof</button>
+          <button type="button" data-testid="claim-remind" (click)="remind(c)"
+            [attr.aria-label]="'Remind claim of ' + c.amount + ' on ' + c.date">Remind</button>
           <label [for]="'claim-defer-date-' + c.id">Defer until</label>
           <input [id]="'claim-defer-date-' + c.id" type="date" data-testid="claim-defer-date" #deferDate
             (input)="clearError(c)" />
@@ -385,6 +395,15 @@ export class PersonClaims {
       this.saved.emit(await this.api.addProof(c.id));
     } catch (e) {
       this.claimError.set({ id: c.id, message: proofRefusal(e) });
+    }
+  }
+
+  protected async remind(c: Claim): Promise<void> {
+    this.claimError.set(null);
+    try {
+      this.saved.emit(await this.api.remind(c.id));
+    } catch (e) {
+      this.claimError.set({ id: c.id, message: remindRefusal(e) });
     }
   }
 

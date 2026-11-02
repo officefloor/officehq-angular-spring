@@ -133,6 +133,8 @@ export interface Claim {
   editLockedBy: string | null;
   /** Whether the claim was added while the period its due-by falls in was soft-closed. */
   lateEntry: boolean;
+  /** The last day (yyyy-mm-dd) a reminder was written for it; null when never. */
+  remindedOn: string | null;
 }
 
 /** A line of a claim's status log: the status, who changed it to that, the sheet's today then
@@ -352,6 +354,15 @@ export class Claims {
     const { sheetId, user } = this.active();
     return firstValueFrom(
       this.http.post<Claim>(`${this.url(sheetId)}/claims/${id}/proof`, null, { headers: { 'X-User': user } }),
+    );
+  }
+
+  /** Remind an open or pending claim on the sheet's today; refused (409) when it is in any other
+   *  status, and (429) when it was already reminded today. */
+  remind(id: number): Promise<Claim> {
+    const { sheetId, user } = this.active();
+    return firstValueFrom(
+      this.http.post<Claim>(`${this.url(sheetId)}/claims/${id}/remind`, null, { headers: { 'X-User': user } }),
     );
   }
 

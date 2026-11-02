@@ -292,6 +292,28 @@ public class ClaimService {
         return saved;
     }
 
+    /** Remind an open or pending claim: it is reminded on the sheet's today. Refused when the claim
+     *  is in any other status, and when it was already reminded on the sheet's today. It changes no
+     *  figure. */
+    @Transactional
+    public Claim remind(String sheetId, String user, long claimId) {
+        Claim claim = lock(sheetId, claimId);
+        if (claim.getStatus() != ClaimStatus.OPEN && claim.getStatus() != ClaimStatus.PENDING) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT,
+                    "A " + claim.getStatus() + " claim cannot be reminded");
+        }
+        LocalDate today = sheets.today(sheetId);
+        if (today.equals(claim.getRemindedOn())) {
+            throw new ResponseStatusException(HttpStatus.TOO_MANY_REQUESTS,
+                    "The claim was already reminded today");
+        }
+        Person person = person(sheetId, claim.getPersonId());
+        claim.remindOn(today);
+        Claim saved = claims.saveAndFlush(claim);
+        audit.recordOnCommit(record("REMIND", sheetId, user, person, saved));
+        return saved;
+    }
+
     /** Approve a pending claim: it becomes settled, its due fixed at the figure it has now (its live
      *  figure and late charge). Refused unless the claim is pending, the user is a steward and is not
      *  the one who opened it, the claim's period is open, and it has a proof if it needs one. */
