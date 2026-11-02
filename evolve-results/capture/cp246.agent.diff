@@ -1,0 +1,89 @@
+diff --git a/src/main/frontend/src/app/features/people/people.ts b/src/main/frontend/src/app/features/people/people.ts
+index 2190627dc..b717d7990 100644
+--- a/src/main/frontend/src/app/features/people/people.ts
++++ b/src/main/frontend/src/app/features/people/people.ts
+@@ -540,7 +540,7 @@ function trimmedSum(figures: number[]): number {
+       }
+       <table>
+         <thead>
+-          <tr><th scope="col"><span class="visually-hidden">Select</span></th><th scope="col">Name</th><th scope="col">Grade</th>@if (shows('terms')) {<th scope="col">Terms</th>}@if (shows('contact')) {<th scope="col">Contact</th>}<th scope="col">Tags</th><th scope="col">Aliases</th><th scope="col">Came from</th>@if (shows('claimed')) {<th scope="col">Claimed</th>}@if (shows('due-total')) {<th scope="col">Due total</th>}<th scope="col">Snapshots</th><th scope="col">Timeline</th>@if (shows('excess')) {<th scope="col">Excess</th>}<th scope="col">Settled total</th><th scope="col">Score</th><th scope="col">Band</th><th scope="col">Open total</th><th scope="col">Cut total</th><th scope="col">Periods</th><th scope="col">Statements</th><th scope="col">Retired</th><th scope="col">Hold</th><th scope="col">Flag</th><th scope="col">Approver</th><th scope="col">Watched</th><th scope="col">Active</th><th scope="col">Clashing</th><th scope="col">Overdue</th><th scope="col">Aged</th><th scope="col">Patrons</th><th scope="col">Plans</th><th scope="col">Claims</th><th scope="col"><span class="visually-hidden">Actions</span></th></tr>
++          <tr><th scope="col"><span class="visually-hidden">Select</span></th><th scope="col">Name</th><th scope="col">Grade</th>@if (shows('terms')) {<th scope="col">Terms</th>}@if (shows('contact')) {<th scope="col">Contact</th>}<th scope="col">Tags</th><th scope="col">Aliases</th><th scope="col">Came from</th>@if (shows('claimed')) {<th scope="col">Claimed</th>}@if (shows('due-total')) {<th scope="col">Due total</th>}<th scope="col">Snapshots</th><th scope="col">Timeline</th>@if (shows('excess')) {<th scope="col">Excess</th>}<th scope="col">Settled total</th><th scope="col">Score</th><th scope="col">Band</th><th scope="col">Open total</th><th scope="col">Cut total</th><th scope="col">Periods</th><th scope="col">Statements</th><th scope="col">Retired</th><th scope="col">Hold</th><th scope="col">Flag</th><th scope="col">Approver</th><th scope="col">Watched</th><th scope="col">Active</th><th scope="col">Clashing</th><th scope="col">Open / settled claims</th><th scope="col">Overdue</th><th scope="col">Aged</th><th scope="col">Patrons</th><th scope="col">Plans</th><th scope="col">Claims</th><th scope="col"><span class="visually-hidden">Actions</span></th></tr>
+         </thead>
+         <tbody>
+           @for (p of sorted(); track p.id) {
+@@ -701,6 +701,10 @@ function trimmedSum(figures: number[]): number {
+               </td>
+               <td data-testid="person-active">{{ p.active ? 'yes' : 'no' }}</td>
+               <td data-testid="person-clashing">{{ p.clashing ? 'yes' : 'no' }}</td>
++              <td>
++                <span>Open <span data-testid="person-claims-OPEN-count">{{ countOf(p.id, 'OPEN') }}</span></span>
++                <span>Settled <span data-testid="person-claims-SETTLED-count">{{ countOf(p.id, 'SETTLED') }}</span></span>
++              </td>
+               <td>
+                 @if (shows('overdue-count')) {<span data-testid="person-overdue-count">{{ overdueOf(p).count }}</span>}
+                 @if (shows('overdue-total')) {<span>Total <span data-testid="person-overdue-total">{{ money(overdueOf(p).cents) | figure }}</span></span>}
+@@ -917,7 +921,7 @@ export class People {
+   /** The dates of the last snapshot comparison asked for; to is blank for now; null until one is asked. */
+   private readonly snapshotDates = signal<{ from: string; to: string } | null>(null);
+   /**
+-   * Per person on screen, in list order: their due-total in the SNAPSHOT written when the sheet's today
++   * Per person the user may see, the retired included, in list order: their due-total in the SNAPSHOT written when the sheet's today
+    * was changed away from the from-date, and in the one for the to-date (their due-total now when the
+    * to-date is blank); blank when no such snapshot was written, the last one written when several were.
+    */
+@@ -928,7 +932,7 @@ export class People {
+       const found = p.snapshots.filter((s) => s.day === day).at(-1);
+       return found === undefined ? '' : (found.dueTotal ?? NA);
+     };
+-    return this.sorted().map((p) => ({
++    return this.sortedAsScreen(this.visible()).map((p) => ({
+       name: p.name,
+       then: on(p, dates.from),
+       now: dates.to === '' ? this.dueTotalOf(p) : on(p, dates.to),
+@@ -984,16 +988,21 @@ export class People {
+   private readonly addedHere = signal<ReadonlySet<number>>(new Set());
+   /** The people on screen: everyone (a restricted user: those they may see), less the retired unless show retired is on. */
+   protected readonly listed = computed(() => {
+-    const visible = this.visibleIds();
+-    const people = visible ? this.people().filter((p) => visible.has(p.id)) : this.people();
++    const people = this.visible();
+     return this.session.showRetired() ? people : people.filter((p) => !p.retired);
+   });
++  /** Everyone this user may see (a restricted user: those they may see), the retired included. */
++  private readonly visible = computed(() => {
++    const visible = this.visibleIds();
++    return visible ? this.people().filter((p) => visible.has(p.id)) : this.people();
++  });
+   /**
+    * The people on screen as this screen sorts them: by name as names are compared, by the grade in
+    * force today, or by due-total with n/a last; equal keys keep list order. Only the screen is sorted.
+    */
+-  protected readonly sorted = computed(() => {
+-    const listed = this.listed();
++  protected readonly sorted = computed(() => this.sortedAsScreen(this.listed()));
++
++  private sortedAsScreen(listed: Person[]): Person[] {
+     const by = this.session.sortBy();
+     if (by === 'added') return listed;
+     const key = (p: Person): string | number | null =>
+@@ -1002,7 +1011,7 @@ export class People {
+     return keyed
+       .sort((a, b) => (a.k === b.k ? 0 : a.k === null ? 1 : b.k === null ? -1 : a.k < b.k ? -1 : 1))
+       .map((e) => e.p);
+-  });
++  }
+   /** Every claim on the sheet, newest first. */
+   protected readonly claims = signal<Claim[]>([]);
+   /** Every plan on the sheet, in the order they were added. */
+@@ -1641,6 +1650,11 @@ export class People {
+     return this.claimsByPerson().get(personId) ?? NO_CLAIMS;
+   }
+ 
++  /** How many of their claims are in the given status. */
++  protected countOf(personId: number, status: string): number {
++    return this.claimsOf(personId).filter((c) => c.status === status).length;
++  }
++
+   private claimedCents(personId: number): number {
+     return this.claimsOf(personId).filter(this.countsClaimed).reduce((sum, c) => sum + cents(c.amount), 0);
+   }
