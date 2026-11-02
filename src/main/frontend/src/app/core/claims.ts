@@ -52,6 +52,13 @@ export function keepsActive(c: Claim, holds: Hold[], today: string | null): bool
     && addDays(today, -29) <= c.date && c.date <= today;
 }
 
+/** A claim's part in its patron's backing: its frozen figure when it is settled and dated within
+ *  the 90 days up to and including the sheet's today; null otherwise. */
+export function backingFigure(c: Claim, today: string | null): string | null {
+  return today !== null && c.status === 'SETTLED' && addDays(today, -89) <= c.date && c.date <= today
+    ? c.settledDue : null;
+}
+
 /** The status a claim had at the end of the day, as its status log records it: that of the last
  *  line logged on or before the day; null when it was not yet made then. A claim with no log has
  *  its status now. */
