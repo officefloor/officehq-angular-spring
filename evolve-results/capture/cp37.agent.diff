@@ -1,0 +1,377 @@
+diff --git a/src/main/frontend/src/app/core/claims.ts b/src/main/frontend/src/app/core/claims.ts
+index 48a99efd6..c12d77dfd 100644
+--- a/src/main/frontend/src/app/core/claims.ts
++++ b/src/main/frontend/src/app/core/claims.ts
+@@ -55,6 +55,9 @@ export interface Claim {
+   /** The date (yyyy-mm-dd) its figures round by: that of the claim a correction corrects, or else
+    *  its own. */
+   roundsBy: string;
++  /** Where the claim is listed: claims are listed newest first by this (a claim moved to another
++   *  person is listed as that person's newest). */
++  listed: number;
+ }
+ 
+ export interface ClaimForm {
+@@ -200,6 +203,15 @@ export class Claims {
+     );
+   }
+ 
++  /** Move a draft, open or pending claim to another person on the sheet; refused (403) unless the
++   *  user is a steward, and (409) when the claim is settled or void. */
++  reassign(id: number, personId: number): Promise<Claim> {
++    const { sheetId, user } = this.active();
++    return firstValueFrom(
++      this.http.post<Claim>(`${this.url(sheetId)}/claims/${id}/reassign`, { personId }, { headers: { 'X-User': user } }),
++    );
++  }
++
+   /** Open each of the claims that can be opened, in list order; the rest are refused and left as
+    *  they are. */
+   openAll(claimIds: number[]): Promise<{ opened: number; refused: number }> {
+diff --git a/src/main/frontend/src/app/features/claims/person-claims.ts b/src/main/frontend/src/app/features/claims/person-claims.ts
+index 8a28678bb..7e6e288bc 100644
+--- a/src/main/frontend/src/app/features/claims/person-claims.ts
++++ b/src/main/frontend/src/app/features/claims/person-claims.ts
+@@ -2,7 +2,7 @@ import { HttpErrorResponse } from '@angular/common/http';
+ import { Component, inject, input, output, signal } from '@angular/core';
+ import { FormControl, FormGroup, ReactiveFormsModule } from '@angular/forms';
+ import { CLAIM_AMOUNT, Claim, ClaimAction, Claims, claimDue, dueBy, overdue } from '../../core/claims';
+-import { GradeFrom, gradeOn } from '../../core/people';
++import { GradeFrom, Person, gradeOn } from '../../core/people';
+ import { Period, periodOf } from '../../core/periods';
+ import { Rate } from '../../core/rates';
+ 
+@@ -40,6 +40,15 @@ function refusal(e: unknown, action: ClaimAction): string {
+   return 'The claim could not be changed.';
+ }
+ 
++/** The message for a refused reassign of a claim. */
++function reassignRefusal(e: unknown): string {
++  if (e instanceof HttpErrorResponse && e.status === 403) return 'Only a steward can reassign a claim.';
++  if (e instanceof HttpErrorResponse && e.status === 409) return 'Only a draft, open or pending claim can be reassigned.';
++  if (e instanceof HttpErrorResponse && e.status === 423) return CLOSED;
++  if (e instanceof HttpErrorResponse && e.status === 422) return 'The claim is dated after that person\'s retirement.';
++  return 'The claim could not be reassigned.';
++}
++
+ // A person's claims, newest first, and the form that adds a claim for them or, once a claim's
+ // editor is opened, edits it.
+ @Component({
+@@ -93,6 +102,16 @@ function refusal(e: unknown, action: ClaimAction): string {
+             (input)="clearError(c)" />
+           <button type="button" data-testid="claim-reject" (click)="act(c, 'reject', reason.value)"
+             [attr.aria-label]="'Reject claim of ' + c.amount + ' on ' + c.date">Reject</button>
++          <label [for]="'claim-reassign-to-' + c.id">Reassign to</label>
++          <select [id]="'claim-reassign-to-' + c.id" data-testid="claim-reassign-to" #reassignTo
++            (change)="clearError(c)">
++            <option value="">Choose a person</option>
++            @for (o of others(); track o.id) {
++              <option [value]="o.id">{{ o.name }}</option>
++            }
++          </select>
++          <button type="button" data-testid="claim-reassign" (click)="reassign(c, reassignTo.value)"
++            [attr.aria-label]="'Reassign claim of ' + c.amount + ' on ' + c.date">Reassign</button>
+           <button type="button" data-testid="claim-edit" (click)="open(c)"
+             [attr.aria-label]="'Edit claim of ' + c.amount + ' on ' + c.date">Edit</button>
+           @if (editing() === c.id) {
+@@ -128,6 +147,8 @@ export class PersonClaims {
+   readonly latePct = input.required<string>();
+   /** The sheet's policy date (null when blank): it decides how a claim's live figures round. */
+   readonly policyDate = input.required<string | null>();
++  /** The other people on the sheet, whom a claim can be reassigned to. */
++  readonly others = input.required<Person[]>();
+   /** The ids of the claims selected for a bulk action. */
+   readonly selected = input.required<ReadonlySet<number>>();
+   /** A claim's checkbox ticked or cleared. */
+@@ -204,6 +225,19 @@ export class PersonClaims {
+     }
+   }
+ 
++  protected async reassign(c: Claim, to: string): Promise<void> {
++    this.claimError.set(null);
++    if (to === '') {
++      this.claimError.set({ id: c.id, message: 'Choose the person to reassign the claim to.' });
++      return;
++    }
++    try {
++      this.saved.emit(await this.api.reassign(c.id, Number(to)));
++    } catch (e) {
++      this.claimError.set({ id: c.id, message: reassignRefusal(e) });
++    }
++  }
++
+   protected cancel(): void {
+     this.reset();
+   }
+diff --git a/src/main/frontend/src/app/features/people/people-list.ts b/src/main/frontend/src/app/features/people/people-list.ts
+index 2dfc7d650..d799028fe 100644
+--- a/src/main/frontend/src/app/features/people/people-list.ts
++++ b/src/main/frontend/src/app/features/people/people-list.ts
+@@ -92,7 +92,7 @@ import { QuickAddBar } from './quick-add-bar';
+                   [terms]="terms()" [today]="session.today()" [latePct]="latePct()"
+                   [policyDate]="policyDate()" [selected]="selected()"
+                   (selectedChange)="select($event.id, $event.selected)"
+-                  (saved)="claimSaved($event)" />
++                  [others]="patronChoices(p)" (saved)="claimSaved($event)" />
+               </td>
+               <td>
+                 <button type="button" [attr.data-testid]="'person-edit-' + p.id" (click)="open(p)"
+@@ -335,7 +335,7 @@ export class PeopleList {
+       const taken = await this.api.statement(p.id);
+       this.people.update((ps) => ps.map((x) => (x.id === taken.person.id ? taken.person : x)));
+       const byId = new Map(taken.claims.map((c) => [c.id, c]));
+-      this.claims.update((cs) => [...cs.filter((c) => !byId.has(c.id)), ...taken.claims].sort((a, b) => b.id - a.id));
++      this.claims.update((cs) => [...cs.filter((c) => !byId.has(c.id)), ...taken.claims].sort((a, b) => b.listed - a.listed));
+     } catch {
+       this.personError.set({ id: p.id, message: 'The statement could not be taken.' });
+     } finally {
+@@ -509,9 +509,9 @@ export class PeopleList {
+ 
+   protected claimSaved(claim: Claim): void {
+     this.claims.update((cs) =>
+-      cs.some((c) => c.id === claim.id)
++      (cs.some((c) => c.id === claim.id)
+         ? cs.map((c) => (c.id === claim.id ? claim : c))
+-        : [claim, ...cs].sort((a, b) => b.id - a.id),
++        : [claim, ...cs]).sort((a, b) => b.listed - a.listed),
+     );
+   }
+ 
+diff --git a/src/main/java/net/officefloor/hq/app/claim/Claim.java b/src/main/java/net/officefloor/hq/app/claim/Claim.java
+index 379f7f5b5..f3b763bc8 100644
+--- a/src/main/java/net/officefloor/hq/app/claim/Claim.java
++++ b/src/main/java/net/officefloor/hq/app/claim/Claim.java
+@@ -10,6 +10,7 @@ import jakarta.persistence.Id;
+ import jakarta.persistence.Table;
+ import java.math.BigDecimal;
+ import java.time.LocalDate;
++import org.hibernate.annotations.Generated;
+ 
+ /** A claim a person makes: an amount (two decimals), a date, a note and a status. A claim with a
+  *  negative amount is a correction of a settled claim of the same person, named by its number. */
+@@ -72,6 +73,12 @@ public class Claim {
+     @Column(name = "corrected_date")
+     private LocalDate correctedDate;
+ 
++    /** Where the claim is listed: newest first by this. A new claim takes the next from the
++     *  database, and a moved claim takes the next again (see {@link #moveTo}). */
++    @Generated
++    @Column(name = "listed", insertable = false)
++    private Long listed;
++
+     protected Claim() {
+     }
+ 
+@@ -102,6 +109,19 @@ public class Claim {
+         return personId;
+     }
+ 
++    public Long getListed() {
++        return listed;
++    }
++
++    /** Move the claim to another person, listed at the place given (after every claim listed so far).
++     *  It keeps its number, date and status, but no figure a statement bound it to: it is live
++     *  again until its new person's next statement. */
++    public void moveTo(Long personId, long listed) {
++        this.personId = personId;
++        this.listed = listed;
++        bind(false, null);
++    }
++
+     public BigDecimal getAmount() {
+         return amount;
+     }
+diff --git a/src/main/java/net/officefloor/hq/app/claim/ClaimBulkService.java b/src/main/java/net/officefloor/hq/app/claim/ClaimBulkService.java
+index 19b691ab5..b2617ea4d 100644
+--- a/src/main/java/net/officefloor/hq/app/claim/ClaimBulkService.java
++++ b/src/main/java/net/officefloor/hq/app/claim/ClaimBulkService.java
+@@ -38,7 +38,7 @@ public class ClaimBulkService {
+         for (int i = 0; i < listed.size(); i++) {
+             rank.put(listed.get(i).getId(), i);
+         }
+-        List<Claim> chosen = repository.findBySheetIdOrderByIdDesc(sheetId).stream()
++        List<Claim> chosen = repository.findBySheetIdOrderByListedDesc(sheetId).stream()
+                 .filter(c -> claimIds.contains(c.getId()))
+                 .sorted(Comparator.comparingInt((Claim c) -> rank.getOrDefault(c.getPersonId(), Integer.MAX_VALUE))
+                         .thenComparing(Claim::getId, Comparator.reverseOrder()))
+diff --git a/src/main/java/net/officefloor/hq/app/claim/ClaimController.java b/src/main/java/net/officefloor/hq/app/claim/ClaimController.java
+index cd535a443..e0fa15eb6 100644
+--- a/src/main/java/net/officefloor/hq/app/claim/ClaimController.java
++++ b/src/main/java/net/officefloor/hq/app/claim/ClaimController.java
+@@ -29,18 +29,19 @@ public class ClaimController {
+     /** What the screen shows of a claim; the amount, and the due fixed when it was settled (null
+      *  when there is none), as text with two decimals; who opened it (null when never opened);
+      *  whether the last statement bound it, with the due it bound (null when none); and the number
+-     *  of the claim it corrects (null when it is not a correction); and the date its figures round by
+-     *  (that of the claim a correction corrects, or else its own). */
++     *  of the claim it corrects (null when it is not a correction); the date its figures round by
++     *  (that of the claim a correction corrects, or else its own); and where it is listed (newest
++     *  first by this). */
+     public record ClaimView(long id, long personId, String amount, LocalDate date, String note,
+             ClaimStatus status, String number, String settledDue, String openedBy, boolean stated,
+-            String statedDue, String corrects, LocalDate roundsBy) {
++            String statedDue, String corrects, LocalDate roundsBy, long listed) {
+         public static ClaimView of(Claim claim) {
+             return new ClaimView(claim.getId(), claim.getPersonId(), claim.getAmount().setScale(2).toPlainString(),
+                     claim.getDate(), claim.getNote(), claim.getStatus(), claim.getNumber(),
+                     claim.getSettledDue() == null ? null : claim.getSettledDue().setScale(2).toPlainString(),
+                     claim.getOpenedBy(), claim.isStated(),
+                     claim.getStatedDue() == null ? null : claim.getStatedDue().setScale(2).toPlainString(),
+-                    claim.getCorrects(), claim.roundsBy());
++                    claim.getCorrects(), claim.roundsBy(), claim.getListed());
+         }
+     }
+ 
+@@ -145,6 +146,18 @@ public class ClaimController {
+         return ClaimView.of(service.reject(sheetId.trim(), user.trim(), claimId, form.reason().trim()));
+     }
+ 
++    /** The person a steward moves a claim to. */
++    public record ReassignForm(@NotNull Long personId) {
++    }
++
++    @PostMapping("/claims/{claimId}/reassign")
++    public ClaimView reassign(@PathVariable @NotBlank @Size(max = 100) String sheetId,
++            @PathVariable long claimId,
++            @RequestHeader("X-User") @NotBlank @Size(max = 100) String user,
++            @Valid @RequestBody ReassignForm form) {
++        return ClaimView.of(service.reassign(sheetId.trim(), user.trim(), claimId, form.personId()));
++    }
++
+     @PostMapping("/claims/{claimId}/void")
+     public ClaimView voidClaim(@PathVariable @NotBlank @Size(max = 100) String sheetId,
+             @PathVariable long claimId,
+diff --git a/src/main/java/net/officefloor/hq/app/claim/ClaimRepository.java b/src/main/java/net/officefloor/hq/app/claim/ClaimRepository.java
+index 6d638dbf8..6c53e30a8 100644
+--- a/src/main/java/net/officefloor/hq/app/claim/ClaimRepository.java
++++ b/src/main/java/net/officefloor/hq/app/claim/ClaimRepository.java
+@@ -9,11 +9,11 @@ import org.springframework.data.jpa.repository.Query;
+ 
+ public interface ClaimRepository extends JpaRepository<Claim, Long> {
+ 
+-    /** The claims on a sheet, newest first. */
+-    List<Claim> findBySheetIdOrderByIdDesc(String sheetId);
++    /** The claims on a sheet, newest first (the one listed last first). */
++    List<Claim> findBySheetIdOrderByListedDesc(String sheetId);
+ 
+-    /** A person's claims on a sheet, newest first. */
+-    List<Claim> findBySheetIdAndPersonIdOrderByIdDesc(String sheetId, Long personId);
++    /** A person's claims on a sheet, newest first (the one listed last first). */
++    List<Claim> findBySheetIdAndPersonIdOrderByListedDesc(String sheetId, Long personId);
+ 
+     Optional<Claim> findByIdAndSheetId(Long id, String sheetId);
+ 
+@@ -21,6 +21,10 @@ public interface ClaimRepository extends JpaRepository<Claim, Long> {
+     Optional<Claim> findBySheetIdAndPersonIdAndNumberAndStatus(String sheetId, Long personId, String number,
+             ClaimStatus status);
+ 
++    /** The next place a claim is listed at, after every claim listed so far. */
++    @Query(value = "select next value for claim_listed_seq", nativeQuery = true)
++    long nextListed();
++
+     /** A claim on a sheet, locked for the rest of the transaction so two status changes to it
+      *  happen one after the other. */
+     @Lock(LockModeType.PESSIMISTIC_WRITE)
+diff --git a/src/main/java/net/officefloor/hq/app/claim/ClaimService.java b/src/main/java/net/officefloor/hq/app/claim/ClaimService.java
+index 94e73f572..be48938d4 100644
+--- a/src/main/java/net/officefloor/hq/app/claim/ClaimService.java
++++ b/src/main/java/net/officefloor/hq/app/claim/ClaimService.java
+@@ -45,7 +45,7 @@ public class ClaimService {
+     /** The claims on the sheet, newest first. */
+     @Transactional(readOnly = true)
+     public List<Claim> list(String sheetId) {
+-        return claims.findBySheetIdOrderByIdDesc(sheetId);
++        return claims.findBySheetIdOrderByListedDesc(sheetId);
+     }
+ 
+     /** Add a claim for a person; a date left out takes the sheet's today. Refused when the date falls
+@@ -188,6 +188,37 @@ public class ClaimService {
+         });
+     }
+ 
++    /** Move a draft, open or pending claim to another person on the sheet. It keeps its number, date
++     *  and status, loses any figure a statement bound it to, and is listed as its new person's newest
++     *  claim. Refused unless the user is a steward, and when the claim is settled or void, the person
++     *  is the one it is already for, the claim's period is closed, or the claim is dated after the
++     *  new person's retirement day. */
++    @Transactional
++    public Claim reassign(String sheetId, String user, long claimId, long toPersonId) {
++        Claim claim = lock(sheetId, claimId);
++        if (!SheetRole.STEWARD.equals(roles.roleOf(sheetId, user))) {
++            throw new ResponseStatusException(HttpStatus.FORBIDDEN, "Only a steward can reassign a claim");
++        }
++        if (claim.getStatus() == ClaimStatus.SETTLED || claim.getStatus() == ClaimStatus.VOID) {
++            throw new ResponseStatusException(HttpStatus.CONFLICT,
++                    "A " + claim.getStatus() + " claim cannot be reassigned");
++        }
++        if (claim.getPersonId() == toPersonId) {
++            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "The claim is already that person's");
++        }
++        refuseClosed(sheetId, claim.getDate());
++        Person from = person(sheetId, claim.getPersonId());
++        Person to = person(sheetId, toPersonId);
++        refuseRetired(to, claim.getDate());
++        return rollup.tracking(sheetId, user, () -> {
++            claim.moveTo(to.getId(), claims.nextListed());
++            Claim saved = claims.saveAndFlush(claim);
++            audit.recordOnCommit(record("CLAIM_REASSIGNED", sheetId, user, to, saved)
++                    + " from=" + from.getName() + " to=" + to.getName());
++            return saved;
++        });
++    }
++
+     /** The pending claim a steward approves or rejects, locked; refused when it is not pending, the
+      *  user is not a steward, or its period is closed. */
+     private Claim lockPending(String sheetId, String user, long claimId) {
+diff --git a/src/main/java/net/officefloor/hq/app/period/PeriodService.java b/src/main/java/net/officefloor/hq/app/period/PeriodService.java
+index f7761de20..043acf77a 100644
+--- a/src/main/java/net/officefloor/hq/app/period/PeriodService.java
++++ b/src/main/java/net/officefloor/hq/app/period/PeriodService.java
+@@ -117,7 +117,7 @@ public class PeriodService {
+         Map<Long, Person> byId = people.findBySheetIdOrderByIdAsc(sheetId).stream()
+                 .collect(Collectors.toMap(Person::getId, Function.identity()));
+         BigDecimal total = BigDecimal.ZERO.setScale(2);
+-        for (Claim c : claims.findBySheetIdOrderByIdDesc(sheetId)) {
++        for (Claim c : claims.findBySheetIdOrderByListedDesc(sheetId)) {
+             Person person = byId.get(c.getPersonId());
+             if (person == null || !Dues.countsLive(person, c) || c.getDate().isBefore(period.getFromDate())
+                     || c.getDate().isAfter(period.getToDate())) {
+diff --git a/src/main/java/net/officefloor/hq/app/rollup/Rollup.java b/src/main/java/net/officefloor/hq/app/rollup/Rollup.java
+index 957d926f6..91522a09a 100644
+--- a/src/main/java/net/officefloor/hq/app/rollup/Rollup.java
++++ b/src/main/java/net/officefloor/hq/app/rollup/Rollup.java
+@@ -72,7 +72,7 @@ public class Rollup {
+     }
+ 
+     private Snapshot snapshot(String sheetId) {
+-        Map<Long, List<Claim>> byPerson = claims.findBySheetIdOrderByIdDesc(sheetId).stream()
++        Map<Long, List<Claim>> byPerson = claims.findBySheetIdOrderByListedDesc(sheetId).stream()
+                 .collect(Collectors.groupingBy(Claim::getPersonId));
+         Map<Long, Figures> figures = new LinkedHashMap<>();
+         BigDecimal claimedTotal = BigDecimal.ZERO.setScale(2);
+diff --git a/src/main/java/net/officefloor/hq/app/statement/StatementService.java b/src/main/java/net/officefloor/hq/app/statement/StatementService.java
+index 849bd165f..4ff9122ea 100644
+--- a/src/main/java/net/officefloor/hq/app/statement/StatementService.java
++++ b/src/main/java/net/officefloor/hq/app/statement/StatementService.java
+@@ -70,7 +70,7 @@ public class StatementService {
+                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "No such person on this sheet"));
+         List<Claim> bound = rollup.tracking(sheetId, user, () -> {
+             LocalDate today = sheets.today(sheetId);
+-            List<Claim> theirs = claims.findBySheetIdAndPersonIdOrderByIdDesc(sheetId, personId);
++            List<Claim> theirs = claims.findBySheetIdAndPersonIdOrderByListedDesc(sheetId, personId);
+             BigDecimal dueTotal = dues.dueTotal(sheetId, person, Dues.live(person, theirs));
+             int counted = 0;
+             for (Claim claim : theirs) {
+diff --git a/src/main/resources/db/migration/V28__claim_listed.sql b/src/main/resources/db/migration/V28__claim_listed.sql
+new file mode 100644
+index 000000000..d302d1970
+--- /dev/null
++++ b/src/main/resources/db/migration/V28__claim_listed.sql
+@@ -0,0 +1,6 @@
++-- Where a claim is listed: claims are listed newest first by this, not by id, so a claim moved to
++-- another person is listed as that person's newest. A new claim takes the next value, and so does a
++-- claim when it is moved.
++CREATE SEQUENCE claim_listed_seq;
++ALTER TABLE claim ADD COLUMN listed BIGINT DEFAULT NEXT VALUE FOR claim_listed_seq NOT NULL;
++CREATE INDEX claim_sheet_listed ON claim (sheet_id, listed);
