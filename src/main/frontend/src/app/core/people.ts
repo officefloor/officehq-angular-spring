@@ -123,6 +123,16 @@ export class People {
     );
   }
 
+  /** Import people from lines of name,grade,terms,contact, each added as the form would; all or
+   *  none. Answers how many were added and those people as they now show, in order. */
+  importPeople(text: string): Promise<{ added: number; people: Person[] }> {
+    const { sheetId, user } = this.active();
+    return firstValueFrom(
+      this.http.post<{ added: number; people: Person[] }>(`${this.url(sheetId)}/import`, { text },
+        { headers: { 'X-User': user } }),
+    );
+  }
+
   /** Give the people a grade from a day (null: the sheet's today), each as an edit would; answers
    *  how many were changed and those people as they now show. */
   grade(personIds: number[], grade: Grade, from: string | null): Promise<{ graded: number; people: Person[] }> {
