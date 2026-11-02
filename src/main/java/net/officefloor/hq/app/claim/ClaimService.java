@@ -32,6 +32,9 @@ public class ClaimService {
     private final WatchService watches;
     private final Audit audit;
 
+    /** How many days after its settlement a steward may still void a settled claim. */
+    static final int VOID_SETTLED_DAYS = 7;
+
     public ClaimService(ClaimRepository claims, PersonRepository people, Dues dues, SheetService sheets,
             Rollup rollup, PeriodRepository periods, RoleService roles, WatchService watches,
             Audit audit) {
@@ -119,6 +122,9 @@ public class ClaimService {
     public Claim changeStatus(String sheetId, String user, long claimId, ClaimStatus to) {
         Claim claim = lock(sheetId, claimId);
         refuseClosed(sheetId, claim.getDate());
+        if (to == ClaimStatus.VOID && claim.getStatus() == ClaimStatus.SETTLED) {
+            return voidSettled(sheetId, user, claim);
+        }
         if (!claim.getStatus().canBecome(to) || to == ClaimStatus.PENDING) {
             throw new ResponseStatusException(HttpStatus.CONFLICT,
                     "A " + claim.getStatus() + " claim cannot become " + to);
@@ -175,6 +181,31 @@ public class ClaimService {
             if (becomes == ClaimStatus.SETTLED) {
                 watches.notifyWatchers(sheetId, user, person, saved.getNumber());
             }
+            return saved;
+        });
+    }
+
+    /** Void a settled claim: only a steward may, within {@value #VOID_SETTLED_DAYS} days of its
+     *  settlement (the first SETTLED line of its status log) by the sheet's today. It keeps its
+     *  number and settled due, which leaves every total; the record ends with the figure reversed. */
+    private Claim voidSettled(String sheetId, String user, Claim claim) {
+        if (!SheetRole.STEWARD.equals(roles.roleOf(sheetId, user))) {
+            throw new ResponseStatusException(HttpStatus.FORBIDDEN, "Only a steward can void a settled claim");
+        }
+        LocalDate today = sheets.today(sheetId);
+        LocalDate settled = claim.getLog().stream().filter(l -> l.getStatus() == ClaimStatus.SETTLED)
+                .map(ClaimLog::getOn).findFirst().orElse(null);
+        if (settled == null || today.isBefore(settled) || today.isAfter(settled.plusDays(VOID_SETTLED_DAYS))) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT,
+                    "A settled claim can only be voided within " + VOID_SETTLED_DAYS + " days of its settlement");
+        }
+        return rollup.tracking(sheetId, user, () -> {
+            Person person = person(sheetId, claim.getPersonId());
+            BigDecimal reversed = dues.figure(sheetId, person, claim);
+            claim.setStatus(ClaimStatus.VOID);
+            logStatus(sheetId, user, person, claim);
+            Claim saved = claims.saveAndFlush(claim);
+            audit.recordOnCommit(record("CLAIM_VOIDED", sheetId, user, person, saved) + " reversed=" + dueText(reversed));
             return saved;
         });
     }

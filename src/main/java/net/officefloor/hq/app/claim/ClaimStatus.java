@@ -2,8 +2,8 @@ package net.officefloor.hq.app.claim;
 
 /** Where a claim is in its life: it starts as a draft, is opened and then settled; a clerk's settle
  *  above the clerk limit leaves it pending until a steward approves it (settled) or rejects it (open
- *  again); a draft, open or pending claim may be voided. A settled or voided claim cannot change
- *  status. */
+ *  again); a draft, open or pending claim may be voided, and a steward may void a settled claim
+ *  within days of its settlement (see {@code ClaimService}). A voided claim cannot change status. */
 public enum ClaimStatus {
     DRAFT, OPEN, PENDING, SETTLED, VOID;
 

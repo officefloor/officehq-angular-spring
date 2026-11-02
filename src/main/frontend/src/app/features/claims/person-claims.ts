@@ -12,7 +12,7 @@ const REFUSALS: Record<ClaimAction, string> = {
   open: 'Only a draft claim can be opened.',
   settle: 'Only an open claim that is not deferred can be settled.',
   resettle: 'Only a settled claim can be re-settled.',
-  void: 'Only a draft, open or pending claim can be voided.',
+  void: 'Only a draft, open or pending claim can be voided, or a settled one within 7 days of its settlement.',
   approve: 'Only a pending claim can be approved.',
   reject: 'Only a pending claim can be rejected.',
 };
@@ -32,6 +32,9 @@ function refusal(e: unknown, action: ClaimAction): string {
   if (e instanceof HttpErrorResponse && e.status === 428) return NEEDS_PROOF;
   if (e instanceof HttpErrorResponse && e.status === 403 && action === 'settle') {
     return 'The user who opened a claim cannot settle it.';
+  }
+  if (e instanceof HttpErrorResponse && e.status === 403 && action === 'void') {
+    return 'Your role may not void this claim; only a steward may void a settled claim.';
   }
   if (e instanceof HttpErrorResponse && e.status === 403 && action === 'resettle') {
     return 'Only a steward can re-settle a claim.';

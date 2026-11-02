@@ -8,7 +8,8 @@ import { Session } from './session';
 
 /** Where a claim is in its life: DRAFT, then OPEN, then SETTLED; a clerk's settle above the clerk
  *  limit leaves it PENDING until a steward approves it (SETTLED) or rejects it (OPEN again); a
- *  DRAFT, OPEN or PENDING claim may be VOID. */
+ *  DRAFT, OPEN or PENDING claim may be VOID, and a steward may void a SETTLED one within 7 days of
+ *  its settlement. */
 export type ClaimStatus = 'DRAFT' | 'OPEN' | 'PENDING' | 'SETTLED' | 'VOID';
 
 /** A change of status a claim can be asked for. */
