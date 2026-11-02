@@ -10,6 +10,7 @@ import { Rate, Rates, pctOn, weightedSum } from '../../core/rates';
 import { Session } from '../../core/session';
 import { DatedValue, Graces, SheetSettings, graceOn, valueOn } from '../../core/settings';
 import { Watch, Watches } from '../../core/watches';
+import { Plan, Plans } from '../../core/plans';
 import { DescendantFigures, Descendants, NO_DESCENDANTS } from '../../core/descendants';
 import { VoidReasons } from '../../core/void-reasons';
 import { PersonClaims } from '../claims/person-claims';
@@ -21,6 +22,8 @@ import { QuickAddBar } from './quick-add-bar';
 import { PasteClaimsBox } from './paste-claims-box';
 import { ImportPeopleBox } from './import-people-box';
 import { PoolList } from '../pools/pool-list';
+import { PersonPlans } from '../plans/person-plans';
+import { PlanGenerateBox } from '../plans/plan-generate-box';
 
 /** What leaves no claim out: no holds, not retired. */
 const NO_LEAVE: Leave = { holds: [], retiredFrom: null };
@@ -38,7 +41,7 @@ const NO_LEAVE: Leave = { holds: [], retiredFrom: null };
 // The signed-in user may watch a person: they are told when a claim of theirs is settled.
 @Component({
   selector: 'app-people-list',
-  imports: [ReactiveFormsModule, PersonClaims, RateForm, PeriodForm, QuickAddBar, PasteClaimsBox, ImportPeopleBox, SummaryPanel, HeaderCounters, PoolList],
+  imports: [ReactiveFormsModule, PersonClaims, RateForm, PeriodForm, QuickAddBar, PasteClaimsBox, ImportPeopleBox, SummaryPanel, HeaderCounters, PoolList, PersonPlans, PlanGenerateBox],
   template: `
     <app-header-counters [peopleCount]="people().length" [statuses]="statusSummary()"
       [dueTotal]="dueTotal()" [overdueTotal]="overdueTotal()"
@@ -72,6 +75,7 @@ const NO_LEAVE: Leave = { holds: [], retiredFrom: null };
       </form>
       <app-quick-add-bar (added)="quickAdded($event)" />
       <app-paste-claims-box (pasted)="claimsPasted()" />
+      <app-plan-generate-box [refresh]="plansGenerated" />
       <app-import-people-box (imported)="peopleImported($event)" />
       <p>Claimed in total: <strong data-testid="rollup-claimed-total">{{ claimedTotal() }}</strong></p>
       <p>Due in total: <strong data-testid="rollup-due-total">{{ dueTotal() }}</strong></p>
@@ -170,7 +174,7 @@ const NO_LEAVE: Leave = { holds: [], retiredFrom: null };
       <button type="button" data-testid="export-claims" (click)="exportClaimsCsv()">Export claims (CSV)</button>
       <table data-testid="people">
         <thead>
-          <tr><th scope="col"><span class="visually-hidden">Select</span></th><th scope="col">Name</th><th scope="col">Grade</th><th scope="col">Active</th><th scope="col">Terms</th><th scope="col">Contact</th><th scope="col">Aliases</th><th scope="col">Clashing</th><th scope="col">Came from</th><th scope="col">Claimed</th><th scope="col">Due</th><th scope="col">Settled due</th><th scope="col">Open due</th>@for (pd of periods(); track pd.id) {<th scope="col">Due in {{ pd.name }}</th>}<th scope="col">Excess</th><th scope="col">Cut total</th><th scope="col">Statements</th><th scope="col">Last stated</th><th scope="col">Stated on</th><th scope="col">Retired</th><th scope="col">Retired from</th><th scope="col">Past retirements</th><th scope="col">On hold</th><th scope="col">Overdue</th><th scope="col">Overdue due</th><th scope="col">Due aged 0–30 days</th><th scope="col">Due aged 31–60 days</th><th scope="col">Due aged 61+ days</th><th scope="col">Patrons</th><th scope="col">Backing</th><th scope="col">Watched</th><th scope="col">Claims</th><th scope="col"><span class="visually-hidden">Actions</span></th></tr>
+          <tr><th scope="col"><span class="visually-hidden">Select</span></th><th scope="col">Name</th><th scope="col">Grade</th><th scope="col">Active</th><th scope="col">Terms</th><th scope="col">Contact</th><th scope="col">Aliases</th><th scope="col">Clashing</th><th scope="col">Came from</th><th scope="col">Claimed</th><th scope="col">Due</th><th scope="col">Settled due</th><th scope="col">Open due</th>@for (pd of periods(); track pd.id) {<th scope="col">Due in {{ pd.name }}</th>}<th scope="col">Excess</th><th scope="col">Cut total</th><th scope="col">Statements</th><th scope="col">Last stated</th><th scope="col">Stated on</th><th scope="col">Retired</th><th scope="col">Retired from</th><th scope="col">Past retirements</th><th scope="col">On hold</th><th scope="col">Overdue</th><th scope="col">Overdue due</th><th scope="col">Due aged 0–30 days</th><th scope="col">Due aged 31–60 days</th><th scope="col">Due aged 61+ days</th><th scope="col">Patrons</th><th scope="col">Backing</th><th scope="col">Watched</th><th scope="col">Plans</th><th scope="col">Claims</th><th scope="col"><span class="visually-hidden">Actions</span></th></tr>
         </thead>
         <tbody>
           @for (p of shown(); track p.id) {
@@ -230,6 +234,10 @@ const NO_LEAVE: Leave = { holds: [], retiredFrom: null };
               <td data-testid="person-patrons">{{ patronNames().get(p.id) ?? '' }}</td>
               <td data-testid="person-backing">{{ backingOf(p) }}</td>
               <td data-testid="person-watched">{{ watched().has(p.id) ? 'yes' : 'no' }}</td>
+              <td>
+                <app-person-plans [personId]="p.id" [name]="p.name" [plans]="plansByPerson().get(p.id) ?? []"
+                  (added)="planAdded($event)" />
+              </td>
               <td>
                 <app-person-claims [personId]="p.id" [claims]="claimsByPerson().get(p.id) ?? []"
                   [rates]="rates()" [floor]="floor()" [grades]="p.grades" [periods]="periods()"
@@ -321,6 +329,7 @@ export class PeopleList {
   private readonly settingsApi = inject(SheetSettings);
   private readonly patronsApi = inject(Patrons);
   private readonly watchesApi = inject(Watches);
+  private readonly plansApi = inject(Plans);
   private readonly poolsApi = inject(Pools);
   private readonly descendantsApi = inject(Descendants);
 
@@ -372,6 +381,14 @@ export class PeopleList {
       shown.sort((a, b) => (a.name < b.name ? -1 : a.name > b.name ? 1 : 0));
       by.set(id, shown.map((x) => `${x.name} ${formatCents(x.share)}`).join(', '));
     }
+    return by;
+  });
+  /** The plans on the sheet, in the order they were added. */
+  protected readonly plans = signal<Plan[]>([]);
+  /** Each person's plans, in the order they were added, by the person's id. */
+  protected readonly plansByPerson = computed(() => {
+    const by = new Map<number, Plan[]>();
+    for (const x of this.plans()) by.set(x.personId, [...(by.get(x.personId) ?? []), x]);
     return by;
   });
   /** The people the signed-in user watches, in the order they started watching. */
@@ -683,6 +700,7 @@ export class PeopleList {
       this.periods.set([]);
       this.patrons.set([]);
       this.watches.set([]);
+      this.plans.set([]);
       this.selected.set(new Set());
       this.bulkOpened.set(null);
       this.bulkSettled.set(null);
@@ -1211,6 +1229,26 @@ export class PeopleList {
     ]);
   }
 
+  /** Show a plan just added at the end of its person's plans. */
+  protected planAdded(plan: Plan): void {
+    this.plans.update((xs) => [...xs.filter((x) => x.id !== plan.id), plan]);
+  }
+
+  /** Read the sheet's claims and plans again once a generate has made claims. */
+  protected readonly plansGenerated = async (): Promise<void> => {
+    const sheetId = this.session.sheetId();
+    if (!sheetId) return;
+    try {
+      const [claims, plans] = await Promise.all([this.claimsApi.list(sheetId), this.plansApi.list(sheetId)]);
+      if (this.session.sheetId() === sheetId) {
+        this.claims.set(claims);
+        this.plans.set(plans);
+      }
+    } catch {
+      // the claims show again on the next load
+    }
+  };
+
   /** Read the sheet's claims again once a paste has added some. */
   protected async claimsPasted(): Promise<void> {
     const sheetId = this.session.sheetId();
@@ -1377,7 +1415,7 @@ export class PeopleList {
   private async reload(sheetId: string): Promise<void> {
     const read = ++this.reads;
     try {
-      const [people, claims, tags, rates, periods, settings, patrons, watches, lastBatch, descendants] = await Promise.all([
+      const [people, claims, tags, rates, periods, settings, patrons, watches, lastBatch, descendants, plans] = await Promise.all([
         this.api.list(sheetId),
         this.claimsApi.list(sheetId),
         this.claimsApi.tags(sheetId),
@@ -1388,6 +1426,7 @@ export class PeopleList {
         this.watchesApi.list(sheetId),
         this.claimsApi.lastSettleBatch(sheetId),
         this.descendantsApi.figures(sheetId),
+        this.plansApi.list(sheetId),
       ]);
       if (read === this.reads) {
         this.rates.set(rates);
@@ -1401,6 +1440,7 @@ export class PeopleList {
         this.storedTags.set(tags);
         this.patrons.set(patrons);
         this.watches.set(watches);
+        this.plans.set(plans);
         this.lastSettleBatch.set(lastBatch);
         this.descendants.set(descendants);
         this.people.set(people);

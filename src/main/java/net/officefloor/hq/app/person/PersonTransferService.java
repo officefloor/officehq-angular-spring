@@ -13,6 +13,7 @@ import net.officefloor.hq.app.claim.ClaimRepository;
 import net.officefloor.hq.app.claim.ClaimService;
 import net.officefloor.hq.app.patron.PatronRepository;
 import net.officefloor.hq.app.period.PeriodRepository;
+import net.officefloor.hq.app.plan.PlanRepository;
 import net.officefloor.hq.app.pool.PoolMember;
 import net.officefloor.hq.app.pool.PoolMemberRepository;
 import net.officefloor.hq.app.pool.PoolRepository;
@@ -40,6 +41,7 @@ public class PersonTransferService {
     private final StatementRepository statements;
     private final WatchRepository watches;
     private final PeriodRepository periods;
+    private final PlanRepository plans;
     private final SheetService sheets;
     private final RoleService roles;
     private final Rollup rollup;
@@ -48,7 +50,7 @@ public class PersonTransferService {
     public PersonTransferService(PersonRepository people, ClaimRepository claims, ClaimService claimService,
             PatronRepository patrons, PoolRepository pools, PoolMemberRepository members,
             StatementRepository statements, WatchRepository watches, PeriodRepository periods,
-            SheetService sheets, RoleService roles, Rollup rollup, Audit audit) {
+            PlanRepository plans, SheetService sheets, RoleService roles, Rollup rollup, Audit audit) {
         this.people = people;
         this.claims = claims;
         this.claimService = claimService;
@@ -58,6 +60,7 @@ public class PersonTransferService {
         this.statements = statements;
         this.watches = watches;
         this.periods = periods;
+        this.plans = plans;
         this.sheets = sheets;
         this.roles = roles;
         this.rollup = rollup;
@@ -69,7 +72,7 @@ public class PersonTransferService {
      *  kept): each claim that had a number takes the other sheet's next one, in the order the claims
      *  were opened (by the sheet's today then, then by the order they were added); figures a
      *  statement bound and references are not carried, and they have no statements there. They
-     *  leave this sheet entirely (patron links, pool memberships, watches and statements dropped).
+     *  leave this sheet entirely (patron links, pool memberships, plans, watches and statements dropped).
      *  A sheet never loaded is started empty, as loading it would. When their name or an alias is
      *  already the name or an alias of someone on the other sheet (compared as names are), they
      *  are merged into that person there instead, exactly as a merge does (their claims listed
@@ -171,6 +174,7 @@ public class PersonTransferService {
         periods.findBySheetIdOrderByFromDateAsc(sheetId).forEach(period -> period.dropPersonTotal(from.getId()));
         statements.deleteAll(statements.findBySheetIdAndPersonIdOrderByIdAsc(sheetId, from.getId()));
         watches.deleteAll(watches.findByPersonIdOrderByIdAsc(from.getId()));
+        plans.deleteAll(plans.findByPersonIdOrderByIdAsc(from.getId()));
         claims.deleteAll(theirs);
         people.flush();
         people.delete(from);
