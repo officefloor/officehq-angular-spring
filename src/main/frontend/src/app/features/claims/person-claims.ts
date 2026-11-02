@@ -87,6 +87,16 @@ function remindRefusal(e: unknown): string {
   return 'The reminder could not be sent.';
 }
 
+/** The message when a comment's text is empty. */
+const COMMENT_EMPTY = 'Enter the text of the comment.';
+
+/** The message for a refused comment on a claim. */
+function commentRefusal(e: unknown): string {
+  if (e instanceof HttpErrorResponse && e.status === 400) return COMMENT_EMPTY;
+  if (e instanceof HttpErrorResponse && e.status === 403) return 'Your role may not comment on a claim.';
+  return 'The comment could not be added.';
+}
+
 /** The message for a refused defer of a claim. */
 function deferRefusal(e: unknown): string {
   if (e instanceof HttpErrorResponse && e.status === 423) return CLOSED;
@@ -202,6 +212,16 @@ function splitRefusal(e: unknown): string {
               <li data-testid="claim-log-line">{{ l.status }} by {{ l.by }} on {{ l.on }} due={{ l.due ?? 'n/a' }}</li>
             }
           </ol>
+          <ol data-testid="claim-comments" [attr.aria-label]="'Comments on claim of ' + c.amount + ' on ' + c.date">
+            @for (m of c.comments; track $index) {
+              <li data-testid="claim-comments-line">{{ m.by }} on {{ m.on }}: {{ m.text }}</li>
+            }
+          </ol>
+          <label [for]="'claim-comment-text-' + c.id">Comment</label>
+          <input [id]="'claim-comment-text-' + c.id" data-testid="claim-comment-text" #commentText
+            (input)="clearError(c)" />
+          <button type="button" data-testid="claim-comment-add" (click)="comment(c, commentText)"
+            [attr.aria-label]="'Comment on claim of ' + c.amount + ' on ' + c.date">Add comment</button>
           <button type="button" data-testid="claim-open" (click)="act(c, 'open')"
             [attr.aria-label]="'Open claim of ' + c.amount + ' on ' + c.date">Open</button>
           <button type="button" data-testid="claim-settle" (click)="act(c, 'settle')"
@@ -456,6 +476,21 @@ export class PersonClaims {
       this.saved.emit(await this.api.remind(c.id));
     } catch (e) {
       this.claimError.set({ id: c.id, message: remindRefusal(e) });
+    }
+  }
+
+  protected async comment(c: Claim, input: HTMLInputElement): Promise<void> {
+    this.claimError.set(null);
+    const text = input.value.trim();
+    if (!text) {
+      this.claimError.set({ id: c.id, message: COMMENT_EMPTY });
+      return;
+    }
+    try {
+      this.saved.emit(await this.api.comment(c.id, text));
+      input.value = '';
+    } catch (e) {
+      this.claimError.set({ id: c.id, message: commentRefusal(e) });
     }
   }
 

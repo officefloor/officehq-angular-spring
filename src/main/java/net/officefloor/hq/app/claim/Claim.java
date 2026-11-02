@@ -145,6 +145,13 @@ public class Claim {
     @OrderBy("id")
     private List<ClaimLog> log = new ArrayList<>();
 
+    /** The claim's comments, in the order they were written (see {@link #comment}). */
+    @OneToMany(cascade = CascadeType.ALL, orphanRemoval = true, fetch = FetchType.EAGER)
+    @Fetch(FetchMode.SUBSELECT)
+    @JoinColumn(name = "claim_id", nullable = false, updatable = false)
+    @OrderBy("id")
+    private List<ClaimComment> comments = new ArrayList<>();
+
     protected Claim() {
     }
 
@@ -430,5 +437,14 @@ public class Claim {
      *  its due as computed at that moment (null when it has none). */
     public void logStatus(String user, LocalDate on, BigDecimal due) {
         log.add(new ClaimLog(sheetId, status, user, on, due));
+    }
+
+    public List<ClaimComment> getComments() {
+        return List.copyOf(comments);
+    }
+
+    /** Add a comment the user wrote on the day (the sheet's today). */
+    public void comment(String user, LocalDate on, String text) {
+        comments.add(new ClaimComment(sheetId, user, on, text));
     }
 }

@@ -142,6 +142,15 @@ export interface Claim {
   tags: string;
   /** The reason from the sheet's list a void claim was voided with; null when none. */
   voidReason: string | null;
+  /** Its comments, in the order they were written. */
+  comments: ClaimComment[];
+}
+
+/** A comment on a claim: who wrote it, the sheet's today then (yyyy-mm-dd), and its text. */
+export interface ClaimComment {
+  by: string;
+  on: string;
+  text: string;
 }
 
 /** A line of a claim's status log: the status, who changed it to that, the sheet's today then
@@ -400,6 +409,15 @@ export class Claims {
     const { sheetId, user } = this.active();
     return firstValueFrom(
       this.http.post<Claim>(`${this.url(sheetId)}/claims/${id}/remind`, null, { headers: { 'X-User': user } }),
+    );
+  }
+
+  /** Comment a claim in any status, on the sheet's today; refused (400) when the text is empty. */
+  comment(id: number, text: string): Promise<Claim> {
+    const { sheetId, user } = this.active();
+    return firstValueFrom(
+      this.http.post<Claim>(`${this.url(sheetId)}/claims/${id}/comments`, { text },
+        { headers: { 'X-User': user } }),
     );
   }
 

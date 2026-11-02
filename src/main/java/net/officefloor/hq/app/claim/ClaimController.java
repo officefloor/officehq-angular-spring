@@ -46,13 +46,13 @@ public class ClaimController {
      *  (null when none); and who has its editor open (null when no one); and the last day a reminder
      *  was written for it (null when never); and its external reference (null when none); and its tags,
      *  sorted and comma and space separated (empty when none); and the reason it was voided with (null
-     *  when none). */
+     *  when none); and its comments, in the order they were written. */
     public record ClaimView(long id, long personId, String amount, LocalDate date, String note,
             ClaimStatus status, String number, String settledDue, String openedBy, boolean stated,
             String statedDue, boolean statedNa, String corrects, LocalDate roundsBy, long listed, LocalDate dueBy,
             List<LogLineView> log, LocalDate deferredUntil, int proofs, String splitFrom,
             String editLockedBy, boolean lateEntry, LocalDate remindedOn, String ref, String tags,
-            String voidReason) {
+            String voidReason, List<CommentView> comments) {
         public static ClaimView of(Claim claim) {
             return new ClaimView(claim.getId(), claim.getPersonId(), claim.getAmount().setScale(2).toPlainString(),
                     claim.getDate(), claim.getNote(), claim.getStatus(), claim.getNumber(),
@@ -63,7 +63,8 @@ public class ClaimController {
                     claim.getLog().stream().map(LogLineView::of).toList(), claim.getDeferredUntil(),
                     claim.getProofs(), claim.getSplitFrom(), claim.getEditLockedBy(), claim.isLateEntry(),
                     claim.getRemindedOn(), claim.getRef(), tagsText(claim.getTags()),
-                    claim.getStatus() == ClaimStatus.VOID ? claim.getVoidReason() : null);
+                    claim.getStatus() == ClaimStatus.VOID ? claim.getVoidReason() : null,
+                    claim.getComments().stream().map(CommentView::of).toList());
         }
 
         /** The claim as it stood at the end of a day: its figures as its revision then has them (see
@@ -85,12 +86,20 @@ public class ClaimController {
                     kept.getSplitFrom(), null, kept.isLateEntry(),
                     kept.getRemindedOn() == null || kept.getRemindedOn().isAfter(day) ? null : kept.getRemindedOn(),
                     kept.getRef(), tagsText(kept.getTags()),
-                    then.getStatus() == ClaimStatus.VOID ? kept.getVoidReason() : null);
+                    then.getStatus() == ClaimStatus.VOID ? kept.getVoidReason() : null,
+                    kept.getComments().stream().filter(c -> !c.getOn().isAfter(day)).map(CommentView::of).toList());
         }
 
         /** The tags as the claim shows them: sorted, comma and space separated; empty when none. */
         private static String tagsText(String tags) {
             return String.join(", ", Tags.of(tags));
+        }
+    }
+
+    /** A comment on a claim: who wrote it, the sheet's today then, and its text. */
+    public record CommentView(String by, LocalDate on, String text) {
+        static CommentView of(ClaimComment comment) {
+            return new CommentView(comment.getByUser(), comment.getOn(), comment.getText());
         }
     }
 
@@ -306,6 +315,18 @@ public class ClaimController {
             @PathVariable long claimId,
             @RequestHeader("X-User") @NotBlank @Size(max = 100) String user) {
         return ClaimView.of(service.remind(sheetId.trim(), user.trim(), claimId));
+    }
+
+    /** The text of a comment on a claim. */
+    public record CommentForm(@Size(max = 1000) String text) {
+    }
+
+    @PostMapping("/claims/{claimId}/comments")
+    public ClaimView comment(@PathVariable @NotBlank @Size(max = 100) String sheetId,
+            @PathVariable long claimId,
+            @RequestHeader("X-User") @NotBlank @Size(max = 100) String user,
+            @Valid @RequestBody CommentForm form) {
+        return ClaimView.of(service.comment(sheetId.trim(), user.trim(), claimId, form.text()));
     }
 
     /** The reason a steward gives for rejecting a pending claim. */

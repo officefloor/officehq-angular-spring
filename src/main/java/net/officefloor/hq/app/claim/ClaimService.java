@@ -374,6 +374,22 @@ public class ClaimService {
         return saved;
     }
 
+    /** Comment a claim, in any status: the comment is kept with the user and the sheet's today. Refused
+     *  when the text is empty. It changes no figure. */
+    @Transactional
+    public Claim comment(String sheetId, String user, long claimId, String text) {
+        String trimmed = text == null ? "" : text.trim();
+        if (trimmed.isEmpty()) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "A comment cannot be empty");
+        }
+        Claim claim = lock(sheetId, claimId);
+        Person person = person(sheetId, claim.getPersonId());
+        claim.comment(user, sheets.today(sheetId), trimmed);
+        Claim saved = claims.saveAndFlush(claim);
+        audit.recordOnCommit(record("COMMENT_ADDED", sheetId, user, person, saved) + " text=" + trimmed);
+        return saved;
+    }
+
     /** Approve a pending claim: it becomes settled, its due fixed at the figure it has now (its live
      *  figure and late charge). Refused unless the claim is pending, the user is a steward and is not
      *  the one who opened it, the claim's period is open, and it has a proof if it needs one. */
