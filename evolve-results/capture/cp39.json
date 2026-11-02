@@ -1,0 +1,64 @@
+{
+  "checkpoint": 39,
+  "stack": {
+    "repo": "/home/daniel/officehq-angular-spring",
+    "origin": "git@github.com:officefloor/officehq-angular-spring.git",
+    "name": "officehq-angular-spring",
+    "base_ref": "base-empty",
+    "base_commit": "65cb8233ea38b2dfa6cfd18709e30cd18fdf3250"
+  },
+  "checkpoint_id": "cp39_claim-log",
+  "phase": "early",
+  "type": "additive",
+  "mutates": [],
+  "replaced_tests": [],
+  "request": {
+    "spec": "Show on each claim its status log: one line per status it has had, oldest first, as\n<STATUS> by <user> on <date> due=<due>, where the date is the sheet's today when the change was\nmade and the due is the claim's due as it was computed at that moment (including the DRAFT line\nwritten when the claim was added).\n",
+    "prompt": "You are implementing ONE change to this application.\n\nFIRST read AGENTS.md \u2014 it states the working rules and how the app is tested, and sends you to\nDESIGN.md for the app's stack and conventions. Follow both.\n\nTHE CHANGE REQUEST:\nShow on each claim its status log: one line per status it has had, oldest first, as\n<STATUS> by <user> on <date> due=<due>, where the date is the sheet's today when the change was\nmade and the due is the claim's due as it was computed at that moment (including the DRAFT line\nwritten when the claim was added).\n\nYour work is verified by an automated Playwright UI test already installed under e2e/specs/.\nRead that spec: it declares the exact data-testid anchors, values, test data and any audit\nrecords it expects \u2014 match them. Run `bin/e2e` to build the app, start it, and run the test as\nyou work; iterate until it passes. Change whatever the request needs across the app \u2014 its stored\ndata, its server and its front end. Do NOT edit bin/build, bin/start, bin/stop, bin/e2e,\nAGENTS.md, CLAUDE.md, DESIGN.md, e2e/support/ or the test spec.\n"
+  },
+  "commit_sha": "53e7cce1eb66ec5424a8856559e14db2a32a8aeb",
+  "reset_sha": "",
+  "preagent_sha": "e57ffe76cd87692c68c7ffb1e66c80242c2b99ea",
+  "prev_sha": "e57ffe76cd87692c68c7ffb1e66c80242c2b99ea",
+  "base_sha": "65cb8233ea38b2dfa6cfd18709e30cd18fdf3250",
+  "agent": {
+    "ok": true,
+    "cost_usd": 0.7371914000000002,
+    "input_tokens": 32,
+    "output_tokens": 9386,
+    "cache_read_tokens": 643437,
+    "cache_creation_tokens": 52582,
+    "num_turns": 18,
+    "duration_ms": 223920,
+    "duration_api_ms": 86835,
+    "model": "claude-opus-5-5",
+    "session_id": "8bef5bfb-5522-4153-a698-43700c7d57c4",
+    "stop_reason": "success",
+    "result_text": "Each claim now shows its status log, and all 4 acceptance tests pass under `bin/e2e`.\n\nEach line reads `<STATUS> by <user> on <date> due=<due>`, oldest first. The date is the sheet's today when the change was made. The due is the claim's due as worked out at that moment, so later changes to rates don't alter it. A claim gets a line when it is added (the DRAFT line) and on every status change after that: open, settle, pending, approve, reject and void. Opening several claims at once logs each one, because it goes through the same code. Editing or reassigning a claim doesn't change its status, so it adds no line. When a claim had no due at that moment, the line shows `due=n/a`, the same as the audit records do.\n\n**What changed:**\n- **Stored data:** a new `V30__claim_log.sql` migration adds a `claim_log` table. Each line is linked to its claim and saved along with it (new `ClaimLog` entity, mapped in `Claim.java`).\n- **Server:** `ClaimService` writes a log line when a claim is added and whenever its status changes. The claim data the API returns now includes its log, so the claim list and quick-add include it too.\n- **Front end:** `core/claims.ts` has a new log-line type. `person-claims.ts` shows the log as a list under `claim-log`, one `claim-log-line` per entry.\n\nClaims that already exist before this change start with an empty log, because their earlier history was never recorded. That only matters for a store that outlives a restart; the current in-memory database starts empty each time.",
+    "error": "",
+    "attempts": [
+      {
+        "ok": true,
+        "limit_reached": false,
+        "retryable": false,
+        "timed_out": false,
+        "cost_usd": 0.7371914000000002,
+        "num_turns": 18,
+        "duration_ms": 223920,
+        "duration_api_ms": 86835,
+        "error": ""
+      }
+    ]
+  },
+  "agent_stream_file": "cp39.agent.jsonl",
+  "agent_diff_file": "cp39.agent.diff",
+  "build_log_file": null,
+  "tests": {
+    "gated": false,
+    "queued": true
+  },
+  "probe": null,
+  "pinned_touched": [],
+  "acceptance_touched": [],
+  "impact_gate": null
+}
