@@ -1,0 +1,64 @@
+{
+  "checkpoint": 122,
+  "stack": {
+    "repo": "/home/daniel/officehq-angular-spring",
+    "origin": "git@github.com:officefloor/officehq-angular-spring.git",
+    "name": "officehq-angular-spring",
+    "base_ref": "base-empty",
+    "base_commit": "65cb8233ea38b2dfa6cfd18709e30cd18fdf3250"
+  },
+  "checkpoint_id": "cp122_pool-membership-dated",
+  "phase": "mid",
+  "type": "additive",
+  "mutates": [],
+  "replaced_tests": [],
+  "request": {
+    "spec": "A pool membership may carry a from-date and a to-date (optional; a to-date before the from-date\nis refused; POOL_MEMBER_ADDED gains from=<date> and to=<date> at the end when given). A member whose\ndates do not include the sheet's today is left out entirely: not in the total share, not in the\nbalance, no cut.\n",
+    "prompt": "You are implementing ONE change to this application.\n\nFIRST read AGENTS.md \u2014 it states the working rules and how the app is tested, and sends you to\nDESIGN.md for the app's stack and conventions. Follow both.\n\nTHE CHANGE REQUEST:\nA pool membership may carry a from-date and a to-date (optional; a to-date before the from-date\nis refused; POOL_MEMBER_ADDED gains from=<date> and to=<date> at the end when given). A member whose\ndates do not include the sheet's today is left out entirely: not in the total share, not in the\nbalance, no cut.\n\nYour work is verified by an automated Playwright UI test already installed under e2e/specs/.\nRead that spec: it declares the exact data-testid anchors, values, test data and any audit\nrecords it expects \u2014 match them. Run `bin/e2e` to build the app, start it, and run the test as\nyou work; iterate until it passes. Change whatever the request needs across the app \u2014 its stored\ndata, its server and its front end. Do NOT edit bin/build, bin/start, bin/stop, bin/e2e,\nAGENTS.md, CLAUDE.md, DESIGN.md, e2e/support/ or the test spec.\n"
+  },
+  "commit_sha": "c9a82446b22129615bd03e3bad2675d21d3ab4ef",
+  "reset_sha": "",
+  "preagent_sha": "bee7b52adade8931e28e9ac91a6f575ea47b199b",
+  "prev_sha": "bee7b52adade8931e28e9ac91a6f575ea47b199b",
+  "base_sha": "65cb8233ea38b2dfa6cfd18709e30cd18fdf3250",
+  "agent": {
+    "ok": true,
+    "cost_usd": 0.8331412000000001,
+    "input_tokens": 36,
+    "output_tokens": 10397,
+    "cache_read_tokens": 794246,
+    "cache_creation_tokens": 58276,
+    "num_turns": 19,
+    "duration_ms": 297397,
+    "duration_api_ms": 93698,
+    "model": "claude-opus-5-5",
+    "session_id": "1499afc4-880b-462a-9b42-dbd2ace54e70",
+    "stop_reason": "success",
+    "result_text": "Pool memberships can now have an optional from-date and to-date. `bin/e2e` passes all 4 acceptance tests.\n\n**How it behaves**\n- If a member's dates don't include the sheet's today, that member is left out of the pool's total share and of the balanced check, and gets no cut. Their cut shows blank, not 0.00, and adds nothing to their cut total.\n- A to-date before the from-date is refused with `pool-error`, and nothing is saved or written to the audit file. Both the screen and the server check this.\n- `POOL_MEMBER_ADDED` gets ` from=<date>` and ` to=<date>` added at the end, each only when it was given.\n- The dates also work when the member is another pool. If that pool is out of its dates, it gets no cut, so the pools below it have no pot.\n\n**What changed**\n- **Stored data:** a new migration, `V74__pool_member_dates.sql`, adds nullable `from_date` and `to_date` columns to `pool_member`. `PoolMember` stores them and has a check for whether a given day falls inside them.\n- **Server:** `PoolService` uses that check against the sheet's today when it works out the total share, the balance and the cuts. The pool screen's data now includes each member's `from`, `to` and whether they are currently in their dates (`inForce`).\n- **Front end:** the pool row has two new date fields, `pool-member-from` and `pool-member-to`. Its total share leaves out members who are outside their dates, and each member's line shows their dates.\n\nThere is no way yet to change a membership's dates once it has been added; the request didn't ask for one.",
+    "error": "",
+    "attempts": [
+      {
+        "ok": true,
+        "limit_reached": false,
+        "retryable": false,
+        "timed_out": false,
+        "cost_usd": 0.8331412000000001,
+        "num_turns": 19,
+        "duration_ms": 297397,
+        "duration_api_ms": 93698,
+        "error": ""
+      }
+    ]
+  },
+  "agent_stream_file": "cp122.agent.jsonl",
+  "agent_diff_file": "cp122.agent.diff",
+  "build_log_file": null,
+  "tests": {
+    "gated": false,
+    "queued": true
+  },
+  "probe": null,
+  "pinned_touched": [],
+  "acceptance_touched": [],
+  "impact_gate": null
+}

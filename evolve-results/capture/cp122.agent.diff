@@ -1,0 +1,416 @@
+diff --git a/src/main/frontend/src/app/core/pools.ts b/src/main/frontend/src/app/core/pools.ts
+index af3e3f4af..772227841 100644
+--- a/src/main/frontend/src/app/core/pools.ts
++++ b/src/main/frontend/src/app/core/pools.ts
+@@ -17,6 +17,13 @@ export interface PoolMember {
+   /** Their cut of the pool's pot, as text with two decimals; null when the pool shows no cut (it is
+    *  not balanced, or it has no pot). */
+   cut: string | null;
++  /** The first day of the membership (yyyy-mm-dd); null: no start. */
++  from: string | null;
++  /** The last day of the membership (yyyy-mm-dd); null: no end. */
++  to: string | null;
++  /** Whether the membership's dates include the sheet's today: a member out of force is left out
++   *  entirely (not in the total share, not in the balance, no cut). */
++  inForce: boolean;
+ }
+ 
+ /** A pool on the sheet: its members in the order they were added, their shares' total and whether
+@@ -84,11 +91,17 @@ export class Pools {
+ 
+   /** Add a person, or another pool, to a pool with a share; refused (400) for a bad share and (409)
+    *  when the person is already in the pool, or the pool is already a member of a pool, would contain
+-   *  itself or would make a chain of pools too deep. */
+-  async addMember(poolId: number, member: { personId: number } | { poolId: number }, share: string): Promise<void> {
++   *  itself or would make a chain of pools too deep; the optional from- and to-dates bound the days
++   *  the membership runs (refused, 400, when the to-date is before the from-date). */
++  async addMember(
++    poolId: number,
++    member: { personId: number } | { poolId: number },
++    share: string,
++    dates: { from: string | null; to: string | null },
++  ): Promise<void> {
+     const { sheetId, user } = this.active();
+     await firstValueFrom(
+-      this.http.post<Pool>(`${this.url(sheetId)}/${poolId}/members`, { ...member, share },
++      this.http.post<Pool>(`${this.url(sheetId)}/${poolId}/members`, { ...member, share, ...dates },
+         { headers: { 'X-User': user } }),
+     );
+     // a pool member changes the pots of the pools below it: read them all again
+diff --git a/src/main/frontend/src/app/features/pools/pool-row.ts b/src/main/frontend/src/app/features/pools/pool-row.ts
+index 33522024c..62528ea1b 100644
+--- a/src/main/frontend/src/app/features/pools/pool-row.ts
++++ b/src/main/frontend/src/app/features/pools/pool-row.ts
+@@ -7,7 +7,8 @@ import { Pool, PoolMember, Pools, formatCents, shareCents } from '../../core/poo
+ // A pool's row: its members (people, and pools shown as pool:<name>) with their shares, the total
+ // and whether it is balanced (exactly 100.00), each member's cut of the pool's pot (blank unless the
+ // pool is balanced and has a pot: the sheet's, or its cut in the pool above when it is a member of
+-// one), and the entry a member is added with. A retired member's share counts as 0.00.
++// one), and the entry a member is added with. A retired member's share counts as 0.00; a member
++// whose dates do not include the sheet's today is left out of the total and has no cut.
+ @Component({
+   selector: 'app-pool-row',
+   imports: [ReactiveFormsModule],
+@@ -24,6 +25,8 @@ import { Pool, PoolMember, Pools, formatCents, shareCents } from '../../core/poo
+           {{ nameOf(m) }}: <span data-testid="pool-share">{{ m.share }}</span>,
+           cut <span data-testid="pool-cut">{{ m.cut ?? '' }}</span>
+           @if (isRetired(m)) { (retired) }
++          @if (m.from || m.to) { ({{ m.from ?? '' }} to {{ m.to ?? '' }}) }
++          @if (!m.inForce) { (not in force) }
+         </li>
+       }
+     </ul>
+@@ -41,6 +44,10 @@ import { Pool, PoolMember, Pools, formatCents, shareCents } from '../../core/poo
+       <label [for]="'pool-member-share-' + pool().id">Share %</label>
+       <input [id]="'pool-member-share-' + pool().id" data-testid="pool-member-share" formControlName="share"
+         inputmode="decimal" />
++      <label [for]="'pool-member-from-' + pool().id">From</label>
++      <input [id]="'pool-member-from-' + pool().id" type="date" data-testid="pool-member-from" formControlName="from" />
++      <label [for]="'pool-member-to-' + pool().id">To</label>
++      <input [id]="'pool-member-to-' + pool().id" type="date" data-testid="pool-member-to" formControlName="to" />
+       <button type="submit" data-testid="pool-member-add">Add member</button>
+       @if (error()) {
+         <p role="alert" data-testid="pool-error">{{ error() }}</p>
+@@ -56,10 +63,10 @@ export class PoolRow {
+   protected readonly pools = inject(Pools);
+   private readonly byId = computed(() => new Map(this.people().map((p) => [p.id, p])));
+ 
+-  /** The members' shares added up, a retired member's counting as 0.00. */
++  /** The members' shares added up, a retired member's counting as 0.00 and one out of force left out. */
+   private readonly totalCents = computed(() =>
+     this.pool().members.reduce(
+-      (sum, m) => (this.isRetired(m) ? sum : sum + (shareCents(m.share) ?? 0)), 0),
++      (sum, m) => (this.isRetired(m) || !m.inForce ? sum : sum + (shareCents(m.share) ?? 0)), 0),
+   );
+   protected readonly totalShare = computed(() => formatCents(this.totalCents()));
+   protected readonly balanced = computed(() => this.totalCents() === 10000);
+@@ -68,6 +75,8 @@ export class PoolRow {
+   protected readonly form = new FormGroup({
+     personId: new FormControl('', { nonNullable: true }),
+     share: new FormControl('', { nonNullable: true }),
++    from: new FormControl('', { nonNullable: true }),
++    to: new FormControl('', { nonNullable: true }),
+   });
+   private submitting = false;
+ 
+@@ -91,7 +100,7 @@ export class PoolRow {
+   protected async submit(): Promise<void> {
+     if (this.submitting) return;
+     this.error.set('');
+-    const { personId, share } = this.form.getRawValue();
++    const { personId, share, from, to } = this.form.getRawValue();
+     const poolId = personId.startsWith('pool:') ? Number(personId.slice(5)) : null;
+     const id = Number(personId);
+     if (poolId === null ? personId === '' || !this.byId().has(id) : !this.pools.list().some((p) => p.id === poolId)) {
+@@ -102,14 +111,19 @@ export class PoolRow {
+       this.error.set('A share is a percent with two decimals, more than 0.00 and at most 100.00.');
+       return;
+     }
++    if (from && to && to < from) {
++      this.error.set('The to-date is before the from-date.');
++      return;
++    }
+     if (poolId === null && this.pool().members.some((m) => m.personId === id)) {
+       this.error.set('That person is already in the pool.');
+       return;
+     }
+     this.submitting = true;
+     try {
+-      await this.pools.addMember(this.pool().id, poolId === null ? { personId: id } : { poolId }, share.trim());
+-      this.form.reset({ personId: '', share: '' }, { emitEvent: false });
++      await this.pools.addMember(this.pool().id, poolId === null ? { personId: id } : { poolId }, share.trim(),
++        { from: from || null, to: to || null });
++      this.form.reset({ personId: '', share: '', from: '', to: '' }, { emitEvent: false });
+     } catch (e) {
+       this.error.set(
+         e instanceof HttpErrorResponse && e.status === 409
+@@ -117,6 +131,8 @@ export class PoolRow {
+             ? 'That person is already in the pool, or the sheet may not be changed.'
+             : 'That pool is already a member of a pool, would contain itself, or would make a chain of '
+               + 'pools more than three deep; or the sheet may not be changed.'
++          : e instanceof HttpErrorResponse && e.status === 400
++            ? 'The share or the dates are not valid.'
+           : e instanceof HttpErrorResponse && e.status === 403
+             ? 'A viewer may not add a pool member.'
+             : 'The member could not be added.',
+diff --git a/src/main/java/net/officefloor/hq/app/pool/PoolController.java b/src/main/java/net/officefloor/hq/app/pool/PoolController.java
+index c7636de8b..860ce4535 100644
+--- a/src/main/java/net/officefloor/hq/app/pool/PoolController.java
++++ b/src/main/java/net/officefloor/hq/app/pool/PoolController.java
+@@ -4,6 +4,7 @@ import jakarta.validation.Valid;
+ import jakarta.validation.constraints.NotBlank;
+ import jakarta.validation.constraints.Size;
+ import java.math.BigDecimal;
++import java.time.LocalDate;
+ import java.util.List;
+ import java.util.stream.IntStream;
+ import org.springframework.http.HttpStatus;
+@@ -24,15 +25,18 @@ import org.springframework.web.server.ResponseStatusException;
+ public class PoolController {
+ 
+     /** A member as the screen shows them: the person (null for a pool member) or the pool (null for
+-     *  a person) and its name, their share, whether they are retired, and their cut of the pot as text
+-     *  with two decimals (null when the pool shows no cut). */
+-    public record MemberView(Long personId, Long poolId, String name, String share, boolean retired, String cut) {
++     *  a person) and its name, their share, whether they are retired, their cut of the pot as text
++     *  with two decimals (null when the pool shows no cut, or the member is out of force), the days
++     *  the membership runs (null: open-ended) and whether they include the sheet's today. */
++    public record MemberView(Long personId, Long poolId, String name, String share, boolean retired, String cut,
++            LocalDate from, LocalDate to, boolean inForce) {
+         static MemberView of(PoolService.Member m, BigDecimal cut) {
+             return new MemberView(m.person() == null ? null : m.person().getId(),
+                     m.pool() == null ? null : m.pool().getId(),
+                     m.person() != null ? m.person().getName() : m.pool().getName(),
+                     m.member().getShare().toPlainString(), m.retired(),
+-                    cut == null ? null : cut.toPlainString());
++                    cut == null ? null : cut.toPlainString(),
++                    m.member().getFromDate(), m.member().getToDate(), m.inForce());
+         }
+     }
+ 
+@@ -52,8 +56,10 @@ public class PoolController {
+     public record PoolForm(@NotBlank @Size(max = 200) String name) {
+     }
+ 
+-    /** The member form: the person, or the pool, and their share as entered. */
+-    public record MemberForm(Long personId, Long poolId, @NotBlank @Size(max = 20) String share) {
++    /** The member form: the person, or the pool, their share as entered, and the optional days the
++     *  membership runs from and to. */
++    public record MemberForm(Long personId, Long poolId, @NotBlank @Size(max = 20) String share,
++            LocalDate from, LocalDate to) {
+     }
+ 
+     private final PoolService service;
+@@ -84,7 +90,7 @@ public class PoolController {
+             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Choose a person or a pool");
+         }
+         return PoolView.of(form.personId() != null
+-                ? service.addMember(sheetId.trim(), user.trim(), poolId, form.personId(), form.share())
+-                : service.addPoolMember(sheetId.trim(), user.trim(), poolId, form.poolId(), form.share()));
++                ? service.addMember(sheetId.trim(), user.trim(), poolId, form.personId(), form.share(), form.from(), form.to())
++                : service.addPoolMember(sheetId.trim(), user.trim(), poolId, form.poolId(), form.share(), form.from(), form.to()));
+     }
+ }
+diff --git a/src/main/java/net/officefloor/hq/app/pool/PoolMember.java b/src/main/java/net/officefloor/hq/app/pool/PoolMember.java
+index f2bfd4e34..98c3c32c5 100644
+--- a/src/main/java/net/officefloor/hq/app/pool/PoolMember.java
++++ b/src/main/java/net/officefloor/hq/app/pool/PoolMember.java
+@@ -7,6 +7,7 @@ import jakarta.persistence.GenerationType;
+ import jakarta.persistence.Id;
+ import jakarta.persistence.Table;
+ import java.math.BigDecimal;
++import java.time.LocalDate;
+ 
+ /** A person's (or another pool's) membership of a pool, with their share percent (two decimals, above 0 and at most 100). */
+ @Entity
+@@ -31,6 +32,14 @@ public class PoolMember {
+     @Column(name = "share", nullable = false, precision = 5, scale = 2)
+     private BigDecimal share;
+ 
++    /** The first day of the membership; null: no start. */
++    @Column(name = "from_date")
++    private LocalDate fromDate;
++
++    /** The last day of the membership; null: no end. */
++    @Column(name = "to_date")
++    private LocalDate toDate;
++
+     protected PoolMember() {
+     }
+ 
+@@ -67,6 +76,25 @@ public class PoolMember {
+         return share;
+     }
+ 
++    public LocalDate getFromDate() {
++        return fromDate;
++    }
++
++    public LocalDate getToDate() {
++        return toDate;
++    }
++
++    /** Set the days the membership runs (either may be null: open-ended). */
++    public void setDates(LocalDate fromDate, LocalDate toDate) {
++        this.fromDate = fromDate;
++        this.toDate = toDate;
++    }
++
++    /** Whether the membership's dates include the day. */
++    public boolean isInForceOn(LocalDate day) {
++        return (fromDate == null || !day.isBefore(fromDate)) && (toDate == null || !day.isAfter(toDate));
++    }
++
+     /** Make the membership another person's (the member was merged into them). */
+     public void setPersonId(Long personId) {
+         this.personId = personId;
+diff --git a/src/main/java/net/officefloor/hq/app/pool/PoolService.java b/src/main/java/net/officefloor/hq/app/pool/PoolService.java
+index bd3a3206a..c8de093ec 100644
+--- a/src/main/java/net/officefloor/hq/app/pool/PoolService.java
++++ b/src/main/java/net/officefloor/hq/app/pool/PoolService.java
+@@ -34,8 +34,10 @@ public class PoolService {
+     public static final int MAX_DEPTH = 3;
+ 
+     /** A member as the pool shows them: the person, or the pool (exactly one of them), and their share;
+-     *  and whether the member is a person with a hold in force on the sheet's today. */
+-    public record Member(PoolMember member, Person person, Pool pool, boolean held) {
++     *  whether the member is a person with a hold in force on the sheet's today; and whether the
++     *  membership's dates include the sheet's today (a member out of force is left out entirely:
++     *  not in the total share, not in the balance, no cut). */
++    public record Member(PoolMember member, Person person, Pool pool, boolean held, boolean inForce) {
+ 
+         /** Whether the member is a person with a retirement day set: their share then counts as 0.00. */
+         public boolean retired() {
+@@ -48,10 +50,10 @@ public class PoolService {
+     public record Listed(Pool pool, List<Member> members, BigDecimal pot) {
+ 
+         /** The shares of the members added up, a retired member's (one with a retirement day set,
+-         *  whatever the day) counting as 0.00. */
++         *  whatever the day) counting as 0.00 and a member out of force left out. */
+         public BigDecimal totalShare() {
+             return members.stream()
+-                    .filter(m -> !m.retired())
++                    .filter(m -> !m.retired() && m.inForce())
+                     .map(m -> m.member().getShare())
+                     .reduce(BigDecimal.ZERO.setScale(2), BigDecimal::add);
+         }
+@@ -66,28 +68,35 @@ public class PoolService {
+          *  retired member's share counting as 0.00, a held member getting no cut: 0.00), with the
+          *  remainder of the pot going to the member with a cut with the largest share (the earliest
+          *  added on a tie), so the cuts total exactly the pot (each 0.00 when no member has a cut);
+-         *  none (an empty list) when there is no pot or the pool is not balanced. */
++         *  none (an empty list) when there is no pot or the pool is not balanced. A member out of
++         *  force has no cut at all: its entry is null. */
+         public List<BigDecimal> cuts() {
+             if (pot == null || !balanced()) {
+                 return List.of();
+             }
+             List<BigDecimal> shares = members.stream()
+-                    .map(m -> m.retired() || m.held() ? BigDecimal.ZERO.setScale(2) : m.member().getShare())
++                    .map(m -> m.retired() || m.held() || !m.inForce() ? BigDecimal.ZERO.setScale(2)
++                            : m.member().getShare())
+                     .toList();
+             BigDecimal withCut = shares.stream().reduce(BigDecimal.ZERO.setScale(2), BigDecimal::add);
++            List<BigDecimal> cuts = new ArrayList<>(shares.size());
++            for (int i = 0; i < shares.size(); i++) {
++                BigDecimal sh = shares.get(i);
++                cuts.add(!members.get(i).inForce() ? null
++                        : withCut.signum() == 0 ? sh
++                        : pot.multiply(sh).divide(withCut, 2, RoundingMode.HALF_EVEN));
++            }
+             if (withCut.signum() == 0) {
+-                return shares;
++                return cuts;
+             }
+-            List<BigDecimal> cuts = new ArrayList<>(shares.stream()
+-                    .map(sh -> pot.multiply(sh).divide(withCut, 2, RoundingMode.HALF_EVEN))
+-                    .toList());
+             int largest = 0;
+             for (int i = 1; i < shares.size(); i++) {
+                 if (shares.get(i).compareTo(shares.get(largest)) > 0) {
+                     largest = i;
+                 }
+             }
+-            BigDecimal remainder = pot.subtract(cuts.stream().reduce(BigDecimal.ZERO, BigDecimal::add));
++            BigDecimal remainder = pot.subtract(cuts.stream().filter(c -> c != null)
++                    .reduce(BigDecimal.ZERO, BigDecimal::add));
+             cuts.set(largest, cuts.get(largest).add(remainder).setScale(2));
+             return cuts;
+         }
+@@ -125,7 +134,8 @@ public class PoolService {
+                             : poolsById.containsKey(m.getMemberPoolId()))
+                     .map(m -> new Member(m, m.getPersonId() == null ? null : byId.get(m.getPersonId()),
+                             m.getMemberPoolId() == null ? null : poolsById.get(m.getMemberPoolId()),
+-                            m.getPersonId() != null && byId.get(m.getPersonId()).isHeldOn(today)))
++                            m.getPersonId() != null && byId.get(m.getPersonId()).isHeldOn(today),
++                            m.isInForceOn(today)))
+                     .toList());
+         }
+         Map<Long, Long> above = memberships.stream().filter(m -> m.getMemberPoolId() != null)
+@@ -188,12 +198,13 @@ public class PoolService {
+      *  pools would be more than {@link #MAX_DEPTH} deep. */
+     @Transactional
+     public synchronized Listed addPoolMember(String sheetId, String user, long poolId, long memberPoolId,
+-            String share) {
++            String share, LocalDate from, LocalDate to) {
+         Pool pool = pools.findByIdAndSheetId(poolId, sheetId)
+                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "No such pool"));
+         Pool member = pools.findByIdAndSheetId(memberPoolId, sheetId)
+                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "No such pool"));
+         BigDecimal amount = share(share);
++        checkDates(from, to);
+         List<PoolMember> all = members.findByPoolIdInOrderByIdAsc(
+                 pools.findBySheetIdOrderByIdAsc(sheetId).stream().map(Pool::getId).toList());
+         Map<Long, Long> above = all.stream().filter(m -> m.getMemberPoolId() != null)
+@@ -214,12 +225,14 @@ public class PoolService {
+                     "A chain of pools is at most " + MAX_DEPTH + " deep");
+         }
+         try {
+-            members.saveAndFlush(PoolMember.ofPool(poolId, memberPoolId, amount));
++            PoolMember m = PoolMember.ofPool(poolId, memberPoolId, amount);
++            m.setDates(from, to);
++            members.saveAndFlush(m);
+         } catch (DataIntegrityViolationException e) {
+             throw new ResponseStatusException(HttpStatus.CONFLICT, "That pool is already a member of a pool");
+         }
+         audit.recordOnCommit("POOL_MEMBER_ADDED sheet=" + sheetId + " by=" + user + " pool=" + pool.getName()
+-                + " name=" + member.getName() + " share=" + amount.toPlainString());
++                + " name=" + member.getName() + " share=" + amount.toPlainString() + dates(from, to));
+         return list(sheetId).stream().filter(l -> l.pool().getId().equals(poolId)).findFirst().orElseThrow();
+     }
+ 
+@@ -240,25 +253,41 @@ public class PoolService {
+     /** Add a person of the sheet to a pool with a share (two decimals, above 0.00 and at most
+      *  100.00); refused when the share is bad or the person is already in the pool. */
+     @Transactional
+-    public synchronized Listed addMember(String sheetId, String user, long poolId, long personId, String share) {
++    public synchronized Listed addMember(String sheetId, String user, long poolId, long personId, String share,
++            LocalDate from, LocalDate to) {
+         Pool pool = pools.findByIdAndSheetId(poolId, sheetId)
+                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "No such pool"));
+         Person person = people.findByIdAndSheetId(personId, sheetId)
+                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "No such person"));
+         BigDecimal amount = share(share);
++        checkDates(from, to);
+         if (members.existsByPoolIdAndPersonId(poolId, personId)) {
+             throw alreadyAMember();
+         }
+         try {
+-            members.saveAndFlush(new PoolMember(poolId, personId, amount));
++            PoolMember m = new PoolMember(poolId, personId, amount);
++            m.setDates(from, to);
++            members.saveAndFlush(m);
+         } catch (DataIntegrityViolationException e) {
+             throw alreadyAMember();
+         }
+         audit.recordOnCommit("POOL_MEMBER_ADDED sheet=" + sheetId + " by=" + user + " pool=" + pool.getName()
+-                + " name=" + person.getName() + " share=" + amount.toPlainString());
++                + " name=" + person.getName() + " share=" + amount.toPlainString() + dates(from, to));
+         return list(sheetId).stream().filter(l -> l.pool().getId().equals(poolId)).findFirst().orElseThrow();
+     }
+ 
++    /** Refused when both dates are given and the to-date is before the from-date. */
++    private static void checkDates(LocalDate from, LocalDate to) {
++        if (from != null && to != null && to.isBefore(from)) {
++            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "The to-date is before the from-date");
++        }
++    }
++
++    /** The membership's dates as the audit records them: from=<date> and to=<date>, each when given. */
++    private static String dates(LocalDate from, LocalDate to) {
++        return (from == null ? "" : " from=" + from) + (to == null ? "" : " to=" + to);
++    }
++
+     /** A share as entered, to two decimals; refused unless above 0.00 and at most 100.00. */
+     static BigDecimal share(String text) {
+         String t = text == null ? "" : text.trim();
+diff --git a/src/main/resources/db/migration/V74__pool_member_dates.sql b/src/main/resources/db/migration/V74__pool_member_dates.sql
+new file mode 100644
+index 000000000..aa7d739b1
+--- /dev/null
++++ b/src/main/resources/db/migration/V74__pool_member_dates.sql
+@@ -0,0 +1,4 @@
++-- A pool membership may carry a from-date and a to-date (both optional, inclusive): a member whose
++-- dates do not include the sheet's today is left out of the pool.
++ALTER TABLE pool_member ADD COLUMN from_date DATE;
++ALTER TABLE pool_member ADD COLUMN to_date DATE;
