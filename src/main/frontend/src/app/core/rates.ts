@@ -14,6 +14,13 @@ export interface Rate {
   to: string | null;
 }
 
+/** What a candidate rate would change: how many open and pending claims would show a different
+ *  due, and the sum of the differences as two-decimal text (negative when lower). */
+export interface RatePreview {
+  count: number;
+  diff: string;
+}
+
 /** The percent of a grade's rate in force on a day: the rate with the latest from-date on or
  *  before it, or else the one with no from-date; undefined when the day is before every rate, or
  *  after the to-date of that rate. */
@@ -75,6 +82,15 @@ export class Rates {
     if (!sheetId || !user) throw new Error('no sheet loaded');
     return firstValueFrom(
       this.http.put<Rate>(`${this.url(sheetId)}/${grade}`, { pct, from, to }, { headers: { 'X-User': user } }),
+    );
+  }
+
+  /** Preview a candidate rate applying to a grade on every date; nothing is saved. */
+  preview(grade: Grade, pct: string): Promise<RatePreview> {
+    const sheetId = this.session.sheetId();
+    if (!sheetId) throw new Error('no sheet loaded');
+    return firstValueFrom(
+      this.http.get<RatePreview>(`${this.url(sheetId)}/${grade}/preview`, { params: { pct } }),
     );
   }
 

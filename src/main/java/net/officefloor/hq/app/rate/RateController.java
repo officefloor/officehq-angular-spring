@@ -19,6 +19,7 @@ import org.springframework.web.bind.annotation.PutMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestHeader;
 import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
 @RestController
@@ -67,6 +68,20 @@ public class RateController {
             LocalDate asOf) {
         List<Rate> rates = asOf != null ? history.asOf(sheetId.trim(), asOf).rates() : service.list(sheetId.trim());
         return rates.stream().map(RateView::of).toList();
+    }
+
+    /** What the screen shows of a rate preview: the count and the sum of the differences as text with
+     *  two decimals. */
+    public record PreviewView(int count, String diff) {
+    }
+
+    /** Preview a candidate rate for a grade (see {@link RateService#preview}); nothing is saved. */
+    @GetMapping("/{grade}/preview")
+    public PreviewView preview(@PathVariable @NotBlank @Size(max = 100) String sheetId,
+            @PathVariable @Pattern(regexp = "[ABC]") String grade,
+            @RequestParam @NotNull @Pattern(regexp = "\\s*\\d{1,5}(\\.\\d{1,2})?\\s*") String pct) {
+        RateService.Preview preview = service.preview(sheetId.trim(), grade, new BigDecimal(pct.trim()).setScale(2));
+        return new PreviewView(preview.count(), preview.diff().toPlainString());
     }
 
     @PutMapping("/{grade}")

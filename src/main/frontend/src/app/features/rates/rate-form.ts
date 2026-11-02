@@ -1,7 +1,7 @@
 import { Component, computed, inject, input, output, signal } from '@angular/core';
 import { FormControl, FormGroup, ReactiveFormsModule } from '@angular/forms';
 import { Grade } from '../../core/people';
-import { PCT, Rate, Rates, pctOn } from '../../core/rates';
+import { PCT, Rate, RatePreview, Rates, pctOn } from '../../core/rates';
 import { Session } from '../../core/session';
 
 // The rates for each grade on the sheet, the one in force on the sheet's today, and the form that
@@ -28,6 +28,26 @@ import { Session } from '../../core/session';
         <button type="submit" data-testid="rate-form-submit">Set rate</button>
         @if (error()) {
           <p role="alert" data-testid="rate-form-error">{{ error() }}</p>
+        }
+      </form>
+      <form data-testid="rate-preview-form" [formGroup]="previewForm" (ngSubmit)="preview()">
+        <label for="rate-preview-grade">Preview grade</label>
+        <select id="rate-preview-grade" data-testid="rate-preview-grade" formControlName="grade">
+          @for (g of grades; track g) {
+            <option [value]="g">{{ g }}</option>
+          }
+        </select>
+        <label for="rate-preview-pct">Candidate rate (%)</label>
+        <input id="rate-preview-pct" data-testid="rate-preview-pct" formControlName="pct" inputmode="decimal" />
+        <button type="submit" data-testid="rate-preview">Preview</button>
+        @if (previewError()) {
+          <p role="alert" data-testid="rate-preview-error">{{ previewError() }}</p>
+        }
+        @if (previewResult(); as r) {
+          <p aria-live="polite">
+            Claims that would change: <span data-testid="rate-preview-count">{{ r.count }}</span>;
+            difference: <span data-testid="rate-preview-diff">{{ r.diff }}</span>
+          </p>
         }
       </form>
       <table data-testid="rates-current">
@@ -82,6 +102,15 @@ export class RateForm {
     from: new FormControl('', { nonNullable: true }),
     to: new FormControl('', { nonNullable: true }),
   });
+  protected readonly previewForm = new FormGroup({
+    grade: new FormControl<Grade>('A', { nonNullable: true }),
+    pct: new FormControl('', { nonNullable: true }),
+  });
+  protected readonly previewError = signal('');
+  /** The last preview's result; cleared while a preview runs and when the preview form changes. */
+  protected readonly previewResult = signal<RatePreview | null>(null);
+  /** Whether a preview is waiting for its answer: a second one meanwhile is ignored. */
+  private previewing = false;
   /** Each grade's rate in force on the sheet's today; a grade with none is missing. */
   protected readonly current = computed(() => {
     const today = this.session.today();
@@ -96,6 +125,33 @@ export class RateForm {
 
   constructor() {
     this.form.valueChanges.subscribe(() => this.error.set(''));
+    this.previewForm.valueChanges.subscribe(() => {
+      this.previewError.set('');
+      this.previewResult.set(null);
+    });
+  }
+
+  protected async preview(): Promise<void> {
+    if (this.previewing) return;
+    this.previewError.set('');
+    this.previewResult.set(null);
+    const { grade, pct } = this.previewForm.getRawValue();
+    if (!this.grades.includes(grade)) {
+      this.previewError.set('Choose a grade of A, B or C.');
+      return;
+    }
+    if (!PCT.test(pct.trim())) {
+      this.previewError.set('Enter a rate of 0.00 or more, with up to two decimals.');
+      return;
+    }
+    this.previewing = true;
+    try {
+      this.previewResult.set(await this.api.preview(grade, pct.trim()));
+    } catch {
+      this.previewError.set('The preview could not be made.');
+    } finally {
+      this.previewing = false;
+    }
   }
 
   protected async submit(): Promise<void> {
