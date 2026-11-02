@@ -1,0 +1,202 @@
+diff --git a/src/main/frontend/src/app/features/claims/claims.ts b/src/main/frontend/src/app/features/claims/claims.ts
+index 0e7d64d5c..f431f5ae9 100644
+--- a/src/main/frontend/src/app/features/claims/claims.ts
++++ b/src/main/frontend/src/app/features/claims/claims.ts
+@@ -71,6 +71,8 @@ export interface Claim {
+   reviewOn: string | null;
+   /** Whether a steward waived its late charge; from the day it was waived on it bears none. */
+   waived: boolean;
++  /** Whether it is held: while open and not bound by a statement it is kept out of the live totals. */
++  held: boolean;
+   /** The sheet's today (yyyy-mm-dd) its late charge was waived on; null unless waived. */
+   waivedOn: string | null;
+   /** The number of the bulk settle batch that settled it; null when settled one at a time or not settled. */
+@@ -380,6 +382,7 @@ function notEditable(status: ClaimStatus | undefined): string {
+           <span>Reminded <span data-testid="claim-reminded">{{ c.remindedOn ?? '' }}</span></span>
+           <span>Batch <span data-testid="claim-batch">{{ c.batch ?? '' }}</span></span>
+           <span>Waived <span data-testid="claim-waived">{{ c.waived ? 'yes' : 'no' }}</span></span>
++          <span>Held <span data-testid="claim-held">{{ c.held ? 'yes' : 'no' }}</span></span>
+           <ol [attr.aria-label]="'Status log of claim of ' + c.amount + ' on ' + c.date">
+             @for (line of c.log; track $index) {
+               <li data-testid="claim-log-line">{{ line.status }} by {{ line.by }} on {{ line.date }} due={{ line.due ?? na }}</li>
+@@ -455,6 +458,8 @@ function notEditable(status: ClaimStatus | undefined): string {
+                   [attr.aria-label]="'Add a proof to claim of ' + c.amount + ' on ' + c.date">Add proof</button>
+           <button type="button" data-testid="claim-remind" (click)="remind(c)"
+                   [attr.aria-label]="'Remind claim of ' + c.amount + ' on ' + c.date">Remind</button>
++          <button type="button" data-testid="claim-hold" (click)="hold(c)"
++                  [attr.aria-label]="(c.held ? 'Release' : 'Hold') + ' claim of ' + c.amount + ' on ' + c.date">{{ c.held ? 'Release' : 'Hold' }}</button>
+           <button type="button" data-testid="claim-waive" (click)="waive(c)"
+                   [attr.aria-label]="'Waive the late charge of claim of ' + c.amount + ' on ' + c.date">Waive late charge</button>
+           <button type="button" data-testid="claim-timeline" (click)="showTimeline(c)"
+@@ -894,6 +899,27 @@ export class Claims {
+     }
+   }
+ 
++  /** Hold an OPEN or PENDING claim, or release it when held; a claim in any other status is refused. */
++  protected async hold(c: Claim): Promise<void> {
++    this.claimError.set(null);
++    const sheet = this.session.sheetId();
++    if (!sheet) return;
++    const url = `/api/sheets/${encodeURIComponent(sheet)}/claims/${c.id}/hold`;
++    try {
++      const claim = await firstValueFrom(this.http.post<Claim>(url, null, { headers: this.headers() }));
++      if (this.session.sheetId() !== sheet) return;
++      this.saved.emit(claim);
++    } catch (e) {
++      if (this.session.sheetId() !== sheet) return;
++      const message = !(e instanceof HttpErrorResponse)
++        ? 'Could not hold or release that claim.'
++        : e.status === 403
++          ? 'You cannot hold or release a claim.'
++          : `A ${c.status} claim cannot be held or released; only an OPEN or PENDING one can.`;
++      this.claimError.set({ id: c.id, message });
++    }
++  }
++
+   /**
+    * A steward waives the late charge of an OPEN or PENDING claim; anyone else, a claim in any other status,
+    * or one already waived is refused.
+diff --git a/src/main/frontend/src/app/features/people/people.ts b/src/main/frontend/src/app/features/people/people.ts
+index d0655705d..f82b96115 100644
+--- a/src/main/frontend/src/app/features/people/people.ts
++++ b/src/main/frontend/src/app/features/people/people.ts
+@@ -822,9 +822,9 @@ export class People {
+     const today = this.session.today();
+     return new Set(this.people().filter((p) => today !== null && p.retiredFrom !== null && p.retiredFrom <= today).map((p) => p.id));
+   });
+-  /** Whether the claim's person keeps it out of the live totals while open: dated within a hold of theirs, or they are retired on the sheet's today. */
++  /** Whether the claim is kept out of the live totals while open: held itself, dated within a hold of its person's, or they are retired on the sheet's today. */
+   private keptOut(c: Claim): boolean {
+-    return this.retiredTodayIds().has(c.personId) || (this.holdsById().get(c.personId) ?? []).some((h) => holdContains(h, c.date));
++    return c.held || this.retiredTodayIds().has(c.personId) || (this.holdsById().get(c.personId) ?? []).some((h) => holdContains(h, c.date));
+   }
+   /** Whether the claim counts in the live totals: OPEN, PENDING or SETTLED, less open ones kept out by a hold or retirement and not bound, and deferred ones. */
+   private readonly counts = (c: Claim): boolean => countsFor(c, this.keptOut(c), this.session.today());
+diff --git a/src/main/java/net/officefloor/hq/app/claim/Claim.java b/src/main/java/net/officefloor/hq/app/claim/Claim.java
+index 040ba83c3..d50fc078e 100644
+--- a/src/main/java/net/officefloor/hq/app/claim/Claim.java
++++ b/src/main/java/net/officefloor/hq/app/claim/Claim.java
+@@ -188,6 +188,10 @@ public class Claim {
+     @Column(name = "waived", nullable = false)
+     private boolean waived;
+ 
++    /** Whether it is held: while open and not bound by a statement it is kept out of the live totals. */
++    @Column(name = "held", nullable = false)
++    private boolean held;
++
+     /** The sheet's today when its late charge was waived; none unless waived. */
+     @Column(name = "waived_on")
+     private LocalDate waivedOn;
+@@ -427,6 +431,9 @@ public class Claim {
+     public void setReviewOn(LocalDate reviewOn) { this.reviewOn = reviewOn; }
+     /** Record that a reminder escalated it. */
+     public void escalate() { this.escalated = true; }
++    public boolean isHeld() { return held; }
++    /** Hold it, or release it when held. */
++    public void toggleHeld() { this.held = !held; }
+     public boolean isWaived() { return waived; }
+     public LocalDate getWaivedOn() { return waivedOn; }
+     /** Waive its late charge on the sheet's today. */
+diff --git a/src/main/java/net/officefloor/hq/app/claim/ClaimController.java b/src/main/java/net/officefloor/hq/app/claim/ClaimController.java
+index 43ca3620c..158b116cd 100644
+--- a/src/main/java/net/officefloor/hq/app/claim/ClaimController.java
++++ b/src/main/java/net/officefloor/hq/app/claim/ClaimController.java
+@@ -36,7 +36,7 @@ public class ClaimController {
+      * when bound by its person's last statement, to the due it had then (null when it had none). A
+      * correction has the number of the claim it corrects (null for any other claim). Its status log
+      * is oldest first. Locked by the user whose open editor holds it (null when none). A late entry
+-     * when added while its period was soft-closed. Reminded on the last day a reminder was written (null when none). Its external reference is null when it has none. Its tags are sorted (empty when none). Its void reason is null unless voided with one. Its comments are oldest first. Its batch is the number of the bulk settle that settled it (null when none). Review on is the sheet's today it went to REVIEW (null when it never did). Waived when a steward waived its late charge, on the sheet's today waived on (null unless waived).
++     * when added while its period was soft-closed. Reminded on the last day a reminder was written (null when none). Its external reference is null when it has none. Its tags are sorted (empty when none). Its void reason is null unless voided with one. Its comments are oldest first. Its batch is the number of the bulk settle that settled it (null when none). Review on is the sheet's today it went to REVIEW (null when it never did). Waived when a steward waived its late charge, on the sheet's today waived on (null unless waived). Held while held.
+      */
+     public record ClaimView(Long id, Long personId, String amount, LocalDate date, String note, ClaimStatus status,
+             String number, String settledDue, String openedBy, boolean stated, String statedDue, String corrects,
+@@ -44,7 +44,7 @@ public class ClaimController {
+             int proofs, String splitFrom, String lockedBy, boolean lateEntry, LocalDate remindedOn,
+             String ref, List<String> tags, String voidReason, List<CommentView> comments,
+             Integer batch, List<LineView> lines, Long added, LocalDate reviewOn, boolean waived,
+-            LocalDate waivedOn, int proofsReceipt, int proofsPhoto) {
++            LocalDate waivedOn, int proofsReceipt, int proofsPhoto, boolean held) {
+         public static ClaimView of(Claim claim) {
+             return new ClaimView(claim.getId(), claim.getPersonId(), claim.getAmount().toPlainString(),
+                     claim.getDate(), claim.getNote(), claim.getStatus(), claim.getNumber(),
+@@ -59,7 +59,7 @@ public class ClaimController {
+                     claim.getSettleBatch(),
+                     claim.getLines().stream().map(LineView::of).toList(), claim.getAdded(),
+                     claim.getReviewOn(), claim.isWaived(), claim.getWaivedOn(),
+-                    claim.getProofsReceipt(), claim.getProofsPhoto());
++                    claim.getProofsReceipt(), claim.getProofsPhoto(), claim.isHeld());
+         }
+     }
+ 
+@@ -429,6 +429,14 @@ public class ClaimController {
+         return ClaimView.of(service.redate(sheetId, user, id, request.date()));
+     }
+ 
++    @PostMapping("/claims/{id}/hold")
++    public ClaimView hold(
++            @PathVariable @Size(max = 100) @Pattern(regexp = "[A-Za-z0-9._-]+") String sheetId,
++            @PathVariable Long id,
++            @RequestHeader("X-User") @NotBlank @Size(max = 100) String user) {
++        return ClaimView.of(service.toggleHold(sheetId, user, id));
++    }
++
+     @PostMapping("/claims/{id}/waive")
+     public ClaimView waive(
+             @PathVariable @Size(max = 100) @Pattern(regexp = "[A-Za-z0-9._-]+") String sheetId,
+diff --git a/src/main/java/net/officefloor/hq/app/claim/ClaimService.java b/src/main/java/net/officefloor/hq/app/claim/ClaimService.java
+index 4dec8a510..4093b7de2 100644
+--- a/src/main/java/net/officefloor/hq/app/claim/ClaimService.java
++++ b/src/main/java/net/officefloor/hq/app/claim/ClaimService.java
+@@ -615,6 +615,24 @@ public class ClaimService {
+         return saved;
+     }
+ 
++    /**
++     * Hold an OPEN or PENDING claim, or release it when held: while held and not bound by a statement it is
++     * kept out of the live totals, as a held person's claims are. Refused for a claim in any other status.
++     */
++    @Transactional
++    public Claim toggleHold(String sheetId, String user, Long id) {
++        // The snapshot locks the sheet first, so the claim is read once no other change is under way.
++        RollupService.Snapshot before = rollup.snapshot(sheetId);
++        Claim claim = claims.findByIdAndSheetId(id, sheetId).orElseThrow(ClaimNotFoundException::new);
++        if (!claim.getStatus().isOpen()) throw new ClaimStatusRefusedException();
++        Person person = people.findByIdAndSheetId(claim.getPersonId(), sheetId).orElseThrow(PersonNotFoundException::new);
++        claim.toggleHeld();
++        Claim saved = claims.saveAndFlush(claim);
++        record(saved.isHeld() ? "CLAIM_HELD" : "CLAIM_RELEASED", sheetId, user, person, saved);
++        rollup.recordChanges(sheetId, user, before);
++        return saved;
++    }
++
+     /**
+      * A steward waives the late charge of an OPEN or PENDING claim: from the sheet's today on it bears none,
+      * whether overdue or not. Refused for anyone else, a claim in any other status, or one already waived.
+diff --git a/src/main/java/net/officefloor/hq/app/person/Person.java b/src/main/java/net/officefloor/hq/app/person/Person.java
+index ffb2a095e..ccc204e73 100644
+--- a/src/main/java/net/officefloor/hq/app/person/Person.java
++++ b/src/main/java/net/officefloor/hq/app/person/Person.java
+@@ -403,12 +403,12 @@ public class Person {
+     /** Whether their retirement date is reached on the date (the date on or after it). */
+     public boolean retiredOn(LocalDate date) { return retiredFrom != null && date != null && !date.isBefore(retiredFrom); }
+ 
+-    /** Whether an open claim of theirs is kept out of the live totals: dated within a hold, or retired by the sheet's today. */
+-    private boolean keptOut(Claim claim, LocalDate today) { return heldOn(claim.getDate()) || retiredOn(today); }
++    /** Whether an open claim of theirs is kept out of the live totals: held itself, dated within a hold, or retired by the sheet's today. */
++    private boolean keptOut(Claim claim, LocalDate today) { return claim.isHeld() || heldOn(claim.getDate()) || retiredOn(today); }
+ 
+     /**
+      * Whether a claim of theirs counts in the live totals: it counts by its status, unless it is open
+-     * (OPEN or PENDING), dated within a hold or theirs once their retirement date is reached on the
++     * (OPEN or PENDING), held, dated within a hold or theirs once their retirement date is reached on the
+      * sheet's today, and not bound by a statement, or deferred on the sheet's today.
+      */
+     public boolean counts(Claim claim, LocalDate today) {
+diff --git a/src/main/resources/db/migration/V102__claim_held.sql b/src/main/resources/db/migration/V102__claim_held.sql
+new file mode 100644
+index 000000000..73c26b487
+--- /dev/null
++++ b/src/main/resources/db/migration/V102__claim_held.sql
+@@ -0,0 +1,2 @@
++-- An OPEN or PENDING claim may be held: while held and not bound by a statement it is kept out of the live totals.
++ALTER TABLE claim ADD COLUMN held BOOLEAN NOT NULL DEFAULT FALSE;

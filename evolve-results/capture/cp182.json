@@ -1,0 +1,64 @@
+{
+  "checkpoint": 182,
+  "stack": {
+    "repo": "/home/daniel/officehq-angular-spring",
+    "origin": "git@github.com:officefloor/officehq-angular-spring.git",
+    "name": "officehq-angular-spring",
+    "base_ref": "base-empty",
+    "base_commit": "65cb8233ea38b2dfa6cfd18709e30cd18fdf3250"
+  },
+  "checkpoint_id": "cp182_claim-hold",
+  "phase": "late",
+  "type": "additive",
+  "mutates": [],
+  "replaced_tests": [],
+  "request": {
+    "spec": "An OPEN or PENDING claim can be held and released with a toggle on the claim (CLAIM_HELD and\nCLAIM_RELEASED naming the claim; any other status is refused with an error on the claim). A held\nclaim leaves every live total exactly as a held person's claims do (a figure bound by a statement\nstays in). Show held yes/no on the claim.\n",
+    "prompt": "You are implementing ONE change to this application.\n\nFIRST read AGENTS.md \u2014 it states the working rules and how the app is tested, and sends you to\nDESIGN.md for the app's stack and conventions. Follow both.\n\nTHE CHANGE REQUEST:\nAn OPEN or PENDING claim can be held and released with a toggle on the claim (CLAIM_HELD and\nCLAIM_RELEASED naming the claim; any other status is refused with an error on the claim). A held\nclaim leaves every live total exactly as a held person's claims do (a figure bound by a statement\nstays in). Show held yes/no on the claim.\n\nYour work is verified by an automated Playwright UI test already installed under e2e/specs/.\nRead that spec: it declares the exact data-testid anchors, values, test data and any audit\nrecords it expects \u2014 match them. Run `bin/e2e` to build the app, start it, and run the test as\nyou work; iterate until it passes. Change whatever the request needs across the app \u2014 its stored\ndata, its server and its front end. Do NOT edit bin/build, bin/start, bin/stop, bin/e2e,\nAGENTS.md, CLAUDE.md, DESIGN.md, e2e/support/ or the test spec.\n"
+  },
+  "commit_sha": "6a3f2420f24319aa2dd57e6dab6e3ae1dcbb95fe",
+  "reset_sha": "",
+  "preagent_sha": "ee6e29d991aebfcb242db8d9d931565358fe0b15",
+  "prev_sha": "ee6e29d991aebfcb242db8d9d931565358fe0b15",
+  "base_sha": "65cb8233ea38b2dfa6cfd18709e30cd18fdf3250",
+  "agent": {
+    "ok": true,
+    "cost_usd": 1.0912291999999997,
+    "input_tokens": 48,
+    "output_tokens": 10245,
+    "cache_read_tokens": 1353926,
+    "cache_creation_tokens": 76919,
+    "num_turns": 25,
+    "duration_ms": 320391,
+    "duration_api_ms": 110963,
+    "model": "claude-opus-5-5",
+    "session_id": "0bc7ab76-e26f-45fc-8262-4b8ac69ea318",
+    "stop_reason": "success",
+    "result_text": "An OPEN or PENDING claim can now be held and released with a toggle on the claim, and `bin/e2e` passes all 4 tests.\n\n**How it behaves**\n- Each claim shows **Held yes/no** (`claim-held`) and a **Hold / Release** button (`claim-hold`).\n- Holding writes `CLAIM_HELD` to the audit file and releasing writes `CLAIM_RELEASED`, both naming the claim (person, amount, date, number), followed by any `ROLLUP`/`TOTALS` lines if figures changed.\n- A claim in any other status (e.g. DRAFT) is refused: the error shows on the claim and nothing is stored or audited.\n- A held claim stays out of every live total, the same way a held person's claims do. A figure already bound by a statement stays in. Once the claim is settled or voided the hold no longer affects anything, but it still shows \"yes\".\n\n**Changes**\n- **Stored data:** new migration `V102__claim_held.sql` adds a `held` column to `claim`, and `Claim.java` gets the field.\n- **Totals:** the server and the screen each decide in one place whether a claim is kept out of the totals, and I added \"the claim is held\" to both: `Person.keptOut` on the server and `keptOut` in `people.ts`. So rollups, periods, statements and the screen's totals all follow it.\n- **Server:** `ClaimService.toggleHold` and `POST /api/sheets/{sheetId}/claims/{id}/hold`, and `ClaimView` now includes `held`.\n- **Front end:** the field, the toggle and its error message are in `claims.ts`.\n\n**Not covered:** a statement made \"as of\" an earlier date ignores claim holds. It uses the person's hold history, and claims keep no history of when they were held. The tests don't hit this case.",
+    "error": "",
+    "attempts": [
+      {
+        "ok": true,
+        "limit_reached": false,
+        "retryable": false,
+        "timed_out": false,
+        "cost_usd": 1.0912291999999997,
+        "num_turns": 25,
+        "duration_ms": 320391,
+        "duration_api_ms": 110963,
+        "error": ""
+      }
+    ]
+  },
+  "agent_stream_file": "cp182.agent.jsonl",
+  "agent_diff_file": "cp182.agent.diff",
+  "build_log_file": null,
+  "tests": {
+    "gated": false,
+    "queued": true
+  },
+  "probe": null,
+  "pinned_touched": [],
+  "acceptance_touched": [],
+  "impact_gate": null
+}
