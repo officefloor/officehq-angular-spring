@@ -1,0 +1,132 @@
+diff --git a/src/main/frontend/src/app/core/claims.ts b/src/main/frontend/src/app/core/claims.ts
+index b4d4e23e9..b101b76ff 100644
+--- a/src/main/frontend/src/app/core/claims.ts
++++ b/src/main/frontend/src/app/core/claims.ts
+@@ -11,7 +11,7 @@ import { Session } from './session';
+ export type ClaimStatus = 'DRAFT' | 'OPEN' | 'PENDING' | 'SETTLED' | 'VOID';
+ 
+ /** A change of status a claim can be asked for. */
+-export type ClaimAction = 'open' | 'settle' | 'void' | 'approve' | 'reject';
++export type ClaimAction = 'open' | 'settle' | 'resettle' | 'void' | 'approve' | 'reject';
+ 
+ /** Whether a claim is open: OPEN, or PENDING approval of its settle. */
+ export function isOpen(c: Claim): boolean {
+diff --git a/src/main/frontend/src/app/features/claims/person-claims.ts b/src/main/frontend/src/app/features/claims/person-claims.ts
+index a21eff089..4da93bda3 100644
+--- a/src/main/frontend/src/app/features/claims/person-claims.ts
++++ b/src/main/frontend/src/app/features/claims/person-claims.ts
+@@ -10,6 +10,7 @@ import { Rate } from '../../core/rates';
+ const REFUSALS: Record<ClaimAction, string> = {
+   open: 'Only a draft claim can be opened.',
+   settle: 'Only an open claim can be settled.',
++  resettle: 'Only a settled claim can be re-settled.',
+   void: 'Only a draft, open or pending claim can be voided.',
+   approve: 'Only a pending claim can be approved.',
+   reject: 'Only a pending claim can be rejected.',
+@@ -30,6 +31,9 @@ function refusal(e: unknown, action: ClaimAction): string {
+   if (e instanceof HttpErrorResponse && e.status === 403 && action === 'settle') {
+     return 'The user who opened a claim cannot settle it.';
+   }
++  if (e instanceof HttpErrorResponse && e.status === 403 && action === 'resettle') {
++    return 'Only a steward can re-settle a claim.';
++  }
+   if (e instanceof HttpErrorResponse && e.status === 403 && (action === 'approve' || action === 'reject')) {
+     return action === 'approve' ? 'Only a steward who did not open the claim can approve it.'
+       : 'Only a steward can reject a claim.';
+@@ -98,6 +102,8 @@ function reassignRefusal(e: unknown): string {
+             [attr.aria-label]="'Open claim of ' + c.amount + ' on ' + c.date">Open</button>
+           <button type="button" data-testid="claim-settle" (click)="act(c, 'settle')"
+             [attr.aria-label]="'Settle claim of ' + c.amount + ' on ' + c.date">Settle</button>
++          <button type="button" data-testid="claim-resettle" (click)="act(c, 'resettle')"
++            [attr.aria-label]="'Re-settle claim of ' + c.amount + ' on ' + c.date">Re-settle</button>
+           <button type="button" data-testid="claim-void" (click)="act(c, 'void')"
+             [attr.aria-label]="'Void claim of ' + c.amount + ' on ' + c.date">Void</button>
+           <button type="button" data-testid="claim-approve" (click)="act(c, 'approve')"
+diff --git a/src/main/java/net/officefloor/hq/app/claim/ClaimController.java b/src/main/java/net/officefloor/hq/app/claim/ClaimController.java
+index 94f90bdc7..d37bd856c 100644
+--- a/src/main/java/net/officefloor/hq/app/claim/ClaimController.java
++++ b/src/main/java/net/officefloor/hq/app/claim/ClaimController.java
+@@ -152,6 +152,13 @@ public class ClaimController {
+         return new BulkSettled(outcome.done(), outcome.refused());
+     }
+ 
++    @PostMapping("/claims/{claimId}/resettle")
++    public ClaimView resettle(@PathVariable @NotBlank @Size(max = 100) String sheetId,
++            @PathVariable long claimId,
++            @RequestHeader("X-User") @NotBlank @Size(max = 100) String user) {
++        return ClaimView.of(service.resettle(sheetId.trim(), user.trim(), claimId));
++    }
++
+     /** The reason a steward gives for rejecting a pending claim. */
+     public record RejectForm(@NotBlank @Size(max = 500) String reason) {
+     }
+diff --git a/src/main/java/net/officefloor/hq/app/claim/ClaimService.java b/src/main/java/net/officefloor/hq/app/claim/ClaimService.java
+index 94e26b387..314d528ea 100644
+--- a/src/main/java/net/officefloor/hq/app/claim/ClaimService.java
++++ b/src/main/java/net/officefloor/hq/app/claim/ClaimService.java
+@@ -178,6 +178,32 @@ public class ClaimService {
+         });
+     }
+ 
++    /** Re-settle a settled claim: its due is fixed again at the figure it would have today as an open
++     *  claim bound by no statement (today's rates, grades, floor and late charge). Refused unless the
++     *  claim is settled, the user is a steward, and the claim's period is open. */
++    @Transactional
++    public Claim resettle(String sheetId, String user, long claimId) {
++        Claim claim = lock(sheetId, claimId);
++        refuseClosed(sheetId, claim.getDate());
++        if (claim.getStatus() != ClaimStatus.SETTLED) {
++            throw new ResponseStatusException(HttpStatus.CONFLICT, "Only a SETTLED claim can be re-settled");
++        }
++        if (!SheetRole.STEWARD.equals(roles.roleOf(sheetId, user))) {
++            throw new ResponseStatusException(HttpStatus.FORBIDDEN, "Only a steward can re-settle a claim");
++        }
++        return rollup.tracking(sheetId, user, () -> {
++            Person person = person(sheetId, claim.getPersonId());
++            BigDecimal old = dues.figure(sheetId, person, claim);
++            BigDecimal now = dues.openFigure(sheetId, person, claim);
++            claim.setSettledDue(now);
++            claim.logStatus(user, sheets.today(sheetId), now);
++            Claim saved = claims.saveAndFlush(claim);
++            audit.recordOnCommit(record("CLAIM_RESETTLED", sheetId, user, person, saved)
++                    + " old=" + dueText(old) + " new=" + dueText(now));
++            return saved;
++        });
++    }
++
+     /** Reject a pending claim for a reason: it is open again, bound again by its person's last
+      *  statement if that statement included it. Refused unless the claim is pending, the user is a
+      *  steward, and the claim's period is open. */
+diff --git a/src/main/java/net/officefloor/hq/app/claim/Dues.java b/src/main/java/net/officefloor/hq/app/claim/Dues.java
+index d96a68a8f..f1bacbf7a 100644
+--- a/src/main/java/net/officefloor/hq/app/claim/Dues.java
++++ b/src/main/java/net/officefloor/hq/app/claim/Dues.java
+@@ -34,6 +34,13 @@ public class Dues {
+         return figure == null ? null : figure.add(lateCharge(sheetId, claim, figure));
+     }
+ 
++    /** The figure a claim would have today as an open claim bound by no statement: its live due with
++     *  the late charge on top while it is overdue; null when there is none. */
++    public BigDecimal openFigure(String sheetId, Person person, Claim claim) {
++        BigDecimal figure = due(sheetId, person, claim);
++        return figure == null ? null : figure.add(lateCharge(sheetId, claim, figure, true));
++    }
++
+     /** The figure a statement binds a claim to: the one its person's last statement bound it to, or
+      *  else its live due (a pending claim is not bound by a statement while it is pending); never
+      *  the late charge, which keeps following the sheet's today. Null when there is none, or when
+@@ -65,8 +72,13 @@ public class Dues {
+      *  made, before today; a correction has none): the late percent of its figure for every full 30 days it is overdue,
+      *  rounded to two decimals by the claim's {@link #rounding}; 0.00 when it is not overdue. */
+     private BigDecimal lateCharge(String sheetId, Claim claim, BigDecimal figure) {
++        return lateCharge(sheetId, claim, figure, claim.getStatus().isOpen());
++    }
++
++    /** The late charge on a claim taken as open or not, as {@link #lateCharge(String, Claim, BigDecimal)}. */
++    private BigDecimal lateCharge(String sheetId, Claim claim, BigDecimal figure, boolean open) {
+         BigDecimal none = BigDecimal.ZERO.setScale(2);
+-        if (!claim.getStatus().isOpen() || claim.isCorrection()) {
++        if (!open || claim.isCorrection()) {
+             return none;
+         }
+         long periods = ChronoUnit.DAYS.between(claim.getDueBy(), sheets.today(sheetId)) / 30;
