@@ -1,0 +1,41 @@
+package net.officefloor.hq.app.statement;
+
+import jakarta.validation.constraints.NotBlank;
+import jakarta.validation.constraints.Size;
+import java.util.List;
+import net.officefloor.hq.app.claim.ClaimController.ClaimView;
+import net.officefloor.hq.app.person.PersonController.PersonView;
+import org.springframework.http.HttpStatus;
+import org.springframework.validation.annotation.Validated;
+import org.springframework.web.bind.annotation.PathVariable;
+import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.RequestHeader;
+import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.ResponseStatus;
+import org.springframework.web.bind.annotation.RestController;
+
+@RestController
+@RequestMapping("/api/sheets/{sheetId}/people/{personId}/statements")
+@Validated
+public class StatementController {
+
+    /** A statement just taken: the person as they now show, and their claims as it bound them. */
+    public record TakenView(PersonView person, List<ClaimView> claims) {
+    }
+
+    private final StatementService service;
+
+    public StatementController(StatementService service) {
+        this.service = service;
+    }
+
+    @PostMapping
+    @ResponseStatus(HttpStatus.CREATED)
+    public TakenView take(@PathVariable @NotBlank @Size(max = 100) String sheetId,
+            @PathVariable long personId,
+            @RequestHeader("X-User") @NotBlank @Size(max = 100) String user) {
+        StatementService.Taken taken = service.take(sheetId.trim(), user.trim(), personId);
+        return new TakenView(PersonView.of(taken.person(), taken.summary()),
+                taken.claims().stream().map(ClaimView::of).toList());
+    }
+}

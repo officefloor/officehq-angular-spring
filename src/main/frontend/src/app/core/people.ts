@@ -1,6 +1,7 @@
 import { HttpClient } from '@angular/common/http';
 import { Injectable, inject } from '@angular/core';
 import { firstValueFrom } from 'rxjs';
+import type { Claim } from './claims';
 import { Session } from './session';
 
 export type Grade = 'A' | 'B' | 'C';
@@ -11,6 +12,19 @@ export interface Person {
   grade: Grade;
   /** Raised each time the person is saved. */
   version: number;
+  /** How many statements were taken of them. */
+  statementCount: number;
+  /** The last statement's due-total as text with two decimals; null when it was n/a or none was taken. */
+  statedTotal: string | null;
+  /** The day (yyyy-mm-dd) the last statement was taken; null when none was. */
+  statementDate: string | null;
+}
+
+/** A statement just taken: the person as they now show, and their claims (newest first) as it
+ *  bound them. */
+export interface Taken {
+  person: Person;
+  claims: Claim[];
 }
 
 export interface PersonForm {
@@ -39,6 +53,15 @@ export class People {
     const { sheetId, user } = this.active();
     return firstValueFrom(
       this.http.put<Person>(`${this.url(sheetId)}/${id}`, { ...form, version }, { headers: { 'X-User': user } }),
+    );
+  }
+
+  /** Take a statement of the person: their due-total now is recorded and each claim of theirs that
+   *  counts is bound to the figure it has now. */
+  statement(id: number): Promise<Taken> {
+    const { sheetId, user } = this.active();
+    return firstValueFrom(
+      this.http.post<Taken>(`${this.url(sheetId)}/${id}/statements`, null, { headers: { 'X-User': user } }),
     );
   }
 

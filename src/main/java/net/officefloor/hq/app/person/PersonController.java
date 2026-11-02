@@ -5,7 +5,11 @@ import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.NotNull;
 import jakarta.validation.constraints.Pattern;
 import jakarta.validation.constraints.Size;
+import java.time.LocalDate;
 import java.util.List;
+import java.util.Map;
+import net.officefloor.hq.app.statement.StatementService;
+import net.officefloor.hq.app.statement.StatementSummary;
 import org.springframework.http.HttpStatus;
 import org.springframework.validation.annotation.Validated;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -24,10 +28,15 @@ import org.springframework.web.server.ResponseStatusException;
 @Validated
 public class PersonController {
 
-    /** What the screen shows of a person. */
-    public record PersonView(long id, String name, String grade, long version) {
-        static PersonView of(Person person) {
-            return new PersonView(person.getId(), person.getName(), person.getGrade(), person.getVersion());
+    /** What the screen shows of a person; with how many statements were taken of them, and the
+     *  last one's due-total (text with two decimals, null when n/a or none) and day (null when none). */
+    public record PersonView(long id, String name, String grade, long version, int statementCount,
+            String statedTotal, LocalDate statementDate) {
+        public static PersonView of(Person person, StatementSummary statements) {
+            return new PersonView(person.getId(), person.getName(), person.getGrade(), person.getVersion(),
+                    statements.count(),
+                    statements.lastDueTotal() == null ? null : statements.lastDueTotal().setScale(2).toPlainString(),
+                    statements.lastTakenOn());
         }
     }
 
@@ -38,14 +47,20 @@ public class PersonController {
     }
 
     private final PersonService service;
+    private final StatementService statements;
 
-    public PersonController(PersonService service) {
+    public PersonController(PersonService service, StatementService statements) {
         this.service = service;
+        this.statements = statements;
     }
 
     @GetMapping
     public List<PersonView> list(@PathVariable @NotBlank @Size(max = 100) String sheetId) {
-        return service.list(sheetId.trim()).stream().map(PersonView::of).toList();
+        String sheet = sheetId.trim();
+        Map<Long, StatementSummary> summaries = statements.summaries(sheet);
+        return service.list(sheet).stream()
+                .map(p -> PersonView.of(p, summaries.getOrDefault(p.getId(), StatementSummary.NONE)))
+                .toList();
     }
 
     @PostMapping
@@ -53,7 +68,8 @@ public class PersonController {
     public PersonView add(@PathVariable @NotBlank @Size(max = 100) String sheetId,
             @RequestHeader("X-User") @NotBlank @Size(max = 100) String user,
             @Valid @RequestBody PersonForm form) {
-        return PersonView.of(service.add(sheetId.trim(), user.trim(), form.name().trim(), form.grade()));
+        return PersonView.of(service.add(sheetId.trim(), user.trim(), form.name().trim(), form.grade()),
+                StatementSummary.NONE);
     }
 
     @PutMapping("/{personId}")
@@ -64,7 +80,8 @@ public class PersonController {
         if (form.version() == null) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "The version of the person edited is required");
         }
-        return PersonView.of(service.edit(sheetId.trim(), user.trim(), personId, form.version(), form.name().trim(),
-                form.grade()));
+        Person saved = service.edit(sheetId.trim(), user.trim(), personId, form.version(), form.name().trim(),
+                form.grade());
+        return PersonView.of(saved, statements.summary(sheetId.trim(), personId));
     }
 }

@@ -1,7 +1,7 @@
 import { HttpErrorResponse } from '@angular/common/http';
 import { Component, computed, effect, inject, signal } from '@angular/core';
 import { FormControl, FormGroup, ReactiveFormsModule } from '@angular/forms';
-import { Claim, Claims, claimDue, counts, sumAmounts } from '../../core/claims';
+import { Claim, Claims, claimDue, counts, fixed, sumAmounts } from '../../core/claims';
 import { Grade, People, Person } from '../../core/people';
 import { Rate, Rates, pctOn } from '../../core/rates';
 import { Session } from '../../core/session';
@@ -39,7 +39,7 @@ import { RateForm } from '../rates/rate-form';
       <p>Due in total: <strong data-testid="rollup-due-total">{{ dueTotal() }}</strong></p>
       <table data-testid="people">
         <thead>
-          <tr><th scope="col">Name</th><th scope="col">Grade</th><th scope="col">Claimed</th><th scope="col">Due</th><th scope="col">Claims</th><th scope="col"><span class="visually-hidden">Actions</span></th></tr>
+          <tr><th scope="col">Name</th><th scope="col">Grade</th><th scope="col">Claimed</th><th scope="col">Due</th><th scope="col">Statements</th><th scope="col">Last stated</th><th scope="col">Stated on</th><th scope="col">Claims</th><th scope="col"><span class="visually-hidden">Actions</span></th></tr>
         </thead>
         <tbody>
           @for (p of people(); track p.id) {
@@ -48,6 +48,9 @@ import { RateForm } from '../rates/rate-form';
               <td data-testid="person-grade">{{ p.grade }}</td>
               <td data-testid="person-claimed">{{ claimed().get(p.id) ?? '0.00' }}</td>
               <td data-testid="person-due-total">{{ dueOf(p) ?? 'n/a' }}</td>
+              <td data-testid="person-statement-count">{{ p.statementCount }}</td>
+              <td data-testid="person-stated-total">{{ p.statementCount > 0 ? (p.statedTotal ?? 'n/a') : '' }}</td>
+              <td data-testid="person-statement-date">{{ p.statementDate ?? '' }}</td>
               <td>
                 <app-person-claims [personId]="p.id" [claims]="claimsByPerson().get(p.id) ?? []"
                   [rates]="rates()" [grade]="p.grade"
@@ -56,6 +59,11 @@ import { RateForm } from '../rates/rate-form';
               <td>
                 <button type="button" [attr.data-testid]="'person-edit-' + p.id" (click)="open(p)"
                   [attr.aria-label]="'Edit ' + p.name">Edit</button>
+                <button type="button" data-testid="person-statement" (click)="statement(p)"
+                  [attr.aria-label]="'Take a statement of ' + p.name">Statement</button>
+                @if (personError()?.id === p.id) {
+                  <p role="alert" data-testid="person-error">{{ personError()?.message }}</p>
+                }
               </td>
             </tr>
           }
@@ -110,6 +118,10 @@ export class PeopleList {
   /** Whether a submit is waiting for its answer: a second submit meanwhile is ignored. */
   private submitting = false;
   protected readonly error = signal('');
+  /** The refusal of the last action taken on a person's row, shown on that row. */
+  protected readonly personError = signal<{ id: number; message: string } | null>(null);
+  /** The people whose statement is waiting for its answer: a second press meanwhile is ignored. */
+  private readonly stating = new Set<number>();
   protected readonly form = new FormGroup({
     name: new FormControl('', { nonNullable: true }),
     grade: new FormControl<Grade>('A', { nonNullable: true }),
@@ -125,16 +137,35 @@ export class PeopleList {
       this.people.set([]);
       this.claims.set([]);
       this.rates.set([]);
+      this.personError.set(null);
       this.reset();
       if (sheetId) void this.reload(sheetId);
     });
   }
 
   protected open(p: Person): void {
+    this.personError.set(null);
     this.editing.set(p.id);
     this.version = p.version;
     this.form.setValue({ name: p.name, grade: p.grade });
     this.error.set('');
+  }
+
+  /** Take a statement of the person, then show them and their claims as it left them. */
+  protected async statement(p: Person): Promise<void> {
+    if (this.stating.has(p.id)) return;
+    this.stating.add(p.id);
+    this.personError.set(null);
+    try {
+      const taken = await this.api.statement(p.id);
+      this.people.update((ps) => ps.map((x) => (x.id === taken.person.id ? taken.person : x)));
+      const byId = new Map(taken.claims.map((c) => [c.id, c]));
+      this.claims.update((cs) => [...cs.filter((c) => !byId.has(c.id)), ...taken.claims].sort((a, b) => b.id - a.id));
+    } catch {
+      this.personError.set({ id: p.id, message: 'The statement could not be taken.' });
+    } finally {
+      this.stating.delete(p.id);
+    }
   }
 
   protected cancel(): void {
@@ -212,10 +243,10 @@ export class PeopleList {
   }
 
   /** A person's due-total: the sum of the due figures of their open and settled claims. Null (n/a)
-   *  when their grade has no rate on the sheet's today and no settled claim keeps a figure. */
+   *  when their grade has no rate on the sheet's today and no settled or stated claim keeps a figure. */
   protected dueOf(p: Person): string | null {
     const counted = (this.claimsByPerson().get(p.id) ?? []).filter(counts);
-    if (!this.pctOf().has(p.grade) && !counted.some((c) => c.status === 'SETTLED' && c.settledDue !== null)) {
+    if (!this.pctOf().has(p.grade) && !counted.some(fixed)) {
       return null;
     }
     const figures = counted.map((c) => claimDue(c, this.rates(), p.grade)).filter((d): d is string => d !== null);

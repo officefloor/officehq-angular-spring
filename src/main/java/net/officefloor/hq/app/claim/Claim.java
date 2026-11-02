@@ -51,6 +51,15 @@ public class Claim {
     @Column(name = "opened_by")
     private String openedBy;
 
+    /** Whether the person's last statement bound this claim to the due it had then. */
+    @Column(name = "stated", nullable = false)
+    private boolean stated;
+
+    /** The due the last statement bound the claim to; null when unbound, or bound with no rate
+     *  (its due then stays live). */
+    @Column(name = "stated_due", precision = 14, scale = 2)
+    private BigDecimal statedDue;
+
     protected Claim() {
     }
 
@@ -128,5 +137,19 @@ public class Claim {
 
     public void setOpenedBy(String openedBy) {
         this.openedBy = openedBy;
+    }
+
+    public boolean isStated() {
+        return stated;
+    }
+
+    public BigDecimal getStatedDue() {
+        return statedDue;
+    }
+
+    /** Bind the claim to a due (null: none), or unbind it. */
+    public void bind(boolean stated, BigDecimal statedDue) {
+        this.stated = stated;
+        this.statedDue = stated ? statedDue : null;
     }
 }

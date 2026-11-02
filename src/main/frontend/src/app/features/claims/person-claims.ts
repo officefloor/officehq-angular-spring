@@ -50,6 +50,7 @@ function refusal(e: unknown, action: ClaimAction): string {
           <span data-testid="claim-due">{{ dueOf(c) }}</span>
           <span data-testid="claim-status">{{ c.status }}</span>
           <span data-testid="claim-opened-by">{{ c.openedBy ?? '' }}</span>
+          <span data-testid="claim-stated">{{ c.stated ? 'yes' : 'no' }}</span>
           <button type="button" data-testid="claim-open" (click)="act(c, 'open')"
             [attr.aria-label]="'Open claim of ' + c.amount + ' on ' + c.date">Open</button>
           <button type="button" data-testid="claim-settle" (click)="act(c, 'settle')"

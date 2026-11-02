@@ -31,6 +31,11 @@ export interface Claim {
   settledDue: string | null;
   /** Who opened the claim; null when it was never opened. That user cannot settle it. */
   openedBy: string | null;
+  /** Whether its person's last statement bound it to the due it had then. */
+  stated: boolean;
+  /** The due the last statement bound it to, as text with two decimals; null when it is unbound,
+   *  or was bound while it had no due (its due then stays live). */
+  statedDue: string | null;
 }
 
 export interface ClaimForm {
@@ -49,10 +54,17 @@ export function sumAmounts(amounts: string[]): string {
   return (cents / 100).toFixed(2);
 }
 
-/** A claim's due figure: the one fixed when it was settled, or else its live due at its person's
- *  grade's rate in force on the claim's date; null when there is neither. */
+/** Whether a claim keeps a figure that rates and grades no longer change: settled or bound by a
+ *  statement. */
+export function fixed(c: Claim): boolean {
+  return c.settledDue !== null || (c.stated && c.statedDue !== null);
+}
+
+/** A claim's due figure: the one fixed when it was settled, or else the one its person's last
+ *  statement bound it to, or else its live due at its person's grade's rate in force on the
+ *  claim's date; null when there is none. */
 export function claimDue(c: Claim, rates: Rate[], grade: Grade): string | null {
-  return c.settledDue ?? due(c.amount, pctOn(rates, grade, c.date));
+  return c.settledDue ?? (c.stated ? c.statedDue : null) ?? due(c.amount, pctOn(rates, grade, c.date));
 }
 
 // The claims people make on the active sheet.

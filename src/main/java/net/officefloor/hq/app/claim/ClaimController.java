@@ -26,14 +26,17 @@ import org.springframework.web.bind.annotation.RestController;
 public class ClaimController {
 
     /** What the screen shows of a claim; the amount, and the due fixed when it was settled (null
-     *  when there is none), as text with two decimals; and who opened it (null when never opened). */
+     *  when there is none), as text with two decimals; who opened it (null when never opened);
+     *  and whether the last statement bound it, with the due it bound (null when none). */
     public record ClaimView(long id, long personId, String amount, LocalDate date, String note,
-            ClaimStatus status, Integer number, String settledDue, String openedBy) {
-        static ClaimView of(Claim claim) {
+            ClaimStatus status, Integer number, String settledDue, String openedBy, boolean stated,
+            String statedDue) {
+        public static ClaimView of(Claim claim) {
             return new ClaimView(claim.getId(), claim.getPersonId(), claim.getAmount().setScale(2).toPlainString(),
                     claim.getDate(), claim.getNote(), claim.getStatus(), claim.getNumber(),
                     claim.getSettledDue() == null ? null : claim.getSettledDue().setScale(2).toPlainString(),
-                    claim.getOpenedBy());
+                    claim.getOpenedBy(), claim.isStated(),
+                    claim.getStatedDue() == null ? null : claim.getStatedDue().setScale(2).toPlainString());
         }
     }
 
