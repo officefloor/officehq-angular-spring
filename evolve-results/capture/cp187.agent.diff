@@ -1,0 +1,294 @@
+diff --git a/src/main/frontend/src/app/features/pools/pools.ts b/src/main/frontend/src/app/features/pools/pools.ts
+index aec72ddc8..4780f83e7 100644
+--- a/src/main/frontend/src/app/features/pools/pools.ts
++++ b/src/main/frontend/src/app/features/pools/pools.ts
+@@ -6,7 +6,13 @@ import { firstValueFrom } from 'rxjs';
+ import { Session } from '../../core/session';
+ import { downloadCsv } from '../../core/csv';
+ 
+-/** A member of a pool: the person or the pool (the other null), its name, its share (two decimals), whether the person was retired when read, whether its dates include the sheet's today, and its cut of the pot (two decimals; null: none). */
++/** A member's cut as it stood at the end of a period (two decimals; null: none). */
++interface PeriodCut {
++  period: string;
++  cut: string | null;
++}
++
++/** A member of a pool: the person or the pool (the other null), its name, its share (two decimals), whether the person was retired when read, whether its dates include the sheet's today, its cut of the pot (two decimals; null: none), and its cut at the end of each period ended by the sheet's today. */
+ interface MemberView {
+   personId: number | null;
+   poolId: number | null;
+@@ -15,6 +21,7 @@ interface MemberView {
+   retired: boolean;
+   active: boolean;
+   cut: string | null;
++  periodCuts: PeriodCut[];
+ }
+ 
+ /** A pool on the sheet, with its members in the order added; a crew's pool has no id and carries the crew's id. */
+@@ -72,6 +79,8 @@ function percent(hundredths: number): string {
+ // across every pool, are added up as their cut total for the people section. Each crew is also a pool, listed
+ // after the pools under its name: its lead and members at equal shares (worked out by the server); its members
+ // come from the crew, so it has no add-member form and is not offered as a member. No pool has a crew's name.
++// For every period whose to-date is on or before the sheet's today, each member also shows its cut as it stood
++// at the end of that period (worked out by the server from the sheet's history; empty when there was none).
+ @Component({
+   selector: 'app-pools',
+   imports: [FigurePipe, ReactiveFormsModule],
+@@ -98,6 +107,9 @@ function percent(hundredths: number): string {
+                 <li [attr.data-testid]="'pool-member-' + p.name + '-' + m.key">
+                   {{ m.poolId === null ? m.name : 'pool:' + m.name }}: <span data-testid="pool-share">{{ m.share | figure }}</span>,
+                   cut <span data-testid="pool-cut">{{ m.shownCut | figure }}</span>
++                  @for (h of m.periodCuts; track h.period) {
++                    , {{ h.period }} <span [attr.data-testid]="'pool-cut-' + h.period">{{ h.cut | figure }}</span>
++                  }
+                 </li>
+               }
+             </ul>
+diff --git a/src/main/java/net/officefloor/hq/app/asof/AsOfGuard.java b/src/main/java/net/officefloor/hq/app/asof/AsOfGuard.java
+index 2b530a118..1253ee58b 100644
+--- a/src/main/java/net/officefloor/hq/app/asof/AsOfGuard.java
++++ b/src/main/java/net/officefloor/hq/app/asof/AsOfGuard.java
+@@ -7,7 +7,6 @@ import java.time.format.DateTimeParseException;
+ import java.util.ArrayList;
+ import java.util.List;
+ import java.util.Map;
+-import java.util.concurrent.ConcurrentHashMap;
+ import java.util.concurrent.locks.ReentrantLock;
+ import net.officefloor.hq.app.sheet.SheetParentRepository;
+ import org.springframework.context.annotation.Configuration;
+@@ -45,8 +44,6 @@ public class AsOfGuard implements WebMvcConfigurer, HandlerInterceptor {
+     private final SheetHistory history;
+     private final SheetParentRepository parents;
+     private final PlatformTransactionManager transactions;
+-    /** One as-of read of a sheet at a time: each puts back the same rows. */
+-    private final Map<String, ReentrantLock> locks = new ConcurrentHashMap<>();
+ 
+     public AsOfGuard(SheetHistory history, SheetParentRepository parents, PlatformTransactionManager transactions) {
+         this.history = history;
+@@ -83,7 +80,7 @@ public class AsOfGuard implements WebMvcConfigurer, HandlerInterceptor {
+         TransactionStatus transaction = null;
+         try {
+             for (String sheet : restored) {
+-                ReentrantLock lock = locks.computeIfAbsent(sheet, id -> new ReentrantLock());
++                ReentrantLock lock = history.lock(sheet);
+                 lock.lock();
+                 held.add(lock);
+             }
+diff --git a/src/main/java/net/officefloor/hq/app/asof/SheetHistory.java b/src/main/java/net/officefloor/hq/app/asof/SheetHistory.java
+index 3816ad9c1..70c88965e 100644
+--- a/src/main/java/net/officefloor/hq/app/asof/SheetHistory.java
++++ b/src/main/java/net/officefloor/hq/app/asof/SheetHistory.java
+@@ -22,6 +22,8 @@ import java.util.Map;
+ import java.util.Set;
+ import java.util.TreeMap;
+ import java.util.TreeSet;
++import java.util.concurrent.ConcurrentHashMap;
++import java.util.concurrent.locks.ReentrantLock;
+ import javax.sql.DataSource;
+ import org.springframework.jdbc.core.ConnectionCallback;
+ import org.springframework.jdbc.core.JdbcTemplate;
+@@ -53,11 +55,18 @@ public class SheetHistory {
+     private final JdbcTemplate jdbc;
+     /** The owned tables, each after every table it references. */
+     private volatile List<Owned> tables;
++    /** One read of a sheet as it stood at a date at a time: each puts back the same rows. */
++    private final Map<String, ReentrantLock> locks = new ConcurrentHashMap<>();
+ 
+     public SheetHistory(DataSource dataSource) {
+         this.jdbc = new JdbcTemplate(dataSource);
+     }
+ 
++    /** The lock held while the sheet is put back as it stood at a date, for as long as that is read. */
++    public ReentrantLock lock(String sheetId) {
++        return locks.computeIfAbsent(sheetId, id -> new ReentrantLock());
++    }
++
+     /** Whether the sheet has been started. */
+     @Transactional(readOnly = true)
+     public boolean exists(String sheetId) {
+diff --git a/src/main/java/net/officefloor/hq/app/pool/PoolController.java b/src/main/java/net/officefloor/hq/app/pool/PoolController.java
+index f5fcd285e..29645b3f0 100644
+--- a/src/main/java/net/officefloor/hq/app/pool/PoolController.java
++++ b/src/main/java/net/officefloor/hq/app/pool/PoolController.java
+@@ -5,8 +5,10 @@ import jakarta.validation.constraints.AssertTrue;
+ import jakarta.validation.constraints.NotBlank;
+ import jakarta.validation.constraints.Pattern;
+ import jakarta.validation.constraints.Size;
++import java.math.BigDecimal;
+ import java.time.LocalDate;
+ import java.util.List;
++import java.util.Objects;
+ import org.springframework.validation.annotation.Validated;
+ import org.springframework.web.bind.annotation.GetMapping;
+ import org.springframework.web.bind.annotation.PathVariable;
+@@ -23,22 +25,40 @@ public class PoolController {
+ 
+     /**
+      * A member of a pool: the person or the pool (the other null), its name, its share (two decimals),
+-     * whether the person is retired, whether its dates include the sheet's today, and its cut of the pot (two decimals, null: none).
++     * whether the person is retired, whether its dates include the sheet's today, its cut of the pot (two decimals, null: none),
++     * and its cut as it stood at the end of each period ended by the sheet's today.
+      */
+     public record MemberView(Long personId, Long poolId, String name, String share, boolean retired,
+-            boolean active, String cut) {}
++            boolean active, String cut, List<PeriodCut> periodCuts) {}
++
++    /** A member's cut as it stood at the end of a period (two decimals, null: none). */
++    public record PeriodCut(String period, String cut) {}
+ 
+     /**
+      * A pool on the sheet, with its members, total share (two decimals) and whether it is balanced; a crew's
+      * pool has no id and carries the crew's id.
+      */
+     public record PoolView(Long id, Long crewId, String name, List<MemberView> members, String totalShare, boolean balanced) {
+-        static PoolView of(PoolService.PoolLine p) {
++        static PoolView of(PoolService.PoolLine p, List<PoolCutHistory.PeriodPools> history) {
+             return new PoolView(p.id(), p.crewId(), p.name(),
+                     p.members().stream().map(m -> new MemberView(m.personId(), m.poolId(), m.name(), m.share().toPlainString(), m.retired(),
+-                            m.active(), m.cut() == null ? null : m.cut().toPlainString())).toList(),
++                            m.active(), text(m.cut()),
++                            history.stream().map(h -> new PeriodCut(h.period(), text(cutThen(p, m, h.pools())))).toList())).toList(),
+                     p.totalShare().toPlainString(), p.balanced());
+         }
++
++        /** The member's cut in the pool as the pools then stood (null: none, or not there then). */
++        private static BigDecimal cutThen(PoolService.PoolLine p, PoolService.Member m, List<PoolService.PoolLine> then) {
++            return then.stream()
++                    .filter(t -> Objects.equals(t.id(), p.id()) && Objects.equals(t.crewId(), p.crewId()))
++                    .flatMap(t -> t.members().stream())
++                    .filter(o -> Objects.equals(o.personId(), m.personId()) && Objects.equals(o.poolId(), m.poolId()))
++                    .findFirst().map(PoolService.Member::cut).orElse(null);
++        }
++
++        private static String text(BigDecimal value) {
++            return value == null ? null : value.toPlainString();
++        }
+     }
+ 
+     /** A pool's name. */
+@@ -57,16 +77,19 @@ public class PoolController {
+     }
+ 
+     private final PoolService service;
++    private final PoolCutHistory history;
+ 
+-    public PoolController(PoolService service) {
++    public PoolController(PoolService service, PoolCutHistory history) {
+         this.service = service;
++        this.history = history;
+     }
+ 
+     @GetMapping
+     public List<PoolView> list(
+             @PathVariable @Size(max = 100) @Pattern(regexp = "[A-Za-z0-9._-]+") String sheetId,
+             @RequestHeader("X-User") @NotBlank @Size(max = 100) String user) {
+-        return service.pools(sheetId).stream().map(PoolView::of).toList();
++        List<PoolCutHistory.PeriodPools> then = history.history(sheetId);
++        return service.pools(sheetId).stream().map(p -> PoolView.of(p, then)).toList();
+     }
+ 
+     @PostMapping
+diff --git a/src/main/java/net/officefloor/hq/app/pool/PoolCutHistory.java b/src/main/java/net/officefloor/hq/app/pool/PoolCutHistory.java
+new file mode 100644
+index 000000000..6e057f724
+--- /dev/null
++++ b/src/main/java/net/officefloor/hq/app/pool/PoolCutHistory.java
+@@ -0,0 +1,98 @@
++package net.officefloor.hq.app.pool;
++
++import jakarta.persistence.EntityManager;
++import java.sql.Connection;
++import java.sql.SQLException;
++import java.sql.Savepoint;
++import java.time.LocalDate;
++import java.util.ArrayList;
++import java.util.List;
++import java.util.concurrent.locks.ReentrantLock;
++import net.officefloor.hq.app.asof.SheetHistory;
++import net.officefloor.hq.app.period.Period;
++import net.officefloor.hq.app.period.PeriodRepository;
++import net.officefloor.hq.app.sheet.Sheet;
++import net.officefloor.hq.app.sheet.SheetRepository;
++import javax.sql.DataSource;
++import org.springframework.jdbc.datasource.DataSourceUtils;
++import org.springframework.stereotype.Service;
++import org.springframework.transaction.PlatformTransactionManager;
++import org.springframework.transaction.support.TransactionSynchronizationManager;
++import org.springframework.transaction.support.TransactionTemplate;
++
++/**
++ * The pools as they stood at the end of each period whose to-date is on or before the sheet's today:
++ * the sheet is put back from its {@link SheetHistory} as it stood at the end of the to-date, with that
++ * date as its today, in a transaction of its own (a savepoint, within an as-of read's transaction) that
++ * is rolled back once its pools are read, so it changes nothing.
++ */
++@Service
++public class PoolCutHistory {
++
++    /** A period's name and the pools as they stood at the end of it. */
++    public record PeriodPools(String period, List<PoolService.PoolLine> pools) {}
++
++    private final SheetRepository sheets;
++    private final PeriodRepository periods;
++    private final PoolService service;
++    private final SheetHistory history;
++    private final EntityManager entities;
++    private final DataSource dataSource;
++    private final TransactionTemplate transaction;
++
++    public PoolCutHistory(SheetRepository sheets, PeriodRepository periods, PoolService service, SheetHistory history,
++            EntityManager entities, DataSource dataSource, PlatformTransactionManager transactions) {
++        this.sheets = sheets;
++        this.periods = periods;
++        this.service = service;
++        this.history = history;
++        this.entities = entities;
++        this.dataSource = dataSource;
++        this.transaction = new TransactionTemplate(transactions);
++    }
++
++    /** Each ended period, by from-date, with the sheet's pools as they stood at the end of it. */
++    public List<PeriodPools> history(String sheetId) {
++        LocalDate today = sheets.findById(sheetId).map(Sheet::getToday).orElse(null);
++        if (today == null || !history.exists(sheetId)) return List.of();
++        List<Period> ended = periods.findBySheetIdOrderByFromDateAsc(sheetId).stream()
++                .filter(p -> !p.getToDate().isAfter(today)).toList();
++        List<PeriodPools> out = new ArrayList<>();
++        for (Period period : ended) out.add(new PeriodPools(period.getName(), asOf(sheetId, period.getToDate())));
++        return out;
++    }
++
++    private List<PoolService.PoolLine> asOf(String sheetId, LocalDate date) {
++        ReentrantLock lock = history.lock(sheetId);
++        lock.lock();
++        try {
++            if (!TransactionSynchronizationManager.isActualTransactionActive()) {
++                return transaction.execute(status -> {
++                    status.setRollbackOnly();
++                    return restoredPools(sheetId, date);
++                });
++            }
++            // within an as-of read: back to where it stood once read
++            Connection con = DataSourceUtils.getConnection(dataSource);
++            Savepoint savepoint = con.setSavepoint();
++            try {
++                return restoredPools(sheetId, date);
++            } finally {
++                con.rollback(savepoint);
++                con.releaseSavepoint(savepoint);
++            }
++        } catch (SQLException e) {
++            throw new IllegalStateException(e);
++        } finally {
++            entities.clear();
++            lock.unlock();
++        }
++    }
++
++    private List<PoolService.PoolLine> restoredPools(String sheetId, LocalDate date) {
++        entities.clear();
++        history.restore(sheetId, date);
++        entities.clear();
++        return service.pools(sheetId);
++    }
++}

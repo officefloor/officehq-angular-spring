@@ -1,0 +1,64 @@
+{
+  "checkpoint": 187,
+  "stack": {
+    "repo": "/home/daniel/officehq-angular-spring",
+    "origin": "git@github.com:officefloor/officehq-angular-spring.git",
+    "name": "officehq-angular-spring",
+    "base_ref": "base-empty",
+    "base_commit": "65cb8233ea38b2dfa6cfd18709e30cd18fdf3250"
+  },
+  "checkpoint_id": "cp187_cut-history",
+  "phase": "late",
+  "type": "additive",
+  "mutates": [],
+  "replaced_tests": [],
+  "request": {
+    "spec": "For every period whose to-date is on or before the sheet's today, each pool member's line shows\nthe member's cut as it stood at the end of that period (the pool, its members, the pot and the\nholds as they were then, with that day as the sheet's today), empty when there was none.\n",
+    "prompt": "You are implementing ONE change to this application.\n\nFIRST read AGENTS.md \u2014 it states the working rules and how the app is tested, and sends you to\nDESIGN.md for the app's stack and conventions. Follow both.\n\nTHE CHANGE REQUEST:\nFor every period whose to-date is on or before the sheet's today, each pool member's line shows\nthe member's cut as it stood at the end of that period (the pool, its members, the pot and the\nholds as they were then, with that day as the sheet's today), empty when there was none.\n\nYour work is verified by an automated Playwright UI test already installed under e2e/specs/.\nRead that spec: it declares the exact data-testid anchors, values, test data and any audit\nrecords it expects \u2014 match them. Run `bin/e2e` to build the app, start it, and run the test as\nyou work; iterate until it passes. Change whatever the request needs across the app \u2014 its stored\ndata, its server and its front end. Do NOT edit bin/build, bin/start, bin/stop, bin/e2e,\nAGENTS.md, CLAUDE.md, DESIGN.md, e2e/support/ or the test spec.\n"
+  },
+  "commit_sha": "44076eb4a257fecd36b8664189002ed7984c6887",
+  "reset_sha": "",
+  "preagent_sha": "44b249441137ec92582db640f23718652bf0e574",
+  "prev_sha": "44b249441137ec92582db640f23718652bf0e574",
+  "base_sha": "65cb8233ea38b2dfa6cfd18709e30cd18fdf3250",
+  "agent": {
+    "ok": true,
+    "cost_usd": 1.227353,
+    "input_tokens": 50,
+    "output_tokens": 17774,
+    "cache_read_tokens": 1333925,
+    "cache_creation_tokens": 75611,
+    "num_turns": 26,
+    "duration_ms": 810569,
+    "duration_api_ms": 166618,
+    "model": "claude-opus-5-5",
+    "session_id": "a5821a9f-ce71-48d5-9b35-321a0e20730c",
+    "stop_reason": "success",
+    "result_text": "Each pool member's line now shows its cut at the end of every period whose to-date is on or before the sheet's today. Each one is in `pool-cut-<period name>`, and it is empty when the member had no cut then. All 4 tests in `bin/e2e` pass and the server log is clean.\n\n**How it works:** the app already saves the whole sheet after every change, and its as-of view uses those saves to show the sheet as it stood on an earlier date. For each ended period, the server puts the sheet back as it stood at the end of the to-date, with that day as today. It works out the pools exactly as it does now, then undoes the put-back, so nothing is written to the store or the audit file.\n\n**The as-of view:** the four tests never use it, so I checked it with a throwaway spec, which I deleted afterwards. My first version failed there: Spring 7 refuses a transaction inside the one the as-of view already has open. Now, when a transaction is already open, the server marks a savepoint on its connection and rolls back to it after the read; otherwise it uses its own transaction and rolls that back. The throwaway spec passed after that change.\n\n**Cost:** each load of the pools now puts the sheet back once per ended period, so a sheet with many ended periods loads its pools more slowly.\n\nChanges:\n- **`pool/PoolCutHistory.java`** (new): works out the pools as they stood at the end of each ended period.\n- **`pool/PoolController.java`**: each member in the response now carries `periodCuts`, a list of period name and cut.\n- **`asof/SheetHistory.java` / `asof/AsOfGuard.java`**: the per-sheet lock that keeps two put-backs of the same sheet from running at once moved into `SheetHistory`. That way the as-of view and the new period history share it.\n- **`features/pools/pools.ts`**: shows a `pool-cut-<period>` value on each member's line.",
+    "error": "",
+    "attempts": [
+      {
+        "ok": true,
+        "limit_reached": false,
+        "retryable": false,
+        "timed_out": false,
+        "cost_usd": 1.227353,
+        "num_turns": 26,
+        "duration_ms": 810569,
+        "duration_api_ms": 166618,
+        "error": ""
+      }
+    ]
+  },
+  "agent_stream_file": "cp187.agent.jsonl",
+  "agent_diff_file": "cp187.agent.diff",
+  "build_log_file": null,
+  "tests": {
+    "gated": false,
+    "queued": true
+  },
+  "probe": null,
+  "pinned_touched": [],
+  "acceptance_touched": [],
+  "impact_gate": null
+}
