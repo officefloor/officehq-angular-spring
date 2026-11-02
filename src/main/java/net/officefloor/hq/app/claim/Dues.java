@@ -24,27 +24,37 @@ public class Dues {
     }
 
     /** The due figure a claim shows and totals: the one fixed when it was settled, or else its
-     *  {@link #bindable} figure with the late charge on top while it is overdue; null when there is
-     *  none. */
+     *  {@link #bindable} rate figure with the late charge on that figure on top while it is overdue,
+     *  at least the sheet's floor in force on the claim's date (a correction has neither); null when
+     *  there is none. */
     public BigDecimal figure(String sheetId, Person person, Claim claim) {
         if (claim.getSettledDue() != null) {
             return claim.getSettledDue();
         }
-        BigDecimal figure = bindable(sheetId, person, claim);
-        return figure == null ? null : figure.add(lateCharge(sheetId, claim, figure));
+        return floored(sheetId, claim, bindable(sheetId, person, claim), claim.getStatus().isOpen());
     }
 
-    /** The figure a claim would have today as an open claim bound by no statement: its live due with
-     *  the late charge on top while it is overdue; null when there is none. */
+    /** The figure a claim would have today as an open claim bound by no statement: its rate figure
+     *  with the late charge on top while it is overdue, at least the floor in force on its date; null
+     *  when there is none. */
     public BigDecimal openFigure(String sheetId, Person person, Claim claim) {
-        BigDecimal figure = due(sheetId, person, claim);
-        return figure == null ? null : figure.add(lateCharge(sheetId, claim, figure, true));
+        return floored(sheetId, claim, due(sheetId, person, claim), true);
     }
 
-    /** The figure a statement binds a claim to: the one its person's last statement bound it to, or
-     *  else its live due (a pending claim is not bound by a statement while it is pending); never
-     *  the late charge, which keeps following the sheet's today. Null when there is none, or when
-     *  the statement bound it to n/a. */
+    /** A rate figure with its late charge (taken as open or not) on top, then at least the sheet's
+     *  floor in force on the claim's date (a correction has no floor); null when the figure is. */
+    private BigDecimal floored(String sheetId, Claim claim, BigDecimal figure, boolean open) {
+        if (figure == null) {
+            return null;
+        }
+        BigDecimal charged = figure.add(lateCharge(sheetId, claim, figure, open));
+        return claim.isCorrection() ? charged : charged.max(sheets.floor(sheetId, claim.getDate()));
+    }
+
+    /** The rate figure a statement binds a claim to: the one its person's last statement bound it to,
+     *  or else its live rate figure (a pending claim is not bound by a statement while it is pending);
+     *  never the late charge, which keeps following the sheet's today, nor the floor, which is applied
+     *  last. Null when there is none, or when the statement bound it to n/a. */
     public BigDecimal bindable(String sheetId, Person person, Claim claim) {
         if (bound(claim) && (claim.getStatedDue() != null || claim.isStatedNa())) {
             return claim.getStatedDue();
@@ -68,15 +78,10 @@ public class Dues {
         return claim.isStated() && claim.getStatus() != ClaimStatus.PENDING;
     }
 
-    /** The late charge on an open (or pending) claim overdue on the sheet's today (its due-by, fixed when it was
+    /** The late charge on a claim taken as open (or pending) or not, overdue on the sheet's today (its due-by, fixed when it was
      *  made, before today; a correction has none): for each full 30 days it is overdue, the late percent in force on
      *  that boundary (its due-by plus 30, 60, 90 ... days) of its figure, rounded to two decimals by the claim's
      *  {@link #rounding}, the charges added up (a boundary whose percent is 0.00 adds nothing); 0.00 when it is not overdue. */
-    private BigDecimal lateCharge(String sheetId, Claim claim, BigDecimal figure) {
-        return lateCharge(sheetId, claim, figure, claim.getStatus().isOpen());
-    }
-
-    /** The late charge on a claim taken as open or not, as {@link #lateCharge(String, Claim, BigDecimal)}. */
     private BigDecimal lateCharge(String sheetId, Claim claim, BigDecimal figure, boolean open) {
         BigDecimal none = BigDecimal.ZERO.setScale(2);
         if (!open || claim.isCorrection() || claim.isDeferredOn(sheets.today(sheetId))) {
@@ -138,15 +143,13 @@ public class Dues {
 
     /** A claim's live due at the rate, in force on the claim's date, for the person's grade in force
      *  on that date: amount
-     *  times pct divided by 100, rounded to two decimals by the claim's {@link #rounding}, and at least the sheet's
-     *  floor in force on the claim's date (a correction has no floor); null when no rate applies on that date. */
+     *  times pct divided by 100, rounded to two decimals by the claim's {@link #rounding} (the floor is
+     *  applied later, see {@link #floored}); null when no rate applies on that date. */
     private BigDecimal due(String sheetId, Person person, Claim claim) {
-        BigDecimal floor = sheets.floor(sheetId, claim.getDate());
         RoundingMode rounding = rounding(sheetId, claim);
         return rates.findInForce(sheetId, person.gradeOn(claim.getDate()), claim.getDate())
                 .map(Rate::getPct)
                 .map(pct -> claim.getAmount().multiply(pct).movePointLeft(2).setScale(2, rounding))
-                .map(due -> claim.isCorrection() ? due : due.max(floor))
                 .orElse(null);
     }
 

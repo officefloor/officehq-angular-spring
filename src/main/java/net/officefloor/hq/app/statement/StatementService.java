@@ -62,7 +62,7 @@ public class StatementService {
     }
 
     /** Take a statement of a person: record their due-total now and bind each of their claims that
-     *  counts in the live totals to the figure it has now, leaving out any late charge; any other
+     *  counts in the live totals to the rate figure it has now, leaving out any late charge and the floor; any other
      *  claim (one that does not count, a deferred one, or an open unbound one dated within one of their
      *  holds) is unbound. */
     @Transactional

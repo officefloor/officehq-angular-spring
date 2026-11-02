@@ -185,17 +185,20 @@ export function roundsHalfUp(c: Claim, late: Lateness): boolean {
   return policy !== null && c.roundsBy < policy;
 }
 
-/** A claim's due figure: the one fixed when it was settled, or else the one its person's last
- *  statement bound it to (n/a when it bound it to n/a), or else its live due at the rate in force on the claim's date for the
- *  grade (the person's grade in force on that date), rounded by the policy date, at least the sheet's floor in force on the claim's date; with the late charge on top while it is overdue (a
- *  settled claim's figure already holds it). A correction has no floor and no late charge. Null when there is none. */
+/** A claim's due figure: the one fixed when it was settled, or else the greater of the sheet's floor in force on the
+ *  claim's date and its rate figure with the late charge on that figure on top while it is overdue. The rate figure is
+ *  the one its person's last statement bound it to (n/a when it bound it to n/a), or else its live due at the rate in
+ *  force on the claim's date for the grade (the person's grade in force on that date), rounded by the policy date (a
+ *  settled claim's figure already holds the charge and the floor). A correction has no floor and no late charge. Null
+ *  when there is none. */
 export function claimDue(c: Claim, rates: Rate[], grade: Grade | undefined, floors: DatedValue[], late: Lateness): string | null {
   if (c.settledDue !== null) return c.settledDue;
   if (bound(c) && c.statedNa) return null;
   const live = due(c.amount, grade === undefined ? undefined : pctOn(rates, grade, c.date), roundsHalfUp(c, late));
-  const floored = live === null || correction(c) ? live : atLeast(live, valueOn(floors, c.date, STARTING_FLOOR));
-  const figure = (bound(c) ? c.statedDue : null) ?? floored;
-  return figure === null ? null : sumAmounts([figure, lateCharge(c, figure, late)]);
+  const figure = (bound(c) ? c.statedDue : null) ?? live;
+  if (figure === null) return null;
+  const charged = sumAmounts([figure, lateCharge(c, figure, late)]);
+  return correction(c) ? charged : atLeast(charged, valueOn(floors, c.date, STARTING_FLOOR));
 }
 
 /** The late charge on an overdue claim: for each full 30 days it is overdue, the late percent in force on that
