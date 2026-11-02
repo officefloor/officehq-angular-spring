@@ -1,0 +1,67 @@
+diff --git a/src/main/java/net/officefloor/hq/app/claim/Dues.java b/src/main/java/net/officefloor/hq/app/claim/Dues.java
+index bdd112b38..1304c91d1 100644
+--- a/src/main/java/net/officefloor/hq/app/claim/Dues.java
++++ b/src/main/java/net/officefloor/hq/app/claim/Dues.java
+@@ -132,8 +132,8 @@ public class Dues {
+     }
+ 
+     /** Whether a statement binds a claim to n/a: its person's last statement bound it to n/a, or
+-     *  else it has no bound figure and no live due because the rate that would apply to it on its
+-     *  date (for the person's grade on that date) has ended. */
++     *  else it has no bound figure and no live due: no rate applies to it on its date (for the
++     *  person's grade on that date), none ever having been set or the one that would having ended. */
+     public boolean bindsNa(String sheetId, Person person, Claim claim) {
+         return bindsNa(now(sheetId), person, claim);
+     }
+@@ -143,8 +143,7 @@ public class Dues {
+         if (bound(claim) && (claim.getStatedDue() != null || claim.isStatedNa())) {
+             return claim.isStatedNa();
+         }
+-        return due(basis, person, claim) == null
+-                && RateRepository.endedBefore(basis.rates(person.gradeOn(claim.getDate())), claim.getDate());
++        return due(basis, person, claim) == null;
+     }
+ 
+     /** Whether a claim is bound by its person's last statement now (a pending claim is not). */
+diff --git a/src/main/java/net/officefloor/hq/app/rollup/Rollup.java b/src/main/java/net/officefloor/hq/app/rollup/Rollup.java
+index 45c3c9eac..c5f377756 100644
+--- a/src/main/java/net/officefloor/hq/app/rollup/Rollup.java
++++ b/src/main/java/net/officefloor/hq/app/rollup/Rollup.java
+@@ -89,6 +89,15 @@ public class Rollup {
+         return result;
+     }
+ 
++    /** Record in the audit one SNAPSHOT line per person (in the order they were added) with their
++     *  due-total as it stands now. */
++    @Transactional(propagation = Propagation.MANDATORY)
++    public void recordSnapshot(String sheetId, String user) {
++        String prefix = " sheet=" + sheetId + " by=" + user;
++        snapshot(sheetId).people().values().forEach(figures -> audit.recordOnCommit(
++                "SNAPSHOT" + prefix + " name=" + figures.name() + " due-total=" + figures.dueTotal()));
++    }
++
+     private Snapshot snapshot(String sheetId) {
+         Map<Long, List<Claim>> byPerson = claims.findBySheetIdOrderByListedDesc(sheetId).stream()
+                 .collect(Collectors.groupingBy(Claim::getPersonId));
+diff --git a/src/main/java/net/officefloor/hq/app/sheet/SheetService.java b/src/main/java/net/officefloor/hq/app/sheet/SheetService.java
+index 5ee96bc50..db2ca045d 100644
+--- a/src/main/java/net/officefloor/hq/app/sheet/SheetService.java
++++ b/src/main/java/net/officefloor/hq/app/sheet/SheetService.java
+@@ -108,7 +108,8 @@ public class SheetService {
+         return sheets.lastUnperiodNumber(id);
+     }
+ 
+-    /** Change the sheet's today, with no record of its own, closing every claim editor held open on it
++    /** Change the sheet's today, first recording each person's due-total on the day being left,
++     *  closing every claim editor held open on it
+      *  when the day is a new one; then, when the sheet has grace days, close
+      *  the open periods they have run out on; then the figures it moves are recorded. */
+     @Transactional
+@@ -117,6 +118,7 @@ public class SheetService {
+         if (!today.equals(sheet.getToday())) {
+             claims.releaseEditLocks(id);
+         }
++        rollup.recordSnapshot(id, user);
+         return rollup.tracking(id, user, () -> {
+             sheet.setToday(today);
+             Sheet saved = sheets.saveAndFlush(sheet);
