@@ -1,0 +1,245 @@
+diff --git a/src/main/frontend/src/app/core/patrons.ts b/src/main/frontend/src/app/core/patrons.ts
+index 0854b5c20..05613623b 100644
+--- a/src/main/frontend/src/app/core/patrons.ts
++++ b/src/main/frontend/src/app/core/patrons.ts
+@@ -10,6 +10,18 @@ export interface Patron {
+   patronId: number;
+ }
+ 
++/** The shares of a person's patrons, in the order they were named: 100.00 split equally, each
++ *  rounded half to even to two decimals, the remainder going to the first named. In hundredths. */
++export function patronShares(count: number): number[] {
++  if (count === 0) return [];
++  const whole = Math.floor(10000 / count);
++  const rest = 10000 - whole * count;
++  const each = 2 * rest > count || (2 * rest === count && whole % 2 === 1) ? whole + 1 : whole;
++  const shares = Array.from({ length: count }, () => each);
++  shares[0] += 10000 - each * count;
++  return shares;
++}
++
+ // The patrons people on the active sheet have named.
+ @Injectable({ providedIn: 'root' })
+ export class Patrons {
+diff --git a/src/main/frontend/src/app/core/rates.ts b/src/main/frontend/src/app/core/rates.ts
+index 0f8095357..19c4dc156 100644
+--- a/src/main/frontend/src/app/core/rates.ts
++++ b/src/main/frontend/src/app/core/rates.ts
+@@ -50,7 +50,17 @@ function hundredths(text: string): bigint {
+  *  in; a negative amount has a negative due. Null when there is no rate. */
+ export function due(amount: string, pct: string | undefined, halfUp = false): string | null {
+   if (pct === undefined) return null;
+-  const signed = hundredths(amount) * hundredths(pct);
++  return weighted(hundredths(amount) * hundredths(pct), halfUp);
++}
++
++/** Amounts each times a percent divided by 100, added up exactly and then rounded to two decimals
++ *  half to even. */
++export function weightedSum(parts: { amount: string; pct: string }[]): string {
++  return weighted(parts.reduce((sum, x) => sum + hundredths(x.amount) * hundredths(x.pct), 0n), false);
++}
++
++/** A product of two hundredths (so in ten-thousandths of a hundredth) rounded to two-decimal text. */
++function weighted(signed: bigint, halfUp: boolean): string {
+   const exact = signed < 0n ? -signed : signed;
+   let cents = exact / 10000n;
+   const rest = exact % 10000n;
+diff --git a/src/main/frontend/src/app/features/people/people-list.ts b/src/main/frontend/src/app/features/people/people-list.ts
+index 3909276cd..bf907ecb3 100644
+--- a/src/main/frontend/src/app/features/people/people-list.ts
++++ b/src/main/frontend/src/app/features/people/people-list.ts
+@@ -2,11 +2,11 @@ import { HttpErrorResponse } from '@angular/common/http';
+ import { Component, computed, effect, inject, signal } from '@angular/core';
+ import { FormControl, FormGroup, ReactiveFormsModule } from '@angular/forms';
+ import { Claim, Claims, QuickAdded, addDays, backingFigure, claimDue, countsAsOf, countsLive, isOpen, keepsActive, overdue, sumAmounts, trimmedSum } from '../../core/claims';
+-import { Patron, Patrons } from '../../core/patrons';
+-import { Pools } from '../../core/pools';
++import { Patron, Patrons, patronShares } from '../../core/patrons';
++import { Pools, formatCents } from '../../core/pools';
+ import { Grade, Leave, People, Person, Taken, gradeOn } from '../../core/people';
+ import { Period, Periods, periodOf } from '../../core/periods';
+-import { Rate, Rates, pctOn } from '../../core/rates';
++import { Rate, Rates, pctOn, weightedSum } from '../../core/rates';
+ import { Session } from '../../core/session';
+ import { DatedValue, Graces, SheetSettings, graceOn, valueOn } from '../../core/settings';
+ import { Watch, Watches } from '../../core/watches';
+@@ -31,7 +31,8 @@ const NO_LEAVE: Leave = { holds: [], retiredFrom: null };
+ // bound them; their settled claims and other open claims still do. From the day the sheet's today
+ // reaches a person's retirement day, none of their open claims a statement did not bind counts either.
+ // A person may name other people on the sheet as their patrons; their backing is the settled
+-// figures of their patrons' settled claims dated within the 90 days up to the sheet's today.
++// figures of their patrons' settled claims dated within the 90 days up to the sheet's today, each
++// patron's weighted by their share (100.00 split equally in the order they were named).
+ // The signed-in user may watch a person: they are told when a claim of theirs is settled.
+ @Component({
+   selector: 'app-people-list',
+@@ -296,13 +297,28 @@ export class PeopleList {
+     for (const x of this.patrons()) by.set(x.personId, [...(by.get(x.personId) ?? []), x.patronId]);
+     return by;
+   });
+-  /** Each person's patrons' names, sorted and joined by a comma and a space, by the person's id. */
++  /** Each person's patrons with their shares (in hundredths), in the order they were named, by the
++   *  person's id. */
++  private readonly patronShares = computed(() => {
++    const by = new Map<number, { id: number; share: number }[]>();
++    for (const [id, ps] of this.patronIds()) {
++      const shares = patronShares(ps.length);
++      by.set(id, ps.map((x, i) => ({ id: x, share: shares[i] })));
++    }
++    return by;
++  });
++  /** Each person's patrons as name and share, sorted by name and joined by a comma and a space, by
++   *  the person's id. */
+   protected readonly patronNames = computed(() => {
+     const names = new Map(this.people().map((p) => [p.id, p.name]));
+     const by = new Map<number, string>();
+-    for (const [id, ps] of this.patronIds()) {
+-      const shown = ps.map((x) => names.get(x)).filter((n): n is string => n !== undefined);
+-      by.set(id, shown.sort((a, b) => (a < b ? -1 : a > b ? 1 : 0)).join(', '));
++    for (const [id, ps] of this.patronShares()) {
++      const shown = ps.flatMap((x) => {
++        const name = names.get(x.id);
++        return name === undefined ? [] : [{ name, share: x.share }];
++      });
++      shown.sort((a, b) => (a.name < b.name ? -1 : a.name > b.name ? 1 : 0));
++      by.set(id, shown.map((x) => `${x.name} ${formatCents(x.share)}`).join(', '));
+     }
+     return by;
+   });
+@@ -662,14 +678,17 @@ export class PeopleList {
+     return this.people().filter((x) => x.id !== p.id);
+   }
+ 
+-  /** A person's backing: the frozen figures of their patrons' settled claims dated within the 90
+-   *  days up to and including the sheet's today, added up; 0.00 with none. */
++  /** A person's backing: over their patrons, the frozen figures of the patron's settled claims
++   *  dated within the 90 days up to and including the sheet's today, added up, times the patron's
++   *  share divided by 100; added up and rounded half to even, 0.00 with none. */
+   protected backingOf(p: Person): string {
+     const today = this.session.today();
+-    return sumAmounts((this.patronIds().get(p.id) ?? [])
+-      .flatMap((id) => this.claimsByPerson().get(id) ?? [])
+-      .map((c) => backingFigure(c, today))
+-      .filter((d): d is string => d !== null));
++    return weightedSum((this.patronShares().get(p.id) ?? []).map((x) => ({
++      amount: sumAmounts((this.claimsByPerson().get(x.id) ?? [])
++        .map((c) => backingFigure(c, today))
++        .filter((d): d is string => d !== null)),
++      pct: formatCents(x.share),
++    })));
+   }
+ 
+   /** Retire the person from the day given, or the sheet's today when it is left blank. */
+diff --git a/src/main/java/net/officefloor/hq/app/watch/Watch.java b/src/main/java/net/officefloor/hq/app/watch/Watch.java
+index f282500d4..99a9905e2 100644
+--- a/src/main/java/net/officefloor/hq/app/watch/Watch.java
++++ b/src/main/java/net/officefloor/hq/app/watch/Watch.java
+@@ -6,6 +6,7 @@ import jakarta.persistence.GeneratedValue;
+ import jakarta.persistence.GenerationType;
+ import jakarta.persistence.Id;
+ import jakarta.persistence.Table;
++import java.time.LocalDate;
+ 
+ /** A user watching a person on a sheet: they are told when the person's claims are settled. */
+ @Entity
+@@ -25,10 +26,15 @@ public class Watch {
+     @Column(name = "user_name", nullable = false)
+     private String user;
+ 
++    /** The sheet's today when the user started watching; null for one started before it was kept. */
++    @Column(name = "started_on")
++    private LocalDate startedOn;
++
+     protected Watch() {
+     }
+ 
+-    public Watch(String sheetId, Long personId, String user) {
++    public Watch(String sheetId, Long personId, String user, LocalDate startedOn) {
++        this.startedOn = startedOn;
+         this.sheetId = sheetId;
+         this.personId = personId;
+         this.user = user;
+@@ -49,4 +55,8 @@ public class Watch {
+     public String getUser() {
+         return user;
+     }
++
++    public LocalDate getStartedOn() {
++        return startedOn;
++    }
+ }
+diff --git a/src/main/java/net/officefloor/hq/app/watch/WatchController.java b/src/main/java/net/officefloor/hq/app/watch/WatchController.java
+index 7228b9ee4..0fdff9a29 100644
+--- a/src/main/java/net/officefloor/hq/app/watch/WatchController.java
++++ b/src/main/java/net/officefloor/hq/app/watch/WatchController.java
+@@ -2,7 +2,10 @@ package net.officefloor.hq.app.watch;
+ 
+ import jakarta.validation.constraints.NotBlank;
+ import jakarta.validation.constraints.Size;
++import java.time.LocalDate;
+ import java.util.List;
++import net.officefloor.hq.app.sheet.AsOfGuard;
++import org.springframework.format.annotation.DateTimeFormat;
+ import org.springframework.http.HttpStatus;
+ import org.springframework.validation.annotation.Validated;
+ import org.springframework.web.bind.annotation.DeleteMapping;
+@@ -32,8 +35,12 @@ public class WatchController {
+ 
+     @GetMapping("/api/sheets/{sheetId}/watches")
+     public List<WatchView> list(@PathVariable @NotBlank @Size(max = 100) String sheetId,
+-            @RequestHeader("X-User") @NotBlank @Size(max = 100) String user) {
+-        return service.list(sheetId.trim(), user.trim()).stream().map(WatchView::of).toList();
++            @RequestHeader("X-User") @NotBlank @Size(max = 100) String user,
++            @RequestHeader(value = AsOfGuard.HEADER, required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE)
++            LocalDate asOf) {
++        return service.list(sheetId.trim(), user.trim()).stream()
++                .filter(w -> asOf == null || w.getStartedOn() == null || !w.getStartedOn().isAfter(asOf))
++                .map(WatchView::of).toList();
+     }
+ 
+     @PostMapping("/api/sheets/{sheetId}/people/{personId}/watch")
+diff --git a/src/main/java/net/officefloor/hq/app/watch/WatchService.java b/src/main/java/net/officefloor/hq/app/watch/WatchService.java
+index fe122edd3..32a0283aa 100644
+--- a/src/main/java/net/officefloor/hq/app/watch/WatchService.java
++++ b/src/main/java/net/officefloor/hq/app/watch/WatchService.java
+@@ -4,6 +4,7 @@ import java.util.List;
+ import net.officefloor.hq.app.Audit;
+ import net.officefloor.hq.app.person.Person;
+ import net.officefloor.hq.app.person.PersonRepository;
++import net.officefloor.hq.app.sheet.SheetService;
+ import org.springframework.dao.DataIntegrityViolationException;
+ import org.springframework.http.HttpStatus;
+ import org.springframework.stereotype.Service;
+@@ -17,11 +18,13 @@ public class WatchService {
+ 
+     private final WatchRepository watches;
+     private final PersonRepository people;
++    private final SheetService sheets;
+     private final Audit audit;
+ 
+-    public WatchService(WatchRepository watches, PersonRepository people, Audit audit) {
++    public WatchService(WatchRepository watches, PersonRepository people, SheetService sheets, Audit audit) {
+         this.watches = watches;
+         this.people = people;
++        this.sheets = sheets;
+         this.audit = audit;
+     }
+ 
+@@ -40,7 +43,7 @@ public class WatchService {
+         }
+         Watch saved;
+         try {
+-            saved = watches.saveAndFlush(new Watch(sheetId, person.getId(), user));
++            saved = watches.saveAndFlush(new Watch(sheetId, person.getId(), user, sheets.today(sheetId)));
+         } catch (DataIntegrityViolationException e) {
+             throw alreadyWatching();
+         }
+diff --git a/src/main/resources/db/migration/V67__watch_started_on.sql b/src/main/resources/db/migration/V67__watch_started_on.sql
+new file mode 100644
+index 000000000..39e40beee
+--- /dev/null
++++ b/src/main/resources/db/migration/V67__watch_started_on.sql
+@@ -0,0 +1,3 @@
++-- The sheet's today when a user started watching a person; null for one started before it was kept
++-- (watched all along).
++ALTER TABLE person_watch ADD COLUMN started_on DATE;
