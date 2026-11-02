@@ -49,16 +49,13 @@ public class HolidayService {
         return saved;
     }
 
-    /** The first day on or after the day that is not a holiday of the sheet. */
+    /** The terms-th business day after the day (see {@link BusinessDays#after}), skipping every
+     *  Saturday, Sunday and holiday of the sheet. */
     @Transactional(readOnly = true)
-    public LocalDate nextWorkingDay(String sheetId, LocalDate day) {
+    public LocalDate businessDaysAfter(String sheetId, LocalDate day, int terms) {
         Set<LocalDate> days = holidays.findBySheetIdOrderByDayAsc(sheetId).stream().map(Holiday::getDay)
                 .collect(Collectors.toSet());
-        LocalDate d = day;
-        while (days.contains(d)) {
-            d = d.plusDays(1);
-        }
-        return d;
+        return BusinessDays.after(day, terms, days);
     }
 
     private static ResponseStatusException alreadyListed() {

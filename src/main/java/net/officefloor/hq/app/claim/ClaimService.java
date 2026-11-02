@@ -593,13 +593,13 @@ public class ClaimService {
         }
     }
 
-    /** The day a claim of the person dated on the day is due by: its date plus the first of the
-     *  person's own terms, their grade's and the sheet's, each as in force on the day; when that falls
-     *  on a holiday of the sheet, the next day that is not one. */
+    /** The day a claim of the person dated on the day is due by: the terms-th business day after its
+     *  date (skipping every Saturday, Sunday and holiday of the sheet), by the first of the person's
+     *  own terms, their grade's and the sheet's, each as in force on the day. */
     private LocalDate dueBy(String sheetId, Person person, LocalDate on) {
         Integer own = person.getTerms();
-        return holidays.nextWorkingDay(sheetId,
-                on.plusDays(own != null ? own : sheets.termsFor(sheetId, person.gradeOn(on), on)));
+        return holidays.businessDaysAfter(sheetId, on,
+                own != null ? own : sheets.termsFor(sheetId, person.gradeOn(on), on));
     }
 
     private Person person(String sheetId, long personId) {

@@ -6,9 +6,8 @@ import { Session } from '../../core/session';
 
 const DAY = /^\d{4}-\d{2}-\d{2}$/;
 
-// The sheet's holidays and the entry a day is added with. A claim whose date plus its terms falls on
-// a holiday is due by the next day that is not one; a holiday added later leaves due-by dates as
-// they are.
+// The sheet's holidays and the entry a day is added with. A claim's terms count business days,
+// skipping every Saturday, Sunday and holiday; a holiday added later leaves due-by dates as they are.
 @Component({
   selector: 'app-holiday-form',
   imports: [ReactiveFormsModule],

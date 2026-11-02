@@ -42,7 +42,7 @@ import {
         <input id="setting-floor" data-testid="setting-floor" formControlName="floor" inputmode="decimal" />
         <label for="setting-floor-from">Floor from (blank: today)</label>
         <input id="setting-floor-from" data-testid="setting-floor-from" type="date" formControlName="floorFrom" />
-        <label for="setting-terms">Terms (days)</label>
+        <label for="setting-terms">Terms (business days)</label>
         <input id="setting-terms" data-testid="setting-terms" formControlName="terms" inputmode="numeric" />
         <label for="setting-terms-from">Terms from (blank: today)</label>
         <input id="setting-terms-from" data-testid="setting-terms-from" type="date" formControlName="termsFrom" />

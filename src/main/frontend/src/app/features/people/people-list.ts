@@ -51,7 +51,7 @@ const NO_LEAVE: Leave = { holds: [], retiredFrom: null };
         </select>
         <label for="person-form-grade-from">Grade from</label>
         <input id="person-form-grade-from" type="date" data-testid="person-form-grade-from" formControlName="gradeFrom" />
-        <label for="person-form-terms">Terms (days)</label>
+        <label for="person-form-terms">Terms (business days)</label>
         <input id="person-form-terms" inputmode="numeric" data-testid="person-form-terms" formControlName="terms" />
         <button type="submit" data-testid="person-form-submit">{{ editing() === null ? 'Add person' : 'Save' }}</button>
         @if (editing() !== null) {

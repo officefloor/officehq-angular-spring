@@ -117,8 +117,8 @@ export interface Claim {
   /** Where the claim is listed: claims are listed newest first by this (a claim moved to another
    *  person is listed as that person's newest). */
   listed: number;
-  /** The day (yyyy-mm-dd) it is due by: fixed when it was made, from its date and the terms of its
-   *  person's grade in force on that date. */
+  /** The day (yyyy-mm-dd) it is due by: fixed when it was made, the terms-th business day after its
+   *  date by the terms of its person's grade in force on that date. */
   dueBy: string;
   /** Its status log, oldest first: a line for each status it has had. */
   log: ClaimLogLine[];
