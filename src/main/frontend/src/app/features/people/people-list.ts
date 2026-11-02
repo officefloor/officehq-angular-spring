@@ -54,6 +54,8 @@ const NO_LEAVE: Leave = { holds: [], retiredFrom: null };
         <input id="person-form-grade-from" type="date" data-testid="person-form-grade-from" formControlName="gradeFrom" />
         <label for="person-form-terms">Terms (business days)</label>
         <input id="person-form-terms" inputmode="numeric" data-testid="person-form-terms" formControlName="terms" />
+        <label for="person-form-contact">Contact</label>
+        <input id="person-form-contact" data-testid="person-form-contact" formControlName="contact" />
         <button type="submit" data-testid="person-form-submit">{{ editing() === null ? 'Add person' : 'Save' }}</button>
         @if (editing() !== null) {
           <button type="button" data-testid="person-form-cancel" (click)="cancel()">Cancel</button>
@@ -137,7 +139,7 @@ const NO_LEAVE: Leave = { holds: [], retiredFrom: null };
       <button type="button" data-testid="export-people" (click)="exportCsv()">Export people (CSV)</button>
       <table data-testid="people">
         <thead>
-          <tr><th scope="col"><span class="visually-hidden">Select</span></th><th scope="col">Name</th><th scope="col">Grade</th><th scope="col">Active</th><th scope="col">Terms</th><th scope="col">Claimed</th><th scope="col">Due</th><th scope="col">Settled due</th><th scope="col">Open due</th>@for (pd of periods(); track pd.id) {<th scope="col">Due in {{ pd.name }}</th>}<th scope="col">Excess</th><th scope="col">Statements</th><th scope="col">Last stated</th><th scope="col">Stated on</th><th scope="col">Retired</th><th scope="col">Retired from</th><th scope="col">On hold</th><th scope="col">Overdue</th><th scope="col">Overdue due</th><th scope="col">Due aged 0–30 days</th><th scope="col">Due aged 31–60 days</th><th scope="col">Due aged 61+ days</th><th scope="col">Patrons</th><th scope="col">Backing</th><th scope="col">Watched</th><th scope="col">Claims</th><th scope="col"><span class="visually-hidden">Actions</span></th></tr>
+          <tr><th scope="col"><span class="visually-hidden">Select</span></th><th scope="col">Name</th><th scope="col">Grade</th><th scope="col">Active</th><th scope="col">Terms</th><th scope="col">Contact</th><th scope="col">Claimed</th><th scope="col">Due</th><th scope="col">Settled due</th><th scope="col">Open due</th>@for (pd of periods(); track pd.id) {<th scope="col">Due in {{ pd.name }}</th>}<th scope="col">Excess</th><th scope="col">Statements</th><th scope="col">Last stated</th><th scope="col">Stated on</th><th scope="col">Retired</th><th scope="col">Retired from</th><th scope="col">On hold</th><th scope="col">Overdue</th><th scope="col">Overdue due</th><th scope="col">Due aged 0–30 days</th><th scope="col">Due aged 31–60 days</th><th scope="col">Due aged 61+ days</th><th scope="col">Patrons</th><th scope="col">Backing</th><th scope="col">Watched</th><th scope="col">Claims</th><th scope="col"><span class="visually-hidden">Actions</span></th></tr>
         </thead>
         <tbody>
           @for (p of shown(); track p.id) {
@@ -151,6 +153,7 @@ const NO_LEAVE: Leave = { holds: [], retiredFrom: null };
               <td data-testid="person-grade">{{ gradeOf(p) }}</td>
               <td data-testid="person-active">{{ activeOf(p) ? 'yes' : 'no' }}</td>
               <td data-testid="person-terms">{{ p.terms ?? '' }}</td>
+              <td data-testid="person-contact">{{ p.contact ?? '' }}</td>
               <td data-testid="person-claimed">{{ claimed().get(p.id) ?? '0.00' }}</td>
               <td data-testid="person-due-total">{{ dueOf(p) ?? 'n/a' }}</td>
               <td data-testid="person-settled-total">{{ settledTotalOf(p) }}</td>
@@ -497,6 +500,8 @@ export class PeopleList {
     gradeFrom: new FormControl('', { nonNullable: true }),
     /** The person's own terms in days; blank for none. */
     terms: new FormControl('', { nonNullable: true }),
+    /** The person's contact; blank for none. */
+    contact: new FormControl('', { nonNullable: true }),
   });
   /** Only the newest read of the sheet may show: a load overtaken by another is dropped. */
   private reads = 0;
@@ -533,7 +538,8 @@ export class PeopleList {
     this.patronError.set(null);
     this.editing.set(p.id);
     this.version = p.version;
-    this.form.setValue({ name: p.name, grade: this.gradeOf(p), gradeFrom: '', terms: p.terms?.toString() ?? '' });
+    this.form.setValue({ name: p.name, grade: this.gradeOf(p), gradeFrom: '', terms: p.terms?.toString() ?? '',
+      contact: p.contact ?? '' });
     this.error.set('');
   }
 
@@ -686,6 +692,7 @@ export class PeopleList {
     this.error.set('');
     const { name, grade, gradeFrom } = this.form.getRawValue();
     const terms = this.form.controls.terms.value.trim();
+    const contact = this.form.controls.contact.value.trim().toLowerCase();
     if (!name.trim()) {
       this.refuse('Enter a name.');
       return;
@@ -702,10 +709,11 @@ export class PeopleList {
     this.submitting = true;
     try {
       if (id === null) {
-        const added = await this.api.add({ name, grade, terms });
+        const added = await this.api.add({ name, grade, terms, contact });
         this.people.update((ps) => [...ps, added]);
       } else {
-        const saved = await this.api.edit(id, this.version, { name, grade, gradeFrom: gradeFrom.trim() || null, terms });
+        const saved = await this.api.edit(id, this.version, { name, grade, gradeFrom: gradeFrom.trim() || null, terms,
+          contact });
         this.people.update((ps) => ps.map((p) => (p.id === saved.id ? saved : p)));
       }
       this.reset();
@@ -714,7 +722,9 @@ export class PeopleList {
         await this.showCurrent(id);
         this.error.set('Someone else saved this person in the meantime. The form now shows their current values.');
       } else if (e instanceof HttpErrorResponse && e.status === 409) {
-        this.refuse('That name is already in use on this sheet.');
+        this.refuse(contact && this.people().some((p) => p.id !== id && p.contact === contact)
+          ? 'That contact is already held by someone on this sheet.'
+          : 'That name or contact is already in use on this sheet.');
       } else {
         this.refuse(id === null ? 'The person could not be added.' : 'The person could not be saved.');
       }
@@ -741,7 +751,7 @@ export class PeopleList {
       this.people.update((ps) => ps.map((p) => (p.id === id ? current : p)));
       this.version = current.version;
       this.form.setValue({ name: current.name, grade: this.gradeOf(current), gradeFrom: this.form.getRawValue().gradeFrom,
-        terms: current.terms?.toString() ?? '' },
+        terms: current.terms?.toString() ?? '', contact: current.contact ?? '' },
         { emitEvent: false });
     } catch {
       // the editor keeps what was typed; reopening it reads the person again
@@ -1017,7 +1027,7 @@ export class PeopleList {
 
   private reset(): void {
     this.editing.set(null);
-    this.form.reset({ name: '', grade: 'A', gradeFrom: '', terms: '' }, { emitEvent: false });
+    this.form.reset({ name: '', grade: 'A', gradeFrom: '', terms: '', contact: '' }, { emitEvent: false });
     this.error.set('');
   }
 

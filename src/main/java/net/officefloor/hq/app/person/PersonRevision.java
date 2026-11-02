@@ -10,8 +10,8 @@ import java.time.LocalDate;
 import java.util.Objects;
 import java.util.stream.Collectors;
 
-/** A revision of a person in their sheet's history: their name, grades, holds, retirement and terms
- *  after a change, recorded on the sheet's today then. Grades are kept as "from:grade" and holds as
+/** A revision of a person in their sheet's history: their name, grades, holds, retirement, terms and
+ *  contact  *  after a change, recorded on the sheet's today then. Grades are kept as "from:grade" and holds as
  *  "from..to" (a day left blank when there is none), separated by ";". */
 @Entity
 @Table(name = "person_revision")
@@ -46,6 +46,9 @@ public class PersonRevision {
     @Column(name = "terms")
     private Integer terms;
 
+    @Column(name = "contact")
+    private String contact;
+
     protected PersonRevision() {
     }
 
@@ -59,12 +62,14 @@ public class PersonRevision {
         this.holds = holds(person);
         this.retiredFrom = person.getRetiredFrom();
         this.terms = person.getTerms();
+        this.contact = person.getContact();
     }
 
     /** Whether the person is now as this revision has them. */
     public boolean matches(Person person) {
         return name.equals(person.getName()) && grades.equals(grades(person)) && holds.equals(holds(person))
-                && Objects.equals(retiredFrom, person.getRetiredFrom()) && Objects.equals(terms, person.getTerms());
+                && Objects.equals(retiredFrom, person.getRetiredFrom()) && Objects.equals(terms, person.getTerms())
+                && Objects.equals(contact, person.getContact());
     }
 
     /** The person as this revision has them, detached: for working out figures only, never saved. */
@@ -80,6 +85,7 @@ public class PersonRevision {
         }
         person.setRetiredFrom(retiredFrom);
         person.setTerms(terms);
+        person.setContact(contact);
         return person;
     }
 

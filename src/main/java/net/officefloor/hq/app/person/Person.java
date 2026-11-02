@@ -50,6 +50,10 @@ public class Person {
     @Column(name = "terms")
     private Integer terms;
 
+    /** The person's contact, trimmed and lower-cased; null when they have none. */
+    @Column(name = "contact")
+    private String contact;
+
     /** Raised each time the person is saved. */
     @Version
     @Column(name = "version", nullable = false)
@@ -162,6 +166,15 @@ public class Person {
 
     public void setTerms(Integer terms) {
         this.terms = terms;
+    }
+
+    /** The person's contact, held by no one else on the sheet; null when they have none. */
+    public String getContact() {
+        return contact;
+    }
+
+    public void setContact(String contact) {
+        this.contact = contact;
     }
 
     public long getVersion() {

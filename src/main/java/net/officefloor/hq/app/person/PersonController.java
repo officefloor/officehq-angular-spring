@@ -8,6 +8,7 @@ import jakarta.validation.constraints.Size;
 import java.time.LocalDate;
 import java.util.Comparator;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 import java.util.Set;
 import net.officefloor.hq.app.history.History;
@@ -37,12 +38,12 @@ public class PersonController {
 
     /** What the screen shows of a person; with how many statements were taken of them, and the
      *  last one's due-total (text with two decimals, null when n/a or none) and day (null when none);
-     *  whether they are retired, and from which day (null when not); and whether they have any hold, and their holds, earliest first; and their own terms in days (null: none).
+     *  whether they are retired, and from which day (null when not); and whether they have any hold, and their holds, earliest first; and their own terms in days (null: none); and their contact (null: none).
      *  The grade is the one in force on the sheet's today; grades are all those recorded, each from
      *  its from-date (null: the beginning of time), earliest first. */
     public record PersonView(long id, String name, String grade, List<GradeView> grades, long version,
             int statementCount, String statedTotal, LocalDate statementDate, boolean retired, LocalDate retiredFrom,
-            boolean held, List<HoldView> holds, Integer terms) {
+            boolean held, List<HoldView> holds, Integer terms, String contact) {
         public static PersonView of(Person person, StatementSummary statements, LocalDate today) {
             return new PersonView(person.getId(), person.getName(), person.gradeOn(today),
                     person.getGrades().stream().map(g -> new GradeView(g.getGrade(), g.getFromDate())).toList(),
@@ -50,7 +51,7 @@ public class PersonController {
                     statements.lastDueTotal() == null ? null : statements.lastDueTotal().setScale(2).toPlainString(),
                     statements.lastTakenOn(), person.isRetired(), person.getRetiredFrom(), person.isHeld(),
                     person.getHolds().stream().map(h -> new HoldView(h.getFromDate(), h.getToDate())).toList(),
-                    person.getTerms());
+                    person.getTerms(), person.getContact());
         }
     }
 
@@ -64,12 +65,17 @@ public class PersonController {
 
     /** The person form: a required name and a grade of A, B or C. An edit also gives the version
      *  of the person its editor loaded, and the day the grade applies from (left out, the sheet's
-     *  today). Terms are the person's own, a whole number of days, 0 or more; blank for none. */
+     *  today). Terms are the person's own, a whole number of days, 0 or more; blank for none. The
+     *  contact is kept trimmed and lower-cased; blank for none. */
     public record PersonForm(@NotBlank @Size(max = 200) String name,
             @NotNull @Pattern(regexp = "[ABC]") String grade, Long version, LocalDate gradeFrom,
-            @Pattern(regexp = "\\s*\\d{0,4}\\s*") String terms) {
+            @Pattern(regexp = "\\s*\\d{0,4}\\s*") String terms, @Size(max = 200) String contact) {
         Integer termsValue() {
             return terms == null || terms.isBlank() ? null : Integer.valueOf(terms.trim());
+        }
+
+        String contactValue() {
+            return contact == null || contact.isBlank() ? null : contact.trim().toLowerCase(Locale.ROOT);
         }
     }
 
@@ -132,7 +138,7 @@ public class PersonController {
             @RequestHeader("X-User") @NotBlank @Size(max = 100) String user,
             @Valid @RequestBody PersonForm form) {
         return PersonView.of(service.add(sheetId.trim(), user.trim(), form.name().trim(), form.grade(),
-                form.termsValue()),
+                form.termsValue(), form.contactValue()),
                 StatementSummary.NONE, sheets.today(sheetId.trim()));
     }
 
@@ -145,7 +151,7 @@ public class PersonController {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "The version of the person edited is required");
         }
         Person saved = service.edit(sheetId.trim(), user.trim(), personId, form.version(), form.name().trim(),
-                form.grade(), form.gradeFrom(), form.termsValue());
+                form.grade(), form.gradeFrom(), form.termsValue(), form.contactValue());
         return PersonView.of(saved, statements.summary(sheetId.trim(), personId), sheets.today(sheetId.trim()));
     }
 

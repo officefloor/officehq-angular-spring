@@ -71,6 +71,8 @@ export interface Person {
   holds: Hold[];
   /** Their own terms in days, ahead of their grade's and the sheet's; null when they have none. */
   terms: number | null;
+  /** Their contact, trimmed and lower-cased; null when they have none. */
+  contact: string | null;
 }
 
 /** A statement just taken: the person as they now show, and their claims (newest first) as it
@@ -87,6 +89,8 @@ export interface PersonForm {
   gradeFrom?: string | null;
   /** Their own terms: a whole number of days; blank for none. */
   terms: string;
+  /** Their contact; blank for none. */
+  contact: string;
 }
 
 // The people kept on the active sheet.
