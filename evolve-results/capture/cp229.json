@@ -1,0 +1,64 @@
+{
+  "checkpoint": 229,
+  "stack": {
+    "repo": "/home/daniel/officehq-angular-spring",
+    "origin": "git@github.com:officefloor/officehq-angular-spring.git",
+    "name": "officehq-angular-spring",
+    "base_ref": "base-empty",
+    "base_commit": "65cb8233ea38b2dfa6cfd18709e30cd18fdf3250"
+  },
+  "checkpoint_id": "cp229_grades-editable",
+  "phase": "late",
+  "type": "additive",
+  "mutates": [],
+  "replaced_tests": [],
+  "request": {
+    "spec": "Grades can be added (an entry and a button; GRADE_ADDED grade=<grade>): a code of one to three\ncapital letters not yet a grade; anything else is refused. A new grade appears in every grade\nselect, the summary, the rates and the rate calendar.\n",
+    "prompt": "You are implementing ONE change to this application.\n\nFIRST read AGENTS.md \u2014 it states the working rules and how the app is tested, and sends you to\nDESIGN.md for the app's stack and conventions. Follow both.\n\nTHE CHANGE REQUEST:\nGrades can be added (an entry and a button; GRADE_ADDED grade=<grade>): a code of one to three\ncapital letters not yet a grade; anything else is refused. A new grade appears in every grade\nselect, the summary, the rates and the rate calendar.\n\nYour work is verified by an automated Playwright UI test already installed under e2e/specs/.\nRead that spec: it declares the exact data-testid anchors, values, test data and any audit\nrecords it expects \u2014 match them. Run `bin/e2e` to build the app, start it, and run the test as\nyou work; iterate until it passes. Change whatever the request needs across the app \u2014 its stored\ndata, its server and its front end. Do NOT edit bin/build, bin/start, bin/stop, bin/e2e,\nAGENTS.md, CLAUDE.md, DESIGN.md, e2e/support/ or the test spec.\n"
+  },
+  "commit_sha": "e527b1173b15063c658e4efafd7834efd3a310d4",
+  "reset_sha": "",
+  "preagent_sha": "7029edfa8ee86fcb940a5c9594103243266f4879",
+  "prev_sha": "7029edfa8ee86fcb940a5c9594103243266f4879",
+  "base_sha": "65cb8233ea38b2dfa6cfd18709e30cd18fdf3250",
+  "agent": {
+    "ok": true,
+    "cost_usd": 2.7421646,
+    "input_tokens": 114,
+    "output_tokens": 30079,
+    "cache_read_tokens": 5146003,
+    "cache_creation_tokens": 138866,
+    "num_turns": 58,
+    "duration_ms": 986299,
+    "duration_api_ms": 313897,
+    "model": "claude-opus-5-5",
+    "session_id": "3cebfdbe-8050-43d4-a674-63f245ac718c",
+    "stop_reason": "success",
+    "result_text": "Grades can now be added, and all 4 tests in `bin/e2e` pass. One fix outside the request was needed to get there: the person \"excess\" figure (details at the end).\n\n**What the feature does**\n- The Grades section has a new entry (`grade-add-code`) and button (`grade-add`). A code is accepted if, after trimming spaces, it is one to three capital letters and not already a grade on the sheet. Anything else shows `grade-error` and changes nothing. A successful add writes `GRADE_ADDED sheet=\u2026 by=\u2026 grade=\u2026` to the audit file.\n- A new grade shows up in every grade select (person form, inline grade, bulk grade, rate form, rate preview, retire and merge), and in the summary, current rates, rate calendar, consolidated and compare figures.\n\n**How it's built**\n- **Stored data:** migration `V119__sheet_grade.sql` adds a `sheet_grade` table and widens every grade column from one character to three. Every sheet still has A, B and C.\n- **Server:** `SettingService.addGrade` does the check and the audit line, behind `POST /api/sheets/{id}/grades`. The `[ABC]` checks are now `[A-Z]{1,3}`. Setting a rate, adding or editing a person, bulk grading, merging and the default grade now refuse a grade the sheet doesn't have.\n- **Front end:** the grade list is kept in one place in the session, and the Grades section updates it when it loads or adds a grade.\n- **Undated:** viewing a sheet \"as of\" a date still shows grades added later. Scenario 2 expects this, so I left `SHEET_GRADE` out of the as-of history in `SheetHistory.java`.\n- **Edge cases:** cloning a sheet copies its added grades. A person moved to another sheet takes any grades they've had that the other sheet lacks.\n\n**Decision for you: the excess change.** Scenario 1 also failed on `person-excess`, which isn't about grades. The app showed 45.00 for a person with due 0.00, cut total 50.00 and cap 5.00, because it calculated `figures + cut \u2212 cap`. The test expects 0.00. I changed it in `people.ts` (`excessOf`) to \"what the cap takes off their due-total\" (figures minus capped due). The two rules give the same answer unless the cut total alone is above the cap; then the new rule never shows more than the person's own figures. I couldn't compare against the app before my changes, so I can't prove the old rule failed on its own, but nothing in this change touches that calculation. Undo it if the old rule was intended.\n\nThe per-grade settings fields (terms, grace, clerk limit and proof threshold per grade) still list only A, B and C. The request didn't mention them, though the server will accept them for added grades.",
+    "error": "",
+    "attempts": [
+      {
+        "ok": true,
+        "limit_reached": false,
+        "retryable": false,
+        "timed_out": false,
+        "cost_usd": 2.7421646,
+        "num_turns": 58,
+        "duration_ms": 986299,
+        "duration_api_ms": 313897,
+        "error": ""
+      }
+    ]
+  },
+  "agent_stream_file": "cp229.agent.jsonl",
+  "agent_diff_file": "cp229.agent.diff",
+  "build_log_file": null,
+  "tests": {
+    "gated": false,
+    "queued": true
+  },
+  "probe": null,
+  "pinned_touched": [],
+  "acceptance_touched": [],
+  "impact_gate": null
+}
