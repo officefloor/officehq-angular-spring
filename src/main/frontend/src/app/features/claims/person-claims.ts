@@ -1,9 +1,9 @@
 import { HttpErrorResponse } from '@angular/common/http';
 import { Component, inject, input, output, signal } from '@angular/core';
 import { FormControl, FormGroup, ReactiveFormsModule } from '@angular/forms';
-import { AMOUNT, Claim, ClaimAction, Claims } from '../../core/claims';
+import { AMOUNT, Claim, ClaimAction, Claims, claimDue } from '../../core/claims';
 import { Grade } from '../../core/people';
-import { Rate, due, pctOn } from '../../core/rates';
+import { Rate } from '../../core/rates';
 
 /** Why the server refused an action: the claim's status does not allow it. */
 const REFUSALS: Record<ClaimAction, string> = {
@@ -87,7 +87,7 @@ export class PersonClaims {
   }
 
   protected dueOf(c: Claim): string {
-    return c.settledDue ?? due(c.amount, pctOn(this.rates(), this.grade(), c.date)) ?? 'n/a';
+    return claimDue(c, this.rates(), this.grade()) ?? 'n/a';
   }
 
   protected open(c: Claim): void {

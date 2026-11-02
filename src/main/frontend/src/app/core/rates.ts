@@ -32,11 +32,14 @@ function hundredths(text: string): bigint {
   return BigInt(whole) * 100n + BigInt(frac.padEnd(2, '0'));
 }
 
-/** An amount's due at a percent: amount times pct divided by 100, rounded half up to two
+/** An amount's due at a percent: amount times pct divided by 100, rounded half to even to two
  *  decimals, worked in whole numbers so no rounding creeps in. Null when there is no rate. */
 export function due(amount: string, pct: string | undefined): string | null {
   if (pct === undefined) return null;
-  const cents = (hundredths(amount) * hundredths(pct) + 5000n) / 10000n;
+  const exact = hundredths(amount) * hundredths(pct);
+  let cents = exact / 10000n;
+  const rest = exact % 10000n;
+  if (rest > 5000n || (rest === 5000n && cents % 2n === 1n)) cents += 1n;
   const text = cents.toString().padStart(3, '0');
   return `${text.slice(0, -2)}.${text.slice(-2)}`;
 }

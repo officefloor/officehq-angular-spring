@@ -1,9 +1,9 @@
 import { HttpErrorResponse } from '@angular/common/http';
 import { Component, computed, effect, inject, signal } from '@angular/core';
 import { FormControl, FormGroup, ReactiveFormsModule } from '@angular/forms';
-import { Claim, Claims, counts, sumAmounts } from '../../core/claims';
+import { Claim, Claims, claimDue, counts, sumAmounts } from '../../core/claims';
 import { Grade, People, Person } from '../../core/people';
-import { Rate, Rates, due, pctOn } from '../../core/rates';
+import { Rate, Rates, pctOn } from '../../core/rates';
 import { Session } from '../../core/session';
 import { PersonClaims } from '../claims/person-claims';
 import { RateForm } from '../rates/rate-form';
@@ -99,7 +99,7 @@ export class PeopleList {
     }
     return by;
   });
-  /** The sheet's due-total: everyone's due-total added up, skipping those with no rate. */
+  /** The sheet's due-total: everyone's due-total added up, skipping those that are n/a. */
   protected readonly dueTotal = computed(() =>
     sumAmounts(this.people().map((p) => this.dueOf(p)).filter((d): d is string => d !== null)),
   );
@@ -183,10 +183,15 @@ export class PeopleList {
     );
   }
 
-  /** A person's due-total: what they claimed times their grade's rate in force on the sheet's
-   *  today, or null with no rate. */
+  /** A person's due-total: the sum of the due figures of their open and settled claims. Null (n/a)
+   *  when their grade has no rate on the sheet's today and no settled claim keeps a figure. */
   protected dueOf(p: Person): string | null {
-    return due(this.claimed().get(p.id) ?? '0.00', this.pctOf().get(p.grade));
+    const counted = (this.claimsByPerson().get(p.id) ?? []).filter(counts);
+    if (!this.pctOf().has(p.grade) && !counted.some((c) => c.status === 'SETTLED' && c.settledDue !== null)) {
+      return null;
+    }
+    const figures = counted.map((c) => claimDue(c, this.rates(), p.grade)).filter((d): d is string => d !== null);
+    return sumAmounts(figures);
   }
 
   private reset(): void {

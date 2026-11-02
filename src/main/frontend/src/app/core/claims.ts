@@ -1,6 +1,8 @@
 import { HttpClient } from '@angular/common/http';
 import { Injectable, inject } from '@angular/core';
 import { firstValueFrom } from 'rxjs';
+import { Grade } from './people';
+import { Rate, due, pctOn } from './rates';
 import { Session } from './session';
 
 /** Where a claim is in its life: DRAFT, then OPEN, then SETTLED; a DRAFT or OPEN claim may be VOID. */
@@ -43,6 +45,12 @@ export const AMOUNT = /^\d{1,12}(\.\d{1,2})?$/;
 export function sumAmounts(amounts: string[]): string {
   const cents = amounts.reduce((sum, a) => sum + Math.round(Number(a) * 100), 0);
   return (cents / 100).toFixed(2);
+}
+
+/** A claim's due figure: the one fixed when it was settled, or else its live due at its person's
+ *  grade's rate in force on the claim's date; null when there is neither. */
+export function claimDue(c: Claim, rates: Rate[], grade: Grade): string | null {
+  return c.settledDue ?? due(c.amount, pctOn(rates, grade, c.date));
 }
 
 // The claims people make on the active sheet.
