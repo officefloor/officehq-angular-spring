@@ -14,6 +14,7 @@ import { RateForm } from '../rates/rate-form';
 import { GradeSummary, PeriodSummary, StatusSummary, SummaryPanel } from '../summary/summary-panel';
 import { HeaderCounters } from '../summary/header-counters';
 import { QuickAddBar } from './quick-add-bar';
+import { PasteClaimsBox } from './paste-claims-box';
 
 // The people on the sheet, in the order they were added, and the form that adds a person or,
 // once a person's editor is opened, edits them. Each person's row lists their claims and what
@@ -25,7 +26,7 @@ import { QuickAddBar } from './quick-add-bar';
 // due-totals added up, skipping those that are n/a.
 @Component({
   selector: 'app-people-list',
-  imports: [ReactiveFormsModule, PersonClaims, RateForm, PeriodForm, QuickAddBar, SummaryPanel, HeaderCounters],
+  imports: [ReactiveFormsModule, PersonClaims, RateForm, PeriodForm, QuickAddBar, PasteClaimsBox, SummaryPanel, HeaderCounters],
   template: `
     <app-header-counters [peopleCount]="people().length" [statuses]="statusSummary()"
       [dueTotal]="dueTotal()" [overdueTotal]="overdueTotal()" />
@@ -53,6 +54,7 @@ import { QuickAddBar } from './quick-add-bar';
         }
       </form>
       <app-quick-add-bar (added)="quickAdded($event)" />
+      <app-paste-claims-box (pasted)="claimsPasted()" />
       <p>Claimed in total: <strong data-testid="rollup-claimed-total">{{ claimedTotal() }}</strong></p>
       <p>Due in total: <strong data-testid="rollup-due-total">{{ dueTotal() }}</strong></p>
       <p>Overdue claims: <strong data-testid="rollup-overdue-count">{{ overdueCount() }}</strong></p>
@@ -585,6 +587,14 @@ export class PeopleList {
       ps.some((p) => p.id === person.id) ? ps.map((p) => (p.id === person.id ? person : p)) : [...ps, person],
     );
     this.claimSaved(claim);
+  }
+
+  /** Read the sheet's claims again once a paste has added some. */
+  protected async claimsPasted(): Promise<void> {
+    const sheetId = this.session.sheetId();
+    if (!sheetId) return;
+    const claims = await this.claimsApi.list(sheetId);
+    if (this.session.sheetId() === sheetId) this.claims.set(claims);
   }
 
   protected rateSaved(rate: Rate): void {

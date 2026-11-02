@@ -199,6 +199,14 @@ export class Claims {
     );
   }
 
+  /** Add a draft claim per line of name,amount,date,note, all or none: how many were added. */
+  paste(text: string): Promise<{ added: number }> {
+    const { sheetId, user } = this.active();
+    return firstValueFrom(
+      this.http.post<{ added: number }>(`${this.url(sheetId)}/claims/paste`, { text }, { headers: { 'X-User': user } }),
+    );
+  }
+
   edit(id: number, form: ClaimForm): Promise<Claim> {
     const { sheetId, user } = this.active();
     return firstValueFrom(
