@@ -105,6 +105,10 @@ interface Descendants {
   ownPeople: number;
   ownDueTotal: string;
   ownOverdueTotal: string;
+  /** Per grade, the due-totals of the descendants' people on it (retired people left out), added up. */
+  gradeDueTotals: Record<string, string>;
+  /** Per status, how many of the descendants' claims have it. */
+  statusCounts: Record<string, number>;
 }
 
 interface StatementSummary {
@@ -241,6 +245,34 @@ function trimmedSum(figures: number[]): number {
       <p>People: <strong data-testid="consolidated-people-count">{{ consolidated().people }}</strong></p>
       <p>Due total: <strong data-testid="consolidated-due-total">{{ money(consolidated().dueCents) | figure }}</strong></p>
       <p>Overdue total: <strong data-testid="consolidated-overdue-total">{{ money(consolidated().overdueCents) | figure }}</strong></p>
+      <table>
+        <caption>Consolidated by grade today, retired people excluded</caption>
+        <thead>
+          <tr><th scope="col">Grade</th><th scope="col">Due total</th></tr>
+        </thead>
+        <tbody>
+          @for (g of consolidated().grades; track g.grade) {
+            <tr>
+              <th scope="row">{{ g.grade }}</th>
+              <td [attr.data-testid]="'consolidated-grade-' + g.grade + '-due-total'">{{ money(g.dueCents) | figure }}</td>
+            </tr>
+          }
+        </tbody>
+      </table>
+      <table>
+        <caption>Consolidated by status</caption>
+        <thead>
+          <tr><th scope="col">Status</th><th scope="col">Claims</th></tr>
+        </thead>
+        <tbody>
+          @for (s of consolidated().statuses; track s.status) {
+            <tr>
+              <th scope="row">{{ s.status }}</th>
+              <td [attr.data-testid]="'consolidated-status-' + s.status + '-count'">{{ s.count }}</td>
+            </tr>
+          }
+        </tbody>
+      </table>
     </section>
     <app-rates [rates]="rates()" [inherited]="inheritedRates()" [today]="session.today()" (saved)="rateSaved($event)" (imported)="ratesImported($event)" />
     <app-periods [periods]="periods()" [dueTotalOf]="periodDueTotalOf" (saved)="periodSaved($event)" />
@@ -780,6 +812,11 @@ export class People {
       people: this.people().length + (d?.people ?? 0),
       dueCents: this.dueTotalAllCents() + (d ? cents(d.dueTotal) : 0),
       overdueCents: this.overdueTotal().cents + (d ? cents(d.overdueTotal) : 0),
+      grades: this.gradeSummary().map((g) => ({
+        grade: g.grade,
+        dueCents: cents(g.dueTotal) + cents(d?.gradeDueTotals?.[g.grade] ?? '0.00'),
+      })),
+      statuses: this.statusSummary().map((s) => ({ status: s.status, count: s.count + (d?.statusCounts?.[s.status] ?? 0) })),
     };
   });
   /** The people on screen: everyone, less the retired unless show retired is on. */

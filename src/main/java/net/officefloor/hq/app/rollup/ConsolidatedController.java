@@ -4,8 +4,18 @@ import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.Pattern;
 import jakarta.validation.constraints.Size;
 import java.math.BigDecimal;
+import java.time.LocalDate;
+import java.util.LinkedHashMap;
+import java.util.List;
+import java.util.Map;
 import net.officefloor.hq.app.asof.AsOfTree;
+import net.officefloor.hq.app.claim.Claim;
+import net.officefloor.hq.app.claim.ClaimRepository;
+import net.officefloor.hq.app.person.Person;
+import net.officefloor.hq.app.person.PersonRepository;
+import net.officefloor.hq.app.sheet.Sheet;
 import net.officefloor.hq.app.sheet.SheetParentRepository;
+import net.officefloor.hq.app.sheet.SheetRepository;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.validation.annotation.Validated;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -18,7 +28,9 @@ import org.springframework.web.bind.annotation.RestController;
  * The figures of a sheet's descendants (the sheets naming it as their parent, theirs and so on),
  * added up: how many people they have, and each one's due-total and overdue-total as that sheet
  * shows them, and the sheet's own figures. Read as of a date, every sheet of the tree is as it stood at
- * the end of that date, with that date as its today. The screen adds the sheet's own figures, as shown,
+ * the end of that date, with that date as its today. Per grade, the due-totals of the people on it on
+ * their sheet's today (retired people left out, an n/a due-total no figure) added up, and per status the
+ * count of claims in it. The screen adds the sheet's own figures, as shown,
  * to make the consolidated ones.
  */
 @RestController
@@ -26,16 +38,31 @@ import org.springframework.web.bind.annotation.RestController;
 @RequestMapping("/api/sheets/{sheetId}/descendants")
 public class ConsolidatedController {
 
-    /** The descendants' figures added up, then the sheet's own; the totals have two decimals. */
+    /** The grades and statuses the descendants' figures are given per. */
+    private static final List<String> GRADES = List.of("A", "B", "C");
+    private static final List<String> STATUSES = List.of("DRAFT", "OPEN", "PENDING", "SETTLED", "VOID", "REVIEW");
+
+    /**
+     * The descendants' figures added up, then the sheet's own; the totals have two decimals. Per grade the
+     * descendants' due-totals and per status their claim counts are added up too.
+     */
     public record DescendantsView(int sheets, int people, String dueTotal, String overdueTotal, int ownPeople,
-            String ownDueTotal, String ownOverdueTotal) {}
+            String ownDueTotal, String ownOverdueTotal, Map<String, String> gradeDueTotals,
+            Map<String, Integer> statusCounts) {}
 
     private final SheetParentRepository parents;
     private final RollupService rollup;
+    private final PersonRepository persons;
+    private final ClaimRepository claims;
+    private final SheetRepository sheetRepository;
 
-    public ConsolidatedController(SheetParentRepository parents, RollupService rollup) {
+    public ConsolidatedController(SheetParentRepository parents, RollupService rollup, PersonRepository people,
+            ClaimRepository claims, SheetRepository sheetRepository) {
         this.parents = parents;
         this.rollup = rollup;
+        this.persons = people;
+        this.claims = claims;
+        this.sheetRepository = sheetRepository;
     }
 
     @GetMapping("/figures")
@@ -48,15 +75,33 @@ public class ConsolidatedController {
         int people = 0;
         BigDecimal due = BigDecimal.ZERO.setScale(2);
         BigDecimal overdue = BigDecimal.ZERO.setScale(2);
+        Map<String, BigDecimal> gradeDues = new LinkedHashMap<>();
+        for (String grade : GRADES) gradeDues.put(grade, BigDecimal.ZERO.setScale(2));
+        Map<String, Integer> statusCounts = new LinkedHashMap<>();
+        for (String status : STATUSES) statusCounts.put(status, 0);
         for (String descendant : parents.descendantsOf(sheetId)) {
             RollupService.Snapshot figures = rollup.current(descendant);
             sheets++;
             people += figures.people().size();
             due = due.add(figures.dueTotal());
             overdue = overdue.add(figures.overdueTotal());
+            LocalDate today = sheetRepository.findById(descendant).map(Sheet::getToday).orElse(null);
+            for (Person person : persons.findBySheetIdOrderByPositionAscIdAsc(descendant)) {
+                if (person.isRetired()) continue;
+                RollupService.Figures theirs = figures.people().get(person.getId());
+                if (theirs == null || theirs.dueTotal() == null) continue;
+                String grade = today == null ? person.getGrade() : person.gradeOn(today);
+                gradeDues.computeIfPresent(grade, (g, total) -> total.add(theirs.dueTotal()));
+            }
+            for (Claim claim : claims.findBySheetIdOrderByIdDesc(descendant)) {
+                statusCounts.computeIfPresent(claim.getStatus().name(), (st, count) -> count + 1);
+            }
         }
+        Map<String, String> gradeDueTotals = new LinkedHashMap<>();
+        gradeDues.forEach((grade, total) -> gradeDueTotals.put(grade, total.setScale(2).toPlainString()));
         RollupService.Snapshot own = rollup.current(sheetId);
         return new DescendantsView(sheets, people, due.toPlainString(), overdue.toPlainString(), own.people().size(),
-                own.dueTotal().setScale(2).toPlainString(), own.overdueTotal().setScale(2).toPlainString());
+                own.dueTotal().setScale(2).toPlainString(), own.overdueTotal().setScale(2).toPlainString(),
+                gradeDueTotals, statusCounts);
     }
 }
