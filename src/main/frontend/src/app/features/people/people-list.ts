@@ -3,7 +3,7 @@ import { Component, computed, effect, inject, signal } from '@angular/core';
 import { FormControl, FormGroup, ReactiveFormsModule } from '@angular/forms';
 import { Claim, Claims, QuickAdded, backingFigure, claimDue, countsAsOf, countsLive, keepsActive, overdue, sumAmounts, trimmedSum } from '../../core/claims';
 import { Patron, Patrons } from '../../core/patrons';
-import { Grade, People, Person, gradeOn } from '../../core/people';
+import { Grade, People, Person, Taken, gradeOn } from '../../core/people';
 import { Period, Periods, periodOf } from '../../core/periods';
 import { Rate, Rates, pctOn } from '../../core/rates';
 import { Session } from '../../core/session';
@@ -130,6 +130,8 @@ import { PasteClaimsBox } from './paste-claims-box';
                   [attr.aria-label]="'Edit ' + p.name">Edit</button>
                 <button type="button" data-testid="person-statement" (click)="statement(p)"
                   [attr.aria-label]="'Take a statement of ' + p.name">Statement</button>
+                <button type="button" data-testid="person-unstate" (click)="unstate(p)"
+                  [attr.aria-label]="'Cancel the last statement of ' + p.name">Cancel statement</button>
                 <label [for]="'person-retire-date-' + p.id" class="visually-hidden">Retire {{ p.name }} from</label>
                 <input #retireDate type="date" [id]="'person-retire-date-' + p.id" data-testid="person-retire-date" />
                 <button type="button" data-testid="person-retire" (click)="retire(p, retireDate.value)"
@@ -403,15 +405,33 @@ export class PeopleList {
     this.personError.set(null);
     this.patronError.set(null);
     try {
-      const taken = await this.api.statement(p.id);
-      this.people.update((ps) => ps.map((x) => (x.id === taken.person.id ? taken.person : x)));
-      const byId = new Map(taken.claims.map((c) => [c.id, c]));
-      this.claims.update((cs) => [...cs.filter((c) => !byId.has(c.id)), ...taken.claims].sort((a, b) => b.listed - a.listed));
+      this.showTaken(await this.api.statement(p.id));
     } catch {
       this.personError.set({ id: p.id, message: 'The statement could not be taken.' });
     } finally {
       this.stating.delete(p.id);
     }
+  }
+
+  /** Cancel the person's last statement, then show them and their claims as it left them. */
+  protected async unstate(p: Person): Promise<void> {
+    if (this.stating.has(p.id)) return;
+    this.stating.add(p.id);
+    this.personError.set(null);
+    this.patronError.set(null);
+    try {
+      this.showTaken(await this.api.cancelStatement(p.id));
+    } catch {
+      this.personError.set({ id: p.id, message: 'The statement could not be cancelled.' });
+    } finally {
+      this.stating.delete(p.id);
+    }
+  }
+
+  private showTaken(taken: Taken): void {
+    this.people.update((ps) => ps.map((x) => (x.id === taken.person.id ? taken.person : x)));
+    const byId = new Map(taken.claims.map((c) => [c.id, c]));
+    this.claims.update((cs) => [...cs.filter((c) => !byId.has(c.id)), ...taken.claims].sort((a, b) => b.listed - a.listed));
   }
 
   /** Name the person chosen as the person's patron. */

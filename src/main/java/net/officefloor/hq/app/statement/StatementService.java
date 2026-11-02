@@ -12,6 +12,8 @@ import net.officefloor.hq.app.claim.Dues;
 import net.officefloor.hq.app.rollup.Rollup;
 import net.officefloor.hq.app.person.Person;
 import net.officefloor.hq.app.person.PersonRepository;
+import net.officefloor.hq.app.role.RoleService;
+import net.officefloor.hq.app.role.SheetRole;
 import net.officefloor.hq.app.sheet.SheetService;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
@@ -33,16 +35,18 @@ public class StatementService {
     private final Dues dues;
     private final SheetService sheets;
     private final Rollup rollup;
+    private final RoleService roles;
     private final Audit audit;
 
     public StatementService(StatementRepository statements, PersonRepository people, ClaimRepository claims,
-            Dues dues, SheetService sheets, Rollup rollup, Audit audit) {
+            Dues dues, SheetService sheets, Rollup rollup, RoleService roles, Audit audit) {
         this.statements = statements;
         this.people = people;
         this.claims = claims;
         this.dues = dues;
         this.sheets = sheets;
         this.rollup = rollup;
+        this.roles = roles;
         this.audit = audit;
     }
 
@@ -90,5 +94,33 @@ public class StatementService {
             return theirs;
         });
         return new Taken(person, summary(sheetId, personId), bound);
+    }
+
+    /** Cancel a person's last statement: only a steward may, and only when one was taken. The claims
+     *  it bound become live again (a figure an earlier statement bound is not restored), and the
+     *  statement before it, if any, becomes their last. */
+    @Transactional
+    public Taken cancelLast(String sheetId, String user, long personId) {
+        if (!SheetRole.STEWARD.equals(roles.roleOf(sheetId, user))) {
+            throw new ResponseStatusException(HttpStatus.FORBIDDEN, "Only a steward can cancel a statement");
+        }
+        Person person = people.lockByIdAndSheetId(personId, sheetId)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "No such person on this sheet"));
+        List<Statement> taken = statements.findBySheetIdAndPersonIdOrderByIdAsc(sheetId, personId);
+        if (taken.isEmpty()) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT, "No statement has been taken of this person");
+        }
+        Statement last = taken.get(taken.size() - 1);
+        List<Claim> unbound = rollup.tracking(sheetId, user, () -> {
+            List<Claim> theirs = claims.findBySheetIdAndPersonIdOrderByListedDesc(sheetId, personId);
+            theirs.forEach(claim -> claim.bind(false, null));
+            claims.saveAllAndFlush(theirs);
+            statements.delete(last);
+            statements.flush();
+            audit.recordOnCommit("STATEMENT_CANCELLED sheet=" + sheetId + " by=" + user + " name=" + person.getName()
+                    + " due-total=" + (last.getDueTotal() == null ? "n/a" : last.getDueTotal().setScale(2).toPlainString()));
+            return theirs;
+        });
+        return new Taken(person, summary(sheetId, personId), unbound);
     }
 }

@@ -8,6 +8,7 @@ import net.officefloor.hq.app.person.PersonController.PersonView;
 import net.officefloor.hq.app.sheet.SheetService;
 import org.springframework.http.HttpStatus;
 import org.springframework.validation.annotation.Validated;
+import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestHeader;
@@ -40,5 +41,15 @@ public class StatementController {
         StatementService.Taken taken = service.take(sheetId.trim(), user.trim(), personId);
         return new TakenView(PersonView.of(taken.person(), taken.summary(), sheets.today(sheetId.trim())),
                 taken.claims().stream().map(ClaimView::of).toList());
+    }
+
+    /** Cancel the person's last statement. */
+    @DeleteMapping("/last")
+    public TakenView cancelLast(@PathVariable @NotBlank @Size(max = 100) String sheetId,
+            @PathVariable long personId,
+            @RequestHeader("X-User") @NotBlank @Size(max = 100) String user) {
+        StatementService.Taken cancelled = service.cancelLast(sheetId.trim(), user.trim(), personId);
+        return new TakenView(PersonView.of(cancelled.person(), cancelled.summary(), sheets.today(sheetId.trim())),
+                cancelled.claims().stream().map(ClaimView::of).toList());
     }
 }

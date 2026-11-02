@@ -50,8 +50,8 @@ public interface PeriodRepository extends JpaRepository<Period, Long> {
     @Query("select p from Period p where p.id = :id and p.sheetId = :sheetId")
     Optional<Period> lockByIdAndSheetId(Long id, String sheetId);
 
-    /** The open periods on a sheet whose to-date is before the day, earliest to-date first. */
-    @Query("select p from Period p where p.sheetId = :sheetId and p.closed = false and p.toDate < :day"
+    /** The open periods (neither closed nor soft-closed) on a sheet whose to-date is before the day, earliest to-date first. */
+    @Query("select p from Period p where p.sheetId = :sheetId and p.closed = false and p.softClosed = false and p.toDate < :day"
             + " order by p.toDate asc")
     List<Period> findOpenEndingBefore(String sheetId, LocalDate day);
 }

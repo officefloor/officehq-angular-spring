@@ -126,6 +126,14 @@ export class People {
     );
   }
 
+  /** Cancel the person's last statement (a steward only): the claims it bound become live again. */
+  cancelStatement(id: number): Promise<Taken> {
+    const { sheetId, user } = this.active();
+    return firstValueFrom(
+      this.http.delete<Taken>(`${this.url(sheetId)}/${id}/statements/last`, { headers: { 'X-User': user } }),
+    );
+  }
+
   private url(sheetId: string): string {
     return `/api/sheets/${encodeURIComponent(sheetId)}/people`;
   }
