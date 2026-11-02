@@ -6,6 +6,7 @@ import jakarta.persistence.GeneratedValue;
 import jakarta.persistence.GenerationType;
 import jakarta.persistence.Id;
 import jakarta.persistence.Table;
+import java.time.LocalDate;
 
 /** A user watching a person on a sheet: they are told when the person's claims are settled. */
 @Entity
@@ -25,10 +26,15 @@ public class Watch {
     @Column(name = "user_name", nullable = false)
     private String user;
 
+    /** The sheet's today when the user started watching; null for one started before it was kept. */
+    @Column(name = "started_on")
+    private LocalDate startedOn;
+
     protected Watch() {
     }
 
-    public Watch(String sheetId, Long personId, String user) {
+    public Watch(String sheetId, Long personId, String user, LocalDate startedOn) {
+        this.startedOn = startedOn;
         this.sheetId = sheetId;
         this.personId = personId;
         this.user = user;
@@ -48,5 +54,9 @@ public class Watch {
 
     public String getUser() {
         return user;
+    }
+
+    public LocalDate getStartedOn() {
+        return startedOn;
     }
 }

@@ -2,11 +2,11 @@ import { HttpErrorResponse } from '@angular/common/http';
 import { Component, computed, effect, inject, signal } from '@angular/core';
 import { FormControl, FormGroup, ReactiveFormsModule } from '@angular/forms';
 import { Claim, Claims, QuickAdded, addDays, backingFigure, claimDue, countsAsOf, countsLive, isOpen, keepsActive, overdue, sumAmounts, trimmedSum } from '../../core/claims';
-import { Patron, Patrons } from '../../core/patrons';
-import { Pools } from '../../core/pools';
+import { Patron, Patrons, patronShares } from '../../core/patrons';
+import { Pools, formatCents } from '../../core/pools';
 import { Grade, Leave, People, Person, Taken, gradeOn } from '../../core/people';
 import { Period, Periods, periodOf } from '../../core/periods';
-import { Rate, Rates, pctOn } from '../../core/rates';
+import { Rate, Rates, pctOn, weightedSum } from '../../core/rates';
 import { Session } from '../../core/session';
 import { DatedValue, Graces, SheetSettings, graceOn, valueOn } from '../../core/settings';
 import { Watch, Watches } from '../../core/watches';
@@ -31,7 +31,8 @@ const NO_LEAVE: Leave = { holds: [], retiredFrom: null };
 // bound them; their settled claims and other open claims still do. From the day the sheet's today
 // reaches a person's retirement day, none of their open claims a statement did not bind counts either.
 // A person may name other people on the sheet as their patrons; their backing is the settled
-// figures of their patrons' settled claims dated within the 90 days up to the sheet's today.
+// figures of their patrons' settled claims dated within the 90 days up to the sheet's today, each
+// patron's weighted by their share (100.00 split equally in the order they were named).
 // The signed-in user may watch a person: they are told when a claim of theirs is settled.
 @Component({
   selector: 'app-people-list',
@@ -296,13 +297,28 @@ export class PeopleList {
     for (const x of this.patrons()) by.set(x.personId, [...(by.get(x.personId) ?? []), x.patronId]);
     return by;
   });
-  /** Each person's patrons' names, sorted and joined by a comma and a space, by the person's id. */
+  /** Each person's patrons with their shares (in hundredths), in the order they were named, by the
+   *  person's id. */
+  private readonly patronShares = computed(() => {
+    const by = new Map<number, { id: number; share: number }[]>();
+    for (const [id, ps] of this.patronIds()) {
+      const shares = patronShares(ps.length);
+      by.set(id, ps.map((x, i) => ({ id: x, share: shares[i] })));
+    }
+    return by;
+  });
+  /** Each person's patrons as name and share, sorted by name and joined by a comma and a space, by
+   *  the person's id. */
   protected readonly patronNames = computed(() => {
     const names = new Map(this.people().map((p) => [p.id, p.name]));
     const by = new Map<number, string>();
-    for (const [id, ps] of this.patronIds()) {
-      const shown = ps.map((x) => names.get(x)).filter((n): n is string => n !== undefined);
-      by.set(id, shown.sort((a, b) => (a < b ? -1 : a > b ? 1 : 0)).join(', '));
+    for (const [id, ps] of this.patronShares()) {
+      const shown = ps.flatMap((x) => {
+        const name = names.get(x.id);
+        return name === undefined ? [] : [{ name, share: x.share }];
+      });
+      shown.sort((a, b) => (a.name < b.name ? -1 : a.name > b.name ? 1 : 0));
+      by.set(id, shown.map((x) => `${x.name} ${formatCents(x.share)}`).join(', '));
     }
     return by;
   });
@@ -662,14 +678,17 @@ export class PeopleList {
     return this.people().filter((x) => x.id !== p.id);
   }
 
-  /** A person's backing: the frozen figures of their patrons' settled claims dated within the 90
-   *  days up to and including the sheet's today, added up; 0.00 with none. */
+  /** A person's backing: over their patrons, the frozen figures of the patron's settled claims
+   *  dated within the 90 days up to and including the sheet's today, added up, times the patron's
+   *  share divided by 100; added up and rounded half to even, 0.00 with none. */
   protected backingOf(p: Person): string {
     const today = this.session.today();
-    return sumAmounts((this.patronIds().get(p.id) ?? [])
-      .flatMap((id) => this.claimsByPerson().get(id) ?? [])
-      .map((c) => backingFigure(c, today))
-      .filter((d): d is string => d !== null));
+    return weightedSum((this.patronShares().get(p.id) ?? []).map((x) => ({
+      amount: sumAmounts((this.claimsByPerson().get(x.id) ?? [])
+        .map((c) => backingFigure(c, today))
+        .filter((d): d is string => d !== null)),
+      pct: formatCents(x.share),
+    })));
   }
 
   /** Retire the person from the day given, or the sheet's today when it is left blank. */

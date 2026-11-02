@@ -4,6 +4,7 @@ import java.util.List;
 import net.officefloor.hq.app.Audit;
 import net.officefloor.hq.app.person.Person;
 import net.officefloor.hq.app.person.PersonRepository;
+import net.officefloor.hq.app.sheet.SheetService;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
@@ -17,11 +18,13 @@ public class WatchService {
 
     private final WatchRepository watches;
     private final PersonRepository people;
+    private final SheetService sheets;
     private final Audit audit;
 
-    public WatchService(WatchRepository watches, PersonRepository people, Audit audit) {
+    public WatchService(WatchRepository watches, PersonRepository people, SheetService sheets, Audit audit) {
         this.watches = watches;
         this.people = people;
+        this.sheets = sheets;
         this.audit = audit;
     }
 
@@ -40,7 +43,7 @@ public class WatchService {
         }
         Watch saved;
         try {
-            saved = watches.saveAndFlush(new Watch(sheetId, person.getId(), user));
+            saved = watches.saveAndFlush(new Watch(sheetId, person.getId(), user, sheets.today(sheetId)));
         } catch (DataIntegrityViolationException e) {
             throw alreadyWatching();
         }

@@ -2,7 +2,10 @@ package net.officefloor.hq.app.watch;
 
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.Size;
+import java.time.LocalDate;
 import java.util.List;
+import net.officefloor.hq.app.sheet.AsOfGuard;
+import org.springframework.format.annotation.DateTimeFormat;
 import org.springframework.http.HttpStatus;
 import org.springframework.validation.annotation.Validated;
 import org.springframework.web.bind.annotation.DeleteMapping;
@@ -32,8 +35,12 @@ public class WatchController {
 
     @GetMapping("/api/sheets/{sheetId}/watches")
     public List<WatchView> list(@PathVariable @NotBlank @Size(max = 100) String sheetId,
-            @RequestHeader("X-User") @NotBlank @Size(max = 100) String user) {
-        return service.list(sheetId.trim(), user.trim()).stream().map(WatchView::of).toList();
+            @RequestHeader("X-User") @NotBlank @Size(max = 100) String user,
+            @RequestHeader(value = AsOfGuard.HEADER, required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE)
+            LocalDate asOf) {
+        return service.list(sheetId.trim(), user.trim()).stream()
+                .filter(w -> asOf == null || w.getStartedOn() == null || !w.getStartedOn().isAfter(asOf))
+                .map(WatchView::of).toList();
     }
 
     @PostMapping("/api/sheets/{sheetId}/people/{personId}/watch")

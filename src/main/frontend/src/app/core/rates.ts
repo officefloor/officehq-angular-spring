@@ -50,7 +50,17 @@ function hundredths(text: string): bigint {
  *  in; a negative amount has a negative due. Null when there is no rate. */
 export function due(amount: string, pct: string | undefined, halfUp = false): string | null {
   if (pct === undefined) return null;
-  const signed = hundredths(amount) * hundredths(pct);
+  return weighted(hundredths(amount) * hundredths(pct), halfUp);
+}
+
+/** Amounts each times a percent divided by 100, added up exactly and then rounded to two decimals
+ *  half to even. */
+export function weightedSum(parts: { amount: string; pct: string }[]): string {
+  return weighted(parts.reduce((sum, x) => sum + hundredths(x.amount) * hundredths(x.pct), 0n), false);
+}
+
+/** A product of two hundredths (so in ten-thousandths of a hundredth) rounded to two-decimal text. */
+function weighted(signed: bigint, halfUp: boolean): string {
   const exact = signed < 0n ? -signed : signed;
   let cents = exact / 10000n;
   const rest = exact % 10000n;

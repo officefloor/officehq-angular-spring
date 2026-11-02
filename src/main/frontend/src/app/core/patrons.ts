@@ -10,6 +10,18 @@ export interface Patron {
   patronId: number;
 }
 
+/** The shares of a person's patrons, in the order they were named: 100.00 split equally, each
+ *  rounded half to even to two decimals, the remainder going to the first named. In hundredths. */
+export function patronShares(count: number): number[] {
+  if (count === 0) return [];
+  const whole = Math.floor(10000 / count);
+  const rest = 10000 - whole * count;
+  const each = 2 * rest > count || (2 * rest === count && whole % 2 === 1) ? whole + 1 : whole;
+  const shares = Array.from({ length: count }, () => each);
+  shares[0] += 10000 - each * count;
+  return shares;
+}
+
 // The patrons people on the active sheet have named.
 @Injectable({ providedIn: 'root' })
 export class Patrons {
