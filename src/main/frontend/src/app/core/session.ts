@@ -149,6 +149,8 @@ export class Session {
 
   /** The number of the sheet's last bulk settle batch, or null while there has been none. */
   readonly lastBatch = signal<number | null>(null);
+  /** The proof kinds (not dated), comma separated: a claim above the proof threshold needs a proof of each; empty when none. */
+  readonly proofKinds = signal('');
   /** The review SLA in days (not dated): a REVIEW claim whose review day plus it is before today is late for review; null when none. */
   readonly reviewSla = signal<number | null>(null);
   /** Whether a claim is late for review: REVIEW, and its review day plus the review SLA is before the sheet's today. */

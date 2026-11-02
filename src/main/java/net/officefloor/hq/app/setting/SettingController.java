@@ -45,7 +45,7 @@ public class SettingController {
             LocalDate periodNumberingFrom, List<RoleView> roles, Map<String, Integer> gradeTerms, String cap,
             Map<String, List<DatedView>> dated, Map<String, String> permissions, Integer graceDays,
             LocalDate entryDate, String pot, String parent, int fiscalStartMonth, String alertThreshold,
-            Integer escalateAfter, Integer reviewSla) {}
+            Integer escalateAfter, Integer reviewSla, String proofKinds) {}
 
     /** A value recorded for a dated setting from a date on; null when none. */
     public record DatedView(LocalDate from, String value) {}
@@ -218,6 +218,16 @@ public class SettingController {
         }
     }
 
+    /** Proof kinds: a comma separated list of receipt and photo; blank or null: none. */
+    public record ProofKindsRequest(@Size(max = 100)
+            @Pattern(regexp = "\\s*((receipt|photo)(\\s*,\\s*(receipt|photo))*)?\\s*") String value) {
+
+        String kindsValue() {
+            if (value == null || value.isBlank()) return null;
+            return String.join(",", Arrays.stream(value.split(",")).map(String::strip).distinct().toList());
+        }
+    }
+
     /** Grace days: a whole number of days; blank or null: off. */
     public record GraceDaysRequest(@Pattern(regexp = "(\\d{1,4})?") String value) {
 
@@ -332,7 +342,8 @@ public class SettingController {
                 text(service.cap(sheetId)), datedViews(service.dated(sheetId)), service.permissions(sheetId),
                 service.graceDays(sheetId), service.entryDate(sheetId), text(service.pot(sheetId)),
                 service.parent(sheetId), service.fiscalStartMonth(sheetId), text(service.alertThreshold(sheetId)),
-                service.escalateAfter(sheetId), service.reviewSla(sheetId));
+                service.escalateAfter(sheetId), service.reviewSla(sheetId),
+                String.join(",", service.proofKinds(sheetId)));
     }
 
     @PutMapping("/settings/clerk-limit")
@@ -459,6 +470,15 @@ public class SettingController {
             @RequestHeader("X-User") @NotBlank @Size(max = 100) String user,
             @RequestBody @Valid AlertThresholdRequest request) {
         service.setAlertThreshold(sheetId, user, request.thresholdValue());
+        return get(sheetId, user);
+    }
+
+    @PutMapping("/settings/proof-kinds")
+    public SettingsView setProofKinds(
+            @PathVariable @Size(max = 100) @Pattern(regexp = "[A-Za-z0-9._-]+") String sheetId,
+            @RequestHeader("X-User") @NotBlank @Size(max = 100) String user,
+            @RequestBody @Valid ProofKindsRequest request) {
+        service.setProofKinds(sheetId, user, request.kindsValue());
         return get(sheetId, user);
     }
 

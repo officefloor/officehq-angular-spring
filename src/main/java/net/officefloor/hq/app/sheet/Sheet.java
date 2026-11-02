@@ -116,6 +116,10 @@ public class Sheet {
     @Column(name = "alert_threshold", precision = 14, scale = 2)
     private BigDecimal alertThreshold;
 
+    /** The proof kinds (not dated), comma separated: a claim above the proof threshold needs a proof of each; null means none. */
+    @Column(name = "proof_kinds", length = 100)
+    private String proofKinds;
+
     /** While set, a new claim given no date takes it rather than the sheet's today; null means off. */
     @Column(name = "entry_date")
     private LocalDate entryDate;
@@ -340,6 +344,10 @@ public class Sheet {
     public BigDecimal getAlertThreshold() { return alertThreshold; }
 
     public void setAlertThreshold(BigDecimal alertThreshold) { this.alertThreshold = alertThreshold; }
+
+    public String getProofKinds() { return proofKinds; }
+
+    public void setProofKinds(String proofKinds) { this.proofKinds = proofKinds; }
 
     public LocalDate getEntryDate() { return entryDate; }
 

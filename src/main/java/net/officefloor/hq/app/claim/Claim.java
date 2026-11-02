@@ -32,6 +32,9 @@ import org.hibernate.generator.EventType;
 @Table(name = "claim")
 public class Claim {
 
+    /** The kinds a proof can be; a proof added with none chosen is a receipt. */
+    public static final String PROOF_RECEIPT = "receipt", PROOF_PHOTO = "photo";
+
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
@@ -144,6 +147,14 @@ public class Claim {
     /** How many proofs it has; raised one at a time while not SETTLED or VOID. */
     @Column(name = "proofs", nullable = false)
     private int proofs;
+
+    /** How many of its proofs are receipts. */
+    @Column(name = "proofs_receipt", nullable = false)
+    private int proofsReceipt;
+
+    /** How many of its proofs are photos. */
+    @Column(name = "proofs_photo", nullable = false)
+    private int proofsPhoto;
 
     /** The date it is deferred until; none unless deferred. Deferred only while OPEN and before that date. */
     @Column(name = "deferred_until")
@@ -496,8 +507,25 @@ public class Claim {
 
     public int getProofs() { return proofs; }
 
-    /** Raise its proofs count by one. */
-    public void addProof() { proofs++; }
+    public int getProofsReceipt() { return proofsReceipt; }
+
+    public int getProofsPhoto() { return proofsPhoto; }
+
+    /** How many of its proofs are of the kind (receipt or photo). */
+    public int proofsOf(String kind) {
+        return switch (kind) {
+            case PROOF_RECEIPT -> proofsReceipt;
+            case PROOF_PHOTO -> proofsPhoto;
+            default -> 0;
+        };
+    }
+
+    /** Raise its proofs count, and that of the kind (receipt or photo), by one. */
+    public void addProof(String kind) {
+        proofs++;
+        if (PROOF_PHOTO.equals(kind)) proofsPhoto++;
+        else proofsReceipt++;
+    }
 
     public LocalDate getDeferredUntil() { return deferredUntil; }
 

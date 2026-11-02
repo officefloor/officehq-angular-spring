@@ -44,7 +44,7 @@ public class ClaimController {
             int proofs, String splitFrom, String lockedBy, boolean lateEntry, LocalDate remindedOn,
             String ref, List<String> tags, String voidReason, List<CommentView> comments,
             Integer batch, List<LineView> lines, Long added, LocalDate reviewOn, boolean waived,
-            LocalDate waivedOn) {
+            LocalDate waivedOn, int proofsReceipt, int proofsPhoto) {
         public static ClaimView of(Claim claim) {
             return new ClaimView(claim.getId(), claim.getPersonId(), claim.getAmount().toPlainString(),
                     claim.getDate(), claim.getNote(), claim.getStatus(), claim.getNumber(),
@@ -58,7 +58,8 @@ public class ClaimController {
                     claim.getComments().stream().map(CommentView::of).toList(),
                     claim.getSettleBatch(),
                     claim.getLines().stream().map(LineView::of).toList(), claim.getAdded(),
-                    claim.getReviewOn(), claim.isWaived(), claim.getWaivedOn());
+                    claim.getReviewOn(), claim.isWaived(), claim.getWaivedOn(),
+                    claim.getProofsReceipt(), claim.getProofsPhoto());
         }
     }
 
@@ -118,6 +119,14 @@ public class ClaimController {
     }
 
     /** Why a steward rejects a PENDING claim. */
+    /** A proof's kind, receipt or photo; blank or null: none chosen, a receipt. */
+    public record ProofRequest(@Pattern(regexp = "(receipt|photo)?") String kind) {
+
+        String kindValue() {
+            return kind == null || kind.isEmpty() ? null : kind;
+        }
+    }
+
     public record RejectRequest(@NotBlank @Size(max = 200) @Pattern(regexp = "\\S+( \\S+)*") String reason) {}
 
     /** A claim line: a label (not blank), a whole quantity of at least 1 and a unit amount of up to two decimals. */
@@ -432,8 +441,9 @@ public class ClaimController {
     public ClaimView addProof(
             @PathVariable @Size(max = 100) @Pattern(regexp = "[A-Za-z0-9._-]+") String sheetId,
             @PathVariable Long id,
-            @RequestHeader("X-User") @NotBlank @Size(max = 100) String user) {
-        return ClaimView.of(service.addProof(sheetId, user, id));
+            @RequestHeader("X-User") @NotBlank @Size(max = 100) String user,
+            @RequestBody(required = false) @Valid ProofRequest request) {
+        return ClaimView.of(service.addProof(sheetId, user, id, request == null ? null : request.kindValue()));
     }
 
     @PostMapping("/claims/{id}/lines")

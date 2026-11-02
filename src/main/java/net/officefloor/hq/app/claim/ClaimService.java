@@ -632,10 +632,11 @@ public class ClaimService {
     }
 
     /**
-     * Raise a claim's proofs count by one. Refused for a SETTLED, VOID or DELETED claim, or one due inside a closed period.
+     * Raise a claim's proofs count by one, with a proof of the kind (null: none chosen, a receipt); the audit
+     * line gains the kind when one was chosen. Refused for a SETTLED, VOID or DELETED claim, or one due inside a closed period.
      */
     @Transactional
-    public Claim addProof(String sheetId, String user, Long id) {
+    public Claim addProof(String sheetId, String user, Long id, String kind) {
         // The snapshot locks the sheet first, so the claim is read once no other change is under way.
         RollupService.Snapshot before = rollup.snapshot(sheetId);
         Claim claim = claims.findByIdAndSheetId(id, sheetId).orElseThrow(ClaimNotFoundException::new);
@@ -645,9 +646,10 @@ public class ClaimService {
         }
         refuseIfClosed(sheetId, claim.getDueBy());
         Person person = people.findByIdAndSheetId(claim.getPersonId(), sheetId).orElseThrow(PersonNotFoundException::new);
-        claim.addProof();
+        claim.addProof(kind);
         Claim saved = claims.saveAndFlush(claim);
-        record("CLAIM_PROOF_ADDED", sheetId, user, person, saved, saved.getNumber(), " proofs=" + saved.getProofs());
+        record("CLAIM_PROOF_ADDED", sheetId, user, person, saved, saved.getNumber(), " proofs=" + saved.getProofs()
+                + (kind == null ? "" : " kind=" + kind));
         rollup.recordChanges(sheetId, user, before);
         return saved;
     }
@@ -719,10 +721,13 @@ public class ClaimService {
     /**
      * Refuse settling or approving a claim with no proofs whose due is above the proof threshold in force on
      * its date (its person's grade's then when set, else the sheet's); a due of n/a is within any, and no
-     * threshold means none is needed.
+     * threshold means none is needed. While the sheet has proof kinds, it needs a proof of each listed kind instead.
      */
     private void refuseUnproved(String sheetId, Person person, Claim claim, BigDecimal due) {
-        if (claim.getProofs() > 0 || due == null) return;
+        if (due == null) return;
+        List<String> kinds = settings.proofKinds(sheetId);
+        boolean proved = kinds.isEmpty() ? claim.getProofs() > 0 : kinds.stream().allMatch(k -> claim.proofsOf(k) > 0);
+        if (proved) return;
         BigDecimal threshold = settings.proofThresholdFor(sheetId, person.gradeOn(claim.getDate()), claim.getDate());
         if (threshold != null && due.compareTo(threshold) > 0) throw new ClaimProofRequiredException();
     }

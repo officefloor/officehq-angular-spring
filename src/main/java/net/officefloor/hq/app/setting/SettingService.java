@@ -467,6 +467,24 @@ public class SettingService {
         return threshold;
     }
 
+    /** Change the proof kinds (null: none), comma separated; not dated. */
+    @Transactional
+    public String setProofKinds(String sheetId, String user, String kinds) {
+        Sheet sheet = sheets.findForUpdate(sheetId).orElseThrow(SheetNotFoundException::new);
+        sheet.setProofKinds(kinds);
+        sheets.flush();
+        audit.recordOnCommit("SETTING_CHANGED sheet=" + sheetId + " by=" + user.strip() + " key=proof-kinds value="
+                + (kinds == null ? "" : kinds));
+        return kinds;
+    }
+
+    /** The proof kinds as set, in order; empty when none. */
+    @Transactional(readOnly = true)
+    public List<String> proofKinds(String sheetId) {
+        String kinds = sheets.findById(sheetId).orElseThrow(SheetNotFoundException::new).getProofKinds();
+        return kinds == null || kinds.isEmpty() ? List.of() : List.of(kinds.split(","));
+    }
+
     /** The alert threshold as set; null when blank, which means off. */
     @Transactional(readOnly = true)
     public BigDecimal alertThreshold(String sheetId) {

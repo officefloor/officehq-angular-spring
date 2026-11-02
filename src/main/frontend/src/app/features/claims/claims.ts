@@ -49,6 +49,10 @@ export interface Claim {
   deferredUntil: string | null;
   /** How many proofs it has; one above the proof threshold in force on its date needs one to be settled or approved. */
   proofs: number;
+  /** How many of its proofs are receipts (a proof added with no kind chosen is one). */
+  proofsReceipt: number;
+  /** How many of its proofs are photos. */
+  proofsPhoto: number;
   /** Its external reference, unique on the sheet without regard to case; null when it has none. */
   ref: string | null;
   /** The reason it was voided with, from the sheet's list; null unless voided with one. */
@@ -366,7 +370,9 @@ function notEditable(status: ClaimStatus | undefined): string {
           <span>Overdue <span data-testid="claim-overdue">{{ overdueOf(c) ? 'yes' : 'no' }}</span></span>
           <span>Deferred <span data-testid="claim-deferred">{{ deferredOf(c) ? 'yes' : 'no' }}</span></span>
           <span>Deferred until <span data-testid="claim-deferred-until">{{ c.deferredUntil ?? '' }}</span></span>
-          <span>Proofs <span data-testid="claim-proofs">{{ c.proofs }}</span></span>
+          <span>Proofs <span data-testid="claim-proofs">{{ c.proofs }}</span>
+            (receipts <span data-testid="claim-proofs-receipt">{{ c.proofsReceipt }}</span>,
+            photos <span data-testid="claim-proofs-photo">{{ c.proofsPhoto }}</span>)</span>
           <span>Corrects <span data-testid="claim-corrects">{{ c.corrects ?? '' }}</span></span>
           <span>Split from <span data-testid="claim-split-from">{{ c.splitFrom ?? '' }}</span></span>
           <span>Late entry <span data-testid="claim-late-entry">{{ c.lateEntry ? 'yes' : 'no' }}</span></span>
@@ -438,7 +444,14 @@ function notEditable(status: ClaimStatus | undefined): string {
           <input [id]="fieldId('reject-' + c.id)" data-testid="claim-reject-reason" #rejectReason />
           <button type="button" data-testid="claim-reject" (click)="act(c, 'reject', rejectReason.value)"
                   [attr.aria-label]="'Reject claim of ' + c.amount + ' on ' + c.date">Reject</button>
-          <button type="button" data-testid="claim-proof" (click)="addProof(c)"
+          <label [for]="fieldId('proof-kind-' + c.id)">Proof kind</label>
+          <select [id]="fieldId('proof-kind-' + c.id)" data-testid="claim-proof-kind" #proofKind
+                  (change)="clearClaimError(c.id)">
+            <option value="">(receipt)</option>
+            <option value="receipt">receipt</option>
+            <option value="photo">photo</option>
+          </select>
+          <button type="button" data-testid="claim-proof" (click)="addProof(c, proofKind)"
                   [attr.aria-label]="'Add a proof to claim of ' + c.amount + ' on ' + c.date">Add proof</button>
           <button type="button" data-testid="claim-remind" (click)="remind(c)"
                   [attr.aria-label]="'Remind claim of ' + c.amount + ' on ' + c.date">Remind</button>
@@ -717,7 +730,9 @@ export class Claims {
         : e instanceof HttpErrorResponse && e.status === 412
         ? `A deferred claim cannot be settled until ${c.deferredUntil}.`
         : e instanceof HttpErrorResponse && e.status === 428
-        ? `A claim due above the proof threshold cannot be ${PAST[action]} without a proof.`
+        ? this.session.proofKinds()
+          ? `A claim due above the proof threshold cannot be ${PAST[action]} without a proof of each kind (${this.session.proofKinds()}).`
+          : `A claim due above the proof threshold cannot be ${PAST[action]} without a proof.`
         : e instanceof HttpErrorResponse && e.status === 422 && action === 'void'
         ? VOID_REASON_NEEDED
         : e instanceof HttpErrorResponse && e.status === 422 && action === 'open'
@@ -746,14 +761,15 @@ export class Claims {
   }
 
   /** Raise a claim's proofs count by one; a SETTLED or VOID claim, or one due inside a closed period, is refused. */
-  protected async addProof(c: Claim): Promise<void> {
+  protected async addProof(c: Claim, kind: HTMLSelectElement): Promise<void> {
     this.claimError.set(null);
     const sheet = this.session.sheetId();
     if (!sheet) return;
     const url = `/api/sheets/${encodeURIComponent(sheet)}/claims/${c.id}/proof`;
     try {
-      const claim = await firstValueFrom(this.http.post<Claim>(url, null, { headers: this.headers() }));
+      const claim = await firstValueFrom(this.http.post<Claim>(url, { kind: kind.value || null }, { headers: this.headers() }));
       if (this.session.sheetId() !== sheet) return;
+      kind.value = '';
       this.saved.emit(claim);
     } catch (e) {
       if (this.session.sheetId() !== sheet) return;

@@ -81,6 +81,8 @@ interface SettingsView {
   escalateAfter: number | null;
   /** A REVIEW claim whose review day plus this many days is before today is late for review; null when blank: none. */
   reviewSla: number | null;
+  /** The proof kinds (not dated), comma separated: a claim above the proof threshold needs a proof of each; empty when none. */
+  proofKinds: string;
 }
 
 /** A from-date field (yyyy-mm-dd) for a dated setting; blank: the sheet's today. */
@@ -186,6 +188,9 @@ const FROM = 'From (yyyy-mm-dd; blank: the sheet\'s today)';
         <input id="setting-alert-threshold" data-testid="setting-alert-threshold" formControlName="alertThreshold" inputmode="decimal"
                (keydown.delete)="form.controls.alertThreshold.markAsDirty()"
                (keydown.backspace)="form.controls.alertThreshold.markAsDirty()" />
+        <label for="setting-proof-kinds">Proof kinds (comma separated receipt, photo: a claim above the proof threshold needs a proof of each; blank: none)</label>
+        <input id="setting-proof-kinds" data-testid="setting-proof-kinds" formControlName="proofKinds"
+               (keydown.delete)="form.controls.proofKinds.markAsDirty()" (keydown.backspace)="form.controls.proofKinds.markAsDirty()" />
         <label for="setting-parent">Parent sheet id (its rates apply where this sheet has none; blank: none)</label>
         <input id="setting-parent" data-testid="setting-parent" formControlName="parent"
                (keydown.delete)="form.controls.parent.markAsDirty()" (keydown.backspace)="form.controls.parent.markAsDirty()" />
@@ -265,6 +270,7 @@ const FROM = 'From (yyyy-mm-dd; blank: the sheet\'s today)';
       }
       <p>Entry date now: <span data-testid="setting-entry-date-current">{{ entryDate() ?? '' }}</span></p>
       <p>Pot now: <span data-testid="setting-pot-current">{{ pot() ?? '' | figure }}</span></p>
+      <p>Proof kinds now: <span data-testid="setting-proof-kinds-current">{{ session.proofKinds() }}</span></p>
       <p>Alert threshold now: <span data-testid="setting-alert-threshold-current">{{ alertThreshold() ?? '' | figure }}</span></p>
       <p>Parent sheet now: <span data-testid="setting-parent-current">{{ session.parent() ?? '' }}</span></p>
       <p>Cap now: <span data-testid="setting-cap-current">{{ session.cap() ?? '' | figure }}</span></p>
@@ -397,6 +403,7 @@ export class Settings {
     cap: new FormControl('', { nonNullable: true }),
     pot: new FormControl('', { nonNullable: true }),
     alertThreshold: new FormControl('', { nonNullable: true }),
+    proofKinds: new FormControl('', { nonNullable: true }),
     parent: new FormControl('', { nonNullable: true }),
     clerkLimitFrom: new FormControl('', { nonNullable: true }),
     floorFrom: new FormControl('', { nonNullable: true }),
@@ -482,6 +489,7 @@ export class Settings {
       this.entryDate.set(null);
       this.pot.set(null);
       this.alertThreshold.set(null);
+      this.session.proofKinds.set('');
       this.session.parent.set(null);
       this.userRoles.set([]);
       this.permissionsSet.set({});
@@ -525,6 +533,7 @@ export class Settings {
     this.entryDate.set(view.entryDate);
     this.pot.set(view.pot);
     this.alertThreshold.set(view.alertThreshold);
+    this.session.proofKinds.set(view.proofKinds);
     this.session.parent.set(view.parent);
     this.userRoles.set(view.roles);
     this.permissionsSet.set(view.permissions);
@@ -537,7 +546,7 @@ export class Settings {
     this.error.set('');
     const sheet = this.session.sheetId();
     if (!sheet) return;
-    const { clerkLimit, floor, terms, latePct, policyDate, periodNumberingFrom, graceDays, escalateAfter, reviewSla, fiscalStartMonth, entryDate, cap, pot, alertThreshold, parent, proofThreshold, noteThreshold, reviewThreshold, rounding } = this.form.controls;
+    const { clerkLimit, floor, terms, latePct, policyDate, periodNumberingFrom, graceDays, escalateAfter, reviewSla, fiscalStartMonth, entryDate, cap, pot, alertThreshold, proofKinds, parent, proofThreshold, noteThreshold, reviewThreshold, rounding } = this.form.controls;
     const { clerkLimitFrom, floorFrom, termsFrom, latePctFrom, capFrom, proofThresholdFrom, noteThresholdFrom, reviewThresholdFrom, roundingFrom } = this.form.getRawValue();
     const value = clerkLimit.value.trim();
     const floorValue = floor.value.trim();
@@ -553,6 +562,7 @@ export class Settings {
     const capValue = cap.value.trim();
     const potValue = pot.value.trim();
     const alertThresholdValue = alertThreshold.value.trim();
+    const proofKindsValue = proofKinds.value.split(',').map((k) => k.trim()).filter((k, i, all) => all.indexOf(k) === i).join(',');
     const parentValue = parent.value.trim();
     const proofThresholdValue = proofThreshold.value.trim();
     const noteThresholdValue = noteThreshold.value.trim();
@@ -640,6 +650,10 @@ export class Settings {
     }
     if (alertThreshold.dirty && alertThresholdValue && !/^\d{1,12}(\.\d{1,2})?$/.test(alertThresholdValue)) {
       this.error.set('Enter an alert threshold of 0.00 or more, with at most two decimals, or leave it blank for off.');
+      return;
+    }
+    if (proofKinds.dirty && proofKinds.value.trim() && !/^\s*(receipt|photo)(\s*,\s*(receipt|photo))*\s*$/.test(proofKinds.value)) {
+      this.error.set('Enter proof kinds as a comma separated list of receipt and photo, or leave it blank for none.');
       return;
     }
     if (proofThreshold.dirty && proofThresholdValue && !/^\d{1,12}(\.\d{1,2})?$/.test(proofThresholdValue)) {
@@ -794,6 +808,14 @@ export class Settings {
             { headers: this.headers() }),
         );
         alertThreshold.markAsPristine();
+        if (this.session.sheetId() === sheet) this.show(view);
+      }
+      if (proofKinds.dirty) {
+        const view = await firstValueFrom(
+          this.http.put<SettingsView>(`${this.base(sheet)}/settings/proof-kinds`, { value: proofKinds.value.trim() ? proofKindsValue : null },
+            { headers: this.headers() }),
+        );
+        proofKinds.markAsPristine();
         if (this.session.sheetId() === sheet) this.show(view);
       }
       if (parent.dirty) {

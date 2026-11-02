@@ -2075,7 +2075,7 @@ export class People {
     this.personError.set(null);
     this.editingId.set(p.id);
     this.editingVersion = p.version;
-    this.form.setValue({ name: p.name, grade: this.gradeOf(p), gradeFrom: '', terms: p.terms?.toString() ?? '', termsFrom: '', contact: p.contact ?? '', tags: p.tags.join(', ') }, { emitEvent: false });
+    this.form.setValue({ name: p.name, grade: this.gradeOf(p), gradeFrom: '', terms: p.baseTerms?.toString() ?? '', termsFrom: '', contact: p.contact ?? '', tags: p.tags.join(', ') }, { emitEvent: false });
     this.error.set('');
   }
 
@@ -2322,7 +2322,7 @@ export class People {
       const current = list.find((p) => p.id === id);
       if (current && this.editingId() === id) {
         this.editingVersion = current.version;
-        this.form.setValue({ name: current.name, grade: this.gradeOf(current), gradeFrom: '', terms: current.terms?.toString() ?? '', termsFrom: '', contact: current.contact ?? '', tags: current.tags.join(', ') }, { emitEvent: false });
+        this.form.setValue({ name: current.name, grade: this.gradeOf(current), gradeFrom: '', terms: current.baseTerms?.toString() ?? '', termsFrom: '', contact: current.contact ?? '', tags: current.tags.join(', ') }, { emitEvent: false });
       }
     } catch {
       // the error already shown stands
