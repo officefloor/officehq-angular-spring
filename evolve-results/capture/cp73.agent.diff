@@ -1,0 +1,1561 @@
+diff --git a/src/main/frontend/src/app/core/people.ts b/src/main/frontend/src/app/core/people.ts
+index 4054edf74..2eef4e91e 100644
+--- a/src/main/frontend/src/app/core/people.ts
++++ b/src/main/frontend/src/app/core/people.ts
+@@ -129,12 +129,12 @@ export class People {
+     );
+   }
+ 
+-  /** Take a statement of the person: their due-total now is recorded and each claim of theirs that
+-   *  counts is bound to the figure it has now. */
+-  statement(id: number): Promise<Taken> {
++  /** Take a statement of the person as of a day (null: the sheet's today): their due-total then is
++   *  recorded and each claim of theirs that counted then is bound to the figure it had then. */
++  statement(id: number, asOf: string | null): Promise<Taken> {
+     const { sheetId, user } = this.active();
+     return firstValueFrom(
+-      this.http.post<Taken>(`${this.url(sheetId)}/${id}/statements`, null, { headers: { 'X-User': user } }),
++      this.http.post<Taken>(`${this.url(sheetId)}/${id}/statements`, { asOf }, { headers: { 'X-User': user } }),
+     );
+   }
+ 
+diff --git a/src/main/frontend/src/app/features/people/people-list.ts b/src/main/frontend/src/app/features/people/people-list.ts
+index 6762c7064..60838b988 100644
+--- a/src/main/frontend/src/app/features/people/people-list.ts
++++ b/src/main/frontend/src/app/features/people/people-list.ts
+@@ -132,7 +132,9 @@ const NO_LEAVE: Leave = { holds: [], retiredFrom: null };
+               <td>
+                 <button type="button" [attr.data-testid]="'person-edit-' + p.id" (click)="open(p)"
+                   [attr.aria-label]="'Edit ' + p.name">Edit</button>
+-                <button type="button" data-testid="person-statement" (click)="statement(p)"
++                <label [for]="'person-statement-asof-' + p.id" class="visually-hidden">Take the statement of {{ p.name }} as of</label>
++                <input #statementAsOf type="date" [id]="'person-statement-asof-' + p.id" data-testid="person-statement-asof" />
++                <button type="button" data-testid="person-statement" (click)="statement(p, statementAsOf)"
+                   [attr.aria-label]="'Take a statement of ' + p.name">Statement</button>
+                 <button type="button" data-testid="person-unstate" (click)="unstate(p)"
+                   [attr.aria-label]="'Cancel the last statement of ' + p.name">Cancel statement</button>
+@@ -402,14 +404,16 @@ export class PeopleList {
+     this.error.set('');
+   }
+ 
+-  /** Take a statement of the person, then show them and their claims as it left them. */
+-  protected async statement(p: Person): Promise<void> {
++  /** Take a statement of the person as of the day entered (blank: now), then show them and their
++   *  claims as it left them, and clear the day. */
++  protected async statement(p: Person, asOf: HTMLInputElement): Promise<void> {
+     if (this.stating.has(p.id)) return;
+     this.stating.add(p.id);
+     this.personError.set(null);
+     this.patronError.set(null);
+     try {
+-      this.showTaken(await this.api.statement(p.id));
++      this.showTaken(await this.api.statement(p.id, asOf.value || null));
++      asOf.value = '';
+     } catch {
+       this.personError.set({ id: p.id, message: 'The statement could not be taken.' });
+     } finally {
+diff --git a/src/main/java/net/officefloor/hq/app/claim/Claim.java b/src/main/java/net/officefloor/hq/app/claim/Claim.java
+index 89224b6e0..c0176ee30 100644
+--- a/src/main/java/net/officefloor/hq/app/claim/Claim.java
++++ b/src/main/java/net/officefloor/hq/app/claim/Claim.java
+@@ -130,6 +130,18 @@ public class Claim {
+     protected Claim() {
+     }
+ 
++    /** The claim as a revision of it has it, detached: for working out figures only, never saved. */
++    static Claim revised(ClaimRevision revision) {
++        Claim claim = new Claim(revision.getSheetId(), revision.getPersonId(), revision.getAmount(),
++                revision.getDate(), "", null, revision.getCorrectedDate(), revision.getDueBy());
++        claim.id = revision.getClaimId();
++        claim.status = revision.getStatus();
++        claim.settledDue = revision.getSettledDue();
++        claim.bind(revision.isStated(), revision.getStatedDue(), revision.isStatedNa());
++        claim.deferredUntil = revision.getDeferredUntil();
++        return claim;
++    }
++
+     public Claim(String sheetId, Long personId, BigDecimal amount, LocalDate date, String note, String corrects,
+             LocalDate correctedDate, LocalDate dueBy) {
+         this.sheetId = sheetId;
+diff --git a/src/main/java/net/officefloor/hq/app/claim/ClaimRevision.java b/src/main/java/net/officefloor/hq/app/claim/ClaimRevision.java
+new file mode 100644
+index 000000000..3748a612d
+--- /dev/null
++++ b/src/main/java/net/officefloor/hq/app/claim/ClaimRevision.java
+@@ -0,0 +1,168 @@
++package net.officefloor.hq.app.claim;
++
++import jakarta.persistence.Column;
++import jakarta.persistence.Entity;
++import jakarta.persistence.EnumType;
++import jakarta.persistence.Enumerated;
++import jakarta.persistence.GeneratedValue;
++import jakarta.persistence.GenerationType;
++import jakarta.persistence.Id;
++import jakarta.persistence.Table;
++import java.math.BigDecimal;
++import java.time.LocalDate;
++import java.util.Objects;
++
++/** A revision of a claim in its sheet's history: what its figures were worked out from after a
++ *  change, recorded on the sheet's today then. */
++@Entity
++@Table(name = "claim_revision")
++public class ClaimRevision {
++
++    @Id
++    @GeneratedValue(strategy = GenerationType.IDENTITY)
++    private Long id;
++
++    @Column(name = "sheet_id", nullable = false)
++    private String sheetId;
++
++    @Column(name = "claim_id", nullable = false)
++    private Long claimId;
++
++    /** The sheet's today when the revision was recorded. */
++    @Column(name = "recorded_on", nullable = false)
++    private LocalDate recordedOn;
++
++    @Column(name = "person_id", nullable = false)
++    private Long personId;
++
++    @Column(name = "amount", nullable = false, precision = 14, scale = 2)
++    private BigDecimal amount;
++
++    @Column(name = "claim_date", nullable = false)
++    private LocalDate date;
++
++    @Enumerated(EnumType.STRING)
++    @Column(name = "status", nullable = false)
++    private ClaimStatus status;
++
++    @Column(name = "settled_due", precision = 14, scale = 2)
++    private BigDecimal settledDue;
++
++    @Column(name = "stated", nullable = false)
++    private boolean stated;
++
++    @Column(name = "stated_due", precision = 14, scale = 2)
++    private BigDecimal statedDue;
++
++    @Column(name = "stated_na", nullable = false)
++    private boolean statedNa;
++
++    @Column(name = "corrected_date")
++    private LocalDate correctedDate;
++
++    @Column(name = "due_by", nullable = false)
++    private LocalDate dueBy;
++
++    @Column(name = "deferred_until")
++    private LocalDate deferredUntil;
++
++    protected ClaimRevision() {
++    }
++
++    /** A revision of the claim as it is now, recorded on the day. */
++    public ClaimRevision(Claim claim, LocalDate recordedOn) {
++        this.sheetId = claim.getSheetId();
++        this.claimId = claim.getId();
++        this.recordedOn = recordedOn;
++        this.personId = claim.getPersonId();
++        this.amount = claim.getAmount();
++        this.date = claim.getDate();
++        this.status = claim.getStatus();
++        this.settledDue = claim.getSettledDue();
++        this.stated = claim.isStated();
++        this.statedDue = claim.getStatedDue();
++        this.statedNa = claim.isStatedNa();
++        this.correctedDate = claim.getCorrectedDate();
++        this.dueBy = claim.getDueBy();
++        this.deferredUntil = claim.getDeferredUntil();
++    }
++
++    /** Whether the claim is now as this revision has it. */
++    public boolean matches(Claim claim) {
++        return Objects.equals(personId, claim.getPersonId()) && same(amount, claim.getAmount())
++                && Objects.equals(date, claim.getDate()) && status == claim.getStatus()
++                && same(settledDue, claim.getSettledDue()) && stated == claim.isStated()
++                && same(statedDue, claim.getStatedDue()) && statedNa == claim.isStatedNa()
++                && Objects.equals(correctedDate, claim.getCorrectedDate()) && Objects.equals(dueBy, claim.getDueBy())
++                && Objects.equals(deferredUntil, claim.getDeferredUntil());
++    }
++
++    private static boolean same(BigDecimal a, BigDecimal b) {
++        return a == null ? b == null : b != null && a.compareTo(b) == 0;
++    }
++
++    /** The claim as this revision has it, detached: for working out figures only, never saved. */
++    public Claim toClaim() {
++        return Claim.revised(this);
++    }
++
++    public Long getId() {
++        return id;
++    }
++
++    public Long getClaimId() {
++        return claimId;
++    }
++
++    public LocalDate getRecordedOn() {
++        return recordedOn;
++    }
++
++    Long getPersonId() {
++        return personId;
++    }
++
++    String getSheetId() {
++        return sheetId;
++    }
++
++    BigDecimal getAmount() {
++        return amount;
++    }
++
++    LocalDate getDate() {
++        return date;
++    }
++
++    ClaimStatus getStatus() {
++        return status;
++    }
++
++    BigDecimal getSettledDue() {
++        return settledDue;
++    }
++
++    boolean isStated() {
++        return stated;
++    }
++
++    BigDecimal getStatedDue() {
++        return statedDue;
++    }
++
++    boolean isStatedNa() {
++        return statedNa;
++    }
++
++    LocalDate getCorrectedDate() {
++        return correctedDate;
++    }
++
++    LocalDate getDueBy() {
++        return dueBy;
++    }
++
++    LocalDate getDeferredUntil() {
++        return deferredUntil;
++    }
++}
+diff --git a/src/main/java/net/officefloor/hq/app/claim/ClaimRevisionRepository.java b/src/main/java/net/officefloor/hq/app/claim/ClaimRevisionRepository.java
+new file mode 100644
+index 000000000..b6156cb22
+--- /dev/null
++++ b/src/main/java/net/officefloor/hq/app/claim/ClaimRevisionRepository.java
+@@ -0,0 +1,10 @@
++package net.officefloor.hq.app.claim;
++
++import java.util.List;
++import org.springframework.data.jpa.repository.JpaRepository;
++
++public interface ClaimRevisionRepository extends JpaRepository<ClaimRevision, Long> {
++
++    /** The claim revisions of a sheet in the order they were recorded. */
++    List<ClaimRevision> findBySheetIdOrderByIdAsc(String sheetId);
++}
+diff --git a/src/main/java/net/officefloor/hq/app/claim/Dues.java b/src/main/java/net/officefloor/hq/app/claim/Dues.java
+index 025e0c878..bdd112b38 100644
+--- a/src/main/java/net/officefloor/hq/app/claim/Dues.java
++++ b/src/main/java/net/officefloor/hq/app/claim/Dues.java
+@@ -11,10 +11,33 @@ import net.officefloor.hq.app.rate.RateRepository;
+ import net.officefloor.hq.app.sheet.SheetService;
+ import org.springframework.stereotype.Service;
+ 
+-/** The due figures of claims, and the due-totals of people, at the rates on a sheet. */
++/** The due figures of claims, and the due-totals of people, at the rates on a sheet: as they are
++ *  now, or on any other {@link Basis} (such as the sheet as it stood at the end of an earlier day). */
+ @Service
+ public class Dues {
+ 
++    /** What a sheet's figures are worked out from: its today, its dated settings and its rates. */
++    public interface Basis {
++
++        /** The day that stands in for the sheet's today. */
++        LocalDate today();
++
++        /** The floor in force on a day. */
++        BigDecimal floor(LocalDate day);
++
++        /** The late percent in force on a day. */
++        BigDecimal latePct(LocalDate day);
++
++        /** The cap in force on the basis's today; null when there is none. */
++        BigDecimal cap();
++
++        /** The policy date in force: the one set, or else the basis's today. */
++        LocalDate policyDateInForce();
++
++        /** The rates of a grade, the latest from-date first and the one with none last. */
++        List<Rate> rates(String grade);
++    }
++
+     private final RateRepository rates;
+     private final SheetService sheets;
+ 
+@@ -23,32 +46,73 @@ public class Dues {
+         this.sheets = sheets;
+     }
+ 
++    /** The sheet as it is now: its today, its settings and its rates. */
++    public Basis now(String sheetId) {
++        return new Basis() {
++            @Override
++            public LocalDate today() {
++                return sheets.today(sheetId);
++            }
++
++            @Override
++            public BigDecimal floor(LocalDate day) {
++                return sheets.floor(sheetId, day);
++            }
++
++            @Override
++            public BigDecimal latePct(LocalDate day) {
++                return sheets.latePct(sheetId, day);
++            }
++
++            @Override
++            public BigDecimal cap() {
++                return sheets.cap(sheetId);
++            }
++
++            @Override
++            public LocalDate policyDateInForce() {
++                return sheets.policyDateInForce(sheetId);
++            }
++
++            @Override
++            public List<Rate> rates(String grade) {
++                return rates.findLatestFirst(sheetId, grade);
++            }
++        };
++    }
++
+     /** The due figure a claim shows and totals: the one fixed when it was settled, or else its
+      *  {@link #bindable} rate figure with the late charge on that figure on top while it is overdue,
+      *  at least the sheet's floor in force on the claim's date (a correction has neither); null when
+      *  there is none. */
+     public BigDecimal figure(String sheetId, Person person, Claim claim) {
++        return figure(now(sheetId), person, claim);
++    }
++
++    /** The due figure a claim shows and totals on a basis (see {@link #figure(String, Person, Claim)}). */
++    public BigDecimal figure(Basis basis, Person person, Claim claim) {
+         if (claim.getSettledDue() != null) {
+             return claim.getSettledDue();
+         }
+-        return floored(sheetId, claim, bindable(sheetId, person, claim), claim.getStatus().isOpen());
++        return floored(basis, claim, bindable(basis, person, claim), claim.getStatus().isOpen());
+     }
+ 
+     /** The figure a claim would have today as an open claim bound by no statement: its rate figure
+      *  with the late charge on top while it is overdue, at least the floor in force on its date; null
+      *  when there is none. */
+     public BigDecimal openFigure(String sheetId, Person person, Claim claim) {
+-        return floored(sheetId, claim, due(sheetId, person, claim), true);
++        Basis basis = now(sheetId);
++        return floored(basis, claim, due(basis, person, claim), true);
+     }
+ 
+     /** A rate figure with its late charge (taken as open or not) on top, then at least the sheet's
+      *  floor in force on the claim's date (a correction has no floor); null when the figure is. */
+-    private BigDecimal floored(String sheetId, Claim claim, BigDecimal figure, boolean open) {
++    private BigDecimal floored(Basis basis, Claim claim, BigDecimal figure, boolean open) {
+         if (figure == null) {
+             return null;
+         }
+-        BigDecimal charged = figure.add(lateCharge(sheetId, claim, figure, open));
+-        return claim.isCorrection() ? charged : charged.max(sheets.floor(sheetId, claim.getDate()));
++        BigDecimal charged = figure.add(lateCharge(basis, claim, figure, open));
++        return claim.isCorrection() ? charged : charged.max(basis.floor(claim.getDate()));
+     }
+ 
+     /** The rate figure a statement binds a claim to: the one its person's last statement bound it to,
+@@ -56,21 +120,31 @@ public class Dues {
+      *  never the late charge, which keeps following the sheet's today, nor the floor, which is applied
+      *  last. Null when there is none, or when the statement bound it to n/a. */
+     public BigDecimal bindable(String sheetId, Person person, Claim claim) {
++        return bindable(now(sheetId), person, claim);
++    }
++
++    /** The rate figure a statement binds a claim to on a basis (see {@link #bindable(String, Person, Claim)}). */
++    public BigDecimal bindable(Basis basis, Person person, Claim claim) {
+         if (bound(claim) && (claim.getStatedDue() != null || claim.isStatedNa())) {
+             return claim.getStatedDue();
+         }
+-        return due(sheetId, person, claim);
++        return due(basis, person, claim);
+     }
+ 
+     /** Whether a statement binds a claim to n/a: its person's last statement bound it to n/a, or
+      *  else it has no bound figure and no live due because the rate that would apply to it on its
+      *  date (for the person's grade on that date) has ended. */
+     public boolean bindsNa(String sheetId, Person person, Claim claim) {
++        return bindsNa(now(sheetId), person, claim);
++    }
++
++    /** Whether a statement binds a claim to n/a on a basis (see {@link #bindsNa(String, Person, Claim)}). */
++    public boolean bindsNa(Basis basis, Person person, Claim claim) {
+         if (bound(claim) && (claim.getStatedDue() != null || claim.isStatedNa())) {
+             return claim.isStatedNa();
+         }
+-        return due(sheetId, person, claim) == null
+-                && rates.endedBefore(sheetId, person.gradeOn(claim.getDate()), claim.getDate());
++        return due(basis, person, claim) == null
++                && RateRepository.endedBefore(basis.rates(person.gradeOn(claim.getDate())), claim.getDate());
+     }
+ 
+     /** Whether a claim is bound by its person's last statement now (a pending claim is not). */
+@@ -82,19 +156,20 @@ public class Dues {
+      *  made, before today; a correction has none): for each full 30 days it is overdue, the late percent in force on
+      *  that boundary (its due-by plus 30, 60, 90 ... days) of its figure, rounded to two decimals by the claim's
+      *  {@link #rounding}, the charges added up (a boundary whose percent is 0.00 adds nothing); 0.00 when it is not overdue. */
+-    private BigDecimal lateCharge(String sheetId, Claim claim, BigDecimal figure, boolean open) {
++    private BigDecimal lateCharge(Basis basis, Claim claim, BigDecimal figure, boolean open) {
+         BigDecimal none = BigDecimal.ZERO.setScale(2);
+-        if (!open || claim.isCorrection() || claim.isDeferredOn(sheets.today(sheetId))) {
++        LocalDate today = basis.today();
++        if (!open || claim.isCorrection() || claim.isDeferredOn(today)) {
+             return none;
+         }
+-        long periods = ChronoUnit.DAYS.between(claim.getDueBy(), sheets.today(sheetId)) / 30;
++        long periods = ChronoUnit.DAYS.between(claim.getDueBy(), today) / 30;
+         if (periods <= 0) {
+             return none;
+         }
+-        RoundingMode rounding = rounding(sheetId, claim);
++        RoundingMode rounding = rounding(basis, claim);
+         BigDecimal charge = none;
+         for (long n = 1; n <= periods; n++) {
+-            BigDecimal pct = sheets.latePct(sheetId, claim.getDueBy().plusDays(30 * n));
++            BigDecimal pct = basis.latePct(claim.getDueBy().plusDays(30 * n));
+             if (pct.signum() != 0) {
+                 charge = charge.add(figure.multiply(pct).movePointLeft(2).setScale(2, rounding));
+             }
+@@ -136,15 +211,20 @@ public class Dues {
+      *  cap in force on its today; null (n/a) when their grade on the sheet's today has no rate on it and no counting claim
+      *  has a figure (one fixed, or a live due at the grade in force on its date). */
+     public BigDecimal dueTotal(String sheetId, Person person, List<Claim> theirs) {
++        return dueTotal(now(sheetId), person, theirs);
++    }
++
++    /** A person's due-total on a basis (see {@link #dueTotal(String, Person, List)}). */
++    public BigDecimal dueTotal(Basis basis, Person person, List<Claim> theirs) {
+         List<BigDecimal> figures = theirs.stream().filter(c -> c.getStatus().counts())
+-                .map(c -> figure(sheetId, person, c)).filter(d -> d != null).toList();
+-        LocalDate today = sheets.today(sheetId);
+-        boolean rated = rates.findInForce(sheetId, person.gradeOn(today), today).isPresent();
++                .map(c -> figure(basis, person, c)).filter(d -> d != null).toList();
++        LocalDate today = basis.today();
++        boolean rated = RateRepository.inForce(basis.rates(person.gradeOn(today)), today).isPresent();
+         if (!rated && figures.isEmpty()) {
+             return null;
+         }
+         BigDecimal sum = figures.stream().reduce(BigDecimal.ZERO.setScale(2), BigDecimal::add);
+-        BigDecimal cap = sheets.cap(sheetId);
++        BigDecimal cap = basis.cap();
+         return cap == null ? sum : sum.min(cap);
+     }
+ 
+@@ -152,9 +232,9 @@ public class Dues {
+      *  on that date: amount
+      *  times pct divided by 100, rounded to two decimals by the claim's {@link #rounding} (the floor is
+      *  applied later, see {@link #floored}); null when no rate applies on that date. */
+-    private BigDecimal due(String sheetId, Person person, Claim claim) {
+-        RoundingMode rounding = rounding(sheetId, claim);
+-        return rates.findInForce(sheetId, person.gradeOn(claim.getDate()), claim.getDate())
++    private BigDecimal due(Basis basis, Person person, Claim claim) {
++        RoundingMode rounding = rounding(basis, claim);
++        return RateRepository.inForce(basis.rates(person.gradeOn(claim.getDate())), claim.getDate())
+                 .map(Rate::getPct)
+                 .map(pct -> claim.getAmount().multiply(pct).movePointLeft(2).setScale(2, rounding))
+                 .orElse(null);
+@@ -162,8 +242,8 @@ public class Dues {
+ 
+     /** How a claim's live figures round: half up when the date it rounds by (a correction's is that of
+      *  the claim it corrects) is before the sheet's policy date, else half to even. */
+-    private RoundingMode rounding(String sheetId, Claim claim) {
+-        return claim.roundsBy().isBefore(sheets.policyDateInForce(sheetId)) ? RoundingMode.HALF_UP
++    private RoundingMode rounding(Basis basis, Claim claim) {
++        return claim.roundsBy().isBefore(basis.policyDateInForce()) ? RoundingMode.HALF_UP
+                 : RoundingMode.HALF_EVEN;
+     }
+ }
+diff --git a/src/main/java/net/officefloor/hq/app/history/History.java b/src/main/java/net/officefloor/hq/app/history/History.java
+new file mode 100644
+index 000000000..8f0b268a3
+--- /dev/null
++++ b/src/main/java/net/officefloor/hq/app/history/History.java
+@@ -0,0 +1,210 @@
++package net.officefloor.hq.app.history;
++
++import java.math.BigDecimal;
++import java.time.LocalDate;
++import java.util.Comparator;
++import java.util.LinkedHashMap;
++import java.util.List;
++import java.util.Map;
++import java.util.Objects;
++import java.util.Optional;
++import java.util.function.Function;
++import net.officefloor.hq.app.claim.Claim;
++import net.officefloor.hq.app.claim.ClaimRepository;
++import net.officefloor.hq.app.claim.ClaimRevision;
++import net.officefloor.hq.app.claim.ClaimRevisionRepository;
++import net.officefloor.hq.app.claim.Dues;
++import net.officefloor.hq.app.person.Person;
++import net.officefloor.hq.app.person.PersonRepository;
++import net.officefloor.hq.app.person.PersonRevision;
++import net.officefloor.hq.app.person.PersonRevisionRepository;
++import net.officefloor.hq.app.rate.Rate;
++import net.officefloor.hq.app.rate.RateRepository;
++import net.officefloor.hq.app.rate.RateRevision;
++import net.officefloor.hq.app.rate.RateRevisionRepository;
++import net.officefloor.hq.app.sheet.SettingRevision;
++import net.officefloor.hq.app.sheet.SettingRevisionRepository;
++import net.officefloor.hq.app.sheet.SettingValue;
++import net.officefloor.hq.app.sheet.SettingValueRepository;
++import net.officefloor.hq.app.sheet.SheetRepository;
++import net.officefloor.hq.app.sheet.SheetRevision;
++import net.officefloor.hq.app.sheet.SheetRevisionRepository;
++import net.officefloor.hq.app.sheet.SheetService;
++import org.springframework.stereotype.Service;
++import org.springframework.transaction.annotation.Propagation;
++import org.springframework.transaction.annotation.Transactional;
++
++/**
++ * A sheet's history: after each change that can move its figures, a revision of every claim,
++ * person, rate and dated setting the change left different from its last revision (and of the
++ * policy date), stamped with the sheet's today then. The sheet as it stood at the end of a day is
++ * the last revision of each stamped on or before that day: every change made while the sheet's
++ * today was on or before it counts, every later one does not.
++ */
++@Service
++public class History {
++
++    /** A sheet as it stood at the end of a day: its people and claims then (detached, never saved),
++     *  and the basis its figures are worked out on, the day standing in for its today. */
++    public record SheetAsOf(Dues.Basis basis, Map<Long, Person> people, List<Claim> claims) {
++
++        /** The person as they stood then; empty when they were not on the sheet yet. */
++        public Optional<Person> person(long personId) {
++            return Optional.ofNullable(people.get(personId));
++        }
++
++        /** The claims the person had then. */
++        public List<Claim> claimsOf(long personId) {
++            return claims.stream().filter(c -> c.getPersonId() == personId).toList();
++        }
++    }
++
++    private final ClaimRepository claims;
++    private final ClaimRevisionRepository claimRevisions;
++    private final PersonRepository people;
++    private final PersonRevisionRepository personRevisions;
++    private final RateRepository rates;
++    private final RateRevisionRepository rateRevisions;
++    private final SettingValueRepository settingValues;
++    private final SettingRevisionRepository settingRevisions;
++    private final SheetRepository sheets;
++    private final SheetRevisionRepository sheetRevisions;
++
++    public History(ClaimRepository claims, ClaimRevisionRepository claimRevisions, PersonRepository people,
++            PersonRevisionRepository personRevisions, RateRepository rates, RateRevisionRepository rateRevisions,
++            SettingValueRepository settingValues, SettingRevisionRepository settingRevisions, SheetRepository sheets,
++            SheetRevisionRepository sheetRevisions) {
++        this.claims = claims;
++        this.claimRevisions = claimRevisions;
++        this.people = people;
++        this.personRevisions = personRevisions;
++        this.rates = rates;
++        this.rateRevisions = rateRevisions;
++        this.settingValues = settingValues;
++        this.settingRevisions = settingRevisions;
++        this.sheets = sheets;
++        this.sheetRevisions = sheetRevisions;
++    }
++
++    /** Record, stamped with the sheet's today, a revision of everything on the sheet that a change
++     *  just left different from its last revision. */
++    @Transactional(propagation = Propagation.MANDATORY)
++    public void record(String sheetId) {
++        sheets.findById(sheetId).ifPresent(sheet -> {
++            LocalDate today = sheet.getToday();
++            Map<Long, ClaimRevision> claimsWere = last(claimRevisions.findBySheetIdOrderByIdAsc(sheetId),
++                    ClaimRevision::getClaimId);
++            for (Claim claim : claims.findBySheetIdOrderByListedDesc(sheetId)) {
++                ClaimRevision was = claimsWere.get(claim.getId());
++                if (was == null || !was.matches(claim)) {
++                    claimRevisions.save(new ClaimRevision(claim, today));
++                }
++            }
++            Map<Long, PersonRevision> peopleWere = last(personRevisions.findBySheetIdOrderByIdAsc(sheetId),
++                    PersonRevision::getPersonId);
++            for (Person person : people.findBySheetIdOrderByIdAsc(sheetId)) {
++                PersonRevision was = peopleWere.get(person.getId());
++                if (was == null || !was.matches(person)) {
++                    personRevisions.save(new PersonRevision(person, today));
++                }
++            }
++            Map<String, RateRevision> ratesWere = last(rateRevisions.findBySheetIdOrderByIdAsc(sheetId),
++                    RateRevision::key);
++            for (Rate rate : rates.findBySheetIdOrdered(sheetId)) {
++                RateRevision was = ratesWere.get(RateRevision.key(rate));
++                if (was == null || !was.matches(rate)) {
++                    rateRevisions.save(new RateRevision(rate, today));
++                }
++            }
++            Map<String, SettingRevision> settingsWere = last(settingRevisions.findBySheetIdOrderByIdAsc(sheetId),
++                    SettingRevision::key);
++            for (SettingValue value : settingValues.findBySheetId(sheetId)) {
++                SettingRevision was = settingsWere.get(SettingRevision.key(value));
++                if (was == null || !was.matches(value)) {
++                    settingRevisions.save(new SettingRevision(value, today));
++                }
++            }
++            List<SheetRevision> sheetWas = sheetRevisions.findBySheetIdOrderByIdAsc(sheetId);
++            LocalDate policyWas = sheetWas.isEmpty() ? null : sheetWas.get(sheetWas.size() - 1).getPolicyDate();
++            if (!Objects.equals(policyWas, sheet.getPolicyDate())) {
++                sheetRevisions.save(new SheetRevision(sheetId, today, sheet.getPolicyDate()));
++            }
++        });
++    }
++
++    /** The sheet as it stood at the end of a day. */
++    @Transactional(readOnly = true)
++    public SheetAsOf asOf(String sheetId, LocalDate day) {
++        Map<Long, Person> then = new LinkedHashMap<>();
++        lastOn(personRevisions.findBySheetIdOrderByIdAsc(sheetId), PersonRevision::getRecordedOn,
++                PersonRevision::getPersonId, day).forEach((id, revision) -> then.put(id, revision.toPerson()));
++        List<Claim> claimsThen = lastOn(claimRevisions.findBySheetIdOrderByIdAsc(sheetId),
++                ClaimRevision::getRecordedOn, ClaimRevision::getClaimId, day).values().stream()
++                .map(ClaimRevision::toClaim).toList();
++        List<Rate> ratesThen = lastOn(rateRevisions.findBySheetIdOrderByIdAsc(sheetId), RateRevision::getRecordedOn,
++                RateRevision::key, day).values().stream().map(RateRevision::toRate)
++                .sorted(Comparator.comparing(Rate::getFromDate, Comparator.nullsFirst(Comparator.<LocalDate>naturalOrder()))
++                        .reversed())
++                .toList();
++        List<SettingValue> settingsThen = lastOn(settingRevisions.findBySheetIdOrderByIdAsc(sheetId),
++                SettingRevision::getRecordedOn, SettingRevision::key, day).values().stream()
++                .map(SettingRevision::toValue)
++                .sorted(Comparator.comparing(SettingValue::getFrom).reversed()).toList();
++        LocalDate policyDate = sheetRevisions.findBySheetIdOrderByIdAsc(sheetId).stream()
++                .filter(r -> !r.getRecordedOn().isAfter(day)).reduce((a, b) -> b)
++                .map(SheetRevision::getPolicyDate).orElse(null);
++        Dues.Basis basis = new Dues.Basis() {
++            @Override
++            public LocalDate today() {
++                return day;
++            }
++
++            @Override
++            public BigDecimal floor(LocalDate on) {
++                return inForce(settingsThen, "floor", on).map(SettingValue::getValue)
++                        .orElse(SheetService.STARTING_FLOOR);
++            }
++
++            @Override
++            public BigDecimal latePct(LocalDate on) {
++                return inForce(settingsThen, "late-pct", on).map(SettingValue::getValue)
++                        .orElse(SheetService.STARTING_LATE_PCT);
++            }
++
++            @Override
++            public BigDecimal cap() {
++                return inForce(settingsThen, "cap", day).map(SettingValue::getValue).orElse(null);
++            }
++
++            @Override
++            public LocalDate policyDateInForce() {
++                return policyDate != null ? policyDate : day;
++            }
++
++            @Override
++            public List<Rate> rates(String grade) {
++                return ratesThen.stream().filter(r -> r.getGrade().equals(grade)).toList();
++            }
++        };
++        return new SheetAsOf(basis, then, claimsThen);
++    }
++
++    /** The value of a setting in force on a day among values given latest from-date first. */
++    private static Optional<SettingValue> inForce(List<SettingValue> latestFirst, String key, LocalDate day) {
++        return latestFirst.stream().filter(v -> v.getKey().equals(key) && !v.getFrom().isAfter(day)).findFirst();
++    }
++
++    /** The last of each thing's revisions, given in the order they were recorded. */
++    private static <K, R> Map<K, R> last(List<R> revisions, Function<R, K> of) {
++        Map<K, R> last = new LinkedHashMap<>();
++        revisions.forEach(r -> last.put(of.apply(r), r));
++        return last;
++    }
++
++    /** The last of each thing's revisions recorded on or before a day, given in the order they were
++     *  recorded. */
++    private static <K, R> Map<K, R> lastOn(List<R> revisions, Function<R, LocalDate> recordedOn, Function<R, K> of,
++            LocalDate day) {
++        return last(revisions.stream().filter(r -> !recordedOn.apply(r).isAfter(day)).toList(), of);
++    }
++}
+diff --git a/src/main/java/net/officefloor/hq/app/person/Person.java b/src/main/java/net/officefloor/hq/app/person/Person.java
+index f435d1691..ad93ec556 100644
+--- a/src/main/java/net/officefloor/hq/app/person/Person.java
++++ b/src/main/java/net/officefloor/hq/app/person/Person.java
+@@ -15,6 +15,7 @@ import java.time.LocalDate;
+ import java.util.ArrayList;
+ import java.util.Comparator;
+ import java.util.List;
++import java.util.Objects;
+ 
+ /** A person on a sheet: a name and a grade (A, B or C), dated: each grade applies from its from-date. */
+ @Entity
+@@ -57,6 +58,14 @@ public class Person {
+     protected Person() {
+     }
+ 
++    /** A detached person with the id given and no grade yet, for a revision to fill in (see
++     *  {@link PersonRevision#toPerson}). */
++    Person(String sheetId, Long id, String name) {
++        this.sheetId = sheetId;
++        this.id = id;
++        this.name = name;
++    }
++
+     public Person(String sheetId, String name, String grade) {
+         this.sheetId = sheetId;
+         this.name = name;
+@@ -98,9 +107,10 @@ public class Person {
+         return on;
+     }
+ 
+-    /** Record a grade from a day, replacing the one recorded for that day, keeping the others. */
++    /** Record a grade from a day (null: the beginning of time), replacing the one recorded for that
++     *  day, keeping the others. */
+     public void setGradeFrom(String grade, LocalDate from) {
+-        grades.removeIf(g -> from.equals(g.getFromDate()));
++        grades.removeIf(g -> Objects.equals(from, g.getFromDate()));
+         grades.add(new GradeFrom(from, grade));
+     }
+ 
+diff --git a/src/main/java/net/officefloor/hq/app/person/PersonRevision.java b/src/main/java/net/officefloor/hq/app/person/PersonRevision.java
+new file mode 100644
+index 000000000..810aa4194
+--- /dev/null
++++ b/src/main/java/net/officefloor/hq/app/person/PersonRevision.java
+@@ -0,0 +1,115 @@
++package net.officefloor.hq.app.person;
++
++import jakarta.persistence.Column;
++import jakarta.persistence.Entity;
++import jakarta.persistence.GeneratedValue;
++import jakarta.persistence.GenerationType;
++import jakarta.persistence.Id;
++import jakarta.persistence.Table;
++import java.time.LocalDate;
++import java.util.Objects;
++import java.util.stream.Collectors;
++
++/** A revision of a person in their sheet's history: their name, grades, holds, retirement and terms
++ *  after a change, recorded on the sheet's today then. Grades are kept as "from:grade" and holds as
++ *  "from..to" (a day left blank when there is none), separated by ";". */
++@Entity
++@Table(name = "person_revision")
++public class PersonRevision {
++
++    @Id
++    @GeneratedValue(strategy = GenerationType.IDENTITY)
++    private Long id;
++
++    @Column(name = "sheet_id", nullable = false)
++    private String sheetId;
++
++    @Column(name = "person_id", nullable = false)
++    private Long personId;
++
++    /** The sheet's today when the revision was recorded. */
++    @Column(name = "recorded_on", nullable = false)
++    private LocalDate recordedOn;
++
++    @Column(name = "name", nullable = false)
++    private String name;
++
++    @Column(name = "grades", nullable = false)
++    private String grades;
++
++    @Column(name = "holds", nullable = false)
++    private String holds;
++
++    @Column(name = "retired_from")
++    private LocalDate retiredFrom;
++
++    @Column(name = "terms")
++    private Integer terms;
++
++    protected PersonRevision() {
++    }
++
++    /** A revision of the person as they are now, recorded on the day. */
++    public PersonRevision(Person person, LocalDate recordedOn) {
++        this.sheetId = person.getSheetId();
++        this.personId = person.getId();
++        this.recordedOn = recordedOn;
++        this.name = person.getName();
++        this.grades = grades(person);
++        this.holds = holds(person);
++        this.retiredFrom = person.getRetiredFrom();
++        this.terms = person.getTerms();
++    }
++
++    /** Whether the person is now as this revision has them. */
++    public boolean matches(Person person) {
++        return name.equals(person.getName()) && grades.equals(grades(person)) && holds.equals(holds(person))
++                && Objects.equals(retiredFrom, person.getRetiredFrom()) && Objects.equals(terms, person.getTerms());
++    }
++
++    /** The person as this revision has them, detached: for working out figures only, never saved. */
++    public Person toPerson() {
++        Person person = new Person(sheetId, personId, name);
++        for (String grade : split(grades)) {
++            int at = grade.lastIndexOf(':');
++            person.setGradeFrom(grade.substring(at + 1), day(grade.substring(0, at)));
++        }
++        for (String hold : split(holds)) {
++            int at = hold.indexOf("..");
++            person.addHold(day(hold.substring(0, at)), day(hold.substring(at + 2)));
++        }
++        person.setRetiredFrom(retiredFrom);
++        person.setTerms(terms);
++        return person;
++    }
++
++    public Long getPersonId() {
++        return personId;
++    }
++
++    public LocalDate getRecordedOn() {
++        return recordedOn;
++    }
++
++    private static String grades(Person person) {
++        return person.getGrades().stream().map(g -> text(g.getFromDate()) + ":" + g.getGrade())
++                .collect(Collectors.joining(";"));
++    }
++
++    private static String holds(Person person) {
++        return person.getHolds().stream().map(h -> text(h.getFromDate()) + ".." + text(h.getToDate()))
++                .collect(Collectors.joining(";"));
++    }
++
++    private static String text(LocalDate day) {
++        return day == null ? "" : day.toString();
++    }
++
++    private static LocalDate day(String text) {
++        return text.isEmpty() ? null : LocalDate.parse(text);
++    }
++
++    private static String[] split(String list) {
++        return list.isEmpty() ? new String[0] : list.split(";");
++    }
++}
+diff --git a/src/main/java/net/officefloor/hq/app/person/PersonRevisionRepository.java b/src/main/java/net/officefloor/hq/app/person/PersonRevisionRepository.java
+new file mode 100644
+index 000000000..2c548f534
+--- /dev/null
++++ b/src/main/java/net/officefloor/hq/app/person/PersonRevisionRepository.java
+@@ -0,0 +1,10 @@
++package net.officefloor.hq.app.person;
++
++import java.util.List;
++import org.springframework.data.jpa.repository.JpaRepository;
++
++public interface PersonRevisionRepository extends JpaRepository<PersonRevision, Long> {
++
++    /** The person revisions of a sheet in the order they were recorded. */
++    List<PersonRevision> findBySheetIdOrderByIdAsc(String sheetId);
++}
+diff --git a/src/main/java/net/officefloor/hq/app/rate/RateRepository.java b/src/main/java/net/officefloor/hq/app/rate/RateRepository.java
+index 9fa57f4b1..678cbbc47 100644
+--- a/src/main/java/net/officefloor/hq/app/rate/RateRepository.java
++++ b/src/main/java/net/officefloor/hq/app/rate/RateRepository.java
+@@ -24,16 +24,28 @@ public interface RateRepository extends JpaRepository<Rate, Long> {
+      *  else the one with no from-date; empty when the day is before every rate of the grade, or
+      *  after the to-date of that rate. */
+     default Optional<Rate> findInForce(String sheetId, String grade, LocalDate on) {
+-        return findLatestFirst(sheetId, grade).stream()
+-                .filter(r -> r.getFromDate() == null || !r.getFromDate().isAfter(on))
+-                .findFirst()
+-                .filter(r -> r.getToDate() == null || !r.getToDate().isBefore(on));
++        return inForce(findLatestFirst(sheetId, grade), on);
+     }
+ 
+     /** Whether the rate of a grade that would apply on a day (the one with the latest from-date on
+      *  or before it, or else the one with no from-date) has ended before it. */
+     default boolean endedBefore(String sheetId, String grade, LocalDate on) {
+-        return findLatestFirst(sheetId, grade).stream()
++        return endedBefore(findLatestFirst(sheetId, grade), on);
++    }
++
++    /** The rate in force on a day among a grade's rates given latest from-date first (see
++     *  {@link #findInForce}). */
++    static Optional<Rate> inForce(List<Rate> latestFirst, LocalDate on) {
++        return latestFirst.stream()
++                .filter(r -> r.getFromDate() == null || !r.getFromDate().isAfter(on))
++                .findFirst()
++                .filter(r -> r.getToDate() == null || !r.getToDate().isBefore(on));
++    }
++
++    /** Whether, among a grade's rates given latest from-date first, the one that would apply on a day
++     *  has ended before it (see {@link #endedBefore(String, String, LocalDate)}). */
++    static boolean endedBefore(List<Rate> latestFirst, LocalDate on) {
++        return latestFirst.stream()
+                 .filter(r -> r.getFromDate() == null || !r.getFromDate().isAfter(on))
+                 .findFirst()
+                 .map(r -> r.getToDate() != null && r.getToDate().isBefore(on))
+diff --git a/src/main/java/net/officefloor/hq/app/rate/RateRevision.java b/src/main/java/net/officefloor/hq/app/rate/RateRevision.java
+new file mode 100644
+index 000000000..ab313f440
+--- /dev/null
++++ b/src/main/java/net/officefloor/hq/app/rate/RateRevision.java
+@@ -0,0 +1,84 @@
++package net.officefloor.hq.app.rate;
++
++import jakarta.persistence.Column;
++import jakarta.persistence.Entity;
++import jakarta.persistence.GeneratedValue;
++import jakarta.persistence.GenerationType;
++import jakarta.persistence.Id;
++import jakarta.persistence.Table;
++import java.math.BigDecimal;
++import java.time.LocalDate;
++import java.util.Objects;
++
++/** A revision of a rate in its sheet's history: a grade's percent from a from-date (null: the
++ *  beginning of time) through its to-date after a change, recorded on the sheet's today then. */
++@Entity
++@Table(name = "rate_revision")
++public class RateRevision {
++
++    @Id
++    @GeneratedValue(strategy = GenerationType.IDENTITY)
++    private Long id;
++
++    @Column(name = "sheet_id", nullable = false)
++    private String sheetId;
++
++    @Column(name = "grade", nullable = false)
++    private String grade;
++
++    @Column(name = "from_date")
++    private LocalDate fromDate;
++
++    /** The sheet's today when the revision was recorded. */
++    @Column(name = "recorded_on", nullable = false)
++    private LocalDate recordedOn;
++
++    @Column(name = "pct", nullable = false, precision = 7, scale = 2)
++    private BigDecimal pct;
++
++    @Column(name = "to_date")
++    private LocalDate toDate;
++
++    protected RateRevision() {
++    }
++
++    /** A revision of the rate as it is now, recorded on the day. */
++    public RateRevision(Rate rate, LocalDate recordedOn) {
++        this.sheetId = rate.getSheetId();
++        this.grade = rate.getGrade();
++        this.fromDate = rate.getFromDate();
++        this.recordedOn = recordedOn;
++        this.pct = rate.getPct();
++        this.toDate = rate.getToDate();
++    }
++
++    /** Which rate the revision is of: its grade and from-date ("" for none). */
++    public String key() {
++        return key(grade, fromDate);
++    }
++
++    /** Which rate a rate is (see {@link #key()}). */
++    public static String key(Rate rate) {
++        return key(rate.getGrade(), rate.getFromDate());
++    }
++
++    private static String key(String grade, LocalDate fromDate) {
++        return grade + ":" + (fromDate == null ? "" : fromDate);
++    }
++
++    /** Whether the rate is now as this revision has it. */
++    public boolean matches(Rate rate) {
++        return pct.compareTo(rate.getPct()) == 0 && Objects.equals(toDate, rate.getToDate());
++    }
++
++    /** The rate as this revision has it, detached: for working out figures only, never saved. */
++    public Rate toRate() {
++        Rate rate = new Rate(sheetId, grade, pct, fromDate);
++        rate.setToDate(toDate);
++        return rate;
++    }
++
++    public LocalDate getRecordedOn() {
++        return recordedOn;
++    }
++}
+diff --git a/src/main/java/net/officefloor/hq/app/rate/RateRevisionRepository.java b/src/main/java/net/officefloor/hq/app/rate/RateRevisionRepository.java
+new file mode 100644
+index 000000000..fbac30b2f
+--- /dev/null
++++ b/src/main/java/net/officefloor/hq/app/rate/RateRevisionRepository.java
+@@ -0,0 +1,10 @@
++package net.officefloor.hq.app.rate;
++
++import java.util.List;
++import org.springframework.data.jpa.repository.JpaRepository;
++
++public interface RateRevisionRepository extends JpaRepository<RateRevision, Long> {
++
++    /** The rate revisions of a sheet in the order they were recorded. */
++    List<RateRevision> findBySheetIdOrderByIdAsc(String sheetId);
++}
+diff --git a/src/main/java/net/officefloor/hq/app/rollup/Rollup.java b/src/main/java/net/officefloor/hq/app/rollup/Rollup.java
+index 79ed3383a..45c3c9eac 100644
+--- a/src/main/java/net/officefloor/hq/app/rollup/Rollup.java
++++ b/src/main/java/net/officefloor/hq/app/rollup/Rollup.java
+@@ -14,6 +14,7 @@ import net.officefloor.hq.app.Audit;
+ import net.officefloor.hq.app.claim.Claim;
+ import net.officefloor.hq.app.claim.ClaimRepository;
+ import net.officefloor.hq.app.claim.Dues;
++import net.officefloor.hq.app.history.History;
+ import net.officefloor.hq.app.person.Person;
+ import net.officefloor.hq.app.person.PersonRepository;
+ import net.officefloor.hq.app.sheet.SheetService;
+@@ -27,7 +28,7 @@ import org.springframework.transaction.annotation.Transactional;
+  * out the single highest and the single lowest person's figure when three or more people have one
+  * (a due-total of n/a is no figure). A change made through {@link #tracking} is followed in the audit by one
+  * ROLLUP line per person whose figures it moved (in the order they were added), then a TOTALS line
+- * when the sheet's totals moved.
++ * when the sheet's totals moved; and the sheet's {@link History} records what it changed.
+  */
+ @Service
+ public class Rollup {
+@@ -49,22 +50,27 @@ public class Rollup {
+     private final ClaimRepository claims;
+     private final Dues dues;
+     private final SheetService sheets;
++    private final History history;
+     private final Audit audit;
+ 
+-    public Rollup(PersonRepository people, ClaimRepository claims, Dues dues, SheetService sheets, Audit audit) {
++    public Rollup(PersonRepository people, ClaimRepository claims, Dues dues, SheetService sheets, History history,
++            Audit audit) {
+         this.people = people;
+         this.claims = claims;
+         this.dues = dues;
+         this.sheets = sheets;
++        this.history = history;
+         this.audit = audit;
+     }
+ 
+     /** Make a change on the sheet, then record in the audit, after the change's own records, the
+-     *  figures it moved. A change that is refused records nothing. */
++     *  figures it moved, and in the sheet's history what it changed. A change that is refused records
++     *  nothing. */
+     @Transactional(propagation = Propagation.MANDATORY)
+     public <T> T tracking(String sheetId, String user, Supplier<T> change) {
+         Snapshot before = snapshot(sheetId);
+         T result = change.get();
++        history.record(sheetId);
+         Snapshot after = snapshot(sheetId);
+         String prefix = " sheet=" + sheetId + " by=" + user;
+         after.people().forEach((id, figures) -> {
+diff --git a/src/main/java/net/officefloor/hq/app/sheet/SettingRevision.java b/src/main/java/net/officefloor/hq/app/sheet/SettingRevision.java
+new file mode 100644
+index 000000000..621759e0d
+--- /dev/null
++++ b/src/main/java/net/officefloor/hq/app/sheet/SettingRevision.java
+@@ -0,0 +1,73 @@
++package net.officefloor.hq.app.sheet;
++
++import jakarta.persistence.Column;
++import jakarta.persistence.Entity;
++import jakarta.persistence.GeneratedValue;
++import jakarta.persistence.GenerationType;
++import jakarta.persistence.Id;
++import jakarta.persistence.Table;
++import java.math.BigDecimal;
++import java.time.LocalDate;
++
++/** A revision of a dated setting's value in its sheet's history: the value a setting takes from a
++ *  from-date after a change, recorded on the sheet's today then. */
++@Entity
++@Table(name = "setting_revision")
++public class SettingRevision {
++
++    @Id
++    @GeneratedValue(strategy = GenerationType.IDENTITY)
++    private Long id;
++
++    @Column(name = "sheet_id", nullable = false)
++    private String sheetId;
++
++    @Column(name = "setting_key", nullable = false)
++    private String key;
++
++    @Column(name = "from_date", nullable = false)
++    private LocalDate from;
++
++    /** The sheet's today when the revision was recorded. */
++    @Column(name = "recorded_on", nullable = false)
++    private LocalDate recordedOn;
++
++    @Column(name = "setting", precision = 14, scale = 2)
++    private BigDecimal value;
++
++    protected SettingRevision() {
++    }
++
++    /** A revision of the setting value as it is now, recorded on the day. */
++    public SettingRevision(SettingValue value, LocalDate recordedOn) {
++        this.sheetId = value.getSheetId();
++        this.key = value.getKey();
++        this.from = value.getFrom();
++        this.recordedOn = recordedOn;
++        this.value = value.getValue();
++    }
++
++    /** Which setting value the revision is of: its setting and from-date. */
++    public String key() {
++        return key + ":" + from;
++    }
++
++    /** Which setting value a value is (see {@link #key()}). */
++    public static String key(SettingValue value) {
++        return value.getKey() + ":" + value.getFrom();
++    }
++
++    /** Whether the setting value is now as this revision has it. */
++    public boolean matches(SettingValue now) {
++        return value == null ? now.getValue() == null : now.getValue() != null && value.compareTo(now.getValue()) == 0;
++    }
++
++    /** The setting value as this revision has it, detached: for working out figures only, never saved. */
++    public SettingValue toValue() {
++        return new SettingValue(sheetId, key, from, value);
++    }
++
++    public LocalDate getRecordedOn() {
++        return recordedOn;
++    }
++}
+diff --git a/src/main/java/net/officefloor/hq/app/sheet/SettingRevisionRepository.java b/src/main/java/net/officefloor/hq/app/sheet/SettingRevisionRepository.java
+new file mode 100644
+index 000000000..1974b006d
+--- /dev/null
++++ b/src/main/java/net/officefloor/hq/app/sheet/SettingRevisionRepository.java
+@@ -0,0 +1,10 @@
++package net.officefloor.hq.app.sheet;
++
++import java.util.List;
++import org.springframework.data.jpa.repository.JpaRepository;
++
++public interface SettingRevisionRepository extends JpaRepository<SettingRevision, Long> {
++
++    /** The setting revisions of a sheet in the order they were recorded. */
++    List<SettingRevision> findBySheetIdOrderByIdAsc(String sheetId);
++}
+diff --git a/src/main/java/net/officefloor/hq/app/sheet/SettingValueRepository.java b/src/main/java/net/officefloor/hq/app/sheet/SettingValueRepository.java
+index 5da045db1..2e7e28d11 100644
+--- a/src/main/java/net/officefloor/hq/app/sheet/SettingValueRepository.java
++++ b/src/main/java/net/officefloor/hq/app/sheet/SettingValueRepository.java
+@@ -13,4 +13,7 @@ public interface SettingValueRepository extends JpaRepository<SettingValue, Sett
+ 
+     /** The values recorded for a setting, earliest from-date first. */
+     List<SettingValue> findBySheetIdAndKeyOrderByFrom(String sheetId, String key);
++
++    /** Every value recorded for every dated setting of a sheet. */
++    List<SettingValue> findBySheetId(String sheetId);
+ }
+diff --git a/src/main/java/net/officefloor/hq/app/sheet/SheetRevision.java b/src/main/java/net/officefloor/hq/app/sheet/SheetRevision.java
+new file mode 100644
+index 000000000..153b9dc6a
+--- /dev/null
++++ b/src/main/java/net/officefloor/hq/app/sheet/SheetRevision.java
+@@ -0,0 +1,47 @@
++package net.officefloor.hq.app.sheet;
++
++import jakarta.persistence.Column;
++import jakarta.persistence.Entity;
++import jakarta.persistence.GeneratedValue;
++import jakarta.persistence.GenerationType;
++import jakarta.persistence.Id;
++import jakarta.persistence.Table;
++import java.time.LocalDate;
++
++/** A revision of a sheet's own figure settings in its history: its policy date (null: blank) after a
++ *  change, recorded on the sheet's today then. */
++@Entity
++@Table(name = "sheet_revision")
++public class SheetRevision {
++
++    @Id
++    @GeneratedValue(strategy = GenerationType.IDENTITY)
++    private Long id;
++
++    @Column(name = "sheet_id", nullable = false)
++    private String sheetId;
++
++    /** The sheet's today when the revision was recorded. */
++    @Column(name = "recorded_on", nullable = false)
++    private LocalDate recordedOn;
++
++    @Column(name = "policy_date")
++    private LocalDate policyDate;
++
++    protected SheetRevision() {
++    }
++
++    public SheetRevision(String sheetId, LocalDate recordedOn, LocalDate policyDate) {
++        this.sheetId = sheetId;
++        this.recordedOn = recordedOn;
++        this.policyDate = policyDate;
++    }
++
++    public LocalDate getRecordedOn() {
++        return recordedOn;
++    }
++
++    public LocalDate getPolicyDate() {
++        return policyDate;
++    }
++}
+diff --git a/src/main/java/net/officefloor/hq/app/sheet/SheetRevisionRepository.java b/src/main/java/net/officefloor/hq/app/sheet/SheetRevisionRepository.java
+new file mode 100644
+index 000000000..36c329934
+--- /dev/null
++++ b/src/main/java/net/officefloor/hq/app/sheet/SheetRevisionRepository.java
+@@ -0,0 +1,10 @@
++package net.officefloor.hq.app.sheet;
++
++import java.util.List;
++import org.springframework.data.jpa.repository.JpaRepository;
++
++public interface SheetRevisionRepository extends JpaRepository<SheetRevision, Long> {
++
++    /** The sheet's own revisions in the order they were recorded. */
++    List<SheetRevision> findBySheetIdOrderByIdAsc(String sheetId);
++}
+diff --git a/src/main/java/net/officefloor/hq/app/statement/Statement.java b/src/main/java/net/officefloor/hq/app/statement/Statement.java
+index fc95d630f..7948965a5 100644
+--- a/src/main/java/net/officefloor/hq/app/statement/Statement.java
++++ b/src/main/java/net/officefloor/hq/app/statement/Statement.java
+@@ -9,7 +9,7 @@ import jakarta.persistence.Table;
+ import java.math.BigDecimal;
+ import java.time.LocalDate;
+ 
+-/** A statement taken of a person: their due-total on the day it was taken, and how many of their
++/** A statement taken of a person: their due-total on the day it was taken as of, and how many of their
+  *  claims counted then. */
+ @Entity
+ @Table(name = "statement")
+@@ -39,17 +39,22 @@ public class Statement {
+     @Column(name = "claims", nullable = false)
+     private int claims;
+ 
++    /** The earlier day the statement was taken as of; null when it was taken as of the sheet's today. */
++    @Column(name = "as_of")
++    private LocalDate asOf;
++
+     protected Statement() {
+     }
+ 
+     public Statement(String sheetId, Long personId, LocalDate takenOn, String takenBy, BigDecimal dueTotal,
+-            int claims) {
++            int claims, LocalDate asOf) {
+         this.sheetId = sheetId;
+         this.personId = personId;
+         this.takenOn = takenOn;
+         this.takenBy = takenBy;
+         this.dueTotal = dueTotal;
+         this.claims = claims;
++        this.asOf = asOf;
+     }
+ 
+     public Long getId() {
+@@ -68,6 +73,15 @@ public class Statement {
+         return takenOn;
+     }
+ 
++    public LocalDate getAsOf() {
++        return asOf;
++    }
++
++    /** The statement's date: the day it was taken as of, or else the day it was taken. */
++    public LocalDate getStatedOn() {
++        return asOf != null ? asOf : takenOn;
++    }
++
+     public String getTakenBy() {
+         return takenBy;
+     }
+diff --git a/src/main/java/net/officefloor/hq/app/statement/StatementController.java b/src/main/java/net/officefloor/hq/app/statement/StatementController.java
+index 46688166e..07453975d 100644
+--- a/src/main/java/net/officefloor/hq/app/statement/StatementController.java
++++ b/src/main/java/net/officefloor/hq/app/statement/StatementController.java
+@@ -2,6 +2,7 @@ package net.officefloor.hq.app.statement;
+ 
+ import jakarta.validation.constraints.NotBlank;
+ import jakarta.validation.constraints.Size;
++import java.time.LocalDate;
+ import java.util.List;
+ import net.officefloor.hq.app.claim.ClaimController.ClaimView;
+ import net.officefloor.hq.app.person.PersonController.PersonView;
+@@ -11,6 +12,7 @@ import org.springframework.validation.annotation.Validated;
+ import org.springframework.web.bind.annotation.DeleteMapping;
+ import org.springframework.web.bind.annotation.PathVariable;
+ import org.springframework.web.bind.annotation.PostMapping;
++import org.springframework.web.bind.annotation.RequestBody;
+ import org.springframework.web.bind.annotation.RequestHeader;
+ import org.springframework.web.bind.annotation.RequestMapping;
+ import org.springframework.web.bind.annotation.ResponseStatus;
+@@ -25,6 +27,10 @@ public class StatementController {
+     public record TakenView(PersonView person, List<ClaimView> claims) {
+     }
+ 
++    /** The statement form: the day the statement is taken as of; left out, the sheet's today. */
++    public record StatementForm(LocalDate asOf) {
++    }
++
+     private final StatementService service;
+     private final SheetService sheets;
+ 
+@@ -37,8 +43,10 @@ public class StatementController {
+     @ResponseStatus(HttpStatus.CREATED)
+     public TakenView take(@PathVariable @NotBlank @Size(max = 100) String sheetId,
+             @PathVariable long personId,
+-            @RequestHeader("X-User") @NotBlank @Size(max = 100) String user) {
+-        StatementService.Taken taken = service.take(sheetId.trim(), user.trim(), personId);
++            @RequestHeader("X-User") @NotBlank @Size(max = 100) String user,
++            @RequestBody(required = false) StatementForm form) {
++        StatementService.Taken taken = service.take(sheetId.trim(), user.trim(), personId,
++                form == null ? null : form.asOf());
+         return new TakenView(PersonView.of(taken.person(), taken.summary(), sheets.today(sheetId.trim())),
+                 taken.claims().stream().map(ClaimView::of).toList());
+     }
+diff --git a/src/main/java/net/officefloor/hq/app/statement/StatementService.java b/src/main/java/net/officefloor/hq/app/statement/StatementService.java
+index a3f7e63ca..3f08f61f9 100644
+--- a/src/main/java/net/officefloor/hq/app/statement/StatementService.java
++++ b/src/main/java/net/officefloor/hq/app/statement/StatementService.java
+@@ -9,6 +9,7 @@ import net.officefloor.hq.app.Audit;
+ import net.officefloor.hq.app.claim.Claim;
+ import net.officefloor.hq.app.claim.ClaimRepository;
+ import net.officefloor.hq.app.claim.Dues;
++import net.officefloor.hq.app.history.History;
+ import net.officefloor.hq.app.rollup.Rollup;
+ import net.officefloor.hq.app.person.Person;
+ import net.officefloor.hq.app.person.PersonRepository;
+@@ -36,10 +37,12 @@ public class StatementService {
+     private final SheetService sheets;
+     private final Rollup rollup;
+     private final RoleService roles;
++    private final History history;
+     private final Audit audit;
+ 
+     public StatementService(StatementRepository statements, PersonRepository people, ClaimRepository claims,
+-            Dues dues, SheetService sheets, Rollup rollup, RoleService roles, Audit audit) {
++            Dues dues, SheetService sheets, Rollup rollup, RoleService roles, History history, Audit audit) {
++        this.history = history;
+         this.statements = statements;
+         this.people = people;
+         this.claims = claims;
+@@ -71,26 +74,47 @@ public class StatementService {
+      *  holds) is unbound. */
+     @Transactional
+     public Taken take(String sheetId, String user, long personId) {
++        return take(sheetId, user, personId, null);
++    }
++
++    /** Take a statement of a person as of a day (null: the sheet's today) on or before the sheet's
++     *  today: the sheet as it stood at the end of that day (see {@link History}) stands in for it as
++     *  it is now, that day for its today. Their due-total then is recorded, and each claim of theirs
++     *  that counted in the live totals then is bound to the rate figure it had then; every other claim
++     *  of theirs is unbound. Refused when the day is after the sheet's today, or when the person was
++     *  not on the sheet yet then. */
++    @Transactional
++    public Taken take(String sheetId, String user, long personId, LocalDate asOf) {
++        LocalDate today = sheets.today(sheetId);
++        if (asOf != null && asOf.isAfter(today)) {
++            throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
++                    "A statement cannot be taken as of a day after the sheet's today");
++        }
+         Person person = people.lockByIdAndSheetId(personId, sheetId)
+                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "No such person on this sheet"));
++        History.SheetAsOf then = asOf == null ? null : history.asOf(sheetId, asOf);
++        Person was = then == null ? person : then.person(personId)
++                .orElseThrow(() -> new ResponseStatusException(HttpStatus.CONFLICT,
++                        "The person was not on the sheet yet on that day"));
+         List<Claim> bound = rollup.tracking(sheetId, user, () -> {
+-            LocalDate today = sheets.today(sheetId);
+             List<Claim> theirs = claims.findBySheetIdAndPersonIdOrderByListedDesc(sheetId, personId);
+-            BigDecimal dueTotal = dues.dueTotal(sheetId, person, Dues.live(person, theirs, today));
+-            int counted = 0;
++            Dues.Basis basis = then == null ? dues.now(sheetId) : then.basis();
++            List<Claim> counted = Dues.live(was, then == null ? theirs : then.claimsOf(personId), basis.today());
++            BigDecimal dueTotal = dues.dueTotal(basis, was, counted);
++            Map<Long, Claim> countedById = counted.stream().collect(Collectors.toMap(Claim::getId, c -> c));
+             for (Claim claim : theirs) {
+-                if (Dues.countsLive(person, claim, today)) {
+-                    counted++;
+-                    claim.bind(true, dues.bindable(sheetId, person, claim), dues.bindsNa(sheetId, person, claim));
++                Claim figured = countedById.get(claim.getId());
++                if (figured != null) {
++                    claim.bind(true, dues.bindable(basis, was, figured), dues.bindsNa(basis, was, figured));
+                 } else {
+                     claim.bind(false, null);
+                 }
+             }
+             claims.saveAllAndFlush(theirs);
+-            statements.saveAndFlush(new Statement(sheetId, personId, today, user, dueTotal, counted));
++            statements.saveAndFlush(new Statement(sheetId, personId, today, user, dueTotal, counted.size(), asOf));
+             audit.recordOnCommit("STATEMENT sheet=" + sheetId + " by=" + user + " name=" + person.getName()
+                     + " due-total=" + (dueTotal == null ? "n/a" : dueTotal.setScale(2).toPlainString())
+-                    + " claims=" + counted);
++                    + " claims=" + counted.size() + (asOf != null ? " asof=" + asOf : ""));
+             return theirs;
+         });
+         return new Taken(person, summary(sheetId, personId), bound);
+diff --git a/src/main/java/net/officefloor/hq/app/statement/StatementSummary.java b/src/main/java/net/officefloor/hq/app/statement/StatementSummary.java
+index 2b18b6055..eddb67fab 100644
+--- a/src/main/java/net/officefloor/hq/app/statement/StatementSummary.java
++++ b/src/main/java/net/officefloor/hq/app/statement/StatementSummary.java
+@@ -5,7 +5,7 @@ import java.time.LocalDate;
+ import java.util.List;
+ 
+ /** What a person's statements come to: how many were taken, and the last one's due-total (null when
+- *  it was n/a) and day; both null when none was taken. */
++ *  it was n/a) and date (the day it was taken as of); both null when none was taken. */
+ public record StatementSummary(int count, BigDecimal lastDueTotal, LocalDate lastTakenOn) {
+ 
+     public static final StatementSummary NONE = new StatementSummary(0, null, null);
+@@ -16,6 +16,6 @@ public record StatementSummary(int count, BigDecimal lastDueTotal, LocalDate las
+             return NONE;
+         }
+         Statement last = statements.get(statements.size() - 1);
+-        return new StatementSummary(statements.size(), last.getDueTotal(), last.getTakenOn());
++        return new StatementSummary(statements.size(), last.getDueTotal(), last.getStatedOn());
+     }
+ }
+diff --git a/src/main/resources/db/migration/V49__history.sql b/src/main/resources/db/migration/V49__history.sql
+new file mode 100644
+index 000000000..53ba3bed8
+--- /dev/null
++++ b/src/main/resources/db/migration/V49__history.sql
+@@ -0,0 +1,94 @@
++-- The sheet's history: after each change that can move its figures, a revision of every claim,
++-- person, rate and dated setting the change left different from its last revision (and of the
++-- policy date), stamped with the sheet's today then. The sheet as it stood at the end of a day is
++-- the last revision of each stamped on or before that day.
++CREATE TABLE claim_revision (
++    id             BIGINT AUTO_INCREMENT PRIMARY KEY,
++    sheet_id       VARCHAR(100)   NOT NULL REFERENCES sheet (id),
++    claim_id       BIGINT         NOT NULL,
++    recorded_on    DATE           NOT NULL,
++    person_id      BIGINT         NOT NULL,
++    amount         DECIMAL(14, 2) NOT NULL,
++    claim_date     DATE           NOT NULL,
++    status         VARCHAR(20)    NOT NULL,
++    settled_due    DECIMAL(14, 2),
++    stated         BOOLEAN        NOT NULL,
++    stated_due     DECIMAL(14, 2),
++    stated_na      BOOLEAN        NOT NULL,
++    corrected_date DATE,
++    due_by         DATE           NOT NULL,
++    deferred_until DATE
++);
++CREATE INDEX claim_revision_sheet ON claim_revision (sheet_id, id);
++
++-- A person's grades and holds are kept as text: each grade "from:grade" and each hold "from..to"
++-- (a day left blank when there is none), separated by ";".
++CREATE TABLE person_revision (
++    id           BIGINT AUTO_INCREMENT PRIMARY KEY,
++    sheet_id     VARCHAR(100)  NOT NULL REFERENCES sheet (id),
++    person_id    BIGINT        NOT NULL,
++    recorded_on  DATE          NOT NULL,
++    name         VARCHAR(200)  NOT NULL,
++    grades       VARCHAR(4000) NOT NULL,
++    holds        VARCHAR(4000) NOT NULL,
++    retired_from DATE,
++    terms        INT
++);
++CREATE INDEX person_revision_sheet ON person_revision (sheet_id, id);
++
++CREATE TABLE rate_revision (
++    id          BIGINT AUTO_INCREMENT PRIMARY KEY,
++    sheet_id    VARCHAR(100) NOT NULL REFERENCES sheet (id),
++    grade       VARCHAR(1)   NOT NULL,
++    from_date   DATE,
++    recorded_on DATE         NOT NULL,
++    pct         DECIMAL(7, 2) NOT NULL,
++    to_date     DATE
++);
++CREATE INDEX rate_revision_sheet ON rate_revision (sheet_id, id);
++
++CREATE TABLE setting_revision (
++    id          BIGINT AUTO_INCREMENT PRIMARY KEY,
++    sheet_id    VARCHAR(100)   NOT NULL REFERENCES sheet (id),
++    setting_key VARCHAR(50)    NOT NULL,
++    from_date   DATE           NOT NULL,
++    recorded_on DATE           NOT NULL,
++    setting     DECIMAL(14, 2)
++);
++CREATE INDEX setting_revision_sheet ON setting_revision (sheet_id, id);
++
++CREATE TABLE sheet_revision (
++    id          BIGINT AUTO_INCREMENT PRIMARY KEY,
++    sheet_id    VARCHAR(100) NOT NULL REFERENCES sheet (id),
++    recorded_on DATE         NOT NULL,
++    policy_date DATE
++);
++CREATE INDEX sheet_revision_sheet ON sheet_revision (sheet_id, id);
++
++-- What a sheet holds already is its first revision, stamped with its today.
++INSERT INTO claim_revision (sheet_id, claim_id, recorded_on, person_id, amount, claim_date, status, settled_due,
++        stated, stated_due, stated_na, corrected_date, due_by, deferred_until)
++    SELECT c.sheet_id, c.id, s.today, c.person_id, c.amount, c.claim_date, c.status, c.settled_due, c.stated,
++        c.stated_due, c.stated_na, c.corrected_date, c.due_by, c.deferred_until
++    FROM claim c JOIN sheet s ON s.id = c.sheet_id ORDER BY c.id;
++INSERT INTO person_revision (sheet_id, person_id, recorded_on, name, grades, holds, retired_from, terms)
++    SELECT p.sheet_id, p.id, s.today, p.name,
++        COALESCE((SELECT LISTAGG(COALESCE(CAST(g.from_date AS VARCHAR), '') || ':' || g.grade, ';')
++            WITHIN GROUP (ORDER BY g.from_date NULLS FIRST) FROM person_grade g WHERE g.person_id = p.id), ''),
++        COALESCE((SELECT LISTAGG(COALESCE(CAST(h.from_date AS VARCHAR), '') || '..'
++            || COALESCE(CAST(h.to_date AS VARCHAR), ''), ';')
++            WITHIN GROUP (ORDER BY h.from_date NULLS FIRST) FROM person_hold h WHERE h.person_id = p.id), ''),
++        p.retired_from, p.terms
++    FROM person p JOIN sheet s ON s.id = p.sheet_id ORDER BY p.id;
++INSERT INTO rate_revision (sheet_id, grade, from_date, recorded_on, pct, to_date)
++    SELECT r.sheet_id, r.grade, r.from_date, s.today, r.pct, r.to_date
++    FROM rate r JOIN sheet s ON s.id = r.sheet_id ORDER BY r.id;
++INSERT INTO setting_revision (sheet_id, setting_key, from_date, recorded_on, setting)
++    SELECT v.sheet_id, v.setting_key, v.from_date, s.today, v.setting
++    FROM setting_value v JOIN sheet s ON s.id = v.sheet_id;
++INSERT INTO sheet_revision (sheet_id, recorded_on, policy_date)
++    SELECT id, today, policy_date FROM sheet WHERE policy_date IS NOT NULL;
++
++-- A statement may be taken as of an earlier day than the sheet's today: that day, null when it was
++-- taken as of the sheet's today.
++ALTER TABLE statement ADD COLUMN as_of DATE;
