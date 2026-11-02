@@ -649,7 +649,7 @@ function trimmedSum(figures: number[]): number {
                 }
               </td>
               <td>
-                <app-plans [personId]="p.id" [personName]="p.name" [plans]="plansOf(p.id)" (added)="planAdded($event)" />
+                <app-plans [personId]="p.id" [personName]="p.name" [plans]="plansOf(p.id)" (added)="planAdded($event)" (changed)="planChanged($event)" />
               </td>
               <td>
                 <app-claims [personId]="p.id" [personName]="p.name" [claims]="claimsOf(p.id)" [pctOn]="pctOnOf(p.id)" [graceOn]="graceOnOf(p.id)"
@@ -2454,6 +2454,10 @@ export class People {
 
   protected planAdded(plan: Plan): void {
     this.plans.update((list) => [...list, plan]);
+  }
+
+  protected planChanged(plan: Plan): void {
+    this.plans.update((list) => list.map((pl) => (pl.id === plan.id ? plan : pl)));
   }
 
   /**

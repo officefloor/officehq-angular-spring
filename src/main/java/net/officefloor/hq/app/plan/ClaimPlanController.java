@@ -29,14 +29,16 @@ public class ClaimPlanController {
     /**
      * A plan on the sheet; its amount has two decimals, every or day is set (the other null), and generated is how
      * many claims it has made so far; nextDates are its first five dates after the sheet's today, on or before its
-     * end, comma and space separated.
+     * end and not skipped by a pause, comma and space separated; paused is whether it is paused now.
      */
     public record PlanView(Long id, Long personId, String amount, LocalDate start, Integer every, Integer day,
-            LocalDate end, int generated, String nextDates) {
-        static PlanView of(ClaimPlan plan, int generated, LocalDate today) {
-            String next = String.join(", ", plan.datesAfter(today, 5).stream().map(LocalDate::toString).toList());
+            LocalDate end, int generated, String nextDates, boolean paused) {
+        static PlanView of(ClaimPlan plan, int generated, LocalDate today, List<ClaimPlanPause> pauses) {
+            String next = String.join(", ", plan.datesAfter(today, 5, ClaimPlanService.skippedBy(pauses)).stream()
+                    .map(LocalDate::toString).toList());
             return new PlanView(plan.getId(), plan.getPersonId(), plan.getAmount().setScale(2).toPlainString(),
-                    plan.getStart(), plan.getEvery(), plan.getDay(), plan.getEnd(), generated, next);
+                    plan.getStart(), plan.getEvery(), plan.getDay(), plan.getEnd(), generated, next,
+                    pauses.stream().anyMatch(ClaimPlanPause::isOpen));
         }
     }
 
@@ -71,9 +73,12 @@ public class ClaimPlanController {
             @PathVariable @Size(max = 100) @Pattern(regexp = "[A-Za-z0-9._-]+") String sheetId,
             @RequestHeader("X-User") @NotBlank @Size(max = 100) String user) {
         Map<Long, Integer> made = service.made(sheetId);
+        Map<Long, List<ClaimPlanPause>> pauses = service.pauses(sheetId);
         LocalDate today = service.today(sheetId);
         return service.plans(sheetId).stream()
-                .map(p -> PlanView.of(p, made.getOrDefault(p.getId(), 0), today)).toList();
+                .map(p -> PlanView.of(p, made.getOrDefault(p.getId(), 0), today,
+                        pauses.getOrDefault(p.getId(), List.of())))
+                .toList();
     }
 
     @PostMapping("/people/{personId}/plans")
@@ -84,7 +89,30 @@ public class ClaimPlanController {
             @RequestBody @Valid PlanRequest request) {
         ClaimPlan plan = service.add(sheetId, user, personId, request.amountValue(), request.start(),
                 request.every(), request.day(), request.end());
-        return PlanView.of(plan, 0, service.today(sheetId));
+        return PlanView.of(plan, 0, service.today(sheetId), List.of());
+    }
+
+    /** Pause the plan from the sheet's today; refused when it is already paused. */
+    @PostMapping("/plans/{planId}/pause")
+    public PlanView pause(
+            @PathVariable @Size(max = 100) @Pattern(regexp = "[A-Za-z0-9._-]+") String sheetId,
+            @PathVariable Long planId,
+            @RequestHeader("X-User") @NotBlank @Size(max = 100) String user) {
+        return view(sheetId, service.pause(sheetId, user, planId));
+    }
+
+    /** Resume the plan from the sheet's today; refused when it is not paused. */
+    @PostMapping("/plans/{planId}/resume")
+    public PlanView resume(
+            @PathVariable @Size(max = 100) @Pattern(regexp = "[A-Za-z0-9._-]+") String sheetId,
+            @PathVariable Long planId,
+            @RequestHeader("X-User") @NotBlank @Size(max = 100) String user) {
+        return view(sheetId, service.resume(sheetId, user, planId));
+    }
+
+    private PlanView view(String sheetId, ClaimPlan plan) {
+        return PlanView.of(plan, service.made(sheetId).getOrDefault(plan.getId(), 0), service.today(sheetId),
+                service.pauses(sheetId).getOrDefault(plan.getId(), List.of()));
     }
 
     @OpenToViewer

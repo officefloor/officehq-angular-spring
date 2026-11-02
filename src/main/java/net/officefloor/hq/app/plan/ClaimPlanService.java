@@ -2,9 +2,11 @@ package net.officefloor.hq.app.plan;
 
 import java.math.BigDecimal;
 import java.time.LocalDate;
+import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.function.Predicate;
 import net.officefloor.hq.app.Audit;
 import net.officefloor.hq.app.claim.ClaimService;
 import net.officefloor.hq.app.claim.CorrectionRefusedException;
@@ -29,13 +31,16 @@ import org.springframework.transaction.support.TransactionTemplate;
  * claim with the plan's amount and an empty note for each plan date up to its end and the sheet's
  * today that it has made none for yet, dated that day and added by every rule of the claim form. A
  * date the form refuses is skipped, and tried again by the next generate. Each claim is made in its
- * own transaction, so one refused leaves the others made.
+ * own transaction, so one refused leaves the others made. A plan can be paused and resumed (each on the
+ * sheet's today): a plan date on or after the day it was paused and before the day it was resumed is
+ * skipped, not postponed, so generate makes nothing for it and its next dates leave it out.
  */
 @Service
 public class ClaimPlanService {
 
     private final ClaimPlanRepository plans;
     private final ClaimPlanDateRepository dates;
+    private final ClaimPlanPauseRepository pauses;
     private final PersonRepository people;
     private final SheetRepository sheetRows;
     private final SheetService sheets;
@@ -44,12 +49,14 @@ public class ClaimPlanService {
     private final SettingService settings;
     private final Audit audit;
 
-    public ClaimPlanService(ClaimPlanRepository plans, ClaimPlanDateRepository dates, PersonRepository people,
+    public ClaimPlanService(ClaimPlanRepository plans, ClaimPlanDateRepository dates, ClaimPlanPauseRepository pauses,
+            PersonRepository people,
             SheetRepository sheetRows, SheetService sheets, ClaimService claims, SettingService settings,
             PlatformTransactionManager transactions, Audit audit) {
         this.settings = settings;
         this.plans = plans;
         this.dates = dates;
+        this.pauses = pauses;
         this.people = people;
         this.sheetRows = sheetRows;
         this.sheets = sheets;
@@ -70,6 +77,56 @@ public class ClaimPlanService {
         Map<Long, Integer> made = new HashMap<>();
         for (ClaimPlanDate d : dates.findBySheetId(sheetId)) made.merge(d.getPlanId(), 1, Integer::sum);
         return made;
+    }
+
+    /** The pauses of each of the sheet's plans, by plan id (those never paused left out). */
+    @Transactional(readOnly = true)
+    public Map<Long, List<ClaimPlanPause>> pauses(String sheetId) {
+        Map<Long, List<ClaimPlanPause>> by = new HashMap<>();
+        for (ClaimPlanPause p : pauses.findBySheetId(sheetId)) {
+            by.computeIfAbsent(p.getPlanId(), k -> new ArrayList<>()).add(p);
+        }
+        return by;
+    }
+
+    /** Whether a plan date is skipped by one of the plan's pauses. */
+    static Predicate<LocalDate> skippedBy(List<ClaimPlanPause> pauses) {
+        return d -> pauses.stream().anyMatch(p -> p.skips(d));
+    }
+
+    /** Pause the plan from the sheet's today; refused when it is already paused. */
+    @Transactional
+    public ClaimPlan pause(String sheetId, String user, Long planId) {
+        sheetRows.findForUpdate(sheetId).orElseThrow(SheetNotFoundException::new);
+        ClaimPlan plan = planOf(sheetId, planId);
+        if (pauses.findByPlanIdAndUntilIsNull(planId).isPresent()) throw new PlanPauseRefusedException();
+        pauses.saveAndFlush(new ClaimPlanPause(sheetId, planId, sheets.today(sheetId)));
+        audit.recordOnCommit("PLAN_PAUSED sheet=" + sheetId + " by=" + user.strip() + " name=" + nameOf(plan)
+                + " start=" + plan.getStart());
+        return plan;
+    }
+
+    /** Resume the paused plan from the sheet's today; refused when it is not paused. */
+    @Transactional
+    public ClaimPlan resume(String sheetId, String user, Long planId) {
+        sheetRows.findForUpdate(sheetId).orElseThrow(SheetNotFoundException::new);
+        ClaimPlan plan = planOf(sheetId, planId);
+        ClaimPlanPause pause = pauses.findByPlanIdAndUntilIsNull(planId).orElseThrow(PlanPauseRefusedException::new);
+        pause.resume(sheets.today(sheetId));
+        pauses.saveAndFlush(pause);
+        audit.recordOnCommit("PLAN_RESUMED sheet=" + sheetId + " by=" + user.strip() + " name=" + nameOf(plan)
+                + " start=" + plan.getStart());
+        return plan;
+    }
+
+    private ClaimPlan planOf(String sheetId, Long planId) {
+        return plans.findById(planId).filter(p -> p.getSheetId().equals(sheetId))
+                .orElseThrow(PlanNotFoundException::new);
+    }
+
+    private String nameOf(ClaimPlan plan) {
+        return people.findByIdAndSheetId(plan.getPersonId(), plan.getSheetId()).map(Person::getName)
+                .orElseThrow(PersonNotFoundException::new);
     }
 
     /** The sheet's today, from which a plan's next dates are counted. */
@@ -100,8 +157,11 @@ public class ClaimPlanService {
         if (settings.roleOf(sheetId, user) == Role.VIEWER || sheets.isArchived(sheetId)) return 0;
         LocalDate today = sheets.today(sheetId);
         int made = 0;
+        Map<Long, List<ClaimPlanPause>> paused = pauses(sheetId);
         for (ClaimPlan plan : plans(sheetId)) {
+            Predicate<LocalDate> skipped = skippedBy(paused.getOrDefault(plan.getId(), List.of()));
             for (LocalDate on : plan.datesUpTo(today)) {
+                if (skipped.test(on)) continue;
                 try {
                     Boolean done = transaction.execute(status -> make(sheetId, user, plan, on));
                     if (Boolean.TRUE.equals(done)) made++;

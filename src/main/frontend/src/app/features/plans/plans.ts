@@ -8,7 +8,7 @@ import { Session } from '../../core/session';
 /**
  * A person's plan: an amount (two decimals) from its start, every so many days or monthly on a day of the month
  * (one set, the other null), up to its end; how many claims it has made, and its next five dates after the sheet's
- * today (comma and space separated).
+ * today that a pause does not skip (comma and space separated), and whether it is paused now.
  */
 export interface Plan {
   id: number;
@@ -20,6 +20,7 @@ export interface Plan {
   end: string;
   generated: number;
   nextDates: string;
+  paused: boolean;
 }
 
 const AMOUNT = /^\d{1,12}(\.\d{1,2})?$/;
@@ -44,7 +45,13 @@ const DATE = /^\d{4}-\d{2}-\d{2}$/;
           }
           to <span data-testid="plan-end">{{ pl.end }}</span>,
           made <span data-testid="plan-generated">{{ pl.generated }}</span>,
-          next <span data-testid="plan-next-dates">{{ pl.nextDates }}</span>
+          next <span data-testid="plan-next-dates">{{ pl.nextDates }}</span>,
+          paused <span data-testid="plan-paused">{{ pl.paused ? 'yes' : 'no' }}</span>
+          <button type="button" data-testid="plan-pause" (click)="setPaused(pl, true)">Pause</button>
+          <button type="button" data-testid="plan-resume" (click)="setPaused(pl, false)">Resume</button>
+          @if (rowErrors()[pl.id]; as rowError) {
+            <p role="alert" class="error" data-testid="plan-error">{{ rowError }}</p>
+          }
         </li>
       }
     </ul>
@@ -76,8 +83,13 @@ export class Plans {
   readonly plans = input.required<Plan[]>();
   /** A plan added from the form. */
   readonly added = output<Plan>();
+  /** A plan paused or resumed on its row. */
+  readonly changed = output<Plan>();
 
   protected readonly error = signal('');
+  /** The refusal shown on each plan's row, by plan id. */
+  protected readonly rowErrors = signal<Record<number, string>>({});
+  private readonly pausing = new Set<number>();
   protected readonly form = new FormGroup({
     amount: new FormControl('', { nonNullable: true }),
     start: new FormControl('', { nonNullable: true }),
@@ -93,13 +105,56 @@ export class Plans {
       this.session.sheetId();
       this.session.loads();
       this.error.set('');
+      this.rowErrors.set({});
       this.form.reset({ amount: '', start: '', every: '', day: '', end: '' }, { emitEvent: false });
+    });
+  }
+
+  /** Pause (true) or resume (false) the plan from the sheet's today. */
+  protected async setPaused(plan: Plan, on: boolean): Promise<void> {
+    if (this.pausing.has(plan.id)) return;
+    this.setRowError(plan.id, '');
+    const sheet = this.session.sheetId();
+    if (!sheet) return;
+    this.pausing.add(plan.id);
+    try {
+      const updated = await firstValueFrom(
+        this.http.post<Plan>(
+          `/api/sheets/${encodeURIComponent(sheet)}/plans/${plan.id}/${on ? 'pause' : 'resume'}`,
+          null,
+          { headers: { 'X-User': this.session.user() ?? '' } },
+        ),
+      );
+      if (this.session.sheetId() !== sheet) return;
+      this.changed.emit(updated);
+    } catch (e) {
+      if (this.session.sheetId() !== sheet) return;
+      this.setRowError(
+        plan.id,
+        e instanceof HttpErrorResponse && e.status === 403
+          ? 'You may not change this sheet.'
+          : on
+            ? 'The plan is already paused.'
+            : 'The plan is not paused.',
+      );
+    } finally {
+      this.pausing.delete(plan.id);
+    }
+  }
+
+  private setRowError(planId: number, message: string): void {
+    this.rowErrors.update((all) => {
+      const next = { ...all };
+      if (message) next[planId] = message;
+      else delete next[planId];
+      return next;
     });
   }
 
   protected async add(): Promise<void> {
     if (this.submitting) return;
     this.error.set('');
+    this.rowErrors.set({});
     const sheet = this.session.sheetId();
     if (!sheet) return;
     const v = this.form.getRawValue();
