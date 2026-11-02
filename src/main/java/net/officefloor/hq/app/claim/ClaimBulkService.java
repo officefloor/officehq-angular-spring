@@ -1,19 +1,25 @@
 package net.officefloor.hq.app.claim;
 
+import java.math.BigDecimal;
+import java.math.RoundingMode;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import net.officefloor.hq.app.Audit;
 import net.officefloor.hq.app.person.Person;
 import net.officefloor.hq.app.person.PersonRepository;
 import net.officefloor.hq.app.sheet.SheetService;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.PlatformTransactionManager;
+import org.springframework.transaction.support.TransactionTemplate;
 import org.springframework.web.server.ResponseStatusException;
 
 /** Changes made to many claims at once; each claim is changed in its own transaction, so one that
- *  is refused leaves the others as they are; on an archived sheet each is refused. */
+ *  is refused leaves the others as they are, except a settle, which is all or nothing; on an
+ *  archived sheet each is refused. */
 @Service
 public class ClaimBulkService {
 
@@ -25,10 +31,14 @@ public class ClaimBulkService {
     private final ClaimRepository repository;
     private final PersonRepository people;
     private final SheetService sheets;
+    private final TransactionTemplate transactions;
+    private final Audit audit;
 
     public ClaimBulkService(ClaimService claims, ClaimRepository repository, PersonRepository people,
-            SheetService sheets) {
+            SheetService sheets, PlatformTransactionManager transactionManager, Audit audit) {
         this.claims = claims;
+        this.transactions = new TransactionTemplate(transactionManager);
+        this.audit = audit;
         this.sheets = sheets;
         this.repository = repository;
         this.people = people;
@@ -41,26 +51,44 @@ public class ClaimBulkService {
         return change(sheetId, user, claimIds, ClaimStatus.OPEN);
     }
 
-    /** Settle each of the claims that can be settled, in list order, exactly as settling one: a claim
-     *  a clerk's limit leaves pending counts as settled, and those it settles are the sheet's next
-     *  settle batch (none when it settles none); each that cannot is refused and left as it
-     *  is, and so is an id that names no claim on the sheet. */
+    /** Settle all the claims or none: when any of them cannot be settled by the user (any refusal
+     *  settling one would give; one a clerk's limit leaves pending is not refused), or an id names no
+     *  claim on the sheet, none is settled, each counts as refused and nothing is written. Otherwise
+     *  each is settled in list order, exactly as settling one, and they are the sheet's next settle
+     *  batch, recorded after their own lines with the frozen dues of those settled added up. */
     public Outcome settle(String sheetId, String user, Set<Long> claimIds) {
-        if (sheets.archived(sheetId)) {
+        if (sheets.archived(sheetId) || claimIds.isEmpty()) {
             return new Outcome(0, claimIds.size());
         }
-        List<Long> settled = new ArrayList<>();
-        for (Claim claim : inListOrder(sheetId, claimIds)) {
-            try {
-                claims.changeStatus(sheetId, user, claim.getId(), ClaimStatus.SETTLED);
-                settled.add(claim.getId());
-            } catch (ResponseStatusException refused) {
-                // left as it is
+        Boolean done = transactions.execute(status -> {
+            List<Claim> listed = inListOrder(sheetId, claimIds);
+            if (listed.size() != claimIds.size()) {
+                status.setRollbackOnly();
+                return false;
             }
-        }
-        // the claims it settled are a batch, numbered next on the sheet
-        claims.markSettleBatch(sheetId, settled);
-        return new Outcome(settled.size(), claimIds.size() - settled.size());
+            List<Long> settled = new ArrayList<>();
+            BigDecimal total = BigDecimal.ZERO;
+            for (Claim claim : listed) {
+                Claim saved;
+                try {
+                    saved = claims.changeStatus(sheetId, user, claim.getId(), ClaimStatus.SETTLED);
+                } catch (ResponseStatusException refused) {
+                    // one refused: none is settled, and nothing is written
+                    status.setRollbackOnly();
+                    return false;
+                }
+                settled.add(saved.getId());
+                if (saved.getStatus() == ClaimStatus.SETTLED && saved.getSettledDue() != null) {
+                    total = total.add(saved.getSettledDue());
+                }
+            }
+            // the claims it settled are a batch, numbered next on the sheet
+            int batch = claims.markSettleBatch(sheetId, settled);
+            audit.recordOnCommit("BATCH_SETTLED sheet=" + sheetId + " by=" + user + " batch=" + batch
+                    + " count=" + settled.size() + " total=" + total.setScale(2, RoundingMode.HALF_UP).toPlainString());
+            return true;
+        });
+        return Boolean.TRUE.equals(done) ? new Outcome(claimIds.size(), 0) : new Outcome(0, claimIds.size());
     }
 
     /** Move each of the claims that can be moved to the person, in list order, exactly as moving

@@ -206,11 +206,11 @@ public class ClaimService {
     }
 
     /** Number the claims a bulk settle settled (or left pending) as the sheet's next settle batch;
-     *  nothing when it settled none. */
+     *  nothing when it settled none (0). Returns the batch's number. */
     @Transactional
-    public void markSettleBatch(String sheetId, List<Long> claimIds) {
+    public int markSettleBatch(String sheetId, List<Long> claimIds) {
         if (claimIds.isEmpty()) {
-            return;
+            return 0;
         }
         int batch = sheets.nextSettleBatch(sheetId);
         for (Long claimId : claimIds) {
@@ -218,6 +218,7 @@ public class ClaimService {
             claim.setSettleBatch(batch);
             claims.saveAndFlush(claim);
         }
+        return batch;
     }
 
     /** Void a claim as {@link #changeStatus} does; while the sheet has void reasons, the void needs
