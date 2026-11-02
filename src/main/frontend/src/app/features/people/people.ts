@@ -545,6 +545,8 @@ function trimmedSum(figures: number[]): number {
                         [attr.aria-label]="'Move ' + p.name + ' up'">Up</button>
                 <button type="button" data-testid="person-move-down" (click)="move(p, 'down')"
                         [attr.aria-label]="'Move ' + p.name + ' down'">Down</button>
+                <button type="button" data-testid="person-export" (click)="exportPerson(p)"
+                        [attr.aria-label]="'Export row of ' + p.name">Export row</button>
               </td>
               <td>
                 <span data-testid="person-grade">{{ gradeOf(p) }}</span>
@@ -1843,6 +1845,28 @@ export class People {
       }
     }
     downloadCsv(lines, 'periods.csv');
+  }
+
+  /**
+   * Downloads the person's row as CSV: a cell,value header, then one line per cell (name, grade, claimed,
+   * due-total, statement count, overdue total, hold, retired, aliases and score) with the value as the row shows it.
+   */
+  protected exportPerson(p: Person): void {
+    const locale = this.session.locale();
+    const lines = [
+      ['cell', 'value'],
+      ['person-name', this.shownName(p)],
+      ['person-grade', this.gradeOf(p)],
+      ['person-claimed', formatFigure(this.claimedOf(p.id), locale)],
+      ['person-due-total', formatFigure(this.dueTotalOf(p), locale)],
+      ['person-statement-count', String(this.statementOf(p.id)?.count ?? 0)],
+      ['person-overdue-total', formatFigure(money(this.overdueOf(p).cents), locale)],
+      ['person-hold', p.held ? 'yes' : 'no'],
+      ['person-retired', p.retired ? 'yes' : 'no'],
+      ['person-aliases', p.aliases.join(', ')],
+      ['person-score', String(this.scoreOf(p))],
+    ];
+    downloadCsv(lines, `person-${p.name}.csv`);
   }
 
   /**
