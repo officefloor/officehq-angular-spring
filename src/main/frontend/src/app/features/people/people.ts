@@ -318,7 +318,7 @@ function trimmedSum(figures: number[]): number {
       </table>
     </section>
     <app-rates [rates]="rates()" [inherited]="inheritedRates()" [today]="session.today()" (saved)="rateSaved($event)" (imported)="ratesImported($event)" />
-    <app-periods [periods]="periods()" [dueTotalOf]="periodDueTotalOf" (saved)="periodSaved($event)" />
+    <app-periods [periods]="periods()" [dueTotalOf]="periodDueTotalOf" (saved)="periodSaved($event)" (replaced)="periodsReplaced($event)" />
     <section aria-labelledby="people-heading">
       <h2 id="people-heading">People</h2>
       <form [formGroup]="form" (ngSubmit)="save()" [attr.aria-label]="editingId() === null ? 'Add person' : 'Edit person'">
@@ -2232,6 +2232,10 @@ export class People {
   }
 
   /** Put an added period in its place by from-date, or a closed or reopened one in its place. */
+  protected periodsReplaced(periods: Period[]): void {
+    this.periods.set([...periods].sort((a, b) => (a.from < b.from ? -1 : 1)));
+  }
+
   protected periodSaved(period: Period): void {
     this.periods.update((list) =>
       [...list.filter((p) => p.id !== period.id), period].sort((a, b) => (a.from < b.from ? -1 : 1)),

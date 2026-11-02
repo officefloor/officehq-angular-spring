@@ -96,6 +96,7 @@ export function closedOn(periods: Period[], date: string): boolean {
         <label for="rollover-year">Fiscal year to roll over (yyyy)</label>
         <input id="rollover-year" data-testid="rollover-year" formControlName="year" inputmode="numeric" />
         <button type="submit" data-testid="rollover">Roll year over</button>
+        <button type="button" data-testid="rollover-undo" (click)="undoRollover()">Undo last rollover</button>
         @if (rolledOver() !== null) {
           <output data-testid="rollover-made" aria-live="polite">{{ rolledOver() }}</output>
         }
@@ -166,6 +167,8 @@ export class Periods {
   readonly dueTotalOf = input.required<(p: Period) => string>();
   /** A period added, closed or reopened, as the store now holds it. */
   readonly saved = output<Period>();
+  /** The sheet's whole period list, as the store now holds it, after periods were removed. */
+  readonly replaced = output<Period[]>();
 
   protected readonly error = signal('');
   /** The error from the last action on a period's row, if it was refused. */
@@ -290,6 +293,39 @@ export class Periods {
           : status === 409
             ? 'That fiscal year has no periods to roll over.'
             : 'Could not roll that fiscal year over.',
+      );
+    } finally {
+      this.rollingOver = false;
+    }
+  }
+
+  /**
+   * As the steward who made it, undo the sheet's last rollover on the same sheet-today: its generated periods
+   * are removed and the opening balances it set taken back.
+   */
+  protected async undoRollover(): Promise<void> {
+    if (this.rollingOver) return;
+    this.rolloverError.set('');
+    const sheet = this.session.sheetId();
+    if (!sheet) return;
+    this.rollingOver = true;
+    try {
+      const periods = await firstValueFrom(
+        this.http.post<Period[]>(`/api/sheets/${encodeURIComponent(sheet)}/periods/rollover/undo`, {}, {
+          headers: { 'X-User': this.session.user() ?? '' },
+        }),
+      );
+      if (this.session.sheetId() !== sheet) return;
+      this.replaced.emit(periods);
+    } catch (e) {
+      if (this.session.sheetId() !== sheet) return;
+      const status = e instanceof HttpErrorResponse ? e.status : 0;
+      this.rolloverError.set(
+        status === 403
+          ? 'Only a steward may undo a rollover.'
+          : status === 409
+            ? 'The last rollover can only be undone by whoever made it, on the same day, before any claim falls in its periods.'
+            : 'Could not undo the last rollover.',
       );
     } finally {
       this.rollingOver = false;

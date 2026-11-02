@@ -7,7 +7,7 @@ import java.lang.annotation.Target;
 
 /**
  * A request handler a viewer may call, and that may be called on an archived sheet, although it is
- * not a read: loading a sheet, or a bulk change that itself refuses each selected item for a viewer
+ * not a read: loading a sheet, or a bulk change (or a period generate) that itself refuses each item for a viewer
  * and on an archived sheet.
  */
 @Target(ElementType.METHOD)

@@ -10,6 +10,7 @@ import java.time.LocalDate;
 import java.util.List;
 import java.util.Map;
 import java.util.TreeMap;
+import net.officefloor.hq.app.setting.OpenToViewer;
 import org.springframework.validation.annotation.Validated;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
@@ -98,6 +99,7 @@ public class PeriodController {
     }
 
     /** Make a period for each month from the from-date's to the to-date's: those made, earliest first. */
+    @OpenToViewer
     @PostMapping("/generate")
     public List<PeriodView> generate(
             @PathVariable @Size(max = 100) @Pattern(regexp = "[A-Za-z0-9._-]+") String sheetId,
@@ -128,6 +130,15 @@ public class PeriodController {
             @RequestBody @Valid GenerateFiscalYearRequest request) {
         int made = service.rollover(sheetId, user, Integer.parseInt(request.year())).size();
         return new RolloverView(made, service.list(sheetId).stream().map(PeriodView::of).toList());
+    }
+
+    /** Undo the sheet's last rollover: the sheet's periods as the store now holds them. */
+    @PostMapping("/rollover/undo")
+    public List<PeriodView> undoRollover(
+            @PathVariable @Size(max = 100) @Pattern(regexp = "[A-Za-z0-9._-]+") String sheetId,
+            @RequestHeader("X-User") @NotBlank @Size(max = 100) String user) {
+        service.undoRollover(sheetId, user);
+        return service.list(sheetId).stream().map(PeriodView::of).toList();
     }
 
     /** Make the calendar year's four quarterly periods, leaving out taken or overlapped ones: those made, earliest first. */
