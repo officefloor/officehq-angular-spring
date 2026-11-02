@@ -72,7 +72,7 @@ public class ClaimService {
             Person person = person(sheetId, personId);
             Claim draft = new Claim(sheetId, personId, amount, on, note,
                     corrected == null ? null : corrected.getNumber(), corrected == null ? null : corrected.getDate(),
-                    on.plusDays(sheets.termsFor(sheetId, person.gradeOn(on), on)));
+                    dueBy(sheetId, person, on));
             logStatus(sheetId, user, person, draft);
             Claim claim = claims.saveAndFlush(draft);
             audit.recordOnCommit(record("CLAIM_ADDED", sheetId, user, person, claim));
@@ -348,7 +348,7 @@ public class ClaimService {
             Person person = person(sheetId, claim.getPersonId());
             LocalDate on = claim.getDate();
             Claim draft = claim.splitOff(part, nextNumber(sheetId, on), user,
-                    on.plusDays(sheets.termsFor(sheetId, person.gradeOn(on), on)));
+                    dueBy(sheetId, person, on));
             logStatus(sheetId, user, person, draft);
             Claim original = claims.saveAndFlush(claim);
             Claim split = claims.saveAndFlush(draft);
@@ -455,6 +455,13 @@ public class ClaimService {
             throw new ResponseStatusException(HttpStatus.UNPROCESSABLE_CONTENT,
                     "A claim cannot be dated after the person's retirement");
         }
+    }
+
+    /** The day a claim of the person dated on the day is due by: its date plus the first of the
+     *  person's own terms, their grade's and the sheet's, each as in force on the day. */
+    private LocalDate dueBy(String sheetId, Person person, LocalDate on) {
+        Integer own = person.getTerms();
+        return on.plusDays(own != null ? own : sheets.termsFor(sheetId, person.gradeOn(on), on));
     }
 
     private Person person(String sheetId, long personId) {

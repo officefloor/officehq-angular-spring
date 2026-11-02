@@ -57,6 +57,8 @@ export interface Person {
   held: boolean;
   /** Their holds, earliest first: their open claims dated within one count in no live total. */
   holds: Hold[];
+  /** Their own terms in days, ahead of their grade's and the sheet's; null when they have none. */
+  terms: number | null;
 }
 
 /** A statement just taken: the person as they now show, and their claims (newest first) as it
@@ -71,6 +73,8 @@ export interface PersonForm {
   grade: Grade;
   /** The day (yyyy-mm-dd) an edit's grade applies from; null takes the sheet's today. */
   gradeFrom?: string | null;
+  /** Their own terms: a whole number of days; blank for none. */
+  terms: string;
 }
 
 // The people kept on the active sheet.

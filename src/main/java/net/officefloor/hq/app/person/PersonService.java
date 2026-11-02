@@ -2,6 +2,7 @@ package net.officefloor.hq.app.person;
 
 import java.time.LocalDate;
 import java.util.List;
+import java.util.Objects;
 import net.officefloor.hq.app.Audit;
 import net.officefloor.hq.app.rollup.Rollup;
 import net.officefloor.hq.app.sheet.SheetService;
@@ -36,25 +37,28 @@ public class PersonService {
 
     /** Add a person to the sheet. */
     @Transactional
-    public Person add(String sheetId, String user, String name, String grade) {
+    public Person add(String sheetId, String user, String name, String grade, Integer terms) {
         sheets.load(sheetId, user);
         if (people.existsBySheetIdAndNameIgnoreCase(sheetId, name)) {
             throw nameInUse();
         }
         return rollup.tracking(sheetId, user, () -> {
-            Person person = saveUnique(new Person(sheetId, name, grade));
-            audit.recordOnCommit(record("PERSON_ADDED", sheetId, user, person, sheets.today(sheetId)));
+            Person fresh = new Person(sheetId, name, grade);
+            fresh.setTerms(terms);
+            Person person = saveUnique(fresh);
+            audit.recordOnCommit(record("PERSON_ADDED", sheetId, user, person, sheets.today(sheetId))
+                    + (terms != null ? " terms=" + terms : ""));
             return person;
         });
     }
 
     /** Change a person's name, and record their grade from a day (null: the sheet's today), keeping
      *  the grades already recorded; a grade left as the one in force on the sheet's today, with no
-     *  day given, records nothing. Refused when the person is no longer at the version the editor
+     *  day given, records nothing; and set their own terms (null: none). Refused when the person is no longer at the version the editor
      *  loaded: another user saved them in the meantime. */
     @Transactional
     public Person edit(String sheetId, String user, long personId, long version, String name, String grade,
-            LocalDate gradeFrom) {
+            LocalDate gradeFrom, Integer terms) {
         Person person = people.findByIdAndSheetId(personId, sheetId)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "No such person on this sheet"));
         if (person.getVersion() != version) {
@@ -65,12 +69,15 @@ public class PersonService {
         }
         return rollup.tracking(sheetId, user, () -> {
             LocalDate today = sheets.today(sheetId);
+            Integer termsBefore = person.getTerms();
             person.setName(name);
+            person.setTerms(terms);
             if (gradeFrom != null || !grade.equals(person.gradeOn(today))) {
                 person.setGradeFrom(grade, gradeFrom != null ? gradeFrom : today);
             }
             Person saved = saveUnique(person);
-            audit.recordOnCommit(record("PERSON_EDITED", sheetId, user, saved, today));
+            audit.recordOnCommit(record("PERSON_EDITED", sheetId, user, saved, today)
+                    + (Objects.equals(termsBefore, terms) ? "" : " terms=" + (terms != null ? terms : "")));
             return saved;
         });
     }

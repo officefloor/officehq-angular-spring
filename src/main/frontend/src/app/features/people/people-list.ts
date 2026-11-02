@@ -47,6 +47,8 @@ import { PasteClaimsBox } from './paste-claims-box';
         </select>
         <label for="person-form-grade-from">Grade from</label>
         <input id="person-form-grade-from" type="date" data-testid="person-form-grade-from" formControlName="gradeFrom" />
+        <label for="person-form-terms">Terms (days)</label>
+        <input id="person-form-terms" inputmode="numeric" data-testid="person-form-terms" formControlName="terms" />
         <button type="submit" data-testid="person-form-submit">{{ editing() === null ? 'Add person' : 'Save' }}</button>
         @if (editing() !== null) {
           <button type="button" data-testid="person-form-cancel" (click)="cancel()">Cancel</button>
@@ -80,13 +82,14 @@ import { PasteClaimsBox } from './paste-claims-box';
       <button type="button" data-testid="export-people" (click)="exportCsv()">Export people (CSV)</button>
       <table data-testid="people">
         <thead>
-          <tr><th scope="col">Name</th><th scope="col">Grade</th><th scope="col">Claimed</th><th scope="col">Due</th>@for (pd of periods(); track pd.id) {<th scope="col">Due in {{ pd.name }}</th>}<th scope="col">Excess</th><th scope="col">Statements</th><th scope="col">Last stated</th><th scope="col">Stated on</th><th scope="col">Retired</th><th scope="col">Retired from</th><th scope="col">On hold</th><th scope="col">Overdue</th><th scope="col">Overdue due</th><th scope="col">Patrons</th><th scope="col">Backing</th><th scope="col">Watched</th><th scope="col">Claims</th><th scope="col"><span class="visually-hidden">Actions</span></th></tr>
+          <tr><th scope="col">Name</th><th scope="col">Grade</th><th scope="col">Terms</th><th scope="col">Claimed</th><th scope="col">Due</th>@for (pd of periods(); track pd.id) {<th scope="col">Due in {{ pd.name }}</th>}<th scope="col">Excess</th><th scope="col">Statements</th><th scope="col">Last stated</th><th scope="col">Stated on</th><th scope="col">Retired</th><th scope="col">Retired from</th><th scope="col">On hold</th><th scope="col">Overdue</th><th scope="col">Overdue due</th><th scope="col">Patrons</th><th scope="col">Backing</th><th scope="col">Watched</th><th scope="col">Claims</th><th scope="col"><span class="visually-hidden">Actions</span></th></tr>
         </thead>
         <tbody>
           @for (p of shown(); track p.id) {
             <tr [attr.data-testid]="'person-row-' + p.id">
               <td data-testid="person-name">{{ p.name }}</td>
               <td data-testid="person-grade">{{ gradeOf(p) }}</td>
+              <td data-testid="person-terms">{{ p.terms ?? '' }}</td>
               <td data-testid="person-claimed">{{ claimed().get(p.id) ?? '0.00' }}</td>
               <td data-testid="person-due-total">{{ dueOf(p) ?? 'n/a' }}</td>
               @for (pd of periods(); track pd.id) {
@@ -355,6 +358,8 @@ export class PeopleList {
     grade: new FormControl<Grade>('A', { nonNullable: true }),
     /** The day the grade applies from; blank takes the sheet's today. */
     gradeFrom: new FormControl('', { nonNullable: true }),
+    /** The person's own terms in days; blank for none. */
+    terms: new FormControl('', { nonNullable: true }),
   });
   /** Only the newest read of the sheet may show: a load overtaken by another is dropped. */
   private reads = 0;
@@ -385,7 +390,7 @@ export class PeopleList {
     this.patronError.set(null);
     this.editing.set(p.id);
     this.version = p.version;
-    this.form.setValue({ name: p.name, grade: this.gradeOf(p), gradeFrom: '' });
+    this.form.setValue({ name: p.name, grade: this.gradeOf(p), gradeFrom: '', terms: p.terms?.toString() ?? '' });
     this.error.set('');
   }
 
@@ -515,22 +520,27 @@ export class PeopleList {
     if (this.submitting) return;
     this.error.set('');
     const { name, grade, gradeFrom } = this.form.getRawValue();
+    const terms = this.form.controls.terms.value.trim();
     if (!name.trim()) {
-      this.error.set('Enter a name.');
+      this.refuse('Enter a name.');
       return;
     }
     if (!this.grades.includes(grade)) {
-      this.error.set('Choose a grade of A, B or C.');
+      this.refuse('Choose a grade of A, B or C.');
+      return;
+    }
+    if (!/^\d{0,4}$/.test(terms)) {
+      this.refuse('Enter terms as a whole number of days, or leave them blank.');
       return;
     }
     const id = this.editing();
     this.submitting = true;
     try {
       if (id === null) {
-        const added = await this.api.add({ name, grade });
+        const added = await this.api.add({ name, grade, terms });
         this.people.update((ps) => [...ps, added]);
       } else {
-        const saved = await this.api.edit(id, this.version, { name, grade, gradeFrom: gradeFrom.trim() || null });
+        const saved = await this.api.edit(id, this.version, { name, grade, gradeFrom: gradeFrom.trim() || null, terms });
         this.people.update((ps) => ps.map((p) => (p.id === saved.id ? saved : p)));
       }
       this.reset();
@@ -539,13 +549,20 @@ export class PeopleList {
         await this.showCurrent(id);
         this.error.set('Someone else saved this person in the meantime. The form now shows their current values.');
       } else if (e instanceof HttpErrorResponse && e.status === 409) {
-        this.error.set('That name is already in use on this sheet.');
+        this.refuse('That name is already in use on this sheet.');
       } else {
-        this.error.set(id === null ? 'The person could not be added.' : 'The person could not be saved.');
+        this.refuse(id === null ? 'The person could not be added.' : 'The person could not be saved.');
       }
     } finally {
       this.submitting = false;
     }
+  }
+
+  /** Show why the form was refused; a refused edit also closes the editor, so the form next adds a
+   *  person rather than saving over this one with what is typed into it. */
+  private refuse(message: string): void {
+    if (this.editing() !== null) this.reset();
+    this.error.set(message);
   }
 
   /** Re-read the person whose save was overtaken and show them as they are now, in their row and in
@@ -558,7 +575,8 @@ export class PeopleList {
       if (!current || this.editing() !== id) return;
       this.people.update((ps) => ps.map((p) => (p.id === id ? current : p)));
       this.version = current.version;
-      this.form.setValue({ name: current.name, grade: this.gradeOf(current), gradeFrom: this.form.getRawValue().gradeFrom },
+      this.form.setValue({ name: current.name, grade: this.gradeOf(current), gradeFrom: this.form.getRawValue().gradeFrom,
+        terms: current.terms?.toString() ?? '' },
         { emitEvent: false });
     } catch {
       // the editor keeps what was typed; reopening it reads the person again
@@ -721,7 +739,7 @@ export class PeopleList {
 
   private reset(): void {
     this.editing.set(null);
-    this.form.reset({ name: '', grade: 'A', gradeFrom: '' }, { emitEvent: false });
+    this.form.reset({ name: '', grade: 'A', gradeFrom: '', terms: '' }, { emitEvent: false });
     this.error.set('');
   }
 

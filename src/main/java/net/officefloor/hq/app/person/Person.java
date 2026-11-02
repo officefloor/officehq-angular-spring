@@ -45,6 +45,10 @@ public class Person {
     @CollectionTable(name = "person_hold", joinColumns = @JoinColumn(name = "person_id"))
     private List<Hold> holds = new ArrayList<>();
 
+    /** The person's own terms in days; null when they have none. */
+    @Column(name = "terms")
+    private Integer terms;
+
     /** Raised each time the person is saved. */
     @Version
     @Column(name = "version", nullable = false)
@@ -133,6 +137,15 @@ public class Person {
     /** Add a hold, keeping the others. */
     public void addHold(LocalDate from, LocalDate to) {
         holds.add(new Hold(from, to));
+    }
+
+    /** The person's own terms in days, ahead of their grade's and the sheet's; null when none. */
+    public Integer getTerms() {
+        return terms;
+    }
+
+    public void setTerms(Integer terms) {
+        this.terms = terms;
     }
 
     public long getVersion() {
