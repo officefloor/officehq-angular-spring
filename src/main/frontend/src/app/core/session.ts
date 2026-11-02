@@ -8,6 +8,7 @@ interface SignedIn {
 
 interface SheetView {
   id: string;
+  today: string;
 }
 
 // Who is signed in and which sheet is active. Everything else in the app is kept per sheet.
@@ -17,11 +18,14 @@ export class Session {
 
   readonly user = signal<string | null>(null);
   readonly sheetId = signal<string | null>(null);
+  /** The active sheet's today (yyyy-mm-dd): every date decision and default date uses it. */
+  readonly today = signal<string | null>(null);
 
   async signIn(name: string): Promise<void> {
     const res = await firstValueFrom(this.http.post<SignedIn>('/api/signin', { name }));
     this.user.set(res.name);
     this.sheetId.set(null);
+    this.today.set(null);
   }
 
   /** Load a sheet by id; one never loaded before starts empty. */
@@ -33,6 +37,24 @@ export class Session {
         headers: { 'X-User': user },
       }),
     );
-    this.sheetId.set(res.id);
+    this.show(res);
+  }
+
+  /** Change the active sheet's today. */
+  async setToday(today: string): Promise<void> {
+    const user = this.user();
+    const id = this.sheetId();
+    if (!user || !id) throw new Error('no sheet loaded');
+    const res = await firstValueFrom(
+      this.http.put<SheetView>(`/api/sheets/${encodeURIComponent(id)}/today`, { today }, {
+        headers: { 'X-User': user },
+      }),
+    );
+    this.show(res);
+  }
+
+  private show(sheet: SheetView): void {
+    this.sheetId.set(sheet.id);
+    this.today.set(sheet.today);
   }
 }
