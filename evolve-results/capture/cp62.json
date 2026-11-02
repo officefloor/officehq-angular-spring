@@ -1,0 +1,64 @@
+{
+  "checkpoint": 62,
+  "stack": {
+    "repo": "/home/daniel/officehq-angular-spring",
+    "origin": "git@github.com:officefloor/officehq-angular-spring.git",
+    "name": "officehq-angular-spring",
+    "base_ref": "base-empty",
+    "base_commit": "65cb8233ea38b2dfa6cfd18709e30cd18fdf3250"
+  },
+  "checkpoint_id": "cp62_archive-sheet",
+  "phase": "early",
+  "type": "additive",
+  "mutates": [],
+  "replaced_tests": [],
+  "request": {
+    "spec": "A steward can archive the sheet (a button; SHEET_ARCHIVED; anyone else is refused with an error\non the sheet). Show archived yes/no. On an archived sheet everything stays visible and every\nchange is refused with its usual error, including changing the sheet's today, every bulk action,\nthe paste box and the quick-add bar.\n",
+    "prompt": "You are implementing ONE change to this application.\n\nFIRST read AGENTS.md \u2014 it states the working rules and how the app is tested, and sends you to\nDESIGN.md for the app's stack and conventions. Follow both.\n\nTHE CHANGE REQUEST:\nA steward can archive the sheet (a button; SHEET_ARCHIVED; anyone else is refused with an error\non the sheet). Show archived yes/no. On an archived sheet everything stays visible and every\nchange is refused with its usual error, including changing the sheet's today, every bulk action,\nthe paste box and the quick-add bar.\n\nYour work is verified by an automated Playwright UI test already installed under e2e/specs/.\nRead that spec: it declares the exact data-testid anchors, values, test data and any audit\nrecords it expects \u2014 match them. Run `bin/e2e` to build the app, start it, and run the test as\nyou work; iterate until it passes. Change whatever the request needs across the app \u2014 its stored\ndata, its server and its front end. Do NOT edit bin/build, bin/start, bin/stop, bin/e2e,\nAGENTS.md, CLAUDE.md, DESIGN.md, e2e/support/ or the test spec.\n"
+  },
+  "commit_sha": "9838f9c34f3bb9e5c7c00fd765827ff699d5439d",
+  "reset_sha": "",
+  "preagent_sha": "4b55a51fa65338dbb33b4ed5cf2a521a1dabc08f",
+  "prev_sha": "4b55a51fa65338dbb33b4ed5cf2a521a1dabc08f",
+  "base_sha": "65cb8233ea38b2dfa6cfd18709e30cd18fdf3250",
+  "agent": {
+    "ok": true,
+    "cost_usd": 0.9423100000000001,
+    "input_tokens": 34,
+    "output_tokens": 9843,
+    "cache_read_tokens": 872210,
+    "cache_creation_tokens": 71359,
+    "num_turns": 20,
+    "duration_ms": 269590,
+    "duration_api_ms": 88016,
+    "model": "claude-opus-5-5",
+    "session_id": "4985f3b9-7c44-4516-8111-7136a313a6e5",
+    "stop_reason": "success",
+    "result_text": "A steward can now archive a sheet, and once it's archived every change is refused with that action's usual error. `bin/e2e` passes all 4 tests: the archive test and the three other scenarios in the spec.\n\n**What the screen shows**\n- The sheet bar has an \"Archive sheet\" button (`sheet-archive`) and shows \"Archived: yes/no\" (`sheet-archived`).\n- If someone who isn't a steward tries to archive, or the sheet is already archived, the refusal appears in the existing sheet error (`sheet-error`).\n\n**Server**\n- **Stored data:** a new migration, `V45__sheet_archived.sql`, adds an `archived` column to the sheet table, defaulting to false.\n- **Archiving:** a new archive request in `SheetController` / `SheetService.archive` checks that the user acts as a steward on the sheet, including a steward by delegation. If so, it sets the flag and writes `SHEET_ARCHIVED sheet=<id> by=<user>` to the audit file. Loading the sheet now also returns the flag.\n- **Refusing changes:** a new check, `sheet/ArchivedGuard.java`, runs before every request that would change an archived sheet and refuses it before anything is written, so nothing reaches the store or the audit file. It works the same way as the existing viewer check, so it covers changing the sheet's today, the paste box, the quick-add bar and every other form or action on the sheet.\n- **Exceptions:** loading the sheet and the two bulk actions (open and settle) are let through by a new `@ArchivedAllowed` marker. On an archived sheet the bulk actions refuse every claim selected, so the screen shows a count like 0 opened, 1 refused rather than an error.\n\n**Front end:** `core/session.ts` holds the archived flag and the archive call, and `features/session/sheet-bar.ts` shows the flag and the button.\n\nBecause the check blocks every change request to an archived sheet, any action added to the app later is refused there automatically. A future read-only request sent as a POST would need the `@ArchivedAllowed` marker to keep working.",
+    "error": "",
+    "attempts": [
+      {
+        "ok": true,
+        "limit_reached": false,
+        "retryable": false,
+        "timed_out": false,
+        "cost_usd": 0.9423100000000001,
+        "num_turns": 20,
+        "duration_ms": 269590,
+        "duration_api_ms": 88016,
+        "error": ""
+      }
+    ]
+  },
+  "agent_stream_file": "cp62.agent.jsonl",
+  "agent_diff_file": "cp62.agent.diff",
+  "build_log_file": null,
+  "tests": {
+    "gated": false,
+    "queued": true
+  },
+  "probe": null,
+  "pinned_touched": [],
+  "acceptance_touched": [],
+  "impact_gate": null
+}
