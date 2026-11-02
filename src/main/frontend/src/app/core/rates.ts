@@ -110,6 +110,16 @@ export class Rates {
     );
   }
 
+  /** Set a rate per line of grade,rate,from,to, all or none; how many were set. */
+  importRates(text: string): Promise<{ set: number }> {
+    const sheetId = this.session.sheetId();
+    const user = this.session.user();
+    if (!sheetId || !user) throw new Error('no sheet loaded');
+    return firstValueFrom(
+      this.http.post<{ set: number }>(`${this.url(sheetId)}/import`, { text }, { headers: { 'X-User': user } }),
+    );
+  }
+
   /** Preview a candidate rate applying to a grade on every date; nothing is saved. */
   preview(grade: Grade, pct: string): Promise<RatePreview> {
     const sheetId = this.session.sheetId();

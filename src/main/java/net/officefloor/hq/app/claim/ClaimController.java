@@ -10,6 +10,7 @@ import java.time.LocalDate;
 import java.util.Comparator;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import java.util.Set;
 import java.util.function.Function;
 import java.util.stream.Collectors;
@@ -206,10 +207,23 @@ public class ClaimController {
     public record LastSettleBatch(Integer batch) {
     }
 
-    /** The number of the sheet's last settle batch. */
+    /** The number of the sheet's last settle batch; as of a day when one is given, the last batch
+     *  that had settled (or left pending) one of the claims as they stood at the end of it. */
     @GetMapping("/claims/settle-batch")
-    public LastSettleBatch lastSettleBatch(@PathVariable @NotBlank @Size(max = 100) String sheetId) {
-        return new LastSettleBatch(sheets.lastSettleBatch(sheetId.trim()));
+    public LastSettleBatch lastSettleBatch(@PathVariable @NotBlank @Size(max = 100) String sheetId,
+            @RequestHeader(value = AsOfGuard.HEADER, required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE)
+            LocalDate asOf) {
+        String sheet = sheetId.trim();
+        if (asOf != null) {
+            Map<Long, Claim> now = service.list(sheet).stream()
+                    .collect(Collectors.toMap(Claim::getId, Function.identity()));
+            return new LastSettleBatch(history.asOf(sheet, asOf).claims().stream()
+                    .filter(then -> then.getStatus() == ClaimStatus.SETTLED || then.getStatus() == ClaimStatus.PENDING)
+                    .map(then -> now.get(then.getId())).filter(Objects::nonNull)
+                    .map(Claim::getSettleBatch).filter(Objects::nonNull)
+                    .max(Integer::compare).orElse(null));
+        }
+        return new LastSettleBatch(sheets.lastSettleBatch(sheet));
     }
 
     /** Every tag ever used on the sheet, in order. */

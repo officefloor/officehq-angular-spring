@@ -1,3 +1,4 @@
+import { HttpErrorResponse } from '@angular/common/http';
 import { Component, computed, inject, input, output, signal } from '@angular/core';
 import { FormControl, FormGroup, ReactiveFormsModule } from '@angular/forms';
 import { Grade } from '../../core/people';
@@ -28,6 +29,17 @@ import { Session } from '../../core/session';
         <button type="submit" data-testid="rate-form-submit">Set rate</button>
         @if (error()) {
           <p role="alert" data-testid="rate-form-error">{{ error() }}</p>
+        }
+      </form>
+      <form [formGroup]="importForm" (ngSubmit)="importRates()" aria-label="Import rates">
+        <label for="import-rates">Import rates (grade,rate,from,to per line)</label>
+        <textarea id="import-rates" data-testid="import-rates" formControlName="text" rows="4"></textarea>
+        <button type="submit" data-testid="import-rates-submit">Import rates</button>
+        @if (importedCount() !== null) {
+          <p role="status">Set <strong data-testid="import-rates-set">{{ importedCount() }}</strong></p>
+        }
+        @if (importError()) {
+          <p role="alert" data-testid="import-rates-error">{{ importError() }}</p>
         }
       </form>
       <form data-testid="rate-preview-form" [formGroup]="previewForm" (ngSubmit)="preview()">
@@ -93,6 +105,8 @@ export class RateForm {
   protected readonly own = computed(() => this.rates().filter((r) => r.level === 0));
   /** A rate set through the form. */
   readonly saved = output<Rate>();
+  /** How many rates an import set. */
+  readonly imported = output<number>();
 
   protected readonly grades: Grade[] = ['A', 'B', 'C'];
   protected readonly error = signal('');
@@ -108,6 +122,12 @@ export class RateForm {
     grade: new FormControl<Grade>('A', { nonNullable: true }),
     pct: new FormControl('', { nonNullable: true }),
   });
+  protected readonly importForm = new FormGroup({ text: new FormControl('', { nonNullable: true }) });
+  protected readonly importError = signal('');
+  /** How many rates the last import set; cleared while an import runs. */
+  protected readonly importedCount = signal<number | null>(null);
+  /** Whether an import is waiting for its answer: a second one meanwhile is ignored. */
+  private importing = false;
   protected readonly previewError = signal('');
   /** The last preview's result; cleared while a preview runs and when the preview form changes. */
   protected readonly previewResult = signal<RatePreview | null>(null);
@@ -127,10 +147,36 @@ export class RateForm {
 
   constructor() {
     this.form.valueChanges.subscribe(() => this.error.set(''));
+    this.importForm.valueChanges.subscribe(() => this.importError.set(''));
     this.previewForm.valueChanges.subscribe(() => {
       this.previewError.set('');
       this.previewResult.set(null);
     });
+  }
+
+  protected async importRates(): Promise<void> {
+    if (this.importing) return;
+    this.importError.set('');
+    this.importedCount.set(null);
+    const { text } = this.importForm.getRawValue();
+    if (!text.trim()) {
+      this.importError.set('Paste at least one line.');
+      return;
+    }
+    this.importing = true;
+    try {
+      const { set } = await this.api.importRates(text);
+      this.importedCount.set(set);
+      this.imported.emit(set);
+    } catch (e) {
+      this.importError.set(
+        e instanceof HttpErrorResponse && typeof e.error?.message === 'string' && e.error.message
+          ? e.error.message
+          : 'The rates could not be set.',
+      );
+    } finally {
+      this.importing = false;
+    }
   }
 
   protected async preview(): Promise<void> {

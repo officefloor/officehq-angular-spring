@@ -42,7 +42,7 @@ const NO_LEAVE: Leave = { holds: [], retiredFrom: null };
   template: `
     <app-header-counters [peopleCount]="people().length" [statuses]="statusSummary()"
       [dueTotal]="dueTotal()" [overdueTotal]="overdueTotal()" />
-    <app-rate-form [rates]="rates()" (saved)="rateSaved($event)" />
+    <app-rate-form [rates]="rates()" (saved)="rateSaved($event)" (imported)="ratesImported()" />
     <app-period-form [periods]="periods()" [dueTotals]="periodDueTotals()" (saved)="periodSaved($event)" />
     <section aria-labelledby="people-heading">
       <h2 id="people-heading">People</h2>
@@ -1085,6 +1085,14 @@ export class PeopleList {
     if (!sheetId) return;
     const claims = await this.claimsApi.list(sheetId);
     if (this.session.sheetId() === sheetId) this.claims.set(claims);
+  }
+
+  /** Read the sheet's rates again once an import has set some. */
+  protected async ratesImported(): Promise<void> {
+    const sheetId = this.session.sheetId();
+    if (!sheetId) return;
+    const rates = await this.ratesApi.list(sheetId);
+    if (this.session.sheetId() === sheetId) this.rates.set(rates);
   }
 
   protected rateSaved(rate: Rate): void {
