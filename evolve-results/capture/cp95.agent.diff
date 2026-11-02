@@ -1,0 +1,270 @@
+diff --git a/src/main/frontend/src/app/core/rates.ts b/src/main/frontend/src/app/core/rates.ts
+index 79fde785b..0f8095357 100644
+--- a/src/main/frontend/src/app/core/rates.ts
++++ b/src/main/frontend/src/app/core/rates.ts
+@@ -14,6 +14,13 @@ export interface Rate {
+   to: string | null;
+ }
+ 
++/** What a candidate rate would change: how many open and pending claims would show a different
++ *  due, and the sum of the differences as two-decimal text (negative when lower). */
++export interface RatePreview {
++  count: number;
++  diff: string;
++}
++
+ /** The percent of a grade's rate in force on a day: the rate with the latest from-date on or
+  *  before it, or else the one with no from-date; undefined when the day is before every rate, or
+  *  after the to-date of that rate. */
+@@ -78,6 +85,15 @@ export class Rates {
+     );
+   }
+ 
++  /** Preview a candidate rate applying to a grade on every date; nothing is saved. */
++  preview(grade: Grade, pct: string): Promise<RatePreview> {
++    const sheetId = this.session.sheetId();
++    if (!sheetId) throw new Error('no sheet loaded');
++    return firstValueFrom(
++      this.http.get<RatePreview>(`${this.url(sheetId)}/${grade}/preview`, { params: { pct } }),
++    );
++  }
++
+   private url(sheetId: string): string {
+     return `/api/sheets/${encodeURIComponent(sheetId)}/rates`;
+   }
+diff --git a/src/main/frontend/src/app/features/rates/rate-form.ts b/src/main/frontend/src/app/features/rates/rate-form.ts
+index 4cd53ef04..f3f61a79b 100644
+--- a/src/main/frontend/src/app/features/rates/rate-form.ts
++++ b/src/main/frontend/src/app/features/rates/rate-form.ts
+@@ -1,7 +1,7 @@
+ import { Component, computed, inject, input, output, signal } from '@angular/core';
+ import { FormControl, FormGroup, ReactiveFormsModule } from '@angular/forms';
+ import { Grade } from '../../core/people';
+-import { PCT, Rate, Rates, pctOn } from '../../core/rates';
++import { PCT, Rate, RatePreview, Rates, pctOn } from '../../core/rates';
+ import { Session } from '../../core/session';
+ 
+ // The rates for each grade on the sheet, the one in force on the sheet's today, and the form that
+@@ -30,6 +30,26 @@ import { Session } from '../../core/session';
+           <p role="alert" data-testid="rate-form-error">{{ error() }}</p>
+         }
+       </form>
++      <form data-testid="rate-preview-form" [formGroup]="previewForm" (ngSubmit)="preview()">
++        <label for="rate-preview-grade">Preview grade</label>
++        <select id="rate-preview-grade" data-testid="rate-preview-grade" formControlName="grade">
++          @for (g of grades; track g) {
++            <option [value]="g">{{ g }}</option>
++          }
++        </select>
++        <label for="rate-preview-pct">Candidate rate (%)</label>
++        <input id="rate-preview-pct" data-testid="rate-preview-pct" formControlName="pct" inputmode="decimal" />
++        <button type="submit" data-testid="rate-preview">Preview</button>
++        @if (previewError()) {
++          <p role="alert" data-testid="rate-preview-error">{{ previewError() }}</p>
++        }
++        @if (previewResult(); as r) {
++          <p aria-live="polite">
++            Claims that would change: <span data-testid="rate-preview-count">{{ r.count }}</span>;
++            difference: <span data-testid="rate-preview-diff">{{ r.diff }}</span>
++          </p>
++        }
++      </form>
+       <table data-testid="rates-current">
+         <caption>In force on {{ session.today() }}</caption>
+         <thead>
+@@ -82,6 +102,15 @@ export class RateForm {
+     from: new FormControl('', { nonNullable: true }),
+     to: new FormControl('', { nonNullable: true }),
+   });
++  protected readonly previewForm = new FormGroup({
++    grade: new FormControl<Grade>('A', { nonNullable: true }),
++    pct: new FormControl('', { nonNullable: true }),
++  });
++  protected readonly previewError = signal('');
++  /** The last preview's result; cleared while a preview runs and when the preview form changes. */
++  protected readonly previewResult = signal<RatePreview | null>(null);
++  /** Whether a preview is waiting for its answer: a second one meanwhile is ignored. */
++  private previewing = false;
+   /** Each grade's rate in force on the sheet's today; a grade with none is missing. */
+   protected readonly current = computed(() => {
+     const today = this.session.today();
+@@ -96,6 +125,33 @@ export class RateForm {
+ 
+   constructor() {
+     this.form.valueChanges.subscribe(() => this.error.set(''));
++    this.previewForm.valueChanges.subscribe(() => {
++      this.previewError.set('');
++      this.previewResult.set(null);
++    });
++  }
++
++  protected async preview(): Promise<void> {
++    if (this.previewing) return;
++    this.previewError.set('');
++    this.previewResult.set(null);
++    const { grade, pct } = this.previewForm.getRawValue();
++    if (!this.grades.includes(grade)) {
++      this.previewError.set('Choose a grade of A, B or C.');
++      return;
++    }
++    if (!PCT.test(pct.trim())) {
++      this.previewError.set('Enter a rate of 0.00 or more, with up to two decimals.');
++      return;
++    }
++    this.previewing = true;
++    try {
++      this.previewResult.set(await this.api.preview(grade, pct.trim()));
++    } catch {
++      this.previewError.set('The preview could not be made.');
++    } finally {
++      this.previewing = false;
++    }
+   }
+ 
+   protected async submit(): Promise<void> {
+diff --git a/src/main/java/net/officefloor/hq/app/rate/RateController.java b/src/main/java/net/officefloor/hq/app/rate/RateController.java
+index 805b286cd..0d79c4478 100644
+--- a/src/main/java/net/officefloor/hq/app/rate/RateController.java
++++ b/src/main/java/net/officefloor/hq/app/rate/RateController.java
+@@ -19,6 +19,7 @@ import org.springframework.web.bind.annotation.PutMapping;
+ import org.springframework.web.bind.annotation.RequestBody;
+ import org.springframework.web.bind.annotation.RequestHeader;
+ import org.springframework.web.bind.annotation.RequestMapping;
++import org.springframework.web.bind.annotation.RequestParam;
+ import org.springframework.web.bind.annotation.RestController;
+ 
+ @RestController
+@@ -69,6 +70,20 @@ public class RateController {
+         return rates.stream().map(RateView::of).toList();
+     }
+ 
++    /** What the screen shows of a rate preview: the count and the sum of the differences as text with
++     *  two decimals. */
++    public record PreviewView(int count, String diff) {
++    }
++
++    /** Preview a candidate rate for a grade (see {@link RateService#preview}); nothing is saved. */
++    @GetMapping("/{grade}/preview")
++    public PreviewView preview(@PathVariable @NotBlank @Size(max = 100) String sheetId,
++            @PathVariable @Pattern(regexp = "[ABC]") String grade,
++            @RequestParam @NotNull @Pattern(regexp = "\\s*\\d{1,5}(\\.\\d{1,2})?\\s*") String pct) {
++        RateService.Preview preview = service.preview(sheetId.trim(), grade, new BigDecimal(pct.trim()).setScale(2));
++        return new PreviewView(preview.count(), preview.diff().toPlainString());
++    }
++
+     @PutMapping("/{grade}")
+     public RateView set(@PathVariable @NotBlank @Size(max = 100) String sheetId,
+             @PathVariable @Pattern(regexp = "[ABC]") String grade,
+diff --git a/src/main/java/net/officefloor/hq/app/rate/RateService.java b/src/main/java/net/officefloor/hq/app/rate/RateService.java
+index 2c9b2b58c..80d50bd3b 100644
+--- a/src/main/java/net/officefloor/hq/app/rate/RateService.java
++++ b/src/main/java/net/officefloor/hq/app/rate/RateService.java
+@@ -3,7 +3,16 @@ package net.officefloor.hq.app.rate;
+ import java.math.BigDecimal;
+ import java.time.LocalDate;
+ import java.util.List;
++import java.util.Map;
++import java.util.function.Function;
++import java.util.stream.Collectors;
+ import net.officefloor.hq.app.Audit;
++import net.officefloor.hq.app.claim.Claim;
++import net.officefloor.hq.app.claim.ClaimRepository;
++import net.officefloor.hq.app.claim.ClaimStatus;
++import net.officefloor.hq.app.claim.Dues;
++import net.officefloor.hq.app.person.Person;
++import net.officefloor.hq.app.person.PersonRepository;
+ import net.officefloor.hq.app.rollup.Rollup;
+ import net.officefloor.hq.app.sheet.SheetService;
+ import org.springframework.stereotype.Service;
+@@ -17,12 +26,90 @@ public class RateService {
+     private final SheetService sheets;
+     private final Rollup rollup;
+     private final Audit audit;
++    private final Dues dues;
++    private final PersonRepository people;
++    private final ClaimRepository claims;
+ 
+-    public RateService(RateRepository rates, SheetService sheets, Rollup rollup, Audit audit) {
++    public RateService(RateRepository rates, SheetService sheets, Rollup rollup, Audit audit, Dues dues,
++            PersonRepository people, ClaimRepository claims) {
+         this.rates = rates;
+         this.sheets = sheets;
+         this.rollup = rollup;
+         this.audit = audit;
++        this.dues = dues;
++        this.people = people;
++        this.claims = claims;
++    }
++
++    /** What a candidate rate would change: how many claims would show a different due, and the sum of
++     *  the differences (new due minus current due; a due of n/a taken as 0.00). */
++    public record Preview(int count, BigDecimal diff) {
++    }
++
++    /** Preview a candidate rate applying to a grade on every date: the open and pending claims of
++     *  people on that grade (the grade in force on the claim's date) whose due would differ. A claim
++     *  bound by a statement keeps its bound figure; a settled claim is not counted. Saves nothing. */
++    @Transactional(readOnly = true)
++    public Preview preview(String sheetId, String grade, BigDecimal pct) {
++        Dues.Basis now = dues.now(sheetId);
++        List<Rate> candidate = List.of(new Rate(sheetId, grade, pct, null));
++        Dues.Basis with = new Dues.Basis() {
++            @Override
++            public LocalDate today() {
++                return now.today();
++            }
++
++            @Override
++            public BigDecimal floor(LocalDate day) {
++                return now.floor(day);
++            }
++
++            @Override
++            public BigDecimal latePct(LocalDate day) {
++                return now.latePct(day);
++            }
++
++            @Override
++            public BigDecimal cap() {
++                return now.cap();
++            }
++
++            @Override
++            public LocalDate policyDateInForce() {
++                return now.policyDateInForce();
++            }
++
++            @Override
++            public List<Rate> rates(String g) {
++                return g.equals(grade) ? candidate : now.rates(g);
++            }
++
++            @Override
++            public int grace(String g, LocalDate day) {
++                return now.grace(g, day);
++            }
++        };
++        Map<Long, Person> byId = people.findBySheetIdOrderByIdAsc(sheetId).stream()
++                .collect(Collectors.toMap(Person::getId, Function.identity()));
++        BigDecimal zero = BigDecimal.ZERO.setScale(2);
++        int count = 0;
++        BigDecimal diff = zero;
++        for (Claim claim : claims.findBySheetIdOrderByListedDesc(sheetId)) {
++            Person person = byId.get(claim.getPersonId());
++            if (person == null || (claim.getStatus() != ClaimStatus.OPEN && claim.getStatus() != ClaimStatus.PENDING)
++                    || !grade.equals(person.gradeOn(claim.getDate()))) {
++                continue;
++            }
++            BigDecimal was = dues.figure(now, person, claim);
++            BigDecimal would = dues.figure(with, person, claim);
++            BigDecimal wasValue = was == null ? zero : was;
++            BigDecimal wouldValue = would == null ? zero : would;
++            if ((was == null) != (would == null) || wasValue.compareTo(wouldValue) != 0) {
++                count++;
++                diff = diff.add(wouldValue.subtract(wasValue));
++            }
++        }
++        return new Preview(count, diff.setScale(2));
+     }
+ 
+     /** The rates set on the sheet, by grade and then from-date. */
