@@ -1,0 +1,169 @@
+diff --git a/src/main/frontend/src/app/core/periods.ts b/src/main/frontend/src/app/core/periods.ts
+index 8a71e575b..ab38b6149 100644
+--- a/src/main/frontend/src/app/core/periods.ts
++++ b/src/main/frontend/src/app/core/periods.ts
+@@ -57,6 +57,17 @@ export class Periods {
+     );
+   }
+ 
++  /** Reopen a closed period, making its due-total live again; refused when the user is not a
++   *  steward or the period is not closed. */
++  reopen(id: number): Promise<Period> {
++    const sheetId = this.session.sheetId();
++    const user = this.session.user();
++    if (!sheetId || !user) throw new Error('no sheet loaded');
++    return firstValueFrom(
++      this.http.post<Period>(`${this.url(sheetId)}/${id}/reopen`, null, { headers: { 'X-User': user } }),
++    );
++  }
++
+   private url(sheetId: string): string {
+     return `/api/sheets/${encodeURIComponent(sheetId)}/periods`;
+   }
+diff --git a/src/main/frontend/src/app/features/periods/period-form.ts b/src/main/frontend/src/app/features/periods/period-form.ts
+index f5fdea6e2..0d7ccd804 100644
+--- a/src/main/frontend/src/app/features/periods/period-form.ts
++++ b/src/main/frontend/src/app/features/periods/period-form.ts
+@@ -41,6 +41,8 @@ const DAY = /^\d{4}-\d{2}-\d{2}$/;
+                   <button type="button" data-testid="period-close" (click)="close(p)"
+                     [attr.aria-label]="'Close period ' + p.name">Close</button>
+                 }
++                <button type="button" data-testid="period-reopen" (click)="reopen(p)"
++                  [attr.aria-label]="'Reopen period ' + p.name">Reopen</button>
+                 @if (periodError()?.id === p.id) {
+                   <p role="alert" data-testid="period-error">{{ periodError()?.message }}</p>
+                 }
+@@ -59,7 +61,7 @@ export class PeriodForm {
+   readonly periods = input.required<Period[]>();
+   /** Each period's due-total by its id. */
+   readonly dueTotals = input.required<Map<number, string>>();
+-  /** A period added through the form, or closed from its row. */
++  /** A period added through the form, or closed or reopened from its row. */
+   readonly saved = output<Period>();
+ 
+   protected readonly error = signal('');
+@@ -86,6 +88,21 @@ export class PeriodForm {
+     }
+   }
+ 
++  protected async reopen(p: Period): Promise<void> {
++    this.periodError.set(null);
++    try {
++      this.saved.emit(await this.api.reopen(p.id));
++    } catch (e) {
++      this.periodError.set({
++        id: p.id,
++        message:
++          e instanceof HttpErrorResponse && e.status === 403
++            ? 'Only a steward may reopen a period.'
++            : 'The period could not be reopened.',
++      });
++    }
++  }
++
+   protected async submit(): Promise<void> {
+     if (this.submitting) return;
+     this.error.set('');
+diff --git a/src/main/java/net/officefloor/hq/app/period/Period.java b/src/main/java/net/officefloor/hq/app/period/Period.java
+index f866b75b3..695f14d56 100644
+--- a/src/main/java/net/officefloor/hq/app/period/Period.java
++++ b/src/main/java/net/officefloor/hq/app/period/Period.java
+@@ -82,4 +82,10 @@ public class Period {
+         this.closed = true;
+         this.closedTotal = total;
+     }
++
++    /** Reopen the period: its due-total is live again. */
++    public void reopen() {
++        this.closed = false;
++        this.closedTotal = null;
++    }
+ }
+diff --git a/src/main/java/net/officefloor/hq/app/period/PeriodController.java b/src/main/java/net/officefloor/hq/app/period/PeriodController.java
+index 134d6d0b2..1c9afbf1a 100644
+--- a/src/main/java/net/officefloor/hq/app/period/PeriodController.java
++++ b/src/main/java/net/officefloor/hq/app/period/PeriodController.java
+@@ -62,4 +62,10 @@ public class PeriodController {
+             @RequestHeader("X-User") @NotBlank @Size(max = 100) String user, @PathVariable long periodId) {
+         return PeriodView.of(service.close(sheetId.trim(), user.trim(), periodId));
+     }
++
++    @PostMapping("/{periodId}/reopen")
++    public PeriodView reopen(@PathVariable @NotBlank @Size(max = 100) String sheetId,
++            @RequestHeader("X-User") @NotBlank @Size(max = 100) String user, @PathVariable long periodId) {
++        return PeriodView.of(service.reopen(sheetId.trim(), user.trim(), periodId));
++    }
+ }
+diff --git a/src/main/java/net/officefloor/hq/app/period/PeriodRepository.java b/src/main/java/net/officefloor/hq/app/period/PeriodRepository.java
+index 1ed004d27..e95e479f9 100644
+--- a/src/main/java/net/officefloor/hq/app/period/PeriodRepository.java
++++ b/src/main/java/net/officefloor/hq/app/period/PeriodRepository.java
+@@ -25,8 +25,8 @@ public interface PeriodRepository extends JpaRepository<Period, Long> {
+             + " and p.fromDate <= :day and p.toDate >= :day")
+     boolean closedOn(String sheetId, LocalDate day);
+ 
+-    /** A period on a sheet, locked for the rest of the transaction so two closes of it happen one
+-     *  after the other. */
++    /** A period on a sheet, locked for the rest of the transaction so two closes or reopens of
++     *  it happen one after the other. */
+     @Lock(LockModeType.PESSIMISTIC_WRITE)
+     @Query("select p from Period p where p.id = :id and p.sheetId = :sheetId")
+     Optional<Period> lockByIdAndSheetId(Long id, String sheetId);
+diff --git a/src/main/java/net/officefloor/hq/app/period/PeriodService.java b/src/main/java/net/officefloor/hq/app/period/PeriodService.java
+index 4d896e5bb..f7761de20 100644
+--- a/src/main/java/net/officefloor/hq/app/period/PeriodService.java
++++ b/src/main/java/net/officefloor/hq/app/period/PeriodService.java
+@@ -12,6 +12,8 @@ import net.officefloor.hq.app.claim.ClaimRepository;
+ import net.officefloor.hq.app.claim.Dues;
+ import net.officefloor.hq.app.person.Person;
+ import net.officefloor.hq.app.person.PersonRepository;
++import net.officefloor.hq.app.role.RoleService;
++import net.officefloor.hq.app.role.SheetRole;
+ import net.officefloor.hq.app.sheet.SheetService;
+ import org.springframework.dao.DataIntegrityViolationException;
+ import org.springframework.http.HttpStatus;
+@@ -28,15 +30,17 @@ public class PeriodService {
+     private final ClaimRepository claims;
+     private final PersonRepository people;
+     private final Dues dues;
++    private final RoleService roles;
+     private final Audit audit;
+ 
+     public PeriodService(PeriodRepository periods, SheetService sheets, ClaimRepository claims,
+-            PersonRepository people, Dues dues, Audit audit) {
++            PersonRepository people, Dues dues, RoleService roles, Audit audit) {
+         this.periods = periods;
+         this.sheets = sheets;
+         this.claims = claims;
+         this.people = people;
+         this.dues = dues;
++        this.roles = roles;
+         this.audit = audit;
+     }
+ 
+@@ -88,6 +92,25 @@ public class PeriodService {
+         return saved;
+     }
+ 
++    /** Reopen a closed period, making its due-total live again; refused when the user is not a
++     *  steward on the sheet, or the period is not closed. */
++    @Transactional
++    public Period reopen(String sheetId, String user, long periodId) {
++        sheets.load(sheetId, user);
++        if (!SheetRole.STEWARD.equals(roles.roleOf(sheetId, user))) {
++            throw new ResponseStatusException(HttpStatus.FORBIDDEN, "Only a steward may reopen a period");
++        }
++        Period period = periods.lockByIdAndSheetId(periodId, sheetId)
++                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "No such period on this sheet"));
++        if (!period.isClosed()) {
++            throw new ResponseStatusException(HttpStatus.CONFLICT, "That period is not closed");
++        }
++        period.reopen();
++        Period saved = periods.saveAndFlush(period);
++        audit.recordOnCommit("PERIOD_REOPENED sheet=" + sheetId + " by=" + user + " period=" + saved.getName());
++        return saved;
++    }
++
+     /** A period's due-total: the due figures of the claims that count whose date falls in it,
+      *  skipping those with no due and the open claims of people on hold. */
+     private BigDecimal dueTotal(String sheetId, Period period) {
