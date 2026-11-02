@@ -92,10 +92,14 @@ public class Claim {
     private LocalDate correctedDate;
 
     /** The day the claim is due by: fixed when it is made, the terms-th business day after its date
-     *  by the terms of its person's grade in force on that date; later changes to the terms, the
-     *  holidays or its date leave it. */
+     *  by the terms of its person's grade in force on that date; later changes to the terms or its
+     *  date leave it, but a holiday added on or before it fixes it again (see {@link #refixDueBy}). */
     @Column(name = "due_by", nullable = false)
     private LocalDate dueBy;
+
+    /** The terms (in business days) the claim's due-by was fixed with; null for a detached revision. */
+    @Column(name = "terms")
+    private Integer terms;
 
     /** The day the claim is deferred until (see {@link #isDeferredOn}); null when never deferred. */
     @Column(name = "deferred_until")
@@ -212,10 +216,11 @@ public class Claim {
      *  statement bound it to, and the new open claim returned has the amount, the same date and
      *  note, the number and opener given, the due-by given, this claim's number as split-from, and
      *  this claim's late-entry mark (a split is judged by the original claim alone). */
-    public Claim splitOff(BigDecimal part, String number, String openedBy, LocalDate dueBy) {
+    public Claim splitOff(BigDecimal part, String number, String openedBy, LocalDate dueBy, int terms) {
         this.amount = amount.subtract(part);
         bind(false, null);
         Claim split = new Claim(sheetId, personId, part, date, note, null, null, dueBy);
+        split.terms = terms;
         split.status = ClaimStatus.OPEN;
         split.number = number;
         split.openedBy = openedBy;
@@ -312,6 +317,19 @@ public class Claim {
 
     public LocalDate getDueBy() {
         return dueBy;
+    }
+
+    public Integer getTerms() {
+        return terms;
+    }
+
+    public void setTerms(Integer terms) {
+        this.terms = terms;
+    }
+
+    /** Fix the claim's due-by again, by the terms it was fixed with (a holiday was added). */
+    public void refixDueBy(LocalDate dueBy) {
+        this.dueBy = dueBy;
     }
 
     public LocalDate getDeferredUntil() {
