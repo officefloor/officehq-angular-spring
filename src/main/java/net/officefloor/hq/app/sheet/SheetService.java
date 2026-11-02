@@ -8,10 +8,14 @@ import java.util.Optional;
 import java.util.TreeMap;
 import net.officefloor.hq.app.Audit;
 import net.officefloor.hq.app.period.PeriodService;
+import net.officefloor.hq.app.role.RoleService;
+import net.officefloor.hq.app.role.SheetRole;
 import net.officefloor.hq.app.rollup.Rollup;
 import org.springframework.context.annotation.Lazy;
+import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.web.server.ResponseStatusException;
 
 /** Loads sheets by id; a sheet that was never loaded before starts empty. */
 @Service
@@ -27,15 +31,19 @@ public class SheetService {
     private final Rollup rollup;
     /** Lazy: closing a period reads the sheet through this service. */
     private final PeriodService periods;
+    /** Lazy: the roles read the sheet's today through this service. */
+    private final RoleService roles;
     private final Audit audit;
 
     public SheetService(SheetRepository sheets, SettingValueRepository settingValues,
-            SheetPermissionRepository permissions, @Lazy Rollup rollup, @Lazy PeriodService periods, Audit audit) {
+            SheetPermissionRepository permissions, @Lazy Rollup rollup, @Lazy PeriodService periods,
+            @Lazy RoleService roles, Audit audit) {
         this.sheets = sheets;
         this.settingValues = settingValues;
         this.permissions = permissions;
         this.rollup = rollup;
         this.periods = periods;
+        this.roles = roles;
         this.audit = audit;
     }
 
@@ -43,6 +51,29 @@ public class SheetService {
     @Transactional
     public synchronized Sheet load(String id, String user) {
         return sheets.findById(id).orElseGet(() -> sheets.save(new Sheet(id, user, LocalDate.now())));
+    }
+
+    /** Whether the sheet is archived (it then refuses every change). */
+    @Transactional(readOnly = true)
+    public boolean archived(String id) {
+        return sheets.findById(id).map(Sheet::isArchived).orElse(false);
+    }
+
+    /** Archive the sheet. Refused unless the user acts as a steward on it, or when it is archived
+     *  already. */
+    @Transactional
+    public synchronized Sheet archive(String id, String user) {
+        Sheet sheet = load(id, user);
+        if (!SheetRole.STEWARD.equals(roles.roleOf(id, user))) {
+            throw new ResponseStatusException(HttpStatus.FORBIDDEN, "Only a steward may archive the sheet");
+        }
+        if (sheet.isArchived()) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT, "The sheet is archived already");
+        }
+        sheet.setArchived(true);
+        Sheet saved = sheets.saveAndFlush(sheet);
+        audit.recordOnCommit("SHEET_ARCHIVED sheet=" + id + " by=" + user);
+        return saved;
     }
 
     /** The sheet's today: the date every date-dependent decision and default date on it uses. */

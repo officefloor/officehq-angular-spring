@@ -10,6 +10,7 @@ import java.time.LocalDate;
 import java.util.List;
 import java.util.Set;
 import net.officefloor.hq.app.role.ViewerAllowed;
+import net.officefloor.hq.app.sheet.ArchivedAllowed;
 import org.springframework.http.HttpStatus;
 import org.springframework.validation.annotation.Validated;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -134,6 +135,7 @@ public class ClaimController {
     }
 
     @ViewerAllowed
+    @ArchivedAllowed
     @PostMapping("/claims/open")
     public BulkOpened openAll(@PathVariable @NotBlank @Size(max = 100) String sheetId,
             @RequestHeader("X-User") @NotBlank @Size(max = 100) String user,
@@ -150,6 +152,7 @@ public class ClaimController {
     }
 
     @ViewerAllowed
+    @ArchivedAllowed
     @PostMapping("/claims/settle")
     public BulkSettled settleAll(@PathVariable @NotBlank @Size(max = 100) String sheetId,
             @RequestHeader("X-User") @NotBlank @Size(max = 100) String user,

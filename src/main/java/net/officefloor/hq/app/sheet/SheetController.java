@@ -21,9 +21,9 @@ import org.springframework.web.bind.annotation.RestController;
 public class SheetController {
 
     /** What the screen shows of a loaded sheet. */
-    public record SheetView(String id, LocalDate today) {
+    public record SheetView(String id, LocalDate today, boolean archived) {
         static SheetView of(Sheet sheet) {
-            return new SheetView(sheet.getId(), sheet.getToday());
+            return new SheetView(sheet.getId(), sheet.getToday(), sheet.isArchived());
         }
     }
 
@@ -39,6 +39,7 @@ public class SheetController {
 
     /** Load a sheet by id, starting it empty if it was never loaded before. */
     @ViewerAllowed
+    @ArchivedAllowed
     @PostMapping("/{id}/load")
     public SheetView load(@PathVariable @NotBlank @Size(max = 100) String id,
             @RequestHeader("X-User") @NotBlank @Size(max = 100) String user) {
@@ -51,5 +52,12 @@ public class SheetController {
             @RequestHeader("X-User") @NotBlank @Size(max = 100) String user,
             @Valid @RequestBody TodayChange change) {
         return SheetView.of(service.setToday(id.trim(), user.trim(), change.today()));
+    }
+
+    /** Archive the sheet; only a steward may. */
+    @PostMapping("/{id}/archive")
+    public SheetView archive(@PathVariable @NotBlank @Size(max = 100) String id,
+            @RequestHeader("X-User") @NotBlank @Size(max = 100) String user) {
+        return SheetView.of(service.archive(id.trim(), user.trim()));
     }
 }

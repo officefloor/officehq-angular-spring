@@ -7,11 +7,12 @@ import java.util.Map;
 import java.util.Set;
 import net.officefloor.hq.app.person.Person;
 import net.officefloor.hq.app.person.PersonRepository;
+import net.officefloor.hq.app.sheet.SheetService;
 import org.springframework.stereotype.Service;
 import org.springframework.web.server.ResponseStatusException;
 
 /** Changes made to many claims at once; each claim is changed in its own transaction, so one that
- *  is refused leaves the others as they are. */
+ *  is refused leaves the others as they are; on an archived sheet each is refused. */
 @Service
 public class ClaimBulkService {
 
@@ -22,9 +23,12 @@ public class ClaimBulkService {
     private final ClaimService claims;
     private final ClaimRepository repository;
     private final PersonRepository people;
+    private final SheetService sheets;
 
-    public ClaimBulkService(ClaimService claims, ClaimRepository repository, PersonRepository people) {
+    public ClaimBulkService(ClaimService claims, ClaimRepository repository, PersonRepository people,
+            SheetService sheets) {
         this.claims = claims;
+        this.sheets = sheets;
         this.repository = repository;
         this.people = people;
     }
@@ -44,6 +48,9 @@ public class ClaimBulkService {
     }
 
     private Outcome change(String sheetId, String user, Set<Long> claimIds, ClaimStatus to) {
+        if (sheets.archived(sheetId)) {
+            return new Outcome(0, claimIds.size());
+        }
         int done = 0;
         for (Claim claim : inListOrder(sheetId, claimIds)) {
             try {

@@ -9,6 +9,7 @@ interface SignedIn {
 interface SheetView {
   id: string;
   today: string;
+  archived: boolean;
 }
 
 // Who is signed in and which sheet is active. Everything else in the app is kept per sheet.
@@ -20,6 +21,8 @@ export class Session {
   readonly sheetId = signal<string | null>(null);
   /** The active sheet's today (yyyy-mm-dd): every date decision and default date uses it. */
   readonly today = signal<string | null>(null);
+  /** Whether the active sheet is archived: it stays visible and refuses every change. */
+  readonly archived = signal(false);
   /** The sheet whose people and claims are on screen: set once a load of them has been read, so the
    *  sheet shows as loaded only when its rows are there to act on. */
   readonly shownId = signal<string | null>(null);
@@ -32,6 +35,7 @@ export class Session {
     this.sheetId.set(null);
     this.shownId.set(null);
     this.today.set(null);
+    this.archived.set(false);
   }
 
   /** Record that the sheet's people and claims, as read for its latest load, are on screen. */
@@ -65,9 +69,23 @@ export class Session {
     this.show(res);
   }
 
+  /** Archive the active sheet (a steward only). */
+  async archive(): Promise<void> {
+    const user = this.user();
+    const id = this.sheetId();
+    if (!user || !id) throw new Error('no sheet loaded');
+    const res = await firstValueFrom(
+      this.http.post<SheetView>(`/api/sheets/${encodeURIComponent(id)}/archive`, null, {
+        headers: { 'X-User': user },
+      }),
+    );
+    this.show(res);
+  }
+
   private show(sheet: SheetView): void {
     this.sheetId.set(sheet.id);
     this.today.set(sheet.today);
+    this.archived.set(sheet.archived);
   }
 
   private bumpLoads(): void {

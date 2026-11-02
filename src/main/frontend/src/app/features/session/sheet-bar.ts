@@ -24,6 +24,8 @@ import { Session } from '../../core/session';
         <input id="sheet-today-input" type="date" data-testid="sheet-today-input" formControlName="today" />
         <button type="submit" data-testid="sheet-today-save">Set today</button>
       </form>
+      <p>Archived: <strong data-testid="sheet-archived">{{ session.archived() ? 'yes' : 'no' }}</strong></p>
+      <button type="button" data-testid="sheet-archive" (click)="archive()">Archive sheet</button>
       @if (sheetError()) {
         <p role="alert" data-testid="sheet-error">{{ sheetError() }}</p>
       }
@@ -68,6 +70,15 @@ export class SheetBar {
       await this.session.setToday(today);
     } catch {
       this.sheetError.set('The sheet\'s today could not be changed.');
+    }
+  }
+
+  async archive(): Promise<void> {
+    this.sheetError.set('');
+    try {
+      await this.session.archive();
+    } catch {
+      this.sheetError.set('The sheet could not be archived.');
     }
   }
 }
