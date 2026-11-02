@@ -1,0 +1,160 @@
+diff --git a/src/main/frontend/src/app/core/session.ts b/src/main/frontend/src/app/core/session.ts
+index 6b6d2d949..a2e9978f1 100644
+--- a/src/main/frontend/src/app/core/session.ts
++++ b/src/main/frontend/src/app/core/session.ts
+@@ -18,7 +18,7 @@ interface SheetView {
+ }
+ 
+ /** The role a user acts in on a sheet. */
+-export type Role = 'clerk' | 'steward' | 'viewer';
++export type Role = 'clerk' | 'steward' | 'viewer' | 'restricted';
+ 
+ /** The people-list columns a user can switch off on their screen. */
+ export const PEOPLE_COLUMNS = [
+@@ -200,6 +200,8 @@ export class Session {
+    * section shows it. Kept by the crews section.
+    */
+   readonly crewTotals = signal<readonly { leadId: number | null; cents: number }[]>([]);
++  /** Each crew's people (person ids): its lead, when still on the sheet, and its members. Kept by the crews section. */
++  readonly crewPeople = signal<readonly (readonly number[])[]>([]);
+   /**
+    * The as-of date (yyyy-mm-dd) the signed-in user views the sheet at, or null: while it is set every
+    * figure is shown as it stood at the end of that date, with it as the sheet's today, and every change
+diff --git a/src/main/frontend/src/app/features/crews/crews.ts b/src/main/frontend/src/app/features/crews/crews.ts
+index ad5d12fd1..fa08660e1 100644
+--- a/src/main/frontend/src/app/features/crews/crews.ts
++++ b/src/main/frontend/src/app/features/crews/crews.ts
+@@ -108,6 +108,9 @@ export class Crews {
+ 
+   constructor() {
+     this.form.valueChanges.subscribe(() => this.error.set(''));
++    effect(() => this.session.crewPeople.set(this.crews().map((c) => [
++      ...(c.lead ? [c.lead.personId] : []), ...c.members.map((m) => m.personId),
++    ])));
+     effect(() => this.session.crewTotals.set(this.lines().map((c) => ({ leadId: c.lead?.personId ?? null, cents: c.cents }))));
+     effect(() => {
+       const id = this.session.sheetId();
+diff --git a/src/main/frontend/src/app/features/people/people.ts b/src/main/frontend/src/app/features/people/people.ts
+index 1fc3ffa34..3f3b2e7ca 100644
+--- a/src/main/frontend/src/app/features/people/people.ts
++++ b/src/main/frontend/src/app/features/people/people.ts
+@@ -878,10 +878,23 @@ export class People {
+       statuses: this.statusSummary().map((s) => ({ status: s.status, count: s.count + (d?.statusCounts?.[s.status] ?? 0) })),
+     };
+   });
+-  /** The people on screen: everyone, less the retired unless show retired is on. */
+-  protected readonly listed = computed(() =>
+-    this.session.showRetired() ? this.people() : this.people().filter((p) => !p.retired),
+-  );
++  /**
++   * The people a restricted user may see: the person with their name and the people of the crews that
++   * person leads or belongs to; null for any other role (everyone).
++   */
++  private readonly visibleIds = computed<ReadonlySet<number> | null>(() => {
++    if (this.session.role() !== 'restricted') return null;
++    const user = this.session.user()?.trim();
++    const self = this.people().find((p) => p.name.trim() === user);
++    if (!self) return new Set();
++    return new Set([self.id, ...this.session.crewPeople().filter((ids) => ids.includes(self.id)).flat()]);
++  });
++  /** The people on screen: everyone (a restricted user: those they may see), less the retired unless show retired is on. */
++  protected readonly listed = computed(() => {
++    const visible = this.visibleIds();
++    const people = visible ? this.people().filter((p) => visible.has(p.id)) : this.people();
++    return this.session.showRetired() ? people : people.filter((p) => !p.retired);
++  });
+   /**
+    * The people on screen as this screen sorts them: by name as names are compared, by the grade in
+    * force today, or by due-total with n/a last; equal keys keep list order. Only the screen is sorted.
+diff --git a/src/main/frontend/src/app/features/settings/settings.ts b/src/main/frontend/src/app/features/settings/settings.ts
+index 85b29780b..5aac322c0 100644
+--- a/src/main/frontend/src/app/features/settings/settings.ts
++++ b/src/main/frontend/src/app/features/settings/settings.ts
+@@ -5,8 +5,9 @@ import { FormControl, FormGroup, ReactiveFormsModule } from '@angular/forms';
+ import { firstValueFrom } from 'rxjs';
+ import { Dated, Session } from '../../core/session';
+ 
+-/** A role a user name can be given; any name not given one is a clerk. A viewer can change nothing. */
+-export const ROLES = ['clerk', 'steward', 'viewer'];
++/** A role a user name can be given; any name not given one is a clerk. A viewer can change nothing. A restricted
++ * user's people list shows only the people of their crews and themselves. */
++export const ROLES = ['clerk', 'steward', 'viewer', 'restricted'];
+ 
+ /** The actions of the permission matrix, each with the roles that may take it while none are set (its standing rule). */
+ export const PERMISSIONS = [
+@@ -309,7 +310,7 @@ const FROM = 'From (yyyy-mm-dd; blank: the sheet\'s today)';
+       <form [formGroup]="roleForm" (ngSubmit)="setRole()" aria-label="Set role">
+         <label for="role-form-user">User</label>
+         <input id="role-form-user" data-testid="role-form-user" formControlName="user" />
+-        <label for="role-form-role">Role (clerk, steward or viewer)</label>
++        <label for="role-form-role">Role (clerk, steward, viewer or restricted)</label>
+         <input id="role-form-role" data-testid="role-form-role" formControlName="role" list="role-options" />
+         <datalist id="role-options">
+           @for (r of roles; track r) {
+@@ -969,7 +970,7 @@ export class Settings {
+       return;
+     }
+     if (!ROLES.includes(role)) {
+-      this.roleError.set('Choose a role: clerk, steward or viewer.');
++      this.roleError.set('Choose a role: clerk, steward, viewer or restricted.');
+       return;
+     }
+     this.submitting.add('role');
+diff --git a/src/main/java/net/officefloor/hq/app/setting/Role.java b/src/main/java/net/officefloor/hq/app/setting/Role.java
+index dd2a6e2ee..d6fee251a 100644
+--- a/src/main/java/net/officefloor/hq/app/setting/Role.java
++++ b/src/main/java/net/officefloor/hq/app/setting/Role.java
+@@ -2,10 +2,11 @@ package net.officefloor.hq.app.setting;
+ 
+ /**
+  * A user's role on a sheet: CLERK for any name not given one. A clerk's settling is limited. A
+- * VIEWER sees everything and can change nothing.
++ * VIEWER sees everything and can change nothing. A RESTRICTED user acts as a clerk, but their people
++ * list shows only the people of the crews they lead or belong to and themselves.
+  */
+ public enum Role {
+-    CLERK, STEWARD, VIEWER;
++    CLERK, STEWARD, VIEWER, RESTRICTED;
+ 
+     /** The role as the screen and the audit file show it. */
+     public String label() { return name().toLowerCase(); }
+diff --git a/src/main/java/net/officefloor/hq/app/setting/SettingController.java b/src/main/java/net/officefloor/hq/app/setting/SettingController.java
+index b4e857d65..3efc08003 100644
+--- a/src/main/java/net/officefloor/hq/app/setting/SettingController.java
++++ b/src/main/java/net/officefloor/hq/app/setting/SettingController.java
+@@ -305,8 +305,8 @@ public class SettingController {
+         }
+     }
+ 
+-    /** A role: clerk, steward or viewer. */
+-    public record RoleRequest(@NotNull @Pattern(regexp = "clerk|steward|viewer") String role) {
++    /** A role: clerk, steward, viewer or restricted. */
++    public record RoleRequest(@NotNull @Pattern(regexp = "clerk|steward|viewer|restricted") String role) {
+ 
+         Role roleValue() {
+             return Role.valueOf(role.toUpperCase());
+diff --git a/src/main/java/net/officefloor/hq/app/setting/SettingService.java b/src/main/java/net/officefloor/hq/app/setting/SettingService.java
+index 0417a0ccb..d5bd60482 100644
+--- a/src/main/java/net/officefloor/hq/app/setting/SettingService.java
++++ b/src/main/java/net/officefloor/hq/app/setting/SettingService.java
+@@ -207,6 +207,7 @@ public class SettingService {
+         Sheet sheet = sheets.findById(sheetId).orElseThrow(SheetNotFoundException::new);
+         Role role = roleOf(sheetId, user);
+         if (role == Role.VIEWER) return false;
++        if (role == Role.RESTRICTED) role = Role.CLERK;
+         String set = sheet.permission(action);
+         if (set == null) return STANDING_PERMISSIONS.get(action).contains(role);
+         return parseRoles(set).contains(role);
+diff --git a/src/main/java/net/officefloor/hq/app/sheet/SheetController.java b/src/main/java/net/officefloor/hq/app/sheet/SheetController.java
+index 15d3164fc..2b4b2c133 100644
+--- a/src/main/java/net/officefloor/hq/app/sheet/SheetController.java
++++ b/src/main/java/net/officefloor/hq/app/sheet/SheetController.java
+@@ -33,7 +33,7 @@ public class SheetController {
+      * decimals; the policy date is null when blank (the sheet's today); the cap has two decimals, null
+      * when none; dated has every value recorded for its dated settings, by key; archived is whether a
+      * steward has archived it; last batch is the number of its last bulk settle batch, null when none; the review SLA is in days, null when none;
+-     * role is the role the signed-in user acts in on it (clerk, steward or viewer) on its today.
++     * role is the role the signed-in user acts in on it (clerk, steward, viewer or restricted) on its today.
+      */
+     public record SheetView(String id, LocalDate today, String floor, int terms, String latePct,
+             LocalDate policyDate, String cap, Map<String, List<SettingController.DatedView>> dated,

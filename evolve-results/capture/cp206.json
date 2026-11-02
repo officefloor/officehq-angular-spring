@@ -1,0 +1,64 @@
+{
+  "checkpoint": 206,
+  "stack": {
+    "repo": "/home/daniel/officehq-angular-spring",
+    "origin": "git@github.com:officefloor/officehq-angular-spring.git",
+    "name": "officehq-angular-spring",
+    "base_ref": "base-empty",
+    "base_commit": "65cb8233ea38b2dfa6cfd18709e30cd18fdf3250"
+  },
+  "checkpoint_id": "cp206_restricted-role",
+  "phase": "late",
+  "type": "additive",
+  "mutates": [],
+  "replaced_tests": [],
+  "request": {
+    "spec": "A fourth role, restricted, can be assigned. A restricted user sees on the people list only the\npeople of the crews they lead or belong to (by a person with the user's name) and that person\nthemselves: no other row is on the screen. Every other figure (the totals row, the header, the\nsummary, the periods, the pools) is still over everyone on the sheet.\n",
+    "prompt": "You are implementing ONE change to this application.\n\nFIRST read AGENTS.md \u2014 it states the working rules and how the app is tested, and sends you to\nDESIGN.md for the app's stack and conventions. Follow both.\n\nTHE CHANGE REQUEST:\nA fourth role, restricted, can be assigned. A restricted user sees on the people list only the\npeople of the crews they lead or belong to (by a person with the user's name) and that person\nthemselves: no other row is on the screen. Every other figure (the totals row, the header, the\nsummary, the periods, the pools) is still over everyone on the sheet.\n\nYour work is verified by an automated Playwright UI test already installed under e2e/specs/.\nRead that spec: it declares the exact data-testid anchors, values, test data and any audit\nrecords it expects \u2014 match them. Run `bin/e2e` to build the app, start it, and run the test as\nyou work; iterate until it passes. Change whatever the request needs across the app \u2014 its stored\ndata, its server and its front end. Do NOT edit bin/build, bin/start, bin/stop, bin/e2e,\nAGENTS.md, CLAUDE.md, DESIGN.md, e2e/support/ or the test spec.\n"
+  },
+  "commit_sha": "81cfd26fe9402f5aaed1cb9852b123289b331cd3",
+  "reset_sha": "",
+  "preagent_sha": "5dd5f5395d32227e7fa680a598af47e4661fb87c",
+  "prev_sha": "5dd5f5395d32227e7fa680a598af47e4661fb87c",
+  "base_sha": "65cb8233ea38b2dfa6cfd18709e30cd18fdf3250",
+  "agent": {
+    "ok": true,
+    "cost_usd": 0.6376606,
+    "input_tokens": 36,
+    "output_tokens": 6659,
+    "cache_read_tokens": 663923,
+    "cache_creation_tokens": 46444,
+    "num_turns": 19,
+    "duration_ms": 286901,
+    "duration_api_ms": 68250,
+    "model": "claude-opus-5-5",
+    "session_id": "33f228dd-0728-4dc5-acbe-5f238af18e65",
+    "stop_reason": "success",
+    "result_text": "You can now give a user the `restricted` role. When they open a sheet, the people list shows only the person with their name and the people of every crew that person leads or belongs to. The totals row, header, summary, periods and pools still count everyone on the sheet. `bin/e2e` passes all 4 tests in the spec.\n\nWhat changed:\n\n- **Server:** `restricted` is added as a fourth role (`Role.java`) and the role form accepts it (`SettingController.java`). Setting it writes the usual `ROLE_SET \u2026 role=restricted` audit line. Apart from the people list, a restricted user acts as a clerk: the clerk settling limit and permission rules apply to them the same way (`SettingService.mayDo`). No database change was needed, because the role column already stores the role's name as text.\n- **Front end:** the crews section now shares each crew's lead and members through the session (`crews.ts`, `session.ts`). The people list uses that to filter its rows (`listed` in `people.ts`); every figure is still worked out from the full list. The role form and its error message now mention `restricted` (`settings.ts`).\n\nThree behaviours you might not assume:\n\n- **Only the screen is filtered.** The server still sends everyone's data, because the sheet-wide figures are calculated in the browser from the full list. That meets the request (\"no other row is on the screen\"), but a restricted user could still read other people's data from the server's responses. Filtering on the server would mean moving those figures to the server.\n- **A delegation lifts the filter.** If a steward delegates the steward role to a restricted user, they act as a steward while it lasts and see the full list. That's because the screen goes by the role the user is currently acting in.\n- **No matching person, no rows.** The user name has to match a person's name exactly (spaces around it are ignored). If no person matches, the user sees no rows at all.",
+    "error": "",
+    "attempts": [
+      {
+        "ok": true,
+        "limit_reached": false,
+        "retryable": false,
+        "timed_out": false,
+        "cost_usd": 0.6376606,
+        "num_turns": 19,
+        "duration_ms": 286901,
+        "duration_api_ms": 68250,
+        "error": ""
+      }
+    ]
+  },
+  "agent_stream_file": "cp206.agent.jsonl",
+  "agent_diff_file": "cp206.agent.diff",
+  "build_log_file": null,
+  "tests": {
+    "gated": false,
+    "queued": true
+  },
+  "probe": null,
+  "pinned_touched": [],
+  "acceptance_touched": [],
+  "impact_gate": null
+}
