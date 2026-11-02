@@ -1,0 +1,52 @@
+diff --git a/src/main/frontend/src/app/features/people/people-list.ts b/src/main/frontend/src/app/features/people/people-list.ts
+index 04d49915a..f77ef1a91 100644
+--- a/src/main/frontend/src/app/features/people/people-list.ts
++++ b/src/main/frontend/src/app/features/people/people-list.ts
+@@ -76,6 +76,7 @@ const NO_LEAVE: Leave = { holds: [], retiredFrom: null };
+       <p>Due in total: <strong data-testid="rollup-due-total">{{ dueTotal() }}</strong></p>
+       <p>Settled due in total: <strong data-testid="rollup-settled-total">{{ settledTotal() }}</strong></p>
+       <p>Open due in total: <strong data-testid="rollup-open-total">{{ openTotal() }}</strong></p>
++      <p>Cuts in total: <strong data-testid="rollup-cut-total">{{ cutTotal() }}</strong></p>
+       <p>Overdue claims: <strong data-testid="rollup-overdue-count">{{ overdueCount() }}</strong></p>
+       <p>Overdue in total: <strong data-testid="rollup-overdue-total">{{ overdueTotal() }}</strong></p>
+       <dl aria-label="Consolidated with descendant sheets">
+@@ -153,7 +154,7 @@ const NO_LEAVE: Leave = { holds: [], retiredFrom: null };
+       <button type="button" data-testid="export-people" (click)="exportCsv()">Export people (CSV)</button>
+       <table data-testid="people">
+         <thead>
+-          <tr><th scope="col"><span class="visually-hidden">Select</span></th><th scope="col">Name</th><th scope="col">Grade</th><th scope="col">Active</th><th scope="col">Terms</th><th scope="col">Contact</th><th scope="col">Aliases</th><th scope="col">Clashing</th><th scope="col">Claimed</th><th scope="col">Due</th><th scope="col">Settled due</th><th scope="col">Open due</th>@for (pd of periods(); track pd.id) {<th scope="col">Due in {{ pd.name }}</th>}<th scope="col">Excess</th><th scope="col">Statements</th><th scope="col">Last stated</th><th scope="col">Stated on</th><th scope="col">Retired</th><th scope="col">Retired from</th><th scope="col">On hold</th><th scope="col">Overdue</th><th scope="col">Overdue due</th><th scope="col">Due aged 0–30 days</th><th scope="col">Due aged 31–60 days</th><th scope="col">Due aged 61+ days</th><th scope="col">Patrons</th><th scope="col">Backing</th><th scope="col">Watched</th><th scope="col">Claims</th><th scope="col"><span class="visually-hidden">Actions</span></th></tr>
++          <tr><th scope="col"><span class="visually-hidden">Select</span></th><th scope="col">Name</th><th scope="col">Grade</th><th scope="col">Active</th><th scope="col">Terms</th><th scope="col">Contact</th><th scope="col">Aliases</th><th scope="col">Clashing</th><th scope="col">Claimed</th><th scope="col">Due</th><th scope="col">Settled due</th><th scope="col">Open due</th>@for (pd of periods(); track pd.id) {<th scope="col">Due in {{ pd.name }}</th>}<th scope="col">Excess</th><th scope="col">Cut total</th><th scope="col">Statements</th><th scope="col">Last stated</th><th scope="col">Stated on</th><th scope="col">Retired</th><th scope="col">Retired from</th><th scope="col">On hold</th><th scope="col">Overdue</th><th scope="col">Overdue due</th><th scope="col">Due aged 0–30 days</th><th scope="col">Due aged 31–60 days</th><th scope="col">Due aged 61+ days</th><th scope="col">Patrons</th><th scope="col">Backing</th><th scope="col">Watched</th><th scope="col">Claims</th><th scope="col"><span class="visually-hidden">Actions</span></th></tr>
+         </thead>
+         <tbody>
+           @for (p of shown(); track p.id) {
+@@ -178,6 +179,7 @@ const NO_LEAVE: Leave = { holds: [], retiredFrom: null };
+                 <td [attr.data-testid]="'person-period-' + pd.name + '-due-total'">{{ periodDueOf(p.id, pd) }}</td>
+               }
+               <td data-testid="person-excess">{{ excessOf(p) }}</td>
++              <td data-testid="person-cut-total">{{ cutTotals().get(p.id) ?? '0.00' }}</td>
+               <td data-testid="person-statement-count">{{ p.statementCount }}</td>
+               <td data-testid="person-stated-total">{{ p.statementCount > 0 ? (p.statedTotal ?? 'n/a') : '' }}</td>
+               <td data-testid="person-statement-date">{{ p.statementDate ?? '' }}</td>
+@@ -437,6 +439,22 @@ export class PeopleList {
+   protected readonly openTotal = computed(() =>
+     sumAmounts(this.people().map((p) => this.openTotalOf(p))),
+   );
++  /** Per person, their cuts across every pool they are a member of added up (a pool that shows no
++   *  cuts adds nothing). */
++  protected readonly cutTotals = computed(() => {
++    const cuts = new Map<number, string[]>();
++    for (const pool of this.poolsApi.list()) {
++      for (const m of pool.members) {
++        if (m.personId === null || m.cut === null) continue;
++        cuts.set(m.personId, [...(cuts.get(m.personId) ?? []), m.cut]);
++      }
++    }
++    return new Map([...cuts].map(([id, cs]) => [id, sumAmounts(cs)]));
++  });
++  /** The sheet's cut total: everyone's cut total added up (not trimmed). */
++  protected readonly cutTotal = computed(() =>
++    sumAmounts(this.people().map((p) => this.cutTotals().get(p.id) ?? '0.00')),
++  );
+   /** Per tag ever used on the sheet (those the store keeps, and those of the claims shown), in
+    *  order: the due figures of the claims that count which carry it, skipping those with no due
+    *  (not trimmed, not capped). */
