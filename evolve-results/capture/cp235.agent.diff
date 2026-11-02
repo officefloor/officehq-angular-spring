@@ -1,0 +1,161 @@
+diff --git a/src/main/frontend/src/app/features/people/people.ts b/src/main/frontend/src/app/features/people/people.ts
+index ae710a25d..933b0cf1b 100644
+--- a/src/main/frontend/src/app/features/people/people.ts
++++ b/src/main/frontend/src/app/features/people/people.ts
+@@ -504,6 +504,16 @@ function trimmedSum(figures: number[]): number {
+       @if (bulkRetired() !== null) {
+         <p role="status">Retired <span data-testid="bulk-retired">{{ bulkRetired() }}</span></p>
+       }
++      <label for="bulk-hold-from">Hold selected people from (blank: today)</label>
++      <input type="date" id="bulk-hold-from" data-testid="bulk-hold-from" #bulkHoldFrom
++             (input)="personError.set(null)" />
++      <label for="bulk-hold-to">to (blank: no end)</label>
++      <input type="date" id="bulk-hold-to" data-testid="bulk-hold-to" #bulkHoldTo
++             (input)="personError.set(null)" />
++      <button type="button" data-testid="bulk-hold" (click)="bulkHold(bulkHoldFrom.value, bulkHoldTo.value)">Hold selected people</button>
++      @if (bulkHeld() !== null) {
++        <p role="status">Held <span data-testid="bulk-held">{{ bulkHeld() }}</span></p>
++      }
+       <table>
+         <thead>
+           <tr><th scope="col"><span class="visually-hidden">Select</span></th><th scope="col">Name</th><th scope="col">Grade</th>@if (shows('terms')) {<th scope="col">Terms</th>}@if (shows('contact')) {<th scope="col">Contact</th>}<th scope="col">Tags</th><th scope="col">Aliases</th><th scope="col">Came from</th>@if (shows('claimed')) {<th scope="col">Claimed</th>}@if (shows('due-total')) {<th scope="col">Due total</th>}<th scope="col">Snapshots</th>@if (shows('excess')) {<th scope="col">Excess</th>}<th scope="col">Settled total</th><th scope="col">Score</th><th scope="col">Band</th><th scope="col">Open total</th><th scope="col">Cut total</th><th scope="col">Periods</th><th scope="col">Statements</th><th scope="col">Retired</th><th scope="col">Hold</th><th scope="col">Flag</th><th scope="col">Approver</th><th scope="col">Watched</th><th scope="col">Active</th><th scope="col">Clashing</th><th scope="col">Overdue</th><th scope="col">Aged</th><th scope="col">Patrons</th><th scope="col">Plans</th><th scope="col">Claims</th><th scope="col"><span class="visually-hidden">Actions</span></th></tr>
+@@ -989,6 +999,8 @@ export class People {
+   protected readonly bulkGraded = signal<number | null>(null);
+   /** How many people the last bulk retire retired; null before one, and while one runs. */
+   protected readonly bulkRetired = signal<number | null>(null);
++  /** How many people the last bulk hold held; null before one, and while one runs. */
++  protected readonly bulkHeld = signal<number | null>(null);
+   protected readonly bulkGradeForm = new FormGroup({
+     grade: new FormControl('A', { nonNullable: true }),
+     /** The date the grade is in force from; blank: the sheet's today. */
+@@ -1457,6 +1469,7 @@ export class People {
+       this.selectedPeople.set(new Set());
+       this.bulkGraded.set(null);
+       this.bulkRetired.set(null);
++      this.bulkHeld.set(null);
+       this.bulkGradeForm.reset({ grade: 'A', from: '' }, { emitEvent: false });
+       this.bulkOpened.set(null);
+       this.bulkError.set('');
+@@ -2379,6 +2392,49 @@ export class People {
+     }
+   }
+ 
++  /**
++   * Hold the selected people from the date (blank: the sheet's today) to the optional to-date, in list order,
++   * as each row's hold would; show how many were held. A refusal holds none and shows on the first selected row.
++   */
++  protected async bulkHold(fromDate: string, toDate: string): Promise<void> {
++    if (this.bulkRunning) return;
++    this.bulkHeld.set(null);
++    this.personError.set(null);
++    const sheet = this.session.sheetId();
++    if (!sheet) return;
++    const ids = this.listed().filter((p) => this.selectedPeople().has(p.id)).map((p) => p.id);
++    const from = fromDate.trim();
++    const to = toDate.trim();
++    const refuse = (message: string) => {
++      const first = ids[0] ?? this.listed()[0]?.id;
++      if (first !== undefined) this.personError.set({ id: first, message });
++    };
++    if (ids.length === 0) {
++      refuse('Select at least one person to hold.');
++      return;
++    }
++    const date = /^\d{4}-\d{2}-\d{2}$/;
++    if ((from && !date.test(from)) || (to && !date.test(to))) {
++      refuse('Enter dates, or leave the from-date blank for today and the to-date blank for no end.');
++      return;
++    }
++    this.bulkRunning = true;
++    try {
++      const result = await firstValueFrom(this.http.post<{ held: number }>(
++        `${this.url(sheet)}/hold`, { ids, from: from || null, to: to || null }, { headers: this.headers() }));
++      const list = await firstValueFrom(this.http.get<Person[]>(this.url(sheet), { headers: this.headers() }));
++      if (this.session.sheetId() !== sheet) return;
++      this.people.set(list);
++      this.selectedPeople.set(new Set());
++      this.session.holdChanges.update((n) => n + 1);
++      this.bulkHeld.set(result.held);
++    } catch {
++      if (this.session.sheetId() === sheet) refuse('Could not hold the selected people.');
++    } finally {
++      this.bulkRunning = false;
++    }
++  }
++
+   /** Open every selected claim that can be opened, numbered in list order; show how many opened and were refused. */
+   protected async bulkOpen(): Promise<void> {
+     if (this.bulkRunning) return;
+diff --git a/src/main/java/net/officefloor/hq/app/person/PersonController.java b/src/main/java/net/officefloor/hq/app/person/PersonController.java
+index fb37cac42..257236165 100644
+--- a/src/main/java/net/officefloor/hq/app/person/PersonController.java
++++ b/src/main/java/net/officefloor/hq/app/person/PersonController.java
+@@ -143,6 +143,12 @@ public class PersonController {
+     /** How many people a bulk retire retired. */
+     public record BulkRetireResult(int retired) {}
+ 
++    /** The people to hold together, from a date (blank: the sheet's today) to an optional to-date. */
++    public record BulkHoldRequest(@NotEmpty List<@NotNull Long> ids, LocalDate from, LocalDate to) {}
++
++    /** How many people a bulk hold held. */
++    public record BulkHoldResult(int held) {}
++
+     /** Pasted lines of name,grade,terms,contact, one person each. */
+     public record ImportRequest(@NotNull @Size(max = 200000) String text) {}
+ 
+@@ -246,6 +252,17 @@ public class PersonController {
+         return new BulkRetireResult(service.bulkRetire(sheetId, user, Set.copyOf(request.ids()), request.from()));
+     }
+ 
++    /** Hold each selected person from the date (blank: the sheet's today) to the optional to-date, in list order. */
++    @OpenToViewer
++    @PostMapping("/hold")
++    public BulkHoldResult bulkHold(
++            @PathVariable @Size(max = 100) @Pattern(regexp = "[A-Za-z0-9._-]+") String sheetId,
++            @RequestHeader("X-User") @NotBlank @Size(max = 100) String user,
++            @RequestBody @Valid BulkHoldRequest request) {
++        return new BulkHoldResult(service.bulkHold(sheetId, user, Set.copyOf(request.ids()), request.from(),
++                request.to()));
++    }
++
+     /** Swap the person with the one above or below them in the list. */
+     @PostMapping("/{id}/move")
+     public PersonView move(
+diff --git a/src/main/java/net/officefloor/hq/app/person/PersonService.java b/src/main/java/net/officefloor/hq/app/person/PersonService.java
+index f9c2752dc..334751a99 100644
+--- a/src/main/java/net/officefloor/hq/app/person/PersonService.java
++++ b/src/main/java/net/officefloor/hq/app/person/PersonService.java
+@@ -310,6 +310,33 @@ public class PersonService {
+         return chosen.size();
+     }
+ 
++    /**
++     * Hold each of the people from the date (blank: the sheet's today) to the optional to-date, in list
++     * order, each as its own hold would, with its PERSON_HELD and rollup lines. One not on the sheet, or a
++     * to-date before the from-date, refuses them all. A viewer's, or one on an archived sheet, goes through
++     * with nothing done. Returns how many were held.
++     */
++    @Transactional
++    public int bulkHold(String sheetId, String user, Set<Long> ids, LocalDate from, LocalDate to) {
++        Sheet sheet = sheets.findForUpdate(sheetId).orElseThrow(SheetNotFoundException::new);
++        if (sheet.isArchived() || settings.roleOf(sheetId, user) == Role.VIEWER) return 0;
++        LocalDate today = sheet.getToday();
++        List<Person> chosen = people.findBySheetIdOrderByPositionAscIdAsc(sheetId).stream()
++                .filter(p -> ids.contains(p.getId())).toList();
++        if (chosen.size() != ids.size()) throw new PersonNotFoundException();
++        LocalDate on = from != null ? from : today;
++        if (to != null && to.isBefore(on)) throw new HoldDatesException();
++        for (Person person : chosen) {
++            RollupService.Snapshot before = rollup.snapshot(sheetId);
++            person.addHold(new PersonHold(on, to, today));
++            Person saved = saveUnique(person);
++            audit.recordOnCommit("PERSON_HELD sheet=" + sheetId + " by=" + user.strip()
++                    + " name=" + saved.getName() + " from=" + on);
++            rollup.recordChanges(sheetId, user, before);
++        }
++        return chosen.size();
++    }
++
+     /**
+      * Swap the person with the one above (up) or below (down) them in the list; the top one cannot move
+      * up nor the bottom one down. Returns them in their new place.
