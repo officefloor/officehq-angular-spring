@@ -1,0 +1,442 @@
+diff --git a/src/main/frontend/src/app/core/claims.ts b/src/main/frontend/src/app/core/claims.ts
+index 03c3dc818..c36f93a3c 100644
+--- a/src/main/frontend/src/app/core/claims.ts
++++ b/src/main/frontend/src/app/core/claims.ts
+@@ -1,7 +1,7 @@
+ import { HttpClient } from '@angular/common/http';
+ import { Injectable, inject } from '@angular/core';
+ import { firstValueFrom } from 'rxjs';
+-import { Grade, Person } from './people';
++import { Grade, Hold, Person, heldOn } from './people';
+ import { Rate, atLeast, due, pctOn } from './rates';
+ import { Session } from './session';
+ 
+@@ -23,10 +23,10 @@ export function counts(c: Claim): boolean {
+   return isOpen(c) || c.status === 'SETTLED';
+ }
+ 
+-/** Whether a claim counts in the live totals: it counts, and it is not an open (or pending) claim
+- *  of a person on hold. */
+-export function countsLive(c: Claim, held: boolean): boolean {
+-  return counts(c) && !(held && isOpen(c));
++/** Whether a claim counts in the live totals: it counts, and it is not an open (or pending) claim,
++ *  unbound by a statement, dated within one of its person's holds. */
++export function countsLive(c: Claim, holds: Hold[]): boolean {
++  return counts(c) && !(isOpen(c) && !c.stated && heldOn(holds, c.date));
+ }
+ 
+ export interface Claim {
+diff --git a/src/main/frontend/src/app/core/people.ts b/src/main/frontend/src/app/core/people.ts
+index 0d5d51b22..66553700c 100644
+--- a/src/main/frontend/src/app/core/people.ts
++++ b/src/main/frontend/src/app/core/people.ts
+@@ -22,6 +22,18 @@ export function gradeOn(grades: GradeFrom[], day: string | null): Grade | undefi
+   return on;
+ }
+ 
++/** A hold on a person from a day (null: from the beginning of time) to a day (null: open-ended),
++ *  both included (yyyy-mm-dd). */
++export interface Hold {
++  from: string | null;
++  to: string | null;
++}
++
++/** Whether one of the holds covers a day. */
++export function heldOn(holds: Hold[], day: string): boolean {
++  return holds.some((h) => (h.from === null || h.from <= day) && (h.to === null || day <= h.to));
++}
++
+ export interface Person {
+   id: number;
+   name: string;
+@@ -41,8 +53,10 @@ export interface Person {
+   retired: boolean;
+   /** The day (yyyy-mm-dd) they are retired from; null when they are not retired. */
+   retiredFrom: string | null;
+-  /** Whether they are on hold: their open claims then count in no live total. */
++  /** Whether they have any hold, whatever its days. */
+   held: boolean;
++  /** Their holds, earliest first: their open claims dated within one count in no live total. */
++  holds: Hold[];
+ }
+ 
+ /** A statement just taken: the person as they now show, and their claims (newest first) as it
+@@ -91,11 +105,11 @@ export class People {
+     );
+   }
+ 
+-  /** Put the person on hold (true) or take them off it (false). */
+-  hold(id: number, held: boolean): Promise<Person> {
++  /** Put the person on hold from a day (null: the sheet's today) to a day (null: open-ended). */
++  hold(id: number, from: string | null, to: string | null): Promise<Person> {
+     const { sheetId, user } = this.active();
+     return firstValueFrom(
+-      this.http.post<Person>(`${this.url(sheetId)}/${id}/hold`, { held }, { headers: { 'X-User': user } }),
++      this.http.post<Person>(`${this.url(sheetId)}/${id}/hold`, { from, to }, { headers: { 'X-User': user } }),
+     );
+   }
+ 
+diff --git a/src/main/frontend/src/app/features/people/people-list.ts b/src/main/frontend/src/app/features/people/people-list.ts
+index 8f57443b4..d9c44d01b 100644
+--- a/src/main/frontend/src/app/features/people/people-list.ts
++++ b/src/main/frontend/src/app/features/people/people-list.ts
+@@ -18,7 +18,8 @@ import { QuickAddBar } from './quick-add-bar';
+ // once a person's editor is opened, edits them. Each person's row lists their claims and what
+ // they have claimed and are due at their grade's rate; the sheet's totals add everyone's up.
+ // Retired people are left out of the list unless "show retired" is on; their claims still count.
+-// The open claims of a person on hold count in no total; their settled claims still do.
++// A person's open claims dated within one of their holds count in no total, unless a statement
++// bound them; their settled claims and other open claims still do.
+ // A person may name other people on the sheet as their patrons; their backing is their patrons'
+ // due-totals added up, skipping those that are n/a.
+ @Component({
+@@ -81,7 +82,16 @@ import { QuickAddBar } from './quick-add-bar';
+               <td data-testid="person-statement-date">{{ p.statementDate ?? '' }}</td>
+               <td data-testid="person-retired">{{ p.retired ? 'yes' : 'no' }}</td>
+               <td data-testid="person-retired-from">{{ p.retiredFrom ?? '' }}</td>
+-              <td data-testid="person-hold">{{ p.held ? 'yes' : 'no' }}</td>
++              <td>
++                <span data-testid="person-hold">{{ p.held ? 'yes' : 'no' }}</span>
++                @if (p.holds.length > 0) {
++                  <ul>
++                    @for (h of p.holds; track $index) {
++                      <li data-testid="person-hold-line">{{ h.from ?? '…' }} – {{ h.to ?? '…' }}</li>
++                    }
++                  </ul>
++                }
++              </td>
+               <td data-testid="person-overdue-count">{{ overdueOf(p).length }}</td>
+               <td data-testid="person-overdue-total">{{ overdueTotalOf(p) }}</td>
+               <td data-testid="person-patrons">{{ patronNames().get(p.id) ?? '' }}</td>
+@@ -103,8 +113,12 @@ import { QuickAddBar } from './quick-add-bar';
+                 <input #retireDate type="date" [id]="'person-retire-date-' + p.id" data-testid="person-retire-date" />
+                 <button type="button" data-testid="person-retire" (click)="retire(p, retireDate.value)"
+                   [attr.aria-label]="'Retire ' + p.name">Retire</button>
+-                <button type="button" data-testid="person-hold-toggle" (click)="hold(p)"
+-                  [attr.aria-label]="(p.held ? 'Release ' : 'Hold ') + p.name">{{ p.held ? 'Release' : 'Hold' }}</button>
++                <label [for]="'person-hold-from-' + p.id" class="visually-hidden">Hold {{ p.name }} from</label>
++                <input #holdFrom type="date" [id]="'person-hold-from-' + p.id" data-testid="person-hold-from" />
++                <label [for]="'person-hold-to-' + p.id" class="visually-hidden">Hold {{ p.name }} to</label>
++                <input #holdTo type="date" [id]="'person-hold-to-' + p.id" data-testid="person-hold-to" />
++                <button type="button" data-testid="person-hold-toggle" (click)="hold(p, holdFrom.value, holdTo.value)"
++                  [attr.aria-label]="'Hold ' + p.name">Hold</button>
+                 <label [for]="'person-patron-select-' + p.id" class="visually-hidden">Patron of {{ p.name }}</label>
+                 <select #patronSelect [id]="'person-patron-select-' + p.id" data-testid="person-patron-select"
+                   (change)="patronError.set(null)">
+@@ -171,16 +185,16 @@ export class PeopleList {
+     }
+     return by;
+   });
+-  /** The people on hold, by id. */
+-  private readonly held = computed(() => new Set(this.people().filter((p) => p.held).map((p) => p.id)));
++  /** Each person's holds, by id. */
++  private readonly holds = computed(() => new Map(this.people().map((p) => [p.id, p.holds])));
+   /** The claims that count in the live totals, newest first. */
+-  private readonly live = computed(() => this.claims().filter((c) => countsLive(c, this.held().has(c.personId))));
++  private readonly live = computed(() => this.claims().filter((c) => countsLive(c, this.holds().get(c.personId) ?? [])));
+   /** What each person has claimed: the sum of their open and settled claims' amounts, leaving out
+-   *  the open ones while they are on hold. */
++   *  the open ones dated within one of their holds and unbound by a statement. */
+   protected readonly claimed = computed(() => {
+     const by = new Map<number, string>();
+     for (const [id, cs] of this.claimsByPerson()) {
+-      by.set(id, sumAmounts(cs.filter((c) => countsLive(c, this.held().has(id))).map((c) => c.amount)));
++      by.set(id, sumAmounts(cs.filter((c) => countsLive(c, this.holds().get(id) ?? [])).map((c) => c.amount)));
+     }
+     return by;
+   });
+@@ -401,18 +415,19 @@ export class PeopleList {
+     }
+   }
+ 
+-  /** Put the person on hold, or take them off it when they are on hold. */
+-  protected async hold(p: Person): Promise<void> {
++  /** Put the person on hold from the day given (blank: the sheet's today) to the day given (blank:
++   *  open-ended). */
++  protected async hold(p: Person, from: string, to: string): Promise<void> {
+     if (this.holding.has(p.id)) return;
+     this.holding.add(p.id);
+     this.personError.set(null);
+     this.patronError.set(null);
+     try {
+-      const saved = await this.api.hold(p.id, !p.held);
++      const saved = await this.api.hold(p.id, from.trim() || null, to.trim() || null);
+       this.people.update((ps) => ps.map((x) => (x.id === saved.id ? saved : x)));
+       if (this.editing() === saved.id) this.version = saved.version;
+     } catch {
+-      this.personError.set({ id: p.id, message: p.held ? 'The person could not be released.' : 'The person could not be put on hold.' });
++      this.personError.set({ id: p.id, message: 'The person could not be put on hold.' });
+     } finally {
+       this.holding.delete(p.id);
+     }
+@@ -534,11 +549,11 @@ export class PeopleList {
+   }
+ 
+   /** A person's due-total: the sum of the due figures of their open and settled claims, leaving out
+-   *  the open ones while they are on hold. Null (n/a)
++   *  the open ones dated within one of their holds and unbound by a statement. Null (n/a)
+    *  when their grade on the sheet's today has no rate on it and no claim that counts has a figure
+    *  (one kept by settling or a statement, or a live due at the grade in force on its date). */
+   protected dueOf(p: Person): string | null {
+-    const counted = (this.claimsByPerson().get(p.id) ?? []).filter((c) => countsLive(c, p.held));
++    const counted = (this.claimsByPerson().get(p.id) ?? []).filter((c) => countsLive(c, p.holds));
+     const figures = counted.map((c) => claimDue(c, this.rates(), gradeOn(p.grades, c.date), this.floor(), this.lateness())).filter((d): d is string => d !== null);
+     if (!this.pctOf().has(this.gradeOf(p)) && figures.length === 0) {
+       return null;
+@@ -569,7 +584,7 @@ export class PeopleList {
+   /** A person's overdue claims among those that count in the live totals. */
+   protected overdueOf(p: Person): Claim[] {
+     return (this.claimsByPerson().get(p.id) ?? [])
+-      .filter((c) => countsLive(c, p.held) && overdue(c, this.session.today()));
++      .filter((c) => countsLive(c, p.holds) && overdue(c, this.session.today()));
+   }
+ 
+   /** A person's overdue-total: the due figures of their overdue claims that count, skipping those
+diff --git a/src/main/java/net/officefloor/hq/app/claim/Dues.java b/src/main/java/net/officefloor/hq/app/claim/Dues.java
+index 7ef7b7d1a..6df1be53e 100644
+--- a/src/main/java/net/officefloor/hq/app/claim/Dues.java
++++ b/src/main/java/net/officefloor/hq/app/claim/Dues.java
+@@ -61,9 +61,10 @@ public class Dues {
+     }
+ 
+     /** Whether a claim of the person counts in the live totals: it counts, and it is not an open
+-     *  (or pending) claim of a person on hold. */
++     *  (or pending) claim, unbound by a statement, dated within one of the person's holds. */
+     public static boolean countsLive(Person person, Claim claim) {
+-        return claim.getStatus().counts() && !(person.isHeld() && claim.getStatus().isOpen());
++        return claim.getStatus().counts()
++                && !(claim.getStatus().isOpen() && !claim.isStated() && person.isHeldOn(claim.getDate()));
+     }
+ 
+     /** The claims of a person that count in the live totals. */
+diff --git a/src/main/java/net/officefloor/hq/app/period/PeriodService.java b/src/main/java/net/officefloor/hq/app/period/PeriodService.java
+index 043acf77a..e0b3e7ed3 100644
+--- a/src/main/java/net/officefloor/hq/app/period/PeriodService.java
++++ b/src/main/java/net/officefloor/hq/app/period/PeriodService.java
+@@ -112,7 +112,7 @@ public class PeriodService {
+     }
+ 
+     /** A period's due-total: the due figures of the claims that count whose date falls in it,
+-     *  skipping those with no due and the open claims of people on hold. */
++     *  skipping those with no due and those that do not count live (see Dues#countsLive). */
+     private BigDecimal dueTotal(String sheetId, Period period) {
+         Map<Long, Person> byId = people.findBySheetIdOrderByIdAsc(sheetId).stream()
+                 .collect(Collectors.toMap(Person::getId, Function.identity()));
+diff --git a/src/main/java/net/officefloor/hq/app/person/Hold.java b/src/main/java/net/officefloor/hq/app/person/Hold.java
+new file mode 100644
+index 000000000..66165b100
+--- /dev/null
++++ b/src/main/java/net/officefloor/hq/app/person/Hold.java
+@@ -0,0 +1,38 @@
++package net.officefloor.hq.app.person;
++
++import jakarta.persistence.Column;
++import jakarta.persistence.Embeddable;
++import java.time.LocalDate;
++
++/** A hold on a person, from its from-date (from the beginning of time when it has none) to its
++ *  to-date (open-ended when it has none), both days included. */
++@Embeddable
++public class Hold {
++
++    @Column(name = "from_date")
++    private LocalDate fromDate;
++
++    @Column(name = "to_date")
++    private LocalDate toDate;
++
++    protected Hold() {
++    }
++
++    public Hold(LocalDate fromDate, LocalDate toDate) {
++        this.fromDate = fromDate;
++        this.toDate = toDate;
++    }
++
++    public LocalDate getFromDate() {
++        return fromDate;
++    }
++
++    public LocalDate getToDate() {
++        return toDate;
++    }
++
++    /** Whether the hold covers a day. */
++    public boolean covers(LocalDate day) {
++        return (fromDate == null || !day.isBefore(fromDate)) && (toDate == null || !day.isAfter(toDate));
++    }
++}
+diff --git a/src/main/java/net/officefloor/hq/app/person/Person.java b/src/main/java/net/officefloor/hq/app/person/Person.java
+index b54a54e69..fbbabafb5 100644
+--- a/src/main/java/net/officefloor/hq/app/person/Person.java
++++ b/src/main/java/net/officefloor/hq/app/person/Person.java
+@@ -40,9 +40,10 @@ public class Person {
+     @Column(name = "retired_from")
+     private LocalDate retiredFrom;
+ 
+-    /** Whether the person is on hold: their open claims then count in no live total. */
+-    @Column(name = "held", nullable = false)
+-    private boolean held;
++    /** The person's holds: their open claims dated within one count in no live total. */
++    @ElementCollection(fetch = FetchType.EAGER)
++    @CollectionTable(name = "person_hold", joinColumns = @JoinColumn(name = "person_id"))
++    private List<Hold> holds = new ArrayList<>();
+ 
+     /** Raised each time the person is saved. */
+     @Version
+@@ -112,12 +113,26 @@ public class Person {
+         return retiredFrom != null;
+     }
+ 
++    /** The person's holds, earliest from-date first, those with none first of all. */
++    public List<Hold> getHolds() {
++        return holds.stream()
++                .sorted(Comparator.comparing(Hold::getFromDate, Comparator.nullsFirst(Comparator.naturalOrder())))
++                .toList();
++    }
++
++    /** Whether the person has any hold, whatever its days. */
+     public boolean isHeld() {
+-        return held;
++        return !holds.isEmpty();
++    }
++
++    /** Whether one of the person's holds covers a day. */
++    public boolean isHeldOn(LocalDate day) {
++        return holds.stream().anyMatch(h -> h.covers(day));
+     }
+ 
+-    public void setHeld(boolean held) {
+-        this.held = held;
++    /** Add a hold, keeping the others. */
++    public void addHold(LocalDate from, LocalDate to) {
++        holds.add(new Hold(from, to));
+     }
+ 
+     public long getVersion() {
+diff --git a/src/main/java/net/officefloor/hq/app/person/PersonController.java b/src/main/java/net/officefloor/hq/app/person/PersonController.java
+index 4391dad48..73d1c740f 100644
+--- a/src/main/java/net/officefloor/hq/app/person/PersonController.java
++++ b/src/main/java/net/officefloor/hq/app/person/PersonController.java
+@@ -31,18 +31,19 @@ public class PersonController {
+ 
+     /** What the screen shows of a person; with how many statements were taken of them, and the
+      *  last one's due-total (text with two decimals, null when n/a or none) and day (null when none);
+-     *  whether they are retired, and from which day (null when not); and whether they are on hold.
++     *  whether they are retired, and from which day (null when not); and whether they have any hold, and their holds, earliest first.
+      *  The grade is the one in force on the sheet's today; grades are all those recorded, each from
+      *  its from-date (null: the beginning of time), earliest first. */
+     public record PersonView(long id, String name, String grade, List<GradeView> grades, long version,
+             int statementCount, String statedTotal, LocalDate statementDate, boolean retired, LocalDate retiredFrom,
+-            boolean held) {
++            boolean held, List<HoldView> holds) {
+         public static PersonView of(Person person, StatementSummary statements, LocalDate today) {
+             return new PersonView(person.getId(), person.getName(), person.gradeOn(today),
+                     person.getGrades().stream().map(g -> new GradeView(g.getGrade(), g.getFromDate())).toList(),
+                     person.getVersion(), statements.count(),
+                     statements.lastDueTotal() == null ? null : statements.lastDueTotal().setScale(2).toPlainString(),
+-                    statements.lastTakenOn(), person.isRetired(), person.getRetiredFrom(), person.isHeld());
++                    statements.lastTakenOn(), person.isRetired(), person.getRetiredFrom(), person.isHeld(),
++                    person.getHolds().stream().map(h -> new HoldView(h.getFromDate(), h.getToDate())).toList());
+         }
+     }
+ 
+@@ -50,6 +51,10 @@ public class PersonController {
+     public record GradeView(String grade, LocalDate from) {
+     }
+ 
++    /** A hold on a person, from a day (null: from the beginning of time) to a day (null: open-ended). */
++    public record HoldView(LocalDate from, LocalDate to) {
++    }
++
+     /** The person form: a required name and a grade of A, B or C. An edit also gives the version
+      *  of the person its editor loaded, and the day the grade applies from (left out, the sheet's
+      *  today). */
+@@ -61,8 +66,9 @@ public class PersonController {
+     public record RetireForm(LocalDate from) {
+     }
+ 
+-    /** The hold form: whether the person is to be on hold (true) or taken off it (false). */
+-    public record HoldForm(@NotNull Boolean held) {
++    /** The hold form: the day the hold starts (left out, the sheet's today) and the day it ends
++     *  (left out, it is open-ended). */
++    public record HoldForm(LocalDate from, LocalDate to) {
+     }
+ 
+     private final PersonService service;
+@@ -120,8 +126,8 @@ public class PersonController {
+     public PersonView hold(@PathVariable @NotBlank @Size(max = 100) String sheetId,
+             @PathVariable long personId,
+             @RequestHeader("X-User") @NotBlank @Size(max = 100) String user,
+-            @Valid @RequestBody HoldForm form) {
+-        Person saved = service.hold(sheetId.trim(), user.trim(), personId, form.held());
++            @RequestBody HoldForm form) {
++        Person saved = service.hold(sheetId.trim(), user.trim(), personId, form.from(), form.to());
+         return PersonView.of(saved, statements.summary(sheetId.trim(), personId), sheets.today(sheetId.trim()));
+     }
+ }
+diff --git a/src/main/java/net/officefloor/hq/app/person/PersonService.java b/src/main/java/net/officefloor/hq/app/person/PersonService.java
+index 88f7b2079..5db6a2a1a 100644
+--- a/src/main/java/net/officefloor/hq/app/person/PersonService.java
++++ b/src/main/java/net/officefloor/hq/app/person/PersonService.java
+@@ -90,20 +90,21 @@ public class PersonService {
+         });
+     }
+ 
+-    /** Put a person on hold (true) or take them off it (false); refused when they already are so. */
++    /** Put a person on hold from a day (null: the sheet's today) to a day (null: open-ended),
++     *  keeping their other holds; refused when the to-date is before the from-date. */
+     @Transactional
+-    public Person hold(String sheetId, String user, long personId, boolean held) {
++    public Person hold(String sheetId, String user, long personId, LocalDate from, LocalDate to) {
+         Person person = people.findByIdAndSheetId(personId, sheetId)
+                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "No such person on this sheet"));
+-        if (person.isHeld() == held) {
+-            throw new ResponseStatusException(HttpStatus.CONFLICT,
+-                    held ? "This person is already on hold" : "This person is not on hold");
++        LocalDate on = from != null ? from : sheets.today(sheetId);
++        if (to != null && to.isBefore(on)) {
++            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "A hold cannot end before it starts");
+         }
+         return rollup.tracking(sheetId, user, () -> {
+-            person.setHeld(held);
++            person.addHold(on, to);
+             Person saved = saveUnique(person);
+-            audit.recordOnCommit((held ? "PERSON_HELD" : "PERSON_RELEASED") + " sheet=" + sheetId + " by=" + user
+-                    + " name=" + saved.getName());
++            audit.recordOnCommit("PERSON_HELD sheet=" + sheetId + " by=" + user + " name=" + saved.getName()
++                    + " from=" + on);
+             return saved;
+         });
+     }
+diff --git a/src/main/java/net/officefloor/hq/app/statement/StatementService.java b/src/main/java/net/officefloor/hq/app/statement/StatementService.java
+index 4ff9122ea..196b08a78 100644
+--- a/src/main/java/net/officefloor/hq/app/statement/StatementService.java
++++ b/src/main/java/net/officefloor/hq/app/statement/StatementService.java
+@@ -63,7 +63,7 @@ public class StatementService {
+ 
+     /** Take a statement of a person: record their due-total now and bind each of their claims that
+      *  counts in the live totals to the figure it has now, leaving out any late charge; any other
+-     *  claim (one that does not count, or an open one while they are on hold) is unbound. */
++     *  claim (one that does not count, or an open unbound one dated within one of their holds) is unbound. */
+     @Transactional
+     public Taken take(String sheetId, String user, long personId) {
+         Person person = people.lockByIdAndSheetId(personId, sheetId)
+diff --git a/src/main/resources/db/migration/V31__person_hold.sql b/src/main/resources/db/migration/V31__person_hold.sql
+new file mode 100644
+index 000000000..d0f3b43e6
+--- /dev/null
++++ b/src/main/resources/db/migration/V31__person_hold.sql
+@@ -0,0 +1,12 @@
++-- A person's holds are dated: each applies from its from-date to its to-date (open-ended when it
++-- has none), and a person may have several over time. While a hold covers a claim's date, the
++-- person's open claim of that date (one not bound by a statement) counts in no live total. A person
++-- on hold before holds were dated keeps a hold from the beginning of time (no from-date).
++CREATE TABLE person_hold (
++    person_id BIGINT NOT NULL REFERENCES person (id),
++    from_date DATE,
++    to_date   DATE
++);
++CREATE INDEX person_hold_person ON person_hold (person_id);
++INSERT INTO person_hold (person_id, from_date, to_date) SELECT id, NULL, NULL FROM person WHERE held;
++ALTER TABLE person DROP COLUMN held;
