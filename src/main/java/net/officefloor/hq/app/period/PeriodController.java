@@ -71,6 +71,9 @@ public class PeriodController {
     /** How many lines an opening import took, and the periods it changed as the store now holds them. */
     public record OpeningImportView(int lines, List<PeriodView> periods) {}
 
+    /** How many periods a rollover made, and the sheet's periods as the store now holds them. */
+    public record RolloverView(int made, List<PeriodView> periods) {}
+
     private final PeriodService service;
     private final OpeningImportService openings;
 
@@ -111,6 +114,20 @@ public class PeriodController {
             @RequestBody @Valid GenerateFiscalYearRequest request) {
         return service.generateFiscalYear(sheetId, user, Integer.parseInt(request.year())).stream()
                 .map(PeriodView::of).toList();
+    }
+
+    /**
+     * Roll the fiscal year over: the next one's periods made and each person's open figure at the old year's
+     * end added to their opening balance for its first period. The periods made, and the new first period
+     * as the store now holds it, by count made.
+     */
+    @PostMapping("/rollover")
+    public RolloverView rollover(
+            @PathVariable @Size(max = 100) @Pattern(regexp = "[A-Za-z0-9._-]+") String sheetId,
+            @RequestHeader("X-User") @NotBlank @Size(max = 100) String user,
+            @RequestBody @Valid GenerateFiscalYearRequest request) {
+        int made = service.rollover(sheetId, user, Integer.parseInt(request.year())).size();
+        return new RolloverView(made, service.list(sheetId).stream().map(PeriodView::of).toList());
     }
 
     /** Make the calendar year's four quarterly periods, leaving out taken or overlapped ones: those made, earliest first. */

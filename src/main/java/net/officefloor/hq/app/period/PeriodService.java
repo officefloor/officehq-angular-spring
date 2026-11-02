@@ -117,6 +117,61 @@ public class PeriodService {
     }
 
     /**
+     * A steward rolls the fiscal year FY&lt;year&gt; over: the next fiscal year's twelve periods are made as
+     * {@link #generateFiscalYear} makes them, and each person's open figure at the end of the old year's last
+     * period (the figures of their claims that count then, due in a period of the old year and OPEN or PENDING
+     * at that period's end) is added to their opening balance for the new year's first period. A year with no
+     * periods on the sheet is refused.
+     */
+    @Transactional
+    public List<Period> rollover(String sheetId, String user, int year) {
+        // Lock the sheet so no claim or period changes while the year is carried over.
+        LocalDate today = sheets.findForUpdate(sheetId).orElseThrow(SheetNotFoundException::new).getToday();
+        if (settings.roleOf(sheetId, user) != Role.STEWARD) throw new PeriodNotPermittedException();
+        YearMonth start = YearMonth.of(year, settings.fiscalStartMonth(sheetId));
+        LocalDate oldFirst = start.atDay(1);
+        LocalDate oldLast = start.plusMonths(11).atEndOfMonth();
+        List<Period> old = periods.findBySheetIdOrderByFromDateAsc(sheetId).stream()
+                .filter(p -> !p.getFromDate().isBefore(oldFirst) && !p.getFromDate().isAfter(oldLast))
+                .toList();
+        if (old.isEmpty()) throw new RolloverRefusedException();
+        Period last = old.stream().max(Comparator.comparing(Period::getToDate)).orElseThrow();
+        LocalDate end = last.getToDate();
+        List<Person> sheetPeople = people.findBySheetIdOrderByPositionAscIdAsc(sheetId);
+        Map<Long, Person> byId = sheetPeople.stream().collect(Collectors.toMap(Person::getId, Function.identity()));
+        Map<Long, BigDecimal> open = new LinkedHashMap<>();
+        for (Person person : sheetPeople) open.put(person.getId(), BigDecimal.ZERO.setScale(2));
+        for (Claim claim : claims.findBySheetIdOrderByIdDesc(sheetId)) {
+            Person person = byId.get(claim.getPersonId());
+            if (person == null || old.stream().noneMatch(p -> p.contains(claim.getDueBy()))) continue;
+            ClaimStatus status = claim.statusAt(end);
+            if (status == null || !status.isOpen() || !person.countsAt(claim, end, today)) continue;
+            BigDecimal figure = claimService.chargedFigureOf(sheetId, person, claim);
+            if (figure != null) open.merge(person.getId(), figure, BigDecimal::add);
+        }
+        List<Period> made = generateFiscalYear(sheetId, user, year + 1);
+        LocalDate newFirst = start.plusMonths(12).atDay(1);
+        LocalDate newLast = start.plusMonths(23).atEndOfMonth();
+        Period first = periods.findBySheetIdOrderByFromDateAsc(sheetId).stream()
+                .filter(p -> !p.getFromDate().isBefore(newFirst) && !p.getFromDate().isAfter(newLast))
+                .findFirst().orElse(null);
+        if (first != null) {
+            for (Person person : sheetPeople) {
+                BigDecimal amount = open.get(person.getId());
+                if (amount.signum() <= 0) continue;
+                first.addOpening(person.getId(), amount);
+                audit.recordOnCommit("OPENING_SET sheet=" + sheetId + " by=" + user.strip()
+                        + " name=" + person.getName() + " period=" + first.getName()
+                        + " amount=" + amount.setScale(2).toPlainString());
+            }
+            periods.saveAndFlush(first);
+        }
+        audit.recordOnCommit("ROLLOVER sheet=" + sheetId + " by=" + user.strip()
+                + " fy=FY" + year + " periods=" + made.size());
+        return made;
+    }
+
+    /**
      * Make the four calendar quarters of the year as periods named &lt;yyyy&gt;-Q1 to &lt;yyyy&gt;-Q4, each from
      * the first day of its first month to the last day of its third, as the period form would add it. A
      * quarter whose name is already a period, or whose days overlap one on the sheet, is left out; the

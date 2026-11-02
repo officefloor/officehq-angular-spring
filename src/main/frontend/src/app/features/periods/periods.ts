@@ -92,6 +92,17 @@ export function closedOn(periods: Period[], date: string): boolean {
         <input id="period-generate-fy-year" data-testid="period-generate-fy-year" formControlName="year" inputmode="numeric" />
         <button type="submit" data-testid="period-generate-fy">Generate fiscal year</button>
       </form>
+      <form [formGroup]="rolloverForm" (ngSubmit)="rollover()" aria-label="Roll a fiscal year over">
+        <label for="rollover-year">Fiscal year to roll over (yyyy)</label>
+        <input id="rollover-year" data-testid="rollover-year" formControlName="year" inputmode="numeric" />
+        <button type="submit" data-testid="rollover">Roll year over</button>
+        @if (rolledOver() !== null) {
+          <output data-testid="rollover-made" aria-live="polite">{{ rolledOver() }}</output>
+        }
+        @if (rolloverError()) {
+          <p role="alert" class="error" data-testid="rollover-error">{{ rolloverError() }}</p>
+        }
+      </form>
       <form [formGroup]="quartersForm" (ngSubmit)="generateQuarters()" aria-label="Generate a year's quarterly periods">
         <label for="period-generate-quarters-year">Year (yyyy)</label>
         <input id="period-generate-quarters-year" data-testid="period-generate-quarters-year" formControlName="year" inputmode="numeric" />
@@ -181,6 +192,14 @@ export class Periods {
     year: new FormControl('', { nonNullable: true }),
   });
 
+  protected readonly rolloverError = signal('');
+  /** How many periods the last rollover made; null while one runs or before any. */
+  protected readonly rolledOver = signal<number | null>(null);
+  private rollingOver = false;
+  protected readonly rolloverForm = new FormGroup({
+    year: new FormControl('', { nonNullable: true }),
+  });
+
   protected readonly quartersForm = new FormGroup({
     year: new FormControl('', { nonNullable: true }),
   });
@@ -197,6 +216,7 @@ export class Periods {
     this.openingForm.valueChanges.subscribe(() => this.openingError.set(''));
     this.fyForm.valueChanges.subscribe(() => this.generateError.set(''));
     this.quartersForm.valueChanges.subscribe(() => this.generateError.set(''));
+    this.rolloverForm.valueChanges.subscribe(() => this.rolloverError.set(''));
     this.form.valueChanges.subscribe(() => this.error.set(''));
     this.generateForm.valueChanges.subscribe(() => this.generateError.set(''));
   }
@@ -233,6 +253,46 @@ export class Periods {
       this.generateError.set('Could not generate that fiscal year.');
     } finally {
       this.generating = false;
+    }
+  }
+
+  /**
+   * As a steward, roll the fiscal year over: make the next one's periods and carry each person's open
+   * figure at the old year's end into the new year's first period as an opening balance.
+   */
+  protected async rollover(): Promise<void> {
+    if (this.rollingOver) return;
+    this.rolloverError.set('');
+    this.rolledOver.set(null);
+    const sheet = this.session.sheetId();
+    if (!sheet) return;
+    const year = this.rolloverForm.getRawValue().year.trim();
+    if (!/^\d{4}$/.test(year)) {
+      this.rolloverError.set('Enter a fiscal year as yyyy.');
+      return;
+    }
+    this.rollingOver = true;
+    try {
+      const result = await firstValueFrom(
+        this.http.post<{ made: number; periods: Period[] }>(`/api/sheets/${encodeURIComponent(sheet)}/periods/rollover`, { year }, {
+          headers: { 'X-User': this.session.user() ?? '' },
+        }),
+      );
+      if (this.session.sheetId() !== sheet) return;
+      for (const period of result.periods) this.saved.emit(period);
+      this.rolledOver.set(result.made);
+    } catch (e) {
+      if (this.session.sheetId() !== sheet) return;
+      const status = e instanceof HttpErrorResponse ? e.status : 0;
+      this.rolloverError.set(
+        status === 403
+          ? 'Only a steward may roll a year over.'
+          : status === 409
+            ? 'That fiscal year has no periods to roll over.'
+            : 'Could not roll that fiscal year over.',
+      );
+    } finally {
+      this.rollingOver = false;
     }
   }
 
