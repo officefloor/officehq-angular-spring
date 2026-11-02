@@ -1,7 +1,7 @@
 import { HttpErrorResponse } from '@angular/common/http';
 import { Component, computed, effect, inject, signal } from '@angular/core';
 import { FormControl, FormGroup, ReactiveFormsModule } from '@angular/forms';
-import { Claim, Claims, claimDue, counts, fixed, sumAmounts } from '../../core/claims';
+import { Claim, Claims, QuickAdded, claimDue, counts, fixed, sumAmounts } from '../../core/claims';
 import { Grade, People, Person } from '../../core/people';
 import { Period, Periods, periodOf } from '../../core/periods';
 import { Rate, Rates, pctOn } from '../../core/rates';
@@ -9,13 +9,14 @@ import { Session } from '../../core/session';
 import { PersonClaims } from '../claims/person-claims';
 import { PeriodForm } from '../periods/period-form';
 import { RateForm } from '../rates/rate-form';
+import { QuickAddBar } from './quick-add-bar';
 
 // The people on the sheet, in the order they were added, and the form that adds a person or,
 // once a person's editor is opened, edits them. Each person's row lists their claims and what
 // they have claimed and are due at their grade's rate; the sheet's totals add everyone's up.
 @Component({
   selector: 'app-people-list',
-  imports: [ReactiveFormsModule, PersonClaims, RateForm, PeriodForm],
+  imports: [ReactiveFormsModule, PersonClaims, RateForm, PeriodForm, QuickAddBar],
   template: `
     <app-rate-form [rates]="rates()" (saved)="rateSaved($event)" />
     <app-period-form [periods]="periods()" [dueTotals]="periodDueTotals()" (saved)="periodSaved($event)" />
@@ -38,6 +39,7 @@ import { RateForm } from '../rates/rate-form';
           <p role="alert" data-testid="person-form-error">{{ error() }}</p>
         }
       </form>
+      <app-quick-add-bar (added)="quickAdded($event)" />
       <p>Claimed in total: <strong data-testid="rollup-claimed-total">{{ claimedTotal() }}</strong></p>
       <p>Due in total: <strong data-testid="rollup-due-total">{{ dueTotal() }}</strong></p>
       <table data-testid="people">
@@ -254,6 +256,13 @@ export class PeopleList {
         ? cs.map((c) => (c.id === claim.id ? claim : c))
         : [claim, ...cs].sort((a, b) => b.id - a.id),
     );
+  }
+
+  protected quickAdded({ person, claim }: QuickAdded): void {
+    this.people.update((ps) =>
+      ps.some((p) => p.id === person.id) ? ps.map((p) => (p.id === person.id ? person : p)) : [...ps, person],
+    );
+    this.claimSaved(claim);
   }
 
   protected rateSaved(rate: Rate): void {

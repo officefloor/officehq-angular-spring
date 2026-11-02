@@ -23,6 +23,9 @@ public interface PersonRepository extends JpaRepository<Person, Long> {
     /** Whether the name is in use on the sheet, compared without regard to case. */
     boolean existsBySheetIdAndNameIgnoreCase(String sheetId, String name);
 
+    /** The person on the sheet with the name, compared without regard to case. */
+    Optional<Person> findBySheetIdAndNameIgnoreCase(String sheetId, String name);
+
     /** Whether the name is in use on the sheet by anyone but this person. */
     boolean existsBySheetIdAndNameIgnoreCaseAndIdNot(String sheetId, String name, Long id);
 }

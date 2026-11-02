@@ -1,7 +1,7 @@
 import { HttpClient } from '@angular/common/http';
 import { Injectable, inject } from '@angular/core';
 import { firstValueFrom } from 'rxjs';
-import { Grade } from './people';
+import { Grade, Person } from './people';
 import { Rate, due, pctOn } from './rates';
 import { Session } from './session';
 
@@ -45,6 +45,14 @@ export interface ClaimForm {
   note: string;
 }
 
+/** What a quick-add made: the person the claim is for (added when the name was not on the sheet)
+ *  and the draft claim. */
+export interface QuickAdded {
+  person: Person;
+  personAdded: boolean;
+  claim: Claim;
+}
+
 /** An amount with up to two decimals, 0.00 or more. */
 export const AMOUNT = /^\d{1,12}(\.\d{1,2})?$/;
 
@@ -82,6 +90,15 @@ export class Claims {
     const { sheetId, user } = this.active();
     return firstValueFrom(
       this.http.post<Claim>(`${this.url(sheetId)}/people/${personId}/claims`, form, { headers: { 'X-User': user } }),
+    );
+  }
+
+  /** Add a draft claim of the amount, dated the sheet's today, for the person of the name, who is
+   *  added at grade A first when the name is not on the sheet. */
+  quickAdd(name: string, amount: string): Promise<QuickAdded> {
+    const { sheetId, user } = this.active();
+    return firstValueFrom(
+      this.http.post<QuickAdded>(`${this.url(sheetId)}/quick-add`, { name, amount }, { headers: { 'X-User': user } }),
     );
   }
 
