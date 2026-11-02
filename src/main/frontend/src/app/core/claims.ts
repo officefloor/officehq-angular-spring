@@ -2,7 +2,7 @@ import { HttpClient } from '@angular/common/http';
 import { Injectable, inject } from '@angular/core';
 import { firstValueFrom } from 'rxjs';
 import { Grade, Person } from './people';
-import { Rate, due, pctOn } from './rates';
+import { Rate, atLeast, due, pctOn } from './rates';
 import { Session } from './session';
 
 /** Where a claim is in its life: DRAFT, then OPEN, then SETTLED; a DRAFT or OPEN claim may be VOID. */
@@ -76,9 +76,10 @@ export function fixed(c: Claim): boolean {
 
 /** A claim's due figure: the one fixed when it was settled, or else the one its person's last
  *  statement bound it to, or else its live due at its person's grade's rate in force on the
- *  claim's date; null when there is none. */
-export function claimDue(c: Claim, rates: Rate[], grade: Grade): string | null {
-  return c.settledDue ?? (c.stated ? c.statedDue : null) ?? due(c.amount, pctOn(rates, grade, c.date));
+ *  claim's date, at least the sheet's floor; null when there is none. */
+export function claimDue(c: Claim, rates: Rate[], grade: Grade, floor: string): string | null {
+  const live = due(c.amount, pctOn(rates, grade, c.date));
+  return c.settledDue ?? (c.stated ? c.statedDue : null) ?? (live === null ? null : atLeast(live, floor));
 }
 
 // The claims people make on the active sheet.

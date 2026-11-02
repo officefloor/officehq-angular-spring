@@ -70,4 +70,23 @@ public class SheetService {
                 + (limit == null ? "" : limit.setScale(2).toPlainString()));
         return saved;
     }
+
+    /** The least live due a claim on the sheet has; 1.00 for a sheet never loaded. */
+    @Transactional(readOnly = true)
+    public BigDecimal floor(String id) {
+        return sheets.findById(id).map(Sheet::getFloor).orElse(new BigDecimal("1.00"));
+    }
+
+    /** Change the sheet's floor; recorded even when it is unchanged, then the figures it moves. */
+    @Transactional
+    public synchronized Sheet setFloor(String id, String user, BigDecimal floor) {
+        Sheet sheet = load(id, user);
+        return rollup.tracking(id, user, () -> {
+            sheet.setFloor(floor);
+            Sheet saved = sheets.saveAndFlush(sheet);
+            audit.recordOnCommit("SETTING_CHANGED sheet=" + id + " by=" + user + " key=floor value="
+                    + floor.setScale(2).toPlainString());
+            return saved;
+        });
+    }
 }

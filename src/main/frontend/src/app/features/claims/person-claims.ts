@@ -91,6 +91,8 @@ export class PersonClaims {
   readonly claims = input.required<Claim[]>();
   /** The rates set on the sheet; a claim's due uses its person's grade's rate on the claim's date. */
   readonly rates = input.required<Rate[]>();
+  /** The sheet's floor: the least live due a claim has. */
+  readonly floor = input.required<string>();
   readonly grade = input.required<Grade>();
   /** The periods on the sheet; a claim belongs to the one whose days contain its date. */
   readonly periods = input.required<Period[]>();
@@ -115,7 +117,7 @@ export class PersonClaims {
   }
 
   protected dueOf(c: Claim): string {
-    return claimDue(c, this.rates(), this.grade()) ?? 'n/a';
+    return claimDue(c, this.rates(), this.grade(), this.floor()) ?? 'n/a';
   }
 
   /** The name of the period the claim belongs to; empty when it belongs to none. */

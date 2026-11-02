@@ -3,7 +3,7 @@ import { FormControl, FormGroup, ReactiveFormsModule } from '@angular/forms';
 import { Session } from '../../core/session';
 import { LIMIT, ROLES, Role, RoleName, SheetSettings } from '../../core/settings';
 
-// The sheet's settings (the clerk limit) and the roles it gives user names: clerk, the default for
+// The sheet's settings (the clerk limit and the floor) and the roles it gives user names: clerk, the default for
 // any name, or steward.
 @Component({
   selector: 'app-settings-form',
@@ -15,12 +15,15 @@ import { LIMIT, ROLES, Role, RoleName, SheetSettings } from '../../core/settings
         <label for="setting-clerk-limit">Clerk limit</label>
         <input id="setting-clerk-limit" data-testid="setting-clerk-limit" formControlName="clerkLimit"
                inputmode="decimal" />
+        <label for="setting-floor">Floor</label>
+        <input id="setting-floor" data-testid="setting-floor" formControlName="floor" inputmode="decimal" />
         <button type="submit" data-testid="settings-save">Save settings</button>
         @if (settingsError()) {
           <p role="alert" data-testid="settings-error">{{ settingsError() }}</p>
         }
       </form>
       <p>Clerk limit in force: <span data-testid="setting-clerk-limit-current">{{ clerkLimit() ?? '' }}</span></p>
+      <p>Floor in force: <span data-testid="setting-floor-current">{{ floor() ?? '' }}</span></p>
       <h3>Roles</h3>
       <form data-testid="role-form" [formGroup]="roleForm" (ngSubmit)="saveRole()">
         <label for="role-form-user">User</label>
@@ -60,6 +63,7 @@ export class SettingsForm {
 
   protected readonly roleNames = ROLES;
   protected readonly clerkLimit = signal<string | null>(null);
+  protected readonly floor = signal<string | null>(null);
   protected readonly roles = signal<Role[]>([]);
   protected readonly settingsError = signal('');
   protected readonly roleError = signal('');
@@ -69,6 +73,7 @@ export class SettingsForm {
   private reads = 0;
   protected readonly settingsForm = new FormGroup({
     clerkLimit: new FormControl('', { nonNullable: true }),
+    floor: new FormControl('', { nonNullable: true }),
   });
   protected readonly roleForm = new FormGroup({
     user: new FormControl('', { nonNullable: true }),
@@ -82,23 +87,42 @@ export class SettingsForm {
       this.session.loads();
       const sheetId = this.session.sheetId();
       this.clerkLimit.set(null);
+      this.floor.set(null);
       this.roles.set([]);
       if (sheetId) void this.reload(sheetId);
     });
   }
 
+  /** Save the settings changed since the last save; all of them when none was changed. */
   protected async saveSettings(): Promise<void> {
     if (this.submitting) return;
     this.settingsError.set('');
-    const value = this.settingsForm.getRawValue().clerkLimit.trim();
-    if (value !== '' && !LIMIT.test(value)) {
+    const { clerkLimit, floor } = this.settingsForm.controls;
+    const none = !clerkLimit.dirty && !floor.dirty;
+    const limitValue = clerkLimit.value.trim();
+    const floorValue = floor.value.trim();
+    const saveLimit = none || clerkLimit.dirty;
+    const saveFloor = none || floor.dirty;
+    if (saveLimit && limitValue !== '' && !LIMIT.test(limitValue)) {
       this.settingsError.set('Enter a clerk limit of 0.00 or more with up to two decimals, or leave it blank for no limit.');
+      return;
+    }
+    if (saveFloor && !(none && floorValue === '') && !LIMIT.test(floorValue)) {
+      this.settingsError.set('Enter a floor of 0.00 or more with up to two decimals.');
       return;
     }
     this.submitting = true;
     try {
-      const saved = await this.api.setClerkLimit(value === '' ? null : value);
-      this.clerkLimit.set(saved.clerkLimit);
+      if (saveLimit) {
+        const saved = await this.api.setClerkLimit(limitValue === '' ? null : limitValue);
+        this.clerkLimit.set(saved.clerkLimit);
+        clerkLimit.markAsPristine();
+      }
+      if (saveFloor && floorValue !== '') {
+        const saved = await this.api.setFloor(floorValue);
+        this.floor.set(saved.floor);
+        floor.markAsPristine();
+      }
     } catch {
       this.settingsError.set('The settings could not be saved.');
     } finally {
@@ -139,6 +163,7 @@ export class SettingsForm {
       const [settings, roles] = await Promise.all([this.api.get(sheetId), this.api.roles(sheetId)]);
       if (read === this.reads) {
         this.clerkLimit.set(settings.clerkLimit);
+        this.floor.set(settings.floor);
         this.roles.set(roles);
       }
     } catch {

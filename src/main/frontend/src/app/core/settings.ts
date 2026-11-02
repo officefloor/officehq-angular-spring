@@ -6,6 +6,8 @@ import { Session } from './session';
 export interface Settings {
   /** The most due a clerk may settle, as text with two decimals; null when there is no limit. */
   clerkLimit: string | null;
+  /** The least live due a claim has, as text with two decimals. */
+  floor: string;
 }
 
 export type RoleName = 'clerk' | 'steward';
@@ -39,6 +41,12 @@ export class SheetSettings {
   setClerkLimit(value: string | null): Promise<Settings> {
     const [sheetId, headers] = this.active();
     return firstValueFrom(this.http.put<Settings>(`${this.url(sheetId)}/settings/clerk-limit`, { value }, { headers }));
+  }
+
+  /** Set the floor. */
+  setFloor(value: string): Promise<Settings> {
+    const [sheetId, headers] = this.active();
+    return firstValueFrom(this.http.put<Settings>(`${this.url(sheetId)}/settings/floor`, { value }, { headers }));
   }
 
   /** Give a user name a role, replacing the one it had. */

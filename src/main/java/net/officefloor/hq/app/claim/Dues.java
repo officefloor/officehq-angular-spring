@@ -58,12 +58,15 @@ public class Dues {
                 .reduce(BigDecimal.ZERO.setScale(2), BigDecimal::add);
     }
 
-    /** A claim's due at the rate for the person's grade in force on the claim's date: amount times
-     *  pct divided by 100, rounded half to even to two decimals; null when no rate applies on that date. */
+    /** A claim's live due at the rate for the person's grade in force on the claim's date: amount
+     *  times pct divided by 100, rounded half to even to two decimals, and at least the sheet's
+     *  floor; null when no rate applies on that date. */
     private BigDecimal due(String sheetId, Person person, Claim claim) {
+        BigDecimal floor = sheets.floor(sheetId);
         return rates.findInForce(sheetId, person.getGrade(), claim.getDate())
                 .map(Rate::getPct)
                 .map(pct -> claim.getAmount().multiply(pct).movePointLeft(2).setScale(2, RoundingMode.HALF_EVEN))
+                .map(due -> due.max(floor))
                 .orElse(null);
     }
 }

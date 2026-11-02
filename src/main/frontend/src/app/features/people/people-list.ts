@@ -6,6 +6,7 @@ import { Grade, People, Person } from '../../core/people';
 import { Period, Periods, periodOf } from '../../core/periods';
 import { Rate, Rates, pctOn } from '../../core/rates';
 import { Session } from '../../core/session';
+import { SheetSettings } from '../../core/settings';
 import { PersonClaims } from '../claims/person-claims';
 import { PeriodForm } from '../periods/period-form';
 import { RateForm } from '../rates/rate-form';
@@ -68,7 +69,7 @@ import { QuickAddBar } from './quick-add-bar';
               <td data-testid="person-hold">{{ p.held ? 'yes' : 'no' }}</td>
               <td>
                 <app-person-claims [personId]="p.id" [claims]="claimsByPerson().get(p.id) ?? []"
-                  [rates]="rates()" [grade]="p.grade" [periods]="periods()"
+                  [rates]="rates()" [floor]="floor()" [grade]="p.grade" [periods]="periods()"
                   (saved)="claimSaved($event)" />
               </td>
               <td>
@@ -99,6 +100,7 @@ export class PeopleList {
   private readonly claimsApi = inject(Claims);
   private readonly ratesApi = inject(Rates);
   private readonly periodsApi = inject(Periods);
+  private readonly settingsApi = inject(SheetSettings);
 
   protected readonly grades: Grade[] = ['A', 'B', 'C'];
   protected readonly people = signal<Person[]>([]);
@@ -131,6 +133,8 @@ export class PeopleList {
   protected readonly claimedTotal = computed(() => sumAmounts(this.live().map((c) => c.amount)));
   /** The rates set on the sheet. */
   protected readonly rates = signal<Rate[]>([]);
+  /** The sheet's floor: the least live due a claim has. */
+  protected readonly floor = signal('1.00');
   /** The periods on the sheet, earliest first. */
   protected readonly periods = signal<Period[]>([]);
   /** Each period's due-total by its id: the due figures of the claims that count whose date falls
@@ -142,7 +146,7 @@ export class PeopleList {
       const period = periodOf(this.periods(), c.date);
       const grade = grades.get(c.personId);
       if (period === undefined || grade === undefined) continue;
-      const d = claimDue(c, this.rates(), grade);
+      const d = claimDue(c, this.rates(), grade, this.floor());
       if (d !== null) figures.get(period.id)?.push(d);
     }
     const by = new Map<number, string>();
@@ -351,7 +355,7 @@ export class PeopleList {
     if (!this.pctOf().has(p.grade) && !counted.some(fixed)) {
       return null;
     }
-    const figures = counted.map((c) => claimDue(c, this.rates(), p.grade)).filter((d): d is string => d !== null);
+    const figures = counted.map((c) => claimDue(c, this.rates(), p.grade, this.floor())).filter((d): d is string => d !== null);
     return sumAmounts(figures);
   }
 
@@ -364,14 +368,16 @@ export class PeopleList {
   private async reload(sheetId: string): Promise<void> {
     const read = ++this.reads;
     try {
-      const [people, claims, rates, periods] = await Promise.all([
+      const [people, claims, rates, periods, settings] = await Promise.all([
         this.api.list(sheetId),
         this.claimsApi.list(sheetId),
         this.ratesApi.list(sheetId),
         this.periodsApi.list(sheetId),
+        this.settingsApi.get(sheetId),
       ]);
       if (read === this.reads) {
         this.rates.set(rates);
+        this.floor.set(settings.floor);
         this.periods.set(periods);
         this.claims.set(claims);
         this.people.set(people);

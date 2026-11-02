@@ -44,6 +44,11 @@ export function due(amount: string, pct: string | undefined): string | null {
   return `${text.slice(0, -2)}.${text.slice(-2)}`;
 }
 
+/** The larger of two two-decimal figures. */
+export function atLeast(figure: string, floor: string): string {
+  return hundredths(figure) < hundredths(floor) ? floor : figure;
+}
+
 // The rates for each grade on the active sheet.
 @Injectable({ providedIn: 'root' })
 export class Rates {
