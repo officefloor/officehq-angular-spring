@@ -417,6 +417,15 @@ public class Person {
     }
 
     /**
+     * Whether a claim of theirs counts toward what they have claimed: as {@link #counts}, except that a hold
+     * (theirs or the claim's) does not take it out; only its due leaves the totals while held.
+     */
+    public boolean countsClaimed(Claim claim, LocalDate today) {
+        if (!claim.getStatus().counts() || claim.isDeferredOn(today)) return false;
+        return !claim.getStatus().isOpen() || claim.isBound() || !retiredOn(today);
+    }
+
+    /**
      * Whether a claim of theirs counts for a period ending on the date: by the status it had at the end
      * of that date, less a deferred one and one still open now (OPEN or PENDING) dated within a hold, or
      * theirs once retired on the sheet's today, and not bound, as the live rules say: a claim since settled or voided is no longer kept out by a hold.

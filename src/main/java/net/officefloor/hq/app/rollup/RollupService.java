@@ -99,9 +99,9 @@ public class RollupService {
             BigDecimal overdue = zero();
             boolean fixed = false;
             for (Claim claim : claimsByPerson.getOrDefault(person.getId(), List.of())) {
+                // a correction counts toward due but not toward what is claimed; a held claim stays claimed
+                if (!claim.isCorrection() && person.countsClaimed(claim, today)) claimed = claimed.add(claim.getAmount());
                 if (!person.counts(claim, today)) continue;
-                // a correction counts toward due but not toward what is claimed
-                if (!claim.isCorrection()) claimed = claimed.add(claim.getAmount());
                 if (claim.getSettledDue() != null || (claim.isBound() && claim.getStatedDue() != null)) fixed = true;
                 String grade = person.gradeOn(claim.getDate());
                 LocalDate basis = Rounding.basisOf(claim, datesByNumber);

@@ -828,8 +828,9 @@ export class People {
   }
   /** Whether the claim counts in the live totals: OPEN, PENDING or SETTLED, less open ones kept out by a hold or retirement and not bound, and deferred ones. */
   private readonly counts = (c: Claim): boolean => countsFor(c, this.keptOut(c), this.session.today());
-  /** Whether the claim counts toward what is claimed: one that counts and does not correct another. */
-  private readonly countsClaimed = (c: Claim): boolean => this.counts(c) && !isCorrection(c);
+  /** Whether the claim counts toward what is claimed: one that counts, a hold aside (a held claim stays claimed), and does not correct another. */
+  private readonly countsClaimed = (c: Claim): boolean =>
+    countsFor(c, this.retiredTodayIds().has(c.personId), this.session.today()) && !isCorrection(c);
   protected readonly claimedTotal = computed(() => money(this.claims().filter(this.countsClaimed).reduce((sum, c) => sum + cents(c.amount), 0)));
   /** The sheet's rates, each for a grade from its from-date. */
   protected readonly rates = signal<Rate[]>([]);
