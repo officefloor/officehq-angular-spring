@@ -97,6 +97,7 @@ const NO_LEAVE: Leave = { holds: [], retiredFrom: null };
           refused <strong data-testid="bulk-refused">{{ b.refused }}</strong></p>
       }
       <button type="button" data-testid="bulk-settle" (click)="bulkSettle()">Settle selected claims</button>
+      <span>Last batch <strong data-testid="bulk-settle-batch">{{ lastSettleBatch() ?? '' }}</strong></span>
       @if (bulkSettled(); as b) {
         <p role="status">Settled <strong data-testid="bulk-settled">{{ b.settled }}</strong>,
           refused <strong data-testid="bulk-settle-refused">{{ b.refused }}</strong></p>
@@ -452,6 +453,8 @@ export class PeopleList {
   private opening = false;
   /** What the last bulk settle did; null while one runs and before the first. */
   protected readonly bulkSettled = signal<{ settled: number; refused: number } | null>(null);
+  /** The number of the sheet's last settle batch; null when there has been none. */
+  protected readonly lastSettleBatch = signal<number | null>(null);
   /** Whether a bulk settle is waiting for its answer: a second press meanwhile is ignored. */
   private settling = false;
   /** What the last bulk reassign did; null while one runs and before the first. */
@@ -513,6 +516,7 @@ export class PeopleList {
       this.selected.set(new Set());
       this.bulkOpened.set(null);
       this.bulkSettled.set(null);
+      this.lastSettleBatch.set(null);
       this.bulkReassigned.set(null);
       this.selectedPeople.set(new Set());
       this.bulkGraded.set(null);
@@ -825,7 +829,12 @@ export class PeopleList {
     try {
       const result = await this.claimsApi.settleAll([...this.selected()]);
       this.selected.set(new Set());
-      this.claims.set(await this.claimsApi.list(sheetId));
+      const [claims, lastBatch] = await Promise.all([
+        this.claimsApi.list(sheetId),
+        this.claimsApi.lastSettleBatch(sheetId),
+      ]);
+      this.claims.set(claims);
+      this.lastSettleBatch.set(lastBatch);
       this.bulkSettled.set(result);
     } catch {
       this.bulkSettled.set({ settled: 0, refused: this.selected().size });
@@ -1015,7 +1024,7 @@ export class PeopleList {
   private async reload(sheetId: string): Promise<void> {
     const read = ++this.reads;
     try {
-      const [people, claims, tags, rates, periods, settings, patrons, watches] = await Promise.all([
+      const [people, claims, tags, rates, periods, settings, patrons, watches, lastBatch] = await Promise.all([
         this.api.list(sheetId),
         this.claimsApi.list(sheetId),
         this.claimsApi.tags(sheetId),
@@ -1024,6 +1033,7 @@ export class PeopleList {
         this.settingsApi.get(sheetId),
         this.patronsApi.list(sheetId),
         this.watchesApi.list(sheetId),
+        this.claimsApi.lastSettleBatch(sheetId),
       ]);
       if (read === this.reads) {
         this.rates.set(rates);
@@ -1037,6 +1047,7 @@ export class PeopleList {
         this.storedTags.set(tags);
         this.patrons.set(patrons);
         this.watches.set(watches);
+        this.lastSettleBatch.set(lastBatch);
         this.people.set(people);
       }
     } catch {

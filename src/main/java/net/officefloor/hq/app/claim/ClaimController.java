@@ -14,6 +14,7 @@ import java.util.Set;
 import java.util.function.Function;
 import java.util.stream.Collectors;
 import net.officefloor.hq.app.history.History;
+import net.officefloor.hq.app.sheet.SheetService;
 import net.officefloor.hq.app.role.ViewerAllowed;
 import net.officefloor.hq.app.sheet.ArchivedAllowed;
 import net.officefloor.hq.app.sheet.AsOfGuard;
@@ -46,13 +47,14 @@ public class ClaimController {
      *  (null when none); and who has its editor open (null when no one); and the last day a reminder
      *  was written for it (null when never); and its external reference (null when none); and its tags,
      *  sorted and comma and space separated (empty when none); and the reason it was voided with (null
-     *  when none); and its comments, in the order they were written. */
+     *  when none); and its comments, in the order they were written; and the number of the bulk
+     *  settle batch that settled it (null when none, or when it is not settled or pending). */
     public record ClaimView(long id, long personId, String amount, LocalDate date, String note,
             ClaimStatus status, String number, String settledDue, String openedBy, boolean stated,
             String statedDue, boolean statedNa, String corrects, LocalDate roundsBy, long listed, LocalDate dueBy,
             List<LogLineView> log, LocalDate deferredUntil, int proofs, String splitFrom,
             String editLockedBy, boolean lateEntry, LocalDate remindedOn, String ref, String tags,
-            String voidReason, List<CommentView> comments) {
+            String voidReason, List<CommentView> comments, Integer settleBatch) {
         public static ClaimView of(Claim claim) {
             return new ClaimView(claim.getId(), claim.getPersonId(), claim.getAmount().setScale(2).toPlainString(),
                     claim.getDate(), claim.getNote(), claim.getStatus(), claim.getNumber(),
@@ -64,7 +66,8 @@ public class ClaimController {
                     claim.getProofs(), claim.getSplitFrom(), claim.getEditLockedBy(), claim.isLateEntry(),
                     claim.getRemindedOn(), claim.getRef(), tagsText(claim.getTags()),
                     claim.getStatus() == ClaimStatus.VOID ? claim.getVoidReason() : null,
-                    claim.getComments().stream().map(CommentView::of).toList());
+                    claim.getComments().stream().map(CommentView::of).toList(),
+                    batchOf(claim.getStatus(), claim.getSettleBatch()));
         }
 
         /** The claim as it stood at the end of a day: its figures as its revision then has them (see
@@ -87,7 +90,13 @@ public class ClaimController {
                     kept.getRemindedOn() == null || kept.getRemindedOn().isAfter(day) ? null : kept.getRemindedOn(),
                     kept.getRef(), tagsText(kept.getTags()),
                     then.getStatus() == ClaimStatus.VOID ? kept.getVoidReason() : null,
-                    kept.getComments().stream().filter(c -> !c.getOn().isAfter(day)).map(CommentView::of).toList());
+                    kept.getComments().stream().filter(c -> !c.getOn().isAfter(day)).map(CommentView::of).toList(),
+                    batchOf(then.getStatus(), kept.getSettleBatch()));
+        }
+
+        /** The settle batch a claim shows: only while it is settled or pending. */
+        private static Integer batchOf(ClaimStatus status, Integer batch) {
+            return status == ClaimStatus.SETTLED || status == ClaimStatus.PENDING ? batch : null;
         }
 
         /** The tags as the claim shows them: sorted, comma and space separated; empty when none. */
@@ -167,8 +176,10 @@ public class ClaimController {
     private final ClaimService service;
     private final ClaimBulkService bulk;
     private final History history;
+    private final SheetService sheets;
 
-    public ClaimController(ClaimService service, ClaimBulkService bulk, History history) {
+    public ClaimController(ClaimService service, ClaimBulkService bulk, History history, SheetService sheets) {
+        this.sheets = sheets;
         this.service = service;
         this.bulk = bulk;
         this.history = history;
@@ -189,6 +200,16 @@ public class ClaimController {
                     .sorted(Comparator.comparingLong(ClaimView::listed).reversed()).toList();
         }
         return service.list(sheet).stream().map(ClaimView::of).toList();
+    }
+
+    /** The number of the sheet's last settle batch; null when there has been none. */
+    public record LastSettleBatch(Integer batch) {
+    }
+
+    /** The number of the sheet's last settle batch. */
+    @GetMapping("/claims/settle-batch")
+    public LastSettleBatch lastSettleBatch(@PathVariable @NotBlank @Size(max = 100) String sheetId) {
+        return new LastSettleBatch(sheets.lastSettleBatch(sheetId.trim()));
     }
 
     /** Every tag ever used on the sheet, in order. */

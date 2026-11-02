@@ -67,6 +67,11 @@ public class Claim {
     @Column(name = "edited_by")
     private String editedBy;
 
+    /** The number of the bulk settle batch that settled the claim (or left it pending); null when it
+     *  was settled one at a time, or never settled. */
+    @Column(name = "settle_batch")
+    private Integer settleBatch;
+
     /** Whether the person's last statement bound this claim to the due it had then. */
     @Column(name = "stated", nullable = false)
     private boolean stated;
@@ -418,6 +423,14 @@ public class Claim {
 
     public void setEditedBy(String editedBy) {
         this.editedBy = editedBy;
+    }
+
+    public Integer getSettleBatch() {
+        return settleBatch;
+    }
+
+    public void setSettleBatch(Integer settleBatch) {
+        this.settleBatch = settleBatch;
     }
 
     /** Whether the user opened or last edited the claim, so may not settle or approve it. */

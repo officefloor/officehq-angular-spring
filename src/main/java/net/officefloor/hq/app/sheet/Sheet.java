@@ -25,6 +25,11 @@ public class Sheet {
     @Column(name = "last_claim_number", insertable = false, updatable = false)
     private int lastClaimNumber;
 
+    /** The number of the last settle batch on the sheet (0 when none); only ever moved on by
+     *  {@link SheetRepository#advanceSettleBatch}. */
+    @Column(name = "last_settle_batch", insertable = false, updatable = false)
+    private int lastSettleBatch;
+
     /** The policy date: a claim dated before it rounds half up, one on or after it half to even; null
      *  (blank) takes the sheet's today. */
     @Column(name = "policy_date")

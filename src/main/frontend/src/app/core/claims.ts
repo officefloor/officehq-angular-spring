@@ -144,6 +144,9 @@ export interface Claim {
   voidReason: string | null;
   /** Its comments, in the order they were written. */
   comments: ClaimComment[];
+  /** The number of the bulk settle batch that settled it (or left it pending); null when it was
+   *  settled one at a time, or is not settled or pending. */
+  settleBatch: number | null;
 }
 
 /** A comment on a claim: who wrote it, the sheet's today then (yyyy-mm-dd), and its text. */
@@ -300,6 +303,12 @@ export class Claims {
   /** Every claim on the sheet, newest first. */
   list(sheetId: string): Promise<Claim[]> {
     return firstValueFrom(this.http.get<Claim[]>(`${this.url(sheetId)}/claims`));
+  }
+
+  /** The number of the sheet's last settle batch; null when there has been none. */
+  async lastSettleBatch(sheetId: string): Promise<number | null> {
+    const r = await firstValueFrom(this.http.get<{ batch: number | null }>(`${this.url(sheetId)}/claims/settle-batch`));
+    return r.batch;
   }
 
   /** Every tag ever used on the sheet, in order. */

@@ -206,6 +206,7 @@ function splitRefusal(e: unknown): string {
           <span data-testid="claim-deferred-until">{{ c.deferredUntil ?? '' }}</span>
           <span data-testid="claim-proofs">{{ c.proofs }}</span>
           <span data-testid="claim-split-from">{{ c.splitFrom ?? '' }}</span>
+          <span data-testid="claim-batch">{{ c.settleBatch ?? '' }}</span>
           <span data-testid="claim-reminded">{{ c.remindedOn ?? '' }}</span>
           <ol data-testid="claim-log" [attr.aria-label]="'Status log of claim of ' + c.amount + ' on ' + c.date">
             @for (l of c.log; track $index) {

@@ -23,4 +23,13 @@ public interface SheetRepository extends JpaRepository<Sheet, String> {
 
     @Query("select s.lastUnperiodNumber from Sheet s where s.id = :id")
     int lastUnperiodNumber(String id);
+
+    /** Move the sheet's last settle batch number on by one; the row stays locked until the
+     *  transaction ends. */
+    @Modifying
+    @Query("update Sheet s set s.lastSettleBatch = s.lastSettleBatch + 1 where s.id = :id")
+    int advanceSettleBatch(String id);
+
+    @Query("select s.lastSettleBatch from Sheet s where s.id = :id")
+    Integer lastSettleBatch(String id);
 }

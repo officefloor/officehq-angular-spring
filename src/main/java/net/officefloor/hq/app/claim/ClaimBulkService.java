@@ -1,5 +1,6 @@
 package net.officefloor.hq.app.claim;
 
+import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.HashMap;
 import java.util.List;
@@ -41,10 +42,25 @@ public class ClaimBulkService {
     }
 
     /** Settle each of the claims that can be settled, in list order, exactly as settling one: a claim
-     *  a clerk's limit leaves pending counts as settled; each that cannot is refused and left as it
+     *  a clerk's limit leaves pending counts as settled, and those it settles are the sheet's next
+     *  settle batch (none when it settles none); each that cannot is refused and left as it
      *  is, and so is an id that names no claim on the sheet. */
     public Outcome settle(String sheetId, String user, Set<Long> claimIds) {
-        return change(sheetId, user, claimIds, ClaimStatus.SETTLED);
+        if (sheets.archived(sheetId)) {
+            return new Outcome(0, claimIds.size());
+        }
+        List<Long> settled = new ArrayList<>();
+        for (Claim claim : inListOrder(sheetId, claimIds)) {
+            try {
+                claims.changeStatus(sheetId, user, claim.getId(), ClaimStatus.SETTLED);
+                settled.add(claim.getId());
+            } catch (ResponseStatusException refused) {
+                // left as it is
+            }
+        }
+        // the claims it settled are a batch, numbered next on the sheet
+        claims.markSettleBatch(sheetId, settled);
+        return new Outcome(settled.size(), claimIds.size() - settled.size());
     }
 
     /** Move each of the claims that can be moved to the person, in list order, exactly as moving

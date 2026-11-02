@@ -205,6 +205,21 @@ public class ClaimService {
         return changeStatus(sheetId, user, claimId, to, null);
     }
 
+    /** Number the claims a bulk settle settled (or left pending) as the sheet's next settle batch;
+     *  nothing when it settled none. */
+    @Transactional
+    public void markSettleBatch(String sheetId, List<Long> claimIds) {
+        if (claimIds.isEmpty()) {
+            return;
+        }
+        int batch = sheets.nextSettleBatch(sheetId);
+        for (Long claimId : claimIds) {
+            Claim claim = lock(sheetId, claimId);
+            claim.setSettleBatch(batch);
+            claims.saveAndFlush(claim);
+        }
+    }
+
     /** Void a claim as {@link #changeStatus} does; while the sheet has void reasons, the void needs
      *  one of them (refused without), kept on the claim and ending its record. */
     @Transactional
@@ -453,6 +468,8 @@ public class ClaimService {
         return rollup.tracking(sheetId, user, () -> {
             Person person = person(sheetId, claim.getPersonId());
             claim.setStatus(ClaimStatus.OPEN);
+            // back to open, it is no longer settled by the batch that left it pending
+            claim.setSettleBatch(null);
             logStatus(sheetId, user, person, claim);
             Claim saved = claims.saveAndFlush(claim);
             audit.recordOnCommit(record("CLAIM_REJECTED", sheetId, user, person, saved) + " reason=" + reason);

@@ -98,6 +98,23 @@ public class SheetService {
         return sheets.lastClaimNumber(id);
     }
 
+    /** The next settle batch number on the sheet: 1 for its first bulk settle that settled a claim,
+     *  then 2, and so on. */
+    @Transactional
+    public int nextSettleBatch(String id) {
+        if (sheets.advanceSettleBatch(id) != 1) {
+            throw new IllegalStateException("No sheet " + id);
+        }
+        return sheets.lastSettleBatch(id);
+    }
+
+    /** The number of the last settle batch on the sheet; null when there has been none. */
+    @Transactional(readOnly = true)
+    public Integer lastSettleBatch(String id) {
+        Integer last = sheets.lastSettleBatch(id);
+        return last == null || last == 0 ? null : last;
+    }
+
     /** The next X-number on the sheet, for a claim in no period opened under period numbering: 1,
      *  then 2, and so on. */
     @Transactional
