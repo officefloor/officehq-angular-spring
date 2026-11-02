@@ -110,7 +110,14 @@ interface Descendants {
   /** Per status, how many of the descendants' claims have it. */
   statusCounts: Record<string, number>;
   /** Each descendant person's figures, with the keys of their name and aliases as names are compared. */
-  personFigures: { keys: string[]; dueTotal: string | null; overdueTotal: string }[];
+  personFigures: {
+    keys: string[];
+    dueTotal: string | null;
+    overdueTotal: string;
+    settledTotal: string;
+    openTotal: string;
+    cutTotal: string;
+  }[];
   /** How many of the descendants' claims are overdue. */
   overdueCount: number;
 }
@@ -205,7 +212,7 @@ interface StatementTaken {
 // row shows their excess, how far the sum of their figures plus their cut total is above the cap, at most the
 // sum of their figures (0.00 when not, or n/a). Every total of due-totals adds the capped ones.
 // Each row shows the person's cut total: their cuts as the pools show them, across every pool they are a
-// member of, added up (a pool that shows no cuts adds nothing); the sheet's cut total adds up everyone's.
+// member of, added up (a pool that shows no cuts adds nothing); the sheet's cut total adds up everyone's, trimmed.
 // Under it, a summary: per grade, the people on it today (retired people excluded) and their
 // due-totals added up; per period, its due-total; per status, how many claims have it.
 // Beside it, a classic summary: per period, its due-total counting each claim by its status now (a closed
@@ -213,7 +220,8 @@ interface StatementTaken {
 // Above everything, a header of counters repeating those figures: the people on the sheet (retired
 // people included), the claims per status, and the sheet's due-total and overdue-total.
 // The sheet's due-total and overdue-total leave out the single highest and the single lowest person's
-// figure when three or more people have one (an n/a due-total is no figure).
+// figure when three or more people have one (an n/a due-total is no figure); so do its settled-total,
+// open-total and cut total.
 // Under the header, a steward's dashboard: the count of PENDING claims, of REVIEW claims and of overdue
 // claims that count, over the sheet and all its descendants; empty for a user who does not act as a steward (as of the as-of date).
 // People can be selected and given a grade together from a from-date (blank: the sheet's today), each in
@@ -305,6 +313,9 @@ function trimmedSum(figures: number[]): number {
       <p>People: <strong data-testid="consolidated-people-count">{{ consolidated().people }}</strong></p>
       <p>Due total: <strong data-testid="consolidated-due-total">{{ money(consolidated().dueCents) | figure }}</strong></p>
       <p>Overdue total: <strong data-testid="consolidated-overdue-total">{{ money(consolidated().overdueCents) | figure }}</strong></p>
+      <p>Settled total: <strong data-testid="consolidated-settled-total">{{ money(consolidated().settledCents) | figure }}</strong></p>
+      <p>Open total: <strong data-testid="consolidated-open-total">{{ money(consolidated().openCents) | figure }}</strong></p>
+      <p>Cut total: <strong data-testid="consolidated-cut-total">{{ money(consolidated().cutCents) | figure }}</strong></p>
       <table>
         <caption>Consolidated by grade today, retired people excluded</caption>
         <thead>
@@ -943,6 +954,12 @@ export class People {
         .concat(others.map((o) => o.keys))),
       dueCents: trimmedSum(dues),
       overdueCents: trimmedSum(overdues),
+      settledCents: trimmedSum([...this.splitByPerson().values()].map((s) => s.settled)
+        .concat(others.map((o) => cents(o.settledTotal)))),
+      openCents: trimmedSum([...this.splitByPerson().values()].map((s) => s.open)
+        .concat(others.map((o) => cents(o.openTotal)))),
+      cutCents: trimmedSum(this.people().map((p) => this.cutTotalOf(p.id))
+        .concat(others.map((o) => cents(o.cutTotal)))),
       grades: this.gradeSummary().map((g) => ({
         grade: g.grade,
         dueCents: cents(g.dueTotal) + cents(d?.gradeDueTotals?.[g.grade] ?? '0.00'),
@@ -1302,15 +1319,13 @@ export class People {
     }
     return by;
   });
-  /** The sheet's settled-total and open-total: everyone's added up, not trimmed. */
+  /** The sheet's settled-total and open-total: everyone's added up, trimmed. */
   protected readonly splitTotal = computed(() => {
-    const total: Split = { settled: 0, open: 0, scored: 0 };
-    for (const s of this.splitByPerson().values()) {
-      total.settled += s.settled;
-      total.open += s.open;
-      total.scored += s.scored;
-    }
-    return total;
+    const splits = [...this.splitByPerson().values()];
+    return {
+      settled: trimmedSum(splits.map((s) => s.settled)),
+      open: trimmedSum(splits.map((s) => s.open)),
+    };
   });
   /** The sheet's age buckets in cents: everyone's added up, not trimmed. */
   protected readonly agedTotal = computed(() => {
@@ -1322,9 +1337,8 @@ export class People {
     }
     return total;
   });
-  /** The sheet's cut total in cents: everyone's cut totals added up. */
-  protected readonly cutTotal = computed(() =>
-    this.people().reduce((sum, p) => sum + this.cutTotalOf(p.id), 0));
+  /** The sheet's cut total in cents: everyone's cut totals added up, trimmed. */
+  protected readonly cutTotal = computed(() => trimmedSum(this.people().map((p) => this.cutTotalOf(p.id))));
   /** The sheet's overdue claims that count: everyone's added up. */
   protected readonly overdueTotal = computed(() => {
     let count = 0;

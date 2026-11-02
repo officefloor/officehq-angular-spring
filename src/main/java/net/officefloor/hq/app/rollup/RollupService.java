@@ -42,10 +42,12 @@ public class RollupService {
 
     /**
      * A person's figures; a null due-total is n/a; the overdue-total is the dues of their overdue claims;
-     * settled is the dues of their SETTLED claims that correct nothing, overdue count how many of their claims are overdue.
+     * settled is the dues of their SETTLED claims that correct nothing, overdue count how many of their claims are overdue;
+     * settled-total and open-total are their dues (less the parts given, plus the parts held) of their SETTLED claims
+     * and of their other claims, not capped.
      */
     public record Figures(String name, BigDecimal claimed, BigDecimal dueTotal, BigDecimal overdueTotal,
-            BigDecimal settled, int overdueCount) {
+            BigDecimal settled, int overdueCount, BigDecimal settledTotal, BigDecimal openTotal) {
 
         /**
          * Their score as the screen shows it: their settled figures (in hundreds) less 5 for every overdue
@@ -114,6 +116,8 @@ public class RollupService {
         List<Person> listed = people.findBySheetIdOrderByPositionAscIdAsc(sheetId);
         Map<Long, Figures> raw = new LinkedHashMap<>();
         Map<Long, BigDecimal> shared = new LinkedHashMap<>();
+        Map<Long, BigDecimal> heldSettled = new LinkedHashMap<>();
+        Map<Long, BigDecimal> heldOpen = new LinkedHashMap<>();
         Map<Long, Person> byId = new LinkedHashMap<>();
         for (Person person : listed) byId.put(person.getId(), person);
         for (Person person : listed) {
@@ -121,6 +125,8 @@ public class RollupService {
             BigDecimal due = zero();
             BigDecimal overdue = zero();
             BigDecimal settled = zero();
+            BigDecimal settledTotal = zero();
+            BigDecimal openTotal = zero();
             int overdueCount = 0;
             boolean fixed = false;
             for (Claim claim : claimsByPerson.getOrDefault(person.getId(), List.of())) {
@@ -148,6 +154,8 @@ public class RollupService {
                 if (figure != null && today != null
                         && !levels.inForceFor(grade, claim.getDate(), claim.getAdded()).equals(levels.inForce(grade, today))) fixed = true;
                 if (figure != null) due = due.add(figure);
+                boolean isSettled = claim.getStatus() == ClaimStatus.SETTLED;
+                BigDecimal own = figure == null ? zero() : figure;
                 // each holder's part of it counts in their due-total, no longer in its own person's: a settled
                 // claim's parts frozen with its due, else by the rate of the holder's own grade on its date
                 for (ClaimShare share : claim.getShares()) {
@@ -163,8 +171,12 @@ public class RollupService {
                         part = share.partOf(claim.getAmount(), pct, rounding);
                     }
                     due = due.subtract(part);
+                    own = own.subtract(part);
                     shared.merge(share.getPersonId(), part, BigDecimal::add);
+                    (isSettled ? heldSettled : heldOpen).merge(share.getPersonId(), part, BigDecimal::add);
                 }
+                if (isSettled) settledTotal = settledTotal.add(own);
+                else openTotal = openTotal.add(own);
                 if (figure != null && LateCharge.isOverdue(claim, today, grace)) overdue = overdue.add(figure);
                 if (LateCharge.isOverdue(claim, today, grace)) overdueCount++;
                 // the score's settled figures leave out corrections
@@ -174,7 +186,7 @@ public class RollupService {
             // due, nor a due under another grade they had on its date or under a rate not in force today.
             boolean rated = today != null && levels.inForce(person.gradeOn(today), today).isPresent();
             raw.put(person.getId(), new Figures(person.getName(), claimed, fixed || rated ? due : null, overdue,
-                    settled, overdueCount));
+                    settled, overdueCount, settledTotal, openTotal));
         }
         Map<Long, Figures> figures = new LinkedHashMap<>();
         BigDecimal claimedTotal = zero();
@@ -188,7 +200,9 @@ public class RollupService {
             BigDecimal part = shared.get(e.getKey());
             BigDecimal personDue = part == null ? f.dueTotal() : (f.dueTotal() == null ? zero() : f.dueTotal()).add(part);
             if (sheet != null) personDue = sheet.capped(personDue, cuts.getOrDefault(e.getKey(), zero()));
-            figures.put(e.getKey(), new Figures(f.name(), f.claimed(), personDue, f.overdueTotal(), f.settled(), f.overdueCount()));
+            figures.put(e.getKey(), new Figures(f.name(), f.claimed(), personDue, f.overdueTotal(), f.settled(), f.overdueCount(),
+                    f.settledTotal().add(heldSettled.getOrDefault(e.getKey(), zero())),
+                    f.openTotal().add(heldOpen.getOrDefault(e.getKey(), zero()))));
             claimedTotal = claimedTotal.add(f.claimed());
             if (personDue != null) dues.add(personDue);
             overdues.add(f.overdueTotal());

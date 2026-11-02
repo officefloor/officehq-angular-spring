@@ -14,6 +14,7 @@ import net.officefloor.hq.app.claim.Claim;
 import net.officefloor.hq.app.claim.ClaimRepository;
 import net.officefloor.hq.app.person.Person;
 import net.officefloor.hq.app.person.PersonRepository;
+import net.officefloor.hq.app.pool.PoolService;
 import net.officefloor.hq.app.sheet.Sheet;
 import net.officefloor.hq.app.sheet.SheetParentRepository;
 import net.officefloor.hq.app.sheet.SheetRepository;
@@ -55,18 +56,21 @@ public class ConsolidatedController {
 
     /**
      * A descendant person's figures as their sheet shows them: the keys of their name and aliases (as names
-     * are compared), their due-total (null when n/a) and overdue-total.
+     * are compared), their due-total (null when n/a) and overdue-total, their settled-total, open-total and cut total.
      */
-    public record PersonFigures(List<String> keys, String dueTotal, String overdueTotal) {}
+    public record PersonFigures(List<String> keys, String dueTotal, String overdueTotal, String settledTotal,
+            String openTotal, String cutTotal) {}
 
     private final SheetParentRepository parents;
     private final RollupService rollup;
     private final PersonRepository persons;
     private final ClaimRepository claims;
     private final SheetRepository sheetRepository;
+    private final PoolService pools;
 
     public ConsolidatedController(SheetParentRepository parents, RollupService rollup, PersonRepository people,
-            ClaimRepository claims, SheetRepository sheetRepository) {
+            ClaimRepository claims, SheetRepository sheetRepository, PoolService pools) {
+        this.pools = pools;
         this.parents = parents;
         this.rollup = rollup;
         this.persons = people;
@@ -99,13 +103,17 @@ public class ConsolidatedController {
             due = due.add(figures.dueTotal());
             overdue = overdue.add(figures.overdueTotal());
             for (RollupService.Figures theirs : figures.people().values()) overdueCount += theirs.overdueCount();
+            Map<Long, BigDecimal> cuts = pools.cutTotals(descendant);
             LocalDate today = sheetRepository.findById(descendant).map(Sheet::getToday).orElse(null);
             for (Person person : persons.findBySheetIdOrderByPositionAscIdAsc(descendant)) {
                 RollupService.Figures theirs = figures.people().get(person.getId());
                 if (theirs != null) {
                     personFigures.add(new PersonFigures(person.namesAndAliases().stream().map(Person::keyOf).toList(),
                             theirs.dueTotal() == null ? null : theirs.dueTotal().setScale(2).toPlainString(),
-                            theirs.overdueTotal().setScale(2).toPlainString()));
+                            theirs.overdueTotal().setScale(2).toPlainString(),
+                            theirs.settledTotal().setScale(2).toPlainString(),
+                            theirs.openTotal().setScale(2).toPlainString(),
+                            cuts.getOrDefault(person.getId(), BigDecimal.ZERO).setScale(2).toPlainString()));
                 }
                 if (person.isRetired()) continue;
                 if (theirs == null || theirs.dueTotal() == null) continue;

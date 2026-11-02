@@ -1161,7 +1161,9 @@ export class Claims {
 
   /** The claim's holders as <name> <share>, in the order they were added, comma and space separated. */
   protected sharesOf(c: Claim): string {
+    // a holder the claim has since been moved to is its own person
     const names = new Map(this.others().map((o) => [o.id, o.name]));
+    names.set(this.personId(), this.personName());
     return c.shares.map((s) => `${names.get(s.personId) ?? ''} ${s.share}`).join(', ');
   }
 
