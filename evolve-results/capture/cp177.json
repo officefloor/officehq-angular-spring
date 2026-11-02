@@ -1,0 +1,64 @@
+{
+  "checkpoint": 177,
+  "stack": {
+    "repo": "/home/daniel/officehq-angular-spring",
+    "origin": "git@github.com:officefloor/officehq-angular-spring.git",
+    "name": "officehq-angular-spring",
+    "base_ref": "base-empty",
+    "base_commit": "65cb8233ea38b2dfa6cfd18709e30cd18fdf3250"
+  },
+  "checkpoint_id": "cp177_proof-kinds",
+  "phase": "late",
+  "type": "additive",
+  "mutates": [],
+  "replaced_tests": [],
+  "request": {
+    "spec": "A proof has a kind, receipt or photo, chosen when it is added (receipt when none is chosen);\nCLAIM_PROOF_ADDED gains kind=<kind> at its end when a kind was chosen, and the claim shows a count\nper kind beside the total. The sheet gains proof kinds (settings, a comma separated list of kinds, not dated;\nSETTING_CHANGED key=proof-kinds value=<list>): while set, a claim above the proof threshold needs\nat least one proof of each listed kind before it can be settled or approved.\n",
+    "prompt": "You are implementing ONE change to this application.\n\nFIRST read AGENTS.md \u2014 it states the working rules and how the app is tested, and sends you to\nDESIGN.md for the app's stack and conventions. Follow both.\n\nTHE CHANGE REQUEST:\nA proof has a kind, receipt or photo, chosen when it is added (receipt when none is chosen);\nCLAIM_PROOF_ADDED gains kind=<kind> at its end when a kind was chosen, and the claim shows a count\nper kind beside the total. The sheet gains proof kinds (settings, a comma separated list of kinds, not dated;\nSETTING_CHANGED key=proof-kinds value=<list>): while set, a claim above the proof threshold needs\nat least one proof of each listed kind before it can be settled or approved.\n\nYour work is verified by an automated Playwright UI test already installed under e2e/specs/.\nRead that spec: it declares the exact data-testid anchors, values, test data and any audit\nrecords it expects \u2014 match them. Run `bin/e2e` to build the app, start it, and run the test as\nyou work; iterate until it passes. Change whatever the request needs across the app \u2014 its stored\ndata, its server and its front end. Do NOT edit bin/build, bin/start, bin/stop, bin/e2e,\nAGENTS.md, CLAUDE.md, DESIGN.md, e2e/support/ or the test spec.\n"
+  },
+  "commit_sha": "14dc83e89dca88486e1465e825bca69e3ca931e8",
+  "reset_sha": "",
+  "preagent_sha": "7dd3d79efd55b222c923e6e1af999e9c16a3015d",
+  "prev_sha": "7dd3d79efd55b222c923e6e1af999e9c16a3015d",
+  "base_sha": "65cb8233ea38b2dfa6cfd18709e30cd18fdf3250",
+  "agent": {
+    "ok": true,
+    "cost_usd": 1.3581276,
+    "input_tokens": 62,
+    "output_tokens": 15932,
+    "cache_read_tokens": 1896078,
+    "cache_creation_tokens": 82503,
+    "num_turns": 32,
+    "duration_ms": 557152,
+    "duration_api_ms": 173591,
+    "model": "claude-opus-5-5",
+    "session_id": "bb22a4e4-0a0e-4729-b5a4-12061d2c90b6",
+    "stop_reason": "success",
+    "result_text": "Proof kinds are in, and `bin/e2e` now passes all 4 tests (the main proof-kinds test and its three scenarios).\n\n**What it does**\n- **Choosing a kind:** each claim row has a proof-kind dropdown (`claim-proof-kind`) with a blank default, receipt and photo. A proof added with no kind chosen counts as a receipt. The dropdown goes back to blank after each add.\n- **Audit:** `CLAIM_PROOF_ADDED` ends with `kind=<kind>` only when a kind was actually chosen.\n- **Counts:** the row shows `claim-proofs-receipt` and `claim-proofs-photo` beside the total. A new migration, `V98__proof_kinds.sql`, adds the two counts and treats every existing proof as a receipt.\n- **The setting:** \"Proof kinds\" is an undated text field (`setting-proof-kinds`, with `setting-proof-kinds-current`). It takes a comma-separated list of receipt and photo; blank means none. Saving writes `SETTING_CHANGED key=proof-kinds value=<list>`, and anything else in the list is refused by both the screen and the server.\n- **The rule:** while kinds are set, a claim above the proof threshold can't be settled or approved until it has at least one proof of each listed kind. The refusal message names the kinds. With no kinds set, the old rule (any one proof) still applies. Bulk settle uses the same check.\n\nThe server changes are in `Claim`, `ClaimService`, `ClaimController`, `Sheet`, `SettingService` and `SettingController`. The screen changes are in `claims.ts`, `settings.ts` and `session.ts`.\n\n**One fix outside the request.** Scenario 1 failed because of a bug that was already in the person editor. It filled the terms field with the terms in force *today*. So saving an edit that only changed the grade also rewrote the person's terms back to the beginning of time, and an earlier claim's due-by moved (2026-03-02 instead of 2026-03-17). I changed the editor to fill in the person's undated terms instead, which is what the inline grade change already does. It's two lines in `src/main/frontend/src/app/features/people/people.ts` (2078 and 2325), and it means an edit that doesn't touch terms leaves them alone.",
+    "error": "",
+    "attempts": [
+      {
+        "ok": true,
+        "limit_reached": false,
+        "retryable": false,
+        "timed_out": false,
+        "cost_usd": 1.3581276,
+        "num_turns": 32,
+        "duration_ms": 557152,
+        "duration_api_ms": 173591,
+        "error": ""
+      }
+    ]
+  },
+  "agent_stream_file": "cp177.agent.jsonl",
+  "agent_diff_file": "cp177.agent.diff",
+  "build_log_file": null,
+  "tests": {
+    "gated": false,
+    "queued": true
+  },
+  "probe": null,
+  "pinned_touched": [],
+  "acceptance_touched": [],
+  "impact_gate": null
+}
