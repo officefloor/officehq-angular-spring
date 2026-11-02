@@ -65,6 +65,8 @@ const NO_LEAVE: Leave = { holds: [], retiredFrom: null };
       <app-paste-claims-box (pasted)="claimsPasted()" />
       <p>Claimed in total: <strong data-testid="rollup-claimed-total">{{ claimedTotal() }}</strong></p>
       <p>Due in total: <strong data-testid="rollup-due-total">{{ dueTotal() }}</strong></p>
+      <p>Settled due in total: <strong data-testid="rollup-settled-total">{{ settledTotal() }}</strong></p>
+      <p>Open due in total: <strong data-testid="rollup-open-total">{{ openTotal() }}</strong></p>
       <p>Overdue claims: <strong data-testid="rollup-overdue-count">{{ overdueCount() }}</strong></p>
       <p>Overdue in total: <strong data-testid="rollup-overdue-total">{{ overdueTotal() }}</strong></p>
       <app-summary-panel [grades]="gradeSummary()" [periods]="periodSummary()" [statuses]="statusSummary()" />
@@ -106,7 +108,7 @@ const NO_LEAVE: Leave = { holds: [], retiredFrom: null };
       <button type="button" data-testid="export-people" (click)="exportCsv()">Export people (CSV)</button>
       <table data-testid="people">
         <thead>
-          <tr><th scope="col"><span class="visually-hidden">Select</span></th><th scope="col">Name</th><th scope="col">Grade</th><th scope="col">Active</th><th scope="col">Terms</th><th scope="col">Claimed</th><th scope="col">Due</th>@for (pd of periods(); track pd.id) {<th scope="col">Due in {{ pd.name }}</th>}<th scope="col">Excess</th><th scope="col">Statements</th><th scope="col">Last stated</th><th scope="col">Stated on</th><th scope="col">Retired</th><th scope="col">Retired from</th><th scope="col">On hold</th><th scope="col">Overdue</th><th scope="col">Overdue due</th><th scope="col">Due aged 0–30 days</th><th scope="col">Due aged 31–60 days</th><th scope="col">Due aged 61+ days</th><th scope="col">Patrons</th><th scope="col">Backing</th><th scope="col">Watched</th><th scope="col">Claims</th><th scope="col"><span class="visually-hidden">Actions</span></th></tr>
+          <tr><th scope="col"><span class="visually-hidden">Select</span></th><th scope="col">Name</th><th scope="col">Grade</th><th scope="col">Active</th><th scope="col">Terms</th><th scope="col">Claimed</th><th scope="col">Due</th><th scope="col">Settled due</th><th scope="col">Open due</th>@for (pd of periods(); track pd.id) {<th scope="col">Due in {{ pd.name }}</th>}<th scope="col">Excess</th><th scope="col">Statements</th><th scope="col">Last stated</th><th scope="col">Stated on</th><th scope="col">Retired</th><th scope="col">Retired from</th><th scope="col">On hold</th><th scope="col">Overdue</th><th scope="col">Overdue due</th><th scope="col">Due aged 0–30 days</th><th scope="col">Due aged 31–60 days</th><th scope="col">Due aged 61+ days</th><th scope="col">Patrons</th><th scope="col">Backing</th><th scope="col">Watched</th><th scope="col">Claims</th><th scope="col"><span class="visually-hidden">Actions</span></th></tr>
         </thead>
         <tbody>
           @for (p of shown(); track p.id) {
@@ -122,6 +124,8 @@ const NO_LEAVE: Leave = { holds: [], retiredFrom: null };
               <td data-testid="person-terms">{{ p.terms ?? '' }}</td>
               <td data-testid="person-claimed">{{ claimed().get(p.id) ?? '0.00' }}</td>
               <td data-testid="person-due-total">{{ dueOf(p) ?? 'n/a' }}</td>
+              <td data-testid="person-settled-total">{{ settledTotalOf(p) }}</td>
+              <td data-testid="person-open-total">{{ openTotalOf(p) }}</td>
               @for (pd of periods(); track pd.id) {
                 <td [attr.data-testid]="'person-period-' + pd.name + '-due-total'">{{ periodDueOf(p.id, pd) }}</td>
               }
@@ -328,6 +332,14 @@ export class PeopleList {
    *  out the single highest and lowest when three or more have one. */
   protected readonly dueTotal = computed(() =>
     trimmedSum(this.people().map((p) => this.dueOf(p)).filter((d): d is string => d !== null)),
+  );
+  /** The sheet's settled-total: everyone's settled-total added up (not trimmed). */
+  protected readonly settledTotal = computed(() =>
+    sumAmounts(this.people().map((p) => this.settledTotalOf(p))),
+  );
+  /** The sheet's open-total: everyone's open-total added up (not trimmed). */
+  protected readonly openTotal = computed(() =>
+    sumAmounts(this.people().map((p) => this.openTotalOf(p))),
   );
   /** How many claims on the sheet are overdue among those that count in the live totals. */
   protected readonly overdueCount = computed(() =>
@@ -816,6 +828,27 @@ export class PeopleList {
       return null;
     }
     return sumAmounts(figures);
+  }
+
+  /** A person's settled-total: the due figures of their settled claims that count (their frozen
+   *  figures, corrections included), skipping those with no due. */
+  protected settledTotalOf(p: Person): string {
+    return this.statusTotalOf(p, (c) => c.status === 'SETTLED');
+  }
+
+  /** A person's open-total: the due figures of their open and pending claims that count (held,
+   *  deferred and retired-and-excluded ones are left out), skipping those with no due. With the
+   *  settled-total it adds up to their due-total before the cap. */
+  protected openTotalOf(p: Person): string {
+    return this.statusTotalOf(p, isOpen);
+  }
+
+  private statusTotalOf(p: Person, keep: (c: Claim) => boolean): string {
+    const today = this.session.today();
+    return sumAmounts((this.claimsByPerson().get(p.id) ?? [])
+      .filter((c) => keep(c) && countsLive(c, p, today))
+      .map((c) => claimDue(c, this.rates(), gradeOn(p.grades, c.date), this.floor(), this.lateness()))
+      .filter((d): d is string => d !== null));
   }
 
   /** The grade a person shows: the one in force on the sheet's today. */
