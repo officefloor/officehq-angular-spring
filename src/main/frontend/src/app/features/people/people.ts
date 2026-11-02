@@ -440,7 +440,7 @@ function trimmedSum(figures: number[]): number {
                        [attr.aria-label]="'Select ' + p.name" />
               </td>
               <td>
-                <span data-testid="person-name">{{ p.name }}</span>
+                <span data-testid="person-name">{{ shownName(p) }}</span>
                 <button type="button" data-testid="person-move-up" (click)="move(p, 'up')"
                         [attr.aria-label]="'Move ' + p.name + ' up'">Up</button>
                 <button type="button" data-testid="person-move-down" (click)="move(p, 'down')"
@@ -1238,7 +1238,7 @@ export class People {
     this.form.valueChanges.subscribe(() => this.error.set(''));
     this.quickForm.valueChanges.subscribe(() => this.quickError.set(''));
     this.bulkGradeForm.valueChanges.subscribe(() => this.personError.set(null));
-    effect(() => this.session.people.set(this.people().map((p) => ({ id: p.id, name: p.name, retired: p.retired }))));
+    effect(() => this.session.people.set(this.people().map((p) => ({ id: p.id, name: p.name, shown: this.shownName(p), retired: p.retired }))));
     effect(() => this.session.dueTotals.set(new Map(this.people().map((p) => [p.id, this.dueTotalCents(p)]))));
     effect(() => {
       const id = this.session.sheetId();
@@ -1376,6 +1376,11 @@ export class People {
   }
 
   /** The person's grade in force on the sheet's today. */
+  /** Their name as the screen shows it, with the grade in force on the sheet's today. */
+  protected shownName(p: Person): string {
+    return `${p.name} (${this.gradeOf(p)})`;
+  }
+
   protected gradeOf(p: Person): string {
     const today = this.session.today();
     return today === null ? p.grade : gradeOn(p, today);
@@ -1484,7 +1489,7 @@ export class People {
   protected patronsOf(p: Person): string {
     return this.patronShares(p)
       .sort((a, b) => (a.patron.name < b.patron.name ? -1 : a.patron.name > b.patron.name ? 1 : 0))
-      .map((x) => `${x.patron.name} ${money(x.share)}`)
+      .map((x) => `${this.shownName(x.patron)} ${money(x.share)}`)
       .join(', ');
   }
 

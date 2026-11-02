@@ -64,6 +64,8 @@ export interface ClaimTemplate {
 export interface PersonRef {
   id: number;
   name: string;
+  /** Their name as the screen shows it: <name> (<grade in force on the sheet's today>). */
+  shown: string;
   retired: boolean;
 }
 

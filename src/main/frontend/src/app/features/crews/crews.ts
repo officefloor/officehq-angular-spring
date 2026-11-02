@@ -55,7 +55,7 @@ interface CrewLine extends CrewView {
         @for (c of lines(); track c.id) {
           <li [attr.data-testid]="'crew-row-' + c.name">
             <strong>{{ c.name }}</strong>
-            — lead <span data-testid="crew-lead">{{ c.lead?.name ?? '' }}</span>,
+            — lead <span data-testid="crew-lead">{{ leadShown(c.lead) }}</span>,
             due total <span data-testid="crew-due-total">{{ c.dueTotal | figure }}</span>
             <ul [attr.aria-label]="'Members of ' + c.name">
               @for (m of c.members; track m.personId) {
@@ -126,6 +126,12 @@ export class Crews {
 
   private base(sheet: string): string {
     return `/api/sheets/${encodeURIComponent(sheet)}/crews`;
+  }
+
+  /** The lead as the screen shows a name, with their grade in force today; blank when no longer on the sheet. */
+  protected leadShown(lead: MemberView | null): string {
+    if (!lead) return '';
+    return this.session.people().find((p) => p.id === lead.personId)?.shown ?? lead.name;
   }
 
   /** The crew's add-member form, made the first time it is shown. */

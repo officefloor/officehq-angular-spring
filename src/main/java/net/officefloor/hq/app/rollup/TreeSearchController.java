@@ -4,11 +4,13 @@ import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.Pattern;
 import jakarta.validation.constraints.Size;
 import java.math.BigDecimal;
+import java.time.LocalDate;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Locale;
 import net.officefloor.hq.app.person.Person;
 import net.officefloor.hq.app.person.PersonRepository;
+import net.officefloor.hq.app.person.PersonService;
 import net.officefloor.hq.app.sheet.SheetParentRepository;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.validation.annotation.Validated;
@@ -33,14 +35,17 @@ public class TreeSearchController {
     private final SheetParentRepository parents;
     private final PersonRepository people;
     private final RollupService rollup;
+    private final PersonService personService;
 
-    public TreeSearchController(SheetParentRepository parents, PersonRepository people, RollupService rollup) {
+    public TreeSearchController(SheetParentRepository parents, PersonRepository people, RollupService rollup,
+            PersonService personService) {
         this.parents = parents;
         this.people = people;
         this.rollup = rollup;
+        this.personService = personService;
     }
 
-    /** Lines of {@code <sheet id> <name> <due-total>}. */
+    /** Lines of {@code <sheet id> <name> (<grade in force on that sheet's today>) <due-total>}. */
     @GetMapping
     @Transactional(readOnly = true)
     public List<String> search(
@@ -53,13 +58,15 @@ public class TreeSearchController {
         List<String> lines = new ArrayList<>();
         for (String at : sheets) {
             RollupService.Snapshot figures = rollup.current(at);
+            LocalDate today = personService.today(at);
             for (Person person : people.findBySheetIdOrderByPositionAscIdAsc(at)) {
                 boolean matches = person.namesAndAliases().stream()
                         .anyMatch(name -> name.toLowerCase(Locale.ROOT).contains(needle));
                 if (!matches) continue;
                 RollupService.Figures own = figures.people().get(person.getId());
                 BigDecimal due = own == null ? null : own.dueTotal();
-                lines.add(at + " " + person.getName() + " " + (due == null ? "n/a" : due.setScale(2).toPlainString()));
+                String grade = today == null ? person.getGrade() : person.gradeOn(today);
+                lines.add(at + " " + person.getName() + " (" + grade + ") " + (due == null ? "n/a" : due.setScale(2).toPlainString()));
             }
         }
         return lines;
