@@ -156,6 +156,14 @@ public class ClaimController {
     public record BulkSettled(int settled, int refused) {
     }
 
+    /** The claims a bulk reassign moves, by id, and the person it moves them to. */
+    public record BulkReassignForm(@NotNull @Size(max = 1000) Set<@NotNull Long> claimIds, @NotNull Long personId) {
+    }
+
+    /** How many claims a bulk reassign moved, and how many it refused. */
+    public record BulkReassigned(int reassigned, int refused) {
+    }
+
     private final ClaimService service;
     private final ClaimBulkService bulk;
     private final History history;
@@ -358,6 +366,16 @@ public class ClaimController {
             @RequestHeader("X-User") @NotBlank @Size(max = 100) String user,
             @Valid @RequestBody ReassignForm form) {
         return ClaimView.of(service.reassign(sheetId.trim(), user.trim(), claimId, form.personId()));
+    }
+
+    @ViewerAllowed
+    @ArchivedAllowed
+    @PostMapping("/claims/reassign")
+    public BulkReassigned reassignAll(@PathVariable @NotBlank @Size(max = 100) String sheetId,
+            @RequestHeader("X-User") @NotBlank @Size(max = 100) String user,
+            @Valid @RequestBody BulkReassignForm form) {
+        ClaimBulkService.Outcome outcome = bulk.reassign(sheetId.trim(), user.trim(), form.claimIds(), form.personId());
+        return new BulkReassigned(outcome.done(), outcome.refused());
     }
 
     /** The amount split off an open claim: above 0.00, with up to two decimals. */

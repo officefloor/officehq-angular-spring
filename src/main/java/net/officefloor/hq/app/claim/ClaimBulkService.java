@@ -47,6 +47,25 @@ public class ClaimBulkService {
         return change(sheetId, user, claimIds, ClaimStatus.SETTLED);
     }
 
+    /** Move each of the claims that can be moved to the person, in list order, exactly as moving
+     *  one; each that cannot is refused and left as it is, and so is an id that names no claim on the
+     *  sheet. */
+    public Outcome reassign(String sheetId, String user, Set<Long> claimIds, long toPersonId) {
+        if (sheets.archived(sheetId)) {
+            return new Outcome(0, claimIds.size());
+        }
+        int done = 0;
+        for (Claim claim : inListOrder(sheetId, claimIds)) {
+            try {
+                claims.reassign(sheetId, user, claim.getId(), toPersonId, true);
+                done++;
+            } catch (ResponseStatusException refused) {
+                // left as it is
+            }
+        }
+        return new Outcome(done, claimIds.size() - done);
+    }
+
     private Outcome change(String sheetId, String user, Set<Long> claimIds, ClaimStatus to) {
         if (sheets.archived(sheetId)) {
             return new Outcome(0, claimIds.size());

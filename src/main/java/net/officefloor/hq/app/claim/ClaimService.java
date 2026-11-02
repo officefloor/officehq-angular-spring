@@ -465,6 +465,13 @@ public class ClaimService {
      *  new person's retirement day. */
     @Transactional
     public Claim reassign(String sheetId, String user, long claimId, long toPersonId) {
+        return reassign(sheetId, user, claimId, toPersonId, false);
+    }
+
+    /** Move a claim as {@link #reassign(String, String, long, long)} does; a bulk move ({@code
+     *  inBulk}) also takes a claim that is already the person's, listing it as their newest. */
+    @Transactional
+    public Claim reassign(String sheetId, String user, long claimId, long toPersonId, boolean inBulk) {
         Claim claim = lock(sheetId, claimId);
         if (!roles.may(sheetId, user, "reassign")) {
             throw new ResponseStatusException(HttpStatus.FORBIDDEN, "Your role may not reassign a claim");
@@ -473,7 +480,7 @@ public class ClaimService {
             throw new ResponseStatusException(HttpStatus.CONFLICT,
                     "A " + claim.getStatus() + " claim cannot be reassigned");
         }
-        if (claim.getPersonId() == toPersonId) {
+        if (!inBulk && claim.getPersonId() == toPersonId) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "The claim is already that person's");
         }
         refuseClosed(sheetId, claim.getDueBy());

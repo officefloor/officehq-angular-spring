@@ -462,6 +462,16 @@ export class Claims {
     );
   }
 
+  /** Move each of the selected claims that can be moved to the person, in list order, as moving
+   *  one does; the rest are refused and left as they are. */
+  reassignAll(claimIds: number[], personId: number): Promise<{ reassigned: number; refused: number }> {
+    const { sheetId, user } = this.active();
+    return firstValueFrom(
+      this.http.post<{ reassigned: number; refused: number }>(`${this.url(sheetId)}/claims/reassign`,
+        { claimIds, personId }, { headers: { 'X-User': user } }),
+    );
+  }
+
   private url(sheetId: string): string {
     return `/api/sheets/${encodeURIComponent(sheetId)}`;
   }

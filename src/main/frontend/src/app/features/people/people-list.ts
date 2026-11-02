@@ -94,6 +94,18 @@ const NO_LEAVE: Leave = { holds: [], retiredFrom: null };
         <p role="status">Settled <strong data-testid="bulk-settled">{{ b.settled }}</strong>,
           refused <strong data-testid="bulk-settle-refused">{{ b.refused }}</strong></p>
       }
+      <label for="bulk-reassign-to">Reassign selected claims to</label>
+      <select #bulkReassignTo id="bulk-reassign-to" data-testid="bulk-reassign-to">
+        @for (p of people(); track p.id) {
+          <option [value]="p.id">{{ p.name }}</option>
+        }
+      </select>
+      <button type="button" data-testid="bulk-reassign" (click)="bulkReassign(bulkReassignTo.value)">Reassign
+        selected claims</button>
+      @if (bulkReassigned(); as b) {
+        <p role="status">Reassigned <strong data-testid="bulk-reassigned">{{ b.reassigned }}</strong>,
+          refused <strong data-testid="bulk-reassign-refused">{{ b.refused }}</strong></p>
+      }
       <div role="group" aria-labelledby="bulk-grade-heading">
         <span id="bulk-grade-heading">Grade selected people</span>
         <label for="bulk-grade">Grade</label>
@@ -420,6 +432,10 @@ export class PeopleList {
   protected readonly bulkSettled = signal<{ settled: number; refused: number } | null>(null);
   /** Whether a bulk settle is waiting for its answer: a second press meanwhile is ignored. */
   private settling = false;
+  /** What the last bulk reassign did; null while one runs and before the first. */
+  protected readonly bulkReassigned = signal<{ reassigned: number; refused: number } | null>(null);
+  /** Whether a bulk reassign is waiting for its answer: a second press meanwhile is ignored. */
+  private reassigning = false;
   /** The ids of the people selected for a bulk grade. */
   protected readonly selectedPeople = signal<ReadonlySet<number>>(new Set());
   /** How many people the last bulk grade changed; null while one runs and before the first. */
@@ -475,6 +491,7 @@ export class PeopleList {
       this.selected.set(new Set());
       this.bulkOpened.set(null);
       this.bulkSettled.set(null);
+      this.bulkReassigned.set(null);
       this.selectedPeople.set(new Set());
       this.bulkGraded.set(null);
       this.bulkGradeError.set('');
@@ -792,6 +809,26 @@ export class PeopleList {
       this.bulkSettled.set({ settled: 0, refused: this.selected().size });
     } finally {
       this.settling = false;
+    }
+  }
+
+  /** Move the selected claims that can be moved to the person, then show the claims as they are
+   *  now and how many were moved and refused. */
+  protected async bulkReassign(to: string): Promise<void> {
+    const sheetId = this.session.sheetId();
+    if (this.reassigning || !sheetId) return;
+    this.reassigning = true;
+    this.bulkReassigned.set(null);
+    try {
+      if (!to) throw new Error('No person chosen');
+      const result = await this.claimsApi.reassignAll([...this.selected()], Number(to));
+      this.selected.set(new Set());
+      this.claims.set(await this.claimsApi.list(sheetId));
+      this.bulkReassigned.set(result);
+    } catch {
+      this.bulkReassigned.set({ reassigned: 0, refused: this.selected().size });
+    } finally {
+      this.reassigning = false;
     }
   }
 
