@@ -1,0 +1,320 @@
+diff --git a/src/main/frontend/src/app/core/people.ts b/src/main/frontend/src/app/core/people.ts
+index 7cc1a163a..fe4f4b052 100644
+--- a/src/main/frontend/src/app/core/people.ts
++++ b/src/main/frontend/src/app/core/people.ts
+@@ -9,6 +9,8 @@ export interface Person {
+   id: number;
+   name: string;
+   grade: Grade;
++  /** Raised each time the person is saved. */
++  version: number;
+ }
+ 
+ export interface PersonForm {
+@@ -31,10 +33,12 @@ export class People {
+     return firstValueFrom(this.http.post<Person>(this.url(sheetId), form, { headers: { 'X-User': user } }));
+   }
+ 
+-  edit(id: number, form: PersonForm): Promise<Person> {
++  /** Save over the version of the person the editor loaded; refused (412) when another user has
++   *  saved them since. */
++  edit(id: number, version: number, form: PersonForm): Promise<Person> {
+     const { sheetId, user } = this.active();
+     return firstValueFrom(
+-      this.http.put<Person>(`${this.url(sheetId)}/${id}`, form, { headers: { 'X-User': user } }),
++      this.http.put<Person>(`${this.url(sheetId)}/${id}`, { ...form, version }, { headers: { 'X-User': user } }),
+     );
+   }
+ 
+diff --git a/src/main/frontend/src/app/features/claims/person-claims.ts b/src/main/frontend/src/app/features/claims/person-claims.ts
+index 9c186dd17..62adebe25 100644
+--- a/src/main/frontend/src/app/features/claims/person-claims.ts
++++ b/src/main/frontend/src/app/features/claims/person-claims.ts
+@@ -84,6 +84,8 @@ export class PersonClaims {
+   /** The id of the claim whose editor is open, or null when the form adds a claim. */
+   protected readonly editing = signal<number | null>(null);
+   protected readonly error = signal('');
++  /** Whether a submit is waiting for its answer: a second submit meanwhile is ignored. */
++  private submitting = false;
+   /** The refusal of the last action taken on a claim's row, shown on that row. */
+   protected readonly claimError = signal<{ id: number; message: string } | null>(null);
+   protected readonly form = new FormGroup({
+@@ -124,6 +126,7 @@ export class PersonClaims {
+   }
+ 
+   protected async submit(): Promise<void> {
++    if (this.submitting) return;
+     this.error.set('');
+     const { amount, date, note } = this.form.getRawValue();
+     if (!AMOUNT.test(amount.trim())) {
+@@ -137,12 +140,15 @@ export class PersonClaims {
+     }
+     const form = { amount: amount.trim(), date: day === '' ? null : day, note };
+     const id = this.editing();
++    this.submitting = true;
+     try {
+       const claim = id === null ? await this.api.add(this.personId(), form) : await this.api.edit(id, form);
+       this.saved.emit(claim);
+       this.reset();
+     } catch {
+       this.error.set(id === null ? 'The claim could not be added.' : 'The claim could not be saved.');
++    } finally {
++      this.submitting = false;
+     }
+   }
+ 
+diff --git a/src/main/frontend/src/app/features/people/people-list.ts b/src/main/frontend/src/app/features/people/people-list.ts
+index 188dea1eb..daa34df33 100644
+--- a/src/main/frontend/src/app/features/people/people-list.ts
++++ b/src/main/frontend/src/app/features/people/people-list.ts
+@@ -105,6 +105,10 @@ export class PeopleList {
+   );
+   /** The id of the person whose editor is open, or null when the form adds a person. */
+   protected readonly editing = signal<number | null>(null);
++  /** The version of the person the open editor loaded. */
++  private version = 0;
++  /** Whether a submit is waiting for its answer: a second submit meanwhile is ignored. */
++  private submitting = false;
+   protected readonly error = signal('');
+   protected readonly form = new FormGroup({
+     name: new FormControl('', { nonNullable: true }),
+@@ -128,6 +132,7 @@ export class PeopleList {
+ 
+   protected open(p: Person): void {
+     this.editing.set(p.id);
++    this.version = p.version;
+     this.form.setValue({ name: p.name, grade: p.grade });
+     this.error.set('');
+   }
+@@ -137,6 +142,7 @@ export class PeopleList {
+   }
+ 
+   protected async submit(): Promise<void> {
++    if (this.submitting) return;
+     this.error.set('');
+     const { name, grade } = this.form.getRawValue();
+     if (!name.trim()) {
+@@ -148,21 +154,43 @@ export class PeopleList {
+       return;
+     }
+     const id = this.editing();
++    this.submitting = true;
+     try {
+       if (id === null) {
+         const added = await this.api.add({ name, grade });
+         this.people.update((ps) => [...ps, added]);
+       } else {
+-        const saved = await this.api.edit(id, { name, grade });
++        const saved = await this.api.edit(id, this.version, { name, grade });
+         this.people.update((ps) => ps.map((p) => (p.id === saved.id ? saved : p)));
+       }
+       this.reset();
+     } catch (e) {
+-      if (e instanceof HttpErrorResponse && e.status === 409) {
++      if (id !== null && e instanceof HttpErrorResponse && e.status === 412) {
++        await this.showCurrent(id);
++        this.error.set('Someone else saved this person in the meantime. The form now shows their current values.');
++      } else if (e instanceof HttpErrorResponse && e.status === 409) {
+         this.error.set('That name is already in use on this sheet.');
+       } else {
+         this.error.set(id === null ? 'The person could not be added.' : 'The person could not be saved.');
+       }
++    } finally {
++      this.submitting = false;
++    }
++  }
++
++  /** Re-read the person whose save was overtaken and show them as they are now, in their row and in
++   *  the still-open editor, which then saves over that version. */
++  private async showCurrent(id: number): Promise<void> {
++    const sheetId = this.session.sheetId();
++    if (!sheetId) return;
++    try {
++      const current = (await this.api.list(sheetId)).find((p) => p.id === id);
++      if (!current || this.editing() !== id) return;
++      this.people.update((ps) => ps.map((p) => (p.id === id ? current : p)));
++      this.version = current.version;
++      this.form.setValue({ name: current.name, grade: current.grade }, { emitEvent: false });
++    } catch {
++      // the editor keeps what was typed; reopening it reads the person again
+     }
+   }
+ 
+diff --git a/src/main/frontend/src/app/features/rates/rate-form.ts b/src/main/frontend/src/app/features/rates/rate-form.ts
+index 7f9fdb176..acf3443aa 100644
+--- a/src/main/frontend/src/app/features/rates/rate-form.ts
++++ b/src/main/frontend/src/app/features/rates/rate-form.ts
+@@ -71,6 +71,8 @@ export class RateForm {
+ 
+   protected readonly grades: Grade[] = ['A', 'B', 'C'];
+   protected readonly error = signal('');
++  /** Whether a submit is waiting for its answer: a second submit meanwhile is ignored. */
++  private submitting = false;
+   protected readonly form = new FormGroup({
+     grade: new FormControl<Grade>('A', { nonNullable: true }),
+     pct: new FormControl('', { nonNullable: true }),
+@@ -93,6 +95,7 @@ export class RateForm {
+   }
+ 
+   protected async submit(): Promise<void> {
++    if (this.submitting) return;
+     this.error.set('');
+     const { grade, pct, from } = this.form.getRawValue();
+     if (!this.grades.includes(grade)) {
+@@ -108,11 +111,14 @@ export class RateForm {
+       this.error.set('Enter a from-date, or leave it blank for a rate that always applied.');
+       return;
+     }
++    this.submitting = true;
+     try {
+       this.saved.emit(await this.api.set(grade, pct.trim(), day === '' ? null : day));
+       this.form.reset({ grade: 'A', pct: '', from: '' }, { emitEvent: false });
+     } catch {
+       this.error.set('The rate could not be set.');
++    } finally {
++      this.submitting = false;
+     }
+   }
+ }
+diff --git a/src/main/java/net/officefloor/hq/app/person/Person.java b/src/main/java/net/officefloor/hq/app/person/Person.java
+index 722602432..e38152bf3 100644
+--- a/src/main/java/net/officefloor/hq/app/person/Person.java
++++ b/src/main/java/net/officefloor/hq/app/person/Person.java
+@@ -6,6 +6,7 @@ import jakarta.persistence.GeneratedValue;
+ import jakarta.persistence.GenerationType;
+ import jakarta.persistence.Id;
+ import jakarta.persistence.Table;
++import jakarta.persistence.Version;
+ 
+ /** A person on a sheet: a name and a grade (A, B or C). */
+ @Entity
+@@ -25,6 +26,11 @@ public class Person {
+     @Column(name = "grade", nullable = false)
+     private String grade;
+ 
++    /** Raised each time the person is saved. */
++    @Version
++    @Column(name = "version", nullable = false)
++    private long version;
++
+     protected Person() {
+     }
+ 
+@@ -57,4 +63,8 @@ public class Person {
+     public void setGrade(String grade) {
+         this.grade = grade;
+     }
++
++    public long getVersion() {
++        return version;
++    }
+ }
+diff --git a/src/main/java/net/officefloor/hq/app/person/PersonController.java b/src/main/java/net/officefloor/hq/app/person/PersonController.java
+index 7b4e97978..121edfe49 100644
+--- a/src/main/java/net/officefloor/hq/app/person/PersonController.java
++++ b/src/main/java/net/officefloor/hq/app/person/PersonController.java
+@@ -17,6 +17,7 @@ import org.springframework.web.bind.annotation.RequestHeader;
+ import org.springframework.web.bind.annotation.RequestMapping;
+ import org.springframework.web.bind.annotation.ResponseStatus;
+ import org.springframework.web.bind.annotation.RestController;
++import org.springframework.web.server.ResponseStatusException;
+ 
+ @RestController
+ @RequestMapping("/api/sheets/{sheetId}/people")
+@@ -24,15 +25,16 @@ import org.springframework.web.bind.annotation.RestController;
+ public class PersonController {
+ 
+     /** What the screen shows of a person. */
+-    public record PersonView(long id, String name, String grade) {
++    public record PersonView(long id, String name, String grade, long version) {
+         static PersonView of(Person person) {
+-            return new PersonView(person.getId(), person.getName(), person.getGrade());
++            return new PersonView(person.getId(), person.getName(), person.getGrade(), person.getVersion());
+         }
+     }
+ 
+-    /** The person form: a required name and a grade of A, B or C. */
++    /** The person form: a required name and a grade of A, B or C. An edit also gives the version
++     *  of the person its editor loaded. */
+     public record PersonForm(@NotBlank @Size(max = 200) String name,
+-            @NotNull @Pattern(regexp = "[ABC]") String grade) {
++            @NotNull @Pattern(regexp = "[ABC]") String grade, Long version) {
+     }
+ 
+     private final PersonService service;
+@@ -59,6 +61,10 @@ public class PersonController {
+             @PathVariable long personId,
+             @RequestHeader("X-User") @NotBlank @Size(max = 100) String user,
+             @Valid @RequestBody PersonForm form) {
+-        return PersonView.of(service.edit(sheetId.trim(), user.trim(), personId, form.name().trim(), form.grade()));
++        if (form.version() == null) {
++            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "The version of the person edited is required");
++        }
++        return PersonView.of(service.edit(sheetId.trim(), user.trim(), personId, form.version(), form.name().trim(),
++                form.grade()));
+     }
+ }
+diff --git a/src/main/java/net/officefloor/hq/app/person/PersonService.java b/src/main/java/net/officefloor/hq/app/person/PersonService.java
+index 44714ebed..9af6a3eca 100644
+--- a/src/main/java/net/officefloor/hq/app/person/PersonService.java
++++ b/src/main/java/net/officefloor/hq/app/person/PersonService.java
+@@ -4,6 +4,7 @@ import java.util.List;
+ import net.officefloor.hq.app.Audit;
+ import net.officefloor.hq.app.sheet.SheetService;
+ import org.springframework.dao.DataIntegrityViolationException;
++import org.springframework.dao.OptimisticLockingFailureException;
+ import org.springframework.http.HttpStatus;
+ import org.springframework.stereotype.Service;
+ import org.springframework.transaction.annotation.Transactional;
+@@ -41,11 +42,15 @@ public class PersonService {
+         return person;
+     }
+ 
+-    /** Change a person's name and grade. */
++    /** Change a person's name and grade, refused when the person is no longer at the version the
++     *  editor loaded: another user saved them in the meantime. */
+     @Transactional
+-    public Person edit(String sheetId, String user, long personId, String name, String grade) {
++    public Person edit(String sheetId, String user, long personId, long version, String name, String grade) {
+         Person person = people.findByIdAndSheetId(personId, sheetId)
+                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "No such person on this sheet"));
++        if (person.getVersion() != version) {
++            throw changedMeanwhile();
++        }
+         if (people.existsBySheetIdAndNameIgnoreCaseAndIdNot(sheetId, name, personId)) {
+             throw nameInUse();
+         }
+@@ -60,15 +65,23 @@ public class PersonService {
+         return event + " sheet=" + sheetId + " by=" + user + " name=" + person.getName() + " grade=" + person.getGrade();
+     }
+ 
+-    /** Save, refusing a name another user took on the sheet in the meantime. */
++    /** Save, refusing a name another user took on the sheet in the meantime, or a person another
++     *  user saved in the meantime. */
+     private Person saveUnique(Person person) {
+         try {
+             return people.saveAndFlush(person);
+         } catch (DataIntegrityViolationException e) {
+             throw nameInUse();
++        } catch (OptimisticLockingFailureException e) {
++            throw changedMeanwhile();
+         }
+     }
+ 
++    private static ResponseStatusException changedMeanwhile() {
++        return new ResponseStatusException(HttpStatus.PRECONDITION_FAILED,
++                "Someone else saved this person in the meantime");
++    }
++
+     private static ResponseStatusException nameInUse() {
+         return new ResponseStatusException(HttpStatus.CONFLICT, "That name is already in use on this sheet");
+     }
+diff --git a/src/main/resources/db/migration/V12__person_version.sql b/src/main/resources/db/migration/V12__person_version.sql
+new file mode 100644
+index 000000000..01606537e
+--- /dev/null
++++ b/src/main/resources/db/migration/V12__person_version.sql
+@@ -0,0 +1,3 @@
++-- The version of a person, raised each time they are saved. An editor saves only over the version
++-- it loaded, so a save that another user overtook is refused.
++ALTER TABLE person ADD COLUMN version BIGINT DEFAULT 0 NOT NULL;

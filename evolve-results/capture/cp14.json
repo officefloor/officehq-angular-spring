@@ -1,0 +1,64 @@
+{
+  "checkpoint": 14,
+  "stack": {
+    "repo": "/home/daniel/officehq-angular-spring",
+    "origin": "git@github.com:officefloor/officehq-angular-spring.git",
+    "name": "officehq-angular-spring",
+    "base_ref": "base-empty",
+    "base_commit": "65cb8233ea38b2dfa6cfd18709e30cd18fdf3250"
+  },
+  "checkpoint_id": "cp14_edit-conflict",
+  "phase": "early",
+  "type": "additive",
+  "mutates": [],
+  "replaced_tests": [],
+  "request": {
+    "spec": "When a person is edited, the form remembers which version of the person it loaded. If someone\nelse has saved that person in the meantime, saving is refused with an error on the form, nothing\nis stored, and the form shows the current values; opening the editor again and saving works.\nSubmitting any form twice before the first submit has answered stores one record, not two.\n",
+    "prompt": "You are implementing ONE change to this application.\n\nFIRST read AGENTS.md \u2014 it states the working rules and how the app is tested, and sends you to\nDESIGN.md for the app's stack and conventions. Follow both.\n\nTHE CHANGE REQUEST:\nWhen a person is edited, the form remembers which version of the person it loaded. If someone\nelse has saved that person in the meantime, saving is refused with an error on the form, nothing\nis stored, and the form shows the current values; opening the editor again and saving works.\nSubmitting any form twice before the first submit has answered stores one record, not two.\n\nYour work is verified by an automated Playwright UI test already installed under e2e/specs/.\nRead that spec: it declares the exact data-testid anchors, values, test data and any audit\nrecords it expects \u2014 match them. Run `bin/e2e` to build the app, start it, and run the test as\nyou work; iterate until it passes. Change whatever the request needs across the app \u2014 its stored\ndata, its server and its front end. Do NOT edit bin/build, bin/start, bin/stop, bin/e2e,\nAGENTS.md, CLAUDE.md, DESIGN.md, e2e/support/ or the test spec.\n"
+  },
+  "commit_sha": "3afb04075dd201dbced35cd7a92403cf1d54f75a",
+  "reset_sha": "",
+  "preagent_sha": "162aa7cff413dcdc34cbee5d55f83bb89643a743",
+  "prev_sha": "162aa7cff413dcdc34cbee5d55f83bb89643a743",
+  "base_sha": "65cb8233ea38b2dfa6cfd18709e30cd18fdf3250",
+  "agent": {
+    "ok": true,
+    "cost_usd": 0.5997614,
+    "input_tokens": 22,
+    "output_tokens": 8063,
+    "cache_read_tokens": 401547,
+    "cache_creation_tokens": 44763,
+    "num_turns": 12,
+    "duration_ms": 179383,
+    "duration_api_ms": 71011,
+    "model": "claude-opus-5-5",
+    "session_id": "835792b6-e1eb-4bbd-81ed-ad60968b8814",
+    "stop_reason": "success",
+    "result_text": "Saving a person now fails if someone else saved them after the editor was opened, and a quick double submit stores only one record. All 4 acceptance tests pass in `bin/e2e`.\n\n**Edit conflicts**\n- **Stored data:** a new migration, `V12__person_version.sql`, adds a `version` column to `person`. The `Person` entity uses it as its JPA `@Version`, so the number goes up every time the person is saved.\n- **Server:** the person's version is now sent to the screen with their other details. An edit must send back the version its editor loaded; if it doesn't, the server returns 400. In `PersonService.edit`, a version that doesn't match is refused with 412 (Precondition Failed), so nothing is stored and nothing is written to the audit file. If two saves collide at the same instant, the database's own version check catches it and returns the same 412. The existing 409 still means \"that name is already in use\".\n- **Front end:** the people list keeps the version of the person the editor opened. On a 412 it reads the person again from the store and updates their row. The editor stays open with their current values and shows an error on the form. Saving again, or reopening the editor and saving, then works.\n\n**Double submit:** the people, claim and rate forms each ignore a second submit while the first is still waiting for an answer. I left the sign-in, load-sheet and set-today forms alone, because they don't add records.\n\nThere's one gap. If the first submit answers before the second click arrives, the second click goes to the now-empty form, and a validation error such as \"Enter an amount\" can stay on screen. It doesn't store a second record, and the tests pass. Disabling the button for a moment after a successful submit would remove it; tell me if you want that.",
+    "error": "",
+    "attempts": [
+      {
+        "ok": true,
+        "limit_reached": false,
+        "retryable": false,
+        "timed_out": false,
+        "cost_usd": 0.5997614,
+        "num_turns": 12,
+        "duration_ms": 179383,
+        "duration_api_ms": 71011,
+        "error": ""
+      }
+    ]
+  },
+  "agent_stream_file": "cp14.agent.jsonl",
+  "agent_diff_file": "cp14.agent.diff",
+  "build_log_file": null,
+  "tests": {
+    "gated": false,
+    "queued": true
+  },
+  "probe": null,
+  "pinned_touched": [],
+  "acceptance_touched": [],
+  "impact_gate": null
+}
