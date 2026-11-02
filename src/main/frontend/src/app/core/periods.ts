@@ -11,6 +11,10 @@ export interface Period {
   from: string;
   /** The last day (yyyy-mm-dd) of the period. */
   to: string;
+  /** Whether the period is closed: no claim dated inside it can be changed. */
+  closed: boolean;
+  /** The due-total fixed when it was closed, as text with two decimals; null while it is open. */
+  closedTotal: string | null;
 }
 
 export interface PeriodForm {
@@ -41,6 +45,16 @@ export class Periods {
     const user = this.session.user();
     if (!sheetId || !user) throw new Error('no sheet loaded');
     return firstValueFrom(this.http.post<Period>(this.url(sheetId), form, { headers: { 'X-User': user } }));
+  }
+
+  /** Close a period, fixing its due-total; refused when it is already closed. */
+  close(id: number): Promise<Period> {
+    const sheetId = this.session.sheetId();
+    const user = this.session.user();
+    if (!sheetId || !user) throw new Error('no sheet loaded');
+    return firstValueFrom(
+      this.http.post<Period>(`${this.url(sheetId)}/${id}/close`, null, { headers: { 'X-User': user } }),
+    );
   }
 
   private url(sheetId: string): string {

@@ -266,7 +266,7 @@ export class PeopleList {
   }
 
   protected periodSaved(period: Period): void {
-    this.periods.update((ps) => [...ps, period].sort((a, b) => (a.from < b.from ? -1 : a.from > b.from ? 1 : 0)));
+    this.periods.update((ps) => [...ps.filter((p) => p.id !== period.id), period].sort((a, b) => (a.from < b.from ? -1 : a.from > b.from ? 1 : 0)));
   }
 
   /** A person's due-total: the sum of the due figures of their open and settled claims. Null (n/a)

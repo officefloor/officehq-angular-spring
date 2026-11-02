@@ -4,6 +4,7 @@ import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.util.List;
 import net.officefloor.hq.app.Audit;
+import net.officefloor.hq.app.period.PeriodRepository;
 import net.officefloor.hq.app.person.Person;
 import net.officefloor.hq.app.person.PersonRepository;
 import net.officefloor.hq.app.rollup.Rollup;
@@ -22,15 +23,17 @@ public class ClaimService {
     private final Dues dues;
     private final SheetService sheets;
     private final Rollup rollup;
+    private final PeriodRepository periods;
     private final Audit audit;
 
     public ClaimService(ClaimRepository claims, PersonRepository people, Dues dues, SheetService sheets,
-            Rollup rollup, Audit audit) {
+            Rollup rollup, PeriodRepository periods, Audit audit) {
         this.claims = claims;
         this.people = people;
         this.dues = dues;
         this.sheets = sheets;
         this.rollup = rollup;
+        this.periods = periods;
         this.audit = audit;
     }
 
@@ -40,26 +43,32 @@ public class ClaimService {
         return claims.findBySheetIdOrderByIdDesc(sheetId);
     }
 
-    /** Add a claim for a person; a date left out takes the sheet's today. */
+    /** Add a claim for a person; a date left out takes the sheet's today. Refused when the date falls
+     *  inside a closed period. */
     @Transactional
     public Claim add(String sheetId, String user, long personId, BigDecimal amount, LocalDate date, String note) {
+        LocalDate on = date != null ? date : sheets.today(sheetId);
+        refuseClosed(sheetId, on);
         return rollup.tracking(sheetId, user, () -> {
             Person person = person(sheetId, personId);
-            LocalDate on = date != null ? date : sheets.today(sheetId);
             Claim claim = claims.saveAndFlush(new Claim(sheetId, personId, amount, on, note));
             audit.recordOnCommit(record("CLAIM_ADDED", sheetId, user, person, claim));
             return claim;
         });
     }
 
-    /** Change a claim's amount, date and note; a date left out takes the sheet's today. */
+    /** Change a claim's amount, date and note; a date left out takes the sheet's today. Refused when
+     *  the claim's date, or the new one, falls inside a closed period. */
     @Transactional
     public Claim edit(String sheetId, String user, long claimId, BigDecimal amount, LocalDate date, String note) {
         Claim claim = claims.findByIdAndSheetId(claimId, sheetId)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "No such claim on this sheet"));
+        LocalDate on = date != null ? date : sheets.today(sheetId);
+        refuseClosed(sheetId, claim.getDate());
+        refuseClosed(sheetId, on);
         return rollup.tracking(sheetId, user, () -> {
             claim.setAmount(amount);
-            claim.setDate(date != null ? date : sheets.today(sheetId));
+            claim.setDate(on);
             claim.setNote(note);
             Claim saved = claims.saveAndFlush(claim);
             audit.recordOnCommit(record("CLAIM_EDITED", sheetId, user, person(sheetId, saved.getPersonId()), saved));
@@ -68,11 +77,13 @@ public class ClaimService {
     }
 
     /** Move a claim to a new status; a change its current status does not allow is refused, and so
-     *  is settling a claim by the user who opened it. */
+     *  is settling a claim by the user who opened it, and any change to a claim dated inside a closed
+     *  period. */
     @Transactional
     public Claim changeStatus(String sheetId, String user, long claimId, ClaimStatus to) {
         Claim claim = claims.lockByIdAndSheetId(claimId, sheetId)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "No such claim on this sheet"));
+        refuseClosed(sheetId, claim.getDate());
         if (!claim.getStatus().canBecome(to)) {
             throw new ResponseStatusException(HttpStatus.CONFLICT,
                     "A " + claim.getStatus() + " claim cannot become " + to);
@@ -111,6 +122,13 @@ public class ClaimService {
             audit.recordOnCommit(line);
             return saved;
         });
+    }
+
+    /** Refuse a change to a claim dated on the day when the day falls inside a closed period. */
+    private void refuseClosed(String sheetId, LocalDate day) {
+        if (periods.closedOn(sheetId, day)) {
+            throw new ResponseStatusException(HttpStatus.LOCKED, "That claim's period is closed");
+        }
     }
 
     private Person person(String sheetId, long personId) {

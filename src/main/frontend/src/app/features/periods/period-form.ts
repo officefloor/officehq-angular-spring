@@ -26,7 +26,7 @@ const DAY = /^\d{4}-\d{2}-\d{2}$/;
       </form>
       <table data-testid="periods">
         <thead>
-          <tr><th scope="col">Name</th><th scope="col">From</th><th scope="col">To</th><th scope="col">Due</th></tr>
+          <tr><th scope="col">Name</th><th scope="col">From</th><th scope="col">To</th><th scope="col">Due</th><th scope="col">Closed</th><th scope="col"><span class="visually-hidden">Actions</span></th></tr>
         </thead>
         <tbody>
           @for (p of periods(); track p.id) {
@@ -34,7 +34,17 @@ const DAY = /^\d{4}-\d{2}-\d{2}$/;
               <th scope="row" data-testid="period-name">{{ p.name }}</th>
               <td data-testid="period-from">{{ p.from }}</td>
               <td data-testid="period-to">{{ p.to }}</td>
-              <td data-testid="period-due-total">{{ dueTotals().get(p.id) ?? '0.00' }}</td>
+              <td data-testid="period-due-total">{{ p.closedTotal ?? dueTotals().get(p.id) ?? '0.00' }}</td>
+              <td data-testid="period-closed">{{ p.closed ? 'yes' : 'no' }}</td>
+              <td>
+                @if (!p.closed) {
+                  <button type="button" data-testid="period-close" (click)="close(p)"
+                    [attr.aria-label]="'Close period ' + p.name">Close</button>
+                }
+                @if (periodError()?.id === p.id) {
+                  <p role="alert" data-testid="period-error">{{ periodError()?.message }}</p>
+                }
+              </td>
             </tr>
           }
         </tbody>
@@ -49,10 +59,12 @@ export class PeriodForm {
   readonly periods = input.required<Period[]>();
   /** Each period's due-total by its id. */
   readonly dueTotals = input.required<Map<number, string>>();
-  /** A period added through the form. */
+  /** A period added through the form, or closed from its row. */
   readonly saved = output<Period>();
 
   protected readonly error = signal('');
+  /** The refusal of the last action taken on a period's row, shown on that row. */
+  protected readonly periodError = signal<{ id: number; message: string } | null>(null);
   /** Whether a submit is waiting for its answer: a second submit meanwhile is ignored. */
   private submitting = false;
   protected readonly form = new FormGroup({
@@ -63,6 +75,15 @@ export class PeriodForm {
 
   constructor() {
     this.form.valueChanges.subscribe(() => this.error.set(''));
+  }
+
+  protected async close(p: Period): Promise<void> {
+    this.periodError.set(null);
+    try {
+      this.saved.emit(await this.api.close(p.id));
+    } catch {
+      this.periodError.set({ id: p.id, message: 'The period could not be closed.' });
+    }
   }
 
   protected async submit(): Promise<void> {

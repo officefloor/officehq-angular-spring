@@ -13,8 +13,12 @@ const REFUSALS: Record<ClaimAction, string> = {
   void: 'Only a draft or open claim can be voided.',
 };
 
+/** The message when the server refused a change to a claim dated inside a closed period. */
+const CLOSED = 'The claim\'s period is closed.';
+
 /** The message for a refused action on a claim. */
 function refusal(e: unknown, action: ClaimAction): string {
+  if (e instanceof HttpErrorResponse && e.status === 423) return CLOSED;
   if (e instanceof HttpErrorResponse && e.status === 409) return REFUSALS[action];
   if (e instanceof HttpErrorResponse && e.status === 403 && action === 'settle') {
     return 'The user who opened a claim cannot settle it.';
@@ -155,8 +159,9 @@ export class PersonClaims {
       const claim = id === null ? await this.api.add(this.personId(), form) : await this.api.edit(id, form);
       this.saved.emit(claim);
       this.reset();
-    } catch {
-      this.error.set(id === null ? 'The claim could not be added.' : 'The claim could not be saved.');
+    } catch (e) {
+      if (e instanceof HttpErrorResponse && e.status === 423) this.error.set(CLOSED);
+      else this.error.set(id === null ? 'The claim could not be added.' : 'The claim could not be saved.');
     } finally {
       this.submitting = false;
     }
