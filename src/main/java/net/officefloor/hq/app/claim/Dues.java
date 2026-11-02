@@ -69,8 +69,9 @@ public class Dues {
     }
 
     /** The late charge on an open (or pending) claim overdue on the sheet's today (its due-by, fixed when it was
-     *  made, before today; a correction has none): the late percent in force on its date of its figure for every full 30 days it is overdue,
-     *  rounded to two decimals by the claim's {@link #rounding}; 0.00 when it is not overdue. */
+     *  made, before today; a correction has none): for each full 30 days it is overdue, the late percent in force on
+     *  that boundary (its due-by plus 30, 60, 90 ... days) of its figure, rounded to two decimals by the claim's
+     *  {@link #rounding}, the charges added up (a boundary whose percent is 0.00 adds nothing); 0.00 when it is not overdue. */
     private BigDecimal lateCharge(String sheetId, Claim claim, BigDecimal figure) {
         return lateCharge(sheetId, claim, figure, claim.getStatus().isOpen());
     }
@@ -85,8 +86,15 @@ public class Dues {
         if (periods <= 0) {
             return none;
         }
-        return figure.multiply(sheets.latePct(sheetId, claim.getDate())).multiply(BigDecimal.valueOf(periods)).movePointLeft(2)
-                .setScale(2, rounding(sheetId, claim));
+        RoundingMode rounding = rounding(sheetId, claim);
+        BigDecimal charge = none;
+        for (long n = 1; n <= periods; n++) {
+            BigDecimal pct = sheets.latePct(sheetId, claim.getDueBy().plusDays(30 * n));
+            if (pct.signum() != 0) {
+                charge = charge.add(figure.multiply(pct).movePointLeft(2).setScale(2, rounding));
+            }
+        }
+        return charge;
     }
 
     /** Whether a claim of the person counts in the live totals on the sheet's today: it counts, it is

@@ -202,8 +202,8 @@ public class SheetService {
         return record(id, user, "terms-" + grade, BigDecimal.valueOf(terms), String.valueOf(terms), from);
     }
 
-    /** The percent of its figure an overdue claim on the sheet dated on the day gains for every full
-     *  30 days it is overdue: the late percent in force on it, or else the sheet's starting one. */
+    /** The percent of its figure an overdue claim on the sheet gains for a full 30 days overdue ending
+     *  on the day: the late percent in force on it, or else the sheet's starting one. */
     @Transactional(readOnly = true)
     public BigDecimal latePct(String id, LocalDate day) {
         return inForce(id, "late-pct", day).map(SettingValue::getValue).orElse(STARTING_LATE_PCT);

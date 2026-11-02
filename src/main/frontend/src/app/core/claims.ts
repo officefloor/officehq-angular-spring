@@ -158,8 +158,8 @@ export function fixed(c: Claim): boolean {
   return c.settledDue !== null || (bound(c) && (c.statedDue !== null || c.statedNa));
 }
 
-/** What a claim's late charge follows: the sheet's today and its late percents (a claim takes the
- *  one in force on its date); and the sheet's policy date, which decides how its live figures round. */
+/** What a claim's late charge follows: the sheet's today and its late percents (each 30-day boundary
+ *  takes the one in force on it); and the sheet's policy date, which decides how its live figures round. */
 export interface Lateness {
   today: string | null;
   /** The late percents recorded, each from its from-date, earliest first. */
@@ -188,15 +188,22 @@ export function claimDue(c: Claim, rates: Rate[], grade: Grade | undefined, floo
   return figure === null ? null : sumAmounts([figure, lateCharge(c, figure, late)]);
 }
 
-/** The late charge on an overdue claim: the late percent in force on its date of its figure for every full 30 days it
- *  is overdue, rounded like a due; 0.00 when it is not overdue, and on a correction. */
+/** The late charge on an overdue claim: for each full 30 days it is overdue, the late percent in force on that
+ *  boundary (its due-by plus 30, 60, 90 ... days) of its figure, rounded like a due, the charges added up (a
+ *  boundary whose percent is 0.00 adds nothing); 0.00 when it is not overdue, and on a correction. */
 export function lateCharge(c: Claim, figure: string, late: Lateness): string {
   if (correction(c)) return '0.00';
   if (!overdue(c, late.today) || late.today === null) return '0.00';
   const days = (Date.parse(late.today) - Date.parse(c.dueBy)) / 86_400_000;
   const periods = Math.floor(days / 30);
   if (periods <= 0) return '0.00';
-  return due(figure, (Number(valueOn(late.pcts, c.date, STARTING_LATE_PCT)) * periods).toFixed(2), roundsHalfUp(c, late)) ?? '0.00';
+  const charges: string[] = [];
+  for (let n = 1; n <= periods; n++) {
+    const boundary = new Date(Date.parse(c.dueBy) + n * 30 * 86_400_000).toISOString().slice(0, 10);
+    const pct = valueOn(late.pcts, boundary, STARTING_LATE_PCT);
+    if (Number(pct) !== 0) charges.push(due(figure, pct, roundsHalfUp(c, late)) ?? '0.00');
+  }
+  return sumAmounts(charges);
 }
 
 /** Whether a claim is overdue: it is open (or pending), not deferred, and its due-by is before the
