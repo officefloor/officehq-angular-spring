@@ -1,0 +1,138 @@
+diff --git a/src/main/frontend/src/app/features/claims/claims.ts b/src/main/frontend/src/app/features/claims/claims.ts
+index f431f5ae9..2c1014da4 100644
+--- a/src/main/frontend/src/app/features/claims/claims.ts
++++ b/src/main/frontend/src/app/features/claims/claims.ts
+@@ -495,6 +495,11 @@ function notEditable(status: ClaimStatus | undefined): string {
+                  (input)="clearClaimError(c.id)" />
+           <button type="button" data-testid="claim-split" (click)="split(c, splitAmount.value)"
+                   [attr.aria-label]="'Split claim of ' + c.amount + ' on ' + c.date">Split</button>
++          <label [for]="fieldId('settle-part-' + c.id)">Settle part</label>
++          <input [id]="fieldId('settle-part-' + c.id)" data-testid="claim-settle-part-amount" inputmode="decimal"
++                 #settlePartAmount (input)="clearClaimError(c.id)" />
++          <button type="button" data-testid="claim-settle-part" (click)="settlePart(c, settlePartAmount.value)"
++                  [attr.aria-label]="'Settle part of claim of ' + c.amount + ' on ' + c.date">Settle part</button>
+           @if (editingId() === c.id) {
+             <button type="button" data-testid="claim-cancel" (click)="cancel()">Cancel</button>
+           } @else {
+@@ -1082,6 +1087,48 @@ export class Claims {
+     }
+   }
+ 
++  /**
++   * Part-settle an OPEN claim: split the amount off it as the split button does and settle the new claim
++   * at once (PENDING over the clerk limit); the user who opened or edited the original, or a claim needing a
++   * proof, is refused, and a refused split or settle changes nothing.
++   */
++  protected async settlePart(c: Claim, amount: string): Promise<void> {
++    this.claimError.set(null);
++    const sheet = this.session.sheetId();
++    if (!sheet) return;
++    const value = amount.trim();
++    if (!/^\d{1,12}(\.\d{1,2})?$/.test(value) || cents(value) <= 0 || cents(value) >= cents(c.amount)) {
++      this.claimError.set({ id: c.id, message: 'Enter an amount more than 0.00 and less than the claim\'s amount to settle.' });
++      return;
++    }
++    const url = `/api/sheets/${encodeURIComponent(sheet)}/claims/${c.id}/settle-part`;
++    try {
++      const result = await firstValueFrom(
++        this.http.post<{ original: Claim; split: Claim }>(url, { amount: value }, { headers: this.headers() }));
++      if (this.session.sheetId() !== sheet) return;
++      this.saved.emit(result.original);
++      this.saved.emit(result.split);
++    } catch (e) {
++      if (this.session.sheetId() !== sheet) return;
++      const message = e instanceof HttpErrorResponse && e.status === 423
++        ? CLOSED
++        : e instanceof HttpErrorResponse && e.status === 409
++        ? `A ${c.status} claim cannot be part-settled; only an OPEN one can.`
++        : e instanceof HttpErrorResponse && e.status === 412
++        ? `A deferred claim cannot be part-settled until ${c.deferredUntil}.`
++        : e instanceof HttpErrorResponse && e.status === 428
++        ? 'A claim due above the proof threshold cannot be part-settled without a proof.'
++        : e instanceof HttpErrorResponse && e.status === 403
++        ? c.openedBy === this.session.user()
++          ? 'The user who opened a claim cannot settle any part of it.'
++          : 'Your role may not split or settle a claim on this sheet.'
++        : e instanceof HttpErrorResponse && e.status === 422
++        ? 'Enter an amount more than 0.00 and less than the claim\'s amount to settle.'
++        : 'Could not part-settle that claim.';
++      this.claimError.set({ id: c.id, message });
++    }
++  }
++
+   /**
+    * Change a DRAFT claim's amount in its row, keeping its date, note and correction: the claim form's
+    * rules apply, so a claim that cannot be edited, one another user's editor locks, one due inside a
+diff --git a/src/main/java/net/officefloor/hq/app/claim/ClaimController.java b/src/main/java/net/officefloor/hq/app/claim/ClaimController.java
+index 158b116cd..6043f5ffd 100644
+--- a/src/main/java/net/officefloor/hq/app/claim/ClaimController.java
++++ b/src/main/java/net/officefloor/hq/app/claim/ClaimController.java
+@@ -499,4 +499,14 @@ public class ClaimController {
+         ClaimService.Split split = service.split(sheetId, user, id, request.amountValue());
+         return new SplitView(ClaimView.of(split.original()), ClaimView.of(split.split()));
+     }
++
++    @PostMapping("/claims/{id}/settle-part")
++    public SplitView settlePart(
++            @PathVariable @Size(max = 100) @Pattern(regexp = "[A-Za-z0-9._-]+") String sheetId,
++            @PathVariable Long id,
++            @RequestHeader("X-User") @NotBlank @Size(max = 100) String user,
++            @RequestBody @Valid SplitRequest request) {
++        ClaimService.Split split = service.partSettle(sheetId, user, id, request.amountValue());
++        return new SplitView(ClaimView.of(split.original()), ClaimView.of(split.split()));
++    }
+ }
+diff --git a/src/main/java/net/officefloor/hq/app/claim/ClaimService.java b/src/main/java/net/officefloor/hq/app/claim/ClaimService.java
+index cb2cd0bb0..81698c6c3 100644
+--- a/src/main/java/net/officefloor/hq/app/claim/ClaimService.java
++++ b/src/main/java/net/officefloor/hq/app/claim/ClaimService.java
+@@ -231,6 +231,31 @@ public class ClaimService {
+     }
+ 
+     private Claim changeStatus(String sheetId, String user, Long id, ClaimStatus next, String reason) {
++        return changeStatus(sheetId, user, id, next, reason, false);
++    }
++
++    /**
++     * Part-settle an OPEN claim: split the amount off it as {@link #split} does, then settle the new claim
++     * by the user as settling one does (PENDING when over the clerk limit). The four-eyes rule and the proof
++     * rule are judged on the original claim (its due before the split), not the new one the user opened; a
++     * refusal of the split or the settle refuses the whole and changes nothing.
++     */
++    @Transactional
++    public Split partSettle(String sheetId, String user, Long id, BigDecimal amount) {
++        sheets.lockForNumbering(sheetId);
++        Claim claim = claims.findByIdAndSheetId(id, sheetId).orElseThrow(ClaimNotFoundException::new);
++        if (claim.getStatus() != ClaimStatus.OPEN) throw new ClaimStatusRefusedException();
++        if (!settings.mayDo(sheetId, user, "settle")) throw new ClaimNotPermittedException();
++        if (claim.isOpenedOrEditedBy(user)) throw new ClaimSettledByOpenerException();
++        Person person = people.findByIdAndSheetId(claim.getPersonId(), sheetId).orElseThrow(PersonNotFoundException::new);
++        refuseUnproved(sheetId, person, claim, chargedFigureOf(sheetId, person, claim));
++        Split split = split(sheetId, user, id, amount);
++        Claim settled = changeStatus(sheetId, user, split.split().getId(), ClaimStatus.SETTLED, null, true);
++        return new Split(split.original(), settled);
++    }
++
++    private Claim changeStatus(String sheetId, String user, Long id, ClaimStatus next, String reason,
++            boolean judgedOnOriginal) {
+         // Opening takes the sheet's next number, locking the sheet first so the claim is read only
+         // once no other open on the sheet is under way; a refusal rolls the number back.
+         Sheet numbering = next == ClaimStatus.OPEN ? sheets.lockForNumbering(sheetId) : null;
+@@ -250,7 +275,7 @@ public class ClaimService {
+         if (next == ClaimStatus.SETTLED && claim.isDeferredOn(sheets.today(sheetId))) {
+             throw new ClaimDeferredException();
+         }
+-        if (next == ClaimStatus.SETTLED && claim.isOpenedOrEditedBy(user)) {
++        if (next == ClaimStatus.SETTLED && !judgedOnOriginal && claim.isOpenedOrEditedBy(user)) {
+             throw new ClaimSettledByOpenerException();
+         }
+         Person person = people.findByIdAndSheetId(claim.getPersonId(), sheetId).orElseThrow(PersonNotFoundException::new);
+@@ -260,7 +285,7 @@ public class ClaimService {
+         }
+         // Settling freezes the late charge of the moment into the settled due.
+         BigDecimal settling = next == ClaimStatus.SETTLED ? chargedFigureOf(sheetId, person, claim) : null;
+-        if (next == ClaimStatus.SETTLED) refuseUnproved(sheetId, person, claim, settling);
++        if (next == ClaimStatus.SETTLED && !judgedOnOriginal) refuseUnproved(sheetId, person, claim, settling);
+         BigDecimal opening = next == ClaimStatus.OPEN ? chargedFigureOf(sheetId, person, claim) : null;
+         if (next == ClaimStatus.OPEN) refuseUnnoted(sheetId, claim, opening);
+         if (next == ClaimStatus.SETTLED && overClerkLimit(sheetId, user, settling)) next = ClaimStatus.PENDING;
