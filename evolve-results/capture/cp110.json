@@ -1,0 +1,64 @@
+{
+  "checkpoint": 110,
+  "stack": {
+    "repo": "/home/daniel/officehq-angular-spring",
+    "origin": "git@github.com:officefloor/officehq-angular-spring.git",
+    "name": "officehq-angular-spring",
+    "base_ref": "base-empty",
+    "base_commit": "65cb8233ea38b2dfa6cfd18709e30cd18fdf3250"
+  },
+  "checkpoint_id": "cp110_consolidated-figures",
+  "phase": "mid",
+  "type": "additive",
+  "mutates": [],
+  "replaced_tests": [],
+  "request": {
+    "spec": "A sheet's children are the sheets naming it as their parent. The screen gains consolidated figures\nover the sheet and all its descendants: the number of people, the due-total (each sheet's due-total\nas that sheet shows it, added up) and the overdue-total (likewise). A sheet with no children shows\nits own figures there.\n",
+    "prompt": "You are implementing ONE change to this application.\n\nFIRST read AGENTS.md \u2014 it states the working rules and how the app is tested, and sends you to\nDESIGN.md for the app's stack and conventions. Follow both.\n\nTHE CHANGE REQUEST:\nA sheet's children are the sheets naming it as their parent. The screen gains consolidated figures\nover the sheet and all its descendants: the number of people, the due-total (each sheet's due-total\nas that sheet shows it, added up) and the overdue-total (likewise). A sheet with no children shows\nits own figures there.\n\nYour work is verified by an automated Playwright UI test already installed under e2e/specs/.\nRead that spec: it declares the exact data-testid anchors, values, test data and any audit\nrecords it expects \u2014 match them. Run `bin/e2e` to build the app, start it, and run the test as\nyou work; iterate until it passes. Change whatever the request needs across the app \u2014 its stored\ndata, its server and its front end. Do NOT edit bin/build, bin/start, bin/stop, bin/e2e,\nAGENTS.md, CLAUDE.md, DESIGN.md, e2e/support/ or the test spec.\n"
+  },
+  "commit_sha": "db4890a0873c78526f8aa9714a4ea4520bcf468a",
+  "reset_sha": "",
+  "preagent_sha": "b9fc9e63fbbddc2f4244b991302da40b2d27ca7b",
+  "prev_sha": "b9fc9e63fbbddc2f4244b991302da40b2d27ca7b",
+  "base_sha": "65cb8233ea38b2dfa6cfd18709e30cd18fdf3250",
+  "agent": {
+    "ok": true,
+    "cost_usd": 0.855427,
+    "input_tokens": 44,
+    "output_tokens": 10052,
+    "cache_read_tokens": 934655,
+    "cache_creation_tokens": 58410,
+    "num_turns": 22,
+    "duration_ms": 311435,
+    "duration_api_ms": 117953,
+    "model": "claude-opus-5-5",
+    "session_id": "ce7138f0-4833-4523-987b-caeab004d661",
+    "stop_reason": "success",
+    "result_text": "The screen now shows consolidated figures for a sheet and every sheet below it: the number of people, the due-total and the overdue-total. All 4 tests in `bin/e2e` pass.\n\n**How it works**\n- **Server:** a new `GET /api/sheets/{id}/descendants` endpoint (`rollup/RollupController.java`) walks down from the sheet to its children, their children, and so on. It counts each sheet only once and stops if the parent links loop. It adds up their people (retired included) and each one's due-total and overdue-total. Each descendant's figures come from the same server calculation behind the existing `TOTALS` audit line, worked out with that sheet's own today, rates and settings. The new lookup is `SheetRepository.descendants`, and `Rollup.descendants` does the adding.\n- **Front end:** the people list fetches those figures when the sheet loads (new `core/descendants.ts`). It adds this sheet's own live figures to them and shows the results as `consolidated-people-count`, `consolidated-due-total` and `consolidated-overdue-total`. A sheet with no children just shows its own figures.\n\n**Things to know**\n- The sheet's own part of the figures updates as soon as you change something on it. The descendants' part only updates when the sheet is reloaded, which matches how the app shows other users' changes.\n- A sheet viewed \"as of\" an earlier date still gets its descendants' figures as they are now, not as they stood on that date. The tests don't cover this case.\n- No database change was needed, because the parent link was already stored. No audit records were added.",
+    "error": "",
+    "attempts": [
+      {
+        "ok": true,
+        "limit_reached": false,
+        "retryable": false,
+        "timed_out": false,
+        "cost_usd": 0.855427,
+        "num_turns": 22,
+        "duration_ms": 311435,
+        "duration_api_ms": 117953,
+        "error": ""
+      }
+    ]
+  },
+  "agent_stream_file": "cp110.agent.jsonl",
+  "agent_diff_file": "cp110.agent.diff",
+  "build_log_file": null,
+  "tests": {
+    "gated": false,
+    "queued": true
+  },
+  "probe": null,
+  "pinned_touched": [],
+  "acceptance_touched": [],
+  "impact_gate": null
+}

@@ -1,0 +1,243 @@
+diff --git a/src/main/frontend/src/app/core/descendants.ts b/src/main/frontend/src/app/core/descendants.ts
+new file mode 100644
+index 000000000..0dd1b952b
+--- /dev/null
++++ b/src/main/frontend/src/app/core/descendants.ts
+@@ -0,0 +1,25 @@
++import { HttpClient } from '@angular/common/http';
++import { Injectable, inject } from '@angular/core';
++import { firstValueFrom } from 'rxjs';
++
++/** A sheet's descendants' figures added up: their people, and each one's due-total and
++ *  overdue-total as that sheet shows them. */
++export interface DescendantFigures {
++  peopleCount: number;
++  dueTotal: string;
++  overdueTotal: string;
++}
++
++/** No descendants: nothing to add. */
++export const NO_DESCENDANTS: DescendantFigures = { peopleCount: 0, dueTotal: '0.00', overdueTotal: '0.00' };
++
++// The sheets below a sheet: its children (the sheets naming it as their parent), theirs, and so on.
++@Injectable({ providedIn: 'root' })
++export class Descendants {
++  private readonly http = inject(HttpClient);
++
++  /** The figures of the sheet's descendants added up. */
++  figures(sheetId: string): Promise<DescendantFigures> {
++    return firstValueFrom(this.http.get<DescendantFigures>(`/api/sheets/${encodeURIComponent(sheetId)}/descendants`));
++  }
++}
+diff --git a/src/main/frontend/src/app/features/people/people-list.ts b/src/main/frontend/src/app/features/people/people-list.ts
+index 465343518..22d1e2ca8 100644
+--- a/src/main/frontend/src/app/features/people/people-list.ts
++++ b/src/main/frontend/src/app/features/people/people-list.ts
+@@ -10,6 +10,7 @@ import { Rate, Rates, pctOn, weightedSum } from '../../core/rates';
+ import { Session } from '../../core/session';
+ import { DatedValue, Graces, SheetSettings, graceOn, valueOn } from '../../core/settings';
+ import { Watch, Watches } from '../../core/watches';
++import { DescendantFigures, Descendants, NO_DESCENDANTS } from '../../core/descendants';
+ import { VoidReasons } from '../../core/void-reasons';
+ import { PersonClaims } from '../claims/person-claims';
+ import { PeriodForm } from '../periods/period-form';
+@@ -75,6 +76,14 @@ const NO_LEAVE: Leave = { holds: [], retiredFrom: null };
+       <p>Open due in total: <strong data-testid="rollup-open-total">{{ openTotal() }}</strong></p>
+       <p>Overdue claims: <strong data-testid="rollup-overdue-count">{{ overdueCount() }}</strong></p>
+       <p>Overdue in total: <strong data-testid="rollup-overdue-total">{{ overdueTotal() }}</strong></p>
++      <dl aria-label="Consolidated with descendant sheets">
++        <dt>People, consolidated</dt>
++        <dd data-testid="consolidated-people-count">{{ consolidatedPeopleCount() }}</dd>
++        <dt>Due, consolidated</dt>
++        <dd data-testid="consolidated-due-total">{{ consolidatedDueTotal() }}</dd>
++        <dt>Overdue, consolidated</dt>
++        <dd data-testid="consolidated-overdue-total">{{ consolidatedOverdueTotal() }}</dd>
++      </dl>
+       @if (tagDueTotals().length > 0) {
+         <ul aria-label="Due per tag">
+           @for (t of tagDueTotals(); track t.tag) {
+@@ -271,6 +280,7 @@ export class PeopleList {
+   private readonly patronsApi = inject(Patrons);
+   private readonly watchesApi = inject(Watches);
+   private readonly poolsApi = inject(Pools);
++  private readonly descendantsApi = inject(Descendants);
+ 
+   protected readonly grades: Grade[] = ['A', 'B', 'C'];
+   protected readonly people = signal<Person[]>([]);
+@@ -454,6 +464,16 @@ export class PeopleList {
+   protected readonly overdueTotal = computed(() =>
+     trimmedSum(this.people().map((p) => this.overdueTotalOf(p))),
+   );
++  /** The figures of the sheet's descendants added up, as the store held them when it was loaded. */
++  private readonly descendants = signal<DescendantFigures>(NO_DESCENDANTS);
++  /** The people of the sheet and all its descendants. */
++  protected readonly consolidatedPeopleCount = computed(() => this.people().length + this.descendants().peopleCount);
++  /** The sheet's due-total and each descendant's, as each shows it, added up. */
++  protected readonly consolidatedDueTotal = computed(() => sumAmounts([this.dueTotal(), this.descendants().dueTotal]));
++  /** The sheet's overdue-total and each descendant's, as each shows it, added up. */
++  protected readonly consolidatedOverdueTotal = computed(() =>
++    sumAmounts([this.overdueTotal(), this.descendants().overdueTotal]),
++  );
+   /** Per grade: the people not retired on it on the sheet's today, their due-totals added up,
+    *  skipping those that are n/a, and how many of them are active. */
+   protected readonly gradeSummary = computed((): GradeSummary[] =>
+@@ -938,6 +958,7 @@ export class PeopleList {
+       const [claims, lastBatch] = await Promise.all([
+         this.claimsApi.list(sheetId),
+         this.claimsApi.lastSettleBatch(sheetId),
++        this.descendantsApi.figures(sheetId),
+       ]);
+       this.claims.set(claims);
+       this.lastSettleBatch.set(lastBatch);
+@@ -1130,7 +1151,7 @@ export class PeopleList {
+   private async reload(sheetId: string): Promise<void> {
+     const read = ++this.reads;
+     try {
+-      const [people, claims, tags, rates, periods, settings, patrons, watches, lastBatch] = await Promise.all([
++      const [people, claims, tags, rates, periods, settings, patrons, watches, lastBatch, descendants] = await Promise.all([
+         this.api.list(sheetId),
+         this.claimsApi.list(sheetId),
+         this.claimsApi.tags(sheetId),
+@@ -1140,6 +1161,7 @@ export class PeopleList {
+         this.patronsApi.list(sheetId),
+         this.watchesApi.list(sheetId),
+         this.claimsApi.lastSettleBatch(sheetId),
++        this.descendantsApi.figures(sheetId),
+       ]);
+       if (read === this.reads) {
+         this.rates.set(rates);
+@@ -1154,6 +1176,7 @@ export class PeopleList {
+         this.patrons.set(patrons);
+         this.watches.set(watches);
+         this.lastSettleBatch.set(lastBatch);
++        this.descendants.set(descendants);
+         this.people.set(people);
+       }
+     } catch {
+diff --git a/src/main/java/net/officefloor/hq/app/rollup/Rollup.java b/src/main/java/net/officefloor/hq/app/rollup/Rollup.java
+index c740e9ce3..0da6c2d92 100644
+--- a/src/main/java/net/officefloor/hq/app/rollup/Rollup.java
++++ b/src/main/java/net/officefloor/hq/app/rollup/Rollup.java
+@@ -17,6 +17,7 @@ import net.officefloor.hq.app.claim.Dues;
+ import net.officefloor.hq.app.history.History;
+ import net.officefloor.hq.app.person.Person;
+ import net.officefloor.hq.app.person.PersonRepository;
++import net.officefloor.hq.app.sheet.SheetRepository;
+ import net.officefloor.hq.app.sheet.SheetService;
+ import org.springframework.stereotype.Service;
+ import org.springframework.transaction.annotation.Propagation;
+@@ -50,15 +51,17 @@ public class Rollup {
+     private final ClaimRepository claims;
+     private final Dues dues;
+     private final SheetService sheets;
++    private final SheetRepository sheetStore;
+     private final History history;
+     private final Audit audit;
+ 
+-    public Rollup(PersonRepository people, ClaimRepository claims, Dues dues, SheetService sheets, History history,
+-            Audit audit) {
++    public Rollup(PersonRepository people, ClaimRepository claims, Dues dues, SheetService sheets,
++            SheetRepository sheetStore, History history, Audit audit) {
+         this.people = people;
+         this.claims = claims;
+         this.dues = dues;
+         this.sheets = sheets;
++        this.sheetStore = sheetStore;
+         this.history = history;
+         this.audit = audit;
+     }
+@@ -98,6 +101,27 @@ public class Rollup {
+                 "SNAPSHOT" + prefix + " name=" + figures.name() + " due-total=" + figures.dueTotal()));
+     }
+ 
++    /** The figures a sheet's descendants add to its own to consolidate it: over all of them, the
++     *  people (retired included), and each one's due-total and overdue-total as that sheet shows
++     *  them, added up. */
++    public record Descendants(int peopleCount, String dueTotal, String overdueTotal) {
++    }
++
++    /** The figures of a sheet's descendants added up (all zero when it has none). */
++    @Transactional(readOnly = true)
++    public Descendants descendants(String sheetId) {
++        int count = 0;
++        BigDecimal due = BigDecimal.ZERO.setScale(2);
++        BigDecimal overdue = BigDecimal.ZERO.setScale(2);
++        for (String id : sheetStore.descendants(sheetId)) {
++            Snapshot s = snapshot(id);
++            count += s.people().size();
++            due = due.add(new BigDecimal(s.dueTotal()));
++            overdue = overdue.add(new BigDecimal(s.overdueTotal()));
++        }
++        return new Descendants(count, text(due), text(overdue));
++    }
++
+     private Snapshot snapshot(String sheetId) {
+         Map<Long, List<Claim>> byPerson = claims.findBySheetIdOrderByListedDesc(sheetId).stream()
+                 .collect(Collectors.groupingBy(Claim::getPersonId));
+diff --git a/src/main/java/net/officefloor/hq/app/rollup/RollupController.java b/src/main/java/net/officefloor/hq/app/rollup/RollupController.java
+new file mode 100644
+index 000000000..0f5bfe8e6
+--- /dev/null
++++ b/src/main/java/net/officefloor/hq/app/rollup/RollupController.java
+@@ -0,0 +1,27 @@
++package net.officefloor.hq.app.rollup;
++
++import jakarta.validation.constraints.NotBlank;
++import jakarta.validation.constraints.Size;
++import org.springframework.validation.annotation.Validated;
++import org.springframework.web.bind.annotation.GetMapping;
++import org.springframework.web.bind.annotation.PathVariable;
++import org.springframework.web.bind.annotation.RequestMapping;
++import org.springframework.web.bind.annotation.RestController;
++
++@RestController
++@RequestMapping("/api/sheets/{sheetId}")
++@Validated
++public class RollupController {
++
++    private final Rollup rollup;
++
++    public RollupController(Rollup rollup) {
++        this.rollup = rollup;
++    }
++
++    /** The figures of the sheet's descendants added up, for the screen to consolidate with its own. */
++    @GetMapping("/descendants")
++    public Rollup.Descendants descendants(@PathVariable @NotBlank @Size(max = 100) String sheetId) {
++        return rollup.descendants(sheetId.trim());
++    }
++}
+diff --git a/src/main/java/net/officefloor/hq/app/sheet/SheetRepository.java b/src/main/java/net/officefloor/hq/app/sheet/SheetRepository.java
+index 613d7597f..328c1c1dc 100644
+--- a/src/main/java/net/officefloor/hq/app/sheet/SheetRepository.java
++++ b/src/main/java/net/officefloor/hq/app/sheet/SheetRepository.java
+@@ -35,6 +35,29 @@ public interface SheetRepository extends JpaRepository<Sheet, String> {
+     @Query("select s.lastSettleBatch from Sheet s where s.id = :id")
+     Integer lastSettleBatch(String id);
+ 
++    /** The sheets naming a sheet as their parent: its children. */
++    List<Sheet> findByParentId(String parentId);
++
++    /** The ids of a sheet's descendants: its children, their children, and so on, each once (a
++     *  cycle of parents stops where it comes round again). */
++    default List<String> descendants(String id) {
++        List<String> down = new ArrayList<>();
++        List<String> at = List.of(id);
++        while (!at.isEmpty()) {
++            List<String> next = new ArrayList<>();
++            for (String parent : at) {
++                for (Sheet child : findByParentId(parent)) {
++                    if (!child.getId().equals(id) && !down.contains(child.getId())) {
++                        down.add(child.getId());
++                        next.add(child.getId());
++                    }
++                }
++            }
++            at = next;
++        }
++        return down;
++    }
++
+     /** How many levels up a sheet's rates are taken from: its parent, its parent's parent, and so on. */
+     int ANCESTOR_LEVELS = 3;
+ 
