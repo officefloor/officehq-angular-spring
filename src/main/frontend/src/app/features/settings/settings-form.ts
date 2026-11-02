@@ -1,5 +1,5 @@
 import { Component, effect, inject, signal } from '@angular/core';
-import { FormControl, FormGroup, ReactiveFormsModule } from '@angular/forms';
+import { AbstractControl, FormControl, FormGroup, ReactiveFormsModule } from '@angular/forms';
 import { Session } from '../../core/session';
 import { Grade } from '../../core/people';
 import { LATE_PCT, LIMIT, POLICY_DATE, ROLES, TERMS, Role, RoleName, SheetSettings } from '../../core/settings';
@@ -146,30 +146,32 @@ export class SettingsForm {
     });
   }
 
-  /** Save the settings changed since the last save; all of them when none was changed. */
+  /** Save the settings changed since the last save (typed into, or entered and left, which an
+   *  unchanged blank field may be); all of them when none was. */
   protected async saveSettings(): Promise<void> {
     if (this.submitting) return;
     this.settingsError.set('');
     const { clerkLimit, cap, floor, terms, gradeTerms, latePct, policyDate, periodNumberingFrom } = this.settingsForm.controls;
-    const none = !clerkLimit.dirty && !cap.dirty && !floor.dirty && !terms.dirty && !gradeTerms.dirty && !latePct.dirty
-      && !policyDate.dirty && !periodNumberingFrom.dirty;
+    const changed = (c: AbstractControl) => c.dirty || c.touched;
+    const none = !changed(clerkLimit) && !changed(cap) && !changed(floor) && !changed(terms) && !changed(gradeTerms)
+      && !changed(latePct) && !changed(policyDate) && !changed(periodNumberingFrom);
     const limitValue = clerkLimit.value.trim();
     const capValue = cap.value.trim();
-    const saveCap = cap.dirty || (none && capValue !== '');
+    const saveCap = changed(cap) || (none && capValue !== '');
     const floorValue = floor.value.trim();
-    const saveLimit = none || clerkLimit.dirty;
-    const saveFloor = none || floor.dirty;
+    const saveLimit = none || changed(clerkLimit);
+    const saveFloor = none || changed(floor);
     const termsValue = terms.value.trim();
-    const saveTerms = none || terms.dirty;
+    const saveTerms = none || changed(terms);
     const gradeTermsToSave = this.grades
       .map((g) => ({ grade: g, control: gradeTerms.controls[g], value: gradeTerms.controls[g].value.trim() }))
-      .filter((t) => (none || t.control.dirty) && t.value !== '');
+      .filter((t) => (none || changed(t.control)) && t.value !== '');
     const latePctValue = latePct.value.trim();
-    const saveLatePct = none || latePct.dirty;
+    const saveLatePct = none || changed(latePct);
     const policyDateValue = policyDate.value.trim();
-    const savePolicyDate = none || policyDate.dirty;
+    const savePolicyDate = none || changed(policyDate);
     const numberingValue = periodNumberingFrom.value.trim();
-    const saveNumbering = none || periodNumberingFrom.dirty;
+    const saveNumbering = none || changed(periodNumberingFrom);
     if (saveLimit && limitValue !== '' && !LIMIT.test(limitValue)) {
       this.settingsError.set('Enter a clerk limit of 0.00 or more with up to two decimals, or leave it blank for no limit.');
       return;
@@ -208,42 +210,52 @@ export class SettingsForm {
         const saved = await this.api.setClerkLimit(limitValue === '' ? null : limitValue);
         this.clerkLimit.set(saved.clerkLimit);
         clerkLimit.markAsPristine();
+        clerkLimit.markAsUntouched();
       }
       if (saveCap) {
         const saved = await this.api.setCap(capValue === '' ? null : capValue);
         this.cap.set(saved.cap);
         cap.markAsPristine();
+        cap.markAsUntouched();
       }
       if (saveFloor && floorValue !== '') {
         const saved = await this.api.setFloor(floorValue);
         this.floor.set(saved.floor);
         floor.markAsPristine();
+        floor.markAsUntouched();
       }
       if (saveTerms && termsValue !== '') {
         const saved = await this.api.setTerms(termsValue);
         this.terms.set(saved.terms);
         terms.markAsPristine();
+        terms.markAsUntouched();
       }
       for (const t of gradeTermsToSave) {
         const saved = await this.api.setGradeTerms(t.grade, t.value);
         this.gradeTerms.set(saved.gradeTerms);
         t.control.markAsPristine();
+        t.control.markAsUntouched();
       }
       if (saveLatePct && latePctValue !== '') {
         const saved = await this.api.setLatePct(latePctValue);
         this.latePct.set(saved.latePct);
         latePct.markAsPristine();
+        latePct.markAsUntouched();
       }
       if (savePolicyDate) {
         const saved = await this.api.setPolicyDate(policyDateValue === '' ? null : policyDateValue);
         this.policyDate.set(saved.policyDate);
         policyDate.markAsPristine();
+        policyDate.markAsUntouched();
       }
       if (saveNumbering) {
         const saved = await this.api.setPeriodNumberingFrom(numberingValue === '' ? null : numberingValue);
         this.periodNumberingFrom.set(saved.periodNumberingFrom);
         periodNumberingFrom.markAsPristine();
+        periodNumberingFrom.markAsUntouched();
       }
+      // a blank field entered and left, and not saved, is not taken as changed by the next save
+      this.settingsForm.markAsUntouched();
     } catch {
       this.settingsError.set('The settings could not be saved.');
     } finally {

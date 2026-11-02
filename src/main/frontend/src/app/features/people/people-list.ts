@@ -76,7 +76,7 @@ import { QuickAddBar } from './quick-add-bar';
       <button type="button" data-testid="export-people" (click)="exportCsv()">Export people (CSV)</button>
       <table data-testid="people">
         <thead>
-          <tr><th scope="col">Name</th><th scope="col">Grade</th><th scope="col">Claimed</th><th scope="col">Due</th><th scope="col">Excess</th><th scope="col">Statements</th><th scope="col">Last stated</th><th scope="col">Stated on</th><th scope="col">Retired</th><th scope="col">Retired from</th><th scope="col">On hold</th><th scope="col">Overdue</th><th scope="col">Overdue due</th><th scope="col">Patrons</th><th scope="col">Backing</th><th scope="col">Claims</th><th scope="col"><span class="visually-hidden">Actions</span></th></tr>
+          <tr><th scope="col">Name</th><th scope="col">Grade</th><th scope="col">Claimed</th><th scope="col">Due</th>@for (pd of periods(); track pd.id) {<th scope="col">Due in {{ pd.name }}</th>}<th scope="col">Excess</th><th scope="col">Statements</th><th scope="col">Last stated</th><th scope="col">Stated on</th><th scope="col">Retired</th><th scope="col">Retired from</th><th scope="col">On hold</th><th scope="col">Overdue</th><th scope="col">Overdue due</th><th scope="col">Patrons</th><th scope="col">Backing</th><th scope="col">Claims</th><th scope="col"><span class="visually-hidden">Actions</span></th></tr>
         </thead>
         <tbody>
           @for (p of shown(); track p.id) {
@@ -85,6 +85,9 @@ import { QuickAddBar } from './quick-add-bar';
               <td data-testid="person-grade">{{ gradeOf(p) }}</td>
               <td data-testid="person-claimed">{{ claimed().get(p.id) ?? '0.00' }}</td>
               <td data-testid="person-due-total">{{ dueOf(p) ?? 'n/a' }}</td>
+              @for (pd of periods(); track pd.id) {
+                <td [attr.data-testid]="'person-period-' + pd.name + '-due-total'">{{ periodDueOf(p.id, pd) }}</td>
+              }
               <td data-testid="person-excess">{{ excessOf(p) }}</td>
               <td data-testid="person-statement-count">{{ p.statementCount }}</td>
               <td data-testid="person-stated-total">{{ p.statementCount > 0 ? (p.statedTotal ?? 'n/a') : '' }}</td>
@@ -224,22 +227,29 @@ export class PeopleList {
   }));
   /** The periods on the sheet, earliest first. */
   protected readonly periods = signal<Period[]>([]);
-  /** Each period's due-total by its id: the due figures of the claims that count whose date falls
-   *  in it, skipping those with no due. */
-  protected readonly periodDueTotals = computed(() => {
+  /** Each person's live due-total for each period, by the person's id then the period's id: the due
+   *  figures of their claims that count whose date falls in it, skipping those with no due. */
+  private readonly livePeriodDues = computed(() => {
     const people = new Map(this.people().map((p) => [p.id, p]));
-    const figures = new Map<number, string[]>(this.periods().map((p) => [p.id, []]));
+    const figures = new Map<number, Map<number, string[]>>();
     for (const c of this.live()) {
       const period = periodOf(this.periods(), c.date);
       const person = people.get(c.personId);
       if (period === undefined || person === undefined) continue;
       const d = claimDue(c, this.rates(), gradeOn(person.grades, c.date), this.floor(), this.lateness());
-      if (d !== null) figures.get(period.id)?.push(d);
+      if (d === null) continue;
+      const theirs = figures.get(person.id) ?? new Map<number, string[]>();
+      theirs.set(period.id, [...(theirs.get(period.id) ?? []), d]);
+      figures.set(person.id, theirs);
     }
-    const by = new Map<number, string>();
-    for (const [id, ds] of figures) by.set(id, sumAmounts(ds));
+    const by = new Map<number, Map<number, string>>();
+    for (const [id, theirs] of figures) by.set(id, new Map([...theirs].map(([pid, ds]) => [pid, sumAmounts(ds)])));
     return by;
   });
+  /** Each period's due-total by its id: the sum of the people's due-totals for it. */
+  protected readonly periodDueTotals = computed(() =>
+    new Map(this.periods().map((pd) => [pd.id, sumAmounts(this.people().map((p) => this.periodDueOf(p.id, pd)))])),
+  );
   /** Each grade's rate in force on the sheet's today; a grade with none is missing. */
   protected readonly pctOf = computed(() => {
     const today = this.session.today();
@@ -278,7 +288,7 @@ export class PeopleList {
   );
   /** Per period, earliest first: the due-total its row shows. */
   protected readonly periodSummary = computed((): PeriodSummary[] =>
-    this.periods().map((p) => ({ name: p.name, dueTotal: p.closedTotal ?? this.periodDueTotals().get(p.id) ?? '0.00' })),
+    this.periods().map((p) => ({ name: p.name, dueTotal: this.periodDueTotals().get(p.id) ?? '0.00' })),
   );
   /** Per status: how many claims on the sheet have it. */
   protected readonly statusSummary = computed((): StatusSummary[] =>
@@ -585,6 +595,13 @@ export class PeopleList {
 
   /** A person's due-total: the sum of their figures ({@link figuresOf}), at most the sheet's cap.
    *  Null (n/a) when the sum is; n/a is not capped. */
+  /** A person's due-total for a period: the one fixed when it was closed (0.00 for a person added
+   *  since), or else the live one. */
+  protected periodDueOf(personId: number, period: Period): string {
+    if (period.closed) return period.closedPersonTotals[personId] ?? '0.00';
+    return this.livePeriodDues().get(personId)?.get(period.id) ?? '0.00';
+  }
+
   protected dueOf(p: Person): string | null {
     const sum = this.figuresOf(p);
     const cap = this.cap();

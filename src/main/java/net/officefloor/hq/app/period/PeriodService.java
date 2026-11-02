@@ -2,6 +2,7 @@ package net.officefloor.hq.app.period;
 
 import java.math.BigDecimal;
 import java.time.LocalDate;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.function.Function;
@@ -84,11 +85,10 @@ public class PeriodService {
         if (period.isClosed()) {
             throw new ResponseStatusException(HttpStatus.CONFLICT, "That period is already closed");
         }
-        BigDecimal total = dueTotal(sheetId, period);
-        period.close(total);
+        period.close(personTotals(sheetId, period));
         Period saved = periods.saveAndFlush(period);
         audit.recordOnCommit("PERIOD_CLOSED sheet=" + sheetId + " by=" + user + " period=" + saved.getName()
-                + " total=" + total.toPlainString());
+                + " total=" + saved.getClosedTotal().toPlainString());
         return saved;
     }
 
@@ -111,12 +111,16 @@ public class PeriodService {
         return saved;
     }
 
-    /** A period's due-total: the due figures of the claims that count whose date falls in it,
-     *  skipping those with no due and those that do not count live (see Dues#countsLive). */
-    private BigDecimal dueTotal(String sheetId, Period period) {
+    /** Each person's due-total for a period, by the person's id: the due figures of their claims
+     *  that count whose date falls in it, skipping those with no due and those that do not count
+     *  live (see Dues#countsLive). */
+    private Map<Long, BigDecimal> personTotals(String sheetId, Period period) {
         Map<Long, Person> byId = people.findBySheetIdOrderByIdAsc(sheetId).stream()
                 .collect(Collectors.toMap(Person::getId, Function.identity()));
-        BigDecimal total = BigDecimal.ZERO.setScale(2);
+        Map<Long, BigDecimal> totals = new HashMap<>();
+        for (Long id : byId.keySet()) {
+            totals.put(id, BigDecimal.ZERO.setScale(2));
+        }
         for (Claim c : claims.findBySheetIdOrderByListedDesc(sheetId)) {
             Person person = byId.get(c.getPersonId());
             if (person == null || !Dues.countsLive(person, c) || c.getDate().isBefore(period.getFromDate())
@@ -125,10 +129,10 @@ public class PeriodService {
             }
             BigDecimal figure = dues.figure(sheetId, person, c);
             if (figure != null) {
-                total = total.add(figure);
+                totals.merge(person.getId(), figure, BigDecimal::add);
             }
         }
-        return total;
+        return totals;
     }
 
     private static ResponseStatusException nameInUse() {
