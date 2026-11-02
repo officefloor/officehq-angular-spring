@@ -1,0 +1,64 @@
+{
+  "checkpoint": 3,
+  "stack": {
+    "repo": "/home/daniel/officehq-angular-spring",
+    "origin": "git@github.com:officefloor/officehq-angular-spring.git",
+    "name": "officehq-angular-spring",
+    "base_ref": "base-empty",
+    "base_commit": "65cb8233ea38b2dfa6cfd18709e30cd18fdf3250"
+  },
+  "checkpoint_id": "cp03_people",
+  "phase": "early",
+  "type": "additive",
+  "mutates": [],
+  "replaced_tests": [],
+  "request": {
+    "spec": "Keep a list of people on the sheet. Each has a name (required; an empty name is refused with an\nerror on the form) and a grade, one of A, B or C. People are added through a form, and an\nexisting person can be edited through the same form (opening a person's editor fills the form\nwith their values). Show all the people in the order they were added, each with their name and\ngrade.\n",
+    "prompt": "You are implementing ONE change to this application.\n\nFIRST read AGENTS.md \u2014 it states the working rules and how the app is tested, and sends you to\nDESIGN.md for the app's stack and conventions. Follow both.\n\nTHE CHANGE REQUEST:\nKeep a list of people on the sheet. Each has a name (required; an empty name is refused with an\nerror on the form) and a grade, one of A, B or C. People are added through a form, and an\nexisting person can be edited through the same form (opening a person's editor fills the form\nwith their values). Show all the people in the order they were added, each with their name and\ngrade.\n\nYour work is verified by an automated Playwright UI test already installed under e2e/specs/.\nRead that spec: it declares the exact data-testid anchors, values, test data and any audit\nrecords it expects \u2014 match them. Run `bin/e2e` to build the app, start it, and run the test as\nyou work; iterate until it passes. Change whatever the request needs across the app \u2014 its stored\ndata, its server and its front end. Do NOT edit bin/build, bin/start, bin/stop, bin/e2e,\nAGENTS.md, CLAUDE.md, DESIGN.md, e2e/support/ or the test spec.\n"
+  },
+  "commit_sha": "937ff3109817a46863c72b0bc36f979ee35d5c4f",
+  "reset_sha": "",
+  "preagent_sha": "3c706490686a053fa3e8cb26814935d5c49205ab",
+  "prev_sha": "3c706490686a053fa3e8cb26814935d5c49205ab",
+  "base_sha": "65cb8233ea38b2dfa6cfd18709e30cd18fdf3250",
+  "agent": {
+    "ok": true,
+    "cost_usd": 0.5644144,
+    "input_tokens": 20,
+    "output_tokens": 8852,
+    "cache_read_tokens": 322392,
+    "cache_creation_tokens": 40352,
+    "num_turns": 10,
+    "duration_ms": 147036,
+    "duration_api_ms": 73488,
+    "model": "claude-opus-5-5",
+    "session_id": "3142bfeb-720b-4c3c-8034-dbfe8e0e7bbe",
+    "stop_reason": "success",
+    "result_text": "The people list is in, and `bin/e2e` passes: the acceptance test ran once and passed.\n\n**What's stored:** a new migration, `V3__person.sql`, adds a `person` table. Each person belongs to a sheet and has a name and a grade. The database rejects any grade other than A, B or C.\n\n**Server:** a new `person` package following the existing Spring pattern (entity, repository, service, controller). Its endpoints are:\n- `GET /api/sheets/{sheetId}/people` lists the sheet's people in the order they were added.\n- `POST /api/sheets/{sheetId}/people` adds a person.\n- `PUT /api/sheets/{sheetId}/people/{personId}` edits a person.\n\nA blank name or a grade outside A/B/C is refused with a 400, and editing someone who isn't on that sheet returns a 404. Names have their outer spaces trimmed before saving, so \" ada \" is stored as \"ada\". The test passes either way.\n\n**Front end:**\n- **Form:** a new `PeopleList` component shows one form (name, plus a grade drop-down) for both adding and editing. Pressing a person's Edit button fills the form with their values, turns the submit button into Save and shows a Cancel button.\n- **Errors:** an empty name shows the form's error and nothing is saved. Changing the form clears the error.\n- **Re-reading the sheet:** `Session` now counts sheet loads, so loading a sheet again re-reads its people from the store. If two loads overlap, only the newer list is shown.\n- **Accessibility:** the table's Actions column header is hidden from sight but still read by screen readers, using a new `.visually-hidden` style in `styles.css`.\n\nThe change doesn't write anything to the audit file, because neither the request nor the test asks for audit records.",
+    "error": "",
+    "attempts": [
+      {
+        "ok": true,
+        "limit_reached": false,
+        "retryable": false,
+        "timed_out": false,
+        "cost_usd": 0.5644144,
+        "num_turns": 10,
+        "duration_ms": 147036,
+        "duration_api_ms": 73488,
+        "error": ""
+      }
+    ]
+  },
+  "agent_stream_file": "cp03.agent.jsonl",
+  "agent_diff_file": "cp03.agent.diff",
+  "build_log_file": null,
+  "tests": {
+    "gated": false,
+    "queued": true
+  },
+  "probe": null,
+  "pinned_touched": [],
+  "acceptance_touched": [],
+  "impact_gate": null
+}
