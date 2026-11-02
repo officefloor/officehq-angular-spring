@@ -1,0 +1,169 @@
+diff --git a/src/main/frontend/src/app/core/session.ts b/src/main/frontend/src/app/core/session.ts
+index 4667abc5b..c306755dc 100644
+--- a/src/main/frontend/src/app/core/session.ts
++++ b/src/main/frontend/src/app/core/session.ts
+@@ -14,8 +14,12 @@ interface SheetView {
+   archived: boolean;
+   lastBatch: number | null;
+   reviewSla: number | null;
++  role: Role;
+ }
+ 
++/** The role a user acts in on a sheet. */
++export type Role = 'clerk' | 'steward' | 'viewer';
++
+ /** The people-list columns a user can switch off on their screen. */
+ export const PEOPLE_COLUMNS = [
+   'claimed', 'due-total', 'excess', 'statement-count', 'stated-total', 'statement-date', 'overdue-count',
+@@ -79,6 +83,8 @@ export class Session {
+   /** The signed-in user's locale, saved per user: how the screen shows them figures (en unless chosen). */
+   readonly locale = signal<Locale>('en');
+   readonly sheetId = signal<string | null>(null);
++  /** The role the signed-in user acts in on the sheet on its today (as of the as-of date while one is set). */
++  readonly role = signal<Role | null>(null);
+   /** The sheet's today (yyyy-mm-dd): every date decision and default date uses it, never the clock. */
+   readonly today = signal<string | null>(null);
+   /** The values recorded for the sheet's dated settings, by key. */
+@@ -248,6 +254,7 @@ export class Session {
+     this.archived.set(res.archived);
+     this.lastBatch.set(res.lastBatch);
+     this.reviewSla.set(res.reviewSla);
++    this.role.set(res.role);
+     this.clonedTo.set(null);
+     this.loads.update((n) => n + 1);
+   }
+@@ -271,6 +278,7 @@ export class Session {
+     );
+     if (this.sheetId() === res.id) {
+       this.today.set(res.today);
++      this.role.set(res.role);
+       this.holdChanges.update((n) => n + 1);
+     }
+   }
+diff --git a/src/main/frontend/src/app/features/people/people.ts b/src/main/frontend/src/app/features/people/people.ts
+index e44c9928e..3f6c6a3b4 100644
+--- a/src/main/frontend/src/app/features/people/people.ts
++++ b/src/main/frontend/src/app/features/people/people.ts
+@@ -204,6 +204,8 @@ interface StatementTaken {
+ // people included), the claims per status, and the sheet's due-total and overdue-total.
+ // The sheet's due-total and overdue-total leave out the single highest and the single lowest person's
+ // figure when three or more people have one (an n/a due-total is no figure).
++// Under the header, a steward's dashboard: the count of PENDING claims, of REVIEW claims and of overdue
++// claims that count, over the sheet; empty for a user who does not act as a steward (as of the as-of date).
+ // People can be selected and given a grade together from a from-date (blank: the sheet's today), each in
+ // list order as the person form would; the count changed is shown. Selected people can be retired
+ // together from a date (blank: the sheet's today), each in list order as the row's retire would; the
+@@ -229,6 +231,12 @@ function trimmedSum(figures: number[]): number {
+       <p>My overdue total: <strong data-testid="my-overdue-total">{{ (me() ? money(overdueOf(me()!).cents) : '') | figure }}</strong></p>
+       <p>My crew total: <strong data-testid="my-crew-due-total">{{ myCrewDueTotal() | figure }}</strong></p>
+     </header>
++    <section aria-labelledby="dash-heading">
++      <h2 id="dash-heading">Steward's dashboard</h2>
++      <p>Pending: <strong data-testid="dash-pending-count">{{ dashboard()?.pending ?? '' }}</strong></p>
++      <p>For review: <strong data-testid="dash-review-count">{{ dashboard()?.review ?? '' }}</strong></p>
++      <p>Overdue: <strong data-testid="dash-overdue-count">{{ dashboard()?.overdue ?? '' }}</strong></p>
++    </section>
+     <section aria-labelledby="consolidated-heading">
+       <h2 id="consolidated-heading">Consolidated (this sheet and its descendants)</h2>
+       <p>People: <strong data-testid="consolidated-people-count">{{ consolidated().people }}</strong></p>
+@@ -1110,6 +1118,15 @@ export class People {
+   protected readonly statusSummary = computed(() =>
+     SUMMARY_STATUSES.map((status) => ({ status, count: this.claims().filter((c) => c.status === status).length })),
+   );
++  /**
++   * The steward's dashboard: how many of the sheet's claims are PENDING, how many REVIEW, and how many
++   * overdue claims count; null (the cells empty) for a user who does not act as a steward.
++   */
++  protected readonly dashboard = computed(() => {
++    if (this.session.role() !== 'steward') return null;
++    const count = (status: string) => this.claims().filter((c) => c.status === status).length;
++    return { pending: count('PENDING'), review: count('REVIEW'), overdue: this.overdueTotal().count };
++  });
+   /** How many of the sheet's REVIEW claims are late for review. */
+   protected readonly reviewLateCount = computed(() => this.claims().filter((c) => this.session.reviewLate(c)).length);
+   /** Per reason on the sheet's list: how many VOID claims were voided with it. */
+diff --git a/src/main/java/net/officefloor/hq/app/sheet/SheetController.java b/src/main/java/net/officefloor/hq/app/sheet/SheetController.java
+index 39f4b0eaa..15d3164fc 100644
+--- a/src/main/java/net/officefloor/hq/app/sheet/SheetController.java
++++ b/src/main/java/net/officefloor/hq/app/sheet/SheetController.java
+@@ -10,7 +10,9 @@ import java.util.List;
+ import java.util.Map;
+ import net.officefloor.hq.app.asof.AsOfRead;
+ import net.officefloor.hq.app.setting.OpenToViewer;
++import net.officefloor.hq.app.setting.Role;
+ import net.officefloor.hq.app.setting.SettingController;
++import net.officefloor.hq.app.setting.SettingService;
+ import org.springframework.validation.annotation.Validated;
+ import org.springframework.web.bind.annotation.PathVariable;
+ import org.springframework.web.bind.annotation.PostMapping;
+@@ -30,18 +32,20 @@ public class SheetController {
+      * force on its today: the floor has two decimals, the terms are in days, the late percent has two
+      * decimals; the policy date is null when blank (the sheet's today); the cap has two decimals, null
+      * when none; dated has every value recorded for its dated settings, by key; archived is whether a
+-     * steward has archived it; last batch is the number of its last bulk settle batch, null when none; the review SLA is in days, null when none.
++     * steward has archived it; last batch is the number of its last bulk settle batch, null when none; the review SLA is in days, null when none;
++     * role is the role the signed-in user acts in on it (clerk, steward or viewer) on its today.
+      */
+     public record SheetView(String id, LocalDate today, String floor, int terms, String latePct,
+             LocalDate policyDate, String cap, Map<String, List<SettingController.DatedView>> dated,
+-            boolean archived, Integer lastBatch, Integer reviewSla) {
+-        static SheetView of(Sheet sheet) {
++            boolean archived, Integer lastBatch, Integer reviewSla, String role) {
++        static SheetView of(Sheet sheet, Role role) {
+             LocalDate today = sheet.getToday();
+             return new SheetView(sheet.getId(), today, sheet.floorOn(today).toPlainString(),
+                     sheet.termsOn(today), sheet.latePctOn(today).toPlainString(), sheet.getPolicyDate(),
+                     sheet.getCap() == null ? null : sheet.getCap().toPlainString(),
+                     SettingController.datedViews(sheet.getDated()), sheet.isArchived(),
+-                    sheet.getLastSettleBatch() == 0 ? null : sheet.getLastSettleBatch(), sheet.getReviewSla());
++                    sheet.getLastSettleBatch() == 0 ? null : sheet.getLastSettleBatch(), sheet.getReviewSla(),
++                    role.label());
+         }
+     }
+ 
+@@ -55,10 +59,17 @@ public class SheetController {
+ 
+     private final SheetService service;
+     private final SheetCloneService clones;
++    private final SettingService settings;
+ 
+-    public SheetController(SheetService service, SheetCloneService clones) {
++    public SheetController(SheetService service, SheetCloneService clones, SettingService settings) {
+         this.service = service;
+         this.clones = clones;
++        this.settings = settings;
++    }
++
++    /** The sheet as the user is shown it, with the role they act in on it. */
++    private SheetView view(Sheet sheet, String user) {
++        return SheetView.of(sheet, settings.roleOf(sheet.getId(), user.trim()));
+     }
+ 
+     /** Load (or start) a sheet by id for the signed-in user. */
+@@ -68,7 +79,7 @@ public class SheetController {
+     public SheetView load(
+             @PathVariable @Size(max = 100) @Pattern(regexp = "[A-Za-z0-9._-]+") String id,
+             @RequestHeader("X-User") @NotBlank @Size(max = 100) String user) {
+-        return SheetView.of(service.load(id, user.trim()));
++        return view(service.load(id, user.trim()), user);
+     }
+ 
+     /** Change the sheet's today. */
+@@ -77,7 +88,7 @@ public class SheetController {
+             @PathVariable @Size(max = 100) @Pattern(regexp = "[A-Za-z0-9._-]+") String id,
+             @RequestHeader("X-User") @NotBlank @Size(max = 100) String user,
+             @RequestBody @Valid TodayRequest request) {
+-        return SheetView.of(service.setToday(id, user, request.today()));
++        return view(service.setToday(id, user, request.today()), user);
+     }
+ 
+     /** Archive the sheet: a steward only; an archived sheet refuses it as it does every change. */
+@@ -85,7 +96,7 @@ public class SheetController {
+     public SheetView archive(
+             @PathVariable @Size(max = 100) @Pattern(regexp = "[A-Za-z0-9._-]+") String id,
+             @RequestHeader("X-User") @NotBlank @Size(max = 100) String user) {
+-        return SheetView.of(service.archive(id, user.trim()));
++        return view(service.archive(id, user.trim()), user);
+     }
+ 
+     /** Clone the sheet to another id: a steward only, and only to a sheet never used. */
