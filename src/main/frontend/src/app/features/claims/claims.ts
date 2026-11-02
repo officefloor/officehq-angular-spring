@@ -145,11 +145,13 @@ export function isBound(c: Claim): boolean {
 }
 
 /**
- * Deferred: OPEN with a deferred-until date after the sheet's today. It counts in no total, is not
- * overdue, cannot be settled and is left unbound by a statement until today reaches that date.
+ * Deferred: a deferred-until date after the sheet's today, and not bound by a statement. It counts in no
+ * total, is not overdue, cannot be settled and is left unbound by a statement until today reaches that date.
+ * A claim a statement has bound stays in the totals while bound: its deferral takes effect only once the
+ * binding ends, whatever its status since (open or SETTLED).
  */
 export function isDeferred(c: Claim, today: string | null): boolean {
-  return c.status === 'OPEN' && c.deferredUntil !== null && today !== null && today < c.deferredUntil;
+  return counts(c) && !isBound(c) && c.deferredUntil !== null && today !== null && today < c.deferredUntil;
 }
 
 /**
@@ -639,12 +641,13 @@ export class Claims {
   }
 
   /**
-   * Shown as deferred while its deferred-until date is after the sheet's today, whatever its status since
-   * (a deferred claim voided stays marked); only an OPEN one is kept out of the totals ({@link isDeferred}).
+   * Shown as deferred while its deferred-until date is after the sheet's today and it is not bound by a
+   * statement, whatever its status since (a deferred claim voided stays marked); only one that counts is
+   * kept out of the totals ({@link isDeferred}).
    */
   protected deferredOf(c: Claim): boolean {
     const today = this.session.today();
-    return c.deferredUntil !== null && today !== null && today < c.deferredUntil;
+    return !isBound(c) && c.deferredUntil !== null && today !== null && today < c.deferredUntil;
   }
 
   /** The name of the period its due-by falls in, or blank when none. */

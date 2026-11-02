@@ -592,19 +592,21 @@ public class Claim {
 
     /**
      * Whether it was deferred at the end of the date, with the status it had then: OPEN, deferred on or
-     * before the date until a date after it.
+     * before the date until a date after it, and not bound by a statement then.
      */
     public boolean isDeferredAt(ClaimStatus statusThen, LocalDate date) {
         return statusThen == ClaimStatus.OPEN && deferredUntil != null && date.isBefore(deferredUntil)
-                && (deferredOn == null || !deferredOn.isAfter(date));
+                && (deferredOn == null || !deferredOn.isAfter(date)) && bindingAt(date) == null;
     }
 
     /**
-     * Whether it is deferred on the date: OPEN, with a deferred-until date after it. A deferred claim counts
-     * in no total, is not overdue, cannot be settled and is left unbound by a statement.
+     * Whether it is deferred on the date: with a deferred-until date after it, and not bound by a statement. A
+     * deferred claim counts in no total, is not overdue, cannot be settled and is left unbound by a statement.
+     * A claim a statement has bound stays in the totals while bound (it can be settled then): its deferral
+     * takes effect only once the binding ends, whatever its status since (OPEN, PENDING or SETTLED).
      */
     public boolean isDeferredOn(LocalDate today) {
-        return status == ClaimStatus.OPEN && deferredUntil != null && today != null && today.isBefore(deferredUntil);
+        return status.counts() && !stated && deferredUntil != null && today != null && today.isBefore(deferredUntil);
     }
 
     /** Leave the claim unbound on the sheet's today, its due live again. */
