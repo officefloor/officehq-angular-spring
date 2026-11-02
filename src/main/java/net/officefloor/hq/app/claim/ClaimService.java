@@ -125,7 +125,7 @@ public class ClaimService {
         RollupService.Snapshot before = rollup.snapshot(sheetId);
         Person person = people.findByIdAndSheetId(personId, sheetId).orElseThrow(PersonNotFoundException::new);
         LocalDate on = dateOrEntryDate(sheetId, date);
-        int terms = termsOf(sheetId, person, on);
+        int terms = termsOf(sheetId, person, sheets.today(sheetId));
         LocalDate dueBy = holidays.businessDaysAfter(sheetId, on, terms);
         refuseIfClosed(sheetId, dueBy);
         if (!person.mayClaimOn(on)) throw new PersonRetiredException();
@@ -575,7 +575,7 @@ public class ClaimService {
         claim.setAmount(claim.getAmount().subtract(amount));
         claim.unstate(sheets.today(sheetId));
         Claim original = claims.saveAndFlush(claim);
-        int terms = termsOf(sheetId, person, on);
+        int terms = termsOf(sheetId, person, sheets.today(sheetId));
         LocalDate dueBy = holidays.businessDaysAfter(sheetId, on, terms);
         Claim split = new Claim(sheetId, person.getId(), amount, on, original.getNote(), dueBy, terms);
         split.setSplitFrom(original.getNumber());
@@ -786,8 +786,9 @@ public class ClaimService {
     }
 
     /**
-     * The terms a claim of the person dated on the date is fixed with: their own terms in force then, else
-     * their grade's then. Its due-by is the terms-th business day after its date (skipping weekends and the sheet's holidays).
+     * The terms a claim of the person created on the day (the sheet's today then) is fixed with: their own
+     * terms in force that day, else those of the grade they had that day, else the sheet's that day. Its
+     * due-by is the terms-th business day after its date (skipping weekends and the sheet's holidays).
      */
     private int termsOf(String sheetId, Person person, LocalDate on) {
         Integer own = person.termsOn(on);
