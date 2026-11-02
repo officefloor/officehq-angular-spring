@@ -5,7 +5,7 @@ import { Claims } from '../../core/claims';
 
 /** The message for a refused paste: the server names the line that failed. */
 function refusal(e: unknown): string {
-  if (e instanceof HttpErrorResponse && e.status === 423) return 'A line\'s date falls in a closed period.';
+  if (e instanceof HttpErrorResponse && e.status === 423) return 'A line\'s due-by falls in a closed period.';
   if (e instanceof HttpErrorResponse && e.status === 422) return 'A line is dated after the person\'s retirement.';
   if (e instanceof HttpErrorResponse && typeof e.error?.message === 'string' && e.error.message) return e.error.message;
   return 'The claims could not be added.';

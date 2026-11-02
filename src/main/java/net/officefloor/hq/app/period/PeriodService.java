@@ -190,7 +190,7 @@ public class PeriodService {
     }
 
     /** Each person's due-total for a period, by the person's id: the due figures of their claims
-     *  whose date falls in it and that count by their status at its end, skipping those with no due
+     *  whose due-by falls in it and that count by their status at its end, skipping those with no due
      *  and those the live rules leave out (see Dues#countsAsOf). */
     private Map<Long, BigDecimal> personTotals(String sheetId, Period period) {
         Map<Long, Person> byId = people.findBySheetIdOrderByIdAsc(sheetId).stream()
@@ -202,8 +202,8 @@ public class PeriodService {
         LocalDate today = sheets.today(sheetId);
         for (Claim c : claims.findBySheetIdOrderByListedDesc(sheetId)) {
             Person person = byId.get(c.getPersonId());
-            if (person == null || !Dues.countsAsOf(person, c, period.getToDate(), today) || c.getDate().isBefore(period.getFromDate())
-                    || c.getDate().isAfter(period.getToDate())) {
+            if (person == null || !Dues.countsAsOf(person, c, period.getToDate(), today) || c.getDueBy().isBefore(period.getFromDate())
+                    || c.getDueBy().isAfter(period.getToDate())) {
                 continue;
             }
             BigDecimal figure = dues.figure(sheetId, person, c);

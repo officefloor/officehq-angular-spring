@@ -131,7 +131,7 @@ export interface Claim {
   splitFrom: string | null;
   /** Who has the claim's editor open, locking it for every other user; null when no one has. */
   editLockedBy: string | null;
-  /** Whether the claim was added while the period its date falls in was soft-closed. */
+  /** Whether the claim was added while the period its due-by falls in was soft-closed. */
   lateEntry: boolean;
 }
 
@@ -337,7 +337,7 @@ export class Claims {
   }
 
   /** Re-date an open or pending claim; refused (403) when the user is not a steward, (409) when it
-   *  is not open or pending, (423) when its period or the new date's is closed, and (422) when the
+   *  is not open or pending, (423) when its period is closed, and (422) when the
    *  date is after the person's retirement. */
   redate(id: number, date: string): Promise<Claim> {
     const { sheetId, user } = this.active();

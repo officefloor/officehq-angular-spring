@@ -289,13 +289,13 @@ export class PeopleList {
   /** The periods on the sheet, earliest first. */
   protected readonly periods = signal<Period[]>([]);
   /** Each person's live due-total for each period, by the person's id then the period's id: the due
-   *  figures of their claims whose date falls in it and that count by their status at its end,
+   *  figures of their claims whose due-by falls in it and that count by their status at its end,
    *  skipping those with no due. */
   private readonly livePeriodDues = computed(() => {
     const people = new Map(this.people().map((p) => [p.id, p]));
     const figures = new Map<number, Map<number, string[]>>();
     for (const c of this.claims()) {
-      const period = periodOf(this.periods(), c.date);
+      const period = periodOf(this.periods(), c.dueBy);
       const person = people.get(c.personId);
       if (period === undefined || person === undefined) continue;
       if (!countsAsOf(c, person, period.to, this.session.today())) continue;

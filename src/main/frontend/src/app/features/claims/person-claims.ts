@@ -85,7 +85,7 @@ function deferRefusal(e: unknown): string {
 /** The message for a refused re-date of a claim. */
 function redateRefusal(e: unknown): string {
   if (e instanceof HttpErrorResponse && e.status === 403) return 'Only a steward can re-date a claim.';
-  if (e instanceof HttpErrorResponse && e.status === 423) return 'That claim\'s period, or the new date\'s, is closed.';
+  if (e instanceof HttpErrorResponse && e.status === 423) return 'That claim\'s period is closed.';
   if (e instanceof HttpErrorResponse && e.status === 409) return 'Only an open or pending claim can be re-dated.';
   if (e instanceof HttpErrorResponse && e.status === 422) return 'A claim cannot be dated after the person\'s retirement.';
   if (e instanceof HttpErrorResponse && e.status === 400) return REDATE_DATE;
@@ -237,7 +237,7 @@ export class PersonClaims {
   readonly floor = input.required<DatedValue[]>();
   /** The person's grades; a claim's due uses the one in force on the claim's date. */
   readonly grades = input.required<GradeFrom[]>();
-  /** The periods on the sheet; a claim belongs to the one whose days contain its date. */
+  /** The periods on the sheet; a claim belongs to the one whose days contain its due-by. */
   readonly periods = input.required<Period[]>();
   /** The sheet's today; a claim is overdue once its due-by is before it. */
   readonly today = input.required<string | null>();
@@ -310,11 +310,11 @@ export class PersonClaims {
 
   /** The name of the period the claim belongs to; empty when it belongs to none. */
   protected periodName(c: Claim): string {
-    return periodOf(this.periods(), c.date)?.name ?? '';
+    return periodOf(this.periods(), c.dueBy)?.name ?? '';
   }
 
   /** Open the claim's editor, which locks it for every other user; refused when it is not a draft,
-   *  is dated inside a closed period, or another user has its editor open. The editor is open at
+   *  is due by a day inside a closed period, or another user has its editor open. The editor is open at
    *  once; its fields take the claim's values (those not typed into meanwhile) once the store has
    *  locked the claim, and it closes again when the store refuses. */
   protected async open(c: Claim): Promise<void> {
@@ -323,7 +323,7 @@ export class PersonClaims {
       this.claimError.set({ id: c.id, message: NOT_DRAFT });
       return;
     }
-    if (periodOf(this.periods(), c.date)?.closed) {
+    if (periodOf(this.periods(), c.dueBy)?.closed) {
       this.claimError.set({ id: c.id, message: CLOSED });
       return;
     }

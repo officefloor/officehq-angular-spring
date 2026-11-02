@@ -17,9 +17,9 @@ import java.util.HashMap;
 import java.util.Map;
 
 /** A period on a sheet: a named run of days from its from-date to its to-date, both inclusive. A
- *  claim belongs to the period whose days contain its date. A closed period keeps the due-total it
- *  had when it was closed, and no claim dated inside it can be changed. A soft-closed period keeps
- *  its due-total as a closed one does, but claims dated inside it can still be added and changed. */
+ *  claim belongs to the period whose days contain its due-by. A closed period keeps the due-total it
+ *  had when it was closed, and no claim due by a day inside it can be changed. A soft-closed period
+ *  keeps its due-total as a closed one does, but claims due inside it can still be added and changed. */
 @Entity
 @Table(name = "period")
 public class Period {

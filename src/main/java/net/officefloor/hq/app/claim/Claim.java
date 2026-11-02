@@ -110,7 +110,7 @@ public class Claim {
     @Column(name = "edit_locked_by")
     private String editLockedBy;
 
-    /** Whether the claim was added while the period its date falls in was soft-closed. */
+    /** Whether the claim was added while the period its due-by falls in was soft-closed. */
     @Column(name = "late_entry", nullable = false)
     private boolean lateEntry;
 
@@ -181,7 +181,8 @@ public class Claim {
 
     /** Split the amount off this open claim: it keeps the rest of its amount but no figure a
      *  statement bound it to, and the new open claim returned has the amount, the same date and
-     *  note, the number and opener given, the due-by given, and this claim's number as split-from. */
+     *  note, the number and opener given, the due-by given, this claim's number as split-from, and
+     *  this claim's late-entry mark (a split is judged by the original claim alone). */
     public Claim splitOff(BigDecimal part, String number, String openedBy, LocalDate dueBy) {
         this.amount = amount.subtract(part);
         bind(false, null);
@@ -190,6 +191,7 @@ public class Claim {
         split.number = number;
         split.openedBy = openedBy;
         split.splitFrom = this.number;
+        split.lateEntry = this.lateEntry;
         return split;
     }
 
