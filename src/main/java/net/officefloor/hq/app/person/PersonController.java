@@ -129,6 +129,14 @@ public class PersonController {
     /** How many people a bulk grade changed. */
     public record BulkGradeResult(int graded) {}
 
+    /** The grade to merge into another. */
+    public record GradeMergeRequest(
+            @NotNull @Pattern(regexp = "[ABC]") String from,
+            @NotNull @Pattern(regexp = "[ABC]") String into) {}
+
+    /** How many people a grade merge gave the other grade. */
+    public record GradeMergeResult(int merged) {}
+
     /** The people to retire together, from a date (blank: the sheet's today). */
     public record BulkRetireRequest(@NotEmpty List<@NotNull Long> ids, LocalDate from) {}
 
@@ -218,6 +226,15 @@ public class PersonController {
             @RequestBody @Valid BulkGradeRequest request) {
         return new BulkGradeResult(service.bulkGrade(sheetId, user, Set.copyOf(request.ids()), request.grade(),
                 request.from()));
+    }
+
+    /** Merge a grade into another: a steward only; everyone on it today is given the other from today. */
+    @PostMapping("/grade-merge")
+    public GradeMergeResult mergeGrade(
+            @PathVariable @Size(max = 100) @Pattern(regexp = "[A-Za-z0-9._-]+") String sheetId,
+            @RequestHeader("X-User") @NotBlank @Size(max = 100) String user,
+            @RequestBody @Valid GradeMergeRequest request) {
+        return new GradeMergeResult(service.mergeGrade(sheetId, user, request.from(), request.into()));
     }
 
     @OpenToViewer

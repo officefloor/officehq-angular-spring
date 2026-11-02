@@ -11,7 +11,8 @@ interface GradeView {
 }
 
 // The sheet's grades. A grade can be retired (once): it can then no longer be chosen for a new person
-// or in an edit; people already on it keep it.
+// or in an edit; people already on it keep it. A steward can merge a grade into another: everyone on
+// it on the sheet's today is given the other from today.
 @Component({
   selector: 'app-grades',
   imports: [ReactiveFormsModule],
@@ -29,6 +30,22 @@ interface GradeView {
         @if (error()) {
           <p role="alert" class="error" data-testid="grade-error">{{ error() }}</p>
         }
+      </form>
+      <form [formGroup]="mergeForm" (ngSubmit)="merge()" aria-label="Merge a grade into another">
+        <label for="grade-merge-from">Grade to merge</label>
+        <select id="grade-merge-from" data-testid="grade-merge-from" formControlName="from">
+          @for (g of grades(); track g.grade) {
+            <option [value]="g.grade">{{ g.grade }}</option>
+          }
+        </select>
+        <label for="grade-merge-into">Into grade</label>
+        <select id="grade-merge-into" data-testid="grade-merge-into" formControlName="into">
+          @for (g of grades(); track g.grade) {
+            <option [value]="g.grade">{{ g.grade }}</option>
+          }
+        </select>
+        <button type="submit" data-testid="grade-merge">Merge grade</button>
+        <output data-testid="grade-merged" aria-live="polite">{{ merged() }}</output>
       </form>
       <table aria-label="Grades">
         <thead><tr><th scope="col">Grade</th><th scope="col">Retired</th></tr></thead>
@@ -51,15 +68,23 @@ export class Grades {
   protected readonly grades = signal<GradeView[]>([]);
   protected readonly error = signal('');
   protected readonly form = new FormGroup({ grade: new FormControl('A', { nonNullable: true }) });
+  protected readonly mergeForm = new FormGroup({
+    from: new FormControl('A', { nonNullable: true }),
+    into: new FormControl('B', { nonNullable: true }),
+  });
+  /** How many people the last merge gave the other grade; blank before one, and while one runs. */
+  protected readonly merged = signal('');
   private submitting = false;
 
   constructor() {
     this.form.valueChanges.subscribe(() => this.error.set(''));
+    this.mergeForm.valueChanges.subscribe(() => this.error.set(''));
     effect(() => {
       const id = this.session.sheetId();
       this.session.loads();
       this.grades.set([]);
       this.error.set('');
+      this.merged.set('');
       if (id) void this.load(id);
     });
   }
@@ -99,6 +124,33 @@ export class Grades {
       if (this.session.sheetId() === sheet) this.grades.set(list);
     } catch {
       if (this.session.sheetId() === sheet) this.error.set(`Could not retire grade ${grade}: it may already be retired.`);
+    } finally {
+      this.submitting = false;
+    }
+  }
+
+  /** Merge one grade into another: a steward only, and not a grade into itself. */
+  protected async merge(): Promise<void> {
+    if (this.submitting) return;
+    this.error.set('');
+    this.merged.set('');
+    const sheet = this.session.sheetId();
+    if (!sheet) return;
+    const { from, into } = this.mergeForm.getRawValue();
+    if (from === into) {
+      this.error.set(`Grade ${from} cannot be merged into itself.`);
+      return;
+    }
+    this.submitting = true;
+    try {
+      const res = await firstValueFrom(
+        this.http.post<{ merged: number }>(`/api/sheets/${encodeURIComponent(sheet)}/people/grade-merge`,
+          { from, into }, { headers: this.headers() }));
+      if (this.session.sheetId() === sheet) this.merged.set(String(res.merged));
+    } catch {
+      if (this.session.sheetId() === sheet) {
+        this.error.set(`Could not merge grade ${from} into ${into}: only a steward can, and not into a retired grade.`);
+      }
     } finally {
       this.submitting = false;
     }

@@ -247,6 +247,35 @@ public class PersonService {
     }
 
     /**
+     * Merge a grade into another: everyone whose grade in force on the sheet's today is the one merged is
+     * given the other from the sheet's today, in list order, each as its own edit would, with its
+     * PERSON_EDITED and rollup lines, after the GRADE_MERGED line; then the merge's own rollup lines, of
+     * how the figures moved over all of it. Only a steward may, and not a grade into
+     * itself, nor into a retired grade. Returns how many people were given the other grade.
+     */
+    @Transactional
+    public int mergeGrade(String sheetId, String user, String from, String into) {
+        Sheet sheet = sheets.findForUpdate(sheetId).orElseThrow(SheetNotFoundException::new);
+        if (settings.roleOf(sheetId, user) != Role.STEWARD || from.equals(into)) throw new GradeMergeRefusedException();
+        settings.requireGradeNotRetired(sheetId, into);
+        LocalDate today = sheet.getToday();
+        List<Person> chosen = people.findBySheetIdOrderByPositionAscIdAsc(sheetId).stream()
+                .filter(p -> from.equals(p.gradeOn(today))).toList();
+        audit.recordOnCommit("GRADE_MERGED sheet=" + sheetId + " by=" + user.strip() + " from=" + from + " into=" + into);
+        RollupService.Snapshot merging = rollup.snapshot(sheetId);
+        for (Person person : chosen) {
+            RollupService.Snapshot before = rollup.snapshot(sheetId);
+            person.setGradeFrom(today, into, today);
+            Person saved = saveUnique(person);
+            record("PERSON_EDITED", sheetId, user, saved, saved.gradeOn(today), "");
+            rollup.recordChanges(sheetId, user, before);
+        }
+        // then the merge's own rollup lines: how the figures moved over all of it
+        rollup.recordChanges(sheetId, user, merging);
+        return chosen.size();
+    }
+
+    /**
      * Retire each of the people from the date (blank: the sheet's today), in list order, each as its
      * own retire would, with its PERSON_RETIRED and rollup lines. One not on the sheet refuses them
      * all. A viewer's, or one on an archived sheet, goes through with nothing done. Returns how many
