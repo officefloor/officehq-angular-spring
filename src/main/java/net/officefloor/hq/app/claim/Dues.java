@@ -2,6 +2,8 @@ package net.officefloor.hq.app.claim;
 
 import java.math.BigDecimal;
 import java.math.RoundingMode;
+import java.time.LocalDate;
+import java.time.temporal.ChronoUnit;
 import java.util.List;
 import net.officefloor.hq.app.person.Person;
 import net.officefloor.hq.app.rate.Rate;
@@ -21,16 +23,42 @@ public class Dues {
         this.sheets = sheets;
     }
 
-    /** The due figure a claim shows and totals: the one fixed when it was settled, or else the one
-     *  its person's last statement bound it to, or else its live due; null when there is none. */
+    /** The due figure a claim shows and totals: the one fixed when it was settled, or else its
+     *  {@link #bindable} figure with the late charge on top while it is overdue; null when there is
+     *  none. */
     public BigDecimal figure(String sheetId, Person person, Claim claim) {
         if (claim.getSettledDue() != null) {
             return claim.getSettledDue();
         }
+        BigDecimal figure = bindable(sheetId, person, claim);
+        return figure == null ? null : figure.add(lateCharge(sheetId, claim, figure));
+    }
+
+    /** The figure a statement binds a claim to: the one its person's last statement bound it to, or
+     *  else its live due; never the late charge, which keeps following the sheet's today. Null when
+     *  there is none. */
+    public BigDecimal bindable(String sheetId, Person person, Claim claim) {
         if (claim.isStated() && claim.getStatedDue() != null) {
             return claim.getStatedDue();
         }
         return due(sheetId, person, claim);
+    }
+
+    /** The late charge on an open claim overdue on the sheet's today (its due-by, its date plus the
+     *  terms, before today): the late percent of its figure for every full 30 days it is overdue,
+     *  rounded half to even to two decimals; 0.00 when it is not overdue. */
+    private BigDecimal lateCharge(String sheetId, Claim claim, BigDecimal figure) {
+        BigDecimal none = BigDecimal.ZERO.setScale(2);
+        if (claim.getStatus() != ClaimStatus.OPEN) {
+            return none;
+        }
+        LocalDate dueBy = claim.getDate().plusDays(sheets.terms(sheetId));
+        long periods = ChronoUnit.DAYS.between(dueBy, sheets.today(sheetId)) / 30;
+        if (periods <= 0) {
+            return none;
+        }
+        return figure.multiply(sheets.latePct(sheetId)).multiply(BigDecimal.valueOf(periods)).movePointLeft(2)
+                .setScale(2, RoundingMode.HALF_EVEN);
     }
 
     /** Whether a claim of the person counts in the live totals: it counts, and it is not an open

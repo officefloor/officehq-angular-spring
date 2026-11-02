@@ -96,13 +96,36 @@ public class SheetService {
         return sheets.findById(id).map(Sheet::getTerms).orElse(14);
     }
 
-    /** Change the sheet's terms; recorded even when they are unchanged. They move no rolled-up figure. */
+    /** Change the sheet's terms; recorded even when they are unchanged, then the figures they move
+     *  (through the late charges of overdue claims). */
     @Transactional
     public synchronized Sheet setTerms(String id, String user, int terms) {
         Sheet sheet = load(id, user);
-        sheet.setTerms(terms);
-        Sheet saved = sheets.saveAndFlush(sheet);
-        audit.recordOnCommit("SETTING_CHANGED sheet=" + id + " by=" + user + " key=terms value=" + terms);
-        return saved;
+        return rollup.tracking(id, user, () -> {
+            sheet.setTerms(terms);
+            Sheet saved = sheets.saveAndFlush(sheet);
+            audit.recordOnCommit("SETTING_CHANGED sheet=" + id + " by=" + user + " key=terms value=" + terms);
+            return saved;
+        });
+    }
+
+    /** The percent of its figure an overdue claim on the sheet gains for every full 30 days it is
+     *  overdue; 0.00 for a sheet never loaded. */
+    @Transactional(readOnly = true)
+    public BigDecimal latePct(String id) {
+        return sheets.findById(id).map(Sheet::getLatePct).orElse(new BigDecimal("0.00"));
+    }
+
+    /** Change the sheet's late percent; recorded even when it is unchanged, then the figures it moves. */
+    @Transactional
+    public synchronized Sheet setLatePct(String id, String user, BigDecimal latePct) {
+        Sheet sheet = load(id, user);
+        return rollup.tracking(id, user, () -> {
+            sheet.setLatePct(latePct);
+            Sheet saved = sheets.saveAndFlush(sheet);
+            audit.recordOnCommit("SETTING_CHANGED sheet=" + id + " by=" + user + " key=late-pct value="
+                    + latePct.setScale(2).toPlainString());
+            return saved;
+        });
     }
 }

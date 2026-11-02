@@ -10,6 +10,8 @@ export interface Settings {
   floor: string;
   /** The days after its date a claim is due by. */
   terms: number;
+  /** The percent of its figure an overdue claim gains for every full 30 days, as text with two decimals. */
+  latePct: string;
 }
 
 export type RoleName = 'clerk' | 'steward';
@@ -27,6 +29,9 @@ export const LIMIT = /^\d{1,12}(\.\d{1,2})?$/;
 
 /** Terms: a whole number of days, 0 or more. */
 export const TERMS = /^\d{1,4}$/;
+
+/** A late percent with up to two decimals, 0.00 or more. */
+export const LATE_PCT = /^\d{1,5}(\.\d{1,2})?$/;
 
 // The settings of the active sheet and the roles it gives user names.
 @Injectable({ providedIn: 'root' })
@@ -58,6 +63,12 @@ export class SheetSettings {
   setTerms(value: string): Promise<Settings> {
     const [sheetId, headers] = this.active();
     return firstValueFrom(this.http.put<Settings>(`${this.url(sheetId)}/settings/terms`, { value }, { headers }));
+  }
+
+  /** Set the late percent. */
+  setLatePct(value: string): Promise<Settings> {
+    const [sheetId, headers] = this.active();
+    return firstValueFrom(this.http.put<Settings>(`${this.url(sheetId)}/settings/late-pct`, { value }, { headers }));
   }
 
   /** Give a user name a role, replacing the one it had. */

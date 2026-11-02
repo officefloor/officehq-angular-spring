@@ -74,7 +74,7 @@ import { QuickAddBar } from './quick-add-bar';
               <td>
                 <app-person-claims [personId]="p.id" [claims]="claimsByPerson().get(p.id) ?? []"
                   [rates]="rates()" [floor]="floor()" [grade]="p.grade" [periods]="periods()"
-                  [terms]="terms()" [today]="session.today()"
+                  [terms]="terms()" [today]="session.today()" [latePct]="latePct()"
                   (saved)="claimSaved($event)" />
               </td>
               <td>
@@ -142,6 +142,10 @@ export class PeopleList {
   protected readonly floor = signal('1.00');
   /** The sheet's terms: the days after its date a claim is due by. */
   protected readonly terms = signal(14);
+  /** The sheet's late percent: what an overdue claim gains for every full 30 days it is overdue. */
+  protected readonly latePct = signal('0.00');
+  /** What the late charges of overdue claims follow. */
+  private readonly lateness = computed(() => ({ terms: this.terms(), today: this.session.today(), pct: this.latePct() }));
   /** The periods on the sheet, earliest first. */
   protected readonly periods = signal<Period[]>([]);
   /** Each period's due-total by its id: the due figures of the claims that count whose date falls
@@ -153,7 +157,7 @@ export class PeopleList {
       const period = periodOf(this.periods(), c.date);
       const grade = grades.get(c.personId);
       if (period === undefined || grade === undefined) continue;
-      const d = claimDue(c, this.rates(), grade, this.floor());
+      const d = claimDue(c, this.rates(), grade, this.floor(), this.lateness());
       if (d !== null) figures.get(period.id)?.push(d);
     }
     const by = new Map<number, string>();
@@ -371,7 +375,7 @@ export class PeopleList {
     if (!this.pctOf().has(p.grade) && !counted.some(fixed)) {
       return null;
     }
-    const figures = counted.map((c) => claimDue(c, this.rates(), p.grade, this.floor())).filter((d): d is string => d !== null);
+    const figures = counted.map((c) => claimDue(c, this.rates(), p.grade, this.floor(), this.lateness())).filter((d): d is string => d !== null);
     return sumAmounts(figures);
   }
 
@@ -384,7 +388,7 @@ export class PeopleList {
   /** A person's overdue-total: the due figures of their overdue claims that count, skipping those
    *  with no due. */
   protected overdueTotalOf(p: Person): string {
-    return sumAmounts(this.overdueOf(p).map((c) => claimDue(c, this.rates(), p.grade, this.floor()))
+    return sumAmounts(this.overdueOf(p).map((c) => claimDue(c, this.rates(), p.grade, this.floor(), this.lateness()))
       .filter((d): d is string => d !== null));
   }
 
@@ -408,6 +412,7 @@ export class PeopleList {
         this.rates.set(rates);
         this.floor.set(settings.floor);
         this.terms.set(settings.terms);
+        this.latePct.set(settings.latePct);
         this.periods.set(periods);
         this.claims.set(claims);
         this.people.set(people);

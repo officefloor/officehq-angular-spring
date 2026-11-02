@@ -102,6 +102,8 @@ export class PersonClaims {
   readonly terms = input.required<number>();
   /** The sheet's today; a claim is overdue once its due-by is before it. */
   readonly today = input.required<string | null>();
+  /** The sheet's late percent: what an overdue claim gains for every full 30 days it is overdue. */
+  readonly latePct = input.required<string>();
   /** A claim added or saved through the form. */
   readonly saved = output<Claim>();
 
@@ -123,7 +125,8 @@ export class PersonClaims {
   }
 
   protected dueOf(c: Claim): string {
-    return claimDue(c, this.rates(), this.grade(), this.floor()) ?? 'n/a';
+    return claimDue(c, this.rates(), this.grade(), this.floor(),
+      { terms: this.terms(), today: this.today(), pct: this.latePct() }) ?? 'n/a';
   }
 
   protected dueByOf(c: Claim): string {

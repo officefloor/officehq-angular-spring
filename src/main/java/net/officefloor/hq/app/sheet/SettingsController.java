@@ -20,15 +20,16 @@ import org.springframework.web.bind.annotation.RestController;
 public class SettingsController {
 
     /** What the screen shows of a sheet's settings; the clerk limit as text with two decimals
-     *  (null when there is no limit), the floor as text with two decimals, and the terms in days. */
-    public record SettingsView(String clerkLimit, String floor, int terms) {
+     *  (null when there is no limit), the floor as text with two decimals, the terms in days, and the late percent as text with two
+     *  decimals. */
+    public record SettingsView(String clerkLimit, String floor, int terms, String latePct) {
         static SettingsView of(Sheet sheet) {
-            return of(sheet.getClerkLimit(), sheet.getFloor(), sheet.getTerms());
+            return of(sheet.getClerkLimit(), sheet.getFloor(), sheet.getTerms(), sheet.getLatePct());
         }
 
-        static SettingsView of(BigDecimal clerkLimit, BigDecimal floor, int terms) {
+        static SettingsView of(BigDecimal clerkLimit, BigDecimal floor, int terms, BigDecimal latePct) {
             return new SettingsView(clerkLimit == null ? null : clerkLimit.setScale(2).toPlainString(),
-                    floor.setScale(2).toPlainString(), terms);
+                    floor.setScale(2).toPlainString(), terms, latePct.setScale(2).toPlainString());
         }
     }
 
@@ -56,6 +57,14 @@ public class SettingsController {
         }
     }
 
+    /** The late percent form: a percent of 0.00 or more with up to two decimals. */
+    public record LatePctForm(@NotBlank @Pattern(regexp = "\\s*\\d{1,5}(\\.\\d{1,2})?\\s*") String value) {
+
+        BigDecimal latePctValue() {
+            return new BigDecimal(value.trim()).setScale(2);
+        }
+    }
+
     private final SheetService service;
 
     public SettingsController(SheetService service) {
@@ -65,7 +74,7 @@ public class SettingsController {
     @GetMapping
     public SettingsView get(@PathVariable @NotBlank @Size(max = 100) String sheetId) {
         String id = sheetId.trim();
-        return SettingsView.of(service.clerkLimit(id), service.floor(id), service.terms(id));
+        return SettingsView.of(service.clerkLimit(id), service.floor(id), service.terms(id), service.latePct(id));
     }
 
     @PutMapping("/clerk-limit")
@@ -87,5 +96,12 @@ public class SettingsController {
             @RequestHeader("X-User") @NotBlank @Size(max = 100) String user,
             @Valid @RequestBody TermsForm form) {
         return SettingsView.of(service.setTerms(sheetId.trim(), user.trim(), form.termsValue()));
+    }
+
+    @PutMapping("/late-pct")
+    public SettingsView setLatePct(@PathVariable @NotBlank @Size(max = 100) String sheetId,
+            @RequestHeader("X-User") @NotBlank @Size(max = 100) String user,
+            @Valid @RequestBody LatePctForm form) {
+        return SettingsView.of(service.setLatePct(sheetId.trim(), user.trim(), form.latePctValue()));
     }
 }

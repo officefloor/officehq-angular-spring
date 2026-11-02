@@ -108,17 +108,18 @@ public class ClaimService {
             refuseOverClerkLimit(sheetId, user, claim);
         }
         return rollup.tracking(sheetId, user, () -> {
+            Person person = person(sheetId, claim.getPersonId());
+            if (to == ClaimStatus.SETTLED) {
+                // Settling fixes the due at what it is now, while the claim is still open (the figure a
+                // statement bound it to, if any, and its late charge); later changes to rates, the
+                // late percent and the sheet's today do not alter it.
+                claim.setSettledDue(dues.figure(sheetId, person, claim));
+            }
             // A void claim keeps the number it had (never reused).
             claim.setStatus(to);
             if (to == ClaimStatus.OPEN) {
                 claim.setNumber(sheets.nextClaimNumber(sheetId));
                 claim.setOpenedBy(user);
-            }
-            Person person = person(sheetId, claim.getPersonId());
-            if (to == ClaimStatus.SETTLED) {
-                // Settling fixes the due at what it is now (the figure a statement bound it to, if any);
-                // later changes to rates do not alter it.
-                claim.setSettledDue(dues.figure(sheetId, person, claim));
             }
             Claim saved = claims.saveAndFlush(claim);
             String event = switch (to) {

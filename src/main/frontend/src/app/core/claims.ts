@@ -74,12 +74,33 @@ export function fixed(c: Claim): boolean {
   return c.settledDue !== null || (c.stated && c.statedDue !== null);
 }
 
+/** What a claim's late charge follows: the sheet's terms, its today and its late percent. */
+export interface Lateness {
+  terms: number;
+  today: string | null;
+  /** The late percent as text with two decimals. */
+  pct: string;
+}
+
 /** A claim's due figure: the one fixed when it was settled, or else the one its person's last
  *  statement bound it to, or else its live due at its person's grade's rate in force on the
- *  claim's date, at least the sheet's floor; null when there is none. */
-export function claimDue(c: Claim, rates: Rate[], grade: Grade, floor: string): string | null {
+ *  claim's date, at least the sheet's floor; with the late charge on top while it is overdue (a
+ *  settled claim's figure already holds it). Null when there is none. */
+export function claimDue(c: Claim, rates: Rate[], grade: Grade, floor: string, late: Lateness): string | null {
+  if (c.settledDue !== null) return c.settledDue;
   const live = due(c.amount, pctOn(rates, grade, c.date));
-  return c.settledDue ?? (c.stated ? c.statedDue : null) ?? (live === null ? null : atLeast(live, floor));
+  const figure = (c.stated ? c.statedDue : null) ?? (live === null ? null : atLeast(live, floor));
+  return figure === null ? null : sumAmounts([figure, lateCharge(c, figure, late)]);
+}
+
+/** The late charge on an overdue claim: the late percent of its figure for every full 30 days it
+ *  is overdue, rounded like a due; 0.00 when it is not overdue. */
+export function lateCharge(c: Claim, figure: string, late: Lateness): string {
+  if (!overdue(c, late.terms, late.today) || late.today === null) return '0.00';
+  const days = (Date.parse(late.today) - Date.parse(dueBy(c, late.terms))) / 86_400_000;
+  const periods = Math.floor(days / 30);
+  if (periods <= 0) return '0.00';
+  return due(figure, (Number(late.pct) * periods).toFixed(2)) ?? '0.00';
 }
 
 /** The day (yyyy-mm-dd) a claim is due by: its date plus the sheet's terms in days. */
