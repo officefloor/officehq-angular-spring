@@ -1,0 +1,230 @@
+diff --git a/src/main/frontend/src/app/core/people.ts b/src/main/frontend/src/app/core/people.ts
+index 2eef4e91e..851581b4a 100644
+--- a/src/main/frontend/src/app/core/people.ts
++++ b/src/main/frontend/src/app/core/people.ts
+@@ -113,6 +113,16 @@ export class People {
+     );
+   }
+ 
++  /** Give the people a grade from a day (null: the sheet's today), each as an edit would; answers
++   *  how many were changed and those people as they now show. */
++  grade(personIds: number[], grade: Grade, from: string | null): Promise<{ graded: number; people: Person[] }> {
++    const { sheetId, user } = this.active();
++    return firstValueFrom(
++      this.http.post<{ graded: number; people: Person[] }>(`${this.url(sheetId)}/grade`, { personIds, grade, from },
++        { headers: { 'X-User': user } }),
++    );
++  }
++
+   /** Retire the person from a day; null takes the sheet's today. */
+   retire(id: number, from: string | null): Promise<Person> {
+     const { sheetId, user } = this.active();
+diff --git a/src/main/frontend/src/app/features/people/people-list.ts b/src/main/frontend/src/app/features/people/people-list.ts
+index a6b40e358..cb0dd79a6 100644
+--- a/src/main/frontend/src/app/features/people/people-list.ts
++++ b/src/main/frontend/src/app/features/people/people-list.ts
+@@ -83,14 +83,39 @@ const NO_LEAVE: Leave = { holds: [], retiredFrom: null };
+         <p role="status">Settled <strong data-testid="bulk-settled">{{ b.settled }}</strong>,
+           refused <strong data-testid="bulk-settle-refused">{{ b.refused }}</strong></p>
+       }
++      <div role="group" aria-labelledby="bulk-grade-heading">
++        <span id="bulk-grade-heading">Grade selected people</span>
++        <label for="bulk-grade">Grade</label>
++        <select #bulkGrade id="bulk-grade" data-testid="bulk-grade" (change)="bulkGradeError.set('')">
++          @for (g of grades; track g) {
++            <option [value]="g">{{ g }}</option>
++          }
++        </select>
++        <label for="bulk-grade-from">From</label>
++        <input #bulkGradeFrom id="bulk-grade-from" type="date" data-testid="bulk-grade-from"
++          (input)="bulkGradeError.set('')" />
++        <button type="button" data-testid="bulk-grade-apply"
++          (click)="gradeSelected(bulkGrade.value, bulkGradeFrom.value)">Grade selected people</button>
++        @if (bulkGraded() !== null) {
++          <p role="status">Changed <strong data-testid="bulk-graded">{{ bulkGraded() }}</strong></p>
++        }
++        @if (bulkGradeError()) {
++          <p role="alert" data-testid="person-error">{{ bulkGradeError() }}</p>
++        }
++      </div>
+       <button type="button" data-testid="export-people" (click)="exportCsv()">Export people (CSV)</button>
+       <table data-testid="people">
+         <thead>
+-          <tr><th scope="col">Name</th><th scope="col">Grade</th><th scope="col">Active</th><th scope="col">Terms</th><th scope="col">Claimed</th><th scope="col">Due</th>@for (pd of periods(); track pd.id) {<th scope="col">Due in {{ pd.name }}</th>}<th scope="col">Excess</th><th scope="col">Statements</th><th scope="col">Last stated</th><th scope="col">Stated on</th><th scope="col">Retired</th><th scope="col">Retired from</th><th scope="col">On hold</th><th scope="col">Overdue</th><th scope="col">Overdue due</th><th scope="col">Patrons</th><th scope="col">Backing</th><th scope="col">Watched</th><th scope="col">Claims</th><th scope="col"><span class="visually-hidden">Actions</span></th></tr>
++          <tr><th scope="col"><span class="visually-hidden">Select</span></th><th scope="col">Name</th><th scope="col">Grade</th><th scope="col">Active</th><th scope="col">Terms</th><th scope="col">Claimed</th><th scope="col">Due</th>@for (pd of periods(); track pd.id) {<th scope="col">Due in {{ pd.name }}</th>}<th scope="col">Excess</th><th scope="col">Statements</th><th scope="col">Last stated</th><th scope="col">Stated on</th><th scope="col">Retired</th><th scope="col">Retired from</th><th scope="col">On hold</th><th scope="col">Overdue</th><th scope="col">Overdue due</th><th scope="col">Patrons</th><th scope="col">Backing</th><th scope="col">Watched</th><th scope="col">Claims</th><th scope="col"><span class="visually-hidden">Actions</span></th></tr>
+         </thead>
+         <tbody>
+           @for (p of shown(); track p.id) {
+             <tr [attr.data-testid]="'person-row-' + p.id">
++              <td>
++                <input type="checkbox" data-testid="person-select" [checked]="selectedPeople().has(p.id)"
++                  (change)="selectPerson(p.id, $any($event.target).checked)"
++                  [attr.aria-label]="'Select ' + p.name" />
++              </td>
+               <td data-testid="person-name">{{ p.name }}</td>
+               <td data-testid="person-grade">{{ gradeOf(p) }}</td>
+               <td data-testid="person-active">{{ activeOf(p) ? 'yes' : 'no' }}</td>
+@@ -342,6 +367,14 @@ export class PeopleList {
+   protected readonly bulkSettled = signal<{ settled: number; refused: number } | null>(null);
+   /** Whether a bulk settle is waiting for its answer: a second press meanwhile is ignored. */
+   private settling = false;
++  /** The ids of the people selected for a bulk grade. */
++  protected readonly selectedPeople = signal<ReadonlySet<number>>(new Set());
++  /** How many people the last bulk grade changed; null while one runs and before the first. */
++  protected readonly bulkGraded = signal<number | null>(null);
++  /** The refusal of the last bulk grade. */
++  protected readonly bulkGradeError = signal('');
++  /** Whether a bulk grade is waiting for its answer: a second press meanwhile is ignored. */
++  private grading = false;
+   /** The id of the person whose editor is open, or null when the form adds a person. */
+   protected readonly editing = signal<number | null>(null);
+   /** The version of the person the open editor loaded. */
+@@ -388,6 +421,9 @@ export class PeopleList {
+       this.selected.set(new Set());
+       this.bulkOpened.set(null);
+       this.bulkSettled.set(null);
++      this.selectedPeople.set(new Set());
++      this.bulkGraded.set(null);
++      this.bulkGradeError.set('');
+       this.personError.set(null);
+       this.patronError.set(null);
+       this.reset();
+@@ -624,6 +660,48 @@ export class PeopleList {
+     });
+   }
+ 
++  protected selectPerson(id: number, on: boolean): void {
++    this.bulkGradeError.set('');
++    this.selectedPeople.update((s) => {
++      const next = new Set(s);
++      if (on) next.add(id);
++      else next.delete(id);
++      return next;
++    });
++  }
++
++  /** Give the selected people listed the grade from the day given (blank: the sheet's today), in
++   *  list order, then show them as they now are and how many were changed. */
++  protected async gradeSelected(grade: string, from: string): Promise<void> {
++    if (this.grading) return;
++    this.bulkGraded.set(null);
++    this.bulkGradeError.set('');
++    const ids = this.shown().filter((p) => this.selectedPeople().has(p.id)).map((p) => p.id);
++    if (ids.length === 0) {
++      this.bulkGradeError.set('Select the people to grade.');
++      return;
++    }
++    if (!this.grades.includes(grade as Grade)) {
++      this.bulkGradeError.set('Choose a grade of A, B or C.');
++      return;
++    }
++    this.grading = true;
++    try {
++      const result = await this.api.grade(ids, grade as Grade, from.trim() || null);
++      const byId = new Map(result.people.map((p) => [p.id, p]));
++      this.people.update((ps) => ps.map((p) => byId.get(p.id) ?? p));
++      const editing = this.editing();
++      const edited = editing === null ? undefined : byId.get(editing);
++      if (edited) this.version = edited.version;
++      this.selectedPeople.set(new Set());
++      this.bulkGraded.set(result.graded);
++    } catch {
++      this.bulkGradeError.set('The selected people could not be graded.');
++    } finally {
++      this.grading = false;
++    }
++  }
++
+   /** Open the selected claims that can be opened, then show the claims as they are now and how many
+    *  were opened and refused. */
+   protected async bulkOpen(): Promise<void> {
+diff --git a/src/main/java/net/officefloor/hq/app/person/PersonController.java b/src/main/java/net/officefloor/hq/app/person/PersonController.java
+index f6f802528..be4b26a58 100644
+--- a/src/main/java/net/officefloor/hq/app/person/PersonController.java
++++ b/src/main/java/net/officefloor/hq/app/person/PersonController.java
+@@ -9,6 +9,7 @@ import java.time.LocalDate;
+ import java.util.Comparator;
+ import java.util.List;
+ import java.util.Map;
++import java.util.Set;
+ import net.officefloor.hq.app.history.History;
+ import net.officefloor.hq.app.sheet.AsOfGuard;
+ import net.officefloor.hq.app.sheet.SheetService;
+@@ -80,6 +81,16 @@ public class PersonController {
+     public record HoldForm(LocalDate from, LocalDate to) {
+     }
+ 
++    /** The bulk grade form: the people to give the grade, a grade of A, B or C, and the day it
++     *  applies from (left out, the sheet's today). */
++    public record GradeForm(@NotNull @Size(max = 1000) Set<@NotNull Long> personIds,
++            @NotNull @Pattern(regexp = "[ABC]") String grade, LocalDate from) {
++    }
++
++    /** How many people a bulk grade changed, and those people as they now show. */
++    public record Graded(int graded, List<PersonView> people) {
++    }
++
+     private final PersonService service;
+     private final StatementService statements;
+     private final SheetService sheets;
+@@ -137,6 +148,19 @@ public class PersonController {
+         return PersonView.of(saved, statements.summary(sheetId.trim(), personId), sheets.today(sheetId.trim()));
+     }
+ 
++    @PostMapping("/grade")
++    public Graded grade(@PathVariable @NotBlank @Size(max = 100) String sheetId,
++            @RequestHeader("X-User") @NotBlank @Size(max = 100) String user,
++            @Valid @RequestBody GradeForm form) {
++        String sheet = sheetId.trim();
++        List<Person> saved = service.grade(sheet, user.trim(), form.personIds(), form.grade(), form.from());
++        Map<Long, StatementSummary> summaries = statements.summaries(sheet);
++        LocalDate today = sheets.today(sheet);
++        return new Graded(saved.size(), saved.stream()
++                .map(p -> PersonView.of(p, summaries.getOrDefault(p.getId(), StatementSummary.NONE), today))
++                .toList());
++    }
++
+     @PostMapping("/{personId}/retire")
+     public PersonView retire(@PathVariable @NotBlank @Size(max = 100) String sheetId,
+             @PathVariable long personId,
+diff --git a/src/main/java/net/officefloor/hq/app/person/PersonService.java b/src/main/java/net/officefloor/hq/app/person/PersonService.java
+index 0503b8928..591dd87eb 100644
+--- a/src/main/java/net/officefloor/hq/app/person/PersonService.java
++++ b/src/main/java/net/officefloor/hq/app/person/PersonService.java
+@@ -3,6 +3,7 @@ package net.officefloor.hq.app.person;
+ import java.time.LocalDate;
+ import java.util.List;
+ import java.util.Objects;
++import java.util.Set;
+ import net.officefloor.hq.app.Audit;
+ import net.officefloor.hq.app.rollup.Rollup;
+ import net.officefloor.hq.app.sheet.SheetService;
+@@ -67,6 +68,28 @@ public class PersonService {
+         if (people.existsBySheetIdAndNameIgnoreCaseAndIdNot(sheetId, name, personId)) {
+             throw nameInUse();
+         }
++        return save(sheetId, user, person, name, grade, gradeFrom, terms);
++    }
++
++    /** Give each of the people a grade from a day (null: the sheet's today), in list order (the
++     *  order they were added), exactly as the person form would: each keeps their name and terms and
++     *  is followed by their own PERSON_EDITED and rollup lines. Refused as a whole, changing no one,
++     *  when an id names no person on the sheet. */
++    @Transactional
++    public List<Person> grade(String sheetId, String user, Set<Long> personIds, String grade, LocalDate gradeFrom) {
++        List<Person> chosen = people.findBySheetIdOrderByIdAsc(sheetId).stream()
++                .filter(p -> personIds.contains(p.getId())).toList();
++        if (chosen.size() != personIds.size()) {
++            throw new ResponseStatusException(HttpStatus.NOT_FOUND, "No such person on this sheet");
++        }
++        return chosen.stream()
++                .map(p -> save(sheetId, user, p, p.getName(), grade, gradeFrom, p.getTerms()))
++                .toList();
++    }
++
++    /** Save the person's name, grade from a day and terms as an edit does, recording it. */
++    private Person save(String sheetId, String user, Person person, String name, String grade, LocalDate gradeFrom,
++            Integer terms) {
+         return rollup.tracking(sheetId, user, () -> {
+             LocalDate today = sheets.today(sheetId);
+             Integer termsBefore = person.getTerms();

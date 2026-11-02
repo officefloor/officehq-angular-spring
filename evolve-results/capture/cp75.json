@@ -1,0 +1,64 @@
+{
+  "checkpoint": 75,
+  "stack": {
+    "repo": "/home/daniel/officehq-angular-spring",
+    "origin": "git@github.com:officefloor/officehq-angular-spring.git",
+    "name": "officehq-angular-spring",
+    "base_ref": "base-empty",
+    "base_commit": "65cb8233ea38b2dfa6cfd18709e30cd18fdf3250"
+  },
+  "checkpoint_id": "cp75_bulk-grade",
+  "phase": "early",
+  "type": "additive",
+  "mutates": [],
+  "replaced_tests": [],
+  "request": {
+    "spec": "People can be selected (a checkbox on each row) and given a grade together: a grade, a from-date\n(default the sheet's today) and a button. Each selected person, in list order, gets that grade\nfrom that date exactly as the person form would, with the same PERSON_EDITED and rollup lines.\nShow how many were changed.\n",
+    "prompt": "You are implementing ONE change to this application.\n\nFIRST read AGENTS.md \u2014 it states the working rules and how the app is tested, and sends you to\nDESIGN.md for the app's stack and conventions. Follow both.\n\nTHE CHANGE REQUEST:\nPeople can be selected (a checkbox on each row) and given a grade together: a grade, a from-date\n(default the sheet's today) and a button. Each selected person, in list order, gets that grade\nfrom that date exactly as the person form would, with the same PERSON_EDITED and rollup lines.\nShow how many were changed.\n\nYour work is verified by an automated Playwright UI test already installed under e2e/specs/.\nRead that spec: it declares the exact data-testid anchors, values, test data and any audit\nrecords it expects \u2014 match them. Run `bin/e2e` to build the app, start it, and run the test as\nyou work; iterate until it passes. Change whatever the request needs across the app \u2014 its stored\ndata, its server and its front end. Do NOT edit bin/build, bin/start, bin/stop, bin/e2e,\nAGENTS.md, CLAUDE.md, DESIGN.md, e2e/support/ or the test spec.\n"
+  },
+  "commit_sha": "6c56ceb6305c67b51b0a05083f41d0c090e79c63",
+  "reset_sha": "",
+  "preagent_sha": "63688984b73b69950687a3840acf00f3efc5a422",
+  "prev_sha": "63688984b73b69950687a3840acf00f3efc5a422",
+  "base_sha": "65cb8233ea38b2dfa6cfd18709e30cd18fdf3250",
+  "agent": {
+    "ok": true,
+    "cost_usd": 0.9677350000000001,
+    "input_tokens": 40,
+    "output_tokens": 9383,
+    "cache_read_tokens": 993815,
+    "cache_creation_tokens": 72644,
+    "num_turns": 20,
+    "duration_ms": 549302,
+    "duration_api_ms": 132002,
+    "model": "claude-opus-5-5",
+    "session_id": "263cfd05-20c7-437d-9e28-fb4565131054",
+    "stop_reason": "success",
+    "result_text": "You can now tick people in the list and give them all a grade at once. `bin/e2e` passes all 4 tests in the bulk-grade spec.\n\n**Server**\n- `PersonService.grade(...)` takes the selected people in list order (the order they were added). It changes each one through the same save path the person form's edit uses, now pulled into a private `save(...)` that both share. So each person gets their own `PERSON_EDITED` line, followed by their `ROLLUP` and `TOTALS` lines when their figures change.\n- Name and terms stay as they are. A blank from-date works exactly as it does on the person form: the grade applies from the sheet's today.\n- The whole bulk change is one transaction. If any selected id isn't a person on the sheet, it's refused and nothing is written.\n- The new endpoint is `POST /api/sheets/{sheetId}/people/grade`. It returns how many people were changed and those people as they now look. The existing viewer and archived-sheet checks apply to it automatically.\n\n**Front end**\n- `core/people.ts` has a new `grade(...)` call.\n- In `people-list.ts`, each row has a `person-select` checkbox. Above the table there's a bulk-grade bar with `bulk-grade`, `bulk-grade-from`, `bulk-grade-apply` and the count `bulk-graded`.\n- The count disappears while a grade is running and reappears when it's done. A refusal shows a `person-error` message, which goes away once you change the bar or the selection.\n\n**Choices the request didn't specify:**\n- **Selection clears after a successful grade.** The test needs this: the second bulk grade ticks only Ben and expects 1 changed.\n- **Only people currently shown are graded.** Anyone ticked but hidden by \"show retired\" being off is left out.\n- **Pressing the button with nobody ticked is refused** with an error rather than reporting 0 changed.",
+    "error": "",
+    "attempts": [
+      {
+        "ok": true,
+        "limit_reached": false,
+        "retryable": false,
+        "timed_out": false,
+        "cost_usd": 0.9677350000000001,
+        "num_turns": 20,
+        "duration_ms": 549302,
+        "duration_api_ms": 132002,
+        "error": ""
+      }
+    ]
+  },
+  "agent_stream_file": "cp75.agent.jsonl",
+  "agent_diff_file": "cp75.agent.diff",
+  "build_log_file": null,
+  "tests": {
+    "gated": false,
+    "queued": true
+  },
+  "probe": null,
+  "pinned_touched": [],
+  "acceptance_touched": [],
+  "impact_gate": null
+}
