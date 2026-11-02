@@ -61,6 +61,18 @@ export interface Claim {
   /** The day (yyyy-mm-dd) it is due by: fixed when it was made, from its date and the terms of its
    *  person's grade in force on that date. */
   dueBy: string;
+  /** Its status log, oldest first: a line for each status it has had. */
+  log: ClaimLogLine[];
+}
+
+/** A line of a claim's status log: the status, who changed it to that, the sheet's today then
+ *  (yyyy-mm-dd), and the claim's due at that moment as text with two decimals (null when it had
+ *  none). */
+export interface ClaimLogLine {
+  status: ClaimStatus;
+  by: string;
+  on: string;
+  due: string | null;
 }
 
 export interface ClaimForm {

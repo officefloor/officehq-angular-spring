@@ -1,15 +1,24 @@
 package net.officefloor.hq.app.claim;
 
+import jakarta.persistence.CascadeType;
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
 import jakarta.persistence.EnumType;
 import jakarta.persistence.Enumerated;
 import jakarta.persistence.GeneratedValue;
 import jakarta.persistence.GenerationType;
+import jakarta.persistence.FetchType;
 import jakarta.persistence.Id;
+import jakarta.persistence.JoinColumn;
+import jakarta.persistence.OneToMany;
+import jakarta.persistence.OrderBy;
 import jakarta.persistence.Table;
 import java.math.BigDecimal;
 import java.time.LocalDate;
+import java.util.ArrayList;
+import java.util.List;
+import org.hibernate.annotations.Fetch;
+import org.hibernate.annotations.FetchMode;
 import org.hibernate.annotations.Generated;
 
 /** A claim a person makes: an amount (two decimals), a date, a note and a status. A claim with a
@@ -83,6 +92,13 @@ public class Claim {
     @Generated
     @Column(name = "listed", insertable = false)
     private Long listed;
+
+    /** The claim's status log, oldest first: a line for each status it has had (see {@link #logStatus}). */
+    @OneToMany(cascade = CascadeType.ALL, orphanRemoval = true, fetch = FetchType.EAGER)
+    @Fetch(FetchMode.SUBSELECT)
+    @JoinColumn(name = "claim_id", nullable = false, updatable = false)
+    @OrderBy("id")
+    private List<ClaimLog> log = new ArrayList<>();
 
     protected Claim() {
     }
@@ -223,5 +239,15 @@ public class Claim {
     public void bind(boolean stated, BigDecimal statedDue) {
         this.stated = stated;
         this.statedDue = stated ? statedDue : null;
+    }
+
+    public List<ClaimLog> getLog() {
+        return List.copyOf(log);
+    }
+
+    /** Log the status the claim has now: changed by the user on the day (the sheet's today), with
+     *  its due as computed at that moment (null when it has none). */
+    public void logStatus(String user, LocalDate on, BigDecimal due) {
+        log.add(new ClaimLog(sheetId, status, user, on, due));
     }
 }

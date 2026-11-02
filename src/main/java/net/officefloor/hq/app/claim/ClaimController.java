@@ -31,17 +31,28 @@ public class ClaimController {
      *  whether the last statement bound it, with the due it bound (null when none); and the number
      *  of the claim it corrects (null when it is not a correction); the date its figures round by
      *  (that of the claim a correction corrects, or else its own); and where it is listed (newest
-     *  first by this). */
+     *  first by this); and its status log, oldest first. */
     public record ClaimView(long id, long personId, String amount, LocalDate date, String note,
             ClaimStatus status, String number, String settledDue, String openedBy, boolean stated,
-            String statedDue, String corrects, LocalDate roundsBy, long listed, LocalDate dueBy) {
+            String statedDue, String corrects, LocalDate roundsBy, long listed, LocalDate dueBy,
+            List<LogLineView> log) {
         public static ClaimView of(Claim claim) {
             return new ClaimView(claim.getId(), claim.getPersonId(), claim.getAmount().setScale(2).toPlainString(),
                     claim.getDate(), claim.getNote(), claim.getStatus(), claim.getNumber(),
                     claim.getSettledDue() == null ? null : claim.getSettledDue().setScale(2).toPlainString(),
                     claim.getOpenedBy(), claim.isStated(),
                     claim.getStatedDue() == null ? null : claim.getStatedDue().setScale(2).toPlainString(),
-                    claim.getCorrects(), claim.roundsBy(), claim.getListed(), claim.getDueBy());
+                    claim.getCorrects(), claim.roundsBy(), claim.getListed(), claim.getDueBy(),
+                    claim.getLog().stream().map(LogLineView::of).toList());
+        }
+    }
+
+    /** A line of a claim's status log: the status, who changed it to that, the sheet's today then, and
+     *  the claim's due at that moment as text with two decimals (null when it had none). */
+    public record LogLineView(ClaimStatus status, String by, LocalDate on, String due) {
+        static LogLineView of(ClaimLog line) {
+            return new LogLineView(line.getStatus(), line.getByUser(), line.getOn(),
+                    line.getDue() == null ? null : line.getDue().setScale(2).toPlainString());
         }
     }
 

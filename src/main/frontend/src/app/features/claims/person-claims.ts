@@ -89,6 +89,11 @@ function reassignRefusal(e: unknown): string {
           <span data-testid="claim-period">{{ periodName(c) }}</span>
           <span data-testid="claim-due-by">{{ dueByOf(c) }}</span>
           <span data-testid="claim-overdue">{{ overdueOf(c) ? 'yes' : 'no' }}</span>
+          <ol data-testid="claim-log" [attr.aria-label]="'Status log of claim of ' + c.amount + ' on ' + c.date">
+            @for (l of c.log; track $index) {
+              <li data-testid="claim-log-line">{{ l.status }} by {{ l.by }} on {{ l.on }} due={{ l.due ?? 'n/a' }}</li>
+            }
+          </ol>
           <button type="button" data-testid="claim-open" (click)="act(c, 'open')"
             [attr.aria-label]="'Open claim of ' + c.amount + ' on ' + c.date">Open</button>
           <button type="button" data-testid="claim-settle" (click)="act(c, 'settle')"

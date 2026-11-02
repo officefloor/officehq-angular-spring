@@ -66,9 +66,11 @@ public class ClaimService {
         Claim corrected = corrected(sheetId, personId, amount, corrects);
         return rollup.tracking(sheetId, user, () -> {
             Person person = person(sheetId, personId);
-            Claim claim = claims.saveAndFlush(new Claim(sheetId, personId, amount, on, note,
+            Claim draft = new Claim(sheetId, personId, amount, on, note,
                     corrected == null ? null : corrected.getNumber(), corrected == null ? null : corrected.getDate(),
-                    on.plusDays(sheets.termsFor(sheetId, person.gradeOn(on)))));
+                    on.plusDays(sheets.termsFor(sheetId, person.gradeOn(on))));
+            logStatus(sheetId, user, person, draft);
+            Claim claim = claims.saveAndFlush(draft);
             audit.recordOnCommit(record("CLAIM_ADDED", sheetId, user, person, claim));
             return claim;
         });
@@ -136,6 +138,7 @@ public class ClaimService {
                 claim.setNumber(nextNumber(sheetId, claim.getDate()));
                 claim.setOpenedBy(user);
             }
+            logStatus(sheetId, user, person, claim);
             Claim saved = claims.saveAndFlush(claim);
             String event = switch (becomes) {
                 case OPEN -> "CLAIM_OPENED";
@@ -167,6 +170,7 @@ public class ClaimService {
             Person person = person(sheetId, claim.getPersonId());
             claim.setSettledDue(dues.figure(sheetId, person, claim));
             claim.setStatus(ClaimStatus.SETTLED);
+            logStatus(sheetId, user, person, claim);
             Claim saved = claims.saveAndFlush(claim);
             audit.recordOnCommit(record("CLAIM_APPROVED", sheetId, user, person, saved)
                     + " due=" + dueText(saved.getSettledDue()));
@@ -183,6 +187,7 @@ public class ClaimService {
         return rollup.tracking(sheetId, user, () -> {
             Person person = person(sheetId, claim.getPersonId());
             claim.setStatus(ClaimStatus.OPEN);
+            logStatus(sheetId, user, person, claim);
             Claim saved = claims.saveAndFlush(claim);
             audit.recordOnCommit(record("CLAIM_REJECTED", sheetId, user, person, saved) + " reason=" + reason);
             return saved;
@@ -234,6 +239,12 @@ public class ClaimService {
                     "Only a steward can approve or reject a claim");
         }
         return claim;
+    }
+
+    /** Log the status the claim has now, changed by the user on the sheet's today, with its due as
+     *  computed at this moment. */
+    private void logStatus(String sheetId, String user, Person person, Claim claim) {
+        claim.logStatus(user, sheets.today(sheetId), dues.figure(sheetId, person, claim));
     }
 
     private Claim lock(String sheetId, long claimId) {
