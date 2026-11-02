@@ -115,6 +115,11 @@ public class Claim {
     @Column(name = "reminded_on")
     private LocalDate remindedOn;
 
+    /** The claim's external reference; null when it has none. No two claims of a sheet share one,
+     *  comparing without regard to case. */
+    @Column(name = "ref")
+    private String ref;
+
     /** Whether the claim was added while the period its due-by falls in was soft-closed. */
     @Column(name = "late_entry", nullable = false)
     private boolean lateEntry;
@@ -198,6 +203,14 @@ public class Claim {
         split.splitFrom = this.number;
         split.lateEntry = this.lateEntry;
         return split;
+    }
+
+    public String getRef() {
+        return ref;
+    }
+
+    public void setRef(String ref) {
+        this.ref = ref;
     }
 
     public String getSplitFrom() {

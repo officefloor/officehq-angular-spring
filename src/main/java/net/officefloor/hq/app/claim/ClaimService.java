@@ -71,6 +71,15 @@ public class ClaimService {
     @Transactional
     public Claim add(String sheetId, String user, long personId, BigDecimal amount, LocalDate date, String note,
             String corrects) {
+        return add(sheetId, user, personId, amount, date, note, corrects, null);
+    }
+
+    /** Add a claim for a person with an external reference (null: none); refused as well when another
+     *  claim of the sheet has the reference, comparing without regard to case. */
+    @Transactional
+    public Claim add(String sheetId, String user, long personId, BigDecimal amount, LocalDate date, String note,
+            String corrects, String ref) {
+        refuseRefUsed(sheetId, ref, null);
         LocalDate on = date != null ? date : sheets.entryDay(sheetId);
         LocalDate dueBy = dueBy(sheetId, person(sheetId, personId), on);
         refuseClosed(sheetId, dueBy);
@@ -81,13 +90,15 @@ public class ClaimService {
             Claim draft = new Claim(sheetId, personId, amount, on, note,
                     corrected == null ? null : corrected.getNumber(), corrected == null ? null : corrected.getDate(),
                     dueBy);
+            draft.setRef(ref);
             boolean late = periods.softClosedOn(sheetId, dueBy);
             if (late) {
                 draft.markLateEntry();
             }
             logStatus(sheetId, user, person, draft);
             Claim claim = claims.saveAndFlush(draft);
-            audit.recordOnCommit(record("CLAIM_ADDED", sheetId, user, person, claim));
+            audit.recordOnCommit(record("CLAIM_ADDED", sheetId, user, person, claim)
+                    + (ref != null ? " ref=" + ref : ""));
             if (late) {
                 audit.recordOnCommit(record("LATE_ENTRY", sheetId, user, person, claim));
             }
@@ -95,18 +106,20 @@ public class ClaimService {
         });
     }
 
-    /** Change a draft claim's amount, date and note; a date left out takes the sheet's today. Refused
+    /** Change a draft claim's amount, date, note and external reference (null: none); a date left out
+     *  takes the sheet's today. Refused when another claim of the sheet has the reference, and
      *  when the claim is not a draft (an open claim is changed by voiding it and adding a new one), and
      *  when the claim's due-by (which the edit leaves) falls inside a closed period, and when the new
      *  date is after the person's retirement day. */
     @Transactional
     public Claim edit(String sheetId, String user, long claimId, BigDecimal amount, LocalDate date, String note,
-            String corrects) {
+            String corrects, String ref) {
         Claim claim = lock(sheetId, claimId);
         if (claim.getStatus() != ClaimStatus.DRAFT || claim.editLockedFor(user)) {
             throw new ResponseStatusException(HttpStatus.CONFLICT,
                     "A " + claim.getStatus() + " claim cannot be edited, nor one another user is editing");
         }
+        refuseRefUsed(sheetId, ref, claim.getId());
         LocalDate on = date != null ? date : sheets.today(sheetId);
         refuseClosed(sheetId, claim.getDueBy());
         refuseRetired(person(sheetId, claim.getPersonId()), on);
@@ -117,6 +130,7 @@ public class ClaimService {
             claim.setCorrectedDate(corrected == null ? null : corrected.getDate());
             claim.setDate(on);
             claim.setNote(note);
+            claim.setRef(ref);
             claim.setEditLockedBy(null);
             Claim saved = claims.saveAndFlush(claim);
             audit.recordOnCommit(record("CLAIM_EDITED", sheetId, user, person(sheetId, saved.getPersonId()), saved));
@@ -129,7 +143,8 @@ public class ClaimService {
     @Transactional
     public Claim editAmount(String sheetId, String user, long claimId, BigDecimal amount) {
         Claim claim = lock(sheetId, claimId);
-        return edit(sheetId, user, claimId, amount, claim.getDate(), claim.getNote(), claim.getCorrects());
+        return edit(sheetId, user, claimId, amount, claim.getDate(), claim.getNote(), claim.getCorrects(),
+                claim.getRef());
     }
 
     /** Open a claim's editor for the user, locking the claim for every other user until it is saved
@@ -608,6 +623,15 @@ public class ClaimService {
         Integer own = person.getTerms();
         return holidays.businessDaysAfter(sheetId, on,
                 own != null ? own : sheets.termsFor(sheetId, person.gradeOn(on), on));
+    }
+
+    /** Refuse a reference (null: none) another claim of the sheet than the one given (null: any) has,
+     *  comparing without regard to case. */
+    public void refuseRefUsed(String sheetId, String ref, Long exceptId) {
+        if (ref != null && claims.refUsed(sheetId, ref, exceptId)) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT,
+                    "The reference \"" + ref + "\" is already used on this sheet");
+        }
     }
 
     private Person person(String sheetId, long personId) {

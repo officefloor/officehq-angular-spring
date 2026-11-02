@@ -22,6 +22,12 @@ public interface ClaimRepository extends JpaRepository<Claim, Long> {
     Optional<Claim> findBySheetIdAndPersonIdAndNumberAndStatus(String sheetId, Long personId, String number,
             ClaimStatus status);
 
+    /** Whether a claim on a sheet other than the one given (null: none) has the reference, comparing
+     *  without regard to case. */
+    @Query("select count(c) > 0 from Claim c where c.sheetId = :sheetId and upper(c.ref) = upper(:ref)"
+            + " and (:exceptId is null or c.id <> :exceptId)")
+    boolean refUsed(String sheetId, String ref, Long exceptId);
+
     /** The next place a claim is listed at, after every claim listed so far. */
     @Query(value = "select next value for claim_listed_seq", nativeQuery = true)
     long nextListed();

@@ -135,6 +135,9 @@ export interface Claim {
   lateEntry: boolean;
   /** The last day (yyyy-mm-dd) a reminder was written for it; null when never. */
   remindedOn: string | null;
+  /** Its external reference; null when it has none. No two claims of a sheet share one, comparing
+   *  without regard to case. */
+  ref: string | null;
 }
 
 /** A line of a claim's status log: the status, who changed it to that, the sheet's today then
@@ -155,6 +158,8 @@ export interface ClaimForm {
   /** The number of the settled claim of the same person a correction (a negative amount)
    *  corrects; null when none is named. */
   corrects: string | null;
+  /** The external reference, its surrounding spaces removed; null for none. */
+  ref: string | null;
 }
 
 /** What a quick-add made: the person the claim is for (added when the name was not on the sheet)

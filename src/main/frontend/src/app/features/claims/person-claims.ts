@@ -36,6 +36,8 @@ function editorRefusal(e: unknown, c: Claim): string {
 const CLOSED = 'The claim\'s period is closed.';
 const RETIRED = 'A claim cannot be dated after the person\'s retirement.';
 const CORRECTS = 'A negative amount must name the number of a settled claim of this person.';
+const REF_USED = 'That reference is already used on this sheet.';
+const REF_LONG = 'Enter a reference of at most 120 characters.';
 
 /** The message for a refused action on a claim. */
 function refusal(e: unknown, action: ClaimAction): string {
@@ -156,6 +158,8 @@ function splitRefusal(e: unknown): string {
       <label [for]="'claim-form-corrects-' + personId()">Corrects claim number</label>
       <input [id]="'claim-form-corrects-' + personId()" data-testid="claim-form-corrects" formControlName="corrects"
         inputmode="numeric" />
+      <label [for]="'claim-form-ref-' + personId()">Reference</label>
+      <input [id]="'claim-form-ref-' + personId()" data-testid="claim-form-ref" formControlName="ref" />
       <button type="submit" data-testid="claim-form-submit">{{ editing() === null ? 'Add claim' : 'Save claim' }}</button>
       @if (error()) {
         <p role="alert" data-testid="claim-form-error">{{ error() }}</p>
@@ -172,6 +176,7 @@ function splitRefusal(e: unknown): string {
           <span data-testid="claim-date">{{ c.date }}</span>
           <span data-testid="claim-note">{{ c.note }}</span>
           <span data-testid="claim-corrects">{{ c.corrects ?? '' }}</span>
+          <span data-testid="claim-ref">{{ c.ref ?? '' }}</span>
           <span data-testid="claim-due">{{ dueOf(c) }}</span>
           <span data-testid="claim-status">{{ c.status }}</span>
           <span data-testid="claim-opened-by">{{ c.openedBy ?? '' }}</span>
@@ -298,6 +303,7 @@ export class PersonClaims {
     date: new FormControl('', { nonNullable: true }),
     note: new FormControl('', { nonNullable: true }),
     corrects: new FormControl('', { nonNullable: true }),
+    ref: new FormControl('', { nonNullable: true }),
   });
 
   constructor() {
@@ -363,12 +369,13 @@ export class PersonClaims {
       return;
     }
     this.editing.set(c.id);
-    this.form.reset({ amount: '', date: '', note: '', corrects: '' }, { emitEvent: false });
+    this.form.reset({ amount: '', date: '', note: '', corrects: '', ref: '' }, { emitEvent: false });
     this.error.set('');
     try {
       const claim = await this.api.openEditor(c.id);
       if (this.editing() === c.id) {
-        const values = { amount: claim.amount, date: claim.date, note: claim.note, corrects: claim.corrects ?? '' };
+        const values = { amount: claim.amount, date: claim.date, note: claim.note, corrects: claim.corrects ?? '',
+          ref: claim.ref ?? '' };
         for (const key of Object.keys(values) as (keyof typeof values)[]) {
           const control = this.form.controls[key];
           if (!control.dirty) control.setValue(values[key], { emitEvent: false });
@@ -384,7 +391,8 @@ export class PersonClaims {
   /** Fill the form with the claim's values, as its editor. */
   private fill(c: Claim): void {
     this.editing.set(c.id);
-    this.form.setValue({ amount: c.amount, date: c.date, note: c.note, corrects: c.corrects ?? '' },
+    this.form.setValue({ amount: c.amount, date: c.date, note: c.note, corrects: c.corrects ?? '',
+      ref: c.ref ?? '' },
       { emitEvent: false });
     this.error.set('');
   }
@@ -517,7 +525,7 @@ export class PersonClaims {
     if (this.submitting) return;
     this.error.set('');
     this.claimError.set(null);
-    const { amount, date, note, corrects } = this.form.getRawValue();
+    const { amount, date, note, corrects, ref } = this.form.getRawValue();
     if (!CLAIM_AMOUNT.test(amount.trim())) {
       this.error.set('Enter an amount with up to two decimals; a negative amount is a correction.');
       return;
@@ -527,6 +535,11 @@ export class PersonClaims {
       this.error.set(CORRECTS);
       return;
     }
+    const reference = ref.trim();
+    if (reference.length > 120) {
+      this.error.set(REF_LONG);
+      return;
+    }
     const day = date.trim();
     if (day !== '' && !/^\d{4}-\d{2}-\d{2}$/.test(day)) {
       this.error.set('Enter a date, or leave it blank for the sheet\'s today.');
@@ -534,6 +547,7 @@ export class PersonClaims {
     }
     const form = {
       amount: amount.trim(), date: day === '' ? null : day, note, corrects: number === '' ? null : number,
+      ref: reference === '' ? null : reference,
     };
     const id = this.editing();
     this.submitting = true;
@@ -545,6 +559,9 @@ export class PersonClaims {
       if (e instanceof HttpErrorResponse && e.status === 423) this.error.set(CLOSED);
       else if (e instanceof HttpErrorResponse && e.status === 422) this.error.set(RETIRED);
       else if (e instanceof HttpErrorResponse && e.status === 400 && amount.trim().startsWith('-')) this.error.set(CORRECTS);
+      else if (e instanceof HttpErrorResponse && e.status === 409 && reference !== '' && this.refClash(id)) {
+        this.error.set(REF_USED);
+      }
       else if (id !== null && e instanceof HttpErrorResponse && e.status === 409) {
         const c = this.claims().find((x) => x.id === id);
         this.claimError.set({ id, message: c ? editorRefusal(e, c) : NOT_DRAFT });
@@ -555,9 +572,18 @@ export class PersonClaims {
     }
   }
 
+  /** Whether a conflict on saving the form (an add when `id` is null) can only be its reference
+   *  being in use: an add, or an edit of a draft no other user is editing. */
+  private refClash(id: number | null): boolean {
+    if (id === null) return true;
+    const c = this.claims().find((x) => x.id === id);
+    return c !== undefined && c.status === 'DRAFT'
+      && (c.editLockedBy === null || c.editLockedBy === this.session.user());
+  }
+
   private reset(): void {
     this.editing.set(null);
-    this.form.reset({ amount: '', date: '', note: '', corrects: '' }, { emitEvent: false });
+    this.form.reset({ amount: '', date: '', note: '', corrects: '', ref: '' }, { emitEvent: false });
     this.error.set('');
   }
 }
