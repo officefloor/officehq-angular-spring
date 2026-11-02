@@ -160,6 +160,8 @@ function splitRefusal(e: unknown): string {
         inputmode="numeric" />
       <label [for]="'claim-form-ref-' + personId()">Reference</label>
       <input [id]="'claim-form-ref-' + personId()" data-testid="claim-form-ref" formControlName="ref" />
+      <label [for]="'claim-form-tags-' + personId()">Tags (comma separated)</label>
+      <input [id]="'claim-form-tags-' + personId()" data-testid="claim-form-tags" formControlName="tags" />
       <button type="submit" data-testid="claim-form-submit">{{ editing() === null ? 'Add claim' : 'Save claim' }}</button>
       @if (error()) {
         <p role="alert" data-testid="claim-form-error">{{ error() }}</p>
@@ -177,6 +179,7 @@ function splitRefusal(e: unknown): string {
           <span data-testid="claim-note">{{ c.note }}</span>
           <span data-testid="claim-corrects">{{ c.corrects ?? '' }}</span>
           <span data-testid="claim-ref">{{ c.ref ?? '' }}</span>
+          <span data-testid="claim-tags">{{ c.tags }}</span>
           <span data-testid="claim-due">{{ dueOf(c) }}</span>
           <span data-testid="claim-status">{{ c.status }}</span>
           <span data-testid="claim-opened-by">{{ c.openedBy ?? '' }}</span>
@@ -304,6 +307,7 @@ export class PersonClaims {
     note: new FormControl('', { nonNullable: true }),
     corrects: new FormControl('', { nonNullable: true }),
     ref: new FormControl('', { nonNullable: true }),
+    tags: new FormControl('', { nonNullable: true }),
   });
 
   constructor() {
@@ -369,13 +373,13 @@ export class PersonClaims {
       return;
     }
     this.editing.set(c.id);
-    this.form.reset({ amount: '', date: '', note: '', corrects: '', ref: '' }, { emitEvent: false });
+    this.form.reset({ amount: '', date: '', note: '', corrects: '', ref: '', tags: '' }, { emitEvent: false });
     this.error.set('');
     try {
       const claim = await this.api.openEditor(c.id);
       if (this.editing() === c.id) {
         const values = { amount: claim.amount, date: claim.date, note: claim.note, corrects: claim.corrects ?? '',
-          ref: claim.ref ?? '' };
+          ref: claim.ref ?? '', tags: claim.tags };
         for (const key of Object.keys(values) as (keyof typeof values)[]) {
           const control = this.form.controls[key];
           if (!control.dirty) control.setValue(values[key], { emitEvent: false });
@@ -392,7 +396,7 @@ export class PersonClaims {
   private fill(c: Claim): void {
     this.editing.set(c.id);
     this.form.setValue({ amount: c.amount, date: c.date, note: c.note, corrects: c.corrects ?? '',
-      ref: c.ref ?? '' },
+      ref: c.ref ?? '', tags: c.tags },
       { emitEvent: false });
     this.error.set('');
   }
@@ -525,7 +529,7 @@ export class PersonClaims {
     if (this.submitting) return;
     this.error.set('');
     this.claimError.set(null);
-    const { amount, date, note, corrects, ref } = this.form.getRawValue();
+    const { amount, date, note, corrects, ref, tags } = this.form.getRawValue();
     if (!CLAIM_AMOUNT.test(amount.trim())) {
       this.error.set('Enter an amount with up to two decimals; a negative amount is a correction.');
       return;
@@ -547,7 +551,7 @@ export class PersonClaims {
     }
     const form = {
       amount: amount.trim(), date: day === '' ? null : day, note, corrects: number === '' ? null : number,
-      ref: reference === '' ? null : reference,
+      ref: reference === '' ? null : reference, tags,
     };
     const id = this.editing();
     this.submitting = true;
@@ -583,7 +587,7 @@ export class PersonClaims {
 
   private reset(): void {
     this.editing.set(null);
-    this.form.reset({ amount: '', date: '', note: '', corrects: '', ref: '' }, { emitEvent: false });
+    this.form.reset({ amount: '', date: '', note: '', corrects: '', ref: '', tags: '' }, { emitEvent: false });
     this.error.set('');
   }
 }

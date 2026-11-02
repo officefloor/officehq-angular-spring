@@ -44,12 +44,13 @@ public class ClaimController {
      *  first by this); and its status log, oldest first; and the day it is deferred until (null when
      *  never deferred); and how many proofs it has; and the number of the claim it was split off
      *  (null when none); and who has its editor open (null when no one); and the last day a reminder
-     *  was written for it (null when never); and its external reference (null when none). */
+     *  was written for it (null when never); and its external reference (null when none); and its tags,
+     *  sorted and comma and space separated (empty when none). */
     public record ClaimView(long id, long personId, String amount, LocalDate date, String note,
             ClaimStatus status, String number, String settledDue, String openedBy, boolean stated,
             String statedDue, boolean statedNa, String corrects, LocalDate roundsBy, long listed, LocalDate dueBy,
             List<LogLineView> log, LocalDate deferredUntil, int proofs, String splitFrom,
-            String editLockedBy, boolean lateEntry, LocalDate remindedOn, String ref) {
+            String editLockedBy, boolean lateEntry, LocalDate remindedOn, String ref, String tags) {
         public static ClaimView of(Claim claim) {
             return new ClaimView(claim.getId(), claim.getPersonId(), claim.getAmount().setScale(2).toPlainString(),
                     claim.getDate(), claim.getNote(), claim.getStatus(), claim.getNumber(),
@@ -59,12 +60,12 @@ public class ClaimController {
                     claim.isStatedNa(), claim.getCorrects(), claim.roundsBy(), claim.getListed(), claim.getDueBy(),
                     claim.getLog().stream().map(LogLineView::of).toList(), claim.getDeferredUntil(),
                     claim.getProofs(), claim.getSplitFrom(), claim.getEditLockedBy(), claim.isLateEntry(),
-                    claim.getRemindedOn(), claim.getRef());
+                    claim.getRemindedOn(), claim.getRef(), tagsText(claim.getTags()));
         }
 
         /** The claim as it stood at the end of a day: its figures as its revision then has them (see
          *  {@link History}), its log as far as that day, and its number and who opened it only once it
-         *  had been opened by then; what no revision keeps (its note, reference, proofs, where it is listed) as it is
+         *  had been opened by then; what no revision keeps (its note, reference, tags, proofs, where it is listed) as it is
          *  now (null: the claim is gone now). No one has its editor open then. */
         static ClaimView asOf(Claim then, Claim now, LocalDate day) {
             Claim kept = now != null ? now : then;
@@ -80,7 +81,12 @@ public class ClaimController {
                     log.stream().map(LogLineView::of).toList(), then.getDeferredUntil(), kept.getProofs(),
                     kept.getSplitFrom(), null, kept.isLateEntry(),
                     kept.getRemindedOn() == null || kept.getRemindedOn().isAfter(day) ? null : kept.getRemindedOn(),
-                    kept.getRef());
+                    kept.getRef(), tagsText(kept.getTags()));
+        }
+
+        /** The tags as the claim shows them: sorted, comma and space separated; empty when none. */
+        private static String tagsText(String tags) {
+            return String.join(", ", Tags.of(tags));
         }
     }
 
@@ -95,10 +101,10 @@ public class ClaimController {
 
     /** The claim form: a required amount with up to two decimals (a negative one is a correction), an
      *  optional date (the sheet's today when left out), a note that may be empty, and the number of
-     *  the settled claim a correction corrects, and an external reference. */
+     *  the settled claim a correction corrects, and an external reference, and comma separated tags. */
     public record ClaimForm(@NotNull @Pattern(regexp = "\\s*-?\\d{1,12}(\\.\\d{1,2})?\\s*") String amount,
             LocalDate date, @Size(max = 500) String note, @Size(max = 120) String corrects,
-            @Size(max = 120) String ref) {
+            @Size(max = 120) String ref, @Size(max = 1000) String tags) {
 
         BigDecimal amountValue() {
             return new BigDecimal(amount.trim()).setScale(2);
@@ -116,6 +122,11 @@ public class ClaimController {
         /** The external reference, its surrounding spaces removed; null when left blank. */
         String refValue() {
             return ref == null || ref.isBlank() ? null : ref.trim();
+        }
+
+        /** The tags as stored (see {@link Tags}); null when none are named. */
+        String tagsValue() {
+            return Tags.normalise(tags);
         }
     }
 
@@ -159,6 +170,12 @@ public class ClaimController {
         return service.list(sheet).stream().map(ClaimView::of).toList();
     }
 
+    /** Every tag ever used on the sheet, in order. */
+    @GetMapping("/tags")
+    public List<String> tags(@PathVariable @NotBlank @Size(max = 100) String sheetId) {
+        return service.tags(sheetId.trim());
+    }
+
     @PostMapping("/people/{personId}/claims")
     @ResponseStatus(HttpStatus.CREATED)
     public ClaimView add(@PathVariable @NotBlank @Size(max = 100) String sheetId,
@@ -166,7 +183,7 @@ public class ClaimController {
             @RequestHeader("X-User") @NotBlank @Size(max = 100) String user,
             @Valid @RequestBody ClaimForm form) {
         return ClaimView.of(service.add(sheetId.trim(), user.trim(), personId, form.amountValue(), form.date(), form.noteValue(),
-                form.correctsValue(), form.refValue()));
+                form.correctsValue(), form.refValue(), form.tagsValue()));
     }
 
     @PutMapping("/claims/{claimId}")
@@ -175,7 +192,7 @@ public class ClaimController {
             @RequestHeader("X-User") @NotBlank @Size(max = 100) String user,
             @Valid @RequestBody ClaimForm form) {
         return ClaimView.of(service.edit(sheetId.trim(), user.trim(), claimId, form.amountValue(), form.date(), form.noteValue(),
-                form.correctsValue(), form.refValue()));
+                form.correctsValue(), form.refValue(), form.tagsValue()));
     }
 
     /** A draft's amount changed in its row: the claim form's amount, alone. */

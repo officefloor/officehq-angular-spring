@@ -32,6 +32,7 @@ public class ClaimService {
     private final RoleService roles;
     private final WatchService watches;
     private final HolidayService holidays;
+    private final SheetTagRepository sheetTags;
     private final Audit audit;
 
     /** How many days after its settlement a steward may still void a settled claim. */
@@ -39,7 +40,7 @@ public class ClaimService {
 
     public ClaimService(ClaimRepository claims, PersonRepository people, Dues dues, SheetService sheets,
             Rollup rollup, PeriodRepository periods, RoleService roles, WatchService watches,
-            HolidayService holidays, Audit audit) {
+            HolidayService holidays, SheetTagRepository sheetTags, Audit audit) {
         this.claims = claims;
         this.people = people;
         this.dues = dues;
@@ -49,6 +50,7 @@ public class ClaimService {
         this.roles = roles;
         this.watches = watches;
         this.holidays = holidays;
+        this.sheetTags = sheetTags;
         this.audit = audit;
     }
 
@@ -79,6 +81,13 @@ public class ClaimService {
     @Transactional
     public Claim add(String sheetId, String user, long personId, BigDecimal amount, LocalDate date, String note,
             String corrects, String ref) {
+        return add(sheetId, user, personId, amount, date, note, corrects, ref, null);
+    }
+
+    /** Add a claim for a person with tags (as {@link Tags} stores them; null: none). */
+    @Transactional
+    public Claim add(String sheetId, String user, long personId, BigDecimal amount, LocalDate date, String note,
+            String corrects, String ref, String tags) {
         refuseRefUsed(sheetId, ref, null);
         LocalDate on = date != null ? date : sheets.entryDay(sheetId);
         LocalDate dueBy = dueBy(sheetId, person(sheetId, personId), on);
@@ -91,6 +100,7 @@ public class ClaimService {
                     corrected == null ? null : corrected.getNumber(), corrected == null ? null : corrected.getDate(),
                     dueBy);
             draft.setRef(ref);
+            draft.setTags(tags);
             boolean late = periods.softClosedOn(sheetId, dueBy);
             if (late) {
                 draft.markLateEntry();
@@ -98,7 +108,8 @@ public class ClaimService {
             logStatus(sheetId, user, person, draft);
             Claim claim = claims.saveAndFlush(draft);
             audit.recordOnCommit(record("CLAIM_ADDED", sheetId, user, person, claim)
-                    + (ref != null ? " ref=" + ref : ""));
+                    + (ref != null ? " ref=" + ref : "") + (tags != null ? " tags=" + tags : ""));
+            keepTags(sheetId, tags);
             if (late) {
                 audit.recordOnCommit(record("LATE_ENTRY", sheetId, user, person, claim));
             }
@@ -113,7 +124,7 @@ public class ClaimService {
      *  date is after the person's retirement day. */
     @Transactional
     public Claim edit(String sheetId, String user, long claimId, BigDecimal amount, LocalDate date, String note,
-            String corrects, String ref) {
+            String corrects, String ref, String tags) {
         Claim claim = lock(sheetId, claimId);
         if (claim.getStatus() != ClaimStatus.DRAFT || claim.editLockedFor(user)) {
             throw new ResponseStatusException(HttpStatus.CONFLICT,
@@ -131,7 +142,9 @@ public class ClaimService {
             claim.setDate(on);
             claim.setNote(note);
             claim.setRef(ref);
+            claim.setTags(tags);
             claim.setEditLockedBy(null);
+            keepTags(sheetId, tags);
             Claim saved = claims.saveAndFlush(claim);
             audit.recordOnCommit(record("CLAIM_EDITED", sheetId, user, person(sheetId, saved.getPersonId()), saved));
             return saved;
@@ -144,7 +157,7 @@ public class ClaimService {
     public Claim editAmount(String sheetId, String user, long claimId, BigDecimal amount) {
         Claim claim = lock(sheetId, claimId);
         return edit(sheetId, user, claimId, amount, claim.getDate(), claim.getNote(), claim.getCorrects(),
-                claim.getRef());
+                claim.getRef(), claim.getTags());
     }
 
     /** Open a claim's editor for the user, locking the claim for every other user until it is saved
@@ -627,6 +640,21 @@ public class ClaimService {
 
     /** Refuse a reference (null: none) another claim of the sheet than the one given (null: any) has,
      *  comparing without regard to case. */
+    /** The tags ever used on the sheet, in order. */
+    @Transactional(readOnly = true)
+    public List<String> tags(String sheetId) {
+        return sheetTags.findBySheetIdOrderByTagAsc(sheetId).stream().map(SheetTag::getTag).toList();
+    }
+
+    /** Keep each of the tags (as {@link Tags} stores them) as used on the sheet. */
+    private void keepTags(String sheetId, String tags) {
+        for (String tag : Tags.of(tags)) {
+            if (!sheetTags.existsBySheetIdAndTag(sheetId, tag)) {
+                sheetTags.save(new SheetTag(sheetId, tag));
+            }
+        }
+    }
+
     public void refuseRefUsed(String sheetId, String ref, Long exceptId) {
         if (ref != null && claims.refUsed(sheetId, ref, exceptId)) {
             throw new ResponseStatusException(HttpStatus.CONFLICT,

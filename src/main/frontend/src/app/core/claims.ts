@@ -138,6 +138,8 @@ export interface Claim {
   /** Its external reference; null when it has none. No two claims of a sheet share one, comparing
    *  without regard to case. */
   ref: string | null;
+  /** Its tags, sorted and comma and space separated; empty when it has none. */
+  tags: string;
 }
 
 /** A line of a claim's status log: the status, who changed it to that, the sheet's today then
@@ -160,6 +162,8 @@ export interface ClaimForm {
   corrects: string | null;
   /** The external reference, its surrounding spaces removed; null for none. */
   ref: string | null;
+  /** Comma separated tags (the store trims, lower-cases and drops repeats); empty for none. */
+  tags: string;
 }
 
 /** What a quick-add made: the person the claim is for (added when the name was not on the sheet)
@@ -285,6 +289,11 @@ export class Claims {
   /** Every claim on the sheet, newest first. */
   list(sheetId: string): Promise<Claim[]> {
     return firstValueFrom(this.http.get<Claim[]>(`${this.url(sheetId)}/claims`));
+  }
+
+  /** Every tag ever used on the sheet, in order. */
+  tags(sheetId: string): Promise<string[]> {
+    return firstValueFrom(this.http.get<string[]>(`${this.url(sheetId)}/tags`));
   }
 
   add(personId: number, form: ClaimForm): Promise<Claim> {

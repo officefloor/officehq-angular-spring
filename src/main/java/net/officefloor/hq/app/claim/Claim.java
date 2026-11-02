@@ -120,6 +120,10 @@ public class Claim {
     @Column(name = "ref")
     private String ref;
 
+    /** The claim's tags, sorted and comma separated (see {@link Tags}); null when it has none. */
+    @Column(name = "tags")
+    private String tags;
+
     /** Whether the claim was added while the period its due-by falls in was soft-closed. */
     @Column(name = "late_entry", nullable = false)
     private boolean lateEntry;
@@ -202,7 +206,16 @@ public class Claim {
         split.openedBy = openedBy;
         split.splitFrom = this.number;
         split.lateEntry = this.lateEntry;
+        split.tags = this.tags;
         return split;
+    }
+
+    public String getTags() {
+        return tags;
+    }
+
+    public void setTags(String tags) {
+        this.tags = tags;
     }
 
     public String getRef() {

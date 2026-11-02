@@ -69,6 +69,13 @@ const NO_LEAVE: Leave = { holds: [], retiredFrom: null };
       <p>Open due in total: <strong data-testid="rollup-open-total">{{ openTotal() }}</strong></p>
       <p>Overdue claims: <strong data-testid="rollup-overdue-count">{{ overdueCount() }}</strong></p>
       <p>Overdue in total: <strong data-testid="rollup-overdue-total">{{ overdueTotal() }}</strong></p>
+      @if (tagDueTotals().length > 0) {
+        <ul aria-label="Due per tag">
+          @for (t of tagDueTotals(); track t.tag) {
+            <li>Due tagged {{ t.tag }}: <strong [attr.data-testid]="'tag-' + t.tag + '-due-total'">{{ t.due }}</strong></li>
+          }
+        </ul>
+      }
       <app-summary-panel [grades]="gradeSummary()" [periods]="periodSummary()" [statuses]="statusSummary()" />
       <label>
         <input type="checkbox" data-testid="show-retired" [checked]="showRetired()"
@@ -228,6 +235,8 @@ export class PeopleList {
   );
   /** Every claim on the sheet, newest first. */
   protected readonly claims = signal<Claim[]>([]);
+  /** Every tag the store keeps as ever used on the sheet. */
+  private readonly storedTags = signal<string[]>([]);
   protected readonly claimsByPerson = computed(() => {
     const by = new Map<number, Claim[]>();
     for (const c of this.claims()) by.set(c.personId, [...(by.get(c.personId) ?? []), c]);
@@ -344,6 +353,21 @@ export class PeopleList {
   protected readonly openTotal = computed(() =>
     sumAmounts(this.people().map((p) => this.openTotalOf(p))),
   );
+  /** Per tag ever used on the sheet (those the store keeps, and those of the claims shown), in
+   *  order: the due figures of the claims that count which carry it, skipping those with no due
+   *  (not trimmed, not capped). */
+  protected readonly tagDueTotals = computed(() => {
+    const figures = new Map<string, string[]>(this.storedTags().map((t) => [t, []]));
+    for (const c of this.claims()) {
+      const tags = tagsOf(c);
+      for (const t of tags) if (!figures.has(t)) figures.set(t, []);
+      const p = this.byId().get(c.personId);
+      if (tags.length === 0 || !p || !countsLive(c, p, this.session.today())) continue;
+      const d = claimDue(c, this.rates(), gradeOn(p.grades, c.date), this.floor(), this.lateness());
+      if (d !== null) for (const t of tags) figures.get(t)!.push(d);
+    }
+    return [...figures.keys()].sort().map((tag) => ({ tag, due: sumAmounts(figures.get(tag)!) }));
+  });
   /** How many claims on the sheet are overdue among those that count in the live totals. */
   protected readonly overdueCount = computed(() =>
     this.people().reduce((n, p) => n + this.overdueOf(p).length, 0),
@@ -433,6 +457,7 @@ export class PeopleList {
       this.session.loads();
       this.people.set([]);
       this.claims.set([]);
+      this.storedTags.set([]);
       this.rates.set([]);
       this.periods.set([]);
       this.patrons.set([]);
@@ -921,9 +946,10 @@ export class PeopleList {
   private async reload(sheetId: string): Promise<void> {
     const read = ++this.reads;
     try {
-      const [people, claims, rates, periods, settings, patrons, watches] = await Promise.all([
+      const [people, claims, tags, rates, periods, settings, patrons, watches] = await Promise.all([
         this.api.list(sheetId),
         this.claimsApi.list(sheetId),
+        this.claimsApi.tags(sheetId),
         this.ratesApi.list(sheetId),
         this.periodsApi.list(sheetId),
         this.settingsApi.get(sheetId),
@@ -939,6 +965,7 @@ export class PeopleList {
         this.policyDate.set(settings.policyDate);
         this.periods.set(periods);
         this.claims.set(claims);
+        this.storedTags.set(tags);
         this.patrons.set(patrons);
         this.watches.set(watches);
         this.people.set(people);
@@ -948,6 +975,11 @@ export class PeopleList {
     }
     if (read === this.reads) this.session.markShown(sheetId);
   }
+}
+
+/** A claim's tags, one by one. */
+function tagsOf(c: Claim): string[] {
+  return c.tags === '' ? [] : c.tags.split(', ');
 }
 
 /** A CSV field: quoted, with quotes doubled, when it holds a comma, a quote or a line break. */
