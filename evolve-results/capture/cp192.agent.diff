@@ -1,0 +1,137 @@
+diff --git a/src/main/frontend/src/app/core/session.ts b/src/main/frontend/src/app/core/session.ts
+index 2d1720277..6b6d2d949 100644
+--- a/src/main/frontend/src/app/core/session.ts
++++ b/src/main/frontend/src/app/core/session.ts
+@@ -64,6 +64,8 @@ export interface ClaimTemplate {
+ export interface PersonRef {
+   id: number;
+   name: string;
++  /** Their name as the screen shows it: <name> (<grade in force on the sheet's today>). */
++  shown: string;
+   retired: boolean;
+ }
+ 
+diff --git a/src/main/frontend/src/app/features/crews/crews.ts b/src/main/frontend/src/app/features/crews/crews.ts
+index 81f2383c5..ad5d12fd1 100644
+--- a/src/main/frontend/src/app/features/crews/crews.ts
++++ b/src/main/frontend/src/app/features/crews/crews.ts
+@@ -55,7 +55,7 @@ interface CrewLine extends CrewView {
+         @for (c of lines(); track c.id) {
+           <li [attr.data-testid]="'crew-row-' + c.name">
+             <strong>{{ c.name }}</strong>
+-            — lead <span data-testid="crew-lead">{{ c.lead?.name ?? '' }}</span>,
++            — lead <span data-testid="crew-lead">{{ leadShown(c.lead) }}</span>,
+             due total <span data-testid="crew-due-total">{{ c.dueTotal | figure }}</span>
+             <ul [attr.aria-label]="'Members of ' + c.name">
+               @for (m of c.members; track m.personId) {
+@@ -128,6 +128,12 @@ export class Crews {
+     return `/api/sheets/${encodeURIComponent(sheet)}/crews`;
+   }
+ 
++  /** The lead as the screen shows a name, with their grade in force today; blank when no longer on the sheet. */
++  protected leadShown(lead: MemberView | null): string {
++    if (!lead) return '';
++    return this.session.people().find((p) => p.id === lead.personId)?.shown ?? lead.name;
++  }
++
+   /** The crew's add-member form, made the first time it is shown. */
+   protected memberForm(crewId: number): FormGroup<{ personId: FormControl<string> }> {
+     let f = this.memberForms.get(crewId);
+diff --git a/src/main/frontend/src/app/features/people/people.ts b/src/main/frontend/src/app/features/people/people.ts
+index 69f39a2d7..0e00215b4 100644
+--- a/src/main/frontend/src/app/features/people/people.ts
++++ b/src/main/frontend/src/app/features/people/people.ts
+@@ -440,7 +440,7 @@ function trimmedSum(figures: number[]): number {
+                        [attr.aria-label]="'Select ' + p.name" />
+               </td>
+               <td>
+-                <span data-testid="person-name">{{ p.name }}</span>
++                <span data-testid="person-name">{{ shownName(p) }}</span>
+                 <button type="button" data-testid="person-move-up" (click)="move(p, 'up')"
+                         [attr.aria-label]="'Move ' + p.name + ' up'">Up</button>
+                 <button type="button" data-testid="person-move-down" (click)="move(p, 'down')"
+@@ -1238,7 +1238,7 @@ export class People {
+     this.form.valueChanges.subscribe(() => this.error.set(''));
+     this.quickForm.valueChanges.subscribe(() => this.quickError.set(''));
+     this.bulkGradeForm.valueChanges.subscribe(() => this.personError.set(null));
+-    effect(() => this.session.people.set(this.people().map((p) => ({ id: p.id, name: p.name, retired: p.retired }))));
++    effect(() => this.session.people.set(this.people().map((p) => ({ id: p.id, name: p.name, shown: this.shownName(p), retired: p.retired }))));
+     effect(() => this.session.dueTotals.set(new Map(this.people().map((p) => [p.id, this.dueTotalCents(p)]))));
+     effect(() => {
+       const id = this.session.sheetId();
+@@ -1376,6 +1376,11 @@ export class People {
+   }
+ 
+   /** The person's grade in force on the sheet's today. */
++  /** Their name as the screen shows it, with the grade in force on the sheet's today. */
++  protected shownName(p: Person): string {
++    return `${p.name} (${this.gradeOf(p)})`;
++  }
++
+   protected gradeOf(p: Person): string {
+     const today = this.session.today();
+     return today === null ? p.grade : gradeOn(p, today);
+@@ -1484,7 +1489,7 @@ export class People {
+   protected patronsOf(p: Person): string {
+     return this.patronShares(p)
+       .sort((a, b) => (a.patron.name < b.patron.name ? -1 : a.patron.name > b.patron.name ? 1 : 0))
+-      .map((x) => `${x.patron.name} ${money(x.share)}`)
++      .map((x) => `${this.shownName(x.patron)} ${money(x.share)}`)
+       .join(', ');
+   }
+ 
+diff --git a/src/main/java/net/officefloor/hq/app/rollup/TreeSearchController.java b/src/main/java/net/officefloor/hq/app/rollup/TreeSearchController.java
+index 7ca78c9ef..7664e4805 100644
+--- a/src/main/java/net/officefloor/hq/app/rollup/TreeSearchController.java
++++ b/src/main/java/net/officefloor/hq/app/rollup/TreeSearchController.java
+@@ -4,11 +4,13 @@ import jakarta.validation.constraints.NotBlank;
+ import jakarta.validation.constraints.Pattern;
+ import jakarta.validation.constraints.Size;
+ import java.math.BigDecimal;
++import java.time.LocalDate;
+ import java.util.ArrayList;
+ import java.util.List;
+ import java.util.Locale;
+ import net.officefloor.hq.app.person.Person;
+ import net.officefloor.hq.app.person.PersonRepository;
++import net.officefloor.hq.app.person.PersonService;
+ import net.officefloor.hq.app.sheet.SheetParentRepository;
+ import org.springframework.transaction.annotation.Transactional;
+ import org.springframework.validation.annotation.Validated;
+@@ -33,14 +35,17 @@ public class TreeSearchController {
+     private final SheetParentRepository parents;
+     private final PersonRepository people;
+     private final RollupService rollup;
++    private final PersonService personService;
+ 
+-    public TreeSearchController(SheetParentRepository parents, PersonRepository people, RollupService rollup) {
++    public TreeSearchController(SheetParentRepository parents, PersonRepository people, RollupService rollup,
++            PersonService personService) {
+         this.parents = parents;
+         this.people = people;
+         this.rollup = rollup;
++        this.personService = personService;
+     }
+ 
+-    /** Lines of {@code <sheet id> <name> <due-total>}. */
++    /** Lines of {@code <sheet id> <name> (<grade in force on that sheet's today>) <due-total>}. */
+     @GetMapping
+     @Transactional(readOnly = true)
+     public List<String> search(
+@@ -53,13 +58,15 @@ public class TreeSearchController {
+         List<String> lines = new ArrayList<>();
+         for (String at : sheets) {
+             RollupService.Snapshot figures = rollup.current(at);
++            LocalDate today = personService.today(at);
+             for (Person person : people.findBySheetIdOrderByPositionAscIdAsc(at)) {
+                 boolean matches = person.namesAndAliases().stream()
+                         .anyMatch(name -> name.toLowerCase(Locale.ROOT).contains(needle));
+                 if (!matches) continue;
+                 RollupService.Figures own = figures.people().get(person.getId());
+                 BigDecimal due = own == null ? null : own.dueTotal();
+-                lines.add(at + " " + person.getName() + " " + (due == null ? "n/a" : due.setScale(2).toPlainString()));
++                String grade = today == null ? person.getGrade() : person.gradeOn(today);
++                lines.add(at + " " + person.getName() + " (" + grade + ") " + (due == null ? "n/a" : due.setScale(2).toPlainString()));
+             }
+         }
+         return lines;
