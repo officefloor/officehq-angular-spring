@@ -82,6 +82,8 @@ interface SettingsView {
   escalateAfter: number | null;
   /** A REVIEW claim whose review day plus this many days is before today is late for review; null when blank: none. */
   reviewSla: number | null;
+  /** Opening a claim is refused when its person already has this many OPEN or PENDING claims; null when blank: none. */
+  maxOpen: number | null;
   /** The proof kinds (not dated), comma separated: a claim above the proof threshold needs a proof of each; empty when none. */
   proofKinds: string;
   defaultGrade: string | null;
@@ -180,6 +182,10 @@ const FROM = 'From (yyyy-mm-dd; blank: the sheet\'s today)';
         <input id="setting-review-sla" data-testid="setting-review-sla" formControlName="reviewSla" inputmode="numeric"
                (keydown.delete)="form.controls.reviewSla.markAsDirty()"
                (keydown.backspace)="form.controls.reviewSla.markAsDirty()" />
+        <label for="setting-max-open">Max open (OPEN or PENDING claims a person may have before opening another is refused; blank: none)</label>
+        <input id="setting-max-open" data-testid="setting-max-open" formControlName="maxOpen" inputmode="numeric"
+               (keydown.delete)="form.controls.maxOpen.markAsDirty()"
+               (keydown.backspace)="form.controls.maxOpen.markAsDirty()" />
         <label for="setting-score-mid">Score mid (a whole number: a score at or above it is MID, while score high is set too; blank: none)</label>
         <input id="setting-score-mid" data-testid="setting-score-mid" formControlName="scoreMid" inputmode="numeric"
                (keydown.delete)="form.controls.scoreMid.markAsDirty()"
@@ -300,6 +306,7 @@ const FROM = 'From (yyyy-mm-dd; blank: the sheet\'s today)';
       <p>Grace days now: <span data-testid="setting-grace-days-current">{{ graceDays() ?? '' }}</span></p>
       <p>Escalate after now: <span data-testid="setting-escalate-after-current">{{ escalateAfter() ?? '' }}</span></p>
       <p>Review SLA now: <span data-testid="setting-review-sla-current">{{ session.reviewSla() ?? '' }}</span></p>
+      <p>Max open now: <span data-testid="setting-max-open-current">{{ maxOpen() ?? '' }}</span></p>
       <p>Score mid now: <span data-testid="setting-score-mid-current">{{ session.scoreMid() ?? '' }}</span></p>
       <p>Score high now: <span data-testid="setting-score-high-current">{{ session.scoreHigh() ?? '' }}</span></p>
       <p>Score log now: <span data-testid="setting-score-log-current">{{ scoreLog() }}</span></p>
@@ -429,6 +436,7 @@ export class Settings {
   protected readonly periodNumberingFrom = signal<string | null>(null);
   protected readonly graceDays = signal<number | null>(null);
   protected readonly escalateAfter = signal<number | null>(null);
+  protected readonly maxOpen = signal<number | null>(null);
   protected readonly scoreLog = signal('');
   protected readonly entryDate = signal<string | null>(null);
   protected readonly pot = signal<string | null>(null);
@@ -452,6 +460,7 @@ export class Settings {
     graceDays: new FormControl('', { nonNullable: true }),
     escalateAfter: new FormControl('', { nonNullable: true }),
     reviewSla: new FormControl('', { nonNullable: true }),
+    maxOpen: new FormControl('', { nonNullable: true }),
     scoreMid: new FormControl('', { nonNullable: true }),
     scoreHigh: new FormControl('', { nonNullable: true }),
     scoreLog: new FormControl('', { nonNullable: true }),
@@ -554,6 +563,7 @@ export class Settings {
       this.periodNumberingFrom.set(null);
       this.graceDays.set(null);
       this.escalateAfter.set(null);
+      this.maxOpen.set(null);
       this.session.reviewSla.set(null);
       this.session.scoreMid.set(null);
       this.session.scoreHigh.set(null);
@@ -603,6 +613,7 @@ export class Settings {
     this.graceDays.set(view.graceDays);
     this.escalateAfter.set(view.escalateAfter);
     this.session.reviewSla.set(view.reviewSla);
+    this.maxOpen.set(view.maxOpen);
     this.session.scoreMid.set(view.scoreMid);
     this.session.scoreHigh.set(view.scoreHigh);
     this.scoreLog.set(view.scoreLog);
@@ -624,7 +635,7 @@ export class Settings {
     this.error.set('');
     const sheet = this.session.sheetId();
     if (!sheet) return;
-    const { clerkLimit, floor, terms, latePct, policyDate, periodNumberingFrom, graceDays, escalateAfter, reviewSla, scoreMid, scoreHigh, scoreLog, fiscalStartMonth, entryDate, cap, pot, alertThreshold, proofKinds, defaultGrade, parent, proofThreshold, noteThreshold, reviewThreshold, rounding } = this.form.controls;
+    const { clerkLimit, floor, terms, latePct, policyDate, periodNumberingFrom, graceDays, escalateAfter, reviewSla, maxOpen, scoreMid, scoreHigh, scoreLog, fiscalStartMonth, entryDate, cap, pot, alertThreshold, proofKinds, defaultGrade, parent, proofThreshold, noteThreshold, reviewThreshold, rounding } = this.form.controls;
     const { clerkLimitFrom, floorFrom, termsFrom, latePctFrom, capFrom, proofThresholdFrom, noteThresholdFrom, reviewThresholdFrom, roundingFrom } = this.form.getRawValue();
     const value = clerkLimit.value.trim();
     const floorValue = floor.value.trim();
@@ -635,6 +646,7 @@ export class Settings {
     const graceDaysValue = graceDays.value.trim();
     const escalateAfterValue = escalateAfter.value.trim();
     const reviewSlaValue = reviewSla.value.trim();
+    const maxOpenValue = maxOpen.value.trim();
     const scoreMidValue = scoreMid.value.trim();
     const scoreHighValue = scoreHigh.value.trim();
     const scoreLogValue = scoreLog.value.trim();
@@ -708,6 +720,10 @@ export class Settings {
     }
     if (reviewSla.dirty && reviewSlaValue && !/^\d{1,4}$/.test(reviewSlaValue)) {
       this.error.set('Enter the review SLA as a whole number of days, 0 or more, or leave it blank for none.');
+      return;
+    }
+    if (maxOpen.dirty && maxOpenValue && !/^\d{1,4}$/.test(maxOpenValue)) {
+      this.error.set('Enter max open as a whole number of claims, 0 or more, or leave it blank for none.');
       return;
     }
     if (scoreMid.dirty && scoreMidValue && !/^-?\d{1,6}$/.test(scoreMidValue)) {
@@ -870,6 +886,14 @@ export class Settings {
             { headers: this.headers() }),
         );
         reviewSla.markAsPristine();
+        if (this.session.sheetId() === sheet) this.show(view);
+      }
+      if (maxOpen.dirty) {
+        const view = await firstValueFrom(
+          this.http.put<SettingsView>(`${this.base(sheet)}/settings/max-open`, { value: maxOpenValue || null },
+            { headers: this.headers() }),
+        );
+        maxOpen.markAsPristine();
         if (this.session.sheetId() === sheet) this.show(view);
       }
       if (scoreMid.dirty) {

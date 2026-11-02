@@ -104,6 +104,10 @@ public class Sheet {
     @Column(name = "review_sla")
     private Integer reviewSla;
 
+    /** Opening a claim is refused when its person already has this many OPEN or PENDING claims (not dated); null means none. */
+    @Column(name = "max_open")
+    private Integer maxOpen;
+
     /** A person whose score is at or above this is in band MID, while the high one is set too (not dated); null means blank. */
     @Column(name = "score_mid")
     private Integer scoreMid;
@@ -357,6 +361,10 @@ public class Sheet {
     public Integer getReviewSla() { return reviewSla; }
 
     public void setReviewSla(Integer reviewSla) { this.reviewSla = reviewSla; }
+
+    public Integer getMaxOpen() { return maxOpen; }
+
+    public void setMaxOpen(Integer maxOpen) { this.maxOpen = maxOpen; }
 
     public Integer getScoreMid() { return scoreMid; }
 

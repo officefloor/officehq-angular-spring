@@ -311,6 +311,11 @@ function isCapReached(e: unknown): boolean {
   return e instanceof HttpErrorResponse && e.status === 409 && e.error?.type === 'cap-reached';
 }
 
+/** Whether the server refused to open a claim past the sheet's maximum of OPEN or PENDING claims per person. */
+function isMaxOpenReached(e: unknown): boolean {
+  return e instanceof HttpErrorResponse && e.status === 409 && e.error?.type === 'max-open-reached';
+}
+
 /** Why a claim cannot be edited: only a DRAFT can; an OPEN or PENDING one is voided and added again. */
 function notEditable(status: ClaimStatus | undefined): string {
   return status === 'OPEN' || status === 'PENDING' || status === 'REVIEW'
@@ -735,6 +740,8 @@ export class Claims {
         ? CLOSED
         : isCapReached(e)
         ? 'This person already has as many OPEN or PENDING claims in its period as the period allows.'
+        : isMaxOpenReached(e)
+        ? 'This person already has as many OPEN or PENDING claims as the sheet allows.'
         : e instanceof HttpErrorResponse && e.status === 409
         ? `A ${c.status} claim cannot be ${PAST[action]}.`
         : e instanceof HttpErrorResponse && e.status === 410 && action === 'restore'

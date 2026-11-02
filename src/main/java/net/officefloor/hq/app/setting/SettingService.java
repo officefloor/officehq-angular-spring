@@ -468,6 +468,17 @@ public class SettingService {
         return days;
     }
 
+    /** Change the maximum of OPEN or PENDING claims per person (null: none); no claim changes with it. */
+    @Transactional
+    public Integer setMaxOpen(String sheetId, String user, Integer max) {
+        Sheet sheet = sheets.findForUpdate(sheetId).orElseThrow(SheetNotFoundException::new);
+        sheet.setMaxOpen(max);
+        sheets.flush();
+        audit.recordOnCommit("SETTING_CHANGED sheet=" + sheetId + " by=" + user.strip() + " key=max-open value="
+                + (max == null ? "" : max.toString()));
+        return max;
+    }
+
     /** Change the fiscal year start month, 1 to 12; the periods' fiscal years follow it. */
     @Transactional
     public int setFiscalStartMonth(String sheetId, String user, int month) {
@@ -643,6 +654,12 @@ public class SettingService {
     @Transactional(readOnly = true)
     public Integer reviewSla(String sheetId) {
         return sheets.findById(sheetId).orElseThrow(SheetNotFoundException::new).getReviewSla();
+    }
+
+    /** The maximum of OPEN or PENDING claims per person as set; null when blank, which means none. */
+    @Transactional(readOnly = true)
+    public Integer maxOpen(String sheetId) {
+        return sheets.findById(sheetId).orElseThrow(SheetNotFoundException::new).getMaxOpen();
     }
 
     /** The grace days as set; null when blank, which means off. */

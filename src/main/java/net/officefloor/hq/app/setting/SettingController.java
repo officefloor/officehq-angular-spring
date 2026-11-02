@@ -48,7 +48,7 @@ public class SettingController {
             Map<String, List<DatedView>> dated, Map<String, String> permissions, Integer graceDays,
             LocalDate entryDate, String pot, String parent, int fiscalStartMonth, String alertThreshold,
             Integer escalateAfter, Integer reviewSla, String proofKinds, String defaultGrade, Integer scoreMid,
-            Integer scoreHigh, String scoreLog) {}
+            Integer scoreHigh, String scoreLog, Integer maxOpen) {}
 
     /** A value recorded for a dated setting from a date on; null when none. */
     public record DatedView(LocalDate from, String value) {}
@@ -279,6 +279,14 @@ public class SettingController {
         }
     }
 
+    /** Max open: a whole number of claims; blank or null: none. */
+    public record MaxOpenRequest(@Pattern(regexp = "(\\d{1,4})?") String value) {
+
+        Integer maxValue() {
+            return value == null || value.isEmpty() ? null : Integer.valueOf(value);
+        }
+    }
+
     /** The fiscal year start month: 1 to 12. */
     public record FiscalStartMonthRequest(@NotNull @Pattern(regexp = "[1-9]|1[0-2]") String value) {
 
@@ -371,7 +379,8 @@ public class SettingController {
                 service.parent(sheetId), service.fiscalStartMonth(sheetId), text(service.alertThreshold(sheetId)),
                 service.escalateAfter(sheetId), service.reviewSla(sheetId),
                 String.join(",", service.proofKinds(sheetId)), service.defaultGrade(sheetId),
-                service.scoreMid(sheetId), service.scoreHigh(sheetId), service.scoreLog(sheetId) ? "on" : "");
+                service.scoreMid(sheetId), service.scoreHigh(sheetId), service.scoreLog(sheetId) ? "on" : "",
+                service.maxOpen(sheetId));
     }
 
     @PutMapping("/settings/clerk-limit")
@@ -472,6 +481,15 @@ public class SettingController {
             @RequestHeader("X-User") @NotBlank @Size(max = 100) String user,
             @RequestBody @Valid ReviewSlaRequest request) {
         service.setReviewSla(sheetId, user, request.daysValue());
+        return get(sheetId, user);
+    }
+
+    @PutMapping("/settings/max-open")
+    public SettingsView setMaxOpen(
+            @PathVariable @Size(max = 100) @Pattern(regexp = "[A-Za-z0-9._-]+") String sheetId,
+            @RequestHeader("X-User") @NotBlank @Size(max = 100) String user,
+            @RequestBody @Valid MaxOpenRequest request) {
+        service.setMaxOpen(sheetId, user, request.maxValue());
         return get(sheetId, user);
     }
 

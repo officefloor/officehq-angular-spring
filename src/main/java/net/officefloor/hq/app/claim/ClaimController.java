@@ -241,6 +241,15 @@ public class ClaimController {
         return ResponseEntity.status(HttpStatus.CONFLICT).body(problem);
     }
 
+    /** A claim whose person already has the sheet's maximum of OPEN or PENDING claims: a conflict of its own problem type. */
+    @ExceptionHandler(ClaimMaxOpenReachedException.class)
+    public ResponseEntity<ProblemDetail> maxOpenReached() {
+        ProblemDetail problem = ProblemDetail.forStatusAndDetail(HttpStatus.CONFLICT,
+                "The person already has as many open claims as the sheet's maximum allows.");
+        problem.setType(URI.create(ClaimMaxOpenReachedException.TYPE));
+        return ResponseEntity.status(HttpStatus.CONFLICT).body(problem);
+    }
+
     @ExceptionHandler(DuplicateClaimRefException.class)
     public ResponseEntity<ProblemDetail> duplicateRef() {
         ProblemDetail problem = ProblemDetail.forStatusAndDetail(HttpStatus.CONFLICT,
