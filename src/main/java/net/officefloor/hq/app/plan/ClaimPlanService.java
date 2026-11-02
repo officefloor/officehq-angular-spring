@@ -18,6 +18,7 @@ import net.officefloor.hq.app.person.PersonRetiredException;
 import net.officefloor.hq.app.setting.Role;
 import net.officefloor.hq.app.setting.SettingService;
 import net.officefloor.hq.app.sheet.SheetNotFoundException;
+import net.officefloor.hq.app.sheet.SheetParentRepository;
 import net.officefloor.hq.app.sheet.SheetRepository;
 import net.officefloor.hq.app.sheet.SheetService;
 import org.springframework.stereotype.Service;
@@ -35,7 +36,9 @@ import org.springframework.transaction.support.TransactionTemplate;
  * sheet's today): a plan date on or after the day it was paused and before the day it was resumed is
  * skipped, not postponed, so generate makes nothing for it and its next dates leave it out. A plan's
  * amount can be changed (on the sheet's today): the claims generated from then on take the new amount,
- * those already generated keep theirs.
+ * those already generated keep theirs. A plan may name one of the sheet's descendants: its claims are then
+ * made on that sheet, for the person there of the same name (none when there is no such person), by that
+ * sheet's rules and written in its audit; the plan still counts what it made.
  */
 @Service
 public class ClaimPlanService {
@@ -50,13 +53,15 @@ public class ClaimPlanService {
     private final ClaimService claims;
     private final TransactionTemplate transaction;
     private final SettingService settings;
+    private final SheetParentRepository parents;
     private final Audit audit;
 
     public ClaimPlanService(ClaimPlanRepository plans, ClaimPlanDateRepository dates, ClaimPlanPauseRepository pauses,
             ClaimPlanChangeRepository changes, PersonRepository people,
             SheetRepository sheetRows, SheetService sheets, ClaimService claims, SettingService settings,
-            PlatformTransactionManager transactions, Audit audit) {
+            PlatformTransactionManager transactions, SheetParentRepository parents, Audit audit) {
         this.settings = settings;
+        this.parents = parents;
         this.plans = plans;
         this.dates = dates;
         this.pauses = pauses;
@@ -163,16 +168,21 @@ public class ClaimPlanService {
 
     @Transactional
     public ClaimPlan add(String sheetId, String user, Long personId, BigDecimal amount, LocalDate start,
-            Integer every, Integer day, LocalDate end) {
+            Integer every, Integer day, LocalDate end, String targetSheet) {
         sheetRows.findForUpdate(sheetId).orElseThrow(SheetNotFoundException::new);
         Person person = people.findByIdAndSheetId(personId, sheetId).orElseThrow(PersonNotFoundException::new);
         if ((every == null) == (day == null) || end.isBefore(start)) throw new PlanRefusedException();
         if (every != null && every < 1) throw new PlanRefusedException();
         if (day != null && (day < 1 || day > 31)) throw new PlanRefusedException();
-        ClaimPlan plan = plans.saveAndFlush(new ClaimPlan(sheetId, personId, amount, start, every, day, end));
+        if (targetSheet != null && !parents.descendantsOf(sheetId).contains(targetSheet)) {
+            throw new PlanRefusedException();
+        }
+        ClaimPlan plan = plans.saveAndFlush(
+                new ClaimPlan(sheetId, personId, amount, start, every, day, end, targetSheet));
         audit.recordOnCommit("PLAN_ADDED sheet=" + sheetId + " by=" + user.strip() + " name=" + person.getName()
                 + " amount=" + amount.toPlainString() + " start=" + start
-                + (day != null ? " day=" + day : " every=" + every) + " end=" + end);
+                + (day != null ? " day=" + day : " every=" + every) + " end=" + end
+                + (targetSheet != null ? " sheet=" + targetSheet : ""));
         return plan;
     }
 
@@ -201,11 +211,23 @@ public class ClaimPlanService {
         return made;
     }
 
-    /** Make the plan's claim for the date unless it has made one for it: whether it made one. */
+    /**
+     * Make the plan's claim for the date unless it has made one for it: whether it made one. A plan naming a
+     * descendant sheet makes it there, for the person of the same name, making none when there is no such person.
+     */
     private boolean make(String sheetId, String user, ClaimPlan plan, LocalDate on) {
         sheetRows.findForUpdate(sheetId).orElseThrow(SheetNotFoundException::new);
         if (dates.existsByPlanIdAndMadeOn(plan.getId(), on)) return false;
-        claims.add(sheetId, user, plan.getPersonId(), plan.getAmount(), on, "", null);
+        String target = plan.getTargetSheet();
+        if (target == null) {
+            claims.add(sheetId, user, plan.getPersonId(), plan.getAmount(), on, "", null);
+        } else {
+            if (sheets.isArchived(target)) return false;
+            sheetRows.findForUpdate(target).orElseThrow(SheetNotFoundException::new);
+            Person there = people.findBySheetIdAndNameKey(target, Person.keyOf(nameOf(plan))).orElse(null);
+            if (there == null) return false;
+            claims.add(target, user, there.getId(), plan.getAmount(), on, "", null);
+        }
         dates.saveAndFlush(new ClaimPlanDate(sheetId, plan.getId(), on));
         return true;
     }

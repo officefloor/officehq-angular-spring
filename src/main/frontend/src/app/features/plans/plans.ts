@@ -7,7 +7,7 @@ import { Session } from '../../core/session';
 
 /**
  * A person's plan: an amount (two decimals) from its start, every so many days or monthly on a day of the month
- * (one set, the other null), up to its end; how many claims it has made, and its next five dates after the sheet's
+ * (one set, the other null), up to its end, on its own sheet or a descendant one; how many claims it has made, and its next five dates after the sheet's
  * today that a pause does not skip (comma and space separated), whether it is paused now, and its amount changes,
  * oldest first.
  */
@@ -19,6 +19,8 @@ export interface Plan {
   every: number | null;
   day: number | null;
   end: string;
+  /** The descendant sheet the plan generates its claims on; null: its own sheet. */
+  sheet: string | null;
   generated: number;
   nextDates: string;
   paused: boolean;
@@ -35,6 +37,7 @@ const AMOUNT = /^\d{1,12}(\.\d{1,2})?$/;
 const EVERY = /^\d{1,5}$/;
 const DAY = /^\d{1,2}$/;
 const DATE = /^\d{4}-\d{2}-\d{2}$/;
+const SHEET = /^[A-Za-z0-9._-]{1,100}$/;
 
 // A person's plans, on their row, and the form that adds one. The sheet's generate button makes their claims.
 @Component({
@@ -52,6 +55,9 @@ const DATE = /^\d{4}-\d{2}-\d{2}$/;
             every <span data-testid="plan-every">{{ pl.every }}</span> days
           }
           to <span data-testid="plan-end">{{ pl.end }}</span>,
+          @if (pl.sheet) {
+            on sheet <span data-testid="plan-sheet">{{ pl.sheet }}</span>,
+          }
           made <span data-testid="plan-generated">{{ pl.generated }}</span>,
           next <span data-testid="plan-next-dates">{{ pl.nextDates }}</span>,
           paused <span data-testid="plan-paused">{{ pl.paused ? 'yes' : 'no' }}</span>
@@ -83,6 +89,8 @@ const DATE = /^\d{4}-\d{2}-\d{2}$/;
       <input [id]="'plan-form-every-' + personId()" data-testid="plan-form-every" formControlName="every" inputmode="numeric" />
       <label [for]="'plan-form-day-' + personId()">Or monthly on day</label>
       <input [id]="'plan-form-day-' + personId()" data-testid="plan-form-day" formControlName="day" inputmode="numeric" />
+      <label [for]="'plan-form-sheet-' + personId()">On descendant sheet (optional)</label>
+      <input [id]="'plan-form-sheet-' + personId()" data-testid="plan-form-sheet" formControlName="sheet" />
       <label [for]="'plan-form-end-' + personId()">End</label>
       <input type="date" [id]="'plan-form-end-' + personId()" data-testid="plan-form-end" formControlName="end" />
       <button type="submit" data-testid="plan-form-submit">Add plan</button>
@@ -118,6 +126,7 @@ export class Plans {
     every: new FormControl('', { nonNullable: true }),
     day: new FormControl('', { nonNullable: true }),
     end: new FormControl('', { nonNullable: true }),
+    sheet: new FormControl('', { nonNullable: true }),
   });
   private submitting = false;
 
@@ -129,7 +138,7 @@ export class Plans {
       this.error.set('');
       this.rowErrors.set({});
       this.amounts.set({});
-      this.form.reset({ amount: '', start: '', every: '', day: '', end: '' }, { emitEvent: false });
+      this.form.reset({ amount: '', start: '', every: '', day: '', end: '', sheet: '' }, { emitEvent: false });
     });
   }
 
@@ -227,6 +236,7 @@ export class Plans {
     const day = v.day.trim();
     const start = v.start || this.session.today() || '';
     const end = v.end;
+    const target = v.sheet.trim();
     if (!AMOUNT.test(amount)) {
       this.error.set('Enter an amount of 0.00 or more with at most two decimals.');
       return;
@@ -251,24 +261,29 @@ export class Plans {
       this.error.set('The end date cannot be before the start date.');
       return;
     }
+    if (target !== '' && !SHEET.test(target)) {
+      this.error.set('The sheet must be a sheet id: letters, digits, dots, underscores or dashes.');
+      return;
+    }
     this.submitting = true;
     try {
       const plan = await firstValueFrom(
         this.http.post<Plan>(
           `/api/sheets/${encodeURIComponent(sheet)}/people/${this.personId()}/plans`,
-          { amount, start, every: every === '' ? null : Number(every), day: day === '' ? null : Number(day), end },
+          { amount, start, every: every === '' ? null : Number(every), day: day === '' ? null : Number(day), end,
+            sheet: target === '' ? null : target },
           { headers: { 'X-User': this.session.user() ?? '' } },
         ),
       );
       if (this.session.sheetId() !== sheet) return;
       this.added.emit(plan);
-      this.form.reset({ amount: '', start: '', every: '', day: '', end: '' }, { emitEvent: false });
+      this.form.reset({ amount: '', start: '', every: '', day: '', end: '', sheet: '' }, { emitEvent: false });
     } catch (e) {
       if (this.session.sheetId() !== sheet) return;
       this.error.set(
         e instanceof HttpErrorResponse && e.status === 403
           ? 'You may not change this sheet.'
-          : 'The plan was refused: check its amount, interval and dates.',
+          : 'The plan was refused: check its amount, interval, dates and that the sheet is a descendant.',
       );
     } finally {
       this.submitting = false;

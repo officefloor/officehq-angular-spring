@@ -30,16 +30,16 @@ public class ClaimPlanController {
      * A plan on the sheet; its amount has two decimals, every or day is set (the other null), and generated is how
      * many claims it has made so far; nextDates are its first five dates after the sheet's today, on or before its
      * end and not skipped by a pause, comma and space separated; paused is whether it is paused now; changes its
-     * amount changes, oldest first.
+     * amount changes, oldest first; sheet is the descendant sheet it generates on, null when its own.
      */
     public record PlanView(Long id, Long personId, String amount, LocalDate start, Integer every, Integer day,
-            LocalDate end, int generated, String nextDates, boolean paused, List<ChangeView> changes) {
+            LocalDate end, String sheet, int generated, String nextDates, boolean paused, List<ChangeView> changes) {
         static PlanView of(ClaimPlan plan, int generated, LocalDate today, List<ClaimPlanPause> pauses,
                 List<ClaimPlanChange> changes) {
             String next = String.join(", ", plan.datesAfter(today, 5, ClaimPlanService.skippedBy(pauses)).stream()
                     .map(LocalDate::toString).toList());
             return new PlanView(plan.getId(), plan.getPersonId(), plan.getAmount().setScale(2).toPlainString(),
-                    plan.getStart(), plan.getEvery(), plan.getDay(), plan.getEnd(), generated, next,
+                    plan.getStart(), plan.getEvery(), plan.getDay(), plan.getEnd(), plan.getTargetSheet(), generated, next,
                     pauses.stream().anyMatch(ClaimPlanPause::isOpen),
                     changes.stream().map(ChangeView::of).toList());
         }
@@ -63,17 +63,23 @@ public class ClaimPlanController {
     /**
      * A plan's amount (as the claim form takes one that corrects none: 0.00 or more, at most two
      * decimals), start date, either every how many days (a whole number, at least 1) or the day of the month it runs
-     * on monthly (1 to 31), and end date (on or after the start).
+     * on monthly (1 to 31), end date (on or after the start), and the descendant sheet it generates on (blank or
+     * null: its own).
      */
     public record PlanRequest(
             @NotNull @Pattern(regexp = "\\d{1,12}(\\.\\d{1,2})?") String amount,
             @NotNull LocalDate start,
             @Min(1) @Max(36600) Integer every,
             @Min(1) @Max(31) Integer day,
-            @NotNull LocalDate end) {
+            @NotNull LocalDate end,
+            @Size(max = 100) @Pattern(regexp = "\\s*([A-Za-z0-9._-]+)?\\s*") String sheet) {
 
         BigDecimal amountValue() {
             return new BigDecimal(amount).setScale(2);
+        }
+
+        String sheetValue() {
+            return sheet == null || sheet.isBlank() ? null : sheet.strip();
         }
     }
 
@@ -107,7 +113,7 @@ public class ClaimPlanController {
             @RequestHeader("X-User") @NotBlank @Size(max = 100) String user,
             @RequestBody @Valid PlanRequest request) {
         ClaimPlan plan = service.add(sheetId, user, personId, request.amountValue(), request.start(),
-                request.every(), request.day(), request.end());
+                request.every(), request.day(), request.end(), request.sheetValue());
         return PlanView.of(plan, 0, service.today(sheetId), List.of(), List.of());
     }
 

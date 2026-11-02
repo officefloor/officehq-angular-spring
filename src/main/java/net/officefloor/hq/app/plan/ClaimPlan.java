@@ -16,7 +16,8 @@ import java.util.function.Predicate;
 /**
  * A person's plan: an amount on its start date and every so many days after, or monthly on a day of
  * the month (from the start's month, a day beyond the month's length falling on its last day, dates
- * before the start left out), up to its end date.
+ * before the start left out), up to its end date. It may name one of its sheet's descendants, on which its
+ * claims are then generated for the person of the same name.
  */
 @Entity
 @Table(name = "claim_plan")
@@ -49,10 +50,15 @@ public class ClaimPlan {
     @Column(name = "end_on", nullable = false)
     private LocalDate end;
 
+    /** The descendant sheet the plan's claims are generated on; none: the plan's own sheet. */
+    @Column(name = "target_sheet")
+    private String targetSheet;
+
     protected ClaimPlan() {}
 
     public ClaimPlan(String sheetId, Long personId, BigDecimal amount, LocalDate start, Integer every, Integer day,
-            LocalDate end) {
+            LocalDate end, String targetSheet) {
+        this.targetSheet = targetSheet;
         this.sheetId = sheetId;
         this.personId = personId;
         this.amount = amount;
@@ -77,6 +83,8 @@ public class ClaimPlan {
     public Integer getDay() { return day; }
 
     public LocalDate getEnd() { return end; }
+
+    public String getTargetSheet() { return targetSheet; }
 
     /** Change the amount the plan's claims are generated with from now on. */
     public void changeAmount(BigDecimal amount) { this.amount = amount; }
