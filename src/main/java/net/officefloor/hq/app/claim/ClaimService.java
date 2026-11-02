@@ -66,7 +66,14 @@ public class ClaimService {
             throw new ResponseStatusException(HttpStatus.CONFLICT,
                     "A " + claim.getStatus() + " claim cannot become " + to);
         }
+        // The number recorded for a void claim is the one it had.
+        Integer number = claim.getNumber();
         claim.setStatus(to);
+        if (to == ClaimStatus.OPEN) {
+            claim.setNumber(sheets.nextClaimNumber(sheetId));
+        } else if (to == ClaimStatus.VOID) {
+            claim.setNumber(null);
+        }
         Claim saved = claims.saveAndFlush(claim);
         String event = switch (to) {
             case OPEN -> "CLAIM_OPENED";
@@ -74,7 +81,8 @@ public class ClaimService {
             case VOID -> "CLAIM_VOIDED";
             case DRAFT -> throw new IllegalStateException("a claim never returns to DRAFT");
         };
-        audit.recordOnCommit(record(event, sheetId, user, person(sheetId, saved.getPersonId()), saved));
+        audit.recordOnCommit(record(event, sheetId, user, person(sheetId, saved.getPersonId()), saved,
+                to == ClaimStatus.VOID ? number : saved.getNumber()));
         return saved;
     }
 
@@ -84,7 +92,14 @@ public class ClaimService {
     }
 
     private static String record(String event, String sheetId, String user, Person person, Claim claim) {
+        return record(event, sheetId, user, person, claim, claim.getNumber());
+    }
+
+    /** An audit record about a claim; one that has a number carries it at the end. */
+    private static String record(String event, String sheetId, String user, Person person, Claim claim,
+            Integer number) {
         return event + " sheet=" + sheetId + " by=" + user + " person=" + person.getName()
-                + " amount=" + claim.getAmount().setScale(2).toPlainString() + " date=" + claim.getDate();
+                + " amount=" + claim.getAmount().setScale(2).toPlainString() + " date=" + claim.getDate()
+                + (number != null ? " number=" + number : "");
     }
 }

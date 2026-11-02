@@ -26,6 +26,15 @@ public class SheetService {
         return sheets.findById(id).map(Sheet::getToday).orElseGet(LocalDate::now);
     }
 
+    /** The next claim number on the sheet: 1 for its first opened claim, then 2, and so on. */
+    @Transactional
+    public int nextClaimNumber(String id) {
+        if (sheets.advanceClaimNumber(id) != 1) {
+            throw new IllegalStateException("No sheet " + id);
+        }
+        return sheets.lastClaimNumber(id);
+    }
+
     /** Change the sheet's today. */
     @Transactional
     public synchronized Sheet setToday(String id, String user, LocalDate today) {

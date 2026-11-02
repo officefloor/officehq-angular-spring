@@ -27,10 +27,10 @@ public class ClaimController {
 
     /** What the screen shows of a claim; the amount as text with two decimals. */
     public record ClaimView(long id, long personId, String amount, LocalDate date, String note,
-            ClaimStatus status) {
+            ClaimStatus status, Integer number) {
         static ClaimView of(Claim claim) {
             return new ClaimView(claim.getId(), claim.getPersonId(), claim.getAmount().setScale(2).toPlainString(),
-                    claim.getDate(), claim.getNote(), claim.getStatus());
+                    claim.getDate(), claim.getNote(), claim.getStatus(), claim.getNumber());
         }
     }
 

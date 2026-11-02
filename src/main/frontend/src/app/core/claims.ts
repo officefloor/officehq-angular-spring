@@ -22,6 +22,8 @@ export interface Claim {
   date: string;
   note: string;
   status: ClaimStatus;
+  /** The claim's number on the sheet, given when it is opened; null for a draft or a void claim. */
+  number: number | null;
 }
 
 export interface ClaimForm {

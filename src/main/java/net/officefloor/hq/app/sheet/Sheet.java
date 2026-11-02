@@ -21,6 +21,10 @@ public class Sheet {
     @Column(name = "today", nullable = false)
     private LocalDate today;
 
+    /** The last claim number given on the sheet; only ever moved on by {@link SheetRepository#nextClaimNumber}. */
+    @Column(name = "last_claim_number", insertable = false, updatable = false)
+    private int lastClaimNumber;
+
     protected Sheet() {
     }
 
