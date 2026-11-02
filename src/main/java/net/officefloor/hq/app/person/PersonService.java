@@ -1,6 +1,7 @@
 package net.officefloor.hq.app.person;
 
 import java.util.List;
+import net.officefloor.hq.app.Audit;
 import net.officefloor.hq.app.sheet.SheetService;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.http.HttpStatus;
@@ -14,10 +15,12 @@ public class PersonService {
 
     private final PersonRepository people;
     private final SheetService sheets;
+    private final Audit audit;
 
-    public PersonService(PersonRepository people, SheetService sheets) {
+    public PersonService(PersonRepository people, SheetService sheets, Audit audit) {
         this.people = people;
         this.sheets = sheets;
+        this.audit = audit;
     }
 
     /** The people on the sheet in the order they were added. */
@@ -33,12 +36,14 @@ public class PersonService {
         if (people.existsBySheetIdAndNameIgnoreCase(sheetId, name)) {
             throw nameInUse();
         }
-        return saveUnique(new Person(sheetId, name, grade));
+        Person person = saveUnique(new Person(sheetId, name, grade));
+        audit.recordOnCommit(record("PERSON_ADDED", sheetId, user, person));
+        return person;
     }
 
     /** Change a person's name and grade. */
     @Transactional
-    public Person edit(String sheetId, long personId, String name, String grade) {
+    public Person edit(String sheetId, String user, long personId, String name, String grade) {
         Person person = people.findByIdAndSheetId(personId, sheetId)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "No such person on this sheet"));
         if (people.existsBySheetIdAndNameIgnoreCaseAndIdNot(sheetId, name, personId)) {
@@ -46,7 +51,13 @@ public class PersonService {
         }
         person.setName(name);
         person.setGrade(grade);
-        return saveUnique(person);
+        Person saved = saveUnique(person);
+        audit.recordOnCommit(record("PERSON_EDITED", sheetId, user, saved));
+        return saved;
+    }
+
+    private static String record(String event, String sheetId, String user, Person person) {
+        return event + " sheet=" + sheetId + " by=" + user + " name=" + person.getName() + " grade=" + person.getGrade();
     }
 
     /** Save, refusing a name another user took on the sheet in the meantime. */

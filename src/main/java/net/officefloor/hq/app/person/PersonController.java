@@ -59,6 +59,6 @@ public class PersonController {
             @PathVariable long personId,
             @RequestHeader("X-User") @NotBlank @Size(max = 100) String user,
             @Valid @RequestBody PersonForm form) {
-        return PersonView.of(service.edit(sheetId.trim(), personId, form.name().trim(), form.grade()));
+        return PersonView.of(service.edit(sheetId.trim(), user.trim(), personId, form.name().trim(), form.grade()));
     }
 }
