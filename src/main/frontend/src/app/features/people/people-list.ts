@@ -14,6 +14,7 @@ import { QuickAddBar } from './quick-add-bar';
 // The people on the sheet, in the order they were added, and the form that adds a person or,
 // once a person's editor is opened, edits them. Each person's row lists their claims and what
 // they have claimed and are due at their grade's rate; the sheet's totals add everyone's up.
+// Retired people are left out of the list unless "show retired" is on; their claims still count.
 @Component({
   selector: 'app-people-list',
   imports: [ReactiveFormsModule, PersonClaims, RateForm, PeriodForm, QuickAddBar],
@@ -42,12 +43,17 @@ import { QuickAddBar } from './quick-add-bar';
       <app-quick-add-bar (added)="quickAdded($event)" />
       <p>Claimed in total: <strong data-testid="rollup-claimed-total">{{ claimedTotal() }}</strong></p>
       <p>Due in total: <strong data-testid="rollup-due-total">{{ dueTotal() }}</strong></p>
+      <label>
+        <input type="checkbox" data-testid="show-retired" [checked]="showRetired()"
+          (change)="showRetired.set($any($event.target).checked)" />
+        Show retired
+      </label>
       <table data-testid="people">
         <thead>
-          <tr><th scope="col">Name</th><th scope="col">Grade</th><th scope="col">Claimed</th><th scope="col">Due</th><th scope="col">Statements</th><th scope="col">Last stated</th><th scope="col">Stated on</th><th scope="col">Claims</th><th scope="col"><span class="visually-hidden">Actions</span></th></tr>
+          <tr><th scope="col">Name</th><th scope="col">Grade</th><th scope="col">Claimed</th><th scope="col">Due</th><th scope="col">Statements</th><th scope="col">Last stated</th><th scope="col">Stated on</th><th scope="col">Retired</th><th scope="col">Retired from</th><th scope="col">Claims</th><th scope="col"><span class="visually-hidden">Actions</span></th></tr>
         </thead>
         <tbody>
-          @for (p of people(); track p.id) {
+          @for (p of shown(); track p.id) {
             <tr [attr.data-testid]="'person-row-' + p.id">
               <td data-testid="person-name">{{ p.name }}</td>
               <td data-testid="person-grade">{{ p.grade }}</td>
@@ -56,6 +62,8 @@ import { QuickAddBar } from './quick-add-bar';
               <td data-testid="person-statement-count">{{ p.statementCount }}</td>
               <td data-testid="person-stated-total">{{ p.statementCount > 0 ? (p.statedTotal ?? 'n/a') : '' }}</td>
               <td data-testid="person-statement-date">{{ p.statementDate ?? '' }}</td>
+              <td data-testid="person-retired">{{ p.retired ? 'yes' : 'no' }}</td>
+              <td data-testid="person-retired-from">{{ p.retiredFrom ?? '' }}</td>
               <td>
                 <app-person-claims [personId]="p.id" [claims]="claimsByPerson().get(p.id) ?? []"
                   [rates]="rates()" [grade]="p.grade" [periods]="periods()"
@@ -66,6 +74,10 @@ import { QuickAddBar } from './quick-add-bar';
                   [attr.aria-label]="'Edit ' + p.name">Edit</button>
                 <button type="button" data-testid="person-statement" (click)="statement(p)"
                   [attr.aria-label]="'Take a statement of ' + p.name">Statement</button>
+                <label [for]="'person-retire-date-' + p.id" class="visually-hidden">Retire {{ p.name }} from</label>
+                <input #retireDate type="date" [id]="'person-retire-date-' + p.id" data-testid="person-retire-date" />
+                <button type="button" data-testid="person-retire" (click)="retire(p, retireDate.value)"
+                  [attr.aria-label]="'Retire ' + p.name">Retire</button>
                 @if (personError()?.id === p.id) {
                   <p role="alert" data-testid="person-error">{{ personError()?.message }}</p>
                 }
@@ -86,6 +98,12 @@ export class PeopleList {
 
   protected readonly grades: Grade[] = ['A', 'B', 'C'];
   protected readonly people = signal<Person[]>([]);
+  /** Whether retired people are listed; off when the screen opens, kept as it is across loads. */
+  protected readonly showRetired = signal(false);
+  /** The people listed: everyone, or only those not retired unless "show retired" is on. */
+  protected readonly shown = computed(() =>
+    this.showRetired() ? this.people() : this.people().filter((p) => !p.retired),
+  );
   /** Every claim on the sheet, newest first. */
   protected readonly claims = signal<Claim[]>([]);
   protected readonly claimsByPerson = computed(() => {
@@ -146,6 +164,8 @@ export class PeopleList {
   protected readonly personError = signal<{ id: number; message: string } | null>(null);
   /** The people whose statement is waiting for its answer: a second press meanwhile is ignored. */
   private readonly stating = new Set<number>();
+  /** The people whose retirement is waiting for its answer: a second press meanwhile is ignored. */
+  private readonly retiring = new Set<number>();
   protected readonly form = new FormGroup({
     name: new FormControl('', { nonNullable: true }),
     grade: new FormControl<Grade>('A', { nonNullable: true }),
@@ -190,6 +210,22 @@ export class PeopleList {
       this.personError.set({ id: p.id, message: 'The statement could not be taken.' });
     } finally {
       this.stating.delete(p.id);
+    }
+  }
+
+  /** Retire the person from the day given, or the sheet's today when it is left blank. */
+  protected async retire(p: Person, from: string): Promise<void> {
+    if (this.retiring.has(p.id)) return;
+    this.retiring.add(p.id);
+    this.personError.set(null);
+    try {
+      const saved = await this.api.retire(p.id, from.trim() || null);
+      this.people.update((ps) => ps.map((x) => (x.id === saved.id ? saved : x)));
+      if (this.editing() === saved.id) this.version = saved.version;
+    } catch {
+      this.personError.set({ id: p.id, message: 'The person could not be retired.' });
+    } finally {
+      this.retiring.delete(p.id);
     }
   }
 

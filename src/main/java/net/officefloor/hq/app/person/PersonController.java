@@ -29,14 +29,15 @@ import org.springframework.web.server.ResponseStatusException;
 public class PersonController {
 
     /** What the screen shows of a person; with how many statements were taken of them, and the
-     *  last one's due-total (text with two decimals, null when n/a or none) and day (null when none). */
+     *  last one's due-total (text with two decimals, null when n/a or none) and day (null when none);
+     *  and whether they are retired, and from which day (null when not). */
     public record PersonView(long id, String name, String grade, long version, int statementCount,
-            String statedTotal, LocalDate statementDate) {
+            String statedTotal, LocalDate statementDate, boolean retired, LocalDate retiredFrom) {
         public static PersonView of(Person person, StatementSummary statements) {
             return new PersonView(person.getId(), person.getName(), person.getGrade(), person.getVersion(),
                     statements.count(),
                     statements.lastDueTotal() == null ? null : statements.lastDueTotal().setScale(2).toPlainString(),
-                    statements.lastTakenOn());
+                    statements.lastTakenOn(), person.isRetired(), person.getRetiredFrom());
         }
     }
 
@@ -44,6 +45,10 @@ public class PersonController {
      *  of the person its editor loaded. */
     public record PersonForm(@NotBlank @Size(max = 200) String name,
             @NotNull @Pattern(regexp = "[ABC]") String grade, Long version) {
+    }
+
+    /** The retire form: the day the person is retired from; left out, the sheet's today. */
+    public record RetireForm(LocalDate from) {
     }
 
     private final PersonService service;
@@ -82,6 +87,15 @@ public class PersonController {
         }
         Person saved = service.edit(sheetId.trim(), user.trim(), personId, form.version(), form.name().trim(),
                 form.grade());
+        return PersonView.of(saved, statements.summary(sheetId.trim(), personId));
+    }
+
+    @PostMapping("/{personId}/retire")
+    public PersonView retire(@PathVariable @NotBlank @Size(max = 100) String sheetId,
+            @PathVariable long personId,
+            @RequestHeader("X-User") @NotBlank @Size(max = 100) String user,
+            @RequestBody RetireForm form) {
+        Person saved = service.retire(sheetId.trim(), user.trim(), personId, form.from());
         return PersonView.of(saved, statements.summary(sheetId.trim(), personId));
     }
 }

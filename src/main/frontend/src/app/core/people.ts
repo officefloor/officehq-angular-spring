@@ -18,6 +18,10 @@ export interface Person {
   statedTotal: string | null;
   /** The day (yyyy-mm-dd) the last statement was taken; null when none was. */
   statementDate: string | null;
+  /** Whether they are retired: they are as soon as a retirement day is set, whatever the day. */
+  retired: boolean;
+  /** The day (yyyy-mm-dd) they are retired from; null when they are not retired. */
+  retiredFrom: string | null;
 }
 
 /** A statement just taken: the person as they now show, and their claims (newest first) as it
@@ -53,6 +57,14 @@ export class People {
     const { sheetId, user } = this.active();
     return firstValueFrom(
       this.http.put<Person>(`${this.url(sheetId)}/${id}`, { ...form, version }, { headers: { 'X-User': user } }),
+    );
+  }
+
+  /** Retire the person from a day; null takes the sheet's today. */
+  retire(id: number, from: string | null): Promise<Person> {
+    const { sheetId, user } = this.active();
+    return firstValueFrom(
+      this.http.post<Person>(`${this.url(sheetId)}/${id}/retire`, { from }, { headers: { 'X-User': user } }),
     );
   }
 

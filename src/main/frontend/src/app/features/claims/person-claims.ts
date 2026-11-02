@@ -18,6 +18,7 @@ const NOT_DRAFT = 'Only a draft claim can be edited; void an open claim and add 
 
 /** The message when the server refused a change to a claim dated inside a closed period. */
 const CLOSED = 'The claim\'s period is closed.';
+const RETIRED = 'A claim cannot be dated after the person\'s retirement.';
 
 /** The message for a refused action on a claim. */
 function refusal(e: unknown, action: ClaimAction): string {
@@ -169,6 +170,7 @@ export class PersonClaims {
       this.reset();
     } catch (e) {
       if (e instanceof HttpErrorResponse && e.status === 423) this.error.set(CLOSED);
+      else if (e instanceof HttpErrorResponse && e.status === 422) this.error.set(RETIRED);
       else if (id !== null && e instanceof HttpErrorResponse && e.status === 409) {
         this.claimError.set({ id, message: NOT_DRAFT });
       }

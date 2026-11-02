@@ -44,11 +44,12 @@ public class ClaimService {
     }
 
     /** Add a claim for a person; a date left out takes the sheet's today. Refused when the date falls
-     *  inside a closed period. */
+     *  inside a closed period, or after the person's retirement day. */
     @Transactional
     public Claim add(String sheetId, String user, long personId, BigDecimal amount, LocalDate date, String note) {
         LocalDate on = date != null ? date : sheets.today(sheetId);
         refuseClosed(sheetId, on);
+        refuseRetired(person(sheetId, personId), on);
         return rollup.tracking(sheetId, user, () -> {
             Person person = person(sheetId, personId);
             Claim claim = claims.saveAndFlush(new Claim(sheetId, personId, amount, on, note));
@@ -59,7 +60,8 @@ public class ClaimService {
 
     /** Change a draft claim's amount, date and note; a date left out takes the sheet's today. Refused
      *  when the claim is not a draft (an open claim is changed by voiding it and adding a new one), and
-     *  when the claim's date, or the new one, falls inside a closed period. */
+     *  when the claim's date, or the new one, falls inside a closed period, and when the new one is
+     *  after the person's retirement day. */
     @Transactional
     public Claim edit(String sheetId, String user, long claimId, BigDecimal amount, LocalDate date, String note) {
         Claim claim = claims.findByIdAndSheetId(claimId, sheetId)
@@ -71,6 +73,7 @@ public class ClaimService {
         LocalDate on = date != null ? date : sheets.today(sheetId);
         refuseClosed(sheetId, claim.getDate());
         refuseClosed(sheetId, on);
+        refuseRetired(person(sheetId, claim.getPersonId()), on);
         return rollup.tracking(sheetId, user, () -> {
             claim.setAmount(amount);
             claim.setDate(on);
@@ -130,6 +133,14 @@ public class ClaimService {
     private void refuseClosed(String sheetId, LocalDate day) {
         if (periods.closedOn(sheetId, day)) {
             throw new ResponseStatusException(HttpStatus.LOCKED, "That claim's period is closed");
+        }
+    }
+
+    /** Refuse a claim of the person dated after the day they are retired from. */
+    private static void refuseRetired(Person person, LocalDate day) {
+        if (person.getRetiredFrom() != null && day.isAfter(person.getRetiredFrom())) {
+            throw new ResponseStatusException(HttpStatus.UNPROCESSABLE_CONTENT,
+                    "A claim cannot be dated after the person's retirement");
         }
     }
 
