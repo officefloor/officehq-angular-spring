@@ -807,6 +807,20 @@ function trimmedSum(figures: number[]): number {
         </tbody>
       </table>
     </section>
+    <section aria-labelledby="compare-heading">
+      <h2 id="compare-heading">Compare with another sheet</h2>
+      <form (submit)="compare($event)">
+        <label for="compare-sheet">Other sheet id</label>
+        <input id="compare-sheet" data-testid="compare-sheet" [value]="compareOther()"
+          (input)="compareOther.set($any($event.target).value)" />
+        <button type="submit" data-testid="compare">Compare</button>
+      </form>
+      <ul aria-label="By grade: this sheet's due total, the other sheet's">
+        @for (line of compareLines(); track line) {
+          <li data-testid="compare-line">{{ line }}</li>
+        }
+      </ul>
+    </section>
     <section aria-labelledby="classic-heading">
       <h2 id="classic-heading">Classic summary</h2>
       <table>
@@ -1240,6 +1254,18 @@ export class People {
         active: on.filter((p) => p.active).length };
     }),
   );
+  /** The id typed to compare the sheet with. */
+  protected readonly compareOther = signal('');
+  /** The compared sheet's due-total per grade, for the sheet it was asked on; null figures when it does not exist. */
+  private readonly compared = signal<{ sheet: string; dues: Record<string, string> | null } | null>(null);
+  /** Per grade of the sheet: <grade> <its summary due-total> <the other sheet's>; none when the other does not exist. */
+  protected readonly compareLines = computed(() => {
+    const c = this.compared();
+    if (!c || c.dues === null || c.sheet !== this.session.sheetId()) return [];
+    const dues = c.dues;
+    return this.gradeSummary().map((g) => `${g.grade} ${g.dueTotal} ${dues[g.grade] ?? '0.00'}`);
+  });
+
   /** Every tag ever used on a claim or person of the sheet, as the store last told, sorted. */
   protected readonly usedTags = signal<string[]>([]);
   /**
@@ -1939,6 +1965,23 @@ export class People {
           ? 'Only a steward can undo a transfer, on the day the person arrived by it.'
           : 'Could not undo the transfer of ' + p.name + '.',
       });
+    }
+  }
+
+  /** Compare the sheet's summary due-totals per grade with the other sheet's. */
+  protected async compare(event: Event): Promise<void> {
+    event.preventDefault();
+    this.compared.set(null);
+    const sheet = this.session.sheetId();
+    const other = this.compareOther().trim();
+    if (!sheet || !/^[A-Za-z0-9._-]{1,100}$/.test(other)) return;
+    try {
+      const view = await firstValueFrom(this.http.get<{ exists: boolean; gradeDueTotals: Record<string, string> }>(
+        `/api/sheets/${encodeURIComponent(sheet)}/compare/${encodeURIComponent(other)}`, { headers: this.headers() }));
+      if (this.session.sheetId() !== sheet) return;
+      this.compared.set({ sheet, dues: view.exists ? view.gradeDueTotals : null });
+    } catch {
+      // nothing to compare with
     }
   }
 
