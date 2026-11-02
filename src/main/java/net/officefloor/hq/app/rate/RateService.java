@@ -1,13 +1,14 @@
 package net.officefloor.hq.app.rate;
 
 import java.math.BigDecimal;
+import java.time.LocalDate;
 import java.util.List;
 import net.officefloor.hq.app.Audit;
 import net.officefloor.hq.app.sheet.SheetService;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
-/** The rate for each grade on a sheet. */
+/** The rates for each grade on a sheet, each applying from its from-date. */
 @Service
 public class RateService {
 
@@ -21,21 +22,26 @@ public class RateService {
         this.audit = audit;
     }
 
-    /** The rates set on the sheet, by grade. */
+    /** The rates set on the sheet, by grade and then from-date. */
     @Transactional(readOnly = true)
     public List<Rate> list(String sheetId) {
-        return rates.findBySheetIdOrderByGradeAsc(sheetId);
+        return rates.findBySheetIdOrdered(sheetId);
     }
 
-    /** Set the rate for a grade, replacing the one it had. */
+    /** Set the rate for a grade from a date (null: from the beginning of time), replacing the one
+     *  the grade had for that from-date. */
     @Transactional
-    public synchronized Rate set(String sheetId, String user, String grade, BigDecimal pct) {
+    public synchronized Rate set(String sheetId, String user, String grade, BigDecimal pct, LocalDate from) {
         sheets.load(sheetId, user);
-        Rate rate = rates.findBySheetIdAndGrade(sheetId, grade).orElseGet(() -> new Rate(sheetId, grade, pct));
+        Rate rate = (from == null
+                ? rates.findBySheetIdAndGradeAndFromDateIsNull(sheetId, grade)
+                : rates.findBySheetIdAndGradeAndFromDate(sheetId, grade, from))
+                .orElseGet(() -> new Rate(sheetId, grade, pct, from));
         rate.setPct(pct);
         Rate saved = rates.saveAndFlush(rate);
         audit.recordOnCommit("RATE_SET sheet=" + sheetId + " by=" + user + " grade=" + grade
-                + " rate=" + saved.getPct().setScale(2).toPlainString());
+                + " rate=" + saved.getPct().setScale(2).toPlainString()
+                + (from != null ? " from=" + from : ""));
         return saved;
     }
 }

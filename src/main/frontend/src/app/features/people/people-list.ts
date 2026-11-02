@@ -3,7 +3,7 @@ import { Component, computed, effect, inject, signal } from '@angular/core';
 import { FormControl, FormGroup, ReactiveFormsModule } from '@angular/forms';
 import { Claim, Claims, counts, sumAmounts } from '../../core/claims';
 import { Grade, People, Person } from '../../core/people';
-import { Rate, Rates, due } from '../../core/rates';
+import { Rate, Rates, due, pctOn } from '../../core/rates';
 import { Session } from '../../core/session';
 import { PersonClaims } from '../claims/person-claims';
 import { RateForm } from '../rates/rate-form';
@@ -50,7 +50,7 @@ import { RateForm } from '../rates/rate-form';
               <td data-testid="person-due-total">{{ dueOf(p) ?? 'n/a' }}</td>
               <td>
                 <app-person-claims [personId]="p.id" [claims]="claimsByPerson().get(p.id) ?? []"
-                  [pct]="pctOf().get(p.grade)"
+                  [rates]="rates()" [grade]="p.grade"
                   (saved)="claimSaved($event)" />
               </td>
               <td>
@@ -88,8 +88,17 @@ export class PeopleList {
   protected readonly claimedTotal = computed(() => sumAmounts(this.claims().filter(counts).map((c) => c.amount)));
   /** The rates set on the sheet. */
   protected readonly rates = signal<Rate[]>([]);
-  /** Each grade's rate; a grade with no rate is missing. */
-  protected readonly pctOf = computed(() => new Map(this.rates().map((r) => [r.grade, r.pct])));
+  /** Each grade's rate in force on the sheet's today; a grade with none is missing. */
+  protected readonly pctOf = computed(() => {
+    const today = this.session.today();
+    const by = new Map<Grade, string>();
+    if (today === null) return by;
+    for (const g of this.grades) {
+      const pct = pctOn(this.rates(), g, today);
+      if (pct !== undefined) by.set(g, pct);
+    }
+    return by;
+  });
   /** The sheet's due-total: everyone's due-total added up, skipping those with no rate. */
   protected readonly dueTotal = computed(() =>
     sumAmounts(this.people().map((p) => this.dueOf(p)).filter((d): d is string => d !== null)),
@@ -166,10 +175,16 @@ export class PeopleList {
   }
 
   protected rateSaved(rate: Rate): void {
-    this.rates.update((rs) => [...rs.filter((r) => r.grade !== rate.grade), rate]);
+    const key = (r: Rate) => r.grade + (r.from ?? '');
+    this.rates.update((rs) =>
+      [...rs.filter((r) => r.grade !== rate.grade || r.from !== rate.from), rate].sort((a, b) =>
+        key(a) < key(b) ? -1 : key(a) > key(b) ? 1 : 0,
+      ),
+    );
   }
 
-  /** A person's due-total: what they claimed times their grade's rate, or null with no rate. */
+  /** A person's due-total: what they claimed times their grade's rate in force on the sheet's
+   *  today, or null with no rate. */
   protected dueOf(p: Person): string | null {
     return due(this.claimed().get(p.id) ?? '0.00', this.pctOf().get(p.grade));
   }

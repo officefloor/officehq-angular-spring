@@ -83,7 +83,7 @@ public class ClaimService {
         Person person = person(sheetId, claim.getPersonId());
         if (to == ClaimStatus.SETTLED) {
             // Settling fixes the due at what it is now; later changes to rates do not alter it.
-            claim.setSettledDue(due(sheetId, person, claim.getAmount()));
+            claim.setSettledDue(due(sheetId, person, claim));
         }
         Claim saved = claims.saveAndFlush(claim);
         String event = switch (to) {
@@ -100,12 +100,12 @@ public class ClaimService {
         return saved;
     }
 
-    /** An amount's due at the rate for the person's grade: amount times pct divided by 100, rounded
-     *  half up to two decimals; null when the grade has no rate. */
-    private BigDecimal due(String sheetId, Person person, BigDecimal amount) {
-        return rates.findBySheetIdAndGrade(sheetId, person.getGrade())
+    /** A claim's due at the rate for the person's grade in force on the claim's date: amount times
+     *  pct divided by 100, rounded half up to two decimals; null when no rate applies on that date. */
+    private BigDecimal due(String sheetId, Person person, Claim claim) {
+        return rates.findInForce(sheetId, person.getGrade(), claim.getDate())
                 .map(Rate::getPct)
-                .map(pct -> amount.multiply(pct).movePointLeft(2).setScale(2, RoundingMode.HALF_UP))
+                .map(pct -> claim.getAmount().multiply(pct).movePointLeft(2).setScale(2, RoundingMode.HALF_UP))
                 .orElse(null);
     }
 

@@ -2,7 +2,8 @@ import { HttpErrorResponse } from '@angular/common/http';
 import { Component, inject, input, output, signal } from '@angular/core';
 import { FormControl, FormGroup, ReactiveFormsModule } from '@angular/forms';
 import { AMOUNT, Claim, ClaimAction, Claims } from '../../core/claims';
-import { due } from '../../core/rates';
+import { Grade } from '../../core/people';
+import { Rate, due, pctOn } from '../../core/rates';
 
 /** Why the server refused an action: the claim's status does not allow it. */
 const REFUSALS: Record<ClaimAction, string> = {
@@ -64,8 +65,9 @@ export class PersonClaims {
   readonly personId = input.required<number>();
   /** This person's claims, newest first. */
   readonly claims = input.required<Claim[]>();
-  /** The rate for this person's grade, or undefined when it has none. */
-  readonly pct = input<string | undefined>();
+  /** The rates set on the sheet; a claim's due uses its person's grade's rate on the claim's date. */
+  readonly rates = input.required<Rate[]>();
+  readonly grade = input.required<Grade>();
   /** A claim added or saved through the form. */
   readonly saved = output<Claim>();
 
@@ -85,7 +87,7 @@ export class PersonClaims {
   }
 
   protected dueOf(c: Claim): string {
-    return c.settledDue ?? due(c.amount, this.pct()) ?? 'n/a';
+    return c.settledDue ?? due(c.amount, pctOn(this.rates(), this.grade(), c.date)) ?? 'n/a';
   }
 
   protected open(c: Claim): void {

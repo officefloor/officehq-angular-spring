@@ -1,9 +1,11 @@
-import { Component, inject, input, output, signal } from '@angular/core';
+import { Component, computed, inject, input, output, signal } from '@angular/core';
 import { FormControl, FormGroup, ReactiveFormsModule } from '@angular/forms';
 import { Grade } from '../../core/people';
-import { PCT, Rate, Rates } from '../../core/rates';
+import { PCT, Rate, Rates, pctOn } from '../../core/rates';
+import { Session } from '../../core/session';
 
-// The rate for each grade on the sheet, and the form that sets one.
+// The rates for each grade on the sheet, the one in force on the sheet's today, and the form that
+// sets one.
 @Component({
   selector: 'app-rate-form',
   imports: [ReactiveFormsModule],
@@ -19,26 +21,38 @@ import { PCT, Rate, Rates } from '../../core/rates';
         </select>
         <label for="rate-form-pct">Rate (%)</label>
         <input id="rate-form-pct" data-testid="rate-form-pct" formControlName="pct" inputmode="decimal" />
+        <label for="rate-form-from">From</label>
+        <input id="rate-form-from" type="date" data-testid="rate-form-from" formControlName="from" />
         <button type="submit" data-testid="rate-form-submit">Set rate</button>
         @if (error()) {
           <p role="alert" data-testid="rate-form-error">{{ error() }}</p>
         }
       </form>
-      <table data-testid="rates">
+      <table data-testid="rates-current">
+        <caption>In force on {{ session.today() }}</caption>
         <thead>
           <tr><th scope="col">Grade</th><th scope="col">Rate (%)</th></tr>
         </thead>
         <tbody>
           @for (g of grades; track g) {
-            <tr [attr.data-testid]="rateOf(g) === undefined ? null : 'rate-row-' + g + '-start'">
+            <tr>
               <th scope="row">{{ g }}</th>
-              <td [attr.data-testid]="'rate-current-' + g">
-                @if (rateOf(g); as pct) {
-                  <span data-testid="rate-pct">{{ pct }}</span>
-                } @else {
-                  n/a
-                }
-              </td>
+              <td [attr.data-testid]="'rate-current-' + g">{{ current().get(g) ?? 'n/a' }}</td>
+            </tr>
+          }
+        </tbody>
+      </table>
+      <table data-testid="rates">
+        <caption>All rates</caption>
+        <thead>
+          <tr><th scope="col">Grade</th><th scope="col">From</th><th scope="col">Rate (%)</th></tr>
+        </thead>
+        <tbody>
+          @for (r of rates(); track r.grade + '-' + (r.from ?? 'start')) {
+            <tr [attr.data-testid]="'rate-row-' + r.grade + '-' + (r.from ?? 'start')">
+              <th scope="row">{{ r.grade }}</th>
+              <td data-testid="rate-from">{{ r.from ?? 'start' }}</td>
+              <td data-testid="rate-pct">{{ r.pct }}</td>
             </tr>
           }
         </tbody>
@@ -48,8 +62,9 @@ import { PCT, Rate, Rates } from '../../core/rates';
 })
 export class RateForm {
   private readonly api = inject(Rates);
+  protected readonly session = inject(Session);
 
-  /** The rates set on the sheet. */
+  /** The rates set on the sheet, by grade and then from-date. */
   readonly rates = input.required<Rate[]>();
   /** A rate set through the form. */
   readonly saved = output<Rate>();
@@ -59,19 +74,27 @@ export class RateForm {
   protected readonly form = new FormGroup({
     grade: new FormControl<Grade>('A', { nonNullable: true }),
     pct: new FormControl('', { nonNullable: true }),
+    from: new FormControl('', { nonNullable: true }),
+  });
+  /** Each grade's rate in force on the sheet's today; a grade with none is missing. */
+  protected readonly current = computed(() => {
+    const today = this.session.today();
+    const by = new Map<Grade, string>();
+    if (today === null) return by;
+    for (const g of this.grades) {
+      const pct = pctOn(this.rates(), g, today);
+      if (pct !== undefined) by.set(g, pct);
+    }
+    return by;
   });
 
   constructor() {
     this.form.valueChanges.subscribe(() => this.error.set(''));
   }
 
-  protected rateOf(grade: Grade): string | undefined {
-    return this.rates().find((r) => r.grade === grade)?.pct;
-  }
-
   protected async submit(): Promise<void> {
     this.error.set('');
-    const { grade, pct } = this.form.getRawValue();
+    const { grade, pct, from } = this.form.getRawValue();
     if (!this.grades.includes(grade)) {
       this.error.set('Choose a grade of A, B or C.');
       return;
@@ -80,9 +103,14 @@ export class RateForm {
       this.error.set('Enter a rate of 0.00 or more, with up to two decimals.');
       return;
     }
+    const day = from.trim();
+    if (day !== '' && !/^\d{4}-\d{2}-\d{2}$/.test(day)) {
+      this.error.set('Enter a from-date, or leave it blank for a rate that always applied.');
+      return;
+    }
     try {
-      this.saved.emit(await this.api.set(grade, pct.trim()));
-      this.form.reset({ grade: 'A', pct: '' }, { emitEvent: false });
+      this.saved.emit(await this.api.set(grade, pct.trim(), day === '' ? null : day));
+      this.form.reset({ grade: 'A', pct: '', from: '' }, { emitEvent: false });
     } catch {
       this.error.set('The rate could not be set.');
     }
