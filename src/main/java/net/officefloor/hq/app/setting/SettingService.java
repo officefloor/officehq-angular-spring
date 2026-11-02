@@ -32,7 +32,7 @@ import org.springframework.transaction.annotation.Transactional;
  * takes the floor, late percent and terms in force on its date, the clerk limit and cap those in force
  * on the sheet's today (see {@link Sheet}). And the
  * policy date (none: the sheet's today), before which a claim's live figures round half up, else half to even;
- * and the period numbering from (none: off), from which a claim opened is numbered within its period;
+ * and the period numbering from (none: off), from which a claim settled is numbered within its period;
  * and the cap (none: no cap), the most a person's due-total can be; and the proof threshold (none: none,
  * dated, taken on a claim's date; a grade's own, when set, overrides it for a claim whose person has that grade on its date), above which a claim's due needs a proof to be settled or approved;
  * and the entry date (none: off, not dated), the date a new claim given none takes rather than the sheet's today;

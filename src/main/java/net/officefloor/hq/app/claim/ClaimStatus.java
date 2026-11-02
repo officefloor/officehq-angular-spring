@@ -7,8 +7,9 @@ package net.officefloor.hq.app.claim;
  * may void a SETTLED claim shortly after its settlement ({@link ClaimService}); VOID is final.
  * A DRAFT claim can be deleted (DELETED): it counts nowhere and cannot change, except to be restored
  * to DRAFT on the same sheet's today it was deleted. Opening a claim whose due is above the review
- * threshold makes it REVIEW instead: it counts nowhere and has no number until a steward's review
- * opens it (OPEN); it can be voided, but not edited, settled or split.
+ * threshold makes it REVIEW instead: it counts nowhere until a steward's review
+ * opens it (OPEN); it can be voided, but not edited, settled or split. A claim is numbered only when it
+ * is settled (SETTLED).
  */
 public enum ClaimStatus {
     DRAFT, OPEN, PENDING, SETTLED, VOID, DELETED, REVIEW;

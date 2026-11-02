@@ -88,7 +88,7 @@ public class Sheet {
     @Column(name = "policy_date")
     private LocalDate policyDate;
 
-    /** While set and today is on or after it, a claim opened is numbered within its period; null means off. */
+    /** While set and today is on or after it, a claim settled is numbered within its period; null means off. */
     @Column(name = "period_numbering_from")
     private LocalDate periodNumberingFrom;
 

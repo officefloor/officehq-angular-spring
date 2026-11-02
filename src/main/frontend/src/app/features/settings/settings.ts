@@ -57,7 +57,7 @@ interface SettingsView {
   latePct: string;
   /** Before it a claim's live figures round half up, else half to even (yyyy-mm-dd); null when blank: the sheet's today. */
   policyDate: string | null;
-  /** From it (yyyy-mm-dd), a claim opened is numbered within its period; null when blank: off. */
+  /** From it (yyyy-mm-dd), a claim settled is numbered within its period; null when blank: off. */
   periodNumberingFrom: string | null;
   /** The most a person's due-total can be, two decimals; null when blank: none. */
   cap: string | null;
@@ -95,7 +95,7 @@ const FROM = 'From (yyyy-mm-dd; blank: the sheet\'s today)';
 // sheet's for a person of that grade on the claim's date), the late percent (charged on an overdue claim's
 // figure for every full 30 days overdue, the one in force on each 30-day boundary), the policy date (blank: the sheet's today; a claim dated before it
 // rounds half up, else half to even), the period numbering from (blank: off; while the sheet's today is on or after it,
-// a claim opened is numbered within its period), the entry date (blank: off; not dated; while set, a new claim given no date,
+// a claim settled is numbered within its period), the entry date (blank: off; not dated; while set, a new claim given no date,
 // from the claim form, the quick-add bar, a paste or a correction, takes it rather than the sheet's today), the cap (blank: none; a person's due-total is at most it), the grace days (blank: off; not dated; when the
 // sheet's today is changed, an open period whose to-date plus them is before it is closed), the grace days of each grade (blank: none; dated; a claim
 // whose person's grade on its date has them in force then is overdue, and charged late, only from its due-by plus them), the pot (blank: none;
