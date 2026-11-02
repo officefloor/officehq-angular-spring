@@ -1,11 +1,13 @@
 import { Component, input } from '@angular/core';
 import { Grade } from '../../core/people';
 
-/** A grade's line of the summary: how many people are on it and their due-totals added up. */
+/** A grade's line of the summary: how many people are on it, their due-totals added up, and how
+ *  many of them are active. */
 export interface GradeSummary {
   grade: Grade;
   count: number;
   dueTotal: string;
+  active: number;
 }
 
 /** A period's line of the summary: its due-total. */
@@ -29,7 +31,7 @@ export interface StatusSummary {
       <table>
         <caption>By grade</caption>
         <thead>
-          <tr><th scope="col">Grade</th><th scope="col">People</th><th scope="col">Due</th></tr>
+          <tr><th scope="col">Grade</th><th scope="col">People</th><th scope="col">Due</th><th scope="col">Active</th></tr>
         </thead>
         <tbody>
           @for (g of grades(); track g.grade) {
@@ -37,6 +39,7 @@ export interface StatusSummary {
               <th scope="row">{{ g.grade }}</th>
               <td [attr.data-testid]="'summary-grade-' + g.grade + '-count'">{{ g.count }}</td>
               <td [attr.data-testid]="'summary-grade-' + g.grade + '-due-total'">{{ g.dueTotal }}</td>
+              <td [attr.data-testid]="'summary-grade-' + g.grade + '-active'">{{ g.active }}</td>
             </tr>
           }
         </tbody>

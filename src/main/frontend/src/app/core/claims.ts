@@ -38,6 +38,20 @@ export function countsLive(c: Claim, holds: Hold[], today: string | null): boole
   return counts(c) && !deferred(c, today) && !(isOpen(c) && !c.stated && heldOn(holds, c.date));
 }
 
+/** The day (yyyy-mm-dd) a number of days after another (before it when negative). */
+export function addDays(day: string, days: number): string {
+  const d = new Date(day + 'T00:00:00Z');
+  d.setUTCDate(d.getUTCDate() + days);
+  return d.toISOString().slice(0, 10);
+}
+
+/** Whether a claim keeps its person active on the sheet's today: it is open (or pending), it
+ *  counts in the live totals, and it is dated within the 30 days up to and including today. */
+export function keepsActive(c: Claim, holds: Hold[], today: string | null): boolean {
+  return today !== null && isOpen(c) && countsLive(c, holds, today)
+    && addDays(today, -29) <= c.date && c.date <= today;
+}
+
 /** The status a claim had at the end of the day, as its status log records it: that of the last
  *  line logged on or before the day; null when it was not yet made then. A claim with no log has
  *  its status now. */

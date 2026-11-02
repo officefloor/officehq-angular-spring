@@ -1,7 +1,7 @@
 import { HttpErrorResponse } from '@angular/common/http';
 import { Component, computed, effect, inject, signal } from '@angular/core';
 import { FormControl, FormGroup, ReactiveFormsModule } from '@angular/forms';
-import { Claim, Claims, QuickAdded, claimDue, countsAsOf, countsLive, overdue, sumAmounts, trimmedSum } from '../../core/claims';
+import { Claim, Claims, QuickAdded, claimDue, countsAsOf, countsLive, keepsActive, overdue, sumAmounts, trimmedSum } from '../../core/claims';
 import { Patron, Patrons } from '../../core/patrons';
 import { Grade, People, Person, gradeOn } from '../../core/people';
 import { Period, Periods, periodOf } from '../../core/periods';
@@ -82,13 +82,14 @@ import { PasteClaimsBox } from './paste-claims-box';
       <button type="button" data-testid="export-people" (click)="exportCsv()">Export people (CSV)</button>
       <table data-testid="people">
         <thead>
-          <tr><th scope="col">Name</th><th scope="col">Grade</th><th scope="col">Terms</th><th scope="col">Claimed</th><th scope="col">Due</th>@for (pd of periods(); track pd.id) {<th scope="col">Due in {{ pd.name }}</th>}<th scope="col">Excess</th><th scope="col">Statements</th><th scope="col">Last stated</th><th scope="col">Stated on</th><th scope="col">Retired</th><th scope="col">Retired from</th><th scope="col">On hold</th><th scope="col">Overdue</th><th scope="col">Overdue due</th><th scope="col">Patrons</th><th scope="col">Backing</th><th scope="col">Watched</th><th scope="col">Claims</th><th scope="col"><span class="visually-hidden">Actions</span></th></tr>
+          <tr><th scope="col">Name</th><th scope="col">Grade</th><th scope="col">Active</th><th scope="col">Terms</th><th scope="col">Claimed</th><th scope="col">Due</th>@for (pd of periods(); track pd.id) {<th scope="col">Due in {{ pd.name }}</th>}<th scope="col">Excess</th><th scope="col">Statements</th><th scope="col">Last stated</th><th scope="col">Stated on</th><th scope="col">Retired</th><th scope="col">Retired from</th><th scope="col">On hold</th><th scope="col">Overdue</th><th scope="col">Overdue due</th><th scope="col">Patrons</th><th scope="col">Backing</th><th scope="col">Watched</th><th scope="col">Claims</th><th scope="col"><span class="visually-hidden">Actions</span></th></tr>
         </thead>
         <tbody>
           @for (p of shown(); track p.id) {
             <tr [attr.data-testid]="'person-row-' + p.id">
               <td data-testid="person-name">{{ p.name }}</td>
               <td data-testid="person-grade">{{ gradeOf(p) }}</td>
+              <td data-testid="person-active">{{ activeOf(p) ? 'yes' : 'no' }}</td>
               <td data-testid="person-terms">{{ p.terms ?? '' }}</td>
               <td data-testid="person-claimed">{{ claimed().get(p.id) ?? '0.00' }}</td>
               <td data-testid="person-due-total">{{ dueOf(p) ?? 'n/a' }}</td>
@@ -300,8 +301,8 @@ export class PeopleList {
   protected readonly overdueTotal = computed(() =>
     trimmedSum(this.people().map((p) => this.overdueTotalOf(p))),
   );
-  /** Per grade: the people not retired on it on the sheet's today, and their due-totals added up,
-   *  skipping those that are n/a. */
+  /** Per grade: the people not retired on it on the sheet's today, their due-totals added up,
+   *  skipping those that are n/a, and how many of them are active. */
   protected readonly gradeSummary = computed((): GradeSummary[] =>
     this.grades.map((grade) => {
       const on = this.people().filter((p) => !p.retired && this.gradeOf(p) === grade);
@@ -309,6 +310,7 @@ export class PeopleList {
         grade,
         count: on.length,
         dueTotal: sumAmounts(on.map((p) => this.dueOf(p)).filter((d): d is string => d !== null)),
+        active: on.filter((p) => this.activeOf(p)).length,
       };
     }),
   );
@@ -722,6 +724,12 @@ export class PeopleList {
 
   protected gradeOf(p: Person): Grade {
     return gradeOn(p.grades, this.session.today()) ?? p.grade;
+  }
+
+  /** Whether a person is active: they have an open (or pending) claim that counts, dated within
+   *  the 30 days up to and including the sheet's today. */
+  protected activeOf(p: Person): boolean {
+    return (this.claimsByPerson().get(p.id) ?? []).some((c) => keepsActive(c, p.holds, this.session.today()));
   }
 
   /** A person's overdue claims among those that count in the live totals. */
