@@ -1,0 +1,332 @@
+diff --git a/src/main/frontend/src/app/core/settings.ts b/src/main/frontend/src/app/core/settings.ts
+index 2b13068e7..2389cdbaf 100644
+--- a/src/main/frontend/src/app/core/settings.ts
++++ b/src/main/frontend/src/app/core/settings.ts
+@@ -50,6 +50,9 @@ export interface Settings {
+   /** The grace days recorded for each grade (null: blank, none), each from its from-date, earliest
+    *  first. */
+   graces: Graces;
++  /** The proof threshold each grade has of its own in force on the sheet's today, as text with two
++   *  decimals, by grade; a grade not in it takes the sheet's. */
++  gradeProofThresholds: Partial<Record<Grade, string>>;
+ }
+ 
+ /** The grace days recorded for each grade (null: blank, none), each from its from-date, earliest
+@@ -161,6 +164,16 @@ export class SheetSettings {
+     );
+   }
+ 
++  /** Record a grade's own proof threshold (null for blank, the sheet's) from a date (null for the
++   *  sheet's today). */
++  setGradeProofThreshold(grade: Grade, value: string | null, from: string | null): Promise<Settings> {
++    const [sheetId, headers] = this.active();
++    return firstValueFrom(
++      this.http.put<Settings>(`${this.url(sheetId)}/settings/proof-threshold/${encodeURIComponent(grade)}`,
++        { value, from }, { headers }),
++    );
++  }
++
+   /** Record the note threshold (null for none) from a date (null for the sheet's today). */
+   setNoteThreshold(value: string | null, from: string | null): Promise<Settings> {
+     const [sheetId, headers] = this.active();
+diff --git a/src/main/frontend/src/app/features/settings/settings-form.ts b/src/main/frontend/src/app/features/settings/settings-form.ts
+index d92fa3f4e..6848a686a 100644
+--- a/src/main/frontend/src/app/features/settings/settings-form.ts
++++ b/src/main/frontend/src/app/features/settings/settings-form.ts
+@@ -7,7 +7,7 @@ import {
+   SheetSettings,
+ } from '../../core/settings';
+ 
+-// The sheet's settings (the clerk limit, the cap, the proof threshold, the note threshold, the floor, the terms, the grace days per grade, the late percent, the policy date, period numbering from, the grace days, the entry date and the permission matrix) and the roles it gives user names: clerk, the default for
++// The sheet's settings (the clerk limit, the cap, the proof threshold, the proof threshold per grade, the note threshold, the floor, the terms, the grace days per grade, the late percent, the policy date, period numbering from, the grace days, the entry date and the permission matrix) and the roles it gives user names: clerk, the default for
+ // any name, steward, or viewer (who may change nothing). The settings that carry a figure are dated: each is saved from a from-date
+ // (blank: the sheet's today), and what shows in force is the value on the sheet's today.
+ @Component({
+@@ -32,6 +32,17 @@ import {
+         <label for="setting-proof-threshold-from">Proof threshold from (blank: today)</label>
+         <input id="setting-proof-threshold-from" data-testid="setting-proof-threshold-from" type="date"
+                formControlName="proofThresholdFrom" />
++        <fieldset formGroupName="gradeProofThresholds">
++          <legend>Proof threshold per grade (blank: the sheet's proof threshold)</legend>
++          @for (g of grades; track g) {
++            <label [for]="'setting-proof-threshold-' + g">Grade {{ g }} proof threshold</label>
++            <input [id]="'setting-proof-threshold-' + g" [attr.data-testid]="'setting-proof-threshold-' + g"
++                   [formControlName]="g" inputmode="decimal" />
++            <label [for]="'setting-proof-threshold-' + g + '-from'">Grade {{ g }} proof threshold from (blank: today)</label>
++            <input [id]="'setting-proof-threshold-' + g + '-from'" [attr.data-testid]="'setting-proof-threshold-' + g + '-from'"
++                   type="date" [formControlName]="g + 'From'" />
++          }
++        </fieldset>
+         <label for="setting-note-threshold">Note threshold (a claim due above it needs a note to be opened; blank: none)</label>
+         <input id="setting-note-threshold" data-testid="setting-note-threshold" formControlName="noteThreshold"
+                inputmode="decimal" />
+@@ -96,6 +107,10 @@ import {
+       <p>Clerk limit in force: <span data-testid="setting-clerk-limit-current">{{ clerkLimit() ?? '' }}</span></p>
+       <p>Cap in force: <span data-testid="setting-cap-current">{{ cap() ?? '' }}</span></p>
+       <p>Proof threshold in force: <span data-testid="setting-proof-threshold-current">{{ proofThreshold() ?? '' }}</span></p>
++      @for (g of grades; track g) {
++        <p>Proof threshold in force for grade {{ g }}:
++          <span [attr.data-testid]="'setting-proof-threshold-' + g + '-current'">{{ gradeProofThresholds()[g] ?? '' }}</span></p>
++      }
+       <p>Note threshold in force: <span data-testid="setting-note-threshold-current">{{ noteThreshold() ?? '' }}</span></p>
+       <p>Floor in force: <span data-testid="setting-floor-current">{{ floor() ?? '' }}</span></p>
+       <p>Terms in force: <span data-testid="setting-terms-current">{{ terms() ?? '' }}</span></p>
+@@ -165,6 +180,8 @@ export class SettingsForm {
+   protected readonly gradeTerms = signal<Partial<Record<Grade, number>>>({});
+   /** The grace days each grade has in force; a grade not in it has none. */
+   protected readonly gradeGraces = signal<Partial<Record<Grade, number>>>({});
++  /** The proof threshold each grade has of its own in force; a grade not in it takes the sheet's. */
++  protected readonly gradeProofThresholds = signal<Partial<Record<Grade, string>>>({});
+   protected readonly latePct = signal<string | null>(null);
+   protected readonly policyDate = signal<string | null>(null);
+   protected readonly periodNumberingFrom = signal<string | null>(null);
+@@ -188,6 +205,14 @@ export class SettingsForm {
+     capFrom: new FormControl('', { nonNullable: true }),
+     proofThreshold: new FormControl('', { nonNullable: true }),
+     proofThresholdFrom: new FormControl('', { nonNullable: true }),
++    gradeProofThresholds: new FormGroup({
++      A: new FormControl('', { nonNullable: true }),
++      AFrom: new FormControl('', { nonNullable: true }),
++      B: new FormControl('', { nonNullable: true }),
++      BFrom: new FormControl('', { nonNullable: true }),
++      C: new FormControl('', { nonNullable: true }),
++      CFrom: new FormControl('', { nonNullable: true }),
++    }),
+     noteThreshold: new FormControl('', { nonNullable: true }),
+     noteThresholdFrom: new FormControl('', { nonNullable: true }),
+     floor: new FormControl('', { nonNullable: true }),
+@@ -245,6 +270,7 @@ export class SettingsForm {
+       this.terms.set(null);
+       this.gradeTerms.set({});
+       this.gradeGraces.set({});
++      this.gradeProofThresholds.set({});
+       this.latePct.set(null);
+       this.policyDate.set(null);
+       this.periodNumberingFrom.set(null);
+@@ -261,11 +287,11 @@ export class SettingsForm {
+   protected async saveSettings(): Promise<void> {
+     if (this.submitting) return;
+     this.settingsError.set('');
+-    const { clerkLimit, clerkLimitFrom, cap, capFrom, proofThreshold, proofThresholdFrom, noteThreshold, noteThresholdFrom, floor, floorFrom, terms, termsFrom, gradeTerms, gradeGraces, latePct,
++    const { clerkLimit, clerkLimitFrom, cap, capFrom, proofThreshold, proofThresholdFrom, gradeProofThresholds, noteThreshold, noteThresholdFrom, floor, floorFrom, terms, termsFrom, gradeTerms, gradeGraces, latePct,
+       latePctFrom, policyDate, periodNumberingFrom, graceDays, entryDate, permissions } = this.settingsForm.controls;
+     const changed = (...cs: AbstractControl[]) => cs.some((c) => c.dirty || c.touched);
+     const none = !changed(clerkLimit, clerkLimitFrom) && !changed(cap, capFrom)
+-      && !changed(proofThreshold, proofThresholdFrom) && !changed(noteThreshold, noteThresholdFrom)
++      && !changed(proofThreshold, proofThresholdFrom) && !changed(gradeProofThresholds) && !changed(noteThreshold, noteThresholdFrom)
+       && !changed(floor, floorFrom)
+       && !changed(terms, termsFrom) && !changed(gradeTerms) && !changed(gradeGraces) && !changed(latePct, latePctFrom) && !changed(policyDate)
+       && !changed(periodNumberingFrom) && !changed(graceDays) && !changed(entryDate) && !changed(permissions);
+@@ -277,6 +303,12 @@ export class SettingsForm {
+     const saveCap = changed(cap, capFrom) || (none && capValue !== '');
+     const thresholdValue = proofThreshold.value.trim();
+     const saveThreshold = changed(proofThreshold, proofThresholdFrom) || (none && thresholdValue !== '');
++    const gradeThresholdsToSave = this.grades
++      .map((g) => ({
++        grade: g, control: gradeProofThresholds.controls[g], fromControl: gradeProofThresholds.controls[`${g}From`],
++        value: gradeProofThresholds.controls[g].value.trim(),
++      }))
++      .filter((t) => changed(t.control, t.fromControl) || (none && t.value !== ''));
+     const noteThresholdValue = noteThreshold.value.trim();
+     const saveNoteThreshold = changed(noteThreshold, noteThresholdFrom) || (none && noteThresholdValue !== '');
+     const floorValue = floor.value.trim();
+@@ -312,6 +344,7 @@ export class SettingsForm {
+     if (saveLimit) fromsToSave.push(clerkLimitFrom);
+     if (saveCap) fromsToSave.push(capFrom);
+     if (saveThreshold) fromsToSave.push(proofThresholdFrom);
++    gradeThresholdsToSave.forEach((t) => fromsToSave.push(t.fromControl));
+     if (saveNoteThreshold) fromsToSave.push(noteThresholdFrom);
+     if (saveFloor && floorValue !== '') fromsToSave.push(floorFrom);
+     if (saveTerms && termsValue !== '') fromsToSave.push(termsFrom);
+@@ -334,6 +367,10 @@ export class SettingsForm {
+       this.settingsError.set('Enter a proof threshold of 0.00 or more with up to two decimals, or leave it blank for none.');
+       return;
+     }
++    if (gradeThresholdsToSave.some((t) => t.value !== '' && !LIMIT.test(t.value))) {
++      this.settingsError.set('Enter a proof threshold for a grade of 0.00 or more with up to two decimals, or leave it blank for the sheet\'s.');
++      return;
++    }
+     if (saveNoteThreshold && noteThresholdValue !== '' && !LIMIT.test(noteThresholdValue)) {
+       this.settingsError.set('Enter a note threshold of 0.00 or more with up to two decimals, or leave it blank for none.');
+       return;
+@@ -405,6 +442,15 @@ export class SettingsForm {
+           c.markAsUntouched();
+         }
+       }
++      for (const t of gradeThresholdsToSave) {
++        const saved = await this.api.setGradeProofThreshold(t.grade, t.value === '' ? null : t.value,
++          from(t.fromControl));
++        this.gradeProofThresholds.set(saved.gradeProofThresholds);
++        for (const c of [t.control, t.fromControl]) {
++          c.markAsPristine();
++          c.markAsUntouched();
++        }
++      }
+       if (saveNoteThreshold) {
+         const saved = await this.api.setNoteThreshold(noteThresholdValue === '' ? null : noteThresholdValue,
+           from(noteThresholdFrom));
+@@ -538,6 +584,7 @@ export class SettingsForm {
+         this.terms.set(settings.terms);
+         this.gradeTerms.set(settings.gradeTerms);
+         this.gradeGraces.set(settings.gradeGraces);
++        this.gradeProofThresholds.set(settings.gradeProofThresholds);
+         this.latePct.set(settings.latePct);
+         this.policyDate.set(settings.policyDate);
+         this.periodNumberingFrom.set(settings.periodNumberingFrom);
+diff --git a/src/main/java/net/officefloor/hq/app/claim/ClaimService.java b/src/main/java/net/officefloor/hq/app/claim/ClaimService.java
+index f8262a1e1..505475595 100644
+--- a/src/main/java/net/officefloor/hq/app/claim/ClaimService.java
++++ b/src/main/java/net/officefloor/hq/app/claim/ClaimService.java
+@@ -637,15 +637,19 @@ public class ClaimService {
+         return due != null && due.compareTo(limit) > 0;
+     }
+ 
+-    /** Refuse settling or approving a claim with no proofs whose due is above the sheet's proof
+-     *  threshold in force on the claim's date; a claim with no due (n/a) and a sheet with no threshold
+-     *  need none. */
++    /** Refuse settling or approving a claim with no proofs whose due is above the proof threshold in
++     *  force on the claim's date: its person's grade's (on that date) when one is set, or else the
++     *  sheet's; a claim with no due (n/a) and a claim with no threshold need none. */
+     private void refuseUnproved(String sheetId, Claim claim) {
+-        BigDecimal threshold = sheets.proofThreshold(sheetId, claim.getDate());
+-        if (threshold == null || claim.getProofs() > 0) {
++        if (claim.getProofs() > 0) {
+             return;
+         }
+-        BigDecimal due = dues.figure(sheetId, person(sheetId, claim.getPersonId()), claim);
++        Person person = person(sheetId, claim.getPersonId());
++        BigDecimal threshold = sheets.proofThresholdFor(sheetId, person.gradeOn(claim.getDate()), claim.getDate());
++        if (threshold == null) {
++            return;
++        }
++        BigDecimal due = dues.figure(sheetId, person, claim);
+         if (due != null && due.compareTo(threshold) > 0) {
+             throw new ResponseStatusException(HttpStatus.PRECONDITION_REQUIRED,
+                     "A claim whose due is above the proof threshold needs a proof first");
+diff --git a/src/main/java/net/officefloor/hq/app/sheet/SettingsController.java b/src/main/java/net/officefloor/hq/app/sheet/SettingsController.java
+index f56273e94..040141b54 100644
+--- a/src/main/java/net/officefloor/hq/app/sheet/SettingsController.java
++++ b/src/main/java/net/officefloor/hq/app/sheet/SettingsController.java
+@@ -42,20 +42,24 @@ public class SettingsController {
+      *  grace days (null when blank: off); and the note threshold as text with two decimals (null when
+      *  there is none); and the entry date (null when blank: off); and the grace days each grade has in
+      *  force (a grade not in it has none), and the grace days recorded for each grade, each from its
+-     *  from-date, earliest first (null: blank, none). */
++     *  from-date, earliest first (null: blank, none); and the proof threshold each grade has of its
++     *  own in force, as text with two decimals (a grade not in it takes the sheet's). */
+     public record SettingsView(String clerkLimit, String floor, int terms, String latePct, LocalDate policyDate,
+             LocalDate periodNumberingFrom, Map<String, Integer> gradeTerms, String cap, List<DatedValue> floors,
+             List<DatedValue> latePcts, List<DatedValue> caps, String proofThreshold,
+             Map<String, String> permissions, Integer graceDays, String noteThreshold, LocalDate entryDate,
+-            Map<String, Integer> gradeGraces, Map<String, List<DatedDays>> graces) {
++            Map<String, Integer> gradeGraces, Map<String, List<DatedDays>> graces,
++            Map<String, String> gradeProofThresholds) {
+         static SettingsView of(BigDecimal clerkLimit, BigDecimal floor, int terms, BigDecimal latePct,
+                 LocalDate policyDate, LocalDate periodNumberingFrom, Map<String, Integer> gradeTerms,
+                 BigDecimal cap, List<SettingValue> floors, List<SettingValue> latePcts,
+                 List<SettingValue> caps, BigDecimal proofThreshold, Map<String, String> permissions,
+                 Integer graceDays, BigDecimal noteThreshold, LocalDate entryDate, Map<String, Integer> gradeGraces,
+-                Map<String, List<SettingValue>> graces) {
++                Map<String, List<SettingValue>> graces, Map<String, BigDecimal> gradeProofThresholds) {
+             Map<String, List<DatedDays>> gracesView = new TreeMap<>();
+             graces.forEach((grade, values) -> gracesView.put(grade, values.stream().map(DatedDays::of).toList()));
++            Map<String, String> thresholdsView = new TreeMap<>();
++            gradeProofThresholds.forEach((grade, v) -> thresholdsView.put(grade, v.setScale(2).toPlainString()));
+             return new SettingsView(clerkLimit == null ? null : clerkLimit.setScale(2).toPlainString(),
+                     floor.setScale(2).toPlainString(), terms, latePct.setScale(2).toPlainString(), policyDate,
+                     periodNumberingFrom, gradeTerms, cap == null ? null : cap.setScale(2).toPlainString(),
+@@ -63,7 +67,7 @@ public class SettingsController {
+                     caps.stream().map(DatedValue::of).toList(),
+                     proofThreshold == null ? null : proofThreshold.setScale(2).toPlainString(), permissions, graceDays,
+                     noteThreshold == null ? null : noteThreshold.setScale(2).toPlainString(), entryDate, gradeGraces,
+-                    gracesView);
++                    gracesView, thresholdsView);
+         }
+     }
+ 
+@@ -262,11 +266,17 @@ public class SettingsController {
+                     .ifPresent(v -> gradeGraces.put(grade, v.intValue()));
+             graces.put(grade, then.recorded("grace-" + grade));
+         }
++        Map<String, BigDecimal> gradeProofThresholds = new TreeMap<>();
++        for (String grade : List.of("A", "B", "C")) {
++            then.setting("proof-threshold-" + grade, day).map(SettingValue::getValue)
++                    .ifPresent(v -> gradeProofThresholds.put(grade, v));
++        }
+         return SettingsView.of(value.apply("clerk-limit"), then.basis().floor(day), terms, then.basis().latePct(day),
+                 then.policyDate(), service.periodNumberingFrom(id), gradeTerms, then.basis().cap(),
+                 then.recorded("floor"), then.recorded("late-pct"), then.recorded("cap"),
+                 value.apply("proof-threshold"), service.permissions(id), service.graceDays(id),
+-                value.apply("note-threshold"), service.entryDate(id), gradeGraces, graces);
++                value.apply("note-threshold"), service.entryDate(id), gradeGraces, graces,
++                gradeProofThresholds);
+     }
+ 
+     /** The settings view of a sheet as the store holds it now. */
+@@ -276,7 +286,7 @@ public class SettingsController {
+                 service.recorded(id, "floor"), service.recorded(id, "late-pct"),
+                 service.recorded(id, "cap"), service.proofThreshold(id), service.permissions(id),
+                 service.graceDays(id), service.noteThreshold(id), service.entryDate(id), service.gradeGraces(id),
+-                gracesOf(id));
++                gracesOf(id), service.gradeProofThresholds(id));
+     }
+ 
+     /** The grace days recorded for each grade of a sheet, earliest from-date first. */
+@@ -365,6 +375,15 @@ public class SettingsController {
+         return view(service.setProofThreshold(sheetId.trim(), user.trim(), form.thresholdValue(), form.fromValue()));
+     }
+ 
++    @PutMapping("/proof-threshold/{grade}")
++    public SettingsView setGradeProofThreshold(@PathVariable @NotBlank @Size(max = 100) String sheetId,
++            @PathVariable @Pattern(regexp = "[ABC]") String grade,
++            @RequestHeader("X-User") @NotBlank @Size(max = 100) String user,
++            @Valid @RequestBody ProofThresholdForm form) {
++        return view(service.setGradeProofThreshold(sheetId.trim(), user.trim(), grade, form.thresholdValue(),
++                form.fromValue()));
++    }
++
+     @PutMapping("/note-threshold")
+     public SettingsView setNoteThreshold(@PathVariable @NotBlank @Size(max = 100) String sheetId,
+             @RequestHeader("X-User") @NotBlank @Size(max = 100) String user,
+diff --git a/src/main/java/net/officefloor/hq/app/sheet/SheetService.java b/src/main/java/net/officefloor/hq/app/sheet/SheetService.java
+index 0ffc94093..7cdba1dcb 100644
+--- a/src/main/java/net/officefloor/hq/app/sheet/SheetService.java
++++ b/src/main/java/net/officefloor/hq/app/sheet/SheetService.java
+@@ -419,6 +419,37 @@ public class SheetService {
+         return inForce(id, "proof-threshold", day).map(SettingValue::getValue).orElse(null);
+     }
+ 
++    /** The proof thresholds each grade on the sheet has of its own in force on its today, by grade; a
++     *  grade not in it takes the sheet's (blank, or never set). */
++    @Transactional(readOnly = true)
++    public Map<String, BigDecimal> gradeProofThresholds(String id) {
++        LocalDate today = today(id);
++        Map<String, BigDecimal> thresholds = new TreeMap<>();
++        for (String grade : GRADES) {
++            inForce(id, "proof-threshold-" + grade, today).map(SettingValue::getValue)
++                    .ifPresent(v -> thresholds.put(grade, v));
++        }
++        return thresholds;
++    }
++
++    /** The due above which a claim on the sheet dated on the day needs a proof for a grade: the
++     *  grade's own proof threshold in force on it when one is set, or else the sheet's; null when
++     *  neither is. */
++    @Transactional(readOnly = true)
++    public BigDecimal proofThresholdFor(String id, String grade, LocalDate day) {
++        return inForce(id, "proof-threshold-" + grade, day).map(SettingValue::getValue)
++                .orElseGet(() -> proofThreshold(id, day));
++    }
++
++    /** Record a grade's own proof threshold (null: blank, the sheet's) from a date (null: the sheet's
++     *  today). It changes no figure. */
++    @Transactional
++    public synchronized Sheet setGradeProofThreshold(String id, String user, String grade, BigDecimal threshold,
++            LocalDate from) {
++        return record(id, user, "proof-threshold-" + grade, threshold,
++                threshold == null ? "" : threshold.setScale(2).toPlainString(), from);
++    }
++
+     /** The proof threshold in force on the sheet's today. */
+     @Transactional(readOnly = true)
+     public BigDecimal proofThreshold(String id) {
