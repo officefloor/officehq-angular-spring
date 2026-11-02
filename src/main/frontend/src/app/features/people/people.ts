@@ -5,7 +5,7 @@ import { FormControl, FormGroup, ReactiveFormsModule } from '@angular/forms';
 import { firstValueFrom } from 'rxjs';
 import { PEOPLE_COLUMNS, PeopleColumn, Session } from '../../core/session';
 import { downloadCsv } from '../../core/csv';
-import { Claim, Claims, DUPLICATE_REF, GraceOn, PctOn, RETIRED, cents, claimDueCents, countsAt, countsFor, isBound, isCorrection, isDuplicateRef, isOpen, isOverdue, money, roundsOn, statusAt } from '../claims/claims';
+import { Claim, Claims, DUPLICATE_REF, GraceOn, PctOn, RETIRED, cents, claimDueCents, countsAt, countsFor, isBound, isCorrection, isDuplicateRef, isOpen, isOverdue, halfUp, money, roundsOn, statusAt } from '../claims/claims';
 import { Period, Periods, periodOn } from '../periods/periods';
 import { Plan, Plans } from '../plans/plans';
 import { NA, Rate, Rates, dueCents, rateInLevels } from '../rates/rates';
@@ -243,6 +243,19 @@ function shareCents(due: number, share: number): number {
   const rest = Math.abs(scaled - whole * 10000);
   const sign = scaled < 0 ? -1 : 1;
   return rest > 5000 || (rest === 5000 && whole % 2 !== 0) ? whole + sign : whole;
+}
+
+/**
+ * A holder's part of a claim in cents: the amount (in cents) times the share and the rate (each in hundredths of
+ * a percent) divided by 100 twice, rounded half to even (or half up), a negative one as its positive would.
+ */
+function holderCents(amount: number, share: number, pct: number, halfUp: boolean): number {
+  const sign = amount * share * pct < 0 ? -1 : 1;
+  const product = BigInt(Math.abs(amount)) * BigInt(Math.abs(share)) * BigInt(Math.abs(pct));
+  const quotient = product / 100000000n;
+  const remainder = product % 100000000n;
+  const up = remainder > 50000000n || (remainder === 50000000n && (halfUp || quotient % 2n === 1n));
+  return sign * Number(up ? quotient + 1n : quotient);
 }
 
 function trimmedSum(figures: number[]): number {
@@ -1629,22 +1642,28 @@ export class People {
    * nor a due under another grade they had on its date or under a rate not in force today.
    */
   /**
-   * The parts shares move, in cents: per claim that counts with a due (at its person's figures), what its
-   * holders' parts add up to, and per holder each part they hold with its claim. A part is the claim's due
-   * times the share divided by 100, rounded half to even.
+   * The parts shares move, in cents: per claim that counts, what its holders' parts add up to, and per holder
+   * each part they hold with its claim. A part is the claim's amount times the share divided by 100, times
+   * the rate of the holder's own grade on its date divided by 100, rounded like the claim; a holder whose
+   * grade has no rate then holds none. A settled claim's parts are frozen: its settled due times the share
+   * divided by 100, rounded half to even.
    */
   private readonly shareParts = computed(() => {
-    const floor = this.session.floorCentsOn;
     const late = this.session.late();
     const given = new Map<number, number>();
     const held = new Map<number, { claim: Claim; cents: number }[]>();
     for (const c of this.claims()) {
       if (c.shares.length === 0 || !this.counts(c)) continue;
-      const theirs = this.claimsOf(c.personId);
-      const due = claimDueCents(c, this.pctOnOf(c.personId), floor, late, roundsOn(c, theirs), this.graceOnOf(c.personId));
-      if (due === null) continue;
+      const up = halfUp(roundsOn(c, this.claimsOf(c.personId)), late);
       for (const s of c.shares) {
-        const part = shareCents(due, cents(s.share));
+        let part: number;
+        if (c.settledDue !== null) {
+          part = shareCents(cents(c.settledDue), cents(s.share));
+        } else {
+          const pct = this.pctOnOf(s.personId)(c.date, c.added);
+          if (pct === null) continue;
+          part = holderCents(cents(c.amount), cents(s.share), cents(pct), up);
+        }
         given.set(c.id, (given.get(c.id) ?? 0) + part);
         held.set(s.personId, [...(held.get(s.personId) ?? []), { claim: c, cents: part }]);
       }

@@ -5,7 +5,7 @@ import jakarta.persistence.Embeddable;
 import java.math.BigDecimal;
 import java.math.RoundingMode;
 
-/** A share of a claim: another person of its sheet holding a percent (two decimals) of its due. */
+/** A share of a claim: another person of its sheet holding a percent (two decimals) of it. */
 @Embeddable
 public class ClaimShare {
 
@@ -26,8 +26,16 @@ public class ClaimShare {
 
     public BigDecimal getShare() { return share; }
 
-    /** The holder's part of a due: the due times the share divided by 100, rounded half to even. */
+    /** The holder's frozen part of a settled claim's due: the due times the share divided by 100, rounded half to even. */
     public BigDecimal partOf(BigDecimal due) {
         return due.multiply(share).movePointLeft(2).setScale(2, RoundingMode.HALF_EVEN);
+    }
+
+    /**
+     * The holder's part of a claim by their own rate: the amount times the share divided by 100, times the
+     * rate divided by 100, rounded as given.
+     */
+    public BigDecimal partOf(BigDecimal amount, BigDecimal pct, RoundingMode rounding) {
+        return amount.multiply(share).multiply(pct).movePointLeft(4).setScale(2, rounding);
     }
 }

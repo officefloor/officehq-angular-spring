@@ -87,7 +87,7 @@ export interface Claim {
   lines: ClaimLine[];
   /** Its place in the order claims were added to their sheets; a forward-only rate applies only to claims added after it was saved. */
   added: number;
-  /** Its shares, in the order they were added: each holder's part of its due counts in their figures, not its person's. */
+  /** Its shares, in the order they were added: each holder's part (of its amount, at their own grade's rate) counts in their figures, not its person's. */
   shares: ClaimShare[];
 }
 
@@ -213,7 +213,7 @@ export function roundsOn(c: Claim, theirs: Claim[]): string {
  * Whether a claim rounding by the given date rounds half up: by the rounding mode in force on it, when one is;
  * else when dated before the policy date; else half to even.
  */
-function halfUp(basis: string, late: Late): boolean {
+export function halfUp(basis: string, late: Late): boolean {
   const mode = late.roundingOn(basis);
   if (mode !== null) return mode === 'half-up';
   return late.policy !== null && basis < late.policy;

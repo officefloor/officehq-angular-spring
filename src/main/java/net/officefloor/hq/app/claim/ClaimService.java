@@ -799,8 +799,8 @@ public class ClaimService {
     }
 
     /**
-     * Share a claim with another person of the sheet: they hold the share percent (more than 0.00) of its due,
-     * which counts in their figures and no longer in its own person's. Refused for a SETTLED, VOID or DELETED
+     * Share a claim with another person of the sheet: they hold the share percent (more than 0.00) of its amount
+     * at their own grade's rate on its date, which counts in their figures and no longer in its own person's. Refused for a SETTLED, VOID or DELETED
      * claim, for its own person, a person already holding a share of it, or shares totalling more than 100.00.
      */
     @Transactional
