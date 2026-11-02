@@ -287,7 +287,7 @@ public class ClaimService {
                 case PENDING -> "CLAIM_PENDING";
                 case SETTLED -> "CLAIM_SETTLED";
                 case VOID -> "CLAIM_VOIDED";
-                case DRAFT -> throw new IllegalStateException("a claim never returns to DRAFT");
+                case DRAFT, DELETED -> throw new IllegalStateException("a claim is deleted or restored apart");
             };
             String line = record(event, sheetId, user, person, saved);
             if (becomes == ClaimStatus.SETTLED) {
@@ -298,6 +298,53 @@ public class ClaimService {
             if (becomes == ClaimStatus.SETTLED) {
                 watches.notifyWatchers(sheetId, user, person, saved.getNumber());
             }
+            return saved;
+        });
+    }
+
+    /** Delete a draft claim: it counts nowhere, and cannot be edited, opened or voided. Refused when
+     *  the claim is not a draft, or its period is closed. */
+    @Transactional
+    public Claim delete(String sheetId, String user, long claimId) {
+        Claim claim = lock(sheetId, claimId);
+        refuseClosed(sheetId, claim.getDueBy());
+        if (!claim.getStatus().canBecome(ClaimStatus.DELETED) || claim.editLockedFor(user)) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT,
+                    "A " + claim.getStatus() + " claim cannot be deleted, nor one another user is editing");
+        }
+        return rollup.tracking(sheetId, user, () -> {
+            Person person = person(sheetId, claim.getPersonId());
+            claim.setStatus(ClaimStatus.DELETED);
+            claim.setEditLockedBy(null);
+            logStatus(sheetId, user, person, claim);
+            Claim saved = claims.saveAndFlush(claim);
+            audit.recordOnCommit(record("CLAIM_DELETED", sheetId, user, person, saved));
+            return saved;
+        });
+    }
+
+    /** Restore a deleted claim to a draft. Refused when the claim is not deleted, it was deleted on
+     *  another day than the sheet's today, or its period is closed. */
+    @Transactional
+    public Claim restore(String sheetId, String user, long claimId) {
+        Claim claim = lock(sheetId, claimId);
+        refuseClosed(sheetId, claim.getDueBy());
+        if (claim.getStatus() != ClaimStatus.DELETED) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT,
+                    "A " + claim.getStatus() + " claim cannot be restored");
+        }
+        LocalDate deleted = claim.getLog().stream().filter(l -> l.getStatus() == ClaimStatus.DELETED)
+                .map(ClaimLog::getOn).reduce((first, last) -> last).orElse(null);
+        if (!sheets.today(sheetId).equals(deleted)) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT,
+                    "A deleted claim can only be restored on the day it was deleted");
+        }
+        return rollup.tracking(sheetId, user, () -> {
+            Person person = person(sheetId, claim.getPersonId());
+            claim.setStatus(ClaimStatus.DRAFT);
+            logStatus(sheetId, user, person, claim);
+            Claim saved = claims.saveAndFlush(claim);
+            audit.recordOnCommit(record("CLAIM_RESTORED", sheetId, user, person, saved));
             return saved;
         });
     }
@@ -360,7 +407,8 @@ public class ClaimService {
     public Claim addProof(String sheetId, String user, long claimId) {
         Claim claim = lock(sheetId, claimId);
         refuseClosed(sheetId, claim.getDueBy());
-        if (claim.getStatus() == ClaimStatus.SETTLED || claim.getStatus() == ClaimStatus.VOID) {
+        if (claim.getStatus() == ClaimStatus.SETTLED || claim.getStatus() == ClaimStatus.VOID
+                || claim.getStatus() == ClaimStatus.DELETED) {
             throw new ResponseStatusException(HttpStatus.CONFLICT,
                     "A " + claim.getStatus() + " claim cannot be given a proof");
         }
@@ -496,7 +544,8 @@ public class ClaimService {
         if (!roles.may(sheetId, user, "reassign")) {
             throw new ResponseStatusException(HttpStatus.FORBIDDEN, "Your role may not reassign a claim");
         }
-        if (claim.getStatus() == ClaimStatus.SETTLED || claim.getStatus() == ClaimStatus.VOID) {
+        if (claim.getStatus() == ClaimStatus.SETTLED || claim.getStatus() == ClaimStatus.VOID
+                || claim.getStatus() == ClaimStatus.DELETED) {
             throw new ResponseStatusException(HttpStatus.CONFLICT,
                     "A " + claim.getStatus() + " claim cannot be reassigned");
         }

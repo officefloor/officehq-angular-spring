@@ -18,6 +18,8 @@ const REFUSALS: Record<ClaimAction, string> = {
   void: 'Only a draft, open or pending claim can be voided, or a settled one within 7 days of its settlement.',
   approve: 'Only a pending claim can be approved.',
   reject: 'Only a pending claim can be rejected.',
+  delete: 'Only a draft claim can be deleted.',
+  restore: 'Only a deleted claim can be restored, on the day it was deleted.',
 };
 
 /** The message when an edit of a claim that is not a draft is refused. */
@@ -255,6 +257,10 @@ function splitRefusal(e: unknown): string {
             <button type="button" data-testid="claim-void" (click)="act(c, 'void')"
               [attr.aria-label]="'Void claim of ' + c.amount + ' on ' + c.date">Void</button>
           }
+          <button type="button" data-testid="claim-delete" (click)="act(c, 'delete')"
+            [attr.aria-label]="'Delete claim of ' + c.amount + ' on ' + c.date">Delete</button>
+          <button type="button" data-testid="claim-restore" (click)="act(c, 'restore')"
+            [attr.aria-label]="'Restore claim of ' + c.amount + ' on ' + c.date">Restore</button>
           <button type="button" data-testid="claim-approve" (click)="act(c, 'approve')"
             [attr.aria-label]="'Approve claim of ' + c.amount + ' on ' + c.date">Approve</button>
           <label [for]="'claim-reject-reason-' + c.id">Reject reason</label>

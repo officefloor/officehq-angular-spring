@@ -284,6 +284,20 @@ public class ClaimController {
         return new BulkOpened(outcome.done(), outcome.refused());
     }
 
+    @PostMapping("/claims/{claimId}/delete")
+    public ClaimView delete(@PathVariable @NotBlank @Size(max = 100) String sheetId,
+            @PathVariable long claimId,
+            @RequestHeader("X-User") @NotBlank @Size(max = 100) String user) {
+        return ClaimView.of(service.delete(sheetId.trim(), user.trim(), claimId));
+    }
+
+    @PostMapping("/claims/{claimId}/restore")
+    public ClaimView restore(@PathVariable @NotBlank @Size(max = 100) String sheetId,
+            @PathVariable long claimId,
+            @RequestHeader("X-User") @NotBlank @Size(max = 100) String user) {
+        return ClaimView.of(service.restore(sheetId.trim(), user.trim(), claimId));
+    }
+
     @PostMapping("/claims/{claimId}/settle")
     public ClaimView settle(@PathVariable @NotBlank @Size(max = 100) String sheetId,
             @PathVariable long claimId,
