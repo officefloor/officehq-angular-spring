@@ -200,10 +200,13 @@ public class PersonService {
         person.setName(name);
         Integer termsBefore = person.getTerms();
         Map<LocalDate, Integer> datedTermsBefore = person.getDatedTerms();
+        Integer termsInForceBefore = person.termsOn(today);
         if (termsFrom != null) person.setTermsFrom(termsFrom, terms);
         else person.setTerms(terms);
+        // terms given from the beginning of time other than those in force today are an edit of them too
         boolean termsChanged = !Objects.equals(termsBefore, person.getTerms())
-                || !datedTermsBefore.equals(person.getDatedTerms());
+                || !datedTermsBefore.equals(person.getDatedTerms())
+                || (termsFrom == null && !Objects.equals(termsInForceBefore, terms));
         boolean contactChanged = !Objects.equals(key, person.getContact());
         person.setContact(key);
         if (tags != null) person.setTags(tags);
