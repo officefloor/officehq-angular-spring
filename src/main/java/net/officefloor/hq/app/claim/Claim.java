@@ -105,6 +105,11 @@ public class Claim {
     @Column(name = "split_from")
     private String splitFrom;
 
+    /** The user who has the claim's editor open, locking it for every other user; null when no one
+     *  has. */
+    @Column(name = "edit_locked_by")
+    private String editLockedBy;
+
     /** Where the claim is listed: newest first by this. A new claim takes the next from the
      *  database, and a moved claim takes the next again (see {@link #moveTo}). */
     @Generated
@@ -174,6 +179,19 @@ public class Claim {
 
     public String getSplitFrom() {
         return splitFrom;
+    }
+
+    public String getEditLockedBy() {
+        return editLockedBy;
+    }
+
+    public void setEditLockedBy(String editLockedBy) {
+        this.editLockedBy = editLockedBy;
+    }
+
+    /** Whether another user than this one has the claim's editor open. */
+    public boolean editLockedFor(String user) {
+        return editLockedBy != null && !editLockedBy.equals(user);
     }
 
     public BigDecimal getAmount() {

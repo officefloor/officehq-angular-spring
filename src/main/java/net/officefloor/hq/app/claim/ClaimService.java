@@ -90,11 +90,10 @@ public class ClaimService {
     @Transactional
     public Claim edit(String sheetId, String user, long claimId, BigDecimal amount, LocalDate date, String note,
             String corrects) {
-        Claim claim = claims.findByIdAndSheetId(claimId, sheetId)
-                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "No such claim on this sheet"));
-        if (claim.getStatus() != ClaimStatus.DRAFT) {
+        Claim claim = lock(sheetId, claimId);
+        if (claim.getStatus() != ClaimStatus.DRAFT || claim.editLockedFor(user)) {
             throw new ResponseStatusException(HttpStatus.CONFLICT,
-                    "A " + claim.getStatus() + " claim cannot be edited");
+                    "A " + claim.getStatus() + " claim cannot be edited, nor one another user is editing");
         }
         LocalDate on = date != null ? date : sheets.today(sheetId);
         refuseClosed(sheetId, claim.getDate());
@@ -107,10 +106,40 @@ public class ClaimService {
             claim.setCorrectedDate(corrected == null ? null : corrected.getDate());
             claim.setDate(on);
             claim.setNote(note);
+            claim.setEditLockedBy(null);
             Claim saved = claims.saveAndFlush(claim);
             audit.recordOnCommit(record("CLAIM_EDITED", sheetId, user, person(sheetId, saved.getPersonId()), saved));
             return saved;
         });
+    }
+
+    /** Open a claim's editor for the user, locking the claim for every other user until it is saved
+     *  or cancelled or the sheet's today changes; an editor the user had open on another claim of the
+     *  same person is closed. Refused when the claim is not a draft or another user has its editor
+     *  open (409), and when it is dated inside a closed period (423). Records nothing. */
+    @Transactional
+    public Claim openEditor(String sheetId, String user, long claimId) {
+        Claim claim = lock(sheetId, claimId);
+        if (claim.getStatus() != ClaimStatus.DRAFT || claim.editLockedFor(user)) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT,
+                    "A " + claim.getStatus() + " claim cannot be edited, nor one another user is editing");
+        }
+        refuseClosed(sheetId, claim.getDate());
+        claims.releaseOtherEditLocks(sheetId, claim.getPersonId(), user, claim.getId());
+        claim.setEditLockedBy(user);
+        return claims.saveAndFlush(claim);
+    }
+
+    /** Close the claim's editor the user has open (cancelled), unlocking the claim; a claim whose
+     *  editor the user does not have open is left as it is. Records nothing. */
+    @Transactional
+    public Claim closeEditor(String sheetId, String user, long claimId) {
+        Claim claim = lock(sheetId, claimId);
+        if (!user.equals(claim.getEditLockedBy())) {
+            return claim;
+        }
+        claim.setEditLockedBy(null);
+        return claims.saveAndFlush(claim);
     }
 
     /** Move a claim to a new status; a change its current status does not allow is refused, and so

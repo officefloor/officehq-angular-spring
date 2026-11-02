@@ -123,6 +123,8 @@ export interface Claim {
   proofs: number;
   /** The number of the claim it was split off; null when it was not split off one. */
   splitFrom: string | null;
+  /** Who has the claim's editor open, locking it for every other user; null when no one has. */
+  editLockedBy: string | null;
 }
 
 /** A line of a claim's status log: the status, who changed it to that, the sheet's today then
@@ -286,6 +288,24 @@ export class Claims {
     const { sheetId, user } = this.active();
     return firstValueFrom(
       this.http.put<Claim>(`${this.url(sheetId)}/claims/${id}`, form, { headers: { 'X-User': user } }),
+    );
+  }
+
+  /** Open the claim's editor, locking it for every other user until it is saved or cancelled or the
+   *  sheet's today changes; refused (409) when it is not a draft or another user has it open, (423)
+   *  when its period is closed, and (403) for a viewer. */
+  openEditor(id: number): Promise<Claim> {
+    const { sheetId, user } = this.active();
+    return firstValueFrom(
+      this.http.post<Claim>(`${this.url(sheetId)}/claims/${id}/editor`, null, { headers: { 'X-User': user } }),
+    );
+  }
+
+  /** Cancel the claim's editor the user has open, unlocking the claim. */
+  cancelEditor(id: number): Promise<Claim> {
+    const { sheetId, user } = this.active();
+    return firstValueFrom(
+      this.http.post<Claim>(`${this.url(sheetId)}/claims/${id}/editor/cancel`, null, { headers: { 'X-User': user } }),
     );
   }
 

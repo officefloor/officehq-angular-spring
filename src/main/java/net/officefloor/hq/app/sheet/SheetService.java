@@ -7,6 +7,7 @@ import java.util.Map;
 import java.util.Optional;
 import java.util.TreeMap;
 import net.officefloor.hq.app.Audit;
+import net.officefloor.hq.app.claim.ClaimRepository;
 import net.officefloor.hq.app.period.PeriodService;
 import net.officefloor.hq.app.role.RoleService;
 import net.officefloor.hq.app.role.SheetRole;
@@ -27,6 +28,7 @@ public class SheetService {
     private final SheetRepository sheets;
     private final SettingValueRepository settingValues;
     private final SheetPermissionRepository permissions;
+    private final ClaimRepository claims;
     /** Lazy: the rollup reads the sheet's today through this service. */
     private final Rollup rollup;
     /** Lazy: closing a period reads the sheet through this service. */
@@ -36,11 +38,12 @@ public class SheetService {
     private final Audit audit;
 
     public SheetService(SheetRepository sheets, SettingValueRepository settingValues,
-            SheetPermissionRepository permissions, @Lazy Rollup rollup, @Lazy PeriodService periods,
+            SheetPermissionRepository permissions, ClaimRepository claims, @Lazy Rollup rollup, @Lazy PeriodService periods,
             @Lazy RoleService roles, Audit audit) {
         this.sheets = sheets;
         this.settingValues = settingValues;
         this.permissions = permissions;
+        this.claims = claims;
         this.rollup = rollup;
         this.periods = periods;
         this.roles = roles;
@@ -101,11 +104,15 @@ public class SheetService {
         return sheets.lastUnperiodNumber(id);
     }
 
-    /** Change the sheet's today, with no record of its own; then, when the sheet has grace days, close
+    /** Change the sheet's today, with no record of its own, closing every claim editor held open on it
+     *  when the day is a new one; then, when the sheet has grace days, close
      *  the open periods they have run out on; then the figures it moves are recorded. */
     @Transactional
     public synchronized Sheet setToday(String id, String user, LocalDate today) {
         Sheet sheet = load(id, user);
+        if (!today.equals(sheet.getToday())) {
+            claims.releaseEditLocks(id);
+        }
         return rollup.tracking(id, user, () -> {
             sheet.setToday(today);
             Sheet saved = sheets.saveAndFlush(sheet);

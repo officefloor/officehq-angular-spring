@@ -1,10 +1,11 @@
 import { HttpErrorResponse } from '@angular/common/http';
-import { Component, inject, input, output, signal } from '@angular/core';
+import { Component, effect, inject, input, output, signal, untracked } from '@angular/core';
 import { FormControl, FormGroup, ReactiveFormsModule } from '@angular/forms';
 import { AMOUNT, CLAIM_AMOUNT, Claim, ClaimAction, Claims, claimDue, deferred, overdue } from '../../core/claims';
 import { GradeFrom, Person, gradeOn } from '../../core/people';
 import { Period, periodOf } from '../../core/periods';
 import { Rate } from '../../core/rates';
+import { Session } from '../../core/session';
 import { DatedValue } from '../../core/settings';
 
 /** Why the server refused an action: the claim's status does not allow it. */
@@ -19,6 +20,17 @@ const REFUSALS: Record<ClaimAction, string> = {
 
 /** The message when an edit of a claim that is not a draft is refused. */
 const NOT_DRAFT = 'Only a draft claim can be edited; void an open claim and add a new one.';
+
+/** The message when another user has the claim's editor open. */
+const EDIT_LOCKED = 'Another user is editing this claim; try again once they save or cancel.';
+
+/** The message for a refused opening of a claim's editor. */
+function editorRefusal(e: unknown, c: Claim): string {
+  if (e instanceof HttpErrorResponse && e.status === 423) return CLOSED;
+  if (e instanceof HttpErrorResponse && e.status === 403) return 'Your role may not edit a claim.';
+  if (e instanceof HttpErrorResponse && e.status === 409) return c.status === 'DRAFT' ? EDIT_LOCKED : NOT_DRAFT;
+  return 'The claim\'s editor could not be opened.';
+}
 
 /** The message when the server refused a change to a claim dated inside a closed period. */
 const CLOSED = 'The claim\'s period is closed.';
@@ -210,6 +222,7 @@ function splitRefusal(e: unknown): string {
 })
 export class PersonClaims {
   private readonly api = inject(Claims);
+  private readonly session = inject(Session);
 
   readonly personId = input.required<number>();
   /** This person's claims, newest first. */
@@ -254,6 +267,24 @@ export class PersonClaims {
 
   constructor() {
     this.form.valueChanges.subscribe(() => this.error.set(''));
+    // The editor the user holds open in the store (it locks the claim) shows open again once the
+    // sheet is re-loaded.
+    effect(() => {
+      const claims = this.claims();
+      const user = this.session.user();
+      untracked(() => {
+        if (this.editing() !== null) return;
+        const mine = claims.find((c) => c.status === 'DRAFT' && c.editLockedBy !== null && c.editLockedBy === user);
+        if (mine) this.fill(mine);
+      });
+    });
+    // A new sheet's today closes every editor held open.
+    let today: string | null | undefined;
+    effect(() => {
+      const now = this.today();
+      if (today !== undefined && now !== today) untracked(() => this.reset());
+      today = now;
+    });
   }
 
   protected dueOf(c: Claim): string {
@@ -278,12 +309,45 @@ export class PersonClaims {
     return periodOf(this.periods(), c.date)?.name ?? '';
   }
 
-  protected open(c: Claim): void {
+  /** Open the claim's editor, which locks it for every other user; refused when it is not a draft,
+   *  is dated inside a closed period, or another user has its editor open. The editor is open at
+   *  once; its fields take the claim's values (those not typed into meanwhile) once the store has
+   *  locked the claim, and it closes again when the store refuses. */
+  protected async open(c: Claim): Promise<void> {
     this.claimError.set(null);
     if (c.status !== 'DRAFT') {
       this.claimError.set({ id: c.id, message: NOT_DRAFT });
       return;
     }
+    if (periodOf(this.periods(), c.date)?.closed) {
+      this.claimError.set({ id: c.id, message: CLOSED });
+      return;
+    }
+    if (c.editLockedBy !== null && c.editLockedBy !== this.session.user()) {
+      this.claimError.set({ id: c.id, message: EDIT_LOCKED });
+      return;
+    }
+    this.editing.set(c.id);
+    this.form.reset({ amount: '', date: '', note: '', corrects: '' }, { emitEvent: false });
+    this.error.set('');
+    try {
+      const claim = await this.api.openEditor(c.id);
+      if (this.editing() === c.id) {
+        const values = { amount: claim.amount, date: claim.date, note: claim.note, corrects: claim.corrects ?? '' };
+        for (const key of Object.keys(values) as (keyof typeof values)[]) {
+          const control = this.form.controls[key];
+          if (!control.dirty) control.setValue(values[key], { emitEvent: false });
+        }
+      }
+      this.saved.emit(claim);
+    } catch (e) {
+      if (this.editing() === c.id) this.reset();
+      this.claimError.set({ id: c.id, message: editorRefusal(e, c) });
+    }
+  }
+
+  /** Fill the form with the claim's values, as its editor. */
+  private fill(c: Claim): void {
     this.editing.set(c.id);
     this.form.setValue({ amount: c.amount, date: c.date, note: c.note, corrects: c.corrects ?? '' },
       { emitEvent: false });
@@ -375,8 +439,17 @@ export class PersonClaims {
     }
   }
 
-  protected cancel(): void {
-    this.reset();
+  /** Cancel the open editor, unlocking its claim. */
+  protected async cancel(): Promise<void> {
+    const id = this.editing();
+    if (id === null) return;
+    if (this.claimError()?.id === id) this.claimError.set(null);
+    try {
+      this.saved.emit(await this.api.cancelEditor(id));
+    } catch {
+      // the editor closes all the same; a lock left behind ends when the sheet's today changes
+    }
+    if (this.editing() === id) this.reset();
   }
 
   protected async submit(): Promise<void> {
@@ -412,7 +485,8 @@ export class PersonClaims {
       else if (e instanceof HttpErrorResponse && e.status === 422) this.error.set(RETIRED);
       else if (e instanceof HttpErrorResponse && e.status === 400 && amount.trim().startsWith('-')) this.error.set(CORRECTS);
       else if (id !== null && e instanceof HttpErrorResponse && e.status === 409) {
-        this.claimError.set({ id, message: NOT_DRAFT });
+        const c = this.claims().find((x) => x.id === id);
+        this.claimError.set({ id, message: c ? editorRefusal(e, c) : NOT_DRAFT });
       }
       else this.error.set(id === null ? 'The claim could not be added.' : 'The claim could not be saved.');
     } finally {

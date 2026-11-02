@@ -5,6 +5,7 @@ import java.util.Optional;
 import jakarta.persistence.LockModeType;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Lock;
+import org.springframework.data.jpa.repository.Modifying;
 import org.springframework.data.jpa.repository.Query;
 
 public interface ClaimRepository extends JpaRepository<Claim, Long> {
@@ -30,4 +31,15 @@ public interface ClaimRepository extends JpaRepository<Claim, Long> {
     @Lock(LockModeType.PESSIMISTIC_WRITE)
     @Query("select c from Claim c where c.id = :id and c.sheetId = :sheetId")
     Optional<Claim> lockByIdAndSheetId(Long id, String sheetId);
+
+    /** Release every claim editor held open on a sheet (its today changed). */
+    @Modifying(flushAutomatically = true)
+    @Query("update Claim c set c.editLockedBy = null where c.sheetId = :sheetId and c.editLockedBy is not null")
+    int releaseEditLocks(String sheetId);
+
+    /** Release the editors a user holds open on a person's other claims. */
+    @Modifying(flushAutomatically = true)
+    @Query("update Claim c set c.editLockedBy = null where c.sheetId = :sheetId and c.personId = :personId"
+            + " and c.editLockedBy = :user and c.id <> :keepId")
+    int releaseOtherEditLocks(String sheetId, Long personId, String user, Long keepId);
 }

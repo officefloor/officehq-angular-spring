@@ -36,11 +36,12 @@ public class ClaimController {
      *  (that of the claim a correction corrects, or else its own); and where it is listed (newest
      *  first by this); and its status log, oldest first; and the day it is deferred until (null when
      *  never deferred); and how many proofs it has; and the number of the claim it was split off
-     *  (null when none). */
+     *  (null when none); and who has its editor open (null when no one). */
     public record ClaimView(long id, long personId, String amount, LocalDate date, String note,
             ClaimStatus status, String number, String settledDue, String openedBy, boolean stated,
             String statedDue, boolean statedNa, String corrects, LocalDate roundsBy, long listed, LocalDate dueBy,
-            List<LogLineView> log, LocalDate deferredUntil, int proofs, String splitFrom) {
+            List<LogLineView> log, LocalDate deferredUntil, int proofs, String splitFrom,
+            String editLockedBy) {
         public static ClaimView of(Claim claim) {
             return new ClaimView(claim.getId(), claim.getPersonId(), claim.getAmount().setScale(2).toPlainString(),
                     claim.getDate(), claim.getNote(), claim.getStatus(), claim.getNumber(),
@@ -49,7 +50,7 @@ public class ClaimController {
                     claim.getStatedDue() == null ? null : claim.getStatedDue().setScale(2).toPlainString(),
                     claim.isStatedNa(), claim.getCorrects(), claim.roundsBy(), claim.getListed(), claim.getDueBy(),
                     claim.getLog().stream().map(LogLineView::of).toList(), claim.getDeferredUntil(),
-                    claim.getProofs(), claim.getSplitFrom());
+                    claim.getProofs(), claim.getSplitFrom(), claim.getEditLockedBy());
         }
     }
 
@@ -125,6 +126,20 @@ public class ClaimController {
             @Valid @RequestBody ClaimForm form) {
         return ClaimView.of(service.edit(sheetId.trim(), user.trim(), claimId, form.amountValue(), form.date(), form.noteValue(),
                 form.correctsValue()));
+    }
+
+    @PostMapping("/claims/{claimId}/editor")
+    public ClaimView openEditor(@PathVariable @NotBlank @Size(max = 100) String sheetId,
+            @PathVariable long claimId,
+            @RequestHeader("X-User") @NotBlank @Size(max = 100) String user) {
+        return ClaimView.of(service.openEditor(sheetId.trim(), user.trim(), claimId));
+    }
+
+    @PostMapping("/claims/{claimId}/editor/cancel")
+    public ClaimView closeEditor(@PathVariable @NotBlank @Size(max = 100) String sheetId,
+            @PathVariable long claimId,
+            @RequestHeader("X-User") @NotBlank @Size(max = 100) String user) {
+        return ClaimView.of(service.closeEditor(sheetId.trim(), user.trim(), claimId));
     }
 
     @PostMapping("/claims/{claimId}/open")
