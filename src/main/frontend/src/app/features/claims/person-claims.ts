@@ -1,7 +1,7 @@
 import { HttpErrorResponse } from '@angular/common/http';
 import { Component, inject, input, output, signal } from '@angular/core';
 import { FormControl, FormGroup, ReactiveFormsModule } from '@angular/forms';
-import { CLAIM_AMOUNT, Claim, ClaimAction, Claims, claimDue, dueBy, overdue } from '../../core/claims';
+import { CLAIM_AMOUNT, Claim, ClaimAction, Claims, claimDue, overdue } from '../../core/claims';
 import { GradeFrom, Person, gradeOn } from '../../core/people';
 import { Period, periodOf } from '../../core/periods';
 import { Rate } from '../../core/rates';
@@ -139,8 +139,6 @@ export class PersonClaims {
   readonly grades = input.required<GradeFrom[]>();
   /** The periods on the sheet; a claim belongs to the one whose days contain its date. */
   readonly periods = input.required<Period[]>();
-  /** The sheet's terms: the days after its date a claim is due by. */
-  readonly terms = input.required<number>();
   /** The sheet's today; a claim is overdue once its due-by is before it. */
   readonly today = input.required<string | null>();
   /** The sheet's late percent: what an overdue claim gains for every full 30 days it is overdue. */
@@ -176,15 +174,15 @@ export class PersonClaims {
 
   protected dueOf(c: Claim): string {
     return claimDue(c, this.rates(), gradeOn(this.grades(), c.date), this.floor(),
-      { terms: this.terms(), today: this.today(), pct: this.latePct(), policyDate: this.policyDate() }) ?? 'n/a';
+      { today: this.today(), pct: this.latePct(), policyDate: this.policyDate() }) ?? 'n/a';
   }
 
   protected dueByOf(c: Claim): string {
-    return dueBy(c, this.terms());
+    return c.dueBy;
   }
 
   protected overdueOf(c: Claim): boolean {
-    return overdue(c, this.terms(), this.today());
+    return overdue(c, this.today());
   }
 
   /** The name of the period the claim belongs to; empty when it belongs to none. */

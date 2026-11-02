@@ -34,14 +34,14 @@ public class ClaimController {
      *  first by this). */
     public record ClaimView(long id, long personId, String amount, LocalDate date, String note,
             ClaimStatus status, String number, String settledDue, String openedBy, boolean stated,
-            String statedDue, String corrects, LocalDate roundsBy, long listed) {
+            String statedDue, String corrects, LocalDate roundsBy, long listed, LocalDate dueBy) {
         public static ClaimView of(Claim claim) {
             return new ClaimView(claim.getId(), claim.getPersonId(), claim.getAmount().setScale(2).toPlainString(),
                     claim.getDate(), claim.getNote(), claim.getStatus(), claim.getNumber(),
                     claim.getSettledDue() == null ? null : claim.getSettledDue().setScale(2).toPlainString(),
                     claim.getOpenedBy(), claim.isStated(),
                     claim.getStatedDue() == null ? null : claim.getStatedDue().setScale(2).toPlainString(),
-                    claim.getCorrects(), claim.roundsBy(), claim.getListed());
+                    claim.getCorrects(), claim.roundsBy(), claim.getListed(), claim.getDueBy());
         }
     }
 

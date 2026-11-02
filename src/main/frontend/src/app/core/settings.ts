@@ -1,6 +1,7 @@
 import { HttpClient } from '@angular/common/http';
 import { Injectable, inject } from '@angular/core';
 import { firstValueFrom } from 'rxjs';
+import { Grade } from './people';
 import { Session } from './session';
 
 export interface Settings {
@@ -16,6 +17,8 @@ export interface Settings {
   policyDate: string | null;
   /** The period numbering from date (yyyy-mm-dd); null when blank (off). */
   periodNumberingFrom: string | null;
+  /** The terms each grade has of its own, by grade; a grade not in it takes the sheet's terms. */
+  gradeTerms: Partial<Record<Grade, number>>;
 }
 
 export type RoleName = 'clerk' | 'steward';
@@ -70,6 +73,14 @@ export class SheetSettings {
   setTerms(value: string): Promise<Settings> {
     const [sheetId, headers] = this.active();
     return firstValueFrom(this.http.put<Settings>(`${this.url(sheetId)}/settings/terms`, { value }, { headers }));
+  }
+
+  /** Set a grade's own terms. */
+  setGradeTerms(grade: Grade, value: string): Promise<Settings> {
+    const [sheetId, headers] = this.active();
+    return firstValueFrom(
+      this.http.put<Settings>(`${this.url(sheetId)}/settings/terms/${encodeURIComponent(grade)}`, { value }, { headers }),
+    );
   }
 
   /** Set the late percent. */

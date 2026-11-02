@@ -44,16 +44,15 @@ public class Dues {
         return due(sheetId, person, claim);
     }
 
-    /** The late charge on an open (or pending) claim overdue on the sheet's today (its due-by, its date plus the
-     *  terms, before today; a correction has none): the late percent of its figure for every full 30 days it is overdue,
+    /** The late charge on an open (or pending) claim overdue on the sheet's today (its due-by, fixed when it was
+     *  made, before today; a correction has none): the late percent of its figure for every full 30 days it is overdue,
      *  rounded to two decimals by the claim's {@link #rounding}; 0.00 when it is not overdue. */
     private BigDecimal lateCharge(String sheetId, Claim claim, BigDecimal figure) {
         BigDecimal none = BigDecimal.ZERO.setScale(2);
         if (!claim.getStatus().isOpen() || claim.isCorrection()) {
             return none;
         }
-        LocalDate dueBy = claim.getDate().plusDays(sheets.terms(sheetId));
-        long periods = ChronoUnit.DAYS.between(dueBy, sheets.today(sheetId)) / 30;
+        long periods = ChronoUnit.DAYS.between(claim.getDueBy(), sheets.today(sheetId)) / 30;
         if (periods <= 0) {
             return none;
         }

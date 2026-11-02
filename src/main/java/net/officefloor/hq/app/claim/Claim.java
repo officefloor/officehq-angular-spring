@@ -73,6 +73,11 @@ public class Claim {
     @Column(name = "corrected_date")
     private LocalDate correctedDate;
 
+    /** The day the claim is due by: fixed when it is made, from its date and the terms of its
+     *  person's grade in force on that date; later changes to the terms or its date leave it. */
+    @Column(name = "due_by", nullable = false)
+    private LocalDate dueBy;
+
     /** Where the claim is listed: newest first by this. A new claim takes the next from the
      *  database, and a moved claim takes the next again (see {@link #moveTo}). */
     @Generated
@@ -82,12 +87,8 @@ public class Claim {
     protected Claim() {
     }
 
-    public Claim(String sheetId, Long personId, BigDecimal amount, LocalDate date, String note, String corrects) {
-        this(sheetId, personId, amount, date, note, corrects, null);
-    }
-
     public Claim(String sheetId, Long personId, BigDecimal amount, LocalDate date, String note, String corrects,
-            LocalDate correctedDate) {
+            LocalDate correctedDate, LocalDate dueBy) {
         this.sheetId = sheetId;
         this.personId = personId;
         this.amount = amount;
@@ -95,6 +96,7 @@ public class Claim {
         this.note = note;
         this.corrects = corrects;
         this.correctedDate = correctedDate;
+        this.dueBy = dueBy;
     }
 
     public Long getId() {
@@ -155,6 +157,10 @@ public class Claim {
     /** Whether the claim is a correction: its amount is below 0.00. */
     public boolean isCorrection() {
         return amount.signum() < 0;
+    }
+
+    public LocalDate getDueBy() {
+        return dueBy;
     }
 
     public LocalDate getDate() {

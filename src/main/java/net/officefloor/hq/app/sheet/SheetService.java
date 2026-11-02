@@ -2,6 +2,8 @@ package net.officefloor.hq.app.sheet;
 
 import java.math.BigDecimal;
 import java.time.LocalDate;
+import java.util.Map;
+import java.util.TreeMap;
 import net.officefloor.hq.app.Audit;
 import net.officefloor.hq.app.rollup.Rollup;
 import org.springframework.context.annotation.Lazy;
@@ -13,12 +15,14 @@ import org.springframework.transaction.annotation.Transactional;
 public class SheetService {
 
     private final SheetRepository sheets;
+    private final GradeTermsRepository gradeTerms;
     /** Lazy: the rollup reads the sheet's today through this service. */
     private final Rollup rollup;
     private final Audit audit;
 
-    public SheetService(SheetRepository sheets, @Lazy Rollup rollup, Audit audit) {
+    public SheetService(SheetRepository sheets, GradeTermsRepository gradeTerms, @Lazy Rollup rollup, Audit audit) {
         this.sheets = sheets;
+        this.gradeTerms = gradeTerms;
         this.rollup = rollup;
         this.audit = audit;
     }
@@ -106,8 +110,8 @@ public class SheetService {
         return sheets.findById(id).map(Sheet::getTerms).orElse(14);
     }
 
-    /** Change the sheet's terms; recorded even when they are unchanged, then the figures they move
-     *  (through the late charges of overdue claims). */
+    /** Change the sheet's terms; recorded even when they are unchanged. They change no claim's
+     *  due-by, which is fixed when the claim is made. */
     @Transactional
     public synchronized Sheet setTerms(String id, String user, int terms) {
         Sheet sheet = load(id, user);
@@ -117,6 +121,35 @@ public class SheetService {
             audit.recordOnCommit("SETTING_CHANGED sheet=" + id + " by=" + user + " key=terms value=" + terms);
             return saved;
         });
+    }
+
+    /** The terms each grade on the sheet has of its own, by grade; a grade not in it takes the
+     *  sheet's terms. */
+    @Transactional(readOnly = true)
+    public Map<String, Integer> gradeTerms(String id) {
+        Map<String, Integer> terms = new TreeMap<>();
+        gradeTerms.findBySheetIdOrderByGrade(id).forEach(t -> terms.put(t.getGrade(), t.getTerms()));
+        return terms;
+    }
+
+    /** The terms in force for a grade on the sheet: its own, or else the sheet's. */
+    @Transactional(readOnly = true)
+    public int termsFor(String id, String grade) {
+        return gradeTerms.findById(new GradeTerms.Key(id, grade)).map(GradeTerms::getTerms)
+                .orElseGet(() -> terms(id));
+    }
+
+    /** Change a grade's own terms; recorded even when they are unchanged. They change no claim's
+     *  due-by, which is fixed when the claim is made. */
+    @Transactional
+    public synchronized Sheet setGradeTerms(String id, String user, String grade, int terms) {
+        Sheet sheet = load(id, user);
+        GradeTerms t = gradeTerms.findById(new GradeTerms.Key(id, grade))
+                .orElseGet(() -> new GradeTerms(id, grade, terms));
+        t.setTerms(terms);
+        gradeTerms.saveAndFlush(t);
+        audit.recordOnCommit("SETTING_CHANGED sheet=" + id + " by=" + user + " key=terms-" + grade + " value=" + terms);
+        return sheet;
     }
 
     /** The percent of its figure an overdue claim on the sheet gains for every full 30 days it is

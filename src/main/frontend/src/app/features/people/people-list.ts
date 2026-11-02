@@ -89,7 +89,7 @@ import { QuickAddBar } from './quick-add-bar';
               <td>
                 <app-person-claims [personId]="p.id" [claims]="claimsByPerson().get(p.id) ?? []"
                   [rates]="rates()" [floor]="floor()" [grades]="p.grades" [periods]="periods()"
-                  [terms]="terms()" [today]="session.today()" [latePct]="latePct()"
+                  [today]="session.today()" [latePct]="latePct()"
                   [policyDate]="policyDate()" [selected]="selected()"
                   (selectedChange)="select($event.id, $event.selected)"
                   [others]="patronChoices(p)" (saved)="claimSaved($event)" />
@@ -189,15 +189,13 @@ export class PeopleList {
   protected readonly rates = signal<Rate[]>([]);
   /** The sheet's floor: the least live due a claim has. */
   protected readonly floor = signal('1.00');
-  /** The sheet's terms: the days after its date a claim is due by. */
-  protected readonly terms = signal(14);
   /** The sheet's late percent: what an overdue claim gains for every full 30 days it is overdue. */
   protected readonly latePct = signal('0.00');
   /** The sheet's policy date (null when blank): it decides how a claim's live figures round. */
   protected readonly policyDate = signal<string | null>(null);
   /** What the late charges of overdue claims, and the rounding of live figures, follow. */
   private readonly lateness = computed(() => ({
-    terms: this.terms(), today: this.session.today(), pct: this.latePct(), policyDate: this.policyDate(),
+    today: this.session.today(), pct: this.latePct(), policyDate: this.policyDate(),
   }));
   /** The periods on the sheet, earliest first. */
   protected readonly periods = signal<Period[]>([]);
@@ -571,7 +569,7 @@ export class PeopleList {
   /** A person's overdue claims among those that count in the live totals. */
   protected overdueOf(p: Person): Claim[] {
     return (this.claimsByPerson().get(p.id) ?? [])
-      .filter((c) => countsLive(c, p.held) && overdue(c, this.terms(), this.session.today()));
+      .filter((c) => countsLive(c, p.held) && overdue(c, this.session.today()));
   }
 
   /** A person's overdue-total: the due figures of their overdue claims that count, skipping those
@@ -601,7 +599,6 @@ export class PeopleList {
       if (read === this.reads) {
         this.rates.set(rates);
         this.floor.set(settings.floor);
-        this.terms.set(settings.terms);
         this.latePct.set(settings.latePct);
         this.policyDate.set(settings.policyDate);
         this.periods.set(periods);

@@ -1,6 +1,7 @@
 import { Component, effect, inject, signal } from '@angular/core';
 import { FormControl, FormGroup, ReactiveFormsModule } from '@angular/forms';
 import { Session } from '../../core/session';
+import { Grade } from '../../core/people';
 import { LATE_PCT, LIMIT, POLICY_DATE, ROLES, TERMS, Role, RoleName, SheetSettings } from '../../core/settings';
 
 // The sheet's settings (the clerk limit, the floor, the terms, the late percent, the policy date and period numbering from) and the roles it gives user names: clerk, the default for
@@ -19,6 +20,14 @@ import { LATE_PCT, LIMIT, POLICY_DATE, ROLES, TERMS, Role, RoleName, SheetSettin
         <input id="setting-floor" data-testid="setting-floor" formControlName="floor" inputmode="decimal" />
         <label for="setting-terms">Terms (days)</label>
         <input id="setting-terms" data-testid="setting-terms" formControlName="terms" inputmode="numeric" />
+        <fieldset formGroupName="gradeTerms">
+          <legend>Terms per grade (days; blank: the sheet's terms)</legend>
+          @for (g of grades; track g) {
+            <label [for]="'setting-terms-' + g">Grade {{ g }}</label>
+            <input [id]="'setting-terms-' + g" [attr.data-testid]="'setting-terms-' + g" [formControlName]="g"
+                   inputmode="numeric" />
+          }
+        </fieldset>
         <label for="setting-late-pct">Late percent (per 30 days overdue)</label>
         <input id="setting-late-pct" data-testid="setting-late-pct" formControlName="latePct" inputmode="decimal" />
         <label for="setting-policy-date">Policy date (claims dated before it round half up; blank: today)</label>
@@ -34,6 +43,10 @@ import { LATE_PCT, LIMIT, POLICY_DATE, ROLES, TERMS, Role, RoleName, SheetSettin
       <p>Clerk limit in force: <span data-testid="setting-clerk-limit-current">{{ clerkLimit() ?? '' }}</span></p>
       <p>Floor in force: <span data-testid="setting-floor-current">{{ floor() ?? '' }}</span></p>
       <p>Terms in force: <span data-testid="setting-terms-current">{{ terms() ?? '' }}</span></p>
+      @for (g of grades; track g) {
+        <p>Terms in force for grade {{ g }}:
+          <span [attr.data-testid]="'setting-terms-' + g + '-current'">{{ termsOf(g) ?? '' }}</span></p>
+      }
       <p>Late percent in force: <span data-testid="setting-late-pct-current">{{ latePct() ?? '' }}</span></p>
       <p>Policy date in force: <span data-testid="setting-policy-date-current">{{ policyDate() ?? '' }}</span></p>
       <p>Period numbering from: <span data-testid="setting-period-numbering-from-current">{{ periodNumberingFrom() ?? '' }}</span></p>
@@ -78,6 +91,9 @@ export class SettingsForm {
   protected readonly clerkLimit = signal<string | null>(null);
   protected readonly floor = signal<string | null>(null);
   protected readonly terms = signal<number | null>(null);
+  protected readonly grades: Grade[] = ['A', 'B', 'C'];
+  /** The terms each grade has of its own; a grade not in it takes the sheet's terms. */
+  protected readonly gradeTerms = signal<Partial<Record<Grade, number>>>({});
   protected readonly latePct = signal<string | null>(null);
   protected readonly policyDate = signal<string | null>(null);
   protected readonly periodNumberingFrom = signal<string | null>(null);
@@ -92,6 +108,11 @@ export class SettingsForm {
     clerkLimit: new FormControl('', { nonNullable: true }),
     floor: new FormControl('', { nonNullable: true }),
     terms: new FormControl('', { nonNullable: true }),
+    gradeTerms: new FormGroup({
+      A: new FormControl('', { nonNullable: true }),
+      B: new FormControl('', { nonNullable: true }),
+      C: new FormControl('', { nonNullable: true }),
+    }),
     latePct: new FormControl('', { nonNullable: true }),
     policyDate: new FormControl('', { nonNullable: true }),
     periodNumberingFrom: new FormControl('', { nonNullable: true }),
@@ -110,6 +131,7 @@ export class SettingsForm {
       this.clerkLimit.set(null);
       this.floor.set(null);
       this.terms.set(null);
+      this.gradeTerms.set({});
       this.latePct.set(null);
       this.policyDate.set(null);
       this.periodNumberingFrom.set(null);
@@ -122,15 +144,18 @@ export class SettingsForm {
   protected async saveSettings(): Promise<void> {
     if (this.submitting) return;
     this.settingsError.set('');
-    const { clerkLimit, floor, terms, latePct, policyDate, periodNumberingFrom } = this.settingsForm.controls;
-    const none = !clerkLimit.dirty && !floor.dirty && !terms.dirty && !latePct.dirty && !policyDate.dirty
-      && !periodNumberingFrom.dirty;
+    const { clerkLimit, floor, terms, gradeTerms, latePct, policyDate, periodNumberingFrom } = this.settingsForm.controls;
+    const none = !clerkLimit.dirty && !floor.dirty && !terms.dirty && !gradeTerms.dirty && !latePct.dirty
+      && !policyDate.dirty && !periodNumberingFrom.dirty;
     const limitValue = clerkLimit.value.trim();
     const floorValue = floor.value.trim();
     const saveLimit = none || clerkLimit.dirty;
     const saveFloor = none || floor.dirty;
     const termsValue = terms.value.trim();
     const saveTerms = none || terms.dirty;
+    const gradeTermsToSave = this.grades
+      .map((g) => ({ grade: g, control: gradeTerms.controls[g], value: gradeTerms.controls[g].value.trim() }))
+      .filter((t) => (none || t.control.dirty) && t.value !== '');
     const latePctValue = latePct.value.trim();
     const saveLatePct = none || latePct.dirty;
     const policyDateValue = policyDate.value.trim();
@@ -147,6 +172,10 @@ export class SettingsForm {
     }
     if (saveTerms && !(none && termsValue === '') && !TERMS.test(termsValue)) {
       this.settingsError.set('Enter terms of 0 or more whole days.');
+      return;
+    }
+    if (gradeTermsToSave.some((t) => !TERMS.test(t.value))) {
+      this.settingsError.set('Enter terms for a grade of 0 or more whole days, or leave them blank.');
       return;
     }
     if (saveLatePct && !(none && latePctValue === '') && !LATE_PCT.test(latePctValue)) {
@@ -178,6 +207,11 @@ export class SettingsForm {
         this.terms.set(saved.terms);
         terms.markAsPristine();
       }
+      for (const t of gradeTermsToSave) {
+        const saved = await this.api.setGradeTerms(t.grade, t.value);
+        this.gradeTerms.set(saved.gradeTerms);
+        t.control.markAsPristine();
+      }
       if (saveLatePct && latePctValue !== '') {
         const saved = await this.api.setLatePct(latePctValue);
         this.latePct.set(saved.latePct);
@@ -198,6 +232,11 @@ export class SettingsForm {
     } finally {
       this.submitting = false;
     }
+  }
+
+  /** The terms in force for a grade: its own, or else the sheet's. */
+  protected termsOf(g: Grade): number | null {
+    return this.gradeTerms()[g] ?? this.terms();
   }
 
   protected async saveRole(): Promise<void> {
@@ -235,6 +274,7 @@ export class SettingsForm {
         this.clerkLimit.set(settings.clerkLimit);
         this.floor.set(settings.floor);
         this.terms.set(settings.terms);
+        this.gradeTerms.set(settings.gradeTerms);
         this.latePct.set(settings.latePct);
         this.policyDate.set(settings.policyDate);
         this.periodNumberingFrom.set(settings.periodNumberingFrom);

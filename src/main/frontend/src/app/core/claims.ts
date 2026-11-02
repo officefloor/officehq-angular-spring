@@ -58,6 +58,9 @@ export interface Claim {
   /** Where the claim is listed: claims are listed newest first by this (a claim moved to another
    *  person is listed as that person's newest). */
   listed: number;
+  /** The day (yyyy-mm-dd) it is due by: fixed when it was made, from its date and the terms of its
+   *  person's grade in force on that date. */
+  dueBy: string;
 }
 
 export interface ClaimForm {
@@ -107,10 +110,9 @@ export function fixed(c: Claim): boolean {
   return c.settledDue !== null || (bound(c) && c.statedDue !== null);
 }
 
-/** What a claim's late charge follows: the sheet's terms, its today and its late percent; and the
+/** What a claim's late charge follows: the sheet's today and its late percent; and the
  *  sheet's policy date, which decides how its live figures round. */
 export interface Lateness {
-  terms: number;
   today: string | null;
   /** The late percent as text with two decimals. */
   pct: string;
@@ -141,22 +143,16 @@ export function claimDue(c: Claim, rates: Rate[], grade: Grade | undefined, floo
  *  is overdue, rounded like a due; 0.00 when it is not overdue, and on a correction. */
 export function lateCharge(c: Claim, figure: string, late: Lateness): string {
   if (correction(c)) return '0.00';
-  if (!overdue(c, late.terms, late.today) || late.today === null) return '0.00';
-  const days = (Date.parse(late.today) - Date.parse(dueBy(c, late.terms))) / 86_400_000;
+  if (!overdue(c, late.today) || late.today === null) return '0.00';
+  const days = (Date.parse(late.today) - Date.parse(c.dueBy)) / 86_400_000;
   const periods = Math.floor(days / 30);
   if (periods <= 0) return '0.00';
   return due(figure, (Number(late.pct) * periods).toFixed(2), roundsHalfUp(c, late)) ?? '0.00';
 }
 
-/** The day (yyyy-mm-dd) a claim is due by: its date plus the sheet's terms in days. */
-export function dueBy(c: Claim, terms: number): string {
-  const [y, m, d] = c.date.split('-').map(Number);
-  return new Date(Date.UTC(y, m - 1, d + terms)).toISOString().slice(0, 10);
-}
-
 /** Whether a claim is overdue: it is open (or pending) and its due-by is before the sheet's today. */
-export function overdue(c: Claim, terms: number, today: string | null): boolean {
-  return isOpen(c) && today !== null && dueBy(c, terms) < today;
+export function overdue(c: Claim, today: string | null): boolean {
+  return isOpen(c) && today !== null && c.dueBy < today;
 }
 
 // The claims people make on the active sheet.

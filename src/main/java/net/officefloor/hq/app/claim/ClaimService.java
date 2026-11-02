@@ -67,7 +67,8 @@ public class ClaimService {
         return rollup.tracking(sheetId, user, () -> {
             Person person = person(sheetId, personId);
             Claim claim = claims.saveAndFlush(new Claim(sheetId, personId, amount, on, note,
-                    corrected == null ? null : corrected.getNumber(), corrected == null ? null : corrected.getDate()));
+                    corrected == null ? null : corrected.getNumber(), corrected == null ? null : corrected.getDate(),
+                    on.plusDays(sheets.termsFor(sheetId, person.gradeOn(on)))));
             audit.recordOnCommit(record("CLAIM_ADDED", sheetId, user, person, claim));
             return claim;
         });
