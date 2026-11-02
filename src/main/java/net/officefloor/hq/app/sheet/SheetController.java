@@ -20,10 +20,10 @@ import org.springframework.web.bind.annotation.RestController;
 @Validated
 public class SheetController {
 
-    /** What the screen shows of a loaded sheet. */
-    public record SheetView(String id, LocalDate today, boolean archived) {
+    /** What the screen shows of a loaded sheet; its parent's id null when it has none. */
+    public record SheetView(String id, LocalDate today, boolean archived, String parent) {
         static SheetView of(Sheet sheet) {
-            return new SheetView(sheet.getId(), sheet.getToday(), sheet.isArchived());
+            return new SheetView(sheet.getId(), sheet.getToday(), sheet.isArchived(), sheet.getParentId());
         }
     }
 

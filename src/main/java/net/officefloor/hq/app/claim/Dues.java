@@ -5,9 +5,11 @@ import java.math.RoundingMode;
 import java.time.LocalDate;
 import java.time.temporal.ChronoUnit;
 import java.util.List;
+import java.util.Optional;
 import net.officefloor.hq.app.person.Person;
 import net.officefloor.hq.app.rate.Rate;
 import net.officefloor.hq.app.rate.RateRepository;
+import net.officefloor.hq.app.sheet.SheetRepository;
 import net.officefloor.hq.app.sheet.SheetService;
 import org.springframework.stereotype.Service;
 
@@ -39,14 +41,28 @@ public class Dues {
 
         /** The grace days of a grade in force on a day; 0 when none is (blank, or never set). */
         int grace(String grade, LocalDate day);
+
+        /** The rate of a grade in force on a day: the sheet's own, or else, when it has none in force
+         *  on it, its ancestors' (see {@link #inherited}); empty when none is. */
+        default Optional<Rate> rateInForce(String grade, LocalDate day) {
+            return RateRepository.inForce(rates(grade), day).or(() -> inherited(grade, day));
+        }
+
+        /** The rate of a grade in force on a day on the sheet's parent, or else its parent's, up to
+         *  three levels up; empty when none is (or the sheet has no parent). */
+        default Optional<Rate> inherited(String grade, LocalDate day) {
+            return Optional.empty();
+        }
     }
 
     private final RateRepository rates;
     private final SheetService sheets;
+    private final SheetRepository sheetStore;
 
-    public Dues(RateRepository rates, SheetService sheets) {
+    public Dues(RateRepository rates, SheetService sheets, SheetRepository sheetStore) {
         this.rates = rates;
         this.sheets = sheets;
+        this.sheetStore = sheetStore;
     }
 
     /** The sheet as it is now: its today, its settings and its rates. */
@@ -85,6 +101,11 @@ public class Dues {
             @Override
             public int grace(String grade, LocalDate day) {
                 return sheets.grace(sheetId, grade, day);
+            }
+
+            @Override
+            public Optional<Rate> inherited(String grade, LocalDate day) {
+                return rates.findInForceUp(sheetStore.ancestors(sheetId), grade, day);
             }
         };
     }
@@ -242,7 +263,7 @@ public class Dues {
         List<BigDecimal> figures = theirs.stream().filter(c -> c.getStatus().counts())
                 .map(c -> figure(basis, person, c)).filter(d -> d != null).toList();
         LocalDate today = basis.today();
-        boolean rated = RateRepository.inForce(basis.rates(person.gradeOn(today)), today).isPresent();
+        boolean rated = basis.rateInForce(person.gradeOn(today), today).isPresent();
         if (!rated && figures.isEmpty()) {
             return null;
         }
@@ -252,12 +273,12 @@ public class Dues {
     }
 
     /** A claim's live due at the rate, in force on the claim's date, for the person's grade in force
-     *  on that date: amount
-     *  times pct divided by 100, rounded to two decimals by the claim's {@link #rounding} (the floor is
+     *  on that date (taken from the sheet's ancestors when it has none
+     *  of its own in force then): amount times pct divided by 100, rounded to two decimals by the claim's {@link #rounding} (the floor is
      *  applied later, see {@link #floored}); null when no rate applies on that date. */
     private BigDecimal due(Basis basis, Person person, Claim claim) {
         RoundingMode rounding = rounding(basis, claim);
-        return RateRepository.inForce(basis.rates(person.gradeOn(claim.getDate())), claim.getDate())
+        return basis.rateInForce(person.gradeOn(claim.getDate()), claim.getDate())
                 .map(Rate::getPct)
                 .map(pct -> claim.getAmount().multiply(pct).movePointLeft(2).setScale(2, rounding))
                 .orElse(null);

@@ -70,7 +70,7 @@ import { Session } from '../../core/session';
           <tr><th scope="col">Grade</th><th scope="col">From</th><th scope="col">To</th><th scope="col">Rate (%)</th></tr>
         </thead>
         <tbody>
-          @for (r of rates(); track r.grade + '-' + (r.from ?? 'start')) {
+          @for (r of own(); track r.grade + '-' + (r.from ?? 'start')) {
             <tr [attr.data-testid]="'rate-row-' + r.grade + '-' + (r.from ?? 'start')">
               <th scope="row">{{ r.grade }}</th>
               <td data-testid="rate-from">{{ r.from ?? 'start' }}</td>
@@ -87,8 +87,10 @@ export class RateForm {
   private readonly api = inject(Rates);
   protected readonly session = inject(Session);
 
-  /** The rates set on the sheet, by grade and then from-date. */
+  /** The rates set on the sheet, by grade and then from-date, then those of its ancestors. */
   readonly rates = input.required<Rate[]>();
+  /** The rates set on the sheet itself. */
+  protected readonly own = computed(() => this.rates().filter((r) => r.level === 0));
   /** A rate set through the form. */
   readonly saved = output<Rate>();
 

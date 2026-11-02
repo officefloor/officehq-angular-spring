@@ -25,6 +25,7 @@ import { Session } from '../../core/session';
         <button type="submit" data-testid="sheet-today-save">Set today</button>
       </form>
       <p>Archived: <strong data-testid="sheet-archived">{{ session.archived() ? 'yes' : 'no' }}</strong></p>
+      <p>Parent sheet: <strong data-testid="sheet-parent">{{ session.parent() ?? '' }}</strong></p>
       <button type="button" data-testid="sheet-archive" (click)="archive()">Archive sheet</button>
       @if (sheetError()) {
         <p role="alert" data-testid="sheet-error">{{ sheetError() }}</p>

@@ -4,6 +4,7 @@ import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import java.util.function.Function;
 import java.util.stream.Collectors;
 import net.officefloor.hq.app.Audit;
@@ -88,6 +89,11 @@ public class RateService {
             public int grace(String g, LocalDate day) {
                 return now.grace(g, day);
             }
+
+            @Override
+            public Optional<Rate> inherited(String g, LocalDate day) {
+                return g.equals(grade) ? Optional.empty() : now.inherited(g, day);
+            }
         };
         Map<Long, Person> byId = people.findBySheetIdOrderByIdAsc(sheetId).stream()
                 .collect(Collectors.toMap(Person::getId, Function.identity()));
@@ -116,6 +122,13 @@ public class RateService {
     @Transactional(readOnly = true)
     public List<Rate> list(String sheetId) {
         return rates.findBySheetIdOrdered(sheetId);
+    }
+
+    /** The rates set on each of the sheet's ancestors, nearest first (its parent's, then the
+     *  parent's parent's, up to three levels up), each by grade and then from-date. */
+    @Transactional(readOnly = true)
+    public List<List<Rate>> inherited(String sheetId) {
+        return sheets.ancestors(sheetId).stream().map(rates::findBySheetIdOrdered).toList();
     }
 
     /** Set the rate for a grade from a date (null: from the beginning of time) through a date

@@ -995,8 +995,8 @@ export class PeopleList {
   protected rateSaved(rate: Rate): void {
     const key = (r: Rate) => r.grade + (r.from ?? '');
     this.rates.update((rs) =>
-      [...rs.filter((r) => r.grade !== rate.grade || r.from !== rate.from), rate].sort((a, b) =>
-        key(a) < key(b) ? -1 : key(a) > key(b) ? 1 : 0,
+      [...rs.filter((r) => r.level !== rate.level || r.grade !== rate.grade || r.from !== rate.from), rate].sort((a, b) =>
+        a.level - b.level || (key(a) < key(b) ? -1 : key(a) > key(b) ? 1 : 0),
       ),
     );
   }

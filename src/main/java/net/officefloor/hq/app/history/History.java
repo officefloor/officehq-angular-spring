@@ -53,7 +53,8 @@ public class History {
      *  policy date (null when blank) and periods (earliest first) then, all detached and never saved;
      *  and the basis its figures are worked out on, the day standing in for its today. */
     public record SheetAsOf(LocalDate day, Dues.Basis basis, Map<Long, Person> people, List<Claim> claims,
-            List<Rate> rates, List<SettingValue> settings, LocalDate policyDate, List<Period> periods) {
+            List<Rate> rates, List<SettingValue> settings, LocalDate policyDate, List<Period> periods,
+            List<List<Rate>> inherited) {
 
         /** The person as they stood then; empty when they were not on the sheet yet. */
         public Optional<Person> person(long personId) {
@@ -172,11 +173,7 @@ public class History {
         List<Claim> claimsThen = lastOn(claimRevisions.findBySheetIdOrderByIdAsc(sheetId),
                 ClaimRevision::getRecordedOn, ClaimRevision::getClaimId, day).values().stream()
                 .map(ClaimRevision::toClaim).toList();
-        List<Rate> ratesThen = lastOn(rateRevisions.findBySheetIdOrderByIdAsc(sheetId), RateRevision::getRecordedOn,
-                RateRevision::key, day).values().stream().map(RateRevision::toRate)
-                .sorted(Comparator.comparing(Rate::getFromDate, Comparator.nullsFirst(Comparator.<LocalDate>naturalOrder()))
-                        .reversed())
-                .toList();
+        List<Rate> ratesThen = ratesThen(sheetId, day);
         List<SettingValue> settingsThen = lastOn(settingRevisions.findBySheetIdOrderByIdAsc(sheetId),
                 SettingRevision::getRecordedOn, SettingRevision::key, day).values().stream()
                 .map(SettingRevision::toValue)
@@ -187,9 +184,9 @@ public class History {
         List<Period> periodsThen = lastOn(periodRevisions.findBySheetIdOrderByIdAsc(sheetId),
                 PeriodRevision::getRecordedOn, PeriodRevision::getPeriodId, day).values().stream()
                 .map(PeriodRevision::toPeriod).sorted(Comparator.comparing(Period::getFromDate)).toList();
-        List<Rate> ratesListed = ratesThen.stream().sorted(Comparator.comparing(Rate::getGrade)
-                .thenComparing(Rate::getFromDate, Comparator.nullsFirst(Comparator.<LocalDate>naturalOrder())))
-                .toList();
+        List<Rate> ratesListed = listed(ratesThen);
+        // the parent is not dated: the ancestors are the sheet's now, each one's rates as they stood then
+        List<List<Rate>> inheritedThen = sheets.ancestors(sheetId).stream().map(id -> ratesThen(id, day)).toList();
         Dues.Basis basis = new Dues.Basis() {
             @Override
             public LocalDate today() {
@@ -228,8 +225,38 @@ public class History {
                 return inForce(settingsThen, "grace-" + grade, on).map(SettingValue::getValue)
                         .map(BigDecimal::intValue).orElse(0);
             }
+
+            @Override
+            public Optional<Rate> inherited(String grade, LocalDate on) {
+                for (List<Rate> theirs : inheritedThen) {
+                    Optional<Rate> rate = RateRepository.inForce(
+                            theirs.stream().filter(r -> r.getGrade().equals(grade)).toList(), on);
+                    if (rate.isPresent()) {
+                        return rate;
+                    }
+                }
+                return Optional.empty();
+            }
         };
-        return new SheetAsOf(day, basis, then, claimsThen, ratesListed, settingsThen, policyDate, periodsThen);
+        return new SheetAsOf(day, basis, then, claimsThen, ratesListed, settingsThen, policyDate, periodsThen,
+                inheritedThen.stream().map(History::listed).toList());
+    }
+
+    /** A sheet's rates as they stood at the end of a day, the latest from-date first and the one with
+     *  none last. */
+    private List<Rate> ratesThen(String sheetId, LocalDate day) {
+        return lastOn(rateRevisions.findBySheetIdOrderByIdAsc(sheetId), RateRevision::getRecordedOn,
+                RateRevision::key, day).values().stream().map(RateRevision::toRate)
+                .sorted(Comparator.comparing(Rate::getFromDate, Comparator.nullsFirst(Comparator.<LocalDate>naturalOrder()))
+                        .reversed())
+                .toList();
+    }
+
+    /** Rates by grade and then from-date, the one with no from-date first. */
+    private static List<Rate> listed(List<Rate> rates) {
+        return rates.stream().sorted(Comparator.comparing(Rate::getGrade)
+                .thenComparing(Rate::getFromDate, Comparator.nullsFirst(Comparator.<LocalDate>naturalOrder())))
+                .toList();
     }
 
     /** The value of a setting in force on a day among values given latest from-date first. */

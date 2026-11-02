@@ -12,6 +12,9 @@ export interface Rate {
   from: string | null;
   /** The last day (yyyy-mm-dd) the rate applies; null when it has no end. */
   to: string | null;
+  /** The sheet the rate is set on: 0 for this sheet, 1 for its parent, 2 for the parent's parent,
+   *  and so on. */
+  level: number;
 }
 
 /** What a candidate rate would change: how many open and pending claims would show a different
@@ -21,10 +24,21 @@ export interface RatePreview {
   diff: string;
 }
 
-/** The percent of a grade's rate in force on a day: the rate with the latest from-date on or
- *  before it, or else the one with no from-date; undefined when the day is before every rate, or
- *  after the to-date of that rate. */
+/** The percent of a grade's rate in force on a day: on this sheet, or else, when it has none in
+ *  force on it, on the nearest ancestor that has (see {@link levelPctOn}); undefined when none has. */
 export function pctOn(rates: Rate[], grade: Grade, day: string): string | undefined {
+  const levels = [...new Set(rates.map((r) => r.level))].sort((a, b) => a - b);
+  for (const level of levels) {
+    const pct = levelPctOn(rates.filter((r) => r.level === level), grade, day);
+    if (pct !== undefined) return pct;
+  }
+  return undefined;
+}
+
+/** The percent of a grade's rate in force on a day among the rates of one sheet: the rate with the
+ *  latest from-date on or before it, or else the one with no from-date; undefined when the day is
+ *  before every rate, or after the to-date of that rate. */
+function levelPctOn(rates: Rate[], grade: Grade, day: string): string | undefined {
   let best: Rate | undefined;
   for (const r of rates) {
     if (r.grade !== grade || (r.from !== null && r.from > day)) continue;
@@ -80,6 +94,7 @@ export class Rates {
   private readonly http = inject(HttpClient);
   private readonly session = inject(Session);
 
+  /** The rates set on the sheet (level 0), then those of its ancestors, nearest first. */
   list(sheetId: string): Promise<Rate[]> {
     return firstValueFrom(this.http.get<Rate[]>(this.url(sheetId)));
   }

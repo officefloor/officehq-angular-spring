@@ -1,5 +1,7 @@
 package net.officefloor.hq.app.sheet;
 
+import java.util.ArrayList;
+import java.util.List;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Modifying;
 import org.springframework.data.jpa.repository.Query;
@@ -32,4 +34,23 @@ public interface SheetRepository extends JpaRepository<Sheet, String> {
 
     @Query("select s.lastSettleBatch from Sheet s where s.id = :id")
     Integer lastSettleBatch(String id);
+
+    /** How many levels up a sheet's rates are taken from: its parent, its parent's parent, and so on. */
+    int ANCESTOR_LEVELS = 3;
+
+    /** The ids of a sheet's ancestors, nearest first: its parent, then the parent's parent, up to
+     *  {@link #ANCESTOR_LEVELS} levels up; empty when it has no parent. */
+    default List<String> ancestors(String id) {
+        List<String> up = new ArrayList<>();
+        String at = id;
+        while (up.size() < ANCESTOR_LEVELS) {
+            String parent = findById(at).map(Sheet::getParentId).orElse(null);
+            if (parent == null || parent.equals(id) || up.contains(parent)) {
+                break;
+            }
+            up.add(parent);
+            at = parent;
+        }
+        return up;
+    }
 }

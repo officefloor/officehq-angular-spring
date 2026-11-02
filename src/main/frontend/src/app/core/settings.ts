@@ -56,6 +56,9 @@ export interface Settings {
   /** The pot a balanced pool's members cut by their shares, as text with two decimals; null when
    *  blank (none). Not dated. */
   pot: string | null;
+  /** The parent sheet's id: a grade with no rate in force on a date on this sheet takes the
+   *  parent's, then its parent's, up to three levels up; null when blank (none). Not dated. */
+  parent: string | null;
 }
 
 /** The grace days recorded for each grade (null: blank, none), each from its from-date, earliest
@@ -249,6 +252,12 @@ export class SheetSettings {
   setPot(value: string | null): Promise<Settings> {
     const [sheetId, headers] = this.active();
     return firstValueFrom(this.http.put<Settings>(`${this.url(sheetId)}/settings/pot`, { value }, { headers }));
+  }
+
+  /** Set the parent sheet; null for blank (none). */
+  setParent(value: string | null): Promise<Settings> {
+    const [sheetId, headers] = this.active();
+    return firstValueFrom(this.http.put<Settings>(`${this.url(sheetId)}/settings/parent`, { value }, { headers }));
   }
 
   /** Set the roles (comma separated; null for blank, the standing rule) that may take an action. */

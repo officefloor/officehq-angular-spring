@@ -10,6 +10,7 @@ interface SheetView {
   id: string;
   today: string;
   archived: boolean;
+  parent: string | null;
 }
 
 // Who is signed in and which sheet is active. Everything else in the app is kept per sheet.
@@ -29,6 +30,8 @@ export class Session {
   readonly today = computed(() => this.asOf() ?? this.sheetToday());
   /** Whether the active sheet is archived: it stays visible and refuses every change. */
   readonly archived = signal(false);
+  /** The active sheet's parent's id; null when it has none. */
+  readonly parent = signal<string | null>(null);
   /** The sheet whose people and claims are on screen: set once a load of them has been read, so the
    *  sheet shows as loaded only when its rows are there to act on. */
   readonly shownId = signal<string | null>(null);
@@ -43,6 +46,7 @@ export class Session {
     this.sheetToday.set(null);
     this.asOf.set(null);
     this.archived.set(false);
+    this.parent.set(null);
   }
 
   /** Record that the sheet's people and claims, as read for its latest load, are on screen. */
@@ -99,6 +103,7 @@ export class Session {
     this.sheetId.set(sheet.id);
     this.sheetToday.set(sheet.today);
     this.archived.set(sheet.archived);
+    this.parent.set(sheet.parent);
   }
 
   private bumpLoads(): void {

@@ -2,9 +2,11 @@ package net.officefloor.hq.app.sheet;
 
 import java.math.BigDecimal;
 import java.time.LocalDate;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import java.util.Set;
 import java.util.TreeMap;
 import net.officefloor.hq.app.Audit;
 import net.officefloor.hq.app.claim.ClaimRepository;
@@ -428,6 +430,58 @@ public class SheetService {
         audit.recordOnCommit("SETTING_CHANGED sheet=" + id + " by=" + user + " key=pot value="
                 + (pot == null ? "" : pot.setScale(2).toPlainString()));
         return saved;
+    }
+
+    /** The sheet's parent's id; null when blank (none). */
+    @Transactional(readOnly = true)
+    public String parent(String id) {
+        return sheets.findById(id).map(Sheet::getParentId).orElse(null);
+    }
+
+    /** Change the sheet's parent (null: blank, none), then the figures it moves are recorded.
+     *  Refused when the parent is the sheet itself, has the sheet as an ancestor, or is a sheet that
+     *  was never loaded. */
+    @Transactional
+    public synchronized Sheet setParent(String id, String user, String parent) {
+        Sheet sheet = load(id, user);
+        if (parent != null) {
+            if (parent.equals(id)) {
+                throw new ResponseStatusException(HttpStatus.CONFLICT, "A sheet cannot be its own parent");
+            }
+            if (!sheets.existsById(parent)) {
+                throw new ResponseStatusException(HttpStatus.NOT_FOUND, "No sheet " + parent);
+            }
+            if (hasAncestor(parent, id)) {
+                throw new ResponseStatusException(HttpStatus.CONFLICT, "The parent has this sheet as an ancestor");
+            }
+        }
+        return rollup.tracking(id, user, () -> {
+            sheet.setParentId(parent);
+            Sheet saved = sheets.saveAndFlush(sheet);
+            audit.recordOnCommit("SETTING_CHANGED sheet=" + id + " by=" + user + " key=parent value="
+                    + (parent == null ? "" : parent));
+            return saved;
+        });
+    }
+
+    /** The ids of the sheet's ancestors, nearest first, up to three levels up (see
+     *  {@link SheetRepository#ancestors}). */
+    @Transactional(readOnly = true)
+    public List<String> ancestors(String id) {
+        return sheets.ancestors(id);
+    }
+
+    /** Whether a sheet has another among its ancestors, however many levels up. */
+    private boolean hasAncestor(String id, String ancestor) {
+        Set<String> seen = new HashSet<>();
+        String at = sheets.findById(id).map(Sheet::getParentId).orElse(null);
+        while (at != null && seen.add(at)) {
+            if (at.equals(ancestor)) {
+                return true;
+            }
+            at = sheets.findById(at).map(Sheet::getParentId).orElse(null);
+        }
+        return false;
     }
 
     /** The most a person's due-total on the sheet comes to: the cap in force on the sheet's today;

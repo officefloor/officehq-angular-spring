@@ -27,6 +27,18 @@ public interface RateRepository extends JpaRepository<Rate, Long> {
         return inForce(findLatestFirst(sheetId, grade), on);
     }
 
+    /** The rate of a grade in force on a day on the first of some sheets (a sheet's ancestors,
+     *  nearest first) that has one in force on it; empty when none has. */
+    default Optional<Rate> findInForceUp(List<String> sheetIds, String grade, LocalDate on) {
+        for (String sheetId : sheetIds) {
+            Optional<Rate> rate = findInForce(sheetId, grade, on);
+            if (rate.isPresent()) {
+                return rate;
+            }
+        }
+        return Optional.empty();
+    }
+
     /** Whether the rate of a grade that would apply on a day (the one with the latest from-date on
      *  or before it, or else the one with no from-date) has ended before it. */
     default boolean endedBefore(String sheetId, String grade, LocalDate on) {

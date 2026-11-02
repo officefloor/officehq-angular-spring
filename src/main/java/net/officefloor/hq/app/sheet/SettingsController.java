@@ -44,19 +44,21 @@ public class SettingsController {
      *  force (a grade not in it has none), and the grace days recorded for each grade, each from its
      *  from-date, earliest first (null: blank, none); and the proof threshold each grade has of its
      *  own in force, as text with two decimals (a grade not in it takes the sheet's); and the pot as
-     *  text with two decimals (null when there is none). */
+     *  text with two decimals (null when there is none); and the parent sheet's id (null when there is
+     *  none). */
     public record SettingsView(String clerkLimit, String floor, int terms, String latePct, LocalDate policyDate,
             LocalDate periodNumberingFrom, Map<String, Integer> gradeTerms, String cap, List<DatedValue> floors,
             List<DatedValue> latePcts, List<DatedValue> caps, String proofThreshold,
             Map<String, String> permissions, Integer graceDays, String noteThreshold, LocalDate entryDate,
             Map<String, Integer> gradeGraces, Map<String, List<DatedDays>> graces,
-            Map<String, String> gradeProofThresholds, String pot) {
+            Map<String, String> gradeProofThresholds, String pot, String parent) {
         static SettingsView of(BigDecimal clerkLimit, BigDecimal floor, int terms, BigDecimal latePct,
                 LocalDate policyDate, LocalDate periodNumberingFrom, Map<String, Integer> gradeTerms,
                 BigDecimal cap, List<SettingValue> floors, List<SettingValue> latePcts,
                 List<SettingValue> caps, BigDecimal proofThreshold, Map<String, String> permissions,
                 Integer graceDays, BigDecimal noteThreshold, LocalDate entryDate, Map<String, Integer> gradeGraces,
-                Map<String, List<SettingValue>> graces, Map<String, BigDecimal> gradeProofThresholds, BigDecimal pot) {
+                Map<String, List<SettingValue>> graces, Map<String, BigDecimal> gradeProofThresholds, BigDecimal pot,
+                String parent) {
             Map<String, List<DatedDays>> gracesView = new TreeMap<>();
             graces.forEach((grade, values) -> gracesView.put(grade, values.stream().map(DatedDays::of).toList()));
             Map<String, String> thresholdsView = new TreeMap<>();
@@ -68,7 +70,7 @@ public class SettingsController {
                     caps.stream().map(DatedValue::of).toList(),
                     proofThreshold == null ? null : proofThreshold.setScale(2).toPlainString(), permissions, graceDays,
                     noteThreshold == null ? null : noteThreshold.setScale(2).toPlainString(), entryDate, gradeGraces,
-                    gracesView, thresholdsView, pot == null ? null : pot.setScale(2).toPlainString());
+                    gracesView, thresholdsView, pot == null ? null : pot.setScale(2).toPlainString(), parent);
         }
     }
 
@@ -230,6 +232,14 @@ public class SettingsController {
         }
     }
 
+    /** The parent form: a sheet id, or blank for none; not dated. */
+    public record ParentForm(@Size(max = 100) String value) {
+
+        String parentValue() {
+            return value == null || value.isBlank() ? null : value.trim();
+        }
+    }
+
     /** The permission form: a comma separated list of roles (clerk, steward), or blank for the
      *  standing rule. */
     public record PermissionForm(@Size(max = 200)
@@ -285,7 +295,7 @@ public class SettingsController {
                 then.recorded("floor"), then.recorded("late-pct"), then.recorded("cap"),
                 value.apply("proof-threshold"), service.permissions(id), service.graceDays(id),
                 value.apply("note-threshold"), service.entryDate(id), gradeGraces, graces,
-                gradeProofThresholds, service.pot(id));
+                gradeProofThresholds, service.pot(id), service.parent(id));
     }
 
     /** The settings view of a sheet as the store holds it now. */
@@ -295,7 +305,7 @@ public class SettingsController {
                 service.recorded(id, "floor"), service.recorded(id, "late-pct"),
                 service.recorded(id, "cap"), service.proofThreshold(id), service.permissions(id),
                 service.graceDays(id), service.noteThreshold(id), service.entryDate(id), service.gradeGraces(id),
-                gracesOf(id), service.gradeProofThresholds(id), service.pot(id));
+                gracesOf(id), service.gradeProofThresholds(id), service.pot(id), service.parent(id));
     }
 
     /** The grace days recorded for each grade of a sheet, earliest from-date first. */
@@ -419,6 +429,13 @@ public class SettingsController {
             @RequestHeader("X-User") @NotBlank @Size(max = 100) String user,
             @Valid @RequestBody PotForm form) {
         return view(service.setPot(sheetId.trim(), user.trim(), form.potValue()));
+    }
+
+    @PutMapping("/parent")
+    public SettingsView setParent(@PathVariable @NotBlank @Size(max = 100) String sheetId,
+            @RequestHeader("X-User") @NotBlank @Size(max = 100) String user,
+            @Valid @RequestBody ParentForm form) {
+        return view(service.setParent(sheetId.trim(), user.trim(), form.parentValue()));
     }
 
     @PutMapping("/permissions/{action}")

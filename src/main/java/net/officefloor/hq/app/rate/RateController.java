@@ -8,6 +8,7 @@ import jakarta.validation.constraints.Pattern;
 import jakarta.validation.constraints.Size;
 import java.math.BigDecimal;
 import java.time.LocalDate;
+import java.util.ArrayList;
 import java.util.List;
 import net.officefloor.hq.app.history.History;
 import net.officefloor.hq.app.sheet.AsOfGuard;
@@ -28,11 +29,17 @@ import org.springframework.web.bind.annotation.RestController;
 public class RateController {
 
     /** What the screen shows of a rate; the percent as text with two decimals, the from-date
-     *  (null when it applies from the beginning of time) and the to-date (null when it has no end). */
-    public record RateView(String grade, String pct, LocalDate from, LocalDate to) {
+     *  (null when it applies from the beginning of time) and the to-date (null when it has no end);
+     *  and the level it is set on: 0 for the sheet itself, 1 for its parent, 2 for the parent's
+     *  parent, and so on. */
+    public record RateView(String grade, String pct, LocalDate from, LocalDate to, int level) {
         static RateView of(Rate rate) {
+            return of(rate, 0);
+        }
+
+        static RateView of(Rate rate, int level) {
             return new RateView(rate.getGrade(), rate.getPct().setScale(2).toPlainString(), rate.getFromDate(),
-                    rate.getToDate());
+                    rate.getToDate(), level);
         }
     }
 
@@ -61,13 +68,21 @@ public class RateController {
     }
 
     /** The rates on the sheet; as of a day when one is given, as they stood at the end of it (see
-     *  {@link History}). */
+     *  {@link History}); then the rates of its ancestors, nearest first, likewise as of that day when
+     *  one is given (a grade with no rate in force on a date on the sheet takes theirs). */
     @GetMapping
     public List<RateView> list(@PathVariable @NotBlank @Size(max = 100) String sheetId,
             @RequestHeader(value = AsOfGuard.HEADER, required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE)
             LocalDate asOf) {
-        List<Rate> rates = asOf != null ? history.asOf(sheetId.trim(), asOf).rates() : service.list(sheetId.trim());
-        return rates.stream().map(RateView::of).toList();
+        History.SheetAsOf then = asOf != null ? history.asOf(sheetId.trim(), asOf) : null;
+        List<Rate> rates = then != null ? then.rates() : service.list(sheetId.trim());
+        List<RateView> views = new ArrayList<>(rates.stream().map(RateView::of).toList());
+        List<List<Rate>> inherited = then != null ? then.inherited() : service.inherited(sheetId.trim());
+        for (int i = 0; i < inherited.size(); i++) {
+            int level = i + 1;
+            inherited.get(i).forEach(rate -> views.add(RateView.of(rate, level)));
+        }
+        return views;
     }
 
     /** What the screen shows of a rate preview: the count and the sum of the differences as text with
