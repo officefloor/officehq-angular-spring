@@ -14,6 +14,7 @@ import net.officefloor.hq.app.Audit;
 import net.officefloor.hq.app.claim.Claim;
 import net.officefloor.hq.app.claim.ClaimRepository;
 import net.officefloor.hq.app.claim.Dues;
+import net.officefloor.hq.app.history.History;
 import net.officefloor.hq.app.person.Person;
 import net.officefloor.hq.app.person.PersonRepository;
 import net.officefloor.hq.app.sheet.SheetService;
@@ -27,7 +28,7 @@ import org.springframework.transaction.annotation.Transactional;
  * out the single highest and the single lowest person's figure when three or more people have one
  * (a due-total of n/a is no figure). A change made through {@link #tracking} is followed in the audit by one
  * ROLLUP line per person whose figures it moved (in the order they were added), then a TOTALS line
- * when the sheet's totals moved.
+ * when the sheet's totals moved; and the sheet's {@link History} records what it changed.
  */
 @Service
 public class Rollup {
@@ -49,22 +50,27 @@ public class Rollup {
     private final ClaimRepository claims;
     private final Dues dues;
     private final SheetService sheets;
+    private final History history;
     private final Audit audit;
 
-    public Rollup(PersonRepository people, ClaimRepository claims, Dues dues, SheetService sheets, Audit audit) {
+    public Rollup(PersonRepository people, ClaimRepository claims, Dues dues, SheetService sheets, History history,
+            Audit audit) {
         this.people = people;
         this.claims = claims;
         this.dues = dues;
         this.sheets = sheets;
+        this.history = history;
         this.audit = audit;
     }
 
     /** Make a change on the sheet, then record in the audit, after the change's own records, the
-     *  figures it moved. A change that is refused records nothing. */
+     *  figures it moved, and in the sheet's history what it changed. A change that is refused records
+     *  nothing. */
     @Transactional(propagation = Propagation.MANDATORY)
     public <T> T tracking(String sheetId, String user, Supplier<T> change) {
         Snapshot before = snapshot(sheetId);
         T result = change.get();
+        history.record(sheetId);
         Snapshot after = snapshot(sheetId);
         String prefix = " sheet=" + sheetId + " by=" + user;
         after.people().forEach((id, figures) -> {

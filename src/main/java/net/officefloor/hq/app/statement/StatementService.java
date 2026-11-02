@@ -9,6 +9,7 @@ import net.officefloor.hq.app.Audit;
 import net.officefloor.hq.app.claim.Claim;
 import net.officefloor.hq.app.claim.ClaimRepository;
 import net.officefloor.hq.app.claim.Dues;
+import net.officefloor.hq.app.history.History;
 import net.officefloor.hq.app.rollup.Rollup;
 import net.officefloor.hq.app.person.Person;
 import net.officefloor.hq.app.person.PersonRepository;
@@ -36,10 +37,12 @@ public class StatementService {
     private final SheetService sheets;
     private final Rollup rollup;
     private final RoleService roles;
+    private final History history;
     private final Audit audit;
 
     public StatementService(StatementRepository statements, PersonRepository people, ClaimRepository claims,
-            Dues dues, SheetService sheets, Rollup rollup, RoleService roles, Audit audit) {
+            Dues dues, SheetService sheets, Rollup rollup, RoleService roles, History history, Audit audit) {
+        this.history = history;
         this.statements = statements;
         this.people = people;
         this.claims = claims;
@@ -71,26 +74,47 @@ public class StatementService {
      *  holds) is unbound. */
     @Transactional
     public Taken take(String sheetId, String user, long personId) {
+        return take(sheetId, user, personId, null);
+    }
+
+    /** Take a statement of a person as of a day (null: the sheet's today) on or before the sheet's
+     *  today: the sheet as it stood at the end of that day (see {@link History}) stands in for it as
+     *  it is now, that day for its today. Their due-total then is recorded, and each claim of theirs
+     *  that counted in the live totals then is bound to the rate figure it had then; every other claim
+     *  of theirs is unbound. Refused when the day is after the sheet's today, or when the person was
+     *  not on the sheet yet then. */
+    @Transactional
+    public Taken take(String sheetId, String user, long personId, LocalDate asOf) {
+        LocalDate today = sheets.today(sheetId);
+        if (asOf != null && asOf.isAfter(today)) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
+                    "A statement cannot be taken as of a day after the sheet's today");
+        }
         Person person = people.lockByIdAndSheetId(personId, sheetId)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "No such person on this sheet"));
+        History.SheetAsOf then = asOf == null ? null : history.asOf(sheetId, asOf);
+        Person was = then == null ? person : then.person(personId)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.CONFLICT,
+                        "The person was not on the sheet yet on that day"));
         List<Claim> bound = rollup.tracking(sheetId, user, () -> {
-            LocalDate today = sheets.today(sheetId);
             List<Claim> theirs = claims.findBySheetIdAndPersonIdOrderByListedDesc(sheetId, personId);
-            BigDecimal dueTotal = dues.dueTotal(sheetId, person, Dues.live(person, theirs, today));
-            int counted = 0;
+            Dues.Basis basis = then == null ? dues.now(sheetId) : then.basis();
+            List<Claim> counted = Dues.live(was, then == null ? theirs : then.claimsOf(personId), basis.today());
+            BigDecimal dueTotal = dues.dueTotal(basis, was, counted);
+            Map<Long, Claim> countedById = counted.stream().collect(Collectors.toMap(Claim::getId, c -> c));
             for (Claim claim : theirs) {
-                if (Dues.countsLive(person, claim, today)) {
-                    counted++;
-                    claim.bind(true, dues.bindable(sheetId, person, claim), dues.bindsNa(sheetId, person, claim));
+                Claim figured = countedById.get(claim.getId());
+                if (figured != null) {
+                    claim.bind(true, dues.bindable(basis, was, figured), dues.bindsNa(basis, was, figured));
                 } else {
                     claim.bind(false, null);
                 }
             }
             claims.saveAllAndFlush(theirs);
-            statements.saveAndFlush(new Statement(sheetId, personId, today, user, dueTotal, counted));
+            statements.saveAndFlush(new Statement(sheetId, personId, today, user, dueTotal, counted.size(), asOf));
             audit.recordOnCommit("STATEMENT sheet=" + sheetId + " by=" + user + " name=" + person.getName()
                     + " due-total=" + (dueTotal == null ? "n/a" : dueTotal.setScale(2).toPlainString())
-                    + " claims=" + counted);
+                    + " claims=" + counted.size() + (asOf != null ? " asof=" + asOf : ""));
             return theirs;
         });
         return new Taken(person, summary(sheetId, personId), bound);

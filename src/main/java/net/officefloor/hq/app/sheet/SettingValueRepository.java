@@ -13,4 +13,7 @@ public interface SettingValueRepository extends JpaRepository<SettingValue, Sett
 
     /** The values recorded for a setting, earliest from-date first. */
     List<SettingValue> findBySheetIdAndKeyOrderByFrom(String sheetId, String key);
+
+    /** Every value recorded for every dated setting of a sheet. */
+    List<SettingValue> findBySheetId(String sheetId);
 }

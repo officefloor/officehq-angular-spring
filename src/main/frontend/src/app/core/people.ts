@@ -129,12 +129,12 @@ export class People {
     );
   }
 
-  /** Take a statement of the person: their due-total now is recorded and each claim of theirs that
-   *  counts is bound to the figure it has now. */
-  statement(id: number): Promise<Taken> {
+  /** Take a statement of the person as of a day (null: the sheet's today): their due-total then is
+   *  recorded and each claim of theirs that counted then is bound to the figure it had then. */
+  statement(id: number, asOf: string | null): Promise<Taken> {
     const { sheetId, user } = this.active();
     return firstValueFrom(
-      this.http.post<Taken>(`${this.url(sheetId)}/${id}/statements`, null, { headers: { 'X-User': user } }),
+      this.http.post<Taken>(`${this.url(sheetId)}/${id}/statements`, { asOf }, { headers: { 'X-User': user } }),
     );
   }
 

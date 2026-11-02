@@ -130,6 +130,18 @@ public class Claim {
     protected Claim() {
     }
 
+    /** The claim as a revision of it has it, detached: for working out figures only, never saved. */
+    static Claim revised(ClaimRevision revision) {
+        Claim claim = new Claim(revision.getSheetId(), revision.getPersonId(), revision.getAmount(),
+                revision.getDate(), "", null, revision.getCorrectedDate(), revision.getDueBy());
+        claim.id = revision.getClaimId();
+        claim.status = revision.getStatus();
+        claim.settledDue = revision.getSettledDue();
+        claim.bind(revision.isStated(), revision.getStatedDue(), revision.isStatedNa());
+        claim.deferredUntil = revision.getDeferredUntil();
+        return claim;
+    }
+
     public Claim(String sheetId, Long personId, BigDecimal amount, LocalDate date, String note, String corrects,
             LocalDate correctedDate, LocalDate dueBy) {
         this.sheetId = sheetId;

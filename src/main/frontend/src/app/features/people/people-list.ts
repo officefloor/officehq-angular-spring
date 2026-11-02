@@ -132,7 +132,9 @@ const NO_LEAVE: Leave = { holds: [], retiredFrom: null };
               <td>
                 <button type="button" [attr.data-testid]="'person-edit-' + p.id" (click)="open(p)"
                   [attr.aria-label]="'Edit ' + p.name">Edit</button>
-                <button type="button" data-testid="person-statement" (click)="statement(p)"
+                <label [for]="'person-statement-asof-' + p.id" class="visually-hidden">Take the statement of {{ p.name }} as of</label>
+                <input #statementAsOf type="date" [id]="'person-statement-asof-' + p.id" data-testid="person-statement-asof" />
+                <button type="button" data-testid="person-statement" (click)="statement(p, statementAsOf)"
                   [attr.aria-label]="'Take a statement of ' + p.name">Statement</button>
                 <button type="button" data-testid="person-unstate" (click)="unstate(p)"
                   [attr.aria-label]="'Cancel the last statement of ' + p.name">Cancel statement</button>
@@ -402,14 +404,16 @@ export class PeopleList {
     this.error.set('');
   }
 
-  /** Take a statement of the person, then show them and their claims as it left them. */
-  protected async statement(p: Person): Promise<void> {
+  /** Take a statement of the person as of the day entered (blank: now), then show them and their
+   *  claims as it left them, and clear the day. */
+  protected async statement(p: Person, asOf: HTMLInputElement): Promise<void> {
     if (this.stating.has(p.id)) return;
     this.stating.add(p.id);
     this.personError.set(null);
     this.patronError.set(null);
     try {
-      this.showTaken(await this.api.statement(p.id));
+      this.showTaken(await this.api.statement(p.id, asOf.value || null));
+      asOf.value = '';
     } catch {
       this.personError.set({ id: p.id, message: 'The statement could not be taken.' });
     } finally {

@@ -24,16 +24,28 @@ public interface RateRepository extends JpaRepository<Rate, Long> {
      *  else the one with no from-date; empty when the day is before every rate of the grade, or
      *  after the to-date of that rate. */
     default Optional<Rate> findInForce(String sheetId, String grade, LocalDate on) {
-        return findLatestFirst(sheetId, grade).stream()
-                .filter(r -> r.getFromDate() == null || !r.getFromDate().isAfter(on))
-                .findFirst()
-                .filter(r -> r.getToDate() == null || !r.getToDate().isBefore(on));
+        return inForce(findLatestFirst(sheetId, grade), on);
     }
 
     /** Whether the rate of a grade that would apply on a day (the one with the latest from-date on
      *  or before it, or else the one with no from-date) has ended before it. */
     default boolean endedBefore(String sheetId, String grade, LocalDate on) {
-        return findLatestFirst(sheetId, grade).stream()
+        return endedBefore(findLatestFirst(sheetId, grade), on);
+    }
+
+    /** The rate in force on a day among a grade's rates given latest from-date first (see
+     *  {@link #findInForce}). */
+    static Optional<Rate> inForce(List<Rate> latestFirst, LocalDate on) {
+        return latestFirst.stream()
+                .filter(r -> r.getFromDate() == null || !r.getFromDate().isAfter(on))
+                .findFirst()
+                .filter(r -> r.getToDate() == null || !r.getToDate().isBefore(on));
+    }
+
+    /** Whether, among a grade's rates given latest from-date first, the one that would apply on a day
+     *  has ended before it (see {@link #endedBefore(String, String, LocalDate)}). */
+    static boolean endedBefore(List<Rate> latestFirst, LocalDate on) {
+        return latestFirst.stream()
                 .filter(r -> r.getFromDate() == null || !r.getFromDate().isAfter(on))
                 .findFirst()
                 .map(r -> r.getToDate() != null && r.getToDate().isBefore(on))

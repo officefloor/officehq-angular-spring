@@ -11,9 +11,32 @@ import net.officefloor.hq.app.rate.RateRepository;
 import net.officefloor.hq.app.sheet.SheetService;
 import org.springframework.stereotype.Service;
 
-/** The due figures of claims, and the due-totals of people, at the rates on a sheet. */
+/** The due figures of claims, and the due-totals of people, at the rates on a sheet: as they are
+ *  now, or on any other {@link Basis} (such as the sheet as it stood at the end of an earlier day). */
 @Service
 public class Dues {
+
+    /** What a sheet's figures are worked out from: its today, its dated settings and its rates. */
+    public interface Basis {
+
+        /** The day that stands in for the sheet's today. */
+        LocalDate today();
+
+        /** The floor in force on a day. */
+        BigDecimal floor(LocalDate day);
+
+        /** The late percent in force on a day. */
+        BigDecimal latePct(LocalDate day);
+
+        /** The cap in force on the basis's today; null when there is none. */
+        BigDecimal cap();
+
+        /** The policy date in force: the one set, or else the basis's today. */
+        LocalDate policyDateInForce();
+
+        /** The rates of a grade, the latest from-date first and the one with none last. */
+        List<Rate> rates(String grade);
+    }
 
     private final RateRepository rates;
     private final SheetService sheets;
@@ -23,32 +46,73 @@ public class Dues {
         this.sheets = sheets;
     }
 
+    /** The sheet as it is now: its today, its settings and its rates. */
+    public Basis now(String sheetId) {
+        return new Basis() {
+            @Override
+            public LocalDate today() {
+                return sheets.today(sheetId);
+            }
+
+            @Override
+            public BigDecimal floor(LocalDate day) {
+                return sheets.floor(sheetId, day);
+            }
+
+            @Override
+            public BigDecimal latePct(LocalDate day) {
+                return sheets.latePct(sheetId, day);
+            }
+
+            @Override
+            public BigDecimal cap() {
+                return sheets.cap(sheetId);
+            }
+
+            @Override
+            public LocalDate policyDateInForce() {
+                return sheets.policyDateInForce(sheetId);
+            }
+
+            @Override
+            public List<Rate> rates(String grade) {
+                return rates.findLatestFirst(sheetId, grade);
+            }
+        };
+    }
+
     /** The due figure a claim shows and totals: the one fixed when it was settled, or else its
      *  {@link #bindable} rate figure with the late charge on that figure on top while it is overdue,
      *  at least the sheet's floor in force on the claim's date (a correction has neither); null when
      *  there is none. */
     public BigDecimal figure(String sheetId, Person person, Claim claim) {
+        return figure(now(sheetId), person, claim);
+    }
+
+    /** The due figure a claim shows and totals on a basis (see {@link #figure(String, Person, Claim)}). */
+    public BigDecimal figure(Basis basis, Person person, Claim claim) {
         if (claim.getSettledDue() != null) {
             return claim.getSettledDue();
         }
-        return floored(sheetId, claim, bindable(sheetId, person, claim), claim.getStatus().isOpen());
+        return floored(basis, claim, bindable(basis, person, claim), claim.getStatus().isOpen());
     }
 
     /** The figure a claim would have today as an open claim bound by no statement: its rate figure
      *  with the late charge on top while it is overdue, at least the floor in force on its date; null
      *  when there is none. */
     public BigDecimal openFigure(String sheetId, Person person, Claim claim) {
-        return floored(sheetId, claim, due(sheetId, person, claim), true);
+        Basis basis = now(sheetId);
+        return floored(basis, claim, due(basis, person, claim), true);
     }
 
     /** A rate figure with its late charge (taken as open or not) on top, then at least the sheet's
      *  floor in force on the claim's date (a correction has no floor); null when the figure is. */
-    private BigDecimal floored(String sheetId, Claim claim, BigDecimal figure, boolean open) {
+    private BigDecimal floored(Basis basis, Claim claim, BigDecimal figure, boolean open) {
         if (figure == null) {
             return null;
         }
-        BigDecimal charged = figure.add(lateCharge(sheetId, claim, figure, open));
-        return claim.isCorrection() ? charged : charged.max(sheets.floor(sheetId, claim.getDate()));
+        BigDecimal charged = figure.add(lateCharge(basis, claim, figure, open));
+        return claim.isCorrection() ? charged : charged.max(basis.floor(claim.getDate()));
     }
 
     /** The rate figure a statement binds a claim to: the one its person's last statement bound it to,
@@ -56,21 +120,31 @@ public class Dues {
      *  never the late charge, which keeps following the sheet's today, nor the floor, which is applied
      *  last. Null when there is none, or when the statement bound it to n/a. */
     public BigDecimal bindable(String sheetId, Person person, Claim claim) {
+        return bindable(now(sheetId), person, claim);
+    }
+
+    /** The rate figure a statement binds a claim to on a basis (see {@link #bindable(String, Person, Claim)}). */
+    public BigDecimal bindable(Basis basis, Person person, Claim claim) {
         if (bound(claim) && (claim.getStatedDue() != null || claim.isStatedNa())) {
             return claim.getStatedDue();
         }
-        return due(sheetId, person, claim);
+        return due(basis, person, claim);
     }
 
     /** Whether a statement binds a claim to n/a: its person's last statement bound it to n/a, or
      *  else it has no bound figure and no live due because the rate that would apply to it on its
      *  date (for the person's grade on that date) has ended. */
     public boolean bindsNa(String sheetId, Person person, Claim claim) {
+        return bindsNa(now(sheetId), person, claim);
+    }
+
+    /** Whether a statement binds a claim to n/a on a basis (see {@link #bindsNa(String, Person, Claim)}). */
+    public boolean bindsNa(Basis basis, Person person, Claim claim) {
         if (bound(claim) && (claim.getStatedDue() != null || claim.isStatedNa())) {
             return claim.isStatedNa();
         }
-        return due(sheetId, person, claim) == null
-                && rates.endedBefore(sheetId, person.gradeOn(claim.getDate()), claim.getDate());
+        return due(basis, person, claim) == null
+                && RateRepository.endedBefore(basis.rates(person.gradeOn(claim.getDate())), claim.getDate());
     }
 
     /** Whether a claim is bound by its person's last statement now (a pending claim is not). */
@@ -82,19 +156,20 @@ public class Dues {
      *  made, before today; a correction has none): for each full 30 days it is overdue, the late percent in force on
      *  that boundary (its due-by plus 30, 60, 90 ... days) of its figure, rounded to two decimals by the claim's
      *  {@link #rounding}, the charges added up (a boundary whose percent is 0.00 adds nothing); 0.00 when it is not overdue. */
-    private BigDecimal lateCharge(String sheetId, Claim claim, BigDecimal figure, boolean open) {
+    private BigDecimal lateCharge(Basis basis, Claim claim, BigDecimal figure, boolean open) {
         BigDecimal none = BigDecimal.ZERO.setScale(2);
-        if (!open || claim.isCorrection() || claim.isDeferredOn(sheets.today(sheetId))) {
+        LocalDate today = basis.today();
+        if (!open || claim.isCorrection() || claim.isDeferredOn(today)) {
             return none;
         }
-        long periods = ChronoUnit.DAYS.between(claim.getDueBy(), sheets.today(sheetId)) / 30;
+        long periods = ChronoUnit.DAYS.between(claim.getDueBy(), today) / 30;
         if (periods <= 0) {
             return none;
         }
-        RoundingMode rounding = rounding(sheetId, claim);
+        RoundingMode rounding = rounding(basis, claim);
         BigDecimal charge = none;
         for (long n = 1; n <= periods; n++) {
-            BigDecimal pct = sheets.latePct(sheetId, claim.getDueBy().plusDays(30 * n));
+            BigDecimal pct = basis.latePct(claim.getDueBy().plusDays(30 * n));
             if (pct.signum() != 0) {
                 charge = charge.add(figure.multiply(pct).movePointLeft(2).setScale(2, rounding));
             }
@@ -136,15 +211,20 @@ public class Dues {
      *  cap in force on its today; null (n/a) when their grade on the sheet's today has no rate on it and no counting claim
      *  has a figure (one fixed, or a live due at the grade in force on its date). */
     public BigDecimal dueTotal(String sheetId, Person person, List<Claim> theirs) {
+        return dueTotal(now(sheetId), person, theirs);
+    }
+
+    /** A person's due-total on a basis (see {@link #dueTotal(String, Person, List)}). */
+    public BigDecimal dueTotal(Basis basis, Person person, List<Claim> theirs) {
         List<BigDecimal> figures = theirs.stream().filter(c -> c.getStatus().counts())
-                .map(c -> figure(sheetId, person, c)).filter(d -> d != null).toList();
-        LocalDate today = sheets.today(sheetId);
-        boolean rated = rates.findInForce(sheetId, person.gradeOn(today), today).isPresent();
+                .map(c -> figure(basis, person, c)).filter(d -> d != null).toList();
+        LocalDate today = basis.today();
+        boolean rated = RateRepository.inForce(basis.rates(person.gradeOn(today)), today).isPresent();
         if (!rated && figures.isEmpty()) {
             return null;
         }
         BigDecimal sum = figures.stream().reduce(BigDecimal.ZERO.setScale(2), BigDecimal::add);
-        BigDecimal cap = sheets.cap(sheetId);
+        BigDecimal cap = basis.cap();
         return cap == null ? sum : sum.min(cap);
     }
 
@@ -152,9 +232,9 @@ public class Dues {
      *  on that date: amount
      *  times pct divided by 100, rounded to two decimals by the claim's {@link #rounding} (the floor is
      *  applied later, see {@link #floored}); null when no rate applies on that date. */
-    private BigDecimal due(String sheetId, Person person, Claim claim) {
-        RoundingMode rounding = rounding(sheetId, claim);
-        return rates.findInForce(sheetId, person.gradeOn(claim.getDate()), claim.getDate())
+    private BigDecimal due(Basis basis, Person person, Claim claim) {
+        RoundingMode rounding = rounding(basis, claim);
+        return RateRepository.inForce(basis.rates(person.gradeOn(claim.getDate())), claim.getDate())
                 .map(Rate::getPct)
                 .map(pct -> claim.getAmount().multiply(pct).movePointLeft(2).setScale(2, rounding))
                 .orElse(null);
@@ -162,8 +242,8 @@ public class Dues {
 
     /** How a claim's live figures round: half up when the date it rounds by (a correction's is that of
      *  the claim it corrects) is before the sheet's policy date, else half to even. */
-    private RoundingMode rounding(String sheetId, Claim claim) {
-        return claim.roundsBy().isBefore(sheets.policyDateInForce(sheetId)) ? RoundingMode.HALF_UP
+    private RoundingMode rounding(Basis basis, Claim claim) {
+        return claim.roundsBy().isBefore(basis.policyDateInForce()) ? RoundingMode.HALF_UP
                 : RoundingMode.HALF_EVEN;
     }
 }

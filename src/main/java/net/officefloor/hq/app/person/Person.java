@@ -15,6 +15,7 @@ import java.time.LocalDate;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.List;
+import java.util.Objects;
 
 /** A person on a sheet: a name and a grade (A, B or C), dated: each grade applies from its from-date. */
 @Entity
@@ -55,6 +56,14 @@ public class Person {
     private long version;
 
     protected Person() {
+    }
+
+    /** A detached person with the id given and no grade yet, for a revision to fill in (see
+     *  {@link PersonRevision#toPerson}). */
+    Person(String sheetId, Long id, String name) {
+        this.sheetId = sheetId;
+        this.id = id;
+        this.name = name;
     }
 
     public Person(String sheetId, String name, String grade) {
@@ -98,9 +107,10 @@ public class Person {
         return on;
     }
 
-    /** Record a grade from a day, replacing the one recorded for that day, keeping the others. */
+    /** Record a grade from a day (null: the beginning of time), replacing the one recorded for that
+     *  day, keeping the others. */
     public void setGradeFrom(String grade, LocalDate from) {
-        grades.removeIf(g -> from.equals(g.getFromDate()));
+        grades.removeIf(g -> Objects.equals(from, g.getFromDate()));
         grades.add(new GradeFrom(from, grade));
     }
 
