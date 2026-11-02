@@ -1,0 +1,122 @@
+diff --git a/src/main/frontend/src/app/features/claims/person-claims.ts b/src/main/frontend/src/app/features/claims/person-claims.ts
+index 4a8218027..6c1e0b9f9 100644
+--- a/src/main/frontend/src/app/features/claims/person-claims.ts
++++ b/src/main/frontend/src/app/features/claims/person-claims.ts
+@@ -13,6 +13,9 @@ const REFUSALS: Record<ClaimAction, string> = {
+   void: 'Only a draft or open claim can be voided.',
+ };
+ 
++/** The message when an edit of a claim that is not a draft is refused. */
++const NOT_DRAFT = 'Only a draft claim can be edited; void an open claim and add a new one.';
++
+ /** The message when the server refused a change to a claim dated inside a closed period. */
+ const CLOSED = 'The claim\'s period is closed.';
+ 
+@@ -118,6 +121,10 @@ export class PersonClaims {
+ 
+   protected open(c: Claim): void {
+     this.claimError.set(null);
++    if (c.status !== 'DRAFT') {
++      this.claimError.set({ id: c.id, message: NOT_DRAFT });
++      return;
++    }
+     this.editing.set(c.id);
+     this.form.setValue({ amount: c.amount, date: c.date, note: c.note }, { emitEvent: false });
+     this.error.set('');
+@@ -142,6 +149,7 @@ export class PersonClaims {
+   protected async submit(): Promise<void> {
+     if (this.submitting) return;
+     this.error.set('');
++    this.claimError.set(null);
+     const { amount, date, note } = this.form.getRawValue();
+     if (!AMOUNT.test(amount.trim())) {
+       this.error.set('Enter an amount of 0.00 or more, with up to two decimals.');
+@@ -161,6 +169,9 @@ export class PersonClaims {
+       this.reset();
+     } catch (e) {
+       if (e instanceof HttpErrorResponse && e.status === 423) this.error.set(CLOSED);
++      else if (id !== null && e instanceof HttpErrorResponse && e.status === 409) {
++        this.claimError.set({ id, message: NOT_DRAFT });
++      }
+       else this.error.set(id === null ? 'The claim could not be added.' : 'The claim could not be saved.');
+     } finally {
+       this.submitting = false;
+diff --git a/src/main/java/net/officefloor/hq/app/claim/Claim.java b/src/main/java/net/officefloor/hq/app/claim/Claim.java
+index 7850d8ecd..4574d3c98 100644
+--- a/src/main/java/net/officefloor/hq/app/claim/Claim.java
++++ b/src/main/java/net/officefloor/hq/app/claim/Claim.java
+@@ -39,7 +39,8 @@ public class Claim {
+     @Column(name = "status", nullable = false)
+     private ClaimStatus status = ClaimStatus.DRAFT;
+ 
+-    /** The claim's number on its sheet, given when it is opened; null for a draft or a void claim. */
++    /** The claim's number on its sheet, given when it is opened and kept when voided; null for a
++     *  claim never opened. */
+     @Column(name = "number")
+     private Integer number;
+ 
+diff --git a/src/main/java/net/officefloor/hq/app/claim/ClaimService.java b/src/main/java/net/officefloor/hq/app/claim/ClaimService.java
+index 698a4b2e1..19cc489e4 100644
+--- a/src/main/java/net/officefloor/hq/app/claim/ClaimService.java
++++ b/src/main/java/net/officefloor/hq/app/claim/ClaimService.java
+@@ -57,12 +57,17 @@ public class ClaimService {
+         });
+     }
+ 
+-    /** Change a claim's amount, date and note; a date left out takes the sheet's today. Refused when
+-     *  the claim's date, or the new one, falls inside a closed period. */
++    /** Change a draft claim's amount, date and note; a date left out takes the sheet's today. Refused
++     *  when the claim is not a draft (an open claim is changed by voiding it and adding a new one), and
++     *  when the claim's date, or the new one, falls inside a closed period. */
+     @Transactional
+     public Claim edit(String sheetId, String user, long claimId, BigDecimal amount, LocalDate date, String note) {
+         Claim claim = claims.findByIdAndSheetId(claimId, sheetId)
+                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "No such claim on this sheet"));
++        if (claim.getStatus() != ClaimStatus.DRAFT) {
++            throw new ResponseStatusException(HttpStatus.CONFLICT,
++                    "A " + claim.getStatus() + " claim cannot be edited");
++        }
+         LocalDate on = date != null ? date : sheets.today(sheetId);
+         refuseClosed(sheetId, claim.getDate());
+         refuseClosed(sheetId, on);
+@@ -93,14 +98,11 @@ public class ClaimService {
+                     "The user who opened a claim cannot settle it");
+         }
+         return rollup.tracking(sheetId, user, () -> {
+-            // The number recorded for a void claim is the one it had.
+-            Integer number = claim.getNumber();
++            // A void claim keeps the number it had (never reused).
+             claim.setStatus(to);
+             if (to == ClaimStatus.OPEN) {
+                 claim.setNumber(sheets.nextClaimNumber(sheetId));
+                 claim.setOpenedBy(user);
+-            } else if (to == ClaimStatus.VOID) {
+-                claim.setNumber(null);
+             }
+             Person person = person(sheetId, claim.getPersonId());
+             if (to == ClaimStatus.SETTLED) {
+@@ -115,7 +117,7 @@ public class ClaimService {
+                 case VOID -> "CLAIM_VOIDED";
+                 case DRAFT -> throw new IllegalStateException("a claim never returns to DRAFT");
+             };
+-            String line = record(event, sheetId, user, person, saved, to == ClaimStatus.VOID ? number : saved.getNumber());
++            String line = record(event, sheetId, user, person, saved);
+             if (to == ClaimStatus.SETTLED) {
+                 line += " due=" + (saved.getSettledDue() == null ? "n/a" : saved.getSettledDue().setScale(2).toPlainString());
+             }
+@@ -136,13 +138,9 @@ public class ClaimService {
+                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "No such person on this sheet"));
+     }
+ 
+-    private static String record(String event, String sheetId, String user, Person person, Claim claim) {
+-        return record(event, sheetId, user, person, claim, claim.getNumber());
+-    }
+-
+     /** An audit record about a claim; one that has a number carries it at the end. */
+-    private static String record(String event, String sheetId, String user, Person person, Claim claim,
+-            Integer number) {
++    private static String record(String event, String sheetId, String user, Person person, Claim claim) {
++        Integer number = claim.getNumber();
+         return event + " sheet=" + sheetId + " by=" + user + " person=" + person.getName()
+                 + " amount=" + claim.getAmount().setScale(2).toPlainString() + " date=" + claim.getDate()
+                 + (number != null ? " number=" + number : "");

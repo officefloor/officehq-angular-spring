@@ -1,0 +1,86 @@
+{
+  "checkpoint": 20,
+  "stack": {
+    "repo": "/home/daniel/officehq-angular-spring",
+    "origin": "git@github.com:officefloor/officehq-angular-spring.git",
+    "name": "officehq-angular-spring",
+    "base_ref": "base-empty",
+    "base_commit": "65cb8233ea38b2dfa6cfd18709e30cd18fdf3250"
+  },
+  "checkpoint_id": "cp20_open-claims-immutable",
+  "phase": "early",
+  "type": "mutative",
+  "mutates": [
+    8,
+    9,
+    11,
+    14,
+    15,
+    16,
+    18,
+    19
+  ],
+  "replaced_tests": [
+    "cp08_workflow.spec.ts::workflow",
+    "cp09_numbering.spec.ts::numbering",
+    "cp11_rates-effective-dated.spec.ts::rates effective dated scenario 1",
+    "cp11_rates-effective-dated.spec.ts::rates effective dated scenario 2",
+    "cp14_edit-conflict.spec.ts::edit conflict scenario 1",
+    "cp14_edit-conflict.spec.ts::edit conflict scenario 2",
+    "cp15_statements.spec.ts::statements",
+    "cp15_statements.spec.ts::statements scenario 2",
+    "cp16_rollup-audit.spec.ts::rollup audit",
+    "cp16_rollup-audit.spec.ts::rollup audit scenario 3",
+    "cp18_close-period.spec.ts::close period scenario 1",
+    "cp19_quick-add.spec.ts::quick add scenario 1"
+  ],
+  "request": {
+    "spec": "An OPEN claim can no longer be edited; only a DRAFT can, and the edit of an open claim is refused\nwith an error on the claim. To change an open claim, void it and add a new one. A voided claim now\nkeeps its number (it is still never reused), and CLAIM_VOIDED carries it.\n",
+    "prompt": "You are implementing ONE change to this application.\n\nFIRST read AGENTS.md \u2014 it states the working rules and how the app is tested, and sends you to\nDESIGN.md for the app's stack and conventions. Follow both.\n\nTHE CHANGE REQUEST:\nAn OPEN claim can no longer be edited; only a DRAFT can, and the edit of an open claim is refused\nwith an error on the claim. To change an open claim, void it and add a new one. A voided claim now\nkeeps its number (it is still never reused), and CLAIM_VOIDED carries it.\n\nYour work is verified by an automated Playwright UI test already installed under e2e/specs/.\nRead that spec: it declares the exact data-testid anchors, values, test data and any audit\nrecords it expects \u2014 match them. Run `bin/e2e` to build the app, start it, and run the test as\nyou work; iterate until it passes. Change whatever the request needs across the app \u2014 its stored\ndata, its server and its front end. Do NOT edit bin/build, bin/start, bin/stop, bin/e2e,\nAGENTS.md, CLAUDE.md, DESIGN.md, e2e/support/ or the test spec.\n"
+  },
+  "commit_sha": "8b6df53345b493b4fef98f5bb019ead8b1e7ca23",
+  "reset_sha": "",
+  "preagent_sha": "b9d16aff58bc55ec3e34a52eb656a605f33408ac",
+  "prev_sha": "b9d16aff58bc55ec3e34a52eb656a605f33408ac",
+  "base_sha": "65cb8233ea38b2dfa6cfd18709e30cd18fdf3250",
+  "agent": {
+    "ok": true,
+    "cost_usd": 0.391178,
+    "input_tokens": 18,
+    "output_tokens": 4391,
+    "cache_read_tokens": 251870,
+    "cache_creation_tokens": 31614,
+    "num_turns": 10,
+    "duration_ms": 185054,
+    "duration_api_ms": 59966,
+    "model": "claude-opus-5-5",
+    "session_id": "3d6d5e5e-e1b1-4e19-b157-606c61f08253",
+    "stop_reason": "success",
+    "result_text": "The change is in, and all 4 acceptance tests pass under `bin/e2e`.\n\n**Server** (`claim/ClaimService.java`)\n- Only a DRAFT claim can now be edited. Editing a claim in any other status (OPEN, SETTLED or VOID) is refused with a 409 conflict. Nothing is written to the store or the audit file.\n- A voided claim now keeps its number. Numbers come from the sheet's running counter, so they are still never reused. The `CLAIM_VOIDED` record carries `number=N` because the claim still has one. A draft that was never opened has no number, so voiding it writes no number field.\n- I merged the two audit-record helpers into one, since nothing needs to pass a different number any more. I also updated the comment on `Claim.number` to say the number is kept on void.\n\n**Front end** (`features/claims/person-claims.ts`)\n- Pressing Edit on a claim that isn't a draft opens no editor. Instead the claim's row shows an error (`claim-error`): \"Only a draft claim can be edited; void an open claim and add a new one.\"\n- If the server still refuses a save with a 409 (for example, another user opened the claim in the meantime), the same error appears on that claim's row and the editor stays open.\n- Submitting the form again now clears that error.\n\nThe database schema didn't need to change. One thing to know: claims voided before this change already had their numbers cleared, so they will still show no number.",
+    "error": "",
+    "attempts": [
+      {
+        "ok": true,
+        "limit_reached": false,
+        "retryable": false,
+        "timed_out": false,
+        "cost_usd": 0.391178,
+        "num_turns": 10,
+        "duration_ms": 185054,
+        "duration_api_ms": 59966,
+        "error": ""
+      }
+    ]
+  },
+  "agent_stream_file": "cp20.agent.jsonl",
+  "agent_diff_file": "cp20.agent.diff",
+  "build_log_file": null,
+  "tests": {
+    "gated": false,
+    "queued": true
+  },
+  "probe": null,
+  "pinned_touched": [],
+  "acceptance_touched": [],
+  "impact_gate": null
+}
