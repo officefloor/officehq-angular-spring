@@ -1,0 +1,64 @@
+{
+  "checkpoint": 47,
+  "stack": {
+    "repo": "/home/daniel/officehq-angular-spring",
+    "origin": "git@github.com:officefloor/officehq-angular-spring.git",
+    "name": "officehq-angular-spring",
+    "base_ref": "base-empty",
+    "base_commit": "65cb8233ea38b2dfa6cfd18709e30cd18fdf3250"
+  },
+  "checkpoint_id": "cp47_person-period-figures",
+  "phase": "early",
+  "type": "additive",
+  "mutates": [],
+  "replaced_tests": [],
+  "request": {
+    "spec": "Each person's row shows, for every period on the sheet, the person's due-total for that period:\nthe due of their claims that count whose date falls in the period. Closing a period fixes these\nfigures too, at that moment, for every person on the sheet; a person added later shows 0.00 for\na closed period. Reopening makes them live again. The period's own due-total is always the sum of\nthe people's figures for it.\n",
+    "prompt": "You are implementing ONE change to this application.\n\nFIRST read AGENTS.md \u2014 it states the working rules and how the app is tested, and sends you to\nDESIGN.md for the app's stack and conventions. Follow both.\n\nTHE CHANGE REQUEST:\nEach person's row shows, for every period on the sheet, the person's due-total for that period:\nthe due of their claims that count whose date falls in the period. Closing a period fixes these\nfigures too, at that moment, for every person on the sheet; a person added later shows 0.00 for\na closed period. Reopening makes them live again. The period's own due-total is always the sum of\nthe people's figures for it.\n\nYour work is verified by an automated Playwright UI test already installed under e2e/specs/.\nRead that spec: it declares the exact data-testid anchors, values, test data and any audit\nrecords it expects \u2014 match them. Run `bin/e2e` to build the app, start it, and run the test as\nyou work; iterate until it passes. Change whatever the request needs across the app \u2014 its stored\ndata, its server and its front end. Do NOT edit bin/build, bin/start, bin/stop, bin/e2e,\nAGENTS.md, CLAUDE.md, DESIGN.md, e2e/support/ or the test spec.\n"
+  },
+  "commit_sha": "958a0c83fd22c75a2e1f9f820e24f4ebcc1059a1",
+  "reset_sha": "",
+  "preagent_sha": "6d7fb32ad620e54bdac8795272874fff97ec84c6",
+  "prev_sha": "6d7fb32ad620e54bdac8795272874fff97ec84c6",
+  "base_sha": "65cb8233ea38b2dfa6cfd18709e30cd18fdf3250",
+  "agent": {
+    "ok": true,
+    "cost_usd": 0.9804084000000001,
+    "input_tokens": 40,
+    "output_tokens": 11771,
+    "cache_read_tokens": 1023702,
+    "cache_creation_tokens": 67511,
+    "num_turns": 22,
+    "duration_ms": 365937,
+    "duration_api_ms": 111294,
+    "model": "claude-opus-5-5",
+    "session_id": "3d61d93b-b4a3-40f1-bd88-356a9a48184b",
+    "stop_reason": "success",
+    "result_text": "Each person's row now shows their due-total for every period, and `bin/e2e` passes all 4 tests.\n\n**How it works**\n- **Stored data:** a new table, `period_person_total`, holds each person's figure for a closed period (migration `V35__period_person_total.sql`). Closing a period writes a row for everyone on the sheet. Reopening deletes the rows, so the figures go back to being live.\n- **Server:** when a period is closed, each person's total is worked out the same way the period total was before (claims that count, dated inside the period). The period's fixed total is now the sum of those per-person figures. The `PERIOD_CLOSED` audit line is unchanged. The period data sent to the screen now also includes the fixed per-person figures.\n- **Front end** (`people-list.ts`): each person's row has one `person-period-<name>-due-total` cell per period. A closed period shows the fixed figure, or `0.00` for someone added after it closed. An open period shows the live figure. The period's due-total, both in the periods table and the summary, is the sum of the people's figures.\n\n**A second fix you should know about:** scenario 3 failed because of an existing bug in the settings form, not in the period work. Saving a blank value into a field that was already blank logged `key=clerk-limit value=` and saved terms, policy date and period numbering again, instead of saving only the cap. Filling an empty field with nothing doesn't count as an edit, so the form thought nothing had changed and saved every setting. I changed `settings-form.ts` so a field the user clicked into and left also counts as changed. These flags are cleared after a successful save, so they don't carry into the next one.\n\nOne limit: a person's figure for a period isn't capped by the sheet's cap; the cap still applies only to their overall due-total.",
+    "error": "",
+    "attempts": [
+      {
+        "ok": true,
+        "limit_reached": false,
+        "retryable": false,
+        "timed_out": false,
+        "cost_usd": 0.9804084000000001,
+        "num_turns": 22,
+        "duration_ms": 365937,
+        "duration_api_ms": 111294,
+        "error": ""
+      }
+    ]
+  },
+  "agent_stream_file": "cp47.agent.jsonl",
+  "agent_diff_file": "cp47.agent.diff",
+  "build_log_file": null,
+  "tests": {
+    "gated": false,
+    "queued": true
+  },
+  "probe": null,
+  "pinned_touched": [],
+  "acceptance_touched": [],
+  "impact_gate": null
+}
