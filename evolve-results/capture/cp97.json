@@ -1,0 +1,64 @@
+{
+  "checkpoint": 97,
+  "stack": {
+    "repo": "/home/daniel/officehq-angular-spring",
+    "origin": "git@github.com:officefloor/officehq-angular-spring.git",
+    "name": "officehq-angular-spring",
+    "base_ref": "base-empty",
+    "base_commit": "65cb8233ea38b2dfa6cfd18709e30cd18fdf3250"
+  },
+  "checkpoint_id": "cp97_monthly-totals",
+  "phase": "mid",
+  "type": "additive",
+  "mutates": [],
+  "replaced_tests": [],
+  "request": {
+    "spec": "Show a due-total per calendar month: for every month (yyyy-mm) that any claim on the sheet is\ndated in, the due of the claims dated in that month that count.\n",
+    "prompt": "You are implementing ONE change to this application.\n\nFIRST read AGENTS.md \u2014 it states the working rules and how the app is tested, and sends you to\nDESIGN.md for the app's stack and conventions. Follow both.\n\nTHE CHANGE REQUEST:\nShow a due-total per calendar month: for every month (yyyy-mm) that any claim on the sheet is\ndated in, the due of the claims dated in that month that count.\n\nYour work is verified by an automated Playwright UI test already installed under e2e/specs/.\nRead that spec: it declares the exact data-testid anchors, values, test data and any audit\nrecords it expects \u2014 match them. Run `bin/e2e` to build the app, start it, and run the test as\nyou work; iterate until it passes. Change whatever the request needs across the app \u2014 its stored\ndata, its server and its front end. Do NOT edit bin/build, bin/start, bin/stop, bin/e2e,\nAGENTS.md, CLAUDE.md, DESIGN.md, e2e/support/ or the test spec.\n"
+  },
+  "commit_sha": "615c8c51d1af8e36e1efad8cf13a29eedb7837ee",
+  "reset_sha": "",
+  "preagent_sha": "966b0f7b03afa60e1b78d59ea2fb0d02faf83b09",
+  "prev_sha": "966b0f7b03afa60e1b78d59ea2fb0d02faf83b09",
+  "base_sha": "65cb8233ea38b2dfa6cfd18709e30cd18fdf3250",
+  "agent": {
+    "ok": true,
+    "cost_usd": 0.2988038,
+    "input_tokens": 20,
+    "output_tokens": 2290,
+    "cache_read_tokens": 253299,
+    "cache_creation_tokens": 25283,
+    "num_turns": 11,
+    "duration_ms": 224122,
+    "duration_api_ms": 26896,
+    "model": "claude-opus-5-5",
+    "session_id": "0086a479-52e9-4581-a25b-9b7f913c1630",
+    "stop_reason": "success",
+    "result_text": "The sheet now shows a due-total for each calendar month, and all 4 acceptance tests pass under `bin/e2e`.\n\nEvery month (yyyy-mm) that has at least one claim dated in it gets a line, earliest month first. Each line is labelled \"Due dated in yyyy-mm\", and its value carries the `data-testid` `month-<yyyy-mm>-due-total`. The list sits just above the summary panel. The value adds up the due of that month's claims that count, the same way the existing per-tag due-totals do: claims with no due are skipped, and the sum is neither trimmed nor capped. A month whose claims don't count still appears, showing `0.00`.\n\nThe whole change is one new computed value plus its template block in `src/main/frontend/src/app/features/people/people-list.ts`. The totals are worked out in the front end from the claims and rates it already loads, so the server and the stored data are unchanged and nothing new is written to the audit file.",
+    "error": "",
+    "attempts": [
+      {
+        "ok": true,
+        "limit_reached": false,
+        "retryable": false,
+        "timed_out": false,
+        "cost_usd": 0.2988038,
+        "num_turns": 11,
+        "duration_ms": 224122,
+        "duration_api_ms": 26896,
+        "error": ""
+      }
+    ]
+  },
+  "agent_stream_file": "cp97.agent.jsonl",
+  "agent_diff_file": "cp97.agent.diff",
+  "build_log_file": null,
+  "tests": {
+    "gated": false,
+    "queued": true
+  },
+  "probe": null,
+  "pinned_touched": [],
+  "acceptance_touched": [],
+  "impact_gate": null
+}
