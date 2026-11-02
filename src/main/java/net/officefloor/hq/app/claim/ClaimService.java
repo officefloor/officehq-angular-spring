@@ -118,6 +118,10 @@ public class ClaimService {
             throw new ResponseStatusException(HttpStatus.CONFLICT,
                     "A " + claim.getStatus() + " claim cannot become " + to);
         }
+        if (to == ClaimStatus.SETTLED && claim.isDeferredOn(sheets.today(sheetId))) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT,
+                    "A claim deferred until " + claim.getDeferredUntil() + " cannot be settled before then");
+        }
         if (to == ClaimStatus.SETTLED && user.equals(claim.getOpenedBy())) {
             throw new ResponseStatusException(HttpStatus.FORBIDDEN,
                     "The user who opened a claim cannot settle it");
@@ -152,6 +156,31 @@ public class ClaimService {
                 line += " due=" + dueText(saved.getSettledDue());
             }
             audit.recordOnCommit(line);
+            return saved;
+        });
+    }
+
+    /** Defer an open claim until a day after the sheet's today: until the sheet's today reaches it,
+     *  the claim counts in no total, is not overdue, cannot be settled and a statement leaves it
+     *  unbound. Refused when the claim's period is closed, the claim is not open, or the day is not
+     *  after the sheet's today. */
+    @Transactional
+    public Claim defer(String sheetId, String user, long claimId, LocalDate until) {
+        Claim claim = lock(sheetId, claimId);
+        refuseClosed(sheetId, claim.getDate());
+        if (claim.getStatus() != ClaimStatus.OPEN) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT,
+                    "A " + claim.getStatus() + " claim cannot be deferred");
+        }
+        if (!until.isAfter(sheets.today(sheetId))) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
+                    "A claim can only be deferred to a date after the sheet's today");
+        }
+        return rollup.tracking(sheetId, user, () -> {
+            Person person = person(sheetId, claim.getPersonId());
+            claim.deferUntil(until);
+            Claim saved = claims.saveAndFlush(claim);
+            audit.recordOnCommit(record("CLAIM_DEFERRED", sheetId, user, person, saved) + " until=" + until);
             return saved;
         });
     }

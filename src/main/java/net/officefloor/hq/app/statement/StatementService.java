@@ -63,7 +63,8 @@ public class StatementService {
 
     /** Take a statement of a person: record their due-total now and bind each of their claims that
      *  counts in the live totals to the figure it has now, leaving out any late charge; any other
-     *  claim (one that does not count, or an open unbound one dated within one of their holds) is unbound. */
+     *  claim (one that does not count, a deferred one, or an open unbound one dated within one of their
+     *  holds) is unbound. */
     @Transactional
     public Taken take(String sheetId, String user, long personId) {
         Person person = people.lockByIdAndSheetId(personId, sheetId)
@@ -71,10 +72,10 @@ public class StatementService {
         List<Claim> bound = rollup.tracking(sheetId, user, () -> {
             LocalDate today = sheets.today(sheetId);
             List<Claim> theirs = claims.findBySheetIdAndPersonIdOrderByListedDesc(sheetId, personId);
-            BigDecimal dueTotal = dues.dueTotal(sheetId, person, Dues.live(person, theirs));
+            BigDecimal dueTotal = dues.dueTotal(sheetId, person, Dues.live(person, theirs, today));
             int counted = 0;
             for (Claim claim : theirs) {
-                if (Dues.countsLive(person, claim)) {
+                if (Dues.countsLive(person, claim, today)) {
                     counted++;
                     claim.bind(true, dues.bindable(sheetId, person, claim), dues.bindsNa(sheetId, person, claim));
                 } else {

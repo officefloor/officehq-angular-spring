@@ -32,11 +32,12 @@ public class ClaimController {
      *  bound it to n/a; and the number
      *  of the claim it corrects (null when it is not a correction); the date its figures round by
      *  (that of the claim a correction corrects, or else its own); and where it is listed (newest
-     *  first by this); and its status log, oldest first. */
+     *  first by this); and its status log, oldest first; and the day it is deferred until (null when
+     *  never deferred). */
     public record ClaimView(long id, long personId, String amount, LocalDate date, String note,
             ClaimStatus status, String number, String settledDue, String openedBy, boolean stated,
             String statedDue, boolean statedNa, String corrects, LocalDate roundsBy, long listed, LocalDate dueBy,
-            List<LogLineView> log) {
+            List<LogLineView> log, LocalDate deferredUntil) {
         public static ClaimView of(Claim claim) {
             return new ClaimView(claim.getId(), claim.getPersonId(), claim.getAmount().setScale(2).toPlainString(),
                     claim.getDate(), claim.getNote(), claim.getStatus(), claim.getNumber(),
@@ -44,7 +45,7 @@ public class ClaimController {
                     claim.getOpenedBy(), claim.isStated(),
                     claim.getStatedDue() == null ? null : claim.getStatedDue().setScale(2).toPlainString(),
                     claim.isStatedNa(), claim.getCorrects(), claim.roundsBy(), claim.getListed(), claim.getDueBy(),
-                    claim.getLog().stream().map(LogLineView::of).toList());
+                    claim.getLog().stream().map(LogLineView::of).toList(), claim.getDeferredUntil());
         }
     }
 
@@ -157,6 +158,18 @@ public class ClaimController {
             @PathVariable long claimId,
             @RequestHeader("X-User") @NotBlank @Size(max = 100) String user) {
         return ClaimView.of(service.resettle(sheetId.trim(), user.trim(), claimId));
+    }
+
+    /** The day an open claim is deferred until. */
+    public record DeferForm(@NotNull LocalDate until) {
+    }
+
+    @PostMapping("/claims/{claimId}/defer")
+    public ClaimView defer(@PathVariable @NotBlank @Size(max = 100) String sheetId,
+            @PathVariable long claimId,
+            @RequestHeader("X-User") @NotBlank @Size(max = 100) String user,
+            @Valid @RequestBody DeferForm form) {
+        return ClaimView.of(service.defer(sheetId.trim(), user.trim(), claimId, form.until()));
     }
 
     /** The reason a steward gives for rejecting a pending claim. */

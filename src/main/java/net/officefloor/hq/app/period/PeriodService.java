@@ -121,9 +121,10 @@ public class PeriodService {
         for (Long id : byId.keySet()) {
             totals.put(id, BigDecimal.ZERO.setScale(2));
         }
+        LocalDate today = sheets.today(sheetId);
         for (Claim c : claims.findBySheetIdOrderByListedDesc(sheetId)) {
             Person person = byId.get(c.getPersonId());
-            if (person == null || !Dues.countsLive(person, c) || c.getDate().isBefore(period.getFromDate())
+            if (person == null || !Dues.countsLive(person, c, today) || c.getDate().isBefore(period.getFromDate())
                     || c.getDate().isAfter(period.getToDate())) {
                 continue;
             }

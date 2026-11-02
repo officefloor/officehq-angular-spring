@@ -78,7 +78,7 @@ public class Dues {
     /** The late charge on a claim taken as open or not, as {@link #lateCharge(String, Claim, BigDecimal)}. */
     private BigDecimal lateCharge(String sheetId, Claim claim, BigDecimal figure, boolean open) {
         BigDecimal none = BigDecimal.ZERO.setScale(2);
-        if (!open || claim.isCorrection()) {
+        if (!open || claim.isCorrection() || claim.isDeferredOn(sheets.today(sheetId))) {
             return none;
         }
         long periods = ChronoUnit.DAYS.between(claim.getDueBy(), sheets.today(sheetId)) / 30;
@@ -89,16 +89,17 @@ public class Dues {
                 .setScale(2, rounding(sheetId, claim));
     }
 
-    /** Whether a claim of the person counts in the live totals: it counts, and it is not an open
-     *  (or pending) claim, unbound by a statement, dated within one of the person's holds. */
-    public static boolean countsLive(Person person, Claim claim) {
-        return claim.getStatus().counts()
+    /** Whether a claim of the person counts in the live totals on the sheet's today: it counts, it is
+     *  not deferred on that day, and it is not an open (or pending) claim, unbound by a statement,
+     *  dated within one of the person's holds. */
+    public static boolean countsLive(Person person, Claim claim, LocalDate today) {
+        return claim.getStatus().counts() && !claim.isDeferredOn(today)
                 && !(claim.getStatus().isOpen() && !claim.isStated() && person.isHeldOn(claim.getDate()));
     }
 
-    /** The claims of a person that count in the live totals. */
-    public static List<Claim> live(Person person, List<Claim> theirs) {
-        return theirs.stream().filter(c -> countsLive(person, c)).toList();
+    /** The claims of a person that count in the live totals on the sheet's today. */
+    public static List<Claim> live(Person person, List<Claim> theirs, LocalDate today) {
+        return theirs.stream().filter(c -> countsLive(person, c, today)).toList();
     }
 
     /** A person's due-total: the sum of the figures of their claims that count, at most the sheet's

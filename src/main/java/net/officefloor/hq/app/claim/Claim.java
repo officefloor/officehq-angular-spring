@@ -92,6 +92,10 @@ public class Claim {
     @Column(name = "due_by", nullable = false)
     private LocalDate dueBy;
 
+    /** The day the claim is deferred until (see {@link #isDeferredOn}); null when never deferred. */
+    @Column(name = "deferred_until")
+    private LocalDate deferredUntil;
+
     /** Where the claim is listed: newest first by this. A new claim takes the next from the
      *  database, and a moved claim takes the next again (see {@link #moveTo}). */
     @Generated
@@ -182,6 +186,21 @@ public class Claim {
 
     public LocalDate getDueBy() {
         return dueBy;
+    }
+
+    public LocalDate getDeferredUntil() {
+        return deferredUntil;
+    }
+
+    public void deferUntil(LocalDate until) {
+        this.deferredUntil = until;
+    }
+
+    /** Whether the claim is deferred on the day: it is open and the day is before the one it is
+     *  deferred until. A deferred claim counts in no total, is not overdue, cannot be settled and a
+     *  statement leaves it unbound; from that day on it is an open claim like any other. */
+    public boolean isDeferredOn(LocalDate day) {
+        return status == ClaimStatus.OPEN && deferredUntil != null && day.isBefore(deferredUntil);
     }
 
     public LocalDate getDate() {

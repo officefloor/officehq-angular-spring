@@ -1,7 +1,7 @@
 import { HttpErrorResponse } from '@angular/common/http';
 import { Component, inject, input, output, signal } from '@angular/core';
 import { FormControl, FormGroup, ReactiveFormsModule } from '@angular/forms';
-import { CLAIM_AMOUNT, Claim, ClaimAction, Claims, claimDue, overdue } from '../../core/claims';
+import { CLAIM_AMOUNT, Claim, ClaimAction, Claims, claimDue, deferred, overdue } from '../../core/claims';
 import { GradeFrom, Person, gradeOn } from '../../core/people';
 import { Period, periodOf } from '../../core/periods';
 import { Rate } from '../../core/rates';
@@ -10,7 +10,7 @@ import { DatedValue } from '../../core/settings';
 /** Why the server refused an action: the claim's status does not allow it. */
 const REFUSALS: Record<ClaimAction, string> = {
   open: 'Only a draft claim can be opened.',
-  settle: 'Only an open claim can be settled.',
+  settle: 'Only an open claim that is not deferred can be settled.',
   resettle: 'Only a settled claim can be re-settled.',
   void: 'Only a draft, open or pending claim can be voided.',
   approve: 'Only a pending claim can be approved.',
@@ -44,6 +44,17 @@ function refusal(e: unknown, action: ClaimAction): string {
   }
   return 'The claim could not be changed.';
 }
+
+/** The message for a refused defer of a claim. */
+function deferRefusal(e: unknown): string {
+  if (e instanceof HttpErrorResponse && e.status === 423) return CLOSED;
+  if (e instanceof HttpErrorResponse && e.status === 409) return 'Only an open claim can be deferred.';
+  if (e instanceof HttpErrorResponse && e.status === 400) return DEFER_DATE;
+  return 'The claim could not be deferred.';
+}
+
+/** The message when a defer's date is missing or not after the sheet's today. */
+const DEFER_DATE = 'Enter a date after the sheet\'s today to defer the claim to.';
 
 /** The message for a refused reassign of a claim. */
 function reassignRefusal(e: unknown): string {
@@ -94,6 +105,8 @@ function reassignRefusal(e: unknown): string {
           <span data-testid="claim-period">{{ periodName(c) }}</span>
           <span data-testid="claim-due-by">{{ dueByOf(c) }}</span>
           <span data-testid="claim-overdue">{{ overdueOf(c) ? 'yes' : 'no' }}</span>
+          <span data-testid="claim-deferred">{{ deferredOf(c) ? 'yes' : 'no' }}</span>
+          <span data-testid="claim-deferred-until">{{ deferredOf(c) ? c.deferredUntil : '' }}</span>
           <ol data-testid="claim-log" [attr.aria-label]="'Status log of claim of ' + c.amount + ' on ' + c.date">
             @for (l of c.log; track $index) {
               <li data-testid="claim-log-line">{{ l.status }} by {{ l.by }} on {{ l.on }} due={{ l.due ?? 'n/a' }}</li>
@@ -114,6 +127,11 @@ function reassignRefusal(e: unknown): string {
             (input)="clearError(c)" />
           <button type="button" data-testid="claim-reject" (click)="act(c, 'reject', reason.value)"
             [attr.aria-label]="'Reject claim of ' + c.amount + ' on ' + c.date">Reject</button>
+          <label [for]="'claim-defer-date-' + c.id">Defer until</label>
+          <input [id]="'claim-defer-date-' + c.id" type="date" data-testid="claim-defer-date" #deferDate
+            (input)="clearError(c)" />
+          <button type="button" data-testid="claim-defer" (click)="defer(c, deferDate.value)"
+            [attr.aria-label]="'Defer claim of ' + c.amount + ' on ' + c.date">Defer</button>
           <label [for]="'claim-reassign-to-' + c.id">Reassign to</label>
           <select [id]="'claim-reassign-to-' + c.id" data-testid="claim-reassign-to" #reassignTo
             (change)="clearError(c)">
@@ -198,6 +216,10 @@ export class PersonClaims {
     return overdue(c, this.today());
   }
 
+  protected deferredOf(c: Claim): boolean {
+    return deferred(c, this.today());
+  }
+
   /** The name of the period the claim belongs to; empty when it belongs to none. */
   protected periodName(c: Claim): string {
     return periodOf(this.periods(), c.date)?.name ?? '';
@@ -233,6 +255,19 @@ export class PersonClaims {
         id: c.id,
         message: refusal(e, action),
       });
+    }
+  }
+
+  protected async defer(c: Claim, until: string): Promise<void> {
+    this.claimError.set(null);
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(until)) {
+      this.claimError.set({ id: c.id, message: DEFER_DATE });
+      return;
+    }
+    try {
+      this.saved.emit(await this.api.defer(c.id, until));
+    } catch (e) {
+      this.claimError.set({ id: c.id, message: deferRefusal(e) });
     }
   }
 

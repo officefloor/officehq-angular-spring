@@ -202,13 +202,13 @@ export class PeopleList {
   /** Each person's holds, by id. */
   private readonly holds = computed(() => new Map(this.people().map((p) => [p.id, p.holds])));
   /** The claims that count in the live totals, newest first. */
-  private readonly live = computed(() => this.claims().filter((c) => countsLive(c, this.holds().get(c.personId) ?? [])));
+  private readonly live = computed(() => this.claims().filter((c) => countsLive(c, this.holds().get(c.personId) ?? [], this.session.today())));
   /** What each person has claimed: the sum of their open and settled claims' amounts, leaving out
    *  the open ones dated within one of their holds and unbound by a statement. */
   protected readonly claimed = computed(() => {
     const by = new Map<number, string>();
     for (const [id, cs] of this.claimsByPerson()) {
-      by.set(id, sumAmounts(cs.filter((c) => countsLive(c, this.holds().get(id) ?? [])).map((c) => c.amount)));
+      by.set(id, sumAmounts(cs.filter((c) => countsLive(c, this.holds().get(id) ?? [], this.session.today())).map((c) => c.amount)));
     }
     return by;
   });
@@ -639,7 +639,7 @@ export class PeopleList {
    *  when their grade on the sheet's today has no rate on it and no claim that counts has a figure
    *  (one kept by settling or a statement, or a live due at the grade in force on its date). */
   private figuresOf(p: Person): string | null {
-    const counted = (this.claimsByPerson().get(p.id) ?? []).filter((c) => countsLive(c, p.holds));
+    const counted = (this.claimsByPerson().get(p.id) ?? []).filter((c) => countsLive(c, p.holds, this.session.today()));
     const figures = counted.map((c) => claimDue(c, this.rates(), gradeOn(p.grades, c.date), this.floor(), this.lateness())).filter((d): d is string => d !== null);
     if (!this.pctOf().has(this.gradeOf(p)) && figures.length === 0) {
       return null;
@@ -670,7 +670,7 @@ export class PeopleList {
   /** A person's overdue claims among those that count in the live totals. */
   protected overdueOf(p: Person): Claim[] {
     return (this.claimsByPerson().get(p.id) ?? [])
-      .filter((c) => countsLive(c, p.holds) && overdue(c, this.session.today()));
+      .filter((c) => countsLive(c, p.holds, this.session.today()) && overdue(c, this.session.today()));
   }
 
   /** A person's overdue-total: the due figures of their overdue claims that count, skipping those

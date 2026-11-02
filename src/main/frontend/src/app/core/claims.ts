@@ -24,10 +24,17 @@ export function counts(c: Claim): boolean {
   return isOpen(c) || c.status === 'SETTLED';
 }
 
-/** Whether a claim counts in the live totals: it counts, and it is not an open (or pending) claim,
- *  unbound by a statement, dated within one of its person's holds. */
-export function countsLive(c: Claim, holds: Hold[]): boolean {
-  return counts(c) && !(isOpen(c) && !c.stated && heldOn(holds, c.date));
+/** Whether a claim is deferred on the sheet's today: it is OPEN and today is before the day it is
+ *  deferred until. Until then it counts in no total, is not overdue and cannot be settled. */
+export function deferred(c: Claim, today: string | null): boolean {
+  return c.status === 'OPEN' && c.deferredUntil !== null && today !== null && today < c.deferredUntil;
+}
+
+/** Whether a claim counts in the live totals on the sheet's today: it counts, it is not deferred,
+ *  and it is not an open (or pending) claim, unbound by a statement, dated within one of its
+ *  person's holds. */
+export function countsLive(c: Claim, holds: Hold[], today: string | null): boolean {
+  return counts(c) && !deferred(c, today) && !(isOpen(c) && !c.stated && heldOn(holds, c.date));
 }
 
 export interface Claim {
@@ -67,6 +74,8 @@ export interface Claim {
   dueBy: string;
   /** Its status log, oldest first: a line for each status it has had. */
   log: ClaimLogLine[];
+  /** The day (yyyy-mm-dd) it is deferred until; null when it was never deferred. */
+  deferredUntil: string | null;
 }
 
 /** A line of a claim's status log: the status, who changed it to that, the sheet's today then
@@ -167,9 +176,10 @@ export function lateCharge(c: Claim, figure: string, late: Lateness): string {
   return due(figure, (Number(valueOn(late.pcts, c.date, STARTING_LATE_PCT)) * periods).toFixed(2), roundsHalfUp(c, late)) ?? '0.00';
 }
 
-/** Whether a claim is overdue: it is open (or pending) and its due-by is before the sheet's today. */
+/** Whether a claim is overdue: it is open (or pending), not deferred, and its due-by is before the
+ *  sheet's today. */
 export function overdue(c: Claim, today: string | null): boolean {
-  return isOpen(c) && today !== null && c.dueBy < today;
+  return isOpen(c) && !deferred(c, today) && today !== null && c.dueBy < today;
 }
 
 // The claims people make on the active sheet.
@@ -221,6 +231,15 @@ export class Claims {
     const body = action === 'reject' ? { reason: reason ?? '' } : null;
     return firstValueFrom(
       this.http.post<Claim>(`${this.url(sheetId)}/claims/${id}/${action}`, body, { headers: { 'X-User': user } }),
+    );
+  }
+
+  /** Defer an open claim until a day after the sheet's today; refused (409) when it is not open,
+   *  (400) when the day is not after today, and (423) when its period is closed. */
+  defer(id: number, until: string): Promise<Claim> {
+    const { sheetId, user } = this.active();
+    return firstValueFrom(
+      this.http.post<Claim>(`${this.url(sheetId)}/claims/${id}/defer`, { until }, { headers: { 'X-User': user } }),
     );
   }
 
