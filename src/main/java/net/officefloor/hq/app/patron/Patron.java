@@ -59,4 +59,9 @@ public class Patron {
     public Long getPatronId() {
         return patronId;
     }
+
+    /** Name another person as the patron instead (the one named was merged into them). */
+    public void setPatronId(Long patronId) {
+        this.patronId = patronId;
+    }
 }

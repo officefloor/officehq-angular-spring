@@ -83,6 +83,10 @@ public class PersonController {
     public record AliasForm(@NotBlank @Size(max = 200) String alias) {
     }
 
+    /** The merge form: the person the merged person is merged into. */
+    public record MergeForm(@NotNull Long intoId) {
+    }
+
     /** The retire form: the day the person is retired from; left out, the sheet's today. */
     public record RetireForm(LocalDate from) {
     }
@@ -106,10 +110,12 @@ public class PersonController {
     private final StatementService statements;
     private final SheetService sheets;
     private final History history;
+    private final PersonMergeService merges;
 
     public PersonController(PersonService service, StatementService statements, SheetService sheets,
-            History history) {
+            History history, PersonMergeService merges) {
         this.history = history;
+        this.merges = merges;
         this.service = service;
         this.statements = statements;
         this.sheets = sheets;
@@ -180,6 +186,16 @@ public class PersonController {
             @Valid @RequestBody AliasForm form) {
         Person saved = service.addAlias(sheetId.trim(), user.trim(), personId, form.alias().trim());
         return PersonView.of(saved, statements.summary(sheetId.trim(), personId), sheets.today(sheetId.trim()));
+    }
+
+    /** Merge the person into another; answers with the other as they now stand. */
+    @PostMapping("/{personId}/merge")
+    public PersonView merge(@PathVariable @NotBlank @Size(max = 100) String sheetId,
+            @PathVariable long personId,
+            @RequestHeader("X-User") @NotBlank @Size(max = 100) String user,
+            @Valid @RequestBody MergeForm form) {
+        Person saved = merges.merge(sheetId.trim(), user.trim(), personId, form.intoId());
+        return PersonView.of(saved, statements.summary(sheetId.trim(), saved.getId()), sheets.today(sheetId.trim()));
     }
 
     @PostMapping("/{personId}/retire")

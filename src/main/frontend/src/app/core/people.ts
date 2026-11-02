@@ -137,6 +137,14 @@ export class People {
     );
   }
 
+  /** Merge the person into another; answers with the other as they now stand. */
+  merge(id: number, intoId: number): Promise<Person> {
+    const { sheetId, user } = this.active();
+    return firstValueFrom(
+      this.http.post<Person>(`${this.url(sheetId)}/${id}/merge`, { intoId }, { headers: { 'X-User': user } }),
+    );
+  }
+
   /** Retire the person from a day; null takes the sheet's today. */
   retire(id: number, from: string | null): Promise<Person> {
     const { sheetId, user } = this.active();

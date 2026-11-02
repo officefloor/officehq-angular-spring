@@ -3,6 +3,7 @@ import { Component, computed, effect, inject, signal } from '@angular/core';
 import { FormControl, FormGroup, ReactiveFormsModule } from '@angular/forms';
 import { Claim, Claims, QuickAdded, addDays, backingFigure, claimDue, countsAsOf, countsLive, isOpen, keepsActive, overdue, sumAmounts, trimmedSum } from '../../core/claims';
 import { Patron, Patrons } from '../../core/patrons';
+import { Pools } from '../../core/pools';
 import { Grade, Leave, People, Person, Taken, gradeOn } from '../../core/people';
 import { Period, Periods, periodOf } from '../../core/periods';
 import { Rate, Rates, pctOn } from '../../core/rates';
@@ -230,6 +231,16 @@ const NO_LEAVE: Leave = { holds: [], retiredFrom: null };
                 </select>
                 <button type="button" data-testid="person-patron-add" (click)="addPatron(p, patronSelect.value)"
                   [attr.aria-label]="'Add a patron of ' + p.name">Add patron</button>
+                <label [for]="'person-merge-into-' + p.id" class="visually-hidden">Merge {{ p.name }} into</label>
+                <select #mergeInto [id]="'person-merge-into-' + p.id" data-testid="person-merge-into"
+                  (change)="clearPersonError(p.id)">
+                  <option value="">Choose who to merge into</option>
+                  @for (o of people(); track o.id) {
+                    <option [value]="o.id">{{ o.name }}</option>
+                  }
+                </select>
+                <button type="button" data-testid="person-merge" (click)="merge(p, mergeInto.value)"
+                  [attr.aria-label]="'Merge ' + p.name + ' into the person chosen'">Merge</button>
                 <button type="button" data-testid="person-watch" (click)="toggleWatch(p)"
                   [attr.aria-pressed]="watched().has(p.id)"
                   [attr.aria-label]="'Watch ' + p.name">{{ watched().has(p.id) ? 'Unwatch' : 'Watch' }}</button>
@@ -258,6 +269,7 @@ export class PeopleList {
   private readonly settingsApi = inject(SheetSettings);
   private readonly patronsApi = inject(Patrons);
   private readonly watchesApi = inject(Watches);
+  private readonly poolsApi = inject(Pools);
 
   protected readonly grades: Grade[] = ['A', 'B', 'C'];
   protected readonly people = signal<Person[]>([]);
@@ -501,6 +513,8 @@ export class PeopleList {
   private readonly watching = new Set<number>();
   /** The people whose retirement is waiting for its answer: a second press meanwhile is ignored. */
   private readonly retiring = new Set<number>();
+  /** The people whose merge is waiting for its answer: a second press meanwhile is ignored. */
+  private readonly merging = new Set<number>();
   /** The people whose alias is being added: a second press meanwhile is ignored. */
   private readonly aliasing = new Set<number>();
   protected readonly form = new FormGroup({
@@ -672,6 +686,31 @@ export class PeopleList {
       this.personError.set({ id: p.id, message: 'The person could not be retired.' });
     } finally {
       this.retiring.delete(p.id);
+    }
+  }
+
+  /** Merge the person into the one chosen, then read the sheet again: the merged person is gone
+   *  and their claims, patrons and pool memberships are the other's. */
+  protected async merge(p: Person, intoId: string): Promise<void> {
+    if (this.merging.has(p.id)) return;
+    this.personError.set(null);
+    this.patronError.set(null);
+    const id = Number(intoId);
+    if (!intoId || id === p.id) {
+      this.personError.set({ id: p.id, message: 'Choose another person to merge into.' });
+      return;
+    }
+    this.merging.add(p.id);
+    try {
+      await this.api.merge(p.id, id);
+      const sheetId = this.session.sheetId();
+      if (this.editing() === p.id) this.reset();
+      this.poolsApi.refresh();
+      if (sheetId) await this.reload(sheetId);
+    } catch {
+      this.personError.set({ id: p.id, message: 'The person could not be merged.' });
+    } finally {
+      this.merging.delete(p.id);
     }
   }
 
