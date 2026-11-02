@@ -4,7 +4,6 @@ import java.math.BigDecimal;
 import java.math.RoundingMode;
 import java.time.LocalDate;
 import java.util.ArrayList;
-import java.util.Comparator;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -46,7 +45,7 @@ public class StatementService {
 
     /**
      * A person's statements: how many, the last one's due-total (null when n/a) and date, and each one
-     * standing, oldest first by date (in the order taken on the same date).
+     * standing, in the order taken.
      */
     public record Summary(Long personId, int count, BigDecimal lastDueTotal, LocalDate lastDate, List<Line> lines) {}
 
@@ -234,7 +233,6 @@ public class StatementService {
 
     private static Summary summaryOf(Long personId, List<Statement> list) {
         List<Line> lines = list.stream()
-                .sorted(Comparator.comparing(Statement::getDate).thenComparing(Statement::getId))
                 .map(s -> new Line(s.getDate(), s.getDueTotal()))
                 .toList();
         if (list.isEmpty()) return new Summary(personId, 0, null, null, lines);

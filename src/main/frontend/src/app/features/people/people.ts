@@ -635,6 +635,9 @@ function trimmedSum(figures: number[]): number {
       <p>Settled total: <strong data-testid="rollup-settled-total">{{ money(splitTotal().settled) | figure }}</strong></p>
       <p>Open total: <strong data-testid="rollup-open-total">{{ money(splitTotal().open) | figure }}</strong></p>
       <p>Cut total: <strong data-testid="rollup-cut-total">{{ money(cutTotal()) | figure }}</strong></p>
+      <p>Aged: 0-30 <strong data-testid="rollup-aged-0-30">{{ money(agedTotal().upTo30) | figure }}</strong>,
+        31-60 <strong data-testid="rollup-aged-31-60">{{ money(agedTotal().upTo60) | figure }}</strong>,
+        61+ <strong data-testid="rollup-aged-61">{{ money(agedTotal().over60) | figure }}</strong></p>
     </section>
     <section aria-labelledby="summary-heading">
       <h2 id="summary-heading">Summary</h2>
@@ -1083,6 +1086,16 @@ export class People {
     for (const s of this.splitByPerson().values()) {
       total.settled += s.settled;
       total.open += s.open;
+    }
+    return total;
+  });
+  /** The sheet's age buckets in cents: everyone's added up, not trimmed. */
+  protected readonly agedTotal = computed(() => {
+    const total: Aged = { upTo30: 0, upTo60: 0, over60: 0 };
+    for (const a of this.agedByPerson().values()) {
+      total.upTo30 += a.upTo30;
+      total.upTo60 += a.upTo60;
+      total.over60 += a.over60;
     }
     return total;
   });
