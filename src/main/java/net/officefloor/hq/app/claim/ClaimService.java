@@ -447,6 +447,26 @@ public class ClaimService {
         return saved;
     }
 
+    /**
+     * A steward assigns a REVIEW claim's review to a user. Refused for a blank user, anyone else, or a
+     * claim in any other status.
+     */
+    @Transactional
+    public Claim assignReview(String sheetId, String user, Long id, String assignee) {
+        // The snapshot locks the sheet first, so the claim is read once no other change is under way.
+        rollup.snapshot(sheetId);
+        Claim claim = claims.findByIdAndSheetId(id, sheetId).orElseThrow(ClaimNotFoundException::new);
+        if (claim.getStatus() != ClaimStatus.REVIEW) throw new ClaimStatusRefusedException();
+        if (settings.roleOf(sheetId, user) != Role.STEWARD) throw new ClaimNotStewardException();
+        String name = assignee == null ? "" : assignee.strip();
+        if (name.isEmpty()) throw new ClaimStatusRefusedException();
+        Person person = people.findByIdAndSheetId(claim.getPersonId(), sheetId).orElseThrow(PersonNotFoundException::new);
+        claim.setReviewAssignee(name);
+        Claim saved = claims.saveAndFlush(claim);
+        record("REVIEW_ASSIGNED", sheetId, user, person, saved, null, " user=" + name);
+        return saved;
+    }
+
     /** A steward rejects a PENDING claim with a reason: OPEN again, bound by its person's last statement if it was. */
     @Transactional
     public Claim reject(String sheetId, String user, Long id, String reason) {

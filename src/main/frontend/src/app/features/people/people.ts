@@ -261,6 +261,7 @@ function trimmedSum(figures: number[]): number {
       <p>My due total: <strong data-testid="my-due-total">{{ (me() ? dueTotalOf(me()!) : '') | figure }}</strong></p>
       <p>My overdue total: <strong data-testid="my-overdue-total">{{ (me() ? money(overdueOf(me()!).cents) : '') | figure }}</strong></p>
       <p>My crew total: <strong data-testid="my-crew-due-total">{{ myCrewDueTotal() | figure }}</strong></p>
+      <p>My reviews: <strong data-testid="my-reviews-count">{{ myReviewsCount() }}</strong></p>
     </header>
     <section aria-labelledby="snapshot-compare-heading">
       <h2 id="snapshot-compare-heading">Compare snapshots</h2>
@@ -1093,6 +1094,11 @@ export class People {
     if (period.closed || period.softClosed) return money(this.periodDueCents(period));
     return money(this.classicPeriodLiveCents().get(period.id) ?? 0);
   }
+  /** How many REVIEW claims are assigned to the signed-in user. */
+  protected readonly myReviewsCount = computed(() => {
+    const user = this.session.user()?.trim();
+    return this.claims().filter((c) => c.status === 'REVIEW' && !!user && c.reviewAssignee === user).length;
+  });
   /** The due-totals of the crews the signed-in user's person leads, added up; blank when they lead none. */
   protected readonly myCrewDueTotal = computed(() => {
     const me = this.me();

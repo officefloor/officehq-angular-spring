@@ -36,7 +36,7 @@ public class ClaimController {
      * when bound by its person's last statement, to the due it had then (null when it had none). A
      * correction has the number of the claim it corrects (null for any other claim). Its status log
      * is oldest first. Locked by the user whose open editor holds it (null when none). A late entry
-     * when added while its period was soft-closed. Reminded on the last day a reminder was written (null when none). Its external reference is null when it has none. Its tags are sorted (empty when none). Its void reason is null unless voided with one. Its comments are oldest first. Its batch is the number of the bulk settle that settled it (null when none). Review on is the sheet's today it went to REVIEW (null when it never did). Waived when a steward waived its late charge, on the sheet's today waived on (null unless waived). Held while held. Its shares are in the order they were added.
+     * when added while its period was soft-closed. Reminded on the last day a reminder was written (null when none). Its external reference is null when it has none. Its tags are sorted (empty when none). Its void reason is null unless voided with one. Its comments are oldest first. Its batch is the number of the bulk settle that settled it (null when none). Review on is the sheet's today it went to REVIEW (null when it never did). Waived when a steward waived its late charge, on the sheet's today waived on (null unless waived). Held while held. Its shares are in the order they were added. Its review assignee is the user its review was assigned to (null when none).
      */
     public record ClaimView(Long id, Long personId, String amount, LocalDate date, String note, ClaimStatus status,
             String number, String settledDue, String openedBy, boolean stated, String statedDue, String corrects,
@@ -44,7 +44,8 @@ public class ClaimController {
             int proofs, String splitFrom, String lockedBy, boolean lateEntry, LocalDate remindedOn,
             String ref, List<String> tags, String voidReason, List<CommentView> comments,
             Integer batch, List<LineView> lines, Long added, LocalDate reviewOn, boolean waived,
-            LocalDate waivedOn, int proofsReceipt, int proofsPhoto, boolean held, List<ShareView> shares) {
+            LocalDate waivedOn, int proofsReceipt, int proofsPhoto, boolean held, List<ShareView> shares,
+            String reviewAssignee) {
         public static ClaimView of(Claim claim) {
             return new ClaimView(claim.getId(), claim.getPersonId(), claim.getAmount().toPlainString(),
                     claim.getDate(), claim.getNote(), claim.getStatus(), claim.getNumber(),
@@ -60,7 +61,8 @@ public class ClaimController {
                     claim.getLines().stream().map(LineView::of).toList(), claim.getAdded(),
                     claim.getReviewOn(), claim.isWaived(), claim.getWaivedOn(),
                     claim.getProofsReceipt(), claim.getProofsPhoto(), claim.isHeld(),
-                    claim.getShares().stream().map(ShareView::of).toList());
+                    claim.getShares().stream().map(ShareView::of).toList(),
+                    claim.getReviewAssignee());
         }
     }
 
@@ -142,6 +144,9 @@ public class ClaimController {
             return kind == null || kind.isEmpty() ? null : kind;
         }
     }
+
+    /** The user a steward assigns a REVIEW claim's review to. */
+    public record AssignReviewRequest(@NotBlank @Size(max = 100) String user) {}
 
     public record RejectRequest(@NotBlank @Size(max = 200) @Pattern(regexp = "\\S+( \\S+)*") String reason) {}
 
@@ -441,6 +446,15 @@ public class ClaimController {
             @PathVariable Long id,
             @RequestHeader("X-User") @NotBlank @Size(max = 100) String user) {
         return ClaimView.of(service.review(sheetId, user, id));
+    }
+
+    @PostMapping("/claims/{id}/assign-review")
+    public ClaimView assignReview(
+            @PathVariable @Size(max = 100) @Pattern(regexp = "[A-Za-z0-9._-]+") String sheetId,
+            @PathVariable Long id,
+            @RequestHeader("X-User") @NotBlank @Size(max = 100) String user,
+            @RequestBody @Valid AssignReviewRequest request) {
+        return ClaimView.of(service.assignReview(sheetId, user, id, request.user()));
     }
 
     @PostMapping("/claims/{id}/reject")

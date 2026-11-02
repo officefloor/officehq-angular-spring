@@ -69,6 +69,8 @@ export interface Claim {
   remindedOn: string | null;
   /** The sheet's today (yyyy-mm-dd) it went to REVIEW; null when it never did. */
   reviewOn: string | null;
+  /** The user a steward assigned its review to; null until assigned. */
+  reviewAssignee: string | null;
   /** Whether a steward waived its late charge; from the day it was waived on it bears none. */
   waived: boolean;
   /** Whether it is held: it still counts in every total. */
@@ -392,6 +394,7 @@ function notEditable(status: ClaimStatus | undefined): string {
           <span>Split from <span data-testid="claim-split-from">{{ c.splitFrom ?? '' }}</span></span>
           <span>Late entry <span data-testid="claim-late-entry">{{ c.lateEntry ? 'yes' : 'no' }}</span></span>
           <span>Review late <span data-testid="claim-review-late">{{ session.reviewLate(c) ? 'yes' : 'no' }}</span></span>
+          <span>Review assigned to <span data-testid="claim-review-assigned">{{ c.reviewAssignee ?? '' }}</span></span>
           <span>Reminded <span data-testid="claim-reminded">{{ c.remindedOn ?? '' }}</span></span>
           <span>Batch <span data-testid="claim-batch">{{ c.batch ?? '' }}</span></span>
           <span>Waived <span data-testid="claim-waived">{{ c.waived ? 'yes' : 'no' }}</span></span>
@@ -458,6 +461,11 @@ function notEditable(status: ClaimStatus | undefined): string {
                   [attr.aria-label]="'Approve claim of ' + c.amount + ' on ' + c.date">Approve</button>
           <button type="button" data-testid="claim-review" (click)="act(c, 'review')"
                   [attr.aria-label]="'Review claim of ' + c.amount + ' on ' + c.date">Review</button>
+          <label [for]="fieldId('review-user-' + c.id)">Review by</label>
+          <input [id]="fieldId('review-user-' + c.id)" data-testid="claim-review-user" #reviewUser
+                 (input)="clearClaimError(c.id)" />
+          <button type="button" data-testid="claim-review-assign" (click)="assignReview(c, reviewUser.value)"
+                  [attr.aria-label]="'Assign the review of claim of ' + c.amount + ' on ' + c.date">Assign review</button>
           <button type="button" data-testid="claim-resettle" (click)="act(c, 'resettle')"
                   [attr.aria-label]="'Re-settle claim of ' + c.amount + ' on ' + c.date">Re-settle</button>
           <label [for]="fieldId('reject-' + c.id)">Reject reason</label>
@@ -957,6 +965,32 @@ export class Claims {
         : e.status === 403
           ? 'You cannot hold or release a claim.'
           : `A ${c.status} claim cannot be held or released; only an OPEN or PENDING one can.`;
+      this.claimError.set({ id: c.id, message });
+    }
+  }
+
+  /** A steward assigns a REVIEW claim's review to a user; a blank user, anyone else or any other status is refused. */
+  protected async assignReview(c: Claim, value: string): Promise<void> {
+    this.claimError.set(null);
+    const sheet = this.session.sheetId();
+    if (!sheet) return;
+    const user = value.trim();
+    if (user === '') {
+      this.claimError.set({ id: c.id, message: 'Enter the user to assign the review to.' });
+      return;
+    }
+    const url = `/api/sheets/${encodeURIComponent(sheet)}/claims/${c.id}/assign-review`;
+    try {
+      const claim = await firstValueFrom(this.http.post<Claim>(url, { user }, { headers: this.headers() }));
+      if (this.session.sheetId() !== sheet) return;
+      this.saved.emit(claim);
+    } catch (e) {
+      if (this.session.sheetId() !== sheet) return;
+      const message = !(e instanceof HttpErrorResponse)
+        ? "Could not assign that claim's review."
+        : e.status === 403
+          ? 'Only a steward can assign a review.'
+          : `A ${c.status} claim's review cannot be assigned; only a REVIEW one's can.`;
       this.claimError.set({ id: c.id, message });
     }
   }

@@ -200,6 +200,10 @@ public class Claim {
     @Column(name = "review_on")
     private LocalDate reviewOn;
 
+    /** The user a steward assigned its review to; none until assigned. */
+    @Column(name = "review_assignee", length = 100)
+    private String reviewAssignee;
+
     /** The number of the bulk settle batch that settled it (or sent it to PENDING); none when settled one at a time. */
     @Column(name = "settle_batch")
     private Integer settleBatch;
@@ -453,6 +457,8 @@ public class Claim {
     public boolean isEscalated() { return escalated; }
     public LocalDate getReviewOn() { return reviewOn; }
     public void setReviewOn(LocalDate reviewOn) { this.reviewOn = reviewOn; }
+    public String getReviewAssignee() { return reviewAssignee; }
+    public void setReviewAssignee(String reviewAssignee) { this.reviewAssignee = reviewAssignee; }
     /** Record that a reminder escalated it. */
     public void escalate() { this.escalated = true; }
     public boolean isHeld() { return held; }
