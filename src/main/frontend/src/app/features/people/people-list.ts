@@ -77,6 +77,13 @@ const NO_LEAVE: Leave = { holds: [], retiredFrom: null };
           }
         </ul>
       }
+      @if (monthDueTotals().length > 0) {
+        <ul aria-label="Due per month">
+          @for (m of monthDueTotals(); track m.month) {
+            <li>Due dated in {{ m.month }}: <strong [attr.data-testid]="'month-' + m.month + '-due-total'">{{ m.due }}</strong></li>
+          }
+        </ul>
+      }
       <app-summary-panel [grades]="gradeSummary()" [periods]="periodSummary()" [statuses]="statusSummary()"
         [voidReasons]="voidReasonSummary()" />
       <label>
@@ -382,6 +389,21 @@ export class PeopleList {
       if (d !== null) for (const t of tags) figures.get(t)!.push(d);
     }
     return [...figures.keys()].sort().map((tag) => ({ tag, due: sumAmounts(figures.get(tag)!) }));
+  });
+  /** Per calendar month (yyyy-mm) any claim on the sheet is dated in, earliest first: the due
+   *  figures of the claims dated in it that count, skipping those with no due (not trimmed, not capped). */
+  protected readonly monthDueTotals = computed(() => {
+    const figures = new Map<string, string[]>();
+    for (const c of this.claims()) {
+      const month = c.date.slice(0, 7);
+      const theirs = figures.get(month) ?? [];
+      figures.set(month, theirs);
+      const p = this.byId().get(c.personId);
+      if (!p || !countsLive(c, p, this.session.today())) continue;
+      const d = claimDue(c, this.rates(), gradeOn(p.grades, c.date), this.floor(), this.lateness());
+      if (d !== null) theirs.push(d);
+    }
+    return [...figures.keys()].sort().map((month) => ({ month, due: sumAmounts(figures.get(month)!) }));
   });
   /** How many claims on the sheet are overdue among those that count in the live totals. */
   protected readonly overdueCount = computed(() =>
