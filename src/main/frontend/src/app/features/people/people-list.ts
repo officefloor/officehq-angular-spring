@@ -1,14 +1,17 @@
 import { HttpErrorResponse } from '@angular/common/http';
-import { Component, effect, inject, signal } from '@angular/core';
+import { Component, computed, effect, inject, signal } from '@angular/core';
 import { FormControl, FormGroup, ReactiveFormsModule } from '@angular/forms';
+import { Claim, Claims, sumAmounts } from '../../core/claims';
 import { Grade, People, Person } from '../../core/people';
 import { Session } from '../../core/session';
+import { PersonClaims } from '../claims/person-claims';
 
 // The people on the sheet, in the order they were added, and the form that adds a person or,
-// once a person's editor is opened, edits them.
+// once a person's editor is opened, edits them. Each person's row lists their claims and what
+// they have claimed; the sheet's claimed-total adds everyone's up.
 @Component({
   selector: 'app-people-list',
-  imports: [ReactiveFormsModule],
+  imports: [ReactiveFormsModule, PersonClaims],
   template: `
     <section aria-labelledby="people-heading">
       <h2 id="people-heading">People</h2>
@@ -29,15 +32,21 @@ import { Session } from '../../core/session';
           <p role="alert" data-testid="person-form-error">{{ error() }}</p>
         }
       </form>
+      <p>Claimed in total: <strong data-testid="rollup-claimed-total">{{ claimedTotal() }}</strong></p>
       <table data-testid="people">
         <thead>
-          <tr><th scope="col">Name</th><th scope="col">Grade</th><th scope="col"><span class="visually-hidden">Actions</span></th></tr>
+          <tr><th scope="col">Name</th><th scope="col">Grade</th><th scope="col">Claimed</th><th scope="col">Claims</th><th scope="col"><span class="visually-hidden">Actions</span></th></tr>
         </thead>
         <tbody>
           @for (p of people(); track p.id) {
             <tr [attr.data-testid]="'person-row-' + p.id">
               <td data-testid="person-name">{{ p.name }}</td>
               <td data-testid="person-grade">{{ p.grade }}</td>
+              <td data-testid="person-claimed">{{ claimed().get(p.id) ?? '0.00' }}</td>
+              <td>
+                <app-person-claims [personId]="p.id" [claims]="claimsByPerson().get(p.id) ?? []"
+                  (saved)="claimSaved($event)" />
+              </td>
               <td>
                 <button type="button" [attr.data-testid]="'person-edit-' + p.id" (click)="open(p)"
                   [attr.aria-label]="'Edit ' + p.name">Edit</button>
@@ -52,9 +61,24 @@ import { Session } from '../../core/session';
 export class PeopleList {
   private readonly session = inject(Session);
   private readonly api = inject(People);
+  private readonly claimsApi = inject(Claims);
 
   protected readonly grades: Grade[] = ['A', 'B', 'C'];
   protected readonly people = signal<Person[]>([]);
+  /** Every claim on the sheet, newest first. */
+  protected readonly claims = signal<Claim[]>([]);
+  protected readonly claimsByPerson = computed(() => {
+    const by = new Map<number, Claim[]>();
+    for (const c of this.claims()) by.set(c.personId, [...(by.get(c.personId) ?? []), c]);
+    return by;
+  });
+  /** What each person has claimed: the sum of their claims' amounts. */
+  protected readonly claimed = computed(() => {
+    const by = new Map<number, string>();
+    for (const [id, cs] of this.claimsByPerson()) by.set(id, sumAmounts(cs.map((c) => c.amount)));
+    return by;
+  });
+  protected readonly claimedTotal = computed(() => sumAmounts(this.claims().map((c) => c.amount)));
   /** The id of the person whose editor is open, or null when the form adds a person. */
   protected readonly editing = signal<number | null>(null);
   protected readonly error = signal('');
@@ -71,6 +95,7 @@ export class PeopleList {
       const sheetId = this.session.sheetId();
       this.session.loads();
       this.people.set([]);
+      this.claims.set([]);
       this.reset();
       if (sheetId) void this.reload(sheetId);
     });
@@ -116,6 +141,14 @@ export class PeopleList {
     }
   }
 
+  protected claimSaved(claim: Claim): void {
+    this.claims.update((cs) =>
+      cs.some((c) => c.id === claim.id)
+        ? cs.map((c) => (c.id === claim.id ? claim : c))
+        : [claim, ...cs].sort((a, b) => b.id - a.id),
+    );
+  }
+
   private reset(): void {
     this.editing.set(null);
     this.form.reset({ name: '', grade: 'A' }, { emitEvent: false });
@@ -125,8 +158,11 @@ export class PeopleList {
   private async reload(sheetId: string): Promise<void> {
     const read = ++this.reads;
     try {
-      const people = await this.api.list(sheetId);
-      if (read === this.reads) this.people.set(people);
+      const [people, claims] = await Promise.all([this.api.list(sheetId), this.claimsApi.list(sheetId)]);
+      if (read === this.reads) {
+        this.claims.set(claims);
+        this.people.set(people);
+      }
     } catch {
       // the list stays empty; the next load reads it again
     }
