@@ -143,6 +143,12 @@ public class PersonController {
     /** How many people a bulk retire retired. */
     public record BulkRetireResult(int retired) {}
 
+    /** The people to hold together, from a date (blank: the sheet's today) to an optional to-date. */
+    public record BulkHoldRequest(@NotEmpty List<@NotNull Long> ids, LocalDate from, LocalDate to) {}
+
+    /** How many people a bulk hold held. */
+    public record BulkHoldResult(int held) {}
+
     /** Pasted lines of name,grade,terms,contact, one person each. */
     public record ImportRequest(@NotNull @Size(max = 200000) String text) {}
 
@@ -244,6 +250,17 @@ public class PersonController {
             @RequestHeader("X-User") @NotBlank @Size(max = 100) String user,
             @RequestBody @Valid BulkRetireRequest request) {
         return new BulkRetireResult(service.bulkRetire(sheetId, user, Set.copyOf(request.ids()), request.from()));
+    }
+
+    /** Hold each selected person from the date (blank: the sheet's today) to the optional to-date, in list order. */
+    @OpenToViewer
+    @PostMapping("/hold")
+    public BulkHoldResult bulkHold(
+            @PathVariable @Size(max = 100) @Pattern(regexp = "[A-Za-z0-9._-]+") String sheetId,
+            @RequestHeader("X-User") @NotBlank @Size(max = 100) String user,
+            @RequestBody @Valid BulkHoldRequest request) {
+        return new BulkHoldResult(service.bulkHold(sheetId, user, Set.copyOf(request.ids()), request.from(),
+                request.to()));
     }
 
     /** Swap the person with the one above or below them in the list. */

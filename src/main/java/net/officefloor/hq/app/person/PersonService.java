@@ -311,6 +311,33 @@ public class PersonService {
     }
 
     /**
+     * Hold each of the people from the date (blank: the sheet's today) to the optional to-date, in list
+     * order, each as its own hold would, with its PERSON_HELD and rollup lines. One not on the sheet, or a
+     * to-date before the from-date, refuses them all. A viewer's, or one on an archived sheet, goes through
+     * with nothing done. Returns how many were held.
+     */
+    @Transactional
+    public int bulkHold(String sheetId, String user, Set<Long> ids, LocalDate from, LocalDate to) {
+        Sheet sheet = sheets.findForUpdate(sheetId).orElseThrow(SheetNotFoundException::new);
+        if (sheet.isArchived() || settings.roleOf(sheetId, user) == Role.VIEWER) return 0;
+        LocalDate today = sheet.getToday();
+        List<Person> chosen = people.findBySheetIdOrderByPositionAscIdAsc(sheetId).stream()
+                .filter(p -> ids.contains(p.getId())).toList();
+        if (chosen.size() != ids.size()) throw new PersonNotFoundException();
+        LocalDate on = from != null ? from : today;
+        if (to != null && to.isBefore(on)) throw new HoldDatesException();
+        for (Person person : chosen) {
+            RollupService.Snapshot before = rollup.snapshot(sheetId);
+            person.addHold(new PersonHold(on, to, today));
+            Person saved = saveUnique(person);
+            audit.recordOnCommit("PERSON_HELD sheet=" + sheetId + " by=" + user.strip()
+                    + " name=" + saved.getName() + " from=" + on);
+            rollup.recordChanges(sheetId, user, before);
+        }
+        return chosen.size();
+    }
+
+    /**
      * Swap the person with the one above (up) or below (down) them in the list; the top one cannot move
      * up nor the bottom one down. Returns them in their new place.
      */

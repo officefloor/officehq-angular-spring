@@ -504,6 +504,16 @@ function trimmedSum(figures: number[]): number {
       @if (bulkRetired() !== null) {
         <p role="status">Retired <span data-testid="bulk-retired">{{ bulkRetired() }}</span></p>
       }
+      <label for="bulk-hold-from">Hold selected people from (blank: today)</label>
+      <input type="date" id="bulk-hold-from" data-testid="bulk-hold-from" #bulkHoldFrom
+             (input)="personError.set(null)" />
+      <label for="bulk-hold-to">to (blank: no end)</label>
+      <input type="date" id="bulk-hold-to" data-testid="bulk-hold-to" #bulkHoldTo
+             (input)="personError.set(null)" />
+      <button type="button" data-testid="bulk-hold" (click)="bulkHold(bulkHoldFrom.value, bulkHoldTo.value)">Hold selected people</button>
+      @if (bulkHeld() !== null) {
+        <p role="status">Held <span data-testid="bulk-held">{{ bulkHeld() }}</span></p>
+      }
       <table>
         <thead>
           <tr><th scope="col"><span class="visually-hidden">Select</span></th><th scope="col">Name</th><th scope="col">Grade</th>@if (shows('terms')) {<th scope="col">Terms</th>}@if (shows('contact')) {<th scope="col">Contact</th>}<th scope="col">Tags</th><th scope="col">Aliases</th><th scope="col">Came from</th>@if (shows('claimed')) {<th scope="col">Claimed</th>}@if (shows('due-total')) {<th scope="col">Due total</th>}<th scope="col">Snapshots</th>@if (shows('excess')) {<th scope="col">Excess</th>}<th scope="col">Settled total</th><th scope="col">Score</th><th scope="col">Band</th><th scope="col">Open total</th><th scope="col">Cut total</th><th scope="col">Periods</th><th scope="col">Statements</th><th scope="col">Retired</th><th scope="col">Hold</th><th scope="col">Flag</th><th scope="col">Approver</th><th scope="col">Watched</th><th scope="col">Active</th><th scope="col">Clashing</th><th scope="col">Overdue</th><th scope="col">Aged</th><th scope="col">Patrons</th><th scope="col">Plans</th><th scope="col">Claims</th><th scope="col"><span class="visually-hidden">Actions</span></th></tr>
@@ -989,6 +999,8 @@ export class People {
   protected readonly bulkGraded = signal<number | null>(null);
   /** How many people the last bulk retire retired; null before one, and while one runs. */
   protected readonly bulkRetired = signal<number | null>(null);
+  /** How many people the last bulk hold held; null before one, and while one runs. */
+  protected readonly bulkHeld = signal<number | null>(null);
   protected readonly bulkGradeForm = new FormGroup({
     grade: new FormControl('A', { nonNullable: true }),
     /** The date the grade is in force from; blank: the sheet's today. */
@@ -1457,6 +1469,7 @@ export class People {
       this.selectedPeople.set(new Set());
       this.bulkGraded.set(null);
       this.bulkRetired.set(null);
+      this.bulkHeld.set(null);
       this.bulkGradeForm.reset({ grade: 'A', from: '' }, { emitEvent: false });
       this.bulkOpened.set(null);
       this.bulkError.set('');
@@ -2374,6 +2387,49 @@ export class People {
       this.bulkRetired.set(result.retired);
     } catch {
       if (this.session.sheetId() === sheet) refuse('Could not retire the selected people.');
+    } finally {
+      this.bulkRunning = false;
+    }
+  }
+
+  /**
+   * Hold the selected people from the date (blank: the sheet's today) to the optional to-date, in list order,
+   * as each row's hold would; show how many were held. A refusal holds none and shows on the first selected row.
+   */
+  protected async bulkHold(fromDate: string, toDate: string): Promise<void> {
+    if (this.bulkRunning) return;
+    this.bulkHeld.set(null);
+    this.personError.set(null);
+    const sheet = this.session.sheetId();
+    if (!sheet) return;
+    const ids = this.listed().filter((p) => this.selectedPeople().has(p.id)).map((p) => p.id);
+    const from = fromDate.trim();
+    const to = toDate.trim();
+    const refuse = (message: string) => {
+      const first = ids[0] ?? this.listed()[0]?.id;
+      if (first !== undefined) this.personError.set({ id: first, message });
+    };
+    if (ids.length === 0) {
+      refuse('Select at least one person to hold.');
+      return;
+    }
+    const date = /^\d{4}-\d{2}-\d{2}$/;
+    if ((from && !date.test(from)) || (to && !date.test(to))) {
+      refuse('Enter dates, or leave the from-date blank for today and the to-date blank for no end.');
+      return;
+    }
+    this.bulkRunning = true;
+    try {
+      const result = await firstValueFrom(this.http.post<{ held: number }>(
+        `${this.url(sheet)}/hold`, { ids, from: from || null, to: to || null }, { headers: this.headers() }));
+      const list = await firstValueFrom(this.http.get<Person[]>(this.url(sheet), { headers: this.headers() }));
+      if (this.session.sheetId() !== sheet) return;
+      this.people.set(list);
+      this.selectedPeople.set(new Set());
+      this.session.holdChanges.update((n) => n + 1);
+      this.bulkHeld.set(result.held);
+    } catch {
+      if (this.session.sheetId() === sheet) refuse('Could not hold the selected people.');
     } finally {
       this.bulkRunning = false;
     }
