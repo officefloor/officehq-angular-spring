@@ -233,6 +233,15 @@ function distinctPeople(keySets: string[][]): number {
   return keySets.filter((_, i) => find(i) === i).length;
 }
 
+/** A holder's part of a due in cents: the due times the share (in hundredths of a percent) divided by 100, rounded half to even. */
+function shareCents(due: number, share: number): number {
+  const scaled = due * share;
+  const whole = Math.trunc(scaled / 10000);
+  const rest = Math.abs(scaled - whole * 10000);
+  const sign = scaled < 0 ? -1 : 1;
+  return rest > 5000 || (rest === 5000 && whole % 2 !== 0) ? whole + sign : whole;
+}
+
 function trimmedSum(figures: number[]): number {
   const sum = figures.reduce((total, c) => total + c, 0);
   return figures.length < 3 ? sum : sum - Math.max(...figures) - Math.min(...figures);
@@ -1200,6 +1209,7 @@ export class People {
   private readonly splitByPerson = computed(() => {
     const floor = this.session.floorCentsOn;
     const late = this.session.late();
+    const given = this.shareParts().given;
     const by = new Map<number, Split>();
     for (const p of this.people()) {
       const pctOn = this.pctOnOf(p.id);
@@ -1209,9 +1219,14 @@ export class People {
       for (const c of theirs) {
         if (!this.counts(c)) continue;
         const due = claimDueCents(c, pctOn, floor, late, roundsOn(c, theirs), graceOn) ?? 0;
-        if (c.status === 'SETTLED') split.settled += due;
-        else split.open += due;
+        const own = due - (given.get(c.id) ?? 0);
+        if (c.status === 'SETTLED') split.settled += own;
+        else split.open += own;
         if (c.status === 'SETTLED' && c.corrects === null) split.scored += due;
+      }
+      for (const h of this.heldPartsOf(p.id)) {
+        if (h.claim.status === 'SETTLED') split.settled += h.cents;
+        else split.open += h.cents;
       }
       by.set(p.id, split);
     }
@@ -1560,6 +1575,35 @@ export class People {
    * their grade has no rate in force today and none of those claims has a due fixed when settled or bound by a statement,
    * nor a due under another grade they had on its date or under a rate not in force today.
    */
+  /**
+   * The parts shares move, in cents: per claim that counts with a due (at its person's figures), what its
+   * holders' parts add up to, and per holder each part they hold with its claim. A part is the claim's due
+   * times the share divided by 100, rounded half to even.
+   */
+  private readonly shareParts = computed(() => {
+    const floor = this.session.floorCentsOn;
+    const late = this.session.late();
+    const given = new Map<number, number>();
+    const held = new Map<number, { claim: Claim; cents: number }[]>();
+    for (const c of this.claims()) {
+      if (c.shares.length === 0 || !this.counts(c)) continue;
+      const theirs = this.claimsOf(c.personId);
+      const due = claimDueCents(c, this.pctOnOf(c.personId), floor, late, roundsOn(c, theirs), this.graceOnOf(c.personId));
+      if (due === null) continue;
+      for (const s of c.shares) {
+        const part = shareCents(due, cents(s.share));
+        given.set(c.id, (given.get(c.id) ?? 0) + part);
+        held.set(s.personId, [...(held.get(s.personId) ?? []), { claim: c, cents: part }]);
+      }
+    }
+    return { given, held };
+  });
+
+  /** The parts of others' claims the person holds. */
+  private heldPartsOf(personId: number): { claim: Claim; cents: number }[] {
+    return this.shareParts().held.get(personId) ?? [];
+  }
+
   private uncappedDueCents(p: Person): number | null {
     const theirs = this.claimsOf(p.id);
     const counted = theirs.filter(this.counts);
@@ -1575,8 +1619,11 @@ export class People {
     };
     const fixed = (c: Claim) => c.settledDue !== null || (isBound(c) && c.statedDue !== null)
       || ((gradeOn(p, c.date) !== gradeToday || otherRate(c)) && claimDueCents(c, pctOn, floor, late, roundsOn(c, theirs), graceOn) !== null);
-    if (this.pctOf(gradeToday) === null && !counted.some(fixed)) return null;
-    return counted.reduce((sum, c) => sum + (claimDueCents(c, pctOn, floor, late, roundsOn(c, theirs), graceOn) ?? 0), 0);
+    const held = this.heldPartsOf(p.id);
+    if (this.pctOf(gradeToday) === null && !counted.some(fixed) && held.length === 0) return null;
+    const given = this.shareParts().given;
+    return counted.reduce((sum, c) => sum + (claimDueCents(c, pctOn, floor, late, roundsOn(c, theirs), graceOn) ?? 0) - (given.get(c.id) ?? 0), 0)
+      + held.reduce((sum, h) => sum + h.cents, 0);
   }
 
   /** The sheet's cap in cents, or null when there is none. */

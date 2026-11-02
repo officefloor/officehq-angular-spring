@@ -749,6 +749,34 @@ public class ClaimService {
         return saved;
     }
 
+    /**
+     * Share a claim with another person of the sheet: they hold the share percent (more than 0.00) of its due,
+     * which counts in their figures and no longer in its own person's. Refused for a SETTLED, VOID or DELETED
+     * claim, for its own person, a person already holding a share of it, or shares totalling more than 100.00.
+     */
+    @Transactional
+    public Claim share(String sheetId, String user, Long id, Long withPersonId, BigDecimal share) {
+        // The snapshot locks the sheet first, so the claim is read once no other change is under way.
+        RollupService.Snapshot before = rollup.snapshot(sheetId);
+        Claim claim = claims.findByIdAndSheetId(id, sheetId).orElseThrow(ClaimNotFoundException::new);
+        if (claim.getStatus() == ClaimStatus.SETTLED || claim.getStatus() == ClaimStatus.VOID
+                || claim.getStatus() == ClaimStatus.DELETED) {
+            throw new ClaimStatusRefusedException();
+        }
+        Person person = people.findByIdAndSheetId(claim.getPersonId(), sheetId).orElseThrow(PersonNotFoundException::new);
+        Person with = people.findByIdAndSheetId(withPersonId, sheetId).orElseThrow(PersonNotFoundException::new);
+        if (with.getId().equals(person.getId()) || claim.isSharedWith(with.getId()) || share.signum() <= 0
+                || claim.sharedTotal().add(share).compareTo(BigDecimal.valueOf(100)) > 0) {
+            throw new ClaimShareRefusedException();
+        }
+        claim.share(with.getId(), share);
+        Claim saved = claims.saveAndFlush(claim);
+        record("CLAIM_SHARED", sheetId, user, person, saved, saved.getNumber(),
+                " with=" + with.getName() + " share=" + share.setScale(2).toPlainString());
+        rollup.recordChanges(sheetId, user, before);
+        return saved;
+    }
+
     /** Comment on a claim: the comment is kept with the user and the sheet's today, in any status. */
     @Transactional
     public Claim comment(String sheetId, String user, Long id, String text) {

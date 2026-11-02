@@ -228,6 +228,12 @@ public class Claim {
     @OrderColumn(name = "seq")
     private List<ClaimLine> lines = new ArrayList<>();
 
+    /** Its shares, in the order they were added; together at most 100.00. */
+    @ElementCollection(fetch = FetchType.EAGER)
+    @CollectionTable(name = "claim_share", joinColumns = @JoinColumn(name = "claim_id"))
+    @OrderColumn(name = "seq")
+    private List<ClaimShare> shares = new ArrayList<>();
+
     protected Claim() {}
 
     public Claim(String sheetId, Long personId, BigDecimal amount, LocalDate date, String note, LocalDate dueBy,
@@ -310,7 +316,7 @@ public class Claim {
     /**
      * Move the claim, with its person, to another sheet: it keeps its status, dates, note, tags, frozen
      * figure, logs and any figure a statement bound it to, but loses its reference, its number (to be
-     * given the other sheet's next), its settle batch and any editor's lock; it is added to the other sheet
+     * given the other sheet's next), its settle batch, its shares and any editor's lock; it is added to the other sheet
      * at the given place in the order claims were added.
      */
     public void transferTo(String sheetId, long added) {
@@ -322,6 +328,7 @@ public class Claim {
         this.numberSeq = null;
         this.settleBatch = null;
         this.lockedBy = null;
+        this.shares.clear();
     }
 
     /** The sheet's today it was first opened on, as its status log records it; null when it records none. */
@@ -368,6 +375,23 @@ public class Claim {
     public void addLine(String label, int qty, BigDecimal unit) {
         lines.add(new ClaimLine(label, qty, unit));
         amount = lines.stream().map(ClaimLine::total).reduce(BigDecimal.ZERO, BigDecimal::add).setScale(2);
+    }
+
+    public List<ClaimShare> getShares() { return Collections.unmodifiableList(shares); }
+
+    /** The shares added up; 0.00 for none. */
+    public BigDecimal sharedTotal() {
+        return shares.stream().map(ClaimShare::getShare).reduce(BigDecimal.ZERO.setScale(2), BigDecimal::add);
+    }
+
+    /** Whether the person holds a share of it. */
+    public boolean isSharedWith(Long personId) {
+        return shares.stream().anyMatch(s -> s.getPersonId().equals(personId));
+    }
+
+    /** Give the person a share of it. */
+    public void share(Long personId, BigDecimal share) {
+        shares.add(new ClaimShare(personId, share));
     }
 
     public List<ClaimLogEntry> getLog() { return Collections.unmodifiableList(log); }

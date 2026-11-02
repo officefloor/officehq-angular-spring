@@ -83,6 +83,14 @@ export interface Claim {
   lines: ClaimLine[];
   /** Its place in the order claims were added to their sheets; a forward-only rate applies only to claims added after it was saved. */
   added: number;
+  /** Its shares, in the order they were added: each holder's part of its due counts in their figures, not its person's. */
+  shares: ClaimShare[];
+}
+
+/** A share of a claim: another person of the sheet holding a percent (two decimals) of its due. */
+export interface ClaimShare {
+  personId: number;
+  share: string;
 }
 
 /** A line of a claim: its label, a whole quantity of at least 1 and a unit amount (two decimals). */
@@ -388,6 +396,7 @@ function notEditable(status: ClaimStatus | undefined): string {
           <span>Batch <span data-testid="claim-batch">{{ c.batch ?? '' }}</span></span>
           <span>Waived <span data-testid="claim-waived">{{ c.waived ? 'yes' : 'no' }}</span></span>
           <span>Held <span data-testid="claim-held">{{ c.held ? 'yes' : 'no' }}</span></span>
+          <span>Shared with <span data-testid="claim-shares">{{ sharesOf(c) }}</span></span>
           <ol [attr.aria-label]="'Status log of claim of ' + c.amount + ' on ' + c.date">
             @for (line of c.log; track $index) {
               <li data-testid="claim-log-line">{{ line.status }} by {{ line.by }} on {{ line.date }} due={{ line.due ?? na }}</li>
@@ -498,6 +507,18 @@ function notEditable(status: ClaimStatus | undefined): string {
           </select>
           <button type="button" data-testid="claim-reassign" (click)="reassign(c, reassignTo.value)"
                   [attr.aria-label]="'Move claim of ' + c.amount + ' on ' + c.date">Move</button>
+          <label [for]="fieldId('share-' + c.id)">Share with</label>
+          <select [id]="fieldId('share-' + c.id)" data-testid="claim-share-select" #shareWith
+                  (change)="clearClaimError(c.id)">
+            @for (o of others(); track o.id) {
+              <option [value]="o.id">{{ o.name }}</option>
+            }
+          </select>
+          <label [for]="fieldId('share-pct-' + c.id)">Share percent</label>
+          <input [id]="fieldId('share-pct-' + c.id)" data-testid="claim-share-pct" inputmode="decimal" #sharePct
+                 (input)="clearClaimError(c.id)" />
+          <button type="button" data-testid="claim-share-add" (click)="share(c, shareWith.value, sharePct.value)"
+                  [attr.aria-label]="'Share claim of ' + c.amount + ' on ' + c.date">Share</button>
           <label [for]="fieldId('split-' + c.id)">Split off</label>
           <input [id]="fieldId('split-' + c.id)" data-testid="claim-split-amount" inputmode="decimal" #splitAmount
                  (input)="clearClaimError(c.id)" />
@@ -1058,6 +1079,45 @@ export class Claims {
         : e instanceof HttpErrorResponse && e.status === 422
         ? RETIRED
         : 'Could not move that claim.';
+      this.claimError.set({ id: c.id, message });
+    }
+  }
+
+  /** The claim's holders as <name> <share>, in the order they were added, comma and space separated. */
+  protected sharesOf(c: Claim): string {
+    const names = new Map(this.others().map((o) => [o.id, o.name]));
+    return c.shares.map((s) => `${names.get(s.personId) ?? ''} ${s.share}`).join(', ');
+  }
+
+  /**
+   * Share a claim with another person: they hold the share percent (more than 0.00) of its due. Its own person,
+   * a person already holding a share, shares totalling more than 100.00, or a SETTLED, VOID or DELETED claim are refused.
+   */
+  protected async share(c: Claim, personId: string, share: string): Promise<void> {
+    this.claimError.set(null);
+    const sheet = this.session.sheetId();
+    if (!sheet) return;
+    const value = share.trim();
+    const refused = 'Choose another person who holds no share of the claim yet, with a share more than 0.00 that keeps its shares at most 100.00.';
+    const held = c.shares.reduce((sum, s) => sum + cents(s.share), 0);
+    if (personId === '' || Number(personId) === c.personId || c.shares.some((s) => s.personId === Number(personId))
+        || !/^\d{1,3}(\.\d{1,2})?$/.test(value) || cents(value) <= 0 || held + cents(value) > 10000) {
+      this.claimError.set({ id: c.id, message: refused });
+      return;
+    }
+    const url = `/api/sheets/${encodeURIComponent(sheet)}/claims/${c.id}/shares`;
+    try {
+      const claim = await firstValueFrom(
+        this.http.post<Claim>(url, { personId: Number(personId), share: value }, { headers: this.headers() }));
+      if (this.session.sheetId() !== sheet) return;
+      this.saved.emit(claim);
+    } catch (e) {
+      if (this.session.sheetId() !== sheet) return;
+      const message = e instanceof HttpErrorResponse && e.status === 409
+        ? `A ${c.status} claim cannot be shared.`
+        : e instanceof HttpErrorResponse && e.status === 422
+        ? refused
+        : 'Could not share that claim.';
       this.claimError.set({ id: c.id, message });
     }
   }

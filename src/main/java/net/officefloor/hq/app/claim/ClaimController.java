@@ -36,7 +36,7 @@ public class ClaimController {
      * when bound by its person's last statement, to the due it had then (null when it had none). A
      * correction has the number of the claim it corrects (null for any other claim). Its status log
      * is oldest first. Locked by the user whose open editor holds it (null when none). A late entry
-     * when added while its period was soft-closed. Reminded on the last day a reminder was written (null when none). Its external reference is null when it has none. Its tags are sorted (empty when none). Its void reason is null unless voided with one. Its comments are oldest first. Its batch is the number of the bulk settle that settled it (null when none). Review on is the sheet's today it went to REVIEW (null when it never did). Waived when a steward waived its late charge, on the sheet's today waived on (null unless waived). Held while held.
+     * when added while its period was soft-closed. Reminded on the last day a reminder was written (null when none). Its external reference is null when it has none. Its tags are sorted (empty when none). Its void reason is null unless voided with one. Its comments are oldest first. Its batch is the number of the bulk settle that settled it (null when none). Review on is the sheet's today it went to REVIEW (null when it never did). Waived when a steward waived its late charge, on the sheet's today waived on (null unless waived). Held while held. Its shares are in the order they were added.
      */
     public record ClaimView(Long id, Long personId, String amount, LocalDate date, String note, ClaimStatus status,
             String number, String settledDue, String openedBy, boolean stated, String statedDue, String corrects,
@@ -44,7 +44,7 @@ public class ClaimController {
             int proofs, String splitFrom, String lockedBy, boolean lateEntry, LocalDate remindedOn,
             String ref, List<String> tags, String voidReason, List<CommentView> comments,
             Integer batch, List<LineView> lines, Long added, LocalDate reviewOn, boolean waived,
-            LocalDate waivedOn, int proofsReceipt, int proofsPhoto, boolean held) {
+            LocalDate waivedOn, int proofsReceipt, int proofsPhoto, boolean held, List<ShareView> shares) {
         public static ClaimView of(Claim claim) {
             return new ClaimView(claim.getId(), claim.getPersonId(), claim.getAmount().toPlainString(),
                     claim.getDate(), claim.getNote(), claim.getStatus(), claim.getNumber(),
@@ -59,7 +59,8 @@ public class ClaimController {
                     claim.getSettleBatch(),
                     claim.getLines().stream().map(LineView::of).toList(), claim.getAdded(),
                     claim.getReviewOn(), claim.isWaived(), claim.getWaivedOn(),
-                    claim.getProofsReceipt(), claim.getProofsPhoto(), claim.isHeld());
+                    claim.getProofsReceipt(), claim.getProofsPhoto(), claim.isHeld(),
+                    claim.getShares().stream().map(ShareView::of).toList());
         }
     }
 
@@ -75,6 +76,21 @@ public class ClaimController {
     public record LineView(String label, int qty, String unit) {
         static LineView of(ClaimLine line) {
             return new LineView(line.getLabel(), line.getQty(), line.getUnit().setScale(2).toPlainString());
+        }
+    }
+
+    /** A share of a claim: the person holding it and their share percent (two decimals). */
+    public record ShareView(Long personId, String share) {
+        static ShareView of(ClaimShare share) {
+            return new ShareView(share.getPersonId(), share.getShare().setScale(2).toPlainString());
+        }
+    }
+
+    /** A share to give: another person of the sheet and a share percent of up to two decimals. */
+    public record ShareRequest(@NotNull Long personId, @NotNull @Pattern(regexp = "\\d{1,3}(\\.\\d{1,2})?") String share) {
+
+        BigDecimal shareValue() {
+            return new BigDecimal(share).setScale(2);
         }
     }
 
@@ -541,5 +557,14 @@ public class ClaimController {
             @RequestBody @Valid SplitRequest request) {
         ClaimService.Split split = service.partSettle(sheetId, user, id, request.amountValue());
         return new SplitView(ClaimView.of(split.original()), ClaimView.of(split.split()));
+    }
+
+    @PostMapping("/claims/{id}/shares")
+    public ClaimView share(
+            @PathVariable @Size(max = 100) @Pattern(regexp = "[A-Za-z0-9._-]+") String sheetId,
+            @PathVariable Long id,
+            @RequestHeader("X-User") @NotBlank @Size(max = 100) String user,
+            @RequestBody @Valid ShareRequest request) {
+        return ClaimView.of(service.share(sheetId, user, id, request.personId(), request.shareValue()));
     }
 }
