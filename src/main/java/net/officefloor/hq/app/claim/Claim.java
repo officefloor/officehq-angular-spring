@@ -209,7 +209,7 @@ public class Claim {
     }
 
     /** Move the claim to another person, listed at the place given (after every claim listed so far).
-     *  It keeps its number, date and status, but no figure a statement bound it to: it is live
+     *  It keeps its date and status, but no figure a statement bound it to: it is live
      *  again until its new person's next statement. */
     public void moveTo(Long personId, long listed) {
         this.personId = personId;

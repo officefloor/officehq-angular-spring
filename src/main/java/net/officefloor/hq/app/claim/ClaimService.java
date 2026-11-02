@@ -478,8 +478,8 @@ public class ClaimService {
         });
     }
 
-    /** Move a draft, open or pending claim to another person on the sheet. It keeps its number, date
-     *  and status, loses any figure a statement bound it to, and is listed as its new person's newest
+    /** Move a draft, open or pending claim to another person on the sheet. It keeps its date and
+     *  status, takes the next number (a draft, having none, gets none), loses any figure a statement bound it to, and is listed as its new person's newest
      *  claim. Refused unless the permission matrix allows the user's role to reassign, and when the claim is settled or void, the person
      *  is the one it is already for, the claim's period is closed, or the claim is dated after the
      *  new person's retirement day. */
@@ -509,6 +509,10 @@ public class ClaimService {
         refuseRetired(to, claim.getDate());
         return rollup.tracking(sheetId, user, () -> {
             claim.moveTo(to.getId(), claims.nextListed());
+            if (claim.getNumber() != null) {
+                // a moved claim takes the next number; its old one is never used again
+                claim.setNumber(nextNumber(sheetId, claim.getDueBy()));
+            }
             Claim saved = claims.saveAndFlush(claim);
             audit.recordOnCommit(record("CLAIM_REASSIGNED", sheetId, user, to, saved)
                     + " from=" + from.getName() + " to=" + to.getName());
