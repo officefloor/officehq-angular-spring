@@ -79,6 +79,8 @@ export interface Person {
    *  tree (its ancestors and descendants): every edit of them is refused until it renames them
    *  clear of the clash. */
   clashing: boolean;
+  /** The sheet they were transferred from; null when they were not transferred. */
+  origin: string | null;
 }
 
 /** A statement just taken: the person as they now show, and their claims (newest first) as it

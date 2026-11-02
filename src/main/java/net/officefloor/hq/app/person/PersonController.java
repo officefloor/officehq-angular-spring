@@ -40,13 +40,13 @@ public class PersonController {
 
     /** What the screen shows of a person; with how many statements were taken of them, and the
      *  last one's due-total (text with two decimals, null when n/a or none) and day (null when none);
-     *  whether they are retired, and from which day (null when not); and whether they have any hold, and their holds, earliest first; and their own terms in days (null: none); and their contact (null: none); and their aliases, sorted as names are compared; and whether they clash (see
+     *  whether they are retired, and from which day (null when not); and whether they have any hold, and their holds, earliest first; and their own terms in days (null: none); and their contact (null: none); and their aliases, sorted as names are compared; and whether they clash; and the sheet they were transferred from (null: none) (see
      *  {@link PersonService#clashing}).
      *  The grade is the one in force on the sheet's today; grades are all those recorded, each from
      *  its from-date (null: the beginning of time), earliest first. */
     public record PersonView(long id, String name, String grade, List<GradeView> grades, long version,
             int statementCount, String statedTotal, LocalDate statementDate, boolean retired, LocalDate retiredFrom,
-            boolean held, List<HoldView> holds, Integer terms, String contact, List<String> aliases, boolean clashing) {
+            boolean held, List<HoldView> holds, Integer terms, String contact, List<String> aliases, boolean clashing, String origin) {
         public static PersonView of(Person person, StatementSummary statements, LocalDate today,
                 boolean clashing) {
             return new PersonView(person.getId(), person.getName(), person.gradeOn(today),
@@ -55,7 +55,7 @@ public class PersonController {
                     statements.lastDueTotal() == null ? null : statements.lastDueTotal().setScale(2).toPlainString(),
                     statements.lastTakenOn(), person.isRetired(), person.getRetiredFrom(), person.isHeld(),
                     person.getHolds().stream().map(h -> new HoldView(h.getFromDate(), h.getToDate())).toList(),
-                    person.getTerms(), person.getContact(), person.getAliases(), clashing);
+                    person.getTerms(), person.getContact(), person.getAliases(), clashing, person.getOrigin());
         }
     }
 

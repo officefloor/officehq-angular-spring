@@ -68,6 +68,10 @@ public class Person {
     @Column(name = "alias")
     private Set<String> aliases = new HashSet<>();
 
+    /** The sheet the person was transferred from; null when they were not transferred. */
+    @Column(name = "origin")
+    private String origin;
+
     /** Raised each time the person is saved. */
     @Version
     @Column(name = "version", nullable = false)
@@ -101,6 +105,7 @@ public class Person {
         copy.terms = terms;
         copy.contact = contact;
         copy.aliases.addAll(aliases);
+        copy.origin = sheetId;
         return copy;
     }
 
@@ -198,6 +203,11 @@ public class Person {
 
     public void setTerms(Integer terms) {
         this.terms = terms;
+    }
+
+    /** The sheet the person was transferred from; null when they were not transferred. */
+    public String getOrigin() {
+        return origin;
     }
 
     /** The person's contact, held by no one else on the sheet; null when they have none. */
