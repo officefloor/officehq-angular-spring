@@ -1,0 +1,64 @@
+{
+  "checkpoint": 245,
+  "stack": {
+    "repo": "/home/daniel/officehq-angular-spring",
+    "origin": "git@github.com:officefloor/officehq-angular-spring.git",
+    "name": "officehq-angular-spring",
+    "base_ref": "base-empty",
+    "base_commit": "65cb8233ea38b2dfa6cfd18709e30cd18fdf3250"
+  },
+  "checkpoint_id": "cp245_rate-withdraw",
+  "phase": "late",
+  "type": "additive",
+  "mutates": [],
+  "replaced_tests": [],
+  "request": {
+    "spec": "A steward can withdraw a rate (a button on the rate row; RATE_WITHDRAWN grade=<grade> from=<date\nwhen one>): the newest version of that grade and from-date is removed and the version before it, when there is one, applies again; with no version before it the rate is gone. Anyone else is\nrefused.\n",
+    "prompt": "You are implementing ONE change to this application.\n\nFIRST read AGENTS.md \u2014 it states the working rules and how the app is tested, and sends you to\nDESIGN.md for the app's stack and conventions. Follow both.\n\nTHE CHANGE REQUEST:\nA steward can withdraw a rate (a button on the rate row; RATE_WITHDRAWN grade=<grade> from=<date\nwhen one>): the newest version of that grade and from-date is removed and the version before it, when there is one, applies again; with no version before it the rate is gone. Anyone else is\nrefused.\n\nYour work is verified by an automated Playwright UI test already installed under e2e/specs/.\nRead that spec: it declares the exact data-testid anchors, values, test data and any audit\nrecords it expects \u2014 match them. Run `bin/e2e` to build the app, start it, and run the test as\nyou work; iterate until it passes. Change whatever the request needs across the app \u2014 its stored\ndata, its server and its front end. Do NOT edit bin/build, bin/start, bin/stop, bin/e2e,\nAGENTS.md, CLAUDE.md, DESIGN.md, e2e/support/ or the test spec.\n"
+  },
+  "commit_sha": "414c90a1c57592e053f125d3591ccdfbeaa73b98",
+  "reset_sha": "",
+  "preagent_sha": "9f482118b55e5abed0f8783f012c73c462a81b16",
+  "prev_sha": "9f482118b55e5abed0f8783f012c73c462a81b16",
+  "base_sha": "65cb8233ea38b2dfa6cfd18709e30cd18fdf3250",
+  "agent": {
+    "ok": true,
+    "cost_usd": 0.6917258000000002,
+    "input_tokens": 34,
+    "output_tokens": 7638,
+    "cache_read_tokens": 670389,
+    "cache_creation_tokens": 50594,
+    "num_turns": 18,
+    "duration_ms": 280627,
+    "duration_api_ms": 74220,
+    "model": "claude-opus-5-5",
+    "session_id": "8d0837c8-afac-4344-83e1-5ad386d8a322",
+    "stop_reason": "success",
+    "result_text": "Stewards can now withdraw a rate, and all 4 Playwright tests in `bin/e2e` pass.\n\n**How it behaves**\n- Each row in the \"All rates\" table has a Withdraw button (`rate-withdraw`).\n- Withdrawing removes the newest version for that grade and from-date. If there was an earlier version, it applies again and the version count drops by one. If there wasn't, the rate is gone.\n- It writes `RATE_WITHDRAWN sheet=\u2026 by=\u2026 grade=<g>`, adding ` from=<date>` when the rate has a from-date. The usual ROLLUP and TOTALS lines follow it.\n- Anyone who isn't acting as a steward (a delegated steward counts) is refused: `rate-form-error` shows and nothing is stored or audited. Trying to withdraw a rate that doesn't exist is refused the same way.\n\n**One design choice:** withdrawing deletes the withdrawn version's line from the rate log, not just from the rate row. Without that, the version counts and the \"as of a date\" views would still show the withdrawn version. The catch is that the log no longer records that the version ever existed.\n\n**Changes**\n- **Server:** a new `withdraw` method in `RateService.java` (steward check, rate log update, audit line, rollup); `DELETE /api/sheets/{sheetId}/rates/{grade}?from=\u2026` in `RateController.java`; a helper on `Rate.java` that puts the older version back; and a new `RateWithdrawRefusedException`.\n- **Front end:** the button and its call in `features/rates/rates.ts`, plus a handler in `features/people/people.ts` that updates the rates list straight away.\n\nNo database migration was needed, since the existing `versions` column and rate log already hold everything this uses.",
+    "error": "",
+    "attempts": [
+      {
+        "ok": true,
+        "limit_reached": false,
+        "retryable": false,
+        "timed_out": false,
+        "cost_usd": 0.6917258000000002,
+        "num_turns": 18,
+        "duration_ms": 280627,
+        "duration_api_ms": 74220,
+        "error": ""
+      }
+    ]
+  },
+  "agent_stream_file": "cp245.agent.jsonl",
+  "agent_diff_file": "cp245.agent.diff",
+  "build_log_file": null,
+  "tests": {
+    "gated": false,
+    "queued": true
+  },
+  "probe": null,
+  "pinned_touched": [],
+  "acceptance_touched": [],
+  "impact_gate": null
+}

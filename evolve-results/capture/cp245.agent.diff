@@ -1,0 +1,231 @@
+diff --git a/src/main/frontend/src/app/features/people/people.ts b/src/main/frontend/src/app/features/people/people.ts
+index 09b9e9985..2190627dc 100644
+--- a/src/main/frontend/src/app/features/people/people.ts
++++ b/src/main/frontend/src/app/features/people/people.ts
+@@ -345,7 +345,7 @@ function trimmedSum(figures: number[]): number {
+         </tbody>
+       </table>
+     </section>
+-    <app-rates [rates]="rates()" [inherited]="inheritedRates()" [today]="session.today()" (saved)="rateSaved($event)" (imported)="ratesImported($event)" />
++    <app-rates [rates]="rates()" [inherited]="inheritedRates()" [today]="session.today()" (saved)="rateSaved($event)" (imported)="ratesImported($event)" (withdrawn)="rateWithdrawn($event)" />
+     <app-periods [periods]="periods()" [dueTotalOf]="periodDueTotalOf" [claimsCountOf]="periodClaimsCountOf" (saved)="periodSaved($event)" (replaced)="periodsReplaced($event)" />
+     <section aria-labelledby="people-heading">
+       <h2 id="people-heading">People</h2>
+@@ -2404,6 +2404,11 @@ export class People {
+     this.rates.update((list) => [...list.filter((r) => r.grade !== rate.grade || r.from !== rate.from), rate]);
+   }
+ 
++  /** Take a withdrawn rate's newest version away: the version in force again takes its place, if any. */
++  protected rateWithdrawn(w: { grade: string; from: string | null; rate: Rate | null }): void {
++    this.rates.update((list) => [...list.filter((r) => r.grade !== w.grade || r.from !== w.from), ...(w.rate ? [w.rate] : [])]);
++  }
++
+   /** Put each imported rate in place, in the order they were set. */
+   protected ratesImported(rates: Rate[]): void {
+     for (const rate of rates) this.rateSaved(rate);
+diff --git a/src/main/frontend/src/app/features/rates/rates.ts b/src/main/frontend/src/app/features/rates/rates.ts
+index a4eeafc58..e4abe4681 100644
+--- a/src/main/frontend/src/app/features/rates/rates.ts
++++ b/src/main/frontend/src/app/features/rates/rates.ts
+@@ -174,7 +174,7 @@ export function rateInLevels(levels: Rate[][], date: string, added?: number | nu
+       <table>
+         <caption>All rates</caption>
+         <thead>
+-          <tr><th scope="col">Grade</th><th scope="col">From</th><th scope="col">To</th><th scope="col">Rate (%)</th><th scope="col">Versions</th></tr>
++          <tr><th scope="col">Grade</th><th scope="col">From</th><th scope="col">To</th><th scope="col">Rate (%)</th><th scope="col">Versions</th><th scope="col"><span class="visually-hidden">Actions</span></th></tr>
+         </thead>
+         <tbody>
+           @for (r of sorted(); track r.grade + '-' + (r.from ?? 'start')) {
+@@ -184,6 +184,10 @@ export function rateInLevels(levels: Rate[][], date: string, added?: number | nu
+               <td data-testid="rate-to">{{ r.to ?? '' }}</td>
+               <td data-testid="rate-pct">{{ r.pct | figure }}</td>
+               <td data-testid="rate-version">{{ r.versions }}</td>
++              <td>
++                <button type="button" data-testid="rate-withdraw" (click)="withdraw(r)"
++                  [attr.aria-label]="'Withdraw rate ' + r.grade + ' from ' + (r.from ?? 'the start')">Withdraw</button>
++              </td>
+             </tr>
+           }
+         </tbody>
+@@ -202,6 +206,8 @@ export class Rates {
+   readonly today = input.required<string | null>();
+   /** A rate set, as the store now holds it. */
+   readonly saved = output<Rate>();
++  /** A rate withdrawn: its grade and from-date, and the version in force again (null: the rate is gone). */
++  readonly withdrawn = output<{ grade: string; from: string | null; rate: Rate | null }>();
+   /** The rates an import set, as the store now holds them, in the order of their lines. */
+   readonly imported = output<Rate[]>();
+ 
+@@ -315,6 +321,30 @@ export class Rates {
+     }
+   }
+ 
++  /** Withdraw the rate's newest version (a steward only): the version before it, if any, applies again. */
++  protected async withdraw(r: Rate): Promise<void> {
++    if (this.saving) return;
++    this.error.set('');
++    const sheet = this.session.sheetId();
++    if (!sheet) return;
++    this.saving = true;
++    try {
++      const params: Record<string, string> = r.from ? { from: r.from } : {};
++      const done = await firstValueFrom(
++        this.http.delete<{ rate: Rate | null }>(`/api/sheets/${encodeURIComponent(sheet)}/rates/${r.grade}`, {
++          params,
++          headers: { 'X-User': this.session.user() ?? '' },
++        }),
++      );
++      if (this.session.sheetId() !== sheet) return;
++      this.withdrawn.emit({ grade: r.grade, from: r.from, rate: done.rate });
++    } catch {
++      if (this.session.sheetId() === sheet) this.error.set('Could not withdraw that rate; only a steward can.');
++    } finally {
++      this.saving = false;
++    }
++  }
++
+   /**
+    * Set a rate per pasted line of grade,rate,from,to, in order, each as the form sets one. Every line
+    * is checked first; if any is refused, nothing is set.
+diff --git a/src/main/java/net/officefloor/hq/app/rate/Rate.java b/src/main/java/net/officefloor/hq/app/rate/Rate.java
+index 0dc299895..aeab4767f 100644
+--- a/src/main/java/net/officefloor/hq/app/rate/Rate.java
++++ b/src/main/java/net/officefloor/hq/app/rate/Rate.java
+@@ -123,6 +123,14 @@ public class Rate {
+         this.forwardAfter = forwardAfter;
+     }
+ 
++    /** Withdraw the newest version: the older one given (its percent, to-date and forward-only) is in force again. */
++    public void withdrawVersion(Rate older) {
++        this.versions--;
++        this.pct = older.pct;
++        this.toDate = older.toDate;
++        this.forwardAfter = older.forwardAfter;
++    }
++
+     /** Make it forward-only from the last place in the order claims were added (null: it applies to every claim). */
+     public void setForwardAfter(Long forwardAfter) { this.forwardAfter = forwardAfter; }
+ }
+diff --git a/src/main/java/net/officefloor/hq/app/rate/RateController.java b/src/main/java/net/officefloor/hq/app/rate/RateController.java
+index f0b381ab4..f3f5554cb 100644
+--- a/src/main/java/net/officefloor/hq/app/rate/RateController.java
++++ b/src/main/java/net/officefloor/hq/app/rate/RateController.java
+@@ -11,6 +11,8 @@ import java.util.List;
+ import net.officefloor.hq.app.asof.AsOfGuard;
+ import net.officefloor.hq.app.claim.ClaimService;
+ import org.springframework.validation.annotation.Validated;
++import org.springframework.format.annotation.DateTimeFormat;
++import org.springframework.web.bind.annotation.DeleteMapping;
+ import org.springframework.web.bind.annotation.GetMapping;
+ import org.springframework.web.bind.annotation.PathVariable;
+ import org.springframework.web.bind.annotation.PostMapping;
+@@ -46,6 +48,9 @@ public class RateController {
+         }
+     }
+ 
++    /** What withdrawing a rate left of its grade and from-date: the version in force again, or null when it is gone. */
++    public record WithdrawView(RateView rate) {}
++
+     /** Pasted lines of grade,rate,from,to, one rate each. */
+     public record ImportRequest(@NotNull @Size(max = 200000) String text) {}
+ 
+@@ -116,4 +121,14 @@ public class RateController {
+         List<RateView> set = importer.importRates(sheetId, user, request.text()).stream().map(RateView::of).toList();
+         return new ImportView(set.size(), set);
+     }
++
++    /** Withdraw the newest version of the grade's rate from the date (none: from the start). */
++    @DeleteMapping("/{grade}")
++    public WithdrawView withdraw(
++            @PathVariable @Size(max = 100) @Pattern(regexp = "[A-Za-z0-9._-]+") String sheetId,
++            @PathVariable @Pattern(regexp = "[A-Z]{1,3}") String grade,
++            @RequestHeader("X-User") @NotBlank @Size(max = 100) String user,
++            @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate from) {
++        return new WithdrawView(service.withdraw(sheetId, user, grade, from).map(RateView::of).orElse(null));
++    }
+ }
+diff --git a/src/main/java/net/officefloor/hq/app/rate/RateService.java b/src/main/java/net/officefloor/hq/app/rate/RateService.java
+index 5766109dc..7fe2b6e21 100644
+--- a/src/main/java/net/officefloor/hq/app/rate/RateService.java
++++ b/src/main/java/net/officefloor/hq/app/rate/RateService.java
+@@ -6,10 +6,13 @@ import java.util.ArrayList;
+ import java.util.LinkedHashMap;
+ import java.util.List;
+ import java.util.Map;
++import java.util.Objects;
+ import java.util.Optional;
+ import net.officefloor.hq.app.Audit;
+ import net.officefloor.hq.app.rollup.RollupService;
+ import net.officefloor.hq.app.setting.GradeAddRefusedException;
++import net.officefloor.hq.app.setting.Role;
++import net.officefloor.hq.app.setting.SettingService;
+ import net.officefloor.hq.app.sheet.Sheet;
+ import net.officefloor.hq.app.sheet.SheetNotFoundException;
+ import net.officefloor.hq.app.sheet.SheetRepository;
+@@ -31,10 +34,12 @@ public class RateService {
+     private final SheetRepository sheets;
+     private final RollupService rollup;
+     private final InheritedRates inherited;
++    private final SettingService settings;
+     private final Audit audit;
+ 
+     public RateService(RateRepository rates, RateLogRepository log, SheetRepository sheets, RollupService rollup,
+-            InheritedRates inherited, Audit audit) {
++            InheritedRates inherited, SettingService settings, Audit audit) {
++        this.settings = settings;
+         this.rates = rates;
+         this.log = log;
+         this.sheets = sheets;
+@@ -118,4 +123,38 @@ public class RateService {
+         rollup.recordChanges(sheetId, user, before);
+         return saved;
+     }
++
++    /**
++     * A steward withdraws the newest version of the grade's rate from the date (null: from the start): the version
++     * before it applies again, and with none before it the rate is gone. Returns the rate as it now stands, if any.
++     */
++    @Transactional
++    public Optional<Rate> withdraw(String sheetId, String user, String grade, LocalDate from) {
++        sheets.findForUpdate(sheetId).orElseThrow(SheetNotFoundException::new);
++        if (settings.roleOf(sheetId, user) != Role.STEWARD) throw new RateWithdrawRefusedException();
++        Rate rate = (from == null
++                ? rates.findBySheetIdAndGradeAndFromDateIsNull(sheetId, grade)
++                : rates.findBySheetIdAndGradeAndFromDate(sheetId, grade, from))
++                .orElseThrow(RateWithdrawRefusedException::new);
++        RollupService.Snapshot before = rollup.snapshot(sheetId);
++        List<RateLog> lines = log.findBySheetIdOrderByIdAsc(sheetId).stream()
++                .filter(line -> line.getGrade().equals(grade) && Objects.equals(line.getFromDate(), from))
++                .toList();
++        // the newest line is the version withdrawn; the one before it, if any, is in force again
++        if (!lines.isEmpty()) log.delete(lines.get(lines.size() - 1));
++        Optional<Rate> left;
++        if (rate.getVersions() > 1 && lines.size() > 1) {
++            rate.withdrawVersion(lines.get(lines.size() - 2).toRate(rate.getVersions() - 1));
++            left = Optional.of(rates.saveAndFlush(rate));
++        } else {
++            rates.delete(rate);
++            rates.flush();
++            left = Optional.empty();
++        }
++        log.flush();
++        audit.recordOnCommit("RATE_WITHDRAWN sheet=" + sheetId + " by=" + user.strip() + " grade=" + grade
++                + (from != null ? " from=" + from : ""));
++        rollup.recordChanges(sheetId, user, before);
++        return left;
++    }
+ }
+diff --git a/src/main/java/net/officefloor/hq/app/rate/RateWithdrawRefusedException.java b/src/main/java/net/officefloor/hq/app/rate/RateWithdrawRefusedException.java
+new file mode 100644
+index 000000000..59e2f1f39
+--- /dev/null
++++ b/src/main/java/net/officefloor/hq/app/rate/RateWithdrawRefusedException.java
+@@ -0,0 +1,8 @@
++package net.officefloor.hq.app.rate;
++
++import org.springframework.http.HttpStatus;
++import org.springframework.web.bind.annotation.ResponseStatus;
++
++/** Only a steward can withdraw a rate, and only one there is. */
++@ResponseStatus(HttpStatus.CONFLICT)
++public class RateWithdrawRefusedException extends RuntimeException {}
