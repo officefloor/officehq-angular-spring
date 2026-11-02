@@ -4,7 +4,10 @@ import jakarta.validation.Valid;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.NotNull;
 import jakarta.validation.constraints.Size;
+import java.time.LocalDate;
 import java.util.List;
+import net.officefloor.hq.app.sheet.AsOfGuard;
+import org.springframework.format.annotation.DateTimeFormat;
 import org.springframework.http.HttpStatus;
 import org.springframework.validation.annotation.Validated;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -37,8 +40,12 @@ public class PatronController {
     }
 
     @GetMapping("/api/sheets/{sheetId}/patrons")
-    public List<PatronView> list(@PathVariable @NotBlank @Size(max = 100) String sheetId) {
-        return service.list(sheetId.trim()).stream().map(PatronView::of).toList();
+    public List<PatronView> list(@PathVariable @NotBlank @Size(max = 100) String sheetId,
+            @RequestHeader(value = AsOfGuard.HEADER, required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE)
+            LocalDate asOf) {
+        return service.list(sheetId.trim()).stream()
+                .filter(p -> asOf == null || p.getNamedOn() == null || !p.getNamedOn().isAfter(asOf))
+                .map(PatronView::of).toList();
     }
 
     @PostMapping("/api/sheets/{sheetId}/people/{personId}/patrons")

@@ -65,6 +65,18 @@ public class Period {
     protected Period() {
     }
 
+    /** A period as a revision in its sheet's history has it, detached: never saved. */
+    static Period revised(String sheetId, Long id, String name, LocalDate fromDate, LocalDate toDate,
+            boolean closed, boolean softClosed, BigDecimal closedTotal, Map<Long, BigDecimal> personTotals) {
+        Period period = new Period(sheetId, name, fromDate, toDate);
+        period.id = id;
+        period.closed = closed;
+        period.softClosed = softClosed;
+        period.closedTotal = closedTotal;
+        period.personTotals.putAll(personTotals);
+        return period;
+    }
+
     public Period(String sheetId, String name, LocalDate fromDate, LocalDate toDate) {
         this.sheetId = sheetId;
         this.name = name;

@@ -18,7 +18,7 @@ import { Session } from '../../core/session';
     </form>
     <p>Sheet: <strong data-testid="sheet-current-id">{{ session.shownId() ?? '' }}</strong></p>
     @if (session.sheetId()) {
-      <p>Today: <strong data-testid="sheet-today">{{ session.today() ?? '' }}</strong></p>
+      <p>Today: <strong data-testid="sheet-today">{{ session.sheetToday() ?? '' }}</strong></p>
       <form data-testid="sheet-today-form" [formGroup]="todayForm" (ngSubmit)="saveToday()">
         <label for="sheet-today-input">Sheet's today</label>
         <input id="sheet-today-input" type="date" data-testid="sheet-today-input" formControlName="today" />
@@ -29,6 +29,16 @@ import { Session } from '../../core/session';
       @if (sheetError()) {
         <p role="alert" data-testid="sheet-error">{{ sheetError() }}</p>
       }
+      <form data-testid="asof-form" [formGroup]="asOfForm" (ngSubmit)="setAsOf()">
+        <label for="asof-date">Show the sheet as of</label>
+        <input id="asof-date" type="date" data-testid="asof-date" formControlName="day" />
+        <button type="submit" data-testid="asof-set">Set as of</button>
+        <button type="button" data-testid="asof-clear" (click)="clearAsOf()">Clear as of</button>
+        @if (asOfError()) {
+          <p role="alert" data-testid="asof-error">{{ asOfError() }}</p>
+        }
+      </form>
+      <p>As of: <strong data-testid="sheet-asof">{{ session.asOf() ?? '' }}</strong></p>
     }
   `,
 })
@@ -38,10 +48,33 @@ export class SheetBar {
   protected readonly error = signal('');
   protected readonly todayForm = new FormGroup({ today: new FormControl('', { nonNullable: true }) });
   protected readonly sheetError = signal('');
+  protected readonly asOfForm = new FormGroup({ day: new FormControl('', { nonNullable: true }) });
+  protected readonly asOfError = signal('');
 
   constructor() {
     this.form.valueChanges.subscribe(() => this.error.set(''));
     this.todayForm.valueChanges.subscribe(() => this.sheetError.set(''));
+    this.asOfForm.valueChanges.subscribe(() => this.asOfError.set(''));
+  }
+
+  /** Show the sheet, on this screen only, as it stood at the end of the day entered. */
+  setAsOf(): void {
+    this.asOfError.set('');
+    this.sheetError.set('');
+    const day = this.asOfForm.controls.day.value.trim();
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(day)) {
+      this.asOfError.set('Enter a date to show the sheet as of.');
+      return;
+    }
+    this.session.setAsOf(day);
+  }
+
+  /** Show the sheet as it is now again. */
+  clearAsOf(): void {
+    this.asOfError.set('');
+    this.sheetError.set('');
+    this.asOfForm.controls.day.setValue('', { emitEvent: false });
+    this.session.setAsOf(null);
   }
 
   async load(): Promise<void> {

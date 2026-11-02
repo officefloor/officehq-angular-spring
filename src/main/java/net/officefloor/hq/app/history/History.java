@@ -14,6 +14,10 @@ import net.officefloor.hq.app.claim.ClaimRepository;
 import net.officefloor.hq.app.claim.ClaimRevision;
 import net.officefloor.hq.app.claim.ClaimRevisionRepository;
 import net.officefloor.hq.app.claim.Dues;
+import net.officefloor.hq.app.period.Period;
+import net.officefloor.hq.app.period.PeriodRepository;
+import net.officefloor.hq.app.period.PeriodRevision;
+import net.officefloor.hq.app.period.PeriodRevisionRepository;
 import net.officefloor.hq.app.person.Person;
 import net.officefloor.hq.app.person.PersonRepository;
 import net.officefloor.hq.app.person.PersonRevision;
@@ -44,9 +48,12 @@ import org.springframework.transaction.annotation.Transactional;
 @Service
 public class History {
 
-    /** A sheet as it stood at the end of a day: its people and claims then (detached, never saved),
+    /** A sheet as it stood at the end of a day: its people, claims, rates (by grade and then
+     *  from-date, the one with no from-date first), dated setting values (latest from-date first),
+     *  policy date (null when blank) and periods (earliest first) then, all detached and never saved;
      *  and the basis its figures are worked out on, the day standing in for its today. */
-    public record SheetAsOf(Dues.Basis basis, Map<Long, Person> people, List<Claim> claims) {
+    public record SheetAsOf(LocalDate day, Dues.Basis basis, Map<Long, Person> people, List<Claim> claims,
+            List<Rate> rates, List<SettingValue> settings, LocalDate policyDate, List<Period> periods) {
 
         /** The person as they stood then; empty when they were not on the sheet yet. */
         public Optional<Person> person(long personId) {
@@ -56,6 +63,17 @@ public class History {
         /** The claims the person had then. */
         public List<Claim> claimsOf(long personId) {
             return claims.stream().filter(c -> c.getPersonId() == personId).toList();
+        }
+
+        /** The value of a setting in force on a day then; empty when none was. */
+        public Optional<SettingValue> setting(String key, LocalDate on) {
+            return inForce(settings, key, on);
+        }
+
+        /** The values recorded then for a setting, earliest from-date first. */
+        public List<SettingValue> recorded(String key) {
+            return settings.stream().filter(v -> v.getKey().equals(key))
+                    .sorted(Comparator.comparing(SettingValue::getFrom)).toList();
         }
     }
 
@@ -69,11 +87,14 @@ public class History {
     private final SettingRevisionRepository settingRevisions;
     private final SheetRepository sheets;
     private final SheetRevisionRepository sheetRevisions;
+    private final PeriodRepository periods;
+    private final PeriodRevisionRepository periodRevisions;
 
     public History(ClaimRepository claims, ClaimRevisionRepository claimRevisions, PersonRepository people,
             PersonRevisionRepository personRevisions, RateRepository rates, RateRevisionRepository rateRevisions,
             SettingValueRepository settingValues, SettingRevisionRepository settingRevisions, SheetRepository sheets,
-            SheetRevisionRepository sheetRevisions) {
+            SheetRevisionRepository sheetRevisions, PeriodRepository periods,
+            PeriodRevisionRepository periodRevisions) {
         this.claims = claims;
         this.claimRevisions = claimRevisions;
         this.people = people;
@@ -84,6 +105,8 @@ public class History {
         this.settingRevisions = settingRevisions;
         this.sheets = sheets;
         this.sheetRevisions = sheetRevisions;
+        this.periods = periods;
+        this.periodRevisions = periodRevisions;
     }
 
     /** Record, stamped with the sheet's today, a revision of everything on the sheet that a change
@@ -124,6 +147,14 @@ public class History {
                     settingRevisions.save(new SettingRevision(value, today));
                 }
             }
+            Map<Long, PeriodRevision> periodsWere = last(periodRevisions.findBySheetIdOrderByIdAsc(sheetId),
+                    PeriodRevision::getPeriodId);
+            for (Period period : periods.findBySheetIdOrderByFromDateAsc(sheetId)) {
+                PeriodRevision was = periodsWere.get(period.getId());
+                if (was == null || !was.matches(period)) {
+                    periodRevisions.save(new PeriodRevision(period, today));
+                }
+            }
             List<SheetRevision> sheetWas = sheetRevisions.findBySheetIdOrderByIdAsc(sheetId);
             LocalDate policyWas = sheetWas.isEmpty() ? null : sheetWas.get(sheetWas.size() - 1).getPolicyDate();
             if (!Objects.equals(policyWas, sheet.getPolicyDate())) {
@@ -153,6 +184,12 @@ public class History {
         LocalDate policyDate = sheetRevisions.findBySheetIdOrderByIdAsc(sheetId).stream()
                 .filter(r -> !r.getRecordedOn().isAfter(day)).reduce((a, b) -> b)
                 .map(SheetRevision::getPolicyDate).orElse(null);
+        List<Period> periodsThen = lastOn(periodRevisions.findBySheetIdOrderByIdAsc(sheetId),
+                PeriodRevision::getRecordedOn, PeriodRevision::getPeriodId, day).values().stream()
+                .map(PeriodRevision::toPeriod).sorted(Comparator.comparing(Period::getFromDate)).toList();
+        List<Rate> ratesListed = ratesThen.stream().sorted(Comparator.comparing(Rate::getGrade)
+                .thenComparing(Rate::getFromDate, Comparator.nullsFirst(Comparator.<LocalDate>naturalOrder())))
+                .toList();
         Dues.Basis basis = new Dues.Basis() {
             @Override
             public LocalDate today() {
@@ -186,7 +223,7 @@ public class History {
                 return ratesThen.stream().filter(r -> r.getGrade().equals(grade)).toList();
             }
         };
-        return new SheetAsOf(basis, then, claimsThen);
+        return new SheetAsOf(day, basis, then, claimsThen, ratesListed, settingsThen, policyDate, periodsThen);
     }
 
     /** The value of a setting in force on a day among values given latest from-date first. */

@@ -10,6 +10,10 @@ import java.time.format.DateTimeParseException;
 import java.util.Arrays;
 import java.util.List;
 import java.util.Map;
+import java.util.TreeMap;
+import java.util.function.Function;
+import net.officefloor.hq.app.history.History;
+import org.springframework.format.annotation.DateTimeFormat;
 import org.springframework.http.HttpStatus;
 import org.springframework.validation.annotation.Validated;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -182,14 +186,35 @@ public class SettingsController {
     }
 
     private final SheetService service;
+    private final History history;
 
-    public SettingsController(SheetService service) {
+    public SettingsController(SheetService service, History history) {
         this.service = service;
+        this.history = history;
     }
 
+    /** The sheet's settings; as of a day when one is given, each dated one (and the policy date) as
+     *  it stood at the end of that day (see {@link History}), in force on that day. */
     @GetMapping
-    public SettingsView get(@PathVariable @NotBlank @Size(max = 100) String sheetId) {
-        return view(sheetId.trim());
+    public SettingsView get(@PathVariable @NotBlank @Size(max = 100) String sheetId,
+            @RequestHeader(value = AsOfGuard.HEADER, required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE)
+            LocalDate asOf) {
+        return asOf != null ? view(sheetId.trim(), history.asOf(sheetId.trim(), asOf)) : view(sheetId.trim());
+    }
+
+    /** The settings view of a sheet as it stood at the end of a day. */
+    private SettingsView view(String id, History.SheetAsOf then) {
+        LocalDate day = then.day();
+        Function<String, BigDecimal> value = key -> then.setting(key, day).map(SettingValue::getValue).orElse(null);
+        Map<String, Integer> gradeTerms = new TreeMap<>();
+        for (String grade : List.of("A", "B", "C")) {
+            then.setting("terms-" + grade, day).ifPresent(v -> gradeTerms.put(grade, v.getValue().intValue()));
+        }
+        int terms = then.setting("terms", day).map(v -> v.getValue().intValue()).orElse(SheetService.STARTING_TERMS);
+        return SettingsView.of(value.apply("clerk-limit"), then.basis().floor(day), terms, then.basis().latePct(day),
+                then.policyDate(), service.periodNumberingFrom(id), gradeTerms, then.basis().cap(),
+                then.recorded("floor"), then.recorded("late-pct"), then.recorded("cap"),
+                value.apply("proof-threshold"), service.permissions(id), service.graceDays(id));
     }
 
     /** The settings view of a sheet as the store holds it now. */

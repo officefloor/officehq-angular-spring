@@ -4,6 +4,7 @@ import java.util.List;
 import net.officefloor.hq.app.Audit;
 import net.officefloor.hq.app.person.Person;
 import net.officefloor.hq.app.person.PersonRepository;
+import net.officefloor.hq.app.sheet.SheetService;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
@@ -16,9 +17,11 @@ public class PatronService {
 
     private final PatronRepository patrons;
     private final PersonRepository people;
+    private final SheetService sheets;
     private final Audit audit;
 
-    public PatronService(PatronRepository patrons, PersonRepository people, Audit audit) {
+    public PatronService(PatronRepository patrons, PersonRepository people, SheetService sheets, Audit audit) {
+        this.sheets = sheets;
         this.patrons = patrons;
         this.people = people;
         this.audit = audit;
@@ -46,7 +49,7 @@ public class PatronService {
         }
         Patron saved;
         try {
-            saved = patrons.saveAndFlush(new Patron(sheetId, person.getId(), patron.getId()));
+            saved = patrons.saveAndFlush(new Patron(sheetId, person.getId(), patron.getId(), sheets.today(sheetId)));
         } catch (DataIntegrityViolationException e) {
             throw alreadyNamed();
         }

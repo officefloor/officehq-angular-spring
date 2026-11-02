@@ -8,6 +8,7 @@ import java.util.Optional;
 import java.util.TreeMap;
 import net.officefloor.hq.app.Audit;
 import net.officefloor.hq.app.claim.ClaimRepository;
+import net.officefloor.hq.app.history.History;
 import net.officefloor.hq.app.period.PeriodService;
 import net.officefloor.hq.app.role.RoleService;
 import net.officefloor.hq.app.role.SheetRole;
@@ -35,11 +36,14 @@ public class SheetService {
     private final PeriodService periods;
     /** Lazy: the roles read the sheet's today through this service. */
     private final RoleService roles;
+    /** Lazy: the history reads the sheet's settings through their repositories. */
+    private final History history;
     private final Audit audit;
 
     public SheetService(SheetRepository sheets, SettingValueRepository settingValues,
             SheetPermissionRepository permissions, ClaimRepository claims, @Lazy Rollup rollup, @Lazy PeriodService periods,
-            @Lazy RoleService roles, Audit audit) {
+            @Lazy RoleService roles, @Lazy History history, Audit audit) {
+        this.history = history;
         this.sheets = sheets;
         this.settingValues = settingValues;
         this.permissions = permissions;
@@ -152,6 +156,7 @@ public class SheetService {
                 .orElseGet(() -> new SettingValue(id, key, on, value));
         v.setValue(value);
         settingValues.saveAndFlush(v);
+        history.record(id);
         audit.recordOnCommit("SETTING_CHANGED sheet=" + id + " by=" + user + " key=" + key + " value=" + shown
                 + (from != null ? " from=" + from : ""));
         return sheet;

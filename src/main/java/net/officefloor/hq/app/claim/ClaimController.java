@@ -7,10 +7,17 @@ import jakarta.validation.constraints.Pattern;
 import jakarta.validation.constraints.Size;
 import java.math.BigDecimal;
 import java.time.LocalDate;
+import java.util.Comparator;
 import java.util.List;
+import java.util.Map;
 import java.util.Set;
+import java.util.function.Function;
+import java.util.stream.Collectors;
+import net.officefloor.hq.app.history.History;
 import net.officefloor.hq.app.role.ViewerAllowed;
 import net.officefloor.hq.app.sheet.ArchivedAllowed;
+import net.officefloor.hq.app.sheet.AsOfGuard;
+import org.springframework.format.annotation.DateTimeFormat;
 import org.springframework.http.HttpStatus;
 import org.springframework.validation.annotation.Validated;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -51,6 +58,25 @@ public class ClaimController {
                     claim.isStatedNa(), claim.getCorrects(), claim.roundsBy(), claim.getListed(), claim.getDueBy(),
                     claim.getLog().stream().map(LogLineView::of).toList(), claim.getDeferredUntil(),
                     claim.getProofs(), claim.getSplitFrom(), claim.getEditLockedBy(), claim.isLateEntry());
+        }
+
+        /** The claim as it stood at the end of a day: its figures as its revision then has them (see
+         *  {@link History}), its log as far as that day, and its number and who opened it only once it
+         *  had been opened by then; what no revision keeps (its note, proofs, where it is listed) as it is
+         *  now (null: the claim is gone now). No one has its editor open then. */
+        static ClaimView asOf(Claim then, Claim now, LocalDate day) {
+            Claim kept = now != null ? now : then;
+            List<ClaimLog> log = kept.getLog().stream().filter(l -> !l.getOn().isAfter(day)).toList();
+            boolean opened = kept.getLog().isEmpty() ? then.getStatus() != ClaimStatus.DRAFT
+                    : log.stream().anyMatch(l -> l.getStatus() == ClaimStatus.OPEN);
+            return new ClaimView(then.getId(), then.getPersonId(), then.getAmount().setScale(2).toPlainString(),
+                    then.getDate(), kept.getNote(), then.getStatus(), opened ? kept.getNumber() : null,
+                    then.getSettledDue() == null ? null : then.getSettledDue().setScale(2).toPlainString(),
+                    opened ? kept.getOpenedBy() : null, then.isStated(),
+                    then.getStatedDue() == null ? null : then.getStatedDue().setScale(2).toPlainString(),
+                    then.isStatedNa(), kept.getCorrects(), then.roundsBy(), kept.getListed(), then.getDueBy(),
+                    log.stream().map(LogLineView::of).toList(), then.getDeferredUntil(), kept.getProofs(),
+                    kept.getSplitFrom(), null, kept.isLateEntry());
         }
     }
 
@@ -98,15 +124,29 @@ public class ClaimController {
 
     private final ClaimService service;
     private final ClaimBulkService bulk;
+    private final History history;
 
-    public ClaimController(ClaimService service, ClaimBulkService bulk) {
+    public ClaimController(ClaimService service, ClaimBulkService bulk, History history) {
         this.service = service;
         this.bulk = bulk;
+        this.history = history;
     }
 
+    /** The claims on the sheet, newest first; as of a day when one is given, as they stood at the end
+     *  of it (see {@link History}). */
     @GetMapping("/claims")
-    public List<ClaimView> list(@PathVariable @NotBlank @Size(max = 100) String sheetId) {
-        return service.list(sheetId.trim()).stream().map(ClaimView::of).toList();
+    public List<ClaimView> list(@PathVariable @NotBlank @Size(max = 100) String sheetId,
+            @RequestHeader(value = AsOfGuard.HEADER, required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE)
+            LocalDate asOf) {
+        String sheet = sheetId.trim();
+        if (asOf != null) {
+            Map<Long, Claim> now = service.list(sheet).stream()
+                    .collect(Collectors.toMap(Claim::getId, Function.identity()));
+            return history.asOf(sheet, asOf).claims().stream()
+                    .map(then -> ClaimView.asOf(then, now.get(then.getId()), asOf))
+                    .sorted(Comparator.comparingLong(ClaimView::listed).reversed()).toList();
+        }
+        return service.list(sheet).stream().map(ClaimView::of).toList();
     }
 
     @PostMapping("/people/{personId}/claims")

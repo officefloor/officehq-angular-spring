@@ -62,6 +62,16 @@ public class StatementService {
                         Collectors.collectingAndThen(Collectors.toList(), StatementSummary::of)));
     }
 
+    /** What each person's statements on the sheet came to at the end of a day: those taken while the
+     *  sheet's today was on or before it, by person id; a person with none is missing. */
+    @Transactional(readOnly = true)
+    public Map<Long, StatementSummary> summaries(String sheetId, LocalDate day) {
+        return statements.findBySheetIdOrderByIdAsc(sheetId).stream()
+                .filter(s -> !s.getTakenOn().isAfter(day))
+                .collect(Collectors.groupingBy(Statement::getPersonId,
+                        Collectors.collectingAndThen(Collectors.toList(), StatementSummary::of)));
+    }
+
     /** What one person's statements come to. */
     @Transactional(readOnly = true)
     public StatementSummary summary(String sheetId, long personId) {

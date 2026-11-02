@@ -9,6 +9,9 @@ import jakarta.validation.constraints.Size;
 import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.util.List;
+import net.officefloor.hq.app.history.History;
+import net.officefloor.hq.app.sheet.AsOfGuard;
+import org.springframework.format.annotation.DateTimeFormat;
 import org.springframework.validation.annotation.Validated;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
@@ -49,14 +52,21 @@ public class RateController {
     }
 
     private final RateService service;
+    private final History history;
 
-    public RateController(RateService service) {
+    public RateController(RateService service, History history) {
         this.service = service;
+        this.history = history;
     }
 
+    /** The rates on the sheet; as of a day when one is given, as they stood at the end of it (see
+     *  {@link History}). */
     @GetMapping
-    public List<RateView> list(@PathVariable @NotBlank @Size(max = 100) String sheetId) {
-        return service.list(sheetId.trim()).stream().map(RateView::of).toList();
+    public List<RateView> list(@PathVariable @NotBlank @Size(max = 100) String sheetId,
+            @RequestHeader(value = AsOfGuard.HEADER, required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE)
+            LocalDate asOf) {
+        List<Rate> rates = asOf != null ? history.asOf(sheetId.trim(), asOf).rates() : service.list(sheetId.trim());
+        return rates.stream().map(RateView::of).toList();
     }
 
     @PutMapping("/{grade}")

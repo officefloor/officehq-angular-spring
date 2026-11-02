@@ -6,11 +6,15 @@ import jakarta.validation.constraints.NotNull;
 import jakarta.validation.constraints.Pattern;
 import jakarta.validation.constraints.Size;
 import java.time.LocalDate;
+import java.util.Comparator;
 import java.util.List;
 import java.util.Map;
+import net.officefloor.hq.app.history.History;
+import net.officefloor.hq.app.sheet.AsOfGuard;
 import net.officefloor.hq.app.sheet.SheetService;
 import net.officefloor.hq.app.statement.StatementService;
 import net.officefloor.hq.app.statement.StatementSummary;
+import org.springframework.format.annotation.DateTimeFormat;
 import org.springframework.http.HttpStatus;
 import org.springframework.validation.annotation.Validated;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -79,16 +83,30 @@ public class PersonController {
     private final PersonService service;
     private final StatementService statements;
     private final SheetService sheets;
+    private final History history;
 
-    public PersonController(PersonService service, StatementService statements, SheetService sheets) {
+    public PersonController(PersonService service, StatementService statements, SheetService sheets,
+            History history) {
+        this.history = history;
         this.service = service;
         this.statements = statements;
         this.sheets = sheets;
     }
 
+    /** The people on the sheet; as of a day when one is given, as they stood at the end of it (see
+     *  {@link History}), that day standing in for the sheet's today. */
     @GetMapping
-    public List<PersonView> list(@PathVariable @NotBlank @Size(max = 100) String sheetId) {
+    public List<PersonView> list(@PathVariable @NotBlank @Size(max = 100) String sheetId,
+            @RequestHeader(value = AsOfGuard.HEADER, required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE)
+            LocalDate asOf) {
         String sheet = sheetId.trim();
+        if (asOf != null) {
+            Map<Long, StatementSummary> then = statements.summaries(sheet, asOf);
+            return history.asOf(sheet, asOf).people().values().stream()
+                    .sorted(Comparator.comparing(Person::getId))
+                    .map(p -> PersonView.of(p, then.getOrDefault(p.getId(), StatementSummary.NONE), asOf))
+                    .toList();
+        }
         Map<Long, StatementSummary> summaries = statements.summaries(sheet);
         LocalDate today = sheets.today(sheet);
         return service.list(sheet).stream()

@@ -1,5 +1,5 @@
 import { HttpClient } from '@angular/common/http';
-import { Injectable, inject, signal } from '@angular/core';
+import { Injectable, computed, inject, signal } from '@angular/core';
 import { firstValueFrom } from 'rxjs';
 
 interface SignedIn {
@@ -19,8 +19,14 @@ export class Session {
 
   readonly user = signal<string | null>(null);
   readonly sheetId = signal<string | null>(null);
-  /** The active sheet's today (yyyy-mm-dd): every date decision and default date uses it. */
-  readonly today = signal<string | null>(null);
+  /** The active sheet's today (yyyy-mm-dd) as the store holds it. */
+  readonly sheetToday = signal<string | null>(null);
+  /** The day (yyyy-mm-dd) this user's screen shows every sheet as it stood at the end of; null when
+   *  it shows the sheet as it is now. While it is set every change is refused. */
+  readonly asOf = signal<string | null>(null);
+  /** The day every date decision and default date uses: the as-of day when one is set, or else the
+   *  sheet's today. */
+  readonly today = computed(() => this.asOf() ?? this.sheetToday());
   /** Whether the active sheet is archived: it stays visible and refuses every change. */
   readonly archived = signal(false);
   /** The sheet whose people and claims are on screen: set once a load of them has been read, so the
@@ -34,7 +40,8 @@ export class Session {
     this.user.set(res.name);
     this.sheetId.set(null);
     this.shownId.set(null);
-    this.today.set(null);
+    this.sheetToday.set(null);
+    this.asOf.set(null);
     this.archived.set(false);
   }
 
@@ -82,9 +89,15 @@ export class Session {
     this.show(res);
   }
 
+  /** Show every sheet as it stood at the end of a day (null: as it is now), re-reading it. */
+  setAsOf(day: string | null): void {
+    this.asOf.set(day);
+    this.bumpLoads();
+  }
+
   private show(sheet: SheetView): void {
     this.sheetId.set(sheet.id);
-    this.today.set(sheet.today);
+    this.sheetToday.set(sheet.today);
     this.archived.set(sheet.archived);
   }
 

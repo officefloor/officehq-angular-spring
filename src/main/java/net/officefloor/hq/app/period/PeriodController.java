@@ -8,6 +8,9 @@ import java.time.LocalDate;
 import java.util.List;
 import java.util.Map;
 import java.util.TreeMap;
+import net.officefloor.hq.app.history.History;
+import net.officefloor.hq.app.sheet.AsOfGuard;
+import org.springframework.format.annotation.DateTimeFormat;
 import org.springframework.http.HttpStatus;
 import org.springframework.validation.annotation.Validated;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -50,14 +53,22 @@ public class PeriodController {
     }
 
     private final PeriodService service;
+    private final History history;
 
-    public PeriodController(PeriodService service) {
+    public PeriodController(PeriodService service, History history) {
         this.service = service;
+        this.history = history;
     }
 
+    /** The periods on the sheet, earliest first; as of a day when one is given, as they stood at the
+     *  end of it (see {@link History}). */
     @GetMapping
-    public List<PeriodView> list(@PathVariable @NotBlank @Size(max = 100) String sheetId) {
-        return service.list(sheetId.trim()).stream().map(PeriodView::of).toList();
+    public List<PeriodView> list(@PathVariable @NotBlank @Size(max = 100) String sheetId,
+            @RequestHeader(value = AsOfGuard.HEADER, required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE)
+            LocalDate asOf) {
+        List<Period> periods = asOf != null ? history.asOf(sheetId.trim(), asOf).periods()
+                : service.list(sheetId.trim());
+        return periods.stream().map(PeriodView::of).toList();
     }
 
     @PostMapping

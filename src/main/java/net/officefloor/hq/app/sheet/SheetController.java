@@ -40,6 +40,7 @@ public class SheetController {
     /** Load a sheet by id, starting it empty if it was never loaded before. */
     @ViewerAllowed
     @ArchivedAllowed
+    @AsOfAllowed
     @PostMapping("/{id}/load")
     public SheetView load(@PathVariable @NotBlank @Size(max = 100) String id,
             @RequestHeader("X-User") @NotBlank @Size(max = 100) String user) {

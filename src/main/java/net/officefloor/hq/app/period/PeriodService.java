@@ -13,6 +13,7 @@ import net.officefloor.hq.app.Audit;
 import net.officefloor.hq.app.claim.Claim;
 import net.officefloor.hq.app.claim.ClaimRepository;
 import net.officefloor.hq.app.claim.Dues;
+import net.officefloor.hq.app.history.History;
 import net.officefloor.hq.app.person.Person;
 import net.officefloor.hq.app.person.PersonRepository;
 import net.officefloor.hq.app.role.RoleService;
@@ -34,10 +35,12 @@ public class PeriodService {
     private final PersonRepository people;
     private final Dues dues;
     private final RoleService roles;
+    private final History history;
     private final Audit audit;
 
     public PeriodService(PeriodRepository periods, SheetService sheets, ClaimRepository claims,
-            PersonRepository people, Dues dues, RoleService roles, Audit audit) {
+            PersonRepository people, Dues dues, RoleService roles, History history, Audit audit) {
+        this.history = history;
         this.periods = periods;
         this.sheets = sheets;
         this.claims = claims;
@@ -75,6 +78,7 @@ public class PeriodService {
         }
         audit.recordOnCommit("PERIOD_ADDED sheet=" + sheetId + " by=" + user + " period=" + saved.getName()
                 + " from=" + saved.getFromDate() + " to=" + saved.getToDate());
+        history.record(sheetId);
         return saved;
     }
 
@@ -104,6 +108,7 @@ public class PeriodService {
                     + " from=" + saved.getFromDate() + " to=" + saved.getToDate());
             made.add(saved);
         }
+        history.record(sheetId);
         return made;
     }
 
@@ -141,6 +146,7 @@ public class PeriodService {
         Period saved = periods.saveAndFlush(period);
         audit.recordOnCommit("PERIOD_SOFT_CLOSED sheet=" + sheetId + " by=" + user + " period=" + saved.getName()
                 + " total=" + saved.getClosedTotal().toPlainString());
+        history.record(sheetId);
         return saved;
     }
 
@@ -159,6 +165,7 @@ public class PeriodService {
         Period saved = periods.saveAndFlush(period);
         audit.recordOnCommit("PERIOD_CLOSED sheet=" + sheetId + " by=" + user + " period=" + saved.getName()
                 + " total=" + saved.getClosedTotal().toPlainString() + suffix);
+        history.record(sheetId);
         return saved;
     }
 
@@ -178,6 +185,7 @@ public class PeriodService {
         period.reopen();
         Period saved = periods.saveAndFlush(period);
         audit.recordOnCommit("PERIOD_REOPENED sheet=" + sheetId + " by=" + user + " period=" + saved.getName());
+        history.record(sheetId);
         return saved;
     }
 

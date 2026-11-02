@@ -405,15 +405,17 @@ export class PeopleList {
   }
 
   /** Take a statement of the person as of the day entered (blank: now), then show them and their
-   *  claims as it left them, and clear the day. */
+   *  claims as it left them; the day is cleared whether or not it was taken, so it never carries
+   *  into the next statement. */
   protected async statement(p: Person, asOf: HTMLInputElement): Promise<void> {
     if (this.stating.has(p.id)) return;
     this.stating.add(p.id);
     this.personError.set(null);
     this.patronError.set(null);
+    const day = asOf.value || null;
+    asOf.value = '';
     try {
-      this.showTaken(await this.api.statement(p.id, asOf.value || null));
-      asOf.value = '';
+      this.showTaken(await this.api.statement(p.id, day));
     } catch {
       this.personError.set({ id: p.id, message: 'The statement could not be taken.' });
     } finally {
