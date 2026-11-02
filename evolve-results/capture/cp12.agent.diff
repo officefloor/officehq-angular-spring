@@ -1,0 +1,134 @@
+diff --git a/src/main/frontend/src/app/core/claims.ts b/src/main/frontend/src/app/core/claims.ts
+index bc814069b..7ee307882 100644
+--- a/src/main/frontend/src/app/core/claims.ts
++++ b/src/main/frontend/src/app/core/claims.ts
+@@ -1,6 +1,8 @@
+ import { HttpClient } from '@angular/common/http';
+ import { Injectable, inject } from '@angular/core';
+ import { firstValueFrom } from 'rxjs';
++import { Grade } from './people';
++import { Rate, due, pctOn } from './rates';
+ import { Session } from './session';
+ 
+ /** Where a claim is in its life: DRAFT, then OPEN, then SETTLED; a DRAFT or OPEN claim may be VOID. */
+@@ -45,6 +47,12 @@ export function sumAmounts(amounts: string[]): string {
+   return (cents / 100).toFixed(2);
+ }
+ 
++/** A claim's due figure: the one fixed when it was settled, or else its live due at its person's
++ *  grade's rate in force on the claim's date; null when there is neither. */
++export function claimDue(c: Claim, rates: Rate[], grade: Grade): string | null {
++  return c.settledDue ?? due(c.amount, pctOn(rates, grade, c.date));
++}
++
+ // The claims people make on the active sheet.
+ @Injectable({ providedIn: 'root' })
+ export class Claims {
+diff --git a/src/main/frontend/src/app/core/rates.ts b/src/main/frontend/src/app/core/rates.ts
+index ee7b7b67f..419153e1e 100644
+--- a/src/main/frontend/src/app/core/rates.ts
++++ b/src/main/frontend/src/app/core/rates.ts
+@@ -32,11 +32,14 @@ function hundredths(text: string): bigint {
+   return BigInt(whole) * 100n + BigInt(frac.padEnd(2, '0'));
+ }
+ 
+-/** An amount's due at a percent: amount times pct divided by 100, rounded half up to two
++/** An amount's due at a percent: amount times pct divided by 100, rounded half to even to two
+  *  decimals, worked in whole numbers so no rounding creeps in. Null when there is no rate. */
+ export function due(amount: string, pct: string | undefined): string | null {
+   if (pct === undefined) return null;
+-  const cents = (hundredths(amount) * hundredths(pct) + 5000n) / 10000n;
++  const exact = hundredths(amount) * hundredths(pct);
++  let cents = exact / 10000n;
++  const rest = exact % 10000n;
++  if (rest > 5000n || (rest === 5000n && cents % 2n === 1n)) cents += 1n;
+   const text = cents.toString().padStart(3, '0');
+   return `${text.slice(0, -2)}.${text.slice(-2)}`;
+ }
+diff --git a/src/main/frontend/src/app/features/claims/person-claims.ts b/src/main/frontend/src/app/features/claims/person-claims.ts
+index 95d067fa0..08f6b9dac 100644
+--- a/src/main/frontend/src/app/features/claims/person-claims.ts
++++ b/src/main/frontend/src/app/features/claims/person-claims.ts
+@@ -1,9 +1,9 @@
+ import { HttpErrorResponse } from '@angular/common/http';
+ import { Component, inject, input, output, signal } from '@angular/core';
+ import { FormControl, FormGroup, ReactiveFormsModule } from '@angular/forms';
+-import { AMOUNT, Claim, ClaimAction, Claims } from '../../core/claims';
++import { AMOUNT, Claim, ClaimAction, Claims, claimDue } from '../../core/claims';
+ import { Grade } from '../../core/people';
+-import { Rate, due, pctOn } from '../../core/rates';
++import { Rate } from '../../core/rates';
+ 
+ /** Why the server refused an action: the claim's status does not allow it. */
+ const REFUSALS: Record<ClaimAction, string> = {
+@@ -87,7 +87,7 @@ export class PersonClaims {
+   }
+ 
+   protected dueOf(c: Claim): string {
+-    return c.settledDue ?? due(c.amount, pctOn(this.rates(), this.grade(), c.date)) ?? 'n/a';
++    return claimDue(c, this.rates(), this.grade()) ?? 'n/a';
+   }
+ 
+   protected open(c: Claim): void {
+diff --git a/src/main/frontend/src/app/features/people/people-list.ts b/src/main/frontend/src/app/features/people/people-list.ts
+index e33a6d33d..188dea1eb 100644
+--- a/src/main/frontend/src/app/features/people/people-list.ts
++++ b/src/main/frontend/src/app/features/people/people-list.ts
+@@ -1,9 +1,9 @@
+ import { HttpErrorResponse } from '@angular/common/http';
+ import { Component, computed, effect, inject, signal } from '@angular/core';
+ import { FormControl, FormGroup, ReactiveFormsModule } from '@angular/forms';
+-import { Claim, Claims, counts, sumAmounts } from '../../core/claims';
++import { Claim, Claims, claimDue, counts, sumAmounts } from '../../core/claims';
+ import { Grade, People, Person } from '../../core/people';
+-import { Rate, Rates, due, pctOn } from '../../core/rates';
++import { Rate, Rates, pctOn } from '../../core/rates';
+ import { Session } from '../../core/session';
+ import { PersonClaims } from '../claims/person-claims';
+ import { RateForm } from '../rates/rate-form';
+@@ -99,7 +99,7 @@ export class PeopleList {
+     }
+     return by;
+   });
+-  /** The sheet's due-total: everyone's due-total added up, skipping those with no rate. */
++  /** The sheet's due-total: everyone's due-total added up, skipping those that are n/a. */
+   protected readonly dueTotal = computed(() =>
+     sumAmounts(this.people().map((p) => this.dueOf(p)).filter((d): d is string => d !== null)),
+   );
+@@ -183,10 +183,15 @@ export class PeopleList {
+     );
+   }
+ 
+-  /** A person's due-total: what they claimed times their grade's rate in force on the sheet's
+-   *  today, or null with no rate. */
++  /** A person's due-total: the sum of the due figures of their open and settled claims. Null (n/a)
++   *  when their grade has no rate on the sheet's today and no settled claim keeps a figure. */
+   protected dueOf(p: Person): string | null {
+-    return due(this.claimed().get(p.id) ?? '0.00', this.pctOf().get(p.grade));
++    const counted = (this.claimsByPerson().get(p.id) ?? []).filter(counts);
++    if (!this.pctOf().has(p.grade) && !counted.some((c) => c.status === 'SETTLED' && c.settledDue !== null)) {
++      return null;
++    }
++    const figures = counted.map((c) => claimDue(c, this.rates(), p.grade)).filter((d): d is string => d !== null);
++    return sumAmounts(figures);
+   }
+ 
+   private reset(): void {
+diff --git a/src/main/java/net/officefloor/hq/app/claim/ClaimService.java b/src/main/java/net/officefloor/hq/app/claim/ClaimService.java
+index ba14daed5..2e56b836a 100644
+--- a/src/main/java/net/officefloor/hq/app/claim/ClaimService.java
++++ b/src/main/java/net/officefloor/hq/app/claim/ClaimService.java
+@@ -101,11 +101,11 @@ public class ClaimService {
+     }
+ 
+     /** A claim's due at the rate for the person's grade in force on the claim's date: amount times
+-     *  pct divided by 100, rounded half up to two decimals; null when no rate applies on that date. */
++     *  pct divided by 100, rounded half to even to two decimals; null when no rate applies on that date. */
+     private BigDecimal due(String sheetId, Person person, Claim claim) {
+         return rates.findInForce(sheetId, person.getGrade(), claim.getDate())
+                 .map(Rate::getPct)
+-                .map(pct -> claim.getAmount().multiply(pct).movePointLeft(2).setScale(2, RoundingMode.HALF_UP))
++                .map(pct -> claim.getAmount().multiply(pct).movePointLeft(2).setScale(2, RoundingMode.HALF_EVEN))
+                 .orElse(null);
+     }
+ 
