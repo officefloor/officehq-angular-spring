@@ -1,0 +1,188 @@
+diff --git a/src/main/java/db/migration/V100__claim_terms_created_on.java b/src/main/java/db/migration/V100__claim_terms_created_on.java
+new file mode 100644
+index 000000000..bafa87fdf
+--- /dev/null
++++ b/src/main/java/db/migration/V100__claim_terms_created_on.java
+@@ -0,0 +1,148 @@
++package db.migration;
++
++import java.sql.Connection;
++import java.sql.Date;
++import java.sql.PreparedStatement;
++import java.sql.ResultSet;
++import java.sql.Statement;
++import java.time.DayOfWeek;
++import java.time.LocalDate;
++import java.util.ArrayList;
++import java.util.HashMap;
++import java.util.HashSet;
++import java.util.List;
++import java.util.Map;
++import java.util.Set;
++import java.util.TreeMap;
++import org.flywaydb.core.api.migration.BaseJavaMigration;
++import org.flywaydb.core.api.migration.Context;
++
++/**
++ * The terms a claim's due-by is fixed with are those in force on the day it was created (the sheet's
++ * today then, its first status-log line), not on its date: its person's own terms that day, else those of
++ * the grade they had that day, else the sheet's that day. Every existing claim with a log is fixed again
++ * this way, its due-by the terms-th business day after its date over the sheet's holidays now; a claim
++ * added before the log was kept keeps the terms and due-by it has.
++ */
++public class V100__claim_terms_created_on extends BaseJavaMigration {
++
++    private static final int START_TERMS = 14;
++
++    private static final int NO_TERMS = -1;
++
++    private record ClaimRow(long id, String sheetId, long personId, LocalDate date, LocalDate createdOn,
++            int terms, LocalDate dueBy) {}
++
++    private record PersonRow(String grade, Integer terms, TreeMap<LocalDate, String> datedGrades,
++            TreeMap<LocalDate, Integer> datedTerms) {}
++
++    @Override
++    public void migrate(Context context) throws Exception {
++        Connection connection = context.getConnection();
++
++        Map<String, Set<LocalDate>> holidays = new HashMap<>();
++        try (Statement query = connection.createStatement();
++                ResultSet rows = query.executeQuery("SELECT sheet_id, holiday_date FROM holiday")) {
++            while (rows.next()) {
++                holidays.computeIfAbsent(rows.getString(1), k -> new HashSet<>()).add(rows.getDate(2).toLocalDate());
++            }
++        }
++
++        Map<String, Map<String, TreeMap<LocalDate, Integer>>> settings = new HashMap<>();
++        try (Statement query = connection.createStatement();
++                ResultSet rows = query.executeQuery("SELECT sheet_id, setting_key, from_date, setting_value"
++                        + " FROM sheet_setting WHERE setting_key = 'terms' OR setting_key LIKE 'terms-%'")) {
++            while (rows.next()) {
++                String value = rows.getString(4);
++                if (value == null || value.isBlank()) continue;
++                settings.computeIfAbsent(rows.getString(1), k -> new HashMap<>())
++                        .computeIfAbsent(rows.getString(2), k -> new TreeMap<>())
++                        .put(rows.getDate(3).toLocalDate(), Integer.valueOf(value.strip()));
++            }
++        }
++
++        Map<Long, PersonRow> people = new HashMap<>();
++        try (Statement query = connection.createStatement();
++                ResultSet rows = query.executeQuery("SELECT id, grade, terms FROM person")) {
++            while (rows.next()) {
++                int terms = rows.getInt(3);
++                people.put(rows.getLong(1), new PersonRow(rows.getString(2), rows.wasNull() ? null : terms,
++                        new TreeMap<>(), new TreeMap<>()));
++            }
++        }
++        try (Statement query = connection.createStatement();
++                ResultSet rows = query.executeQuery("SELECT person_id, from_date, grade FROM person_grade")) {
++            while (rows.next()) {
++                PersonRow person = people.get(rows.getLong(1));
++                if (person != null) person.datedGrades().put(rows.getDate(2).toLocalDate(), rows.getString(3));
++            }
++        }
++        try (Statement query = connection.createStatement();
++                ResultSet rows = query.executeQuery("SELECT person_id, from_date, terms FROM person_terms")) {
++            while (rows.next()) {
++                PersonRow person = people.get(rows.getLong(1));
++                if (person != null) person.datedTerms().put(rows.getDate(2).toLocalDate(), rows.getInt(3));
++            }
++        }
++
++        List<ClaimRow> claims = new ArrayList<>();
++        try (Statement query = connection.createStatement();
++                ResultSet rows = query.executeQuery("SELECT c.id, c.sheet_id, c.person_id, c.claim_date, l.log_date,"
++                        + " c.terms, c.due_by FROM claim c JOIN claim_log l ON l.claim_id = c.id"
++                        + " AND l.seq = (SELECT MIN(f.seq) FROM claim_log f WHERE f.claim_id = c.id)")) {
++            while (rows.next()) {
++                claims.add(new ClaimRow(rows.getLong(1), rows.getString(2), rows.getLong(3),
++                        rows.getDate(4).toLocalDate(), rows.getDate(5).toLocalDate(), rows.getInt(6),
++                        rows.getDate(7).toLocalDate()));
++            }
++        }
++
++        try (PreparedStatement update = connection.prepareStatement(
++                "UPDATE claim SET terms = ?, due_by = ? WHERE id = ?")) {
++            for (ClaimRow claim : claims) {
++                int terms = termsOn(people.get(claim.personId()), settings.getOrDefault(claim.sheetId(), Map.of()),
++                        claim.createdOn());
++                LocalDate dueBy = businessDaysAfter(claim.date(), terms,
++                        holidays.getOrDefault(claim.sheetId(), Set.of()));
++                if (terms == claim.terms() && dueBy.equals(claim.dueBy())) continue;
++                update.setInt(1, terms);
++                update.setDate(2, Date.valueOf(dueBy));
++                update.setLong(3, claim.id());
++                update.addBatch();
++            }
++            update.executeBatch();
++        }
++    }
++
++    /** The terms in force on the day for a claim of the person: their own, else their grade's, else the sheet's. */
++    private static int termsOn(PersonRow person, Map<String, TreeMap<LocalDate, Integer>> settings, LocalDate day) {
++        Integer terms = null;
++        if (person != null) {
++            Map.Entry<LocalDate, Integer> own = person.datedTerms().floorEntry(day);
++            terms = own == null ? person.terms() : own.getValue() == NO_TERMS ? null : own.getValue();
++            if (terms == null) {
++                Map.Entry<LocalDate, String> dated = person.datedGrades().floorEntry(day);
++                String grade = dated == null ? person.grade() : dated.getValue();
++                terms = valueOn(settings.get("terms-" + grade), day);
++            }
++        }
++        if (terms == null) terms = valueOn(settings.get("terms"), day);
++        return terms == null ? START_TERMS : terms;
++    }
++
++    private static Integer valueOn(TreeMap<LocalDate, Integer> values, LocalDate date) {
++        if (values == null) return null;
++        Map.Entry<LocalDate, Integer> on = values.floorEntry(date);
++        return on == null ? null : on.getValue();
++    }
++
++    private static LocalDate businessDaysAfter(LocalDate date, int terms, Set<LocalDate> holidays) {
++        LocalDate d = date;
++        for (int left = terms; left > 0; ) {
++            d = d.plusDays(1);
++            DayOfWeek day = d.getDayOfWeek();
++            if (day != DayOfWeek.SATURDAY && day != DayOfWeek.SUNDAY && !holidays.contains(d)) left--;
++        }
++        return d;
++    }
++}
+diff --git a/src/main/java/net/officefloor/hq/app/claim/ClaimService.java b/src/main/java/net/officefloor/hq/app/claim/ClaimService.java
+index 406cad45b..4dec8a510 100644
+--- a/src/main/java/net/officefloor/hq/app/claim/ClaimService.java
++++ b/src/main/java/net/officefloor/hq/app/claim/ClaimService.java
+@@ -125,7 +125,7 @@ public class ClaimService {
+         RollupService.Snapshot before = rollup.snapshot(sheetId);
+         Person person = people.findByIdAndSheetId(personId, sheetId).orElseThrow(PersonNotFoundException::new);
+         LocalDate on = dateOrEntryDate(sheetId, date);
+-        int terms = termsOf(sheetId, person, on);
++        int terms = termsOf(sheetId, person, sheets.today(sheetId));
+         LocalDate dueBy = holidays.businessDaysAfter(sheetId, on, terms);
+         refuseIfClosed(sheetId, dueBy);
+         if (!person.mayClaimOn(on)) throw new PersonRetiredException();
+@@ -575,7 +575,7 @@ public class ClaimService {
+         claim.setAmount(claim.getAmount().subtract(amount));
+         claim.unstate(sheets.today(sheetId));
+         Claim original = claims.saveAndFlush(claim);
+-        int terms = termsOf(sheetId, person, on);
++        int terms = termsOf(sheetId, person, sheets.today(sheetId));
+         LocalDate dueBy = holidays.businessDaysAfter(sheetId, on, terms);
+         Claim split = new Claim(sheetId, person.getId(), amount, on, original.getNote(), dueBy, terms);
+         split.setSplitFrom(original.getNumber());
+@@ -786,8 +786,9 @@ public class ClaimService {
+     }
+ 
+     /**
+-     * The terms a claim of the person dated on the date is fixed with: their own terms in force then, else
+-     * their grade's then. Its due-by is the terms-th business day after its date (skipping weekends and the sheet's holidays).
++     * The terms a claim of the person created on the day (the sheet's today then) is fixed with: their own
++     * terms in force that day, else those of the grade they had that day, else the sheet's that day. Its
++     * due-by is the terms-th business day after its date (skipping weekends and the sheet's holidays).
+      */
+     private int termsOf(String sheetId, Person person, LocalDate on) {
+         Integer own = person.termsOn(on);
