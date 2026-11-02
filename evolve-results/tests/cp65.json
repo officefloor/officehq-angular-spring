@@ -1,0 +1,66 @@
+{
+  "checkpoint": 65,
+  "checkpoint_id": "cp65_void-settled",
+  "kind": "checkpoint",
+  "run_id": "202610271-as",
+  "condition": "just-solve",
+  "chain": 3,
+  "branch": "evolve/202610271-as/just-solve/chain3",
+  "commit_sha": "ce3357ea6aeaab6ad732d6883c5d1389b8da374f",
+  "harness_sha": "8b39da3c7afa3e0f848a31d0db987618db86a6b6",
+  "harness_dirty": [],
+  "workers": 3,
+  "port": 3002,
+  "started_at": "2026-11-01T14:46:16",
+  "seconds": 139,
+  "build_log_file": "cp65.test.log",
+  "replaced_tests": [],
+  "tests": {
+    "gated": true,
+    "scope": "checkpoint",
+    "build_ok": true,
+    "build_output": "",
+    "total_selected": 4,
+    "results": {
+      "cp65_void-settled.spec.ts::void settled": true,
+      "cp65_void-settled.spec.ts::void settled scenario 1": true,
+      "cp65_void-settled.spec.ts::void settled scenario 2": true,
+      "cp65_void-settled.spec.ts::void settled scenario 3": false
+    },
+    "detail": [
+      {
+        "test_id": "cp65_void-settled.spec.ts::void settled",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 9837,
+        "failure": ""
+      },
+      {
+        "test_id": "cp65_void-settled.spec.ts::void settled scenario 1",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 28850,
+        "failure": ""
+      },
+      {
+        "test_id": "cp65_void-settled.spec.ts::void settled scenario 2",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 42003,
+        "failure": ""
+      },
+      {
+        "test_id": "cp65_void-settled.spec.ts::void settled scenario 3",
+        "category": "functionality",
+        "passed": false,
+        "duration_ms": 4429,
+        "failure": "Error: \u001b[2mexpect(\u001b[22m\u001b[31mreceived\u001b[39m\u001b[2m).\u001b[22mtoBe\u001b[2m(\u001b[22m\u001b[32mexpected\u001b[39m\u001b[2m) // Object.is equality\u001b[22m\n\nExpected: \u001b[32m3\u001b[39m\nReceived: \u001b[31m0\u001b[39m\n\n  607 |     expect(await ui.setSettingDated(pg_uma, \"cap\", \"2.00\", \"2026-03-28\", \"2.00\")).toBe(true);\n  608 |     const pg_wes = await ui.userPage(browser, \"wes\", sheet);\n> 609 |     expect(await ui.pasteClaims(pg_wes, \"Ben,25.00,,paste\\nCam,4.00,2026-03-01,paste\\nCam,7.77,2026-03-20,paste\")).toBe(3);\n      |                                                                                                                    ^\n  610 |     const c_ben_0 = await ui.claimAt(pg_wes, p_ben, 0);\n  611 |     const c_cam_1 = await ui.claimAt(pg_wes, p_cam, 1);\n  612 |     const c_cam_2 = await ui.claimAt(pg_wes, p_cam, 2);\n\n    at /home/daniel/ui-work/runs/202610271-as/testing/e2e/specs/cp65_void-settled.spec.ts:609:116 | Error: \u001b[2mexpect(\u001b[22m\u001b[31mreceived\u001b[39m\u001b[2m).\u001b[22mtoBe\u001b[2m(\u001b[22m\u001b[32mexpected\u001b[39m\u001b[2m) // Object.is equality\u001b[22m\n\nExpected: \u001b[32m3\u001b[39m\nReceived: \u001b[31m0\u001b[39m"
+      }
+    ],
+    "error": "",
+    "gate_invalid": false,
+    "app_broken": false,
+    "gate_attempts": 1,
+    "seed_contract": null
+  }
+}

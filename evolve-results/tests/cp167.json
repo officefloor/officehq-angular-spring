@@ -1,0 +1,66 @@
+{
+  "checkpoint": 167,
+  "checkpoint_id": "cp167_crew-lead-total",
+  "kind": "checkpoint",
+  "run_id": "202610271-as",
+  "condition": "just-solve",
+  "chain": 3,
+  "branch": "evolve/202610271-as/just-solve/chain3",
+  "commit_sha": "f0a5ca9ebb81d138c6132796628b4e11a993402c",
+  "harness_sha": "8b39da3c7afa3e0f848a31d0db987618db86a6b6",
+  "harness_dirty": [],
+  "workers": 3,
+  "port": 3002,
+  "started_at": "2026-11-02T02:10:10",
+  "seconds": 165,
+  "build_log_file": "cp167.test.log",
+  "replaced_tests": [],
+  "tests": {
+    "gated": true,
+    "scope": "checkpoint",
+    "build_ok": true,
+    "build_output": "",
+    "total_selected": 4,
+    "results": {
+      "cp167_crew-lead-total.spec.ts::crew lead total": true,
+      "cp167_crew-lead-total.spec.ts::crew lead total scenario 1": true,
+      "cp167_crew-lead-total.spec.ts::crew lead total scenario 2": true,
+      "cp167_crew-lead-total.spec.ts::crew lead total scenario 3": true
+    },
+    "detail": [
+      {
+        "test_id": "cp167_crew-lead-total.spec.ts::crew lead total",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 17039,
+        "failure": ""
+      },
+      {
+        "test_id": "cp167_crew-lead-total.spec.ts::crew lead total scenario 1",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 22034,
+        "failure": ""
+      },
+      {
+        "test_id": "cp167_crew-lead-total.spec.ts::crew lead total scenario 2",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 18091,
+        "failure": ""
+      },
+      {
+        "test_id": "cp167_crew-lead-total.spec.ts::crew lead total scenario 3",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 30649,
+        "failure": ""
+      }
+    ],
+    "error": "",
+    "gate_invalid": false,
+    "app_broken": false,
+    "gate_attempts": 1,
+    "seed_contract": null
+  }
+}

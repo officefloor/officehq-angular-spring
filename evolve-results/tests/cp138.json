@@ -1,0 +1,66 @@
+{
+  "checkpoint": 138,
+  "checkpoint_id": "cp138_inline-grade",
+  "kind": "checkpoint",
+  "run_id": "202610271-as",
+  "condition": "just-solve",
+  "chain": 3,
+  "branch": "evolve/202610271-as/just-solve/chain3",
+  "commit_sha": "4f0b8d34f60e573645bd181a128393b36fa2fd49",
+  "harness_sha": "8b39da3c7afa3e0f848a31d0db987618db86a6b6",
+  "harness_dirty": [],
+  "workers": 3,
+  "port": 3002,
+  "started_at": "2026-11-01T21:56:09",
+  "seconds": 148,
+  "build_log_file": "cp138.test.log",
+  "replaced_tests": [],
+  "tests": {
+    "gated": true,
+    "scope": "checkpoint",
+    "build_ok": true,
+    "build_output": "",
+    "total_selected": 4,
+    "results": {
+      "cp138_inline-grade.spec.ts::inline grade": true,
+      "cp138_inline-grade.spec.ts::inline grade scenario 1": false,
+      "cp138_inline-grade.spec.ts::inline grade scenario 2": true,
+      "cp138_inline-grade.spec.ts::inline grade scenario 3": true
+    },
+    "detail": [
+      {
+        "test_id": "cp138_inline-grade.spec.ts::inline grade",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 13050,
+        "failure": ""
+      },
+      {
+        "test_id": "cp138_inline-grade.spec.ts::inline grade scenario 1",
+        "category": "functionality",
+        "passed": false,
+        "duration_ms": 24039,
+        "failure": "Error: \u001b[31mTimed out 5000ms waiting for \u001b[39m\u001b[2mexpect(\u001b[22m\u001b[31mlocator\u001b[39m\u001b[2m).\u001b[22mtoHaveText\u001b[2m(\u001b[22m\u001b[32mexpected\u001b[39m\u001b[2m)\u001b[22m\n\nLocator: getByTestId('tag-c-due-total')\nExpected string: \u001b[32m\"0.00\"\u001b[39m\nReceived: <element(s) not found>\nCall log:\n  \u001b[2m- expect.toHaveText with timeout 5000ms\u001b[22m\n\u001b[2m  - waiting for getByTestId('tag-c-due-total')\u001b[22m\n\n\n  384 |     await expect(pg_wes.getByTestId(\"summary-status-SETTLED-count\")).toHaveText(\"0\");\n  385 |     await expect(pg_wes.getByTestId(\"summary-status-VOID-count\")).toHaveText(\"0\");\n> 386 |     await expect(pg_wes.getByTestId(\"tag-c-due-total\")).toHaveText(\"0.00\");\n      |                                                         ^\n  387 |     await ui.expectAudit(sheet, [\n  388 |       `ROLE_SET sheet=${sheet} by=uma user=wes role=steward`,\n  389 |       `SETTING_CHANGED sheet=${sheet} by=uma key=floor value=2.00`,\n\n    at /home/daniel/ui-work/runs/202610271-as/testing/e2e/specs/cp138_inline-grade.spec.ts:386:57 | Error: \u001b[31mTimed out 5000ms waiting for \u001b[39m\u001b[2mexpect(\u001b[22m\u001b[31mlocator\u001b[39m\u001b[2m).\u001b[22mtoHaveText\u001b[2m(\u001b[22m\u001b[32mexpected\u001b[39m\u001b[2m)\u001b[22m\n\nLocator: getByTestId('tag-c-due-total')\nExpected string: \u001b[32m\"0.00\"\u001b[39m\nReceived: <element(s) not found>\nCall log:\n  \u001b[2m- expect.toHaveText with timeout 5000ms\u001b[22m\n\u001b[2m  - waiting for getByTestId('tag-c-due-total')\u001b[22m\n"
+      },
+      {
+        "test_id": "cp138_inline-grade.spec.ts::inline grade scenario 2",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 22470,
+        "failure": ""
+      },
+      {
+        "test_id": "cp138_inline-grade.spec.ts::inline grade scenario 3",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 22793,
+        "failure": ""
+      }
+    ],
+    "error": "",
+    "gate_invalid": false,
+    "app_broken": false,
+    "gate_attempts": 1,
+    "seed_contract": null
+  }
+}

@@ -1,0 +1,60 @@
+$ bin/build  (attempt 1)
+Picked up JAVA_TOOL_OPTIONS: -Djava.io.tmpdir=/tmp/202610271-as-testing-cp219-4slgajc7
+
+$ npm ci --silent (cwd e2e)
+
+$ npx playwright install chromium (cwd e2e)
+
+$ npx playwright test --reporter=json,list --workers=3 --output=/home/daniel/ui-work/runs/202610271-as/testing/.run/pw-artifacts  (attempt 1, exit 1)
+
+Running 4 tests using 1 worker
+
+  ✓  1 [chromium] › cp219_rollover-undo.spec.ts:6:7 › rollover undo › rollover undo (11.7s)
+  ✘  2 [chromium] › cp219_rollover-undo.spec.ts:512:7 › rollover undo › rollover undo scenario 1 (28.5s)
+  ✘  3 [chromium] › cp219_rollover-undo.spec.ts:1002:7 › rollover undo › rollover undo scenario 2 (25.8s)
+  ✓  4 [chromium] › cp219_rollover-undo.spec.ts:1392:7 › rollover undo › rollover undo scenario 3 (20.3s)
+
+
+  1) [chromium] › cp219_rollover-undo.spec.ts:512:7 › rollover undo › rollover undo scenario 1 ─────
+
+    Error: [2mexpect([22m[31mreceived[39m[2m).[22mtoBe[2m([22m[32mexpected[39m[2m) // Object.is equality[22m
+
+    Expected: [32m0[39m
+    Received: [31mnull[39m
+
+      608 |     await expect(pg_wes.getByTestId("my-crew-due-total")).toHaveText("");
+      609 |     await expect(pg_wes.getByTestId("my-reviews-count")).toHaveText("0");
+    > 610 |     expect(await ui.generatePeriods(pg_wes, "2026-01-15", "2026-02-20")).toBe(0);
+          |                                                                          ^
+      611 |     expect(await ui.addClaim(pg_wes, p_ben, {"amount": "10.35", "note": "n"})).toBeNull();
+      612 |     expect(await ui.addNote(pg_wes, "")).toBe(false);
+      613 |     expect(await ui.inlineGrade(pg_wes, p_cam, "C")).toBe(false);
+
+        at /home/daniel/ui-work/runs/202610271-as/testing/e2e/specs/cp219_rollover-undo.spec.ts:610:74
+
+  2) [chromium] › cp219_rollover-undo.spec.ts:1002:7 › rollover undo › rollover undo scenario 2 ────
+
+    Error: [31mTimed out 5000ms waiting for [39m[2mexpect([22m[31mlocator[39m[2m).[22mtoHaveText[2m([22m[32mexpected[39m[2m)[22m
+
+    Locator: getByTestId('tag-a-due-total')
+    Expected string: [32m"0.00"[39m
+    Received: <element(s) not found>
+    Call log:
+      [2m- expect.toHaveText with timeout 5000ms[22m
+    [2m  - waiting for getByTestId('tag-a-due-total')[22m
+
+
+      1296 |     await expect(pg_wes.getByTestId("classic-period-P1-due-total")).toHaveText("0.00");
+      1297 |     await expect(pg_wes.getByTestId("classic-due-total")).toHaveText("0.00");
+    > 1298 |     await expect(pg_wes.getByTestId("tag-a-due-total")).toHaveText("0.00");
+           |                                                         ^
+      1299 |     await expect(pg_wes.getByTestId("tag-b-due-total")).toHaveText("0.00");
+      1300 |     await expect(pg_wes.getByTestId("month-2026-03-due-total")).toHaveText("0.00");
+      1301 |     await expect(pg_wes.getByTestId("rate-month-A-2026-01")).toHaveText("12.50");
+
+        at /home/daniel/ui-work/runs/202610271-as/testing/e2e/specs/cp219_rollover-undo.spec.ts:1298:57
+
+  2 failed
+    [chromium] › cp219_rollover-undo.spec.ts:512:7 › rollover undo › rollover undo scenario 1 ──────
+    [chromium] › cp219_rollover-undo.spec.ts:1002:7 › rollover undo › rollover undo scenario 2 ─────
+  2 passed (1.5m)

@@ -1,0 +1,66 @@
+{
+  "checkpoint": 177,
+  "checkpoint_id": "cp177_proof-kinds",
+  "kind": "checkpoint",
+  "run_id": "202610271-as",
+  "condition": "just-solve",
+  "chain": 3,
+  "branch": "evolve/202610271-as/just-solve/chain3",
+  "commit_sha": "34d3cbd9fe201cdaa50d20898023ac51f076bbf9",
+  "harness_sha": "8b39da3c7afa3e0f848a31d0db987618db86a6b6",
+  "harness_dirty": [],
+  "workers": 3,
+  "port": 3002,
+  "started_at": "2026-11-02T03:53:44",
+  "seconds": 109,
+  "build_log_file": "cp177.test.log",
+  "replaced_tests": [],
+  "tests": {
+    "gated": true,
+    "scope": "checkpoint",
+    "build_ok": true,
+    "build_output": "",
+    "total_selected": 4,
+    "results": {
+      "cp177_proof-kinds.spec.ts::proof kinds": true,
+      "cp177_proof-kinds.spec.ts::proof kinds scenario 1": true,
+      "cp177_proof-kinds.spec.ts::proof kinds scenario 2": true,
+      "cp177_proof-kinds.spec.ts::proof kinds scenario 3": true
+    },
+    "detail": [
+      {
+        "test_id": "cp177_proof-kinds.spec.ts::proof kinds",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 9433,
+        "failure": ""
+      },
+      {
+        "test_id": "cp177_proof-kinds.spec.ts::proof kinds scenario 1",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 15681,
+        "failure": ""
+      },
+      {
+        "test_id": "cp177_proof-kinds.spec.ts::proof kinds scenario 2",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 15614,
+        "failure": ""
+      },
+      {
+        "test_id": "cp177_proof-kinds.spec.ts::proof kinds scenario 3",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 16320,
+        "failure": ""
+      }
+    ],
+    "error": "",
+    "gate_invalid": false,
+    "app_broken": false,
+    "gate_attempts": 1,
+    "seed_contract": null
+  }
+}

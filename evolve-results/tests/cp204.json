@@ -1,0 +1,69 @@
+{
+  "checkpoint": 204,
+  "checkpoint_id": "cp204_trim-at-consolidation",
+  "kind": "checkpoint",
+  "run_id": "202610271-as",
+  "condition": "just-solve",
+  "chain": 3,
+  "branch": "evolve/202610271-as/just-solve/chain3",
+  "commit_sha": "396772774d409c7c1b1aaf36a499a2ac26cf2059",
+  "harness_sha": "8b39da3c7afa3e0f848a31d0db987618db86a6b6",
+  "harness_dirty": [],
+  "workers": 3,
+  "port": 3002,
+  "started_at": "2026-11-02T09:37:22",
+  "seconds": 179,
+  "build_log_file": "cp204.test.log",
+  "replaced_tests": [
+    "cp110_consolidated-figures.spec.ts::consolidated figures",
+    "cp201_consolidated-grades.spec.ts::consolidated grades"
+  ],
+  "tests": {
+    "gated": true,
+    "scope": "checkpoint",
+    "build_ok": true,
+    "build_output": "",
+    "total_selected": 4,
+    "results": {
+      "cp204_trim-at-consolidation.spec.ts::trim at consolidation": true,
+      "cp204_trim-at-consolidation.spec.ts::trim at consolidation scenario 1": true,
+      "cp204_trim-at-consolidation.spec.ts::trim at consolidation scenario 2": true,
+      "cp204_trim-at-consolidation.spec.ts::trim at consolidation scenario 3": true
+    },
+    "detail": [
+      {
+        "test_id": "cp204_trim-at-consolidation.spec.ts::trim at consolidation",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 20983,
+        "failure": ""
+      },
+      {
+        "test_id": "cp204_trim-at-consolidation.spec.ts::trim at consolidation scenario 1",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 33611,
+        "failure": ""
+      },
+      {
+        "test_id": "cp204_trim-at-consolidation.spec.ts::trim at consolidation scenario 2",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 21823,
+        "failure": ""
+      },
+      {
+        "test_id": "cp204_trim-at-consolidation.spec.ts::trim at consolidation scenario 3",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 25559,
+        "failure": ""
+      }
+    ],
+    "error": "",
+    "gate_invalid": false,
+    "app_broken": false,
+    "gate_attempts": 1,
+    "seed_contract": null
+  }
+}
