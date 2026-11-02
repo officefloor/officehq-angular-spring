@@ -1,0 +1,64 @@
+{
+  "checkpoint": 181,
+  "stack": {
+    "repo": "/home/daniel/officehq-angular-spring",
+    "origin": "git@github.com:officefloor/officehq-angular-spring.git",
+    "name": "officehq-angular-spring",
+    "base_ref": "base-empty",
+    "base_commit": "65cb8233ea38b2dfa6cfd18709e30cd18fdf3250"
+  },
+  "checkpoint_id": "cp181_sheet-notes",
+  "phase": "late",
+  "type": "additive",
+  "mutates": [],
+  "replaced_tests": [],
+  "request": {
+    "spec": "The sheet has notes: a text and an add button (NOTE_ADDED text=<text>; a blank note is refused with\nan error beside the entry). Show the notes newest first as <sheet's today when added> <user>:\n<text>. Under an as-of date the list shows the notes added while the sheet's today was on or before\nthat date.\n",
+    "prompt": "You are implementing ONE change to this application.\n\nFIRST read AGENTS.md \u2014 it states the working rules and how the app is tested, and sends you to\nDESIGN.md for the app's stack and conventions. Follow both.\n\nTHE CHANGE REQUEST:\nThe sheet has notes: a text and an add button (NOTE_ADDED text=<text>; a blank note is refused with\nan error beside the entry). Show the notes newest first as <sheet's today when added> <user>:\n<text>. Under an as-of date the list shows the notes added while the sheet's today was on or before\nthat date.\n\nYour work is verified by an automated Playwright UI test already installed under e2e/specs/.\nRead that spec: it declares the exact data-testid anchors, values, test data and any audit\nrecords it expects \u2014 match them. Run `bin/e2e` to build the app, start it, and run the test as\nyou work; iterate until it passes. Change whatever the request needs across the app \u2014 its stored\ndata, its server and its front end. Do NOT edit bin/build, bin/start, bin/stop, bin/e2e,\nAGENTS.md, CLAUDE.md, DESIGN.md, e2e/support/ or the test spec.\n"
+  },
+  "commit_sha": "e12e4dfc29c463b01de2357651cfddd19c2f52bd",
+  "reset_sha": "",
+  "preagent_sha": "b5ba9ce0b8bc3a28625b9d162d74d72bea954c26",
+  "prev_sha": "b5ba9ce0b8bc3a28625b9d162d74d72bea954c26",
+  "base_sha": "65cb8233ea38b2dfa6cfd18709e30cd18fdf3250",
+  "agent": {
+    "ok": true,
+    "cost_usd": 0.712268,
+    "input_tokens": 6,
+    "output_tokens": 656,
+    "cache_read_tokens": 122071,
+    "cache_creation_tokens": 2896,
+    "num_turns": 2,
+    "duration_ms": 9855,
+    "duration_api_ms": 96810,
+    "model": "claude-opus-5-5",
+    "session_id": "6c995495-81f1-4e3c-8f93-0722662be637",
+    "stop_reason": "success",
+    "result_text": "Sheet notes are in, and `bin/e2e` passes all 4 tests in the spec.\n\n**What it does**\n- The sheet screen has a Notes section: a text entry (`note-text`) and an add button (`note-add`).\n- Each note is stored with the sheet's today, the user who added it, and the text with spaces trimmed. It is audited as `NOTE_ADDED sheet=<id> by=<user> text=<text>`.\n- The list (`note-line`) shows newest first, as `<sheet's today when added> <user>: <text>`.\n- A blank note is refused with an error next to the entry (`note-error`), both in the browser and again on the server. Typing in the field clears the error.\n\n**Things I didn't have to build**\n- **Viewers and archived sheets:** adding a note is refused for both by the app's existing checks, which apply to every change.\n- **Delegation:** a note added by someone acting for a steward gets `for=<steward>` at the end of its audit line, also from the existing audit service.\n- **As-of view:** the app already shows every table as it stood at the end of the chosen date. So under an as-of date, the list holds only the notes added while the sheet's today was on or before it.\n\n**Files**\n- New table: `src/main/resources/db/migration/V101__sheet_note.sql`.\n- Server: a new `note` package with the entity, repository, service and `/api/sheets/{sheetId}/notes` controller.\n- Front end: a new `features/notes/notes.ts` component, added to the home screen in `home.ts`.",
+    "error": "",
+    "attempts": [
+      {
+        "ok": true,
+        "limit_reached": false,
+        "retryable": false,
+        "timed_out": false,
+        "cost_usd": 0.712268,
+        "num_turns": 2,
+        "duration_ms": 9855,
+        "duration_api_ms": 96810,
+        "error": ""
+      }
+    ]
+  },
+  "agent_stream_file": "cp181.agent.jsonl",
+  "agent_diff_file": "cp181.agent.diff",
+  "build_log_file": null,
+  "tests": {
+    "gated": false,
+    "queued": true
+  },
+  "probe": null,
+  "pinned_touched": [],
+  "acceptance_touched": [],
+  "impact_gate": null
+}
