@@ -133,6 +133,8 @@ public class PeriodService {
      * at that period's end) is added to their opening balance for the new year's first period. A year with no
      * periods on the sheet is refused. It is kept as the sheet's last rollover, replacing any before it; rolling
      * over again the year the last rollover carried over (not undone) carries no opening balances a second time.
+     * Every period of the old year still open (neither closed nor soft-closed) is then soft-closed, in start-date
+     * order, as {@link #softClose} would.
      */
     @Transactional
     public List<Period> rollover(String sheetId, String user, int year) {
@@ -188,6 +190,10 @@ public class PeriodService {
                 made.stream().map(Period::getId).toList(), added));
         audit.recordOnCommit("ROLLOVER sheet=" + sheetId + " by=" + user.strip()
                 + " fy=FY" + year + " periods=" + made.size());
+        // Soft-close, as a soft close would, every old-year period still open, in start-date order.
+        for (Period period : old) {
+            if (!period.isClosed() && !period.isSoftClosed()) fix(sheetId, user, period, today, false, true);
+        }
         return made;
     }
 
