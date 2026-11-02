@@ -1,0 +1,204 @@
+diff --git a/src/main/java/net/officefloor/hq/app/pool/PoolService.java b/src/main/java/net/officefloor/hq/app/pool/PoolService.java
+index 24204cd15..bd3a3206a 100644
+--- a/src/main/java/net/officefloor/hq/app/pool/PoolService.java
++++ b/src/main/java/net/officefloor/hq/app/pool/PoolService.java
+@@ -2,6 +2,7 @@ package net.officefloor.hq.app.pool;
+ 
+ import java.math.BigDecimal;
+ import java.math.RoundingMode;
++import java.time.LocalDate;
+ import java.util.ArrayList;
+ import java.util.HashMap;
+ import java.util.List;
+@@ -32,8 +33,9 @@ public class PoolService {
+     /** The most levels a chain of pools may have, the top pool counting as one. */
+     public static final int MAX_DEPTH = 3;
+ 
+-    /** A member as the pool shows them: the person, or the pool (exactly one of them), and their share. */
+-    public record Member(PoolMember member, Person person, Pool pool) {
++    /** A member as the pool shows them: the person, or the pool (exactly one of them), and their share;
++     *  and whether the member is a person with a hold in force on the sheet's today. */
++    public record Member(PoolMember member, Person person, Pool pool, boolean held) {
+ 
+         /** Whether the member is a person with a retirement day set: their share then counts as 0.00. */
+         public boolean retired() {
+@@ -60,19 +62,24 @@ public class PoolService {
+         }
+ 
+         /** Each member's cut of the pot, in the members' order: the pot times their share divided by
+-         *  100, rounded half to even to two decimals (a retired member's 0.00), with the remainder of
+-         *  the pot going to the member with the largest share (the earliest added on a tie), so the
+-         *  cuts total exactly the pot; none (an empty list) when there is no pot or the pool is not
+-         *  balanced. */
++         *  the shares of the members with a cut added up, rounded half to even to two decimals (a
++         *  retired member's share counting as 0.00, a held member getting no cut: 0.00), with the
++         *  remainder of the pot going to the member with a cut with the largest share (the earliest
++         *  added on a tie), so the cuts total exactly the pot (each 0.00 when no member has a cut);
++         *  none (an empty list) when there is no pot or the pool is not balanced. */
+         public List<BigDecimal> cuts() {
+             if (pot == null || !balanced()) {
+                 return List.of();
+             }
+             List<BigDecimal> shares = members.stream()
+-                    .map(m -> m.retired() ? BigDecimal.ZERO.setScale(2) : m.member().getShare())
++                    .map(m -> m.retired() || m.held() ? BigDecimal.ZERO.setScale(2) : m.member().getShare())
+                     .toList();
++            BigDecimal withCut = shares.stream().reduce(BigDecimal.ZERO.setScale(2), BigDecimal::add);
++            if (withCut.signum() == 0) {
++                return shares;
++            }
+             List<BigDecimal> cuts = new ArrayList<>(shares.stream()
+-                    .map(sh -> pot.multiply(sh).divide(WHOLE, 2, RoundingMode.HALF_EVEN))
++                    .map(sh -> pot.multiply(sh).divide(withCut, 2, RoundingMode.HALF_EVEN))
+                     .toList());
+             int largest = 0;
+             for (int i = 1; i < shares.size(); i++) {
+@@ -110,13 +117,15 @@ public class PoolService {
+                 .collect(Collectors.toMap(Person::getId, Function.identity()));
+         List<PoolMember> memberships = members.findByPoolIdInOrderByIdAsc(poolsById.keySet());
+         Map<Long, List<PoolMember>> byPool = memberships.stream().collect(Collectors.groupingBy(PoolMember::getPoolId));
++        LocalDate today = sheets.today(sheetId);
+         Map<Long, List<Member>> membersOf = new HashMap<>();
+         for (Pool p : all) {
+             membersOf.put(p.getId(), byPool.getOrDefault(p.getId(), List.of()).stream()
+                     .filter(m -> m.getPersonId() != null ? byId.containsKey(m.getPersonId())
+                             : poolsById.containsKey(m.getMemberPoolId()))
+                     .map(m -> new Member(m, m.getPersonId() == null ? null : byId.get(m.getPersonId()),
+-                            m.getMemberPoolId() == null ? null : poolsById.get(m.getMemberPoolId())))
++                            m.getMemberPoolId() == null ? null : poolsById.get(m.getMemberPoolId()),
++                            m.getPersonId() != null && byId.get(m.getPersonId()).isHeldOn(today)))
+                     .toList());
+         }
+         Map<Long, Long> above = memberships.stream().filter(m -> m.getMemberPoolId() != null)
+diff --git a/src/main/java/net/officefloor/hq/app/statement/Statement.java b/src/main/java/net/officefloor/hq/app/statement/Statement.java
+index 7948965a5..cca9f28df 100644
+--- a/src/main/java/net/officefloor/hq/app/statement/Statement.java
++++ b/src/main/java/net/officefloor/hq/app/statement/Statement.java
+@@ -43,6 +43,10 @@ public class Statement {
+     @Column(name = "as_of")
+     private LocalDate asOf;
+ 
++    /** The sheet's today when the statement was cancelled; null while it stands. */
++    @Column(name = "cancelled_on")
++    private LocalDate cancelledOn;
++
+     protected Statement() {
+     }
+ 
+@@ -73,6 +77,20 @@ public class Statement {
+         return takenOn;
+     }
+ 
++    public LocalDate getCancelledOn() {
++        return cancelledOn;
++    }
++
++    /** Cancel the statement on a day (the sheet's today). */
++    public void cancel(LocalDate day) {
++        this.cancelledOn = day;
++    }
++
++    /** Whether the statement stood at the end of a day: taken on or before it and not cancelled by then. */
++    public boolean stoodOn(LocalDate day) {
++        return !takenOn.isAfter(day) && (cancelledOn == null || cancelledOn.isAfter(day));
++    }
++
+     public LocalDate getAsOf() {
+         return asOf;
+     }
+diff --git a/src/main/java/net/officefloor/hq/app/statement/StatementRepository.java b/src/main/java/net/officefloor/hq/app/statement/StatementRepository.java
+index 431a6d768..a0470a344 100644
+--- a/src/main/java/net/officefloor/hq/app/statement/StatementRepository.java
++++ b/src/main/java/net/officefloor/hq/app/statement/StatementRepository.java
+@@ -5,9 +5,15 @@ import org.springframework.data.jpa.repository.JpaRepository;
+ 
+ public interface StatementRepository extends JpaRepository<Statement, Long> {
+ 
+-    /** The statements on a sheet in the order they were taken. */
++    /** The statements on a sheet in the order they were taken, cancelled ones too. */
+     List<Statement> findBySheetIdOrderByIdAsc(String sheetId);
+ 
+-    /** A person's statements in the order they were taken. */
++    /** The statements on a sheet that stand (none cancelled) in the order they were taken. */
++    List<Statement> findBySheetIdAndCancelledOnIsNullOrderByIdAsc(String sheetId);
++
++    /** A person's statements that stand (none cancelled) in the order they were taken. */
++    List<Statement> findBySheetIdAndPersonIdAndCancelledOnIsNullOrderByIdAsc(String sheetId, Long personId);
++
++    /** A person's statements in the order they were taken, cancelled ones too. */
+     List<Statement> findBySheetIdAndPersonIdOrderByIdAsc(String sheetId, Long personId);
+ }
+diff --git a/src/main/java/net/officefloor/hq/app/statement/StatementService.java b/src/main/java/net/officefloor/hq/app/statement/StatementService.java
+index 2300d73fe..8941e8903 100644
+--- a/src/main/java/net/officefloor/hq/app/statement/StatementService.java
++++ b/src/main/java/net/officefloor/hq/app/statement/StatementService.java
+@@ -57,17 +57,18 @@ public class StatementService {
+      *  missing. */
+     @Transactional(readOnly = true)
+     public Map<Long, StatementSummary> summaries(String sheetId) {
+-        return statements.findBySheetIdOrderByIdAsc(sheetId).stream()
++        return statements.findBySheetIdAndCancelledOnIsNullOrderByIdAsc(sheetId).stream()
+                 .collect(Collectors.groupingBy(Statement::getPersonId,
+                         Collectors.collectingAndThen(Collectors.toList(), StatementSummary::of)));
+     }
+ 
+     /** What each person's statements on the sheet came to at the end of a day: those taken while the
+-     *  sheet's today was on or before it, by person id; a person with none is missing. */
++     *  sheet's today was on or before it and not cancelled by then, by person id; a person with none
++     *  is missing. */
+     @Transactional(readOnly = true)
+     public Map<Long, StatementSummary> summaries(String sheetId, LocalDate day) {
+         return statements.findBySheetIdOrderByIdAsc(sheetId).stream()
+-                .filter(s -> !s.getTakenOn().isAfter(day))
++                .filter(s -> s.stoodOn(day))
+                 .collect(Collectors.groupingBy(Statement::getPersonId,
+                         Collectors.collectingAndThen(Collectors.toList(), StatementSummary::of)));
+     }
+@@ -75,7 +76,7 @@ public class StatementService {
+     /** What one person's statements come to. */
+     @Transactional(readOnly = true)
+     public StatementSummary summary(String sheetId, long personId) {
+-        return StatementSummary.of(statements.findBySheetIdAndPersonIdOrderByIdAsc(sheetId, personId));
++        return StatementSummary.of(statements.findBySheetIdAndPersonIdAndCancelledOnIsNullOrderByIdAsc(sheetId, personId));
+     }
+ 
+     /** Take a statement of a person: record their due-total now and bind each of their claims that
+@@ -132,7 +133,8 @@ public class StatementService {
+ 
+     /** Cancel a person's last statement: only a steward may, and only when one was taken. The claims
+      *  it bound become live again (a figure an earlier statement bound is not restored), and the
+-     *  statement before it, if any, becomes their last. */
++     *  statement before it, if any, becomes their last. The cancelled statement is kept, marked with
++     *  the sheet's today, so the sheet as of an earlier day still shows it. */
+     @Transactional
+     public Taken cancelLast(String sheetId, String user, long personId) {
+         if (!SheetRole.STEWARD.equals(roles.roleOf(sheetId, user))) {
+@@ -140,7 +142,7 @@ public class StatementService {
+         }
+         Person person = people.lockByIdAndSheetId(personId, sheetId)
+                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "No such person on this sheet"));
+-        List<Statement> taken = statements.findBySheetIdAndPersonIdOrderByIdAsc(sheetId, personId);
++        List<Statement> taken = statements.findBySheetIdAndPersonIdAndCancelledOnIsNullOrderByIdAsc(sheetId, personId);
+         if (taken.isEmpty()) {
+             throw new ResponseStatusException(HttpStatus.CONFLICT, "No statement has been taken of this person");
+         }
+@@ -149,8 +151,8 @@ public class StatementService {
+             List<Claim> theirs = claims.findBySheetIdAndPersonIdOrderByListedDesc(sheetId, personId);
+             theirs.forEach(claim -> claim.bind(false, null));
+             claims.saveAllAndFlush(theirs);
+-            statements.delete(last);
+-            statements.flush();
++            last.cancel(sheets.today(sheetId));
++            statements.saveAndFlush(last);
+             audit.recordOnCommit("STATEMENT_CANCELLED sheet=" + sheetId + " by=" + user + " name=" + person.getName()
+                     + " due-total=" + (last.getDueTotal() == null ? "n/a" : last.getDueTotal().setScale(2).toPlainString()));
+             return theirs;
+diff --git a/src/main/resources/db/migration/V72__statement_cancelled_on.sql b/src/main/resources/db/migration/V72__statement_cancelled_on.sql
+new file mode 100644
+index 000000000..dfee79c00
+--- /dev/null
++++ b/src/main/resources/db/migration/V72__statement_cancelled_on.sql
+@@ -0,0 +1,3 @@
++-- The sheet's today when a statement was cancelled (null: it stands). A cancelled statement is kept
++-- so the sheet as it stood before the cancel still shows it.
++ALTER TABLE statement ADD COLUMN cancelled_on DATE;
