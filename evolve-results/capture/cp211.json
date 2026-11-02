@@ -1,0 +1,64 @@
+{
+  "checkpoint": 211,
+  "stack": {
+    "repo": "/home/daniel/officehq-angular-spring",
+    "origin": "git@github.com:officefloor/officehq-angular-spring.git",
+    "name": "officehq-angular-spring",
+    "base_ref": "base-empty",
+    "base_commit": "65cb8233ea38b2dfa6cfd18709e30cd18fdf3250"
+  },
+  "checkpoint_id": "cp211_score-lines",
+  "phase": "late",
+  "type": "additive",
+  "mutates": [],
+  "replaced_tests": [],
+  "request": {
+    "spec": "The sheet gains a score log switch (settings, on or blank, not dated; SETTING_CHANGED key=score-log value=on). While it is on, changing the sheet's today writes, before the SNAPSHOT\nlines, one line SCORE name=<name> score=<score> per person in list order, with the score as it\nstood on the day being left.\n",
+    "prompt": "You are implementing ONE change to this application.\n\nFIRST read AGENTS.md \u2014 it states the working rules and how the app is tested, and sends you to\nDESIGN.md for the app's stack and conventions. Follow both.\n\nTHE CHANGE REQUEST:\nThe sheet gains a score log switch (settings, on or blank, not dated; SETTING_CHANGED key=score-log value=on). While it is on, changing the sheet's today writes, before the SNAPSHOT\nlines, one line SCORE name=<name> score=<score> per person in list order, with the score as it\nstood on the day being left.\n\nYour work is verified by an automated Playwright UI test already installed under e2e/specs/.\nRead that spec: it declares the exact data-testid anchors, values, test data and any audit\nrecords it expects \u2014 match them. Run `bin/e2e` to build the app, start it, and run the test as\nyou work; iterate until it passes. Change whatever the request needs across the app \u2014 its stored\ndata, its server and its front end. Do NOT edit bin/build, bin/start, bin/stop, bin/e2e,\nAGENTS.md, CLAUDE.md, DESIGN.md, e2e/support/ or the test spec.\n"
+  },
+  "commit_sha": "79aa3c53fa1841e242b2658f300f24c20dc2504e",
+  "reset_sha": "",
+  "preagent_sha": "1a5ab71b6e6721e4b7802ac3111bc9bd0be20627",
+  "prev_sha": "1a5ab71b6e6721e4b7802ac3111bc9bd0be20627",
+  "base_sha": "65cb8233ea38b2dfa6cfd18709e30cd18fdf3250",
+  "agent": {
+    "ok": true,
+    "cost_usd": 0.699958,
+    "input_tokens": 36,
+    "output_tokens": 9130,
+    "cache_read_tokens": 622910,
+    "cache_creation_tokens": 49079,
+    "num_turns": 18,
+    "duration_ms": 327161,
+    "duration_api_ms": 104790,
+    "model": "claude-opus-5-5",
+    "session_id": "213aa2eb-6d53-4b71-acf7-34eb28dd46a3",
+    "stop_reason": "success",
+    "result_text": "I added the score log switch, and `bin/e2e` passes all 4 tests in the spec.\n\n**What it does:**\n- **Setting:** the settings form has a new \"Score log\" field. It takes `on` or blank and isn't dated. Anything else is refused with an error. Saving it writes `SETTING_CHANGED key=score-log value=on`, or `value=` when switched off.\n- **Changing today:** while the switch is on, each change of the sheet's today first writes one `SCORE name=<name> score=<score>` line per person, in list order, before the SNAPSHOT lines. The scores are taken on the day being left.\n\n**One thing to know:** until now the score was only worked out in the browser. To write it to the audit file, the server now calculates it too, in the same code that already works out each person's totals (`RollupService.java`). It uses the same rule as the screen: settled amounts in hundreds, minus 5 for each overdue claim, rounded half to even. That means the rule now lives in two places, and if it changes, both need updating.\n\n**Changes:**\n- **Stored data:** new migration `V110__sheet_score_log.sql` adds a `score_log` column to the sheet table (off by default).\n- **Server:** the sheet record (`Sheet.java`), the settings service and controller (new `PUT /settings/score-log`, value returned with the other settings), the score calculation in `RollupService.java`, and `SheetService.setToday`, which writes the SCORE lines.\n- **Front end:** `features/settings/settings.ts` has the new field, its check, the save call, and the current value shown in `setting-score-log-current`.",
+    "error": "",
+    "attempts": [
+      {
+        "ok": true,
+        "limit_reached": false,
+        "retryable": false,
+        "timed_out": false,
+        "cost_usd": 0.699958,
+        "num_turns": 18,
+        "duration_ms": 327161,
+        "duration_api_ms": 104790,
+        "error": ""
+      }
+    ]
+  },
+  "agent_stream_file": "cp211.agent.jsonl",
+  "agent_diff_file": "cp211.agent.diff",
+  "build_log_file": null,
+  "tests": {
+    "gated": false,
+    "queued": true
+  },
+  "probe": null,
+  "pinned_touched": [],
+  "acceptance_touched": [],
+  "impact_gate": null
+}
