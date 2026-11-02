@@ -1,0 +1,64 @@
+{
+  "checkpoint": 63,
+  "stack": {
+    "repo": "/home/daniel/officehq-angular-spring",
+    "origin": "git@github.com:officefloor/officehq-angular-spring.git",
+    "name": "officehq-angular-spring",
+    "base_ref": "base-empty",
+    "base_commit": "65cb8233ea38b2dfa6cfd18709e30cd18fdf3250"
+  },
+  "checkpoint_id": "cp63_person-terms",
+  "phase": "early",
+  "type": "additive",
+  "mutates": [],
+  "replaced_tests": [],
+  "request": {
+    "spec": "A person may have their own terms: a number of days on the person form, blank for none (PERSON_ADDED\ngains terms=<days> at the end when the form gave a value; PERSON_EDITED gains terms=<days> at the\nend when the terms the form gave differ from the terms the row showed before the save, the empty\nvalue when they were cleared; an edit that leaves them as they were, or clears terms the person did\nnot have, adds nothing). A claim's due-by is fixed at creation from the first of: the person's own\nterms, the terms of their grade, the sheet's terms, each as in force on the claim's date. Show the\nperson's terms on the row.\n",
+    "prompt": "You are implementing ONE change to this application.\n\nFIRST read AGENTS.md \u2014 it states the working rules and how the app is tested, and sends you to\nDESIGN.md for the app's stack and conventions. Follow both.\n\nTHE CHANGE REQUEST:\nA person may have their own terms: a number of days on the person form, blank for none (PERSON_ADDED\ngains terms=<days> at the end when the form gave a value; PERSON_EDITED gains terms=<days> at the\nend when the terms the form gave differ from the terms the row showed before the save, the empty\nvalue when they were cleared; an edit that leaves them as they were, or clears terms the person did\nnot have, adds nothing). A claim's due-by is fixed at creation from the first of: the person's own\nterms, the terms of their grade, the sheet's terms, each as in force on the claim's date. Show the\nperson's terms on the row.\n\nYour work is verified by an automated Playwright UI test already installed under e2e/specs/.\nRead that spec: it declares the exact data-testid anchors, values, test data and any audit\nrecords it expects \u2014 match them. Run `bin/e2e` to build the app, start it, and run the test as\nyou work; iterate until it passes. Change whatever the request needs across the app \u2014 its stored\ndata, its server and its front end. Do NOT edit bin/build, bin/start, bin/stop, bin/e2e,\nAGENTS.md, CLAUDE.md, DESIGN.md, e2e/support/ or the test spec.\n"
+  },
+  "commit_sha": "6793d8a10cc4f9f15046dd7acb7f847ab780d704",
+  "reset_sha": "",
+  "preagent_sha": "3a42a812eabcf9b53037f5c709e926edb15f5976",
+  "prev_sha": "3a42a812eabcf9b53037f5c709e926edb15f5976",
+  "base_sha": "65cb8233ea38b2dfa6cfd18709e30cd18fdf3250",
+  "agent": {
+    "ok": true,
+    "cost_usd": 0.9661639999999999,
+    "input_tokens": 42,
+    "output_tokens": 10430,
+    "cache_read_tokens": 1083020,
+    "cache_creation_tokens": 67599,
+    "num_turns": 22,
+    "duration_ms": 428470,
+    "duration_api_ms": 111157,
+    "model": "claude-opus-5-5",
+    "session_id": "2fd4689c-b7da-41a4-915a-dc92a5cbb298",
+    "stop_reason": "success",
+    "result_text": "People can now have their own terms, and claims use them first when fixing the due-by. All 4 tests in `bin/e2e` pass.\n\n**What changed:**\n- **Stored data:** a new migration, `V46__person_terms.sql`, adds a column to the person table for their own terms in days. It's empty when they have none.\n- **Server:**\n  - The person form takes `terms`: a whole number of days, or blank for none. Anything else, such as `x`, is refused.\n  - `PERSON_ADDED` ends with `terms=<days>` when terms were given.\n  - `PERSON_EDITED` ends with `terms=<days>` when the terms changed, or `terms=` when they were cleared. An edit that leaves them as they were adds nothing.\n  - `ClaimService` sets a claim's due-by from the first of: the person's own terms, their grade's terms, then the sheet's terms, with the grade and sheet terms taken as in force on the claim's date. This covers new claims, split-off claims, and claims added by paste and quick-add, which go through the same code.\n- **Front end:**\n  - The person form has a terms field, filled in when you edit someone.\n  - Each row shows the person's terms (blank when none).\n  - The form checks terms itself and shows `person-form-error` if they aren't a number.\n\n**Decisions for you:**\n- **A person's own terms aren't dated.** Unlike grades and sheet settings, there is just one value and it applies to every claim date. The test needs this: terms set on 2026-03-20 must apply to a claim dated 2026-03-01. If you want person terms dated like grades, that's a bigger change. The test helper already knows about a `person-form-terms-from` field, but the spec doesn't use it.\n- **A refused person edit now closes the editor, and the error stays on screen.** Without this, the test's next \"add person\" (Cam) saved over Ada, because her editor was still open. This now applies to every refused edit (bad name, grade or terms, and name already in use), not just bad terms. The exception is when someone else saved the person meanwhile: the editor stays open and shows their current values, as before. Before this change, a refused edit kept the editor open with what was typed.",
+    "error": "",
+    "attempts": [
+      {
+        "ok": true,
+        "limit_reached": false,
+        "retryable": false,
+        "timed_out": false,
+        "cost_usd": 0.9661639999999999,
+        "num_turns": 22,
+        "duration_ms": 428470,
+        "duration_api_ms": 111157,
+        "error": ""
+      }
+    ]
+  },
+  "agent_stream_file": "cp63.agent.jsonl",
+  "agent_diff_file": "cp63.agent.diff",
+  "build_log_file": null,
+  "tests": {
+    "gated": false,
+    "queued": true
+  },
+  "probe": null,
+  "pinned_touched": [],
+  "acceptance_touched": [],
+  "impact_gate": null
+}
