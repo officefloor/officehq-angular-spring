@@ -40,7 +40,7 @@ public class SettingController {
      * days are a whole number of days, null when blank (off); the entry date is null when blank (off); the pot has two decimals, null when none;
      * the parent is the id of the sheet it names as its parent, null when none; the fiscal start month
      * is the month (1 to 12) a fiscal year starts in; the alert threshold has two decimals, null when off;
-     * the escalate after is a whole number of days, null when blank (off); so is the review SLA (none); the
+     * the escalate after is a whole number of days, null when blank (off); so are the review SLA and the pending SLA (none); the
      * default grade is one of the grades, null when blank (A); the score mid and score high are whole
      * numbers, null when blank; the score log is "on" or blank.
      */
@@ -49,7 +49,7 @@ public class SettingController {
             Map<String, List<DatedView>> dated, Map<String, String> permissions, Integer graceDays,
             LocalDate entryDate, String pot, String parent, int fiscalStartMonth, String alertThreshold,
             Integer escalateAfter, Integer reviewSla, String proofKinds, String defaultGrade, Integer scoreMid,
-            Integer scoreHigh, String scoreLog, Integer maxOpen) {}
+            Integer scoreHigh, String scoreLog, Integer maxOpen, Integer pendingSla) {}
 
     /** A value recorded for a dated setting from a date on; null when none. */
     public record DatedView(LocalDate from, String value) {}
@@ -280,6 +280,14 @@ public class SettingController {
         }
     }
 
+    /** Pending SLA: a whole number of days; blank or null: none. */
+    public record PendingSlaRequest(@Pattern(regexp = "(\\d{1,4})?") String value) {
+
+        Integer daysValue() {
+            return value == null || value.isEmpty() ? null : Integer.valueOf(value);
+        }
+    }
+
     /** Max open: a whole number of claims; blank or null: none. */
     public record MaxOpenRequest(@Pattern(regexp = "(\\d{1,4})?") String value) {
 
@@ -381,7 +389,7 @@ public class SettingController {
                 service.escalateAfter(sheetId), service.reviewSla(sheetId),
                 String.join(",", service.proofKinds(sheetId)), service.defaultGrade(sheetId),
                 service.scoreMid(sheetId), service.scoreHigh(sheetId), service.scoreLog(sheetId) ? "on" : "",
-                service.maxOpen(sheetId));
+                service.maxOpen(sheetId), service.pendingSla(sheetId));
     }
 
     @PutMapping("/settings/clerk-limit")
@@ -482,6 +490,15 @@ public class SettingController {
             @RequestHeader("X-User") @NotBlank @Size(max = 100) String user,
             @RequestBody @Valid ReviewSlaRequest request) {
         service.setReviewSla(sheetId, user, request.daysValue());
+        return get(sheetId, user);
+    }
+
+    @PutMapping("/settings/pending-sla")
+    public SettingsView setPendingSla(
+            @PathVariable @Size(max = 100) @Pattern(regexp = "[A-Za-z0-9._-]+") String sheetId,
+            @RequestHeader("X-User") @NotBlank @Size(max = 100) String user,
+            @RequestBody @Valid PendingSlaRequest request) {
+        service.setPendingSla(sheetId, user, request.daysValue());
         return get(sheetId, user);
     }
 

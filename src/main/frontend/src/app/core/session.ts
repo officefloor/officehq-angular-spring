@@ -15,6 +15,7 @@ interface SheetView {
   archived: boolean;
   lastBatch: number | null;
   reviewSla: number | null;
+  pendingSla: number | null;
   role: Role;
   scoreMid: number | null;
   scoreHigh: number | null;
@@ -178,6 +179,8 @@ export class Session {
   readonly proofKinds = signal('');
   /** The review SLA in days (not dated): a REVIEW claim whose review day plus it is before today is late for review; null when none. */
   readonly reviewSla = signal<number | null>(null);
+  /** The pending SLA in days (not dated); null when none. */
+  readonly pendingSla = signal<number | null>(null);
   /** The score thresholds (not dated, whole numbers); null when blank. */
   readonly scoreMid = signal<number | null>(null);
   readonly scoreHigh = signal<number | null>(null);
@@ -194,6 +197,13 @@ export class Session {
     const today = this.today();
     if (claim.status !== 'REVIEW' || sla === null || today === null || claim.reviewOn === null) return false;
     return Math.round((Date.parse(today) - Date.parse(claim.reviewOn)) / 86_400_000) > sla;
+  }
+  /** Whether a claim is late pending: PENDING, and its pending day plus the pending SLA is before the sheet's today. */
+  pendingLate(claim: { status: string; pendingOn: string | null }): boolean {
+    const sla = this.pendingSla();
+    const today = this.today();
+    if (claim.status !== 'PENDING' || sla === null || today === null || claim.pendingOn === null) return false;
+    return Math.round((Date.parse(today) - Date.parse(claim.pendingOn)) / 86_400_000) > sla;
   }
 
   /** The id of the last sheet this one was cloned to from this screen; null when none since it was loaded. */
@@ -286,6 +296,7 @@ export class Session {
     this.archived.set(res.archived);
     this.lastBatch.set(res.lastBatch);
     this.reviewSla.set(res.reviewSla);
+    this.pendingSla.set(res.pendingSla);
     this.scoreMid.set(res.scoreMid);
     this.scoreHigh.set(res.scoreHigh);
     this.role.set(res.role);

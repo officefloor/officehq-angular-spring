@@ -468,6 +468,17 @@ public class SettingService {
         return days;
     }
 
+    /** Change the pending SLA in days (null: none); no claim changes with it. */
+    @Transactional
+    public Integer setPendingSla(String sheetId, String user, Integer days) {
+        Sheet sheet = sheets.findForUpdate(sheetId).orElseThrow(SheetNotFoundException::new);
+        sheet.setPendingSla(days);
+        sheets.flush();
+        audit.recordOnCommit("SETTING_CHANGED sheet=" + sheetId + " by=" + user.strip() + " key=pending-sla value="
+                + (days == null ? "" : days.toString()));
+        return days;
+    }
+
     /** Change the maximum of OPEN or PENDING claims per person (null: none); no claim changes with it. */
     @Transactional
     public Integer setMaxOpen(String sheetId, String user, Integer max) {
@@ -708,6 +719,12 @@ public class SettingService {
     @Transactional(readOnly = true)
     public Integer reviewSla(String sheetId) {
         return sheets.findById(sheetId).orElseThrow(SheetNotFoundException::new).getReviewSla();
+    }
+
+    /** The pending SLA in days as set; null when blank, which means none. */
+    @Transactional(readOnly = true)
+    public Integer pendingSla(String sheetId) {
+        return sheets.findById(sheetId).orElseThrow(SheetNotFoundException::new).getPendingSla();
     }
 
     /** The maximum of OPEN or PENDING claims per person as set; null when blank, which means none. */

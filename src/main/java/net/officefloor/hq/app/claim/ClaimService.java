@@ -327,7 +327,10 @@ public class ClaimService {
                 claim.setSettledDue(settling);
                 claim.setSettleBatch(null);
             }
-            case PENDING -> claim.setSettleBatch(null);
+            case PENDING -> {
+                claim.setSettleBatch(null);
+                claim.setPendingOn(sheets.today(sheetId));
+            }
             case VOID -> claim.setVoidReason(voidReason);
             default -> {}
         }

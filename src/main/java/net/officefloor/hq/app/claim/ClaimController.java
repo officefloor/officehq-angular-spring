@@ -36,7 +36,7 @@ public class ClaimController {
      * when bound by its person's last statement, to the due it had then (null when it had none). A
      * correction has the number of the claim it corrects (null for any other claim). Its status log
      * is oldest first. Locked by the user whose open editor holds it (null when none). A late entry
-     * when added while its period was soft-closed. Reminded on the last day a reminder was written (null when none). Its external reference is null when it has none. Its tags are sorted (empty when none). Its void reason is null unless voided with one. Its comments are oldest first. Its batch is the number of the bulk settle that settled it (null when none). Review on is the sheet's today it went to REVIEW (null when it never did). Waived when a steward waived its late charge, on the sheet's today waived on (null unless waived). Held while held. Its shares are in the order they were added. Its review assignee is the user its review was assigned to (null when none).
+     * when added while its period was soft-closed. Reminded on the last day a reminder was written (null when none). Its external reference is null when it has none. Its tags are sorted (empty when none). Its void reason is null unless voided with one. Its comments are oldest first. Its batch is the number of the bulk settle that settled it (null when none). Review on is the sheet's today it went to REVIEW (null when it never did). Waived when a steward waived its late charge, on the sheet's today waived on (null unless waived). Held while held. Its shares are in the order they were added. Its review assignee is the user its review was assigned to (null when none). Pending on is the sheet's today it last went to PENDING (null when it never did).
      */
     public record ClaimView(Long id, Long personId, String amount, LocalDate date, String note, ClaimStatus status,
             String number, String settledDue, String openedBy, boolean stated, String statedDue, String corrects,
@@ -45,7 +45,7 @@ public class ClaimController {
             String ref, List<String> tags, String voidReason, List<CommentView> comments,
             Integer batch, List<LineView> lines, Long added, LocalDate reviewOn, boolean waived,
             LocalDate waivedOn, int proofsReceipt, int proofsPhoto, boolean held, List<ShareView> shares,
-            String reviewAssignee) {
+            String reviewAssignee, LocalDate pendingOn) {
         public static ClaimView of(Claim claim) {
             return new ClaimView(claim.getId(), claim.getPersonId(), claim.getAmount().toPlainString(),
                     claim.getDate(), claim.getNote(), claim.getStatus(), claim.getNumber(),
@@ -62,7 +62,7 @@ public class ClaimController {
                     claim.getReviewOn(), claim.isWaived(), claim.getWaivedOn(),
                     claim.getProofsReceipt(), claim.getProofsPhoto(), claim.isHeld(),
                     claim.getShares().stream().map(ShareView::of).toList(),
-                    claim.getReviewAssignee());
+                    claim.getReviewAssignee(), claim.getPendingOn());
         }
     }
 

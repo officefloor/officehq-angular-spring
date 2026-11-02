@@ -69,6 +69,8 @@ export interface Claim {
   remindedOn: string | null;
   /** The sheet's today (yyyy-mm-dd) it went to REVIEW; null when it never did. */
   reviewOn: string | null;
+  /** The sheet's today (yyyy-mm-dd) it last went to PENDING; null when it never did. */
+  pendingOn: string | null;
   /** The user a steward assigned its review to; null until assigned. */
   reviewAssignee: string | null;
   /** Whether a steward waived its late charge; from the day it was waived on it bears none. */
@@ -394,6 +396,7 @@ function notEditable(status: ClaimStatus | undefined): string {
           <span>Split from <span data-testid="claim-split-from">{{ c.splitFrom ?? '' }}</span></span>
           <span>Late entry <span data-testid="claim-late-entry">{{ c.lateEntry ? 'yes' : 'no' }}</span></span>
           <span>Review late <span data-testid="claim-review-late">{{ session.reviewLate(c) ? 'yes' : 'no' }}</span></span>
+          <span>Pending late <span data-testid="claim-pending-late">{{ session.pendingLate(c) ? 'yes' : 'no' }}</span></span>
           <span>Review assigned to <span data-testid="claim-review-assigned">{{ c.reviewAssignee ?? '' }}</span></span>
           <span>Reminded <span data-testid="claim-reminded">{{ c.remindedOn ?? '' }}</span></span>
           <span>Batch <span data-testid="claim-batch">{{ c.batch ?? '' }}</span></span>
