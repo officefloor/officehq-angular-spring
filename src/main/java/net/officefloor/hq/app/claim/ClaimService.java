@@ -57,12 +57,17 @@ public class ClaimService {
         });
     }
 
-    /** Change a claim's amount, date and note; a date left out takes the sheet's today. Refused when
-     *  the claim's date, or the new one, falls inside a closed period. */
+    /** Change a draft claim's amount, date and note; a date left out takes the sheet's today. Refused
+     *  when the claim is not a draft (an open claim is changed by voiding it and adding a new one), and
+     *  when the claim's date, or the new one, falls inside a closed period. */
     @Transactional
     public Claim edit(String sheetId, String user, long claimId, BigDecimal amount, LocalDate date, String note) {
         Claim claim = claims.findByIdAndSheetId(claimId, sheetId)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "No such claim on this sheet"));
+        if (claim.getStatus() != ClaimStatus.DRAFT) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT,
+                    "A " + claim.getStatus() + " claim cannot be edited");
+        }
         LocalDate on = date != null ? date : sheets.today(sheetId);
         refuseClosed(sheetId, claim.getDate());
         refuseClosed(sheetId, on);
@@ -93,14 +98,11 @@ public class ClaimService {
                     "The user who opened a claim cannot settle it");
         }
         return rollup.tracking(sheetId, user, () -> {
-            // The number recorded for a void claim is the one it had.
-            Integer number = claim.getNumber();
+            // A void claim keeps the number it had (never reused).
             claim.setStatus(to);
             if (to == ClaimStatus.OPEN) {
                 claim.setNumber(sheets.nextClaimNumber(sheetId));
                 claim.setOpenedBy(user);
-            } else if (to == ClaimStatus.VOID) {
-                claim.setNumber(null);
             }
             Person person = person(sheetId, claim.getPersonId());
             if (to == ClaimStatus.SETTLED) {
@@ -115,7 +117,7 @@ public class ClaimService {
                 case VOID -> "CLAIM_VOIDED";
                 case DRAFT -> throw new IllegalStateException("a claim never returns to DRAFT");
             };
-            String line = record(event, sheetId, user, person, saved, to == ClaimStatus.VOID ? number : saved.getNumber());
+            String line = record(event, sheetId, user, person, saved);
             if (to == ClaimStatus.SETTLED) {
                 line += " due=" + (saved.getSettledDue() == null ? "n/a" : saved.getSettledDue().setScale(2).toPlainString());
             }
@@ -136,13 +138,9 @@ public class ClaimService {
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "No such person on this sheet"));
     }
 
-    private static String record(String event, String sheetId, String user, Person person, Claim claim) {
-        return record(event, sheetId, user, person, claim, claim.getNumber());
-    }
-
     /** An audit record about a claim; one that has a number carries it at the end. */
-    private static String record(String event, String sheetId, String user, Person person, Claim claim,
-            Integer number) {
+    private static String record(String event, String sheetId, String user, Person person, Claim claim) {
+        Integer number = claim.getNumber();
         return event + " sheet=" + sheetId + " by=" + user + " person=" + person.getName()
                 + " amount=" + claim.getAmount().setScale(2).toPlainString() + " date=" + claim.getDate()
                 + (number != null ? " number=" + number : "");

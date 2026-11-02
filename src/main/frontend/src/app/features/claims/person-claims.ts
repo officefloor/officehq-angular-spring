@@ -13,6 +13,9 @@ const REFUSALS: Record<ClaimAction, string> = {
   void: 'Only a draft or open claim can be voided.',
 };
 
+/** The message when an edit of a claim that is not a draft is refused. */
+const NOT_DRAFT = 'Only a draft claim can be edited; void an open claim and add a new one.';
+
 /** The message when the server refused a change to a claim dated inside a closed period. */
 const CLOSED = 'The claim\'s period is closed.';
 
@@ -118,6 +121,10 @@ export class PersonClaims {
 
   protected open(c: Claim): void {
     this.claimError.set(null);
+    if (c.status !== 'DRAFT') {
+      this.claimError.set({ id: c.id, message: NOT_DRAFT });
+      return;
+    }
     this.editing.set(c.id);
     this.form.setValue({ amount: c.amount, date: c.date, note: c.note }, { emitEvent: false });
     this.error.set('');
@@ -142,6 +149,7 @@ export class PersonClaims {
   protected async submit(): Promise<void> {
     if (this.submitting) return;
     this.error.set('');
+    this.claimError.set(null);
     const { amount, date, note } = this.form.getRawValue();
     if (!AMOUNT.test(amount.trim())) {
       this.error.set('Enter an amount of 0.00 or more, with up to two decimals.');
@@ -161,6 +169,9 @@ export class PersonClaims {
       this.reset();
     } catch (e) {
       if (e instanceof HttpErrorResponse && e.status === 423) this.error.set(CLOSED);
+      else if (id !== null && e instanceof HttpErrorResponse && e.status === 409) {
+        this.claimError.set({ id, message: NOT_DRAFT });
+      }
       else this.error.set(id === null ? 'The claim could not be added.' : 'The claim could not be saved.');
     } finally {
       this.submitting = false;
