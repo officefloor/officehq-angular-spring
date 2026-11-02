@@ -1,0 +1,64 @@
+{
+  "checkpoint": 205,
+  "stack": {
+    "repo": "/home/daniel/officehq-angular-spring",
+    "origin": "git@github.com:officefloor/officehq-angular-spring.git",
+    "name": "officehq-angular-spring",
+    "base_ref": "base-empty",
+    "base_commit": "65cb8233ea38b2dfa6cfd18709e30cd18fdf3250"
+  },
+  "checkpoint_id": "cp205_plan-history",
+  "phase": "late",
+  "type": "additive",
+  "mutates": [],
+  "replaced_tests": [],
+  "request": {
+    "spec": "A plan's amount can be changed (an entry and a save button on the plan; PLAN_CHANGED\nname=<person> start=<plan start> amount=<new amount>; a bad amount is refused). The new amount\napplies to the claims generated from then on; claims already generated keep theirs. Each plan lists\nits changes, oldest first, as <date> amount=<amount>.\n",
+    "prompt": "You are implementing ONE change to this application.\n\nFIRST read AGENTS.md \u2014 it states the working rules and how the app is tested, and sends you to\nDESIGN.md for the app's stack and conventions. Follow both.\n\nTHE CHANGE REQUEST:\nA plan's amount can be changed (an entry and a save button on the plan; PLAN_CHANGED\nname=<person> start=<plan start> amount=<new amount>; a bad amount is refused). The new amount\napplies to the claims generated from then on; claims already generated keep theirs. Each plan lists\nits changes, oldest first, as <date> amount=<amount>.\n\nYour work is verified by an automated Playwright UI test already installed under e2e/specs/.\nRead that spec: it declares the exact data-testid anchors, values, test data and any audit\nrecords it expects \u2014 match them. Run `bin/e2e` to build the app, start it, and run the test as\nyou work; iterate until it passes. Change whatever the request needs across the app \u2014 its stored\ndata, its server and its front end. Do NOT edit bin/build, bin/start, bin/stop, bin/e2e,\nAGENTS.md, CLAUDE.md, DESIGN.md, e2e/support/ or the test spec.\n"
+  },
+  "commit_sha": "32acb1832b41af50d7ae71761f171472aef4b7f9",
+  "reset_sha": "",
+  "preagent_sha": "673ce245e3911383f928af9c93f7a3c67c506ba0",
+  "prev_sha": "673ce245e3911383f928af9c93f7a3c67c506ba0",
+  "base_sha": "65cb8233ea38b2dfa6cfd18709e30cd18fdf3250",
+  "agent": {
+    "ok": true,
+    "cost_usd": 0.6593456000000001,
+    "input_tokens": 30,
+    "output_tokens": 9325,
+    "cache_read_tokens": 554588,
+    "cache_creation_tokens": 45226,
+    "num_turns": 15,
+    "duration_ms": 277192,
+    "duration_api_ms": 80756,
+    "model": "claude-opus-5-5",
+    "session_id": "7af49389-3586-4b9c-b417-d0dd710f82cb",
+    "stop_reason": "success",
+    "result_text": "Each plan's amount can now be changed, and `bin/e2e` passes all 4 tests in the spec.\n\n**How it works:**\n- **On the plan row:** there's a new-amount entry (`plan-amount`) and a save button (`plan-amount-save`). Below them, the plan lists its changes oldest first, each as `<date> amount=<amount>` (`plan-change-line`). The date is the sheet's today when the change was saved.\n- **Bad amounts:** an amount with more than two decimals, like `1.005`, is refused. The screen catches it first and the server checks it again. A refusal shows `plan-error` on the row and writes nothing to the store or the audit file. Typing in the entry clears the error.\n- **Which claims get the new amount:** the plan's stored amount is updated, so every claim generated after the change uses it. Claims already generated keep their old amount.\n- **Audit:** each change writes `PLAN_CHANGED sheet=<id> by=<user> name=<person> start=<plan start> amount=<new amount>`.\n\n**Changes by layer:**\n- **Stored data:** a new migration, `V108__claim_plan_change.sql`, adds a `claim_plan_change` table holding each change's date and amount.\n- **Server:**\n  - `ClaimPlanChange` and its repository are new.\n  - `ClaimPlanService.changeAmount` does the change.\n  - `ClaimPlanController` has a new `POST /api/sheets/{sheetId}/plans/{planId}/amount` endpoint, and the plan data it returns now includes the list of changes.\n- **Front end:** the entry, save button and change list are in `features/plans/plans.ts`. They use the same row-error handling that pause/resume already use.\n\nOne thing to know: the server doesn't check who is saving a change. That matches pause and resume, which also have no check of their own and leave it to whatever the app already applies to its update requests. I didn't confirm that viewers are actually blocked from changing a plan.",
+    "error": "",
+    "attempts": [
+      {
+        "ok": true,
+        "limit_reached": false,
+        "retryable": false,
+        "timed_out": false,
+        "cost_usd": 0.6593456000000001,
+        "num_turns": 15,
+        "duration_ms": 277192,
+        "duration_api_ms": 80756,
+        "error": ""
+      }
+    ]
+  },
+  "agent_stream_file": "cp205.agent.jsonl",
+  "agent_diff_file": "cp205.agent.diff",
+  "build_log_file": null,
+  "tests": {
+    "gated": false,
+    "queued": true
+  },
+  "probe": null,
+  "pinned_touched": [],
+  "acceptance_touched": [],
+  "impact_gate": null
+}
