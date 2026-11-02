@@ -12,7 +12,8 @@ import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.server.ResponseStatusException;
 
 /** The import box: lines of name,grade,terms,contact, each adding a person as the person form
- *  would; the terms and contact may be absent or blank. */
+ *  would, or, when the name matches a person on the sheet (by name or alias, as names are compared),
+ *  editing that person as the person form would; the terms and contact may be absent or blank. */
 @Service
 public class PersonImportService {
 
@@ -28,6 +29,15 @@ public class PersonImportService {
     private record Line(String name, String grade, Integer terms, String contact) {
     }
 
+    /** One checked line: the person it updates (null: it adds one). */
+    private record Planned(Line line, Person match) {
+    }
+
+    /** What an import did: the people added and the people updated, each in line order, and
+     *  everyone it touched, in line order. */
+    public record Result(List<Person> added, List<Person> updated, List<Person> people) {
+    }
+
     private final PersonRepository people;
     private final PersonService service;
 
@@ -36,14 +46,18 @@ public class PersonImportService {
         this.service = service;
     }
 
-    /** Add a person per line, in order, checking every line first with the person form's rules; one
-     *  change, so when any line is refused no one is added and nothing is recorded. Blank lines are
-     *  skipped; an import with no lines is refused, and so is one repeating a name or contact within
-     *  it. Returns the people added, in order. */
+    /** Add or update a person per line, in order, checking every line first with the person form's
+     *  rules; one change, so when any line is refused no one is added or changed and nothing is
+     *  recorded. A line whose name matches a person on the sheet, by name or alias, updates them as
+     *  the person form would: their grade from the sheet's today, and their terms and contact when
+     *  the line gives them; their name is kept. Other lines add a person. Blank lines are skipped; an
+     *  import with no lines is refused, and so is one repeating a name, a person or a contact within
+     *  it. */
     @Transactional
-    public List<Person> importPeople(String sheetId, String user, String text) {
-        List<Line> lines = new ArrayList<>();
+    public Result importPeople(String sheetId, String user, String text) {
+        List<Planned> lines = new ArrayList<>();
         Set<String> names = new HashSet<>();
+        Set<Long> matched = new HashSet<>();
         Set<String> contacts = new HashSet<>();
         int n = 0;
         for (String raw : text.split("\\R")) {
@@ -58,23 +72,39 @@ public class PersonImportService {
             if (line.contact() != null && !contacts.add(line.contact())) {
                 throw refused(n, "the contact \"" + line.contact() + "\" is repeated in the import");
             }
-            if (people.existsBySheetIdAndNameIgnoreCase(sheetId, line.name())
-                    || people.existsAlias(sheetId, line.name())) {
-                throw refused(n, "the name \"" + line.name() + "\" is already in use on this sheet");
+            Person match = people.findByNameOrAlias(sheetId, line.name()).orElse(null);
+            if (match != null && !matched.add(match.getId())) {
+                throw refused(n, "the person \"" + match.getName() + "\" is repeated in the import");
             }
-            if (line.contact() != null && people.existsBySheetIdAndContact(sheetId, line.contact())) {
+            if (line.contact() != null && (match == null
+                    ? people.existsBySheetIdAndContact(sheetId, line.contact())
+                    : people.existsBySheetIdAndContactAndIdNot(sheetId, line.contact(), match.getId()))) {
                 throw refused(n, "the contact \"" + line.contact() + "\" is already held on this sheet");
             }
-            lines.add(line);
+            lines.add(new Planned(line, match));
         }
         if (lines.isEmpty()) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Paste at least one line");
         }
         List<Person> added = new ArrayList<>();
-        for (Line line : lines) {
-            added.add(service.add(sheetId, user, line.name(), line.grade(), line.terms(), line.contact()));
+        List<Person> updated = new ArrayList<>();
+        List<Person> all = new ArrayList<>();
+        for (Planned planned : lines) {
+            Line line = planned.line();
+            Person match = planned.match();
+            Person person;
+            if (match == null) {
+                person = service.add(sheetId, user, line.name(), line.grade(), line.terms(), line.contact());
+                added.add(person);
+            } else {
+                person = service.edit(sheetId, user, match.getId(), match.getVersion(), match.getName(),
+                        line.grade(), null, line.terms() != null ? line.terms() : match.getTerms(),
+                        line.contact() != null ? line.contact() : match.getContact());
+                updated.add(person);
+            }
+            all.add(person);
         }
-        return added;
+        return new Result(added, updated, all);
     }
 
     /** A line of name,grade,terms,contact: the last two may be absent or blank. */

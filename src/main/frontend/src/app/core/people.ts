@@ -123,12 +123,13 @@ export class People {
     );
   }
 
-  /** Import people from lines of name,grade,terms,contact, each added as the form would; all or
-   *  none. Answers how many were added and those people as they now show, in order. */
-  importPeople(text: string): Promise<{ added: number; people: Person[] }> {
+  /** Import people from lines of name,grade,terms,contact, each added, or (when the name matches a
+   *  person on the sheet) updated, as the form would; all or none. Answers how many were added and
+   *  how many updated, and those people as they now show, in line order. */
+  importPeople(text: string): Promise<{ added: number; updated: number; people: Person[] }> {
     const { sheetId, user } = this.active();
     return firstValueFrom(
-      this.http.post<{ added: number; people: Person[] }>(`${this.url(sheetId)}/import`, { text },
+      this.http.post<{ added: number; updated: number; people: Person[] }>(`${this.url(sheetId)}/import`, { text },
         { headers: { 'X-User': user } }),
     );
   }

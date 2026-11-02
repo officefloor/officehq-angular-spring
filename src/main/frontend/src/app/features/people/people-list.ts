@@ -1048,9 +1048,12 @@ export class PeopleList {
     this.claimSaved(claim);
   }
 
-  /** Show the people an import added. */
-  protected peopleImported(added: Person[]): void {
-    this.people.update((ps) => [...ps.filter((p) => !added.some((a) => a.id === p.id)), ...added]);
+  /** Show the people an import added or updated: updated ones in place, added ones at the end. */
+  protected peopleImported(imported: Person[]): void {
+    this.people.update((ps) => [
+      ...ps.map((p) => imported.find((i) => i.id === p.id) ?? p),
+      ...imported.filter((i) => !ps.some((p) => p.id === i.id)),
+    ]);
   }
 
   /** Read the sheet's claims again once a paste has added some. */
