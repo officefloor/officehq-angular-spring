@@ -20,6 +20,8 @@ export class Session {
   readonly sheetId = signal<string | null>(null);
   /** The active sheet's today (yyyy-mm-dd): every date decision and default date uses it. */
   readonly today = signal<string | null>(null);
+  /** Bumped on every sheet load, so what is kept per sheet is re-read from the store. */
+  readonly loads = signal(0);
 
   async signIn(name: string): Promise<void> {
     const res = await firstValueFrom(this.http.post<SignedIn>('/api/signin', { name }));
@@ -38,6 +40,7 @@ export class Session {
       }),
     );
     this.show(res);
+    this.bumpLoads();
   }
 
   /** Change the active sheet's today. */
@@ -56,5 +59,9 @@ export class Session {
   private show(sheet: SheetView): void {
     this.sheetId.set(sheet.id);
     this.today.set(sheet.today);
+  }
+
+  private bumpLoads(): void {
+    this.loads.update((n) => n + 1);
   }
 }
