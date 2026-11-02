@@ -153,6 +153,12 @@ public class Period {
         }
     }
 
+    /** Drop one person's fixed due-total for the period (they left the sheet); the period's own
+     *  due-total stays as it is. */
+    public void dropPersonTotal(Long personId) {
+        personTotals.remove(personId);
+    }
+
     /** Reopen the period: its due-total is live again. */
     public void reopen() {
         this.closed = false;

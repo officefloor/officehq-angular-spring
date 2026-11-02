@@ -619,7 +619,7 @@ public class ClaimService {
 
     /** The number for a claim due by the day opened now: under period numbering, the next in its period
      *  (<period name>-<n>), or for one in no period the next X-<n>; otherwise the next on the sheet. */
-    private String nextNumber(String sheetId, LocalDate dueBy) {
+    public String nextNumber(String sheetId, LocalDate dueBy) {
         if (!sheets.periodNumbering(sheetId)) {
             return String.valueOf(sheets.nextClaimNumber(sheetId));
         }
@@ -720,7 +720,7 @@ public class ClaimService {
     }
 
     /** Keep each of the tags (as {@link Tags} stores them) as used on the sheet. */
-    private void keepTags(String sheetId, String tags) {
+    public void keepTags(String sheetId, String tags) {
         for (String tag : Tags.of(tags)) {
             if (!sheetTags.existsBySheetIdAndTag(sheetId, tag)) {
                 sheetTags.save(new SheetTag(sheetId, tag));

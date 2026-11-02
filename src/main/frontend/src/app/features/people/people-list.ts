@@ -251,6 +251,11 @@ const NO_LEAVE: Leave = { holds: [], retiredFrom: null };
                 </select>
                 <button type="button" data-testid="person-merge" (click)="merge(p, mergeInto.value)"
                   [attr.aria-label]="'Merge ' + p.name + ' into the person chosen'">Merge</button>
+                <label [for]="'person-transfer-to-' + p.id" class="visually-hidden">Transfer {{ p.name }} to sheet</label>
+                <input #transferTo [id]="'person-transfer-to-' + p.id" data-testid="person-transfer-to"
+                  (input)="clearPersonError(p.id)" />
+                <button type="button" data-testid="person-transfer" (click)="transfer(p, transferTo.value)"
+                  [attr.aria-label]="'Transfer ' + p.name + ' to the sheet given'">Transfer</button>
                 <button type="button" data-testid="person-watch" (click)="toggleWatch(p)"
                   [attr.aria-pressed]="watched().has(p.id)"
                   [attr.aria-label]="'Watch ' + p.name">{{ watched().has(p.id) ? 'Unwatch' : 'Watch' }}</button>
@@ -466,14 +471,22 @@ export class PeopleList {
   );
   /** The figures of the sheet's descendants added up, as the store held them when it was loaded. */
   private readonly descendants = signal<DescendantFigures>(NO_DESCENDANTS);
-  /** The people of the sheet and all its descendants. */
-  protected readonly consolidatedPeopleCount = computed(() => this.people().length + this.descendants().peopleCount);
-  /** The sheet's due-total and each descendant's, as each shows it, added up. */
-  protected readonly consolidatedDueTotal = computed(() => sumAmounts([this.dueTotal(), this.descendants().dueTotal]));
-  /** The sheet's overdue-total and each descendant's, as each shows it, added up. */
-  protected readonly consolidatedOverdueTotal = computed(() =>
-    sumAmounts([this.overdueTotal(), this.descendants().overdueTotal]),
+  /** The people of the sheet and all its descendants: the sheet as it stands now, even while it is
+   *  shown as of a date. */
+  protected readonly consolidatedPeopleCount = computed(() =>
+    (this.session.asOf() === null ? this.people().length : this.descendants().ownPeopleCount)
+    + this.descendants().peopleCount,
   );
+  /** The sheet's due-total and each descendant's, as each shows it, added up. */
+  protected readonly consolidatedDueTotal = computed(() => sumAmounts([
+    this.session.asOf() === null ? this.dueTotal() : this.descendants().ownDueTotal,
+    this.descendants().dueTotal,
+  ]));
+  /** The sheet's overdue-total and each descendant's, as each shows it, added up. */
+  protected readonly consolidatedOverdueTotal = computed(() => sumAmounts([
+    this.session.asOf() === null ? this.overdueTotal() : this.descendants().ownOverdueTotal,
+    this.descendants().overdueTotal,
+  ]));
   /** Per grade: the people not retired on it on the sheet's today, their due-totals added up,
    *  skipping those that are n/a, and how many of them are active. */
   protected readonly gradeSummary = computed((): GradeSummary[] =>
@@ -551,6 +564,8 @@ export class PeopleList {
   private readonly retiring = new Set<number>();
   /** The people whose merge is waiting for its answer: a second press meanwhile is ignored. */
   private readonly merging = new Set<number>();
+  /** The people whose transfer is waiting for its answer: a second press meanwhile is ignored. */
+  private readonly transferring = new Set<number>();
   /** The people whose alias is being added: a second press meanwhile is ignored. */
   private readonly aliasing = new Set<number>();
   protected readonly form = new FormGroup({
@@ -750,6 +765,31 @@ export class PeopleList {
       this.personError.set({ id: p.id, message: 'The person could not be merged.' });
     } finally {
       this.merging.delete(p.id);
+    }
+  }
+
+  /** Transfer the person to the sheet of the id typed, then read the sheet again: the person is
+   *  gone from it. */
+  protected async transfer(p: Person, toSheet: string): Promise<void> {
+    if (this.transferring.has(p.id)) return;
+    this.personError.set(null);
+    this.patronError.set(null);
+    const to = toSheet.trim();
+    if (!to) {
+      this.personError.set({ id: p.id, message: 'Give the id of the sheet to transfer to.' });
+      return;
+    }
+    this.transferring.add(p.id);
+    try {
+      await this.api.transfer(p.id, to);
+      const sheetId = this.session.sheetId();
+      if (this.editing() === p.id) this.reset();
+      this.poolsApi.refresh();
+      if (sheetId) await this.reload(sheetId);
+    } catch {
+      this.personError.set({ id: p.id, message: 'The person could not be transferred.' });
+    } finally {
+      this.transferring.delete(p.id);
     }
   }
 

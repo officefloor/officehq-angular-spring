@@ -87,6 +87,10 @@ public class PersonController {
     public record MergeForm(@NotNull Long intoId) {
     }
 
+    /** The transfer form: the id of the sheet the person is transferred to. */
+    public record TransferForm(@NotBlank @Size(max = 100) String toSheet) {
+    }
+
     /** The retire form: the day the person is retired from; left out, the sheet's today. */
     public record RetireForm(LocalDate from) {
     }
@@ -111,11 +115,13 @@ public class PersonController {
     private final SheetService sheets;
     private final History history;
     private final PersonMergeService merges;
+    private final PersonTransferService transfers;
 
     public PersonController(PersonService service, StatementService statements, SheetService sheets,
-            History history, PersonMergeService merges) {
+            History history, PersonMergeService merges, PersonTransferService transfers) {
         this.history = history;
         this.merges = merges;
+        this.transfers = transfers;
         this.service = service;
         this.statements = statements;
         this.sheets = sheets;
@@ -196,6 +202,15 @@ public class PersonController {
             @Valid @RequestBody MergeForm form) {
         Person saved = merges.merge(sheetId.trim(), user.trim(), personId, form.intoId());
         return PersonView.of(saved, statements.summary(sheetId.trim(), saved.getId()), sheets.today(sheetId.trim()));
+    }
+
+    /** Transfer the person to another sheet; they leave this one. */
+    @PostMapping("/{personId}/transfer")
+    public void transfer(@PathVariable @NotBlank @Size(max = 100) String sheetId,
+            @PathVariable long personId,
+            @RequestHeader("X-User") @NotBlank @Size(max = 100) String user,
+            @Valid @RequestBody TransferForm form) {
+        transfers.transfer(sheetId.trim(), user.trim(), personId, form.toSheet().trim());
     }
 
     @PostMapping("/{personId}/retire")

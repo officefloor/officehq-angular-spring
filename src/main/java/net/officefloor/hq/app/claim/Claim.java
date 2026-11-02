@@ -17,6 +17,7 @@ import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.function.UnaryOperator;
 import org.hibernate.annotations.Fetch;
 import org.hibernate.annotations.FetchMode;
 import org.hibernate.annotations.Generated;
@@ -215,6 +216,39 @@ public class Claim {
         this.personId = personId;
         this.listed = listed;
         bind(false, null);
+    }
+
+    /** A copy of this claim for a person on another sheet (it was transferred there): its status,
+     *  dates, note, tags, frozen figures, status log and comments kept, its numbers (its own, the
+     *  one it corrects and the one it was split off) renumbered as given (null: none), and no
+     *  reference, settle batch, editor or figure a statement bound it to. Listed as the newest. */
+    public Claim transferredTo(String toSheetId, Long toPersonId, UnaryOperator<String> renumber) {
+        Claim copy = new Claim(toSheetId, toPersonId, amount, date, note, renumber.apply(corrects), correctedDate,
+                dueBy);
+        copy.status = status;
+        copy.number = renumber.apply(number);
+        copy.settledDue = settledDue;
+        copy.openedBy = openedBy;
+        copy.editedBy = editedBy;
+        copy.terms = terms;
+        copy.deferredUntil = deferredUntil;
+        copy.proofs = proofs;
+        copy.splitFrom = renumber.apply(splitFrom);
+        copy.remindedOn = remindedOn;
+        copy.tags = tags;
+        copy.voidReason = voidReason;
+        copy.lateEntry = lateEntry;
+        log.forEach(line -> copy.log.add(new ClaimLog(toSheetId, line.getStatus(), line.getByUser(), line.getOn(),
+                line.getDue())));
+        comments.forEach(c -> copy.comments.add(new ClaimComment(toSheetId, c.getByUser(), c.getOn(), c.getText())));
+        return copy;
+    }
+
+    /** The sheet's today when the claim was opened, as its status log records it; null when it was
+     *  never opened (or has no log of it). */
+    public LocalDate openedOn() {
+        return log.stream().filter(line -> line.getStatus() == ClaimStatus.OPEN).map(ClaimLog::getOn)
+                .findFirst().orElse(null);
     }
 
     /** Split the amount off this open claim: it keeps the rest of its amount but no figure a

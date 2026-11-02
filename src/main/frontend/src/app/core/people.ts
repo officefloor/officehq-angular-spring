@@ -145,6 +145,14 @@ export class People {
     );
   }
 
+  /** Transfer the person to another sheet by its id; they leave this sheet. */
+  transfer(id: number, toSheet: string): Promise<void> {
+    const { sheetId, user } = this.active();
+    return firstValueFrom(
+      this.http.post<void>(`${this.url(sheetId)}/${id}/transfer`, { toSheet }, { headers: { 'X-User': user } }),
+    );
+  }
+
   /** Retire the person from a day; null takes the sheet's today. */
   retire(id: number, from: string | null): Promise<Person> {
     const { sheetId, user } = this.active();

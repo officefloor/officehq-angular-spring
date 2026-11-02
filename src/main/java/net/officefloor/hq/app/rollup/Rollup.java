@@ -103,8 +103,10 @@ public class Rollup {
 
     /** The figures a sheet's descendants add to its own to consolidate it: over all of them, the
      *  people (retired included), and each one's due-total and overdue-total as that sheet shows
-     *  them, added up. */
-    public record Descendants(int peopleCount, String dueTotal, String overdueTotal) {
+     *  them, added up; and the sheet's own figures as it stands now (for a screen showing it as of a
+     *  date, which consolidates the sheet as it stands now). */
+    public record Descendants(int peopleCount, String dueTotal, String overdueTotal, int ownPeopleCount,
+            String ownDueTotal, String ownOverdueTotal) {
     }
 
     /** The figures of a sheet's descendants added up (all zero when it has none). */
@@ -119,7 +121,9 @@ public class Rollup {
             due = due.add(new BigDecimal(s.dueTotal()));
             overdue = overdue.add(new BigDecimal(s.overdueTotal()));
         }
-        return new Descendants(count, text(due), text(overdue));
+        Snapshot own = snapshot(sheetId);
+        return new Descendants(count, text(due), text(overdue), own.people().size(), own.dueTotal(),
+                own.overdueTotal());
     }
 
     private Snapshot snapshot(String sheetId) {

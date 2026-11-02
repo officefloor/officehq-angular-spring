@@ -86,6 +86,17 @@ public class Person {
         this.grades.add(new GradeFrom(null, grade));
     }
 
+    /** A copy of the person for another sheet (they were transferred there): their name, every
+     *  grade they were given (and its from-date), terms, contact and aliases; no holds. */
+    public Person transferredTo(String toSheetId) {
+        Person copy = new Person(toSheetId, (Long) null, name);
+        grades.forEach(g -> copy.grades.add(new GradeFrom(g.getFromDate(), g.getGrade())));
+        copy.terms = terms;
+        copy.contact = contact;
+        copy.aliases.addAll(aliases);
+        return copy;
+    }
+
     public Long getId() {
         return id;
     }
