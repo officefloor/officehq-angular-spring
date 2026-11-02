@@ -2,7 +2,6 @@ package net.officefloor.hq.app.pool;
 
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.NotBlank;
-import jakarta.validation.constraints.NotNull;
 import jakarta.validation.constraints.Size;
 import java.math.BigDecimal;
 import java.util.List;
@@ -17,18 +16,22 @@ import org.springframework.web.bind.annotation.RequestHeader;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.ResponseStatus;
 import org.springframework.web.bind.annotation.RestController;
+import org.springframework.web.server.ResponseStatusException;
 
 @RestController
 @RequestMapping("/api/sheets/{sheetId}/pools")
 @Validated
 public class PoolController {
 
-    /** A member as the screen shows them: the person, their share, whether they are retired, and
-     *  their cut of the pot as text with two decimals (null when the pool shows no cut). */
-    public record MemberView(long personId, String name, String share, boolean retired, String cut) {
+    /** A member as the screen shows them: the person (null for a pool member) or the pool (null for
+     *  a person) and its name, their share, whether they are retired, and their cut of the pot as text
+     *  with two decimals (null when the pool shows no cut). */
+    public record MemberView(Long personId, Long poolId, String name, String share, boolean retired, String cut) {
         static MemberView of(PoolService.Member m, BigDecimal cut) {
-            return new MemberView(m.person().getId(), m.person().getName(),
-                    m.member().getShare().toPlainString(), m.person().isRetired(),
+            return new MemberView(m.person() == null ? null : m.person().getId(),
+                    m.pool() == null ? null : m.pool().getId(),
+                    m.person() != null ? m.person().getName() : m.pool().getName(),
+                    m.member().getShare().toPlainString(), m.retired(),
                     cut == null ? null : cut.toPlainString());
         }
     }
@@ -49,8 +52,8 @@ public class PoolController {
     public record PoolForm(@NotBlank @Size(max = 200) String name) {
     }
 
-    /** The member form: the person and their share as entered. */
-    public record MemberForm(@NotNull Long personId, @NotBlank @Size(max = 20) String share) {
+    /** The member form: the person, or the pool, and their share as entered. */
+    public record MemberForm(Long personId, Long poolId, @NotBlank @Size(max = 20) String share) {
     }
 
     private final PoolService service;
@@ -77,6 +80,11 @@ public class PoolController {
     public PoolView addMember(@PathVariable @NotBlank @Size(max = 100) String sheetId, @PathVariable long poolId,
             @RequestHeader("X-User") @NotBlank @Size(max = 100) String user,
             @Valid @RequestBody MemberForm form) {
-        return PoolView.of(service.addMember(sheetId.trim(), user.trim(), poolId, form.personId(), form.share()));
+        if ((form.personId() == null) == (form.poolId() == null)) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Choose a person or a pool");
+        }
+        return PoolView.of(form.personId() != null
+                ? service.addMember(sheetId.trim(), user.trim(), poolId, form.personId(), form.share())
+                : service.addPoolMember(sheetId.trim(), user.trim(), poolId, form.poolId(), form.share()));
     }
 }

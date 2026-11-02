@@ -3,6 +3,7 @@ package net.officefloor.hq.app.pool;
 import java.math.BigDecimal;
 import java.math.RoundingMode;
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.function.Function;
@@ -28,18 +29,27 @@ public class PoolService {
     /** The total a pool's shares must come to for it to be balanced. */
     public static final BigDecimal WHOLE = new BigDecimal("100.00");
 
-    /** A member as the pool shows them: the person, and their share. */
-    public record Member(PoolMember member, Person person) {
+    /** The most levels a chain of pools may have, the top pool counting as one. */
+    public static final int MAX_DEPTH = 3;
+
+    /** A member as the pool shows them: the person, or the pool (exactly one of them), and their share. */
+    public record Member(PoolMember member, Person person, Pool pool) {
+
+        /** Whether the member is a person with a retirement day set: their share then counts as 0.00. */
+        public boolean retired() {
+            return person != null && person.isRetired();
+        }
     }
 
-    /** A pool with its members in the order they were added, and the sheet's pot (null: none). */
+    /** A pool with its members in the order they were added, and its pot (null: none): the sheet's
+     *  pot for a pool that is a member of none, its cut in the pool above for one that is. */
     public record Listed(Pool pool, List<Member> members, BigDecimal pot) {
 
         /** The shares of the members added up, a retired member's (one with a retirement day set,
          *  whatever the day) counting as 0.00. */
         public BigDecimal totalShare() {
             return members.stream()
-                    .filter(m -> !m.person().isRetired())
+                    .filter(m -> !m.retired())
                     .map(m -> m.member().getShare())
                     .reduce(BigDecimal.ZERO.setScale(2), BigDecimal::add);
         }
@@ -59,7 +69,7 @@ public class PoolService {
                 return List.of();
             }
             List<BigDecimal> shares = members.stream()
-                    .map(m -> m.person().isRetired() ? BigDecimal.ZERO.setScale(2) : m.member().getShare())
+                    .map(m -> m.retired() ? BigDecimal.ZERO.setScale(2) : m.member().getShare())
                     .toList();
             List<BigDecimal> cuts = new ArrayList<>(shares.stream()
                     .map(sh -> pot.multiply(sh).divide(WHOLE, 2, RoundingMode.HALF_EVEN))
@@ -91,16 +101,56 @@ public class PoolService {
         this.audit = audit;
     }
 
-    /** The pools of the sheet in the order they were added, each with its members. */
+    /** The pools of the sheet in the order they were added, each with its members and its pot. */
     @Transactional(readOnly = true)
     public List<Listed> list(String sheetId) {
         List<Pool> all = pools.findBySheetIdOrderByIdAsc(sheetId);
+        Map<Long, Pool> poolsById = all.stream().collect(Collectors.toMap(Pool::getId, Function.identity()));
         Map<Long, Person> byId = people.findBySheetIdOrderByIdAsc(sheetId).stream()
                 .collect(Collectors.toMap(Person::getId, Function.identity()));
-        Map<Long, List<PoolMember>> byPool = members.findByPoolIdInOrderByIdAsc(all.stream().map(Pool::getId).toList())
-                .stream().collect(Collectors.groupingBy(PoolMember::getPoolId));
-        BigDecimal pot = sheets.pot(sheetId);
-        return all.stream().map(p -> listed(p, byPool.getOrDefault(p.getId(), List.of()), byId, pot)).toList();
+        List<PoolMember> memberships = members.findByPoolIdInOrderByIdAsc(poolsById.keySet());
+        Map<Long, List<PoolMember>> byPool = memberships.stream().collect(Collectors.groupingBy(PoolMember::getPoolId));
+        Map<Long, List<Member>> membersOf = new HashMap<>();
+        for (Pool p : all) {
+            membersOf.put(p.getId(), byPool.getOrDefault(p.getId(), List.of()).stream()
+                    .filter(m -> m.getPersonId() != null ? byId.containsKey(m.getPersonId())
+                            : poolsById.containsKey(m.getMemberPoolId()))
+                    .map(m -> new Member(m, m.getPersonId() == null ? null : byId.get(m.getPersonId()),
+                            m.getMemberPoolId() == null ? null : poolsById.get(m.getMemberPoolId())))
+                    .toList());
+        }
+        Map<Long, Long> above = memberships.stream().filter(m -> m.getMemberPoolId() != null)
+                .collect(Collectors.toMap(PoolMember::getMemberPoolId, PoolMember::getPoolId, (a, b) -> a));
+        BigDecimal sheetPot = sheets.pot(sheetId);
+        Map<Long, Listed> listed = new HashMap<>();
+        return all.stream().map(p -> listed(p.getId(), poolsById, membersOf, above, sheetPot, listed, 0)).toList();
+    }
+
+    /** The pool listed with its pot: the sheet's when it is a member of no pool, else its cut in the
+     *  pool above (none when that pool shows no cuts). */
+    private static Listed listed(Long poolId, Map<Long, Pool> poolsById, Map<Long, List<Member>> membersOf,
+            Map<Long, Long> above, BigDecimal sheetPot, Map<Long, Listed> done, int depth) {
+        Listed known = done.get(poolId);
+        if (known != null) {
+            return known;
+        }
+        BigDecimal pot = sheetPot;
+        Long parentId = above.get(poolId);
+        if (parentId != null) {
+            pot = null;
+            if (depth <= poolsById.size()) {
+                Listed parent = listed(parentId, poolsById, membersOf, above, sheetPot, done, depth + 1);
+                List<BigDecimal> cuts = parent.cuts();
+                for (int i = 0; i < cuts.size(); i++) {
+                    if (poolId.equals(parent.members().get(i).member().getMemberPoolId())) {
+                        pot = cuts.get(i);
+                    }
+                }
+            }
+        }
+        Listed l = new Listed(poolsById.get(poolId), membersOf.get(poolId), pot);
+        done.put(poolId, l);
+        return l;
     }
 
     /** Add a pool with a (trimmed) name; refused when blank or already a pool of the sheet. */
@@ -122,6 +172,60 @@ public class PoolService {
         }
         audit.recordOnCommit("POOL_ADDED sheet=" + sheetId + " by=" + user + " name=" + text);
         return new Listed(saved, List.of(), sheets.pot(sheetId));
+    }
+
+    /** Add a pool of the sheet to another pool with a share; refused when the share is bad, the pool
+     *  is already a member of a pool, it would contain itself through any chain, or the chain of
+     *  pools would be more than {@link #MAX_DEPTH} deep. */
+    @Transactional
+    public synchronized Listed addPoolMember(String sheetId, String user, long poolId, long memberPoolId,
+            String share) {
+        Pool pool = pools.findByIdAndSheetId(poolId, sheetId)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "No such pool"));
+        Pool member = pools.findByIdAndSheetId(memberPoolId, sheetId)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "No such pool"));
+        BigDecimal amount = share(share);
+        List<PoolMember> all = members.findByPoolIdInOrderByIdAsc(
+                pools.findBySheetIdOrderByIdAsc(sheetId).stream().map(Pool::getId).toList());
+        Map<Long, Long> above = all.stream().filter(m -> m.getMemberPoolId() != null)
+                .collect(Collectors.toMap(PoolMember::getMemberPoolId, PoolMember::getPoolId, (a, b) -> a));
+        if (above.containsKey(memberPoolId)) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT, "That pool is already a member of a pool");
+        }
+        // The pool and the pools above it: the member may be none of them.
+        int levelsAbove = 0;
+        for (Long p = poolId; p != null && levelsAbove <= all.size(); p = above.get(p)) {
+            if (p == memberPoolId) {
+                throw new ResponseStatusException(HttpStatus.CONFLICT, "A pool cannot contain itself");
+            }
+            levelsAbove++;
+        }
+        if (levelsAbove + height(memberPoolId, all, 0) > MAX_DEPTH) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT,
+                    "A chain of pools is at most " + MAX_DEPTH + " deep");
+        }
+        try {
+            members.saveAndFlush(PoolMember.ofPool(poolId, memberPoolId, amount));
+        } catch (DataIntegrityViolationException e) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT, "That pool is already a member of a pool");
+        }
+        audit.recordOnCommit("POOL_MEMBER_ADDED sheet=" + sheetId + " by=" + user + " pool=" + pool.getName()
+                + " name=" + member.getName() + " share=" + amount.toPlainString());
+        return list(sheetId).stream().filter(l -> l.pool().getId().equals(poolId)).findFirst().orElseThrow();
+    }
+
+    /** The levels of pools from the pool down, itself counting as one. */
+    private static int height(long poolId, List<PoolMember> all, int depth) {
+        if (depth > all.size()) {
+            return depth;
+        }
+        int below = 0;
+        for (PoolMember m : all) {
+            if (m.getPoolId() == poolId && m.getMemberPoolId() != null) {
+                below = Math.max(below, height(m.getMemberPoolId(), all, depth + 1));
+            }
+        }
+        return 1 + below;
     }
 
     /** Add a person of the sheet to a pool with a share (two decimals, above 0.00 and at most
@@ -157,13 +261,6 @@ public class PoolService {
             throw badShare();
         }
         return amount;
-    }
-
-    private static Listed listed(Pool pool, List<PoolMember> of, Map<Long, Person> byId, BigDecimal pot) {
-        return new Listed(pool, of.stream()
-                .filter(m -> byId.containsKey(m.getPersonId()))
-                .map(m -> new Member(m, byId.get(m.getPersonId())))
-                .toList(), pot);
     }
 
     private static ResponseStatusException badShare() {

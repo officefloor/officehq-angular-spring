@@ -143,11 +143,11 @@ public class PersonMergeService {
         }
         List<PoolMember> all = members.findByPoolIdInOrderByIdAsc(poolIds);
         for (PoolMember m : all) {
-            if (!m.getPersonId().equals(from.getId())) {
+            if (!from.getId().equals(m.getPersonId())) {
                 continue;
             }
             all.stream()
-                    .filter(o -> o.getPoolId().equals(m.getPoolId()) && o.getPersonId().equals(into.getId()))
+                    .filter(o -> o.getPoolId().equals(m.getPoolId()) && into.getId().equals(o.getPersonId()))
                     .findFirst()
                     .ifPresentOrElse(o -> {
                         o.addShare(m.getShare());

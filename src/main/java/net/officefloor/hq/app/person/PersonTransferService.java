@@ -135,7 +135,7 @@ public class PersonTransferService {
         List<Long> poolIds = pools.findBySheetIdOrderByIdAsc(sheetId).stream().map(p -> p.getId()).toList();
         if (!poolIds.isEmpty()) {
             List<PoolMember> theirMemberships = members.findByPoolIdInOrderByIdAsc(poolIds).stream()
-                    .filter(m -> m.getPersonId().equals(from.getId())).toList();
+                    .filter(m -> from.getId().equals(m.getPersonId())).toList();
             members.deleteAll(theirMemberships);
         }
         periods.findBySheetIdOrderByFromDateAsc(sheetId).forEach(period -> period.dropPersonTotal(from.getId()));

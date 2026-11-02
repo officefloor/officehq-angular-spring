@@ -3,15 +3,19 @@ import { Injectable, effect, inject, signal } from '@angular/core';
 import { firstValueFrom } from 'rxjs';
 import { Session } from './session';
 
-/** A member of a pool: a person of the sheet and their share percent (two decimals). */
+/** A member of a pool: a person of the sheet, or another pool of it, and their share percent (two
+ *  decimals). */
 export interface PoolMember {
-  personId: number;
+  /** The person; null when the member is a pool. */
+  personId: number | null;
+  /** The pool; null when the member is a person. */
+  poolId: number | null;
   name: string;
   share: string;
   /** Whether the person has a retirement day set, whatever the day: their share then counts as 0.00. */
   retired: boolean;
-  /** Their cut of the sheet's pot, as text with two decimals; null when the pool shows no cut (it is
-   *  not balanced, or there is no pot). */
+  /** Their cut of the pool's pot, as text with two decimals; null when the pool shows no cut (it is
+   *  not balanced, or it has no pot). */
   cut: string | null;
 }
 
@@ -78,16 +82,17 @@ export class Pools {
     return saved;
   }
 
-  /** Add a person to a pool with a share; refused (400) for a bad share and (409) when the person
-   *  is already in the pool. */
-  async addMember(poolId: number, personId: number, share: string): Promise<Pool> {
+  /** Add a person, or another pool, to a pool with a share; refused (400) for a bad share and (409)
+   *  when the person is already in the pool, or the pool is already a member of a pool, would contain
+   *  itself or would make a chain of pools too deep. */
+  async addMember(poolId: number, member: { personId: number } | { poolId: number }, share: string): Promise<void> {
     const { sheetId, user } = this.active();
-    const saved = await firstValueFrom(
-      this.http.post<Pool>(`${this.url(sheetId)}/${poolId}/members`, { personId, share },
+    await firstValueFrom(
+      this.http.post<Pool>(`${this.url(sheetId)}/${poolId}/members`, { ...member, share },
         { headers: { 'X-User': user } }),
     );
-    this.keep(saved);
-    return saved;
+    // a pool member changes the pots of the pools below it: read them all again
+    await this.reload(sheetId);
   }
 
   private keep(saved: Pool): void {

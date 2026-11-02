@@ -11,4 +11,7 @@ public interface PoolMemberRepository extends JpaRepository<PoolMember, Long> {
 
     /** Whether the person is already a member of the pool. */
     boolean existsByPoolIdAndPersonId(Long poolId, Long personId);
+
+    /** Whether the pool is already a member of a pool. */
+    boolean existsByMemberPoolId(Long memberPoolId);
 }
