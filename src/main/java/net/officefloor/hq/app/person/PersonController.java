@@ -11,6 +11,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import net.officefloor.hq.app.history.History;
+import net.officefloor.hq.app.role.ViewerAllowed;
 import net.officefloor.hq.app.sheet.AsOfGuard;
 import net.officefloor.hq.app.sheet.SheetService;
 import net.officefloor.hq.app.statement.StatementService;
@@ -148,6 +149,7 @@ public class PersonController {
         return PersonView.of(saved, statements.summary(sheetId.trim(), personId), sheets.today(sheetId.trim()));
     }
 
+    @ViewerAllowed
     @PostMapping("/grade")
     public Graded grade(@PathVariable @NotBlank @Size(max = 100) String sheetId,
             @RequestHeader("X-User") @NotBlank @Size(max = 100) String user,

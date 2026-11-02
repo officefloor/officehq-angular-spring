@@ -55,7 +55,8 @@ public class ClaimService {
         return claims.findBySheetIdOrderByListedDesc(sheetId);
     }
 
-    /** Add a claim for a person; a date left out takes the sheet's today. Refused when the date falls
+    /** Add a claim for a person; a date left out takes the sheet's entry date, or its today when none
+     *  is set. Refused when the date falls
      *  inside a closed period, or after the person's retirement day, and when a correction (a negative
      *  amount) does not name a settled claim of the person. */
     @Transactional
@@ -67,7 +68,7 @@ public class ClaimService {
     @Transactional
     public Claim add(String sheetId, String user, long personId, BigDecimal amount, LocalDate date, String note,
             String corrects) {
-        LocalDate on = date != null ? date : sheets.today(sheetId);
+        LocalDate on = date != null ? date : sheets.entryDay(sheetId);
         refuseClosed(sheetId, on);
         refuseRetired(person(sheetId, personId), on);
         Claim corrected = corrected(sheetId, personId, amount, corrects);

@@ -41,6 +41,9 @@ export interface Settings {
   /** The grace days: when the sheet's today is changed, an open period whose to-date plus them is
    *  before it is closed; null when blank (off). */
   graceDays: number | null;
+  /** The entry date (yyyy-mm-dd): while it is set, a new claim's date when none is given; null when
+   *  blank (off, the sheet's today then stands in). */
+  entryDate: string | null;
 }
 
 /** The actions the permission matrix covers. */
@@ -189,6 +192,12 @@ export class SheetSettings {
   setGraceDays(value: string | null): Promise<Settings> {
     const [sheetId, headers] = this.active();
     return firstValueFrom(this.http.put<Settings>(`${this.url(sheetId)}/settings/grace-days`, { value }, { headers }));
+  }
+
+  /** Set the entry date; null for blank (off). */
+  setEntryDate(value: string | null): Promise<Settings> {
+    const [sheetId, headers] = this.active();
+    return firstValueFrom(this.http.put<Settings>(`${this.url(sheetId)}/settings/entry-date`, { value }, { headers }));
   }
 
   /** Set the roles (comma separated; null for blank, the standing rule) that may take an action. */

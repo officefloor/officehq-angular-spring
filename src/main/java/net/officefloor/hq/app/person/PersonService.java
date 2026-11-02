@@ -5,6 +5,8 @@ import java.util.List;
 import java.util.Objects;
 import java.util.Set;
 import net.officefloor.hq.app.Audit;
+import net.officefloor.hq.app.role.RoleService;
+import net.officefloor.hq.app.role.SheetRole;
 import net.officefloor.hq.app.rollup.Rollup;
 import net.officefloor.hq.app.sheet.SheetService;
 import org.springframework.dao.DataIntegrityViolationException;
@@ -22,12 +24,15 @@ public class PersonService {
     private final SheetService sheets;
     private final Rollup rollup;
     private final Audit audit;
+    private final RoleService roles;
 
-    public PersonService(PersonRepository people, SheetService sheets, Rollup rollup, Audit audit) {
+    public PersonService(PersonRepository people, SheetService sheets, Rollup rollup, Audit audit,
+            RoleService roles) {
         this.people = people;
         this.sheets = sheets;
         this.rollup = rollup;
         this.audit = audit;
+        this.roles = roles;
     }
 
     /** The people on the sheet in the order they were added. */
@@ -74,9 +79,12 @@ public class PersonService {
     /** Give each of the people a grade from a day (null: the sheet's today), in list order (the
      *  order they were added), exactly as the person form would: each keeps their name and terms and
      *  is followed by their own PERSON_EDITED and rollup lines. Refused as a whole, changing no one,
-     *  when an id names no person on the sheet. */
+     *  when an id names no person on the sheet. A viewer has each of them refused: no one changes. */
     @Transactional
     public List<Person> grade(String sheetId, String user, Set<Long> personIds, String grade, LocalDate gradeFrom) {
+        if (SheetRole.VIEWER.equals(roles.roleOf(sheetId, user))) {
+            return List.of();
+        }
         List<Person> chosen = people.findBySheetIdOrderByIdAsc(sheetId).stream()
                 .filter(p -> personIds.contains(p.getId())).toList();
         if (chosen.size() != personIds.size()) {

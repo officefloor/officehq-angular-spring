@@ -31,7 +31,8 @@ public class QuickAddService {
         this.claimService = claimService;
     }
 
-    /** Add a draft claim of the amount, dated the sheet's today with an empty note, for the person of
+    /** Add a draft claim of the amount, dated the sheet's entry date (or its today when none is set)
+     *  with an empty note, for the person of
      *  the name. One change: when the claim is refused, the person added for it is rolled back too
      *  and nothing is recorded. */
     @Transactional

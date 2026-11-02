@@ -341,6 +341,32 @@ public class SheetService {
         return saved;
     }
 
+    /** The sheet's entry date; null when blank (off). */
+    @Transactional(readOnly = true)
+    public LocalDate entryDate(String id) {
+        return sheets.findById(id).map(Sheet::getEntryDate).orElse(null);
+    }
+
+    /** The default date of a new claim on the sheet: its entry date while one is set, or else its
+     *  today. */
+    @Transactional(readOnly = true)
+    public LocalDate entryDay(String id) {
+        return sheets.findById(id).map(s -> s.getEntryDate() != null ? s.getEntryDate() : s.getToday())
+                .orElseGet(LocalDate::now);
+    }
+
+    /** Change the sheet's entry date (null: blank, off); recorded even when unchanged. It changes no
+     *  claim already added. */
+    @Transactional
+    public synchronized Sheet setEntryDate(String id, String user, LocalDate entryDate) {
+        Sheet sheet = load(id, user);
+        sheet.setEntryDate(entryDate);
+        Sheet saved = sheets.saveAndFlush(sheet);
+        audit.recordOnCommit("SETTING_CHANGED sheet=" + id + " by=" + user + " key=entry-date value="
+                + (entryDate == null ? "" : entryDate.toString()));
+        return saved;
+    }
+
     /** The most a person's due-total on the sheet comes to: the cap in force on the sheet's today;
      *  null when there is no cap. */
     @Transactional(readOnly = true)
