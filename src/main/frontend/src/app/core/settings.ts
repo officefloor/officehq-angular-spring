@@ -50,6 +50,9 @@ export interface Settings {
   /** The grace days recorded for each grade (null: blank, none), each from its from-date, earliest
    *  first. */
   graces: Graces;
+  /** The proof threshold each grade has of its own in force on the sheet's today, as text with two
+   *  decimals, by grade; a grade not in it takes the sheet's. */
+  gradeProofThresholds: Partial<Record<Grade, string>>;
 }
 
 /** The grace days recorded for each grade (null: blank, none), each from its from-date, earliest
@@ -158,6 +161,16 @@ export class SheetSettings {
     const [sheetId, headers] = this.active();
     return firstValueFrom(
       this.http.put<Settings>(`${this.url(sheetId)}/settings/proof-threshold`, { value, from }, { headers }),
+    );
+  }
+
+  /** Record a grade's own proof threshold (null for blank, the sheet's) from a date (null for the
+   *  sheet's today). */
+  setGradeProofThreshold(grade: Grade, value: string | null, from: string | null): Promise<Settings> {
+    const [sheetId, headers] = this.active();
+    return firstValueFrom(
+      this.http.put<Settings>(`${this.url(sheetId)}/settings/proof-threshold/${encodeURIComponent(grade)}`,
+        { value, from }, { headers }),
     );
   }
 

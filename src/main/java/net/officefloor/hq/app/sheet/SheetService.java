@@ -419,6 +419,37 @@ public class SheetService {
         return inForce(id, "proof-threshold", day).map(SettingValue::getValue).orElse(null);
     }
 
+    /** The proof thresholds each grade on the sheet has of its own in force on its today, by grade; a
+     *  grade not in it takes the sheet's (blank, or never set). */
+    @Transactional(readOnly = true)
+    public Map<String, BigDecimal> gradeProofThresholds(String id) {
+        LocalDate today = today(id);
+        Map<String, BigDecimal> thresholds = new TreeMap<>();
+        for (String grade : GRADES) {
+            inForce(id, "proof-threshold-" + grade, today).map(SettingValue::getValue)
+                    .ifPresent(v -> thresholds.put(grade, v));
+        }
+        return thresholds;
+    }
+
+    /** The due above which a claim on the sheet dated on the day needs a proof for a grade: the
+     *  grade's own proof threshold in force on it when one is set, or else the sheet's; null when
+     *  neither is. */
+    @Transactional(readOnly = true)
+    public BigDecimal proofThresholdFor(String id, String grade, LocalDate day) {
+        return inForce(id, "proof-threshold-" + grade, day).map(SettingValue::getValue)
+                .orElseGet(() -> proofThreshold(id, day));
+    }
+
+    /** Record a grade's own proof threshold (null: blank, the sheet's) from a date (null: the sheet's
+     *  today). It changes no figure. */
+    @Transactional
+    public synchronized Sheet setGradeProofThreshold(String id, String user, String grade, BigDecimal threshold,
+            LocalDate from) {
+        return record(id, user, "proof-threshold-" + grade, threshold,
+                threshold == null ? "" : threshold.setScale(2).toPlainString(), from);
+    }
+
     /** The proof threshold in force on the sheet's today. */
     @Transactional(readOnly = true)
     public BigDecimal proofThreshold(String id) {

@@ -637,15 +637,19 @@ public class ClaimService {
         return due != null && due.compareTo(limit) > 0;
     }
 
-    /** Refuse settling or approving a claim with no proofs whose due is above the sheet's proof
-     *  threshold in force on the claim's date; a claim with no due (n/a) and a sheet with no threshold
-     *  need none. */
+    /** Refuse settling or approving a claim with no proofs whose due is above the proof threshold in
+     *  force on the claim's date: its person's grade's (on that date) when one is set, or else the
+     *  sheet's; a claim with no due (n/a) and a claim with no threshold need none. */
     private void refuseUnproved(String sheetId, Claim claim) {
-        BigDecimal threshold = sheets.proofThreshold(sheetId, claim.getDate());
-        if (threshold == null || claim.getProofs() > 0) {
+        if (claim.getProofs() > 0) {
             return;
         }
-        BigDecimal due = dues.figure(sheetId, person(sheetId, claim.getPersonId()), claim);
+        Person person = person(sheetId, claim.getPersonId());
+        BigDecimal threshold = sheets.proofThresholdFor(sheetId, person.gradeOn(claim.getDate()), claim.getDate());
+        if (threshold == null) {
+            return;
+        }
+        BigDecimal due = dues.figure(sheetId, person, claim);
         if (due != null && due.compareTo(threshold) > 0) {
             throw new ResponseStatusException(HttpStatus.PRECONDITION_REQUIRED,
                     "A claim whose due is above the proof threshold needs a proof first");
