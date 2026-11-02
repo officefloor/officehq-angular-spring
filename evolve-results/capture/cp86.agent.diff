@@ -1,0 +1,125 @@
+diff --git a/src/main/frontend/src/app/core/claims.ts b/src/main/frontend/src/app/core/claims.ts
+index 7e1e13b2a..7454b238d 100644
+--- a/src/main/frontend/src/app/core/claims.ts
++++ b/src/main/frontend/src/app/core/claims.ts
+@@ -313,6 +313,14 @@ export class Claims {
+     );
+   }
+ 
++  /** Change only a draft's amount (the row's inline entry); refused as an edit is. */
++  editAmount(id: number, amount: string): Promise<Claim> {
++    const { sheetId, user } = this.active();
++    return firstValueFrom(
++      this.http.put<Claim>(`${this.url(sheetId)}/claims/${id}/amount`, { amount }, { headers: { 'X-User': user } }),
++    );
++  }
++
+   /** Open the claim's editor, locking it for every other user until it is saved or cancelled or the
+    *  sheet's today changes; refused (409) when it is not a draft or another user has it open, (423)
+    *  when its period is closed, and (403) for a viewer. */
+diff --git a/src/main/frontend/src/app/features/claims/person-claims.ts b/src/main/frontend/src/app/features/claims/person-claims.ts
+index 1be6431f7..42ef5eafc 100644
+--- a/src/main/frontend/src/app/features/claims/person-claims.ts
++++ b/src/main/frontend/src/app/features/claims/person-claims.ts
+@@ -105,6 +105,19 @@ const REDATE_DATE = 'Enter the new date for the claim.';
+ /** The message when a defer's date is missing or not after the sheet's today. */
+ const DEFER_DATE = 'Enter a date after the sheet\'s today to defer the claim to.';
+ 
++/** The message when a row's amount entry is not an amount. */
++const INLINE_AMOUNT = 'Enter an amount with up to two decimals; a negative amount is a correction.';
++
++/** The message for a refused change of a claim's amount from its row. */
++function amountRefusal(e: unknown, c: Claim, amount: string): string {
++  if (e instanceof HttpErrorResponse && e.status === 400 && amount.startsWith('-')) return CORRECTS;
++  if (e instanceof HttpErrorResponse && e.status === 422) return RETIRED;
++  if (e instanceof HttpErrorResponse && (e.status === 403 || e.status === 409 || e.status === 423)) {
++    return editorRefusal(e, c);
++  }
++  return 'The claim\'s amount could not be saved.';
++}
++
+ /** The message for a refused reassign of a claim. */
+ function reassignRefusal(e: unknown): string {
+   if (e instanceof HttpErrorResponse && e.status === 403) return 'Only a steward can reassign a claim.';
+@@ -221,6 +234,11 @@ function splitRefusal(e: unknown): string {
+             inputmode="decimal" (input)="clearError(c)" />
+           <button type="button" data-testid="claim-split" (click)="split(c, splitAmount.value)"
+             [attr.aria-label]="'Split claim of ' + c.amount + ' on ' + c.date">Split</button>
++          <label [for]="'claim-inline-amount-' + c.id">Amount</label>
++          <input [id]="'claim-inline-amount-' + c.id" data-testid="claim-inline-amount" #inlineAmount
++            inputmode="decimal" (input)="clearError(c)" />
++          <button type="button" data-testid="claim-inline-save" (click)="saveAmount(c, inlineAmount.value)"
++            [attr.aria-label]="'Save amount of claim of ' + c.amount + ' on ' + c.date">Save amount</button>
+           <button type="button" data-testid="claim-edit" (click)="open(c)"
+             [attr.aria-label]="'Edit claim of ' + c.amount + ' on ' + c.date">Edit</button>
+           @if (editing() === c.id) {
+@@ -465,6 +483,23 @@ export class PersonClaims {
+     }
+   }
+ 
++  /** Change a draft's amount from its row, under the claim form's rules. */
++  protected async saveAmount(c: Claim, amount: string): Promise<void> {
++    this.claimError.set(null);
++    const value = amount.trim();
++    if (!CLAIM_AMOUNT.test(value)) {
++      this.claimError.set({ id: c.id, message: INLINE_AMOUNT });
++      return;
++    }
++    try {
++      const claim = await this.api.editAmount(c.id, value);
++      if (this.editing() === c.id) this.reset();
++      this.saved.emit(claim);
++    } catch (e) {
++      this.claimError.set({ id: c.id, message: amountRefusal(e, c, value) });
++    }
++  }
++
+   /** Cancel the open editor, unlocking its claim. */
+   protected async cancel(): Promise<void> {
+     const id = this.editing();
+diff --git a/src/main/java/net/officefloor/hq/app/claim/ClaimController.java b/src/main/java/net/officefloor/hq/app/claim/ClaimController.java
+index c932d7986..2c5d6624f 100644
+--- a/src/main/java/net/officefloor/hq/app/claim/ClaimController.java
++++ b/src/main/java/net/officefloor/hq/app/claim/ClaimController.java
+@@ -171,6 +171,22 @@ public class ClaimController {
+                 form.correctsValue()));
+     }
+ 
++    /** A draft's amount changed in its row: the claim form's amount, alone. */
++    public record AmountForm(@NotNull @Pattern(regexp = "\\s*-?\\d{1,12}(\\.\\d{1,2})?\\s*") String amount) {
++
++        BigDecimal amountValue() {
++            return new BigDecimal(amount.trim()).setScale(2);
++        }
++    }
++
++    @PutMapping("/claims/{claimId}/amount")
++    public ClaimView editAmount(@PathVariable @NotBlank @Size(max = 100) String sheetId,
++            @PathVariable long claimId,
++            @RequestHeader("X-User") @NotBlank @Size(max = 100) String user,
++            @Valid @RequestBody AmountForm form) {
++        return ClaimView.of(service.editAmount(sheetId.trim(), user.trim(), claimId, form.amountValue()));
++    }
++
+     @PostMapping("/claims/{claimId}/editor")
+     public ClaimView openEditor(@PathVariable @NotBlank @Size(max = 100) String sheetId,
+             @PathVariable long claimId,
+diff --git a/src/main/java/net/officefloor/hq/app/claim/ClaimService.java b/src/main/java/net/officefloor/hq/app/claim/ClaimService.java
+index 0dccbf609..98c17592e 100644
+--- a/src/main/java/net/officefloor/hq/app/claim/ClaimService.java
++++ b/src/main/java/net/officefloor/hq/app/claim/ClaimService.java
+@@ -124,6 +124,14 @@ public class ClaimService {
+         });
+     }
+ 
++    /** Change only a draft claim's amount (the row's inline entry), keeping its date, note and the
++     *  number it corrects; refused exactly as {@link #edit} refuses, and recorded as it records. */
++    @Transactional
++    public Claim editAmount(String sheetId, String user, long claimId, BigDecimal amount) {
++        Claim claim = lock(sheetId, claimId);
++        return edit(sheetId, user, claimId, amount, claim.getDate(), claim.getNote(), claim.getCorrects());
++    }
++
+     /** Open a claim's editor for the user, locking the claim for every other user until it is saved
+      *  or cancelled or the sheet's today changes; an editor the user had open on another claim of the
+      *  same person is closed. Refused when the claim is not a draft or another user has its editor
