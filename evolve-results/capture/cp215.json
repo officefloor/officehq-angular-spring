@@ -1,0 +1,64 @@
+{
+  "checkpoint": 215,
+  "stack": {
+    "repo": "/home/daniel/officehq-angular-spring",
+    "origin": "git@github.com:officefloor/officehq-angular-spring.git",
+    "name": "officehq-angular-spring",
+    "base_ref": "base-empty",
+    "base_commit": "65cb8233ea38b2dfa6cfd18709e30cd18fdf3250"
+  },
+  "checkpoint_id": "cp215_sheet-comparison",
+  "phase": "late",
+  "type": "additive",
+  "mutates": [],
+  "replaced_tests": [],
+  "request": {
+    "spec": "A sheet id entry and a button compare this sheet with another: one line per grade of this sheet,\n<grade> <this sheet's summary due-total for the grade> <the other sheet's>, 0.00 for a grade the\nother sheet has no one on; a sheet that does not exist gives no lines.\n",
+    "prompt": "You are implementing ONE change to this application.\n\nFIRST read AGENTS.md \u2014 it states the working rules and how the app is tested, and sends you to\nDESIGN.md for the app's stack and conventions. Follow both.\n\nTHE CHANGE REQUEST:\nA sheet id entry and a button compare this sheet with another: one line per grade of this sheet,\n<grade> <this sheet's summary due-total for the grade> <the other sheet's>, 0.00 for a grade the\nother sheet has no one on; a sheet that does not exist gives no lines.\n\nYour work is verified by an automated Playwright UI test already installed under e2e/specs/.\nRead that spec: it declares the exact data-testid anchors, values, test data and any audit\nrecords it expects \u2014 match them. Run `bin/e2e` to build the app, start it, and run the test as\nyou work; iterate until it passes. Change whatever the request needs across the app \u2014 its stored\ndata, its server and its front end. Do NOT edit bin/build, bin/start, bin/stop, bin/e2e,\nAGENTS.md, CLAUDE.md, DESIGN.md, e2e/support/ or the test spec.\n"
+  },
+  "commit_sha": "08e7f54a9881b9091e147e6673d792edadeafca2",
+  "reset_sha": "",
+  "preagent_sha": "14fe839e6228b8fe3c26c1cf4c3d9d4949b7aafe",
+  "prev_sha": "14fe839e6228b8fe3c26c1cf4c3d9d4949b7aafe",
+  "base_sha": "65cb8233ea38b2dfa6cfd18709e30cd18fdf3250",
+  "agent": {
+    "ok": true,
+    "cost_usd": 0.5644198000000001,
+    "input_tokens": 30,
+    "output_tokens": 6933,
+    "cache_read_tokens": 497839,
+    "cache_creation_tokens": 40759,
+    "num_turns": 16,
+    "duration_ms": 272517,
+    "duration_api_ms": 68182,
+    "model": "claude-opus-5-5",
+    "session_id": "233ce3f4-45e3-4391-b497-9396b91cd75a",
+    "stop_reason": "success",
+    "result_text": "I added the sheet comparison: a box to type another sheet's id and a Compare button. Pressing it shows one line per grade, in the form `<grade> <this sheet's due-total> <the other sheet's>`. `bin/e2e` passes all 4 tests: the new comparison test and the three other scenarios in the spec.\n\n**How it works**\n- **Server:** a new endpoint, `GET /api/sheets/{sheetId}/compare/{otherId}`, in `rollup/CompareController.java`. For the other sheet it adds up each grade's due-total the same way the existing descendants figures do: retired people are left out, an n/a due-total counts as nothing, and each person goes under the grade they have on that sheet's today. A grade with no one on it gives `0.00`, and if the other sheet has never been loaded the reply says it doesn't exist.\n- **Screen:** in `features/people/people.ts`, a \"Compare with another sheet\" section with the `compare-sheet` input, the `compare` button and a `compare-line` per grade. This sheet's figure on each line comes from the Summary table already on screen, so the two always match.\n\n**Things you might not expect**\n- Asking to compare loads nothing into the store, so a sheet nobody has opened yet still gives no lines.\n- The other sheet's figures are read once, when Compare is pressed. This sheet's figures update as you work, but you have to press Compare again to see changes on the other sheet.\n- The comparison doesn't follow the as-of date the way the descendants figures do; both sheets are compared as they stand now.\n- Pressing Compare clears the old lines at once. The test reads the lines 300 ms after the click, so on a very slow server it could read an empty list.\n- Nothing is written to the audit file, since comparing changes nothing.",
+    "error": "",
+    "attempts": [
+      {
+        "ok": true,
+        "limit_reached": false,
+        "retryable": false,
+        "timed_out": false,
+        "cost_usd": 0.5644198000000001,
+        "num_turns": 16,
+        "duration_ms": 272517,
+        "duration_api_ms": 68182,
+        "error": ""
+      }
+    ]
+  },
+  "agent_stream_file": "cp215.agent.jsonl",
+  "agent_diff_file": "cp215.agent.diff",
+  "build_log_file": null,
+  "tests": {
+    "gated": false,
+    "queued": true
+  },
+  "probe": null,
+  "pinned_touched": [],
+  "acceptance_touched": [],
+  "impact_gate": null
+}
