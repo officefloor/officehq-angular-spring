@@ -73,7 +73,7 @@ public class ClaimController {
 
         /** The claim as it stood at the end of a day: its figures as its revision then has them (see
          *  {@link History}), its log as far as that day, and its number and who opened it only once it
-         *  had been opened by then; what no revision keeps (its note, reference, tags, proofs, where it is listed) as it is
+         *  had been opened by then; its proofs as given by that day; what no revision keeps (its note, reference, tags, where it is listed) as it is
          *  now (null: the claim is gone now). No one has its editor open then. */
         static ClaimView asOf(Claim then, Claim now, LocalDate day) {
             Claim kept = now != null ? now : then;
@@ -86,7 +86,7 @@ public class ClaimController {
                     opened ? kept.getOpenedBy() : null, then.isStated(),
                     then.getStatedDue() == null ? null : then.getStatedDue().setScale(2).toPlainString(),
                     then.isStatedNa(), kept.getCorrects(), then.roundsBy(), kept.getListed(), then.getDueBy(),
-                    log.stream().map(LogLineView::of).toList(), then.getDeferredUntil(), kept.getProofs(),
+                    log.stream().map(LogLineView::of).toList(), then.getDeferredUntil(), kept.getProofsOn(day),
                     kept.getSplitFrom(), null, kept.isLateEntry(),
                     kept.getRemindedOn() == null || kept.getRemindedOn().isAfter(day) ? null : kept.getRemindedOn(),
                     kept.getRef(), tagsText(kept.getTags()),

@@ -168,7 +168,7 @@ const NO_LEAVE: Leave = { holds: [], retiredFrom: null };
       <button type="button" data-testid="export-people" (click)="exportCsv()">Export people (CSV)</button>
       <table data-testid="people">
         <thead>
-          <tr><th scope="col"><span class="visually-hidden">Select</span></th><th scope="col">Name</th><th scope="col">Grade</th><th scope="col">Active</th><th scope="col">Terms</th><th scope="col">Contact</th><th scope="col">Aliases</th><th scope="col">Clashing</th><th scope="col">Came from</th><th scope="col">Claimed</th><th scope="col">Due</th><th scope="col">Settled due</th><th scope="col">Open due</th>@for (pd of periods(); track pd.id) {<th scope="col">Due in {{ pd.name }}</th>}<th scope="col">Excess</th><th scope="col">Cut total</th><th scope="col">Statements</th><th scope="col">Last stated</th><th scope="col">Stated on</th><th scope="col">Retired</th><th scope="col">Retired from</th><th scope="col">On hold</th><th scope="col">Overdue</th><th scope="col">Overdue due</th><th scope="col">Due aged 0–30 days</th><th scope="col">Due aged 31–60 days</th><th scope="col">Due aged 61+ days</th><th scope="col">Patrons</th><th scope="col">Backing</th><th scope="col">Watched</th><th scope="col">Claims</th><th scope="col"><span class="visually-hidden">Actions</span></th></tr>
+          <tr><th scope="col"><span class="visually-hidden">Select</span></th><th scope="col">Name</th><th scope="col">Grade</th><th scope="col">Active</th><th scope="col">Terms</th><th scope="col">Contact</th><th scope="col">Aliases</th><th scope="col">Clashing</th><th scope="col">Came from</th><th scope="col">Claimed</th><th scope="col">Due</th><th scope="col">Settled due</th><th scope="col">Open due</th>@for (pd of periods(); track pd.id) {<th scope="col">Due in {{ pd.name }}</th>}<th scope="col">Excess</th><th scope="col">Cut total</th><th scope="col">Statements</th><th scope="col">Last stated</th><th scope="col">Stated on</th><th scope="col">Retired</th><th scope="col">Retired from</th><th scope="col">Past retirements</th><th scope="col">On hold</th><th scope="col">Overdue</th><th scope="col">Overdue due</th><th scope="col">Due aged 0–30 days</th><th scope="col">Due aged 31–60 days</th><th scope="col">Due aged 61+ days</th><th scope="col">Patrons</th><th scope="col">Backing</th><th scope="col">Watched</th><th scope="col">Claims</th><th scope="col"><span class="visually-hidden">Actions</span></th></tr>
         </thead>
         <tbody>
           @for (p of shown(); track p.id) {
@@ -200,6 +200,15 @@ const NO_LEAVE: Leave = { holds: [], retiredFrom: null };
               <td data-testid="person-statement-date">{{ p.statementDate ?? '' }}</td>
               <td data-testid="person-retired">{{ p.retired ? 'yes' : 'no' }}</td>
               <td data-testid="person-retired-from">{{ p.retiredFrom ?? '' }}</td>
+              <td>
+                @if (p.retirements.length > 0) {
+                  <ul>
+                    @for (r of p.retirements; track $index) {
+                      <li data-testid="person-retirement-line">{{ r.from }} to {{ r.to }}</li>
+                    }
+                  </ul>
+                }
+              </td>
               <td>
                 <span data-testid="person-hold">{{ p.held ? 'yes' : 'no' }}</span>
                 @if (p.holds.length > 0) {
@@ -244,6 +253,8 @@ const NO_LEAVE: Leave = { holds: [], retiredFrom: null };
                 <input #retireDate type="date" [id]="'person-retire-date-' + p.id" data-testid="person-retire-date" />
                 <button type="button" data-testid="person-retire" (click)="retire(p, retireDate.value)"
                   [attr.aria-label]="'Retire ' + p.name">Retire</button>
+                <button type="button" data-testid="person-unretire" (click)="unretire(p)"
+                  [attr.aria-label]="'Unretire ' + p.name">Unretire</button>
                 <label [for]="'person-hold-from-' + p.id" class="visually-hidden">Hold {{ p.name }} from</label>
                 <input #holdFrom type="date" [id]="'person-hold-from-' + p.id" data-testid="person-hold-from" />
                 <label [for]="'person-hold-to-' + p.id" class="visually-hidden">Hold {{ p.name }} to</label>
@@ -802,6 +813,23 @@ export class PeopleList {
       if (this.editing() === saved.id) this.version = saved.version;
     } catch {
       this.personError.set({ id: p.id, message: 'The person could not be retired.' });
+    } finally {
+      this.retiring.delete(p.id);
+    }
+  }
+
+  /** Unretire the person on the sheet's today; refused when they are not retired. */
+  protected async unretire(p: Person): Promise<void> {
+    if (this.retiring.has(p.id)) return;
+    this.retiring.add(p.id);
+    this.personError.set(null);
+    this.patronError.set(null);
+    try {
+      const saved = await this.api.unretire(p.id);
+      this.people.update((ps) => ps.map((x) => (x.id === saved.id ? saved : x)));
+      if (this.editing() === saved.id) this.version = saved.version;
+    } catch {
+      this.personError.set({ id: p.id, message: 'The person could not be unretired.' });
     } finally {
       this.retiring.delete(p.id);
     }

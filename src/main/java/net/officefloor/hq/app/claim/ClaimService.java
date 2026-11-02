@@ -413,7 +413,7 @@ public class ClaimService {
                     "A " + claim.getStatus() + " claim cannot be given a proof");
         }
         Person person = person(sheetId, claim.getPersonId());
-        claim.addProof();
+        claim.addProof(sheets.today(sheetId));
         Claim saved = claims.saveAndFlush(claim);
         audit.recordOnCommit(record("CLAIM_PROOF_ADDED", sheetId, user, person, saved) + " proofs=" + saved.getProofs());
         return saved;
@@ -744,9 +744,11 @@ public class ClaimService {
         }
     }
 
-    /** Refuse a claim of the person dated after the day they are retired from. */
+    /** Refuse a claim of the person dated after the day they are retired from, or after the from-date
+     *  and before the to-date of one of their past retirements. */
     private static void refuseRetired(Person person, LocalDate day) {
-        if (person.getRetiredFrom() != null && day.isAfter(person.getRetiredFrom())) {
+        if ((person.getRetiredFrom() != null && day.isAfter(person.getRetiredFrom()))
+                || person.isWithinPastRetirement(day)) {
             throw new ResponseStatusException(HttpStatus.UNPROCESSABLE_CONTENT,
                     "A claim cannot be dated after the person's retirement");
         }

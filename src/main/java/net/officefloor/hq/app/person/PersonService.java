@@ -261,6 +261,25 @@ public class PersonService {
         });
     }
 
+    /** Unretire a person on the sheet's today: their retirement is kept as a past one, to that day.
+     *  Refused when they are not retired. */
+    @Transactional
+    public Person unretire(String sheetId, String user, long personId) {
+        Person person = people.findByIdAndSheetId(personId, sheetId)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "No such person on this sheet"));
+        if (!person.isRetired()) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT, "Only a retired person can be unretired");
+        }
+        LocalDate on = sheets.today(sheetId);
+        return rollup.tracking(sheetId, user, () -> {
+            person.unretire(on);
+            Person saved = saveUnique(person);
+            audit.recordOnCommit("PERSON_UNRETIRED sheet=" + sheetId + " by=" + user + " name=" + saved.getName()
+                    + " on=" + on);
+            return saved;
+        });
+    }
+
     /** Put a person on hold from a day (null: the sheet's today) to a day (null: open-ended),
      *  keeping their other holds; refused when the to-date is before the from-date. */
     @Transactional

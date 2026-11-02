@@ -40,20 +40,22 @@ public class PersonController {
 
     /** What the screen shows of a person; with how many statements were taken of them, and the
      *  last one's due-total (text with two decimals, null when n/a or none) and day (null when none);
-     *  whether they are retired, and from which day (null when not); and whether they have any hold, and their holds, earliest first; and their own terms in days (null: none); and their contact (null: none); and their aliases, sorted as names are compared; and whether they clash; and the sheet they were transferred from (null: none) (see
+     *  whether they are retired, and from which day (null when not); and their past retirements, earliest first; and whether they have any hold, and their holds, earliest first; and their own terms in days (null: none); and their contact (null: none); and their aliases, sorted as names are compared; and whether they clash; and the sheet they were transferred from (null: none) (see
      *  {@link PersonService#clashing}).
      *  The grade is the one in force on the sheet's today; grades are all those recorded, each from
      *  its from-date (null: the beginning of time), earliest first. */
     public record PersonView(long id, String name, String grade, List<GradeView> grades, long version,
             int statementCount, String statedTotal, LocalDate statementDate, boolean retired, LocalDate retiredFrom,
-            boolean held, List<HoldView> holds, Integer terms, String contact, List<String> aliases, boolean clashing, String origin) {
+            List<RetirementView> retirements, boolean held, List<HoldView> holds, Integer terms, String contact, List<String> aliases, boolean clashing, String origin) {
         public static PersonView of(Person person, StatementSummary statements, LocalDate today,
                 boolean clashing) {
             return new PersonView(person.getId(), person.getName(), person.gradeOn(today),
                     person.getGrades().stream().map(g -> new GradeView(g.getGrade(), g.getFromDate())).toList(),
                     person.getVersion(), statements.count(),
                     statements.lastDueTotal() == null ? null : statements.lastDueTotal().setScale(2).toPlainString(),
-                    statements.lastTakenOn(), person.isRetired(), person.getRetiredFrom(), person.isHeld(),
+                    statements.lastTakenOn(), person.isRetired(), person.getRetiredFrom(),
+                    person.getRetirements().stream().map(r -> new RetirementView(r.getFromDate(), r.getToDate())).toList(),
+                    person.isHeld(),
                     person.getHolds().stream().map(h -> new HoldView(h.getFromDate(), h.getToDate())).toList(),
                     person.getTerms(), person.getContact(), person.getAliases(), clashing, person.getOrigin());
         }
@@ -61,6 +63,11 @@ public class PersonController {
 
     /** A grade recorded for a person, from a day (null: from the beginning of time). */
     public record GradeView(String grade, LocalDate from) {
+    }
+
+    /** A past retirement of a person, from the day they were retired from to the day they were
+     *  unretired. */
+    public record RetirementView(LocalDate from, LocalDate to) {
     }
 
     /** A hold on a person, from a day (null: from the beginning of time) to a day (null: open-ended). */
@@ -285,6 +292,15 @@ public class PersonController {
             @RequestHeader("X-User") @NotBlank @Size(max = 100) String user,
             @RequestBody RetireForm form) {
         Person saved = service.retire(sheetId.trim(), user.trim(), personId, form.from());
+        return PersonView.of(saved, statements.summary(sheetId.trim(), personId), sheets.today(sheetId.trim()),
+                service.clashing(sheetId.trim(), saved));
+    }
+
+    @PostMapping("/{personId}/unretire")
+    public PersonView unretire(@PathVariable @NotBlank @Size(max = 100) String sheetId,
+            @PathVariable long personId,
+            @RequestHeader("X-User") @NotBlank @Size(max = 100) String user) {
+        Person saved = service.unretire(sheetId.trim(), user.trim(), personId);
         return PersonView.of(saved, statements.summary(sheetId.trim(), personId), sheets.today(sheetId.trim()),
                 service.clashing(sheetId.trim(), saved));
     }

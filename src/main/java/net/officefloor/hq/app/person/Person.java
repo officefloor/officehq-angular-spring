@@ -48,6 +48,12 @@ public class Person {
     @Column(name = "retired_from")
     private LocalDate retiredFrom;
 
+    /** The person's past retirements: each from the day they were retired from to the day they were
+     *  unretired. */
+    @ElementCollection(fetch = FetchType.EAGER)
+    @CollectionTable(name = "person_retirement", joinColumns = @JoinColumn(name = "person_id"))
+    private List<Retirement> retirements = new ArrayList<>();
+
     /** The person's holds: their open claims dated within one count in no live total. */
     @ElementCollection(fetch = FetchType.EAGER)
     @CollectionTable(name = "person_hold", joinColumns = @JoinColumn(name = "person_id"))
@@ -172,6 +178,28 @@ public class Person {
      *  From then their open claims unbound by a statement count in no live total. */
     public boolean isRetiredOn(LocalDate day) {
         return retiredFrom != null && !day.isBefore(retiredFrom);
+    }
+
+    /** The person's past retirements, earliest from-date first. */
+    public List<Retirement> getRetirements() {
+        return retirements.stream().sorted(Comparator.comparing(Retirement::getFromDate)
+                .thenComparing(Retirement::getToDate)).toList();
+    }
+
+    /** Add a past retirement, keeping the others. */
+    public void addRetirement(LocalDate from, LocalDate to) {
+        retirements.add(new Retirement(from, to));
+    }
+
+    /** Unretire the person on a day: their retirement is kept as a past one, to that day. */
+    public void unretire(LocalDate on) {
+        retirements.add(new Retirement(retiredFrom, on));
+        retiredFrom = null;
+    }
+
+    /** Whether a day falls after the from-date and before the to-date of a past retirement. */
+    public boolean isWithinPastRetirement(LocalDate day) {
+        return retirements.stream().anyMatch(r -> r.within(day));
     }
 
     /** The person's holds, earliest from-date first, those with none first of all. */

@@ -123,13 +123,20 @@ public class PoolService {
     /** The pools of the sheet in the order they were added, each with its members and its pot. */
     @Transactional(readOnly = true)
     public List<Listed> list(String sheetId) {
+        return list(sheetId, null);
+    }
+
+    /** The pools as {@link #list(String)} has them, with holds and memberships' dates taken on a day
+     *  (null: the sheet's today): the sheet as of that day. */
+    @Transactional(readOnly = true)
+    public List<Listed> list(String sheetId, LocalDate asOf) {
         List<Pool> all = pools.findBySheetIdOrderByIdAsc(sheetId);
         Map<Long, Pool> poolsById = all.stream().collect(Collectors.toMap(Pool::getId, Function.identity()));
         Map<Long, Person> byId = people.findBySheetIdOrderByPositionAscIdAsc(sheetId).stream()
                 .collect(Collectors.toMap(Person::getId, Function.identity()));
         List<PoolMember> memberships = members.findByPoolIdInOrderByIdAsc(poolsById.keySet());
         Map<Long, List<PoolMember>> byPool = memberships.stream().collect(Collectors.groupingBy(PoolMember::getPoolId));
-        LocalDate today = sheets.today(sheetId);
+        LocalDate today = asOf != null ? asOf : sheets.today(sheetId);
         Map<Long, List<Member>> membersOf = new HashMap<>();
         for (Pool p : all) {
             membersOf.put(p.getId(), byPool.getOrDefault(p.getId(), List.of()).stream()

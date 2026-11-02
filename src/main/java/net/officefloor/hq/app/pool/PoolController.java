@@ -7,6 +7,8 @@ import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.util.List;
 import java.util.stream.IntStream;
+import net.officefloor.hq.app.sheet.AsOfGuard;
+import org.springframework.format.annotation.DateTimeFormat;
 import org.springframework.http.HttpStatus;
 import org.springframework.validation.annotation.Validated;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -69,8 +71,10 @@ public class PoolController {
     }
 
     @GetMapping
-    public List<PoolView> list(@PathVariable @NotBlank @Size(max = 100) String sheetId) {
-        return service.list(sheetId.trim()).stream().map(PoolView::of).toList();
+    public List<PoolView> list(@PathVariable @NotBlank @Size(max = 100) String sheetId,
+            @RequestHeader(value = AsOfGuard.HEADER, required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE)
+            LocalDate asOf) {
+        return service.list(sheetId.trim(), asOf).stream().map(PoolView::of).toList();
     }
 
     @PostMapping

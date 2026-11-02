@@ -12,7 +12,7 @@ import java.util.stream.Collectors;
 
 /** A revision of a person in their sheet's history: their name, grades, holds, retirement, terms and
  *  contact  *  after a change, recorded on the sheet's today then. Grades are kept as "from:grade" and holds as
- *  "from..to" (a day left blank when there is none), separated by ";". */
+ *  "from..to" (a day left blank when there is none), separated by ";"; past retirements likewise as "from..to". */
 @Entity
 @Table(name = "person_revision")
 public class PersonRevision {
@@ -43,6 +43,9 @@ public class PersonRevision {
     @Column(name = "retired_from")
     private LocalDate retiredFrom;
 
+    @Column(name = "retirements", nullable = false)
+    private String retirements;
+
     @Column(name = "terms")
     private Integer terms;
 
@@ -61,6 +64,7 @@ public class PersonRevision {
         this.grades = grades(person);
         this.holds = holds(person);
         this.retiredFrom = person.getRetiredFrom();
+        this.retirements = retirements(person);
         this.terms = person.getTerms();
         this.contact = person.getContact();
     }
@@ -68,7 +72,8 @@ public class PersonRevision {
     /** Whether the person is now as this revision has them. */
     public boolean matches(Person person) {
         return name.equals(person.getName()) && grades.equals(grades(person)) && holds.equals(holds(person))
-                && Objects.equals(retiredFrom, person.getRetiredFrom()) && Objects.equals(terms, person.getTerms())
+                && Objects.equals(retiredFrom, person.getRetiredFrom())
+                && retirements.equals(retirements(person)) && Objects.equals(terms, person.getTerms())
                 && Objects.equals(contact, person.getContact());
     }
 
@@ -84,6 +89,10 @@ public class PersonRevision {
             person.addHold(day(hold.substring(0, at)), day(hold.substring(at + 2)));
         }
         person.setRetiredFrom(retiredFrom);
+        for (String retirement : split(retirements)) {
+            int at = retirement.indexOf("..");
+            person.addRetirement(day(retirement.substring(0, at)), day(retirement.substring(at + 2)));
+        }
         person.setTerms(terms);
         person.setContact(contact);
         return person;
@@ -104,6 +113,11 @@ public class PersonRevision {
 
     private static String holds(Person person) {
         return person.getHolds().stream().map(h -> text(h.getFromDate()) + ".." + text(h.getToDate()))
+                .collect(Collectors.joining(";"));
+    }
+
+    private static String retirements(Person person) {
+        return person.getRetirements().stream().map(r -> text(r.getFromDate()) + ".." + text(r.getToDate()))
                 .collect(Collectors.joining(";"));
     }
 

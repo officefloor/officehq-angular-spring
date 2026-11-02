@@ -1,7 +1,9 @@
 package net.officefloor.hq.app.claim;
 
 import jakarta.persistence.CascadeType;
+import jakarta.persistence.CollectionTable;
 import jakarta.persistence.Column;
+import jakarta.persistence.ElementCollection;
 import jakarta.persistence.Entity;
 import jakarta.persistence.EnumType;
 import jakarta.persistence.Enumerated;
@@ -114,6 +116,12 @@ public class Claim {
     /** How many proofs the claim has; raised by one at a time (see {@link #addProof}). */
     @Column(name = "proofs", nullable = false)
     private int proofs;
+
+    /** The day each proof was given; proofs given before these were kept have none. */
+    @ElementCollection(fetch = FetchType.EAGER)
+    @CollectionTable(name = "claim_proof", joinColumns = @JoinColumn(name = "claim_id"))
+    @Column(name = "added_on")
+    private List<LocalDate> proofDays = new ArrayList<>();
 
     /** The number of the claim this claim was split off (see {@link #splitOff}); null for a claim
      *  that was not split off one. */
@@ -233,6 +241,7 @@ public class Claim {
         copy.terms = terms;
         copy.deferredUntil = deferredUntil;
         copy.proofs = proofs;
+        copy.proofDays.addAll(proofDays);
         copy.splitFrom = renumber.apply(splitFrom);
         copy.remindedOn = remindedOn;
         copy.tags = tags;
@@ -391,9 +400,15 @@ public class Claim {
         return proofs;
     }
 
-    /** Raise the claim's proofs count by one. */
-    public void addProof() {
+    /** How many proofs the claim had at the end of a day: those given after it are left out. */
+    public int getProofsOn(LocalDate day) {
+        return proofs - (int) proofDays.stream().filter(d -> d.isAfter(day)).count();
+    }
+
+    /** Raise the claim's proofs count by one, given on the day. */
+    public void addProof(LocalDate on) {
         this.proofs++;
+        this.proofDays.add(on);
     }
 
     /** Whether the claim is deferred on the day: it is open and the day is before the one it is

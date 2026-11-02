@@ -46,6 +46,13 @@ export function heldOn(holds: Hold[], day: string): boolean {
   return holds.some((h) => (h.from === null || h.from <= day) && (h.to === null || day <= h.to));
 }
 
+/** A past retirement of a person: from the day they were retired from to the day they were
+ *  unretired (yyyy-mm-dd). */
+export interface Retirement {
+  from: string;
+  to: string;
+}
+
 export interface Person {
   id: number;
   name: string;
@@ -65,6 +72,8 @@ export interface Person {
   retired: boolean;
   /** The day (yyyy-mm-dd) they are retired from; null when they are not retired. */
   retiredFrom: string | null;
+  /** Their past retirements, earliest first. */
+  retirements: Retirement[];
   /** Whether they have any hold, whatever its days. */
   held: boolean;
   /** Their holds, earliest first: their open claims dated within one count in no live total. */
@@ -194,6 +203,14 @@ export class People {
     const { sheetId, user } = this.active();
     return firstValueFrom(
       this.http.post<Person>(`${this.url(sheetId)}/${id}/retire`, { from }, { headers: { 'X-User': user } }),
+    );
+  }
+
+  /** Unretire the person on the sheet's today; refused when they are not retired. */
+  unretire(id: number): Promise<Person> {
+    const { sheetId, user } = this.active();
+    return firstValueFrom(
+      this.http.post<Person>(`${this.url(sheetId)}/${id}/unretire`, {}, { headers: { 'X-User': user } }),
     );
   }
 
