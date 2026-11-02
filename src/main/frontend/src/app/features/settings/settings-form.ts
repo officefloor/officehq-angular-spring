@@ -8,7 +8,7 @@ import {
 } from '../../core/settings';
 
 // The sheet's settings (the clerk limit, the cap, the proof threshold, the floor, the terms, the late percent, the policy date, period numbering from and the permission matrix) and the roles it gives user names: clerk, the default for
-// any name, or steward. The settings that carry a figure are dated: each is saved from a from-date
+// any name, steward, or viewer (who may change nothing). The settings that carry a figure are dated: each is saved from a from-date
 // (blank: the sheet's today), and what shows in force is the value on the sheet's today.
 @Component({
   selector: 'app-settings-form',
@@ -399,7 +399,7 @@ export class SettingsForm {
       return;
     }
     if (!(ROLES as string[]).includes(role)) {
-      this.roleError.set('Choose a role of clerk or steward.');
+      this.roleError.set('Choose a role of clerk, steward or viewer.');
       return;
     }
     this.submitting = true;

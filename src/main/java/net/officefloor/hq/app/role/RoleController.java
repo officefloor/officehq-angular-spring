@@ -27,8 +27,8 @@ public class RoleController {
         }
     }
 
-    /** The role form: a role of clerk or steward. */
-    public record RoleForm(@NotNull @Pattern(regexp = "\\s*(clerk|steward)\\s*") String role) {
+    /** The role form: a role of clerk, steward or viewer. */
+    public record RoleForm(@NotNull @Pattern(regexp = "\\s*(clerk|steward|viewer)\\s*") String role) {
     }
 
     private final RoleService service;

@@ -74,15 +74,16 @@ export function valueOn<V extends string | null>(recorded: DatedValue<V>[], day:
   return value;
 }
 
-export type RoleName = 'clerk' | 'steward';
+export type RoleName = 'clerk' | 'steward' | 'viewer';
 
 export interface Role {
   user: string;
   role: RoleName;
 }
 
-/** The roles a user name can be given; a name given none is a clerk. */
-export const ROLES: RoleName[] = ['clerk', 'steward'];
+/** The roles a user name can be given; a name given none is a clerk, and a viewer may change
+ *  nothing. */
+export const ROLES: RoleName[] = ['clerk', 'steward', 'viewer'];
 
 /** A limit with up to two decimals, 0.00 or more. */
 export const LIMIT = /^\d{1,12}(\.\d{1,2})?$/;

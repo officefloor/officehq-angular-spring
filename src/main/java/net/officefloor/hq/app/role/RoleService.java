@@ -6,7 +6,8 @@ import net.officefloor.hq.app.sheet.SheetService;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
-/** The roles user names have on a sheet: clerk (the default for any name) or steward. */
+/** The roles user names have on a sheet: clerk (the default for any name), steward or viewer
+ *  (who may change nothing). */
 @Service
 public class RoleService {
 
