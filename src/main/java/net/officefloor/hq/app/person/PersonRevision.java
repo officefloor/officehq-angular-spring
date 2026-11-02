@@ -11,8 +11,8 @@ import java.util.Objects;
 import java.util.stream.Collectors;
 
 /** A revision of a person in their sheet's history: their name, grades, holds, retirement, terms and
- *  contact  *  after a change, recorded on the sheet's today then. Grades are kept as "from:grade" and holds as
- *  "from..to" (a day left blank when there is none), separated by ";"; past retirements likewise as "from..to". */
+ *  contact and aliases after a change, recorded on the sheet's today then. Grades are kept as "from:grade" and holds as
+ *  "from..to" (a day left blank when there is none), separated by ";"; past retirements likewise as "from..to", and aliases separated by ";". */
 @Entity
 @Table(name = "person_revision")
 public class PersonRevision {
@@ -52,6 +52,9 @@ public class PersonRevision {
     @Column(name = "contact")
     private String contact;
 
+    @Column(name = "aliases", nullable = false)
+    private String aliases;
+
     protected PersonRevision() {
     }
 
@@ -67,6 +70,7 @@ public class PersonRevision {
         this.retirements = retirements(person);
         this.terms = person.getTerms();
         this.contact = person.getContact();
+        this.aliases = aliases(person);
     }
 
     /** Whether the person is now as this revision has them. */
@@ -74,7 +78,7 @@ public class PersonRevision {
         return name.equals(person.getName()) && grades.equals(grades(person)) && holds.equals(holds(person))
                 && Objects.equals(retiredFrom, person.getRetiredFrom())
                 && retirements.equals(retirements(person)) && Objects.equals(terms, person.getTerms())
-                && Objects.equals(contact, person.getContact());
+                && Objects.equals(contact, person.getContact()) && aliases.equals(aliases(person));
     }
 
     /** The person as this revision has them, detached: for working out figures only, never saved. */
@@ -95,6 +99,9 @@ public class PersonRevision {
         }
         person.setTerms(terms);
         person.setContact(contact);
+        for (String alias : split(aliases)) {
+            person.addAlias(alias);
+        }
         return person;
     }
 
@@ -119,6 +126,10 @@ public class PersonRevision {
     private static String retirements(Person person) {
         return person.getRetirements().stream().map(r -> text(r.getFromDate()) + ".." + text(r.getToDate()))
                 .collect(Collectors.joining(";"));
+    }
+
+    private static String aliases(Person person) {
+        return String.join(";", person.getAliases());
     }
 
     private static String text(LocalDate day) {

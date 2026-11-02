@@ -70,9 +70,14 @@ public class PersonTransferService {
      *  were opened (by the sheet's today then, then by the order they were added); figures a
      *  statement bound and references are not carried, and they have no statements there. They
      *  leave this sheet entirely (patron links, pool memberships, watches and statements dropped).
-     *  A sheet never loaded is started empty, as loading it would. Refused unless the user is a
-     *  steward, and for a retired person, this sheet's own id, an archived sheet, or when their
-     *  name, an alias or their contact is already on the other sheet. */
+     *  A sheet never loaded is started empty, as loading it would. When their name or an alias is
+     *  already the name or an alias of someone on the other sheet (compared as names are), they
+     *  are merged into that person there instead, exactly as a merge does (their claims listed
+     *  after that person's, their name and aliases joining that person's aliases, their grades,
+     *  terms and contact not kept). Refused unless
+     *  the user is a steward, and for a retired person, this sheet's own id, an archived sheet,
+     *  when their names match more than one person there or a retired one, or when their contact is
+     *  held there by anyone but the person they merge into. */
     @Transactional
     public void transfer(String sheetId, String user, long personId, String toSheetId) {
         if (!SheetRole.STEWARD.equals(roles.roleOf(sheetId, user))) {
@@ -90,10 +95,22 @@ public class PersonTransferService {
             throw new ResponseStatusException(HttpStatus.CONFLICT, "A retired person cannot be transferred");
         }
         sheets.load(toSheetId, user);
-        boolean nameTaken = Stream.concat(Stream.of(from.getName()), from.getAliases().stream())
-                .anyMatch(n -> people.existsBySheetIdAndNameIgnoreCase(toSheetId, n) || people.existsAlias(toSheetId, n));
-        if (nameTaken || (from.getContact() != null && people.existsBySheetIdAndContact(toSheetId, from.getContact()))) {
-            throw new ResponseStatusException(HttpStatus.CONFLICT, "The name, an alias or the contact is on the other sheet");
+        List<Person> matches = Stream.concat(Stream.of(from.getName()), from.getAliases().stream())
+                .flatMap(n -> people.findByNameOrAlias(toSheetId, n).stream())
+                .map(Person::getId).distinct()
+                .map(id -> people.lockByIdAndSheetId(id, toSheetId).orElseThrow())
+                .toList();
+        if (matches.size() > 1) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT, "The names match more than one person on the other sheet");
+        }
+        Person into = matches.isEmpty() ? null : matches.get(0);
+        if (into != null && into.isRetired()) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT, "A retired person cannot be merged");
+        }
+        if (from.getContact() != null && (into == null
+                ? people.existsBySheetIdAndContact(toSheetId, from.getContact())
+                : people.existsBySheetIdAndContactAndIdNot(toSheetId, from.getContact(), into.getId()))) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT, "The contact is on the other sheet");
         }
         rollup.tracking(sheetId, user, () -> {
             audit.recordOnCommit("PERSON_TRANSFERRED sheet=" + sheetId + " by=" + user + " name=" + from.getName()
@@ -103,11 +120,24 @@ public class PersonTransferService {
             rollup.tracking(toSheetId, user, () -> {
                 audit.recordOnCommit("PERSON_TRANSFERRED sheet=" + toSheetId + " by=" + user + " name="
                         + from.getName() + " from=" + sheetId);
-                Person arrived = people.saveAndFlush(from.transferredTo(toSheetId, people.nextPosition(toSheetId)));
+                if (into != null) {
+                    audit.recordOnCommit("PERSON_MERGED sheet=" + toSheetId + " by=" + user + " from="
+                            + from.getName() + " into=" + into.getName());
+                }
+                Person arrived = into != null ? into
+                        : people.saveAndFlush(from.transferredTo(toSheetId, people.nextPosition(toSheetId)));
                 Map<String, String> numbers = renumber(toSheetId, theirs);
                 for (Claim claim : theirs) {
                     Claim copy = claims.saveAndFlush(claim.transferredTo(toSheetId, arrived.getId(), numbers::get));
                     claimService.keepTags(toSheetId, copy.getTags());
+                }
+                if (into != null) {
+                    // Merged as a merge would: their claims after the other's (no figure a statement
+                    // bound), their name and aliases joining the other's aliases.
+                    Stream.concat(Stream.of(from.getName()), from.getAliases().stream())
+                            .filter(n -> !n.equalsIgnoreCase(into.getName()))
+                            .forEach(into::addAlias);
+                    people.saveAndFlush(into);
                 }
                 return arrived;
             });
