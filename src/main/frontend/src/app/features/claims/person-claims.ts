@@ -165,7 +165,7 @@ export class PersonClaims {
       return;
     }
     this.editing.set(c.id);
-    this.form.setValue({ amount: c.amount, date: c.date, note: c.note, corrects: c.corrects?.toString() ?? '' },
+    this.form.setValue({ amount: c.amount, date: c.date, note: c.note, corrects: c.corrects ?? '' },
       { emitEvent: false });
     this.error.set('');
   }
@@ -196,7 +196,7 @@ export class PersonClaims {
       return;
     }
     const number = corrects.trim();
-    if (number !== '' && !/^[1-9]\d{0,8}$/.test(number)) {
+    if (number.length > 120) {
       this.error.set(CORRECTS);
       return;
     }
@@ -206,7 +206,7 @@ export class PersonClaims {
       return;
     }
     const form = {
-      amount: amount.trim(), date: day === '' ? null : day, note, corrects: number === '' ? null : Number(number),
+      amount: amount.trim(), date: day === '' ? null : day, note, corrects: number === '' ? null : number,
     };
     const id = this.editing();
     this.submitting = true;

@@ -59,7 +59,7 @@ public class ClaimService {
     /** Add a claim for a person, naming the number of the claim it corrects (only a correction keeps it). */
     @Transactional
     public Claim add(String sheetId, String user, long personId, BigDecimal amount, LocalDate date, String note,
-            Integer corrects) {
+            String corrects) {
         LocalDate on = date != null ? date : sheets.today(sheetId);
         refuseClosed(sheetId, on);
         refuseRetired(person(sheetId, personId), on);
@@ -79,7 +79,7 @@ public class ClaimService {
      *  after the person's retirement day. */
     @Transactional
     public Claim edit(String sheetId, String user, long claimId, BigDecimal amount, LocalDate date, String note,
-            Integer corrects) {
+            String corrects) {
         Claim claim = claims.findByIdAndSheetId(claimId, sheetId)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "No such claim on this sheet"));
         if (claim.getStatus() != ClaimStatus.DRAFT) {
@@ -133,7 +133,7 @@ public class ClaimService {
             // A void claim keeps the number it had (never reused).
             claim.setStatus(to);
             if (to == ClaimStatus.OPEN) {
-                claim.setNumber(sheets.nextClaimNumber(sheetId));
+                claim.setNumber(nextNumber(sheetId, claim.getDate()));
                 claim.setOpenedBy(user);
             }
             Claim saved = claims.saveAndFlush(claim);
@@ -152,10 +152,24 @@ public class ClaimService {
         });
     }
 
+    /** The number for a claim of the date opened now: under period numbering, the next in its period
+     *  (<period name>-<n>), or for one in no period the next X-<n>; otherwise the next on the sheet. */
+    private String nextNumber(String sheetId, LocalDate date) {
+        if (!sheets.periodNumbering(sheetId)) {
+            return String.valueOf(sheets.nextClaimNumber(sheetId));
+        }
+        return periods.findOn(sheetId, date)
+                .map(p -> {
+                    periods.advanceClaimNumber(p.getId());
+                    return p.getName() + "-" + periods.lastClaimNumber(p.getId());
+                })
+                .orElseGet(() -> "X-" + sheets.nextUnperiodNumber(sheetId));
+    }
+
     /** The claim a claim of the amount corrects: none for an amount of 0.00 or more; for a correction
      *  (a negative amount), the one of the number given, which must be a settled claim of the person,
      *  or else it is refused. */
-    private Claim corrected(String sheetId, long personId, BigDecimal amount, Integer corrects) {
+    private Claim corrected(String sheetId, long personId, BigDecimal amount, String corrects) {
         if (amount.signum() >= 0) {
             return null;
         }
@@ -201,7 +215,7 @@ public class ClaimService {
 
     /** An audit record about a claim; one that has a number carries it at the end. */
     private static String record(String event, String sheetId, String user, Person person, Claim claim) {
-        Integer number = claim.getNumber();
+        String number = claim.getNumber();
         return event + " sheet=" + sheetId + " by=" + user + " person=" + person.getName()
                 + " amount=" + claim.getAmount().setScale(2).toPlainString() + " date=" + claim.getDate()
                 + (number != null ? " number=" + number : "");

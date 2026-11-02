@@ -30,8 +30,9 @@ export interface Claim {
   date: string;
   note: string;
   status: ClaimStatus;
-  /** The claim's number on the sheet, given when it is opened; null for a draft or a void claim. */
-  number: number | null;
+  /** The claim's number on the sheet, given when it is opened (1, 2, ... or, under period numbering,
+   *  <period name>-<n>, or X-<n> for a claim in no period); null for a claim never opened. */
+  number: string | null;
   /** The due fixed when the claim was settled, as text with two decimals; null when it is not
    *  settled, or was settled while its person's grade had no rate (its due then stays live). */
   settledDue: string | null;
@@ -43,7 +44,7 @@ export interface Claim {
    *  or was bound while it had no due (its due then stays live). */
   statedDue: string | null;
   /** The number of the settled claim this correction corrects; null when it is not a correction. */
-  corrects: number | null;
+  corrects: string | null;
   /** The date (yyyy-mm-dd) its figures round by: that of the claim a correction corrects, or else
    *  its own. */
   roundsBy: string;
@@ -56,7 +57,7 @@ export interface ClaimForm {
   note: string;
   /** The number of the settled claim of the same person a correction (a negative amount)
    *  corrects; null when none is named. */
-  corrects: number | null;
+  corrects: string | null;
 }
 
 /** What a quick-add made: the person the claim is for (added when the name was not on the sheet)

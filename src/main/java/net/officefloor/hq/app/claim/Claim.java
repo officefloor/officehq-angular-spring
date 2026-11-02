@@ -43,7 +43,7 @@ public class Claim {
     /** The claim's number on its sheet, given when it is opened and kept when voided; null for a
      *  claim never opened. */
     @Column(name = "number")
-    private Integer number;
+    private String number;
 
     /** The due fixed when the claim was settled; null when not settled, or settled with no rate. */
     @Column(name = "settled_due", precision = 14, scale = 2)
@@ -65,7 +65,7 @@ public class Claim {
     /** The number of the settled claim of the same person this correction corrects; null for a claim
      *  that is not a correction. */
     @Column(name = "corrects")
-    private Integer corrects;
+    private String corrects;
 
     /** The date of the claim this correction corrects, which it rounds by; null for a claim that is
      *  not a correction. */
@@ -75,11 +75,11 @@ public class Claim {
     protected Claim() {
     }
 
-    public Claim(String sheetId, Long personId, BigDecimal amount, LocalDate date, String note, Integer corrects) {
+    public Claim(String sheetId, Long personId, BigDecimal amount, LocalDate date, String note, String corrects) {
         this(sheetId, personId, amount, date, note, corrects, null);
     }
 
-    public Claim(String sheetId, Long personId, BigDecimal amount, LocalDate date, String note, Integer corrects,
+    public Claim(String sheetId, Long personId, BigDecimal amount, LocalDate date, String note, String corrects,
             LocalDate correctedDate) {
         this.sheetId = sheetId;
         this.personId = personId;
@@ -110,11 +110,11 @@ public class Claim {
         this.amount = amount;
     }
 
-    public Integer getCorrects() {
+    public String getCorrects() {
         return corrects;
     }
 
-    public void setCorrects(Integer corrects) {
+    public void setCorrects(String corrects) {
         this.corrects = corrects;
     }
 
@@ -161,11 +161,11 @@ public class Claim {
         this.status = status;
     }
 
-    public Integer getNumber() {
+    public String getNumber() {
         return number;
     }
 
-    public void setNumber(Integer number) {
+    public void setNumber(String number) {
         this.number = number;
     }
 

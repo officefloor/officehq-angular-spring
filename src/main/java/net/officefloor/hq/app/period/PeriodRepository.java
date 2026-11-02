@@ -6,6 +6,7 @@ import java.util.Optional;
 import jakarta.persistence.LockModeType;
 import org.springframework.data.jpa.repository.Lock;
 import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.data.jpa.repository.Modifying;
 import org.springframework.data.jpa.repository.Query;
 
 public interface PeriodRepository extends JpaRepository<Period, Long> {
@@ -24,6 +25,19 @@ public interface PeriodRepository extends JpaRepository<Period, Long> {
     @Query("select count(p) > 0 from Period p where p.sheetId = :sheetId and p.closed = true"
             + " and p.fromDate <= :day and p.toDate >= :day")
     boolean closedOn(String sheetId, LocalDate day);
+
+    /** The period on the sheet whose days contain the day, if any. */
+    @Query("select p from Period p where p.sheetId = :sheetId and p.fromDate <= :day and p.toDate >= :day")
+    Optional<Period> findOn(String sheetId, LocalDate day);
+
+    /** Move the period's last claim number on by one; the row stays locked until the transaction
+     *  ends, so two claims opened in it at once get one number each. */
+    @Modifying
+    @Query("update Period p set p.lastClaimNumber = p.lastClaimNumber + 1 where p.id = :id")
+    int advanceClaimNumber(Long id);
+
+    @Query("select p.lastClaimNumber from Period p where p.id = :id")
+    int lastClaimNumber(Long id);
 
     /** A period on a sheet, locked for the rest of the transaction so two closes or reopens of
      *  it happen one after the other. */

@@ -47,6 +47,16 @@ public class Sheet {
     @Column(name = "policy_date")
     private LocalDate policyDate;
 
+    /** Period numbering from: while it is set and the sheet's today is on or after it, a claim opened
+     *  is numbered within its period; null (blank) is off. */
+    @Column(name = "period_numbering_from")
+    private LocalDate periodNumberingFrom;
+
+    /** The last X-number given to a claim in no period; only ever moved on by
+     *  {@link SheetRepository#advanceUnperiodNumber}. */
+    @Column(name = "last_unperiod_number", insertable = false, updatable = false)
+    private int lastUnperiodNumber;
+
     protected Sheet() {
     }
 
@@ -110,5 +120,13 @@ public class Sheet {
 
     public void setPolicyDate(LocalDate policyDate) {
         this.policyDate = policyDate;
+    }
+
+    public LocalDate getPeriodNumberingFrom() {
+        return periodNumberingFrom;
+    }
+
+    public void setPeriodNumberingFrom(LocalDate periodNumberingFrom) {
+        this.periodNumberingFrom = periodNumberingFrom;
     }
 }

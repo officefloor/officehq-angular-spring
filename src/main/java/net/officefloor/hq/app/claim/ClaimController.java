@@ -4,7 +4,6 @@ import jakarta.validation.Valid;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.NotNull;
 import jakarta.validation.constraints.Pattern;
-import jakarta.validation.constraints.Positive;
 import jakarta.validation.constraints.Size;
 import java.math.BigDecimal;
 import java.time.LocalDate;
@@ -33,8 +32,8 @@ public class ClaimController {
      *  of the claim it corrects (null when it is not a correction); and the date its figures round by
      *  (that of the claim a correction corrects, or else its own). */
     public record ClaimView(long id, long personId, String amount, LocalDate date, String note,
-            ClaimStatus status, Integer number, String settledDue, String openedBy, boolean stated,
-            String statedDue, Integer corrects, LocalDate roundsBy) {
+            ClaimStatus status, String number, String settledDue, String openedBy, boolean stated,
+            String statedDue, String corrects, LocalDate roundsBy) {
         public static ClaimView of(Claim claim) {
             return new ClaimView(claim.getId(), claim.getPersonId(), claim.getAmount().setScale(2).toPlainString(),
                     claim.getDate(), claim.getNote(), claim.getStatus(), claim.getNumber(),
@@ -49,7 +48,7 @@ public class ClaimController {
      *  optional date (the sheet's today when left out), a note that may be empty, and the number of
      *  the settled claim a correction corrects. */
     public record ClaimForm(@NotNull @Pattern(regexp = "\\s*-?\\d{1,12}(\\.\\d{1,2})?\\s*") String amount,
-            LocalDate date, @Size(max = 500) String note, @Positive Integer corrects) {
+            LocalDate date, @Size(max = 500) String note, @Size(max = 120) String corrects) {
 
         BigDecimal amountValue() {
             return new BigDecimal(amount.trim()).setScale(2);
@@ -57,6 +56,11 @@ public class ClaimController {
 
         String noteValue() {
             return note == null ? "" : note.trim();
+        }
+
+        /** The number a correction names (1, 2, ... or P1-1, X-1, ...); null when left blank. */
+        String correctsValue() {
+            return corrects == null || corrects.isBlank() ? null : corrects.trim();
         }
     }
 
@@ -88,7 +92,7 @@ public class ClaimController {
             @RequestHeader("X-User") @NotBlank @Size(max = 100) String user,
             @Valid @RequestBody ClaimForm form) {
         return ClaimView.of(service.add(sheetId.trim(), user.trim(), personId, form.amountValue(), form.date(), form.noteValue(),
-                form.corrects()));
+                form.correctsValue()));
     }
 
     @PutMapping("/claims/{claimId}")
@@ -97,7 +101,7 @@ public class ClaimController {
             @RequestHeader("X-User") @NotBlank @Size(max = 100) String user,
             @Valid @RequestBody ClaimForm form) {
         return ClaimView.of(service.edit(sheetId.trim(), user.trim(), claimId, form.amountValue(), form.date(), form.noteValue(),
-                form.corrects()));
+                form.correctsValue()));
     }
 
     @PostMapping("/claims/{claimId}/open")

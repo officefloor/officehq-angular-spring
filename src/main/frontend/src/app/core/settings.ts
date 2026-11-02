@@ -14,6 +14,8 @@ export interface Settings {
   latePct: string;
   /** The policy date (yyyy-mm-dd); null when blank, the sheet's today then stands in. */
   policyDate: string | null;
+  /** The period numbering from date (yyyy-mm-dd); null when blank (off). */
+  periodNumberingFrom: string | null;
 }
 
 export type RoleName = 'clerk' | 'steward';
@@ -80,6 +82,14 @@ export class SheetSettings {
   setPolicyDate(value: string | null): Promise<Settings> {
     const [sheetId, headers] = this.active();
     return firstValueFrom(this.http.put<Settings>(`${this.url(sheetId)}/settings/policy-date`, { value }, { headers }));
+  }
+
+  /** Set the period numbering from date; null for blank (off). */
+  setPeriodNumberingFrom(value: string | null): Promise<Settings> {
+    const [sheetId, headers] = this.active();
+    return firstValueFrom(
+      this.http.put<Settings>(`${this.url(sheetId)}/settings/period-numbering-from`, { value }, { headers }),
+    );
   }
 
   /** Give a user name a role, replacing the one it had. */

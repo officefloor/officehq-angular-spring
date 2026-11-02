@@ -25,17 +25,20 @@ public class SettingsController {
 
     /** What the screen shows of a sheet's settings; the clerk limit as text with two decimals
      *  (null when there is no limit), the floor as text with two decimals, the terms in days, and the late percent as text with two
-     *  decimals, and the policy date (null when it is blank: the sheet's today stands in). */
-    public record SettingsView(String clerkLimit, String floor, int terms, String latePct, LocalDate policyDate) {
+     *  decimals, and the policy date (null when it is blank: the sheet's today stands in), and the
+     *  period numbering from date (null when it is blank: off). */
+    public record SettingsView(String clerkLimit, String floor, int terms, String latePct, LocalDate policyDate,
+            LocalDate periodNumberingFrom) {
         static SettingsView of(Sheet sheet) {
             return of(sheet.getClerkLimit(), sheet.getFloor(), sheet.getTerms(), sheet.getLatePct(),
-                    sheet.getPolicyDate());
+                    sheet.getPolicyDate(), sheet.getPeriodNumberingFrom());
         }
 
         static SettingsView of(BigDecimal clerkLimit, BigDecimal floor, int terms, BigDecimal latePct,
-                LocalDate policyDate) {
+                LocalDate policyDate, LocalDate periodNumberingFrom) {
             return new SettingsView(clerkLimit == null ? null : clerkLimit.setScale(2).toPlainString(),
-                    floor.setScale(2).toPlainString(), terms, latePct.setScale(2).toPlainString(), policyDate);
+                    floor.setScale(2).toPlainString(), terms, latePct.setScale(2).toPlainString(), policyDate,
+                    periodNumberingFrom);
         }
     }
 
@@ -86,6 +89,21 @@ public class SettingsController {
         }
     }
 
+    /** The period numbering from form: a date (yyyy-mm-dd), or blank for off. */
+    public record PeriodNumberingFromForm(@Pattern(regexp = "\\s*(\\d{4}-\\d{2}-\\d{2})?\\s*") String value) {
+
+        LocalDate fromValue() {
+            if (value == null || value.isBlank()) {
+                return null;
+            }
+            try {
+                return LocalDate.parse(value.trim());
+            } catch (DateTimeParseException e) {
+                throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Not a date: " + value.trim());
+            }
+        }
+    }
+
     private final SheetService service;
 
     public SettingsController(SheetService service) {
@@ -96,7 +114,7 @@ public class SettingsController {
     public SettingsView get(@PathVariable @NotBlank @Size(max = 100) String sheetId) {
         String id = sheetId.trim();
         return SettingsView.of(service.clerkLimit(id), service.floor(id), service.terms(id), service.latePct(id),
-                service.policyDate(id));
+                service.policyDate(id), service.periodNumberingFrom(id));
     }
 
     @PutMapping("/clerk-limit")
@@ -132,5 +150,12 @@ public class SettingsController {
             @RequestHeader("X-User") @NotBlank @Size(max = 100) String user,
             @Valid @RequestBody PolicyDateForm form) {
         return SettingsView.of(service.setPolicyDate(sheetId.trim(), user.trim(), form.policyDateValue()));
+    }
+
+    @PutMapping("/period-numbering-from")
+    public SettingsView setPeriodNumberingFrom(@PathVariable @NotBlank @Size(max = 100) String sheetId,
+            @RequestHeader("X-User") @NotBlank @Size(max = 100) String user,
+            @Valid @RequestBody PeriodNumberingFromForm form) {
+        return SettingsView.of(service.setPeriodNumberingFrom(sheetId.trim(), user.trim(), form.fromValue()));
     }
 }

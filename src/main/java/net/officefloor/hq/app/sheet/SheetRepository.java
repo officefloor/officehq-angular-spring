@@ -14,4 +14,13 @@ public interface SheetRepository extends JpaRepository<Sheet, String> {
 
     @Query("select s.lastClaimNumber from Sheet s where s.id = :id")
     int lastClaimNumber(String id);
+
+    /** Move the sheet's last X-number (for claims in no period) on by one; the row stays locked
+     *  until the transaction ends. */
+    @Modifying
+    @Query("update Sheet s set s.lastUnperiodNumber = s.lastUnperiodNumber + 1 where s.id = :id")
+    int advanceUnperiodNumber(String id);
+
+    @Query("select s.lastUnperiodNumber from Sheet s where s.id = :id")
+    int lastUnperiodNumber(String id);
 }

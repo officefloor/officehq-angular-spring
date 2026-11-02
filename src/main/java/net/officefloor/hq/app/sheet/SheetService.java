@@ -44,6 +44,16 @@ public class SheetService {
         return sheets.lastClaimNumber(id);
     }
 
+    /** The next X-number on the sheet, for a claim in no period opened under period numbering: 1,
+     *  then 2, and so on. */
+    @Transactional
+    public int nextUnperiodNumber(String id) {
+        if (sheets.advanceUnperiodNumber(id) != 1) {
+            throw new IllegalStateException("No sheet " + id);
+        }
+        return sheets.lastUnperiodNumber(id);
+    }
+
     /** Change the sheet's today; the figures it moves are recorded, with no record of its own. */
     @Transactional
     public synchronized Sheet setToday(String id, String user, LocalDate today) {
@@ -154,5 +164,32 @@ public class SheetService {
                     + (policyDate == null ? "" : policyDate.toString()));
             return saved;
         });
+    }
+
+    /** The sheet's period numbering from date; null when it is blank (off). */
+    @Transactional(readOnly = true)
+    public LocalDate periodNumberingFrom(String id) {
+        return sheets.findById(id).map(Sheet::getPeriodNumberingFrom).orElse(null);
+    }
+
+    /** Whether a claim opened on the sheet now is numbered within its period: the setting is a date
+     *  and the sheet's today is on or after it. */
+    @Transactional(readOnly = true)
+    public boolean periodNumbering(String id) {
+        return sheets.findById(id)
+                .map(s -> s.getPeriodNumberingFrom() != null && !s.getToday().isBefore(s.getPeriodNumberingFrom()))
+                .orElse(false);
+    }
+
+    /** Change the sheet's period numbering from date (null: blank, off); recorded even when it is
+     *  unchanged. It changes no figure, and no number already given. */
+    @Transactional
+    public synchronized Sheet setPeriodNumberingFrom(String id, String user, LocalDate from) {
+        Sheet sheet = load(id, user);
+        sheet.setPeriodNumberingFrom(from);
+        Sheet saved = sheets.saveAndFlush(sheet);
+        audit.recordOnCommit("SETTING_CHANGED sheet=" + id + " by=" + user + " key=period-numbering-from value="
+                + (from == null ? "" : from.toString()));
+        return saved;
     }
 }

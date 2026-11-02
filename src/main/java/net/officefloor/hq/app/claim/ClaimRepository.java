@@ -18,7 +18,7 @@ public interface ClaimRepository extends JpaRepository<Claim, Long> {
     Optional<Claim> findByIdAndSheetId(Long id, String sheetId);
 
     /** A person's claim on a sheet of the number and status. */
-    Optional<Claim> findBySheetIdAndPersonIdAndNumberAndStatus(String sheetId, Long personId, Integer number,
+    Optional<Claim> findBySheetIdAndPersonIdAndNumberAndStatus(String sheetId, Long personId, String number,
             ClaimStatus status);
 
     /** A claim on a sheet, locked for the rest of the transaction so two status changes to it

@@ -38,6 +38,11 @@ public class Period {
     @Column(name = "closed_total")
     private BigDecimal closedTotal;
 
+    /** The last number given to a claim in the period under period numbering; only ever moved on by
+     *  {@link PeriodRepository#advanceClaimNumber}. */
+    @Column(name = "last_claim_number", insertable = false, updatable = false)
+    private int lastClaimNumber;
+
     protected Period() {
     }
 
