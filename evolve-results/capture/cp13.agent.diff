@@ -1,0 +1,140 @@
+diff --git a/src/main/frontend/src/app/core/claims.ts b/src/main/frontend/src/app/core/claims.ts
+index 7ee307882..a6f693d33 100644
+--- a/src/main/frontend/src/app/core/claims.ts
++++ b/src/main/frontend/src/app/core/claims.ts
+@@ -29,6 +29,8 @@ export interface Claim {
+   /** The due fixed when the claim was settled, as text with two decimals; null when it is not
+    *  settled, or was settled while its person's grade had no rate (its due then stays live). */
+   settledDue: string | null;
++  /** Who opened the claim; null when it was never opened. That user cannot settle it. */
++  openedBy: string | null;
+ }
+ 
+ export interface ClaimForm {
+diff --git a/src/main/frontend/src/app/features/claims/person-claims.ts b/src/main/frontend/src/app/features/claims/person-claims.ts
+index 08f6b9dac..9c186dd17 100644
+--- a/src/main/frontend/src/app/features/claims/person-claims.ts
++++ b/src/main/frontend/src/app/features/claims/person-claims.ts
+@@ -12,6 +12,15 @@ const REFUSALS: Record<ClaimAction, string> = {
+   void: 'Only a draft or open claim can be voided.',
+ };
+ 
++/** The message for a refused action on a claim. */
++function refusal(e: unknown, action: ClaimAction): string {
++  if (e instanceof HttpErrorResponse && e.status === 409) return REFUSALS[action];
++  if (e instanceof HttpErrorResponse && e.status === 403 && action === 'settle') {
++    return 'The user who opened a claim cannot settle it.';
++  }
++  return 'The claim could not be changed.';
++}
++
+ // A person's claims, newest first, and the form that adds a claim for them or, once a claim's
+ // editor is opened, edits it.
+ @Component({
+@@ -40,6 +49,7 @@ const REFUSALS: Record<ClaimAction, string> = {
+           <span data-testid="claim-note">{{ c.note }}</span>
+           <span data-testid="claim-due">{{ dueOf(c) }}</span>
+           <span data-testid="claim-status">{{ c.status }}</span>
++          <span data-testid="claim-opened-by">{{ c.openedBy ?? '' }}</span>
+           <button type="button" data-testid="claim-open" (click)="act(c, 'open')"
+             [attr.aria-label]="'Open claim of ' + c.amount + ' on ' + c.date">Open</button>
+           <button type="button" data-testid="claim-settle" (click)="act(c, 'settle')"
+@@ -104,7 +114,7 @@ export class PersonClaims {
+     } catch (e) {
+       this.claimError.set({
+         id: c.id,
+-        message: e instanceof HttpErrorResponse && e.status === 409 ? REFUSALS[action] : 'The claim could not be changed.',
++        message: refusal(e, action),
+       });
+     }
+   }
+diff --git a/src/main/java/net/officefloor/hq/app/claim/Claim.java b/src/main/java/net/officefloor/hq/app/claim/Claim.java
+index ca7959a04..6617ffcf4 100644
+--- a/src/main/java/net/officefloor/hq/app/claim/Claim.java
++++ b/src/main/java/net/officefloor/hq/app/claim/Claim.java
+@@ -47,6 +47,10 @@ public class Claim {
+     @Column(name = "settled_due", precision = 14, scale = 2)
+     private BigDecimal settledDue;
+ 
++    /** Who opened the claim; null for a claim never opened. */
++    @Column(name = "opened_by")
++    private String openedBy;
++
+     protected Claim() {
+     }
+ 
+@@ -117,4 +121,12 @@ public class Claim {
+     public void setSettledDue(BigDecimal settledDue) {
+         this.settledDue = settledDue;
+     }
++
++    public String getOpenedBy() {
++        return openedBy;
++    }
++
++    public void setOpenedBy(String openedBy) {
++        this.openedBy = openedBy;
++    }
+ }
+diff --git a/src/main/java/net/officefloor/hq/app/claim/ClaimController.java b/src/main/java/net/officefloor/hq/app/claim/ClaimController.java
+index 9d34df374..531db8707 100644
+--- a/src/main/java/net/officefloor/hq/app/claim/ClaimController.java
++++ b/src/main/java/net/officefloor/hq/app/claim/ClaimController.java
+@@ -26,13 +26,14 @@ import org.springframework.web.bind.annotation.RestController;
+ public class ClaimController {
+ 
+     /** What the screen shows of a claim; the amount, and the due fixed when it was settled (null
+-     *  when there is none), as text with two decimals. */
++     *  when there is none), as text with two decimals; and who opened it (null when never opened). */
+     public record ClaimView(long id, long personId, String amount, LocalDate date, String note,
+-            ClaimStatus status, Integer number, String settledDue) {
++            ClaimStatus status, Integer number, String settledDue, String openedBy) {
+         static ClaimView of(Claim claim) {
+             return new ClaimView(claim.getId(), claim.getPersonId(), claim.getAmount().setScale(2).toPlainString(),
+                     claim.getDate(), claim.getNote(), claim.getStatus(), claim.getNumber(),
+-                    claim.getSettledDue() == null ? null : claim.getSettledDue().setScale(2).toPlainString());
++                    claim.getSettledDue() == null ? null : claim.getSettledDue().setScale(2).toPlainString(),
++                    claim.getOpenedBy());
+         }
+     }
+ 
+diff --git a/src/main/java/net/officefloor/hq/app/claim/ClaimService.java b/src/main/java/net/officefloor/hq/app/claim/ClaimService.java
+index 2e56b836a..9c825c1e8 100644
+--- a/src/main/java/net/officefloor/hq/app/claim/ClaimService.java
++++ b/src/main/java/net/officefloor/hq/app/claim/ClaimService.java
+@@ -63,7 +63,8 @@ public class ClaimService {
+         return saved;
+     }
+ 
+-    /** Move a claim to a new status; a change its current status does not allow is refused. */
++    /** Move a claim to a new status; a change its current status does not allow is refused, and so
++     *  is settling a claim by the user who opened it. */
+     @Transactional
+     public Claim changeStatus(String sheetId, String user, long claimId, ClaimStatus to) {
+         Claim claim = claims.lockByIdAndSheetId(claimId, sheetId)
+@@ -72,11 +73,16 @@ public class ClaimService {
+             throw new ResponseStatusException(HttpStatus.CONFLICT,
+                     "A " + claim.getStatus() + " claim cannot become " + to);
+         }
++        if (to == ClaimStatus.SETTLED && user.equals(claim.getOpenedBy())) {
++            throw new ResponseStatusException(HttpStatus.FORBIDDEN,
++                    "The user who opened a claim cannot settle it");
++        }
+         // The number recorded for a void claim is the one it had.
+         Integer number = claim.getNumber();
+         claim.setStatus(to);
+         if (to == ClaimStatus.OPEN) {
+             claim.setNumber(sheets.nextClaimNumber(sheetId));
++            claim.setOpenedBy(user);
+         } else if (to == ClaimStatus.VOID) {
+             claim.setNumber(null);
+         }
+diff --git a/src/main/resources/db/migration/V11__claim_opened_by.sql b/src/main/resources/db/migration/V11__claim_opened_by.sql
+new file mode 100644
+index 000000000..67bcc5af6
+--- /dev/null
++++ b/src/main/resources/db/migration/V11__claim_opened_by.sql
+@@ -0,0 +1,3 @@
++-- Who opened a claim: the signed-in user who moved it from DRAFT to OPEN. Null for a claim never
++-- opened. That user may not also settle it.
++ALTER TABLE claim ADD COLUMN opened_by VARCHAR(100);
