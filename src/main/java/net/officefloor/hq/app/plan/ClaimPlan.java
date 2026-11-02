@@ -78,6 +78,9 @@ public class ClaimPlan {
 
     public LocalDate getEnd() { return end; }
 
+    /** Change the amount the plan's claims are generated with from now on. */
+    public void changeAmount(BigDecimal amount) { this.amount = amount; }
+
     /**
      * The plan's dates up to its end and the day given: the start then every so many days, or its day
      * in every month from the start's month (the month's last day when shorter), none before the start.

@@ -8,7 +8,8 @@ import { Session } from '../../core/session';
 /**
  * A person's plan: an amount (two decimals) from its start, every so many days or monthly on a day of the month
  * (one set, the other null), up to its end; how many claims it has made, and its next five dates after the sheet's
- * today that a pause does not skip (comma and space separated), and whether it is paused now.
+ * today that a pause does not skip (comma and space separated), whether it is paused now, and its amount changes,
+ * oldest first.
  */
 export interface Plan {
   id: number;
@@ -21,6 +22,13 @@ export interface Plan {
   generated: number;
   nextDates: string;
   paused: boolean;
+  changes: PlanChange[];
+}
+
+/** A change of a plan's amount: the day it was changed and the new amount (two decimals). */
+export interface PlanChange {
+  on: string;
+  amount: string;
 }
 
 const AMOUNT = /^\d{1,12}(\.\d{1,2})?$/;
@@ -49,6 +57,17 @@ const DATE = /^\d{4}-\d{2}-\d{2}$/;
           paused <span data-testid="plan-paused">{{ pl.paused ? 'yes' : 'no' }}</span>
           <button type="button" data-testid="plan-pause" (click)="setPaused(pl, true)">Pause</button>
           <button type="button" data-testid="plan-resume" (click)="setPaused(pl, false)">Resume</button>
+          <label [for]="'plan-amount-' + pl.id">New amount</label>
+          <input [id]="'plan-amount-' + pl.id" data-testid="plan-amount" inputmode="decimal"
+            [value]="amounts()[pl.id] ?? ''" (input)="setAmount(pl.id, $any($event.target).value)" />
+          <button type="button" data-testid="plan-amount-save" (click)="saveAmount(pl)">Save amount</button>
+          @if (pl.changes.length) {
+            <ul [attr.aria-label]="'Amount changes of the plan from ' + pl.start">
+              @for (c of pl.changes; track $index) {
+                <li data-testid="plan-change-line">{{ c.on }} amount={{ c.amount }}</li>
+              }
+            </ul>
+          }
           @if (rowErrors()[pl.id]; as rowError) {
             <p role="alert" class="error" data-testid="plan-error">{{ rowError }}</p>
           }
@@ -83,13 +102,16 @@ export class Plans {
   readonly plans = input.required<Plan[]>();
   /** A plan added from the form. */
   readonly added = output<Plan>();
-  /** A plan paused or resumed on its row. */
+  /** A plan paused, resumed or given a new amount on its row. */
   readonly changed = output<Plan>();
 
   protected readonly error = signal('');
   /** The refusal shown on each plan's row, by plan id. */
   protected readonly rowErrors = signal<Record<number, string>>({});
   private readonly pausing = new Set<number>();
+  /** The new amount typed on each plan's row, by plan id. */
+  protected readonly amounts = signal<Record<number, string>>({});
+  private readonly saving = new Set<number>();
   protected readonly form = new FormGroup({
     amount: new FormControl('', { nonNullable: true }),
     start: new FormControl('', { nonNullable: true }),
@@ -106,6 +128,7 @@ export class Plans {
       this.session.loads();
       this.error.set('');
       this.rowErrors.set({});
+      this.amounts.set({});
       this.form.reset({ amount: '', start: '', every: '', day: '', end: '' }, { emitEvent: false });
     });
   }
@@ -139,6 +162,47 @@ export class Plans {
       );
     } finally {
       this.pausing.delete(plan.id);
+    }
+  }
+
+  protected setAmount(planId: number, value: string): void {
+    this.amounts.update((all) => ({ ...all, [planId]: value }));
+    this.setRowError(planId, '');
+  }
+
+  /** Change the plan's amount on the sheet's today; the claims generated from then on take it. */
+  protected async saveAmount(plan: Plan): Promise<void> {
+    if (this.saving.has(plan.id)) return;
+    this.setRowError(plan.id, '');
+    const sheet = this.session.sheetId();
+    if (!sheet) return;
+    const amount = (this.amounts()[plan.id] ?? '').trim();
+    if (!AMOUNT.test(amount)) {
+      this.setRowError(plan.id, 'Enter an amount of 0.00 or more with at most two decimals.');
+      return;
+    }
+    this.saving.add(plan.id);
+    try {
+      const updated = await firstValueFrom(
+        this.http.post<Plan>(
+          `/api/sheets/${encodeURIComponent(sheet)}/plans/${plan.id}/amount`,
+          { amount },
+          { headers: { 'X-User': this.session.user() ?? '' } },
+        ),
+      );
+      if (this.session.sheetId() !== sheet) return;
+      this.amounts.update((all) => ({ ...all, [plan.id]: '' }));
+      this.changed.emit(updated);
+    } catch (e) {
+      if (this.session.sheetId() !== sheet) return;
+      this.setRowError(
+        plan.id,
+        e instanceof HttpErrorResponse && e.status === 403
+          ? 'You may not change this sheet.'
+          : 'The amount was refused: enter 0.00 or more with at most two decimals.',
+      );
+    } finally {
+      this.saving.delete(plan.id);
     }
   }
 

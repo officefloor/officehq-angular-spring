@@ -33,7 +33,9 @@ import org.springframework.transaction.support.TransactionTemplate;
  * date the form refuses is skipped, and tried again by the next generate. Each claim is made in its
  * own transaction, so one refused leaves the others made. A plan can be paused and resumed (each on the
  * sheet's today): a plan date on or after the day it was paused and before the day it was resumed is
- * skipped, not postponed, so generate makes nothing for it and its next dates leave it out.
+ * skipped, not postponed, so generate makes nothing for it and its next dates leave it out. A plan's
+ * amount can be changed (on the sheet's today): the claims generated from then on take the new amount,
+ * those already generated keep theirs.
  */
 @Service
 public class ClaimPlanService {
@@ -41,6 +43,7 @@ public class ClaimPlanService {
     private final ClaimPlanRepository plans;
     private final ClaimPlanDateRepository dates;
     private final ClaimPlanPauseRepository pauses;
+    private final ClaimPlanChangeRepository changes;
     private final PersonRepository people;
     private final SheetRepository sheetRows;
     private final SheetService sheets;
@@ -50,13 +53,14 @@ public class ClaimPlanService {
     private final Audit audit;
 
     public ClaimPlanService(ClaimPlanRepository plans, ClaimPlanDateRepository dates, ClaimPlanPauseRepository pauses,
-            PersonRepository people,
+            ClaimPlanChangeRepository changes, PersonRepository people,
             SheetRepository sheetRows, SheetService sheets, ClaimService claims, SettingService settings,
             PlatformTransactionManager transactions, Audit audit) {
         this.settings = settings;
         this.plans = plans;
         this.dates = dates;
         this.pauses = pauses;
+        this.changes = changes;
         this.people = people;
         this.sheetRows = sheetRows;
         this.sheets = sheets;
@@ -87,6 +91,29 @@ public class ClaimPlanService {
             by.computeIfAbsent(p.getPlanId(), k -> new ArrayList<>()).add(p);
         }
         return by;
+    }
+
+    /** The amount changes of each of the sheet's plans, oldest first, by plan id (those never changed left out). */
+    @Transactional(readOnly = true)
+    public Map<Long, List<ClaimPlanChange>> changes(String sheetId) {
+        Map<Long, List<ClaimPlanChange>> by = new HashMap<>();
+        for (ClaimPlanChange c : changes.findBySheetIdOrderByIdAsc(sheetId)) {
+            by.computeIfAbsent(c.getPlanId(), k -> new ArrayList<>()).add(c);
+        }
+        return by;
+    }
+
+    /** Change the plan's amount on the sheet's today: the claims generated from then on take it. */
+    @Transactional
+    public ClaimPlan changeAmount(String sheetId, String user, Long planId, BigDecimal amount) {
+        sheetRows.findForUpdate(sheetId).orElseThrow(SheetNotFoundException::new);
+        ClaimPlan plan = planOf(sheetId, planId);
+        plan.changeAmount(amount);
+        plans.saveAndFlush(plan);
+        changes.saveAndFlush(new ClaimPlanChange(sheetId, planId, sheets.today(sheetId), amount));
+        audit.recordOnCommit("PLAN_CHANGED sheet=" + sheetId + " by=" + user.strip() + " name=" + nameOf(plan)
+                + " start=" + plan.getStart() + " amount=" + amount.toPlainString());
+        return plan;
     }
 
     /** Whether a plan date is skipped by one of the plan's pauses. */
