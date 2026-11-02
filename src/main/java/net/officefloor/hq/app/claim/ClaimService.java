@@ -224,6 +224,20 @@ public class ClaimService {
         return claims.saveAndFlush(claim);
     }
 
+    /**
+     * Settle a claim as of a date on or before the sheet's today, by the rules of settling one, its due
+     * fixed at the figure given (its due as it stood at the end of that date, see
+     * {@link ClaimSettleAsOfService}); its settle record names the date.
+     */
+    @Transactional
+    public Claim settleAsOf(String sheetId, String user, Long id, LocalDate on, BigDecimal figure) {
+        if (on.isAfter(sheets.today(sheetId))) throw new ClaimSettleDateException();
+        return changeStatus(sheetId, user, id, ClaimStatus.SETTLED, null, false, new AsOf(on, figure));
+    }
+
+    /** A settle as of a date: the date and the claim's due as it stood at its end. */
+    private record AsOf(LocalDate on, BigDecimal figure) {}
+
     /** Void a claim; while the sheet's list of void reasons is not empty, only with a reason on it. */
     @Transactional
     public Claim voidClaim(String sheetId, String user, Long id, String reason) {
@@ -256,6 +270,11 @@ public class ClaimService {
 
     private Claim changeStatus(String sheetId, String user, Long id, ClaimStatus next, String reason,
             boolean judgedOnOriginal) {
+        return changeStatus(sheetId, user, id, next, reason, judgedOnOriginal, null);
+    }
+
+    private Claim changeStatus(String sheetId, String user, Long id, ClaimStatus next, String reason,
+            boolean judgedOnOriginal, AsOf asOf) {
         // Opening takes the sheet's next number, locking the sheet first so the claim is read only
         // once no other open on the sheet is under way; a refusal rolls the number back.
         Sheet numbering = next == ClaimStatus.OPEN ? sheets.lockForNumbering(sheetId) : null;
@@ -283,8 +302,9 @@ public class ClaimService {
                 && settings.roleOf(sheetId, user) != Role.STEWARD) {
             throw new ClaimFlaggedException();
         }
-        // Settling freezes the late charge of the moment into the settled due.
-        BigDecimal settling = next == ClaimStatus.SETTLED ? chargedFigureOf(sheetId, person, claim) : null;
+        // Settling freezes the late charge of the moment (as of a date: of the end of that date) into the settled due.
+        BigDecimal settling = next != ClaimStatus.SETTLED ? null
+                : asOf != null ? asOf.figure() : chargedFigureOf(sheetId, person, claim);
         if (next == ClaimStatus.SETTLED && !judgedOnOriginal) refuseUnproved(sheetId, person, claim, settling);
         BigDecimal opening = next == ClaimStatus.OPEN ? chargedFigureOf(sheetId, person, claim) : null;
         if (next == ClaimStatus.OPEN) refuseUnnoted(sheetId, claim, opening);
@@ -327,6 +347,7 @@ public class ClaimService {
                 : voidingSettled ? " reversed=" + figureText(saved.getSettledDue())
                 : "";
         if (voidReason != null) due += " reason=" + voidReason;
+        if (next == ClaimStatus.SETTLED && asOf != null) due += " on=" + asOf.on();
         record(event, sheetId, user, person, saved, saved.getNumber(), due);
         if (next == ClaimStatus.SETTLED) notifyWatchers(sheetId, user, person, saved);
         rollup.recordChanges(sheetId, user, before);

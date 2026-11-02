@@ -416,7 +416,10 @@ function notEditable(status: ClaimStatus | undefined): string {
                   [attr.aria-label]="'Comment on claim of ' + c.amount + ' on ' + c.date">Add comment</button>
           <button type="button" data-testid="claim-open" (click)="act(c, 'open')"
                   [attr.aria-label]="'Open claim of ' + c.amount + ' on ' + c.date">Open</button>
-          <button type="button" data-testid="claim-settle" (click)="act(c, 'settle')"
+          <label [for]="fieldId('settle-on-' + c.id)">Settle as of</label>
+          <input [id]="fieldId('settle-on-' + c.id)" type="date" data-testid="claim-settle-date" #settleDate
+                 (input)="clearClaimError(c.id)" />
+          <button type="button" data-testid="claim-settle" (click)="act(c, 'settle', settleDate.value)"
                   [attr.aria-label]="'Settle claim of ' + c.amount + ' on ' + c.date">Settle</button>
           @if (session.voidReasons().length > 0) {
             <label [for]="fieldId('void-' + c.id)">Void reason</label>
@@ -698,9 +701,10 @@ export class Claims {
   }
 
   /**
-   * Open, settle or void a claim, approve or reject (with a reason) a PENDING one, re-settle a
-   * SETTLED one at its figure today, or (a steward, within 7 days of settling) void it, delete a DRAFT one
-   * or restore a DELETED one on the day it was deleted; a change its status does not allow is refused.
+   * Open, settle (as of a date on or before today, when one is given) or void a claim, approve or
+   * reject (with a reason) a PENDING one, re-settle a SETTLED one at its figure today, or (a steward,
+   * within 7 days of settling) void it, delete a DRAFT one or restore a DELETED one on the day it was
+   * deleted; a change its status does not allow is refused.
    */
   protected async act(c: Claim, action: ClaimAction, reason = ''): Promise<void> {
     this.claimError.set(null);
@@ -716,7 +720,9 @@ export class Claims {
       return;
     }
     const url = `/api/sheets/${encodeURIComponent(sheet)}/claims/${c.id}/${action}`;
-    const body = action === 'reject' || (action === 'void' && why !== '') ? { reason: why } : null;
+    const body = action === 'reject' || (action === 'void' && why !== '') ? { reason: why }
+      : action === 'settle' && why !== '' ? { on: why }
+      : null;
     try {
       const claim = await firstValueFrom(this.http.post<Claim>(url, body, { headers: this.headers() }));
       if (this.session.sheetId() !== sheet) return;
@@ -743,6 +749,8 @@ export class Claims {
         ? this.session.proofKinds()
           ? `A claim due above the proof threshold cannot be ${PAST[action]} without a proof of each kind (${this.session.proofKinds()}).`
           : `A claim due above the proof threshold cannot be ${PAST[action]} without a proof.`
+        : e instanceof HttpErrorResponse && e.status === 422 && action === 'settle'
+        ? 'A claim can be settled only as of a date on or before today on which it existed.'
         : e instanceof HttpErrorResponse && e.status === 422 && action === 'void'
         ? VOID_REASON_NEEDED
         : e instanceof HttpErrorResponse && e.status === 422 && action === 'open'

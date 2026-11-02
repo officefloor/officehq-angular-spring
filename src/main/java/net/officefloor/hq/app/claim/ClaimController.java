@@ -147,6 +147,9 @@ public class ClaimController {
     /** A comment's text: not blank. */
     public record CommentRequest(@NotBlank @Size(max = 500) String text) {}
 
+    /** The date a claim is settled as of: on or before the sheet's today (null: as of today). */
+    public record SettleRequest(LocalDate on) {}
+
     /** The date an OPEN claim is deferred until: after the sheet's today. */
     public record DeferRequest(@NotNull LocalDate until) {}
 
@@ -209,9 +212,12 @@ public class ClaimController {
     private final ClaimService service;
     private final ClaimBulkService bulk;
     private final ClaimPasteService paste;
+    private final ClaimSettleAsOfService settleAsOf;
 
-    public ClaimController(ClaimService service, ClaimBulkService bulk, ClaimPasteService paste) {
+    public ClaimController(ClaimService service, ClaimBulkService bulk, ClaimPasteService paste,
+            ClaimSettleAsOfService settleAsOf) {
         this.service = service;
+        this.settleAsOf = settleAsOf;
         this.bulk = bulk;
         this.paste = paste;
     }
@@ -365,7 +371,9 @@ public class ClaimController {
     public ClaimView settle(
             @PathVariable @Size(max = 100) @Pattern(regexp = "[A-Za-z0-9._-]+") String sheetId,
             @PathVariable Long id,
-            @RequestHeader("X-User") @NotBlank @Size(max = 100) String user) {
+            @RequestHeader("X-User") @NotBlank @Size(max = 100) String user,
+            @RequestBody(required = false) SettleRequest request) {
+        if (request != null && request.on() != null) return ClaimView.of(settleAsOf.settle(sheetId, user, id, request.on()));
         return ClaimView.of(service.changeStatus(sheetId, user, id, ClaimStatus.SETTLED));
     }
 
