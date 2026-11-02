@@ -62,4 +62,10 @@ public class PeriodController {
             @RequestHeader("X-User") @NotBlank @Size(max = 100) String user, @PathVariable long periodId) {
         return PeriodView.of(service.close(sheetId.trim(), user.trim(), periodId));
     }
+
+    @PostMapping("/{periodId}/reopen")
+    public PeriodView reopen(@PathVariable @NotBlank @Size(max = 100) String sheetId,
+            @RequestHeader("X-User") @NotBlank @Size(max = 100) String user, @PathVariable long periodId) {
+        return PeriodView.of(service.reopen(sheetId.trim(), user.trim(), periodId));
+    }
 }

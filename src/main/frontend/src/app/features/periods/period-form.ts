@@ -41,6 +41,8 @@ const DAY = /^\d{4}-\d{2}-\d{2}$/;
                   <button type="button" data-testid="period-close" (click)="close(p)"
                     [attr.aria-label]="'Close period ' + p.name">Close</button>
                 }
+                <button type="button" data-testid="period-reopen" (click)="reopen(p)"
+                  [attr.aria-label]="'Reopen period ' + p.name">Reopen</button>
                 @if (periodError()?.id === p.id) {
                   <p role="alert" data-testid="period-error">{{ periodError()?.message }}</p>
                 }
@@ -59,7 +61,7 @@ export class PeriodForm {
   readonly periods = input.required<Period[]>();
   /** Each period's due-total by its id. */
   readonly dueTotals = input.required<Map<number, string>>();
-  /** A period added through the form, or closed from its row. */
+  /** A period added through the form, or closed or reopened from its row. */
   readonly saved = output<Period>();
 
   protected readonly error = signal('');
@@ -83,6 +85,21 @@ export class PeriodForm {
       this.saved.emit(await this.api.close(p.id));
     } catch {
       this.periodError.set({ id: p.id, message: 'The period could not be closed.' });
+    }
+  }
+
+  protected async reopen(p: Period): Promise<void> {
+    this.periodError.set(null);
+    try {
+      this.saved.emit(await this.api.reopen(p.id));
+    } catch (e) {
+      this.periodError.set({
+        id: p.id,
+        message:
+          e instanceof HttpErrorResponse && e.status === 403
+            ? 'Only a steward may reopen a period.'
+            : 'The period could not be reopened.',
+      });
     }
   }
 

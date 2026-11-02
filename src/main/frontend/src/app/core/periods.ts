@@ -57,6 +57,17 @@ export class Periods {
     );
   }
 
+  /** Reopen a closed period, making its due-total live again; refused when the user is not a
+   *  steward or the period is not closed. */
+  reopen(id: number): Promise<Period> {
+    const sheetId = this.session.sheetId();
+    const user = this.session.user();
+    if (!sheetId || !user) throw new Error('no sheet loaded');
+    return firstValueFrom(
+      this.http.post<Period>(`${this.url(sheetId)}/${id}/reopen`, null, { headers: { 'X-User': user } }),
+    );
+  }
+
   private url(sheetId: string): string {
     return `/api/sheets/${encodeURIComponent(sheetId)}/periods`;
   }

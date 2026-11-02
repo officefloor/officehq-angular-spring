@@ -25,8 +25,8 @@ public interface PeriodRepository extends JpaRepository<Period, Long> {
             + " and p.fromDate <= :day and p.toDate >= :day")
     boolean closedOn(String sheetId, LocalDate day);
 
-    /** A period on a sheet, locked for the rest of the transaction so two closes of it happen one
-     *  after the other. */
+    /** A period on a sheet, locked for the rest of the transaction so two closes or reopens of
+     *  it happen one after the other. */
     @Lock(LockModeType.PESSIMISTIC_WRITE)
     @Query("select p from Period p where p.id = :id and p.sheetId = :sheetId")
     Optional<Period> lockByIdAndSheetId(Long id, String sheetId);
