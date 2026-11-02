@@ -1,0 +1,70 @@
+{
+  "checkpoint": 220,
+  "stack": {
+    "repo": "/home/daniel/officehq-angular-spring",
+    "origin": "git@github.com:officefloor/officehq-angular-spring.git",
+    "name": "officehq-angular-spring",
+    "base_ref": "base-empty",
+    "base_commit": "65cb8233ea38b2dfa6cfd18709e30cd18fdf3250"
+  },
+  "checkpoint_id": "cp220_plan-amount-reaches-drafts",
+  "phase": "late",
+  "type": "mutative",
+  "mutates": [
+    205,
+    212
+  ],
+  "replaced_tests": [
+    "cp205_plan-history.spec.ts::plan history",
+    "cp212_score-without-corrections.spec.ts::score without corrections scenario 2"
+  ],
+  "request": {
+    "spec": "Changing a plan's amount now also changes the amount of the claims it generated that are still\nDRAFT (each as the claim form would edit it, writing CLAIM_EDITED); claims in any other status keep\ntheirs.\n",
+    "prompt": "You are implementing ONE change to this application.\n\nFIRST read AGENTS.md \u2014 it states the working rules and how the app is tested, and sends you to\nDESIGN.md for the app's stack and conventions. Follow both.\n\nTHE CHANGE REQUEST:\nChanging a plan's amount now also changes the amount of the claims it generated that are still\nDRAFT (each as the claim form would edit it, writing CLAIM_EDITED); claims in any other status keep\ntheirs.\n\nYour work is verified by an automated Playwright UI test already installed under e2e/specs/.\nRead that spec: it declares the exact data-testid anchors, values, test data and any audit\nrecords it expects \u2014 match them. Run `bin/e2e` to build the app, start it, and run the test as\nyou work; iterate until it passes. Change whatever the request needs across the app \u2014 its stored\ndata, its server and its front end. Do NOT edit bin/build, bin/start, bin/stop, bin/e2e,\nAGENTS.md, CLAUDE.md, DESIGN.md, e2e/support/ or the test spec.\n"
+  },
+  "commit_sha": "9c4ce7bb8b760b5fe87175688cf0d2c3670e4417",
+  "reset_sha": "",
+  "preagent_sha": "524283b123799c85a5202b1e6b17e8665132bd09",
+  "prev_sha": "524283b123799c85a5202b1e6b17e8665132bd09",
+  "base_sha": "65cb8233ea38b2dfa6cfd18709e30cd18fdf3250",
+  "agent": {
+    "ok": true,
+    "cost_usd": 0.87834,
+    "input_tokens": 6,
+    "output_tokens": 707,
+    "cache_read_tokens": 124424,
+    "cache_creation_tokens": 1113,
+    "num_turns": 2,
+    "duration_ms": 11680,
+    "duration_api_ms": 133923,
+    "model": "claude-opus-5-5",
+    "session_id": "fedfd5f9-ee35-45b5-a013-3e4df712ddda",
+    "stop_reason": "success",
+    "result_text": "Changing a plan's amount now also updates the amount on any claims that plan generated that are still DRAFT. Claims in any other status keep their old amount. All 4 tests in `bin/e2e` pass.\n\n**What changed:**\n- **Stored data:** a new migration, `V117__claim_plan_date_claim.sql`, adds a `claim_id` column to `claim_plan_date`. Until now the app only recorded which dates a plan had covered, not which claim it made for each date. Generate now saves that claim id.\n- **Server:** after writing `PLAN_CHANGED`, `ClaimPlanService.changeAmount` looks at each claim the plan made, oldest date first. Each DRAFT one goes through the claim form's own edit with only the amount changed, so every form rule applies and it writes `CLAIM_EDITED`. When the plan makes its claims on another sheet, that's the sheet they're edited on.\n- **Front end:** after a plan amount change, the screen re-reads the claims so the new amounts show straight away, without reloading the sheet.\n\n**Decisions for you:**\n- **Older claims aren't updated.** Claims generated before this change have no claim id saved, so a later amount change leaves them alone. The plan's date and amount alone can't pick them out reliably, so I didn't backfill them.\n- **One blocked draft blocks the whole change.** If the claim form refuses to edit any one draft (for example, someone else has it open in the editor, or its period is closed), the whole plan amount change is refused and nothing is written. Skipping the blocked claim and editing the rest is the other option. The request doesn't say which it wants, and the tests don't cover it.",
+    "error": "",
+    "attempts": [
+      {
+        "ok": true,
+        "limit_reached": false,
+        "retryable": false,
+        "timed_out": false,
+        "cost_usd": 0.87834,
+        "num_turns": 2,
+        "duration_ms": 11680,
+        "duration_api_ms": 133923,
+        "error": ""
+      }
+    ]
+  },
+  "agent_stream_file": "cp220.agent.jsonl",
+  "agent_diff_file": "cp220.agent.diff",
+  "build_log_file": null,
+  "tests": {
+    "gated": false,
+    "queued": true
+  },
+  "probe": null,
+  "pinned_touched": [],
+  "acceptance_touched": [],
+  "impact_gate": null
+}
