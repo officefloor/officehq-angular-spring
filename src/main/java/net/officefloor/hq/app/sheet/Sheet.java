@@ -27,7 +27,7 @@ public class Sheet {
 
     /**
      * The keys of its dated settings; a grade's terms are {@code terms-<grade>}, its grace days {@code grace-<grade>},
-     * its proof threshold {@code proof-threshold-<grade>}.
+     * its proof threshold {@code proof-threshold-<grade>}, its clerk limit {@code clerk-limit-<grade>}.
      */
     public static final String FLOOR = "floor", LATE_PCT = "late-pct", TERMS = "terms", CLERK_LIMIT = "clerk-limit",
             CAP = "cap", PROOF_THRESHOLD = "proof-threshold", NOTE_THRESHOLD = "note-threshold", GRACE = "grace",
@@ -247,6 +247,15 @@ public class Sheet {
 
     /** The clerk limit in force today; null means no limit. */
     public BigDecimal getClerkLimit() { return decimalOn(CLERK_LIMIT, today, null); }
+
+    /** The grade's own clerk limit in force today; null means none (the sheet's applies). */
+    public BigDecimal gradeClerkLimit(String grade) { return decimalOn(CLERK_LIMIT + "-" + grade, today, null); }
+
+    /** The clerk limit in force today for a claim of the grade: the grade's own, else the sheet's; null means no limit. */
+    public BigDecimal clerkLimitFor(String grade) {
+        BigDecimal own = gradeClerkLimit(grade);
+        return own != null ? own : getClerkLimit();
+    }
 
     /** The floor in force on the date: 1.00 before any is recorded. */
     public BigDecimal floorOn(LocalDate date) { return decimalOn(FLOOR, date, START_FLOOR); }

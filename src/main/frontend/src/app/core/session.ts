@@ -33,7 +33,7 @@ export interface DatedValue {
   value: string | null;
 }
 
-/** The values recorded for each dated setting (floor, late-pct, terms, terms-<grade>, grace-<grade>, clerk-limit, cap,
+/** The values recorded for each dated setting (floor, late-pct, terms, terms-<grade>, grace-<grade>, clerk-limit, clerk-limit-<grade>, cap,
  * proof-threshold, proof-threshold-<grade>, note-threshold, review-threshold, rounding), by key. */
 export type Dated = Partial<Record<string, DatedValue[]>>;
 

@@ -87,6 +87,12 @@ public class SettingService {
         return sheets.findById(sheetId).orElseThrow(SheetNotFoundException::new).getClerkLimit();
     }
 
+    /** The clerk limit in force on the sheet's today for a claim of the grade: the grade's own, else the sheet's; null means no limit. */
+    @Transactional(readOnly = true)
+    public BigDecimal clerkLimitFor(String sheetId, String grade) {
+        return sheets.findById(sheetId).orElseThrow(SheetNotFoundException::new).clerkLimitFor(grade);
+    }
+
     /** The floor in force on the sheet's today. */
     @Transactional(readOnly = true)
     public BigDecimal floor(String sheetId) {
@@ -288,6 +294,17 @@ public class SettingService {
     public BigDecimal setClerkLimit(String sheetId, String user, BigDecimal limit, LocalDate from) {
         Sheet sheet = sheets.findForUpdate(sheetId).orElseThrow(SheetNotFoundException::new);
         record(sheet, user, Sheet.CLERK_LIMIT, limit == null ? null : limit.toPlainString(), from);
+        return limit;
+    }
+
+    /**
+     * Record the grade's clerk limit (null: none, the sheet's applies) from the date (null: the sheet's
+     * today); a limit already recorded from that date is replaced.
+     */
+    @Transactional
+    public BigDecimal setGradeClerkLimit(String sheetId, String user, String grade, BigDecimal limit, LocalDate from) {
+        Sheet sheet = sheets.findForUpdate(sheetId).orElseThrow(SheetNotFoundException::new);
+        record(sheet, user, Sheet.CLERK_LIMIT + "-" + grade, limit == null ? null : limit.toPlainString(), from);
         return limit;
     }
 

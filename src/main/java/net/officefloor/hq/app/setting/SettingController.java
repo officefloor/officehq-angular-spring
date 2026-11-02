@@ -364,6 +364,16 @@ public class SettingController {
         return get(sheetId, user);
     }
 
+    @PutMapping("/settings/clerk-limit/{grade}")
+    public SettingsView setGradeClerkLimit(
+            @PathVariable @Size(max = 100) @Pattern(regexp = "[A-Za-z0-9._-]+") String sheetId,
+            @PathVariable @Pattern(regexp = "[ABC]") String grade,
+            @RequestHeader("X-User") @NotBlank @Size(max = 100) String user,
+            @RequestBody @Valid ClerkLimitRequest request) {
+        service.setGradeClerkLimit(sheetId, user, grade, request.limitValue(), request.fromValue());
+        return get(sheetId, user);
+    }
+
     @PutMapping("/settings/floor")
     public SettingsView setFloor(
             @PathVariable @Size(max = 100) @Pattern(regexp = "[A-Za-z0-9._-]+") String sheetId,

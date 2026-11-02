@@ -102,7 +102,8 @@ const FROM = 'From (yyyy-mm-dd; blank: the sheet\'s today)';
 // not this one nor one that has this one as an ancestor, whose rates, then its parent's, up to three levels up, a grade with no
 // rate in force on a date takes), and the role given to each user name. Saving stores the settings whose
 // field was changed since the last save; the proof threshold of each grade (blank: none, the sheet's applies; dated) overrides the sheet's for a
-// claim whose person has that grade on its date; clearing the clerk limit, the policy date, the period numbering from, the cap, the proof threshold or the note threshold (Delete or
+// claim whose person has that grade on its date; the clerk limit of each grade (blank: none, the sheet's applies; dated) overrides the
+// sheet's for a claim whose person has that grade on the sheet's today, the one in force then; clearing the clerk limit, the policy date, the period numbering from, the cap, the proof threshold or the note threshold (Delete or
 // Backspace) counts as a change even when it was already blank. The clerk limit, the floor, the terms, each grade's terms, the late
 // percent, the cap, the proof threshold, the rounding mode (half-up or half-even; blank: none; a claim whose date has one in force
 // rounds its live figures by it, rather than by the policy date) and the note threshold (blank: none; a claim with an empty note whose due is above the one in force on its date
@@ -123,6 +124,16 @@ const FROM = 'From (yyyy-mm-dd; blank: the sheet\'s today)';
                (keydown.delete)="form.controls.clerkLimit.markAsDirty()" (keydown.backspace)="form.controls.clerkLimit.markAsDirty()" />
         <label for="setting-clerk-limit-from">Clerk limit {{ from }}</label>
         <input id="setting-clerk-limit-from" data-testid="setting-clerk-limit-from" formControlName="clerkLimitFrom" placeholder="yyyy-mm-dd" />
+        @for (g of grades; track g) {
+          <label [for]="'setting-clerk-limit-' + g">Clerk limit for grade {{ g }} (blank: the sheet's)</label>
+          <input [id]="'setting-clerk-limit-' + g" [attr.data-testid]="'setting-clerk-limit-' + g"
+                 [formControl]="gradeClerkLimitForm.controls[g]" inputmode="decimal"
+                 (keydown.delete)="gradeClerkLimitForm.controls[g].markAsDirty()"
+                 (keydown.backspace)="gradeClerkLimitForm.controls[g].markAsDirty()" />
+          <label [for]="'setting-clerk-limit-' + g + '-from'">Clerk limit for grade {{ g }} {{ from }}</label>
+          <input [id]="'setting-clerk-limit-' + g + '-from'" [attr.data-testid]="'setting-clerk-limit-' + g + '-from'"
+                 [formControl]="gradeClerkLimitFromForm.controls[g]" placeholder="yyyy-mm-dd" />
+        }
         <label for="setting-floor">Floor (least live due)</label>
         <input id="setting-floor" data-testid="setting-floor" formControlName="floor" inputmode="decimal" />
         <label for="setting-floor-from">Floor {{ from }}</label>
@@ -255,6 +266,10 @@ const FROM = 'From (yyyy-mm-dd; blank: the sheet\'s today)';
         }
       </form>
       <p>Clerk limit now: <span data-testid="setting-clerk-limit-current">{{ session.clerkLimit() ?? '' | figure }}</span></p>
+      @for (g of grades; track g) {
+        <p>Clerk limit for grade {{ g }} now (blank: the sheet's):
+          <span [attr.data-testid]="'setting-clerk-limit-' + g + '-current'">{{ gradeClerkLimit()[g] ?? '' | figure }}</span></p>
+      }
       <p>Floor now: <span data-testid="setting-floor-current">{{ session.floor() | figure }}</span></p>
       <p>Terms now: <span data-testid="setting-terms-current">{{ session.terms() }}</span></p>
       @for (g of grades; track g) {
@@ -370,6 +385,16 @@ export class Settings {
     }
     return byGrade;
   });
+  /** The clerk limit in force on the sheet's today for each grade that has its own then. */
+  protected readonly gradeClerkLimit = computed(() => {
+    const today = this.session.today();
+    const byGrade: Partial<Record<Grade, string>> = {};
+    for (const g of GRADES) {
+      const limit = this.session.valueOn(`clerk-limit-${g}`, today);
+      if (limit !== null) byGrade[g] = limit;
+    }
+    return byGrade;
+  });
   /** The proof threshold in force on the sheet's today for each grade that has its own then. */
   protected readonly gradeProof = computed(() => {
     const today = this.session.today();
@@ -447,6 +472,16 @@ export class Settings {
     B: new FormControl('', { nonNullable: true }),
     C: new FormControl('', { nonNullable: true }),
   });
+  protected readonly gradeClerkLimitForm = new FormGroup({
+    A: new FormControl('', { nonNullable: true }),
+    B: new FormControl('', { nonNullable: true }),
+    C: new FormControl('', { nonNullable: true }),
+  });
+  protected readonly gradeClerkLimitFromForm = new FormGroup({
+    A: new FormControl('', { nonNullable: true }),
+    B: new FormControl('', { nonNullable: true }),
+    C: new FormControl('', { nonNullable: true }),
+  });
   protected readonly gradeProofForm = new FormGroup({
     A: new FormControl('', { nonNullable: true }),
     B: new FormControl('', { nonNullable: true }),
@@ -481,6 +516,8 @@ export class Settings {
     this.gradeTermsFromForm.valueChanges.subscribe(() => this.error.set(''));
     this.gradeGraceForm.valueChanges.subscribe(() => this.error.set(''));
     this.gradeGraceFromForm.valueChanges.subscribe(() => this.error.set(''));
+    this.gradeClerkLimitForm.valueChanges.subscribe(() => this.error.set(''));
+    this.gradeClerkLimitFromForm.valueChanges.subscribe(() => this.error.set(''));
     this.gradeProofForm.valueChanges.subscribe(() => this.error.set(''));
     this.gradeProofFromForm.valueChanges.subscribe(() => this.error.set(''));
     this.permForm.valueChanges.subscribe(() => this.error.set(''));
@@ -584,6 +621,7 @@ export class Settings {
       clerkLimit.dirty ? clerkLimitFrom : '', floor.dirty ? floorFrom : '', terms.dirty ? termsFrom : '',
       latePct.dirty ? latePctFrom : '', cap.dirty ? capFrom : '', proofThreshold.dirty ? proofThresholdFrom : '',
       noteThreshold.dirty ? noteThresholdFrom : '', reviewThreshold.dirty ? reviewThresholdFrom : '', rounding.dirty ? roundingFrom : '',
+      ...GRADES.filter((g) => this.gradeClerkLimitForm.controls[g].dirty).map((g) => this.gradeClerkLimitFromForm.controls[g].value),
       ...GRADES.filter((g) => this.gradeTermsForm.controls[g].dirty).map((g) => this.gradeTermsFromForm.controls[g].value),
       ...GRADES.filter((g) => this.gradeGraceForm.controls[g].dirty).map((g) => this.gradeGraceFromForm.controls[g].value),
       ...GRADES.filter((g) => this.gradeProofForm.controls[g].dirty).map((g) => this.gradeProofFromForm.controls[g].value),
@@ -594,6 +632,11 @@ export class Settings {
     }
     if (clerkLimit.dirty && value && !/^\d{1,12}(\.\d{1,2})?$/.test(value)) {
       this.error.set('Enter a clerk limit of 0.00 or more, with at most two decimals, or leave it blank for none.');
+      return;
+    }
+    const gradeClerkLimitChanged = GRADES.filter((g) => this.gradeClerkLimitForm.controls[g].dirty);
+    if (gradeClerkLimitChanged.some((g) => !/^(\d{1,12}(\.\d{1,2})?)?$/.test(this.gradeClerkLimitForm.controls[g].value.trim()))) {
+      this.error.set('Enter a grade\'s clerk limit of 0.00 or more, with at most two decimals, or leave it blank for the sheet\'s.');
       return;
     }
     if (floor.dirty && !/^\d{1,12}(\.\d{1,2})?$/.test(floorValue)) {
@@ -704,6 +747,15 @@ export class Settings {
           this.http.put<SettingsView>(`${this.base(sheet)}/settings/clerk-limit`, { value: value || null, from: dated(clerkLimitFrom) }, { headers: this.headers() }),
         );
         clerkLimit.markAsPristine();
+        if (this.session.sheetId() === sheet) this.show(view);
+      }
+      for (const g of gradeClerkLimitChanged) {
+        const control = this.gradeClerkLimitForm.controls[g];
+        const view = await firstValueFrom(
+          this.http.put<SettingsView>(`${this.base(sheet)}/settings/clerk-limit/${g}`,
+            { value: control.value.trim() || null, from: dated(this.gradeClerkLimitFromForm.controls[g].value) }, { headers: this.headers() }),
+        );
+        control.markAsPristine();
         if (this.session.sheetId() === sheet) this.show(view);
       }
       if (floor.dirty) {
