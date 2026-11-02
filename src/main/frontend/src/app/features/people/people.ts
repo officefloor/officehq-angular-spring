@@ -262,6 +262,7 @@ function trimmedSum(figures: number[]): number {
       <p>My overdue total: <strong data-testid="my-overdue-total">{{ (me() ? money(overdueOf(me()!).cents) : '') | figure }}</strong></p>
       <p>My crew total: <strong data-testid="my-crew-due-total">{{ myCrewDueTotal() | figure }}</strong></p>
       <p>My reviews: <strong data-testid="my-reviews-count">{{ myReviewsCount() }}</strong></p>
+      <p>Watched total: <strong data-testid="watched-due-total">{{ watchedDueTotal() | figure }}</strong></p>
     </header>
     <section aria-labelledby="snapshot-compare-heading">
       <h2 id="snapshot-compare-heading">Compare snapshots</h2>
@@ -1105,6 +1106,10 @@ export class People {
     const led = me ? this.session.crewTotals().filter((c) => c.leadId === me.id) : [];
     return led.length ? money(led.reduce((sum, c) => sum + c.cents, 0)) : '';
   });
+  /** The due-totals of the people the signed-in user watches, added up, skipping those that are n/a; 0.00 when they watch no one. */
+  protected readonly watchedDueTotal = computed(() =>
+    money(this.people().filter((p) => p.watched).reduce((sum, p) => sum + (this.dueTotalCents(p) ?? 0), 0)),
+  );
   /** Everyone's due-total added up, skipping those whose due-total is n/a, not trimmed. */
   protected readonly classicDueTotal = computed(() =>
     money(this.people().reduce((sum, p) => sum + (this.dueTotalCents(p) ?? 0), 0)),
