@@ -1,0 +1,92 @@
+diff --git a/src/main/frontend/src/app/features/people/people.ts b/src/main/frontend/src/app/features/people/people.ts
+index 0271bdf40..073c4e2b1 100644
+--- a/src/main/frontend/src/app/features/people/people.ts
++++ b/src/main/frontend/src/app/features/people/people.ts
+@@ -1,6 +1,6 @@
+ import { HttpClient, HttpErrorResponse } from '@angular/common/http';
+ import { Component, computed, effect, inject, signal } from '@angular/core';
+-import { FigurePipe } from '../../core/figure';
++import { FigurePipe, formatFigure } from '../../core/figure';
+ import { FormControl, FormGroup, ReactiveFormsModule } from '@angular/forms';
+ import { firstValueFrom } from 'rxjs';
+ import { PEOPLE_COLUMNS, PeopleColumn, Session } from '../../core/session';
+@@ -234,6 +234,20 @@ function trimmedSum(figures: number[]): number {
+       <p>My overdue total: <strong data-testid="my-overdue-total">{{ (me() ? money(overdueOf(me()!).cents) : '') | figure }}</strong></p>
+       <p>My crew total: <strong data-testid="my-crew-due-total">{{ myCrewDueTotal() | figure }}</strong></p>
+     </header>
++    <section aria-labelledby="snapshot-compare-heading">
++      <h2 id="snapshot-compare-heading">Compare snapshots</h2>
++      <label for="snapshot-from">From</label>
++      <input id="snapshot-from" type="date" data-testid="snapshot-from" #snapshotFrom />
++      <label for="snapshot-to">To (blank: now)</label>
++      <input id="snapshot-to" type="date" data-testid="snapshot-to" #snapshotTo />
++      <button type="button" data-testid="snapshot-compare"
++              (click)="compareSnapshots(snapshotFrom.value, snapshotTo.value)">Compare</button>
++      <ul>
++        @for (l of snapshotComparison(); track $index) {
++          <li data-testid="snapshot-line">{{ snapshotLine(l) }}</li>
++        }
++      </ul>
++    </section>
+     <section aria-labelledby="dash-heading">
+       <h2 id="dash-heading">Steward's dashboard</h2>
+       <p>Pending: <strong data-testid="dash-pending-count">{{ dashboard()?.pending ?? '' }}</strong></p>
+@@ -800,6 +814,26 @@ export class People {
+ 
+   protected readonly grades = GRADES;
+   protected readonly people = signal<Person[]>([]);
++  /** The dates of the last snapshot comparison asked for; to is blank for now; null until one is asked. */
++  private readonly snapshotDates = signal<{ from: string; to: string } | null>(null);
++  /**
++   * Per person on screen, in list order: their due-total in the SNAPSHOT written when the sheet's today
++   * was changed away from the from-date, and in the one for the to-date (their due-total now when the
++   * to-date is blank); blank when no such snapshot was written, the last one written when several were.
++   */
++  protected readonly snapshotComparison = computed(() => {
++    const dates = this.snapshotDates();
++    if (dates === null) return [];
++    const on = (p: Person, day: string): string => {
++      const found = p.snapshots.filter((s) => s.day === day).at(-1);
++      return found === undefined ? '' : (found.dueTotal ?? NA);
++    };
++    return this.sorted().map((p) => ({
++      name: p.name,
++      then: on(p, dates.from),
++      now: dates.to === '' ? this.dueTotalOf(p) : on(p, dates.to),
++    }));
++  });
+   /** The sheet's descendants' figures, as the store held them when the sheet was loaded (as of the user's date, while one is set). */
+   private readonly descendants = signal<Descendants | null>(null);
+   /**
+@@ -1394,7 +1428,7 @@ export class People {
+     }
+   }
+ 
+-  /** Re-read the sheet before an export; false when another sheet was loaded meanwhile. */
++  /** Re-read the sheet before an export or a comparison; false when another sheet was loaded meanwhile. */
+   private async reloadForExport(): Promise<boolean> {
+     const sheet = this.session.sheetId();
+     if (!sheet) return false;
+@@ -1501,6 +1535,22 @@ export class People {
+     return this.agedByPerson().get(p.id) ?? { upTo30: 0, upTo60: 0, over60: 0 };
+   }
+ 
++  /**
++   * Compares the snapshots of the two dates; a blank to-date compares with now. Re-read from the store
++   * first, so every person's snapshots and due-total are as the store holds them; the old lines are gone meanwhile.
++   */
++  protected async compareSnapshots(from: string, to: string): Promise<void> {
++    this.snapshotDates.set(null);
++    if (!(await this.reloadForExport())) return;
++    this.snapshotDates.set({ from, to });
++  }
++
++  /** A comparison line, its figures in the user's locale; an empty figure leaves no trailing space. */
++  protected snapshotLine(l: { name: string; then: string; now: string }): string {
++    const locale = this.session.locale();
++    return [l.name, formatFigure(l.then, locale), formatFigure(l.now, locale)].join(' ').trim();
++  }
++
+   /** Their due-total, or n/a. */
+   protected dueTotalOf(p: Person): string {
+     const total = this.dueTotalCents(p);

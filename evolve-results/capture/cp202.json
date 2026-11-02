@@ -1,0 +1,64 @@
+{
+  "checkpoint": 202,
+  "stack": {
+    "repo": "/home/daniel/officehq-angular-spring",
+    "origin": "git@github.com:officefloor/officehq-angular-spring.git",
+    "name": "officehq-angular-spring",
+    "base_ref": "base-empty",
+    "base_commit": "65cb8233ea38b2dfa6cfd18709e30cd18fdf3250"
+  },
+  "checkpoint_id": "cp202_snapshot-comparison",
+  "phase": "late",
+  "type": "additive",
+  "mutates": [],
+  "replaced_tests": [],
+  "request": {
+    "spec": "Two snapshot dates can be compared: a from-date, a to-date and a button list, per person in list\norder, <name> <then> <now>: `then` is the due-total of the SNAPSHOT written when the sheet's today\nwas changed away from the from-date (empty when there is none), `now` is likewise the snapshot for\nthe to-date, or the person's due-total now when the to-date is blank. Each line is shown trimmed: an\nempty figure leaves no trailing space.\n",
+    "prompt": "You are implementing ONE change to this application.\n\nFIRST read AGENTS.md \u2014 it states the working rules and how the app is tested, and sends you to\nDESIGN.md for the app's stack and conventions. Follow both.\n\nTHE CHANGE REQUEST:\nTwo snapshot dates can be compared: a from-date, a to-date and a button list, per person in list\norder, <name> <then> <now>: `then` is the due-total of the SNAPSHOT written when the sheet's today\nwas changed away from the from-date (empty when there is none), `now` is likewise the snapshot for\nthe to-date, or the person's due-total now when the to-date is blank. Each line is shown trimmed: an\nempty figure leaves no trailing space.\n\nYour work is verified by an automated Playwright UI test already installed under e2e/specs/.\nRead that spec: it declares the exact data-testid anchors, values, test data and any audit\nrecords it expects \u2014 match them. Run `bin/e2e` to build the app, start it, and run the test as\nyou work; iterate until it passes. Change whatever the request needs across the app \u2014 its stored\ndata, its server and its front end. Do NOT edit bin/build, bin/start, bin/stop, bin/e2e,\nAGENTS.md, CLAUDE.md, DESIGN.md, e2e/support/ or the test spec.\n"
+  },
+  "commit_sha": "cdfaeabc60bc5999735e634f251c09c64efb71d7",
+  "reset_sha": "",
+  "preagent_sha": "31c5b014ed8201311fadd906a87ed3afb18c3066",
+  "prev_sha": "31c5b014ed8201311fadd906a87ed3afb18c3066",
+  "base_sha": "65cb8233ea38b2dfa6cfd18709e30cd18fdf3250",
+  "agent": {
+    "ok": true,
+    "cost_usd": 0.634043,
+    "input_tokens": 18,
+    "output_tokens": 2286,
+    "cache_read_tokens": 383446,
+    "cache_creation_tokens": 6065,
+    "num_turns": 8,
+    "duration_ms": 241597,
+    "duration_api_ms": 78732,
+    "model": "claude-opus-5-5",
+    "session_id": "5dd34e67-a951-4bfc-9520-6442bb00d5ee",
+    "stop_reason": "success",
+    "result_text": "The snapshot comparison is in place, and all 4 tests in `bin/e2e` pass.\n\nThe server already saved each person's due-total as a snapshot whenever the sheet's today was changed, and sent those snapshots to the front end. So the database and server didn't need changing. All the work is in `src/main/frontend/src/app/features/people/people.ts`:\n\n- **New section, \"Compare snapshots\":** a from-date (`snapshot-from`), a to-date (`snapshot-to`), a Compare button (`snapshot-compare`) and one `snapshot-line` per person.\n- **Each line** reads `<name> <then> <now>`, with people in the order the list shows them:\n  - `then` is the snapshot taken when today was changed away from the from-date, or empty if there is none.\n  - `now` is the same for the to-date, or the person's current due-total when the to-date is blank.\n  - Lines are trimmed, so an empty figure leaves no trailing space.\n  - A due-total that was saved as n/a shows as `n/a`.\n- **Compare reloads the sheet first.** My first version used the data already on screen and failed: Ben's snapshots were missing because the screen hadn't reloaded since today changed. It now reloads, as the CSV export does, and clears the old lines while it runs.\n\nThree choices the request didn't settle:\n- If today was changed away from the same date more than once, the most recent snapshot is used.\n- \"List order\" follows the screen, so if the list is sorted or retired people are hidden, the comparison matches that.\n- Figures follow the user's locale setting, like the rest of the screen (for example `1,00` under German).\n\nOne existing problem is unchanged: after today changes, the snapshot lines under each person in the list stay out of date until the sheet is reloaded.",
+    "error": "",
+    "attempts": [
+      {
+        "ok": true,
+        "limit_reached": false,
+        "retryable": false,
+        "timed_out": false,
+        "cost_usd": 0.634043,
+        "num_turns": 8,
+        "duration_ms": 241597,
+        "duration_api_ms": 78732,
+        "error": ""
+      }
+    ]
+  },
+  "agent_stream_file": "cp202.agent.jsonl",
+  "agent_diff_file": "cp202.agent.diff",
+  "build_log_file": null,
+  "tests": {
+    "gated": false,
+    "queued": true
+  },
+  "probe": null,
+  "pinned_touched": [],
+  "acceptance_touched": [],
+  "impact_gate": null
+}
