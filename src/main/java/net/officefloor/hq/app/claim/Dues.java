@@ -34,6 +34,13 @@ public class Dues {
         return figure == null ? null : figure.add(lateCharge(sheetId, claim, figure));
     }
 
+    /** The figure a claim would have today as an open claim bound by no statement: its live due with
+     *  the late charge on top while it is overdue; null when there is none. */
+    public BigDecimal openFigure(String sheetId, Person person, Claim claim) {
+        BigDecimal figure = due(sheetId, person, claim);
+        return figure == null ? null : figure.add(lateCharge(sheetId, claim, figure, true));
+    }
+
     /** The figure a statement binds a claim to: the one its person's last statement bound it to, or
      *  else its live due (a pending claim is not bound by a statement while it is pending); never
      *  the late charge, which keeps following the sheet's today. Null when there is none, or when
@@ -65,8 +72,13 @@ public class Dues {
      *  made, before today; a correction has none): the late percent of its figure for every full 30 days it is overdue,
      *  rounded to two decimals by the claim's {@link #rounding}; 0.00 when it is not overdue. */
     private BigDecimal lateCharge(String sheetId, Claim claim, BigDecimal figure) {
+        return lateCharge(sheetId, claim, figure, claim.getStatus().isOpen());
+    }
+
+    /** The late charge on a claim taken as open or not, as {@link #lateCharge(String, Claim, BigDecimal)}. */
+    private BigDecimal lateCharge(String sheetId, Claim claim, BigDecimal figure, boolean open) {
         BigDecimal none = BigDecimal.ZERO.setScale(2);
-        if (!claim.getStatus().isOpen() || claim.isCorrection()) {
+        if (!open || claim.isCorrection()) {
             return none;
         }
         long periods = ChronoUnit.DAYS.between(claim.getDueBy(), sheets.today(sheetId)) / 30;

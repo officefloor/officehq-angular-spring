@@ -11,7 +11,7 @@ import { Session } from './session';
 export type ClaimStatus = 'DRAFT' | 'OPEN' | 'PENDING' | 'SETTLED' | 'VOID';
 
 /** A change of status a claim can be asked for. */
-export type ClaimAction = 'open' | 'settle' | 'void' | 'approve' | 'reject';
+export type ClaimAction = 'open' | 'settle' | 'resettle' | 'void' | 'approve' | 'reject';
 
 /** Whether a claim is open: OPEN, or PENDING approval of its settle. */
 export function isOpen(c: Claim): boolean {

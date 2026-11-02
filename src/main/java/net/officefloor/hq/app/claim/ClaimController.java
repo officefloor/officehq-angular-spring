@@ -152,6 +152,13 @@ public class ClaimController {
         return new BulkSettled(outcome.done(), outcome.refused());
     }
 
+    @PostMapping("/claims/{claimId}/resettle")
+    public ClaimView resettle(@PathVariable @NotBlank @Size(max = 100) String sheetId,
+            @PathVariable long claimId,
+            @RequestHeader("X-User") @NotBlank @Size(max = 100) String user) {
+        return ClaimView.of(service.resettle(sheetId.trim(), user.trim(), claimId));
+    }
+
     /** The reason a steward gives for rejecting a pending claim. */
     public record RejectForm(@NotBlank @Size(max = 500) String reason) {
     }

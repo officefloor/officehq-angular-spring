@@ -178,6 +178,32 @@ public class ClaimService {
         });
     }
 
+    /** Re-settle a settled claim: its due is fixed again at the figure it would have today as an open
+     *  claim bound by no statement (today's rates, grades, floor and late charge). Refused unless the
+     *  claim is settled, the user is a steward, and the claim's period is open. */
+    @Transactional
+    public Claim resettle(String sheetId, String user, long claimId) {
+        Claim claim = lock(sheetId, claimId);
+        refuseClosed(sheetId, claim.getDate());
+        if (claim.getStatus() != ClaimStatus.SETTLED) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT, "Only a SETTLED claim can be re-settled");
+        }
+        if (!SheetRole.STEWARD.equals(roles.roleOf(sheetId, user))) {
+            throw new ResponseStatusException(HttpStatus.FORBIDDEN, "Only a steward can re-settle a claim");
+        }
+        return rollup.tracking(sheetId, user, () -> {
+            Person person = person(sheetId, claim.getPersonId());
+            BigDecimal old = dues.figure(sheetId, person, claim);
+            BigDecimal now = dues.openFigure(sheetId, person, claim);
+            claim.setSettledDue(now);
+            claim.logStatus(user, sheets.today(sheetId), now);
+            Claim saved = claims.saveAndFlush(claim);
+            audit.recordOnCommit(record("CLAIM_RESETTLED", sheetId, user, person, saved)
+                    + " old=" + dueText(old) + " new=" + dueText(now));
+            return saved;
+        });
+    }
+
     /** Reject a pending claim for a reason: it is open again, bound again by its person's last
      *  statement if that statement included it. Refused unless the claim is pending, the user is a
      *  steward, and the claim's period is open. */

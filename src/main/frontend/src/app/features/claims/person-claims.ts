@@ -10,6 +10,7 @@ import { Rate } from '../../core/rates';
 const REFUSALS: Record<ClaimAction, string> = {
   open: 'Only a draft claim can be opened.',
   settle: 'Only an open claim can be settled.',
+  resettle: 'Only a settled claim can be re-settled.',
   void: 'Only a draft, open or pending claim can be voided.',
   approve: 'Only a pending claim can be approved.',
   reject: 'Only a pending claim can be rejected.',
@@ -29,6 +30,9 @@ function refusal(e: unknown, action: ClaimAction): string {
   if (e instanceof HttpErrorResponse && e.status === 409) return REFUSALS[action];
   if (e instanceof HttpErrorResponse && e.status === 403 && action === 'settle') {
     return 'The user who opened a claim cannot settle it.';
+  }
+  if (e instanceof HttpErrorResponse && e.status === 403 && action === 'resettle') {
+    return 'Only a steward can re-settle a claim.';
   }
   if (e instanceof HttpErrorResponse && e.status === 403 && (action === 'approve' || action === 'reject')) {
     return action === 'approve' ? 'Only a steward who did not open the claim can approve it.'
@@ -98,6 +102,8 @@ function reassignRefusal(e: unknown): string {
             [attr.aria-label]="'Open claim of ' + c.amount + ' on ' + c.date">Open</button>
           <button type="button" data-testid="claim-settle" (click)="act(c, 'settle')"
             [attr.aria-label]="'Settle claim of ' + c.amount + ' on ' + c.date">Settle</button>
+          <button type="button" data-testid="claim-resettle" (click)="act(c, 'resettle')"
+            [attr.aria-label]="'Re-settle claim of ' + c.amount + ' on ' + c.date">Re-settle</button>
           <button type="button" data-testid="claim-void" (click)="act(c, 'void')"
             [attr.aria-label]="'Void claim of ' + c.amount + ' on ' + c.date">Void</button>
           <button type="button" data-testid="claim-approve" (click)="act(c, 'approve')"
