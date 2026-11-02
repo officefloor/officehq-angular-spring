@@ -112,6 +112,10 @@ public class Sheet {
     @Column(name = "score_high")
     private Integer scoreHigh;
 
+    /** While on, changing the sheet's today audits a SCORE line per person (not dated); false means blank. */
+    @Column(name = "score_log", nullable = false)
+    private boolean scoreLog;
+
     /** The month (1 to 12) a fiscal year starts in (not dated); 1 unless set. */
     @Column(name = "fiscal_start_month", nullable = false)
     private int fiscalStartMonth = 1;
@@ -361,6 +365,10 @@ public class Sheet {
     public Integer getScoreHigh() { return scoreHigh; }
 
     public void setScoreHigh(Integer scoreHigh) { this.scoreHigh = scoreHigh; }
+
+    public boolean isScoreLog() { return scoreLog; }
+
+    public void setScoreLog(boolean scoreLog) { this.scoreLog = scoreLog; }
 
     public void setEscalateAfter(Integer escalateAfter) { this.escalateAfter = escalateAfter; }
     public int getFiscalStartMonth() { return fiscalStartMonth; }

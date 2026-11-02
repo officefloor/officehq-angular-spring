@@ -88,6 +88,8 @@ interface SettingsView {
   /** While both are set, a person whose score is at or above the high one is HIGH, at or above the mid one MID, else LOW; null when blank. */
   scoreMid: number | null;
   scoreHigh: number | null;
+  /** While on, changing the sheet's today audits a SCORE line per person (not dated): 'on' or blank. */
+  scoreLog: string;
 }
 
 /** A from-date field (yyyy-mm-dd) for a dated setting; blank: the sheet's today. */
@@ -186,6 +188,10 @@ const FROM = 'From (yyyy-mm-dd; blank: the sheet\'s today)';
         <input id="setting-score-high" data-testid="setting-score-high" formControlName="scoreHigh" inputmode="numeric"
                (keydown.delete)="form.controls.scoreHigh.markAsDirty()"
                (keydown.backspace)="form.controls.scoreHigh.markAsDirty()" />
+        <label for="setting-score-log">Score log (on: changing the sheet's today logs each person's score; blank: off)</label>
+        <input id="setting-score-log" data-testid="setting-score-log" formControlName="scoreLog"
+               (keydown.delete)="form.controls.scoreLog.markAsDirty()"
+               (keydown.backspace)="form.controls.scoreLog.markAsDirty()" />
         <label for="setting-fiscal-start-month">Fiscal year start month (1 to 12)</label>
         <input id="setting-fiscal-start-month" data-testid="setting-fiscal-start-month" formControlName="fiscalStartMonth"
                inputmode="numeric"
@@ -296,6 +302,7 @@ const FROM = 'From (yyyy-mm-dd; blank: the sheet\'s today)';
       <p>Review SLA now: <span data-testid="setting-review-sla-current">{{ session.reviewSla() ?? '' }}</span></p>
       <p>Score mid now: <span data-testid="setting-score-mid-current">{{ session.scoreMid() ?? '' }}</span></p>
       <p>Score high now: <span data-testid="setting-score-high-current">{{ session.scoreHigh() ?? '' }}</span></p>
+      <p>Score log now: <span data-testid="setting-score-log-current">{{ scoreLog() }}</span></p>
       <p>Fiscal year start month now: <span data-testid="setting-fiscal-start-month-current">{{ session.fiscalStartMonth() }}</span></p>
       @for (g of grades; track g) {
         <p>Grace days for grade {{ g }} now (blank: none):
@@ -422,6 +429,7 @@ export class Settings {
   protected readonly periodNumberingFrom = signal<string | null>(null);
   protected readonly graceDays = signal<number | null>(null);
   protected readonly escalateAfter = signal<number | null>(null);
+  protected readonly scoreLog = signal('');
   protected readonly entryDate = signal<string | null>(null);
   protected readonly pot = signal<string | null>(null);
   protected readonly alertThreshold = signal<string | null>(null);
@@ -446,6 +454,7 @@ export class Settings {
     reviewSla: new FormControl('', { nonNullable: true }),
     scoreMid: new FormControl('', { nonNullable: true }),
     scoreHigh: new FormControl('', { nonNullable: true }),
+    scoreLog: new FormControl('', { nonNullable: true }),
     fiscalStartMonth: new FormControl('', { nonNullable: true }),
     entryDate: new FormControl('', { nonNullable: true }),
     cap: new FormControl('', { nonNullable: true }),
@@ -548,6 +557,7 @@ export class Settings {
       this.session.reviewSla.set(null);
       this.session.scoreMid.set(null);
       this.session.scoreHigh.set(null);
+      this.scoreLog.set('');
       this.session.fiscalStartMonth.set(1);
       this.entryDate.set(null);
       this.pot.set(null);
@@ -595,6 +605,7 @@ export class Settings {
     this.session.reviewSla.set(view.reviewSla);
     this.session.scoreMid.set(view.scoreMid);
     this.session.scoreHigh.set(view.scoreHigh);
+    this.scoreLog.set(view.scoreLog);
     this.session.fiscalStartMonth.set(view.fiscalStartMonth);
     this.entryDate.set(view.entryDate);
     this.pot.set(view.pot);
@@ -613,7 +624,7 @@ export class Settings {
     this.error.set('');
     const sheet = this.session.sheetId();
     if (!sheet) return;
-    const { clerkLimit, floor, terms, latePct, policyDate, periodNumberingFrom, graceDays, escalateAfter, reviewSla, scoreMid, scoreHigh, fiscalStartMonth, entryDate, cap, pot, alertThreshold, proofKinds, defaultGrade, parent, proofThreshold, noteThreshold, reviewThreshold, rounding } = this.form.controls;
+    const { clerkLimit, floor, terms, latePct, policyDate, periodNumberingFrom, graceDays, escalateAfter, reviewSla, scoreMid, scoreHigh, scoreLog, fiscalStartMonth, entryDate, cap, pot, alertThreshold, proofKinds, defaultGrade, parent, proofThreshold, noteThreshold, reviewThreshold, rounding } = this.form.controls;
     const { clerkLimitFrom, floorFrom, termsFrom, latePctFrom, capFrom, proofThresholdFrom, noteThresholdFrom, reviewThresholdFrom, roundingFrom } = this.form.getRawValue();
     const value = clerkLimit.value.trim();
     const floorValue = floor.value.trim();
@@ -626,6 +637,7 @@ export class Settings {
     const reviewSlaValue = reviewSla.value.trim();
     const scoreMidValue = scoreMid.value.trim();
     const scoreHighValue = scoreHigh.value.trim();
+    const scoreLogValue = scoreLog.value.trim();
     const fiscalStartMonthValue = fiscalStartMonth.value.trim();
     const entryDateValue = entryDate.value.trim();
     const capValue = cap.value.trim();
@@ -704,6 +716,10 @@ export class Settings {
     }
     if (scoreHigh.dirty && scoreHighValue && !/^-?\d{1,6}$/.test(scoreHighValue)) {
       this.error.set('Enter score high as a whole number, or leave it blank for none.');
+      return;
+    }
+    if (scoreLog.dirty && scoreLogValue && scoreLogValue !== 'on') {
+      this.error.set('Enter score log as on, or leave it blank for off.');
       return;
     }
     if (fiscalStartMonth.dirty && !/^([1-9]|1[0-2])$/.test(fiscalStartMonthValue)) {
@@ -870,6 +886,14 @@ export class Settings {
             { headers: this.headers() }),
         );
         scoreHigh.markAsPristine();
+        if (this.session.sheetId() === sheet) this.show(view);
+      }
+      if (scoreLog.dirty) {
+        const view = await firstValueFrom(
+          this.http.put<SettingsView>(`${this.base(sheet)}/settings/score-log`, { value: scoreLogValue || null },
+            { headers: this.headers() }),
+        );
+        scoreLog.markAsPristine();
         if (this.session.sheetId() === sheet) this.show(view);
       }
       if (fiscalStartMonth.dirty) {

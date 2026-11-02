@@ -11,6 +11,7 @@ import java.util.Objects;
 import net.officefloor.hq.app.Audit;
 import net.officefloor.hq.app.claim.Claim;
 import net.officefloor.hq.app.claim.ClaimRepository;
+import net.officefloor.hq.app.claim.ClaimStatus;
 import net.officefloor.hq.app.claim.LateCharge;
 import net.officefloor.hq.app.claim.Rounding;
 import net.officefloor.hq.app.person.Person;
@@ -35,8 +36,22 @@ import org.springframework.transaction.annotation.Transactional;
 @Service
 public class RollupService {
 
-    /** A person's figures; a null due-total is n/a; the overdue-total is the dues of their overdue claims. */
-    public record Figures(String name, BigDecimal claimed, BigDecimal dueTotal, BigDecimal overdueTotal) {
+    /**
+     * A person's figures; a null due-total is n/a; the overdue-total is the dues of their overdue claims;
+     * settled is the dues of their SETTLED claims, overdue count how many of their claims are overdue.
+     */
+    public record Figures(String name, BigDecimal claimed, BigDecimal dueTotal, BigDecimal overdueTotal,
+            BigDecimal settled, int overdueCount) {
+
+        /**
+         * Their score as the screen shows it: their settled figures (in hundreds) less 5 for every overdue
+         * claim, rounded half to even to a whole number.
+         */
+        public int score() {
+            return settled.subtract(BigDecimal.valueOf(500L * overdueCount))
+                    .divide(BigDecimal.valueOf(100)).setScale(0, RoundingMode.HALF_EVEN).intValueExact();
+        }
+
         boolean sameAs(Figures other) {
             return other != null && claimed.compareTo(other.claimed) == 0 && Objects.equals(dueTotal, other.dueTotal)
                     && overdueTotal.compareTo(other.overdueTotal) == 0;
@@ -97,6 +112,8 @@ public class RollupService {
             BigDecimal claimed = zero();
             BigDecimal due = zero();
             BigDecimal overdue = zero();
+            BigDecimal settled = zero();
+            int overdueCount = 0;
             boolean fixed = false;
             for (Claim claim : claimsByPerson.getOrDefault(person.getId(), List.of())) {
                 // a correction counts toward due but not toward what is claimed
@@ -124,13 +141,15 @@ public class RollupService {
                         && !levels.inForceFor(grade, claim.getDate(), claim.getAdded()).equals(levels.inForce(grade, today))) fixed = true;
                 if (figure != null) due = due.add(figure);
                 if (figure != null && LateCharge.isOverdue(claim, today, grace)) overdue = overdue.add(figure);
+                if (LateCharge.isOverdue(claim, today, grace)) overdueCount++;
+                if (figure != null && claim.getStatus() == ClaimStatus.SETTLED) settled = settled.add(figure);
             }
             // As on screen: n/a when their grade has no rate today and none of the counted claims has a fixed
             // due, nor a due under another grade they had on its date or under a rate not in force today.
             boolean rated = today != null && levels.inForce(person.gradeOn(today), today).isPresent();
             BigDecimal personDue = fixed || rated ? due : null;
             if (sheet != null) personDue = sheet.capped(personDue);
-            figures.put(person.getId(), new Figures(person.getName(), claimed, personDue, overdue));
+            figures.put(person.getId(), new Figures(person.getName(), claimed, personDue, overdue, settled, overdueCount));
             claimedTotal = claimedTotal.add(claimed);
             if (personDue != null) dues.add(personDue);
             overdues.add(overdue);
@@ -145,6 +164,14 @@ public class RollupService {
         BigDecimal max = figures.stream().max(BigDecimal::compareTo).orElseThrow();
         BigDecimal min = figures.stream().min(BigDecimal::compareTo).orElseThrow();
         return sum.subtract(max).subtract(min);
+    }
+
+    /** Audit, once the transaction commits, a SCORE line of each person's score in {@code snapshot}, in list order. */
+    public void recordScores(String sheetId, String user, Snapshot snapshot) {
+        String by = " sheet=" + sheetId + " by=" + user.strip();
+        for (Figures figures : snapshot.people().values()) {
+            audit.recordOnCommit("SCORE" + by + " name=" + figures.name() + " score=" + figures.score());
+        }
     }
 
     /**

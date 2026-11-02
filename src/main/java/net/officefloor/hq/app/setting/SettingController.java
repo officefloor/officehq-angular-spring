@@ -41,14 +41,14 @@ public class SettingController {
      * is the month (1 to 12) a fiscal year starts in; the alert threshold has two decimals, null when off;
      * the escalate after is a whole number of days, null when blank (off); so is the review SLA (none); the
      * default grade is one of the grades, null when blank (A); the score mid and score high are whole
-     * numbers, null when blank.
+     * numbers, null when blank; the score log is "on" or blank.
      */
     public record SettingsView(String clerkLimit, String floor, int terms, String latePct, LocalDate policyDate,
             LocalDate periodNumberingFrom, List<RoleView> roles, Map<String, Integer> gradeTerms, String cap,
             Map<String, List<DatedView>> dated, Map<String, String> permissions, Integer graceDays,
             LocalDate entryDate, String pot, String parent, int fiscalStartMonth, String alertThreshold,
             Integer escalateAfter, Integer reviewSla, String proofKinds, String defaultGrade, Integer scoreMid,
-            Integer scoreHigh) {}
+            Integer scoreHigh, String scoreLog) {}
 
     /** A value recorded for a dated setting from a date on; null when none. */
     public record DatedView(LocalDate from, String value) {}
@@ -263,6 +263,14 @@ public class SettingController {
         }
     }
 
+    /** The score log switch: "on"; blank or null: off. */
+    public record ScoreLogRequest(@Pattern(regexp = "(on)?") String value) {
+
+        boolean onValue() {
+            return "on".equals(value);
+        }
+    }
+
     /** Review SLA: a whole number of days; blank or null: none. */
     public record ReviewSlaRequest(@Pattern(regexp = "(\\d{1,4})?") String value) {
 
@@ -363,7 +371,7 @@ public class SettingController {
                 service.parent(sheetId), service.fiscalStartMonth(sheetId), text(service.alertThreshold(sheetId)),
                 service.escalateAfter(sheetId), service.reviewSla(sheetId),
                 String.join(",", service.proofKinds(sheetId)), service.defaultGrade(sheetId),
-                service.scoreMid(sheetId), service.scoreHigh(sheetId));
+                service.scoreMid(sheetId), service.scoreHigh(sheetId), service.scoreLog(sheetId) ? "on" : "");
     }
 
     @PutMapping("/settings/clerk-limit")
@@ -482,6 +490,15 @@ public class SettingController {
             @RequestHeader("X-User") @NotBlank @Size(max = 100) String user,
             @RequestBody @Valid ScoreThresholdRequest request) {
         service.setScoreHigh(sheetId, user, request.scoreValue());
+        return get(sheetId, user);
+    }
+
+    @PutMapping("/settings/score-log")
+    public SettingsView setScoreLog(
+            @PathVariable @Size(max = 100) @Pattern(regexp = "[A-Za-z0-9._-]+") String sheetId,
+            @RequestHeader("X-User") @NotBlank @Size(max = 100) String user,
+            @RequestBody @Valid ScoreLogRequest request) {
+        service.setScoreLog(sheetId, user, request.onValue());
         return get(sheetId, user);
     }
 

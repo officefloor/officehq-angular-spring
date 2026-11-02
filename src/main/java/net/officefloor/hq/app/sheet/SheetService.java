@@ -96,7 +96,8 @@ public class SheetService {
 
     /**
      * Change the sheet's today; it has no audit line of its own, but a new today first audits a SNAPSHOT
-     * line per person, in list order, with their due-total on the day being left. With grace days set, the open periods
+     * line per person, in list order, with their due-total on the day being left; while the score log is on, a
+     * SCORE line per person, with their score on that day, comes before them. With grace days set, the open periods
      * past them are closed first, then the figures it moves are audited. A new today releases every
      * claim editor's lock on the sheet.
      */
@@ -109,6 +110,7 @@ public class SheetService {
             sheet = sheets.findForUpdate(id).orElseThrow(SheetNotFoundException::new);
         }
         RollupService.Snapshot before = rollup.snapshot(id);
+        if (changed && sheet.isScoreLog()) rollup.recordScores(id, user, before);
         if (changed) rollup.recordSnapshot(id, user, sheet.getToday(), before);
         sheet.setToday(today);
         sheets.flush();

@@ -435,6 +435,17 @@ public class SettingService {
         return score;
     }
 
+    /** Switch the score log on or off (blank); no stored figure changes with it. */
+    @Transactional
+    public boolean setScoreLog(String sheetId, String user, boolean on) {
+        Sheet sheet = sheets.findForUpdate(sheetId).orElseThrow(SheetNotFoundException::new);
+        sheet.setScoreLog(on);
+        sheets.flush();
+        audit.recordOnCommit("SETTING_CHANGED sheet=" + sheetId + " by=" + user.strip() + " key=score-log value="
+                + (on ? "on" : ""));
+        return on;
+    }
+
     /** Change the escalation gap in days (null: off). */
     @Transactional
     public Integer setEscalateAfter(String sheetId, String user, Integer days) {
@@ -620,6 +631,12 @@ public class SettingService {
     @Transactional(readOnly = true)
     public Integer scoreHigh(String sheetId) {
         return sheets.findById(sheetId).orElseThrow(SheetNotFoundException::new).getScoreHigh();
+    }
+
+    /** Whether the score log is on; false when blank. */
+    @Transactional(readOnly = true)
+    public boolean scoreLog(String sheetId) {
+        return sheets.findById(sheetId).orElseThrow(SheetNotFoundException::new).isScoreLog();
     }
 
     /** The review SLA in days as set; null when blank, which means none. */
