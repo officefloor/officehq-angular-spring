@@ -570,10 +570,23 @@ export class PeopleList {
       };
     }),
   );
-  /** Per period, earliest first: the due-total its row shows. */
-  protected readonly periodSummary = computed((): PeriodSummary[] =>
-    this.periods().map((p) => ({ name: p.name, dueTotal: this.periodDueTotals().get(p.id) ?? '0.00' })),
-  );
+  /** Per period, earliest first: the due-total its row shows, and its change from the period
+   *  before it by start date (none for the earliest). */
+  protected readonly periodSummary = computed((): PeriodSummary[] => {
+    const byStart = [...this.periods()].sort((a, b) => a.from.localeCompare(b.from));
+    const changes = new Map<number, string>();
+    byStart.forEach((p, i) => {
+      if (i > 0) {
+        const cents = (q: Period) => Math.round(Number(this.periodDueTotals().get(q.id) ?? '0') * 100);
+        changes.set(p.id, ((cents(p) - cents(byStart[i - 1])) / 100).toFixed(2));
+      }
+    });
+    return this.periods().map((p) => ({
+      name: p.name,
+      dueTotal: this.periodDueTotals().get(p.id) ?? '0.00',
+      change: changes.get(p.id) ?? '',
+    }));
+  });
   /** Per status: how many claims on the sheet have it. */
   protected readonly statusSummary = computed((): StatusSummary[] =>
     PeopleList.statuses.map((status) => ({ status, count: this.claims().filter((c) => c.status === status).length })),

@@ -10,10 +10,12 @@ export interface GradeSummary {
   active: number;
 }
 
-/** A period's line of the summary: its due-total. */
+/** A period's line of the summary: its due-total, and its change from the period before it by
+ *  start date (empty for the earliest). */
 export interface PeriodSummary {
   name: string;
   dueTotal: string;
+  change: string;
 }
 
 /** A status's line of the summary: how many claims have it. */
@@ -53,13 +55,14 @@ export interface VoidReasonSummary {
       <table>
         <caption>By period</caption>
         <thead>
-          <tr><th scope="col">Period</th><th scope="col">Due</th></tr>
+          <tr><th scope="col">Period</th><th scope="col">Due</th><th scope="col">Change</th></tr>
         </thead>
         <tbody>
           @for (p of periods(); track p.name) {
             <tr>
               <th scope="row">{{ p.name }}</th>
               <td [attr.data-testid]="'summary-period-' + p.name + '-due-total'">{{ p.dueTotal }}</td>
+              <td [attr.data-testid]="'summary-period-' + p.name + '-change'">{{ p.change }}</td>
             </tr>
           }
         </tbody>
