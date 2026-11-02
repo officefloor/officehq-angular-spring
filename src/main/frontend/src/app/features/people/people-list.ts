@@ -59,6 +59,11 @@ import { QuickAddBar } from './quick-add-bar';
           (change)="showRetired.set($any($event.target).checked)" />
         Show retired
       </label>
+      <button type="button" data-testid="bulk-open" (click)="bulkOpen()">Open selected claims</button>
+      @if (bulkOpened(); as b) {
+        <p role="status">Opened <strong data-testid="bulk-opened">{{ b.opened }}</strong>,
+          refused <strong data-testid="bulk-refused">{{ b.refused }}</strong></p>
+      }
       <button type="button" data-testid="export-people" (click)="exportCsv()">Export people (CSV)</button>
       <table data-testid="people">
         <thead>
@@ -85,7 +90,8 @@ import { QuickAddBar } from './quick-add-bar';
                 <app-person-claims [personId]="p.id" [claims]="claimsByPerson().get(p.id) ?? []"
                   [rates]="rates()" [floor]="floor()" [grades]="p.grades" [periods]="periods()"
                   [terms]="terms()" [today]="session.today()" [latePct]="latePct()"
-                  [policyDate]="policyDate()"
+                  [policyDate]="policyDate()" [selected]="selected()"
+                  (selectedChange)="select($event.id, $event.selected)"
                   (saved)="claimSaved($event)" />
               </td>
               <td>
@@ -257,6 +263,12 @@ export class PeopleList {
   );
   /** The statuses the summary counts claims of. */
   private static readonly statuses = ['DRAFT', 'OPEN', 'PENDING', 'SETTLED', 'VOID'];
+  /** The ids of the claims selected for a bulk action. */
+  protected readonly selected = signal<ReadonlySet<number>>(new Set());
+  /** What the last bulk open did; null while one runs and before the first. */
+  protected readonly bulkOpened = signal<{ opened: number; refused: number } | null>(null);
+  /** Whether a bulk open is waiting for its answer: a second press meanwhile is ignored. */
+  private opening = false;
   /** The id of the person whose editor is open, or null when the form adds a person. */
   protected readonly editing = signal<number | null>(null);
   /** The version of the person the open editor loaded. */
@@ -295,6 +307,8 @@ export class PeopleList {
       this.rates.set([]);
       this.periods.set([]);
       this.patrons.set([]);
+      this.selected.set(new Set());
+      this.bulkOpened.set(null);
       this.personError.set(null);
       this.patronError.set(null);
       this.reset();
@@ -461,6 +475,35 @@ export class PeopleList {
         { emitEvent: false });
     } catch {
       // the editor keeps what was typed; reopening it reads the person again
+    }
+  }
+
+  protected select(id: number, on: boolean): void {
+    this.selected.update((s) => {
+      const next = new Set(s);
+      if (on) next.add(id);
+      else next.delete(id);
+      return next;
+    });
+  }
+
+  /** Open the selected claims that can be opened, then show the claims as they are now and how many
+   *  were opened and refused. */
+  protected async bulkOpen(): Promise<void> {
+    const sheetId = this.session.sheetId();
+    if (this.opening || !sheetId) return;
+    this.opening = true;
+    this.bulkOpened.set(null);
+    try {
+      const result = await this.claimsApi.openAll([...this.selected()]);
+      this.selected.set(new Set());
+      this.claims.set(await this.claimsApi.list(sheetId));
+      this.bulkOpened.set(result);
+    } catch {
+      const ids = this.selected();
+      this.bulkOpened.set({ opened: 0, refused: ids.size });
+    } finally {
+      this.opening = false;
     }
   }
 

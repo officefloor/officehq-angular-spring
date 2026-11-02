@@ -184,6 +184,16 @@ export class Claims {
     );
   }
 
+  /** Open each of the claims that can be opened, in list order; the rest are refused and left as
+   *  they are. */
+  openAll(claimIds: number[]): Promise<{ opened: number; refused: number }> {
+    const { sheetId, user } = this.active();
+    return firstValueFrom(
+      this.http.post<{ opened: number; refused: number }>(`${this.url(sheetId)}/claims/open`, { claimIds },
+        { headers: { 'X-User': user } }),
+    );
+  }
+
   private url(sheetId: string): string {
     return `/api/sheets/${encodeURIComponent(sheetId)}`;
   }

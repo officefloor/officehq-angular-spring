@@ -59,6 +59,9 @@ function refusal(e: unknown, action: ClaimAction): string {
     <ul data-testid="claims">
       @for (c of claims(); track c.id) {
         <li [attr.data-testid]="'claim-row-' + c.id">
+          <input type="checkbox" data-testid="claim-select" [checked]="selected().has(c.id)"
+            (change)="selectedChange.emit({ id: c.id, selected: $any($event.target).checked })"
+            [attr.aria-label]="'Select claim of ' + c.amount + ' on ' + c.date" />
           <span data-testid="claim-number">{{ c.number ?? '' }}</span>
           <span data-testid="claim-amount">{{ c.amount }}</span>
           <span data-testid="claim-date">{{ c.date }}</span>
@@ -112,6 +115,10 @@ export class PersonClaims {
   readonly latePct = input.required<string>();
   /** The sheet's policy date (null when blank): it decides how a claim's live figures round. */
   readonly policyDate = input.required<string | null>();
+  /** The ids of the claims selected for a bulk action. */
+  readonly selected = input.required<ReadonlySet<number>>();
+  /** A claim's checkbox ticked or cleared. */
+  readonly selectedChange = output<{ id: number; selected: boolean }>();
   /** A claim added or saved through the form. */
   readonly saved = output<Claim>();
 
