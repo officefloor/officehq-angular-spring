@@ -1,0 +1,88 @@
+diff --git a/src/main/frontend/src/app/features/settings/settings.ts b/src/main/frontend/src/app/features/settings/settings.ts
+index 9c51d5b8e..dc00d1fe0 100644
+--- a/src/main/frontend/src/app/features/settings/settings.ts
++++ b/src/main/frontend/src/app/features/settings/settings.ts
+@@ -17,6 +17,7 @@ export const PERMISSIONS = [
+   { action: 'reassign', standing: 'steward' },
+   { action: 'close', standing: 'clerk,steward' },
+   { action: 'reopen', standing: 'steward' },
++  { action: 'today', standing: 'clerk,steward' },
+ ] as const;
+ type PermAction = (typeof PERMISSIONS)[number]['action'];
+ 
+@@ -120,7 +121,7 @@ const FROM = 'From (yyyy-mm-dd; blank: the sheet\'s today)';
+ // are dated: a save records the value from its from-date (blank: the sheet's today), keeping those recorded from
+ // other dates; a claim takes the floor and terms in force on its date, the late percent in force on each 30-day boundary, and the clerk limit and cap are those in force on
+ // the sheet's today. Each shows the value in force on the sheet's today. The permission matrix (not dated) gives, for each
+-// of open, settle, void, reassign, close and reopen, the roles that may take it, comma separated; blank keeps its standing rule.
++// of open, settle, void, reassign, close, reopen and today (changing the sheet's today), the roles that may take it, comma separated; blank keeps its standing rule.
+ @Component({
+   selector: 'app-settings',
+   imports: [FigurePipe, ReactiveFormsModule],
+@@ -540,6 +541,7 @@ export class Settings {
+     reassign: new FormControl('', { nonNullable: true }),
+     close: new FormControl('', { nonNullable: true }),
+     reopen: new FormControl('', { nonNullable: true }),
++    today: new FormControl('', { nonNullable: true }),
+   });
+   protected readonly roleForm = new FormGroup({
+     user: new FormControl('', { nonNullable: true }),
+diff --git a/src/main/java/net/officefloor/hq/app/setting/SettingController.java b/src/main/java/net/officefloor/hq/app/setting/SettingController.java
+index 98f44eaa5..9516a30f3 100644
+--- a/src/main/java/net/officefloor/hq/app/setting/SettingController.java
++++ b/src/main/java/net/officefloor/hq/app/setting/SettingController.java
+@@ -704,7 +704,7 @@ public class SettingController {
+     @PutMapping("/settings/perm/{action}")
+     public SettingsView setPermission(
+             @PathVariable @Size(max = 100) @Pattern(regexp = "[A-Za-z0-9._-]+") String sheetId,
+-            @PathVariable @Pattern(regexp = "open|settle|void|reassign|close|reopen") String action,
++            @PathVariable @Pattern(regexp = "open|settle|void|reassign|close|reopen|today") String action,
+             @RequestHeader("X-User") @NotBlank @Size(max = 100) String user,
+             @RequestBody @Valid PermissionRequest request) {
+         service.setPermission(sheetId, user, action, request.rolesValue());
+diff --git a/src/main/java/net/officefloor/hq/app/setting/SettingService.java b/src/main/java/net/officefloor/hq/app/setting/SettingService.java
+index 6b350f981..a3927dd9d 100644
+--- a/src/main/java/net/officefloor/hq/app/setting/SettingService.java
++++ b/src/main/java/net/officefloor/hq/app/setting/SettingService.java
+@@ -55,6 +55,8 @@ public class SettingService {
+         Map<String, Set<Role>> standing = new LinkedHashMap<>();
+         for (String action : List.of("open", "settle", "void", "close")) standing.put(action, EnumSet.of(Role.CLERK, Role.STEWARD));
+         for (String action : List.of("reassign", "reopen")) standing.put(action, EnumSet.of(Role.STEWARD));
++        // changing the sheet's today: anyone but a viewer
++        standing.put("today", EnumSet.of(Role.CLERK, Role.STEWARD));
+         STANDING_PERMISSIONS = Map.copyOf(standing);
+     }
+ 
+diff --git a/src/main/java/net/officefloor/hq/app/sheet/SheetService.java b/src/main/java/net/officefloor/hq/app/sheet/SheetService.java
+index 8bff42502..52f17cf67 100644
+--- a/src/main/java/net/officefloor/hq/app/sheet/SheetService.java
++++ b/src/main/java/net/officefloor/hq/app/sheet/SheetService.java
+@@ -99,11 +99,13 @@ public class SheetService {
+      * line per person, in list order, with their due-total on the day being left; while the score log is on, a
+      * SCORE line per person, with their score on that day, comes before them. With grace days set, the open periods
+      * past them are closed first, then the figures it moves are audited. A new today releases every
+-     * claim editor's lock on the sheet.
++     * claim editor's lock on the sheet. A user whose role may not change it (by the permission matrix: anyone but
++     * a viewer, unless it says otherwise) is refused.
+      */
+     @Transactional
+     public Sheet setToday(String id, String user, LocalDate today) {
+         Sheet sheet = sheets.findForUpdate(id).orElseThrow(SheetNotFoundException::new);
++        if (!settings.getObject().mayDo(id, user, "today")) throw new SheetTodayRefusedException();
+         boolean changed = !today.equals(sheet.getToday());
+         if (changed) {
+             claims.getObject().unlockAll(id);
+diff --git a/src/main/java/net/officefloor/hq/app/sheet/SheetTodayRefusedException.java b/src/main/java/net/officefloor/hq/app/sheet/SheetTodayRefusedException.java
+new file mode 100644
+index 000000000..960d18c8d
+--- /dev/null
++++ b/src/main/java/net/officefloor/hq/app/sheet/SheetTodayRefusedException.java
+@@ -0,0 +1,8 @@
++package net.officefloor.hq.app.sheet;
++
++import org.springframework.http.HttpStatus;
++import org.springframework.web.bind.annotation.ResponseStatus;
++
++/** The user's role may not change the sheet's today by the sheet's permission matrix. */
++@ResponseStatus(HttpStatus.FORBIDDEN)
++public class SheetTodayRefusedException extends RuntimeException {}
