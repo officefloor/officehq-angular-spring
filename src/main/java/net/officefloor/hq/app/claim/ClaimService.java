@@ -12,6 +12,7 @@ import net.officefloor.hq.app.role.RoleService;
 import net.officefloor.hq.app.role.SheetRole;
 import net.officefloor.hq.app.rollup.Rollup;
 import net.officefloor.hq.app.sheet.SheetService;
+import net.officefloor.hq.app.watch.WatchService;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -28,10 +29,12 @@ public class ClaimService {
     private final Rollup rollup;
     private final PeriodRepository periods;
     private final RoleService roles;
+    private final WatchService watches;
     private final Audit audit;
 
     public ClaimService(ClaimRepository claims, PersonRepository people, Dues dues, SheetService sheets,
-            Rollup rollup, PeriodRepository periods, RoleService roles, Audit audit) {
+            Rollup rollup, PeriodRepository periods, RoleService roles, WatchService watches,
+            Audit audit) {
         this.claims = claims;
         this.people = people;
         this.dues = dues;
@@ -39,6 +42,7 @@ public class ClaimService {
         this.rollup = rollup;
         this.periods = periods;
         this.roles = roles;
+        this.watches = watches;
         this.audit = audit;
     }
 
@@ -168,6 +172,9 @@ public class ClaimService {
                 line += " due=" + dueText(saved.getSettledDue());
             }
             audit.recordOnCommit(line);
+            if (becomes == ClaimStatus.SETTLED) {
+                watches.notifyWatchers(sheetId, user, person, saved.getNumber());
+            }
             return saved;
         });
     }
@@ -233,6 +240,7 @@ public class ClaimService {
             Claim saved = claims.saveAndFlush(claim);
             audit.recordOnCommit(record("CLAIM_APPROVED", sheetId, user, person, saved)
                     + " due=" + dueText(saved.getSettledDue()));
+            watches.notifyWatchers(sheetId, user, person, saved.getNumber());
             return saved;
         });
     }
@@ -259,6 +267,7 @@ public class ClaimService {
             Claim saved = claims.saveAndFlush(claim);
             audit.recordOnCommit(record("CLAIM_RESETTLED", sheetId, user, person, saved)
                     + " old=" + dueText(old) + " new=" + dueText(now));
+            watches.notifyWatchers(sheetId, user, person, saved.getNumber());
             return saved;
         });
     }

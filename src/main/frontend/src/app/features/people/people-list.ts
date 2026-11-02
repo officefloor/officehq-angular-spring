@@ -8,6 +8,7 @@ import { Period, Periods, periodOf } from '../../core/periods';
 import { Rate, Rates, pctOn } from '../../core/rates';
 import { Session } from '../../core/session';
 import { DatedValue, SheetSettings, valueOn } from '../../core/settings';
+import { Watch, Watches } from '../../core/watches';
 import { PersonClaims } from '../claims/person-claims';
 import { PeriodForm } from '../periods/period-form';
 import { RateForm } from '../rates/rate-form';
@@ -24,6 +25,7 @@ import { PasteClaimsBox } from './paste-claims-box';
 // bound them; their settled claims and other open claims still do.
 // A person may name other people on the sheet as their patrons; their backing is their patrons'
 // due-totals added up, skipping those that are n/a.
+// The signed-in user may watch a person: they are told when a claim of theirs is settled.
 @Component({
   selector: 'app-people-list',
   imports: [ReactiveFormsModule, PersonClaims, RateForm, PeriodForm, QuickAddBar, PasteClaimsBox, SummaryPanel, HeaderCounters],
@@ -78,7 +80,7 @@ import { PasteClaimsBox } from './paste-claims-box';
       <button type="button" data-testid="export-people" (click)="exportCsv()">Export people (CSV)</button>
       <table data-testid="people">
         <thead>
-          <tr><th scope="col">Name</th><th scope="col">Grade</th><th scope="col">Claimed</th><th scope="col">Due</th>@for (pd of periods(); track pd.id) {<th scope="col">Due in {{ pd.name }}</th>}<th scope="col">Excess</th><th scope="col">Statements</th><th scope="col">Last stated</th><th scope="col">Stated on</th><th scope="col">Retired</th><th scope="col">Retired from</th><th scope="col">On hold</th><th scope="col">Overdue</th><th scope="col">Overdue due</th><th scope="col">Patrons</th><th scope="col">Backing</th><th scope="col">Claims</th><th scope="col"><span class="visually-hidden">Actions</span></th></tr>
+          <tr><th scope="col">Name</th><th scope="col">Grade</th><th scope="col">Claimed</th><th scope="col">Due</th>@for (pd of periods(); track pd.id) {<th scope="col">Due in {{ pd.name }}</th>}<th scope="col">Excess</th><th scope="col">Statements</th><th scope="col">Last stated</th><th scope="col">Stated on</th><th scope="col">Retired</th><th scope="col">Retired from</th><th scope="col">On hold</th><th scope="col">Overdue</th><th scope="col">Overdue due</th><th scope="col">Patrons</th><th scope="col">Backing</th><th scope="col">Watched</th><th scope="col">Claims</th><th scope="col"><span class="visually-hidden">Actions</span></th></tr>
         </thead>
         <tbody>
           @for (p of shown(); track p.id) {
@@ -110,6 +112,7 @@ import { PasteClaimsBox } from './paste-claims-box';
               <td data-testid="person-overdue-total">{{ overdueTotalOf(p) }}</td>
               <td data-testid="person-patrons">{{ patronNames().get(p.id) ?? '' }}</td>
               <td data-testid="person-backing">{{ backingOf(p) }}</td>
+              <td data-testid="person-watched">{{ watched().has(p.id) ? 'yes' : 'no' }}</td>
               <td>
                 <app-person-claims [personId]="p.id" [claims]="claimsByPerson().get(p.id) ?? []"
                   [rates]="rates()" [floor]="floor()" [grades]="p.grades" [periods]="periods()"
@@ -143,6 +146,9 @@ import { PasteClaimsBox } from './paste-claims-box';
                 </select>
                 <button type="button" data-testid="person-patron-add" (click)="addPatron(p, patronSelect.value)"
                   [attr.aria-label]="'Add a patron of ' + p.name">Add patron</button>
+                <button type="button" data-testid="person-watch" (click)="toggleWatch(p)"
+                  [attr.aria-pressed]="watched().has(p.id)"
+                  [attr.aria-label]="'Watch ' + p.name">{{ watched().has(p.id) ? 'Unwatch' : 'Watch' }}</button>
                 @if (patronError()?.id === p.id) {
                   <p role="alert" data-testid="person-patron-error">{{ patronError()?.message }}</p>
                 }
@@ -165,6 +171,7 @@ export class PeopleList {
   private readonly periodsApi = inject(Periods);
   private readonly settingsApi = inject(SheetSettings);
   private readonly patronsApi = inject(Patrons);
+  private readonly watchesApi = inject(Watches);
 
   protected readonly grades: Grade[] = ['A', 'B', 'C'];
   protected readonly people = signal<Person[]>([]);
@@ -199,6 +206,10 @@ export class PeopleList {
     }
     return by;
   });
+  /** The people the signed-in user watches, in the order they started watching. */
+  protected readonly watches = signal<Watch[]>([]);
+  /** The ids of the people the signed-in user watches. */
+  protected readonly watched = computed(() => new Set(this.watches().map((w) => w.personId)));
   /** Each person's holds, by id. */
   private readonly holds = computed(() => new Map(this.people().map((p) => [p.id, p.holds])));
   /** The claims that count in the live totals, newest first. */
@@ -334,6 +345,8 @@ export class PeopleList {
   private readonly stating = new Set<number>();
   /** The people whose hold is waiting for its answer: a second press meanwhile is ignored. */
   private readonly holding = new Set<number>();
+  /** The people whose watch is waiting for its answer: a second press meanwhile is ignored. */
+  private readonly watching = new Set<number>();
   /** The people whose retirement is waiting for its answer: a second press meanwhile is ignored. */
   private readonly retiring = new Set<number>();
   protected readonly form = new FormGroup({
@@ -355,6 +368,7 @@ export class PeopleList {
       this.rates.set([]);
       this.periods.set([]);
       this.patrons.set([]);
+      this.watches.set([]);
       this.selected.set(new Set());
       this.bulkOpened.set(null);
       this.bulkSettled.set(null);
@@ -417,6 +431,28 @@ export class PeopleList {
       });
     } finally {
       this.naming.delete(p.id);
+    }
+  }
+
+  /** Start watching the person as the signed-in user, or stop when they already do. */
+  protected async toggleWatch(p: Person): Promise<void> {
+    if (this.watching.has(p.id)) return;
+    this.watching.add(p.id);
+    this.personError.set(null);
+    this.patronError.set(null);
+    const on = !this.watched().has(p.id);
+    try {
+      if (on) {
+        const added = await this.watchesApi.watch(p.id);
+        this.watches.update((ws) => [...ws.filter((w) => w.personId !== p.id), added]);
+      } else {
+        await this.watchesApi.unwatch(p.id);
+        this.watches.update((ws) => ws.filter((w) => w.personId !== p.id));
+      }
+    } catch {
+      this.personError.set({ id: p.id, message: on ? 'The person could not be watched.' : 'The person could not be unwatched.' });
+    } finally {
+      this.watching.delete(p.id);
     }
   }
 
@@ -691,13 +727,14 @@ export class PeopleList {
   private async reload(sheetId: string): Promise<void> {
     const read = ++this.reads;
     try {
-      const [people, claims, rates, periods, settings, patrons] = await Promise.all([
+      const [people, claims, rates, periods, settings, patrons, watches] = await Promise.all([
         this.api.list(sheetId),
         this.claimsApi.list(sheetId),
         this.ratesApi.list(sheetId),
         this.periodsApi.list(sheetId),
         this.settingsApi.get(sheetId),
         this.patronsApi.list(sheetId),
+        this.watchesApi.list(sheetId),
       ]);
       if (read === this.reads) {
         this.rates.set(rates);
@@ -708,6 +745,7 @@ export class PeopleList {
         this.periods.set(periods);
         this.claims.set(claims);
         this.patrons.set(patrons);
+        this.watches.set(watches);
         this.people.set(people);
       }
     } catch {
