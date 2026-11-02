@@ -108,7 +108,7 @@ public class ClaimService {
 
     /** Move a claim to a new status; a change its current status does not allow is refused, and so
      *  is settling a claim by the user who opened it, and any change to a claim dated inside a closed
-     *  period. A clerk settling a claim whose due is above the sheet's clerk limit leaves it pending
+     *  period, and any change the permission matrix does not allow the user's role. A clerk settling a claim whose due is above the sheet's clerk limit leaves it pending
      *  a steward's approval instead; but settling a claim that needs a proof and has none is refused
      *  before the clerk limit is considered. */
     @Transactional
@@ -118,6 +118,14 @@ public class ClaimService {
         if (!claim.getStatus().canBecome(to) || to == ClaimStatus.PENDING) {
             throw new ResponseStatusException(HttpStatus.CONFLICT,
                     "A " + claim.getStatus() + " claim cannot become " + to);
+        }
+        String action = switch (to) {
+            case OPEN -> "open";
+            case SETTLED -> "settle";
+            default -> "void";
+        };
+        if (!roles.may(sheetId, user, action)) {
+            throw new ResponseStatusException(HttpStatus.FORBIDDEN, "Your role may not " + action + " a claim");
         }
         if (to == ClaimStatus.SETTLED && claim.isDeferredOn(sheets.today(sheetId))) {
             throw new ResponseStatusException(HttpStatus.CONFLICT,
@@ -273,14 +281,14 @@ public class ClaimService {
 
     /** Move a draft, open or pending claim to another person on the sheet. It keeps its number, date
      *  and status, loses any figure a statement bound it to, and is listed as its new person's newest
-     *  claim. Refused unless the user is a steward, and when the claim is settled or void, the person
+     *  claim. Refused unless the permission matrix allows the user's role to reassign, and when the claim is settled or void, the person
      *  is the one it is already for, the claim's period is closed, or the claim is dated after the
      *  new person's retirement day. */
     @Transactional
     public Claim reassign(String sheetId, String user, long claimId, long toPersonId) {
         Claim claim = lock(sheetId, claimId);
-        if (!SheetRole.STEWARD.equals(roles.roleOf(sheetId, user))) {
-            throw new ResponseStatusException(HttpStatus.FORBIDDEN, "Only a steward can reassign a claim");
+        if (!roles.may(sheetId, user, "reassign")) {
+            throw new ResponseStatusException(HttpStatus.FORBIDDEN, "Your role may not reassign a claim");
         }
         if (claim.getStatus() == ClaimStatus.SETTLED || claim.getStatus() == ClaimStatus.VOID) {
             throw new ResponseStatusException(HttpStatus.CONFLICT,

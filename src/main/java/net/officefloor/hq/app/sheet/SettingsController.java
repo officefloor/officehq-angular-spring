@@ -7,6 +7,7 @@ import jakarta.validation.constraints.Size;
 import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.time.format.DateTimeParseException;
+import java.util.Arrays;
 import java.util.List;
 import java.util.Map;
 import org.springframework.http.HttpStatus;
@@ -32,20 +33,22 @@ public class SettingsController {
      *  (a grade not in it takes the sheet's terms), and the cap as text with two decimals (null when
      *  there is no cap), and the floors, late percents and caps recorded, each from its from-date, earliest
      *  first (a claim takes the one in force on its date, or else the sheet's starting one); and the
-     *  proof threshold as text with two decimals (null when there is none). */
+     *  proof threshold as text with two decimals (null when there is none); and the permission matrix:
+     *  for each action, the comma separated roles that may take it (blank: the standing rule). */
     public record SettingsView(String clerkLimit, String floor, int terms, String latePct, LocalDate policyDate,
             LocalDate periodNumberingFrom, Map<String, Integer> gradeTerms, String cap, List<DatedValue> floors,
-            List<DatedValue> latePcts, List<DatedValue> caps, String proofThreshold) {
+            List<DatedValue> latePcts, List<DatedValue> caps, String proofThreshold,
+            Map<String, String> permissions) {
         static SettingsView of(BigDecimal clerkLimit, BigDecimal floor, int terms, BigDecimal latePct,
                 LocalDate policyDate, LocalDate periodNumberingFrom, Map<String, Integer> gradeTerms,
                 BigDecimal cap, List<SettingValue> floors, List<SettingValue> latePcts,
-                List<SettingValue> caps, BigDecimal proofThreshold) {
+                List<SettingValue> caps, BigDecimal proofThreshold, Map<String, String> permissions) {
             return new SettingsView(clerkLimit == null ? null : clerkLimit.setScale(2).toPlainString(),
                     floor.setScale(2).toPlainString(), terms, latePct.setScale(2).toPlainString(), policyDate,
                     periodNumberingFrom, gradeTerms, cap == null ? null : cap.setScale(2).toPlainString(),
                     floors.stream().map(DatedValue::of).toList(), latePcts.stream().map(DatedValue::of).toList(),
                     caps.stream().map(DatedValue::of).toList(),
-                    proofThreshold == null ? null : proofThreshold.setScale(2).toPlainString());
+                    proofThreshold == null ? null : proofThreshold.setScale(2).toPlainString(), permissions);
         }
     }
 
@@ -156,6 +159,18 @@ public class SettingsController {
         }
     }
 
+    /** The permission form: a comma separated list of roles (clerk, steward), or blank for the
+     *  standing rule. */
+    public record PermissionForm(@Size(max = 200)
+            @Pattern(regexp = "\\s*((clerk|steward)\\s*(,\\s*(clerk|steward)\\s*)*)?") String value) {
+
+        /** The roles as stored: each once, comma separated with no spaces; "" when blank. */
+        String rolesValue() {
+            return value == null ? "" : String.join(",", Arrays.stream(value.split(","))
+                    .map(String::trim).filter(r -> !r.isEmpty()).distinct().toList());
+        }
+    }
+
     private final SheetService service;
 
     public SettingsController(SheetService service) {
@@ -172,7 +187,7 @@ public class SettingsController {
         return SettingsView.of(service.clerkLimit(id), service.floor(id), service.terms(id), service.latePct(id),
                 service.policyDate(id), service.periodNumberingFrom(id), service.gradeTerms(id), service.cap(id),
                 service.recorded(id, "floor"), service.recorded(id, "late-pct"),
-                service.recorded(id, "cap"), service.proofThreshold(id));
+                service.recorded(id, "cap"), service.proofThreshold(id), service.permissions(id));
     }
 
     /** The settings view of a sheet just saved. */
@@ -242,5 +257,13 @@ public class SettingsController {
             @RequestHeader("X-User") @NotBlank @Size(max = 100) String user,
             @Valid @RequestBody ProofThresholdForm form) {
         return view(service.setProofThreshold(sheetId.trim(), user.trim(), form.thresholdValue(), form.fromValue()));
+    }
+
+    @PutMapping("/permissions/{action}")
+    public SettingsView setPermission(@PathVariable @NotBlank @Size(max = 100) String sheetId,
+            @PathVariable @Pattern(regexp = "open|settle|void|reassign|close|reopen") String action,
+            @RequestHeader("X-User") @NotBlank @Size(max = 100) String user,
+            @Valid @RequestBody PermissionForm form) {
+        return view(service.setPermission(sheetId.trim(), user.trim(), action, form.rolesValue()));
     }
 }

@@ -14,7 +14,6 @@ import net.officefloor.hq.app.claim.Dues;
 import net.officefloor.hq.app.person.Person;
 import net.officefloor.hq.app.person.PersonRepository;
 import net.officefloor.hq.app.role.RoleService;
-import net.officefloor.hq.app.role.SheetRole;
 import net.officefloor.hq.app.sheet.SheetService;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.http.HttpStatus;
@@ -76,10 +75,14 @@ public class PeriodService {
         return saved;
     }
 
-    /** Close a period, fixing its due-total at what it is now; refused when it is already closed. */
+    /** Close a period, fixing its due-total at what it is now; refused when the permission matrix does
+     *  not allow the user's role to close, or it is already closed. */
     @Transactional
     public Period close(String sheetId, String user, long periodId) {
         sheets.load(sheetId, user);
+        if (!roles.may(sheetId, user, "close")) {
+            throw new ResponseStatusException(HttpStatus.FORBIDDEN, "Your role may not close a period");
+        }
         Period period = periods.lockByIdAndSheetId(periodId, sheetId)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "No such period on this sheet"));
         if (period.isClosed()) {
@@ -92,13 +95,13 @@ public class PeriodService {
         return saved;
     }
 
-    /** Reopen a closed period, making its due-total live again; refused when the user is not a
-     *  steward on the sheet, or the period is not closed. */
+    /** Reopen a closed period, making its due-total live again; refused when the permission matrix
+     *  does not allow the user's role to reopen, or the period is not closed. */
     @Transactional
     public Period reopen(String sheetId, String user, long periodId) {
         sheets.load(sheetId, user);
-        if (!SheetRole.STEWARD.equals(roles.roleOf(sheetId, user))) {
-            throw new ResponseStatusException(HttpStatus.FORBIDDEN, "Only a steward may reopen a period");
+        if (!roles.may(sheetId, user, "reopen")) {
+            throw new ResponseStatusException(HttpStatus.FORBIDDEN, "Your role may not reopen a period");
         }
         Period period = periods.lockByIdAndSheetId(periodId, sheetId)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "No such period on this sheet"));

@@ -2,9 +2,12 @@ import { Component, effect, inject, signal } from '@angular/core';
 import { AbstractControl, FormControl, FormGroup, ReactiveFormsModule } from '@angular/forms';
 import { Session } from '../../core/session';
 import { Grade } from '../../core/people';
-import { LATE_PCT, LIMIT, POLICY_DATE, ROLES, TERMS, Role, RoleName, SheetSettings } from '../../core/settings';
+import {
+  LATE_PCT, LIMIT, PERM_ACTIONS, PERM_ROLES, POLICY_DATE, PermAction, ROLES, STANDING_PERMISSIONS, TERMS, Role, RoleName,
+  SheetSettings,
+} from '../../core/settings';
 
-// The sheet's settings (the clerk limit, the cap, the proof threshold, the floor, the terms, the late percent, the policy date and period numbering from) and the roles it gives user names: clerk, the default for
+// The sheet's settings (the clerk limit, the cap, the proof threshold, the floor, the terms, the late percent, the policy date, period numbering from and the permission matrix) and the roles it gives user names: clerk, the default for
 // any name, or steward. The settings that carry a figure are dated: each is saved from a from-date
 // (blank: the sheet's today), and what shows in force is the value on the sheet's today.
 @Component({
@@ -57,6 +60,13 @@ import { LATE_PCT, LIMIT, POLICY_DATE, ROLES, TERMS, Role, RoleName, SheetSettin
         <label for="setting-period-numbering-from">Period numbering from (claims opened from it are numbered within their period; blank: off)</label>
         <input id="setting-period-numbering-from" data-testid="setting-period-numbering-from" type="date"
                formControlName="periodNumberingFrom" />
+        <fieldset formGroupName="permissions">
+          <legend>Permissions (roles that may take each action, comma separated; blank: the standing rule)</legend>
+          @for (a of permActions; track a) {
+            <label [for]="'setting-perm-' + a">{{ a }} (blank: {{ standing[a] }})</label>
+            <input [id]="'setting-perm-' + a" [attr.data-testid]="'setting-perm-' + a" [formControlName]="a" />
+          }
+        </fieldset>
         <button type="submit" data-testid="settings-save">Save settings</button>
         @if (settingsError()) {
           <p role="alert" data-testid="settings-error">{{ settingsError() }}</p>
@@ -74,6 +84,10 @@ import { LATE_PCT, LIMIT, POLICY_DATE, ROLES, TERMS, Role, RoleName, SheetSettin
       <p>Late percent in force: <span data-testid="setting-late-pct-current">{{ latePct() ?? '' }}</span></p>
       <p>Policy date in force: <span data-testid="setting-policy-date-current">{{ policyDate() ?? '' }}</span></p>
       <p>Period numbering from: <span data-testid="setting-period-numbering-from-current">{{ periodNumberingFrom() ?? '' }}</span></p>
+      @for (a of permActions; track a) {
+        <p>Roles that may {{ a }}:
+          <span [attr.data-testid]="'setting-perm-' + a + '-current'">{{ permissions()[a] ?? '' }}</span></p>
+      }
       <h3>Roles</h3>
       <form data-testid="role-form" [formGroup]="roleForm" (ngSubmit)="saveRole()">
         <label for="role-form-user">User</label>
@@ -123,6 +137,10 @@ export class SettingsForm {
   protected readonly latePct = signal<string | null>(null);
   protected readonly policyDate = signal<string | null>(null);
   protected readonly periodNumberingFrom = signal<string | null>(null);
+  protected readonly permActions = PERM_ACTIONS;
+  protected readonly standing = STANDING_PERMISSIONS;
+  /** The permission matrix as set; an action's entry is blank when it keeps the standing rule. */
+  protected readonly permissions = signal<Partial<Record<PermAction, string>>>({});
   protected readonly roles = signal<Role[]>([]);
   protected readonly settingsError = signal('');
   protected readonly roleError = signal('');
@@ -153,6 +171,14 @@ export class SettingsForm {
     latePctFrom: new FormControl('', { nonNullable: true }),
     policyDate: new FormControl('', { nonNullable: true }),
     periodNumberingFrom: new FormControl('', { nonNullable: true }),
+    permissions: new FormGroup({
+      open: new FormControl('', { nonNullable: true }),
+      settle: new FormControl('', { nonNullable: true }),
+      void: new FormControl('', { nonNullable: true }),
+      reassign: new FormControl('', { nonNullable: true }),
+      close: new FormControl('', { nonNullable: true }),
+      reopen: new FormControl('', { nonNullable: true }),
+    }),
   });
   protected readonly roleForm = new FormGroup({
     user: new FormControl('', { nonNullable: true }),
@@ -175,6 +201,7 @@ export class SettingsForm {
       this.latePct.set(null);
       this.policyDate.set(null);
       this.periodNumberingFrom.set(null);
+      this.permissions.set({});
       this.roles.set([]);
       if (sheetId) void this.reload(sheetId);
     });
@@ -186,12 +213,12 @@ export class SettingsForm {
     if (this.submitting) return;
     this.settingsError.set('');
     const { clerkLimit, clerkLimitFrom, cap, capFrom, proofThreshold, proofThresholdFrom, floor, floorFrom, terms, termsFrom, gradeTerms, latePct,
-      latePctFrom, policyDate, periodNumberingFrom } = this.settingsForm.controls;
+      latePctFrom, policyDate, periodNumberingFrom, permissions } = this.settingsForm.controls;
     const changed = (...cs: AbstractControl[]) => cs.some((c) => c.dirty || c.touched);
     const none = !changed(clerkLimit, clerkLimitFrom) && !changed(cap, capFrom)
       && !changed(proofThreshold, proofThresholdFrom) && !changed(floor, floorFrom)
       && !changed(terms, termsFrom) && !changed(gradeTerms) && !changed(latePct, latePctFrom) && !changed(policyDate)
-      && !changed(periodNumberingFrom);
+      && !changed(periodNumberingFrom) && !changed(permissions);
     /** A from-date typed, or null when blank (the sheet's today). */
     const from = (c: AbstractControl<string>) => c.value.trim() || null;
     const fromsToSave: AbstractControl<string>[] = [];
@@ -217,6 +244,9 @@ export class SettingsForm {
     const savePolicyDate = none || changed(policyDate);
     const numberingValue = periodNumberingFrom.value.trim();
     const saveNumbering = none || changed(periodNumberingFrom);
+    const permsToSave = this.permActions
+      .map((a) => ({ action: a, control: permissions.controls[a], value: permissions.controls[a].value.trim() }))
+      .filter((p) => changed(p.control) || (none && p.value !== ''));
     if (saveLimit) fromsToSave.push(clerkLimitFrom);
     if (saveCap) fromsToSave.push(capFrom);
     if (saveThreshold) fromsToSave.push(proofThresholdFrom);
@@ -262,6 +292,10 @@ export class SettingsForm {
     }
     if (saveNumbering && numberingValue !== '' && !POLICY_DATE.test(numberingValue)) {
       this.settingsError.set('Enter a period numbering from date, or leave it blank for off.');
+      return;
+    }
+    if (permsToSave.some((p) => p.value !== '' && !PERM_ROLES.test(p.value))) {
+      this.settingsError.set('Enter the roles that may take an action as clerk, steward or both, comma separated, or leave it blank for the standing rule.');
       return;
     }
     this.submitting = true;
@@ -335,6 +369,12 @@ export class SettingsForm {
         periodNumberingFrom.markAsPristine();
         periodNumberingFrom.markAsUntouched();
       }
+      for (const p of permsToSave) {
+        const saved = await this.api.setPermission(p.action, p.value === '' ? null : p.value);
+        this.permissions.set(saved.permissions);
+        p.control.markAsPristine();
+        p.control.markAsUntouched();
+      }
       // a blank field entered and left, and not saved, is not taken as changed by the next save
       this.settingsForm.markAsUntouched();
     } catch {
@@ -390,6 +430,7 @@ export class SettingsForm {
         this.latePct.set(settings.latePct);
         this.policyDate.set(settings.policyDate);
         this.periodNumberingFrom.set(settings.periodNumberingFrom);
+        this.permissions.set(settings.permissions);
         this.roles.set(roles);
       }
     } catch {

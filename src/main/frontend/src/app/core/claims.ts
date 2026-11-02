@@ -49,13 +49,12 @@ export function statusOn(c: Claim, day: string): ClaimStatus | null {
 
 /** Whether a claim counts in a period's totals: by the status it had at the end of the period's
  *  last day it counts, and the live rules do not leave it out: it is not deferred on the sheet's
- *  today, and it is not a claim open (or pending) then, unbound by a statement, dated within one of
+ *  today, and it is not a claim open (or pending) now, unbound by a statement, dated within one of
  *  its person's holds. */
 export function countsAsOf(c: Claim, holds: Hold[], end: string, today: string | null): boolean {
   const then = statusOn(c, end);
   if (then === null || !(then === 'OPEN' || then === 'PENDING' || then === 'SETTLED')) return false;
-  const open = then === 'OPEN' || then === 'PENDING';
-  return !deferred(c, today) && !(open && !c.stated && heldOn(holds, c.date));
+  return !deferred(c, today) && !(isOpen(c) && !c.stated && heldOn(holds, c.date));
 }
 
 export interface Claim {

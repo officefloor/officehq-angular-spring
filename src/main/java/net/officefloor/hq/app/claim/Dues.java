@@ -99,12 +99,12 @@ public class Dues {
 
     /** Whether a claim of the person counts in a period's totals: by the status it had at the end of
      *  the period's last day (see Claim#statusOn) it counts, and the live rules do not leave it out:
-     *  it is not deferred on the sheet's today, and it is not a claim open (or pending) then,
+     *  it is not deferred on the sheet's today, and it is not a claim open (or pending) now,
      *  unbound by a statement, dated within one of the person's holds. */
     public static boolean countsAsOf(Person person, Claim claim, LocalDate end, LocalDate today) {
         ClaimStatus then = claim.statusOn(end);
         return then != null && then.counts() && !claim.isDeferredOn(today)
-                && !(then.isOpen() && !claim.isStated() && person.isHeldOn(claim.getDate()));
+                && !(claim.getStatus().isOpen() && !claim.isStated() && person.isHeldOn(claim.getDate()));
     }
 
     /** The claims of a person that count in the live totals on the sheet's today. */

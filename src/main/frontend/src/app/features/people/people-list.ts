@@ -713,6 +713,7 @@ export class PeopleList {
     } catch {
       // the list stays empty; the next load reads it again
     }
+    if (read === this.reads) this.session.markShown(sheetId);
   }
 }
 

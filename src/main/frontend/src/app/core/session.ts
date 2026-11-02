@@ -20,6 +20,9 @@ export class Session {
   readonly sheetId = signal<string | null>(null);
   /** The active sheet's today (yyyy-mm-dd): every date decision and default date uses it. */
   readonly today = signal<string | null>(null);
+  /** The sheet whose people and claims are on screen: set once a load of them has been read, so the
+   *  sheet shows as loaded only when its rows are there to act on. */
+  readonly shownId = signal<string | null>(null);
   /** Bumped on every sheet load, so what is kept per sheet is re-read from the store. */
   readonly loads = signal(0);
 
@@ -27,7 +30,13 @@ export class Session {
     const res = await firstValueFrom(this.http.post<SignedIn>('/api/signin', { name }));
     this.user.set(res.name);
     this.sheetId.set(null);
+    this.shownId.set(null);
     this.today.set(null);
+  }
+
+  /** Record that the sheet's people and claims, as read for its latest load, are on screen. */
+  markShown(id: string): void {
+    if (this.sheetId() === id) this.shownId.set(id);
   }
 
   /** Load a sheet by id; one never loaded before starts empty. */

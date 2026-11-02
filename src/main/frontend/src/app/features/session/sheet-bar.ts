@@ -16,7 +16,7 @@ import { Session } from '../../core/session';
         <p role="alert" data-testid="sheet-load-error">{{ error() }}</p>
       }
     </form>
-    <p>Sheet: <strong data-testid="sheet-current-id">{{ session.sheetId() ?? '' }}</strong></p>
+    <p>Sheet: <strong data-testid="sheet-current-id">{{ session.shownId() ?? '' }}</strong></p>
     @if (session.sheetId()) {
       <p>Today: <strong data-testid="sheet-today">{{ session.today() ?? '' }}</strong></p>
       <form data-testid="sheet-today-form" [formGroup]="todayForm" (ngSubmit)="saveToday()">

@@ -21,13 +21,16 @@ public class SheetService {
 
     private final SheetRepository sheets;
     private final SettingValueRepository settingValues;
+    private final SheetPermissionRepository permissions;
     /** Lazy: the rollup reads the sheet's today through this service. */
     private final Rollup rollup;
     private final Audit audit;
 
-    public SheetService(SheetRepository sheets, SettingValueRepository settingValues, @Lazy Rollup rollup, Audit audit) {
+    public SheetService(SheetRepository sheets, SettingValueRepository settingValues,
+            SheetPermissionRepository permissions, @Lazy Rollup rollup, Audit audit) {
         this.sheets = sheets;
         this.settingValues = settingValues;
+        this.permissions = permissions;
         this.rollup = rollup;
         this.audit = audit;
     }
@@ -301,5 +304,54 @@ public class SheetService {
     public synchronized Sheet setProofThreshold(String id, String user, BigDecimal threshold, LocalDate from) {
         return record(id, user, "proof-threshold", threshold,
                 threshold == null ? "" : threshold.setScale(2).toPlainString(), from);
+    }
+
+    /** The actions the permission matrix covers. */
+    public static final List<String> ACTIONS = List.of("open", "settle", "void", "reassign", "close", "reopen");
+
+    /** The roles that may take each action under the standing rule (a blank entry in the matrix). */
+    private static final Map<String, List<String>> STANDING_PERMISSIONS = Map.of(
+            "open", List.of("clerk", "steward"), "settle", List.of("clerk", "steward"),
+            "void", List.of("clerk", "steward"), "close", List.of("clerk", "steward"),
+            "reassign", List.of("steward"), "reopen", List.of("steward"));
+
+    /** The permission matrix as set on the sheet: for each action, the comma separated roles that may
+     *  take it, blank ("") when it keeps the standing rule. */
+    @Transactional(readOnly = true)
+    public Map<String, String> permissions(String id) {
+        Map<String, String> matrix = new TreeMap<>();
+        for (String action : ACTIONS) {
+            matrix.put(action, "");
+        }
+        for (SheetPermission p : permissions.findBySheetId(id)) {
+            matrix.put(p.getAction(), p.getRoles());
+        }
+        return matrix;
+    }
+
+    /** The roles that may take an action on the sheet: those set in the matrix, or else the standing
+     *  rule's. */
+    @Transactional(readOnly = true)
+    public List<String> rolesAllowed(String id, String action) {
+        return permissions.findById(new SheetPermission.Key(id, action))
+                .map(p -> List.of(p.getRoles().split(",")))
+                .orElse(STANDING_PERMISSIONS.get(action));
+    }
+
+    /** Set the roles (a comma separated list; blank: the standing rule) that may take an action on the
+     *  sheet; recorded even when it is unchanged. */
+    @Transactional
+    public synchronized Sheet setPermission(String id, String user, String action, String roles) {
+        Sheet sheet = load(id, user);
+        if (roles.isEmpty()) {
+            permissions.deleteById(new SheetPermission.Key(id, action));
+        } else {
+            SheetPermission p = permissions.findById(new SheetPermission.Key(id, action))
+                    .orElseGet(() -> new SheetPermission(id, action, roles));
+            p.setRoles(roles);
+            permissions.saveAndFlush(p);
+        }
+        audit.recordOnCommit("SETTING_CHANGED sheet=" + id + " by=" + user + " key=perm-" + action + " value=" + roles);
+        return sheet;
     }
 }

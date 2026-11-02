@@ -32,7 +32,24 @@ export interface Settings {
   /** The due above which a claim needs a proof before it is settled or approved, as text with two
    *  decimals; null when there is none. */
   proofThreshold: string | null;
+  /** The permission matrix: for each action, the comma separated roles that may take it; blank when
+   *  it keeps the standing rule. */
+  permissions: Record<PermAction, string>;
 }
+
+/** The actions the permission matrix covers. */
+export type PermAction = 'open' | 'settle' | 'void' | 'reassign' | 'close' | 'reopen';
+
+export const PERM_ACTIONS: PermAction[] = ['open', 'settle', 'void', 'reassign', 'close', 'reopen'];
+
+/** The roles that may take each action when its entry in the matrix is blank. */
+export const STANDING_PERMISSIONS: Record<PermAction, string> = {
+  open: 'clerk,steward', settle: 'clerk,steward', void: 'clerk,steward', close: 'clerk,steward',
+  reassign: 'steward', reopen: 'steward',
+};
+
+/** A permission entry: a comma separated list of roles (clerk, steward). */
+export const PERM_ROLES = /^\s*(clerk|steward)\s*(,\s*(clerk|steward)\s*)*$/;
 
 /** A value a dated setting takes from a date on, as text with two decimals; null when blank. */
 export interface DatedValue<V extends string | null = string> {
@@ -150,6 +167,14 @@ export class SheetSettings {
     const [sheetId, headers] = this.active();
     return firstValueFrom(
       this.http.put<Settings>(`${this.url(sheetId)}/settings/period-numbering-from`, { value }, { headers }),
+    );
+  }
+
+  /** Set the roles (comma separated; null for blank, the standing rule) that may take an action. */
+  setPermission(action: PermAction, value: string | null): Promise<Settings> {
+    const [sheetId, headers] = this.active();
+    return firstValueFrom(
+      this.http.put<Settings>(`${this.url(sheetId)}/settings/permissions/${action}`, { value }, { headers }),
     );
   }
 
