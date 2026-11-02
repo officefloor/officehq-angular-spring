@@ -1,0 +1,249 @@
+diff --git a/src/main/frontend/src/app/core/session.ts b/src/main/frontend/src/app/core/session.ts
+index c306755dc..2d1720277 100644
+--- a/src/main/frontend/src/app/core/session.ts
++++ b/src/main/frontend/src/app/core/session.ts
+@@ -33,7 +33,7 @@ export interface DatedValue {
+   value: string | null;
+ }
+ 
+-/** The values recorded for each dated setting (floor, late-pct, terms, terms-<grade>, grace-<grade>, clerk-limit, cap,
++/** The values recorded for each dated setting (floor, late-pct, terms, terms-<grade>, grace-<grade>, clerk-limit, clerk-limit-<grade>, cap,
+  * proof-threshold, proof-threshold-<grade>, note-threshold, review-threshold, rounding), by key. */
+ export type Dated = Partial<Record<string, DatedValue[]>>;
+ 
+diff --git a/src/main/frontend/src/app/features/settings/settings.ts b/src/main/frontend/src/app/features/settings/settings.ts
+index 99ae7e63e..85b29780b 100644
+--- a/src/main/frontend/src/app/features/settings/settings.ts
++++ b/src/main/frontend/src/app/features/settings/settings.ts
+@@ -102,7 +102,8 @@ const FROM = 'From (yyyy-mm-dd; blank: the sheet\'s today)';
+ // not this one nor one that has this one as an ancestor, whose rates, then its parent's, up to three levels up, a grade with no
+ // rate in force on a date takes), and the role given to each user name. Saving stores the settings whose
+ // field was changed since the last save; the proof threshold of each grade (blank: none, the sheet's applies; dated) overrides the sheet's for a
+-// claim whose person has that grade on its date; clearing the clerk limit, the policy date, the period numbering from, the cap, the proof threshold or the note threshold (Delete or
++// claim whose person has that grade on its date; the clerk limit of each grade (blank: none, the sheet's applies; dated) overrides the
++// sheet's for a claim whose person has that grade on the sheet's today, the one in force then; clearing the clerk limit, the policy date, the period numbering from, the cap, the proof threshold or the note threshold (Delete or
+ // Backspace) counts as a change even when it was already blank. The clerk limit, the floor, the terms, each grade's terms, the late
+ // percent, the cap, the proof threshold, the rounding mode (half-up or half-even; blank: none; a claim whose date has one in force
+ // rounds its live figures by it, rather than by the policy date) and the note threshold (blank: none; a claim with an empty note whose due is above the one in force on its date
+@@ -123,6 +124,16 @@ const FROM = 'From (yyyy-mm-dd; blank: the sheet\'s today)';
+                (keydown.delete)="form.controls.clerkLimit.markAsDirty()" (keydown.backspace)="form.controls.clerkLimit.markAsDirty()" />
+         <label for="setting-clerk-limit-from">Clerk limit {{ from }}</label>
+         <input id="setting-clerk-limit-from" data-testid="setting-clerk-limit-from" formControlName="clerkLimitFrom" placeholder="yyyy-mm-dd" />
++        @for (g of grades; track g) {
++          <label [for]="'setting-clerk-limit-' + g">Clerk limit for grade {{ g }} (blank: the sheet's)</label>
++          <input [id]="'setting-clerk-limit-' + g" [attr.data-testid]="'setting-clerk-limit-' + g"
++                 [formControl]="gradeClerkLimitForm.controls[g]" inputmode="decimal"
++                 (keydown.delete)="gradeClerkLimitForm.controls[g].markAsDirty()"
++                 (keydown.backspace)="gradeClerkLimitForm.controls[g].markAsDirty()" />
++          <label [for]="'setting-clerk-limit-' + g + '-from'">Clerk limit for grade {{ g }} {{ from }}</label>
++          <input [id]="'setting-clerk-limit-' + g + '-from'" [attr.data-testid]="'setting-clerk-limit-' + g + '-from'"
++                 [formControl]="gradeClerkLimitFromForm.controls[g]" placeholder="yyyy-mm-dd" />
++        }
+         <label for="setting-floor">Floor (least live due)</label>
+         <input id="setting-floor" data-testid="setting-floor" formControlName="floor" inputmode="decimal" />
+         <label for="setting-floor-from">Floor {{ from }}</label>
+@@ -255,6 +266,10 @@ const FROM = 'From (yyyy-mm-dd; blank: the sheet\'s today)';
+         }
+       </form>
+       <p>Clerk limit now: <span data-testid="setting-clerk-limit-current">{{ session.clerkLimit() ?? '' | figure }}</span></p>
++      @for (g of grades; track g) {
++        <p>Clerk limit for grade {{ g }} now (blank: the sheet's):
++          <span [attr.data-testid]="'setting-clerk-limit-' + g + '-current'">{{ gradeClerkLimit()[g] ?? '' | figure }}</span></p>
++      }
+       <p>Floor now: <span data-testid="setting-floor-current">{{ session.floor() | figure }}</span></p>
+       <p>Terms now: <span data-testid="setting-terms-current">{{ session.terms() }}</span></p>
+       @for (g of grades; track g) {
+@@ -370,6 +385,16 @@ export class Settings {
+     }
+     return byGrade;
+   });
++  /** The clerk limit in force on the sheet's today for each grade that has its own then. */
++  protected readonly gradeClerkLimit = computed(() => {
++    const today = this.session.today();
++    const byGrade: Partial<Record<Grade, string>> = {};
++    for (const g of GRADES) {
++      const limit = this.session.valueOn(`clerk-limit-${g}`, today);
++      if (limit !== null) byGrade[g] = limit;
++    }
++    return byGrade;
++  });
+   /** The proof threshold in force on the sheet's today for each grade that has its own then. */
+   protected readonly gradeProof = computed(() => {
+     const today = this.session.today();
+@@ -447,6 +472,16 @@ export class Settings {
+     B: new FormControl('', { nonNullable: true }),
+     C: new FormControl('', { nonNullable: true }),
+   });
++  protected readonly gradeClerkLimitForm = new FormGroup({
++    A: new FormControl('', { nonNullable: true }),
++    B: new FormControl('', { nonNullable: true }),
++    C: new FormControl('', { nonNullable: true }),
++  });
++  protected readonly gradeClerkLimitFromForm = new FormGroup({
++    A: new FormControl('', { nonNullable: true }),
++    B: new FormControl('', { nonNullable: true }),
++    C: new FormControl('', { nonNullable: true }),
++  });
+   protected readonly gradeProofForm = new FormGroup({
+     A: new FormControl('', { nonNullable: true }),
+     B: new FormControl('', { nonNullable: true }),
+@@ -481,6 +516,8 @@ export class Settings {
+     this.gradeTermsFromForm.valueChanges.subscribe(() => this.error.set(''));
+     this.gradeGraceForm.valueChanges.subscribe(() => this.error.set(''));
+     this.gradeGraceFromForm.valueChanges.subscribe(() => this.error.set(''));
++    this.gradeClerkLimitForm.valueChanges.subscribe(() => this.error.set(''));
++    this.gradeClerkLimitFromForm.valueChanges.subscribe(() => this.error.set(''));
+     this.gradeProofForm.valueChanges.subscribe(() => this.error.set(''));
+     this.gradeProofFromForm.valueChanges.subscribe(() => this.error.set(''));
+     this.permForm.valueChanges.subscribe(() => this.error.set(''));
+@@ -584,6 +621,7 @@ export class Settings {
+       clerkLimit.dirty ? clerkLimitFrom : '', floor.dirty ? floorFrom : '', terms.dirty ? termsFrom : '',
+       latePct.dirty ? latePctFrom : '', cap.dirty ? capFrom : '', proofThreshold.dirty ? proofThresholdFrom : '',
+       noteThreshold.dirty ? noteThresholdFrom : '', reviewThreshold.dirty ? reviewThresholdFrom : '', rounding.dirty ? roundingFrom : '',
++      ...GRADES.filter((g) => this.gradeClerkLimitForm.controls[g].dirty).map((g) => this.gradeClerkLimitFromForm.controls[g].value),
+       ...GRADES.filter((g) => this.gradeTermsForm.controls[g].dirty).map((g) => this.gradeTermsFromForm.controls[g].value),
+       ...GRADES.filter((g) => this.gradeGraceForm.controls[g].dirty).map((g) => this.gradeGraceFromForm.controls[g].value),
+       ...GRADES.filter((g) => this.gradeProofForm.controls[g].dirty).map((g) => this.gradeProofFromForm.controls[g].value),
+@@ -596,6 +634,11 @@ export class Settings {
+       this.error.set('Enter a clerk limit of 0.00 or more, with at most two decimals, or leave it blank for none.');
+       return;
+     }
++    const gradeClerkLimitChanged = GRADES.filter((g) => this.gradeClerkLimitForm.controls[g].dirty);
++    if (gradeClerkLimitChanged.some((g) => !/^(\d{1,12}(\.\d{1,2})?)?$/.test(this.gradeClerkLimitForm.controls[g].value.trim()))) {
++      this.error.set('Enter a grade\'s clerk limit of 0.00 or more, with at most two decimals, or leave it blank for the sheet\'s.');
++      return;
++    }
+     if (floor.dirty && !/^\d{1,12}(\.\d{1,2})?$/.test(floorValue)) {
+       this.error.set('Enter a floor of 0.00 or more, with at most two decimals.');
+       return;
+@@ -706,6 +749,15 @@ export class Settings {
+         clerkLimit.markAsPristine();
+         if (this.session.sheetId() === sheet) this.show(view);
+       }
++      for (const g of gradeClerkLimitChanged) {
++        const control = this.gradeClerkLimitForm.controls[g];
++        const view = await firstValueFrom(
++          this.http.put<SettingsView>(`${this.base(sheet)}/settings/clerk-limit/${g}`,
++            { value: control.value.trim() || null, from: dated(this.gradeClerkLimitFromForm.controls[g].value) }, { headers: this.headers() }),
++        );
++        control.markAsPristine();
++        if (this.session.sheetId() === sheet) this.show(view);
++      }
+       if (floor.dirty) {
+         const view = await firstValueFrom(
+           this.http.put<SettingsView>(`${this.base(sheet)}/settings/floor`, { value: floorValue, from: dated(floorFrom) }, { headers: this.headers() }),
+diff --git a/src/main/java/net/officefloor/hq/app/claim/ClaimService.java b/src/main/java/net/officefloor/hq/app/claim/ClaimService.java
+index 81698c6c3..c0a75a8c1 100644
+--- a/src/main/java/net/officefloor/hq/app/claim/ClaimService.java
++++ b/src/main/java/net/officefloor/hq/app/claim/ClaimService.java
+@@ -288,7 +288,7 @@ public class ClaimService {
+         if (next == ClaimStatus.SETTLED && !judgedOnOriginal) refuseUnproved(sheetId, person, claim, settling);
+         BigDecimal opening = next == ClaimStatus.OPEN ? chargedFigureOf(sheetId, person, claim) : null;
+         if (next == ClaimStatus.OPEN) refuseUnnoted(sheetId, claim, opening);
+-        if (next == ClaimStatus.SETTLED && overClerkLimit(sheetId, user, settling)) next = ClaimStatus.PENDING;
++        if (next == ClaimStatus.SETTLED && overClerkLimit(sheetId, user, person, settling)) next = ClaimStatus.PENDING;
+         String voidReason = next == ClaimStatus.VOID ? voidReasons.reasonForVoid(sheetId, reason) : null;
+         RollupService.Snapshot before = rollup.snapshot(sheetId);
+         refuseIfClosed(sheetId, claim.getDueBy());
+@@ -1068,10 +1068,13 @@ public class ClaimService {
+         if (amount.negate().compareTo(remaining) > 0) throw new CorrectionRefusedException();
+     }
+ 
+-    /** Whether a clerk settles a claim whose due is above the clerk limit; a due of n/a is within any. */
+-    private boolean overClerkLimit(String sheetId, String user, BigDecimal due) {
++    /**
++     * Whether a clerk settles a claim whose due is above the clerk limit in force: its person's grade's on the
++     * sheet's today when one is set, else the sheet's; a due of n/a is within any.
++     */
++    private boolean overClerkLimit(String sheetId, String user, Person person, BigDecimal due) {
+         if (settings.roleOf(sheetId, user) == Role.STEWARD) return false;
+-        BigDecimal limit = settings.clerkLimit(sheetId);
++        BigDecimal limit = settings.clerkLimitFor(sheetId, person.gradeOn(sheets.today(sheetId)));
+         return limit != null && due != null && due.compareTo(limit) > 0;
+     }
+ 
+diff --git a/src/main/java/net/officefloor/hq/app/setting/SettingController.java b/src/main/java/net/officefloor/hq/app/setting/SettingController.java
+index 8fa2e3e0f..b4e857d65 100644
+--- a/src/main/java/net/officefloor/hq/app/setting/SettingController.java
++++ b/src/main/java/net/officefloor/hq/app/setting/SettingController.java
+@@ -364,6 +364,16 @@ public class SettingController {
+         return get(sheetId, user);
+     }
+ 
++    @PutMapping("/settings/clerk-limit/{grade}")
++    public SettingsView setGradeClerkLimit(
++            @PathVariable @Size(max = 100) @Pattern(regexp = "[A-Za-z0-9._-]+") String sheetId,
++            @PathVariable @Pattern(regexp = "[ABC]") String grade,
++            @RequestHeader("X-User") @NotBlank @Size(max = 100) String user,
++            @RequestBody @Valid ClerkLimitRequest request) {
++        service.setGradeClerkLimit(sheetId, user, grade, request.limitValue(), request.fromValue());
++        return get(sheetId, user);
++    }
++
+     @PutMapping("/settings/floor")
+     public SettingsView setFloor(
+             @PathVariable @Size(max = 100) @Pattern(regexp = "[A-Za-z0-9._-]+") String sheetId,
+diff --git a/src/main/java/net/officefloor/hq/app/setting/SettingService.java b/src/main/java/net/officefloor/hq/app/setting/SettingService.java
+index 503f77fed..0417a0ccb 100644
+--- a/src/main/java/net/officefloor/hq/app/setting/SettingService.java
++++ b/src/main/java/net/officefloor/hq/app/setting/SettingService.java
+@@ -87,6 +87,12 @@ public class SettingService {
+         return sheets.findById(sheetId).orElseThrow(SheetNotFoundException::new).getClerkLimit();
+     }
+ 
++    /** The clerk limit in force on the sheet's today for a claim of the grade: the grade's own, else the sheet's; null means no limit. */
++    @Transactional(readOnly = true)
++    public BigDecimal clerkLimitFor(String sheetId, String grade) {
++        return sheets.findById(sheetId).orElseThrow(SheetNotFoundException::new).clerkLimitFor(grade);
++    }
++
+     /** The floor in force on the sheet's today. */
+     @Transactional(readOnly = true)
+     public BigDecimal floor(String sheetId) {
+@@ -291,6 +297,17 @@ public class SettingService {
+         return limit;
+     }
+ 
++    /**
++     * Record the grade's clerk limit (null: none, the sheet's applies) from the date (null: the sheet's
++     * today); a limit already recorded from that date is replaced.
++     */
++    @Transactional
++    public BigDecimal setGradeClerkLimit(String sheetId, String user, String grade, BigDecimal limit, LocalDate from) {
++        Sheet sheet = sheets.findForUpdate(sheetId).orElseThrow(SheetNotFoundException::new);
++        record(sheet, user, Sheet.CLERK_LIMIT + "-" + grade, limit == null ? null : limit.toPlainString(), from);
++        return limit;
++    }
++
+     /** Record the terms from the date (null: the sheet's today); no figure, nor any claim's due-by, moves with them. */
+     @Transactional
+     public int setTerms(String sheetId, String user, int terms, LocalDate from) {
+diff --git a/src/main/java/net/officefloor/hq/app/sheet/Sheet.java b/src/main/java/net/officefloor/hq/app/sheet/Sheet.java
+index 9c08c790f..77d661b7c 100644
+--- a/src/main/java/net/officefloor/hq/app/sheet/Sheet.java
++++ b/src/main/java/net/officefloor/hq/app/sheet/Sheet.java
+@@ -27,7 +27,7 @@ public class Sheet {
+ 
+     /**
+      * The keys of its dated settings; a grade's terms are {@code terms-<grade>}, its grace days {@code grace-<grade>},
+-     * its proof threshold {@code proof-threshold-<grade>}.
++     * its proof threshold {@code proof-threshold-<grade>}, its clerk limit {@code clerk-limit-<grade>}.
+      */
+     public static final String FLOOR = "floor", LATE_PCT = "late-pct", TERMS = "terms", CLERK_LIMIT = "clerk-limit",
+             CAP = "cap", PROOF_THRESHOLD = "proof-threshold", NOTE_THRESHOLD = "note-threshold", GRACE = "grace",
+@@ -248,6 +248,15 @@ public class Sheet {
+     /** The clerk limit in force today; null means no limit. */
+     public BigDecimal getClerkLimit() { return decimalOn(CLERK_LIMIT, today, null); }
+ 
++    /** The grade's own clerk limit in force today; null means none (the sheet's applies). */
++    public BigDecimal gradeClerkLimit(String grade) { return decimalOn(CLERK_LIMIT + "-" + grade, today, null); }
++
++    /** The clerk limit in force today for a claim of the grade: the grade's own, else the sheet's; null means no limit. */
++    public BigDecimal clerkLimitFor(String grade) {
++        BigDecimal own = gradeClerkLimit(grade);
++        return own != null ? own : getClerkLimit();
++    }
++
+     /** The floor in force on the date: 1.00 before any is recorded. */
+     public BigDecimal floorOn(LocalDate date) { return decimalOn(FLOOR, date, START_FLOOR); }
+ 
