@@ -1,0 +1,64 @@
+{
+  "checkpoint": 53,
+  "stack": {
+    "repo": "/home/daniel/officehq-angular-spring",
+    "origin": "git@github.com:officefloor/officehq-angular-spring.git",
+    "name": "officehq-angular-spring",
+    "base_ref": "base-empty",
+    "base_commit": "65cb8233ea38b2dfa6cfd18709e30cd18fdf3250"
+  },
+  "checkpoint_id": "cp53_permission-matrix",
+  "phase": "early",
+  "type": "additive",
+  "mutates": [],
+  "replaced_tests": [],
+  "request": {
+    "spec": "The settings gain a permission matrix: for each of open, settle, void, reassign, close and\nreopen, which roles may do it, as a comma separated list of roles (SETTING_CHANGED\nkey=perm-<action> value=<roles>; not dated). A blank entry keeps the standing rule: open, settle,\nvoid and close by clerk and steward; reassign and reopen by steward. An action a role is not\nallowed is refused with its usual error. The opener still cannot settle their own claim, the\nclerk limit and the proof threshold still apply, and approving or rejecting stays with stewards.\n",
+    "prompt": "You are implementing ONE change to this application.\n\nFIRST read AGENTS.md \u2014 it states the working rules and how the app is tested, and sends you to\nDESIGN.md for the app's stack and conventions. Follow both.\n\nTHE CHANGE REQUEST:\nThe settings gain a permission matrix: for each of open, settle, void, reassign, close and\nreopen, which roles may do it, as a comma separated list of roles (SETTING_CHANGED\nkey=perm-<action> value=<roles>; not dated). A blank entry keeps the standing rule: open, settle,\nvoid and close by clerk and steward; reassign and reopen by steward. An action a role is not\nallowed is refused with its usual error. The opener still cannot settle their own claim, the\nclerk limit and the proof threshold still apply, and approving or rejecting stays with stewards.\n\nYour work is verified by an automated Playwright UI test already installed under e2e/specs/.\nRead that spec: it declares the exact data-testid anchors, values, test data and any audit\nrecords it expects \u2014 match them. Run `bin/e2e` to build the app, start it, and run the test as\nyou work; iterate until it passes. Change whatever the request needs across the app \u2014 its stored\ndata, its server and its front end. Do NOT edit bin/build, bin/start, bin/stop, bin/e2e,\nAGENTS.md, CLAUDE.md, DESIGN.md, e2e/support/ or the test spec.\n"
+  },
+  "commit_sha": "bd05c93d147b40c6fb57c2cb21248aafb85a4ad3",
+  "reset_sha": "",
+  "preagent_sha": "9b1521bf0829ccb468b4caab04dbc96470cc6a9c",
+  "prev_sha": "9b1521bf0829ccb468b4caab04dbc96470cc6a9c",
+  "base_sha": "65cb8233ea38b2dfa6cfd18709e30cd18fdf3250",
+  "agent": {
+    "ok": true,
+    "cost_usd": 1.9904336000000002,
+    "input_tokens": 80,
+    "output_tokens": 22390,
+    "cache_read_tokens": 3288008,
+    "cache_creation_tokens": 110589,
+    "num_turns": 41,
+    "duration_ms": 2005864,
+    "duration_api_ms": 260387,
+    "model": "claude-opus-5-5",
+    "session_id": "02f906fe-7d35-42fd-bc2a-d569da9a0782",
+    "stop_reason": "success",
+    "result_text": "The permission matrix is in, and the acceptance spec passed all 4 tests on three runs in a row. Getting there took two extra changes outside the feature itself, explained below.\n\n**What the feature does**\n- **Storage:** a new table (`V39__sheet_permission.sql`) holds one row per sheet and action. A blank entry deletes the row, so that action goes back to the standing rule: open, settle, void and close by clerk and steward; reassign and reopen by steward.\n- **Server:**\n  - `SheetService` reads and sets the matrix.\n  - Saving an entry writes `SETTING_CHANGED key=perm-<action> value=<roles>` to the audit file, with no date.\n  - `SettingsController` has a new `PUT /settings/permissions/{action}` endpoint. It only accepts `clerk` and `steward`, comma separated, or blank. Anything else is refused.\n  - The settings view now includes the matrix.\n- **Enforcement:** `RoleService.may(sheet, user, action)` replaces the old steward-only checks for reassign and reopen. It's also now checked for open, settle and void in `ClaimService.changeStatus`, which bulk settle goes through too, and for close in `PeriodService.close`. A refusal returns the usual 403 and shows the action's usual error. The other rules are unchanged: the opener still can't settle their own claim, the clerk limit and proof threshold still apply, and only stewards can approve or reject.\n- **Screen:** the settings form has a field for each action (`setting-perm-<action>`) and shows what's set (`setting-perm-<action>-current`). The roles typed are checked before saving.\n\n**Two changes outside the feature \u2014 please check these**\n1. **Held claims in period totals.** Scenario 3 expects a claim that was open at the end of a period, belongs to someone on hold, and is void now to count in that period's total. The old code left it out, because it applied the hold rule to the claim's status at the period's end. I changed `Dues.countsAsOf` (Java) and `countsAsOf` in `core/claims.ts` to apply the hold rule to the claim's status now. This changes period totals generally, not just for permissions. It's the reading the spec requires, but you may want to confirm it's the rule you intended.\n2. **A race when a page first loads.** The main test failed in about half its runs: when vic opened two claims back to back, the audit file sometimes listed them in the wrong order. The cause was that the sheet id showed before the claims had loaded, so the test could press the next claim while the first open was still in flight. `sheet-current-id` now only shows once the sheet's people and claims are on screen. This uses a new `shownId` signal in `Session`, set by the people list when its read finishes.",
+    "error": "",
+    "attempts": [
+      {
+        "ok": true,
+        "limit_reached": false,
+        "retryable": false,
+        "timed_out": false,
+        "cost_usd": 1.9904336000000002,
+        "num_turns": 41,
+        "duration_ms": 2005864,
+        "duration_api_ms": 260387,
+        "error": ""
+      }
+    ]
+  },
+  "agent_stream_file": "cp53.agent.jsonl",
+  "agent_diff_file": "cp53.agent.diff",
+  "build_log_file": null,
+  "tests": {
+    "gated": false,
+    "queued": true
+  },
+  "probe": null,
+  "pinned_touched": [],
+  "acceptance_touched": [],
+  "impact_gate": null
+}
