@@ -13,6 +13,7 @@ import net.officefloor.hq.app.role.RoleService;
 import net.officefloor.hq.app.role.SheetRole;
 import net.officefloor.hq.app.rollup.Rollup;
 import net.officefloor.hq.app.sheet.SheetService;
+import net.officefloor.hq.app.voidreason.VoidReasonService;
 import net.officefloor.hq.app.watch.WatchService;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
@@ -33,6 +34,7 @@ public class ClaimService {
     private final WatchService watches;
     private final HolidayService holidays;
     private final SheetTagRepository sheetTags;
+    private final VoidReasonService voidReasons;
     private final Audit audit;
 
     /** How many days after its settlement a steward may still void a settled claim. */
@@ -40,7 +42,7 @@ public class ClaimService {
 
     public ClaimService(ClaimRepository claims, PersonRepository people, Dues dues, SheetService sheets,
             Rollup rollup, PeriodRepository periods, RoleService roles, WatchService watches,
-            HolidayService holidays, SheetTagRepository sheetTags, Audit audit) {
+            HolidayService holidays, SheetTagRepository sheetTags, VoidReasonService voidReasons, Audit audit) {
         this.claims = claims;
         this.people = people;
         this.dues = dues;
@@ -51,6 +53,7 @@ public class ClaimService {
         this.watches = watches;
         this.holidays = holidays;
         this.sheetTags = sheetTags;
+        this.voidReasons = voidReasons;
         this.audit = audit;
     }
 
@@ -196,10 +199,22 @@ public class ClaimService {
      *  before the clerk limit is considered. */
     @Transactional
     public Claim changeStatus(String sheetId, String user, long claimId, ClaimStatus to) {
+        return changeStatus(sheetId, user, claimId, to, null);
+    }
+
+    /** Void a claim as {@link #changeStatus} does; while the sheet has void reasons, the void needs
+     *  one of them (refused without), kept on the claim and ending its record. */
+    @Transactional
+    public Claim voidClaim(String sheetId, String user, long claimId, String reason) {
+        return changeStatus(sheetId, user, claimId, ClaimStatus.VOID, reason);
+    }
+
+    private Claim changeStatus(String sheetId, String user, long claimId, ClaimStatus to, String reason) {
         Claim claim = lock(sheetId, claimId);
         refuseClosed(sheetId, claim.getDueBy());
+        String voidReason = to == ClaimStatus.VOID ? voidReasons.required(sheetId, reason) : null;
         if (to == ClaimStatus.VOID && claim.getStatus() == ClaimStatus.SETTLED) {
-            return voidSettled(sheetId, user, claim);
+            return voidSettled(sheetId, user, claim, voidReason);
         }
         if (!claim.getStatus().canBecome(to) || to == ClaimStatus.PENDING) {
             throw new ResponseStatusException(HttpStatus.CONFLICT,
@@ -239,6 +254,9 @@ public class ClaimService {
             }
             // A void claim keeps the number it had (never reused).
             claim.setStatus(becomes);
+            if (becomes == ClaimStatus.VOID) {
+                claim.setVoidReason(voidReason);
+            }
             if (becomes == ClaimStatus.OPEN) {
                 claim.setNumber(nextNumber(sheetId, claim.getDueBy()));
                 claim.setOpenedBy(user);
@@ -256,6 +274,7 @@ public class ClaimService {
             if (becomes == ClaimStatus.SETTLED) {
                 line += " due=" + dueText(saved.getSettledDue());
             }
+            line += reasonText(voidReason);
             audit.recordOnCommit(line);
             if (becomes == ClaimStatus.SETTLED) {
                 watches.notifyWatchers(sheetId, user, person, saved.getNumber());
@@ -267,7 +286,7 @@ public class ClaimService {
     /** Void a settled claim: only a steward may, within {@value #VOID_SETTLED_DAYS} days of its
      *  settlement (the first SETTLED line of its status log) by the sheet's today. It keeps its
      *  number and settled due, which leaves every total; the record ends with the figure reversed. */
-    private Claim voidSettled(String sheetId, String user, Claim claim) {
+    private Claim voidSettled(String sheetId, String user, Claim claim, String voidReason) {
         if (!SheetRole.STEWARD.equals(roles.roleOf(sheetId, user))) {
             throw new ResponseStatusException(HttpStatus.FORBIDDEN, "Only a steward can void a settled claim");
         }
@@ -282,9 +301,11 @@ public class ClaimService {
             Person person = person(sheetId, claim.getPersonId());
             BigDecimal reversed = dues.figure(sheetId, person, claim);
             claim.setStatus(ClaimStatus.VOID);
+            claim.setVoidReason(voidReason);
             logStatus(sheetId, user, person, claim);
             Claim saved = claims.saveAndFlush(claim);
-            audit.recordOnCommit(record("CLAIM_VOIDED", sheetId, user, person, saved) + " reversed=" + dueText(reversed));
+            audit.recordOnCommit(record("CLAIM_VOIDED", sheetId, user, person, saved) + " reversed=" + dueText(reversed)
+                    + reasonText(voidReason));
             return saved;
         });
     }
@@ -668,6 +689,11 @@ public class ClaimService {
     }
 
     /** An audit record about a claim; one that has a number carries it at the end. */
+    /** The end of a void's record: its reason, when one was given. */
+    private static String reasonText(String voidReason) {
+        return voidReason == null ? "" : " reason=" + voidReason;
+    }
+
     private static String record(String event, String sheetId, String user, Person person, Claim claim) {
         String number = claim.getNumber();
         return event + " sheet=" + sheetId + " by=" + user + " person=" + person.getName()

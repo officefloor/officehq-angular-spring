@@ -6,6 +6,7 @@ import { GradeFrom, Person, gradeOn } from '../../core/people';
 import { Period, periodOf } from '../../core/periods';
 import { Rate } from '../../core/rates';
 import { Session } from '../../core/session';
+import { VoidReasons } from '../../core/void-reasons';
 import { DatedValue, Graces, graceOn } from '../../core/settings';
 
 /** Why the server refused an action: the claim's status does not allow it. */
@@ -62,6 +63,9 @@ function refusal(e: unknown, action: ClaimAction): string {
   }
   if (e instanceof HttpErrorResponse && e.status === 400 && action === 'reject') {
     return 'Enter a reason for rejecting the claim.';
+  }
+  if (e instanceof HttpErrorResponse && e.status === 400 && action === 'void') {
+    return 'Choose a void reason from the sheet\'s list.';
   }
   return 'The claim could not be changed.';
 }
@@ -204,8 +208,21 @@ function splitRefusal(e: unknown): string {
             [attr.aria-label]="'Settle claim of ' + c.amount + ' on ' + c.date">Settle</button>
           <button type="button" data-testid="claim-resettle" (click)="act(c, 'resettle')"
             [attr.aria-label]="'Re-settle claim of ' + c.amount + ' on ' + c.date">Re-settle</button>
-          <button type="button" data-testid="claim-void" (click)="act(c, 'void')"
-            [attr.aria-label]="'Void claim of ' + c.amount + ' on ' + c.date">Void</button>
+          @if (voidReasons.list().length > 0) {
+            <label [for]="'claim-void-reason-' + c.id">Void reason</label>
+            <select [id]="'claim-void-reason-' + c.id" data-testid="claim-void-reason" #voidReason
+              (change)="clearError(c)">
+              <option value="">Choose a reason</option>
+              @for (r of voidReasons.list(); track r.id) {
+                <option [value]="r.reason">{{ r.reason }}</option>
+              }
+            </select>
+            <button type="button" data-testid="claim-void" (click)="act(c, 'void', voidReason.value)"
+              [attr.aria-label]="'Void claim of ' + c.amount + ' on ' + c.date">Void</button>
+          } @else {
+            <button type="button" data-testid="claim-void" (click)="act(c, 'void')"
+              [attr.aria-label]="'Void claim of ' + c.amount + ' on ' + c.date">Void</button>
+          }
           <button type="button" data-testid="claim-approve" (click)="act(c, 'approve')"
             [attr.aria-label]="'Approve claim of ' + c.amount + ' on ' + c.date">Approve</button>
           <label [for]="'claim-reject-reason-' + c.id">Reject reason</label>
@@ -263,6 +280,7 @@ function splitRefusal(e: unknown): string {
 export class PersonClaims {
   private readonly api = inject(Claims);
   private readonly session = inject(Session);
+  protected readonly voidReasons = inject(VoidReasons);
 
   readonly personId = input.required<number>();
   /** This person's claims, newest first. */
@@ -408,7 +426,8 @@ export class PersonClaims {
 
   protected async act(c: Claim, action: ClaimAction, reason?: string): Promise<void> {
     this.claimError.set(null);
-    if (action === 'reject' && (reason ?? '').trim() === '') {
+    if ((action === 'reject' || (action === 'void' && this.voidReasons.list().length > 0))
+      && (reason ?? '').trim() === '') {
       this.claimError.set({ id: c.id, message: refusal(new HttpErrorResponse({ status: 400 }), action) });
       return;
     }

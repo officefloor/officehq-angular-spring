@@ -140,6 +140,8 @@ export interface Claim {
   ref: string | null;
   /** Its tags, sorted and comma and space separated; empty when it has none. */
   tags: string;
+  /** The reason from the sheet's list a void claim was voided with; null when none. */
+  voidReason: string | null;
 }
 
 /** A line of a claim's status log: the status, who changed it to that, the sheet's today then
@@ -354,10 +356,11 @@ export class Claims {
   }
 
   /** Ask for a change of the claim's status; refused (409) when its status does not allow it. A
-   *  reject carries its reason. */
+   *  reject carries its reason, and a void the reason chosen from the sheet's list (refused, 400,
+   *  without one while the list is not empty). */
   act(id: number, action: ClaimAction, reason?: string): Promise<Claim> {
     const { sheetId, user } = this.active();
-    const body = action === 'reject' ? { reason: reason ?? '' } : null;
+    const body = action === 'reject' ? { reason: reason ?? '' } : action === 'void' ? { reason: reason || null } : null;
     return firstValueFrom(
       this.http.post<Claim>(`${this.url(sheetId)}/claims/${id}/${action}`, body, { headers: { 'X-User': user } }),
     );

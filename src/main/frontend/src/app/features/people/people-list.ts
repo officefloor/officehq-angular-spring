@@ -9,10 +9,11 @@ import { Rate, Rates, pctOn } from '../../core/rates';
 import { Session } from '../../core/session';
 import { DatedValue, Graces, SheetSettings, graceOn, valueOn } from '../../core/settings';
 import { Watch, Watches } from '../../core/watches';
+import { VoidReasons } from '../../core/void-reasons';
 import { PersonClaims } from '../claims/person-claims';
 import { PeriodForm } from '../periods/period-form';
 import { RateForm } from '../rates/rate-form';
-import { GradeSummary, PeriodSummary, StatusSummary, SummaryPanel } from '../summary/summary-panel';
+import { GradeSummary, PeriodSummary, StatusSummary, SummaryPanel, VoidReasonSummary } from '../summary/summary-panel';
 import { HeaderCounters } from '../summary/header-counters';
 import { QuickAddBar } from './quick-add-bar';
 import { PasteClaimsBox } from './paste-claims-box';
@@ -76,7 +77,8 @@ const NO_LEAVE: Leave = { holds: [], retiredFrom: null };
           }
         </ul>
       }
-      <app-summary-panel [grades]="gradeSummary()" [periods]="periodSummary()" [statuses]="statusSummary()" />
+      <app-summary-panel [grades]="gradeSummary()" [periods]="periodSummary()" [statuses]="statusSummary()"
+        [voidReasons]="voidReasonSummary()" />
       <label>
         <input type="checkbox" data-testid="show-retired" [checked]="showRetired()"
           (change)="showRetired.set($any($event.target).checked)" />
@@ -217,6 +219,7 @@ const NO_LEAVE: Leave = { holds: [], retiredFrom: null };
 })
 export class PeopleList {
   protected readonly session = inject(Session);
+  private readonly voidReasons = inject(VoidReasons);
   private readonly api = inject(People);
   private readonly claimsApi = inject(Claims);
   private readonly ratesApi = inject(Rates);
@@ -397,6 +400,13 @@ export class PeopleList {
   /** Per status: how many claims on the sheet have it. */
   protected readonly statusSummary = computed((): StatusSummary[] =>
     PeopleList.statuses.map((status) => ({ status, count: this.claims().filter((c) => c.status === status).length })),
+  );
+  /** Per void reason on the sheet's list: how many void claims were voided with it. */
+  protected readonly voidReasonSummary = computed((): VoidReasonSummary[] =>
+    this.voidReasons.list().map(({ reason }) => ({
+      reason,
+      count: this.claims().filter((c) => c.status === 'VOID' && c.voidReason === reason).length,
+    })),
   );
   /** The statuses the summary counts claims of. */
   private static readonly statuses = ['DRAFT', 'OPEN', 'PENDING', 'SETTLED', 'VOID'];

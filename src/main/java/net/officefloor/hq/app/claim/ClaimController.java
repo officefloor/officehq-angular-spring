@@ -45,12 +45,14 @@ public class ClaimController {
      *  never deferred); and how many proofs it has; and the number of the claim it was split off
      *  (null when none); and who has its editor open (null when no one); and the last day a reminder
      *  was written for it (null when never); and its external reference (null when none); and its tags,
-     *  sorted and comma and space separated (empty when none). */
+     *  sorted and comma and space separated (empty when none); and the reason it was voided with (null
+     *  when none). */
     public record ClaimView(long id, long personId, String amount, LocalDate date, String note,
             ClaimStatus status, String number, String settledDue, String openedBy, boolean stated,
             String statedDue, boolean statedNa, String corrects, LocalDate roundsBy, long listed, LocalDate dueBy,
             List<LogLineView> log, LocalDate deferredUntil, int proofs, String splitFrom,
-            String editLockedBy, boolean lateEntry, LocalDate remindedOn, String ref, String tags) {
+            String editLockedBy, boolean lateEntry, LocalDate remindedOn, String ref, String tags,
+            String voidReason) {
         public static ClaimView of(Claim claim) {
             return new ClaimView(claim.getId(), claim.getPersonId(), claim.getAmount().setScale(2).toPlainString(),
                     claim.getDate(), claim.getNote(), claim.getStatus(), claim.getNumber(),
@@ -60,7 +62,8 @@ public class ClaimController {
                     claim.isStatedNa(), claim.getCorrects(), claim.roundsBy(), claim.getListed(), claim.getDueBy(),
                     claim.getLog().stream().map(LogLineView::of).toList(), claim.getDeferredUntil(),
                     claim.getProofs(), claim.getSplitFrom(), claim.getEditLockedBy(), claim.isLateEntry(),
-                    claim.getRemindedOn(), claim.getRef(), tagsText(claim.getTags()));
+                    claim.getRemindedOn(), claim.getRef(), tagsText(claim.getTags()),
+                    claim.getStatus() == ClaimStatus.VOID ? claim.getVoidReason() : null);
         }
 
         /** The claim as it stood at the end of a day: its figures as its revision then has them (see
@@ -81,7 +84,8 @@ public class ClaimController {
                     log.stream().map(LogLineView::of).toList(), then.getDeferredUntil(), kept.getProofs(),
                     kept.getSplitFrom(), null, kept.isLateEntry(),
                     kept.getRemindedOn() == null || kept.getRemindedOn().isAfter(day) ? null : kept.getRemindedOn(),
-                    kept.getRef(), tagsText(kept.getTags()));
+                    kept.getRef(), tagsText(kept.getTags()),
+                    then.getStatus() == ClaimStatus.VOID ? kept.getVoidReason() : null);
         }
 
         /** The tags as the claim shows them: sorted, comma and space separated; empty when none. */
@@ -356,10 +360,16 @@ public class ClaimController {
         return new SplitView(ClaimView.of(split.original()), ClaimView.of(split.split()));
     }
 
+    /** The void form: the reason chosen from the sheet's list (blank or absent when none). */
+    public record VoidForm(@Size(max = 200) String reason) {
+    }
+
     @PostMapping("/claims/{claimId}/void")
     public ClaimView voidClaim(@PathVariable @NotBlank @Size(max = 100) String sheetId,
             @PathVariable long claimId,
-            @RequestHeader("X-User") @NotBlank @Size(max = 100) String user) {
-        return ClaimView.of(service.changeStatus(sheetId.trim(), user.trim(), claimId, ClaimStatus.VOID));
+            @RequestHeader("X-User") @NotBlank @Size(max = 100) String user,
+            @Valid @RequestBody(required = false) VoidForm form) {
+        return ClaimView.of(service.voidClaim(sheetId.trim(), user.trim(), claimId,
+                form == null ? null : form.reason()));
     }
 }
