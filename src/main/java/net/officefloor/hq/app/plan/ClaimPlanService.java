@@ -8,7 +8,10 @@ import java.util.List;
 import java.util.Map;
 import java.util.function.Predicate;
 import net.officefloor.hq.app.Audit;
+import net.officefloor.hq.app.claim.Claim;
+import net.officefloor.hq.app.claim.ClaimRepository;
 import net.officefloor.hq.app.claim.ClaimService;
+import net.officefloor.hq.app.claim.ClaimStatus;
 import net.officefloor.hq.app.claim.CorrectionRefusedException;
 import net.officefloor.hq.app.period.PeriodClosedException;
 import net.officefloor.hq.app.person.Person;
@@ -36,7 +39,8 @@ import org.springframework.transaction.support.TransactionTemplate;
  * sheet's today): a plan date on or after the day it was paused and before the day it was resumed is
  * skipped, not postponed, so generate makes nothing for it and its next dates leave it out. A plan's
  * amount can be changed (on the sheet's today): the claims generated from then on take the new amount,
- * those already generated keep theirs. A plan may name one of the sheet's descendants: its claims are then
+ * and those already generated that are still DRAFT are edited to it as the claim form would (the change
+ * refused, writing nothing, when the form refuses one); those in any other status keep theirs. A plan may name one of the sheet's descendants: its claims are then
  * made on that sheet, for the person there of the same name (none when there is no such person), by that
  * sheet's rules and written in its audit; the plan still counts what it made.
  */
@@ -51,6 +55,7 @@ public class ClaimPlanService {
     private final SheetRepository sheetRows;
     private final SheetService sheets;
     private final ClaimService claims;
+    private final ClaimRepository claimRows;
     private final TransactionTemplate transaction;
     private final SettingService settings;
     private final SheetParentRepository parents;
@@ -59,7 +64,8 @@ public class ClaimPlanService {
     public ClaimPlanService(ClaimPlanRepository plans, ClaimPlanDateRepository dates, ClaimPlanPauseRepository pauses,
             ClaimPlanChangeRepository changes, PersonRepository people,
             SheetRepository sheetRows, SheetService sheets, ClaimService claims, SettingService settings,
-            PlatformTransactionManager transactions, SheetParentRepository parents, Audit audit) {
+            PlatformTransactionManager transactions, SheetParentRepository parents, ClaimRepository claimRows, Audit audit) {
+        this.claimRows = claimRows;
         this.settings = settings;
         this.parents = parents;
         this.plans = plans;
@@ -108,7 +114,10 @@ public class ClaimPlanService {
         return by;
     }
 
-    /** Change the plan's amount on the sheet's today: the claims generated from then on take it. */
+    /**
+     * Change the plan's amount on the sheet's today: the claims generated from then on take it, and those it
+     * generated that are still DRAFT are edited to it, oldest date first, by every rule of the claim form.
+     */
     @Transactional
     public ClaimPlan changeAmount(String sheetId, String user, Long planId, BigDecimal amount) {
         sheetRows.findForUpdate(sheetId).orElseThrow(SheetNotFoundException::new);
@@ -118,6 +127,14 @@ public class ClaimPlanService {
         changes.saveAndFlush(new ClaimPlanChange(sheetId, planId, sheets.today(sheetId), amount));
         audit.recordOnCommit("PLAN_CHANGED sheet=" + sheetId + " by=" + user.strip() + " name=" + nameOf(plan)
                 + " start=" + plan.getStart() + " amount=" + amount.toPlainString());
+        String claimSheet = plan.getTargetSheet() != null ? plan.getTargetSheet() : sheetId;
+        for (ClaimPlanDate made : dates.findByPlanIdOrderByMadeOnAsc(planId)) {
+            if (made.getClaimId() == null) continue;
+            Claim claim = claimRows.findByIdAndSheetId(made.getClaimId(), claimSheet).orElse(null);
+            if (claim == null || claim.getStatus() != ClaimStatus.DRAFT) continue;
+            claims.edit(claimSheet, user, claim.getId(), amount, claim.getDate(), claim.getNote(),
+                    claim.getCorrects(), claim.getRef(), claim.getTags());
+        }
         return plan;
     }
 
@@ -219,16 +236,17 @@ public class ClaimPlanService {
         sheetRows.findForUpdate(sheetId).orElseThrow(SheetNotFoundException::new);
         if (dates.existsByPlanIdAndMadeOn(plan.getId(), on)) return false;
         String target = plan.getTargetSheet();
+        Claim claim;
         if (target == null) {
-            claims.add(sheetId, user, plan.getPersonId(), plan.getAmount(), on, "", null);
+            claim = claims.add(sheetId, user, plan.getPersonId(), plan.getAmount(), on, "", null);
         } else {
             if (sheets.isArchived(target)) return false;
             sheetRows.findForUpdate(target).orElseThrow(SheetNotFoundException::new);
             Person there = people.findBySheetIdAndNameKey(target, Person.keyOf(nameOf(plan))).orElse(null);
             if (there == null) return false;
-            claims.add(target, user, there.getId(), plan.getAmount(), on, "", null);
+            claim = claims.add(target, user, there.getId(), plan.getAmount(), on, "", null);
         }
-        dates.saveAndFlush(new ClaimPlanDate(sheetId, plan.getId(), on));
+        dates.saveAndFlush(new ClaimPlanDate(sheetId, plan.getId(), on, claim.getId()));
         return true;
     }
 }

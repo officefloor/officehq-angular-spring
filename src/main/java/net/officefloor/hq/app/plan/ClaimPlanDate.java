@@ -26,15 +26,22 @@ public class ClaimPlanDate {
     @Column(name = "made_on", nullable = false)
     private LocalDate madeOn;
 
+    @Column(name = "claim_id")
+    private Long claimId;
+
     protected ClaimPlanDate() {}
 
-    public ClaimPlanDate(String sheetId, Long planId, LocalDate madeOn) {
+    public ClaimPlanDate(String sheetId, Long planId, LocalDate madeOn, Long claimId) {
         this.sheetId = sheetId;
         this.planId = planId;
         this.madeOn = madeOn;
+        this.claimId = claimId;
     }
 
     public Long getPlanId() { return planId; }
 
     public LocalDate getMadeOn() { return madeOn; }
+
+    /** The claim made for the date (null when not known). */
+    public Long getClaimId() { return claimId; }
 }

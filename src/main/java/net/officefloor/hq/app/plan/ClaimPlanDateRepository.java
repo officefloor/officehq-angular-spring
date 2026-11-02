@@ -8,5 +8,7 @@ public interface ClaimPlanDateRepository extends JpaRepository<ClaimPlanDate, Lo
 
     List<ClaimPlanDate> findBySheetId(String sheetId);
 
+    List<ClaimPlanDate> findByPlanIdOrderByMadeOnAsc(Long planId);
+
     boolean existsByPlanIdAndMadeOn(Long planId, LocalDate madeOn);
 }

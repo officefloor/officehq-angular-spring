@@ -2623,8 +2623,20 @@ export class People {
     this.plans.update((list) => [...list, plan]);
   }
 
-  protected planChanged(plan: Plan): void {
+  /** A plan changed; a change of its amount may have edited its DRAFT claims, so they are read again. */
+  protected async planChanged(plan: Plan): Promise<void> {
     this.plans.update((list) => list.map((pl) => (pl.id === plan.id ? plan : pl)));
+    const sheet = this.session.sheetId();
+    if (!sheet) return;
+    try {
+      const claims = await firstValueFrom(
+        this.http.get<Claim[]>(`/api/sheets/${encodeURIComponent(sheet)}/claims`, { headers: this.headers() }),
+      );
+      if (this.session.sheetId() !== sheet) return;
+      this.claims.set(claims);
+    } catch {
+      // the claims shown stay until the sheet is next read
+    }
   }
 
   /**
