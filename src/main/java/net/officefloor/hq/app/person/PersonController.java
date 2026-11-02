@@ -13,6 +13,7 @@ import java.util.Locale;
 import java.util.Map;
 import java.util.Set;
 import java.util.function.Predicate;
+import net.officefloor.hq.app.claim.Tags;
 import net.officefloor.hq.app.history.History;
 import net.officefloor.hq.app.role.ViewerAllowed;
 import net.officefloor.hq.app.sheet.AsOfGuard;
@@ -40,13 +41,14 @@ public class PersonController {
 
     /** What the screen shows of a person; with how many statements were taken of them, and the
      *  last one's due-total (text with two decimals, null when n/a or none) and day (null when none);
-     *  whether they are retired, and from which day (null when not); and their past retirements, earliest first; and whether they have any hold, and their holds, earliest first; and their own terms in days (null: none); and their contact (null: none); and their aliases, sorted as names are compared; and whether they clash; and the sheet they were transferred from (null: none) (see
+     *  whether they are retired, and from which day (null when not); and their past retirements, earliest first; and whether they have any hold, and their holds, earliest first; and their own terms in days (null: none); and their contact (null: none); and their aliases, sorted as names are compared; and whether they clash; and the sheet they were transferred from (null: none); and their tags, sorted, comma and space separated (empty when none) (see
      *  {@link PersonService#clashing}).
      *  The grade is the one in force on the sheet's today; grades are all those recorded, each from
      *  its from-date (null: the beginning of time), earliest first. */
     public record PersonView(long id, String name, String grade, List<GradeView> grades, long version,
             int statementCount, String statedTotal, LocalDate statementDate, boolean retired, LocalDate retiredFrom,
-            List<RetirementView> retirements, boolean held, List<HoldView> holds, Integer terms, String contact, List<String> aliases, boolean clashing, String origin) {
+            List<RetirementView> retirements, boolean held, List<HoldView> holds, Integer terms, String contact, List<String> aliases, boolean clashing, String origin,
+            String tags) {
         public static PersonView of(Person person, StatementSummary statements, LocalDate today,
                 boolean clashing) {
             return new PersonView(person.getId(), person.getName(), person.gradeOn(today),
@@ -57,7 +59,8 @@ public class PersonController {
                     person.getRetirements().stream().map(r -> new RetirementView(r.getFromDate(), r.getToDate())).toList(),
                     person.isHeld(),
                     person.getHolds().stream().map(h -> new HoldView(h.getFromDate(), h.getToDate())).toList(),
-                    person.getTerms(), person.getContact(), person.getAliases(), clashing, person.getOrigin());
+                    person.getTerms(), person.getContact(), person.getAliases(), clashing, person.getOrigin(),
+                    String.join(", ", Tags.of(person.getTags())));
         }
     }
 
@@ -77,16 +80,22 @@ public class PersonController {
     /** The person form: a required name and a grade of A, B or C. An edit also gives the version
      *  of the person its editor loaded, and the day the grade applies from (left out, the sheet's
      *  today). Terms are the person's own, a whole number of days, 0 or more; blank for none. The
-     *  contact is kept trimmed and lower-cased; blank for none. */
+     *  contact is kept trimmed and lower-cased; blank for none. Tags are comma separated (see
+     *  {@link Tags}); blank for none. */
     public record PersonForm(@NotBlank @Size(max = 200) String name,
             @NotNull @Pattern(regexp = "[ABC]") String grade, Long version, LocalDate gradeFrom,
-            @Pattern(regexp = "\\s*\\d{0,4}\\s*") String terms, @Size(max = 200) String contact) {
+            @Pattern(regexp = "\\s*\\d{0,4}\\s*") String terms, @Size(max = 200) String contact,
+            @Size(max = 1000) String tags) {
         Integer termsValue() {
             return terms == null || terms.isBlank() ? null : Integer.valueOf(terms.trim());
         }
 
         String contactValue() {
             return contact == null || contact.isBlank() ? null : contact.trim().toLowerCase(Locale.ROOT);
+        }
+
+        String tagsValue() {
+            return Tags.normalise(tags);
         }
     }
 
@@ -188,7 +197,7 @@ public class PersonController {
             @RequestHeader("X-User") @NotBlank @Size(max = 100) String user,
             @Valid @RequestBody PersonForm form) {
         Person added = service.add(sheetId.trim(), user.trim(), form.name().trim(), form.grade(),
-                form.termsValue(), form.contactValue());
+                form.termsValue(), form.contactValue(), form.tagsValue());
         return PersonView.of(added, StatementSummary.NONE, sheets.today(sheetId.trim()),
                 service.clashing(sheetId.trim(), added));
     }
@@ -202,7 +211,7 @@ public class PersonController {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "The version of the person edited is required");
         }
         Person saved = service.edit(sheetId.trim(), user.trim(), personId, form.version(), form.name().trim(),
-                form.grade(), form.gradeFrom(), form.termsValue(), form.contactValue());
+                form.grade(), form.gradeFrom(), form.termsValue(), form.contactValue(), form.tagsValue());
         return PersonView.of(saved, statements.summary(sheetId.trim(), personId), sheets.today(sheetId.trim()),
                 service.clashing(sheetId.trim(), saved));
     }

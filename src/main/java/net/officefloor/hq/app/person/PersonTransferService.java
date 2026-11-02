@@ -129,6 +129,7 @@ public class PersonTransferService {
                 }
                 Person arrived = into != null ? into
                         : people.saveAndFlush(from.transferredTo(toSheetId, people.nextPosition(toSheetId)));
+                claimService.keepTags(toSheetId, arrived.getTags());
                 Map<String, String> numbers = renumber(toSheetId, theirs);
                 for (Claim claim : theirs) {
                     Claim copy = claims.saveAndFlush(claim.transferredTo(toSheetId, arrived.getId(), numbers::get));

@@ -65,6 +65,8 @@ const NO_LEAVE: Leave = { holds: [], retiredFrom: null };
         <input id="person-form-terms" inputmode="numeric" data-testid="person-form-terms" formControlName="terms" />
         <label for="person-form-contact">Contact</label>
         <input id="person-form-contact" data-testid="person-form-contact" formControlName="contact" />
+        <label for="person-form-tags">Tags (comma separated)</label>
+        <input id="person-form-tags" data-testid="person-form-tags" formControlName="tags" />
         <button type="submit" data-testid="person-form-submit">{{ editing() === null ? 'Add person' : 'Save' }}</button>
         @if (editing() !== null) {
           <button type="button" data-testid="person-form-cancel" (click)="cancel()">Cancel</button>
@@ -174,7 +176,7 @@ const NO_LEAVE: Leave = { holds: [], retiredFrom: null };
       <button type="button" data-testid="export-claims" (click)="exportClaimsCsv()">Export claims (CSV)</button>
       <table data-testid="people">
         <thead>
-          <tr><th scope="col"><span class="visually-hidden">Select</span></th><th scope="col">Name</th><th scope="col">Grade</th><th scope="col">Active</th><th scope="col">Terms</th><th scope="col">Contact</th><th scope="col">Aliases</th><th scope="col">Clashing</th><th scope="col">Came from</th><th scope="col">Claimed</th><th scope="col">Due</th><th scope="col">Settled due</th><th scope="col">Open due</th>@for (pd of periods(); track pd.id) {<th scope="col">Due in {{ pd.name }}</th>}<th scope="col">Excess</th><th scope="col">Cut total</th><th scope="col">Statements</th><th scope="col">Last stated</th><th scope="col">Stated on</th><th scope="col">Retired</th><th scope="col">Retired from</th><th scope="col">Past retirements</th><th scope="col">On hold</th><th scope="col">Overdue</th><th scope="col">Overdue due</th><th scope="col">Due aged 0–30 days</th><th scope="col">Due aged 31–60 days</th><th scope="col">Due aged 61+ days</th><th scope="col">Patrons</th><th scope="col">Backing</th><th scope="col">Watched</th><th scope="col">Plans</th><th scope="col">Claims</th><th scope="col"><span class="visually-hidden">Actions</span></th></tr>
+          <tr><th scope="col"><span class="visually-hidden">Select</span></th><th scope="col">Name</th><th scope="col">Grade</th><th scope="col">Active</th><th scope="col">Terms</th><th scope="col">Contact</th><th scope="col">Tags</th><th scope="col">Aliases</th><th scope="col">Clashing</th><th scope="col">Came from</th><th scope="col">Claimed</th><th scope="col">Due</th><th scope="col">Settled due</th><th scope="col">Open due</th>@for (pd of periods(); track pd.id) {<th scope="col">Due in {{ pd.name }}</th>}<th scope="col">Excess</th><th scope="col">Cut total</th><th scope="col">Statements</th><th scope="col">Last stated</th><th scope="col">Stated on</th><th scope="col">Retired</th><th scope="col">Retired from</th><th scope="col">Past retirements</th><th scope="col">On hold</th><th scope="col">Overdue</th><th scope="col">Overdue due</th><th scope="col">Due aged 0–30 days</th><th scope="col">Due aged 31–60 days</th><th scope="col">Due aged 61+ days</th><th scope="col">Patrons</th><th scope="col">Backing</th><th scope="col">Watched</th><th scope="col">Plans</th><th scope="col">Claims</th><th scope="col"><span class="visually-hidden">Actions</span></th></tr>
         </thead>
         <tbody>
           @for (p of shown(); track p.id) {
@@ -189,6 +191,7 @@ const NO_LEAVE: Leave = { holds: [], retiredFrom: null };
               <td data-testid="person-active">{{ activeOf(p) ? 'yes' : 'no' }}</td>
               <td data-testid="person-terms">{{ p.terms ?? '' }}</td>
               <td data-testid="person-contact">{{ p.contact ?? '' }}</td>
+              <td data-testid="person-tags">{{ p.tags }}</td>
               <td data-testid="person-aliases">{{ p.aliases.join(', ') }}</td>
               <td data-testid="person-clashing">{{ p.clashing ? 'yes' : 'no' }}</td>
               <td data-testid="person-origin">{{ p.origin ?? '' }}</td>
@@ -500,15 +503,16 @@ export class PeopleList {
   protected readonly cutTotal = computed(() =>
     sumAmounts(this.people().map((p) => this.cutTotals().get(p.id) ?? '0.00')),
   );
-  /** Per tag ever used on the sheet (those the store keeps, and those of the claims shown), in
-   *  order: the due figures of the claims that count which carry it, skipping those with no due
-   *  (not trimmed, not capped). */
+  /** Per tag ever used on the sheet (those the store keeps, and those of the claims and people
+   *  shown), in order: the due figures of the claims that count which carry it, or whose person
+   *  carries it (counted once), skipping those with no due (not trimmed, not capped). */
   protected readonly tagDueTotals = computed(() => {
     const figures = new Map<string, string[]>(this.storedTags().map((t) => [t, []]));
+    for (const p of this.people()) for (const t of splitTags(p.tags)) if (!figures.has(t)) figures.set(t, []);
     for (const c of this.claims()) {
-      const tags = tagsOf(c);
-      for (const t of tags) if (!figures.has(t)) figures.set(t, []);
       const p = this.byId().get(c.personId);
+      const tags = [...new Set([...splitTags(c.tags), ...splitTags(p?.tags ?? '')])];
+      for (const t of tags) if (!figures.has(t)) figures.set(t, []);
       if (tags.length === 0 || !p || !countsLive(c, p, this.session.today())) continue;
       const d = claimDue(c, this.rates(), gradeOn(p.grades, c.date), this.floor(), this.lateness());
       if (d !== null) for (const t of tags) figures.get(t)!.push(d);
@@ -684,6 +688,8 @@ export class PeopleList {
     terms: new FormControl('', { nonNullable: true }),
     /** The person's contact; blank for none. */
     contact: new FormControl('', { nonNullable: true }),
+    /** The person's tags, comma separated; blank for none. */
+    tags: new FormControl('', { nonNullable: true }),
   });
   /** Only the newest read of the sheet may show: a load overtaken by another is dropped. */
   private reads = 0;
@@ -724,7 +730,7 @@ export class PeopleList {
     this.editing.set(p.id);
     this.version = p.version;
     this.form.setValue({ name: p.name, grade: this.gradeOf(p), gradeFrom: '', terms: p.terms?.toString() ?? '',
-      contact: p.contact ?? '' });
+      contact: p.contact ?? '', tags: p.tags });
     this.error.set('');
   }
 
@@ -991,6 +997,7 @@ export class PeopleList {
     const { name, grade, gradeFrom } = this.form.getRawValue();
     const terms = this.form.controls.terms.value.trim();
     const contact = this.form.controls.contact.value.trim().toLowerCase();
+    const tags = this.form.controls.tags.value;
     if (!name.trim()) {
       this.refuse('Enter a name.');
       return;
@@ -1007,11 +1014,11 @@ export class PeopleList {
     this.submitting = true;
     try {
       if (id === null) {
-        const added = await this.api.add({ name, grade, terms, contact });
+        const added = await this.api.add({ name, grade, terms, contact, tags });
         this.people.update((ps) => [...ps, added]);
       } else {
         const saved = await this.api.edit(id, this.version, { name, grade, gradeFrom: gradeFrom.trim() || null, terms,
-          contact });
+          contact, tags });
         this.people.update((ps) => ps.map((p) => (p.id === saved.id ? saved : p)));
       }
       this.reset();
@@ -1049,7 +1056,8 @@ export class PeopleList {
       this.people.update((ps) => ps.map((p) => (p.id === id ? current : p)));
       this.version = current.version;
       this.form.setValue({ name: current.name, grade: this.gradeOf(current), gradeFrom: this.form.getRawValue().gradeFrom,
-        terms: current.terms?.toString() ?? '', contact: current.contact ?? '' },
+        terms: current.terms?.toString() ?? '', contact: current.contact ?? '',
+        tags: current.tags },
         { emitEvent: false });
     } catch {
       // the editor keeps what was typed; reopening it reads the person again
@@ -1408,7 +1416,7 @@ export class PeopleList {
 
   private reset(): void {
     this.editing.set(null);
-    this.form.reset({ name: '', grade: 'A', gradeFrom: '', terms: '', contact: '' }, { emitEvent: false });
+    this.form.reset({ name: '', grade: 'A', gradeFrom: '', terms: '', contact: '', tags: '' }, { emitEvent: false });
     this.error.set('');
   }
 
@@ -1452,9 +1460,9 @@ export class PeopleList {
   }
 }
 
-/** A claim's tags, one by one. */
-function tagsOf(c: Claim): string[] {
-  return c.tags === '' ? [] : c.tags.split(', ');
+/** Tags as shown (comma and space separated), one by one. */
+function splitTags(tags: string): string[] {
+  return tags === '' ? [] : tags.split(', ');
 }
 
 /** Downloads the lines as a CSV file of the name given, each line ended by a line feed. */

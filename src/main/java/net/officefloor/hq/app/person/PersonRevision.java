@@ -10,8 +10,8 @@ import java.time.LocalDate;
 import java.util.Objects;
 import java.util.stream.Collectors;
 
-/** A revision of a person in their sheet's history: their name, grades, holds, retirement, terms and
- *  contact and aliases after a change, recorded on the sheet's today then. Grades are kept as "from:grade" and holds as
+/** A revision of a person in their sheet's history: their name, grades, holds, retirement, terms,
+ *  contact, tags and aliases after a change, recorded on the sheet's today then. Grades are kept as "from:grade" and holds as
  *  "from..to" (a day left blank when there is none), separated by ";"; past retirements likewise as "from..to", and aliases separated by ";". */
 @Entity
 @Table(name = "person_revision")
@@ -52,6 +52,9 @@ public class PersonRevision {
     @Column(name = "contact")
     private String contact;
 
+    @Column(name = "tags")
+    private String tags;
+
     @Column(name = "aliases", nullable = false)
     private String aliases;
 
@@ -70,6 +73,7 @@ public class PersonRevision {
         this.retirements = retirements(person);
         this.terms = person.getTerms();
         this.contact = person.getContact();
+        this.tags = person.getTags();
         this.aliases = aliases(person);
     }
 
@@ -78,7 +82,8 @@ public class PersonRevision {
         return name.equals(person.getName()) && grades.equals(grades(person)) && holds.equals(holds(person))
                 && Objects.equals(retiredFrom, person.getRetiredFrom())
                 && retirements.equals(retirements(person)) && Objects.equals(terms, person.getTerms())
-                && Objects.equals(contact, person.getContact()) && aliases.equals(aliases(person));
+                && Objects.equals(contact, person.getContact())
+                && Objects.equals(tags, person.getTags()) && aliases.equals(aliases(person));
     }
 
     /** The person as this revision has them, detached: for working out figures only, never saved. */
@@ -99,6 +104,7 @@ public class PersonRevision {
         }
         person.setTerms(terms);
         person.setContact(contact);
+        person.setTags(tags);
         for (String alias : split(aliases)) {
             person.addAlias(alias);
         }

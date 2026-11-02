@@ -10,6 +10,7 @@ import java.util.Objects;
 import java.util.Set;
 import java.util.function.Predicate;
 import net.officefloor.hq.app.Audit;
+import net.officefloor.hq.app.claim.ClaimService;
 import net.officefloor.hq.app.role.RoleService;
 import net.officefloor.hq.app.role.SheetRole;
 import net.officefloor.hq.app.rollup.Rollup;
@@ -30,9 +31,11 @@ public class PersonService {
     private final Rollup rollup;
     private final Audit audit;
     private final RoleService roles;
+    private final ClaimService claims;
 
     public PersonService(PersonRepository people, SheetService sheets, Rollup rollup, Audit audit,
-            RoleService roles) {
+            RoleService roles, ClaimService claims) {
+        this.claims = claims;
         this.people = people;
         this.sheets = sheets;
         this.rollup = rollup;
@@ -56,6 +59,14 @@ public class PersonService {
      *  sheet holds it. */
     @Transactional
     public Person add(String sheetId, String user, String name, String grade, Integer terms, String contact) {
+        return add(sheetId, user, name, grade, terms, contact, null);
+    }
+
+    /** Add a person to the sheet with a contact (null: none) and tags (as {@link net.officefloor.hq.app.claim.Tags}
+     *  stores them; null: none); refused when another person on the sheet holds the contact. */
+    @Transactional
+    public Person add(String sheetId, String user, String name, String grade, Integer terms, String contact,
+            String tags) {
         sheets.load(sheetId, user);
         if (people.existsBySheetIdAndNameIgnoreCase(sheetId, name) || people.existsAlias(sheetId, name)
                 || inTree(treeNames(sheetId), name)) {
@@ -68,7 +79,9 @@ public class PersonService {
             Person fresh = new Person(sheetId, name, grade, people.nextPosition(sheetId));
             fresh.setTerms(terms);
             fresh.setContact(contact);
+            fresh.setTags(tags);
             Person person = saveUnique(fresh);
+            claims.keepTags(sheetId, tags);
             audit.recordOnCommit(record("PERSON_ADDED", sheetId, user, person, sheets.today(sheetId))
                     + (terms != null ? " terms=" + terms : "")
                     + (contact != null ? " contact=" + contact : ""));
@@ -86,6 +99,16 @@ public class PersonService {
             LocalDate gradeFrom, Integer terms, String contact) {
         Person person = people.findByIdAndSheetId(personId, sheetId)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "No such person on this sheet"));
+        return edit(sheetId, user, personId, version, name, grade, gradeFrom, terms, contact, person.getTags());
+    }
+
+    /** Edit a person as above, also setting their tags (as {@link net.officefloor.hq.app.claim.Tags} stores
+     *  them; null: none). */
+    @Transactional
+    public Person edit(String sheetId, String user, long personId, long version, String name, String grade,
+            LocalDate gradeFrom, Integer terms, String contact, String tags) {
+        Person person = people.findByIdAndSheetId(personId, sheetId)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "No such person on this sheet"));
         if (person.getVersion() != version) {
             throw changedMeanwhile();
         }
@@ -100,7 +123,7 @@ public class PersonService {
         if (contact != null && people.existsBySheetIdAndContactAndIdNot(sheetId, contact, personId)) {
             throw contactInUse();
         }
-        return save(sheetId, user, person, name, grade, gradeFrom, terms, contact);
+        return save(sheetId, user, person, name, grade, gradeFrom, terms, contact, tags);
     }
 
     /** Give each of the people a grade from a day (null: the sheet's today), in list order, exactly as the person form would: each keeps their name, terms and contact and
@@ -117,13 +140,14 @@ public class PersonService {
             throw new ResponseStatusException(HttpStatus.NOT_FOUND, "No such person on this sheet");
         }
         return chosen.stream()
-                .map(p -> save(sheetId, user, p, p.getName(), grade, gradeFrom, p.getTerms(), p.getContact()))
+                .map(p -> save(sheetId, user, p, p.getName(), grade, gradeFrom, p.getTerms(), p.getContact(),
+                        p.getTags()))
                 .toList();
     }
 
-    /** Save the person's name, grade from a day, terms and contact as an edit does, recording it. */
+    /** Save the person's name, grade from a day, terms, contact and tags as an edit does, recording it. */
     private Person save(String sheetId, String user, Person person, String name, String grade, LocalDate gradeFrom,
-            Integer terms, String contact) {
+            Integer terms, String contact, String tags) {
         return rollup.tracking(sheetId, user, () -> {
             LocalDate today = sheets.today(sheetId);
             Integer termsBefore = person.getTerms();
@@ -131,6 +155,8 @@ public class PersonService {
             person.setName(name);
             person.setTerms(terms);
             person.setContact(contact);
+            person.setTags(tags);
+            claims.keepTags(sheetId, tags);
             if (gradeFrom != null || !grade.equals(person.gradeOn(today))) {
                 person.setGradeFrom(grade, gradeFrom != null ? gradeFrom : today);
             }

@@ -90,6 +90,8 @@ export interface Person {
   clashing: boolean;
   /** The sheet they were transferred from; null when they were not transferred. */
   origin: string | null;
+  /** Their tags, sorted and comma and space separated; empty when they have none. */
+  tags: string;
 }
 
 /** A statement just taken: the person as they now show, and their claims (newest first) as it
@@ -108,6 +110,8 @@ export interface PersonForm {
   terms: string;
   /** Their contact; blank for none. */
   contact: string;
+  /** Comma separated tags (the store trims, lower-cases and drops repeats); empty for none. */
+  tags?: string;
 }
 
 // The people kept on the active sheet.

@@ -19,6 +19,7 @@ import java.util.Set;
 import java.util.Comparator;
 import java.util.List;
 import java.util.Objects;
+import net.officefloor.hq.app.claim.Tags;
 
 /** A person on a sheet: a name and a grade (A, B or C), dated: each grade applies from its from-date. */
 @Entity
@@ -67,6 +68,10 @@ public class Person {
     @Column(name = "contact")
     private String contact;
 
+    /** The person's tags, sorted and comma separated (see {@link Tags}); null when they have none. */
+    @Column(name = "tags")
+    private String tags;
+
     /** The person's aliases, each trimmed; unique on the sheet among names and aliases as names are
      *  compared. */
     @ElementCollection(fetch = FetchType.EAGER)
@@ -102,7 +107,7 @@ public class Person {
     }
 
     /** A copy of the person for another sheet (they were transferred there): their name, every
-     *  grade they were given (and its from-date), terms, contact and aliases; no holds. They take
+     *  grade they were given (and its from-date), terms, contact, tags and aliases; no holds. They take
      *  the place given in that sheet's list. */
     public Person transferredTo(String toSheetId, long toPosition) {
         Person copy = new Person(toSheetId, (Long) null, name);
@@ -110,6 +115,7 @@ public class Person {
         grades.forEach(g -> copy.grades.add(new GradeFrom(g.getFromDate(), g.getGrade())));
         copy.terms = terms;
         copy.contact = contact;
+        copy.tags = tags;
         copy.aliases.addAll(aliases);
         copy.origin = sheetId;
         return copy;
@@ -257,6 +263,15 @@ public class Person {
 
     public void setContact(String contact) {
         this.contact = contact;
+    }
+
+    /** The person's tags as stored (see {@link Tags}); null when they have none. */
+    public String getTags() {
+        return tags;
+    }
+
+    public void setTags(String tags) {
+        this.tags = tags;
     }
 
     /** The person's aliases, sorted as names are compared: without regard to case. */
