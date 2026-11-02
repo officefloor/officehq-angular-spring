@@ -191,6 +191,12 @@ public class ClaimController {
     /** How many of the selected claims a bulk re-date re-dated, and how many it refused. */
     public record BulkRedateView(int redated, int refused) {}
 
+    /** The claims selected for a bulk void, by id, and the reason they are voided with (none for a sheet without reasons). */
+    public record BulkVoidRequest(@NotNull @Size(max = 1000) Set<@NotNull Long> ids, @Size(max = 200) String reason) {}
+
+    /** How many of the selected claims a bulk void voided, and how many it refused. */
+    public record BulkVoidView(int voided, int refused) {}
+
     /** How many of the selected claims a bulk move moved, and how many it refused. */
     public record BulkReassignView(int reassigned, int refused) {}
 
@@ -343,6 +349,16 @@ public class ClaimController {
             @RequestBody @Valid BulkRedateRequest request) {
         ClaimBulkService.Result result = bulk.redate(sheetId, user, request.ids(), request.date());
         return new BulkRedateView(result.done(), result.refused());
+    }
+
+    @OpenToViewer
+    @PostMapping("/claims/void")
+    public BulkVoidView bulkVoid(
+            @PathVariable @Size(max = 100) @Pattern(regexp = "[A-Za-z0-9._-]+") String sheetId,
+            @RequestHeader("X-User") @NotBlank @Size(max = 100) String user,
+            @RequestBody @Valid BulkVoidRequest request) {
+        ClaimBulkService.Result result = bulk.voidAll(sheetId, user, request.ids(), request.reason());
+        return new BulkVoidView(result.done(), result.refused());
     }
 
     @PostMapping("/claims/{id}/settle")

@@ -18,6 +18,7 @@ import net.officefloor.hq.app.person.PersonRetiredException;
 import net.officefloor.hq.app.setting.Role;
 import net.officefloor.hq.app.setting.SettingService;
 import net.officefloor.hq.app.sheet.SheetService;
+import net.officefloor.hq.app.voidreason.VoidReasonRequiredException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.transaction.interceptor.TransactionAspectSupport;
@@ -93,6 +94,27 @@ public class ClaimBulkService {
                     + " count=" + selected.size() + " total=" + total.setScale(2, RoundingMode.HALF_UP).toPlainString());
         }
         return new Result(selected.size(), 0);
+    }
+
+    /**
+     * Void each selected claim that can be voided, by the rules of voiding one (who may, which statuses,
+     * a settled claim only by a steward, closed periods, the reason while the sheet has void reasons),
+     * with its own CLAIM_VOIDED and rollup lines.
+     */
+    public Result voidAll(String sheetId, String user, Set<Long> ids, String reason) {
+        if (refusesAll(sheetId, user)) return new Result(0, ids.size());
+        int done = 0;
+        for (Claim claim : selected(sheetId, ids)) {
+            try {
+                claims.voidClaim(sheetId, user, claim.getId(), reason);
+                done++;
+            } catch (ClaimStatusRefusedException | ClaimNotPermittedException | ClaimNotStewardException
+                    | ClaimVoidWindowException | VoidReasonRequiredException | PeriodClosedException
+                    | ClaimNotFoundException | PersonNotFoundException refused) {
+                // left as it is
+            }
+        }
+        return new Result(done, ids.size() - done);
     }
 
     /** The number of the sheet's last settle batch, or null while there has been none. */

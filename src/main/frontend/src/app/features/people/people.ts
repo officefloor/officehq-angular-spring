@@ -386,6 +386,26 @@ function trimmedSum(figures: number[]): number {
       @if (bulkRedateError()) {
         <p role="alert" class="error" data-testid="bulk-redate-error">{{ bulkRedateError() }}</p>
       }
+      @if (session.voidReasons().length > 0) {
+        <label for="bulk-void-reason">Void reason for selected claims</label>
+        <select id="bulk-void-reason" data-testid="bulk-void-reason" #bulkVoidReason
+                (change)="bulkVoidError.set('')">
+          <option value="">Choose a reason</option>
+          @for (r of session.voidReasons(); track r) {
+            <option [value]="r">{{ r }}</option>
+          }
+        </select>
+        <button type="button" data-testid="bulk-void" (click)="bulkVoid(bulkVoidReason.value)">Void selected claims</button>
+      } @else {
+        <button type="button" data-testid="bulk-void" (click)="bulkVoid('')">Void selected claims</button>
+      }
+      @if (bulkVoided(); as result) {
+        <p role="status">Voided <span data-testid="bulk-voided">{{ result.voided }}</span>,
+          refused <span data-testid="bulk-void-refused">{{ result.refused }}</span></p>
+      }
+      @if (bulkVoidError()) {
+        <p role="alert" class="error" data-testid="bulk-void-error">{{ bulkVoidError() }}</p>
+      }
       <form [formGroup]="bulkGradeForm" (ngSubmit)="bulkGrade()" aria-label="Grade selected people">
         <label for="bulk-grade">Grade selected people</label>
         <select id="bulk-grade" data-testid="bulk-grade" formControlName="grade">
@@ -799,6 +819,9 @@ export class People {
   /** How many the last bulk re-date re-dated and refused; cleared while the next one runs. */
   protected readonly bulkRedated = signal<{ redated: number; refused: number } | null>(null);
   protected readonly bulkRedateError = signal('');
+  /** How many the last bulk void voided and refused; cleared while the next one runs. */
+  protected readonly bulkVoided = signal<{ voided: number; refused: number } | null>(null);
+  protected readonly bulkVoidError = signal('');
   /** The ids of the people selected for a bulk grade. */
   protected readonly selectedPeople = signal<ReadonlySet<number>>(new Set());
   /** How many people the last bulk grade changed; null before one, and while one runs. */
@@ -1239,6 +1262,8 @@ export class People {
       this.bulkReassignError.set('');
       this.bulkRedated.set(null);
       this.bulkRedateError.set('');
+      this.bulkVoided.set(null);
+      this.bulkVoidError.set('');
       this.rates.set([]);
       this.periods.set([]);
       this.usedTags.set([]);
@@ -2106,6 +2131,35 @@ export class People {
       this.bulkRedated.set(result);
     } catch {
       if (this.session.sheetId() === sheet) this.bulkRedateError.set('Could not re-date the selected claims.');
+    } finally {
+      this.bulkRunning = false;
+    }
+  }
+
+  /**
+   * Void every selected claim that can be voided, in list order, with the reason (none while the sheet
+   * has no void reasons); show how many were voided and refused.
+   */
+  protected async bulkVoid(reason: string): Promise<void> {
+    if (this.bulkRunning) return;
+    this.bulkVoided.set(null);
+    this.bulkVoidError.set('');
+    const sheet = this.session.sheetId();
+    if (!sheet) return;
+    const base = `/api/sheets/${encodeURIComponent(sheet)}`;
+    this.bulkRunning = true;
+    try {
+      const result = await firstValueFrom(this.http.post<{ voided: number; refused: number }>(
+        `${base}/claims/void`, { ids: [...this.selectedIds()], reason: reason || null }, { headers: this.headers() }));
+      const claims = await firstValueFrom(this.http.get<Claim[]>(`${base}/claims`, { headers: this.headers() }));
+      const list = await firstValueFrom(this.http.get<Person[]>(this.url(sheet), { headers: this.headers() }));
+      if (this.session.sheetId() !== sheet) return;
+      this.claims.set(claims);
+      this.people.set(list);
+      this.selectedIds.set(new Set());
+      this.bulkVoided.set(result);
+    } catch {
+      if (this.session.sheetId() === sheet) this.bulkVoidError.set('Could not void the selected claims.');
     } finally {
       this.bulkRunning = false;
     }
