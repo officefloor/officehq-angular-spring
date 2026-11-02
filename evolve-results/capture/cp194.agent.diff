@@ -1,0 +1,234 @@
+diff --git a/src/main/frontend/src/app/features/claims/claims.ts b/src/main/frontend/src/app/features/claims/claims.ts
+index 2c1014da4..f17b86fbf 100644
+--- a/src/main/frontend/src/app/features/claims/claims.ts
++++ b/src/main/frontend/src/app/features/claims/claims.ts
+@@ -416,7 +416,10 @@ function notEditable(status: ClaimStatus | undefined): string {
+                   [attr.aria-label]="'Comment on claim of ' + c.amount + ' on ' + c.date">Add comment</button>
+           <button type="button" data-testid="claim-open" (click)="act(c, 'open')"
+                   [attr.aria-label]="'Open claim of ' + c.amount + ' on ' + c.date">Open</button>
+-          <button type="button" data-testid="claim-settle" (click)="act(c, 'settle')"
++          <label [for]="fieldId('settle-on-' + c.id)">Settle as of</label>
++          <input [id]="fieldId('settle-on-' + c.id)" type="date" data-testid="claim-settle-date" #settleDate
++                 (input)="clearClaimError(c.id)" />
++          <button type="button" data-testid="claim-settle" (click)="act(c, 'settle', settleDate.value)"
+                   [attr.aria-label]="'Settle claim of ' + c.amount + ' on ' + c.date">Settle</button>
+           @if (session.voidReasons().length > 0) {
+             <label [for]="fieldId('void-' + c.id)">Void reason</label>
+@@ -698,9 +701,10 @@ export class Claims {
+   }
+ 
+   /**
+-   * Open, settle or void a claim, approve or reject (with a reason) a PENDING one, re-settle a
+-   * SETTLED one at its figure today, or (a steward, within 7 days of settling) void it, delete a DRAFT one
+-   * or restore a DELETED one on the day it was deleted; a change its status does not allow is refused.
++   * Open, settle (as of a date on or before today, when one is given) or void a claim, approve or
++   * reject (with a reason) a PENDING one, re-settle a SETTLED one at its figure today, or (a steward,
++   * within 7 days of settling) void it, delete a DRAFT one or restore a DELETED one on the day it was
++   * deleted; a change its status does not allow is refused.
+    */
+   protected async act(c: Claim, action: ClaimAction, reason = ''): Promise<void> {
+     this.claimError.set(null);
+@@ -716,7 +720,9 @@ export class Claims {
+       return;
+     }
+     const url = `/api/sheets/${encodeURIComponent(sheet)}/claims/${c.id}/${action}`;
+-    const body = action === 'reject' || (action === 'void' && why !== '') ? { reason: why } : null;
++    const body = action === 'reject' || (action === 'void' && why !== '') ? { reason: why }
++      : action === 'settle' && why !== '' ? { on: why }
++      : null;
+     try {
+       const claim = await firstValueFrom(this.http.post<Claim>(url, body, { headers: this.headers() }));
+       if (this.session.sheetId() !== sheet) return;
+@@ -743,6 +749,8 @@ export class Claims {
+         ? this.session.proofKinds()
+           ? `A claim due above the proof threshold cannot be ${PAST[action]} without a proof of each kind (${this.session.proofKinds()}).`
+           : `A claim due above the proof threshold cannot be ${PAST[action]} without a proof.`
++        : e instanceof HttpErrorResponse && e.status === 422 && action === 'settle'
++        ? 'A claim can be settled only as of a date on or before today on which it existed.'
+         : e instanceof HttpErrorResponse && e.status === 422 && action === 'void'
+         ? VOID_REASON_NEEDED
+         : e instanceof HttpErrorResponse && e.status === 422 && action === 'open'
+diff --git a/src/main/java/net/officefloor/hq/app/claim/ClaimController.java b/src/main/java/net/officefloor/hq/app/claim/ClaimController.java
+index fd0c61aa0..2ef091439 100644
+--- a/src/main/java/net/officefloor/hq/app/claim/ClaimController.java
++++ b/src/main/java/net/officefloor/hq/app/claim/ClaimController.java
+@@ -147,6 +147,9 @@ public class ClaimController {
+     /** A comment's text: not blank. */
+     public record CommentRequest(@NotBlank @Size(max = 500) String text) {}
+ 
++    /** The date a claim is settled as of: on or before the sheet's today (null: as of today). */
++    public record SettleRequest(LocalDate on) {}
++
+     /** The date an OPEN claim is deferred until: after the sheet's today. */
+     public record DeferRequest(@NotNull LocalDate until) {}
+ 
+@@ -209,9 +212,12 @@ public class ClaimController {
+     private final ClaimService service;
+     private final ClaimBulkService bulk;
+     private final ClaimPasteService paste;
++    private final ClaimSettleAsOfService settleAsOf;
+ 
+-    public ClaimController(ClaimService service, ClaimBulkService bulk, ClaimPasteService paste) {
++    public ClaimController(ClaimService service, ClaimBulkService bulk, ClaimPasteService paste,
++            ClaimSettleAsOfService settleAsOf) {
+         this.service = service;
++        this.settleAsOf = settleAsOf;
+         this.bulk = bulk;
+         this.paste = paste;
+     }
+@@ -365,7 +371,9 @@ public class ClaimController {
+     public ClaimView settle(
+             @PathVariable @Size(max = 100) @Pattern(regexp = "[A-Za-z0-9._-]+") String sheetId,
+             @PathVariable Long id,
+-            @RequestHeader("X-User") @NotBlank @Size(max = 100) String user) {
++            @RequestHeader("X-User") @NotBlank @Size(max = 100) String user,
++            @RequestBody(required = false) SettleRequest request) {
++        if (request != null && request.on() != null) return ClaimView.of(settleAsOf.settle(sheetId, user, id, request.on()));
+         return ClaimView.of(service.changeStatus(sheetId, user, id, ClaimStatus.SETTLED));
+     }
+ 
+diff --git a/src/main/java/net/officefloor/hq/app/claim/ClaimService.java b/src/main/java/net/officefloor/hq/app/claim/ClaimService.java
+index c0a75a8c1..794e47abe 100644
+--- a/src/main/java/net/officefloor/hq/app/claim/ClaimService.java
++++ b/src/main/java/net/officefloor/hq/app/claim/ClaimService.java
+@@ -224,6 +224,20 @@ public class ClaimService {
+         return claims.saveAndFlush(claim);
+     }
+ 
++    /**
++     * Settle a claim as of a date on or before the sheet's today, by the rules of settling one, its due
++     * fixed at the figure given (its due as it stood at the end of that date, see
++     * {@link ClaimSettleAsOfService}); its settle record names the date.
++     */
++    @Transactional
++    public Claim settleAsOf(String sheetId, String user, Long id, LocalDate on, BigDecimal figure) {
++        if (on.isAfter(sheets.today(sheetId))) throw new ClaimSettleDateException();
++        return changeStatus(sheetId, user, id, ClaimStatus.SETTLED, null, false, new AsOf(on, figure));
++    }
++
++    /** A settle as of a date: the date and the claim's due as it stood at its end. */
++    private record AsOf(LocalDate on, BigDecimal figure) {}
++
+     /** Void a claim; while the sheet's list of void reasons is not empty, only with a reason on it. */
+     @Transactional
+     public Claim voidClaim(String sheetId, String user, Long id, String reason) {
+@@ -256,6 +270,11 @@ public class ClaimService {
+ 
+     private Claim changeStatus(String sheetId, String user, Long id, ClaimStatus next, String reason,
+             boolean judgedOnOriginal) {
++        return changeStatus(sheetId, user, id, next, reason, judgedOnOriginal, null);
++    }
++
++    private Claim changeStatus(String sheetId, String user, Long id, ClaimStatus next, String reason,
++            boolean judgedOnOriginal, AsOf asOf) {
+         // Opening takes the sheet's next number, locking the sheet first so the claim is read only
+         // once no other open on the sheet is under way; a refusal rolls the number back.
+         Sheet numbering = next == ClaimStatus.OPEN ? sheets.lockForNumbering(sheetId) : null;
+@@ -283,8 +302,9 @@ public class ClaimService {
+                 && settings.roleOf(sheetId, user) != Role.STEWARD) {
+             throw new ClaimFlaggedException();
+         }
+-        // Settling freezes the late charge of the moment into the settled due.
+-        BigDecimal settling = next == ClaimStatus.SETTLED ? chargedFigureOf(sheetId, person, claim) : null;
++        // Settling freezes the late charge of the moment (as of a date: of the end of that date) into the settled due.
++        BigDecimal settling = next != ClaimStatus.SETTLED ? null
++                : asOf != null ? asOf.figure() : chargedFigureOf(sheetId, person, claim);
+         if (next == ClaimStatus.SETTLED && !judgedOnOriginal) refuseUnproved(sheetId, person, claim, settling);
+         BigDecimal opening = next == ClaimStatus.OPEN ? chargedFigureOf(sheetId, person, claim) : null;
+         if (next == ClaimStatus.OPEN) refuseUnnoted(sheetId, claim, opening);
+@@ -327,6 +347,7 @@ public class ClaimService {
+                 : voidingSettled ? " reversed=" + figureText(saved.getSettledDue())
+                 : "";
+         if (voidReason != null) due += " reason=" + voidReason;
++        if (next == ClaimStatus.SETTLED && asOf != null) due += " on=" + asOf.on();
+         record(event, sheetId, user, person, saved, saved.getNumber(), due);
+         if (next == ClaimStatus.SETTLED) notifyWatchers(sheetId, user, person, saved);
+         rollup.recordChanges(sheetId, user, before);
+diff --git a/src/main/java/net/officefloor/hq/app/claim/ClaimSettleAsOfService.java b/src/main/java/net/officefloor/hq/app/claim/ClaimSettleAsOfService.java
+new file mode 100644
+index 000000000..2a0a956ce
+--- /dev/null
++++ b/src/main/java/net/officefloor/hq/app/claim/ClaimSettleAsOfService.java
+@@ -0,0 +1,68 @@
++package net.officefloor.hq.app.claim;
++
++import java.math.BigDecimal;
++import java.time.LocalDate;
++import java.util.concurrent.locks.ReentrantLock;
++import net.officefloor.hq.app.asof.SheetHistory;
++import net.officefloor.hq.app.person.Person;
++import net.officefloor.hq.app.person.PersonRepository;
++import net.officefloor.hq.app.sheet.SheetService;
++import org.springframework.stereotype.Service;
++import org.springframework.transaction.PlatformTransactionManager;
++import org.springframework.transaction.support.TransactionTemplate;
++
++/**
++ * Settling a claim as of a date on or before the sheet's today: its frozen figure is its due as it
++ * stood at the end of that date, worked out as the as-of view does (the sheet put back as it stood
++ * then, with that date as its today, in a transaction rolled back once read). A date after today, or
++ * one on which the claim did not exist yet, is refused.
++ */
++@Service
++public class ClaimSettleAsOfService {
++
++    /** The claim's due at the end of the date: whether it existed then, and its figure (null: none). */
++    private record Then(boolean existed, BigDecimal figure) {}
++
++    private final ClaimService service;
++    private final ClaimRepository claims;
++    private final PersonRepository people;
++    private final SheetService sheets;
++    private final SheetHistory history;
++    private final TransactionTemplate transactions;
++
++    public ClaimSettleAsOfService(ClaimService service, ClaimRepository claims, PersonRepository people,
++            SheetService sheets, SheetHistory history, PlatformTransactionManager transactions) {
++        this.service = service;
++        this.claims = claims;
++        this.people = people;
++        this.sheets = sheets;
++        this.history = history;
++        this.transactions = new TransactionTemplate(transactions);
++    }
++
++    public Claim settle(String sheetId, String user, Long id, LocalDate on) {
++        if (on.isAfter(sheets.today(sheetId))) throw new ClaimSettleDateException();
++        Then then = dueAt(sheetId, id, on);
++        if (!then.existed()) throw new ClaimSettleDateException();
++        return service.settleAsOf(sheetId, user, id, on, then.figure());
++    }
++
++    private Then dueAt(String sheetId, Long id, LocalDate on) {
++        if (!history.exists(sheetId)) return new Then(false, null);
++        ReentrantLock lock = history.lock(sheetId);
++        lock.lock();
++        try {
++            return transactions.execute(status -> {
++                status.setRollbackOnly();
++                history.restore(sheetId, on);
++                Claim claim = claims.findByIdAndSheetId(id, sheetId).orElse(null);
++                if (claim == null) return new Then(false, null);
++                Person person = people.findByIdAndSheetId(claim.getPersonId(), sheetId).orElse(null);
++                if (person == null) return new Then(false, null);
++                return new Then(true, service.chargedFigureOf(sheetId, person, claim));
++            });
++        } finally {
++            lock.unlock();
++        }
++    }
++}
+diff --git a/src/main/java/net/officefloor/hq/app/claim/ClaimSettleDateException.java b/src/main/java/net/officefloor/hq/app/claim/ClaimSettleDateException.java
+new file mode 100644
+index 000000000..579a37641
+--- /dev/null
++++ b/src/main/java/net/officefloor/hq/app/claim/ClaimSettleDateException.java
+@@ -0,0 +1,8 @@
++package net.officefloor.hq.app.claim;
++
++import org.springframework.http.HttpStatus;
++import org.springframework.web.bind.annotation.ResponseStatus;
++
++/** A claim cannot be settled as of a date after the sheet's today, nor as of one before it existed. */
++@ResponseStatus(HttpStatus.UNPROCESSABLE_ENTITY)
++public class ClaimSettleDateException extends RuntimeException {}
