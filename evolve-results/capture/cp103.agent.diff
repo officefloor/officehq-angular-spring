@@ -1,0 +1,534 @@
+diff --git a/src/main/frontend/src/app/core/claim-templates.ts b/src/main/frontend/src/app/core/claim-templates.ts
+new file mode 100644
+index 000000000..34378269b
+--- /dev/null
++++ b/src/main/frontend/src/app/core/claim-templates.ts
+@@ -0,0 +1,77 @@
++import { HttpClient } from '@angular/common/http';
++import { Injectable, effect, inject, signal } from '@angular/core';
++import { firstValueFrom } from 'rxjs';
++import { Claim } from './claims';
++import { Session } from './session';
++
++/** A claim template: the amount and note a claim made from it is given at that moment. */
++export interface ClaimTemplate {
++  id: number;
++  name: string;
++  amount: string;
++  note: string;
++}
++
++// The claim templates of the active sheet, re-read whenever the sheet is loaded.
++@Injectable({ providedIn: 'root' })
++export class ClaimTemplates {
++  private readonly http = inject(HttpClient);
++  private readonly session = inject(Session);
++
++  /** The sheet's templates in the order they were first saved. */
++  readonly list = signal<ClaimTemplate[]>([]);
++  private reads = 0;
++
++  constructor() {
++    effect(() => {
++      this.session.loads();
++      const sheetId = this.session.sheetId();
++      this.list.set([]);
++      if (sheetId) void this.reload(sheetId);
++    });
++  }
++
++  /** Save a template under its name, replacing the one of that name; refused (400) when the name is
++   *  blank or the amount is not one the claim form takes. */
++  async save(form: { name: string; amount: string; note: string }): Promise<ClaimTemplate> {
++    const { sheetId, user } = this.active();
++    const saved = await firstValueFrom(
++      this.http.put<ClaimTemplate>(this.url(sheetId), form, { headers: { 'X-User': user } }),
++    );
++    this.list.update((ts) => {
++      const at = ts.findIndex((t) => t.id === saved.id);
++      return at < 0 ? [...ts, saved] : ts.map((t, i) => (i === at ? saved : t));
++    });
++    return saved;
++  }
++
++  /** Add a draft claim for the person from the template of the name as it is now. */
++  addClaim(personId: number, name: string): Promise<Claim> {
++    const { sheetId, user } = this.active();
++    return firstValueFrom(
++      this.http.post<Claim>(`/api/sheets/${encodeURIComponent(sheetId)}/people/${personId}/claims/from-template`,
++        { name }, { headers: { 'X-User': user } }),
++    );
++  }
++
++  private active(): { sheetId: string; user: string } {
++    const sheetId = this.session.sheetId();
++    const user = this.session.user();
++    if (!sheetId || !user) throw new Error('no sheet loaded');
++    return { sheetId, user };
++  }
++
++  private async reload(sheetId: string): Promise<void> {
++    const read = ++this.reads;
++    try {
++      const templates = await firstValueFrom(this.http.get<ClaimTemplate[]>(this.url(sheetId)));
++      if (read === this.reads) this.list.set(templates);
++    } catch {
++      // the list stays empty; the next load reads it again
++    }
++  }
++
++  private url(sheetId: string): string {
++    return `/api/sheets/${encodeURIComponent(sheetId)}/claim-templates`;
++  }
++}
+diff --git a/src/main/frontend/src/app/features/claims/person-claims.ts b/src/main/frontend/src/app/features/claims/person-claims.ts
+index 959025b4f..7beb8d474 100644
+--- a/src/main/frontend/src/app/features/claims/person-claims.ts
++++ b/src/main/frontend/src/app/features/claims/person-claims.ts
+@@ -2,6 +2,7 @@ import { HttpErrorResponse } from '@angular/common/http';
+ import { Component, effect, inject, input, output, signal, untracked } from '@angular/core';
+ import { FormControl, FormGroup, ReactiveFormsModule } from '@angular/forms';
+ import { AMOUNT, CLAIM_AMOUNT, Claim, ClaimAction, Claims, claimDue, deferred, overdue } from '../../core/claims';
++import { ClaimTemplates } from '../../core/claim-templates';
+ import { GradeFrom, Person, gradeOn } from '../../core/people';
+ import { Period, periodOf } from '../../core/periods';
+ import { Rate } from '../../core/rates';
+@@ -177,6 +178,16 @@ function splitRefusal(e: unknown): string {
+       <label [for]="'claim-form-tags-' + personId()">Tags (comma separated)</label>
+       <input [id]="'claim-form-tags-' + personId()" data-testid="claim-form-tags" formControlName="tags" />
+       <button type="submit" data-testid="claim-form-submit">{{ editing() === null ? 'Add claim' : 'Save claim' }}</button>
++      <label [for]="'claim-template-select-' + personId()">Template</label>
++      <select [id]="'claim-template-select-' + personId()" data-testid="claim-template-select" #template
++        (change)="error.set('')">
++        <option value="">Choose a template</option>
++        @for (t of templates.list(); track t.id) {
++          <option [value]="t.name">{{ t.name }}</option>
++        }
++      </select>
++      <button type="button" data-testid="claim-template-add" (click)="addFromTemplate(template.value)">
++        Add claim from template</button>
+       @if (error()) {
+         <p role="alert" data-testid="claim-form-error">{{ error() }}</p>
+       }
+@@ -302,6 +313,7 @@ export class PersonClaims {
+   private readonly api = inject(Claims);
+   private readonly session = inject(Session);
+   protected readonly voidReasons = inject(VoidReasons);
++  protected readonly templates = inject(ClaimTemplates);
+ 
+   readonly personId = input.required<number>();
+   /** This person's claims, newest first. */
+@@ -634,6 +646,31 @@ export class PersonClaims {
+     }
+   }
+ 
++  /** Add a draft claim from the chosen template, with its amount and note as they are now and the
++   *  date a claim added with no date takes; refused, on the claim form, as the form's add would be. */
++  protected async addFromTemplate(name: string): Promise<void> {
++    if (this.submitting) return;
++    this.error.set('');
++    this.claimError.set(null);
++    const template = this.templates.list().find((t) => t.name === name);
++    if (!template) {
++      this.error.set('Choose a template to add a claim from.');
++      return;
++    }
++    this.submitting = true;
++    try {
++      this.saved.emit(await this.templates.addClaim(this.personId(), template.name));
++    } catch (e) {
++      if (e instanceof HttpErrorResponse && e.status === 423) this.error.set(CLOSED);
++      else if (e instanceof HttpErrorResponse && e.status === 422) this.error.set(RETIRED);
++      else if (e instanceof HttpErrorResponse && e.status === 400 && template.amount.startsWith('-')) this.error.set(CORRECTS);
++      else if (e instanceof HttpErrorResponse && e.status === 404) this.error.set('That template is no longer on the sheet.');
++      else this.error.set('The claim could not be added.');
++    } finally {
++      this.submitting = false;
++    }
++  }
++
+   /** Whether a conflict on saving the form (an add when `id` is null) can only be its reference
+    *  being in use: an add, or an edit of a draft no other user is editing. */
+   private refClash(id: number | null): boolean {
+diff --git a/src/main/frontend/src/app/features/home/home.ts b/src/main/frontend/src/app/features/home/home.ts
+index e8bfca986..8f2c18b31 100644
+--- a/src/main/frontend/src/app/features/home/home.ts
++++ b/src/main/frontend/src/app/features/home/home.ts
+@@ -1,5 +1,6 @@
+ import { Component, inject } from '@angular/core';
+ import { AuditViewer } from '../audit/audit-viewer';
++import { ClaimTemplateForm } from '../settings/claim-template-form';
+ import { Session } from '../../core/session';
+ import { PeopleList } from '../people/people-list';
+ import { DelegationForm } from '../settings/delegation-form';
+@@ -12,7 +13,7 @@ import { SignIn } from '../session/signin';
+ // The one screen: sign in by name, then load a sheet by id and keep its people.
+ @Component({
+   selector: 'app-home',
+-  imports: [SignIn, SheetBar, SettingsForm, DelegationForm, HolidayForm, VoidReasonForm, PeopleList, AuditViewer],
++  imports: [SignIn, SheetBar, SettingsForm, DelegationForm, HolidayForm, VoidReasonForm, ClaimTemplateForm, PeopleList, AuditViewer],
+   template: `
+     @if (session.user()) {
+       <app-sheet-bar />
+@@ -23,6 +24,7 @@ import { SignIn } from '../session/signin';
+         <app-delegation-form />
+         <app-holiday-form />
+         <app-void-reason-form />
++        <app-claim-template-form />
+         <app-people-list />
+         <app-audit-viewer />
+       }
+diff --git a/src/main/frontend/src/app/features/settings/claim-template-form.ts b/src/main/frontend/src/app/features/settings/claim-template-form.ts
+new file mode 100644
+index 000000000..a7e2e7003
+--- /dev/null
++++ b/src/main/frontend/src/app/features/settings/claim-template-form.ts
+@@ -0,0 +1,81 @@
++import { HttpErrorResponse } from '@angular/common/http';
++import { Component, inject, signal } from '@angular/core';
++import { FormControl, FormGroup, ReactiveFormsModule } from '@angular/forms';
++import { ClaimTemplates } from '../../core/claim-templates';
++import { CLAIM_AMOUNT } from '../../core/claims';
++
++// The sheet's claim templates and the form a template is saved with; saving a name again replaces
++// that template.
++@Component({
++  selector: 'app-claim-template-form',
++  imports: [ReactiveFormsModule],
++  template: `
++    <section aria-labelledby="claim-templates-heading">
++      <h3 id="claim-templates-heading">Claim templates</h3>
++      <form data-testid="template-form" [formGroup]="form" (ngSubmit)="submit()">
++        <label for="template-form-name">Template name</label>
++        <input id="template-form-name" data-testid="template-form-name" formControlName="name" />
++        <label for="template-form-amount">Template amount</label>
++        <input id="template-form-amount" data-testid="template-form-amount" formControlName="amount"
++          inputmode="decimal" />
++        <label for="template-form-note">Template note</label>
++        <input id="template-form-note" data-testid="template-form-note" formControlName="note" />
++        <button type="submit" data-testid="template-form-submit">Save template</button>
++        @if (error()) {
++          <p role="alert" data-testid="template-form-error">{{ error() }}</p>
++        }
++      </form>
++      <ul data-testid="templates">
++        @for (t of templates.list(); track t.id) {
++          <li [attr.data-testid]="'template-row-' + t.name">
++            <span data-testid="template-name">{{ t.name }}</span>
++            <span data-testid="template-amount">{{ t.amount }}</span>
++            <span data-testid="template-note">{{ t.note }}</span>
++          </li>
++        }
++      </ul>
++    </section>
++  `,
++})
++export class ClaimTemplateForm {
++  protected readonly templates = inject(ClaimTemplates);
++
++  protected readonly error = signal('');
++  protected readonly form = new FormGroup({
++    name: new FormControl('', { nonNullable: true }),
++    amount: new FormControl('', { nonNullable: true }),
++    note: new FormControl('', { nonNullable: true }),
++  });
++  private submitting = false;
++
++  constructor() {
++    this.form.valueChanges.subscribe(() => this.error.set(''));
++  }
++
++  protected async submit(): Promise<void> {
++    if (this.submitting) return;
++    this.error.set('');
++    const { name, amount, note } = this.form.getRawValue();
++    if (name.trim() === '') {
++      this.error.set('Enter a template name.');
++      return;
++    }
++    if (!CLAIM_AMOUNT.test(amount.trim())) {
++      this.error.set('Enter an amount with up to two decimals; a negative amount is a correction.');
++      return;
++    }
++    this.submitting = true;
++    try {
++      await this.templates.save({ name: name.trim(), amount: amount.trim(), note: note.trim() });
++      this.form.reset({ name: '', amount: '', note: '' }, { emitEvent: false });
++    } catch (e) {
++      this.error.set(
++        e instanceof HttpErrorResponse && e.status === 403
++          ? 'A viewer may not save a claim template.'
++          : 'The claim template could not be saved.',
++      );
++    } finally {
++      this.submitting = false;
++    }
++  }
++}
+diff --git a/src/main/java/net/officefloor/hq/app/template/ClaimTemplate.java b/src/main/java/net/officefloor/hq/app/template/ClaimTemplate.java
+new file mode 100644
+index 000000000..0989c9ad6
+--- /dev/null
++++ b/src/main/java/net/officefloor/hq/app/template/ClaimTemplate.java
+@@ -0,0 +1,67 @@
++package net.officefloor.hq.app.template;
++
++import jakarta.persistence.Column;
++import jakarta.persistence.Entity;
++import jakarta.persistence.GeneratedValue;
++import jakarta.persistence.GenerationType;
++import jakarta.persistence.Id;
++import jakarta.persistence.Table;
++import java.math.BigDecimal;
++
++/** A claim template of a sheet: the amount and note a claim made from it is given at that moment. */
++@Entity
++@Table(name = "claim_template")
++public class ClaimTemplate {
++
++    @Id
++    @GeneratedValue(strategy = GenerationType.IDENTITY)
++    private Long id;
++
++    @Column(name = "sheet_id", nullable = false)
++    private String sheetId;
++
++    @Column(name = "name", nullable = false)
++    private String name;
++
++    @Column(name = "amount", nullable = false)
++    private BigDecimal amount;
++
++    @Column(name = "note", nullable = false)
++    private String note;
++
++    protected ClaimTemplate() {
++    }
++
++    public ClaimTemplate(String sheetId, String name, BigDecimal amount, String note) {
++        this.sheetId = sheetId;
++        this.name = name;
++        this.amount = amount;
++        this.note = note;
++    }
++
++    /** Replace the template's amount and note. */
++    public void replace(BigDecimal amount, String note) {
++        this.amount = amount;
++        this.note = note;
++    }
++
++    public Long getId() {
++        return id;
++    }
++
++    public String getSheetId() {
++        return sheetId;
++    }
++
++    public String getName() {
++        return name;
++    }
++
++    public BigDecimal getAmount() {
++        return amount;
++    }
++
++    public String getNote() {
++        return note;
++    }
++}
+diff --git a/src/main/java/net/officefloor/hq/app/template/ClaimTemplateController.java b/src/main/java/net/officefloor/hq/app/template/ClaimTemplateController.java
+new file mode 100644
+index 000000000..1c9c33097
+--- /dev/null
++++ b/src/main/java/net/officefloor/hq/app/template/ClaimTemplateController.java
+@@ -0,0 +1,76 @@
++package net.officefloor.hq.app.template;
++
++import jakarta.validation.Valid;
++import jakarta.validation.constraints.NotBlank;
++import jakarta.validation.constraints.NotNull;
++import jakarta.validation.constraints.Pattern;
++import jakarta.validation.constraints.Size;
++import java.math.BigDecimal;
++import java.util.List;
++import net.officefloor.hq.app.claim.ClaimController.ClaimView;
++import org.springframework.http.HttpStatus;
++import org.springframework.validation.annotation.Validated;
++import org.springframework.web.bind.annotation.GetMapping;
++import org.springframework.web.bind.annotation.PathVariable;
++import org.springframework.web.bind.annotation.PostMapping;
++import org.springframework.web.bind.annotation.PutMapping;
++import org.springframework.web.bind.annotation.RequestBody;
++import org.springframework.web.bind.annotation.RequestHeader;
++import org.springframework.web.bind.annotation.RequestMapping;
++import org.springframework.web.bind.annotation.ResponseStatus;
++import org.springframework.web.bind.annotation.RestController;
++
++@RestController
++@RequestMapping("/api/sheets/{sheetId}")
++@Validated
++public class ClaimTemplateController {
++
++    /** A claim template as the screen shows it: its amount as text with two decimals. */
++    public record TemplateView(long id, String name, String amount, String note) {
++        static TemplateView of(ClaimTemplate t) {
++            return new TemplateView(t.getId(), t.getName(), t.getAmount().setScale(2).toPlainString(), t.getNote());
++        }
++    }
++
++    /** The template form: a required name, an amount the claim form would take, and a note that may
++     *  be empty. */
++    public record TemplateForm(@NotBlank @Size(max = 200) String name,
++            @NotNull @Pattern(regexp = "\\s*-?\\d{1,12}(\\.\\d{1,2})?\\s*") String amount,
++            @Size(max = 500) String note) {
++
++        BigDecimal amountValue() {
++            return new BigDecimal(amount.trim()).setScale(2);
++        }
++    }
++
++    /** The template a claim is made from, by name. */
++    public record FromTemplateForm(@NotBlank @Size(max = 200) String name) {
++    }
++
++    private final ClaimTemplateService service;
++
++    public ClaimTemplateController(ClaimTemplateService service) {
++        this.service = service;
++    }
++
++    @GetMapping("/claim-templates")
++    public List<TemplateView> list(@PathVariable @NotBlank @Size(max = 100) String sheetId) {
++        return service.list(sheetId.trim()).stream().map(TemplateView::of).toList();
++    }
++
++    @PutMapping("/claim-templates")
++    public TemplateView save(@PathVariable @NotBlank @Size(max = 100) String sheetId,
++            @RequestHeader("X-User") @NotBlank @Size(max = 100) String user,
++            @Valid @RequestBody TemplateForm form) {
++        return TemplateView.of(service.save(sheetId.trim(), user.trim(), form.name(), form.amountValue(), form.note()));
++    }
++
++    @PostMapping("/people/{personId}/claims/from-template")
++    @ResponseStatus(HttpStatus.CREATED)
++    public ClaimView addClaim(@PathVariable @NotBlank @Size(max = 100) String sheetId,
++            @PathVariable long personId,
++            @RequestHeader("X-User") @NotBlank @Size(max = 100) String user,
++            @Valid @RequestBody FromTemplateForm form) {
++        return ClaimView.of(service.addClaim(sheetId.trim(), user.trim(), personId, form.name()));
++    }
++}
+diff --git a/src/main/java/net/officefloor/hq/app/template/ClaimTemplateRepository.java b/src/main/java/net/officefloor/hq/app/template/ClaimTemplateRepository.java
+new file mode 100644
+index 000000000..ef6b0a6ac
+--- /dev/null
++++ b/src/main/java/net/officefloor/hq/app/template/ClaimTemplateRepository.java
+@@ -0,0 +1,14 @@
++package net.officefloor.hq.app.template;
++
++import java.util.List;
++import java.util.Optional;
++import org.springframework.data.jpa.repository.JpaRepository;
++
++public interface ClaimTemplateRepository extends JpaRepository<ClaimTemplate, Long> {
++
++    /** The claim templates of a sheet in the order they were first saved. */
++    List<ClaimTemplate> findBySheetIdOrderByIdAsc(String sheetId);
++
++    /** The sheet's template of the name. */
++    Optional<ClaimTemplate> findBySheetIdAndName(String sheetId, String name);
++}
+diff --git a/src/main/java/net/officefloor/hq/app/template/ClaimTemplateService.java b/src/main/java/net/officefloor/hq/app/template/ClaimTemplateService.java
+new file mode 100644
+index 000000000..042f98e2b
+--- /dev/null
++++ b/src/main/java/net/officefloor/hq/app/template/ClaimTemplateService.java
+@@ -0,0 +1,70 @@
++package net.officefloor.hq.app.template;
++
++import java.math.BigDecimal;
++import java.util.List;
++import net.officefloor.hq.app.Audit;
++import net.officefloor.hq.app.claim.Claim;
++import net.officefloor.hq.app.claim.ClaimService;
++import net.officefloor.hq.app.sheet.SheetService;
++import org.springframework.http.HttpStatus;
++import org.springframework.stereotype.Service;
++import org.springframework.transaction.annotation.Transactional;
++import org.springframework.web.server.ResponseStatusException;
++
++/** The claim templates of a sheet, and the claims made from them. */
++@Service
++public class ClaimTemplateService {
++
++    private final ClaimTemplateRepository templates;
++    private final ClaimService claims;
++    private final SheetService sheets;
++    private final Audit audit;
++
++    public ClaimTemplateService(ClaimTemplateRepository templates, ClaimService claims, SheetService sheets,
++            Audit audit) {
++        this.templates = templates;
++        this.claims = claims;
++        this.sheets = sheets;
++        this.audit = audit;
++    }
++
++    /** The claim templates of the sheet in the order they were first saved. */
++    @Transactional(readOnly = true)
++    public List<ClaimTemplate> list(String sheetId) {
++        return templates.findBySheetIdOrderByIdAsc(sheetId);
++    }
++
++    /** Save a template under its (trimmed) name, replacing the one of that name; refused when the name
++     *  is blank. */
++    @Transactional
++    public synchronized ClaimTemplate save(String sheetId, String user, String name, BigDecimal amount, String note) {
++        String key = name == null ? "" : name.trim();
++        if (key.isEmpty()) {
++            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Enter a template name");
++        }
++        String text = note == null ? "" : note.trim();
++        sheets.load(sheetId, user);
++        ClaimTemplate template = templates.findBySheetIdAndName(sheetId, key).orElse(null);
++        if (template == null) {
++            template = new ClaimTemplate(sheetId, key, amount, text);
++        } else {
++            template.replace(amount, text);
++        }
++        ClaimTemplate saved = templates.saveAndFlush(template);
++        audit.recordOnCommit("TEMPLATE_SAVED sheet=" + sheetId + " by=" + user + " name=" + key
++                + " amount=" + amount.setScale(2).toPlainString() + " note=" + text);
++        return saved;
++    }
++
++    /** Add a draft claim for the person with the template's amount and note as they are now, dated as
++     *  a claim with no date is, by every rule of the claim form; refused (404) when the sheet has no
++     *  template of the name. */
++    @Transactional
++    public Claim addClaim(String sheetId, String user, long personId, String name) {
++        String key = name == null ? "" : name.trim();
++        ClaimTemplate template = templates.findBySheetIdAndName(sheetId, key)
++                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "No such template"));
++        return claims.add(sheetId, user, personId, template.getAmount().setScale(2), null, template.getNote(),
++                null, null, null);
++    }
++}
+diff --git a/src/main/resources/db/migration/V64__claim_template.sql b/src/main/resources/db/migration/V64__claim_template.sql
+new file mode 100644
+index 000000000..23fe7859c
+--- /dev/null
++++ b/src/main/resources/db/migration/V64__claim_template.sql
+@@ -0,0 +1,10 @@
++-- The claim templates of a sheet, each (trimmed) name at most once: saving a name again replaces
++-- its amount and note. A claim made from a template copies them, so it keeps no link to it.
++CREATE TABLE claim_template (
++    id       BIGINT AUTO_INCREMENT PRIMARY KEY,
++    sheet_id VARCHAR(100)   NOT NULL REFERENCES sheet (id),
++    name     VARCHAR(200)   NOT NULL,
++    amount   DECIMAL(14, 2) NOT NULL,
++    note     VARCHAR(500)   NOT NULL,
++    CONSTRAINT claim_template_unique UNIQUE (sheet_id, name)
++);

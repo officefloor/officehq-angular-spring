@@ -1,0 +1,64 @@
+{
+  "checkpoint": 103,
+  "stack": {
+    "repo": "/home/daniel/officehq-angular-spring",
+    "origin": "git@github.com:officefloor/officehq-angular-spring.git",
+    "name": "officehq-angular-spring",
+    "base_ref": "base-empty",
+    "base_commit": "65cb8233ea38b2dfa6cfd18709e30cd18fdf3250"
+  },
+  "checkpoint_id": "cp103_claim-templates",
+  "phase": "mid",
+  "type": "additive",
+  "mutates": [],
+  "replaced_tests": [],
+  "request": {
+    "spec": "The sheet has claim templates: a name, an amount and a note, saved from a form (TEMPLATE_SAVED\nname=<name> amount=<amount> note=<note>; a blank name or an amount the claim form would refuse is\nrefused with an error on the form; saving a name again replaces that template). Each person's row\nhas a template select and a button that adds a DRAFT claim with the template's amount and note at\nthat moment, dated like a claim with no date, by every rule of the claim form (CLAIM_ADDED as the\nform writes it). Changing or re-saving the template later does not alter claims made from it.\n",
+    "prompt": "You are implementing ONE change to this application.\n\nFIRST read AGENTS.md \u2014 it states the working rules and how the app is tested, and sends you to\nDESIGN.md for the app's stack and conventions. Follow both.\n\nTHE CHANGE REQUEST:\nThe sheet has claim templates: a name, an amount and a note, saved from a form (TEMPLATE_SAVED\nname=<name> amount=<amount> note=<note>; a blank name or an amount the claim form would refuse is\nrefused with an error on the form; saving a name again replaces that template). Each person's row\nhas a template select and a button that adds a DRAFT claim with the template's amount and note at\nthat moment, dated like a claim with no date, by every rule of the claim form (CLAIM_ADDED as the\nform writes it). Changing or re-saving the template later does not alter claims made from it.\n\nYour work is verified by an automated Playwright UI test already installed under e2e/specs/.\nRead that spec: it declares the exact data-testid anchors, values, test data and any audit\nrecords it expects \u2014 match them. Run `bin/e2e` to build the app, start it, and run the test as\nyou work; iterate until it passes. Change whatever the request needs across the app \u2014 its stored\ndata, its server and its front end. Do NOT edit bin/build, bin/start, bin/stop, bin/e2e,\nAGENTS.md, CLAUDE.md, DESIGN.md, e2e/support/ or the test spec.\n"
+  },
+  "commit_sha": "34fc9d2286950aee4cd44b566f6105007d8fb5eb",
+  "reset_sha": "",
+  "preagent_sha": "c482ecd355751ea9a1031faf6658f003f4cec34a",
+  "prev_sha": "c482ecd355751ea9a1031faf6658f003f4cec34a",
+  "base_sha": "65cb8233ea38b2dfa6cfd18709e30cd18fdf3250",
+  "agent": {
+    "ok": true,
+    "cost_usd": 1.134697,
+    "input_tokens": 44,
+    "output_tokens": 13233,
+    "cache_read_tokens": 1234745,
+    "cache_creation_tokens": 77864,
+    "num_turns": 24,
+    "duration_ms": 274599,
+    "duration_api_ms": 115449,
+    "model": "claude-opus-5-5",
+    "session_id": "8f258f5d-b6db-4bf8-bf68-10af95b0f014",
+    "stop_reason": "success",
+    "result_text": "Claim templates are working: `bin/e2e` passes all 4 tests in the spec (the main \"claim templates\" test and its three scenarios).\n\n**What a user can do now**\n- **Save a template.** A new \"Claim templates\" form takes a name, an amount and a note, and lists the saved templates below it. Saving writes `TEMPLATE_SAVED \u2026 name= amount= note=` to the audit file. Saving an existing name replaces that template's amount and note. A blank name, or an amount the claim form would refuse (like `1.005`), shows an error on the form and saves nothing.\n- **Add a claim from a template.** Each person's claim area has a template select and an \"Add claim from template\" button, next to the claim form.\n  - The server reads the template's amount and note when the button is pressed. It then adds the claim through the same code the claim form uses, with no date. So the claim is a DRAFT, gets the entry date or else the sheet's today, follows every claim-form rule (closed period, retirement, corrections) and writes the same `CLAIM_ADDED` line.\n  - A refusal shows on that person's claim-form error. Pressing the button with no template chosen also shows that error.\n- **Later changes don't reach old claims.** The claim copies the amount and note, so it keeps no link to the template, and re-saving the template doesn't alter it.\n\n**Changes by layer**\n- **Stored data:** a new migration, `V64__claim_template.sql`, adds a `claim_template` table with one row per name on each sheet.\n- **Server:** a new package, `net.officefloor.hq.app.template`, holds the entity, repository, service and controller.\n  - `GET` and `PUT /api/sheets/{id}/claim-templates` list and save templates.\n  - `POST /api/sheets/{id}/people/{personId}/claims/from-template` adds the claim.\n  - The app's existing viewer and as-of checks apply to these endpoints as they do to the others.\n- **Front end:**\n  - `core/claim-templates.ts` holds the template list and reloads it when a sheet is loaded.\n  - `features/settings/claim-template-form.ts` is the new form, added to the home screen.\n  - `features/claims/person-claims.ts` gets the select and button.\n\nI didn't edit the test, `bin/*`, `e2e/support/*` or the instruction files.",
+    "error": "",
+    "attempts": [
+      {
+        "ok": true,
+        "limit_reached": false,
+        "retryable": false,
+        "timed_out": false,
+        "cost_usd": 1.134697,
+        "num_turns": 24,
+        "duration_ms": 274599,
+        "duration_api_ms": 115449,
+        "error": ""
+      }
+    ]
+  },
+  "agent_stream_file": "cp103.agent.jsonl",
+  "agent_diff_file": "cp103.agent.diff",
+  "build_log_file": null,
+  "tests": {
+    "gated": false,
+    "queued": true
+  },
+  "probe": null,
+  "pinned_touched": [],
+  "acceptance_touched": [],
+  "impact_gate": null
+}
