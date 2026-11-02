@@ -99,6 +99,8 @@ export interface Claim {
   /** How many proofs it has. One whose due is above the proof threshold in force on its date cannot
    *  be settled or approved while it has none. */
   proofs: number;
+  /** The number of the claim it was split off; null when it was not split off one. */
+  splitFrom: string | null;
 }
 
 /** A line of a claim's status log: the status, who changed it to that, the sheet's today then
@@ -279,6 +281,18 @@ export class Claims {
     const { sheetId, user } = this.active();
     return firstValueFrom(
       this.http.post<Claim>(`${this.url(sheetId)}/claims/${id}/proof`, null, { headers: { 'X-User': user } }),
+    );
+  }
+
+  /** Split the amount (above 0.00 and below the claim's amount) off an open claim: the claim with
+   *  the rest of its amount, and the new open claim. Refused (409) when it is not open or is
+   *  deferred, (400) when the amount is out of range, (403) when the user's role may not open a
+   *  claim, and (423) when its period is closed. */
+  split(id: number, amount: string): Promise<{ original: Claim; split: Claim }> {
+    const { sheetId, user } = this.active();
+    return firstValueFrom(
+      this.http.post<{ original: Claim; split: Claim }>(`${this.url(sheetId)}/claims/${id}/split`, { amount },
+        { headers: { 'X-User': user } }),
     );
   }
 

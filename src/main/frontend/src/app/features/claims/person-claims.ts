@@ -1,7 +1,7 @@
 import { HttpErrorResponse } from '@angular/common/http';
 import { Component, inject, input, output, signal } from '@angular/core';
 import { FormControl, FormGroup, ReactiveFormsModule } from '@angular/forms';
-import { CLAIM_AMOUNT, Claim, ClaimAction, Claims, claimDue, deferred, overdue } from '../../core/claims';
+import { AMOUNT, CLAIM_AMOUNT, Claim, ClaimAction, Claims, claimDue, deferred, overdue } from '../../core/claims';
 import { GradeFrom, Person, gradeOn } from '../../core/people';
 import { Period, periodOf } from '../../core/periods';
 import { Rate } from '../../core/rates';
@@ -76,6 +76,18 @@ function reassignRefusal(e: unknown): string {
   return 'The claim could not be reassigned.';
 }
 
+/** The message when a split's amount is not above 0.00 and below the claim's amount. */
+const SPLIT_AMOUNT = 'Enter an amount above 0.00 and below the claim\'s amount to split off.';
+
+/** The message for a refused split of a claim. */
+function splitRefusal(e: unknown): string {
+  if (e instanceof HttpErrorResponse && e.status === 423) return CLOSED;
+  if (e instanceof HttpErrorResponse && e.status === 409) return 'Only an open claim that is not deferred can be split.';
+  if (e instanceof HttpErrorResponse && e.status === 403) return 'Your role may not open a claim, so it cannot split one.';
+  if (e instanceof HttpErrorResponse && e.status === 400) return SPLIT_AMOUNT;
+  return 'The claim could not be split.';
+}
+
 // A person's claims, newest first, and the form that adds a claim for them or, once a claim's
 // editor is opened, edits it.
 @Component({
@@ -119,6 +131,7 @@ function reassignRefusal(e: unknown): string {
           <span data-testid="claim-deferred">{{ deferredOf(c) ? 'yes' : 'no' }}</span>
           <span data-testid="claim-deferred-until">{{ c.deferredUntil ?? '' }}</span>
           <span data-testid="claim-proofs">{{ c.proofs }}</span>
+          <span data-testid="claim-split-from">{{ c.splitFrom ?? '' }}</span>
           <ol data-testid="claim-log" [attr.aria-label]="'Status log of claim of ' + c.amount + ' on ' + c.date">
             @for (l of c.log; track $index) {
               <li data-testid="claim-log-line">{{ l.status }} by {{ l.by }} on {{ l.on }} due={{ l.due ?? 'n/a' }}</li>
@@ -156,6 +169,11 @@ function reassignRefusal(e: unknown): string {
           </select>
           <button type="button" data-testid="claim-reassign" (click)="reassign(c, reassignTo.value)"
             [attr.aria-label]="'Reassign claim of ' + c.amount + ' on ' + c.date">Reassign</button>
+          <label [for]="'claim-split-amount-' + c.id">Split off amount</label>
+          <input [id]="'claim-split-amount-' + c.id" data-testid="claim-split-amount" #splitAmount
+            inputmode="decimal" (input)="clearError(c)" />
+          <button type="button" data-testid="claim-split" (click)="split(c, splitAmount.value)"
+            [attr.aria-label]="'Split claim of ' + c.amount + ' on ' + c.date">Split</button>
           <button type="button" data-testid="claim-edit" (click)="open(c)"
             [attr.aria-label]="'Edit claim of ' + c.amount + ' on ' + c.date">Edit</button>
           @if (editing() === c.id) {
@@ -304,6 +322,22 @@ export class PersonClaims {
       this.saved.emit(await this.api.reassign(c.id, Number(to)));
     } catch (e) {
       this.claimError.set({ id: c.id, message: reassignRefusal(e) });
+    }
+  }
+
+  protected async split(c: Claim, amount: string): Promise<void> {
+    this.claimError.set(null);
+    const part = amount.trim();
+    if (!AMOUNT.test(part) || Number(part) <= 0 || Number(part) >= Number(c.amount)) {
+      this.claimError.set({ id: c.id, message: SPLIT_AMOUNT });
+      return;
+    }
+    try {
+      const { original, split } = await this.api.split(c.id, part);
+      this.saved.emit(original);
+      this.saved.emit(split);
+    } catch (e) {
+      this.claimError.set({ id: c.id, message: splitRefusal(e) });
     }
   }
 

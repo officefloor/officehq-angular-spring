@@ -100,6 +100,11 @@ public class Claim {
     @Column(name = "proofs", nullable = false)
     private int proofs;
 
+    /** The number of the claim this claim was split off (see {@link #splitOff}); null for a claim
+     *  that was not split off one. */
+    @Column(name = "split_from")
+    private String splitFrom;
+
     /** Where the claim is listed: newest first by this. A new claim takes the next from the
      *  database, and a moved claim takes the next again (see {@link #moveTo}). */
     @Generated
@@ -151,6 +156,24 @@ public class Claim {
         this.personId = personId;
         this.listed = listed;
         bind(false, null);
+    }
+
+    /** Split the amount off this open claim: it keeps the rest of its amount but no figure a
+     *  statement bound it to, and the new open claim returned has the amount, the same date and
+     *  note, the number and opener given, the due-by given, and this claim's number as split-from. */
+    public Claim splitOff(BigDecimal part, String number, String openedBy, LocalDate dueBy) {
+        this.amount = amount.subtract(part);
+        bind(false, null);
+        Claim split = new Claim(sheetId, personId, part, date, note, null, null, dueBy);
+        split.status = ClaimStatus.OPEN;
+        split.number = number;
+        split.openedBy = openedBy;
+        split.splitFrom = this.number;
+        return split;
+    }
+
+    public String getSplitFrom() {
+        return splitFrom;
     }
 
     public BigDecimal getAmount() {

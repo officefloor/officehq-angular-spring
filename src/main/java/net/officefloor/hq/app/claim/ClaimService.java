@@ -310,6 +310,45 @@ public class ClaimService {
         });
     }
 
+    /** What a split leaves: the original claim, with the rest of its amount, and the new open claim
+     *  split off it. */
+    public record Split(Claim original, Claim split) {
+    }
+
+    /** Split an amount (above 0.00 and below the claim's amount) off an open claim: it keeps the rest
+     *  of its amount and loses any figure a statement bound it to, and a new open claim of the amount,
+     *  the same date and note, the next number, opened by the user and due by the terms in force on
+     *  the date, is listed as its person's newest claim. Refused when the claim is not open (or is
+     *  deferred), its period is closed, the amount is out of range, or the permission matrix does not
+     *  allow the user's role to open a claim. */
+    @Transactional
+    public Split split(String sheetId, String user, long claimId, BigDecimal part) {
+        Claim claim = lock(sheetId, claimId);
+        refuseClosed(sheetId, claim.getDate());
+        if (claim.getStatus() != ClaimStatus.OPEN || claim.isDeferredOn(sheets.today(sheetId))) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT, "Only an open claim that is not deferred can be split");
+        }
+        if (!roles.may(sheetId, user, "open")) {
+            throw new ResponseStatusException(HttpStatus.FORBIDDEN, "Your role may not open a claim");
+        }
+        if (part.signum() <= 0 || part.compareTo(claim.getAmount()) >= 0) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
+                    "The amount split off must be above 0.00 and below the claim's amount");
+        }
+        return rollup.tracking(sheetId, user, () -> {
+            Person person = person(sheetId, claim.getPersonId());
+            LocalDate on = claim.getDate();
+            Claim draft = claim.splitOff(part, nextNumber(sheetId, on), user,
+                    on.plusDays(sheets.termsFor(sheetId, person.gradeOn(on), on)));
+            logStatus(sheetId, user, person, draft);
+            Claim original = claims.saveAndFlush(claim);
+            Claim split = claims.saveAndFlush(draft);
+            audit.recordOnCommit(record("CLAIM_SPLIT", sheetId, user, person, original) + " into=" + split.getNumber());
+            audit.recordOnCommit(record("CLAIM_OPENED", sheetId, user, person, split));
+            return new Split(original, split);
+        });
+    }
+
     /** The pending claim a steward approves or rejects, locked; refused when it is not pending, the
      *  user is not a steward, or its period is closed. */
     private Claim lockPending(String sheetId, String user, long claimId) {

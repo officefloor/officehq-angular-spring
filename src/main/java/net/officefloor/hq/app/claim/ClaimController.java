@@ -34,11 +34,12 @@ public class ClaimController {
      *  of the claim it corrects (null when it is not a correction); the date its figures round by
      *  (that of the claim a correction corrects, or else its own); and where it is listed (newest
      *  first by this); and its status log, oldest first; and the day it is deferred until (null when
-     *  never deferred); and how many proofs it has. */
+     *  never deferred); and how many proofs it has; and the number of the claim it was split off
+     *  (null when none). */
     public record ClaimView(long id, long personId, String amount, LocalDate date, String note,
             ClaimStatus status, String number, String settledDue, String openedBy, boolean stated,
             String statedDue, boolean statedNa, String corrects, LocalDate roundsBy, long listed, LocalDate dueBy,
-            List<LogLineView> log, LocalDate deferredUntil, int proofs) {
+            List<LogLineView> log, LocalDate deferredUntil, int proofs, String splitFrom) {
         public static ClaimView of(Claim claim) {
             return new ClaimView(claim.getId(), claim.getPersonId(), claim.getAmount().setScale(2).toPlainString(),
                     claim.getDate(), claim.getNote(), claim.getStatus(), claim.getNumber(),
@@ -47,7 +48,7 @@ public class ClaimController {
                     claim.getStatedDue() == null ? null : claim.getStatedDue().setScale(2).toPlainString(),
                     claim.isStatedNa(), claim.getCorrects(), claim.roundsBy(), claim.getListed(), claim.getDueBy(),
                     claim.getLog().stream().map(LogLineView::of).toList(), claim.getDeferredUntil(),
-                    claim.getProofs());
+                    claim.getProofs(), claim.getSplitFrom());
         }
     }
 
@@ -212,6 +213,27 @@ public class ClaimController {
             @RequestHeader("X-User") @NotBlank @Size(max = 100) String user,
             @Valid @RequestBody ReassignForm form) {
         return ClaimView.of(service.reassign(sheetId.trim(), user.trim(), claimId, form.personId()));
+    }
+
+    /** The amount split off an open claim: above 0.00, with up to two decimals. */
+    public record SplitForm(@NotNull @Pattern(regexp = "\\s*\\d{1,12}(\\.\\d{1,2})?\\s*") String amount) {
+
+        BigDecimal amountValue() {
+            return new BigDecimal(amount.trim()).setScale(2);
+        }
+    }
+
+    /** The claim split, with the rest of its amount, and the new claim split off it. */
+    public record SplitView(ClaimView original, ClaimView split) {
+    }
+
+    @PostMapping("/claims/{claimId}/split")
+    public SplitView split(@PathVariable @NotBlank @Size(max = 100) String sheetId,
+            @PathVariable long claimId,
+            @RequestHeader("X-User") @NotBlank @Size(max = 100) String user,
+            @Valid @RequestBody SplitForm form) {
+        ClaimService.Split split = service.split(sheetId.trim(), user.trim(), claimId, form.amountValue());
+        return new SplitView(ClaimView.of(split.original()), ClaimView.of(split.split()));
     }
 
     @PostMapping("/claims/{claimId}/void")
