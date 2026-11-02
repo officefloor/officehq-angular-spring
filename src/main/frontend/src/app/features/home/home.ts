@@ -1,5 +1,6 @@
 import { Component, inject } from '@angular/core';
 import { AuditViewer } from '../audit/audit-viewer';
+import { ClaimTemplateForm } from '../settings/claim-template-form';
 import { Session } from '../../core/session';
 import { PeopleList } from '../people/people-list';
 import { DelegationForm } from '../settings/delegation-form';
@@ -12,7 +13,7 @@ import { SignIn } from '../session/signin';
 // The one screen: sign in by name, then load a sheet by id and keep its people.
 @Component({
   selector: 'app-home',
-  imports: [SignIn, SheetBar, SettingsForm, DelegationForm, HolidayForm, VoidReasonForm, PeopleList, AuditViewer],
+  imports: [SignIn, SheetBar, SettingsForm, DelegationForm, HolidayForm, VoidReasonForm, ClaimTemplateForm, PeopleList, AuditViewer],
   template: `
     @if (session.user()) {
       <app-sheet-bar />
@@ -23,6 +24,7 @@ import { SignIn } from '../session/signin';
         <app-delegation-form />
         <app-holiday-form />
         <app-void-reason-form />
+        <app-claim-template-form />
         <app-people-list />
         <app-audit-viewer />
       }

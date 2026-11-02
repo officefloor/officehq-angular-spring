@@ -2,6 +2,7 @@ import { HttpErrorResponse } from '@angular/common/http';
 import { Component, effect, inject, input, output, signal, untracked } from '@angular/core';
 import { FormControl, FormGroup, ReactiveFormsModule } from '@angular/forms';
 import { AMOUNT, CLAIM_AMOUNT, Claim, ClaimAction, Claims, claimDue, deferred, overdue } from '../../core/claims';
+import { ClaimTemplates } from '../../core/claim-templates';
 import { GradeFrom, Person, gradeOn } from '../../core/people';
 import { Period, periodOf } from '../../core/periods';
 import { Rate } from '../../core/rates';
@@ -177,6 +178,16 @@ function splitRefusal(e: unknown): string {
       <label [for]="'claim-form-tags-' + personId()">Tags (comma separated)</label>
       <input [id]="'claim-form-tags-' + personId()" data-testid="claim-form-tags" formControlName="tags" />
       <button type="submit" data-testid="claim-form-submit">{{ editing() === null ? 'Add claim' : 'Save claim' }}</button>
+      <label [for]="'claim-template-select-' + personId()">Template</label>
+      <select [id]="'claim-template-select-' + personId()" data-testid="claim-template-select" #template
+        (change)="error.set('')">
+        <option value="">Choose a template</option>
+        @for (t of templates.list(); track t.id) {
+          <option [value]="t.name">{{ t.name }}</option>
+        }
+      </select>
+      <button type="button" data-testid="claim-template-add" (click)="addFromTemplate(template.value)">
+        Add claim from template</button>
       @if (error()) {
         <p role="alert" data-testid="claim-form-error">{{ error() }}</p>
       }
@@ -302,6 +313,7 @@ export class PersonClaims {
   private readonly api = inject(Claims);
   private readonly session = inject(Session);
   protected readonly voidReasons = inject(VoidReasons);
+  protected readonly templates = inject(ClaimTemplates);
 
   readonly personId = input.required<number>();
   /** This person's claims, newest first. */
@@ -629,6 +641,31 @@ export class PersonClaims {
         this.claimError.set({ id, message: c ? editorRefusal(e, c) : NOT_DRAFT });
       }
       else this.error.set(id === null ? 'The claim could not be added.' : 'The claim could not be saved.');
+    } finally {
+      this.submitting = false;
+    }
+  }
+
+  /** Add a draft claim from the chosen template, with its amount and note as they are now and the
+   *  date a claim added with no date takes; refused, on the claim form, as the form's add would be. */
+  protected async addFromTemplate(name: string): Promise<void> {
+    if (this.submitting) return;
+    this.error.set('');
+    this.claimError.set(null);
+    const template = this.templates.list().find((t) => t.name === name);
+    if (!template) {
+      this.error.set('Choose a template to add a claim from.');
+      return;
+    }
+    this.submitting = true;
+    try {
+      this.saved.emit(await this.templates.addClaim(this.personId(), template.name));
+    } catch (e) {
+      if (e instanceof HttpErrorResponse && e.status === 423) this.error.set(CLOSED);
+      else if (e instanceof HttpErrorResponse && e.status === 422) this.error.set(RETIRED);
+      else if (e instanceof HttpErrorResponse && e.status === 400 && template.amount.startsWith('-')) this.error.set(CORRECTS);
+      else if (e instanceof HttpErrorResponse && e.status === 404) this.error.set('That template is no longer on the sheet.');
+      else this.error.set('The claim could not be added.');
     } finally {
       this.submitting = false;
     }
