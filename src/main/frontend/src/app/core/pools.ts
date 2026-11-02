@@ -12,7 +12,8 @@ export interface PoolMember {
   poolId: number | null;
   name: string;
   share: string;
-  /** Whether the person has a retirement day set, whatever the day: their share then counts as 0.00. */
+  /** Whether the person has a retirement day set, whatever the day: they then get no
+   *  cut, their share spread over the other members. */
   retired: boolean;
   /** Their cut of the pool's pot, as text with two decimals; null when the pool shows no cut (it is
    *  not balanced, or it has no pot). */

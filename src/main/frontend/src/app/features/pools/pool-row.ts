@@ -7,7 +7,8 @@ import { Pool, PoolMember, Pools, formatCents, shareCents } from '../../core/poo
 // A pool's row: its members (people, and pools shown as pool:<name>) with their shares, the total
 // and whether it is balanced (exactly 100.00), each member's cut of the pool's pot (blank unless the
 // pool is balanced and has a pot: the sheet's, or its cut in the pool above when it is a member of
-// one), and the entry a member is added with. A retired member's share counts as 0.00; a member
+// one), and the entry a member is added with. A retired member's share counts in the total but
+// they get no cut, their share spread over the others (no cuts when every member is); a member
 // whose dates do not include the sheet's today is left out of the total and has no cut.
 @Component({
   selector: 'app-pool-row',
@@ -63,10 +64,10 @@ export class PoolRow {
   protected readonly pools = inject(Pools);
   private readonly byId = computed(() => new Map(this.people().map((p) => [p.id, p])));
 
-  /** The members' shares added up, a retired member's counting as 0.00 and one out of force left out. */
+  /** The members' shares added up, a retired member's counting as given and one out of force left out. */
   private readonly totalCents = computed(() =>
     this.pool().members.reduce(
-      (sum, m) => (this.isRetired(m) || !m.inForce ? sum : sum + (shareCents(m.share) ?? 0)), 0),
+      (sum, m) => (!m.inForce ? sum : sum + (shareCents(m.share) ?? 0)), 0),
   );
   protected readonly totalShare = computed(() => formatCents(this.totalCents()));
   protected readonly balanced = computed(() => this.totalCents() === 10000);

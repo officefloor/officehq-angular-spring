@@ -39,7 +39,8 @@ public class PoolService {
      *  not in the total share, not in the balance, no cut). */
     public record Member(PoolMember member, Person person, Pool pool, boolean held, boolean inForce) {
 
-        /** Whether the member is a person with a retirement day set: their share then counts as 0.00. */
+        /** Whether the member is a person with a retirement day set: they then get no cut, their
+         *  share going to the other members with a cut in proportion to their shares. */
         public boolean retired() {
             return person != null && person.isRetired();
         }
@@ -50,10 +51,10 @@ public class PoolService {
     public record Listed(Pool pool, List<Member> members, BigDecimal pot) {
 
         /** The shares of the members added up, a retired member's (one with a retirement day set,
-         *  whatever the day) counting as 0.00 and a member out of force left out. */
+         *  whatever the day) counting as given and a member out of force left out. */
         public BigDecimal totalShare() {
             return members.stream()
-                    .filter(m -> !m.retired() && m.inForce())
+                    .filter(Member::inForce)
                     .map(m -> m.member().getShare())
                     .reduce(BigDecimal.ZERO.setScale(2), BigDecimal::add);
         }
@@ -65,13 +66,15 @@ public class PoolService {
 
         /** Each member's cut of the pot, in the members' order: the pot times their share divided by
          *  the shares of the members with a cut added up, rounded half to even to two decimals (a
-         *  retired member's share counting as 0.00, a held member getting no cut: 0.00), with the
+         *  retired or held member getting no cut: 0.00, their share spread over the others), with the
          *  remainder of the pot going to the member with a cut with the largest share (the earliest
          *  added on a tie), so the cuts total exactly the pot (each 0.00 when no member has a cut);
-         *  none (an empty list) when there is no pot or the pool is not balanced. A member out of
+         *  none (an empty list) when there is no pot, the pool is not balanced or every member in
+         *  force is retired. A member out of
          *  force has no cut at all: its entry is null. */
         public List<BigDecimal> cuts() {
-            if (pot == null || !balanced()) {
+            if (pot == null || !balanced()
+                    || members.stream().filter(Member::inForce).allMatch(Member::retired)) {
                 return List.of();
             }
             List<BigDecimal> shares = members.stream()
