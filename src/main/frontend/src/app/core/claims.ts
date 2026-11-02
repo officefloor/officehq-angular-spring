@@ -83,12 +83,12 @@ export interface Lateness {
 }
 
 /** A claim's due figure: the one fixed when it was settled, or else the one its person's last
- *  statement bound it to, or else its live due at its person's grade's rate in force on the
- *  claim's date, at least the sheet's floor; with the late charge on top while it is overdue (a
+ *  statement bound it to, or else its live due at the rate in force on the claim's date for the
+ *  grade (the person's grade in force on that date), at least the sheet's floor; with the late charge on top while it is overdue (a
  *  settled claim's figure already holds it). Null when there is none. */
-export function claimDue(c: Claim, rates: Rate[], grade: Grade, floor: string, late: Lateness): string | null {
+export function claimDue(c: Claim, rates: Rate[], grade: Grade | undefined, floor: string, late: Lateness): string | null {
   if (c.settledDue !== null) return c.settledDue;
-  const live = due(c.amount, pctOn(rates, grade, c.date));
+  const live = due(c.amount, grade === undefined ? undefined : pctOn(rates, grade, c.date));
   const figure = (c.stated ? c.statedDue : null) ?? (live === null ? null : atLeast(live, floor));
   return figure === null ? null : sumAmounts([figure, lateCharge(c, figure, late)]);
 }

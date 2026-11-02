@@ -6,10 +6,29 @@ import { Session } from './session';
 
 export type Grade = 'A' | 'B' | 'C';
 
+/** A grade a person was given, from a day (yyyy-mm-dd); null: from the beginning of time. */
+export interface GradeFrom {
+  grade: Grade;
+  from: string | null;
+}
+
+/** The grade in force on a day: the one with the latest from-date on or before it, or else the one
+ *  with no from-date; grades come earliest first. */
+export function gradeOn(grades: GradeFrom[], day: string | null): Grade | undefined {
+  let on: Grade | undefined;
+  for (const g of grades) {
+    if (g.from === null || (day !== null && g.from <= day)) on = g.grade;
+  }
+  return on;
+}
+
 export interface Person {
   id: number;
   name: string;
+  /** The grade in force on the sheet's today when the person was read. */
   grade: Grade;
+  /** Every grade recorded for them, earliest first. */
+  grades: GradeFrom[];
   /** Raised each time the person is saved. */
   version: number;
   /** How many statements were taken of them. */
@@ -36,6 +55,8 @@ export interface Taken {
 export interface PersonForm {
   name: string;
   grade: Grade;
+  /** The day (yyyy-mm-dd) an edit's grade applies from; null takes the sheet's today. */
+  gradeFrom?: string | null;
 }
 
 // The people kept on the active sheet.

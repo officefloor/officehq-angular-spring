@@ -43,15 +43,18 @@ public class PersonService {
         }
         return rollup.tracking(sheetId, user, () -> {
             Person person = saveUnique(new Person(sheetId, name, grade));
-            audit.recordOnCommit(record("PERSON_ADDED", sheetId, user, person));
+            audit.recordOnCommit(record("PERSON_ADDED", sheetId, user, person, sheets.today(sheetId)));
             return person;
         });
     }
 
-    /** Change a person's name and grade, refused when the person is no longer at the version the
-     *  editor loaded: another user saved them in the meantime. */
+    /** Change a person's name, and record their grade from a day (null: the sheet's today), keeping
+     *  the grades already recorded; a grade left as the one in force on the sheet's today, with no
+     *  day given, records nothing. Refused when the person is no longer at the version the editor
+     *  loaded: another user saved them in the meantime. */
     @Transactional
-    public Person edit(String sheetId, String user, long personId, long version, String name, String grade) {
+    public Person edit(String sheetId, String user, long personId, long version, String name, String grade,
+            LocalDate gradeFrom) {
         Person person = people.findByIdAndSheetId(personId, sheetId)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "No such person on this sheet"));
         if (person.getVersion() != version) {
@@ -61,10 +64,13 @@ public class PersonService {
             throw nameInUse();
         }
         return rollup.tracking(sheetId, user, () -> {
+            LocalDate today = sheets.today(sheetId);
             person.setName(name);
-            person.setGrade(grade);
+            if (gradeFrom != null || !grade.equals(person.gradeOn(today))) {
+                person.setGradeFrom(grade, gradeFrom != null ? gradeFrom : today);
+            }
             Person saved = saveUnique(person);
-            audit.recordOnCommit(record("PERSON_EDITED", sheetId, user, saved));
+            audit.recordOnCommit(record("PERSON_EDITED", sheetId, user, saved, today));
             return saved;
         });
     }
@@ -102,8 +108,10 @@ public class PersonService {
         });
     }
 
-    private static String record(String event, String sheetId, String user, Person person) {
-        return event + " sheet=" + sheetId + " by=" + user + " name=" + person.getName() + " grade=" + person.getGrade();
+    /** A record of the person with the grade in force on the sheet's today. */
+    private static String record(String event, String sheetId, String user, Person person, LocalDate today) {
+        return event + " sheet=" + sheetId + " by=" + user + " name=" + person.getName() + " grade="
+                + person.gradeOn(today);
     }
 
     /** Save, refusing a name another user took on the sheet in the meantime, or a person another

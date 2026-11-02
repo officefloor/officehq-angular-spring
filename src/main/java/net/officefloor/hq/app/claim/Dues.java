@@ -73,25 +73,26 @@ public class Dues {
     }
 
     /** A person's due-total: the sum of the figures of their claims that count; null (n/a) when
-     *  their grade has no rate on the sheet's today and no counting claim keeps a fixed figure. */
+     *  their grade on the sheet's today has no rate on it and no counting claim has a figure (one
+     *  fixed, or a live due at the grade in force on its date). */
     public BigDecimal dueTotal(String sheetId, Person person, List<Claim> theirs) {
-        List<Claim> counted = theirs.stream().filter(c -> c.getStatus().counts()).toList();
-        boolean rated = rates.findInForce(sheetId, person.getGrade(), sheets.today(sheetId)).isPresent();
-        boolean fixed = counted.stream().anyMatch(c -> c.getSettledDue() != null
-                || (c.isStated() && c.getStatedDue() != null));
-        if (!rated && !fixed) {
+        List<BigDecimal> figures = theirs.stream().filter(c -> c.getStatus().counts())
+                .map(c -> figure(sheetId, person, c)).filter(d -> d != null).toList();
+        LocalDate today = sheets.today(sheetId);
+        boolean rated = rates.findInForce(sheetId, person.gradeOn(today), today).isPresent();
+        if (!rated && figures.isEmpty()) {
             return null;
         }
-        return counted.stream().map(c -> figure(sheetId, person, c)).filter(d -> d != null)
-                .reduce(BigDecimal.ZERO.setScale(2), BigDecimal::add);
+        return figures.stream().reduce(BigDecimal.ZERO.setScale(2), BigDecimal::add);
     }
 
-    /** A claim's live due at the rate for the person's grade in force on the claim's date: amount
+    /** A claim's live due at the rate, in force on the claim's date, for the person's grade in force
+     *  on that date: amount
      *  times pct divided by 100, rounded half to even to two decimals, and at least the sheet's
      *  floor; null when no rate applies on that date. */
     private BigDecimal due(String sheetId, Person person, Claim claim) {
         BigDecimal floor = sheets.floor(sheetId);
-        return rates.findInForce(sheetId, person.getGrade(), claim.getDate())
+        return rates.findInForce(sheetId, person.gradeOn(claim.getDate()), claim.getDate())
                 .map(Rate::getPct)
                 .map(pct -> claim.getAmount().multiply(pct).movePointLeft(2).setScale(2, RoundingMode.HALF_EVEN))
                 .map(due -> due.max(floor))

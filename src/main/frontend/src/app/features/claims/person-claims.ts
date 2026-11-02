@@ -2,7 +2,7 @@ import { HttpErrorResponse } from '@angular/common/http';
 import { Component, inject, input, output, signal } from '@angular/core';
 import { FormControl, FormGroup, ReactiveFormsModule } from '@angular/forms';
 import { AMOUNT, Claim, ClaimAction, Claims, claimDue, dueBy, overdue } from '../../core/claims';
-import { Grade } from '../../core/people';
+import { GradeFrom, gradeOn } from '../../core/people';
 import { Period, periodOf } from '../../core/periods';
 import { Rate } from '../../core/rates';
 
@@ -95,7 +95,8 @@ export class PersonClaims {
   readonly rates = input.required<Rate[]>();
   /** The sheet's floor: the least live due a claim has. */
   readonly floor = input.required<string>();
-  readonly grade = input.required<Grade>();
+  /** The person's grades; a claim's due uses the one in force on the claim's date. */
+  readonly grades = input.required<GradeFrom[]>();
   /** The periods on the sheet; a claim belongs to the one whose days contain its date. */
   readonly periods = input.required<Period[]>();
   /** The sheet's terms: the days after its date a claim is due by. */
@@ -125,7 +126,7 @@ export class PersonClaims {
   }
 
   protected dueOf(c: Claim): string {
-    return claimDue(c, this.rates(), this.grade(), this.floor(),
+    return claimDue(c, this.rates(), gradeOn(this.grades(), c.date), this.floor(),
       { terms: this.terms(), today: this.today(), pct: this.latePct() }) ?? 'n/a';
   }
 

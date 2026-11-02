@@ -5,6 +5,7 @@ import jakarta.validation.constraints.Size;
 import java.util.List;
 import net.officefloor.hq.app.claim.ClaimController.ClaimView;
 import net.officefloor.hq.app.person.PersonController.PersonView;
+import net.officefloor.hq.app.sheet.SheetService;
 import org.springframework.http.HttpStatus;
 import org.springframework.validation.annotation.Validated;
 import org.springframework.web.bind.annotation.PathVariable;
@@ -24,9 +25,11 @@ public class StatementController {
     }
 
     private final StatementService service;
+    private final SheetService sheets;
 
-    public StatementController(StatementService service) {
+    public StatementController(StatementService service, SheetService sheets) {
         this.service = service;
+        this.sheets = sheets;
     }
 
     @PostMapping
@@ -35,7 +38,7 @@ public class StatementController {
             @PathVariable long personId,
             @RequestHeader("X-User") @NotBlank @Size(max = 100) String user) {
         StatementService.Taken taken = service.take(sheetId.trim(), user.trim(), personId);
-        return new TakenView(PersonView.of(taken.person(), taken.summary()),
+        return new TakenView(PersonView.of(taken.person(), taken.summary(), sheets.today(sheetId.trim())),
                 taken.claims().stream().map(ClaimView::of).toList());
     }
 }

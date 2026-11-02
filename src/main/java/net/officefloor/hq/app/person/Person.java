@@ -1,15 +1,22 @@
 package net.officefloor.hq.app.person;
 
+import jakarta.persistence.CollectionTable;
 import jakarta.persistence.Column;
+import jakarta.persistence.ElementCollection;
+import jakarta.persistence.FetchType;
 import jakarta.persistence.Entity;
 import jakarta.persistence.GeneratedValue;
 import jakarta.persistence.GenerationType;
 import jakarta.persistence.Id;
+import jakarta.persistence.JoinColumn;
 import jakarta.persistence.Table;
 import jakarta.persistence.Version;
 import java.time.LocalDate;
+import java.util.ArrayList;
+import java.util.Comparator;
+import java.util.List;
 
-/** A person on a sheet: a name and a grade (A, B or C). */
+/** A person on a sheet: a name and a grade (A, B or C), dated: each grade applies from its from-date. */
 @Entity
 @Table(name = "person")
 public class Person {
@@ -24,8 +31,10 @@ public class Person {
     @Column(name = "name", nullable = false)
     private String name;
 
-    @Column(name = "grade", nullable = false)
-    private String grade;
+    /** The grades the person was given, each from its from-date; the first has none. */
+    @ElementCollection(fetch = FetchType.EAGER)
+    @CollectionTable(name = "person_grade", joinColumns = @JoinColumn(name = "person_id"))
+    private List<GradeFrom> grades = new ArrayList<>();
 
     /** The day the person is retired from; null while they are not retired. */
     @Column(name = "retired_from")
@@ -46,7 +55,7 @@ public class Person {
     public Person(String sheetId, String name, String grade) {
         this.sheetId = sheetId;
         this.name = name;
-        this.grade = grade;
+        this.grades.add(new GradeFrom(null, grade));
     }
 
     public Long getId() {
@@ -65,12 +74,29 @@ public class Person {
         this.name = name;
     }
 
-    public String getGrade() {
-        return grade;
+    /** The grades the person was given, earliest from-date first, the one with none first of all. */
+    public List<GradeFrom> getGrades() {
+        return grades.stream()
+                .sorted(Comparator.comparing(GradeFrom::getFromDate, Comparator.nullsFirst(Comparator.naturalOrder())))
+                .toList();
     }
 
-    public void setGrade(String grade) {
-        this.grade = grade;
+    /** The grade in force on a day: the one with the latest from-date on or before it, or else the
+     *  one with no from-date. */
+    public String gradeOn(LocalDate day) {
+        String on = null;
+        for (GradeFrom g : getGrades()) {
+            if (g.getFromDate() == null || !g.getFromDate().isAfter(day)) {
+                on = g.getGrade();
+            }
+        }
+        return on;
+    }
+
+    /** Record a grade from a day, replacing the one recorded for that day, keeping the others. */
+    public void setGradeFrom(String grade, LocalDate from) {
+        grades.removeIf(g -> from.equals(g.getFromDate()));
+        grades.add(new GradeFrom(from, grade));
     }
 
     public LocalDate getRetiredFrom() {

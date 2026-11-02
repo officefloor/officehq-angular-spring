@@ -1,9 +1,9 @@
 import { HttpErrorResponse } from '@angular/common/http';
 import { Component, computed, effect, inject, signal } from '@angular/core';
 import { FormControl, FormGroup, ReactiveFormsModule } from '@angular/forms';
-import { Claim, Claims, QuickAdded, claimDue, countsLive, fixed, overdue, sumAmounts } from '../../core/claims';
+import { Claim, Claims, QuickAdded, claimDue, countsLive, overdue, sumAmounts } from '../../core/claims';
 import { Patron, Patrons } from '../../core/patrons';
-import { Grade, People, Person } from '../../core/people';
+import { Grade, People, Person, gradeOn } from '../../core/people';
 import { Period, Periods, periodOf } from '../../core/periods';
 import { Rate, Rates, pctOn } from '../../core/rates';
 import { Session } from '../../core/session';
@@ -37,6 +37,8 @@ import { QuickAddBar } from './quick-add-bar';
             <option [value]="g">{{ g }}</option>
           }
         </select>
+        <label for="person-form-grade-from">Grade from</label>
+        <input id="person-form-grade-from" type="date" data-testid="person-form-grade-from" formControlName="gradeFrom" />
         <button type="submit" data-testid="person-form-submit">{{ editing() === null ? 'Add person' : 'Save' }}</button>
         @if (editing() !== null) {
           <button type="button" data-testid="person-form-cancel" (click)="cancel()">Cancel</button>
@@ -63,7 +65,7 @@ import { QuickAddBar } from './quick-add-bar';
           @for (p of shown(); track p.id) {
             <tr [attr.data-testid]="'person-row-' + p.id">
               <td data-testid="person-name">{{ p.name }}</td>
-              <td data-testid="person-grade">{{ p.grade }}</td>
+              <td data-testid="person-grade">{{ gradeOf(p) }}</td>
               <td data-testid="person-claimed">{{ claimed().get(p.id) ?? '0.00' }}</td>
               <td data-testid="person-due-total">{{ dueOf(p) ?? 'n/a' }}</td>
               <td data-testid="person-statement-count">{{ p.statementCount }}</td>
@@ -78,7 +80,7 @@ import { QuickAddBar } from './quick-add-bar';
               <td data-testid="person-backing">{{ backingOf(p) }}</td>
               <td>
                 <app-person-claims [personId]="p.id" [claims]="claimsByPerson().get(p.id) ?? []"
-                  [rates]="rates()" [floor]="floor()" [grade]="p.grade" [periods]="periods()"
+                  [rates]="rates()" [floor]="floor()" [grades]="p.grades" [periods]="periods()"
                   [terms]="terms()" [today]="session.today()" [latePct]="latePct()"
                   (saved)="claimSaved($event)" />
               </td>
@@ -188,13 +190,13 @@ export class PeopleList {
   /** Each period's due-total by its id: the due figures of the claims that count whose date falls
    *  in it, skipping those with no due. */
   protected readonly periodDueTotals = computed(() => {
-    const grades = new Map(this.people().map((p) => [p.id, p.grade]));
+    const people = new Map(this.people().map((p) => [p.id, p]));
     const figures = new Map<number, string[]>(this.periods().map((p) => [p.id, []]));
     for (const c of this.live()) {
       const period = periodOf(this.periods(), c.date);
-      const grade = grades.get(c.personId);
-      if (period === undefined || grade === undefined) continue;
-      const d = claimDue(c, this.rates(), grade, this.floor(), this.lateness());
+      const person = people.get(c.personId);
+      if (period === undefined || person === undefined) continue;
+      const d = claimDue(c, this.rates(), gradeOn(person.grades, c.date), this.floor(), this.lateness());
       if (d !== null) figures.get(period.id)?.push(d);
     }
     const by = new Map<number, string>();
@@ -247,6 +249,8 @@ export class PeopleList {
   protected readonly form = new FormGroup({
     name: new FormControl('', { nonNullable: true }),
     grade: new FormControl<Grade>('A', { nonNullable: true }),
+    /** The day the grade applies from; blank takes the sheet's today. */
+    gradeFrom: new FormControl('', { nonNullable: true }),
   });
   /** Only the newest read of the sheet may show: a load overtaken by another is dropped. */
   private reads = 0;
@@ -273,7 +277,7 @@ export class PeopleList {
     this.patronError.set(null);
     this.editing.set(p.id);
     this.version = p.version;
-    this.form.setValue({ name: p.name, grade: p.grade });
+    this.form.setValue({ name: p.name, grade: this.gradeOf(p), gradeFrom: '' });
     this.error.set('');
   }
 
@@ -379,7 +383,7 @@ export class PeopleList {
   protected async submit(): Promise<void> {
     if (this.submitting) return;
     this.error.set('');
-    const { name, grade } = this.form.getRawValue();
+    const { name, grade, gradeFrom } = this.form.getRawValue();
     if (!name.trim()) {
       this.error.set('Enter a name.');
       return;
@@ -395,7 +399,7 @@ export class PeopleList {
         const added = await this.api.add({ name, grade });
         this.people.update((ps) => [...ps, added]);
       } else {
-        const saved = await this.api.edit(id, this.version, { name, grade });
+        const saved = await this.api.edit(id, this.version, { name, grade, gradeFrom: gradeFrom.trim() || null });
         this.people.update((ps) => ps.map((p) => (p.id === saved.id ? saved : p)));
       }
       this.reset();
@@ -423,7 +427,8 @@ export class PeopleList {
       if (!current || this.editing() !== id) return;
       this.people.update((ps) => ps.map((p) => (p.id === id ? current : p)));
       this.version = current.version;
-      this.form.setValue({ name: current.name, grade: current.grade }, { emitEvent: false });
+      this.form.setValue({ name: current.name, grade: this.gradeOf(current), gradeFrom: this.form.getRawValue().gradeFrom },
+        { emitEvent: false });
     } catch {
       // the editor keeps what was typed; reopening it reads the person again
     }
@@ -459,14 +464,20 @@ export class PeopleList {
 
   /** A person's due-total: the sum of the due figures of their open and settled claims, leaving out
    *  the open ones while they are on hold. Null (n/a)
-   *  when their grade has no rate on the sheet's today and no settled or stated claim keeps a figure. */
+   *  when their grade on the sheet's today has no rate on it and no claim that counts has a figure
+   *  (one kept by settling or a statement, or a live due at the grade in force on its date). */
   protected dueOf(p: Person): string | null {
     const counted = (this.claimsByPerson().get(p.id) ?? []).filter((c) => countsLive(c, p.held));
-    if (!this.pctOf().has(p.grade) && !counted.some(fixed)) {
+    const figures = counted.map((c) => claimDue(c, this.rates(), gradeOn(p.grades, c.date), this.floor(), this.lateness())).filter((d): d is string => d !== null);
+    if (!this.pctOf().has(this.gradeOf(p)) && figures.length === 0) {
       return null;
     }
-    const figures = counted.map((c) => claimDue(c, this.rates(), p.grade, this.floor(), this.lateness())).filter((d): d is string => d !== null);
     return sumAmounts(figures);
+  }
+
+  /** The grade a person shows: the one in force on the sheet's today. */
+  protected gradeOf(p: Person): Grade {
+    return gradeOn(p.grades, this.session.today()) ?? p.grade;
   }
 
   /** A person's overdue claims among those that count in the live totals. */
@@ -478,13 +489,13 @@ export class PeopleList {
   /** A person's overdue-total: the due figures of their overdue claims that count, skipping those
    *  with no due. */
   protected overdueTotalOf(p: Person): string {
-    return sumAmounts(this.overdueOf(p).map((c) => claimDue(c, this.rates(), p.grade, this.floor(), this.lateness()))
+    return sumAmounts(this.overdueOf(p).map((c) => claimDue(c, this.rates(), gradeOn(p.grades, c.date), this.floor(), this.lateness()))
       .filter((d): d is string => d !== null));
   }
 
   private reset(): void {
     this.editing.set(null);
-    this.form.reset({ name: '', grade: 'A' }, { emitEvent: false });
+    this.form.reset({ name: '', grade: 'A', gradeFrom: '' }, { emitEvent: false });
     this.error.set('');
   }
 
