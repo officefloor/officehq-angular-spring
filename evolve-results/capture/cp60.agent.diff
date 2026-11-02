@@ -1,0 +1,120 @@
+diff --git a/src/main/frontend/src/app/core/claims.ts b/src/main/frontend/src/app/core/claims.ts
+index 0f376c205..f073974d6 100644
+--- a/src/main/frontend/src/app/core/claims.ts
++++ b/src/main/frontend/src/app/core/claims.ts
+@@ -148,6 +148,14 @@ export function sumAmounts(amounts: string[]): string {
+   return (cents / 100).toFixed(2);
+ }
+ 
++/** Amounts added up, leaving out the single highest and the single lowest when there are three or
++ *  more. */
++export function trimmedSum(amounts: string[]): string {
++  if (amounts.length < 3) return sumAmounts(amounts);
++  const sorted = [...amounts].sort((a, b) => Number(a) - Number(b));
++  return sumAmounts(sorted.slice(1, -1));
++}
++
+ /** Whether a claim is bound by its person's last statement now: it was bound, and it is not
+  *  pending (a pending claim shows its live figure). */
+ function bound(c: Claim): boolean {
+diff --git a/src/main/frontend/src/app/features/people/people-list.ts b/src/main/frontend/src/app/features/people/people-list.ts
+index ab76d6922..ed022a675 100644
+--- a/src/main/frontend/src/app/features/people/people-list.ts
++++ b/src/main/frontend/src/app/features/people/people-list.ts
+@@ -1,7 +1,7 @@
+ import { HttpErrorResponse } from '@angular/common/http';
+ import { Component, computed, effect, inject, signal } from '@angular/core';
+ import { FormControl, FormGroup, ReactiveFormsModule } from '@angular/forms';
+-import { Claim, Claims, QuickAdded, claimDue, countsAsOf, countsLive, overdue, sumAmounts } from '../../core/claims';
++import { Claim, Claims, QuickAdded, claimDue, countsAsOf, countsLive, overdue, sumAmounts, trimmedSum } from '../../core/claims';
+ import { Patron, Patrons } from '../../core/patrons';
+ import { Grade, People, Person, gradeOn } from '../../core/people';
+ import { Period, Periods, periodOf } from '../../core/periods';
+@@ -283,18 +283,19 @@ export class PeopleList {
+     }
+     return by;
+   });
+-  /** The sheet's due-total: everyone's due-total added up, skipping those that are n/a. */
++  /** The sheet's due-total: everyone's due-total added up, skipping those that are n/a, and leaving
++   *  out the single highest and lowest when three or more have one. */
+   protected readonly dueTotal = computed(() =>
+-    sumAmounts(this.people().map((p) => this.dueOf(p)).filter((d): d is string => d !== null)),
++    trimmedSum(this.people().map((p) => this.dueOf(p)).filter((d): d is string => d !== null)),
+   );
+   /** How many claims on the sheet are overdue among those that count in the live totals. */
+   protected readonly overdueCount = computed(() =>
+     this.people().reduce((n, p) => n + this.overdueOf(p).length, 0),
+   );
+   /** The sheet's overdue-total: the due figures of the overdue claims that count, skipping those
+-   *  with no due. */
++   *  with no due, and leaving out the single highest and lowest person's when there are three or more. */
+   protected readonly overdueTotal = computed(() =>
+-    sumAmounts(this.people().map((p) => this.overdueTotalOf(p))),
++    trimmedSum(this.people().map((p) => this.overdueTotalOf(p))),
+   );
+   /** Per grade: the people not retired on it on the sheet's today, and their due-totals added up,
+    *  skipping those that are n/a. */
+diff --git a/src/main/java/net/officefloor/hq/app/rollup/Rollup.java b/src/main/java/net/officefloor/hq/app/rollup/Rollup.java
+index e0b6c6233..79ed3383a 100644
+--- a/src/main/java/net/officefloor/hq/app/rollup/Rollup.java
++++ b/src/main/java/net/officefloor/hq/app/rollup/Rollup.java
+@@ -2,6 +2,8 @@ package net.officefloor.hq.app.rollup;
+ 
+ import java.math.BigDecimal;
+ import java.time.LocalDate;
++import java.util.ArrayList;
++import java.util.Comparator;
+ import java.util.LinkedHashMap;
+ import java.util.List;
+ import java.util.Map;
+@@ -21,7 +23,9 @@ import org.springframework.transaction.annotation.Transactional;
+ 
+ /**
+  * The figures a sheet rolls up to: what each person has claimed, their due-total and their
+- * overdue-total, and the sheet's totals of all three. A change made through {@link #tracking} is followed in the audit by one
++ * overdue-total, and the sheet's totals of all three. The sheet's due-total and overdue-total leave
++ * out the single highest and the single lowest person's figure when three or more people have one
++ * (a due-total of n/a is no figure). A change made through {@link #tracking} is followed in the audit by one
+  * ROLLUP line per person whose figures it moved (in the order they were added), then a TOTALS line
+  * when the sheet's totals moved.
+  */
+@@ -84,8 +88,8 @@ public class Rollup {
+                 .collect(Collectors.groupingBy(Claim::getPersonId));
+         Map<Long, Figures> figures = new LinkedHashMap<>();
+         BigDecimal claimedTotal = BigDecimal.ZERO.setScale(2);
+-        BigDecimal dueTotal = BigDecimal.ZERO.setScale(2);
+-        BigDecimal overdueTotal = BigDecimal.ZERO.setScale(2);
++        List<BigDecimal> dueFigures = new ArrayList<>();
++        List<BigDecimal> overdueFigures = new ArrayList<>();
+         LocalDate today = sheets.today(sheetId);
+         for (Person person : people.findBySheetIdOrderByIdAsc(sheetId)) {
+             List<Claim> theirs = Dues.live(person, byPerson.getOrDefault(person.getId(), List.of()), today);
+@@ -96,14 +100,25 @@ public class Rollup {
+                     .map(c -> dues.figure(sheetId, person, c)).filter(Objects::nonNull)
+                     .reduce(BigDecimal.ZERO.setScale(2), BigDecimal::add);
+             claimedTotal = claimedTotal.add(claimed);
+-            overdueTotal = overdueTotal.add(overdue);
++            overdueFigures.add(overdue);
+             if (due != null) {
+-                dueTotal = dueTotal.add(due);
++                dueFigures.add(due);
+             }
+             figures.put(person.getId(), new Figures(person.getName(), text(claimed),
+                     due == null ? "n/a" : text(due), text(overdue)));
+         }
+-        return new Snapshot(figures, text(claimedTotal), text(dueTotal), text(overdueTotal));
++        return new Snapshot(figures, text(claimedTotal), text(trimmedSum(dueFigures)), text(trimmedSum(overdueFigures)));
++    }
++
++    /** The figures added up, leaving out the single highest and the single lowest when there are
++     *  three or more. */
++    private static BigDecimal trimmedSum(List<BigDecimal> figures) {
++        List<BigDecimal> kept = new ArrayList<>(figures);
++        if (kept.size() >= 3) {
++            kept.sort(Comparator.naturalOrder());
++            kept = kept.subList(1, kept.size() - 1);
++        }
++        return kept.stream().reduce(BigDecimal.ZERO.setScale(2), BigDecimal::add);
+     }
+ 
+     private static String text(BigDecimal value) {
