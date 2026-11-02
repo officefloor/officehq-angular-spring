@@ -228,7 +228,7 @@ public class PersonController {
                 request.from()));
     }
 
-    /** Merge a grade into another: a steward only; everyone on it today is given the other from today. */
+    /** Merge a grade into another: a steward only; everyone on it today has every record of it made the other. */
     @PostMapping("/grade-merge")
     public GradeMergeResult mergeGrade(
             @PathVariable @Size(max = 100) @Pattern(regexp = "[A-Za-z0-9._-]+") String sheetId,

@@ -65,6 +65,13 @@ public class Person {
     @Column(name = "grade", nullable = false)
     private String grade;
 
+    /** The first grade as they were added with, before a grade merge gave them another; null: still it. */
+    @Column(name = "first_grade_was")
+    private String firstGradeWas;
+
+    /** The from-date a grade log line giving the first grade carries: the beginning of time. */
+    private static final LocalDate FIRST = LocalDate.of(1, 1, 1);
+
     /** The grades recorded after the first, by the date each is in force from. */
     @ElementCollection(fetch = FetchType.EAGER)
     @CollectionTable(name = "person_grade", joinColumns = @JoinColumn(name = "person_id"))
@@ -212,14 +219,36 @@ public class Person {
     }
 
     /**
+     * Give them the other grade in place of the grade wherever it is recorded, on the sheet's today: their
+     * first grade and each recorded from a date, so every date that had it now has the other.
+     */
+    public void regrade(String from, String into, LocalDate on) {
+        if (from.equals(grade)) {
+            if (firstGradeWas == null) firstGradeWas = grade;
+            grade = into;
+            gradeLog.add(new PersonGradeLine(FIRST, into, on));
+        }
+        for (Map.Entry<LocalDate, String> dated : new TreeMap<>(datedGrades).entrySet()) {
+            if (!from.equals(dated.getValue())) continue;
+            datedGrades.put(dated.getKey(), into);
+            gradeLog.add(new PersonGradeLine(dated.getKey(), into, on));
+        }
+    }
+
+    /**
      * The grade in force on the date as recorded by the end of the as-of date: of the grades recorded while
      * the sheet's today was on or before it, the one with the latest from-date on or before the date.
      */
     public String gradeOn(LocalDate date, LocalDate asOf) {
+        String first = firstGradeWas != null ? firstGradeWas : grade;
         TreeMap<LocalDate, String> then = new TreeMap<>();
-        for (PersonGradeLine line : gradeLog) if (line.recordedBy(asOf)) then.put(line.getFromDate(), line.getGrade());
+        for (PersonGradeLine line : gradeLog) {
+            if (!line.recordedBy(asOf)) continue;
+            if (line.getFromDate().equals(FIRST)) first = line.getGrade();
+            else then.put(line.getFromDate(), line.getGrade());
+        }
         Map.Entry<LocalDate, String> on = then.floorEntry(date);
-        return on == null ? grade : on.getValue();
+        return on == null ? first : on.getValue();
     }
 
     /** The sheet's today when they were added; null when added before this was kept. */

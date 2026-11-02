@@ -248,10 +248,12 @@ public class PersonService {
 
     /**
      * Merge a grade into another: everyone whose grade in force on the sheet's today is the one merged is
-     * given the other from the sheet's today, in list order, each as its own edit would, with its
-     * PERSON_EDITED and rollup lines, after the GRADE_MERGED line; then the merge's own rollup lines, of
-     * how the figures moved over all of it. Only a steward may, and not a grade into
-     * itself, nor into a retired grade. Returns how many people were given the other grade.
+     * given the other retroactively. In list order, each is first given it from the sheet's today as its own
+     * edit would, with its PERSON_EDITED and rollup lines, after the GRADE_MERGED line; then every grade
+     * record of theirs on the merged grade, their first and each from a date, becomes the other, so all their
+     * claims whatever their date take its rates, terms and thresholds (figures frozen or bound by a statement
+     * are kept); then the merge's own rollup lines, of how the figures moved over all of it. Only a steward
+     * may, and not a grade into itself, nor into a retired grade. Returns how many people were given the other grade.
      */
     @Transactional
     public int mergeGrade(String sheetId, String user, String from, String into) {
@@ -269,6 +271,12 @@ public class PersonService {
             Person saved = saveUnique(person);
             record("PERSON_EDITED", sheetId, user, saved, saved.gradeOn(today), "");
             rollup.recordChanges(sheetId, user, before);
+        }
+        // then retroactively: every record of theirs on the merged grade, whatever its date, becomes the other
+        for (Person person : chosen) {
+            Person saved = people.findById(person.getId()).orElseThrow(PersonNotFoundException::new);
+            saved.regrade(from, into, today);
+            saveUnique(saved);
         }
         // then the merge's own rollup lines: how the figures moved over all of it
         rollup.recordChanges(sheetId, user, merging);

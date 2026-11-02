@@ -14,7 +14,7 @@ interface GradeView {
 // The sheet's grades: A, B and C, and any added (a code of one to three capital letters not yet a
 // grade). A grade can be retired (once): it can then no longer be chosen for a new person
 // or in an edit; people already on it keep it. A steward can merge a grade into another: everyone on
-// it on the sheet's today is given the other from today.
+// it on the sheet's today has every grade record of theirs on it made the other, whatever its date.
 @Component({
   selector: 'app-grades',
   imports: [ReactiveFormsModule],
