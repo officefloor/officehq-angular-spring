@@ -89,6 +89,15 @@ public class Rollup {
         return result;
     }
 
+    /** Record in the audit one SNAPSHOT line per person (in the order they were added) with their
+     *  due-total as it stands now. */
+    @Transactional(propagation = Propagation.MANDATORY)
+    public void recordSnapshot(String sheetId, String user) {
+        String prefix = " sheet=" + sheetId + " by=" + user;
+        snapshot(sheetId).people().values().forEach(figures -> audit.recordOnCommit(
+                "SNAPSHOT" + prefix + " name=" + figures.name() + " due-total=" + figures.dueTotal()));
+    }
+
     private Snapshot snapshot(String sheetId) {
         Map<Long, List<Claim>> byPerson = claims.findBySheetIdOrderByListedDesc(sheetId).stream()
                 .collect(Collectors.groupingBy(Claim::getPersonId));

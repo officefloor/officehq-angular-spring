@@ -132,8 +132,8 @@ public class Dues {
     }
 
     /** Whether a statement binds a claim to n/a: its person's last statement bound it to n/a, or
-     *  else it has no bound figure and no live due because the rate that would apply to it on its
-     *  date (for the person's grade on that date) has ended. */
+     *  else it has no bound figure and no live due: no rate applies to it on its date (for the
+     *  person's grade on that date), none ever having been set or the one that would having ended. */
     public boolean bindsNa(String sheetId, Person person, Claim claim) {
         return bindsNa(now(sheetId), person, claim);
     }
@@ -143,8 +143,7 @@ public class Dues {
         if (bound(claim) && (claim.getStatedDue() != null || claim.isStatedNa())) {
             return claim.isStatedNa();
         }
-        return due(basis, person, claim) == null
-                && RateRepository.endedBefore(basis.rates(person.gradeOn(claim.getDate())), claim.getDate());
+        return due(basis, person, claim) == null;
     }
 
     /** Whether a claim is bound by its person's last statement now (a pending claim is not). */

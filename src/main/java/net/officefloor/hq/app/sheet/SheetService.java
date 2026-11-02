@@ -108,7 +108,8 @@ public class SheetService {
         return sheets.lastUnperiodNumber(id);
     }
 
-    /** Change the sheet's today, with no record of its own, closing every claim editor held open on it
+    /** Change the sheet's today, first recording each person's due-total on the day being left,
+     *  closing every claim editor held open on it
      *  when the day is a new one; then, when the sheet has grace days, close
      *  the open periods they have run out on; then the figures it moves are recorded. */
     @Transactional
@@ -117,6 +118,7 @@ public class SheetService {
         if (!today.equals(sheet.getToday())) {
             claims.releaseEditLocks(id);
         }
+        rollup.recordSnapshot(id, user);
         return rollup.tracking(id, user, () -> {
             sheet.setToday(today);
             Sheet saved = sheets.saveAndFlush(sheet);
