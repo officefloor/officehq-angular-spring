@@ -111,6 +111,8 @@ interface Descendants {
   statusCounts: Record<string, number>;
   /** Each descendant person's figures, with the keys of their name and aliases as names are compared. */
   personFigures: { keys: string[]; dueTotal: string | null; overdueTotal: string }[];
+  /** How many of the descendants' claims are overdue. */
+  overdueCount: number;
 }
 
 interface StatementSummary {
@@ -212,7 +214,7 @@ interface StatementTaken {
 // The sheet's due-total and overdue-total leave out the single highest and the single lowest person's
 // figure when three or more people have one (an n/a due-total is no figure).
 // Under the header, a steward's dashboard: the count of PENDING claims, of REVIEW claims and of overdue
-// claims that count, over the sheet; empty for a user who does not act as a steward (as of the as-of date).
+// claims that count, over the sheet and all its descendants; empty for a user who does not act as a steward (as of the as-of date).
 // People can be selected and given a grade together from a from-date (blank: the sheet's today), each in
 // list order as the person form would; the count changed is shown. Selected people can be retired
 // together from a date (blank: the sheet's today), each in list order as the row's retire would; the
@@ -1345,13 +1347,15 @@ export class People {
     SUMMARY_STATUSES.map((status) => ({ status, count: this.claims().filter((c) => c.status === status).length })),
   );
   /**
-   * The steward's dashboard: how many of the sheet's claims are PENDING, how many REVIEW, and how many
-   * overdue claims count; null (the cells empty) for a user who does not act as a steward.
+   * The steward's dashboard: how many of the claims of the sheet and its descendants are PENDING, how many
+   * REVIEW, and how many overdue claims count; null (the cells empty) for a user who does not act as a steward.
    */
   protected readonly dashboard = computed(() => {
     if (this.session.role() !== 'steward') return null;
-    const count = (status: string) => this.claims().filter((c) => c.status === status).length;
-    return { pending: count('PENDING'), review: count('REVIEW'), overdue: this.overdueTotal().count };
+    const d = this.descendants();
+    const count = (status: string) =>
+      this.claims().filter((c) => c.status === status).length + (d?.statusCounts?.[status] ?? 0);
+    return { pending: count('PENDING'), review: count('REVIEW'), overdue: this.overdueTotal().count + (d?.overdueCount ?? 0) };
   });
   /** How many of the sheet's REVIEW claims are late for review. */
   protected readonly reviewLateCount = computed(() => this.claims().filter((c) => this.session.reviewLate(c)).length);

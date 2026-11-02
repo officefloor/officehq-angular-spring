@@ -47,11 +47,12 @@ public class ConsolidatedController {
 
     /**
      * The descendants' figures added up, then the sheet's own; the totals have two decimals. Per grade the
-     * descendants' due-totals and per status their claim counts are added up too.
+     * descendants' due-totals and per status their claim counts are added up too, and how many of their
+     * claims are overdue.
      */
     public record DescendantsView(int sheets, int people, String dueTotal, String overdueTotal, int ownPeople,
             String ownDueTotal, String ownOverdueTotal, Map<String, String> gradeDueTotals,
-            Map<String, Integer> statusCounts, List<PersonFigures> personFigures) {}
+            Map<String, Integer> statusCounts, List<PersonFigures> personFigures, int overdueCount) {}
 
     /**
      * A descendant person's figures as their sheet shows them: the keys of their name and aliases (as names
@@ -82,6 +83,7 @@ public class ConsolidatedController {
             @RequestHeader("X-User") @NotBlank @Size(max = 100) String user) {
         int sheets = 0;
         int people = 0;
+        int overdueCount = 0;
         BigDecimal due = BigDecimal.ZERO.setScale(2);
         BigDecimal overdue = BigDecimal.ZERO.setScale(2);
         Map<String, BigDecimal> gradeDues = new LinkedHashMap<>();
@@ -95,6 +97,7 @@ public class ConsolidatedController {
             people += figures.people().size();
             due = due.add(figures.dueTotal());
             overdue = overdue.add(figures.overdueTotal());
+            for (RollupService.Figures theirs : figures.people().values()) overdueCount += theirs.overdueCount();
             LocalDate today = sheetRepository.findById(descendant).map(Sheet::getToday).orElse(null);
             for (Person person : persons.findBySheetIdOrderByPositionAscIdAsc(descendant)) {
                 RollupService.Figures theirs = figures.people().get(person.getId());
@@ -117,6 +120,6 @@ public class ConsolidatedController {
         RollupService.Snapshot own = rollup.current(sheetId);
         return new DescendantsView(sheets, people, due.toPlainString(), overdue.toPlainString(), own.people().size(),
                 own.dueTotal().setScale(2).toPlainString(), own.overdueTotal().setScale(2).toPlainString(),
-                gradeDueTotals, statusCounts, personFigures);
+                gradeDueTotals, statusCounts, personFigures, overdueCount);
     }
 }
