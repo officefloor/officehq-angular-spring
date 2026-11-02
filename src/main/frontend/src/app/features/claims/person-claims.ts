@@ -5,6 +5,7 @@ import { CLAIM_AMOUNT, Claim, ClaimAction, Claims, claimDue, overdue } from '../
 import { GradeFrom, Person, gradeOn } from '../../core/people';
 import { Period, periodOf } from '../../core/periods';
 import { Rate } from '../../core/rates';
+import { DatedValue } from '../../core/settings';
 
 /** Why the server refused an action: the claim's status does not allow it. */
 const REFUSALS: Record<ClaimAction, string> = {
@@ -144,16 +145,17 @@ export class PersonClaims {
   readonly claims = input.required<Claim[]>();
   /** The rates set on the sheet; a claim's due uses its person's grade's rate on the claim's date. */
   readonly rates = input.required<Rate[]>();
-  /** The sheet's floor: the least live due a claim has. */
-  readonly floor = input.required<string>();
+  /** The sheet's floors recorded: the least live due a claim has is the one in force on its date. */
+  readonly floor = input.required<DatedValue[]>();
   /** The person's grades; a claim's due uses the one in force on the claim's date. */
   readonly grades = input.required<GradeFrom[]>();
   /** The periods on the sheet; a claim belongs to the one whose days contain its date. */
   readonly periods = input.required<Period[]>();
   /** The sheet's today; a claim is overdue once its due-by is before it. */
   readonly today = input.required<string | null>();
-  /** The sheet's late percent: what an overdue claim gains for every full 30 days it is overdue. */
-  readonly latePct = input.required<string>();
+  /** The sheet's late percents recorded: what an overdue claim gains for every full 30 days it is
+   *  overdue is the one in force on its date. */
+  readonly latePct = input.required<DatedValue[]>();
   /** The sheet's policy date (null when blank): it decides how a claim's live figures round. */
   readonly policyDate = input.required<string | null>();
   /** The other people on the sheet, whom a claim can be reassigned to. */
@@ -185,7 +187,7 @@ export class PersonClaims {
 
   protected dueOf(c: Claim): string {
     return claimDue(c, this.rates(), gradeOn(this.grades(), c.date), this.floor(),
-      { today: this.today(), pct: this.latePct(), policyDate: this.policyDate() }) ?? 'n/a';
+      { today: this.today(), pcts: this.latePct(), policyDate: this.policyDate() }) ?? 'n/a';
   }
 
   protected dueByOf(c: Claim): string {

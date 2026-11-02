@@ -3,6 +3,7 @@ import { Injectable, inject } from '@angular/core';
 import { firstValueFrom } from 'rxjs';
 import { Grade, Hold, Person, heldOn } from './people';
 import { Rate, atLeast, due, pctOn } from './rates';
+import { DatedValue, STARTING_FLOOR, STARTING_LATE_PCT, valueOn } from './settings';
 import { Session } from './session';
 
 /** Where a claim is in its life: DRAFT, then OPEN, then SETTLED; a clerk's settle above the clerk
@@ -125,12 +126,12 @@ export function fixed(c: Claim): boolean {
   return c.settledDue !== null || (bound(c) && (c.statedDue !== null || c.statedNa));
 }
 
-/** What a claim's late charge follows: the sheet's today and its late percent; and the
- *  sheet's policy date, which decides how its live figures round. */
+/** What a claim's late charge follows: the sheet's today and its late percents (a claim takes the
+ *  one in force on its date); and the sheet's policy date, which decides how its live figures round. */
 export interface Lateness {
   today: string | null;
-  /** The late percent as text with two decimals. */
-  pct: string;
+  /** The late percents recorded, each from its from-date, earliest first. */
+  pcts: DatedValue[];
   /** The policy date set (yyyy-mm-dd); null when blank, the sheet's today then stands in. */
   policyDate: string | null;
 }
@@ -144,18 +145,18 @@ export function roundsHalfUp(c: Claim, late: Lateness): boolean {
 
 /** A claim's due figure: the one fixed when it was settled, or else the one its person's last
  *  statement bound it to (n/a when it bound it to n/a), or else its live due at the rate in force on the claim's date for the
- *  grade (the person's grade in force on that date), rounded by the policy date, at least the sheet's floor; with the late charge on top while it is overdue (a
+ *  grade (the person's grade in force on that date), rounded by the policy date, at least the sheet's floor in force on the claim's date; with the late charge on top while it is overdue (a
  *  settled claim's figure already holds it). A correction has no floor and no late charge. Null when there is none. */
-export function claimDue(c: Claim, rates: Rate[], grade: Grade | undefined, floor: string, late: Lateness): string | null {
+export function claimDue(c: Claim, rates: Rate[], grade: Grade | undefined, floors: DatedValue[], late: Lateness): string | null {
   if (c.settledDue !== null) return c.settledDue;
   if (bound(c) && c.statedNa) return null;
   const live = due(c.amount, grade === undefined ? undefined : pctOn(rates, grade, c.date), roundsHalfUp(c, late));
-  const floored = live === null || correction(c) ? live : atLeast(live, floor);
+  const floored = live === null || correction(c) ? live : atLeast(live, valueOn(floors, c.date, STARTING_FLOOR));
   const figure = (bound(c) ? c.statedDue : null) ?? floored;
   return figure === null ? null : sumAmounts([figure, lateCharge(c, figure, late)]);
 }
 
-/** The late charge on an overdue claim: the late percent of its figure for every full 30 days it
+/** The late charge on an overdue claim: the late percent in force on its date of its figure for every full 30 days it
  *  is overdue, rounded like a due; 0.00 when it is not overdue, and on a correction. */
 export function lateCharge(c: Claim, figure: string, late: Lateness): string {
   if (correction(c)) return '0.00';
@@ -163,7 +164,7 @@ export function lateCharge(c: Claim, figure: string, late: Lateness): string {
   const days = (Date.parse(late.today) - Date.parse(c.dueBy)) / 86_400_000;
   const periods = Math.floor(days / 30);
   if (periods <= 0) return '0.00';
-  return due(figure, (Number(late.pct) * periods).toFixed(2), roundsHalfUp(c, late)) ?? '0.00';
+  return due(figure, (Number(valueOn(late.pcts, c.date, STARTING_LATE_PCT)) * periods).toFixed(2), roundsHalfUp(c, late)) ?? '0.00';
 }
 
 /** Whether a claim is overdue: it is open (or pending) and its due-by is before the sheet's today. */

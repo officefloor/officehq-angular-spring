@@ -7,7 +7,7 @@ import { Grade, People, Person, gradeOn } from '../../core/people';
 import { Period, Periods, periodOf } from '../../core/periods';
 import { Rate, Rates, pctOn } from '../../core/rates';
 import { Session } from '../../core/session';
-import { SheetSettings } from '../../core/settings';
+import { DatedValue, SheetSettings, valueOn } from '../../core/settings';
 import { PersonClaims } from '../claims/person-claims';
 import { PeriodForm } from '../periods/period-form';
 import { RateForm } from '../rates/rate-form';
@@ -213,17 +213,24 @@ export class PeopleList {
   protected readonly claimedTotal = computed(() => sumAmounts(this.live().map((c) => c.amount)));
   /** The rates set on the sheet. */
   protected readonly rates = signal<Rate[]>([]);
-  /** The sheet's floor: the least live due a claim has. */
-  protected readonly floor = signal('1.00');
-  /** The sheet's cap: the most a person's due-total comes to; null when there is no cap. */
-  protected readonly cap = signal<string | null>(null);
-  /** The sheet's late percent: what an overdue claim gains for every full 30 days it is overdue. */
-  protected readonly latePct = signal('0.00');
+  /** The sheet's floors recorded: the least live due a claim has is the one in force on its date. */
+  protected readonly floor = signal<DatedValue[]>([]);
+  /** The sheet's caps recorded (null: no cap), each from its from-date. */
+  private readonly caps = signal<DatedValue<string | null>[]>([]);
+  /** The sheet's cap in force on its today: the most a person's due-total comes to; null when there
+   *  is no cap. */
+  protected readonly cap = computed(() => {
+    const today = this.session.today();
+    return today === null ? null : valueOn(this.caps(), today, null);
+  });
+  /** The sheet's late percents recorded: what an overdue claim gains for every full 30 days it is
+   *  overdue is the one in force on its date. */
+  protected readonly latePct = signal<DatedValue[]>([]);
   /** The sheet's policy date (null when blank): it decides how a claim's live figures round. */
   protected readonly policyDate = signal<string | null>(null);
   /** What the late charges of overdue claims, and the rounding of live figures, follow. */
   private readonly lateness = computed(() => ({
-    today: this.session.today(), pct: this.latePct(), policyDate: this.policyDate(),
+    today: this.session.today(), pcts: this.latePct(), policyDate: this.policyDate(),
   }));
   /** The periods on the sheet, earliest first. */
   protected readonly periods = signal<Period[]>([]);
@@ -682,9 +689,9 @@ export class PeopleList {
       ]);
       if (read === this.reads) {
         this.rates.set(rates);
-        this.floor.set(settings.floor);
-        this.cap.set(settings.cap);
-        this.latePct.set(settings.latePct);
+        this.floor.set(settings.floors);
+        this.caps.set(settings.caps);
+        this.latePct.set(settings.latePcts);
         this.policyDate.set(settings.policyDate);
         this.periods.set(periods);
         this.claims.set(claims);

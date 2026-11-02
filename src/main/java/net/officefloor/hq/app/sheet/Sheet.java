@@ -4,7 +4,6 @@ import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
 import jakarta.persistence.Id;
 import jakarta.persistence.Table;
-import java.math.BigDecimal;
 import java.time.LocalDate;
 
 /** A sheet, identified by the id a user types; everything else in the app is kept per sheet. */
@@ -26,22 +25,6 @@ public class Sheet {
     @Column(name = "last_claim_number", insertable = false, updatable = false)
     private int lastClaimNumber;
 
-    /** The most due a clerk may settle on a claim; null when there is no limit. */
-    @Column(name = "clerk_limit", precision = 14, scale = 2)
-    private BigDecimal clerkLimit;
-
-    /** The least live due a claim on the sheet has. */
-    @Column(name = "due_floor", nullable = false, precision = 14, scale = 2)
-    private BigDecimal floor = new BigDecimal("1.00");
-
-    /** The days after its date a claim is due by. */
-    @Column(name = "terms", nullable = false)
-    private int terms = 14;
-
-    /** The percent of its figure an overdue claim gains for every full 30 days it is overdue. */
-    @Column(name = "late_pct", nullable = false, precision = 7, scale = 2)
-    private BigDecimal latePct = new BigDecimal("0.00");
-
     /** The policy date: a claim dated before it rounds half up, one on or after it half to even; null
      *  (blank) takes the sheet's today. */
     @Column(name = "policy_date")
@@ -51,10 +34,6 @@ public class Sheet {
      *  is numbered within its period; null (blank) is off. */
     @Column(name = "period_numbering_from")
     private LocalDate periodNumberingFrom;
-
-    /** The most a person's due-total comes to; null when there is no cap. */
-    @Column(name = "cap", precision = 14, scale = 2)
-    private BigDecimal cap;
 
     /** The last X-number given to a claim in no period; only ever moved on by
      *  {@link SheetRepository#advanceUnperiodNumber}. */
@@ -86,38 +65,6 @@ public class Sheet {
         this.today = today;
     }
 
-    public BigDecimal getClerkLimit() {
-        return clerkLimit;
-    }
-
-    public void setClerkLimit(BigDecimal clerkLimit) {
-        this.clerkLimit = clerkLimit;
-    }
-
-    public BigDecimal getFloor() {
-        return floor;
-    }
-
-    public void setFloor(BigDecimal floor) {
-        this.floor = floor;
-    }
-
-    public int getTerms() {
-        return terms;
-    }
-
-    public void setTerms(int terms) {
-        this.terms = terms;
-    }
-
-    public BigDecimal getLatePct() {
-        return latePct;
-    }
-
-    public void setLatePct(BigDecimal latePct) {
-        this.latePct = latePct;
-    }
-
     public LocalDate getPolicyDate() {
         return policyDate;
     }
@@ -134,11 +81,4 @@ public class Sheet {
         this.periodNumberingFrom = periodNumberingFrom;
     }
 
-    public BigDecimal getCap() {
-        return cap;
-    }
-
-    public void setCap(BigDecimal cap) {
-        this.cap = cap;
-    }
 }

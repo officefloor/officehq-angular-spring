@@ -68,7 +68,7 @@ public class ClaimService {
             Person person = person(sheetId, personId);
             Claim draft = new Claim(sheetId, personId, amount, on, note,
                     corrected == null ? null : corrected.getNumber(), corrected == null ? null : corrected.getDate(),
-                    on.plusDays(sheets.termsFor(sheetId, person.gradeOn(on))));
+                    on.plusDays(sheets.termsFor(sheetId, person.gradeOn(on), on)));
             logStatus(sheetId, user, person, draft);
             Claim claim = claims.saveAndFlush(draft);
             audit.recordOnCommit(record("CLAIM_ADDED", sheetId, user, person, claim));
@@ -316,7 +316,7 @@ public class ClaimService {
         }
     }
 
-    /** Whether a clerk is settling a claim whose due is above the sheet's clerk limit; a claim with
+    /** Whether a clerk is settling a claim whose due is above the sheet's clerk limit in force on its today; a claim with
      *  no due (n/a) is within any limit, and a steward settles anything. */
     private boolean overClerkLimit(String sheetId, String user, Claim claim) {
         BigDecimal limit = sheets.clerkLimit(sheetId);

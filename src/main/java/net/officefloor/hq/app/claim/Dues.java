@@ -69,7 +69,7 @@ public class Dues {
     }
 
     /** The late charge on an open (or pending) claim overdue on the sheet's today (its due-by, fixed when it was
-     *  made, before today; a correction has none): the late percent of its figure for every full 30 days it is overdue,
+     *  made, before today; a correction has none): the late percent in force on its date of its figure for every full 30 days it is overdue,
      *  rounded to two decimals by the claim's {@link #rounding}; 0.00 when it is not overdue. */
     private BigDecimal lateCharge(String sheetId, Claim claim, BigDecimal figure) {
         return lateCharge(sheetId, claim, figure, claim.getStatus().isOpen());
@@ -85,7 +85,7 @@ public class Dues {
         if (periods <= 0) {
             return none;
         }
-        return figure.multiply(sheets.latePct(sheetId)).multiply(BigDecimal.valueOf(periods)).movePointLeft(2)
+        return figure.multiply(sheets.latePct(sheetId, claim.getDate())).multiply(BigDecimal.valueOf(periods)).movePointLeft(2)
                 .setScale(2, rounding(sheetId, claim));
     }
 
@@ -102,7 +102,7 @@ public class Dues {
     }
 
     /** A person's due-total: the sum of the figures of their claims that count, at most the sheet's
-     *  cap; null (n/a) when their grade on the sheet's today has no rate on it and no counting claim
+     *  cap in force on its today; null (n/a) when their grade on the sheet's today has no rate on it and no counting claim
      *  has a figure (one fixed, or a live due at the grade in force on its date). */
     public BigDecimal dueTotal(String sheetId, Person person, List<Claim> theirs) {
         List<BigDecimal> figures = theirs.stream().filter(c -> c.getStatus().counts())
@@ -120,9 +120,9 @@ public class Dues {
     /** A claim's live due at the rate, in force on the claim's date, for the person's grade in force
      *  on that date: amount
      *  times pct divided by 100, rounded to two decimals by the claim's {@link #rounding}, and at least the sheet's
-     *  floor (a correction has no floor); null when no rate applies on that date. */
+     *  floor in force on the claim's date (a correction has no floor); null when no rate applies on that date. */
     private BigDecimal due(String sheetId, Person person, Claim claim) {
-        BigDecimal floor = sheets.floor(sheetId);
+        BigDecimal floor = sheets.floor(sheetId, claim.getDate());
         RoundingMode rounding = rounding(sheetId, claim);
         return rates.findInForce(sheetId, person.gradeOn(claim.getDate()), claim.getDate())
                 .map(Rate::getPct)
