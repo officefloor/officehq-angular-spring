@@ -1,0 +1,143 @@
+diff --git a/src/main/frontend/src/app/features/tree-search/tree-search.ts b/src/main/frontend/src/app/features/tree-search/tree-search.ts
+index 42fadedee..945685cc8 100644
+--- a/src/main/frontend/src/app/features/tree-search/tree-search.ts
++++ b/src/main/frontend/src/app/features/tree-search/tree-search.ts
+@@ -2,11 +2,13 @@ import { HttpClient } from '@angular/common/http';
+ import { Component, effect, inject, signal } from '@angular/core';
+ import { FormControl, FormGroup, ReactiveFormsModule } from '@angular/forms';
+ import { firstValueFrom } from 'rxjs';
++import { downloadCsv } from '../../core/csv';
+ import { Session } from '../../core/session';
+ 
+ // The people of this sheet and every other sheet of its tree whose name or an alias contains the
+ // text (case ignored), one line each as "<sheet id> <name> <due-total>": this sheet's first in list
+-// order, then the other sheets' by sheet id.
++// order, then the other sheets' by sheet id. Also downloads every person of the tree as CSV, in the
++// same order.
+ @Component({
+   selector: 'app-tree-search',
+   imports: [ReactiveFormsModule],
+@@ -24,6 +26,10 @@ import { Session } from '../../core/session';
+       @if (count() !== null) {
+         <p>Found <span data-testid="search-count">{{ count() }}</span></p>
+       }
++      <button type="button" data-testid="export-tree" (click)="exportTree()">Export tree CSV</button>
++      @if (exportError()) {
++        <p role="alert" class="error" data-testid="export-tree-error">{{ exportError() }}</p>
++      }
+       <ol aria-label="People found">
+         @for (line of lines(); track $index) {
+           <li data-testid="search-line">{{ line }}</li>
+@@ -39,6 +45,7 @@ export class TreeSearch {
+   protected readonly lines = signal<string[]>([]);
+   protected readonly count = signal<number | null>(null);
+   protected readonly error = signal('');
++  protected readonly exportError = signal('');
+   protected readonly form = new FormGroup({ text: new FormControl('', { nonNullable: true }) });
+   /** Counts the presses of search, so only the answer to the latest is shown. */
+   private request = 0;
+@@ -52,9 +59,28 @@ export class TreeSearch {
+       this.lines.set([]);
+       this.count.set(null);
+       this.error.set('');
++      this.exportError.set('');
+     });
+   }
+ 
++  /** Downloads sheet, name, grade and due-total of every person of the tree, as the server lists them. */
++  protected async exportTree(): Promise<void> {
++    const sheet = this.session.sheetId();
++    if (!sheet) return;
++    this.exportError.set('');
++    try {
++      const list = await firstValueFrom(
++        this.http.get<{ sheet: string; name: string; grade: string; dueTotal: string }[]>(
++          `/api/sheets/${encodeURIComponent(sheet)}/tree-export`,
++          { headers: { 'X-User': this.session.user() ?? '' } },
++        ),
++      );
++      downloadCsv([['sheet', 'name', 'grade', 'due-total'], ...list.map((l) => [l.sheet, l.name, l.grade, l.dueTotal])], 'tree.csv');
++    } catch {
++      this.exportError.set('Could not export the tree.');
++    }
++  }
++
+   protected async search(): Promise<void> {
+     const sheet = this.session.sheetId();
+     if (!sheet) return;
+diff --git a/src/main/java/net/officefloor/hq/app/rollup/TreeExportController.java b/src/main/java/net/officefloor/hq/app/rollup/TreeExportController.java
+new file mode 100644
+index 000000000..4d642bed5
+--- /dev/null
++++ b/src/main/java/net/officefloor/hq/app/rollup/TreeExportController.java
+@@ -0,0 +1,70 @@
++package net.officefloor.hq.app.rollup;
++
++import jakarta.validation.constraints.NotBlank;
++import jakarta.validation.constraints.Pattern;
++import jakarta.validation.constraints.Size;
++import java.math.BigDecimal;
++import java.time.LocalDate;
++import java.util.ArrayList;
++import java.util.List;
++import net.officefloor.hq.app.person.Person;
++import net.officefloor.hq.app.person.PersonRepository;
++import net.officefloor.hq.app.person.PersonService;
++import net.officefloor.hq.app.sheet.SheetParentRepository;
++import org.springframework.transaction.annotation.Transactional;
++import org.springframework.validation.annotation.Validated;
++import org.springframework.web.bind.annotation.GetMapping;
++import org.springframework.web.bind.annotation.PathVariable;
++import org.springframework.web.bind.annotation.RequestHeader;
++import org.springframework.web.bind.annotation.RequestMapping;
++import org.springframework.web.bind.annotation.RestController;
++
++/**
++ * The people of a sheet and every other sheet of its tree (its topmost ancestor and every descendant
++ * of that), for the tree's CSV export: the sheet's own people first in list order, then the other
++ * sheets' by sheet id, each with the grade in force on its sheet's today and the due-total its sheet
++ * shows for them (n/a when it has none).
++ */
++@RestController
++@Validated
++@RequestMapping("/api/sheets/{sheetId}/tree-export")
++public class TreeExportController {
++
++    /** One person of the tree. */
++    public record Line(String sheet, String name, String grade, String dueTotal) {
++    }
++
++    private final SheetParentRepository parents;
++    private final PersonRepository people;
++    private final RollupService rollup;
++    private final PersonService personService;
++
++    public TreeExportController(SheetParentRepository parents, PersonRepository people, RollupService rollup,
++            PersonService personService) {
++        this.parents = parents;
++        this.people = people;
++        this.rollup = rollup;
++        this.personService = personService;
++    }
++
++    @GetMapping
++    @Transactional(readOnly = true)
++    public List<Line> export(
++            @PathVariable @Size(max = 100) @Pattern(regexp = "[A-Za-z0-9._-]+") String sheetId,
++            @RequestHeader("X-User") @NotBlank @Size(max = 100) String user) {
++        List<String> sheets = new ArrayList<>(List.of(sheetId));
++        parents.treeOf(sheetId).stream().filter(at -> !at.equals(sheetId)).sorted().forEach(sheets::add);
++        List<Line> lines = new ArrayList<>();
++        for (String at : sheets) {
++            RollupService.Snapshot figures = rollup.current(at);
++            LocalDate today = personService.today(at);
++            for (Person person : people.findBySheetIdOrderByPositionAscIdAsc(at)) {
++                RollupService.Figures own = figures.people().get(person.getId());
++                BigDecimal due = own == null ? null : own.dueTotal();
++                String grade = today == null ? person.getGrade() : person.gradeOn(today);
++                lines.add(new Line(at, person.getName(), grade, due == null ? "n/a" : due.setScale(2).toPlainString()));
++            }
++        }
++        return lines;
++    }
++}
