@@ -38,7 +38,7 @@ public class RollupService {
 
     /**
      * A person's figures; a null due-total is n/a; the overdue-total is the dues of their overdue claims;
-     * settled is the dues of their SETTLED claims, overdue count how many of their claims are overdue.
+     * settled is the dues of their SETTLED claims that correct nothing, overdue count how many of their claims are overdue.
      */
     public record Figures(String name, BigDecimal claimed, BigDecimal dueTotal, BigDecimal overdueTotal,
             BigDecimal settled, int overdueCount) {
@@ -142,7 +142,8 @@ public class RollupService {
                 if (figure != null) due = due.add(figure);
                 if (figure != null && LateCharge.isOverdue(claim, today, grace)) overdue = overdue.add(figure);
                 if (LateCharge.isOverdue(claim, today, grace)) overdueCount++;
-                if (figure != null && claim.getStatus() == ClaimStatus.SETTLED) settled = settled.add(figure);
+                // the score's settled figures leave out corrections
+                if (figure != null && claim.getStatus() == ClaimStatus.SETTLED && claim.getCorrects() == null) settled = settled.add(figure);
             }
             // As on screen: n/a when their grade has no rate today and none of the counted claims has a fixed
             // due, nor a due under another grade they had on its date or under a rate not in force today.

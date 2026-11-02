@@ -145,6 +145,8 @@ interface Aged {
 interface Split {
   settled: number;
   open: number;
+  /** The SETTLED ones that correct nothing: the settled figures the score counts. */
+  scored: number;
 }
 
 /** The days from one date to a later one; negative when it is earlier. */
@@ -1179,6 +1181,7 @@ export class People {
   /**
    * Each person's dues of the claims that count, by id, split in cents: SETTLED ones (at their frozen
    * figures, corrections included) and open ones (OPEN or PENDING). The two add up to the uncapped due-total.
+   * Scored is the SETTLED ones that correct nothing.
    */
   private readonly splitByPerson = computed(() => {
     const floor = this.session.floorCentsOn;
@@ -1188,12 +1191,13 @@ export class People {
       const pctOn = this.pctOnOf(p.id);
       const graceOn = this.graceOnOf(p.id);
       const theirs = this.claimsOf(p.id);
-      const split: Split = { settled: 0, open: 0 };
+      const split: Split = { settled: 0, open: 0, scored: 0 };
       for (const c of theirs) {
         if (!this.counts(c)) continue;
         const due = claimDueCents(c, pctOn, floor, late, roundsOn(c, theirs), graceOn) ?? 0;
         if (c.status === 'SETTLED') split.settled += due;
         else split.open += due;
+        if (c.status === 'SETTLED' && c.corrects === null) split.scored += due;
       }
       by.set(p.id, split);
     }
@@ -1201,10 +1205,11 @@ export class People {
   });
   /** The sheet's settled-total and open-total: everyone's added up, not trimmed. */
   protected readonly splitTotal = computed(() => {
-    const total: Split = { settled: 0, open: 0 };
+    const total: Split = { settled: 0, open: 0, scored: 0 };
     for (const s of this.splitByPerson().values()) {
       total.settled += s.settled;
       total.open += s.open;
+      total.scored += s.scored;
     }
     return total;
   });
@@ -1573,16 +1578,16 @@ export class People {
   }
 
   protected splitOf(p: Person): Split {
-    return this.splitByPerson().get(p.id) ?? { settled: 0, open: 0 };
+    return this.splitByPerson().get(p.id) ?? { settled: 0, open: 0, scored: 0 };
   }
 
   /**
-   * Their score: their settled figures (in hundreds) less 5 for every overdue claim of theirs that counts,
+   * Their score: their settled figures of claims that correct nothing (in hundreds) less 5 for every overdue claim of theirs that counts,
    * rounded half to even to a whole number.
    */
   protected scoreOf(p: Person): number {
     // in cents, 10000 to a point
-    const units = this.splitOf(p).settled - 50000 * this.overdueOf(p).count;
+    const units = this.splitOf(p).scored - 50000 * this.overdueOf(p).count;
     const floor = Math.floor(units / 10000);
     const rest = units - floor * 10000;
     const score = rest > 5000 || (rest === 5000 && floor % 2 !== 0) ? floor + 1 : floor;
