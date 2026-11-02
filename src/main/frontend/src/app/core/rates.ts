@@ -34,16 +34,16 @@ function hundredths(text: string): bigint {
   return negative ? -n : n;
 }
 
-/** An amount's due at a percent: amount times pct divided by 100, rounded half to even to two
- *  decimals, worked in whole numbers so no rounding creeps in; a negative amount has a negative
- *  due. Null when there is no rate. */
-export function due(amount: string, pct: string | undefined): string | null {
+/** An amount's due at a percent: amount times pct divided by 100, rounded to two decimals half to
+ *  even, or half up (away from zero) when `halfUp`, worked in whole numbers so no rounding creeps
+ *  in; a negative amount has a negative due. Null when there is no rate. */
+export function due(amount: string, pct: string | undefined, halfUp = false): string | null {
   if (pct === undefined) return null;
   const signed = hundredths(amount) * hundredths(pct);
   const exact = signed < 0n ? -signed : signed;
   let cents = exact / 10000n;
   const rest = exact % 10000n;
-  if (rest > 5000n || (rest === 5000n && cents % 2n === 1n)) cents += 1n;
+  if (rest > 5000n || (rest === 5000n && (halfUp || cents % 2n === 1n))) cents += 1n;
   const text = cents.toString().padStart(3, '0');
   return `${signed < 0n && cents > 0n ? '-' : ''}${text.slice(0, -2)}.${text.slice(-2)}`;
 }

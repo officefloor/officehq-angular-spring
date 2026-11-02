@@ -3,6 +3,7 @@ package net.officefloor.hq.app.claim;
 import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.util.List;
+import java.util.Optional;
 import net.officefloor.hq.app.Audit;
 import net.officefloor.hq.app.period.PeriodRepository;
 import net.officefloor.hq.app.person.Person;
@@ -62,10 +63,11 @@ public class ClaimService {
         LocalDate on = date != null ? date : sheets.today(sheetId);
         refuseClosed(sheetId, on);
         refuseRetired(person(sheetId, personId), on);
-        Integer corrected = corrected(sheetId, personId, amount, corrects);
+        Claim corrected = corrected(sheetId, personId, amount, corrects);
         return rollup.tracking(sheetId, user, () -> {
             Person person = person(sheetId, personId);
-            Claim claim = claims.saveAndFlush(new Claim(sheetId, personId, amount, on, note, corrected));
+            Claim claim = claims.saveAndFlush(new Claim(sheetId, personId, amount, on, note,
+                    corrected == null ? null : corrected.getNumber(), corrected == null ? null : corrected.getDate()));
             audit.recordOnCommit(record("CLAIM_ADDED", sheetId, user, person, claim));
             return claim;
         });
@@ -88,10 +90,11 @@ public class ClaimService {
         refuseClosed(sheetId, claim.getDate());
         refuseClosed(sheetId, on);
         refuseRetired(person(sheetId, claim.getPersonId()), on);
-        Integer corrected = corrected(sheetId, claim.getPersonId(), amount, corrects);
+        Claim corrected = corrected(sheetId, claim.getPersonId(), amount, corrects);
         return rollup.tracking(sheetId, user, () -> {
             claim.setAmount(amount);
-            claim.setCorrects(corrected);
+            claim.setCorrects(corrected == null ? null : corrected.getNumber());
+            claim.setCorrectedDate(corrected == null ? null : corrected.getDate());
             claim.setDate(on);
             claim.setNote(note);
             Claim saved = claims.saveAndFlush(claim);
@@ -149,19 +152,17 @@ public class ClaimService {
         });
     }
 
-    /** The number a claim of the amount corrects: none for an amount of 0.00 or more; for a correction
-     *  (a negative amount), the number given, which must be that of a settled claim of the person, or
-     *  else it is refused. */
-    private Integer corrected(String sheetId, long personId, BigDecimal amount, Integer corrects) {
+    /** The claim a claim of the amount corrects: none for an amount of 0.00 or more; for a correction
+     *  (a negative amount), the one of the number given, which must be a settled claim of the person,
+     *  or else it is refused. */
+    private Claim corrected(String sheetId, long personId, BigDecimal amount, Integer corrects) {
         if (amount.signum() >= 0) {
             return null;
         }
-        if (corrects == null || claims.findBySheetIdAndPersonIdAndNumberAndStatus(sheetId, personId, corrects,
-                ClaimStatus.SETTLED).isEmpty()) {
-            throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
-                    "A negative amount must correct a settled claim of the same person");
-        }
-        return corrects;
+        return (corrects == null ? Optional.<Claim>empty()
+                : claims.findBySheetIdAndPersonIdAndNumberAndStatus(sheetId, personId, corrects, ClaimStatus.SETTLED))
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.BAD_REQUEST,
+                        "A negative amount must correct a settled claim of the same person"));
     }
 
     /** Refuse a change to a claim dated on the day when the day falls inside a closed period. */

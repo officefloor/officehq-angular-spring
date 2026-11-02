@@ -12,6 +12,8 @@ export interface Settings {
   terms: number;
   /** The percent of its figure an overdue claim gains for every full 30 days, as text with two decimals. */
   latePct: string;
+  /** The policy date (yyyy-mm-dd); null when blank, the sheet's today then stands in. */
+  policyDate: string | null;
 }
 
 export type RoleName = 'clerk' | 'steward';
@@ -29,6 +31,9 @@ export const LIMIT = /^\d{1,12}(\.\d{1,2})?$/;
 
 /** Terms: a whole number of days, 0 or more. */
 export const TERMS = /^\d{1,4}$/;
+
+/** A policy date: yyyy-mm-dd. */
+export const POLICY_DATE = /^\d{4}-\d{2}-\d{2}$/;
 
 /** A late percent with up to two decimals, 0.00 or more. */
 export const LATE_PCT = /^\d{1,5}(\.\d{1,2})?$/;
@@ -69,6 +74,12 @@ export class SheetSettings {
   setLatePct(value: string): Promise<Settings> {
     const [sheetId, headers] = this.active();
     return firstValueFrom(this.http.put<Settings>(`${this.url(sheetId)}/settings/late-pct`, { value }, { headers }));
+  }
+
+  /** Set the policy date; null for blank (the sheet's today). */
+  setPolicyDate(value: string | null): Promise<Settings> {
+    const [sheetId, headers] = this.active();
+    return firstValueFrom(this.http.put<Settings>(`${this.url(sheetId)}/settings/policy-date`, { value }, { headers }));
   }
 
   /** Give a user name a role, replacing the one it had. */

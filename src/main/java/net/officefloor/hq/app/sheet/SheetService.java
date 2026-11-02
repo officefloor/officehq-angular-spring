@@ -128,4 +128,31 @@ public class SheetService {
             return saved;
         });
     }
+
+    /** The sheet's policy date as set; null when it is blank (the sheet's today then stands in). */
+    @Transactional(readOnly = true)
+    public LocalDate policyDate(String id) {
+        return sheets.findById(id).map(Sheet::getPolicyDate).orElse(null);
+    }
+
+    /** The policy date in force: the one set, or else the sheet's today. */
+    @Transactional(readOnly = true)
+    public LocalDate policyDateInForce(String id) {
+        return sheets.findById(id).map(s -> s.getPolicyDate() != null ? s.getPolicyDate() : s.getToday())
+                .orElseGet(LocalDate::now);
+    }
+
+    /** Change the sheet's policy date (null: blank, the sheet's today); recorded even when it is
+     *  unchanged, then the figures it moves. */
+    @Transactional
+    public synchronized Sheet setPolicyDate(String id, String user, LocalDate policyDate) {
+        Sheet sheet = load(id, user);
+        return rollup.tracking(id, user, () -> {
+            sheet.setPolicyDate(policyDate);
+            Sheet saved = sheets.saveAndFlush(sheet);
+            audit.recordOnCommit("SETTING_CHANGED sheet=" + id + " by=" + user + " key=policy-date value="
+                    + (policyDate == null ? "" : policyDate.toString()));
+            return saved;
+        });
+    }
 }

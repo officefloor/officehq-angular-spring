@@ -1,9 +1,9 @@
 import { Component, effect, inject, signal } from '@angular/core';
 import { FormControl, FormGroup, ReactiveFormsModule } from '@angular/forms';
 import { Session } from '../../core/session';
-import { LATE_PCT, LIMIT, ROLES, TERMS, Role, RoleName, SheetSettings } from '../../core/settings';
+import { LATE_PCT, LIMIT, POLICY_DATE, ROLES, TERMS, Role, RoleName, SheetSettings } from '../../core/settings';
 
-// The sheet's settings (the clerk limit, the floor, the terms and the late percent) and the roles it gives user names: clerk, the default for
+// The sheet's settings (the clerk limit, the floor, the terms, the late percent and the policy date) and the roles it gives user names: clerk, the default for
 // any name, or steward.
 @Component({
   selector: 'app-settings-form',
@@ -21,6 +21,8 @@ import { LATE_PCT, LIMIT, ROLES, TERMS, Role, RoleName, SheetSettings } from '..
         <input id="setting-terms" data-testid="setting-terms" formControlName="terms" inputmode="numeric" />
         <label for="setting-late-pct">Late percent (per 30 days overdue)</label>
         <input id="setting-late-pct" data-testid="setting-late-pct" formControlName="latePct" inputmode="decimal" />
+        <label for="setting-policy-date">Policy date (claims dated before it round half up; blank: today)</label>
+        <input id="setting-policy-date" data-testid="setting-policy-date" type="date" formControlName="policyDate" />
         <button type="submit" data-testid="settings-save">Save settings</button>
         @if (settingsError()) {
           <p role="alert" data-testid="settings-error">{{ settingsError() }}</p>
@@ -30,6 +32,7 @@ import { LATE_PCT, LIMIT, ROLES, TERMS, Role, RoleName, SheetSettings } from '..
       <p>Floor in force: <span data-testid="setting-floor-current">{{ floor() ?? '' }}</span></p>
       <p>Terms in force: <span data-testid="setting-terms-current">{{ terms() ?? '' }}</span></p>
       <p>Late percent in force: <span data-testid="setting-late-pct-current">{{ latePct() ?? '' }}</span></p>
+      <p>Policy date in force: <span data-testid="setting-policy-date-current">{{ policyDate() ?? '' }}</span></p>
       <h3>Roles</h3>
       <form data-testid="role-form" [formGroup]="roleForm" (ngSubmit)="saveRole()">
         <label for="role-form-user">User</label>
@@ -72,6 +75,7 @@ export class SettingsForm {
   protected readonly floor = signal<string | null>(null);
   protected readonly terms = signal<number | null>(null);
   protected readonly latePct = signal<string | null>(null);
+  protected readonly policyDate = signal<string | null>(null);
   protected readonly roles = signal<Role[]>([]);
   protected readonly settingsError = signal('');
   protected readonly roleError = signal('');
@@ -84,6 +88,7 @@ export class SettingsForm {
     floor: new FormControl('', { nonNullable: true }),
     terms: new FormControl('', { nonNullable: true }),
     latePct: new FormControl('', { nonNullable: true }),
+    policyDate: new FormControl('', { nonNullable: true }),
   });
   protected readonly roleForm = new FormGroup({
     user: new FormControl('', { nonNullable: true }),
@@ -100,6 +105,7 @@ export class SettingsForm {
       this.floor.set(null);
       this.terms.set(null);
       this.latePct.set(null);
+      this.policyDate.set(null);
       this.roles.set([]);
       if (sheetId) void this.reload(sheetId);
     });
@@ -109,8 +115,8 @@ export class SettingsForm {
   protected async saveSettings(): Promise<void> {
     if (this.submitting) return;
     this.settingsError.set('');
-    const { clerkLimit, floor, terms, latePct } = this.settingsForm.controls;
-    const none = !clerkLimit.dirty && !floor.dirty && !terms.dirty && !latePct.dirty;
+    const { clerkLimit, floor, terms, latePct, policyDate } = this.settingsForm.controls;
+    const none = !clerkLimit.dirty && !floor.dirty && !terms.dirty && !latePct.dirty && !policyDate.dirty;
     const limitValue = clerkLimit.value.trim();
     const floorValue = floor.value.trim();
     const saveLimit = none || clerkLimit.dirty;
@@ -119,6 +125,8 @@ export class SettingsForm {
     const saveTerms = none || terms.dirty;
     const latePctValue = latePct.value.trim();
     const saveLatePct = none || latePct.dirty;
+    const policyDateValue = policyDate.value.trim();
+    const savePolicyDate = none || policyDate.dirty;
     if (saveLimit && limitValue !== '' && !LIMIT.test(limitValue)) {
       this.settingsError.set('Enter a clerk limit of 0.00 or more with up to two decimals, or leave it blank for no limit.');
       return;
@@ -133,6 +141,10 @@ export class SettingsForm {
     }
     if (saveLatePct && !(none && latePctValue === '') && !LATE_PCT.test(latePctValue)) {
       this.settingsError.set('Enter a late percent of 0.00 or more with up to two decimals.');
+      return;
+    }
+    if (savePolicyDate && policyDateValue !== '' && !POLICY_DATE.test(policyDateValue)) {
+      this.settingsError.set('Enter a policy date, or leave it blank for the sheet\'s today.');
       return;
     }
     this.submitting = true;
@@ -156,6 +168,11 @@ export class SettingsForm {
         const saved = await this.api.setLatePct(latePctValue);
         this.latePct.set(saved.latePct);
         latePct.markAsPristine();
+      }
+      if (savePolicyDate) {
+        const saved = await this.api.setPolicyDate(policyDateValue === '' ? null : policyDateValue);
+        this.policyDate.set(saved.policyDate);
+        policyDate.markAsPristine();
       }
     } catch {
       this.settingsError.set('The settings could not be saved.');
@@ -200,6 +217,7 @@ export class SettingsForm {
         this.floor.set(settings.floor);
         this.terms.set(settings.terms);
         this.latePct.set(settings.latePct);
+        this.policyDate.set(settings.policyDate);
         this.roles.set(roles);
       }
     } catch {

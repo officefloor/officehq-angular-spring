@@ -29,17 +29,18 @@ public class ClaimController {
     /** What the screen shows of a claim; the amount, and the due fixed when it was settled (null
      *  when there is none), as text with two decimals; who opened it (null when never opened);
      *  whether the last statement bound it, with the due it bound (null when none); and the number
-     *  of the claim it corrects (null when it is not a correction). */
+     *  of the claim it corrects (null when it is not a correction); and the date its figures round by
+     *  (that of the claim a correction corrects, or else its own). */
     public record ClaimView(long id, long personId, String amount, LocalDate date, String note,
             ClaimStatus status, Integer number, String settledDue, String openedBy, boolean stated,
-            String statedDue, Integer corrects) {
+            String statedDue, Integer corrects, LocalDate roundsBy) {
         public static ClaimView of(Claim claim) {
             return new ClaimView(claim.getId(), claim.getPersonId(), claim.getAmount().setScale(2).toPlainString(),
                     claim.getDate(), claim.getNote(), claim.getStatus(), claim.getNumber(),
                     claim.getSettledDue() == null ? null : claim.getSettledDue().setScale(2).toPlainString(),
                     claim.getOpenedBy(), claim.isStated(),
                     claim.getStatedDue() == null ? null : claim.getStatedDue().setScale(2).toPlainString(),
-                    claim.getCorrects());
+                    claim.getCorrects(), claim.roundsBy());
         }
     }
 

@@ -44,6 +44,9 @@ export interface Claim {
   statedDue: string | null;
   /** The number of the settled claim this correction corrects; null when it is not a correction. */
   corrects: number | null;
+  /** The date (yyyy-mm-dd) its figures round by: that of the claim a correction corrects, or else
+   *  its own. */
+  roundsBy: string;
 }
 
 export interface ClaimForm {
@@ -87,21 +90,31 @@ export function fixed(c: Claim): boolean {
   return c.settledDue !== null || (c.stated && c.statedDue !== null);
 }
 
-/** What a claim's late charge follows: the sheet's terms, its today and its late percent. */
+/** What a claim's late charge follows: the sheet's terms, its today and its late percent; and the
+ *  sheet's policy date, which decides how its live figures round. */
 export interface Lateness {
   terms: number;
   today: string | null;
   /** The late percent as text with two decimals. */
   pct: string;
+  /** The policy date set (yyyy-mm-dd); null when blank, the sheet's today then stands in. */
+  policyDate: string | null;
+}
+
+/** Whether a claim's live figures round half up: the date it rounds by is before the policy date
+ *  in force (the one set, or else the sheet's today); otherwise they round half to even. */
+export function roundsHalfUp(c: Claim, late: Lateness): boolean {
+  const policy = late.policyDate ?? late.today;
+  return policy !== null && c.roundsBy < policy;
 }
 
 /** A claim's due figure: the one fixed when it was settled, or else the one its person's last
  *  statement bound it to, or else its live due at the rate in force on the claim's date for the
- *  grade (the person's grade in force on that date), at least the sheet's floor; with the late charge on top while it is overdue (a
+ *  grade (the person's grade in force on that date), rounded by the policy date, at least the sheet's floor; with the late charge on top while it is overdue (a
  *  settled claim's figure already holds it). A correction has no floor and no late charge. Null when there is none. */
 export function claimDue(c: Claim, rates: Rate[], grade: Grade | undefined, floor: string, late: Lateness): string | null {
   if (c.settledDue !== null) return c.settledDue;
-  const live = due(c.amount, grade === undefined ? undefined : pctOn(rates, grade, c.date));
+  const live = due(c.amount, grade === undefined ? undefined : pctOn(rates, grade, c.date), roundsHalfUp(c, late));
   const floored = live === null || correction(c) ? live : atLeast(live, floor);
   const figure = (c.stated ? c.statedDue : null) ?? floored;
   return figure === null ? null : sumAmounts([figure, lateCharge(c, figure, late)]);
@@ -115,7 +128,7 @@ export function lateCharge(c: Claim, figure: string, late: Lateness): string {
   const days = (Date.parse(late.today) - Date.parse(dueBy(c, late.terms))) / 86_400_000;
   const periods = Math.floor(days / 30);
   if (periods <= 0) return '0.00';
-  return due(figure, (Number(late.pct) * periods).toFixed(2)) ?? '0.00';
+  return due(figure, (Number(late.pct) * periods).toFixed(2), roundsHalfUp(c, late)) ?? '0.00';
 }
 
 /** The day (yyyy-mm-dd) a claim is due by: its date plus the sheet's terms in days. */

@@ -67,16 +67,27 @@ public class Claim {
     @Column(name = "corrects")
     private Integer corrects;
 
+    /** The date of the claim this correction corrects, which it rounds by; null for a claim that is
+     *  not a correction. */
+    @Column(name = "corrected_date")
+    private LocalDate correctedDate;
+
     protected Claim() {
     }
 
     public Claim(String sheetId, Long personId, BigDecimal amount, LocalDate date, String note, Integer corrects) {
+        this(sheetId, personId, amount, date, note, corrects, null);
+    }
+
+    public Claim(String sheetId, Long personId, BigDecimal amount, LocalDate date, String note, Integer corrects,
+            LocalDate correctedDate) {
         this.sheetId = sheetId;
         this.personId = personId;
         this.amount = amount;
         this.date = date;
         this.note = note;
         this.corrects = corrects;
+        this.correctedDate = correctedDate;
     }
 
     public Long getId() {
@@ -105,6 +116,20 @@ public class Claim {
 
     public void setCorrects(Integer corrects) {
         this.corrects = corrects;
+    }
+
+    public LocalDate getCorrectedDate() {
+        return correctedDate;
+    }
+
+    public void setCorrectedDate(LocalDate correctedDate) {
+        this.correctedDate = correctedDate;
+    }
+
+    /** The date the claim's figures round by: the date of the claim a correction corrects, or else
+     *  its own. */
+    public LocalDate roundsBy() {
+        return correctedDate != null ? correctedDate : date;
     }
 
     /** Whether the claim is a correction: its amount is below 0.00. */
