@@ -1,0 +1,211 @@
+diff --git a/src/main/java/net/officefloor/hq/app/rate/InheritedRates.java b/src/main/java/net/officefloor/hq/app/rate/InheritedRates.java
+index ee6ce5617..dafcf5f70 100644
+--- a/src/main/java/net/officefloor/hq/app/rate/InheritedRates.java
++++ b/src/main/java/net/officefloor/hq/app/rate/InheritedRates.java
+@@ -2,18 +2,23 @@ package net.officefloor.hq.app.rate;
+ 
+ import java.time.LocalDate;
+ import java.util.ArrayList;
++import java.util.HashSet;
+ import java.util.LinkedHashMap;
+ import java.util.List;
+ import java.util.Map;
+ import java.util.Optional;
++import java.util.Set;
+ import net.officefloor.hq.app.sheet.SheetParent;
+ import net.officefloor.hq.app.sheet.SheetParentRepository;
++import net.officefloor.hq.app.sheet.SheetSource;
++import net.officefloor.hq.app.sheet.SheetSourceRepository;
+ import org.springframework.stereotype.Service;
+ import org.springframework.transaction.annotation.Transactional;
+ 
+ /**
+  * The rates a sheet's figures use: its own, then, for a grade and date it has none in force on, its
+- * parent's, its parent's parent's, up to {@link SheetParent#LEVELS} levels up.
++ * parent's, its parent's parent's, up to {@link SheetParent#LEVELS} levels up; then, for a clone, those of
++ * the sheet it was cloned from ({@link SheetSource}) in the same way: its own, its parents', its source's.
+  */
+ @Service
+ public class InheritedRates {
+@@ -21,11 +26,31 @@ public class InheritedRates {
+     private final RateRepository rates;
+     private final RateLogRepository log;
+     private final SheetParentRepository parents;
++    private final SheetSourceRepository sources;
+ 
+-    public InheritedRates(RateRepository rates, RateLogRepository log, SheetParentRepository parents) {
++    public InheritedRates(RateRepository rates, RateLogRepository log, SheetParentRepository parents,
++            SheetSourceRepository sources) {
+         this.rates = rates;
+         this.log = log;
+         this.parents = parents;
++        this.sources = sources;
++    }
++
++    /**
++     * The sheets whose rates the sheet takes, nearest first: its parents (up to {@link SheetParent#LEVELS}
++     * levels up), then the sheet it was cloned from, that sheet's parents, its source, and so on; each once.
++     */
++    private List<String> inheritedFrom(String sheetId) {
++        List<String> from = new ArrayList<>();
++        Set<String> seen = new HashSet<>(Set.of(sheetId));
++        for (String at = sheetId; at != null; ) {
++            for (String ancestor : parents.ancestorsOf(at, SheetParent.LEVELS)) if (seen.add(ancestor)) from.add(ancestor);
++            String source = sources.sourceOf(at);
++            if (source == null || !seen.add(source)) break;
++            from.add(source);
++            at = source;
++        }
++        return from;
+     }
+ 
+     /** The sheet's rates and its ancestors', as they are now. */
+@@ -41,7 +66,7 @@ public class InheritedRates {
+     @Transactional(readOnly = true)
+     public List<Map<String, List<Rate>>> ancestors(String sheetId) {
+         List<Map<String, List<Rate>>> levels = new ArrayList<>();
+-        for (String ancestor : parents.ancestorsOf(sheetId, SheetParent.LEVELS)) {
++        for (String ancestor : inheritedFrom(sheetId)) {
+             levels.add(byGrade(rates.findBySheetIdOrderByGradeAscFromDateAsc(ancestor)));
+         }
+         return levels;
+@@ -60,7 +85,7 @@ public class InheritedRates {
+     @Transactional(readOnly = true)
+     public List<Map<String, List<Rate>>> ancestorsAsOf(String sheetId, LocalDate date) {
+         List<Map<String, List<Rate>>> levels = new ArrayList<>();
+-        for (String ancestor : parents.ancestorsOf(sheetId, SheetParent.LEVELS)) levels.add(asOf(ancestor, date));
++        for (String ancestor : inheritedFrom(sheetId)) levels.add(asOf(ancestor, date));
+         return levels;
+     }
+ 
+diff --git a/src/main/java/net/officefloor/hq/app/rate/RateController.java b/src/main/java/net/officefloor/hq/app/rate/RateController.java
+index 99921c5e2..b77bc639f 100644
+--- a/src/main/java/net/officefloor/hq/app/rate/RateController.java
++++ b/src/main/java/net/officefloor/hq/app/rate/RateController.java
+@@ -84,8 +84,8 @@ public class RateController {
+     }
+ 
+     /**
+-     * The rates of the sheet's ancestors, nearest first (up to three levels up), that a grade with no rate
+-     * of its own in force on a date takes; as of the user's as-of date, each as it stood at the end of it.
++     * The rates of the sheet's ancestors, nearest first (up to three levels up, then for a clone the sheet it was
++     * cloned from, its parents and its source, and so on), that a grade with no rate of its own in force on a date takes; as of the user's as-of date, each as it stood at the end of it.
+      */
+     @GetMapping("/inherited")
+     public List<List<RateView>> inherited(
+diff --git a/src/main/java/net/officefloor/hq/app/sheet/SheetCloneService.java b/src/main/java/net/officefloor/hq/app/sheet/SheetCloneService.java
+index 7f1cf0267..01442e099 100644
+--- a/src/main/java/net/officefloor/hq/app/sheet/SheetCloneService.java
++++ b/src/main/java/net/officefloor/hq/app/sheet/SheetCloneService.java
+@@ -29,7 +29,8 @@ import org.springframework.transaction.annotation.Transactional;
+  * aliases, holds, retirements, snapshot lines and patrons), pools, periods (all open) and claims (with their status,
+  * frozen figures, dates, notes, tags and logs, numbered afresh by the clone's own numbering). Statements,
+  * and the figures they bound, are not copied; nor are watches, delegations or the sheet's parent. Rows are
+- * copied column by column as the store holds them, so a column added later is copied too.
++ * copied column by column as the store holds them, so a column added later is copied too. The clone remembers
++ * this sheet as its source: a grade with no rate in force on the clone nor its parents takes the source's.
+  */
+ @Service
+ public class SheetCloneService {
+@@ -41,11 +42,12 @@ public class SheetCloneService {
+     private final ClaimService claimService;
+     private final RollupService rollup;
+     private final SheetHistory history;
++    private final SheetSourceRepository sources;
+     private final Audit audit;
+ 
+     public SheetCloneService(DataSource dataSource, SheetRepository sheets, SettingService settings,
+             ClaimRepository claims, ClaimService claimService, RollupService rollup, SheetHistory history,
+-            Audit audit) {
++            SheetSourceRepository sources, Audit audit) {
+         this.jdbc = new JdbcTemplate(dataSource);
+         this.sheets = sheets;
+         this.settings = settings;
+@@ -53,6 +55,7 @@ public class SheetCloneService {
+         this.claimService = claimService;
+         this.rollup = rollup;
+         this.history = history;
++        this.sources = sources;
+         this.audit = audit;
+     }
+ 
+@@ -76,6 +79,8 @@ public class SheetCloneService {
+         sheet.put("LAST_CLAIM_NUMBER", 0L);
+         sheet.put("ARCHIVED", false);
+         insert("sheet", sheet);
++        // the sheet it was cloned from, whose rates (then its parents' and source's) a grade with none in force takes
++        sources.saveAndFlush(new SheetSource(toSheetId, sheetId));
+ 
+         for (String table : List.of("sheet_setting", "sheet_setting_log", "sheet_permission", "sheet_role", "rate",
+                 "rate_log", "holiday", "void_reason", "claim_template", "claim_tag")) {
+diff --git a/src/main/java/net/officefloor/hq/app/sheet/SheetSource.java b/src/main/java/net/officefloor/hq/app/sheet/SheetSource.java
+new file mode 100644
+index 000000000..e45d5309b
+--- /dev/null
++++ b/src/main/java/net/officefloor/hq/app/sheet/SheetSource.java
+@@ -0,0 +1,34 @@
++package net.officefloor.hq.app.sheet;
++
++import jakarta.persistence.Column;
++import jakarta.persistence.Entity;
++import jakarta.persistence.Id;
++import jakarta.persistence.Table;
++
++/**
++ * The sheet a sheet was cloned from (not dated): a grade with no rate in force on a date on the clone
++ * nor on its parents takes the source's for that grade and date, then the source's parents', then its
++ * own source's, and so on.
++ */
++@Entity
++@Table(name = "sheet_source")
++public class SheetSource {
++
++    @Id
++    @Column(name = "child_sheet")
++    private String childSheet;
++
++    @Column(name = "source_sheet", nullable = false)
++    private String sourceSheet;
++
++    protected SheetSource() {}
++
++    public SheetSource(String childSheet, String sourceSheet) {
++        this.childSheet = childSheet;
++        this.sourceSheet = sourceSheet;
++    }
++
++    public String getChildSheet() { return childSheet; }
++
++    public String getSourceSheet() { return sourceSheet; }
++}
+diff --git a/src/main/java/net/officefloor/hq/app/sheet/SheetSourceRepository.java b/src/main/java/net/officefloor/hq/app/sheet/SheetSourceRepository.java
+new file mode 100644
+index 000000000..adc0a0d95
+--- /dev/null
++++ b/src/main/java/net/officefloor/hq/app/sheet/SheetSourceRepository.java
+@@ -0,0 +1,11 @@
++package net.officefloor.hq.app.sheet;
++
++import org.springframework.data.jpa.repository.JpaRepository;
++
++public interface SheetSourceRepository extends JpaRepository<SheetSource, String> {
++
++    /** The sheet the sheet was cloned from; null when it is no clone. */
++    default String sourceOf(String sheetId) {
++        return findById(sheetId).map(SheetSource::getSourceSheet).orElse(null);
++    }
++}
+diff --git a/src/main/resources/db/migration/V104__sheet_source.sql b/src/main/resources/db/migration/V104__sheet_source.sql
+new file mode 100644
+index 000000000..2b8dff9bd
+--- /dev/null
++++ b/src/main/resources/db/migration/V104__sheet_source.sql
+@@ -0,0 +1,8 @@
++-- The sheet a sheet was cloned from (not dated): a grade with no rate in force on a date on the sheet
++-- nor on its parents takes the source's, then its parents', then its own source's, and so on. Kept apart
++-- from the sheet's own rows (no sheet_id column, no reference) like sheet_parent, so neither a clone nor
++-- a sheet's history copies or changes it.
++CREATE TABLE sheet_source (
++    child_sheet  VARCHAR(100) PRIMARY KEY,
++    source_sheet VARCHAR(100) NOT NULL
++);
