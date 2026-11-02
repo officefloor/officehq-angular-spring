@@ -1,0 +1,296 @@
+diff --git a/src/main/frontend/src/app/core/claims.ts b/src/main/frontend/src/app/core/claims.ts
+index d7d70f56e..ae857c0d8 100644
+--- a/src/main/frontend/src/app/core/claims.ts
++++ b/src/main/frontend/src/app/core/claims.ts
+@@ -117,8 +117,8 @@ export interface Claim {
+   /** Where the claim is listed: claims are listed newest first by this (a claim moved to another
+    *  person is listed as that person's newest). */
+   listed: number;
+-  /** The day (yyyy-mm-dd) it is due by: fixed when it was made, from its date and the terms of its
+-   *  person's grade in force on that date. */
++  /** The day (yyyy-mm-dd) it is due by: fixed when it was made, the terms-th business day after its
++   *  date by the terms of its person's grade in force on that date. */
+   dueBy: string;
+   /** Its status log, oldest first: a line for each status it has had. */
+   log: ClaimLogLine[];
+diff --git a/src/main/frontend/src/app/features/people/people-list.ts b/src/main/frontend/src/app/features/people/people-list.ts
+index eb9c4d109..6578ba092 100644
+--- a/src/main/frontend/src/app/features/people/people-list.ts
++++ b/src/main/frontend/src/app/features/people/people-list.ts
+@@ -51,7 +51,7 @@ const NO_LEAVE: Leave = { holds: [], retiredFrom: null };
+         </select>
+         <label for="person-form-grade-from">Grade from</label>
+         <input id="person-form-grade-from" type="date" data-testid="person-form-grade-from" formControlName="gradeFrom" />
+-        <label for="person-form-terms">Terms (days)</label>
++        <label for="person-form-terms">Terms (business days)</label>
+         <input id="person-form-terms" inputmode="numeric" data-testid="person-form-terms" formControlName="terms" />
+         <button type="submit" data-testid="person-form-submit">{{ editing() === null ? 'Add person' : 'Save' }}</button>
+         @if (editing() !== null) {
+diff --git a/src/main/frontend/src/app/features/settings/holiday-form.ts b/src/main/frontend/src/app/features/settings/holiday-form.ts
+index 47d55966a..d48aa0261 100644
+--- a/src/main/frontend/src/app/features/settings/holiday-form.ts
++++ b/src/main/frontend/src/app/features/settings/holiday-form.ts
+@@ -6,9 +6,8 @@ import { Session } from '../../core/session';
+ 
+ const DAY = /^\d{4}-\d{2}-\d{2}$/;
+ 
+-// The sheet's holidays and the entry a day is added with. A claim whose date plus its terms falls on
+-// a holiday is due by the next day that is not one; a holiday added later leaves due-by dates as
+-// they are.
++// The sheet's holidays and the entry a day is added with. A claim's terms count business days,
++// skipping every Saturday, Sunday and holiday; a holiday added later leaves due-by dates as they are.
+ @Component({
+   selector: 'app-holiday-form',
+   imports: [ReactiveFormsModule],
+diff --git a/src/main/frontend/src/app/features/settings/settings-form.ts b/src/main/frontend/src/app/features/settings/settings-form.ts
+index ff137424e..033e9899c 100644
+--- a/src/main/frontend/src/app/features/settings/settings-form.ts
++++ b/src/main/frontend/src/app/features/settings/settings-form.ts
+@@ -42,7 +42,7 @@ import {
+         <input id="setting-floor" data-testid="setting-floor" formControlName="floor" inputmode="decimal" />
+         <label for="setting-floor-from">Floor from (blank: today)</label>
+         <input id="setting-floor-from" data-testid="setting-floor-from" type="date" formControlName="floorFrom" />
+-        <label for="setting-terms">Terms (days)</label>
++        <label for="setting-terms">Terms (business days)</label>
+         <input id="setting-terms" data-testid="setting-terms" formControlName="terms" inputmode="numeric" />
+         <label for="setting-terms-from">Terms from (blank: today)</label>
+         <input id="setting-terms-from" data-testid="setting-terms-from" type="date" formControlName="termsFrom" />
+diff --git a/src/main/java/db/migration/V54__business_day_terms.java b/src/main/java/db/migration/V54__business_day_terms.java
+new file mode 100644
+index 000000000..34e981c76
+--- /dev/null
++++ b/src/main/java/db/migration/V54__business_day_terms.java
+@@ -0,0 +1,132 @@
++package db.migration;
++
++import java.sql.Connection;
++import java.sql.Date;
++import java.sql.PreparedStatement;
++import java.sql.ResultSet;
++import java.sql.SQLException;
++import java.sql.Statement;
++import java.time.LocalDate;
++import java.time.temporal.ChronoUnit;
++import java.util.ArrayList;
++import java.util.HashMap;
++import java.util.HashSet;
++import java.util.List;
++import java.util.Map;
++import java.util.Set;
++import net.officefloor.hq.app.holiday.BusinessDays;
++import net.officefloor.hq.app.sheet.SheetService;
++import org.flywaydb.core.api.migration.BaseJavaMigration;
++import org.flywaydb.core.api.migration.Context;
++
++/**
++ * Terms count business days: every due-by already on a sheet (of its claims and of their revisions in
++ * the sheet's history) becomes the terms-th business day after the claim's date, by the terms it was
++ * fixed with and the holidays on the sheet now. The terms a due-by was fixed with are the ones in
++ * force on the claim's date (the person's own, their grade's or the sheet's) when the due-by fits
++ * them, the holidays the due-by was moved past aside; otherwise the days from its date to its due-by.
++ */
++public class V54__business_day_terms extends BaseJavaMigration {
++
++    @Override
++    public void migrate(Context context) throws Exception {
++        Connection db = context.getConnection();
++        Map<String, Set<LocalDate>> holidays = new HashMap<>();
++        try (Statement st = db.createStatement();
++                ResultSet rs = st.executeQuery("SELECT sheet_id, holiday_date FROM holiday")) {
++            while (rs.next()) {
++                holidays.computeIfAbsent(rs.getString(1), k -> new HashSet<>())
++                        .add(rs.getDate(2).toLocalDate());
++            }
++        }
++        rework(db, holidays, "claim", "id");
++        rework(db, holidays, "claim_revision", "id");
++    }
++
++    private void rework(Connection db, Map<String, Set<LocalDate>> holidays, String table, String key)
++            throws SQLException {
++        record Row(long id, String sheetId, long personId, LocalDate date, LocalDate dueBy) {
++        }
++        List<Row> rows = new ArrayList<>();
++        try (Statement st = db.createStatement();
++                ResultSet rs = st.executeQuery(
++                        "SELECT " + key + ", sheet_id, person_id, claim_date, due_by FROM " + table)) {
++            while (rs.next()) {
++                rows.add(new Row(rs.getLong(1), rs.getString(2), rs.getLong(3), rs.getDate(4).toLocalDate(),
++                        rs.getDate(5).toLocalDate()));
++            }
++        }
++        try (PreparedStatement update = db.prepareStatement("UPDATE " + table + " SET due_by = ? WHERE " + key + " = ?")) {
++            for (Row row : rows) {
++                Set<LocalDate> days = holidays.getOrDefault(row.sheetId(), Set.of());
++                int terms = fixedTerms(db, row.sheetId(), row.personId(), row.date(), row.dueBy(), days);
++                LocalDate dueBy = BusinessDays.after(row.date(), terms, days);
++                if (!dueBy.equals(row.dueBy())) {
++                    update.setDate(1, Date.valueOf(dueBy));
++                    update.setLong(2, row.id());
++                    update.executeUpdate();
++                }
++            }
++        }
++    }
++
++    /** The terms a due-by was fixed with, counted in days. */
++    private int fixedTerms(Connection db, String sheetId, long personId, LocalDate date, LocalDate dueBy,
++            Set<LocalDate> holidays) throws SQLException {
++        int days = (int) ChronoUnit.DAYS.between(date, dueBy);
++        Integer inForce = termsInForce(db, sheetId, personId, date);
++        if (inForce != null && inForce <= days) {
++            boolean fits = true;
++            for (LocalDate d = date.plusDays(inForce); d.isBefore(dueBy); d = d.plusDays(1)) {
++                fits &= holidays.contains(d);
++            }
++            if (fits) {
++                return inForce;
++            }
++        }
++        return Math.max(days, 0);
++    }
++
++    /** The person's own terms, else their grade's in force on the day, else the sheet's. */
++    private Integer termsInForce(Connection db, String sheetId, long personId, LocalDate day) throws SQLException {
++        try (PreparedStatement ps = db.prepareStatement("SELECT terms FROM person WHERE id = ?")) {
++            ps.setLong(1, personId);
++            try (ResultSet rs = ps.executeQuery()) {
++                if (rs.next() && rs.getObject(1) != null) {
++                    return rs.getInt(1);
++                }
++            }
++        }
++        String grade = null;
++        try (PreparedStatement ps = db.prepareStatement("SELECT grade FROM person_grade WHERE person_id = ?"
++                + " AND (from_date IS NULL OR from_date <= ?) ORDER BY from_date DESC NULLS LAST LIMIT 1")) {
++            ps.setLong(1, personId);
++            ps.setDate(2, Date.valueOf(day));
++            try (ResultSet rs = ps.executeQuery()) {
++                if (rs.next()) {
++                    grade = rs.getString(1);
++                }
++            }
++        }
++        if (grade != null) {
++            Integer graded = setting(db, sheetId, "terms-" + grade, day);
++            if (graded != null) {
++                return graded;
++            }
++        }
++        Integer sheet = setting(db, sheetId, "terms", day);
++        return sheet != null ? sheet : SheetService.STARTING_TERMS;
++    }
++
++    private Integer setting(Connection db, String sheetId, String key, LocalDate day) throws SQLException {
++        try (PreparedStatement ps = db.prepareStatement("SELECT setting FROM setting_value WHERE sheet_id = ?"
++                + " AND setting_key = ? AND from_date <= ? ORDER BY from_date DESC LIMIT 1")) {
++            ps.setString(1, sheetId);
++            ps.setString(2, key);
++            ps.setDate(3, Date.valueOf(day));
++            try (ResultSet rs = ps.executeQuery()) {
++                return rs.next() && rs.getBigDecimal(1) != null ? rs.getBigDecimal(1).intValue() : null;
++            }
++        }
++    }
++}
+diff --git a/src/main/java/net/officefloor/hq/app/claim/Claim.java b/src/main/java/net/officefloor/hq/app/claim/Claim.java
+index 9a2c7afb1..c7a195e74 100644
+--- a/src/main/java/net/officefloor/hq/app/claim/Claim.java
++++ b/src/main/java/net/officefloor/hq/app/claim/Claim.java
+@@ -87,8 +87,9 @@ public class Claim {
+     @Column(name = "corrected_date")
+     private LocalDate correctedDate;
+ 
+-    /** The day the claim is due by: fixed when it is made, from its date and the terms of its
+-     *  person's grade in force on that date; later changes to the terms or its date leave it. */
++    /** The day the claim is due by: fixed when it is made, the terms-th business day after its date
++     *  by the terms of its person's grade in force on that date; later changes to the terms, the
++     *  holidays or its date leave it. */
+     @Column(name = "due_by", nullable = false)
+     private LocalDate dueBy;
+ 
+diff --git a/src/main/java/net/officefloor/hq/app/claim/ClaimService.java b/src/main/java/net/officefloor/hq/app/claim/ClaimService.java
+index 6f0696ab2..0dccbf609 100644
+--- a/src/main/java/net/officefloor/hq/app/claim/ClaimService.java
++++ b/src/main/java/net/officefloor/hq/app/claim/ClaimService.java
+@@ -593,13 +593,13 @@ public class ClaimService {
+         }
+     }
+ 
+-    /** The day a claim of the person dated on the day is due by: its date plus the first of the
+-     *  person's own terms, their grade's and the sheet's, each as in force on the day; when that falls
+-     *  on a holiday of the sheet, the next day that is not one. */
++    /** The day a claim of the person dated on the day is due by: the terms-th business day after its
++     *  date (skipping every Saturday, Sunday and holiday of the sheet), by the first of the person's
++     *  own terms, their grade's and the sheet's, each as in force on the day. */
+     private LocalDate dueBy(String sheetId, Person person, LocalDate on) {
+         Integer own = person.getTerms();
+-        return holidays.nextWorkingDay(sheetId,
+-                on.plusDays(own != null ? own : sheets.termsFor(sheetId, person.gradeOn(on), on)));
++        return holidays.businessDaysAfter(sheetId, on,
++                own != null ? own : sheets.termsFor(sheetId, person.gradeOn(on), on));
+     }
+ 
+     private Person person(String sheetId, long personId) {
+diff --git a/src/main/java/net/officefloor/hq/app/holiday/BusinessDays.java b/src/main/java/net/officefloor/hq/app/holiday/BusinessDays.java
+new file mode 100644
+index 000000000..dff7a3ae5
+--- /dev/null
++++ b/src/main/java/net/officefloor/hq/app/holiday/BusinessDays.java
+@@ -0,0 +1,31 @@
++package net.officefloor.hq.app.holiday;
++
++import java.time.DayOfWeek;
++import java.time.LocalDate;
++import java.util.Set;
++
++/** Counting business days: every day but a Saturday, a Sunday or a holiday of the sheet. */
++public final class BusinessDays {
++
++    private BusinessDays() {
++    }
++
++    /** Whether the day is a business day: not a Saturday, a Sunday or one of the holidays. */
++    public static boolean isBusinessDay(LocalDate day, Set<LocalDate> holidays) {
++        DayOfWeek dow = day.getDayOfWeek();
++        return dow != DayOfWeek.SATURDAY && dow != DayOfWeek.SUNDAY && !holidays.contains(day);
++    }
++
++    /** The terms-th business day after the day, counting from the day after it; the day itself when
++     *  the terms are none. */
++    public static LocalDate after(LocalDate day, int terms, Set<LocalDate> holidays) {
++        LocalDate d = day;
++        for (int counted = 0; counted < terms;) {
++            d = d.plusDays(1);
++            if (isBusinessDay(d, holidays)) {
++                counted++;
++            }
++        }
++        return d;
++    }
++}
+diff --git a/src/main/java/net/officefloor/hq/app/holiday/HolidayService.java b/src/main/java/net/officefloor/hq/app/holiday/HolidayService.java
+index cbc1af6e9..5bc1d17f9 100644
+--- a/src/main/java/net/officefloor/hq/app/holiday/HolidayService.java
++++ b/src/main/java/net/officefloor/hq/app/holiday/HolidayService.java
+@@ -49,16 +49,13 @@ public class HolidayService {
+         return saved;
+     }
+ 
+-    /** The first day on or after the day that is not a holiday of the sheet. */
++    /** The terms-th business day after the day (see {@link BusinessDays#after}), skipping every
++     *  Saturday, Sunday and holiday of the sheet. */
+     @Transactional(readOnly = true)
+-    public LocalDate nextWorkingDay(String sheetId, LocalDate day) {
++    public LocalDate businessDaysAfter(String sheetId, LocalDate day, int terms) {
+         Set<LocalDate> days = holidays.findBySheetIdOrderByDayAsc(sheetId).stream().map(Holiday::getDay)
+                 .collect(Collectors.toSet());
+-        LocalDate d = day;
+-        while (days.contains(d)) {
+-            d = d.plusDays(1);
+-        }
+-        return d;
++        return BusinessDays.after(day, terms, days);
+     }
+ 
+     private static ResponseStatusException alreadyListed() {
