@@ -41,7 +41,8 @@ const NO_LEAVE: Leave = { holds: [], retiredFrom: null };
   imports: [ReactiveFormsModule, PersonClaims, RateForm, PeriodForm, QuickAddBar, PasteClaimsBox, ImportPeopleBox, SummaryPanel, HeaderCounters, PoolList],
   template: `
     <app-header-counters [peopleCount]="people().length" [statuses]="statusSummary()"
-      [dueTotal]="dueTotal()" [overdueTotal]="overdueTotal()" />
+      [dueTotal]="dueTotal()" [overdueTotal]="overdueTotal()"
+      [myDueTotal]="myDueTotal()" [myOverdueTotal]="myOverdueTotal()" />
     <app-rate-form [rates]="rates()" (saved)="rateSaved($event)" (imported)="ratesImported()" />
     <app-period-form [periods]="periods()" [dueTotals]="periodDueTotals()" (saved)="periodSaved($event)" />
     <section aria-labelledby="people-heading">
@@ -520,6 +521,23 @@ export class PeopleList {
   protected readonly overdueTotal = computed(() =>
     trimmedSum(this.people().map((p) => this.overdueTotalOf(p))),
   );
+  /** The person on the sheet who has the signed-in user's name, by name or alias, as names are
+   *  compared (case and surrounding spaces ignored); null when there is none. */
+  private readonly me = computed(() => {
+    const user = this.session.user()?.trim().toLowerCase();
+    if (!user) return null;
+    return this.people().find((p) => [p.name, ...p.aliases].some((n) => n.trim().toLowerCase() === user)) ?? null;
+  });
+  /** The signed-in user's own due-total (n/a when theirs is); blank when no person is theirs. */
+  protected readonly myDueTotal = computed(() => {
+    const me = this.me();
+    return me ? (this.dueOf(me) ?? 'n/a') : '';
+  });
+  /** The signed-in user's own overdue-total; blank when no person is theirs. */
+  protected readonly myOverdueTotal = computed(() => {
+    const me = this.me();
+    return me ? this.overdueTotalOf(me) : '';
+  });
   /** The figures of the sheet's descendants added up, as the store held them when it was loaded. */
   private readonly descendants = signal<DescendantFigures>(NO_DESCENDANTS);
   /** The people of the sheet and all its descendants: the sheet as it stands now, even while it is
