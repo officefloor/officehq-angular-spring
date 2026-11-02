@@ -17,6 +17,7 @@ import net.officefloor.hq.app.claim.Dues;
 import net.officefloor.hq.app.history.History;
 import net.officefloor.hq.app.person.Person;
 import net.officefloor.hq.app.person.PersonRepository;
+import net.officefloor.hq.app.sheet.SheetRepository;
 import net.officefloor.hq.app.sheet.SheetService;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Propagation;
@@ -50,15 +51,17 @@ public class Rollup {
     private final ClaimRepository claims;
     private final Dues dues;
     private final SheetService sheets;
+    private final SheetRepository sheetStore;
     private final History history;
     private final Audit audit;
 
-    public Rollup(PersonRepository people, ClaimRepository claims, Dues dues, SheetService sheets, History history,
-            Audit audit) {
+    public Rollup(PersonRepository people, ClaimRepository claims, Dues dues, SheetService sheets,
+            SheetRepository sheetStore, History history, Audit audit) {
         this.people = people;
         this.claims = claims;
         this.dues = dues;
         this.sheets = sheets;
+        this.sheetStore = sheetStore;
         this.history = history;
         this.audit = audit;
     }
@@ -96,6 +99,27 @@ public class Rollup {
         String prefix = " sheet=" + sheetId + " by=" + user;
         snapshot(sheetId).people().values().forEach(figures -> audit.recordOnCommit(
                 "SNAPSHOT" + prefix + " name=" + figures.name() + " due-total=" + figures.dueTotal()));
+    }
+
+    /** The figures a sheet's descendants add to its own to consolidate it: over all of them, the
+     *  people (retired included), and each one's due-total and overdue-total as that sheet shows
+     *  them, added up. */
+    public record Descendants(int peopleCount, String dueTotal, String overdueTotal) {
+    }
+
+    /** The figures of a sheet's descendants added up (all zero when it has none). */
+    @Transactional(readOnly = true)
+    public Descendants descendants(String sheetId) {
+        int count = 0;
+        BigDecimal due = BigDecimal.ZERO.setScale(2);
+        BigDecimal overdue = BigDecimal.ZERO.setScale(2);
+        for (String id : sheetStore.descendants(sheetId)) {
+            Snapshot s = snapshot(id);
+            count += s.people().size();
+            due = due.add(new BigDecimal(s.dueTotal()));
+            overdue = overdue.add(new BigDecimal(s.overdueTotal()));
+        }
+        return new Descendants(count, text(due), text(overdue));
     }
 
     private Snapshot snapshot(String sheetId) {

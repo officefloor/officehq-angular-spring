@@ -35,6 +35,29 @@ public interface SheetRepository extends JpaRepository<Sheet, String> {
     @Query("select s.lastSettleBatch from Sheet s where s.id = :id")
     Integer lastSettleBatch(String id);
 
+    /** The sheets naming a sheet as their parent: its children. */
+    List<Sheet> findByParentId(String parentId);
+
+    /** The ids of a sheet's descendants: its children, their children, and so on, each once (a
+     *  cycle of parents stops where it comes round again). */
+    default List<String> descendants(String id) {
+        List<String> down = new ArrayList<>();
+        List<String> at = List.of(id);
+        while (!at.isEmpty()) {
+            List<String> next = new ArrayList<>();
+            for (String parent : at) {
+                for (Sheet child : findByParentId(parent)) {
+                    if (!child.getId().equals(id) && !down.contains(child.getId())) {
+                        down.add(child.getId());
+                        next.add(child.getId());
+                    }
+                }
+            }
+            at = next;
+        }
+        return down;
+    }
+
     /** How many levels up a sheet's rates are taken from: its parent, its parent's parent, and so on. */
     int ANCESTOR_LEVELS = 3;
 

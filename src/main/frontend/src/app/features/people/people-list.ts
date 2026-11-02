@@ -10,6 +10,7 @@ import { Rate, Rates, pctOn, weightedSum } from '../../core/rates';
 import { Session } from '../../core/session';
 import { DatedValue, Graces, SheetSettings, graceOn, valueOn } from '../../core/settings';
 import { Watch, Watches } from '../../core/watches';
+import { DescendantFigures, Descendants, NO_DESCENDANTS } from '../../core/descendants';
 import { VoidReasons } from '../../core/void-reasons';
 import { PersonClaims } from '../claims/person-claims';
 import { PeriodForm } from '../periods/period-form';
@@ -75,6 +76,14 @@ const NO_LEAVE: Leave = { holds: [], retiredFrom: null };
       <p>Open due in total: <strong data-testid="rollup-open-total">{{ openTotal() }}</strong></p>
       <p>Overdue claims: <strong data-testid="rollup-overdue-count">{{ overdueCount() }}</strong></p>
       <p>Overdue in total: <strong data-testid="rollup-overdue-total">{{ overdueTotal() }}</strong></p>
+      <dl aria-label="Consolidated with descendant sheets">
+        <dt>People, consolidated</dt>
+        <dd data-testid="consolidated-people-count">{{ consolidatedPeopleCount() }}</dd>
+        <dt>Due, consolidated</dt>
+        <dd data-testid="consolidated-due-total">{{ consolidatedDueTotal() }}</dd>
+        <dt>Overdue, consolidated</dt>
+        <dd data-testid="consolidated-overdue-total">{{ consolidatedOverdueTotal() }}</dd>
+      </dl>
       @if (tagDueTotals().length > 0) {
         <ul aria-label="Due per tag">
           @for (t of tagDueTotals(); track t.tag) {
@@ -271,6 +280,7 @@ export class PeopleList {
   private readonly patronsApi = inject(Patrons);
   private readonly watchesApi = inject(Watches);
   private readonly poolsApi = inject(Pools);
+  private readonly descendantsApi = inject(Descendants);
 
   protected readonly grades: Grade[] = ['A', 'B', 'C'];
   protected readonly people = signal<Person[]>([]);
@@ -453,6 +463,16 @@ export class PeopleList {
    *  with no due, and leaving out the single highest and lowest person's when there are three or more. */
   protected readonly overdueTotal = computed(() =>
     trimmedSum(this.people().map((p) => this.overdueTotalOf(p))),
+  );
+  /** The figures of the sheet's descendants added up, as the store held them when it was loaded. */
+  private readonly descendants = signal<DescendantFigures>(NO_DESCENDANTS);
+  /** The people of the sheet and all its descendants. */
+  protected readonly consolidatedPeopleCount = computed(() => this.people().length + this.descendants().peopleCount);
+  /** The sheet's due-total and each descendant's, as each shows it, added up. */
+  protected readonly consolidatedDueTotal = computed(() => sumAmounts([this.dueTotal(), this.descendants().dueTotal]));
+  /** The sheet's overdue-total and each descendant's, as each shows it, added up. */
+  protected readonly consolidatedOverdueTotal = computed(() =>
+    sumAmounts([this.overdueTotal(), this.descendants().overdueTotal]),
   );
   /** Per grade: the people not retired on it on the sheet's today, their due-totals added up,
    *  skipping those that are n/a, and how many of them are active. */
@@ -938,6 +958,7 @@ export class PeopleList {
       const [claims, lastBatch] = await Promise.all([
         this.claimsApi.list(sheetId),
         this.claimsApi.lastSettleBatch(sheetId),
+        this.descendantsApi.figures(sheetId),
       ]);
       this.claims.set(claims);
       this.lastSettleBatch.set(lastBatch);
@@ -1130,7 +1151,7 @@ export class PeopleList {
   private async reload(sheetId: string): Promise<void> {
     const read = ++this.reads;
     try {
-      const [people, claims, tags, rates, periods, settings, patrons, watches, lastBatch] = await Promise.all([
+      const [people, claims, tags, rates, periods, settings, patrons, watches, lastBatch, descendants] = await Promise.all([
         this.api.list(sheetId),
         this.claimsApi.list(sheetId),
         this.claimsApi.tags(sheetId),
@@ -1140,6 +1161,7 @@ export class PeopleList {
         this.patronsApi.list(sheetId),
         this.watchesApi.list(sheetId),
         this.claimsApi.lastSettleBatch(sheetId),
+        this.descendantsApi.figures(sheetId),
       ]);
       if (read === this.reads) {
         this.rates.set(rates);
@@ -1154,6 +1176,7 @@ export class PeopleList {
         this.patrons.set(patrons);
         this.watches.set(watches);
         this.lastSettleBatch.set(lastBatch);
+        this.descendants.set(descendants);
         this.people.set(people);
       }
     } catch {
