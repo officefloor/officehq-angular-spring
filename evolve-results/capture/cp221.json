@@ -1,0 +1,64 @@
+{
+  "checkpoint": 221,
+  "stack": {
+    "repo": "/home/daniel/officehq-angular-spring",
+    "origin": "git@github.com:officefloor/officehq-angular-spring.git",
+    "name": "officehq-angular-spring",
+    "base_ref": "base-empty",
+    "base_commit": "65cb8233ea38b2dfa6cfd18709e30cd18fdf3250"
+  },
+  "checkpoint_id": "cp221_watched-total",
+  "phase": "late",
+  "type": "additive",
+  "mutates": [],
+  "replaced_tests": [],
+  "request": {
+    "spec": "The header shows the signed-in user the due-totals of the people they watch, added up (0.00 when\nwatching no one).\n",
+    "prompt": "You are implementing ONE change to this application.\n\nFIRST read AGENTS.md \u2014 it states the working rules and how the app is tested, and sends you to\nDESIGN.md for the app's stack and conventions. Follow both.\n\nTHE CHANGE REQUEST:\nThe header shows the signed-in user the due-totals of the people they watch, added up (0.00 when\nwatching no one).\n\nYour work is verified by an automated Playwright UI test already installed under e2e/specs/.\nRead that spec: it declares the exact data-testid anchors, values, test data and any audit\nrecords it expects \u2014 match them. Run `bin/e2e` to build the app, start it, and run the test as\nyou work; iterate until it passes. Change whatever the request needs across the app \u2014 its stored\ndata, its server and its front end. Do NOT edit bin/build, bin/start, bin/stop, bin/e2e,\nAGENTS.md, CLAUDE.md, DESIGN.md, e2e/support/ or the test spec.\n"
+  },
+  "commit_sha": "01b9989fb0d96f2b1c679c783b70915fb2786e0e",
+  "reset_sha": "",
+  "preagent_sha": "6c1633a9aa2b2f036dd826a2010f4a373c813ddb",
+  "prev_sha": "6c1633a9aa2b2f036dd826a2010f4a373c813ddb",
+  "base_sha": "65cb8233ea38b2dfa6cfd18709e30cd18fdf3250",
+  "agent": {
+    "ok": true,
+    "cost_usd": 0.31771579999999994,
+    "input_tokens": 22,
+    "output_tokens": 2897,
+    "cache_read_tokens": 290239,
+    "cache_creation_tokens": 25205,
+    "num_turns": 12,
+    "duration_ms": 311022,
+    "duration_api_ms": 64170,
+    "model": "claude-opus-5-5",
+    "session_id": "200485d9-7106-450b-a6a5-c777976c472d",
+    "stop_reason": "success",
+    "result_text": "The header now shows a \"Watched total\" with the due-totals of the people the signed-in user watches, added up. It shows 0.00 when they watch no one. All 4 acceptance tests pass in `bin/e2e`.\n\n**What changed:** only the front end, in `src/main/frontend/src/app/features/people/people.ts`. The app already kept track of who each user watches and sent that with each person's data, so the server and stored data didn't need to change.\n- A new header entry, `watched-due-total`, sits next to \"My reviews\" (line 265).\n- A new `watchedDueTotal` (line 1110) adds up each watched person's due-total, using the same figure shown in their row. If the sheet has a cap, each person's figure is capped first, and anyone whose due-total is n/a counts as 0. The total isn't trimmed afterwards.\n\n**Build crash:** the first `bin/e2e` run failed because Java crashed partway through the build. It looked like a fault on this machine rather than anything in the code: a plain rerun built and passed. I deleted the crash report and core dump files it left in the project folder.",
+    "error": "",
+    "attempts": [
+      {
+        "ok": true,
+        "limit_reached": false,
+        "retryable": false,
+        "timed_out": false,
+        "cost_usd": 0.31771579999999994,
+        "num_turns": 12,
+        "duration_ms": 311022,
+        "duration_api_ms": 64170,
+        "error": ""
+      }
+    ]
+  },
+  "agent_stream_file": "cp221.agent.jsonl",
+  "agent_diff_file": "cp221.agent.diff",
+  "build_log_file": null,
+  "tests": {
+    "gated": false,
+    "queued": true
+  },
+  "probe": null,
+  "pinned_touched": [],
+  "acceptance_touched": [],
+  "impact_gate": null
+}
