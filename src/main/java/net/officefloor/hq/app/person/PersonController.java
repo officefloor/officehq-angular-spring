@@ -351,6 +351,15 @@ public class PersonController {
         return view(service.merge(sheetId, user, id, request.intoId()), user);
     }
 
+    /** Undo the last merge into the person; answers with the person merged, back on the sheet. */
+    @PostMapping("/{id}/merge-undo")
+    public PersonView undoMerge(
+            @PathVariable @Size(max = 100) @Pattern(regexp = "[A-Za-z0-9._-]+") String sheetId,
+            @PathVariable Long id,
+            @RequestHeader("X-User") @NotBlank @Size(max = 100) String user) {
+        return view(service.undoMerge(sheetId, user, id), user);
+    }
+
     /** Transfer the person to another sheet by its id; that sheet is recorded in its history too. */
     @PostMapping("/{id}/transfer")
     public void transfer(

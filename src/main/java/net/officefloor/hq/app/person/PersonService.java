@@ -65,6 +65,7 @@ import org.springframework.transaction.annotation.Transactional;
 public class PersonService {
 
     private final PersonRepository people;
+    private final PersonMergeRepository merges;
     private final PersonPatronRepository patrons;
     private final PersonWatchRepository watches;
     private final SheetRepository sheets;
@@ -85,7 +86,8 @@ public class PersonService {
             PersonWatchRepository watches, SheetRepository sheets, ClaimRepository claims, RollupService rollup,
             SettingService settings, StatementRepository statements, PoolMemberRepository poolMembers,
             PeriodRepository periods, ClaimService claimService, SheetParentRepository parents, SheetService sheetService,
-            CrewRepository crews, CrewMemberRepository crewMembers, Audit audit) {
+            CrewRepository crews, CrewMemberRepository crewMembers, PersonMergeRepository merges, Audit audit) {
+        this.merges = merges;
         this.crews = crews;
         this.crewMembers = crewMembers;
         this.parents = parents;
@@ -522,7 +524,7 @@ public class PersonService {
      */
     @Transactional
     public Person merge(String sheetId, String user, Long id, Long intoId) {
-        sheets.findForUpdate(sheetId).orElseThrow(SheetNotFoundException::new);
+        Sheet sheet = sheets.findForUpdate(sheetId).orElseThrow(SheetNotFoundException::new);
         Person from = people.findByIdAndSheetId(id, sheetId).orElseThrow(PersonNotFoundException::new);
         Person into = people.findByIdAndSheetId(intoId, sheetId).orElseThrow(PersonNotFoundException::new);
         if (settings.roleOf(sheetId, user) != Role.STEWARD || from.getId().equals(into.getId())
@@ -530,11 +532,71 @@ public class PersonService {
             throw new PersonMergeRefusedException();
         }
         RollupService.Snapshot before = rollup.snapshot(sheetId);
-        Person saved = absorb(sheetId, from, into, leave(from, into));
+        List<Long> moved = new ArrayList<>(claims.findBySheetIdAndPersonIdOrderByIdDesc(sheetId, from.getId())
+                .stream().map(Claim::getId).toList());
+        Collections.reverse(moved);
+        List<String> names = leave(from, into);
+        merges.save(new PersonMerge(sheetId, from.getId(), into.getId(), user.strip(), sheet.getToday(),
+                names.subList(1, names.size()), moved));
+        Person saved = absorb(sheetId, from, into, names);
         audit.recordOnCommit("PERSON_MERGED sheet=" + sheetId + " by=" + user.strip()
                 + " from=" + from.getName() + " into=" + saved.getName());
         rollup.recordChanges(sheetId, user, before);
         return saved;
+    }
+
+    /**
+     * The steward who made the last merge into the person undoes it, on the same sheet-today it was made:
+     * the person merged is back on the sheet, at the end of the list, with the claims that moved with them
+     * (numbers and status as they are now, listed as their newest in the order they were added) and their
+     * own aliases, which the other loses with their name. Patron, pool, crew, period and statement changes
+     * stay. Refused on a later day, for anyone else, and for a person with no merge into them to undo.
+     */
+    @Transactional
+    public Person undoMerge(String sheetId, String user, Long id) {
+        Sheet sheet = sheets.findForUpdate(sheetId).orElseThrow(SheetNotFoundException::new);
+        Person into = people.findByIdAndSheetId(id, sheetId).orElseThrow(PersonNotFoundException::new);
+        PersonMerge merge = merges.findFirstBySheetIdAndIntoIdOrderByIdDesc(sheetId, id)
+                .orElseThrow(PersonMergeUndoRefusedException::new);
+        if (settings.roleOf(sheetId, user) != Role.STEWARD || !merge.getMergedBy().equals(user.strip())
+                || !merge.getMergedOn().equals(sheet.getToday())) {
+            throw new PersonMergeUndoRefusedException();
+        }
+        RollupService.Snapshot before = rollup.snapshot(sheetId);
+
+        // they are back at the end of the list, with their own aliases, which the other loses with their name
+        try {
+            if (people.restoreMerged(merge.getFromId(), sheetId, id, people.maxPosition(sheetId) + 1) != 1) {
+                throw new PersonMergeUndoRefusedException();
+            }
+        } catch (DataIntegrityViolationException e) {
+            // their name was taken meanwhile
+            throw new PersonMergeUndoRefusedException();
+        }
+        into = people.findByIdAndSheetId(id, sheetId).orElseThrow(PersonNotFoundException::new);
+        Person from = people.findByIdAndSheetId(merge.getFromId(), sheetId)
+                .orElseThrow(PersonMergeUndoRefusedException::new);
+        into.removeAlias(from.getName());
+        for (String alias : merge.getAliases()) into.removeAlias(alias);
+        saveUnique(into);
+        for (String alias : merge.getAliases()) from.addAlias(alias);
+        Person restored = saveUnique(from);
+
+        // and the claims that came from them, still the other's
+        List<Claim> back = new ArrayList<>();
+        for (Long claimId : merge.getClaimIds()) {
+            claims.findById(claimId).filter(c -> sheetId.equals(c.getSheetId()) && id.equals(c.getPersonId()))
+                    .ifPresent(back::add);
+        }
+        for (Claim claim : back) claim.moveTo(restored.getId(), claims.nextListed());
+        claims.saveAllAndFlush(back);
+
+        merges.delete(merge);
+        merges.flush();
+        audit.recordOnCommit("PERSON_MERGE_UNDONE sheet=" + sheetId + " by=" + user.strip()
+                + " name=" + restored.getName() + " from=" + into.getName());
+        rollup.recordChanges(sheetId, user, before);
+        return restored;
     }
 
     /**

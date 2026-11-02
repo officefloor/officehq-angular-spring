@@ -715,6 +715,8 @@ function trimmedSum(figures: number[]): number {
                 </select>
                 <button type="button" data-testid="person-merge" (click)="merge(p, mergeInto)"
                         [attr.aria-label]="'Merge ' + p.name">Merge</button>
+                <button type="button" data-testid="person-merge-undo" (click)="undoMerge(p)"
+                        [attr.aria-label]="'Undo the last merge into ' + p.name">Undo merge</button>
                 <label [for]="'person-transfer-to-' + p.id" class="visually-hidden">Transfer {{ p.name }} to sheet</label>
                 <input [id]="'person-transfer-to-' + p.id" data-testid="person-transfer-to" #transferTo
                        placeholder="Sheet id" (input)="clearPersonError(p.id)" />
@@ -2012,6 +2014,32 @@ export class People {
         message: e instanceof HttpErrorResponse && e.status === 409
           ? 'Only a steward can merge, into another person, neither of them retired.'
           : 'Could not merge ' + p.name + '.',
+      });
+    }
+  }
+
+  /**
+   * Undo the last merge into the person (only by the steward who made it, on the sheet-today it was made):
+   * the person merged is back, with their claims and aliases. Once undone the people and their claims are read again.
+   */
+  protected async undoMerge(p: Person): Promise<void> {
+    this.personError.set(null);
+    this.clearPatronError(p.id);
+    const sheet = this.session.sheetId();
+    if (!sheet) return;
+    try {
+      await firstValueFrom(
+        this.http.post<Person>(`${this.url(sheet)}/${p.id}/merge-undo`, {}, { headers: this.headers() }),
+      );
+      if (this.session.sheetId() !== sheet) return;
+      await this.load(sheet);
+    } catch (e) {
+      if (this.session.sheetId() !== sheet) return;
+      this.personError.set({
+        id: p.id,
+        message: e instanceof HttpErrorResponse && e.status === 409
+          ? 'Only the steward who made the last merge into ' + p.name + ' can undo it, on the day it was made.'
+          : 'Could not undo the merge into ' + p.name + '.',
       });
     }
   }

@@ -321,6 +321,12 @@ public class Person {
 
     public void addAlias(String alias) { aliases.add(new PersonAlias(sheetId, alias)); }
 
+    /** Drop the alias, as names are compared, if they have it. */
+    public void removeAlias(String alias) {
+        String key = keyOf(alias);
+        aliases.removeIf(a -> a.getAliasKey().equals(key));
+    }
+
     /**
      * Merge them into the other person: they name the other as merged into, and lose their aliases, holds
      * and contact. Returns their aliases, as given, in the order they were added.
