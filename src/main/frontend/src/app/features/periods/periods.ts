@@ -51,7 +51,7 @@ export function closedOn(periods: Period[], date: string): boolean {
 }
 
 // The sheet's periods, with one form to add one, each period's due-total and whether it is
-// closed (or soft-closed) and its fiscal year, a form to generate one per month over a date range, one to generate a
+// closed (or soft-closed) and its fiscal year, its count of claims, a form to generate one per month over a date range, one to generate a
 // fiscal year's months, one to generate a calendar year's quarters, and a button to close, to soft-close
 // and to reopen each (by the roles the sheet's permission matrix allows).
 @Component({
@@ -122,7 +122,7 @@ export function closedOn(periods: Period[], date: string): boolean {
       </form>
       <table>
         <thead>
-          <tr><th scope="col">Name</th><th scope="col">From</th><th scope="col">To</th><th scope="col">Due total</th><th scope="col">Closed</th><th scope="col">Fiscal year</th><th scope="col">Cap</th><th scope="col">Locked</th><th scope="col"><span class="visually-hidden">Actions</span></th></tr>
+          <tr><th scope="col">Name</th><th scope="col">From</th><th scope="col">To</th><th scope="col">Due total</th><th scope="col">Closed</th><th scope="col">Fiscal year</th><th scope="col">Cap</th><th scope="col">Locked</th><th scope="col">Claims</th><th scope="col"><span class="visually-hidden">Actions</span></th></tr>
         </thead>
         <tbody>
           @for (p of periods(); track p.id) {
@@ -135,6 +135,7 @@ export function closedOn(periods: Period[], date: string): boolean {
               <td data-testid="period-fy">{{ fyOf(p) }}</td>
               <td data-testid="period-cap">{{ p.cap ?? '' | figure }}</td>
               <td data-testid="period-locked">{{ p.locked ? 'yes' : 'no' }}</td>
+              <td data-testid="period-claims-count">{{ claimsCountOf()(p) }}</td>
               <td>
                 <button type="button" data-testid="period-close" (click)="close(p)"
                         [attr.aria-label]="'Close period ' + p.name">Close</button>
@@ -165,6 +166,8 @@ export class Periods {
   readonly periods = input.required<Period[]>();
   /** A period's due-total, two decimals: the people's figures for it added up, fixed ones once closed. */
   readonly dueTotalOf = input.required<(p: Period) => string>();
+  /** How many claims belong to a period (due-by inside it), VOID and DELETED ones left out. */
+  readonly claimsCountOf = input.required<(p: Period) => number>();
   /** A period added, closed or reopened, as the store now holds it. */
   readonly saved = output<Period>();
   /** The sheet's whole period list, as the store now holds it, after periods were removed. */

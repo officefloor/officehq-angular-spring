@@ -322,7 +322,7 @@ function trimmedSum(figures: number[]): number {
       </table>
     </section>
     <app-rates [rates]="rates()" [inherited]="inheritedRates()" [today]="session.today()" (saved)="rateSaved($event)" (imported)="ratesImported($event)" />
-    <app-periods [periods]="periods()" [dueTotalOf]="periodDueTotalOf" (saved)="periodSaved($event)" (replaced)="periodsReplaced($event)" />
+    <app-periods [periods]="periods()" [dueTotalOf]="periodDueTotalOf" [claimsCountOf]="periodClaimsCountOf" (saved)="periodSaved($event)" (replaced)="periodsReplaced($event)" />
     <section aria-labelledby="people-heading">
       <h2 id="people-heading">People</h2>
       <form [formGroup]="form" (ngSubmit)="save()" [attr.aria-label]="editingId() === null ? 'Add person' : 'Edit person'">
@@ -1093,6 +1093,19 @@ export class People {
     if (period.closed || period.softClosed) return money(cents(period.closedPersonCarried?.[p.id] ?? '0.00'));
     return money((this.personPeriodCarriedCents().get(p.id)?.get(period.id) ?? 0) + cents(period.openings?.[p.id] ?? '0.00'));
   }
+  /** Each period's count of claims whose due-by falls in it, VOID and DELETED ones left out, by period id. */
+  private readonly periodClaimsCounts = computed(() => {
+    const by = new Map<number, number>();
+    for (const c of this.claims()) {
+      if (c.status === 'VOID' || c.status === 'DELETED') continue;
+      const period = periodOn(this.periods(), c.dueBy);
+      if (period !== null) by.set(period.id, (by.get(period.id) ?? 0) + 1);
+    }
+    return by;
+  });
+  /** A period's count of claims belonging to it, VOID and DELETED ones left out. */
+  protected readonly periodClaimsCountOf = (period: Period): number =>
+    this.periodClaimsCounts().get(period.id) ?? 0;
   /** A period's due-total: the people's figures for it added up. */
   protected readonly periodDueTotalOf = (period: Period): string =>
     money(this.periodDueCents(period));
