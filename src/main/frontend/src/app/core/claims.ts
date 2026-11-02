@@ -5,21 +5,28 @@ import { Grade, Person } from './people';
 import { Rate, atLeast, due, pctOn } from './rates';
 import { Session } from './session';
 
-/** Where a claim is in its life: DRAFT, then OPEN, then SETTLED; a DRAFT or OPEN claim may be VOID. */
-export type ClaimStatus = 'DRAFT' | 'OPEN' | 'SETTLED' | 'VOID';
+/** Where a claim is in its life: DRAFT, then OPEN, then SETTLED; a clerk's settle above the clerk
+ *  limit leaves it PENDING until a steward approves it (SETTLED) or rejects it (OPEN again); a
+ *  DRAFT, OPEN or PENDING claim may be VOID. */
+export type ClaimStatus = 'DRAFT' | 'OPEN' | 'PENDING' | 'SETTLED' | 'VOID';
 
 /** A change of status a claim can be asked for. */
-export type ClaimAction = 'open' | 'settle' | 'void';
+export type ClaimAction = 'open' | 'settle' | 'void' | 'approve' | 'reject';
+
+/** Whether a claim is open: OPEN, or PENDING approval of its settle. */
+export function isOpen(c: Claim): boolean {
+  return c.status === 'OPEN' || c.status === 'PENDING';
+}
 
 /** Whether a claim at this status counts toward claimed, due-total and every total. */
 export function counts(c: Claim): boolean {
-  return c.status === 'OPEN' || c.status === 'SETTLED';
+  return isOpen(c) || c.status === 'SETTLED';
 }
 
-/** Whether a claim counts in the live totals: it counts, and it is not an open claim of a person
- *  on hold. */
+/** Whether a claim counts in the live totals: it counts, and it is not an open (or pending) claim
+ *  of a person on hold. */
 export function countsLive(c: Claim, held: boolean): boolean {
-  return counts(c) && !(held && c.status === 'OPEN');
+  return counts(c) && !(held && isOpen(c));
 }
 
 export interface Claim {
@@ -85,10 +92,16 @@ export function sumAmounts(amounts: string[]): string {
   return (cents / 100).toFixed(2);
 }
 
+/** Whether a claim is bound by its person's last statement now: it was bound, and it is not
+ *  pending (a pending claim shows its live figure). */
+function bound(c: Claim): boolean {
+  return c.stated && c.status !== 'PENDING';
+}
+
 /** Whether a claim keeps a figure that rates and grades no longer change: settled or bound by a
  *  statement. */
 export function fixed(c: Claim): boolean {
-  return c.settledDue !== null || (c.stated && c.statedDue !== null);
+  return c.settledDue !== null || (bound(c) && c.statedDue !== null);
 }
 
 /** What a claim's late charge follows: the sheet's terms, its today and its late percent; and the
@@ -117,7 +130,7 @@ export function claimDue(c: Claim, rates: Rate[], grade: Grade | undefined, floo
   if (c.settledDue !== null) return c.settledDue;
   const live = due(c.amount, grade === undefined ? undefined : pctOn(rates, grade, c.date), roundsHalfUp(c, late));
   const floored = live === null || correction(c) ? live : atLeast(live, floor);
-  const figure = (c.stated ? c.statedDue : null) ?? floored;
+  const figure = (bound(c) ? c.statedDue : null) ?? floored;
   return figure === null ? null : sumAmounts([figure, lateCharge(c, figure, late)]);
 }
 
@@ -138,9 +151,9 @@ export function dueBy(c: Claim, terms: number): string {
   return new Date(Date.UTC(y, m - 1, d + terms)).toISOString().slice(0, 10);
 }
 
-/** Whether a claim is overdue: it is open and its due-by is before the sheet's today. */
+/** Whether a claim is overdue: it is open (or pending) and its due-by is before the sheet's today. */
 export function overdue(c: Claim, terms: number, today: string | null): boolean {
-  return c.status === 'OPEN' && today !== null && dueBy(c, terms) < today;
+  return isOpen(c) && today !== null && dueBy(c, terms) < today;
 }
 
 // The claims people make on the active sheet.
@@ -177,11 +190,13 @@ export class Claims {
     );
   }
 
-  /** Ask for a change of the claim's status; refused (409) when its status does not allow it. */
-  act(id: number, action: ClaimAction): Promise<Claim> {
+  /** Ask for a change of the claim's status; refused (409) when its status does not allow it. A
+   *  reject carries its reason. */
+  act(id: number, action: ClaimAction, reason?: string): Promise<Claim> {
     const { sheetId, user } = this.active();
+    const body = action === 'reject' ? { reason: reason ?? '' } : null;
     return firstValueFrom(
-      this.http.post<Claim>(`${this.url(sheetId)}/claims/${id}/${action}`, null, { headers: { 'X-User': user } }),
+      this.http.post<Claim>(`${this.url(sheetId)}/claims/${id}/${action}`, body, { headers: { 'X-User': user } }),
     );
   }
 

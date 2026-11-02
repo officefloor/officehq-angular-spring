@@ -35,21 +35,21 @@ public class Dues {
     }
 
     /** The figure a statement binds a claim to: the one its person's last statement bound it to, or
-     *  else its live due; never the late charge, which keeps following the sheet's today. Null when
-     *  there is none. */
+     *  else its live due (a pending claim is not bound by a statement while it is pending); never
+     *  the late charge, which keeps following the sheet's today. Null when there is none. */
     public BigDecimal bindable(String sheetId, Person person, Claim claim) {
-        if (claim.isStated() && claim.getStatedDue() != null) {
+        if (claim.isStated() && claim.getStatedDue() != null && claim.getStatus() != ClaimStatus.PENDING) {
             return claim.getStatedDue();
         }
         return due(sheetId, person, claim);
     }
 
-    /** The late charge on an open claim overdue on the sheet's today (its due-by, its date plus the
+    /** The late charge on an open (or pending) claim overdue on the sheet's today (its due-by, its date plus the
      *  terms, before today; a correction has none): the late percent of its figure for every full 30 days it is overdue,
      *  rounded to two decimals by the claim's {@link #rounding}; 0.00 when it is not overdue. */
     private BigDecimal lateCharge(String sheetId, Claim claim, BigDecimal figure) {
         BigDecimal none = BigDecimal.ZERO.setScale(2);
-        if (claim.getStatus() != ClaimStatus.OPEN || claim.isCorrection()) {
+        if (!claim.getStatus().isOpen() || claim.isCorrection()) {
             return none;
         }
         LocalDate dueBy = claim.getDate().plusDays(sheets.terms(sheetId));
@@ -62,9 +62,9 @@ public class Dues {
     }
 
     /** Whether a claim of the person counts in the live totals: it counts, and it is not an open
-     *  claim of a person on hold. */
+     *  (or pending) claim of a person on hold. */
     public static boolean countsLive(Person person, Claim claim) {
-        return claim.getStatus().counts() && !(person.isHeld() && claim.getStatus() == ClaimStatus.OPEN);
+        return claim.getStatus().counts() && !(person.isHeld() && claim.getStatus().isOpen());
     }
 
     /** The claims of a person that count in the live totals. */

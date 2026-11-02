@@ -126,6 +126,25 @@ public class ClaimController {
         return ClaimView.of(service.changeStatus(sheetId.trim(), user.trim(), claimId, ClaimStatus.SETTLED));
     }
 
+    /** The reason a steward gives for rejecting a pending claim. */
+    public record RejectForm(@NotBlank @Size(max = 500) String reason) {
+    }
+
+    @PostMapping("/claims/{claimId}/approve")
+    public ClaimView approve(@PathVariable @NotBlank @Size(max = 100) String sheetId,
+            @PathVariable long claimId,
+            @RequestHeader("X-User") @NotBlank @Size(max = 100) String user) {
+        return ClaimView.of(service.approve(sheetId.trim(), user.trim(), claimId));
+    }
+
+    @PostMapping("/claims/{claimId}/reject")
+    public ClaimView reject(@PathVariable @NotBlank @Size(max = 100) String sheetId,
+            @PathVariable long claimId,
+            @RequestHeader("X-User") @NotBlank @Size(max = 100) String user,
+            @Valid @RequestBody RejectForm form) {
+        return ClaimView.of(service.reject(sheetId.trim(), user.trim(), claimId, form.reason().trim()));
+    }
+
     @PostMapping("/claims/{claimId}/void")
     public ClaimView voidClaim(@PathVariable @NotBlank @Size(max = 100) String sheetId,
             @PathVariable long claimId,

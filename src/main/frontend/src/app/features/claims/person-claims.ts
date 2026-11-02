@@ -10,7 +10,9 @@ import { Rate } from '../../core/rates';
 const REFUSALS: Record<ClaimAction, string> = {
   open: 'Only a draft claim can be opened.',
   settle: 'Only an open claim can be settled.',
-  void: 'Only a draft or open claim can be voided.',
+  void: 'Only a draft, open or pending claim can be voided.',
+  approve: 'Only a pending claim can be approved.',
+  reject: 'Only a pending claim can be rejected.',
 };
 
 /** The message when an edit of a claim that is not a draft is refused. */
@@ -28,8 +30,12 @@ function refusal(e: unknown, action: ClaimAction): string {
   if (e instanceof HttpErrorResponse && e.status === 403 && action === 'settle') {
     return 'The user who opened a claim cannot settle it.';
   }
-  if (e instanceof HttpErrorResponse && e.status === 422 && action === 'settle') {
-    return 'A clerk cannot settle a claim whose due is above the clerk limit.';
+  if (e instanceof HttpErrorResponse && e.status === 403 && (action === 'approve' || action === 'reject')) {
+    return action === 'approve' ? 'Only a steward who did not open the claim can approve it.'
+      : 'Only a steward can reject a claim.';
+  }
+  if (e instanceof HttpErrorResponse && e.status === 400 && action === 'reject') {
+    return 'Enter a reason for rejecting the claim.';
   }
   return 'The claim could not be changed.';
 }
@@ -80,6 +86,13 @@ function refusal(e: unknown, action: ClaimAction): string {
             [attr.aria-label]="'Settle claim of ' + c.amount + ' on ' + c.date">Settle</button>
           <button type="button" data-testid="claim-void" (click)="act(c, 'void')"
             [attr.aria-label]="'Void claim of ' + c.amount + ' on ' + c.date">Void</button>
+          <button type="button" data-testid="claim-approve" (click)="act(c, 'approve')"
+            [attr.aria-label]="'Approve claim of ' + c.amount + ' on ' + c.date">Approve</button>
+          <label [for]="'claim-reject-reason-' + c.id">Reject reason</label>
+          <input [id]="'claim-reject-reason-' + c.id" data-testid="claim-reject-reason" #reason
+            (input)="clearError(c)" />
+          <button type="button" data-testid="claim-reject" (click)="act(c, 'reject', reason.value)"
+            [attr.aria-label]="'Reject claim of ' + c.amount + ' on ' + c.date">Reject</button>
           <button type="button" data-testid="claim-edit" (click)="open(c)"
             [attr.aria-label]="'Edit claim of ' + c.amount + ' on ' + c.date">Edit</button>
           @if (editing() === c.id) {
@@ -170,10 +183,19 @@ export class PersonClaims {
     this.error.set('');
   }
 
-  protected async act(c: Claim, action: ClaimAction): Promise<void> {
+  /** Clear the refusal shown on a claim's row once its reject reason is changed. */
+  protected clearError(c: Claim): void {
+    if (this.claimError()?.id === c.id) this.claimError.set(null);
+  }
+
+  protected async act(c: Claim, action: ClaimAction, reason?: string): Promise<void> {
     this.claimError.set(null);
+    if (action === 'reject' && (reason ?? '').trim() === '') {
+      this.claimError.set({ id: c.id, message: refusal(new HttpErrorResponse({ status: 400 }), action) });
+      return;
+    }
     try {
-      this.saved.emit(await this.api.act(c.id, action));
+      this.saved.emit(await this.api.act(c.id, action, reason?.trim()));
     } catch (e) {
       this.claimError.set({
         id: c.id,
