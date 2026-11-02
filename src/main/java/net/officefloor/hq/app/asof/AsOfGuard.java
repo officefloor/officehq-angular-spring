@@ -7,7 +7,6 @@ import java.time.format.DateTimeParseException;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
-import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.locks.ReentrantLock;
 import net.officefloor.hq.app.sheet.SheetParentRepository;
 import org.springframework.context.annotation.Configuration;
@@ -45,8 +44,6 @@ public class AsOfGuard implements WebMvcConfigurer, HandlerInterceptor {
     private final SheetHistory history;
     private final SheetParentRepository parents;
     private final PlatformTransactionManager transactions;
-    /** One as-of read of a sheet at a time: each puts back the same rows. */
-    private final Map<String, ReentrantLock> locks = new ConcurrentHashMap<>();
 
     public AsOfGuard(SheetHistory history, SheetParentRepository parents, PlatformTransactionManager transactions) {
         this.history = history;
@@ -83,7 +80,7 @@ public class AsOfGuard implements WebMvcConfigurer, HandlerInterceptor {
         TransactionStatus transaction = null;
         try {
             for (String sheet : restored) {
-                ReentrantLock lock = locks.computeIfAbsent(sheet, id -> new ReentrantLock());
+                ReentrantLock lock = history.lock(sheet);
                 lock.lock();
                 held.add(lock);
             }

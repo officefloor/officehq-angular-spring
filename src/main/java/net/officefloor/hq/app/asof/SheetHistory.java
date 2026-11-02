@@ -22,6 +22,8 @@ import java.util.Map;
 import java.util.Set;
 import java.util.TreeMap;
 import java.util.TreeSet;
+import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.locks.ReentrantLock;
 import javax.sql.DataSource;
 import org.springframework.jdbc.core.ConnectionCallback;
 import org.springframework.jdbc.core.JdbcTemplate;
@@ -53,9 +55,16 @@ public class SheetHistory {
     private final JdbcTemplate jdbc;
     /** The owned tables, each after every table it references. */
     private volatile List<Owned> tables;
+    /** One read of a sheet as it stood at a date at a time: each puts back the same rows. */
+    private final Map<String, ReentrantLock> locks = new ConcurrentHashMap<>();
 
     public SheetHistory(DataSource dataSource) {
         this.jdbc = new JdbcTemplate(dataSource);
+    }
+
+    /** The lock held while the sheet is put back as it stood at a date, for as long as that is read. */
+    public ReentrantLock lock(String sheetId) {
+        return locks.computeIfAbsent(sheetId, id -> new ReentrantLock());
     }
 
     /** Whether the sheet has been started. */

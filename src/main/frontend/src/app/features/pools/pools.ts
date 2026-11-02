@@ -6,7 +6,13 @@ import { firstValueFrom } from 'rxjs';
 import { Session } from '../../core/session';
 import { downloadCsv } from '../../core/csv';
 
-/** A member of a pool: the person or the pool (the other null), its name, its share (two decimals), whether the person was retired when read, whether its dates include the sheet's today, and its cut of the pot (two decimals; null: none). */
+/** A member's cut as it stood at the end of a period (two decimals; null: none). */
+interface PeriodCut {
+  period: string;
+  cut: string | null;
+}
+
+/** A member of a pool: the person or the pool (the other null), its name, its share (two decimals), whether the person was retired when read, whether its dates include the sheet's today, its cut of the pot (two decimals; null: none), and its cut at the end of each period ended by the sheet's today. */
 interface MemberView {
   personId: number | null;
   poolId: number | null;
@@ -15,6 +21,7 @@ interface MemberView {
   retired: boolean;
   active: boolean;
   cut: string | null;
+  periodCuts: PeriodCut[];
 }
 
 /** A pool on the sheet, with its members in the order added; a crew's pool has no id and carries the crew's id. */
@@ -72,6 +79,8 @@ function percent(hundredths: number): string {
 // across every pool, are added up as their cut total for the people section. Each crew is also a pool, listed
 // after the pools under its name: its lead and members at equal shares (worked out by the server); its members
 // come from the crew, so it has no add-member form and is not offered as a member. No pool has a crew's name.
+// For every period whose to-date is on or before the sheet's today, each member also shows its cut as it stood
+// at the end of that period (worked out by the server from the sheet's history; empty when there was none).
 @Component({
   selector: 'app-pools',
   imports: [FigurePipe, ReactiveFormsModule],
@@ -98,6 +107,9 @@ function percent(hundredths: number): string {
                 <li [attr.data-testid]="'pool-member-' + p.name + '-' + m.key">
                   {{ m.poolId === null ? m.name : 'pool:' + m.name }}: <span data-testid="pool-share">{{ m.share | figure }}</span>,
                   cut <span data-testid="pool-cut">{{ m.shownCut | figure }}</span>
+                  @for (h of m.periodCuts; track h.period) {
+                    , {{ h.period }} <span [attr.data-testid]="'pool-cut-' + h.period">{{ h.cut | figure }}</span>
+                  }
                 </li>
               }
             </ul>

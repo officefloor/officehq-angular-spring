@@ -5,8 +5,10 @@ import jakarta.validation.constraints.AssertTrue;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.Pattern;
 import jakarta.validation.constraints.Size;
+import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.util.List;
+import java.util.Objects;
 import org.springframework.validation.annotation.Validated;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
@@ -23,21 +25,39 @@ public class PoolController {
 
     /**
      * A member of a pool: the person or the pool (the other null), its name, its share (two decimals),
-     * whether the person is retired, whether its dates include the sheet's today, and its cut of the pot (two decimals, null: none).
+     * whether the person is retired, whether its dates include the sheet's today, its cut of the pot (two decimals, null: none),
+     * and its cut as it stood at the end of each period ended by the sheet's today.
      */
     public record MemberView(Long personId, Long poolId, String name, String share, boolean retired,
-            boolean active, String cut) {}
+            boolean active, String cut, List<PeriodCut> periodCuts) {}
+
+    /** A member's cut as it stood at the end of a period (two decimals, null: none). */
+    public record PeriodCut(String period, String cut) {}
 
     /**
      * A pool on the sheet, with its members, total share (two decimals) and whether it is balanced; a crew's
      * pool has no id and carries the crew's id.
      */
     public record PoolView(Long id, Long crewId, String name, List<MemberView> members, String totalShare, boolean balanced) {
-        static PoolView of(PoolService.PoolLine p) {
+        static PoolView of(PoolService.PoolLine p, List<PoolCutHistory.PeriodPools> history) {
             return new PoolView(p.id(), p.crewId(), p.name(),
                     p.members().stream().map(m -> new MemberView(m.personId(), m.poolId(), m.name(), m.share().toPlainString(), m.retired(),
-                            m.active(), m.cut() == null ? null : m.cut().toPlainString())).toList(),
+                            m.active(), text(m.cut()),
+                            history.stream().map(h -> new PeriodCut(h.period(), text(cutThen(p, m, h.pools())))).toList())).toList(),
                     p.totalShare().toPlainString(), p.balanced());
+        }
+
+        /** The member's cut in the pool as the pools then stood (null: none, or not there then). */
+        private static BigDecimal cutThen(PoolService.PoolLine p, PoolService.Member m, List<PoolService.PoolLine> then) {
+            return then.stream()
+                    .filter(t -> Objects.equals(t.id(), p.id()) && Objects.equals(t.crewId(), p.crewId()))
+                    .flatMap(t -> t.members().stream())
+                    .filter(o -> Objects.equals(o.personId(), m.personId()) && Objects.equals(o.poolId(), m.poolId()))
+                    .findFirst().map(PoolService.Member::cut).orElse(null);
+        }
+
+        private static String text(BigDecimal value) {
+            return value == null ? null : value.toPlainString();
         }
     }
 
@@ -57,16 +77,19 @@ public class PoolController {
     }
 
     private final PoolService service;
+    private final PoolCutHistory history;
 
-    public PoolController(PoolService service) {
+    public PoolController(PoolService service, PoolCutHistory history) {
         this.service = service;
+        this.history = history;
     }
 
     @GetMapping
     public List<PoolView> list(
             @PathVariable @Size(max = 100) @Pattern(regexp = "[A-Za-z0-9._-]+") String sheetId,
             @RequestHeader("X-User") @NotBlank @Size(max = 100) String user) {
-        return service.pools(sheetId).stream().map(PoolView::of).toList();
+        List<PoolCutHistory.PeriodPools> then = history.history(sheetId);
+        return service.pools(sheetId).stream().map(p -> PoolView.of(p, then)).toList();
     }
 
     @PostMapping
