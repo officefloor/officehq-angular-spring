@@ -1,0 +1,87 @@
+diff --git a/src/main/frontend/src/app/core/pools.ts b/src/main/frontend/src/app/core/pools.ts
+index 772227841..478f8f4c8 100644
+--- a/src/main/frontend/src/app/core/pools.ts
++++ b/src/main/frontend/src/app/core/pools.ts
+@@ -12,7 +12,8 @@ export interface PoolMember {
+   poolId: number | null;
+   name: string;
+   share: string;
+-  /** Whether the person has a retirement day set, whatever the day: their share then counts as 0.00. */
++  /** Whether the person has a retirement day set, whatever the day: they then get no
++   *  cut, their share spread over the other members. */
+   retired: boolean;
+   /** Their cut of the pool's pot, as text with two decimals; null when the pool shows no cut (it is
+    *  not balanced, or it has no pot). */
+diff --git a/src/main/frontend/src/app/features/pools/pool-row.ts b/src/main/frontend/src/app/features/pools/pool-row.ts
+index 62528ea1b..762a7ce3b 100644
+--- a/src/main/frontend/src/app/features/pools/pool-row.ts
++++ b/src/main/frontend/src/app/features/pools/pool-row.ts
+@@ -7,7 +7,8 @@ import { Pool, PoolMember, Pools, formatCents, shareCents } from '../../core/poo
+ // A pool's row: its members (people, and pools shown as pool:<name>) with their shares, the total
+ // and whether it is balanced (exactly 100.00), each member's cut of the pool's pot (blank unless the
+ // pool is balanced and has a pot: the sheet's, or its cut in the pool above when it is a member of
+-// one), and the entry a member is added with. A retired member's share counts as 0.00; a member
++// one), and the entry a member is added with. A retired member's share counts in the total but
++// they get no cut, their share spread over the others (no cuts when every member is); a member
+ // whose dates do not include the sheet's today is left out of the total and has no cut.
+ @Component({
+   selector: 'app-pool-row',
+@@ -63,10 +64,10 @@ export class PoolRow {
+   protected readonly pools = inject(Pools);
+   private readonly byId = computed(() => new Map(this.people().map((p) => [p.id, p])));
+ 
+-  /** The members' shares added up, a retired member's counting as 0.00 and one out of force left out. */
++  /** The members' shares added up, a retired member's counting as given and one out of force left out. */
+   private readonly totalCents = computed(() =>
+     this.pool().members.reduce(
+-      (sum, m) => (this.isRetired(m) || !m.inForce ? sum : sum + (shareCents(m.share) ?? 0)), 0),
++      (sum, m) => (!m.inForce ? sum : sum + (shareCents(m.share) ?? 0)), 0),
+   );
+   protected readonly totalShare = computed(() => formatCents(this.totalCents()));
+   protected readonly balanced = computed(() => this.totalCents() === 10000);
+diff --git a/src/main/java/net/officefloor/hq/app/pool/PoolService.java b/src/main/java/net/officefloor/hq/app/pool/PoolService.java
+index c8de093ec..1351f7a49 100644
+--- a/src/main/java/net/officefloor/hq/app/pool/PoolService.java
++++ b/src/main/java/net/officefloor/hq/app/pool/PoolService.java
+@@ -39,7 +39,8 @@ public class PoolService {
+      *  not in the total share, not in the balance, no cut). */
+     public record Member(PoolMember member, Person person, Pool pool, boolean held, boolean inForce) {
+ 
+-        /** Whether the member is a person with a retirement day set: their share then counts as 0.00. */
++        /** Whether the member is a person with a retirement day set: they then get no cut, their
++         *  share going to the other members with a cut in proportion to their shares. */
+         public boolean retired() {
+             return person != null && person.isRetired();
+         }
+@@ -50,10 +51,10 @@ public class PoolService {
+     public record Listed(Pool pool, List<Member> members, BigDecimal pot) {
+ 
+         /** The shares of the members added up, a retired member's (one with a retirement day set,
+-         *  whatever the day) counting as 0.00 and a member out of force left out. */
++         *  whatever the day) counting as given and a member out of force left out. */
+         public BigDecimal totalShare() {
+             return members.stream()
+-                    .filter(m -> !m.retired() && m.inForce())
++                    .filter(Member::inForce)
+                     .map(m -> m.member().getShare())
+                     .reduce(BigDecimal.ZERO.setScale(2), BigDecimal::add);
+         }
+@@ -65,13 +66,15 @@ public class PoolService {
+ 
+         /** Each member's cut of the pot, in the members' order: the pot times their share divided by
+          *  the shares of the members with a cut added up, rounded half to even to two decimals (a
+-         *  retired member's share counting as 0.00, a held member getting no cut: 0.00), with the
++         *  retired or held member getting no cut: 0.00, their share spread over the others), with the
+          *  remainder of the pot going to the member with a cut with the largest share (the earliest
+          *  added on a tie), so the cuts total exactly the pot (each 0.00 when no member has a cut);
+-         *  none (an empty list) when there is no pot or the pool is not balanced. A member out of
++         *  none (an empty list) when there is no pot, the pool is not balanced or every member in
++         *  force is retired. A member out of
+          *  force has no cut at all: its entry is null. */
+         public List<BigDecimal> cuts() {
+-            if (pot == null || !balanced()) {
++            if (pot == null || !balanced()
++                    || members.stream().filter(Member::inForce).allMatch(Member::retired)) {
+                 return List.of();
+             }
+             List<BigDecimal> shares = members.stream()
