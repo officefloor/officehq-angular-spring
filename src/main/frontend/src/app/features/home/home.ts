@@ -1,9 +1,23 @@
-import { Component } from '@angular/core';
+import { Component, inject } from '@angular/core';
+import { Session } from '../../core/session';
+import { SheetBar } from '../session/sheet-bar';
+import { SignIn } from '../session/signin';
 
-// The base home page (empty). A page is an Angular component like this one, plus one entry in
-// app.routes.ts.
+// The one screen: sign in by name, then load a sheet by id.
 @Component({
   selector: 'app-home',
-  template: `<p data-testid="home-empty">Nothing here yet.</p>`,
+  imports: [SignIn, SheetBar],
+  template: `
+    @if (session.user()) {
+      <app-sheet-bar />
+      @if (!session.sheetId()) {
+        <p data-testid="home-empty">Nothing here yet.</p>
+      }
+    } @else {
+      <app-signin />
+    }
+  `,
 })
-export class Home {}
+export class Home {
+  protected readonly session = inject(Session);
+}
