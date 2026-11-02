@@ -1,0 +1,39 @@
+diff --git a/src/main/java/net/officefloor/hq/app/claim/Claim.java b/src/main/java/net/officefloor/hq/app/claim/Claim.java
+index dcda5a03c..fe0da63b7 100644
+--- a/src/main/java/net/officefloor/hq/app/claim/Claim.java
++++ b/src/main/java/net/officefloor/hq/app/claim/Claim.java
+@@ -209,7 +209,7 @@ public class Claim {
+     }
+ 
+     /** Move the claim to another person, listed at the place given (after every claim listed so far).
+-     *  It keeps its number, date and status, but no figure a statement bound it to: it is live
++     *  It keeps its date and status, but no figure a statement bound it to: it is live
+      *  again until its new person's next statement. */
+     public void moveTo(Long personId, long listed) {
+         this.personId = personId;
+diff --git a/src/main/java/net/officefloor/hq/app/claim/ClaimService.java b/src/main/java/net/officefloor/hq/app/claim/ClaimService.java
+index 9c0311cc3..b64c5a2db 100644
+--- a/src/main/java/net/officefloor/hq/app/claim/ClaimService.java
++++ b/src/main/java/net/officefloor/hq/app/claim/ClaimService.java
+@@ -478,8 +478,8 @@ public class ClaimService {
+         });
+     }
+ 
+-    /** Move a draft, open or pending claim to another person on the sheet. It keeps its number, date
+-     *  and status, loses any figure a statement bound it to, and is listed as its new person's newest
++    /** Move a draft, open or pending claim to another person on the sheet. It keeps its date and
++     *  status, takes the next number (a draft, having none, gets none), loses any figure a statement bound it to, and is listed as its new person's newest
+      *  claim. Refused unless the permission matrix allows the user's role to reassign, and when the claim is settled or void, the person
+      *  is the one it is already for, the claim's period is closed, or the claim is dated after the
+      *  new person's retirement day. */
+@@ -509,6 +509,10 @@ public class ClaimService {
+         refuseRetired(to, claim.getDate());
+         return rollup.tracking(sheetId, user, () -> {
+             claim.moveTo(to.getId(), claims.nextListed());
++            if (claim.getNumber() != null) {
++                // a moved claim takes the next number; its old one is never used again
++                claim.setNumber(nextNumber(sheetId, claim.getDueBy()));
++            }
+             Claim saved = claims.saveAndFlush(claim);
+             audit.recordOnCommit(record("CLAIM_REASSIGNED", sheetId, user, to, saved)
+                     + " from=" + from.getName() + " to=" + to.getName());
