@@ -11,6 +11,7 @@ import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.TreeMap;
 import net.officefloor.hq.app.sheet.DatedSetting;
 import org.springframework.validation.annotation.Validated;
@@ -572,6 +573,28 @@ public class SettingController {
             @RequestBody @Valid DefaultGradeRequest request) {
         service.setDefaultGrade(sheetId, user, request.gradeValue());
         return get(sheetId, user);
+    }
+
+    /** A grade as the screen lists it: whether it is retired on the sheet. */
+    public record GradeView(String grade, boolean retired) {}
+
+    /** The grades, in order, each with whether it is retired. */
+    @GetMapping("/grades")
+    public List<GradeView> grades(
+            @PathVariable @Size(max = 100) @Pattern(regexp = "[A-Za-z0-9._-]+") String sheetId,
+            @RequestHeader("X-User") @NotBlank @Size(max = 100) String user) {
+        Set<String> retired = service.retiredGrades(sheetId);
+        return SettingService.GRADES.stream().map(g -> new GradeView(g, retired.contains(g))).toList();
+    }
+
+    /** Retire the grade; refused when it is retired already. */
+    @PostMapping("/grades/{grade}/retire")
+    public List<GradeView> retireGrade(
+            @PathVariable @Size(max = 100) @Pattern(regexp = "[A-Za-z0-9._-]+") String sheetId,
+            @RequestHeader("X-User") @NotBlank @Size(max = 100) String user,
+            @PathVariable @Pattern(regexp = "[ABC]") String grade) {
+        service.retireGrade(sheetId, user, grade);
+        return grades(sheetId, user);
     }
 
     @PutMapping("/settings/parent")

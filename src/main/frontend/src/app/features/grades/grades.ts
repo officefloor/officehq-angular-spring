@@ -1,0 +1,106 @@
+import { HttpClient } from '@angular/common/http';
+import { Component, effect, inject, signal } from '@angular/core';
+import { FormControl, FormGroup, ReactiveFormsModule } from '@angular/forms';
+import { firstValueFrom } from 'rxjs';
+import { Session } from '../../core/session';
+
+/** A grade on the sheet and whether it is retired. */
+interface GradeView {
+  grade: string;
+  retired: boolean;
+}
+
+// The sheet's grades. A grade can be retired (once): it can then no longer be chosen for a new person
+// or in an edit; people already on it keep it.
+@Component({
+  selector: 'app-grades',
+  imports: [ReactiveFormsModule],
+  template: `
+    <section aria-labelledby="grades-heading">
+      <h2 id="grades-heading">Grades</h2>
+      <form [formGroup]="form" (ngSubmit)="retire()" aria-label="Retire a grade">
+        <label for="grade-retire-select">Grade to retire</label>
+        <select id="grade-retire-select" data-testid="grade-retire-select" formControlName="grade">
+          @for (g of grades(); track g.grade) {
+            <option [value]="g.grade">{{ g.grade }}</option>
+          }
+        </select>
+        <button type="submit" data-testid="grade-retire">Retire grade</button>
+        @if (error()) {
+          <p role="alert" class="error" data-testid="grade-error">{{ error() }}</p>
+        }
+      </form>
+      <table aria-label="Grades">
+        <thead><tr><th scope="col">Grade</th><th scope="col">Retired</th></tr></thead>
+        <tbody>
+          @for (g of grades(); track g.grade) {
+            <tr [attr.data-testid]="'grade-row-' + g.grade">
+              <td data-testid="grade-code">{{ g.grade }}</td>
+              <td data-testid="grade-retired">{{ g.retired ? 'yes' : 'no' }}</td>
+            </tr>
+          }
+        </tbody>
+      </table>
+    </section>
+  `,
+})
+export class Grades {
+  private readonly http = inject(HttpClient);
+  private readonly session = inject(Session);
+
+  protected readonly grades = signal<GradeView[]>([]);
+  protected readonly error = signal('');
+  protected readonly form = new FormGroup({ grade: new FormControl('A', { nonNullable: true }) });
+  private submitting = false;
+
+  constructor() {
+    this.form.valueChanges.subscribe(() => this.error.set(''));
+    effect(() => {
+      const id = this.session.sheetId();
+      this.session.loads();
+      this.grades.set([]);
+      this.error.set('');
+      if (id) void this.load(id);
+    });
+  }
+
+  private headers(): Record<string, string> {
+    return { 'X-User': this.session.user() ?? '' };
+  }
+
+  private base(sheet: string): string {
+    return `/api/sheets/${encodeURIComponent(sheet)}/grades`;
+  }
+
+  private async load(sheet: string): Promise<void> {
+    try {
+      const list = await firstValueFrom(this.http.get<GradeView[]>(this.base(sheet), { headers: this.headers() }));
+      if (this.session.sheetId() === sheet) this.grades.set(list);
+    } catch {
+      if (this.session.sheetId() === sheet) this.error.set('Could not load the grades of this sheet.');
+    }
+  }
+
+  /** Retire the chosen grade; one already retired is refused. */
+  protected async retire(): Promise<void> {
+    if (this.submitting) return;
+    this.error.set('');
+    const sheet = this.session.sheetId();
+    if (!sheet) return;
+    const grade = this.form.controls.grade.value;
+    if (this.grades().some((g) => g.grade === grade && g.retired)) {
+      this.error.set(`Grade ${grade} is already retired.`);
+      return;
+    }
+    this.submitting = true;
+    try {
+      const list = await firstValueFrom(
+        this.http.post<GradeView[]>(`${this.base(sheet)}/${encodeURIComponent(grade)}/retire`, {}, { headers: this.headers() }));
+      if (this.session.sheetId() === sheet) this.grades.set(list);
+    } catch {
+      if (this.session.sheetId() === sheet) this.error.set(`Could not retire grade ${grade}: it may already be retired.`);
+    } finally {
+      this.submitting = false;
+    }
+  }
+}

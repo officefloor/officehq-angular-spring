@@ -18,7 +18,9 @@ import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.TreeMap;
+import java.util.TreeSet;
 
 /** A sheet, keyed by the id a user types; everything else in the app is kept per sheet. */
 @Entity
@@ -139,6 +141,12 @@ public class Sheet {
     /** The default grade (not dated): quick-add gives a person it adds it, and an import line with a blank grade takes it; null means A. */
     @Column(name = "default_grade", length = 1)
     private String defaultGrade;
+
+    /** The grades retired on the sheet (not dated): none can be chosen for a new person or in an edit. */
+    @ElementCollection(fetch = FetchType.EAGER)
+    @CollectionTable(name = "sheet_retired_grade", joinColumns = @JoinColumn(name = "sheet_id"))
+    @Column(name = "grade", nullable = false, length = 1)
+    private Set<String> retiredGrades = new TreeSet<>();
 
     /** While set, a new claim given no date takes it rather than the sheet's today; null means off. */
     @Column(name = "entry_date")
@@ -397,6 +405,12 @@ public class Sheet {
     public String getDefaultGrade() { return defaultGrade; }
 
     public void setDefaultGrade(String defaultGrade) { this.defaultGrade = defaultGrade; }
+
+    public Set<String> getRetiredGrades() { return new TreeSet<>(retiredGrades); }
+
+    public boolean isGradeRetired(String grade) { return retiredGrades.contains(grade); }
+
+    public void retireGrade(String grade) { retiredGrades.add(grade); }
 
     public LocalDate getEntryDate() { return entryDate; }
 

@@ -150,6 +150,7 @@ public class PersonService {
     public Person add(String sheetId, String user, String name, String grade, Integer terms, String contact,
             List<String> tags) {
         if (sheets.findForUpdate(sheetId).isEmpty()) throw new SheetNotFoundException();
+        settings.requireGradeNotRetired(sheetId, grade);
         requireUnused(sheetId, name, null);
         requireUnusedInTree(sheetId, name);
         String key = Person.contactOf(contact);
@@ -190,8 +191,10 @@ public class PersonService {
         for (String alias : person.getAliases()) requireUnusedInTree(sheetId, alias);
         String key = Person.contactOf(contact);
         requireContactUnused(sheetId, key, id);
-        RollupService.Snapshot before = rollup.snapshot(sheetId);
         LocalDate today = today(sheetId);
+        // a retired grade can be kept (left as in force today, no from-date) but not chosen
+        if (gradeFrom != null || !grade.equals(person.gradeOn(today))) settings.requireGradeNotRetired(sheetId, grade);
+        RollupService.Snapshot before = rollup.snapshot(sheetId);
         person.setName(name);
         Integer termsBefore = person.getTerms();
         Map<LocalDate, Integer> datedTermsBefore = person.getDatedTerms();
@@ -229,6 +232,9 @@ public class PersonService {
         List<Person> chosen = people.findBySheetIdOrderByPositionAscIdAsc(sheetId).stream()
                 .filter(p -> ids.contains(p.getId())).toList();
         if (chosen.size() != ids.size()) throw new PersonNotFoundException();
+        for (Person person : chosen) {
+            if (from != null || !grade.equals(person.gradeOn(today))) settings.requireGradeNotRetired(sheetId, grade);
+        }
         LocalDate on = from != null ? from : today;
         for (Person person : chosen) {
             RollupService.Snapshot before = rollup.snapshot(sheetId);

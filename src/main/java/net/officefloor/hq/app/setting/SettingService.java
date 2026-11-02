@@ -557,11 +557,39 @@ public class SettingService {
         return sheets.findById(sheetId).map(Sheet::getDefaultGrade).orElse(null);
     }
 
-    /** The grade a new person given none takes: the default grade, else A. */
+    /** The grade a new person given none takes: the default grade, else A; A too while the default grade is retired. */
     @Transactional(readOnly = true)
     public String gradeForNew(String sheetId) {
         String grade = defaultGrade(sheetId);
-        return grade == null ? "A" : grade;
+        return grade == null || isGradeRetired(sheetId, grade) ? "A" : grade;
+    }
+
+    /** Retire the grade (not dated); refused when it is retired already. People on it keep it. */
+    @Transactional
+    public void retireGrade(String sheetId, String user, String grade) {
+        Sheet sheet = sheets.findForUpdate(sheetId).orElseThrow(SheetNotFoundException::new);
+        if (sheet.isGradeRetired(grade)) throw new GradeRetiredException();
+        sheet.retireGrade(grade);
+        sheets.flush();
+        audit.recordOnCommit("GRADE_RETIRED sheet=" + sheetId + " by=" + user.strip() + " grade=" + grade);
+    }
+
+    /** The grades retired on the sheet, in grade order. */
+    @Transactional(readOnly = true)
+    public Set<String> retiredGrades(String sheetId) {
+        return sheets.findById(sheetId).map(Sheet::getRetiredGrades).orElse(Set.of());
+    }
+
+    /** Whether the grade is retired on the sheet. */
+    @Transactional(readOnly = true)
+    public boolean isGradeRetired(String sheetId, String grade) {
+        return sheets.findById(sheetId).map(s -> s.isGradeRetired(grade)).orElse(false);
+    }
+
+    /** Refuses a grade retired on the sheet. */
+    @Transactional(readOnly = true)
+    public void requireGradeNotRetired(String sheetId, String grade) {
+        if (isGradeRetired(sheetId, grade)) throw new GradeRetiredException();
     }
 
     /** The proof kinds as set, in order; empty when none. */
