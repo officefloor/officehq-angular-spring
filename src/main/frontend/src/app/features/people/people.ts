@@ -419,6 +419,7 @@ function trimmedSum(figures: number[]): number {
       </select>
       <button type="button" data-testid="export-people" (click)="exportCsv()">Export CSV</button>
       <button type="button" data-testid="export-claims" (click)="exportClaims()">Export claims CSV</button>
+      <button type="button" data-testid="export-periods" (click)="exportPeriods()">Export period figures CSV</button>
       <button type="button" data-testid="bulk-open" (click)="bulkOpen()">Open selected claims</button>
       @if (bulkOpened(); as result) {
         <p role="status">Opened <span data-testid="bulk-opened">{{ result.opened }}</span>,
@@ -1750,6 +1751,23 @@ export class People {
       }
     }
     downloadCsv(lines, 'claims.csv');
+  }
+
+  /**
+   * Downloads each person's period figures as CSV, people in list order (retired people included) and their
+   * periods in the order added: person, period, figure (due-total) and carried, as the rows show them.
+   * Re-read from the store first, so while an as-of date is set it holds the as-of figures.
+   */
+  protected async exportPeriods(): Promise<void> {
+    if (!(await this.reloadForExport())) return;
+    const periods = [...this.periods()].sort((a, b) => a.id - b.id);
+    const lines = [['person', 'period', 'figure', 'carried']];
+    for (const p of this.people()) {
+      for (const period of periods) {
+        lines.push([p.name, period.name, this.personPeriodDueOf(p, period), this.personPeriodCarriedOf(p, period)]);
+      }
+    }
+    downloadCsv(lines, 'periods.csv');
   }
 
   /**
