@@ -1,0 +1,64 @@
+{
+  "checkpoint": 249,
+  "stack": {
+    "repo": "/home/daniel/officehq-angular-spring",
+    "origin": "git@github.com:officefloor/officehq-angular-spring.git",
+    "name": "officehq-angular-spring",
+    "base_ref": "base-empty",
+    "base_commit": "65cb8233ea38b2dfa6cfd18709e30cd18fdf3250"
+  },
+  "checkpoint_id": "cp249_policy-viewer",
+  "phase": "late",
+  "type": "additive",
+  "mutates": [],
+  "replaced_tests": [],
+  "request": {
+    "spec": "Show the policy versions: one line per version, oldest first, as <version> <from or start>\n<key>=<value> <count of claims whose policy version it is>.\n",
+    "prompt": "You are implementing ONE change to this application.\n\nFIRST read AGENTS.md \u2014 it states the working rules and how the app is tested, and sends you to\nDESIGN.md for the app's stack and conventions. Follow both.\n\nTHE CHANGE REQUEST:\nShow the policy versions: one line per version, oldest first, as <version> <from or start>\n<key>=<value> <count of claims whose policy version it is>.\n\nYour work is verified by an automated Playwright UI test already installed under e2e/specs/.\nRead that spec: it declares the exact data-testid anchors, values, test data and any audit\nrecords it expects \u2014 match them. Run `bin/e2e` to build the app, start it, and run the test as\nyou work; iterate until it passes. Change whatever the request needs across the app \u2014 its stored\ndata, its server and its front end. Do NOT edit bin/build, bin/start, bin/stop, bin/e2e,\nAGENTS.md, CLAUDE.md, DESIGN.md, e2e/support/ or the test spec.\n"
+  },
+  "commit_sha": "f6c0be9223ed59048e3f01963d5992b3bbc4aa12",
+  "reset_sha": "",
+  "preagent_sha": "a60b262ee4e2d474dbb677876c682d17f6c9f9c9",
+  "prev_sha": "a60b262ee4e2d474dbb677876c682d17f6c9f9c9",
+  "base_sha": "65cb8233ea38b2dfa6cfd18709e30cd18fdf3250",
+  "agent": {
+    "ok": true,
+    "cost_usd": 0.8045918000000001,
+    "input_tokens": 42,
+    "output_tokens": 8389,
+    "cache_read_tokens": 876699,
+    "cache_creation_tokens": 57663,
+    "num_turns": 21,
+    "duration_ms": 308217,
+    "duration_api_ms": 97876,
+    "model": "claude-opus-5-5",
+    "session_id": "c94cffed-40fc-4bab-b0fb-0b7f0c545533",
+    "stop_reason": "success",
+    "result_text": "The policy viewer is in, and `bin/e2e` passes all 4 acceptance tests.\n\nThe screen now has a \"Show policy versions\" button (`policy-show`). Pressing it reads the sheet's versions from the store and lists them oldest first, one line each (`policy-line`), as `<version> <from or start> <key>=<value> <claim count>`. For example: `1 2026-03-01 floor=2.00 1`.\n\n**How the count works:** a claim belongs to the version that `claim-policy` already shows for it on screen. Voided claims are included; scenario 3 expects that.\n\n**\"start\" never appears in practice.** The app always saves a from-date: an undated setting takes the sheet's today. The word \"start\" is only shown if a from-date is missing.\n\n**Changes:**\n- **Server:** a new `GET /api/sheets/{sheetId}/policy-versions` endpoint in `setting/PolicyVersionController.java`, backed by a small `getPolicyLog()` added to `Sheet.java`. It returns an empty list for a sheet that doesn't exist yet.\n- **Front end:** a new `app-policy-versions` component in `features/policy-versions/policy-versions.ts`, placed after the settings section in `home.ts`. Loading a sheet clears the list, and every press fetches it fresh.\n- **Stored data:** no schema or migration change was needed, since the versions were already kept.",
+    "error": "",
+    "attempts": [
+      {
+        "ok": true,
+        "limit_reached": false,
+        "retryable": false,
+        "timed_out": false,
+        "cost_usd": 0.8045918000000001,
+        "num_turns": 21,
+        "duration_ms": 308217,
+        "duration_api_ms": 97876,
+        "error": ""
+      }
+    ]
+  },
+  "agent_stream_file": "cp249.agent.jsonl",
+  "agent_diff_file": "cp249.agent.diff",
+  "build_log_file": null,
+  "tests": {
+    "gated": false,
+    "queued": true
+  },
+  "probe": null,
+  "pinned_touched": [],
+  "acceptance_touched": [],
+  "impact_gate": null
+}

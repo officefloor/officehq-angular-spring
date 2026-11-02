@@ -1,0 +1,166 @@
+diff --git a/src/main/frontend/src/app/features/home/home.ts b/src/main/frontend/src/app/features/home/home.ts
+index 770a21824..a828e7a54 100644
+--- a/src/main/frontend/src/app/features/home/home.ts
++++ b/src/main/frontend/src/app/features/home/home.ts
+@@ -11,6 +11,7 @@ import { Notes } from '../notes/notes';
+ import { People } from '../people/people';
+ import { Crews } from '../crews/crews';
+ import { Pools } from '../pools/pools';
++import { PolicyVersions } from '../policy-versions/policy-versions';
+ import { Settings } from '../settings/settings';
+ import { Templates } from '../templates/templates';
+ import { VoidReasons } from '../void-reasons/void-reasons';
+@@ -18,7 +19,7 @@ import { VoidReasons } from '../void-reasons/void-reasons';
+ // The one screen: sign in by name, then load a sheet by id.
+ @Component({
+   selector: 'app-home',
+-  imports: [ReactiveFormsModule, Activity, AuditView, Crews, Duplicates, Grades, Holidays, Notes, People, Pools, Settings, Templates, TreeSearch, VoidReasons],
++  imports: [ReactiveFormsModule, Activity, AuditView, Crews, Duplicates, Grades, Holidays, Notes, People, Pools, PolicyVersions, Settings, Templates, TreeSearch, VoidReasons],
+   template: `
+     @if (session.user(); as user) {
+       <p>Signed in as <strong data-testid="current-user">{{ user }}</strong></p>
+@@ -75,6 +76,7 @@ import { VoidReasons } from '../void-reasons/void-reasons';
+         </form>
+         <p>Last cloned to: <strong data-testid="sheet-cloned-to">{{ session.clonedTo() ?? '' }}</strong></p>
+         <app-settings />
++        <app-policy-versions />
+         <app-grades />
+         <app-holidays />
+         <app-notes />
+diff --git a/src/main/frontend/src/app/features/policy-versions/policy-versions.ts b/src/main/frontend/src/app/features/policy-versions/policy-versions.ts
+new file mode 100644
+index 000000000..223dd0ca6
+--- /dev/null
++++ b/src/main/frontend/src/app/features/policy-versions/policy-versions.ts
+@@ -0,0 +1,53 @@
++import { HttpClient } from '@angular/common/http';
++import { Component, effect, inject, signal } from '@angular/core';
++import { firstValueFrom } from 'rxjs';
++import { Session } from '../../core/session';
++
++/** A policy version: its number, from-date (null: none, the start), the setting it recorded and how many claims it is the policy version of. */
++interface PolicyVersionView {
++  version: number;
++  from: string | null;
++  key: string;
++  value: string | null;
++  claims: number;
++}
++
++// The sheet's policy versions, oldest first, as read from the store when shown: each line is
++// <version> <from or start> <key>=<value> <count of claims whose policy version it is>.
++@Component({
++  selector: 'app-policy-versions',
++  template: `
++    <section aria-labelledby="policy-versions-heading">
++      <h2 id="policy-versions-heading">Policy versions</h2>
++      <button type="button" data-testid="policy-show" (click)="show()">Show policy versions</button>
++      <ul aria-label="Policy versions">
++        @for (v of versions(); track v.version) {
++          <li data-testid="policy-line">{{ v.version }} {{ v.from ?? 'start' }} {{ v.key }}={{ v.value ?? '' }} {{ v.claims }}</li>
++        }
++      </ul>
++    </section>
++  `,
++})
++export class PolicyVersions {
++  private readonly http = inject(HttpClient);
++  private readonly session = inject(Session);
++
++  protected readonly versions = signal<PolicyVersionView[]>([]);
++
++  constructor() {
++    effect(() => {
++      this.session.sheetId();
++      this.session.loads();
++      this.versions.set([]);
++    });
++  }
++
++  protected async show(): Promise<void> {
++    const sheet = this.session.sheetId();
++    this.versions.set([]);
++    if (!sheet) return;
++    const views = await firstValueFrom(this.http.get<PolicyVersionView[]>(
++      `/api/sheets/${encodeURIComponent(sheet)}/policy-versions`, { headers: { 'X-User': this.session.user() ?? '' } }));
++    if (this.session.sheetId() === sheet) this.versions.set(views);
++  }
++}
+diff --git a/src/main/java/net/officefloor/hq/app/setting/PolicyVersionController.java b/src/main/java/net/officefloor/hq/app/setting/PolicyVersionController.java
+new file mode 100644
+index 000000000..d03289956
+--- /dev/null
++++ b/src/main/java/net/officefloor/hq/app/setting/PolicyVersionController.java
+@@ -0,0 +1,56 @@
++package net.officefloor.hq.app.setting;
++
++import jakarta.validation.constraints.NotBlank;
++import jakarta.validation.constraints.Pattern;
++import jakarta.validation.constraints.Size;
++import java.time.LocalDate;
++import java.util.ArrayList;
++import java.util.List;
++import net.officefloor.hq.app.claim.Claim;
++import net.officefloor.hq.app.claim.ClaimRepository;
++import net.officefloor.hq.app.sheet.DatedSettingLine;
++import net.officefloor.hq.app.sheet.Sheet;
++import net.officefloor.hq.app.sheet.SheetRepository;
++import org.springframework.transaction.annotation.Transactional;
++import org.springframework.validation.annotation.Validated;
++import org.springframework.web.bind.annotation.GetMapping;
++import org.springframework.web.bind.annotation.PathVariable;
++import org.springframework.web.bind.annotation.RequestHeader;
++import org.springframework.web.bind.annotation.RequestMapping;
++import org.springframework.web.bind.annotation.RestController;
++
++/** The sheet's policy versions, oldest first, each with the setting it recorded and how many claims it is the policy version of. */
++@RestController
++@Validated
++@RequestMapping("/api/sheets/{sheetId}")
++public class PolicyVersionController {
++
++    /** A policy version: its number, from-date (null: none, the start), key, value (null: none) and claim count. */
++    public record PolicyVersionView(int version, LocalDate from, String key, String value, long claims) {}
++
++    private final SheetRepository sheets;
++    private final ClaimRepository claims;
++
++    public PolicyVersionController(SheetRepository sheets, ClaimRepository claims) {
++        this.sheets = sheets;
++        this.claims = claims;
++    }
++
++    @GetMapping("/policy-versions")
++    @Transactional(readOnly = true)
++    public List<PolicyVersionView> list(
++            @PathVariable @Size(max = 100) @Pattern(regexp = "[A-Za-z0-9._-]+") String sheetId,
++            @RequestHeader("X-User") @NotBlank @Size(max = 100) String user) {
++        Sheet sheet = sheets.findById(sheetId).orElse(null);
++        if (sheet == null) return List.of();
++        List<DatedSettingLine> log = sheet.getPolicyLog();
++        long[] counts = new long[log.size() + 1];
++        for (Claim claim : claims.findBySheetIdOrderByIdDesc(sheetId)) counts[sheet.policyVersionOn(claim.getDate())]++;
++        List<PolicyVersionView> views = new ArrayList<>();
++        for (int i = 0; i < log.size(); i++) {
++            DatedSettingLine line = log.get(i);
++            views.add(new PolicyVersionView(i + 1, line.getFrom(), line.getKey(), line.getValue(), counts[i + 1]));
++        }
++        return views;
++    }
++}
+diff --git a/src/main/java/net/officefloor/hq/app/sheet/Sheet.java b/src/main/java/net/officefloor/hq/app/sheet/Sheet.java
+index 89c08c793..d8b4dbe14 100644
+--- a/src/main/java/net/officefloor/hq/app/sheet/Sheet.java
++++ b/src/main/java/net/officefloor/hq/app/sheet/Sheet.java
+@@ -212,6 +212,11 @@ public class Sheet {
+         return datedLog.stream().filter(d -> POLICY_KEYS.contains(d.getKey())).map(DatedSettingLine::getFrom).toList();
+     }
+ 
++    /** Each policy version's recorded value, numbered from 1 in the order recorded. */
++    public List<DatedSettingLine> getPolicyLog() {
++        return datedLog.stream().filter(d -> POLICY_KEYS.contains(d.getKey())).toList();
++    }
++
+     /** The current policy version: how many have been recorded; 0 before any. */
+     public int policyVersion() { return getPolicyVersions().size(); }
+ 
