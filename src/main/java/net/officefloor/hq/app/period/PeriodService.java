@@ -112,7 +112,7 @@ public class PeriodService {
     }
 
     /** A period's due-total: the due figures of the claims that count whose date falls in it,
-     *  skipping those with no due and the open claims of people on hold. */
+     *  skipping those with no due and those that do not count live (see Dues#countsLive). */
     private BigDecimal dueTotal(String sheetId, Period period) {
         Map<Long, Person> byId = people.findBySheetIdOrderByIdAsc(sheetId).stream()
                 .collect(Collectors.toMap(Person::getId, Function.identity()));

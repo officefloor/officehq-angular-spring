@@ -40,9 +40,10 @@ public class Person {
     @Column(name = "retired_from")
     private LocalDate retiredFrom;
 
-    /** Whether the person is on hold: their open claims then count in no live total. */
-    @Column(name = "held", nullable = false)
-    private boolean held;
+    /** The person's holds: their open claims dated within one count in no live total. */
+    @ElementCollection(fetch = FetchType.EAGER)
+    @CollectionTable(name = "person_hold", joinColumns = @JoinColumn(name = "person_id"))
+    private List<Hold> holds = new ArrayList<>();
 
     /** Raised each time the person is saved. */
     @Version
@@ -112,12 +113,26 @@ public class Person {
         return retiredFrom != null;
     }
 
-    public boolean isHeld() {
-        return held;
+    /** The person's holds, earliest from-date first, those with none first of all. */
+    public List<Hold> getHolds() {
+        return holds.stream()
+                .sorted(Comparator.comparing(Hold::getFromDate, Comparator.nullsFirst(Comparator.naturalOrder())))
+                .toList();
     }
 
-    public void setHeld(boolean held) {
-        this.held = held;
+    /** Whether the person has any hold, whatever its days. */
+    public boolean isHeld() {
+        return !holds.isEmpty();
+    }
+
+    /** Whether one of the person's holds covers a day. */
+    public boolean isHeldOn(LocalDate day) {
+        return holds.stream().anyMatch(h -> h.covers(day));
+    }
+
+    /** Add a hold, keeping the others. */
+    public void addHold(LocalDate from, LocalDate to) {
+        holds.add(new Hold(from, to));
     }
 
     public long getVersion() {

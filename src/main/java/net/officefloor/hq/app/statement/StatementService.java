@@ -63,7 +63,7 @@ public class StatementService {
 
     /** Take a statement of a person: record their due-total now and bind each of their claims that
      *  counts in the live totals to the figure it has now, leaving out any late charge; any other
-     *  claim (one that does not count, or an open one while they are on hold) is unbound. */
+     *  claim (one that does not count, or an open unbound one dated within one of their holds) is unbound. */
     @Transactional
     public Taken take(String sheetId, String user, long personId) {
         Person person = people.lockByIdAndSheetId(personId, sheetId)

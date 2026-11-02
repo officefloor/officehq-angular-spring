@@ -22,6 +22,18 @@ export function gradeOn(grades: GradeFrom[], day: string | null): Grade | undefi
   return on;
 }
 
+/** A hold on a person from a day (null: from the beginning of time) to a day (null: open-ended),
+ *  both included (yyyy-mm-dd). */
+export interface Hold {
+  from: string | null;
+  to: string | null;
+}
+
+/** Whether one of the holds covers a day. */
+export function heldOn(holds: Hold[], day: string): boolean {
+  return holds.some((h) => (h.from === null || h.from <= day) && (h.to === null || day <= h.to));
+}
+
 export interface Person {
   id: number;
   name: string;
@@ -41,8 +53,10 @@ export interface Person {
   retired: boolean;
   /** The day (yyyy-mm-dd) they are retired from; null when they are not retired. */
   retiredFrom: string | null;
-  /** Whether they are on hold: their open claims then count in no live total. */
+  /** Whether they have any hold, whatever its days. */
   held: boolean;
+  /** Their holds, earliest first: their open claims dated within one count in no live total. */
+  holds: Hold[];
 }
 
 /** A statement just taken: the person as they now show, and their claims (newest first) as it
@@ -91,11 +105,11 @@ export class People {
     );
   }
 
-  /** Put the person on hold (true) or take them off it (false). */
-  hold(id: number, held: boolean): Promise<Person> {
+  /** Put the person on hold from a day (null: the sheet's today) to a day (null: open-ended). */
+  hold(id: number, from: string | null, to: string | null): Promise<Person> {
     const { sheetId, user } = this.active();
     return firstValueFrom(
-      this.http.post<Person>(`${this.url(sheetId)}/${id}/hold`, { held }, { headers: { 'X-User': user } }),
+      this.http.post<Person>(`${this.url(sheetId)}/${id}/hold`, { from, to }, { headers: { 'X-User': user } }),
     );
   }
 

@@ -1,7 +1,7 @@
 import { HttpClient } from '@angular/common/http';
 import { Injectable, inject } from '@angular/core';
 import { firstValueFrom } from 'rxjs';
-import { Grade, Person } from './people';
+import { Grade, Hold, Person, heldOn } from './people';
 import { Rate, atLeast, due, pctOn } from './rates';
 import { Session } from './session';
 
@@ -23,10 +23,10 @@ export function counts(c: Claim): boolean {
   return isOpen(c) || c.status === 'SETTLED';
 }
 
-/** Whether a claim counts in the live totals: it counts, and it is not an open (or pending) claim
- *  of a person on hold. */
-export function countsLive(c: Claim, held: boolean): boolean {
-  return counts(c) && !(held && isOpen(c));
+/** Whether a claim counts in the live totals: it counts, and it is not an open (or pending) claim,
+ *  unbound by a statement, dated within one of its person's holds. */
+export function countsLive(c: Claim, holds: Hold[]): boolean {
+  return counts(c) && !(isOpen(c) && !c.stated && heldOn(holds, c.date));
 }
 
 export interface Claim {

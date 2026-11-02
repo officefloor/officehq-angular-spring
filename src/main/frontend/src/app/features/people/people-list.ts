@@ -18,7 +18,8 @@ import { QuickAddBar } from './quick-add-bar';
 // once a person's editor is opened, edits them. Each person's row lists their claims and what
 // they have claimed and are due at their grade's rate; the sheet's totals add everyone's up.
 // Retired people are left out of the list unless "show retired" is on; their claims still count.
-// The open claims of a person on hold count in no total; their settled claims still do.
+// A person's open claims dated within one of their holds count in no total, unless a statement
+// bound them; their settled claims and other open claims still do.
 // A person may name other people on the sheet as their patrons; their backing is their patrons'
 // due-totals added up, skipping those that are n/a.
 @Component({
@@ -81,7 +82,16 @@ import { QuickAddBar } from './quick-add-bar';
               <td data-testid="person-statement-date">{{ p.statementDate ?? '' }}</td>
               <td data-testid="person-retired">{{ p.retired ? 'yes' : 'no' }}</td>
               <td data-testid="person-retired-from">{{ p.retiredFrom ?? '' }}</td>
-              <td data-testid="person-hold">{{ p.held ? 'yes' : 'no' }}</td>
+              <td>
+                <span data-testid="person-hold">{{ p.held ? 'yes' : 'no' }}</span>
+                @if (p.holds.length > 0) {
+                  <ul>
+                    @for (h of p.holds; track $index) {
+                      <li data-testid="person-hold-line">{{ h.from ?? '…' }} – {{ h.to ?? '…' }}</li>
+                    }
+                  </ul>
+                }
+              </td>
               <td data-testid="person-overdue-count">{{ overdueOf(p).length }}</td>
               <td data-testid="person-overdue-total">{{ overdueTotalOf(p) }}</td>
               <td data-testid="person-patrons">{{ patronNames().get(p.id) ?? '' }}</td>
@@ -103,8 +113,12 @@ import { QuickAddBar } from './quick-add-bar';
                 <input #retireDate type="date" [id]="'person-retire-date-' + p.id" data-testid="person-retire-date" />
                 <button type="button" data-testid="person-retire" (click)="retire(p, retireDate.value)"
                   [attr.aria-label]="'Retire ' + p.name">Retire</button>
-                <button type="button" data-testid="person-hold-toggle" (click)="hold(p)"
-                  [attr.aria-label]="(p.held ? 'Release ' : 'Hold ') + p.name">{{ p.held ? 'Release' : 'Hold' }}</button>
+                <label [for]="'person-hold-from-' + p.id" class="visually-hidden">Hold {{ p.name }} from</label>
+                <input #holdFrom type="date" [id]="'person-hold-from-' + p.id" data-testid="person-hold-from" />
+                <label [for]="'person-hold-to-' + p.id" class="visually-hidden">Hold {{ p.name }} to</label>
+                <input #holdTo type="date" [id]="'person-hold-to-' + p.id" data-testid="person-hold-to" />
+                <button type="button" data-testid="person-hold-toggle" (click)="hold(p, holdFrom.value, holdTo.value)"
+                  [attr.aria-label]="'Hold ' + p.name">Hold</button>
                 <label [for]="'person-patron-select-' + p.id" class="visually-hidden">Patron of {{ p.name }}</label>
                 <select #patronSelect [id]="'person-patron-select-' + p.id" data-testid="person-patron-select"
                   (change)="patronError.set(null)">
@@ -171,16 +185,16 @@ export class PeopleList {
     }
     return by;
   });
-  /** The people on hold, by id. */
-  private readonly held = computed(() => new Set(this.people().filter((p) => p.held).map((p) => p.id)));
+  /** Each person's holds, by id. */
+  private readonly holds = computed(() => new Map(this.people().map((p) => [p.id, p.holds])));
   /** The claims that count in the live totals, newest first. */
-  private readonly live = computed(() => this.claims().filter((c) => countsLive(c, this.held().has(c.personId))));
+  private readonly live = computed(() => this.claims().filter((c) => countsLive(c, this.holds().get(c.personId) ?? [])));
   /** What each person has claimed: the sum of their open and settled claims' amounts, leaving out
-   *  the open ones while they are on hold. */
+   *  the open ones dated within one of their holds and unbound by a statement. */
   protected readonly claimed = computed(() => {
     const by = new Map<number, string>();
     for (const [id, cs] of this.claimsByPerson()) {
-      by.set(id, sumAmounts(cs.filter((c) => countsLive(c, this.held().has(id))).map((c) => c.amount)));
+      by.set(id, sumAmounts(cs.filter((c) => countsLive(c, this.holds().get(id) ?? [])).map((c) => c.amount)));
     }
     return by;
   });
@@ -401,18 +415,19 @@ export class PeopleList {
     }
   }
 
-  /** Put the person on hold, or take them off it when they are on hold. */
-  protected async hold(p: Person): Promise<void> {
+  /** Put the person on hold from the day given (blank: the sheet's today) to the day given (blank:
+   *  open-ended). */
+  protected async hold(p: Person, from: string, to: string): Promise<void> {
     if (this.holding.has(p.id)) return;
     this.holding.add(p.id);
     this.personError.set(null);
     this.patronError.set(null);
     try {
-      const saved = await this.api.hold(p.id, !p.held);
+      const saved = await this.api.hold(p.id, from.trim() || null, to.trim() || null);
       this.people.update((ps) => ps.map((x) => (x.id === saved.id ? saved : x)));
       if (this.editing() === saved.id) this.version = saved.version;
     } catch {
-      this.personError.set({ id: p.id, message: p.held ? 'The person could not be released.' : 'The person could not be put on hold.' });
+      this.personError.set({ id: p.id, message: 'The person could not be put on hold.' });
     } finally {
       this.holding.delete(p.id);
     }
@@ -534,11 +549,11 @@ export class PeopleList {
   }
 
   /** A person's due-total: the sum of the due figures of their open and settled claims, leaving out
-   *  the open ones while they are on hold. Null (n/a)
+   *  the open ones dated within one of their holds and unbound by a statement. Null (n/a)
    *  when their grade on the sheet's today has no rate on it and no claim that counts has a figure
    *  (one kept by settling or a statement, or a live due at the grade in force on its date). */
   protected dueOf(p: Person): string | null {
-    const counted = (this.claimsByPerson().get(p.id) ?? []).filter((c) => countsLive(c, p.held));
+    const counted = (this.claimsByPerson().get(p.id) ?? []).filter((c) => countsLive(c, p.holds));
     const figures = counted.map((c) => claimDue(c, this.rates(), gradeOn(p.grades, c.date), this.floor(), this.lateness())).filter((d): d is string => d !== null);
     if (!this.pctOf().has(this.gradeOf(p)) && figures.length === 0) {
       return null;
@@ -569,7 +584,7 @@ export class PeopleList {
   /** A person's overdue claims among those that count in the live totals. */
   protected overdueOf(p: Person): Claim[] {
     return (this.claimsByPerson().get(p.id) ?? [])
-      .filter((c) => countsLive(c, p.held) && overdue(c, this.session.today()));
+      .filter((c) => countsLive(c, p.holds) && overdue(c, this.session.today()));
   }
 
   /** A person's overdue-total: the due figures of their overdue claims that count, skipping those

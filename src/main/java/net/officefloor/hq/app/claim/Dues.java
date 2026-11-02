@@ -61,9 +61,10 @@ public class Dues {
     }
 
     /** Whether a claim of the person counts in the live totals: it counts, and it is not an open
-     *  (or pending) claim of a person on hold. */
+     *  (or pending) claim, unbound by a statement, dated within one of the person's holds. */
     public static boolean countsLive(Person person, Claim claim) {
-        return claim.getStatus().counts() && !(person.isHeld() && claim.getStatus().isOpen());
+        return claim.getStatus().counts()
+                && !(claim.getStatus().isOpen() && !claim.isStated() && person.isHeldOn(claim.getDate()));
     }
 
     /** The claims of a person that count in the live totals. */

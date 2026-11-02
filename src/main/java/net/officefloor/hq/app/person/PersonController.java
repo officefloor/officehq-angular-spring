@@ -31,23 +31,28 @@ public class PersonController {
 
     /** What the screen shows of a person; with how many statements were taken of them, and the
      *  last one's due-total (text with two decimals, null when n/a or none) and day (null when none);
-     *  whether they are retired, and from which day (null when not); and whether they are on hold.
+     *  whether they are retired, and from which day (null when not); and whether they have any hold, and their holds, earliest first.
      *  The grade is the one in force on the sheet's today; grades are all those recorded, each from
      *  its from-date (null: the beginning of time), earliest first. */
     public record PersonView(long id, String name, String grade, List<GradeView> grades, long version,
             int statementCount, String statedTotal, LocalDate statementDate, boolean retired, LocalDate retiredFrom,
-            boolean held) {
+            boolean held, List<HoldView> holds) {
         public static PersonView of(Person person, StatementSummary statements, LocalDate today) {
             return new PersonView(person.getId(), person.getName(), person.gradeOn(today),
                     person.getGrades().stream().map(g -> new GradeView(g.getGrade(), g.getFromDate())).toList(),
                     person.getVersion(), statements.count(),
                     statements.lastDueTotal() == null ? null : statements.lastDueTotal().setScale(2).toPlainString(),
-                    statements.lastTakenOn(), person.isRetired(), person.getRetiredFrom(), person.isHeld());
+                    statements.lastTakenOn(), person.isRetired(), person.getRetiredFrom(), person.isHeld(),
+                    person.getHolds().stream().map(h -> new HoldView(h.getFromDate(), h.getToDate())).toList());
         }
     }
 
     /** A grade recorded for a person, from a day (null: from the beginning of time). */
     public record GradeView(String grade, LocalDate from) {
+    }
+
+    /** A hold on a person, from a day (null: from the beginning of time) to a day (null: open-ended). */
+    public record HoldView(LocalDate from, LocalDate to) {
     }
 
     /** The person form: a required name and a grade of A, B or C. An edit also gives the version
@@ -61,8 +66,9 @@ public class PersonController {
     public record RetireForm(LocalDate from) {
     }
 
-    /** The hold form: whether the person is to be on hold (true) or taken off it (false). */
-    public record HoldForm(@NotNull Boolean held) {
+    /** The hold form: the day the hold starts (left out, the sheet's today) and the day it ends
+     *  (left out, it is open-ended). */
+    public record HoldForm(LocalDate from, LocalDate to) {
     }
 
     private final PersonService service;
@@ -120,8 +126,8 @@ public class PersonController {
     public PersonView hold(@PathVariable @NotBlank @Size(max = 100) String sheetId,
             @PathVariable long personId,
             @RequestHeader("X-User") @NotBlank @Size(max = 100) String user,
-            @Valid @RequestBody HoldForm form) {
-        Person saved = service.hold(sheetId.trim(), user.trim(), personId, form.held());
+            @RequestBody HoldForm form) {
+        Person saved = service.hold(sheetId.trim(), user.trim(), personId, form.from(), form.to());
         return PersonView.of(saved, statements.summary(sheetId.trim(), personId), sheets.today(sheetId.trim()));
     }
 }

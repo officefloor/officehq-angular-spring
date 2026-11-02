@@ -90,20 +90,21 @@ public class PersonService {
         });
     }
 
-    /** Put a person on hold (true) or take them off it (false); refused when they already are so. */
+    /** Put a person on hold from a day (null: the sheet's today) to a day (null: open-ended),
+     *  keeping their other holds; refused when the to-date is before the from-date. */
     @Transactional
-    public Person hold(String sheetId, String user, long personId, boolean held) {
+    public Person hold(String sheetId, String user, long personId, LocalDate from, LocalDate to) {
         Person person = people.findByIdAndSheetId(personId, sheetId)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "No such person on this sheet"));
-        if (person.isHeld() == held) {
-            throw new ResponseStatusException(HttpStatus.CONFLICT,
-                    held ? "This person is already on hold" : "This person is not on hold");
+        LocalDate on = from != null ? from : sheets.today(sheetId);
+        if (to != null && to.isBefore(on)) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "A hold cannot end before it starts");
         }
         return rollup.tracking(sheetId, user, () -> {
-            person.setHeld(held);
+            person.addHold(on, to);
             Person saved = saveUnique(person);
-            audit.recordOnCommit((held ? "PERSON_HELD" : "PERSON_RELEASED") + " sheet=" + sheetId + " by=" + user
-                    + " name=" + saved.getName());
+            audit.recordOnCommit("PERSON_HELD sheet=" + sheetId + " by=" + user + " name=" + saved.getName()
+                    + " from=" + on);
             return saved;
         });
     }
