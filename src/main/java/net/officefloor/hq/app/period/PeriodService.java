@@ -17,6 +17,7 @@ import net.officefloor.hq.app.claim.ClaimService;
 import net.officefloor.hq.app.claim.ClaimStatus;
 import net.officefloor.hq.app.person.Person;
 import net.officefloor.hq.app.person.PersonRepository;
+import net.officefloor.hq.app.setting.Role;
 import net.officefloor.hq.app.setting.SettingService;
 import net.officefloor.hq.app.sheet.SheetNotFoundException;
 import net.officefloor.hq.app.sheet.SheetRepository;
@@ -31,6 +32,7 @@ import org.springframework.transaction.annotation.Transactional;
  * open at the end of its last day), and its own due-total, the sum of their due-totals. Soft-closing fixes them the same
  * way while claims due inside it can still change; a soft-closed period can then be closed (fixing
  * them afresh). A steward can reopen a closed or soft-closed period, making its figures live again.
+ * A steward can lock a period, and unlock it; a locked period cannot be reopened.
  */
 @Service
 public class PeriodService {
@@ -198,9 +200,25 @@ public class PeriodService {
         Period period = periods.findByIdAndSheetId(id, sheetId).orElseThrow(PeriodNotFoundException::new);
         if (!settings.mayDo(sheetId, user, "reopen")) throw new PeriodNotPermittedException();
         if (!period.isClosed() && !period.isSoftClosed()) throw new PeriodOpenException();
+        if (period.isLocked()) throw new PeriodLockedException();
         period.reopen();
         Period saved = periods.saveAndFlush(period);
         audit.recordOnCommit("PERIOD_REOPENED sheet=" + sheetId + " by=" + user.strip()
+                + " period=" + saved.getName());
+        return saved;
+    }
+
+    /** A steward locks the period, or unlocks it; locking a locked one or unlocking an unlocked one is refused. */
+    @Transactional
+    public Period lock(String sheetId, String user, Long id, boolean lock) {
+        sheets.findForUpdate(sheetId).orElseThrow(SheetNotFoundException::new);
+        Period period = periods.findByIdAndSheetId(id, sheetId).orElseThrow(PeriodNotFoundException::new);
+        if (settings.roleOf(sheetId, user) != Role.STEWARD) throw new PeriodNotPermittedException();
+        if (lock && period.isLocked()) throw new PeriodLockedException();
+        if (!lock && !period.isLocked()) throw new PeriodNotLockedException();
+        period.setLocked(lock);
+        Period saved = periods.saveAndFlush(period);
+        audit.recordOnCommit((lock ? "PERIOD_LOCKED" : "PERIOD_UNLOCKED") + " sheet=" + sheetId + " by=" + user.strip()
                 + " period=" + saved.getName());
         return saved;
     }

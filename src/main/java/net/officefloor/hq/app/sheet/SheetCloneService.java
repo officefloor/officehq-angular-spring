@@ -164,6 +164,7 @@ public class SheetCloneService {
             row.put("SHEET_ID", toSheetId);
             row.put("CLOSED", false);
             row.put("SOFT_CLOSED", false);
+            row.put("LOCKED", false);
             row.put("CLOSED_DUE_TOTAL", null);
             insertNew("period", row);
         }

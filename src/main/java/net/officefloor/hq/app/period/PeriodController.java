@@ -27,11 +27,11 @@ public class PeriodController {
     /**
      * A period as the screen shows it; once closed, with the due-total fixed then and each person's
      * due-total and carried figure for it fixed then, by person id (two decimals; empty while open). Soft-closed, the
-     * figures are fixed the same way while it is not closed.
+     * figures are fixed the same way while it is not closed. Locked, it cannot be reopened.
      */
     public record PeriodView(long id, String name, LocalDate from, LocalDate to, boolean closed,
             boolean softClosed, String closedDueTotal, Map<Long, String> closedPersonDues, Integer cap,
-            Map<Long, String> closedPersonCarried, Map<Long, String> openings) {
+            Map<Long, String> closedPersonCarried, Map<Long, String> openings, boolean locked) {
         static PeriodView of(Period period) {
             Map<Long, String> personDues = new TreeMap<>();
             period.getClosedPersonDues().forEach((personId, due) -> personDues.put(personId, due.setScale(2).toPlainString()));
@@ -42,7 +42,7 @@ public class PeriodController {
             return new PeriodView(period.getId(), period.getName(), period.getFromDate(), period.getToDate(),
                     period.isClosed(), period.isSoftClosed(),
                     period.getClosedDueTotal() == null ? null : period.getClosedDueTotal().setScale(2).toPlainString(),
-                    personDues, period.getCap(), carried, openings);
+                    personDues, period.getCap(), carried, openings, period.isLocked());
         }
     }
 
@@ -142,5 +142,21 @@ public class PeriodController {
             @PathVariable Long id,
             @RequestHeader("X-User") @NotBlank @Size(max = 100) String user) {
         return PeriodView.of(service.reopen(sheetId, user, id));
+    }
+
+    @PostMapping("/{id}/lock")
+    public PeriodView lock(
+            @PathVariable @Size(max = 100) @Pattern(regexp = "[A-Za-z0-9._-]+") String sheetId,
+            @PathVariable Long id,
+            @RequestHeader("X-User") @NotBlank @Size(max = 100) String user) {
+        return PeriodView.of(service.lock(sheetId, user, id, true));
+    }
+
+    @PostMapping("/{id}/unlock")
+    public PeriodView unlock(
+            @PathVariable @Size(max = 100) @Pattern(regexp = "[A-Za-z0-9._-]+") String sheetId,
+            @PathVariable Long id,
+            @RequestHeader("X-User") @NotBlank @Size(max = 100) String user) {
+        return PeriodView.of(service.lock(sheetId, user, id, false));
     }
 }

@@ -26,6 +26,8 @@ export interface Period {
   cap: number | null;
   /** Each person's opening balance for it, two decimals, by person id; part of their carried figure. */
   openings: Record<string, string>;
+  /** Locked by a steward: it cannot be reopened until unlocked. */
+  locked: boolean;
 }
 
 /** Of the sheet's periods, the one whose dates contain the date, or null. */
@@ -103,7 +105,7 @@ export function closedOn(periods: Period[], date: string): boolean {
       </form>
       <table>
         <thead>
-          <tr><th scope="col">Name</th><th scope="col">From</th><th scope="col">To</th><th scope="col">Due total</th><th scope="col">Closed</th><th scope="col">Fiscal year</th><th scope="col">Cap</th><th scope="col"><span class="visually-hidden">Actions</span></th></tr>
+          <tr><th scope="col">Name</th><th scope="col">From</th><th scope="col">To</th><th scope="col">Due total</th><th scope="col">Closed</th><th scope="col">Fiscal year</th><th scope="col">Cap</th><th scope="col">Locked</th><th scope="col"><span class="visually-hidden">Actions</span></th></tr>
         </thead>
         <tbody>
           @for (p of periods(); track p.id) {
@@ -115,6 +117,7 @@ export function closedOn(periods: Period[], date: string): boolean {
               <td data-testid="period-closed">{{ p.closed ? 'yes' : p.softClosed ? 'soft' : 'no' }}</td>
               <td data-testid="period-fy">{{ fyOf(p) }}</td>
               <td data-testid="period-cap">{{ p.cap ?? '' | figure }}</td>
+              <td data-testid="period-locked">{{ p.locked ? 'yes' : 'no' }}</td>
               <td>
                 <button type="button" data-testid="period-close" (click)="close(p)"
                         [attr.aria-label]="'Close period ' + p.name">Close</button>
@@ -122,6 +125,10 @@ export function closedOn(periods: Period[], date: string): boolean {
                         [attr.aria-label]="'Soft-close period ' + p.name">Soft close</button>
                 <button type="button" data-testid="period-reopen" (click)="reopen(p)"
                         [attr.aria-label]="'Reopen period ' + p.name">Reopen</button>
+                <button type="button" data-testid="period-lock" (click)="lock(p, 'lock')"
+                        [attr.aria-label]="'Lock period ' + p.name">Lock</button>
+                <button type="button" data-testid="period-unlock" (click)="lock(p, 'unlock')"
+                        [attr.aria-label]="'Unlock period ' + p.name">Unlock</button>
                 @if (periodError()?.id === p.id) {
                   <p role="alert" class="error" data-testid="period-error">{{ periodError()?.message }}</p>
                 }
@@ -352,7 +359,36 @@ export class Periods {
         ? 'Your role may not reopen a period on this sheet.'
         : status === 409
           ? 'That period is not closed.'
-          : 'Could not reopen that period.';
+          : status === 423
+            ? 'That period is locked; unlock it first.'
+            : 'Could not reopen that period.';
+      this.periodError.set({ id: p.id, message });
+    }
+  }
+
+  /** Lock or unlock a period, as a steward; a locked period cannot be reopened. */
+  protected async lock(p: Period, action: 'lock' | 'unlock'): Promise<void> {
+    this.periodError.set(null);
+    const sheet = this.session.sheetId();
+    if (!sheet) return;
+    try {
+      const period = await firstValueFrom(
+        this.http.post<Period>(`/api/sheets/${encodeURIComponent(sheet)}/periods/${p.id}/${action}`, null, {
+          headers: { 'X-User': this.session.user() ?? '' },
+        }),
+      );
+      if (this.session.sheetId() !== sheet) return;
+      this.saved.emit(period);
+    } catch (e) {
+      if (this.session.sheetId() !== sheet) return;
+      const status = e instanceof HttpErrorResponse ? e.status : 0;
+      const message = status === 403
+        ? `Only a steward may ${action} a period.`
+        : status === 423
+          ? 'That period is already locked.'
+          : status === 409
+            ? 'That period is not locked.'
+            : `Could not ${action} that period.`;
       this.periodError.set({ id: p.id, message });
     }
   }
