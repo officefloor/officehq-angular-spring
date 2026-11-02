@@ -1,0 +1,64 @@
+{
+  "checkpoint": 34,
+  "stack": {
+    "repo": "/home/daniel/officehq-angular-spring",
+    "origin": "git@github.com:officefloor/officehq-angular-spring.git",
+    "name": "officehq-angular-spring",
+    "base_ref": "base-empty",
+    "base_commit": "65cb8233ea38b2dfa6cfd18709e30cd18fdf3250"
+  },
+  "checkpoint_id": "cp34_bulk-open",
+  "phase": "early",
+  "type": "additive",
+  "mutates": [],
+  "replaced_tests": [],
+  "request": {
+    "spec": "Claims can be selected (a checkbox on each) and opened together with one button. Each selected\nclaim that can be opened is opened and numbered in list order (the list order of people, newest\nclaim first within a person); each that cannot is left as it is. Show how many were opened and\nhow many were refused.\n",
+    "prompt": "You are implementing ONE change to this application.\n\nFIRST read AGENTS.md \u2014 it states the working rules and how the app is tested, and sends you to\nDESIGN.md for the app's stack and conventions. Follow both.\n\nTHE CHANGE REQUEST:\nClaims can be selected (a checkbox on each) and opened together with one button. Each selected\nclaim that can be opened is opened and numbered in list order (the list order of people, newest\nclaim first within a person); each that cannot is left as it is. Show how many were opened and\nhow many were refused.\n\nYour work is verified by an automated Playwright UI test already installed under e2e/specs/.\nRead that spec: it declares the exact data-testid anchors, values, test data and any audit\nrecords it expects \u2014 match them. Run `bin/e2e` to build the app, start it, and run the test as\nyou work; iterate until it passes. Change whatever the request needs across the app \u2014 its stored\ndata, its server and its front end. Do NOT edit bin/build, bin/start, bin/stop, bin/e2e,\nAGENTS.md, CLAUDE.md, DESIGN.md, e2e/support/ or the test spec.\n"
+  },
+  "commit_sha": "f832ee39985e94c9c91ca63ae80f12178a3e47e8",
+  "reset_sha": "",
+  "preagent_sha": "8bd37c493fb3c45c0e9269772ebdd528438ab5c1",
+  "prev_sha": "8bd37c493fb3c45c0e9269772ebdd528438ab5c1",
+  "base_sha": "65cb8233ea38b2dfa6cfd18709e30cd18fdf3250",
+  "agent": {
+    "ok": true,
+    "cost_usd": 0.8085888000000001,
+    "input_tokens": 28,
+    "output_tokens": 7173,
+    "cache_read_tokens": 630204,
+    "cache_creation_tokens": 67372,
+    "num_turns": 16,
+    "duration_ms": 209087,
+    "duration_api_ms": 66862,
+    "model": "claude-opus-5-5",
+    "session_id": "5a83b433-6e31-4879-964c-358f9d767380",
+    "stop_reason": "success",
+    "result_text": "Claims can now be selected and opened together. All 4 tests in `bin/e2e` pass.\n\n**What you'll see**\n- Each claim row has a checkbox (`claim-select`).\n- An \"Open selected claims\" button (`bulk-open`) opens every selected claim it can. It then shows how many were opened (`bulk-opened`) and how many were refused (`bulk-refused`).\n- The old counts disappear while it runs, and the selection is cleared when it finishes.\n\n**How it works**\n- **Server:** a new endpoint, `POST /api/sheets/{sheetId}/claims/open`, takes the selected claim ids. The new `ClaimBulkService` puts them in list order (people in the order they were added, newest claim first within each person). It then opens each claim through the existing single-claim open, so:\n  - each claim gets the same checks and audit lines as a single open (`CLAIM_OPENED`, `ROLLUP`, `TOTALS`);\n  - each claim is saved on its own, so a refused one writes nothing and doesn't block the others.\n- **Front end:** the people list keeps track of which claims are selected, has the button and counts, and re-reads the claims after a bulk open.\n\n**Things to know**\n- An id that doesn't match a claim on the sheet counts as refused.\n- If the whole request fails, for example a network error, the screen shows 0 opened and every selected claim refused. Some claims might still have been opened on the server, so that refused count could be wrong. Re-loading the sheet shows the real state.\n\nNo database change was needed.",
+    "error": "",
+    "attempts": [
+      {
+        "ok": true,
+        "limit_reached": false,
+        "retryable": false,
+        "timed_out": false,
+        "cost_usd": 0.8085888000000001,
+        "num_turns": 16,
+        "duration_ms": 209087,
+        "duration_api_ms": 66862,
+        "error": ""
+      }
+    ]
+  },
+  "agent_stream_file": "cp34.agent.jsonl",
+  "agent_diff_file": "cp34.agent.diff",
+  "build_log_file": null,
+  "tests": {
+    "gated": false,
+    "queued": true
+  },
+  "probe": null,
+  "pinned_touched": [],
+  "acceptance_touched": [],
+  "impact_gate": null
+}
