@@ -1,0 +1,78 @@
+diff --git a/src/main/frontend/src/app/features/people/people.ts b/src/main/frontend/src/app/features/people/people.ts
+index f82b96115..374a49c94 100644
+--- a/src/main/frontend/src/app/features/people/people.ts
++++ b/src/main/frontend/src/app/features/people/people.ts
+@@ -828,8 +828,9 @@ export class People {
+   }
+   /** Whether the claim counts in the live totals: OPEN, PENDING or SETTLED, less open ones kept out by a hold or retirement and not bound, and deferred ones. */
+   private readonly counts = (c: Claim): boolean => countsFor(c, this.keptOut(c), this.session.today());
+-  /** Whether the claim counts toward what is claimed: one that counts and does not correct another. */
+-  private readonly countsClaimed = (c: Claim): boolean => this.counts(c) && !isCorrection(c);
++  /** Whether the claim counts toward what is claimed: one that counts, a hold aside (a held claim stays claimed), and does not correct another. */
++  private readonly countsClaimed = (c: Claim): boolean =>
++    countsFor(c, this.retiredTodayIds().has(c.personId), this.session.today()) && !isCorrection(c);
+   protected readonly claimedTotal = computed(() => money(this.claims().filter(this.countsClaimed).reduce((sum, c) => sum + cents(c.amount), 0)));
+   /** The sheet's rates, each for a grade from its from-date. */
+   protected readonly rates = signal<Rate[]>([]);
+diff --git a/src/main/java/net/officefloor/hq/app/claim/Claim.java b/src/main/java/net/officefloor/hq/app/claim/Claim.java
+index d50fc078e..e01649ef6 100644
+--- a/src/main/java/net/officefloor/hq/app/claim/Claim.java
++++ b/src/main/java/net/officefloor/hq/app/claim/Claim.java
+@@ -188,7 +188,7 @@ public class Claim {
+     @Column(name = "waived", nullable = false)
+     private boolean waived;
+ 
+-    /** Whether it is held: while open and not bound by a statement it is kept out of the live totals. */
++    /** Whether it is held: while open and not bound by a statement it is kept out of the live due figures (it stays claimed). */
+     @Column(name = "held", nullable = false)
+     private boolean held;
+ 
+diff --git a/src/main/java/net/officefloor/hq/app/claim/ClaimService.java b/src/main/java/net/officefloor/hq/app/claim/ClaimService.java
+index 4093b7de2..cb2cd0bb0 100644
+--- a/src/main/java/net/officefloor/hq/app/claim/ClaimService.java
++++ b/src/main/java/net/officefloor/hq/app/claim/ClaimService.java
+@@ -617,7 +617,7 @@ public class ClaimService {
+ 
+     /**
+      * Hold an OPEN or PENDING claim, or release it when held: while held and not bound by a statement it is
+-     * kept out of the live totals, as a held person's claims are. Refused for a claim in any other status.
++     * kept out of the live due figures, though it stays claimed, as a held person's claims are. Refused for a claim in any other status.
+      */
+     @Transactional
+     public Claim toggleHold(String sheetId, String user, Long id) {
+diff --git a/src/main/java/net/officefloor/hq/app/person/Person.java b/src/main/java/net/officefloor/hq/app/person/Person.java
+index ccc204e73..e4c24689a 100644
+--- a/src/main/java/net/officefloor/hq/app/person/Person.java
++++ b/src/main/java/net/officefloor/hq/app/person/Person.java
+@@ -416,6 +416,15 @@ public class Person {
+         return !claim.getStatus().isOpen() || claim.isBound() || !keptOut(claim, today);
+     }
+ 
++    /**
++     * Whether a claim of theirs counts toward what they have claimed: as {@link #counts}, except that a hold
++     * (theirs or the claim's) does not take it out; only its due leaves the totals while held.
++     */
++    public boolean countsClaimed(Claim claim, LocalDate today) {
++        if (!claim.getStatus().counts() || claim.isDeferredOn(today)) return false;
++        return !claim.getStatus().isOpen() || claim.isBound() || !retiredOn(today);
++    }
++
+     /**
+      * Whether a claim of theirs counts for a period ending on the date: by the status it had at the end
+      * of that date, less a deferred one and one still open now (OPEN or PENDING) dated within a hold, or
+diff --git a/src/main/java/net/officefloor/hq/app/rollup/RollupService.java b/src/main/java/net/officefloor/hq/app/rollup/RollupService.java
+index 2a3773cb6..0015a851f 100644
+--- a/src/main/java/net/officefloor/hq/app/rollup/RollupService.java
++++ b/src/main/java/net/officefloor/hq/app/rollup/RollupService.java
+@@ -99,9 +99,9 @@ public class RollupService {
+             BigDecimal overdue = zero();
+             boolean fixed = false;
+             for (Claim claim : claimsByPerson.getOrDefault(person.getId(), List.of())) {
++                // a correction counts toward due but not toward what is claimed; a held claim stays claimed
++                if (!claim.isCorrection() && person.countsClaimed(claim, today)) claimed = claimed.add(claim.getAmount());
+                 if (!person.counts(claim, today)) continue;
+-                // a correction counts toward due but not toward what is claimed
+-                if (!claim.isCorrection()) claimed = claimed.add(claim.getAmount());
+                 if (claim.getSettledDue() != null || (claim.isBound() && claim.getStatedDue() != null)) fixed = true;
+                 String grade = person.gradeOn(claim.getDate());
+                 LocalDate basis = Rounding.basisOf(claim, datesByNumber);
