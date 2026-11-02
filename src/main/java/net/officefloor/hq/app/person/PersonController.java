@@ -9,6 +9,7 @@ import java.time.LocalDate;
 import java.util.Comparator;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import net.officefloor.hq.app.history.History;
 import net.officefloor.hq.app.sheet.AsOfGuard;
 import net.officefloor.hq.app.sheet.SheetService;
@@ -80,6 +81,16 @@ public class PersonController {
     public record HoldForm(LocalDate from, LocalDate to) {
     }
 
+    /** The bulk grade form: the people to give the grade, a grade of A, B or C, and the day it
+     *  applies from (left out, the sheet's today). */
+    public record GradeForm(@NotNull @Size(max = 1000) Set<@NotNull Long> personIds,
+            @NotNull @Pattern(regexp = "[ABC]") String grade, LocalDate from) {
+    }
+
+    /** How many people a bulk grade changed, and those people as they now show. */
+    public record Graded(int graded, List<PersonView> people) {
+    }
+
     private final PersonService service;
     private final StatementService statements;
     private final SheetService sheets;
@@ -135,6 +146,19 @@ public class PersonController {
         Person saved = service.edit(sheetId.trim(), user.trim(), personId, form.version(), form.name().trim(),
                 form.grade(), form.gradeFrom(), form.termsValue());
         return PersonView.of(saved, statements.summary(sheetId.trim(), personId), sheets.today(sheetId.trim()));
+    }
+
+    @PostMapping("/grade")
+    public Graded grade(@PathVariable @NotBlank @Size(max = 100) String sheetId,
+            @RequestHeader("X-User") @NotBlank @Size(max = 100) String user,
+            @Valid @RequestBody GradeForm form) {
+        String sheet = sheetId.trim();
+        List<Person> saved = service.grade(sheet, user.trim(), form.personIds(), form.grade(), form.from());
+        Map<Long, StatementSummary> summaries = statements.summaries(sheet);
+        LocalDate today = sheets.today(sheet);
+        return new Graded(saved.size(), saved.stream()
+                .map(p -> PersonView.of(p, summaries.getOrDefault(p.getId(), StatementSummary.NONE), today))
+                .toList());
     }
 
     @PostMapping("/{personId}/retire")

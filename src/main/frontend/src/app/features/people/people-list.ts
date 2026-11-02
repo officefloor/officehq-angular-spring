@@ -83,14 +83,39 @@ const NO_LEAVE: Leave = { holds: [], retiredFrom: null };
         <p role="status">Settled <strong data-testid="bulk-settled">{{ b.settled }}</strong>,
           refused <strong data-testid="bulk-settle-refused">{{ b.refused }}</strong></p>
       }
+      <div role="group" aria-labelledby="bulk-grade-heading">
+        <span id="bulk-grade-heading">Grade selected people</span>
+        <label for="bulk-grade">Grade</label>
+        <select #bulkGrade id="bulk-grade" data-testid="bulk-grade" (change)="bulkGradeError.set('')">
+          @for (g of grades; track g) {
+            <option [value]="g">{{ g }}</option>
+          }
+        </select>
+        <label for="bulk-grade-from">From</label>
+        <input #bulkGradeFrom id="bulk-grade-from" type="date" data-testid="bulk-grade-from"
+          (input)="bulkGradeError.set('')" />
+        <button type="button" data-testid="bulk-grade-apply"
+          (click)="gradeSelected(bulkGrade.value, bulkGradeFrom.value)">Grade selected people</button>
+        @if (bulkGraded() !== null) {
+          <p role="status">Changed <strong data-testid="bulk-graded">{{ bulkGraded() }}</strong></p>
+        }
+        @if (bulkGradeError()) {
+          <p role="alert" data-testid="person-error">{{ bulkGradeError() }}</p>
+        }
+      </div>
       <button type="button" data-testid="export-people" (click)="exportCsv()">Export people (CSV)</button>
       <table data-testid="people">
         <thead>
-          <tr><th scope="col">Name</th><th scope="col">Grade</th><th scope="col">Active</th><th scope="col">Terms</th><th scope="col">Claimed</th><th scope="col">Due</th>@for (pd of periods(); track pd.id) {<th scope="col">Due in {{ pd.name }}</th>}<th scope="col">Excess</th><th scope="col">Statements</th><th scope="col">Last stated</th><th scope="col">Stated on</th><th scope="col">Retired</th><th scope="col">Retired from</th><th scope="col">On hold</th><th scope="col">Overdue</th><th scope="col">Overdue due</th><th scope="col">Patrons</th><th scope="col">Backing</th><th scope="col">Watched</th><th scope="col">Claims</th><th scope="col"><span class="visually-hidden">Actions</span></th></tr>
+          <tr><th scope="col"><span class="visually-hidden">Select</span></th><th scope="col">Name</th><th scope="col">Grade</th><th scope="col">Active</th><th scope="col">Terms</th><th scope="col">Claimed</th><th scope="col">Due</th>@for (pd of periods(); track pd.id) {<th scope="col">Due in {{ pd.name }}</th>}<th scope="col">Excess</th><th scope="col">Statements</th><th scope="col">Last stated</th><th scope="col">Stated on</th><th scope="col">Retired</th><th scope="col">Retired from</th><th scope="col">On hold</th><th scope="col">Overdue</th><th scope="col">Overdue due</th><th scope="col">Patrons</th><th scope="col">Backing</th><th scope="col">Watched</th><th scope="col">Claims</th><th scope="col"><span class="visually-hidden">Actions</span></th></tr>
         </thead>
         <tbody>
           @for (p of shown(); track p.id) {
             <tr [attr.data-testid]="'person-row-' + p.id">
+              <td>
+                <input type="checkbox" data-testid="person-select" [checked]="selectedPeople().has(p.id)"
+                  (change)="selectPerson(p.id, $any($event.target).checked)"
+                  [attr.aria-label]="'Select ' + p.name" />
+              </td>
               <td data-testid="person-name">{{ p.name }}</td>
               <td data-testid="person-grade">{{ gradeOf(p) }}</td>
               <td data-testid="person-active">{{ activeOf(p) ? 'yes' : 'no' }}</td>
@@ -342,6 +367,14 @@ export class PeopleList {
   protected readonly bulkSettled = signal<{ settled: number; refused: number } | null>(null);
   /** Whether a bulk settle is waiting for its answer: a second press meanwhile is ignored. */
   private settling = false;
+  /** The ids of the people selected for a bulk grade. */
+  protected readonly selectedPeople = signal<ReadonlySet<number>>(new Set());
+  /** How many people the last bulk grade changed; null while one runs and before the first. */
+  protected readonly bulkGraded = signal<number | null>(null);
+  /** The refusal of the last bulk grade. */
+  protected readonly bulkGradeError = signal('');
+  /** Whether a bulk grade is waiting for its answer: a second press meanwhile is ignored. */
+  private grading = false;
   /** The id of the person whose editor is open, or null when the form adds a person. */
   protected readonly editing = signal<number | null>(null);
   /** The version of the person the open editor loaded. */
@@ -388,6 +421,9 @@ export class PeopleList {
       this.selected.set(new Set());
       this.bulkOpened.set(null);
       this.bulkSettled.set(null);
+      this.selectedPeople.set(new Set());
+      this.bulkGraded.set(null);
+      this.bulkGradeError.set('');
       this.personError.set(null);
       this.patronError.set(null);
       this.reset();
@@ -622,6 +658,48 @@ export class PeopleList {
       else next.delete(id);
       return next;
     });
+  }
+
+  protected selectPerson(id: number, on: boolean): void {
+    this.bulkGradeError.set('');
+    this.selectedPeople.update((s) => {
+      const next = new Set(s);
+      if (on) next.add(id);
+      else next.delete(id);
+      return next;
+    });
+  }
+
+  /** Give the selected people listed the grade from the day given (blank: the sheet's today), in
+   *  list order, then show them as they now are and how many were changed. */
+  protected async gradeSelected(grade: string, from: string): Promise<void> {
+    if (this.grading) return;
+    this.bulkGraded.set(null);
+    this.bulkGradeError.set('');
+    const ids = this.shown().filter((p) => this.selectedPeople().has(p.id)).map((p) => p.id);
+    if (ids.length === 0) {
+      this.bulkGradeError.set('Select the people to grade.');
+      return;
+    }
+    if (!this.grades.includes(grade as Grade)) {
+      this.bulkGradeError.set('Choose a grade of A, B or C.');
+      return;
+    }
+    this.grading = true;
+    try {
+      const result = await this.api.grade(ids, grade as Grade, from.trim() || null);
+      const byId = new Map(result.people.map((p) => [p.id, p]));
+      this.people.update((ps) => ps.map((p) => byId.get(p.id) ?? p));
+      const editing = this.editing();
+      const edited = editing === null ? undefined : byId.get(editing);
+      if (edited) this.version = edited.version;
+      this.selectedPeople.set(new Set());
+      this.bulkGraded.set(result.graded);
+    } catch {
+      this.bulkGradeError.set('The selected people could not be graded.');
+    } finally {
+      this.grading = false;
+    }
   }
 
   /** Open the selected claims that can be opened, then show the claims as they are now and how many

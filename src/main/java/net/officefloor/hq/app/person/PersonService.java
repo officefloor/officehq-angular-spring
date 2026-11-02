@@ -3,6 +3,7 @@ package net.officefloor.hq.app.person;
 import java.time.LocalDate;
 import java.util.List;
 import java.util.Objects;
+import java.util.Set;
 import net.officefloor.hq.app.Audit;
 import net.officefloor.hq.app.rollup.Rollup;
 import net.officefloor.hq.app.sheet.SheetService;
@@ -67,6 +68,28 @@ public class PersonService {
         if (people.existsBySheetIdAndNameIgnoreCaseAndIdNot(sheetId, name, personId)) {
             throw nameInUse();
         }
+        return save(sheetId, user, person, name, grade, gradeFrom, terms);
+    }
+
+    /** Give each of the people a grade from a day (null: the sheet's today), in list order (the
+     *  order they were added), exactly as the person form would: each keeps their name and terms and
+     *  is followed by their own PERSON_EDITED and rollup lines. Refused as a whole, changing no one,
+     *  when an id names no person on the sheet. */
+    @Transactional
+    public List<Person> grade(String sheetId, String user, Set<Long> personIds, String grade, LocalDate gradeFrom) {
+        List<Person> chosen = people.findBySheetIdOrderByIdAsc(sheetId).stream()
+                .filter(p -> personIds.contains(p.getId())).toList();
+        if (chosen.size() != personIds.size()) {
+            throw new ResponseStatusException(HttpStatus.NOT_FOUND, "No such person on this sheet");
+        }
+        return chosen.stream()
+                .map(p -> save(sheetId, user, p, p.getName(), grade, gradeFrom, p.getTerms()))
+                .toList();
+    }
+
+    /** Save the person's name, grade from a day and terms as an edit does, recording it. */
+    private Person save(String sheetId, String user, Person person, String name, String grade, LocalDate gradeFrom,
+            Integer terms) {
         return rollup.tracking(sheetId, user, () -> {
             LocalDate today = sheets.today(sheetId);
             Integer termsBefore = person.getTerms();

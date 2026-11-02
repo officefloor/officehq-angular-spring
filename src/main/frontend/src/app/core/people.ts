@@ -113,6 +113,16 @@ export class People {
     );
   }
 
+  /** Give the people a grade from a day (null: the sheet's today), each as an edit would; answers
+   *  how many were changed and those people as they now show. */
+  grade(personIds: number[], grade: Grade, from: string | null): Promise<{ graded: number; people: Person[] }> {
+    const { sheetId, user } = this.active();
+    return firstValueFrom(
+      this.http.post<{ graded: number; people: Person[] }>(`${this.url(sheetId)}/grade`, { personIds, grade, from },
+        { headers: { 'X-User': user } }),
+    );
+  }
+
   /** Retire the person from a day; null takes the sheet's today. */
   retire(id: number, from: string | null): Promise<Person> {
     const { sheetId, user } = this.active();
