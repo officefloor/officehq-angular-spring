@@ -307,10 +307,14 @@ public class Sheet {
     /** The review threshold in force on the date; null means none. */
     public BigDecimal reviewThresholdOn(LocalDate date) { return decimalOn(REVIEW_THRESHOLD, date, null); }
 
-    /** The due-total, at most the cap in force today; null (n/a) stays null. */
-    public BigDecimal capped(BigDecimal dueTotal) {
+    /**
+     * The due-total, at most the cap in force today less the person's cut total (not below 0.00); null (n/a)
+     * stays null.
+     */
+    public BigDecimal capped(BigDecimal dueTotal, BigDecimal cutTotal) {
         BigDecimal cap = getCap();
-        return dueTotal == null || cap == null ? dueTotal : dueTotal.min(cap);
+        return dueTotal == null || cap == null ? dueTotal
+                : dueTotal.min(cap.subtract(cutTotal).max(BigDecimal.ZERO.setScale(2)));
     }
 
     /** The sheet's terms in force on the date: 14 before any are recorded. */

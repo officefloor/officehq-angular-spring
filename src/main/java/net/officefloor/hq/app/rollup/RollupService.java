@@ -17,6 +17,7 @@ import net.officefloor.hq.app.claim.LateCharge;
 import net.officefloor.hq.app.claim.Rounding;
 import net.officefloor.hq.app.person.Person;
 import net.officefloor.hq.app.person.PersonRepository;
+import net.officefloor.hq.app.pool.PoolService;
 import net.officefloor.hq.app.rate.Rate;
 import net.officefloor.hq.app.rate.InheritedRates;
 import net.officefloor.hq.app.rate.RateLevels;
@@ -68,14 +69,16 @@ public class RollupService {
     private final ClaimRepository claims;
     private final InheritedRates rates;
     private final SheetRepository sheets;
+    private final PoolService pools;
     private final Audit audit;
 
     public RollupService(PersonRepository people, ClaimRepository claims, InheritedRates rates,
-            SheetRepository sheets, Audit audit) {
+            SheetRepository sheets, PoolService pools, Audit audit) {
         this.people = people;
         this.claims = claims;
         this.rates = rates;
         this.sheets = sheets;
+        this.pools = pools;
         this.audit = audit;
     }
 
@@ -165,12 +168,14 @@ public class RollupService {
         BigDecimal claimedTotal = zero();
         List<BigDecimal> dues = new ArrayList<>();
         List<BigDecimal> overdues = new ArrayList<>();
+        // the cap holds each person's due-total to it less their cut total
+        Map<Long, BigDecimal> cuts = sheet == null ? Map.of() : pools.cutTotals(sheetId);
         for (Map.Entry<Long, Figures> e : raw.entrySet()) {
             Figures f = e.getValue();
             // a part held of another's claim makes a due-total of its own, n/a or not
             BigDecimal part = shared.get(e.getKey());
             BigDecimal personDue = part == null ? f.dueTotal() : (f.dueTotal() == null ? zero() : f.dueTotal()).add(part);
-            if (sheet != null) personDue = sheet.capped(personDue);
+            if (sheet != null) personDue = sheet.capped(personDue, cuts.getOrDefault(e.getKey(), zero()));
             figures.put(e.getKey(), new Figures(f.name(), f.claimed(), personDue, f.overdueTotal(), f.settled(), f.overdueCount()));
             claimedTotal = claimedTotal.add(f.claimed());
             if (personDue != null) dues.add(personDue);

@@ -16,6 +16,7 @@ import net.officefloor.hq.app.claim.ClaimStatus;
 import net.officefloor.hq.app.claim.LateCharge;
 import net.officefloor.hq.app.claim.Rounding;
 import net.officefloor.hq.app.person.Person;
+import net.officefloor.hq.app.pool.PoolService;
 import net.officefloor.hq.app.person.PersonNotFoundException;
 import net.officefloor.hq.app.person.PersonRepository;
 import net.officefloor.hq.app.rate.Rate;
@@ -63,11 +64,12 @@ public class StatementService {
     private final SheetRepository sheets;
     private final RollupService rollup;
     private final SettingService settings;
+    private final PoolService pools;
     private final Audit audit;
 
     public StatementService(StatementRepository statements, PersonRepository people, ClaimRepository claims,
             ClaimService claimService, RateService rates, SheetRepository sheets, RollupService rollup,
-            SettingService settings, Audit audit) {
+            SettingService settings, PoolService pools, Audit audit) {
         this.statements = statements;
         this.people = people;
         this.claims = claims;
@@ -76,6 +78,7 @@ public class StatementService {
         this.sheets = sheets;
         this.rollup = rollup;
         this.settings = settings;
+        this.pools = pools;
         this.audit = audit;
     }
 
@@ -147,7 +150,8 @@ public class StatementService {
         // As on screen: n/a when their grade has no rate today and none of the counted claims has a fixed
         // due, nor a due under another grade they had on its date or under a rate not in force today.
         return new Bound(sheet.capped(
-                fixed || levels.inForce(person.gradeOn(today), today).isPresent() ? total : null), counted);
+                fixed || levels.inForce(person.gradeOn(today), today).isPresent() ? total : null,
+                pools.cutTotals(sheetId).getOrDefault(person.getId(), BigDecimal.ZERO.setScale(2))), counted);
     }
 
     /**

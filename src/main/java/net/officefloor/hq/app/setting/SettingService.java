@@ -511,10 +511,13 @@ public class SettingService {
     @Transactional
     public BigDecimal setPot(String sheetId, String user, BigDecimal pot) {
         Sheet sheet = sheets.findForUpdate(sheetId).orElseThrow(SheetNotFoundException::new);
+        RollupService.Snapshot before = rollup.snapshot(sheetId);
         sheet.setPot(pot);
         sheets.flush();
         audit.recordOnCommit("SETTING_CHANGED sheet=" + sheetId + " by=" + user.strip() + " key=pot value="
                 + (pot == null ? "" : pot.toPlainString()));
+        // the cuts it moves move the capped due-totals
+        rollup.recordChanges(sheetId, user, before);
         return pot;
     }
 

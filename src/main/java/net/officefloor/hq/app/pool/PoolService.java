@@ -18,9 +18,11 @@ import net.officefloor.hq.app.crew.CrewRepository;
 import net.officefloor.hq.app.person.Person;
 import net.officefloor.hq.app.person.PersonNotFoundException;
 import net.officefloor.hq.app.person.PersonRepository;
+import net.officefloor.hq.app.rollup.RollupService;
 import net.officefloor.hq.app.sheet.Sheet;
 import net.officefloor.hq.app.sheet.SheetNotFoundException;
 import net.officefloor.hq.app.sheet.SheetRepository;
+import org.springframework.context.annotation.Lazy;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -71,16 +73,19 @@ public class PoolService {
     private final PersonRepository people;
     private final CrewRepository crews;
     private final CrewMemberRepository crewMembers;
+    private final RollupService rollup;
     private final Audit audit;
 
     public PoolService(SheetRepository sheets, PoolRepository pools, PoolMemberRepository members,
-            PersonRepository people, CrewRepository crews, CrewMemberRepository crewMembers, Audit audit) {
+            PersonRepository people, CrewRepository crews, CrewMemberRepository crewMembers,
+            @Lazy RollupService rollup, Audit audit) {
         this.sheets = sheets;
         this.pools = pools;
         this.members = members;
         this.people = people;
         this.crews = crews;
         this.crewMembers = crewMembers;
+        this.rollup = rollup;
         this.audit = audit;
     }
 
@@ -138,6 +143,22 @@ public class PoolService {
             lines.add(crewLine(crew, in, pot, today));
         }
         return lines;
+    }
+
+    /**
+     * Each person's cut total, by person id: their cuts as the pools show them, across every pool they are a
+     * member of, added up (a pool that shows no cuts adds nothing); a person with no cut is left out.
+     */
+    @Transactional(readOnly = true)
+    public Map<Long, BigDecimal> cutTotals(String sheetId) {
+        Map<Long, BigDecimal> totals = new HashMap<>();
+        for (PoolLine line : pools(sheetId)) {
+            if (!line.balanced()) continue;
+            for (Member m : line.members()) {
+                if (m.personId() != null && m.cut() != null) totals.merge(m.personId(), m.cut(), BigDecimal::add);
+            }
+        }
+        return totals;
     }
 
     /**
@@ -231,8 +252,10 @@ public class PoolService {
         if (pools.existsBySheetIdAndName(sheetId, text) || crews.existsBySheetIdAndName(sheetId, text)) {
             throw new DuplicatePoolNameException();
         }
+        RollupService.Snapshot before = rollup.snapshot(sheetId);
         Pool saved = pools.saveAndFlush(new Pool(sheetId, text));
         audit.recordOnCommit("POOL_ADDED sheet=" + sheetId + " by=" + user.strip() + " name=" + text);
+        rollup.recordChanges(sheetId, user, before);
         return saved;
     }
 
@@ -250,11 +273,14 @@ public class PoolService {
         BigDecimal value = shareOf(share);
         checkDates(from, to);
         if (members.existsByPoolIdAndPersonId(pool.getId(), person.getId())) throw new DuplicatePoolMemberException();
+        RollupService.Snapshot before = rollup.snapshot(sheetId);
         PoolMember member = new PoolMember(pool.getId(), sheetId, person.getId(), value);
         member.setDates(from, to);
         members.saveAndFlush(member);
         audit.recordOnCommit("POOL_MEMBER_ADDED sheet=" + sheetId + " by=" + user.strip() + " pool=" + pool.getName()
                 + " name=" + person.getName() + " share=" + value.toPlainString() + datesField(from, to));
+        // the cuts it moves move the capped due-totals
+        rollup.recordChanges(sheetId, user, before);
     }
 
     /**
@@ -285,11 +311,13 @@ public class PoolService {
             above++;
         }
         if (above + depth(member.getId(), childrenOf) > 3) throw new PoolNestingException();
+        RollupService.Snapshot before = rollup.snapshot(sheetId);
         PoolMember added = PoolMember.ofPool(pool.getId(), sheetId, member.getId(), value);
         added.setDates(from, to);
         members.saveAndFlush(added);
         audit.recordOnCommit("POOL_MEMBER_ADDED sheet=" + sheetId + " by=" + user.strip() + " pool=" + pool.getName()
                 + " name=" + member.getName() + " share=" + value.toPlainString() + datesField(from, to));
+        rollup.recordChanges(sheetId, user, before);
     }
 
     /** Refused when both dates are given and the to-date is before the from-date. */

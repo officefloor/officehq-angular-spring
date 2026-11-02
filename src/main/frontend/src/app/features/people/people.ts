@@ -201,8 +201,9 @@ interface StatementTaken {
 // <name> <share>, sorted by name, and their backing: over the patrons, the patron's figure (their frozen
 // figures of their SETTLED claims dated within the 90 days up to and including the sheet's today) times
 // their share divided by 100, rounded half to even, added up (0.00 with none).
-// A person's due-total is at most the sheet's cap (blank: none); the row shows their excess, how far the
-// sum of their figures is above it (0.00 when not, or n/a). Every total of due-totals adds the capped ones.
+// A person's due-total is at most the sheet's cap (blank: none) less their cut total, not below 0.00; the
+// row shows their excess, how far the sum of their figures plus their cut total is above the cap (0.00 when
+// not, or n/a). Every total of due-totals adds the capped ones.
 // Each row shows the person's cut total: their cuts as the pools show them, across every pool they are a
 // member of, added up (a pool that shows no cuts adds nothing); the sheet's cut total adds up everyone's.
 // Under it, a summary: per grade, the people on it today (retired people excluded) and their
@@ -1647,18 +1648,18 @@ export class People {
     return cap === null ? null : cents(cap);
   });
 
-  /** Their due-total in cents, at most the cap; null (n/a) is not capped. */
+  /** Their due-total in cents, at most the cap less their cut total (not below 0.00); null (n/a) is not capped. */
   private dueTotalCents(p: Person): number | null {
     const total = this.uncappedDueCents(p);
     const cap = this.capCents();
-    return total === null || cap === null ? total : Math.min(total, cap);
+    return total === null || cap === null ? total : Math.min(total, Math.max(0, cap - this.cutTotalOf(p.id)));
   }
 
-  /** How far the sum of their figures is above the cap; 0.00 when it is not, or is n/a. */
+  /** How far the sum of their figures plus their cut total is above the cap; 0.00 when it is not, or is n/a. */
   protected excessOf(p: Person): string {
     const total = this.uncappedDueCents(p);
     const cap = this.capCents();
-    return money(total === null || cap === null ? 0 : Math.max(0, total - cap));
+    return money(total === null || cap === null ? 0 : Math.max(0, total + this.cutTotalOf(p.id) - cap));
   }
 
   protected overdueOf(p: Person): Overdue {

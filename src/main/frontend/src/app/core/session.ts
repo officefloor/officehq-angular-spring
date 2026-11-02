@@ -103,7 +103,7 @@ export class Session {
   readonly clerkLimit = computed(() => this.valueOn('clerk-limit', this.today()));
   /** The sheet's policy date (yyyy-mm-dd) as set; null when blank, which means the sheet's today. */
   readonly policyDate = signal<string | null>(null);
-  /** The sheet's cap in force today, two decimals: a person's due-total is at most it; null when none. */
+  /** The sheet's cap in force today, two decimals: a person's due-total is at most it less their cut total (not below 0.00); null when none. */
   readonly cap = computed(() => this.valueOn('cap', this.today()));
   /** The proof threshold in force today, two decimals; null when none. */
   readonly proofThreshold = computed(() => this.valueOn('proof-threshold', this.today()));

@@ -10,6 +10,7 @@ import net.officefloor.hq.app.person.Person;
 import net.officefloor.hq.app.person.PersonNotFoundException;
 import net.officefloor.hq.app.person.PersonRepository;
 import net.officefloor.hq.app.pool.PoolRepository;
+import net.officefloor.hq.app.rollup.RollupService;
 import net.officefloor.hq.app.sheet.SheetNotFoundException;
 import net.officefloor.hq.app.sheet.SheetRepository;
 import org.springframework.stereotype.Service;
@@ -34,11 +35,13 @@ public class CrewService {
     private final CrewMemberRepository members;
     private final PersonRepository people;
     private final PoolRepository pools;
+    private final RollupService rollup;
     private final Audit audit;
 
     public CrewService(SheetRepository sheets, CrewRepository crews, CrewMemberRepository members,
-            PersonRepository people, PoolRepository pools, Audit audit) {
+            PersonRepository people, PoolRepository pools, RollupService rollup, Audit audit) {
         this.pools = pools;
+        this.rollup = rollup;
         this.sheets = sheets;
         this.crews = crews;
         this.members = members;
@@ -75,9 +78,12 @@ public class CrewService {
         if (text.isEmpty()) throw new CrewNameBlankException();
         Person lead = people.findByIdAndSheetId(leadId, sheetId).orElseThrow(PersonNotFoundException::new);
         if (crews.existsBySheetIdAndName(sheetId, text) || pools.existsBySheetIdAndName(sheetId, text)) throw new DuplicateCrewNameException();
+        RollupService.Snapshot before = rollup.snapshot(sheetId);
         Crew saved = crews.saveAndFlush(new Crew(sheetId, text, lead.getId()));
         audit.recordOnCommit("CREW_ADDED sheet=" + sheetId + " by=" + user.strip() + " name=" + text
                 + " lead=" + lead.getName());
+        // a crew is a pool: the cuts it moves move the capped due-totals
+        rollup.recordChanges(sheetId, user, before);
         return saved;
     }
 
@@ -91,8 +97,10 @@ public class CrewService {
                 || members.existsByCrewIdAndPersonId(crew.getId(), person.getId())) {
             throw new CrewMemberRefusedException();
         }
+        RollupService.Snapshot before = rollup.snapshot(sheetId);
         members.saveAndFlush(new CrewMember(crew.getId(), sheetId, person.getId()));
         audit.recordOnCommit("CREW_MEMBER_ADDED sheet=" + sheetId + " by=" + user.strip() + " crew=" + crew.getName()
                 + " name=" + person.getName());
+        rollup.recordChanges(sheetId, user, before);
     }
 }
