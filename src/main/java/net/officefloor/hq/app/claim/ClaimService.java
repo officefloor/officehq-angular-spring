@@ -5,6 +5,7 @@ import java.time.LocalDate;
 import java.util.List;
 import java.util.Optional;
 import net.officefloor.hq.app.Audit;
+import net.officefloor.hq.app.holiday.HolidayService;
 import net.officefloor.hq.app.period.PeriodRepository;
 import net.officefloor.hq.app.person.Person;
 import net.officefloor.hq.app.person.PersonRepository;
@@ -30,6 +31,7 @@ public class ClaimService {
     private final PeriodRepository periods;
     private final RoleService roles;
     private final WatchService watches;
+    private final HolidayService holidays;
     private final Audit audit;
 
     /** How many days after its settlement a steward may still void a settled claim. */
@@ -37,7 +39,7 @@ public class ClaimService {
 
     public ClaimService(ClaimRepository claims, PersonRepository people, Dues dues, SheetService sheets,
             Rollup rollup, PeriodRepository periods, RoleService roles, WatchService watches,
-            Audit audit) {
+            HolidayService holidays, Audit audit) {
         this.claims = claims;
         this.people = people;
         this.dues = dues;
@@ -46,6 +48,7 @@ public class ClaimService {
         this.periods = periods;
         this.roles = roles;
         this.watches = watches;
+        this.holidays = holidays;
         this.audit = audit;
     }
 
@@ -591,10 +594,12 @@ public class ClaimService {
     }
 
     /** The day a claim of the person dated on the day is due by: its date plus the first of the
-     *  person's own terms, their grade's and the sheet's, each as in force on the day. */
+     *  person's own terms, their grade's and the sheet's, each as in force on the day; when that falls
+     *  on a holiday of the sheet, the next day that is not one. */
     private LocalDate dueBy(String sheetId, Person person, LocalDate on) {
         Integer own = person.getTerms();
-        return on.plusDays(own != null ? own : sheets.termsFor(sheetId, person.gradeOn(on), on));
+        return holidays.nextWorkingDay(sheetId,
+                on.plusDays(own != null ? own : sheets.termsFor(sheetId, person.gradeOn(on), on)));
     }
 
     private Person person(String sheetId, long personId) {
