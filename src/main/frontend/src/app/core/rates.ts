@@ -26,22 +26,26 @@ export function pctOn(rates: Rate[], grade: Grade, day: string): string | undefi
 /** A percent with up to two decimals, 0.00 or more. */
 export const PCT = /^\d{1,5}(\.\d{1,2})?$/;
 
-/** Two-decimal text as a whole number of hundredths. */
+/** Two-decimal text, which may be negative, as a whole number of hundredths. */
 function hundredths(text: string): bigint {
-  const [whole, frac = ''] = text.split('.');
-  return BigInt(whole) * 100n + BigInt(frac.padEnd(2, '0'));
+  const negative = text.startsWith('-');
+  const [whole, frac = ''] = (negative ? text.slice(1) : text).split('.');
+  const n = BigInt(whole) * 100n + BigInt(frac.padEnd(2, '0'));
+  return negative ? -n : n;
 }
 
 /** An amount's due at a percent: amount times pct divided by 100, rounded half to even to two
- *  decimals, worked in whole numbers so no rounding creeps in. Null when there is no rate. */
+ *  decimals, worked in whole numbers so no rounding creeps in; a negative amount has a negative
+ *  due. Null when there is no rate. */
 export function due(amount: string, pct: string | undefined): string | null {
   if (pct === undefined) return null;
-  const exact = hundredths(amount) * hundredths(pct);
+  const signed = hundredths(amount) * hundredths(pct);
+  const exact = signed < 0n ? -signed : signed;
   let cents = exact / 10000n;
   const rest = exact % 10000n;
   if (rest > 5000n || (rest === 5000n && cents % 2n === 1n)) cents += 1n;
   const text = cents.toString().padStart(3, '0');
-  return `${text.slice(0, -2)}.${text.slice(-2)}`;
+  return `${signed < 0n && cents > 0n ? '-' : ''}${text.slice(0, -2)}.${text.slice(-2)}`;
 }
 
 /** The larger of two two-decimal figures. */

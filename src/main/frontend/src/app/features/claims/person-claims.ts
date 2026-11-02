@@ -1,7 +1,7 @@
 import { HttpErrorResponse } from '@angular/common/http';
 import { Component, inject, input, output, signal } from '@angular/core';
 import { FormControl, FormGroup, ReactiveFormsModule } from '@angular/forms';
-import { AMOUNT, Claim, ClaimAction, Claims, claimDue, dueBy, overdue } from '../../core/claims';
+import { CLAIM_AMOUNT, Claim, ClaimAction, Claims, claimDue, dueBy, overdue } from '../../core/claims';
 import { GradeFrom, gradeOn } from '../../core/people';
 import { Period, periodOf } from '../../core/periods';
 import { Rate } from '../../core/rates';
@@ -19,6 +19,7 @@ const NOT_DRAFT = 'Only a draft claim can be edited; void an open claim and add 
 /** The message when the server refused a change to a claim dated inside a closed period. */
 const CLOSED = 'The claim\'s period is closed.';
 const RETIRED = 'A claim cannot be dated after the person\'s retirement.';
+const CORRECTS = 'A negative amount must name the number of a settled claim of this person.';
 
 /** The message for a refused action on a claim. */
 function refusal(e: unknown, action: ClaimAction): string {
@@ -47,6 +48,9 @@ function refusal(e: unknown, action: ClaimAction): string {
       <input [id]="'claim-form-date-' + personId()" type="date" data-testid="claim-form-date" formControlName="date" />
       <label [for]="'claim-form-note-' + personId()">Note</label>
       <input [id]="'claim-form-note-' + personId()" data-testid="claim-form-note" formControlName="note" />
+      <label [for]="'claim-form-corrects-' + personId()">Corrects claim number</label>
+      <input [id]="'claim-form-corrects-' + personId()" data-testid="claim-form-corrects" formControlName="corrects"
+        inputmode="numeric" />
       <button type="submit" data-testid="claim-form-submit">{{ editing() === null ? 'Add claim' : 'Save claim' }}</button>
       @if (error()) {
         <p role="alert" data-testid="claim-form-error">{{ error() }}</p>
@@ -59,6 +63,7 @@ function refusal(e: unknown, action: ClaimAction): string {
           <span data-testid="claim-amount">{{ c.amount }}</span>
           <span data-testid="claim-date">{{ c.date }}</span>
           <span data-testid="claim-note">{{ c.note }}</span>
+          <span data-testid="claim-corrects">{{ c.corrects ?? '' }}</span>
           <span data-testid="claim-due">{{ dueOf(c) }}</span>
           <span data-testid="claim-status">{{ c.status }}</span>
           <span data-testid="claim-opened-by">{{ c.openedBy ?? '' }}</span>
@@ -119,6 +124,7 @@ export class PersonClaims {
     amount: new FormControl('', { nonNullable: true }),
     date: new FormControl('', { nonNullable: true }),
     note: new FormControl('', { nonNullable: true }),
+    corrects: new FormControl('', { nonNullable: true }),
   });
 
   constructor() {
@@ -150,7 +156,8 @@ export class PersonClaims {
       return;
     }
     this.editing.set(c.id);
-    this.form.setValue({ amount: c.amount, date: c.date, note: c.note }, { emitEvent: false });
+    this.form.setValue({ amount: c.amount, date: c.date, note: c.note, corrects: c.corrects?.toString() ?? '' },
+      { emitEvent: false });
     this.error.set('');
   }
 
@@ -174,9 +181,14 @@ export class PersonClaims {
     if (this.submitting) return;
     this.error.set('');
     this.claimError.set(null);
-    const { amount, date, note } = this.form.getRawValue();
-    if (!AMOUNT.test(amount.trim())) {
-      this.error.set('Enter an amount of 0.00 or more, with up to two decimals.');
+    const { amount, date, note, corrects } = this.form.getRawValue();
+    if (!CLAIM_AMOUNT.test(amount.trim())) {
+      this.error.set('Enter an amount with up to two decimals; a negative amount is a correction.');
+      return;
+    }
+    const number = corrects.trim();
+    if (number !== '' && !/^[1-9]\d{0,8}$/.test(number)) {
+      this.error.set(CORRECTS);
       return;
     }
     const day = date.trim();
@@ -184,7 +196,9 @@ export class PersonClaims {
       this.error.set('Enter a date, or leave it blank for the sheet\'s today.');
       return;
     }
-    const form = { amount: amount.trim(), date: day === '' ? null : day, note };
+    const form = {
+      amount: amount.trim(), date: day === '' ? null : day, note, corrects: number === '' ? null : Number(number),
+    };
     const id = this.editing();
     this.submitting = true;
     try {
@@ -194,6 +208,7 @@ export class PersonClaims {
     } catch (e) {
       if (e instanceof HttpErrorResponse && e.status === 423) this.error.set(CLOSED);
       else if (e instanceof HttpErrorResponse && e.status === 422) this.error.set(RETIRED);
+      else if (e instanceof HttpErrorResponse && e.status === 400 && amount.trim().startsWith('-')) this.error.set(CORRECTS);
       else if (id !== null && e instanceof HttpErrorResponse && e.status === 409) {
         this.claimError.set({ id, message: NOT_DRAFT });
       }
@@ -205,7 +220,7 @@ export class PersonClaims {
 
   private reset(): void {
     this.editing.set(null);
-    this.form.reset({ amount: '', date: '', note: '' }, { emitEvent: false });
+    this.form.reset({ amount: '', date: '', note: '', corrects: '' }, { emitEvent: false });
     this.error.set('');
   }
 }

@@ -42,6 +42,8 @@ export interface Claim {
   /** The due the last statement bound it to, as text with two decimals; null when it is unbound,
    *  or was bound while it had no due (its due then stays live). */
   statedDue: string | null;
+  /** The number of the settled claim this correction corrects; null when it is not a correction. */
+  corrects: number | null;
 }
 
 export interface ClaimForm {
@@ -49,6 +51,9 @@ export interface ClaimForm {
   /** yyyy-mm-dd, or null for the sheet's today. */
   date: string | null;
   note: string;
+  /** The number of the settled claim of the same person a correction (a negative amount)
+   *  corrects; null when none is named. */
+  corrects: number | null;
 }
 
 /** What a quick-add made: the person the claim is for (added when the name was not on the sheet)
@@ -61,6 +66,14 @@ export interface QuickAdded {
 
 /** An amount with up to two decimals, 0.00 or more. */
 export const AMOUNT = /^\d{1,12}(\.\d{1,2})?$/;
+
+/** A claim's amount with up to two decimals; a negative one is a correction. */
+export const CLAIM_AMOUNT = /^-?\d{1,12}(\.\d{1,2})?$/;
+
+/** Whether a claim is a correction: its amount is below 0.00. */
+export function correction(c: Claim): boolean {
+  return c.amount.startsWith('-') && Number(c.amount) !== 0;
+}
 
 /** The sum of amounts (two-decimal text), added in cents so no rounding creeps in. */
 export function sumAmounts(amounts: string[]): string {
@@ -85,17 +98,19 @@ export interface Lateness {
 /** A claim's due figure: the one fixed when it was settled, or else the one its person's last
  *  statement bound it to, or else its live due at the rate in force on the claim's date for the
  *  grade (the person's grade in force on that date), at least the sheet's floor; with the late charge on top while it is overdue (a
- *  settled claim's figure already holds it). Null when there is none. */
+ *  settled claim's figure already holds it). A correction has no floor and no late charge. Null when there is none. */
 export function claimDue(c: Claim, rates: Rate[], grade: Grade | undefined, floor: string, late: Lateness): string | null {
   if (c.settledDue !== null) return c.settledDue;
   const live = due(c.amount, grade === undefined ? undefined : pctOn(rates, grade, c.date));
-  const figure = (c.stated ? c.statedDue : null) ?? (live === null ? null : atLeast(live, floor));
+  const floored = live === null || correction(c) ? live : atLeast(live, floor);
+  const figure = (c.stated ? c.statedDue : null) ?? floored;
   return figure === null ? null : sumAmounts([figure, lateCharge(c, figure, late)]);
 }
 
 /** The late charge on an overdue claim: the late percent of its figure for every full 30 days it
- *  is overdue, rounded like a due; 0.00 when it is not overdue. */
+ *  is overdue, rounded like a due; 0.00 when it is not overdue, and on a correction. */
 export function lateCharge(c: Claim, figure: string, late: Lateness): string {
+  if (correction(c)) return '0.00';
   if (!overdue(c, late.terms, late.today) || late.today === null) return '0.00';
   const days = (Date.parse(late.today) - Date.parse(dueBy(c, late.terms))) / 86_400_000;
   const periods = Math.floor(days / 30);

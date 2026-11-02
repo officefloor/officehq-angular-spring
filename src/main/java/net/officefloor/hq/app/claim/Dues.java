@@ -45,11 +45,11 @@ public class Dues {
     }
 
     /** The late charge on an open claim overdue on the sheet's today (its due-by, its date plus the
-     *  terms, before today): the late percent of its figure for every full 30 days it is overdue,
+     *  terms, before today; a correction has none): the late percent of its figure for every full 30 days it is overdue,
      *  rounded half to even to two decimals; 0.00 when it is not overdue. */
     private BigDecimal lateCharge(String sheetId, Claim claim, BigDecimal figure) {
         BigDecimal none = BigDecimal.ZERO.setScale(2);
-        if (claim.getStatus() != ClaimStatus.OPEN) {
+        if (claim.getStatus() != ClaimStatus.OPEN || claim.isCorrection()) {
             return none;
         }
         LocalDate dueBy = claim.getDate().plusDays(sheets.terms(sheetId));
@@ -89,13 +89,13 @@ public class Dues {
     /** A claim's live due at the rate, in force on the claim's date, for the person's grade in force
      *  on that date: amount
      *  times pct divided by 100, rounded half to even to two decimals, and at least the sheet's
-     *  floor; null when no rate applies on that date. */
+     *  floor (a correction has no floor); null when no rate applies on that date. */
     private BigDecimal due(String sheetId, Person person, Claim claim) {
         BigDecimal floor = sheets.floor(sheetId);
         return rates.findInForce(sheetId, person.gradeOn(claim.getDate()), claim.getDate())
                 .map(Rate::getPct)
                 .map(pct -> claim.getAmount().multiply(pct).movePointLeft(2).setScale(2, RoundingMode.HALF_EVEN))
-                .map(due -> due.max(floor))
+                .map(due -> claim.isCorrection() ? due : due.max(floor))
                 .orElse(null);
     }
 }

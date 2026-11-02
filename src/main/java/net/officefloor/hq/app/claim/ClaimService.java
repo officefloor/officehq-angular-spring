@@ -48,15 +48,24 @@ public class ClaimService {
     }
 
     /** Add a claim for a person; a date left out takes the sheet's today. Refused when the date falls
-     *  inside a closed period, or after the person's retirement day. */
+     *  inside a closed period, or after the person's retirement day, and when a correction (a negative
+     *  amount) does not name a settled claim of the person. */
     @Transactional
     public Claim add(String sheetId, String user, long personId, BigDecimal amount, LocalDate date, String note) {
+        return add(sheetId, user, personId, amount, date, note, null);
+    }
+
+    /** Add a claim for a person, naming the number of the claim it corrects (only a correction keeps it). */
+    @Transactional
+    public Claim add(String sheetId, String user, long personId, BigDecimal amount, LocalDate date, String note,
+            Integer corrects) {
         LocalDate on = date != null ? date : sheets.today(sheetId);
         refuseClosed(sheetId, on);
         refuseRetired(person(sheetId, personId), on);
+        Integer corrected = corrected(sheetId, personId, amount, corrects);
         return rollup.tracking(sheetId, user, () -> {
             Person person = person(sheetId, personId);
-            Claim claim = claims.saveAndFlush(new Claim(sheetId, personId, amount, on, note));
+            Claim claim = claims.saveAndFlush(new Claim(sheetId, personId, amount, on, note, corrected));
             audit.recordOnCommit(record("CLAIM_ADDED", sheetId, user, person, claim));
             return claim;
         });
@@ -67,7 +76,8 @@ public class ClaimService {
      *  when the claim's date, or the new one, falls inside a closed period, and when the new one is
      *  after the person's retirement day. */
     @Transactional
-    public Claim edit(String sheetId, String user, long claimId, BigDecimal amount, LocalDate date, String note) {
+    public Claim edit(String sheetId, String user, long claimId, BigDecimal amount, LocalDate date, String note,
+            Integer corrects) {
         Claim claim = claims.findByIdAndSheetId(claimId, sheetId)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "No such claim on this sheet"));
         if (claim.getStatus() != ClaimStatus.DRAFT) {
@@ -78,8 +88,10 @@ public class ClaimService {
         refuseClosed(sheetId, claim.getDate());
         refuseClosed(sheetId, on);
         refuseRetired(person(sheetId, claim.getPersonId()), on);
+        Integer corrected = corrected(sheetId, claim.getPersonId(), amount, corrects);
         return rollup.tracking(sheetId, user, () -> {
             claim.setAmount(amount);
+            claim.setCorrects(corrected);
             claim.setDate(on);
             claim.setNote(note);
             Claim saved = claims.saveAndFlush(claim);
@@ -135,6 +147,21 @@ public class ClaimService {
             audit.recordOnCommit(line);
             return saved;
         });
+    }
+
+    /** The number a claim of the amount corrects: none for an amount of 0.00 or more; for a correction
+     *  (a negative amount), the number given, which must be that of a settled claim of the person, or
+     *  else it is refused. */
+    private Integer corrected(String sheetId, long personId, BigDecimal amount, Integer corrects) {
+        if (amount.signum() >= 0) {
+            return null;
+        }
+        if (corrects == null || claims.findBySheetIdAndPersonIdAndNumberAndStatus(sheetId, personId, corrects,
+                ClaimStatus.SETTLED).isEmpty()) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
+                    "A negative amount must correct a settled claim of the same person");
+        }
+        return corrects;
     }
 
     /** Refuse a change to a claim dated on the day when the day falls inside a closed period. */
