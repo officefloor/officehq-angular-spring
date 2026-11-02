@@ -25,8 +25,8 @@ import org.springframework.web.bind.annotation.RestController;
 @RequestMapping("/api/sheets/{sheetId}")
 public class PolicyVersionController {
 
-    /** A policy version: its number, from-date (null: none, the start), key, value (null: none) and claim count. */
-    public record PolicyVersionView(int version, LocalDate from, String key, String value, long claims) {}
+    /** A policy version: its number, from-date (null: none, the start), key, value (null: none), claim count and those claims' ids. */
+    public record PolicyVersionView(int version, LocalDate from, String key, String value, long claims, List<Long> claimIds) {}
 
     private final SheetRepository sheets;
     private final ClaimRepository claims;
@@ -44,12 +44,13 @@ public class PolicyVersionController {
         Sheet sheet = sheets.findById(sheetId).orElse(null);
         if (sheet == null) return List.of();
         List<DatedSettingLine> log = sheet.getPolicyLog();
-        long[] counts = new long[log.size() + 1];
-        for (Claim claim : claims.findBySheetIdOrderByIdDesc(sheetId)) counts[sheet.policyVersionOn(claim.getDate())]++;
+        List<List<Long>> ids = new ArrayList<>();
+        for (int i = 0; i <= log.size(); i++) ids.add(new ArrayList<>());
+        for (Claim claim : claims.findBySheetIdOrderByIdDesc(sheetId)) ids.get(sheet.policyVersionOn(claim.getDate())).add(claim.getId());
         List<PolicyVersionView> views = new ArrayList<>();
         for (int i = 0; i < log.size(); i++) {
             DatedSettingLine line = log.get(i);
-            views.add(new PolicyVersionView(i + 1, line.getFrom(), line.getKey(), line.getValue(), counts[i + 1]));
+            views.add(new PolicyVersionView(i + 1, line.getFrom(), line.getKey(), line.getValue(), ids.get(i + 1).size(), ids.get(i + 1)));
         }
         return views;
     }

@@ -41,6 +41,16 @@ interface Snapshot {
   dueTotal: string | null;
 }
 
+/** A policy version as the store sends it: its number, from-date, setting, claim count and those claims' ids. */
+interface PolicyVersionLine {
+  version: number;
+  from: string | null;
+  key: string;
+  value: string | null;
+  claims: number;
+  claimIds: number[];
+}
+
 interface Person {
   id: number;
   name: string;
@@ -445,6 +455,7 @@ function trimmedSum(figures: number[]): number {
       <button type="button" data-testid="export-people" (click)="exportCsv()">Export CSV</button>
       <button type="button" data-testid="export-claims" (click)="exportClaims()">Export claims CSV</button>
       <button type="button" data-testid="export-periods" (click)="exportPeriods()">Export period figures CSV</button>
+      <button type="button" data-testid="export-policy" (click)="exportPolicy()">Export policy versions CSV</button>
       <button type="button" data-testid="bulk-open" (click)="bulkOpen()">Open selected claims</button>
       @if (bulkOpened(); as result) {
         <p role="status">Opened <span data-testid="bulk-opened">{{ result.opened }}</span>,
@@ -1879,6 +1890,33 @@ export class People {
       }
     }
     downloadCsv(lines, 'periods.csv');
+  }
+
+  /**
+   * Downloads the policy versions as CSV, oldest first: version, from, key, value, how many claims it is the
+   * policy version of and the due-total of those of them that count, as the screen shows their dues.
+   * Re-read from the store first.
+   */
+  protected async exportPolicy(): Promise<void> {
+    const sheet = this.session.sheetId();
+    if (!(await this.reloadForExport()) || !sheet) return;
+    const versions = await firstValueFrom(this.http.get<PolicyVersionLine[]>(
+      `/api/sheets/${encodeURIComponent(sheet)}/policy-versions`, { headers: this.headers() }));
+    if (this.session.sheetId() !== sheet) return;
+    const byId = new Map(this.claims().map((c) => [c.id, c]));
+    const lines = [['version', 'from', 'key', 'value', 'claims', 'due-total']];
+    for (const v of versions) {
+      let total = 0;
+      for (const id of v.claimIds) {
+        const c = byId.get(id);
+        const pctOn = c === undefined ? undefined : this.pctOnOf(c.personId);
+        if (c === undefined || pctOn === undefined || !this.counts(c)) continue;
+        const theirs = this.claimsOf(c.personId);
+        total += claimDueCents(c, pctOn, this.session.floorCentsOn, this.session.late(), roundsOn(c, theirs), this.graceOnOf(c.personId)) ?? 0;
+      }
+      lines.push([String(v.version), v.from ?? '', v.key, v.value ?? '', String(v.claims), money(total)]);
+    }
+    downloadCsv(lines, 'policy-versions.csv');
   }
 
   /**
