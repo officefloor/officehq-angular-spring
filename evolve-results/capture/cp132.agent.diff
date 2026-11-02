@@ -1,0 +1,117 @@
+diff --git a/src/main/java/net/officefloor/hq/app/sheet/Sheet.java b/src/main/java/net/officefloor/hq/app/sheet/Sheet.java
+index 62c3b4ccc..2883eb9d8 100644
+--- a/src/main/java/net/officefloor/hq/app/sheet/Sheet.java
++++ b/src/main/java/net/officefloor/hq/app/sheet/Sheet.java
+@@ -22,7 +22,7 @@ public class Sheet {
+     @Column(name = "today", nullable = false)
+     private LocalDate today;
+ 
+-    /** The last claim number given on the sheet; only ever moved on by {@link SheetRepository#nextClaimNumber}. */
++    /** The last claim number given on the sheet; only ever moved on by {@link SheetService#nextClaimNumber}. */
+     @Column(name = "last_claim_number", insertable = false, updatable = false)
+     private int lastClaimNumber;
+ 
+diff --git a/src/main/java/net/officefloor/hq/app/sheet/SheetRepository.java b/src/main/java/net/officefloor/hq/app/sheet/SheetRepository.java
+index 328c1c1dc..5b568d475 100644
+--- a/src/main/java/net/officefloor/hq/app/sheet/SheetRepository.java
++++ b/src/main/java/net/officefloor/hq/app/sheet/SheetRepository.java
+@@ -1,6 +1,9 @@
+ package net.officefloor.hq.app.sheet;
+ 
+ import java.util.ArrayList;
++import java.util.Collection;
++import java.util.HashSet;
++import java.util.Set;
+ import java.util.List;
+ import org.springframework.data.jpa.repository.JpaRepository;
+ import org.springframework.data.jpa.repository.Modifying;
+@@ -8,15 +11,23 @@ import org.springframework.data.jpa.repository.Query;
+ 
+ public interface SheetRepository extends JpaRepository<Sheet, String> {
+ 
+-    /** Move the sheet's last claim number on by one; the row stays locked until the transaction
+-     *  ends, so two claims opened at once get one number each. */
+-    @Modifying
+-    @Query("update Sheet s set s.lastClaimNumber = s.lastClaimNumber + 1 where s.id = :id")
+-    int advanceClaimNumber(String id);
+-
+     @Query("select s.lastClaimNumber from Sheet s where s.id = :id")
+     int lastClaimNumber(String id);
+ 
++    /** Lock the sheet's row until the transaction ends (a no-op update); 0 when there is no such sheet. */
++    @Modifying
++    @Query("update Sheet s set s.lastClaimNumber = s.lastClaimNumber where s.id = :id")
++    int lockClaimNumber(String id);
++
++    /** The last claim number given on any of the sheets. */
++    @Query("select coalesce(max(s.lastClaimNumber), 0) from Sheet s where s.id in :ids")
++    int lastClaimNumber(Collection<String> ids);
++
++    /** Set the sheet's last claim number. */
++    @Modifying
++    @Query("update Sheet s set s.lastClaimNumber = :number where s.id = :id")
++    int setLastClaimNumber(String id, int number);
++
+     /** Move the sheet's last X-number (for claims in no period) on by one; the row stays locked
+      *  until the transaction ends. */
+     @Modifying
+@@ -58,6 +69,21 @@ public interface SheetRepository extends JpaRepository<Sheet, String> {
+         return down;
+     }
+ 
++    /** The id of the root of the sheet's tree: its topmost ancestor, or the sheet itself when it has
++     *  no parent (a cycle of parents stops where it comes round again). */
++    default String root(String id) {
++        Set<String> seen = new HashSet<>();
++        String at = id;
++        while (seen.add(at)) {
++            String parent = findById(at).map(Sheet::getParentId).orElse(null);
++            if (parent == null || seen.contains(parent)) {
++                break;
++            }
++            at = parent;
++        }
++        return at;
++    }
++
+     /** How many levels up a sheet's rates are taken from: its parent, its parent's parent, and so on. */
+     int ANCESTOR_LEVELS = 3;
+ 
+diff --git a/src/main/java/net/officefloor/hq/app/sheet/SheetService.java b/src/main/java/net/officefloor/hq/app/sheet/SheetService.java
+index e92775407..08cf9ac83 100644
+--- a/src/main/java/net/officefloor/hq/app/sheet/SheetService.java
++++ b/src/main/java/net/officefloor/hq/app/sheet/SheetService.java
+@@ -3,6 +3,7 @@ package net.officefloor.hq.app.sheet;
+ import java.math.BigDecimal;
+ import java.time.LocalDate;
+ import java.util.ArrayDeque;
++import java.util.ArrayList;
+ import java.util.Deque;
+ import java.util.HashSet;
+ import java.util.List;
+@@ -93,13 +94,22 @@ public class SheetService {
+         return sheets.findById(id).map(Sheet::getToday).orElseGet(LocalDate::now);
+     }
+ 
+-    /** The next claim number on the sheet: 1 for its first opened claim, then 2, and so on. */
++    /** The next claim number on the sheet: the sheets of a tree share one sequence, so it is the
++     *  next after the last number given on any sheet of the sheet's tree (1 for the tree's first). */
+     @Transactional
+     public int nextClaimNumber(String id) {
+-        if (sheets.advanceClaimNumber(id) != 1) {
++        // the tree's root row is locked until the transaction ends, so two claims opened on its
++        // sheets at once get one number each
++        String root = sheets.root(id);
++        sheets.lockClaimNumber(root);
++        if (sheets.lockClaimNumber(id) != 1) {
+             throw new IllegalStateException("No sheet " + id);
+         }
+-        return sheets.lastClaimNumber(id);
++        List<String> tree = new ArrayList<>(sheets.descendants(root));
++        tree.add(root);
++        int next = sheets.lastClaimNumber(tree) + 1;
++        sheets.setLastClaimNumber(id, next);
++        return next;
+     }
+ 
+     /** The next settle batch number on the sheet: 1 for its first bulk settle that settled a claim,
