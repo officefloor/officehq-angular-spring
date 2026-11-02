@@ -1,0 +1,63 @@
+diff --git a/src/main/frontend/src/app/features/people/people-list.ts b/src/main/frontend/src/app/features/people/people-list.ts
+index 4c3506b84..bb6e5faa1 100644
+--- a/src/main/frontend/src/app/features/people/people-list.ts
++++ b/src/main/frontend/src/app/features/people/people-list.ts
+@@ -167,6 +167,7 @@ const NO_LEAVE: Leave = { holds: [], retiredFrom: null };
+         }
+       </div>
+       <button type="button" data-testid="export-people" (click)="exportCsv()">Export people (CSV)</button>
++      <button type="button" data-testid="export-claims" (click)="exportClaimsCsv()">Export claims (CSV)</button>
+       <table data-testid="people">
+         <thead>
+           <tr><th scope="col"><span class="visually-hidden">Select</span></th><th scope="col">Name</th><th scope="col">Grade</th><th scope="col">Active</th><th scope="col">Terms</th><th scope="col">Contact</th><th scope="col">Aliases</th><th scope="col">Clashing</th><th scope="col">Came from</th><th scope="col">Claimed</th><th scope="col">Due</th><th scope="col">Settled due</th><th scope="col">Open due</th>@for (pd of periods(); track pd.id) {<th scope="col">Due in {{ pd.name }}</th>}<th scope="col">Excess</th><th scope="col">Cut total</th><th scope="col">Statements</th><th scope="col">Last stated</th><th scope="col">Stated on</th><th scope="col">Retired</th><th scope="col">Retired from</th><th scope="col">Past retirements</th><th scope="col">On hold</th><th scope="col">Overdue</th><th scope="col">Overdue due</th><th scope="col">Due aged 0–30 days</th><th scope="col">Due aged 31–60 days</th><th scope="col">Due aged 61+ days</th><th scope="col">Patrons</th><th scope="col">Backing</th><th scope="col">Watched</th><th scope="col">Claims</th><th scope="col"><span class="visually-hidden">Actions</span></th></tr>
+@@ -1291,13 +1292,25 @@ export class PeopleList {
+     const lines = [['name', 'grade', 'retired-from', 'due-total']].concat(
+       this.people().map((p) => [p.name, this.gradeOf(p), p.retiredFrom ?? '', this.dueOf(p) ?? 'n/a']),
+     );
+-    const text = lines.map((l) => l.map(csvField).join(',') + '\n').join('');
+-    const url = URL.createObjectURL(new Blob([text], { type: 'text/csv;charset=utf-8' }));
+-    const a = document.createElement('a');
+-    a.href = url;
+-    a.download = 'people.csv';
+-    a.click();
+-    setTimeout(() => URL.revokeObjectURL(url), 1000);
++    downloadCsv(lines, 'people.csv');
++  }
++
++  /** Downloads every claim as CSV, people (retired included) in list order and each person's
++   *  claims oldest first: person, number, date, amount, due, status and period as the claim's row
++   *  shows them. */
++  protected exportClaimsCsv(): void {
++    const lines = [['person', 'number', 'date', 'amount', 'due', 'status', 'period']].concat(
++      this.people().flatMap((p) => [...(this.claimsByPerson().get(p.id) ?? [])].reverse().map((c) => [
++        p.name,
++        c.number ?? '',
++        c.date,
++        c.amount,
++        claimDue(c, this.rates(), gradeOn(p.grades, c.date), this.floor(), this.lateness()) ?? 'n/a',
++        c.status,
++        periodOf(this.periods(), c.dueBy)?.name ?? '',
++      ])),
++    );
++    downloadCsv(lines, 'claims.csv');
+   }
+ 
+   protected gradeOf(p: Person): Grade {
+@@ -1391,6 +1404,17 @@ function tagsOf(c: Claim): string[] {
+   return c.tags === '' ? [] : c.tags.split(', ');
+ }
+ 
++/** Downloads the lines as a CSV file of the name given, each line ended by a line feed. */
++function downloadCsv(lines: string[][], name: string): void {
++  const text = lines.map((l) => l.map(csvField).join(',') + '\n').join('');
++  const url = URL.createObjectURL(new Blob([text], { type: 'text/csv;charset=utf-8' }));
++  const a = document.createElement('a');
++  a.href = url;
++  a.download = name;
++  a.click();
++  setTimeout(() => URL.revokeObjectURL(url), 1000);
++}
++
+ /** A CSV field: quoted, with quotes doubled, when it holds a comma, a quote or a line break. */
+ function csvField(v: string): string {
+   return /[",\r\n]/.test(v) ? '"' + v.replace(/"/g, '""') + '"' : v;
