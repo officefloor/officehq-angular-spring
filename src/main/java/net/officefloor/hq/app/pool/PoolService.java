@@ -34,8 +34,10 @@ public class PoolService {
     public static final int MAX_DEPTH = 3;
 
     /** A member as the pool shows them: the person, or the pool (exactly one of them), and their share;
-     *  and whether the member is a person with a hold in force on the sheet's today. */
-    public record Member(PoolMember member, Person person, Pool pool, boolean held) {
+     *  whether the member is a person with a hold in force on the sheet's today; and whether the
+     *  membership's dates include the sheet's today (a member out of force is left out entirely:
+     *  not in the total share, not in the balance, no cut). */
+    public record Member(PoolMember member, Person person, Pool pool, boolean held, boolean inForce) {
 
         /** Whether the member is a person with a retirement day set: their share then counts as 0.00. */
         public boolean retired() {
@@ -48,10 +50,10 @@ public class PoolService {
     public record Listed(Pool pool, List<Member> members, BigDecimal pot) {
 
         /** The shares of the members added up, a retired member's (one with a retirement day set,
-         *  whatever the day) counting as 0.00. */
+         *  whatever the day) counting as 0.00 and a member out of force left out. */
         public BigDecimal totalShare() {
             return members.stream()
-                    .filter(m -> !m.retired())
+                    .filter(m -> !m.retired() && m.inForce())
                     .map(m -> m.member().getShare())
                     .reduce(BigDecimal.ZERO.setScale(2), BigDecimal::add);
         }
@@ -66,28 +68,35 @@ public class PoolService {
          *  retired member's share counting as 0.00, a held member getting no cut: 0.00), with the
          *  remainder of the pot going to the member with a cut with the largest share (the earliest
          *  added on a tie), so the cuts total exactly the pot (each 0.00 when no member has a cut);
-         *  none (an empty list) when there is no pot or the pool is not balanced. */
+         *  none (an empty list) when there is no pot or the pool is not balanced. A member out of
+         *  force has no cut at all: its entry is null. */
         public List<BigDecimal> cuts() {
             if (pot == null || !balanced()) {
                 return List.of();
             }
             List<BigDecimal> shares = members.stream()
-                    .map(m -> m.retired() || m.held() ? BigDecimal.ZERO.setScale(2) : m.member().getShare())
+                    .map(m -> m.retired() || m.held() || !m.inForce() ? BigDecimal.ZERO.setScale(2)
+                            : m.member().getShare())
                     .toList();
             BigDecimal withCut = shares.stream().reduce(BigDecimal.ZERO.setScale(2), BigDecimal::add);
-            if (withCut.signum() == 0) {
-                return shares;
+            List<BigDecimal> cuts = new ArrayList<>(shares.size());
+            for (int i = 0; i < shares.size(); i++) {
+                BigDecimal sh = shares.get(i);
+                cuts.add(!members.get(i).inForce() ? null
+                        : withCut.signum() == 0 ? sh
+                        : pot.multiply(sh).divide(withCut, 2, RoundingMode.HALF_EVEN));
             }
-            List<BigDecimal> cuts = new ArrayList<>(shares.stream()
-                    .map(sh -> pot.multiply(sh).divide(withCut, 2, RoundingMode.HALF_EVEN))
-                    .toList());
+            if (withCut.signum() == 0) {
+                return cuts;
+            }
             int largest = 0;
             for (int i = 1; i < shares.size(); i++) {
                 if (shares.get(i).compareTo(shares.get(largest)) > 0) {
                     largest = i;
                 }
             }
-            BigDecimal remainder = pot.subtract(cuts.stream().reduce(BigDecimal.ZERO, BigDecimal::add));
+            BigDecimal remainder = pot.subtract(cuts.stream().filter(c -> c != null)
+                    .reduce(BigDecimal.ZERO, BigDecimal::add));
             cuts.set(largest, cuts.get(largest).add(remainder).setScale(2));
             return cuts;
         }
@@ -125,7 +134,8 @@ public class PoolService {
                             : poolsById.containsKey(m.getMemberPoolId()))
                     .map(m -> new Member(m, m.getPersonId() == null ? null : byId.get(m.getPersonId()),
                             m.getMemberPoolId() == null ? null : poolsById.get(m.getMemberPoolId()),
-                            m.getPersonId() != null && byId.get(m.getPersonId()).isHeldOn(today)))
+                            m.getPersonId() != null && byId.get(m.getPersonId()).isHeldOn(today),
+                            m.isInForceOn(today)))
                     .toList());
         }
         Map<Long, Long> above = memberships.stream().filter(m -> m.getMemberPoolId() != null)
@@ -188,12 +198,13 @@ public class PoolService {
      *  pools would be more than {@link #MAX_DEPTH} deep. */
     @Transactional
     public synchronized Listed addPoolMember(String sheetId, String user, long poolId, long memberPoolId,
-            String share) {
+            String share, LocalDate from, LocalDate to) {
         Pool pool = pools.findByIdAndSheetId(poolId, sheetId)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "No such pool"));
         Pool member = pools.findByIdAndSheetId(memberPoolId, sheetId)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "No such pool"));
         BigDecimal amount = share(share);
+        checkDates(from, to);
         List<PoolMember> all = members.findByPoolIdInOrderByIdAsc(
                 pools.findBySheetIdOrderByIdAsc(sheetId).stream().map(Pool::getId).toList());
         Map<Long, Long> above = all.stream().filter(m -> m.getMemberPoolId() != null)
@@ -214,12 +225,14 @@ public class PoolService {
                     "A chain of pools is at most " + MAX_DEPTH + " deep");
         }
         try {
-            members.saveAndFlush(PoolMember.ofPool(poolId, memberPoolId, amount));
+            PoolMember m = PoolMember.ofPool(poolId, memberPoolId, amount);
+            m.setDates(from, to);
+            members.saveAndFlush(m);
         } catch (DataIntegrityViolationException e) {
             throw new ResponseStatusException(HttpStatus.CONFLICT, "That pool is already a member of a pool");
         }
         audit.recordOnCommit("POOL_MEMBER_ADDED sheet=" + sheetId + " by=" + user + " pool=" + pool.getName()
-                + " name=" + member.getName() + " share=" + amount.toPlainString());
+                + " name=" + member.getName() + " share=" + amount.toPlainString() + dates(from, to));
         return list(sheetId).stream().filter(l -> l.pool().getId().equals(poolId)).findFirst().orElseThrow();
     }
 
@@ -240,23 +253,39 @@ public class PoolService {
     /** Add a person of the sheet to a pool with a share (two decimals, above 0.00 and at most
      *  100.00); refused when the share is bad or the person is already in the pool. */
     @Transactional
-    public synchronized Listed addMember(String sheetId, String user, long poolId, long personId, String share) {
+    public synchronized Listed addMember(String sheetId, String user, long poolId, long personId, String share,
+            LocalDate from, LocalDate to) {
         Pool pool = pools.findByIdAndSheetId(poolId, sheetId)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "No such pool"));
         Person person = people.findByIdAndSheetId(personId, sheetId)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "No such person"));
         BigDecimal amount = share(share);
+        checkDates(from, to);
         if (members.existsByPoolIdAndPersonId(poolId, personId)) {
             throw alreadyAMember();
         }
         try {
-            members.saveAndFlush(new PoolMember(poolId, personId, amount));
+            PoolMember m = new PoolMember(poolId, personId, amount);
+            m.setDates(from, to);
+            members.saveAndFlush(m);
         } catch (DataIntegrityViolationException e) {
             throw alreadyAMember();
         }
         audit.recordOnCommit("POOL_MEMBER_ADDED sheet=" + sheetId + " by=" + user + " pool=" + pool.getName()
-                + " name=" + person.getName() + " share=" + amount.toPlainString());
+                + " name=" + person.getName() + " share=" + amount.toPlainString() + dates(from, to));
         return list(sheetId).stream().filter(l -> l.pool().getId().equals(poolId)).findFirst().orElseThrow();
+    }
+
+    /** Refused when both dates are given and the to-date is before the from-date. */
+    private static void checkDates(LocalDate from, LocalDate to) {
+        if (from != null && to != null && to.isBefore(from)) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "The to-date is before the from-date");
+        }
+    }
+
+    /** The membership's dates as the audit records them: from=<date> and to=<date>, each when given. */
+    private static String dates(LocalDate from, LocalDate to) {
+        return (from == null ? "" : " from=" + from) + (to == null ? "" : " to=" + to);
     }
 
     /** A share as entered, to two decimals; refused unless above 0.00 and at most 100.00. */

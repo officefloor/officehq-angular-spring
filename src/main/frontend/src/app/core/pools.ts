@@ -17,6 +17,13 @@ export interface PoolMember {
   /** Their cut of the pool's pot, as text with two decimals; null when the pool shows no cut (it is
    *  not balanced, or it has no pot). */
   cut: string | null;
+  /** The first day of the membership (yyyy-mm-dd); null: no start. */
+  from: string | null;
+  /** The last day of the membership (yyyy-mm-dd); null: no end. */
+  to: string | null;
+  /** Whether the membership's dates include the sheet's today: a member out of force is left out
+   *  entirely (not in the total share, not in the balance, no cut). */
+  inForce: boolean;
 }
 
 /** A pool on the sheet: its members in the order they were added, their shares' total and whether
@@ -84,11 +91,17 @@ export class Pools {
 
   /** Add a person, or another pool, to a pool with a share; refused (400) for a bad share and (409)
    *  when the person is already in the pool, or the pool is already a member of a pool, would contain
-   *  itself or would make a chain of pools too deep. */
-  async addMember(poolId: number, member: { personId: number } | { poolId: number }, share: string): Promise<void> {
+   *  itself or would make a chain of pools too deep; the optional from- and to-dates bound the days
+   *  the membership runs (refused, 400, when the to-date is before the from-date). */
+  async addMember(
+    poolId: number,
+    member: { personId: number } | { poolId: number },
+    share: string,
+    dates: { from: string | null; to: string | null },
+  ): Promise<void> {
     const { sheetId, user } = this.active();
     await firstValueFrom(
-      this.http.post<Pool>(`${this.url(sheetId)}/${poolId}/members`, { ...member, share },
+      this.http.post<Pool>(`${this.url(sheetId)}/${poolId}/members`, { ...member, share, ...dates },
         { headers: { 'X-User': user } }),
     );
     // a pool member changes the pots of the pools below it: read them all again

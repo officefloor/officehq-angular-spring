@@ -7,7 +7,8 @@ import { Pool, PoolMember, Pools, formatCents, shareCents } from '../../core/poo
 // A pool's row: its members (people, and pools shown as pool:<name>) with their shares, the total
 // and whether it is balanced (exactly 100.00), each member's cut of the pool's pot (blank unless the
 // pool is balanced and has a pot: the sheet's, or its cut in the pool above when it is a member of
-// one), and the entry a member is added with. A retired member's share counts as 0.00.
+// one), and the entry a member is added with. A retired member's share counts as 0.00; a member
+// whose dates do not include the sheet's today is left out of the total and has no cut.
 @Component({
   selector: 'app-pool-row',
   imports: [ReactiveFormsModule],
@@ -24,6 +25,8 @@ import { Pool, PoolMember, Pools, formatCents, shareCents } from '../../core/poo
           {{ nameOf(m) }}: <span data-testid="pool-share">{{ m.share }}</span>,
           cut <span data-testid="pool-cut">{{ m.cut ?? '' }}</span>
           @if (isRetired(m)) { (retired) }
+          @if (m.from || m.to) { ({{ m.from ?? '' }} to {{ m.to ?? '' }}) }
+          @if (!m.inForce) { (not in force) }
         </li>
       }
     </ul>
@@ -41,6 +44,10 @@ import { Pool, PoolMember, Pools, formatCents, shareCents } from '../../core/poo
       <label [for]="'pool-member-share-' + pool().id">Share %</label>
       <input [id]="'pool-member-share-' + pool().id" data-testid="pool-member-share" formControlName="share"
         inputmode="decimal" />
+      <label [for]="'pool-member-from-' + pool().id">From</label>
+      <input [id]="'pool-member-from-' + pool().id" type="date" data-testid="pool-member-from" formControlName="from" />
+      <label [for]="'pool-member-to-' + pool().id">To</label>
+      <input [id]="'pool-member-to-' + pool().id" type="date" data-testid="pool-member-to" formControlName="to" />
       <button type="submit" data-testid="pool-member-add">Add member</button>
       @if (error()) {
         <p role="alert" data-testid="pool-error">{{ error() }}</p>
@@ -56,10 +63,10 @@ export class PoolRow {
   protected readonly pools = inject(Pools);
   private readonly byId = computed(() => new Map(this.people().map((p) => [p.id, p])));
 
-  /** The members' shares added up, a retired member's counting as 0.00. */
+  /** The members' shares added up, a retired member's counting as 0.00 and one out of force left out. */
   private readonly totalCents = computed(() =>
     this.pool().members.reduce(
-      (sum, m) => (this.isRetired(m) ? sum : sum + (shareCents(m.share) ?? 0)), 0),
+      (sum, m) => (this.isRetired(m) || !m.inForce ? sum : sum + (shareCents(m.share) ?? 0)), 0),
   );
   protected readonly totalShare = computed(() => formatCents(this.totalCents()));
   protected readonly balanced = computed(() => this.totalCents() === 10000);
@@ -68,6 +75,8 @@ export class PoolRow {
   protected readonly form = new FormGroup({
     personId: new FormControl('', { nonNullable: true }),
     share: new FormControl('', { nonNullable: true }),
+    from: new FormControl('', { nonNullable: true }),
+    to: new FormControl('', { nonNullable: true }),
   });
   private submitting = false;
 
@@ -91,7 +100,7 @@ export class PoolRow {
   protected async submit(): Promise<void> {
     if (this.submitting) return;
     this.error.set('');
-    const { personId, share } = this.form.getRawValue();
+    const { personId, share, from, to } = this.form.getRawValue();
     const poolId = personId.startsWith('pool:') ? Number(personId.slice(5)) : null;
     const id = Number(personId);
     if (poolId === null ? personId === '' || !this.byId().has(id) : !this.pools.list().some((p) => p.id === poolId)) {
@@ -102,14 +111,19 @@ export class PoolRow {
       this.error.set('A share is a percent with two decimals, more than 0.00 and at most 100.00.');
       return;
     }
+    if (from && to && to < from) {
+      this.error.set('The to-date is before the from-date.');
+      return;
+    }
     if (poolId === null && this.pool().members.some((m) => m.personId === id)) {
       this.error.set('That person is already in the pool.');
       return;
     }
     this.submitting = true;
     try {
-      await this.pools.addMember(this.pool().id, poolId === null ? { personId: id } : { poolId }, share.trim());
-      this.form.reset({ personId: '', share: '' }, { emitEvent: false });
+      await this.pools.addMember(this.pool().id, poolId === null ? { personId: id } : { poolId }, share.trim(),
+        { from: from || null, to: to || null });
+      this.form.reset({ personId: '', share: '', from: '', to: '' }, { emitEvent: false });
     } catch (e) {
       this.error.set(
         e instanceof HttpErrorResponse && e.status === 409
@@ -117,6 +131,8 @@ export class PoolRow {
             ? 'That person is already in the pool, or the sheet may not be changed.'
             : 'That pool is already a member of a pool, would contain itself, or would make a chain of '
               + 'pools more than three deep; or the sheet may not be changed.'
+          : e instanceof HttpErrorResponse && e.status === 400
+            ? 'The share or the dates are not valid.'
           : e instanceof HttpErrorResponse && e.status === 403
             ? 'A viewer may not add a pool member.'
             : 'The member could not be added.',

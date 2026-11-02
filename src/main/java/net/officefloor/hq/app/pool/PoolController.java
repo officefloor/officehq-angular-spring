@@ -4,6 +4,7 @@ import jakarta.validation.Valid;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.Size;
 import java.math.BigDecimal;
+import java.time.LocalDate;
 import java.util.List;
 import java.util.stream.IntStream;
 import org.springframework.http.HttpStatus;
@@ -24,15 +25,18 @@ import org.springframework.web.server.ResponseStatusException;
 public class PoolController {
 
     /** A member as the screen shows them: the person (null for a pool member) or the pool (null for
-     *  a person) and its name, their share, whether they are retired, and their cut of the pot as text
-     *  with two decimals (null when the pool shows no cut). */
-    public record MemberView(Long personId, Long poolId, String name, String share, boolean retired, String cut) {
+     *  a person) and its name, their share, whether they are retired, their cut of the pot as text
+     *  with two decimals (null when the pool shows no cut, or the member is out of force), the days
+     *  the membership runs (null: open-ended) and whether they include the sheet's today. */
+    public record MemberView(Long personId, Long poolId, String name, String share, boolean retired, String cut,
+            LocalDate from, LocalDate to, boolean inForce) {
         static MemberView of(PoolService.Member m, BigDecimal cut) {
             return new MemberView(m.person() == null ? null : m.person().getId(),
                     m.pool() == null ? null : m.pool().getId(),
                     m.person() != null ? m.person().getName() : m.pool().getName(),
                     m.member().getShare().toPlainString(), m.retired(),
-                    cut == null ? null : cut.toPlainString());
+                    cut == null ? null : cut.toPlainString(),
+                    m.member().getFromDate(), m.member().getToDate(), m.inForce());
         }
     }
 
@@ -52,8 +56,10 @@ public class PoolController {
     public record PoolForm(@NotBlank @Size(max = 200) String name) {
     }
 
-    /** The member form: the person, or the pool, and their share as entered. */
-    public record MemberForm(Long personId, Long poolId, @NotBlank @Size(max = 20) String share) {
+    /** The member form: the person, or the pool, their share as entered, and the optional days the
+     *  membership runs from and to. */
+    public record MemberForm(Long personId, Long poolId, @NotBlank @Size(max = 20) String share,
+            LocalDate from, LocalDate to) {
     }
 
     private final PoolService service;
@@ -84,7 +90,7 @@ public class PoolController {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Choose a person or a pool");
         }
         return PoolView.of(form.personId() != null
-                ? service.addMember(sheetId.trim(), user.trim(), poolId, form.personId(), form.share())
-                : service.addPoolMember(sheetId.trim(), user.trim(), poolId, form.poolId(), form.share()));
+                ? service.addMember(sheetId.trim(), user.trim(), poolId, form.personId(), form.share(), form.from(), form.to())
+                : service.addPoolMember(sheetId.trim(), user.trim(), poolId, form.poolId(), form.share(), form.from(), form.to()));
     }
 }

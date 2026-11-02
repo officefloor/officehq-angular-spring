@@ -7,6 +7,7 @@ import jakarta.persistence.GenerationType;
 import jakarta.persistence.Id;
 import jakarta.persistence.Table;
 import java.math.BigDecimal;
+import java.time.LocalDate;
 
 /** A person's (or another pool's) membership of a pool, with their share percent (two decimals, above 0 and at most 100). */
 @Entity
@@ -30,6 +31,14 @@ public class PoolMember {
 
     @Column(name = "share", nullable = false, precision = 5, scale = 2)
     private BigDecimal share;
+
+    /** The first day of the membership; null: no start. */
+    @Column(name = "from_date")
+    private LocalDate fromDate;
+
+    /** The last day of the membership; null: no end. */
+    @Column(name = "to_date")
+    private LocalDate toDate;
 
     protected PoolMember() {
     }
@@ -65,6 +74,25 @@ public class PoolMember {
 
     public BigDecimal getShare() {
         return share;
+    }
+
+    public LocalDate getFromDate() {
+        return fromDate;
+    }
+
+    public LocalDate getToDate() {
+        return toDate;
+    }
+
+    /** Set the days the membership runs (either may be null: open-ended). */
+    public void setDates(LocalDate fromDate, LocalDate toDate) {
+        this.fromDate = fromDate;
+        this.toDate = toDate;
+    }
+
+    /** Whether the membership's dates include the day. */
+    public boolean isInForceOn(LocalDate day) {
+        return (fromDate == null || !day.isBefore(fromDate)) && (toDate == null || !day.isAfter(toDate));
     }
 
     /** Make the membership another person's (the member was merged into them). */
