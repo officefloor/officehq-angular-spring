@@ -23,6 +23,8 @@ import { Session } from '../../core/session';
         <input id="rate-form-pct" data-testid="rate-form-pct" formControlName="pct" inputmode="decimal" />
         <label for="rate-form-from">From</label>
         <input id="rate-form-from" type="date" data-testid="rate-form-from" formControlName="from" />
+        <label for="rate-form-to">To</label>
+        <input id="rate-form-to" type="date" data-testid="rate-form-to" formControlName="to" />
         <button type="submit" data-testid="rate-form-submit">Set rate</button>
         @if (error()) {
           <p role="alert" data-testid="rate-form-error">{{ error() }}</p>
@@ -45,13 +47,14 @@ import { Session } from '../../core/session';
       <table data-testid="rates">
         <caption>All rates</caption>
         <thead>
-          <tr><th scope="col">Grade</th><th scope="col">From</th><th scope="col">Rate (%)</th></tr>
+          <tr><th scope="col">Grade</th><th scope="col">From</th><th scope="col">To</th><th scope="col">Rate (%)</th></tr>
         </thead>
         <tbody>
           @for (r of rates(); track r.grade + '-' + (r.from ?? 'start')) {
             <tr [attr.data-testid]="'rate-row-' + r.grade + '-' + (r.from ?? 'start')">
               <th scope="row">{{ r.grade }}</th>
               <td data-testid="rate-from">{{ r.from ?? 'start' }}</td>
+              <td data-testid="rate-to">{{ r.to ?? '…' }}</td>
               <td data-testid="rate-pct">{{ r.pct }}</td>
             </tr>
           }
@@ -77,6 +80,7 @@ export class RateForm {
     grade: new FormControl<Grade>('A', { nonNullable: true }),
     pct: new FormControl('', { nonNullable: true }),
     from: new FormControl('', { nonNullable: true }),
+    to: new FormControl('', { nonNullable: true }),
   });
   /** Each grade's rate in force on the sheet's today; a grade with none is missing. */
   protected readonly current = computed(() => {
@@ -97,7 +101,7 @@ export class RateForm {
   protected async submit(): Promise<void> {
     if (this.submitting) return;
     this.error.set('');
-    const { grade, pct, from } = this.form.getRawValue();
+    const { grade, pct, from, to } = this.form.getRawValue();
     if (!this.grades.includes(grade)) {
       this.error.set('Choose a grade of A, B or C.');
       return;
@@ -111,10 +115,19 @@ export class RateForm {
       this.error.set('Enter a from-date, or leave it blank for a rate that always applied.');
       return;
     }
+    const end = to.trim();
+    if (end !== '' && !/^\d{4}-\d{2}-\d{2}$/.test(end)) {
+      this.error.set('Enter a to-date, or leave it blank for a rate with no end.');
+      return;
+    }
+    if (day !== '' && end !== '' && end < day) {
+      this.error.set('The to-date cannot be before the from-date.');
+      return;
+    }
     this.submitting = true;
     try {
-      this.saved.emit(await this.api.set(grade, pct.trim(), day === '' ? null : day));
-      this.form.reset({ grade: 'A', pct: '', from: '' }, { emitEvent: false });
+      this.saved.emit(await this.api.set(grade, pct.trim(), day === '' ? null : day, end === '' ? null : end));
+      this.form.reset({ grade: 'A', pct: '', from: '', to: '' }, { emitEvent: false });
     } catch {
       this.error.set('The rate could not be set.');
     } finally {

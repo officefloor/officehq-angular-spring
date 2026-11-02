@@ -72,6 +72,11 @@ public class Claim {
     @Column(name = "stated_due", precision = 14, scale = 2)
     private BigDecimal statedDue;
 
+    /** Whether the last statement bound the claim to n/a: it had no due then because the rate that
+     *  would apply to it had ended (its due then does not stay live). */
+    @Column(name = "stated_na", nullable = false)
+    private boolean statedNa;
+
     /** The number of the settled claim of the same person this correction corrects; null for a claim
      *  that is not a correction. */
     @Column(name = "corrects")
@@ -235,10 +240,20 @@ public class Claim {
         return statedDue;
     }
 
+    public boolean isStatedNa() {
+        return statedNa;
+    }
+
     /** Bind the claim to a due (null: none), or unbind it. */
     public void bind(boolean stated, BigDecimal statedDue) {
+        bind(stated, statedDue, false);
+    }
+
+    /** Bind the claim to a due (null: none, or n/a when {@code na}), or unbind it. */
+    public void bind(boolean stated, BigDecimal statedDue, boolean na) {
         this.stated = stated;
         this.statedDue = stated ? statedDue : null;
+        this.statedNa = stated && statedDue == null && na;
     }
 
     public List<ClaimLog> getLog() {

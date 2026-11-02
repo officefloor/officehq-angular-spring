@@ -10,16 +10,20 @@ export interface Rate {
   pct: string;
   /** The day (yyyy-mm-dd) the rate applies from; null when it applies from the beginning of time. */
   from: string | null;
+  /** The last day (yyyy-mm-dd) the rate applies; null when it has no end. */
+  to: string | null;
 }
 
 /** The percent of a grade's rate in force on a day: the rate with the latest from-date on or
- *  before it, or else the one with no from-date; undefined when the day is before every rate. */
+ *  before it, or else the one with no from-date; undefined when the day is before every rate, or
+ *  after the to-date of that rate. */
 export function pctOn(rates: Rate[], grade: Grade, day: string): string | undefined {
   let best: Rate | undefined;
   for (const r of rates) {
     if (r.grade !== grade || (r.from !== null && r.from > day)) continue;
     if (best === undefined || (best.from ?? '') < (r.from ?? '')) best = r;
   }
+  if (best?.to != null && best.to < day) return undefined;
   return best?.pct;
 }
 
@@ -63,14 +67,14 @@ export class Rates {
     return firstValueFrom(this.http.get<Rate[]>(this.url(sheetId)));
   }
 
-  /** Set a grade's rate from a day (null: from the beginning of time), replacing the one the grade
-   *  had for that from-date. */
-  set(grade: Grade, pct: string, from: string | null): Promise<Rate> {
+  /** Set a grade's rate from a day (null: from the beginning of time) through a day (null: no
+   *  end), replacing the one the grade had for that from-date. */
+  set(grade: Grade, pct: string, from: string | null, to: string | null): Promise<Rate> {
     const sheetId = this.session.sheetId();
     const user = this.session.user();
     if (!sheetId || !user) throw new Error('no sheet loaded');
     return firstValueFrom(
-      this.http.put<Rate>(`${this.url(sheetId)}/${grade}`, { pct, from }, { headers: { 'X-User': user } }),
+      this.http.put<Rate>(`${this.url(sheetId)}/${grade}`, { pct, from, to }, { headers: { 'X-User': user } }),
     );
   }
 

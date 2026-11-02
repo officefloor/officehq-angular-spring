@@ -76,7 +76,7 @@ public class StatementService {
             for (Claim claim : theirs) {
                 if (Dues.countsLive(person, claim)) {
                     counted++;
-                    claim.bind(true, dues.bindable(sheetId, person, claim));
+                    claim.bind(true, dues.bindable(sheetId, person, claim), dues.bindsNa(sheetId, person, claim));
                 } else {
                     claim.bind(false, null);
                 }

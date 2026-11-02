@@ -36,12 +36,29 @@ public class Dues {
 
     /** The figure a statement binds a claim to: the one its person's last statement bound it to, or
      *  else its live due (a pending claim is not bound by a statement while it is pending); never
-     *  the late charge, which keeps following the sheet's today. Null when there is none. */
+     *  the late charge, which keeps following the sheet's today. Null when there is none, or when
+     *  the statement bound it to n/a. */
     public BigDecimal bindable(String sheetId, Person person, Claim claim) {
-        if (claim.isStated() && claim.getStatedDue() != null && claim.getStatus() != ClaimStatus.PENDING) {
+        if (bound(claim) && (claim.getStatedDue() != null || claim.isStatedNa())) {
             return claim.getStatedDue();
         }
         return due(sheetId, person, claim);
+    }
+
+    /** Whether a statement binds a claim to n/a: its person's last statement bound it to n/a, or
+     *  else it has no bound figure and no live due because the rate that would apply to it on its
+     *  date (for the person's grade on that date) has ended. */
+    public boolean bindsNa(String sheetId, Person person, Claim claim) {
+        if (bound(claim) && (claim.getStatedDue() != null || claim.isStatedNa())) {
+            return claim.isStatedNa();
+        }
+        return due(sheetId, person, claim) == null
+                && rates.endedBefore(sheetId, person.gradeOn(claim.getDate()), claim.getDate());
+    }
+
+    /** Whether a claim is bound by its person's last statement now (a pending claim is not). */
+    private static boolean bound(Claim claim) {
+        return claim.isStated() && claim.getStatus() != ClaimStatus.PENDING;
     }
 
     /** The late charge on an open (or pending) claim overdue on the sheet's today (its due-by, fixed when it was

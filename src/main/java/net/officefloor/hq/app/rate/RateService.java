@@ -31,10 +31,11 @@ public class RateService {
         return rates.findBySheetIdOrdered(sheetId);
     }
 
-    /** Set the rate for a grade from a date (null: from the beginning of time), replacing the one
-     *  the grade had for that from-date. */
+    /** Set the rate for a grade from a date (null: from the beginning of time) through a date
+     *  (null: no end), replacing the one the grade had for that from-date. */
     @Transactional
-    public synchronized Rate set(String sheetId, String user, String grade, BigDecimal pct, LocalDate from) {
+    public synchronized Rate set(String sheetId, String user, String grade, BigDecimal pct, LocalDate from,
+            LocalDate to) {
         sheets.load(sheetId, user);
         return rollup.tracking(sheetId, user, () -> {
             Rate rate = (from == null
@@ -42,10 +43,12 @@ public class RateService {
                     : rates.findBySheetIdAndGradeAndFromDate(sheetId, grade, from))
                     .orElseGet(() -> new Rate(sheetId, grade, pct, from));
             rate.setPct(pct);
+            rate.setToDate(to);
             Rate saved = rates.saveAndFlush(rate);
             audit.recordOnCommit("RATE_SET sheet=" + sheetId + " by=" + user + " grade=" + grade
                     + " rate=" + saved.getPct().setScale(2).toPlainString()
-                    + (from != null ? " from=" + from : ""));
+                    + (from != null ? " from=" + from : "")
+                    + (to != null ? " to=" + to : ""));
             return saved;
         });
     }

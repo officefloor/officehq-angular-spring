@@ -1,6 +1,7 @@
 package net.officefloor.hq.app.rate;
 
 import jakarta.validation.Valid;
+import jakarta.validation.constraints.AssertTrue;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.NotNull;
 import jakarta.validation.constraints.Pattern;
@@ -22,18 +23,25 @@ import org.springframework.web.bind.annotation.RestController;
 @Validated
 public class RateController {
 
-    /** What the screen shows of a rate; the percent as text with two decimals, and the from-date
-     *  (null when it applies from the beginning of time). */
-    public record RateView(String grade, String pct, LocalDate from) {
+    /** What the screen shows of a rate; the percent as text with two decimals, the from-date
+     *  (null when it applies from the beginning of time) and the to-date (null when it has no end). */
+    public record RateView(String grade, String pct, LocalDate from, LocalDate to) {
         static RateView of(Rate rate) {
-            return new RateView(rate.getGrade(), rate.getPct().setScale(2).toPlainString(), rate.getFromDate());
+            return new RateView(rate.getGrade(), rate.getPct().setScale(2).toPlainString(), rate.getFromDate(),
+                    rate.getToDate());
         }
     }
 
     /** The rate form: a percent of 0.00 or more with up to two decimals, and an optional from-date
-     *  (left out: from the beginning of time). */
+     *  (left out: from the beginning of time) and an optional to-date not before it (left out: no
+     *  end). */
     public record RateForm(@NotNull @Pattern(regexp = "\\s*\\d{1,5}(\\.\\d{1,2})?\\s*") String pct,
-            LocalDate from) {
+            LocalDate from, LocalDate to) {
+
+        @AssertTrue
+        public boolean isToNotBeforeFrom() {
+            return from == null || to == null || !to.isBefore(from);
+        }
 
         BigDecimal pctValue() {
             return new BigDecimal(pct.trim()).setScale(2);
@@ -56,6 +64,7 @@ public class RateController {
             @PathVariable @Pattern(regexp = "[ABC]") String grade,
             @RequestHeader("X-User") @NotBlank @Size(max = 100) String user,
             @Valid @RequestBody RateForm form) {
-        return RateView.of(service.set(sheetId.trim(), user.trim(), grade, form.pctValue(), form.from()));
+        return RateView.of(service.set(sheetId.trim(), user.trim(), grade, form.pctValue(), form.from(),
+                form.to()));
     }
 }

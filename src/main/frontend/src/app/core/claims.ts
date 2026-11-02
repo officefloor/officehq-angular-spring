@@ -50,6 +50,9 @@ export interface Claim {
   /** The due the last statement bound it to, as text with two decimals; null when it is unbound,
    *  or was bound while it had no due (its due then stays live). */
   statedDue: string | null;
+  /** Whether the last statement bound it to n/a: the rate that would apply to it had ended (its
+   *  due then does not stay live). */
+  statedNa: boolean;
   /** The number of the settled claim this correction corrects; null when it is not a correction. */
   corrects: string | null;
   /** The date (yyyy-mm-dd) its figures round by: that of the claim a correction corrects, or else
@@ -119,7 +122,7 @@ function bound(c: Claim): boolean {
 /** Whether a claim keeps a figure that rates and grades no longer change: settled or bound by a
  *  statement. */
 export function fixed(c: Claim): boolean {
-  return c.settledDue !== null || (bound(c) && c.statedDue !== null);
+  return c.settledDue !== null || (bound(c) && (c.statedDue !== null || c.statedNa));
 }
 
 /** What a claim's late charge follows: the sheet's today and its late percent; and the
@@ -140,11 +143,12 @@ export function roundsHalfUp(c: Claim, late: Lateness): boolean {
 }
 
 /** A claim's due figure: the one fixed when it was settled, or else the one its person's last
- *  statement bound it to, or else its live due at the rate in force on the claim's date for the
+ *  statement bound it to (n/a when it bound it to n/a), or else its live due at the rate in force on the claim's date for the
  *  grade (the person's grade in force on that date), rounded by the policy date, at least the sheet's floor; with the late charge on top while it is overdue (a
  *  settled claim's figure already holds it). A correction has no floor and no late charge. Null when there is none. */
 export function claimDue(c: Claim, rates: Rate[], grade: Grade | undefined, floor: string, late: Lateness): string | null {
   if (c.settledDue !== null) return c.settledDue;
+  if (bound(c) && c.statedNa) return null;
   const live = due(c.amount, grade === undefined ? undefined : pctOn(rates, grade, c.date), roundsHalfUp(c, late));
   const floored = live === null || correction(c) ? live : atLeast(live, floor);
   const figure = (bound(c) ? c.statedDue : null) ?? floored;

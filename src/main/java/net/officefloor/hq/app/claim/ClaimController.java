@@ -28,13 +28,14 @@ public class ClaimController {
 
     /** What the screen shows of a claim; the amount, and the due fixed when it was settled (null
      *  when there is none), as text with two decimals; who opened it (null when never opened);
-     *  whether the last statement bound it, with the due it bound (null when none); and the number
+     *  whether the last statement bound it, with the due it bound (null when none) and whether it
+     *  bound it to n/a; and the number
      *  of the claim it corrects (null when it is not a correction); the date its figures round by
      *  (that of the claim a correction corrects, or else its own); and where it is listed (newest
      *  first by this); and its status log, oldest first. */
     public record ClaimView(long id, long personId, String amount, LocalDate date, String note,
             ClaimStatus status, String number, String settledDue, String openedBy, boolean stated,
-            String statedDue, String corrects, LocalDate roundsBy, long listed, LocalDate dueBy,
+            String statedDue, boolean statedNa, String corrects, LocalDate roundsBy, long listed, LocalDate dueBy,
             List<LogLineView> log) {
         public static ClaimView of(Claim claim) {
             return new ClaimView(claim.getId(), claim.getPersonId(), claim.getAmount().setScale(2).toPlainString(),
@@ -42,7 +43,7 @@ public class ClaimController {
                     claim.getSettledDue() == null ? null : claim.getSettledDue().setScale(2).toPlainString(),
                     claim.getOpenedBy(), claim.isStated(),
                     claim.getStatedDue() == null ? null : claim.getStatedDue().setScale(2).toPlainString(),
-                    claim.getCorrects(), claim.roundsBy(), claim.getListed(), claim.getDueBy(),
+                    claim.isStatedNa(), claim.getCorrects(), claim.roundsBy(), claim.getListed(), claim.getDueBy(),
                     claim.getLog().stream().map(LogLineView::of).toList());
         }
     }
