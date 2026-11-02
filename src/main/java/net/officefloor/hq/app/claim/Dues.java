@@ -175,7 +175,8 @@ public class Dues {
 
     /** The late charge on a claim taken as open (or pending) or not, overdue on the sheet's today (its {@link #lateFrom}
      *  before today; a correction has none): for each full 30 days it is overdue, the late percent in force on
-     *  that boundary (its late-from plus 30, 60, 90 ... days) of its figure, rounded to two decimals by the claim's
+     *  that boundary (its late-from plus 30, 60, 90 ... days) of its figure plus the charges of the boundaries
+     *  before it (the charge compounds), rounded to two decimals by the claim's
      *  {@link #rounding}, the charges added up (a boundary whose percent is 0.00 adds nothing); 0.00 when it is not overdue. */
     private BigDecimal lateCharge(Basis basis, Person person, Claim claim, BigDecimal figure, boolean open) {
         BigDecimal none = BigDecimal.ZERO.setScale(2);
@@ -193,7 +194,7 @@ public class Dues {
         for (long n = 1; n <= periods; n++) {
             BigDecimal pct = basis.latePct(lateFrom.plusDays(30 * n));
             if (pct.signum() != 0) {
-                charge = charge.add(figure.multiply(pct).movePointLeft(2).setScale(2, rounding));
+                charge = charge.add(figure.add(charge).multiply(pct).movePointLeft(2).setScale(2, rounding));
             }
         }
         return charge;
