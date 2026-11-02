@@ -17,6 +17,7 @@ import { GradeSummary, PeriodSummary, StatusSummary, SummaryPanel, VoidReasonSum
 import { HeaderCounters } from '../summary/header-counters';
 import { QuickAddBar } from './quick-add-bar';
 import { PasteClaimsBox } from './paste-claims-box';
+import { PoolList } from '../pools/pool-list';
 
 /** What leaves no claim out: no holds, not retired. */
 const NO_LEAVE: Leave = { holds: [], retiredFrom: null };
@@ -33,7 +34,7 @@ const NO_LEAVE: Leave = { holds: [], retiredFrom: null };
 // The signed-in user may watch a person: they are told when a claim of theirs is settled.
 @Component({
   selector: 'app-people-list',
-  imports: [ReactiveFormsModule, PersonClaims, RateForm, PeriodForm, QuickAddBar, PasteClaimsBox, SummaryPanel, HeaderCounters],
+  imports: [ReactiveFormsModule, PersonClaims, RateForm, PeriodForm, QuickAddBar, PasteClaimsBox, SummaryPanel, HeaderCounters, PoolList],
   template: `
     <app-header-counters [peopleCount]="people().length" [statuses]="statusSummary()"
       [dueTotal]="dueTotal()" [overdueTotal]="overdueTotal()" />
@@ -244,6 +245,7 @@ const NO_LEAVE: Leave = { holds: [], retiredFrom: null };
         </tbody>
       </table>
     </section>
+    <app-pool-list [people]="people()" />
   `,
 })
 export class PeopleList {
