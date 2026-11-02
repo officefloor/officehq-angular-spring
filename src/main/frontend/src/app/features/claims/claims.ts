@@ -1030,7 +1030,7 @@ export class Claims {
     const sheet = this.session.sheetId();
     if (!sheet) return;
     const date = until.trim();
-    const today = this.session.today();
+    const today = this.session.sheetToday();
     if (!/^\d{4}-\d{2}-\d{2}$/.test(date) || (today !== null && date <= today)) {
       this.claimError.set({ id: c.id, message: 'Enter a date after today to defer the claim until.' });
       return;

@@ -108,6 +108,10 @@ public class StatementService {
         RollupService.Snapshot before = rollup.snapshot(sheetId);
         List<Claim> theirs = claims.findBySheetIdAndPersonIdOrderByIdDesc(sheetId, personId);
         Bound bound = asOf == null ? bindNow(sheet, person, theirs) : bindAsOf(sheet, person, theirs, asOf);
+        // now, their due-total is the one the screen shows: the parts of their claims others hold left out,
+        // the parts they hold of others' claims counted in
+        RollupService.Figures shown = asOf == null ? before.people().get(personId) : null;
+        if (shown != null) bound = new Bound(shown.dueTotal(), bound.counted());
         claims.saveAllAndFlush(theirs);
         statements.saveAndFlush(new Statement(sheetId, personId, bound.dueTotal(), asOf != null ? asOf : today, today,
                 user.strip()));

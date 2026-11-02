@@ -1,4 +1,5 @@
-import { HttpClient } from '@angular/common/http';
+import { HttpClient, HttpContext } from '@angular/common/http';
+import { REAL_TODAY } from './preview';
 import { Injectable, computed, inject, signal } from '@angular/core';
 import { firstValueFrom } from 'rxjs';
 
@@ -89,8 +90,16 @@ export class Session {
   readonly sheetId = signal<string | null>(null);
   /** The role the signed-in user acts in on the sheet on its today (as of the as-of date while one is set). */
   readonly role = signal<Role | null>(null);
-  /** The sheet's today (yyyy-mm-dd): every date decision and default date uses it, never the clock. */
-  readonly today = signal<string | null>(null);
+  /** The sheet's real today (yyyy-mm-dd): every change and default date uses it, never the clock. */
+  readonly sheetToday = signal<string | null>(null);
+  /**
+   * The preview date (yyyy-mm-dd) the signed-in user views the sheet at, or null: while it is set every
+   * figure is shown over the sheet's current records as if its today were that date, while every change
+   * still uses its real today. It belongs to this screen, and is left as it is by loading a sheet.
+   */
+  readonly preview = signal<string | null>(null);
+  /** The today the screen's figures are shown on: the preview date while one is set, else the sheet's today. */
+  readonly today = computed(() => this.preview() ?? this.sheetToday());
   /** The values recorded for the sheet's dated settings, by key. */
   readonly dated = signal<Dated>({});
   /** The sheet's floor in force today, two decimals: a claim's live due is at least the one in force on its date. */
@@ -261,10 +270,11 @@ export class Session {
     const res = await firstValueFrom(
       this.http.post<SheetView>(`/api/sheets/${encodeURIComponent(id)}/load`, null, {
         headers: { 'X-User': user },
+        context: new HttpContext().set(REAL_TODAY, true),
       }),
     );
     this.sheetId.set(res.id);
-    this.today.set(res.today);
+    this.sheetToday.set(res.today);
     this.dated.set(res.dated);
     this.policyDate.set(res.policyDate);
     this.archived.set(res.archived);
@@ -285,6 +295,14 @@ export class Session {
     await this.loadSheet(id);
   }
 
+  /** Preview the active sheet as if its today were a date (yyyy-mm-dd), or stop (null): it is loaded again. */
+  async setPreview(preview: string | null): Promise<void> {
+    const id = this.sheetId();
+    if (!id) throw new Error('no sheet loaded');
+    this.preview.set(preview);
+    await this.loadSheet(id);
+  }
+
   async setToday(today: string): Promise<void> {
     const user = this.user();
     const id = this.sheetId();
@@ -295,7 +313,7 @@ export class Session {
       }),
     );
     if (this.sheetId() === res.id) {
-      this.today.set(res.today);
+      this.sheetToday.set(res.today);
       this.role.set(res.role);
       this.holdChanges.update((n) => n + 1);
     }

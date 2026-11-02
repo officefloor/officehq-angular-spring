@@ -234,7 +234,7 @@ export class Plans {
     const amount = v.amount.trim();
     const every = v.every.trim();
     const day = v.day.trim();
-    const start = v.start || this.session.today() || '';
+    const start = v.start || this.session.sheetToday() || '';
     const end = v.end;
     const target = v.sheet.trim();
     if (!AMOUNT.test(amount)) {

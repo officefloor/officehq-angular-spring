@@ -45,7 +45,7 @@ import { VoidReasons } from '../void-reasons/void-reasons';
       </form>
       @if (session.sheetId(); as id) {
         <p>Sheet: <strong data-testid="sheet-current-id">{{ id }}</strong></p>
-        <p>Today: <strong data-testid="sheet-today">{{ session.today() }}</strong></p>
+        <p>Today: <strong data-testid="sheet-today">{{ session.sheetToday() }}</strong></p>
         <form [formGroup]="todayForm" (ngSubmit)="saveToday()" aria-label="Sheet today">
           <label for="sheet-today">Change today</label>
           <input id="sheet-today" type="date" data-testid="sheet-today-input" formControlName="today" />
@@ -58,6 +58,13 @@ import { VoidReasons } from '../void-reasons/void-reasons';
           <button type="button" data-testid="asof-clear" (click)="clearAsOf()">Clear as of</button>
         </form>
         <p>As of: <strong data-testid="sheet-asof">{{ session.asOf() ?? '' }}</strong></p>
+        <form [formGroup]="previewForm" (ngSubmit)="setPreview()" aria-label="Preview date">
+          <label for="preview-date">Preview as if today were</label>
+          <input id="preview-date" type="date" data-testid="preview-date" formControlName="date" />
+          <button type="submit" data-testid="preview-set">Set preview</button>
+          <button type="button" data-testid="preview-clear" (click)="clearPreview()">Clear preview</button>
+        </form>
+        <p>Preview: <strong data-testid="sheet-preview">{{ session.preview() ?? '' }}</strong></p>
         <p>Parent sheet: <strong data-testid="sheet-parent">{{ session.parent() ?? '' }}</strong></p>
         <p>Archived: <strong data-testid="sheet-archived">{{ session.archived() ? 'yes' : 'no' }}</strong></p>
         <button type="button" data-testid="sheet-archive" (click)="archive()">Archive sheet</button>
@@ -99,6 +106,7 @@ export class Home {
   protected readonly sheetForm = new FormGroup({ id: new FormControl('', { nonNullable: true }) });
   protected readonly todayForm = new FormGroup({ today: new FormControl('', { nonNullable: true }) });
   protected readonly asOfForm = new FormGroup({ date: new FormControl('', { nonNullable: true }) });
+  protected readonly previewForm = new FormGroup({ date: new FormControl('', { nonNullable: true }) });
   protected readonly cloneForm = new FormGroup({ to: new FormControl('', { nonNullable: true }) });
   protected readonly localeForm = new FormGroup({ locale: new FormControl<Locale>('en', { nonNullable: true }) });
   protected readonly locales = LOCALES;
@@ -114,6 +122,7 @@ export class Home {
     this.sheetForm.valueChanges.subscribe(() => this.sheetError.set(''));
     this.todayForm.valueChanges.subscribe(() => this.sheetError.set(''));
     this.asOfForm.valueChanges.subscribe(() => this.sheetError.set(''));
+    this.previewForm.valueChanges.subscribe(() => this.sheetError.set(''));
     this.cloneForm.valueChanges.subscribe(() => this.sheetError.set(''));
   }
 
@@ -210,6 +219,34 @@ export class Home {
       this.sheetError.set('Could not show the sheet as of that date.');
     } finally {
       this.submitting.delete('asOf');
+    }
+  }
+
+  protected async setPreview(): Promise<void> {
+    if (this.submitting.has('preview')) return;
+    this.sheetError.set('');
+    const date = this.previewForm.controls.date.value.trim();
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) {
+      this.sheetError.set('Enter a date.');
+      return;
+    }
+    await this.changePreview(date);
+  }
+
+  protected async clearPreview(): Promise<void> {
+    if (this.submitting.has('preview')) return;
+    this.sheetError.set('');
+    await this.changePreview(null);
+  }
+
+  private async changePreview(date: string | null): Promise<void> {
+    this.submitting.add('preview');
+    try {
+      await this.session.setPreview(date);
+    } catch {
+      this.sheetError.set('Could not preview the sheet on that date.');
+    } finally {
+      this.submitting.delete('preview');
     }
   }
 

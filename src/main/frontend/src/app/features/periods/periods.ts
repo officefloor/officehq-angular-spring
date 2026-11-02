@@ -370,7 +370,7 @@ export class Periods {
     const sheet = this.session.sheetId();
     if (!sheet) return;
     const raw = this.generateForm.getRawValue();
-    const today = this.session.today() ?? '';
+    const today = this.session.sheetToday() ?? '';
     const from = raw.from.trim() || today;
     const to = raw.to.trim() || today;
     if (!/^\d{4}-\d{2}-\d{2}$/.test(from) || !/^\d{4}-\d{2}-\d{2}$/.test(to)) {
@@ -536,7 +536,7 @@ export class Periods {
     if (!sheet) return;
     const raw = this.form.getRawValue();
     const name = raw.name.trim();
-    const from = raw.from.trim() || (this.session.today() ?? '');
+    const from = raw.from.trim() || (this.session.sheetToday() ?? '');
     const to = raw.to.trim();
     const capText = raw.cap.trim();
     if (!/^[A-Za-z0-9._-]{1,100}$/.test(name)) {
