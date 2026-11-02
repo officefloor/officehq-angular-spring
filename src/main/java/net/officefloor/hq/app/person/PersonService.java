@@ -2,6 +2,7 @@ package net.officefloor.hq.app.person;
 
 import java.util.List;
 import net.officefloor.hq.app.Audit;
+import net.officefloor.hq.app.rollup.Rollup;
 import net.officefloor.hq.app.sheet.SheetService;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.dao.OptimisticLockingFailureException;
@@ -16,11 +17,13 @@ public class PersonService {
 
     private final PersonRepository people;
     private final SheetService sheets;
+    private final Rollup rollup;
     private final Audit audit;
 
-    public PersonService(PersonRepository people, SheetService sheets, Audit audit) {
+    public PersonService(PersonRepository people, SheetService sheets, Rollup rollup, Audit audit) {
         this.people = people;
         this.sheets = sheets;
+        this.rollup = rollup;
         this.audit = audit;
     }
 
@@ -37,9 +40,11 @@ public class PersonService {
         if (people.existsBySheetIdAndNameIgnoreCase(sheetId, name)) {
             throw nameInUse();
         }
-        Person person = saveUnique(new Person(sheetId, name, grade));
-        audit.recordOnCommit(record("PERSON_ADDED", sheetId, user, person));
-        return person;
+        return rollup.tracking(sheetId, user, () -> {
+            Person person = saveUnique(new Person(sheetId, name, grade));
+            audit.recordOnCommit(record("PERSON_ADDED", sheetId, user, person));
+            return person;
+        });
     }
 
     /** Change a person's name and grade, refused when the person is no longer at the version the
@@ -54,11 +59,13 @@ public class PersonService {
         if (people.existsBySheetIdAndNameIgnoreCaseAndIdNot(sheetId, name, personId)) {
             throw nameInUse();
         }
-        person.setName(name);
-        person.setGrade(grade);
-        Person saved = saveUnique(person);
-        audit.recordOnCommit(record("PERSON_EDITED", sheetId, user, saved));
-        return saved;
+        return rollup.tracking(sheetId, user, () -> {
+            person.setName(name);
+            person.setGrade(grade);
+            Person saved = saveUnique(person);
+            audit.recordOnCommit(record("PERSON_EDITED", sheetId, user, saved));
+            return saved;
+        });
     }
 
     private static String record(String event, String sheetId, String user, Person person) {

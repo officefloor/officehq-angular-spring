@@ -1,6 +1,8 @@
 package net.officefloor.hq.app.sheet;
 
 import java.time.LocalDate;
+import net.officefloor.hq.app.rollup.Rollup;
+import org.springframework.context.annotation.Lazy;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -9,9 +11,12 @@ import org.springframework.transaction.annotation.Transactional;
 public class SheetService {
 
     private final SheetRepository sheets;
+    /** Lazy: the rollup reads the sheet's today through this service. */
+    private final Rollup rollup;
 
-    public SheetService(SheetRepository sheets) {
+    public SheetService(SheetRepository sheets, @Lazy Rollup rollup) {
         this.sheets = sheets;
+        this.rollup = rollup;
     }
 
     /** The sheet with this id, created empty the first time it is loaded, its today the real date. */
@@ -35,11 +40,13 @@ public class SheetService {
         return sheets.lastClaimNumber(id);
     }
 
-    /** Change the sheet's today. */
+    /** Change the sheet's today; the figures it moves are recorded, with no record of its own. */
     @Transactional
     public synchronized Sheet setToday(String id, String user, LocalDate today) {
         Sheet sheet = load(id, user);
-        sheet.setToday(today);
-        return sheets.save(sheet);
+        return rollup.tracking(id, user, () -> {
+            sheet.setToday(today);
+            return sheets.saveAndFlush(sheet);
+        });
     }
 }

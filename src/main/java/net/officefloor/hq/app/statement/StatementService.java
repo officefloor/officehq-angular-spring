@@ -8,7 +8,8 @@ import java.util.stream.Collectors;
 import net.officefloor.hq.app.Audit;
 import net.officefloor.hq.app.claim.Claim;
 import net.officefloor.hq.app.claim.ClaimRepository;
-import net.officefloor.hq.app.claim.ClaimService;
+import net.officefloor.hq.app.claim.Dues;
+import net.officefloor.hq.app.rollup.Rollup;
 import net.officefloor.hq.app.person.Person;
 import net.officefloor.hq.app.person.PersonRepository;
 import net.officefloor.hq.app.sheet.SheetService;
@@ -29,17 +30,19 @@ public class StatementService {
     private final StatementRepository statements;
     private final PersonRepository people;
     private final ClaimRepository claims;
-    private final ClaimService claimService;
+    private final Dues dues;
     private final SheetService sheets;
+    private final Rollup rollup;
     private final Audit audit;
 
     public StatementService(StatementRepository statements, PersonRepository people, ClaimRepository claims,
-            ClaimService claimService, SheetService sheets, Audit audit) {
+            Dues dues, SheetService sheets, Rollup rollup, Audit audit) {
         this.statements = statements;
         this.people = people;
         this.claims = claims;
-        this.claimService = claimService;
+        this.dues = dues;
         this.sheets = sheets;
+        this.rollup = rollup;
         this.audit = audit;
     }
 
@@ -64,23 +67,26 @@ public class StatementService {
     public Taken take(String sheetId, String user, long personId) {
         Person person = people.lockByIdAndSheetId(personId, sheetId)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "No such person on this sheet"));
-        LocalDate today = sheets.today(sheetId);
-        List<Claim> theirs = claims.findBySheetIdAndPersonIdOrderByIdDesc(sheetId, personId);
-        BigDecimal dueTotal = claimService.dueTotal(sheetId, person, theirs);
-        int counted = 0;
-        for (Claim claim : theirs) {
-            if (claim.getStatus().counts()) {
-                counted++;
-                claim.bind(true, claimService.figure(sheetId, person, claim));
-            } else {
-                claim.bind(false, null);
+        List<Claim> bound = rollup.tracking(sheetId, user, () -> {
+            LocalDate today = sheets.today(sheetId);
+            List<Claim> theirs = claims.findBySheetIdAndPersonIdOrderByIdDesc(sheetId, personId);
+            BigDecimal dueTotal = dues.dueTotal(sheetId, person, theirs);
+            int counted = 0;
+            for (Claim claim : theirs) {
+                if (claim.getStatus().counts()) {
+                    counted++;
+                    claim.bind(true, dues.figure(sheetId, person, claim));
+                } else {
+                    claim.bind(false, null);
+                }
             }
-        }
-        claims.saveAllAndFlush(theirs);
-        statements.saveAndFlush(new Statement(sheetId, personId, today, user, dueTotal, counted));
-        audit.recordOnCommit("STATEMENT sheet=" + sheetId + " by=" + user + " name=" + person.getName()
-                + " due-total=" + (dueTotal == null ? "n/a" : dueTotal.setScale(2).toPlainString())
-                + " claims=" + counted);
-        return new Taken(person, summary(sheetId, personId), theirs);
+            claims.saveAllAndFlush(theirs);
+            statements.saveAndFlush(new Statement(sheetId, personId, today, user, dueTotal, counted));
+            audit.recordOnCommit("STATEMENT sheet=" + sheetId + " by=" + user + " name=" + person.getName()
+                    + " due-total=" + (dueTotal == null ? "n/a" : dueTotal.setScale(2).toPlainString())
+                    + " claims=" + counted);
+            return theirs;
+        });
+        return new Taken(person, summary(sheetId, personId), bound);
     }
 }
