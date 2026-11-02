@@ -1,0 +1,170 @@
+diff --git a/src/main/frontend/src/app/core/settings.ts b/src/main/frontend/src/app/core/settings.ts
+index 8d64ad763..b2c7b6f40 100644
+--- a/src/main/frontend/src/app/core/settings.ts
++++ b/src/main/frontend/src/app/core/settings.ts
+@@ -1,5 +1,5 @@
+ import { HttpClient } from '@angular/common/http';
+-import { Injectable, inject } from '@angular/core';
++import { Injectable, inject, signal } from '@angular/core';
+ import { firstValueFrom } from 'rxjs';
+ import { Grade } from './people';
+ import { Session } from './session';
+@@ -141,6 +141,9 @@ export const LATE_PCT = /^\d{1,5}(\.\d{1,2})?$/;
+ export class SheetSettings {
+   private readonly http = inject(HttpClient);
+   private readonly session = inject(Session);
++  /** The settings a save on this screen came back with last, and the sheet they belong to, so what
++   *  is figured from the dated settings shows them without re-reading the sheet. */
++  readonly saved = signal<{ sheetId: string; settings: Settings } | null>(null);
+ 
+   get(sheetId: string): Promise<Settings> {
+     return firstValueFrom(this.http.get<Settings>(`${this.url(sheetId)}/settings`));
+@@ -159,7 +162,7 @@ export class SheetSettings {
+   /** Record the cap (null for no cap) from a date (null for the sheet's today). */
+   setCap(value: string | null, from: string | null): Promise<Settings> {
+     const [sheetId, headers] = this.active();
+-    return firstValueFrom(this.http.put<Settings>(`${this.url(sheetId)}/settings/cap`, { value, from }, { headers }));
++    return firstValueFrom(this.http.put<Settings>(`${this.url(sheetId)}/settings/cap`, { value, from }, { headers })).then((settings) => this.record(sheetId, settings));
+   }
+ 
+   /** Record the proof threshold (null for none) from a date (null for the sheet's today). */
+@@ -191,7 +194,7 @@ export class SheetSettings {
+   /** Record the floor from a date (null for the sheet's today). */
+   setFloor(value: string, from: string | null): Promise<Settings> {
+     const [sheetId, headers] = this.active();
+-    return firstValueFrom(this.http.put<Settings>(`${this.url(sheetId)}/settings/floor`, { value, from }, { headers }));
++    return firstValueFrom(this.http.put<Settings>(`${this.url(sheetId)}/settings/floor`, { value, from }, { headers })).then((settings) => this.record(sheetId, settings));
+   }
+ 
+   /** Record the terms from a date (null for the sheet's today). */
+@@ -213,19 +216,19 @@ export class SheetSettings {
+     const [sheetId, headers] = this.active();
+     return firstValueFrom(
+       this.http.put<Settings>(`${this.url(sheetId)}/settings/grace/${encodeURIComponent(grade)}`, { value, from }, { headers }),
+-    );
++    ).then((settings) => this.record(sheetId, settings));
+   }
+ 
+   /** Record the late percent from a date (null for the sheet's today). */
+   setLatePct(value: string, from: string | null): Promise<Settings> {
+     const [sheetId, headers] = this.active();
+-    return firstValueFrom(this.http.put<Settings>(`${this.url(sheetId)}/settings/late-pct`, { value, from }, { headers }));
++    return firstValueFrom(this.http.put<Settings>(`${this.url(sheetId)}/settings/late-pct`, { value, from }, { headers })).then((settings) => this.record(sheetId, settings));
+   }
+ 
+   /** Set the policy date; null for blank (the sheet's today). */
+   setPolicyDate(value: string | null): Promise<Settings> {
+     const [sheetId, headers] = this.active();
+-    return firstValueFrom(this.http.put<Settings>(`${this.url(sheetId)}/settings/policy-date`, { value }, { headers }));
++    return firstValueFrom(this.http.put<Settings>(`${this.url(sheetId)}/settings/policy-date`, { value }, { headers })).then((settings) => this.record(sheetId, settings));
+   }
+ 
+   /** Set the period numbering from date; null for blank (off). */
+@@ -276,6 +279,11 @@ export class SheetSettings {
+     );
+   }
+ 
++  private record(sheetId: string, settings: Settings): Settings {
++    this.saved.set({ sheetId, settings });
++    return settings;
++  }
++
+   private active(): [string, { 'X-User': string }] {
+     const sheetId = this.session.sheetId();
+     const user = this.session.user();
+diff --git a/src/main/frontend/src/app/features/people/people-list.ts b/src/main/frontend/src/app/features/people/people-list.ts
+index 04e6b6ae3..6f32ba6b2 100644
+--- a/src/main/frontend/src/app/features/people/people-list.ts
++++ b/src/main/frontend/src/app/features/people/people-list.ts
+@@ -1,5 +1,5 @@
+ import { HttpErrorResponse } from '@angular/common/http';
+-import { Component, computed, effect, inject, signal } from '@angular/core';
++import { Component, computed, effect, inject, signal, untracked } from '@angular/core';
+ import { FormControl, FormGroup, ReactiveFormsModule } from '@angular/forms';
+ import { Claim, Claims, QuickAdded, addDays, backingFigure, claimDue, countsAsOf, countsLive, isOpen, keepsActive, overdue, sumAmounts, trimmedSum } from '../../core/claims';
+ import { Patron, Patrons, patronShares } from '../../core/patrons';
+@@ -25,6 +25,9 @@ import { PoolList } from '../pools/pool-list';
+ import { PersonPlans } from '../plans/person-plans';
+ import { PlanGenerateBox } from '../plans/plan-generate-box';
+ 
++/** What the people list can be sorted by on the screen. */
++type SortKey = 'added' | 'name' | 'grade' | 'due-total';
++
+ /** What leaves no claim out: no holds, not retired. */
+ const NO_LEAVE: Leave = { holds: [], retiredFrom: null };
+ 
+@@ -115,6 +118,14 @@ const NO_LEAVE: Leave = { holds: [], retiredFrom: null };
+           (change)="showRetired.set($any($event.target).checked)" />
+         Show retired
+       </label>
++      <label for="sort-by">Sort by</label>
++      <select id="sort-by" data-testid="sort-by" [value]="sortBy()"
++        (change)="sortBy.set($any($event.target).value)">
++        <option value="added">Added</option>
++        <option value="name">Name</option>
++        <option value="grade">Grade</option>
++        <option value="due-total">Due total</option>
++      </select>
+       <button type="button" data-testid="bulk-open" (click)="bulkOpen()">Open selected claims</button>
+       @if (bulkOpened(); as b) {
+         <p role="status">Opened <strong data-testid="bulk-opened">{{ b.opened }}</strong>,
+@@ -179,7 +190,7 @@ const NO_LEAVE: Leave = { holds: [], retiredFrom: null };
+           <tr><th scope="col"><span class="visually-hidden">Select</span></th><th scope="col">Name</th><th scope="col">Grade</th><th scope="col">Active</th><th scope="col">Terms</th><th scope="col">Contact</th><th scope="col">Tags</th><th scope="col">Aliases</th><th scope="col">Clashing</th><th scope="col">Came from</th><th scope="col">Claimed</th><th scope="col">Due</th><th scope="col">Settled due</th><th scope="col">Open due</th>@for (pd of periods(); track pd.id) {<th scope="col">Due in {{ pd.name }}</th>}<th scope="col">Excess</th><th scope="col">Cut total</th><th scope="col">Statements</th><th scope="col">Last stated</th><th scope="col">Stated on</th><th scope="col">Retired</th><th scope="col">Retired from</th><th scope="col">Past retirements</th><th scope="col">On hold</th><th scope="col">Overdue</th><th scope="col">Overdue due</th><th scope="col">Due aged 0–30 days</th><th scope="col">Due aged 31–60 days</th><th scope="col">Due aged 61+ days</th><th scope="col">Patrons</th><th scope="col">Backing</th><th scope="col">Watched</th><th scope="col">Plans</th><th scope="col">Claims</th><th scope="col"><span class="visually-hidden">Actions</span></th></tr>
+         </thead>
+         <tbody>
+-          @for (p of shown(); track p.id) {
++          @for (p of sorted(); track p.id) {
+             <tr [attr.data-testid]="'person-row-' + p.id">
+               <td>
+                 <input type="checkbox" data-testid="person-select" [checked]="selectedPeople().has(p.id)"
+@@ -344,6 +355,34 @@ export class PeopleList {
+   protected readonly shown = computed(() =>
+     this.showRetired() ? this.people() : this.people().filter((p) => !p.retired),
+   );
++  /** The key this screen sorts the listed people by; added (list order) when the screen opens,
++   *  kept as it is across loads. Only what is shown is sorted: actions keep the list order. */
++  protected readonly sortBy = signal<SortKey>('added');
++  /** The people listed, in the order the screen shows them: a stable sort, so equal keys keep
++   *  list order. */
++  protected readonly sorted = computed(() => {
++    const key = this.sortBy();
++    const people = this.shown();
++    if (key === 'added') return people;
++    const compare = (a: Person, b: Person): number => {
++      switch (key) {
++        case 'name': {
++          const x = a.name.trim().toLowerCase();
++          const y = b.name.trim().toLowerCase();
++          return x < y ? -1 : x > y ? 1 : 0;
++        }
++        case 'grade':
++          return this.gradeOf(a).localeCompare(this.gradeOf(b));
++        case 'due-total': {
++          const x = this.dueOf(a);
++          const y = this.dueOf(b);
++          if (x === null || y === null) return (x === null ? 1 : 0) - (y === null ? 1 : 0);
++          return Number(x) - Number(y);
++        }
++      }
++    };
++    return [...people].sort(compare);
++  });
+   /** Every claim on the sheet, newest first. */
+   protected readonly claims = signal<Claim[]>([]);
+   /** Every tag the store keeps as ever used on the sheet. */
+@@ -722,6 +761,15 @@ export class PeopleList {
+       this.reset();
+       if (sheetId) void this.reload(sheetId);
+     });
++    effect(() => {
++      const saved = this.settingsApi.saved();
++      if (saved === null || saved.sheetId !== untracked(this.session.sheetId)) return;
++      this.floor.set(saved.settings.floors);
++      this.caps.set(saved.settings.caps);
++      this.latePct.set(saved.settings.latePcts);
++      this.graces.set(saved.settings.graces);
++      this.policyDate.set(saved.settings.policyDate);
++    });
+   }
+ 
+   protected open(p: Person): void {
