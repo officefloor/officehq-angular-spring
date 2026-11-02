@@ -1,0 +1,487 @@
+diff --git a/src/main/frontend/src/app/features/people/people.ts b/src/main/frontend/src/app/features/people/people.ts
+index 073c4e2b1..eabb8863b 100644
+--- a/src/main/frontend/src/app/features/people/people.ts
++++ b/src/main/frontend/src/app/features/people/people.ts
+@@ -649,7 +649,7 @@ function trimmedSum(figures: number[]): number {
+                 }
+               </td>
+               <td>
+-                <app-plans [personId]="p.id" [personName]="p.name" [plans]="plansOf(p.id)" (added)="planAdded($event)" />
++                <app-plans [personId]="p.id" [personName]="p.name" [plans]="plansOf(p.id)" (added)="planAdded($event)" (changed)="planChanged($event)" />
+               </td>
+               <td>
+                 <app-claims [personId]="p.id" [personName]="p.name" [claims]="claimsOf(p.id)" [pctOn]="pctOnOf(p.id)" [graceOn]="graceOnOf(p.id)"
+@@ -2456,6 +2456,10 @@ export class People {
+     this.plans.update((list) => [...list, plan]);
+   }
+ 
++  protected planChanged(plan: Plan): void {
++    this.plans.update((list) => list.map((pl) => (pl.id === plan.id ? plan : pl)));
++  }
++
+   /**
+    * Make every plan's claims due by the sheet's today that it has not made yet, then read the claims and
+    * plans again: the count shown is how many were made.
+diff --git a/src/main/frontend/src/app/features/plans/plans.ts b/src/main/frontend/src/app/features/plans/plans.ts
+index a57ebe853..27913f99d 100644
+--- a/src/main/frontend/src/app/features/plans/plans.ts
++++ b/src/main/frontend/src/app/features/plans/plans.ts
+@@ -8,7 +8,7 @@ import { Session } from '../../core/session';
+ /**
+  * A person's plan: an amount (two decimals) from its start, every so many days or monthly on a day of the month
+  * (one set, the other null), up to its end; how many claims it has made, and its next five dates after the sheet's
+- * today (comma and space separated).
++ * today that a pause does not skip (comma and space separated), and whether it is paused now.
+  */
+ export interface Plan {
+   id: number;
+@@ -20,6 +20,7 @@ export interface Plan {
+   end: string;
+   generated: number;
+   nextDates: string;
++  paused: boolean;
+ }
+ 
+ const AMOUNT = /^\d{1,12}(\.\d{1,2})?$/;
+@@ -44,7 +45,13 @@ const DATE = /^\d{4}-\d{2}-\d{2}$/;
+           }
+           to <span data-testid="plan-end">{{ pl.end }}</span>,
+           made <span data-testid="plan-generated">{{ pl.generated }}</span>,
+-          next <span data-testid="plan-next-dates">{{ pl.nextDates }}</span>
++          next <span data-testid="plan-next-dates">{{ pl.nextDates }}</span>,
++          paused <span data-testid="plan-paused">{{ pl.paused ? 'yes' : 'no' }}</span>
++          <button type="button" data-testid="plan-pause" (click)="setPaused(pl, true)">Pause</button>
++          <button type="button" data-testid="plan-resume" (click)="setPaused(pl, false)">Resume</button>
++          @if (rowErrors()[pl.id]; as rowError) {
++            <p role="alert" class="error" data-testid="plan-error">{{ rowError }}</p>
++          }
+         </li>
+       }
+     </ul>
+@@ -76,8 +83,13 @@ export class Plans {
+   readonly plans = input.required<Plan[]>();
+   /** A plan added from the form. */
+   readonly added = output<Plan>();
++  /** A plan paused or resumed on its row. */
++  readonly changed = output<Plan>();
+ 
+   protected readonly error = signal('');
++  /** The refusal shown on each plan's row, by plan id. */
++  protected readonly rowErrors = signal<Record<number, string>>({});
++  private readonly pausing = new Set<number>();
+   protected readonly form = new FormGroup({
+     amount: new FormControl('', { nonNullable: true }),
+     start: new FormControl('', { nonNullable: true }),
+@@ -93,13 +105,56 @@ export class Plans {
+       this.session.sheetId();
+       this.session.loads();
+       this.error.set('');
++      this.rowErrors.set({});
+       this.form.reset({ amount: '', start: '', every: '', day: '', end: '' }, { emitEvent: false });
+     });
+   }
+ 
++  /** Pause (true) or resume (false) the plan from the sheet's today. */
++  protected async setPaused(plan: Plan, on: boolean): Promise<void> {
++    if (this.pausing.has(plan.id)) return;
++    this.setRowError(plan.id, '');
++    const sheet = this.session.sheetId();
++    if (!sheet) return;
++    this.pausing.add(plan.id);
++    try {
++      const updated = await firstValueFrom(
++        this.http.post<Plan>(
++          `/api/sheets/${encodeURIComponent(sheet)}/plans/${plan.id}/${on ? 'pause' : 'resume'}`,
++          null,
++          { headers: { 'X-User': this.session.user() ?? '' } },
++        ),
++      );
++      if (this.session.sheetId() !== sheet) return;
++      this.changed.emit(updated);
++    } catch (e) {
++      if (this.session.sheetId() !== sheet) return;
++      this.setRowError(
++        plan.id,
++        e instanceof HttpErrorResponse && e.status === 403
++          ? 'You may not change this sheet.'
++          : on
++            ? 'The plan is already paused.'
++            : 'The plan is not paused.',
++      );
++    } finally {
++      this.pausing.delete(plan.id);
++    }
++  }
++
++  private setRowError(planId: number, message: string): void {
++    this.rowErrors.update((all) => {
++      const next = { ...all };
++      if (message) next[planId] = message;
++      else delete next[planId];
++      return next;
++    });
++  }
++
+   protected async add(): Promise<void> {
+     if (this.submitting) return;
+     this.error.set('');
++    this.rowErrors.set({});
+     const sheet = this.session.sheetId();
+     if (!sheet) return;
+     const v = this.form.getRawValue();
+diff --git a/src/main/java/net/officefloor/hq/app/plan/ClaimPlan.java b/src/main/java/net/officefloor/hq/app/plan/ClaimPlan.java
+index 3f91d4507..a95a7639c 100644
+--- a/src/main/java/net/officefloor/hq/app/plan/ClaimPlan.java
++++ b/src/main/java/net/officefloor/hq/app/plan/ClaimPlan.java
+@@ -11,6 +11,7 @@ import java.time.LocalDate;
+ import java.time.YearMonth;
+ import java.util.ArrayList;
+ import java.util.List;
++import java.util.function.Predicate;
+ 
+ /**
+  * A person's plan: an amount on its start date and every so many days after, or monthly on a day of
+@@ -95,20 +96,20 @@ public class ClaimPlan {
+         return dates;
+     }
+ 
+-    /** The plan's first so many dates after the day given, on or before its end. */
+-    public List<LocalDate> datesAfter(LocalDate after, int count) {
++    /** The plan's first so many dates after the day given, on or before its end, those skipped left out. */
++    public List<LocalDate> datesAfter(LocalDate after, int count, Predicate<LocalDate> skipped) {
+         List<LocalDate> next = new ArrayList<>();
+         if (day != null) {
+             YearMonth m = YearMonth.from(start.isAfter(after) ? start : after);
+             for (; next.size() < count && !m.atDay(1).isAfter(end); m = m.plusMonths(1)) {
+                 LocalDate d = m.atDay(Math.min(day, m.lengthOfMonth()));
+-                if (!d.isBefore(start) && d.isAfter(after) && !d.isAfter(end)) next.add(d);
++                if (!d.isBefore(start) && d.isAfter(after) && !d.isAfter(end) && !skipped.test(d)) next.add(d);
+             }
+         } else {
+             LocalDate d = start;
+             if (after.isAfter(start)) d = start.plusDays((after.toEpochDay() - start.toEpochDay()) / every * every);
+             for (; next.size() < count && !d.isAfter(end); d = d.plusDays(every)) {
+-                if (d.isAfter(after)) next.add(d);
++                if (d.isAfter(after) && !skipped.test(d)) next.add(d);
+             }
+         }
+         return next;
+diff --git a/src/main/java/net/officefloor/hq/app/plan/ClaimPlanController.java b/src/main/java/net/officefloor/hq/app/plan/ClaimPlanController.java
+index fc6541f12..f7616caa4 100644
+--- a/src/main/java/net/officefloor/hq/app/plan/ClaimPlanController.java
++++ b/src/main/java/net/officefloor/hq/app/plan/ClaimPlanController.java
+@@ -29,14 +29,16 @@ public class ClaimPlanController {
+     /**
+      * A plan on the sheet; its amount has two decimals, every or day is set (the other null), and generated is how
+      * many claims it has made so far; nextDates are its first five dates after the sheet's today, on or before its
+-     * end, comma and space separated.
++     * end and not skipped by a pause, comma and space separated; paused is whether it is paused now.
+      */
+     public record PlanView(Long id, Long personId, String amount, LocalDate start, Integer every, Integer day,
+-            LocalDate end, int generated, String nextDates) {
+-        static PlanView of(ClaimPlan plan, int generated, LocalDate today) {
+-            String next = String.join(", ", plan.datesAfter(today, 5).stream().map(LocalDate::toString).toList());
++            LocalDate end, int generated, String nextDates, boolean paused) {
++        static PlanView of(ClaimPlan plan, int generated, LocalDate today, List<ClaimPlanPause> pauses) {
++            String next = String.join(", ", plan.datesAfter(today, 5, ClaimPlanService.skippedBy(pauses)).stream()
++                    .map(LocalDate::toString).toList());
+             return new PlanView(plan.getId(), plan.getPersonId(), plan.getAmount().setScale(2).toPlainString(),
+-                    plan.getStart(), plan.getEvery(), plan.getDay(), plan.getEnd(), generated, next);
++                    plan.getStart(), plan.getEvery(), plan.getDay(), plan.getEnd(), generated, next,
++                    pauses.stream().anyMatch(ClaimPlanPause::isOpen));
+         }
+     }
+ 
+@@ -71,9 +73,12 @@ public class ClaimPlanController {
+             @PathVariable @Size(max = 100) @Pattern(regexp = "[A-Za-z0-9._-]+") String sheetId,
+             @RequestHeader("X-User") @NotBlank @Size(max = 100) String user) {
+         Map<Long, Integer> made = service.made(sheetId);
++        Map<Long, List<ClaimPlanPause>> pauses = service.pauses(sheetId);
+         LocalDate today = service.today(sheetId);
+         return service.plans(sheetId).stream()
+-                .map(p -> PlanView.of(p, made.getOrDefault(p.getId(), 0), today)).toList();
++                .map(p -> PlanView.of(p, made.getOrDefault(p.getId(), 0), today,
++                        pauses.getOrDefault(p.getId(), List.of())))
++                .toList();
+     }
+ 
+     @PostMapping("/people/{personId}/plans")
+@@ -84,7 +89,30 @@ public class ClaimPlanController {
+             @RequestBody @Valid PlanRequest request) {
+         ClaimPlan plan = service.add(sheetId, user, personId, request.amountValue(), request.start(),
+                 request.every(), request.day(), request.end());
+-        return PlanView.of(plan, 0, service.today(sheetId));
++        return PlanView.of(plan, 0, service.today(sheetId), List.of());
++    }
++
++    /** Pause the plan from the sheet's today; refused when it is already paused. */
++    @PostMapping("/plans/{planId}/pause")
++    public PlanView pause(
++            @PathVariable @Size(max = 100) @Pattern(regexp = "[A-Za-z0-9._-]+") String sheetId,
++            @PathVariable Long planId,
++            @RequestHeader("X-User") @NotBlank @Size(max = 100) String user) {
++        return view(sheetId, service.pause(sheetId, user, planId));
++    }
++
++    /** Resume the plan from the sheet's today; refused when it is not paused. */
++    @PostMapping("/plans/{planId}/resume")
++    public PlanView resume(
++            @PathVariable @Size(max = 100) @Pattern(regexp = "[A-Za-z0-9._-]+") String sheetId,
++            @PathVariable Long planId,
++            @RequestHeader("X-User") @NotBlank @Size(max = 100) String user) {
++        return view(sheetId, service.resume(sheetId, user, planId));
++    }
++
++    private PlanView view(String sheetId, ClaimPlan plan) {
++        return PlanView.of(plan, service.made(sheetId).getOrDefault(plan.getId(), 0), service.today(sheetId),
++                service.pauses(sheetId).getOrDefault(plan.getId(), List.of()));
+     }
+ 
+     @OpenToViewer
+diff --git a/src/main/java/net/officefloor/hq/app/plan/ClaimPlanPause.java b/src/main/java/net/officefloor/hq/app/plan/ClaimPlanPause.java
+new file mode 100644
+index 000000000..8e60a67ff
+--- /dev/null
++++ b/src/main/java/net/officefloor/hq/app/plan/ClaimPlanPause.java
+@@ -0,0 +1,58 @@
++package net.officefloor.hq.app.plan;
++
++import jakarta.persistence.Column;
++import jakarta.persistence.Entity;
++import jakarta.persistence.GeneratedValue;
++import jakarta.persistence.GenerationType;
++import jakarta.persistence.Id;
++import jakarta.persistence.Table;
++import java.time.LocalDate;
++
++/**
++ * A pause of a plan: from the day it was paused up to the day it was resumed (none while still paused). The plan's
++ * dates on or after its from-day and before its until-day are skipped.
++ */
++@Entity
++@Table(name = "claim_plan_pause")
++public class ClaimPlanPause {
++
++    @Id
++    @GeneratedValue(strategy = GenerationType.IDENTITY)
++    private Long id;
++
++    @Column(name = "sheet_id", nullable = false)
++    private String sheetId;
++
++    @Column(name = "plan_id", nullable = false)
++    private Long planId;
++
++    @Column(name = "from_on", nullable = false)
++    private LocalDate from;
++
++    @Column(name = "until_on")
++    private LocalDate until;
++
++    protected ClaimPlanPause() {}
++
++    public ClaimPlanPause(String sheetId, Long planId, LocalDate from) {
++        this.sheetId = sheetId;
++        this.planId = planId;
++        this.from = from;
++    }
++
++    public Long getPlanId() { return planId; }
++
++    public LocalDate getFrom() { return from; }
++
++    public LocalDate getUntil() { return until; }
++
++    /** Whether the plan is still paused. */
++    public boolean isOpen() { return until == null; }
++
++    public void resume(LocalDate on) { this.until = on; }
++
++    /** Whether the plan date falls in the pause, and so is skipped. */
++    public boolean skips(LocalDate date) {
++        return !date.isBefore(from) && (until == null || date.isBefore(until));
++    }
++}
+diff --git a/src/main/java/net/officefloor/hq/app/plan/ClaimPlanPauseRepository.java b/src/main/java/net/officefloor/hq/app/plan/ClaimPlanPauseRepository.java
+new file mode 100644
+index 000000000..5fae5ad73
+--- /dev/null
++++ b/src/main/java/net/officefloor/hq/app/plan/ClaimPlanPauseRepository.java
+@@ -0,0 +1,14 @@
++package net.officefloor.hq.app.plan;
++
++import java.util.List;
++import java.util.Optional;
++import org.springframework.data.jpa.repository.JpaRepository;
++
++public interface ClaimPlanPauseRepository extends JpaRepository<ClaimPlanPause, Long> {
++
++    List<ClaimPlanPause> findBySheetId(String sheetId);
++
++    List<ClaimPlanPause> findByPlanId(Long planId);
++
++    Optional<ClaimPlanPause> findByPlanIdAndUntilIsNull(Long planId);
++}
+diff --git a/src/main/java/net/officefloor/hq/app/plan/ClaimPlanService.java b/src/main/java/net/officefloor/hq/app/plan/ClaimPlanService.java
+index 0bf6c2bfa..838ca63a6 100644
+--- a/src/main/java/net/officefloor/hq/app/plan/ClaimPlanService.java
++++ b/src/main/java/net/officefloor/hq/app/plan/ClaimPlanService.java
+@@ -2,9 +2,11 @@ package net.officefloor.hq.app.plan;
+ 
+ import java.math.BigDecimal;
+ import java.time.LocalDate;
++import java.util.ArrayList;
+ import java.util.HashMap;
+ import java.util.List;
+ import java.util.Map;
++import java.util.function.Predicate;
+ import net.officefloor.hq.app.Audit;
+ import net.officefloor.hq.app.claim.ClaimService;
+ import net.officefloor.hq.app.claim.CorrectionRefusedException;
+@@ -29,13 +31,16 @@ import org.springframework.transaction.support.TransactionTemplate;
+  * claim with the plan's amount and an empty note for each plan date up to its end and the sheet's
+  * today that it has made none for yet, dated that day and added by every rule of the claim form. A
+  * date the form refuses is skipped, and tried again by the next generate. Each claim is made in its
+- * own transaction, so one refused leaves the others made.
++ * own transaction, so one refused leaves the others made. A plan can be paused and resumed (each on the
++ * sheet's today): a plan date on or after the day it was paused and before the day it was resumed is
++ * skipped, not postponed, so generate makes nothing for it and its next dates leave it out.
+  */
+ @Service
+ public class ClaimPlanService {
+ 
+     private final ClaimPlanRepository plans;
+     private final ClaimPlanDateRepository dates;
++    private final ClaimPlanPauseRepository pauses;
+     private final PersonRepository people;
+     private final SheetRepository sheetRows;
+     private final SheetService sheets;
+@@ -44,12 +49,14 @@ public class ClaimPlanService {
+     private final SettingService settings;
+     private final Audit audit;
+ 
+-    public ClaimPlanService(ClaimPlanRepository plans, ClaimPlanDateRepository dates, PersonRepository people,
++    public ClaimPlanService(ClaimPlanRepository plans, ClaimPlanDateRepository dates, ClaimPlanPauseRepository pauses,
++            PersonRepository people,
+             SheetRepository sheetRows, SheetService sheets, ClaimService claims, SettingService settings,
+             PlatformTransactionManager transactions, Audit audit) {
+         this.settings = settings;
+         this.plans = plans;
+         this.dates = dates;
++        this.pauses = pauses;
+         this.people = people;
+         this.sheetRows = sheetRows;
+         this.sheets = sheets;
+@@ -72,6 +79,56 @@ public class ClaimPlanService {
+         return made;
+     }
+ 
++    /** The pauses of each of the sheet's plans, by plan id (those never paused left out). */
++    @Transactional(readOnly = true)
++    public Map<Long, List<ClaimPlanPause>> pauses(String sheetId) {
++        Map<Long, List<ClaimPlanPause>> by = new HashMap<>();
++        for (ClaimPlanPause p : pauses.findBySheetId(sheetId)) {
++            by.computeIfAbsent(p.getPlanId(), k -> new ArrayList<>()).add(p);
++        }
++        return by;
++    }
++
++    /** Whether a plan date is skipped by one of the plan's pauses. */
++    static Predicate<LocalDate> skippedBy(List<ClaimPlanPause> pauses) {
++        return d -> pauses.stream().anyMatch(p -> p.skips(d));
++    }
++
++    /** Pause the plan from the sheet's today; refused when it is already paused. */
++    @Transactional
++    public ClaimPlan pause(String sheetId, String user, Long planId) {
++        sheetRows.findForUpdate(sheetId).orElseThrow(SheetNotFoundException::new);
++        ClaimPlan plan = planOf(sheetId, planId);
++        if (pauses.findByPlanIdAndUntilIsNull(planId).isPresent()) throw new PlanPauseRefusedException();
++        pauses.saveAndFlush(new ClaimPlanPause(sheetId, planId, sheets.today(sheetId)));
++        audit.recordOnCommit("PLAN_PAUSED sheet=" + sheetId + " by=" + user.strip() + " name=" + nameOf(plan)
++                + " start=" + plan.getStart());
++        return plan;
++    }
++
++    /** Resume the paused plan from the sheet's today; refused when it is not paused. */
++    @Transactional
++    public ClaimPlan resume(String sheetId, String user, Long planId) {
++        sheetRows.findForUpdate(sheetId).orElseThrow(SheetNotFoundException::new);
++        ClaimPlan plan = planOf(sheetId, planId);
++        ClaimPlanPause pause = pauses.findByPlanIdAndUntilIsNull(planId).orElseThrow(PlanPauseRefusedException::new);
++        pause.resume(sheets.today(sheetId));
++        pauses.saveAndFlush(pause);
++        audit.recordOnCommit("PLAN_RESUMED sheet=" + sheetId + " by=" + user.strip() + " name=" + nameOf(plan)
++                + " start=" + plan.getStart());
++        return plan;
++    }
++
++    private ClaimPlan planOf(String sheetId, Long planId) {
++        return plans.findById(planId).filter(p -> p.getSheetId().equals(sheetId))
++                .orElseThrow(PlanNotFoundException::new);
++    }
++
++    private String nameOf(ClaimPlan plan) {
++        return people.findByIdAndSheetId(plan.getPersonId(), plan.getSheetId()).map(Person::getName)
++                .orElseThrow(PersonNotFoundException::new);
++    }
++
+     /** The sheet's today, from which a plan's next dates are counted. */
+     public LocalDate today(String sheetId) {
+         return sheets.today(sheetId);
+@@ -100,8 +157,11 @@ public class ClaimPlanService {
+         if (settings.roleOf(sheetId, user) == Role.VIEWER || sheets.isArchived(sheetId)) return 0;
+         LocalDate today = sheets.today(sheetId);
+         int made = 0;
++        Map<Long, List<ClaimPlanPause>> paused = pauses(sheetId);
+         for (ClaimPlan plan : plans(sheetId)) {
++            Predicate<LocalDate> skipped = skippedBy(paused.getOrDefault(plan.getId(), List.of()));
+             for (LocalDate on : plan.datesUpTo(today)) {
++                if (skipped.test(on)) continue;
+                 try {
+                     Boolean done = transaction.execute(status -> make(sheetId, user, plan, on));
+                     if (Boolean.TRUE.equals(done)) made++;
+diff --git a/src/main/java/net/officefloor/hq/app/plan/PlanNotFoundException.java b/src/main/java/net/officefloor/hq/app/plan/PlanNotFoundException.java
+new file mode 100644
+index 000000000..0713c34f3
+--- /dev/null
++++ b/src/main/java/net/officefloor/hq/app/plan/PlanNotFoundException.java
+@@ -0,0 +1,8 @@
++package net.officefloor.hq.app.plan;
++
++import org.springframework.http.HttpStatus;
++import org.springframework.web.bind.annotation.ResponseStatus;
++
++/** No plan of the id on the sheet. */
++@ResponseStatus(HttpStatus.NOT_FOUND)
++public class PlanNotFoundException extends RuntimeException {}
+diff --git a/src/main/java/net/officefloor/hq/app/plan/PlanPauseRefusedException.java b/src/main/java/net/officefloor/hq/app/plan/PlanPauseRefusedException.java
+new file mode 100644
+index 000000000..b74191172
+--- /dev/null
++++ b/src/main/java/net/officefloor/hq/app/plan/PlanPauseRefusedException.java
+@@ -0,0 +1,8 @@
++package net.officefloor.hq.app.plan;
++
++import org.springframework.http.HttpStatus;
++import org.springframework.web.bind.annotation.ResponseStatus;
++
++/** The plan is already paused (when pausing) or is running (when resuming). */
++@ResponseStatus(HttpStatus.CONFLICT)
++public class PlanPauseRefusedException extends RuntimeException {}
+diff --git a/src/main/resources/db/migration/V107__claim_plan_pause.sql b/src/main/resources/db/migration/V107__claim_plan_pause.sql
+new file mode 100644
+index 000000000..d08cdbaa8
+--- /dev/null
++++ b/src/main/resources/db/migration/V107__claim_plan_pause.sql
+@@ -0,0 +1,10 @@
++-- A plan's pauses: from the day it was paused up to the day it was resumed (none while it is still
++-- paused). A plan date on or after a pause's from-day and before its until-day is skipped.
++CREATE TABLE claim_plan_pause (
++    id       BIGINT AUTO_INCREMENT PRIMARY KEY,
++    sheet_id VARCHAR(100) NOT NULL REFERENCES sheet (id),
++    plan_id  BIGINT       NOT NULL REFERENCES claim_plan (id),
++    from_on  DATE         NOT NULL,
++    until_on DATE
++);
++CREATE INDEX claim_plan_pause_sheet ON claim_plan_pause (sheet_id, plan_id);
