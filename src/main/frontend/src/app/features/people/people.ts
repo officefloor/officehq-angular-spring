@@ -822,9 +822,9 @@ export class People {
     const today = this.session.today();
     return new Set(this.people().filter((p) => today !== null && p.retiredFrom !== null && p.retiredFrom <= today).map((p) => p.id));
   });
-  /** Whether the claim's person keeps it out of the live totals while open: dated within a hold of theirs, or they are retired on the sheet's today. */
+  /** Whether the claim is kept out of the live totals while open: held itself, dated within a hold of its person's, or they are retired on the sheet's today. */
   private keptOut(c: Claim): boolean {
-    return this.retiredTodayIds().has(c.personId) || (this.holdsById().get(c.personId) ?? []).some((h) => holdContains(h, c.date));
+    return c.held || this.retiredTodayIds().has(c.personId) || (this.holdsById().get(c.personId) ?? []).some((h) => holdContains(h, c.date));
   }
   /** Whether the claim counts in the live totals: OPEN, PENDING or SETTLED, less open ones kept out by a hold or retirement and not bound, and deferred ones. */
   private readonly counts = (c: Claim): boolean => countsFor(c, this.keptOut(c), this.session.today());

@@ -188,6 +188,10 @@ public class Claim {
     @Column(name = "waived", nullable = false)
     private boolean waived;
 
+    /** Whether it is held: while open and not bound by a statement it is kept out of the live totals. */
+    @Column(name = "held", nullable = false)
+    private boolean held;
+
     /** The sheet's today when its late charge was waived; none unless waived. */
     @Column(name = "waived_on")
     private LocalDate waivedOn;
@@ -427,6 +431,9 @@ public class Claim {
     public void setReviewOn(LocalDate reviewOn) { this.reviewOn = reviewOn; }
     /** Record that a reminder escalated it. */
     public void escalate() { this.escalated = true; }
+    public boolean isHeld() { return held; }
+    /** Hold it, or release it when held. */
+    public void toggleHeld() { this.held = !held; }
     public boolean isWaived() { return waived; }
     public LocalDate getWaivedOn() { return waivedOn; }
     /** Waive its late charge on the sheet's today. */

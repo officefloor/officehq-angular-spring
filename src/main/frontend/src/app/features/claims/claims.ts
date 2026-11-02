@@ -71,6 +71,8 @@ export interface Claim {
   reviewOn: string | null;
   /** Whether a steward waived its late charge; from the day it was waived on it bears none. */
   waived: boolean;
+  /** Whether it is held: while open and not bound by a statement it is kept out of the live totals. */
+  held: boolean;
   /** The sheet's today (yyyy-mm-dd) its late charge was waived on; null unless waived. */
   waivedOn: string | null;
   /** The number of the bulk settle batch that settled it; null when settled one at a time or not settled. */
@@ -380,6 +382,7 @@ function notEditable(status: ClaimStatus | undefined): string {
           <span>Reminded <span data-testid="claim-reminded">{{ c.remindedOn ?? '' }}</span></span>
           <span>Batch <span data-testid="claim-batch">{{ c.batch ?? '' }}</span></span>
           <span>Waived <span data-testid="claim-waived">{{ c.waived ? 'yes' : 'no' }}</span></span>
+          <span>Held <span data-testid="claim-held">{{ c.held ? 'yes' : 'no' }}</span></span>
           <ol [attr.aria-label]="'Status log of claim of ' + c.amount + ' on ' + c.date">
             @for (line of c.log; track $index) {
               <li data-testid="claim-log-line">{{ line.status }} by {{ line.by }} on {{ line.date }} due={{ line.due ?? na }}</li>
@@ -455,6 +458,8 @@ function notEditable(status: ClaimStatus | undefined): string {
                   [attr.aria-label]="'Add a proof to claim of ' + c.amount + ' on ' + c.date">Add proof</button>
           <button type="button" data-testid="claim-remind" (click)="remind(c)"
                   [attr.aria-label]="'Remind claim of ' + c.amount + ' on ' + c.date">Remind</button>
+          <button type="button" data-testid="claim-hold" (click)="hold(c)"
+                  [attr.aria-label]="(c.held ? 'Release' : 'Hold') + ' claim of ' + c.amount + ' on ' + c.date">{{ c.held ? 'Release' : 'Hold' }}</button>
           <button type="button" data-testid="claim-waive" (click)="waive(c)"
                   [attr.aria-label]="'Waive the late charge of claim of ' + c.amount + ' on ' + c.date">Waive late charge</button>
           <button type="button" data-testid="claim-timeline" (click)="showTimeline(c)"
@@ -890,6 +895,27 @@ export class Claims {
           ? 'This claim was already reminded today.'
           : `A ${c.status} claim cannot be reminded; only an OPEN or PENDING one can.`)
         : 'Could not remind that claim.';
+      this.claimError.set({ id: c.id, message });
+    }
+  }
+
+  /** Hold an OPEN or PENDING claim, or release it when held; a claim in any other status is refused. */
+  protected async hold(c: Claim): Promise<void> {
+    this.claimError.set(null);
+    const sheet = this.session.sheetId();
+    if (!sheet) return;
+    const url = `/api/sheets/${encodeURIComponent(sheet)}/claims/${c.id}/hold`;
+    try {
+      const claim = await firstValueFrom(this.http.post<Claim>(url, null, { headers: this.headers() }));
+      if (this.session.sheetId() !== sheet) return;
+      this.saved.emit(claim);
+    } catch (e) {
+      if (this.session.sheetId() !== sheet) return;
+      const message = !(e instanceof HttpErrorResponse)
+        ? 'Could not hold or release that claim.'
+        : e.status === 403
+          ? 'You cannot hold or release a claim.'
+          : `A ${c.status} claim cannot be held or released; only an OPEN or PENDING one can.`;
       this.claimError.set({ id: c.id, message });
     }
   }

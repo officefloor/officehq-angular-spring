@@ -403,12 +403,12 @@ public class Person {
     /** Whether their retirement date is reached on the date (the date on or after it). */
     public boolean retiredOn(LocalDate date) { return retiredFrom != null && date != null && !date.isBefore(retiredFrom); }
 
-    /** Whether an open claim of theirs is kept out of the live totals: dated within a hold, or retired by the sheet's today. */
-    private boolean keptOut(Claim claim, LocalDate today) { return heldOn(claim.getDate()) || retiredOn(today); }
+    /** Whether an open claim of theirs is kept out of the live totals: held itself, dated within a hold, or retired by the sheet's today. */
+    private boolean keptOut(Claim claim, LocalDate today) { return claim.isHeld() || heldOn(claim.getDate()) || retiredOn(today); }
 
     /**
      * Whether a claim of theirs counts in the live totals: it counts by its status, unless it is open
-     * (OPEN or PENDING), dated within a hold or theirs once their retirement date is reached on the
+     * (OPEN or PENDING), held, dated within a hold or theirs once their retirement date is reached on the
      * sheet's today, and not bound by a statement, or deferred on the sheet's today.
      */
     public boolean counts(Claim claim, LocalDate today) {

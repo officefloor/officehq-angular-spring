@@ -616,6 +616,24 @@ public class ClaimService {
     }
 
     /**
+     * Hold an OPEN or PENDING claim, or release it when held: while held and not bound by a statement it is
+     * kept out of the live totals, as a held person's claims are. Refused for a claim in any other status.
+     */
+    @Transactional
+    public Claim toggleHold(String sheetId, String user, Long id) {
+        // The snapshot locks the sheet first, so the claim is read once no other change is under way.
+        RollupService.Snapshot before = rollup.snapshot(sheetId);
+        Claim claim = claims.findByIdAndSheetId(id, sheetId).orElseThrow(ClaimNotFoundException::new);
+        if (!claim.getStatus().isOpen()) throw new ClaimStatusRefusedException();
+        Person person = people.findByIdAndSheetId(claim.getPersonId(), sheetId).orElseThrow(PersonNotFoundException::new);
+        claim.toggleHeld();
+        Claim saved = claims.saveAndFlush(claim);
+        record(saved.isHeld() ? "CLAIM_HELD" : "CLAIM_RELEASED", sheetId, user, person, saved);
+        rollup.recordChanges(sheetId, user, before);
+        return saved;
+    }
+
+    /**
      * A steward waives the late charge of an OPEN or PENDING claim: from the sheet's today on it bears none,
      * whether overdue or not. Refused for anyone else, a claim in any other status, or one already waived.
      */
