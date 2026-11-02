@@ -39,13 +39,13 @@ public class PersonController {
      * contact theirs, null for none; aliases theirs, sorted as names are compared; active whether they are active on the sheet's today ({@link Person#activeOn});
      * clashing whether their name or an alias is used on another sheet of the sheet's tree ({@link PersonService#clashingIds});
      * origin the sheet they were transferred from, null when never transferred; tags theirs, sorted (empty when none);
-     * snapshots the SNAPSHOT lines written for them, oldest first.
+     * snapshots the SNAPSHOT lines written for them, oldest first; flag the reason of their flag in force on the sheet's today, null for none.
      */
     public record PersonView(Long id, String name, String grade, List<GradeView> grades, long version,
             boolean retired, LocalDate retiredFrom, boolean held, List<HoldView> holds, List<Long> patronIds,
             boolean watched, Integer terms, boolean active, String contact, List<String> aliases,
             boolean clashing, String origin, List<RetirementView> retirements, List<String> tags,
-            List<SnapshotView> snapshots, Integer baseTerms) {
+            List<SnapshotView> snapshots, Integer baseTerms, String flag) {
         public static PersonView of(Person person, LocalDate today, List<Long> patronIds, boolean watched,
                 boolean active, boolean clashing) {
             List<GradeView> grades = new ArrayList<>();
@@ -61,7 +61,7 @@ public class PersonController {
                     person.getTags(),
                     person.getSnapshots().stream().map(s -> new SnapshotView(s.getDay(),
                             s.getDueTotal() == null ? null : s.getDueTotal().setScale(2).toPlainString())).toList(),
-                    person.getTerms());
+                    person.getTerms(), person.flagOn(today));
         }
     }
 
@@ -76,6 +76,9 @@ public class PersonController {
 
     /** A hold from a date (null: the beginning of time) to a date (null: open-ended), both included. */
     public record HoldView(LocalDate from, LocalDate to) {}
+
+    /** A flag to put on a person: its reason (blank is refused) and the date it is in force until, inclusive. */
+    public record FlagRequest(@Size(max = 200) String reason, LocalDate until) {}
 
     /** A hold to put on a person: from the date (blank: the sheet's today) to the optional to-date. */
     public record HoldRequest(LocalDate from, LocalDate to) {}
@@ -258,6 +261,16 @@ public class PersonController {
             @RequestHeader("X-User") @NotBlank @Size(max = 100) String user,
             @RequestBody HoldRequest request) {
         return view(service.hold(sheetId, user, id, request.from(), request.to()), user);
+    }
+
+    /** Flag the person with a reason until a date: a steward only. */
+    @PostMapping("/{id}/flag")
+    public PersonView flag(
+            @PathVariable @Size(max = 100) @Pattern(regexp = "[A-Za-z0-9._-]+") String sheetId,
+            @PathVariable Long id,
+            @RequestHeader("X-User") @NotBlank @Size(max = 100) String user,
+            @Valid @RequestBody FlagRequest request) {
+        return view(service.flag(sheetId, user, id, request.reason(), request.until()), user);
     }
 
     /** Give the person an alias. */

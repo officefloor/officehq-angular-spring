@@ -342,6 +342,26 @@ public class PersonService {
         return saved;
     }
 
+    /**
+     * A steward flags the person with a reason until a date, inclusive, replacing any flag they had. While
+     * the sheet's today is on or before it, only a steward may open a claim of theirs. Anyone else, a
+     * blank reason or no date is refused.
+     */
+    @Transactional
+    public Person flag(String sheetId, String user, Long id, String reason, LocalDate until) {
+        sheets.findForUpdate(sheetId).orElseThrow(SheetNotFoundException::new);
+        Person person = people.findByIdAndSheetId(id, sheetId).orElseThrow(PersonNotFoundException::new);
+        if (settings.roleOf(sheetId, user) != Role.STEWARD || reason == null || reason.isBlank() || until == null) {
+            throw new PersonFlagRefusedException();
+        }
+        String why = reason.strip();
+        person.flag(why, until);
+        Person saved = people.saveAndFlush(person);
+        audit.recordOnCommit("PERSON_FLAGGED sheet=" + sheetId + " by=" + user.strip()
+                + " name=" + saved.getName() + " reason=" + why + " until=" + until);
+        return saved;
+    }
+
     /** Give the person an alias, unless it is, as names are compared, a name or an alias on the sheet. */
     @Transactional
     public Person addAlias(String sheetId, String user, Long id, String alias) {

@@ -254,6 +254,10 @@ public class ClaimService {
             throw new ClaimSettledByOpenerException();
         }
         Person person = people.findByIdAndSheetId(claim.getPersonId(), sheetId).orElseThrow(PersonNotFoundException::new);
+        if (next == ClaimStatus.OPEN && person.flagOn(sheets.today(sheetId)) != null
+                && settings.roleOf(sheetId, user) != Role.STEWARD) {
+            throw new ClaimFlaggedException();
+        }
         // Settling freezes the late charge of the moment into the settled due.
         BigDecimal settling = next == ClaimStatus.SETTLED ? chargedFigureOf(sheetId, person, claim) : null;
         if (next == ClaimStatus.SETTLED) refuseUnproved(sheetId, person, claim, settling);

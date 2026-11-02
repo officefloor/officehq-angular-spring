@@ -151,6 +151,16 @@ public class Person {
     @Column(name = "transferred_on")
     private LocalDate transferredOn;
 
+    /** The reason a steward flagged them; null when never flagged. Flagging does not move their version. */
+    @Column(name = "flag_reason")
+    @OptimisticLock(excluded = true)
+    private String flagReason;
+
+    /** The date their flag is in force until, inclusive; null when never flagged. */
+    @Column(name = "flag_until")
+    @OptimisticLock(excluded = true)
+    private LocalDate flagUntil;
+
     @Version
     @Column(name = "version", nullable = false)
     private long version;
@@ -352,6 +362,17 @@ public class Person {
     public boolean mayClaimOn(LocalDate date) {
         if (retiredFrom != null && date.isAfter(retiredFrom)) return false;
         return retirements.stream().noneMatch(r -> r.bars(date));
+    }
+
+    /** Flag them with a reason until a date, inclusive, replacing any flag they had. */
+    public void flag(String reason, LocalDate until) {
+        this.flagReason = reason;
+        this.flagUntil = until;
+    }
+
+    /** The reason of their flag while it is in force on the date (on or before its until date); null otherwise. */
+    public String flagOn(LocalDate date) {
+        return flagReason != null && flagUntil != null && date != null && !date.isAfter(flagUntil) ? flagReason : null;
     }
 
     /** Whether they have any hold, whatever its dates. */

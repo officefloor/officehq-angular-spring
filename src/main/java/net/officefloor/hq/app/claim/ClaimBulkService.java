@@ -166,7 +166,7 @@ public class ClaimBulkService {
                 done++;
             } catch (ClaimStatusRefusedException | ClaimSettledByOpenerException | ClaimDeferredException | ClaimProofRequiredException
                     | ClaimNoteRequiredException | ClaimCapReachedException
-                    | ClaimNotPermittedException
+                    | ClaimNotPermittedException | ClaimFlaggedException
                     | PeriodClosedException
                     | ClaimNotFoundException | PersonNotFoundException refused) {
                 // left as it is
