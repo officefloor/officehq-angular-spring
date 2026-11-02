@@ -489,7 +489,7 @@ function trimmedSum(figures: number[]): number {
       }
       <table>
         <thead>
-          <tr><th scope="col"><span class="visually-hidden">Select</span></th><th scope="col">Name</th><th scope="col">Grade</th>@if (shows('terms')) {<th scope="col">Terms</th>}@if (shows('contact')) {<th scope="col">Contact</th>}<th scope="col">Tags</th><th scope="col">Aliases</th><th scope="col">Came from</th>@if (shows('claimed')) {<th scope="col">Claimed</th>}@if (shows('due-total')) {<th scope="col">Due total</th>}<th scope="col">Snapshots</th>@if (shows('excess')) {<th scope="col">Excess</th>}<th scope="col">Settled total</th><th scope="col">Open total</th><th scope="col">Cut total</th><th scope="col">Periods</th><th scope="col">Statements</th><th scope="col">Retired</th><th scope="col">Hold</th><th scope="col">Flag</th><th scope="col">Approver</th><th scope="col">Watched</th><th scope="col">Active</th><th scope="col">Clashing</th><th scope="col">Overdue</th><th scope="col">Aged</th><th scope="col">Patrons</th><th scope="col">Plans</th><th scope="col">Claims</th><th scope="col"><span class="visually-hidden">Actions</span></th></tr>
+          <tr><th scope="col"><span class="visually-hidden">Select</span></th><th scope="col">Name</th><th scope="col">Grade</th>@if (shows('terms')) {<th scope="col">Terms</th>}@if (shows('contact')) {<th scope="col">Contact</th>}<th scope="col">Tags</th><th scope="col">Aliases</th><th scope="col">Came from</th>@if (shows('claimed')) {<th scope="col">Claimed</th>}@if (shows('due-total')) {<th scope="col">Due total</th>}<th scope="col">Snapshots</th>@if (shows('excess')) {<th scope="col">Excess</th>}<th scope="col">Settled total</th><th scope="col">Score</th><th scope="col">Open total</th><th scope="col">Cut total</th><th scope="col">Periods</th><th scope="col">Statements</th><th scope="col">Retired</th><th scope="col">Hold</th><th scope="col">Flag</th><th scope="col">Approver</th><th scope="col">Watched</th><th scope="col">Active</th><th scope="col">Clashing</th><th scope="col">Overdue</th><th scope="col">Aged</th><th scope="col">Patrons</th><th scope="col">Plans</th><th scope="col">Claims</th><th scope="col"><span class="visually-hidden">Actions</span></th></tr>
         </thead>
         <tbody>
           @for (p of sorted(); track p.id) {
@@ -551,6 +551,7 @@ function trimmedSum(figures: number[]): number {
                 <td data-testid="person-excess">{{ excessOf(p) | figure }}</td>
               }
               <td data-testid="person-settled-total">{{ money(splitOf(p).settled) | figure }}</td>
+              <td data-testid="person-score">{{ scoreOf(p) }}</td>
               <td data-testid="person-open-total">{{ money(splitOf(p).open) | figure }}</td>
               <td data-testid="person-cut-total">{{ money(cutTotalOf(p.id)) | figure }}</td>
               <td>
@@ -880,15 +881,19 @@ export class People {
   });
   /**
    * The people a restricted user may see: the person with their name and the people of the crews that
-   * person leads or belongs to; null for any other role (everyone).
+   * person leads or belongs to, and anyone they added on this screen since the sheet was loaded; null for
+   * any other role (everyone).
    */
   private readonly visibleIds = computed<ReadonlySet<number> | null>(() => {
     if (this.session.role() !== 'restricted') return null;
     const user = this.session.user()?.trim();
     const self = this.people().find((p) => p.name.trim() === user);
-    if (!self) return new Set();
-    return new Set([self.id, ...this.session.crewPeople().filter((ids) => ids.includes(self.id)).flat()]);
+    const added = this.addedHere();
+    if (!self) return added;
+    return new Set([self.id, ...added, ...this.session.crewPeople().filter((ids) => ids.includes(self.id)).flat()]);
   });
+  /** The people added on this screen since the sheet was last loaded. */
+  private readonly addedHere = signal<ReadonlySet<number>>(new Set());
   /** The people on screen: everyone (a restricted user: those they may see), less the retired unless show retired is on. */
   protected readonly listed = computed(() => {
     const visible = this.visibleIds();
@@ -1370,6 +1375,7 @@ export class People {
       const id = this.session.sheetId();
       this.session.loads();
       this.people.set([]);
+      this.addedHere.set(new Set());
       this.descendants.set(null);
       this.claims.set([]);
       this.plans.set([]);
@@ -1567,6 +1573,19 @@ export class People {
 
   protected splitOf(p: Person): Split {
     return this.splitByPerson().get(p.id) ?? { settled: 0, open: 0 };
+  }
+
+  /**
+   * Their score: their settled figures (in hundreds) less 5 for every overdue claim of theirs that counts,
+   * rounded half to even to a whole number.
+   */
+  protected scoreOf(p: Person): string {
+    // in cents, 10000 to a point
+    const units = this.splitOf(p).settled - 50000 * this.overdueOf(p).count;
+    const floor = Math.floor(units / 10000);
+    const rest = units - floor * 10000;
+    const score = rest > 5000 || (rest === 5000 && floor % 2 !== 0) ? floor + 1 : floor;
+    return String(score);
   }
 
   protected agedOf(p: Person): Aged {
@@ -2415,6 +2434,7 @@ export class People {
         );
         if (this.session.sheetId() !== sheet) return;
         this.people.update((list) => [...list, added]);
+        this.addedHere.update((ids) => new Set([...ids, added.id]));
       } else {
         const saved = await firstValueFrom(
           this.http.put<Person>(`${this.url(sheet)}/${id}`, { name, grade, gradeFrom, terms, termsFrom, contact, tags, version: this.editingVersion }, { headers: this.headers() }),
@@ -2462,7 +2482,10 @@ export class People {
         this.http.post<QuickAdded>(`/api/sheets/${encodeURIComponent(sheet)}/quick-add`, { name, amount }, { headers: this.headers() }),
       );
       if (this.session.sheetId() !== sheet) return;
-      if (done.added) this.people.update((list) => [...list.filter((p) => p.id !== done.person.id), done.person]);
+      if (done.added) {
+        this.people.update((list) => [...list.filter((p) => p.id !== done.person.id), done.person]);
+        this.addedHere.update((ids) => new Set([...ids, done.person.id]));
+      }
       this.claimSaved(done.claim);
       this.quickForm.reset({ name: '', amount: '' }, { emitEvent: false });
     } catch (e) {
