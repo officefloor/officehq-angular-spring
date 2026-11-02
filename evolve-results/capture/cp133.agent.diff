@@ -1,0 +1,461 @@
+diff --git a/src/main/frontend/src/app/core/people.ts b/src/main/frontend/src/app/core/people.ts
+index 095301cc5..87892e6dc 100644
+--- a/src/main/frontend/src/app/core/people.ts
++++ b/src/main/frontend/src/app/core/people.ts
+@@ -90,6 +90,8 @@ export interface Person {
+   clashing: boolean;
+   /** The sheet they were transferred from; null when they were not transferred. */
+   origin: string | null;
++  /** Their tags, sorted and comma and space separated; empty when they have none. */
++  tags: string;
+ }
+ 
+ /** A statement just taken: the person as they now show, and their claims (newest first) as it
+@@ -108,6 +110,8 @@ export interface PersonForm {
+   terms: string;
+   /** Their contact; blank for none. */
+   contact: string;
++  /** Comma separated tags (the store trims, lower-cases and drops repeats); empty for none. */
++  tags?: string;
+ }
+ 
+ // The people kept on the active sheet.
+diff --git a/src/main/frontend/src/app/features/people/people-list.ts b/src/main/frontend/src/app/features/people/people-list.ts
+index c484dc54c..04e6b6ae3 100644
+--- a/src/main/frontend/src/app/features/people/people-list.ts
++++ b/src/main/frontend/src/app/features/people/people-list.ts
+@@ -65,6 +65,8 @@ const NO_LEAVE: Leave = { holds: [], retiredFrom: null };
+         <input id="person-form-terms" inputmode="numeric" data-testid="person-form-terms" formControlName="terms" />
+         <label for="person-form-contact">Contact</label>
+         <input id="person-form-contact" data-testid="person-form-contact" formControlName="contact" />
++        <label for="person-form-tags">Tags (comma separated)</label>
++        <input id="person-form-tags" data-testid="person-form-tags" formControlName="tags" />
+         <button type="submit" data-testid="person-form-submit">{{ editing() === null ? 'Add person' : 'Save' }}</button>
+         @if (editing() !== null) {
+           <button type="button" data-testid="person-form-cancel" (click)="cancel()">Cancel</button>
+@@ -174,7 +176,7 @@ const NO_LEAVE: Leave = { holds: [], retiredFrom: null };
+       <button type="button" data-testid="export-claims" (click)="exportClaimsCsv()">Export claims (CSV)</button>
+       <table data-testid="people">
+         <thead>
+-          <tr><th scope="col"><span class="visually-hidden">Select</span></th><th scope="col">Name</th><th scope="col">Grade</th><th scope="col">Active</th><th scope="col">Terms</th><th scope="col">Contact</th><th scope="col">Aliases</th><th scope="col">Clashing</th><th scope="col">Came from</th><th scope="col">Claimed</th><th scope="col">Due</th><th scope="col">Settled due</th><th scope="col">Open due</th>@for (pd of periods(); track pd.id) {<th scope="col">Due in {{ pd.name }}</th>}<th scope="col">Excess</th><th scope="col">Cut total</th><th scope="col">Statements</th><th scope="col">Last stated</th><th scope="col">Stated on</th><th scope="col">Retired</th><th scope="col">Retired from</th><th scope="col">Past retirements</th><th scope="col">On hold</th><th scope="col">Overdue</th><th scope="col">Overdue due</th><th scope="col">Due aged 0–30 days</th><th scope="col">Due aged 31–60 days</th><th scope="col">Due aged 61+ days</th><th scope="col">Patrons</th><th scope="col">Backing</th><th scope="col">Watched</th><th scope="col">Plans</th><th scope="col">Claims</th><th scope="col"><span class="visually-hidden">Actions</span></th></tr>
++          <tr><th scope="col"><span class="visually-hidden">Select</span></th><th scope="col">Name</th><th scope="col">Grade</th><th scope="col">Active</th><th scope="col">Terms</th><th scope="col">Contact</th><th scope="col">Tags</th><th scope="col">Aliases</th><th scope="col">Clashing</th><th scope="col">Came from</th><th scope="col">Claimed</th><th scope="col">Due</th><th scope="col">Settled due</th><th scope="col">Open due</th>@for (pd of periods(); track pd.id) {<th scope="col">Due in {{ pd.name }}</th>}<th scope="col">Excess</th><th scope="col">Cut total</th><th scope="col">Statements</th><th scope="col">Last stated</th><th scope="col">Stated on</th><th scope="col">Retired</th><th scope="col">Retired from</th><th scope="col">Past retirements</th><th scope="col">On hold</th><th scope="col">Overdue</th><th scope="col">Overdue due</th><th scope="col">Due aged 0–30 days</th><th scope="col">Due aged 31–60 days</th><th scope="col">Due aged 61+ days</th><th scope="col">Patrons</th><th scope="col">Backing</th><th scope="col">Watched</th><th scope="col">Plans</th><th scope="col">Claims</th><th scope="col"><span class="visually-hidden">Actions</span></th></tr>
+         </thead>
+         <tbody>
+           @for (p of shown(); track p.id) {
+@@ -189,6 +191,7 @@ const NO_LEAVE: Leave = { holds: [], retiredFrom: null };
+               <td data-testid="person-active">{{ activeOf(p) ? 'yes' : 'no' }}</td>
+               <td data-testid="person-terms">{{ p.terms ?? '' }}</td>
+               <td data-testid="person-contact">{{ p.contact ?? '' }}</td>
++              <td data-testid="person-tags">{{ p.tags }}</td>
+               <td data-testid="person-aliases">{{ p.aliases.join(', ') }}</td>
+               <td data-testid="person-clashing">{{ p.clashing ? 'yes' : 'no' }}</td>
+               <td data-testid="person-origin">{{ p.origin ?? '' }}</td>
+@@ -500,15 +503,16 @@ export class PeopleList {
+   protected readonly cutTotal = computed(() =>
+     sumAmounts(this.people().map((p) => this.cutTotals().get(p.id) ?? '0.00')),
+   );
+-  /** Per tag ever used on the sheet (those the store keeps, and those of the claims shown), in
+-   *  order: the due figures of the claims that count which carry it, skipping those with no due
+-   *  (not trimmed, not capped). */
++  /** Per tag ever used on the sheet (those the store keeps, and those of the claims and people
++   *  shown), in order: the due figures of the claims that count which carry it, or whose person
++   *  carries it (counted once), skipping those with no due (not trimmed, not capped). */
+   protected readonly tagDueTotals = computed(() => {
+     const figures = new Map<string, string[]>(this.storedTags().map((t) => [t, []]));
++    for (const p of this.people()) for (const t of splitTags(p.tags)) if (!figures.has(t)) figures.set(t, []);
+     for (const c of this.claims()) {
+-      const tags = tagsOf(c);
+-      for (const t of tags) if (!figures.has(t)) figures.set(t, []);
+       const p = this.byId().get(c.personId);
++      const tags = [...new Set([...splitTags(c.tags), ...splitTags(p?.tags ?? '')])];
++      for (const t of tags) if (!figures.has(t)) figures.set(t, []);
+       if (tags.length === 0 || !p || !countsLive(c, p, this.session.today())) continue;
+       const d = claimDue(c, this.rates(), gradeOn(p.grades, c.date), this.floor(), this.lateness());
+       if (d !== null) for (const t of tags) figures.get(t)!.push(d);
+@@ -684,6 +688,8 @@ export class PeopleList {
+     terms: new FormControl('', { nonNullable: true }),
+     /** The person's contact; blank for none. */
+     contact: new FormControl('', { nonNullable: true }),
++    /** The person's tags, comma separated; blank for none. */
++    tags: new FormControl('', { nonNullable: true }),
+   });
+   /** Only the newest read of the sheet may show: a load overtaken by another is dropped. */
+   private reads = 0;
+@@ -724,7 +730,7 @@ export class PeopleList {
+     this.editing.set(p.id);
+     this.version = p.version;
+     this.form.setValue({ name: p.name, grade: this.gradeOf(p), gradeFrom: '', terms: p.terms?.toString() ?? '',
+-      contact: p.contact ?? '' });
++      contact: p.contact ?? '', tags: p.tags });
+     this.error.set('');
+   }
+ 
+@@ -991,6 +997,7 @@ export class PeopleList {
+     const { name, grade, gradeFrom } = this.form.getRawValue();
+     const terms = this.form.controls.terms.value.trim();
+     const contact = this.form.controls.contact.value.trim().toLowerCase();
++    const tags = this.form.controls.tags.value;
+     if (!name.trim()) {
+       this.refuse('Enter a name.');
+       return;
+@@ -1007,11 +1014,11 @@ export class PeopleList {
+     this.submitting = true;
+     try {
+       if (id === null) {
+-        const added = await this.api.add({ name, grade, terms, contact });
++        const added = await this.api.add({ name, grade, terms, contact, tags });
+         this.people.update((ps) => [...ps, added]);
+       } else {
+         const saved = await this.api.edit(id, this.version, { name, grade, gradeFrom: gradeFrom.trim() || null, terms,
+-          contact });
++          contact, tags });
+         this.people.update((ps) => ps.map((p) => (p.id === saved.id ? saved : p)));
+       }
+       this.reset();
+@@ -1049,7 +1056,8 @@ export class PeopleList {
+       this.people.update((ps) => ps.map((p) => (p.id === id ? current : p)));
+       this.version = current.version;
+       this.form.setValue({ name: current.name, grade: this.gradeOf(current), gradeFrom: this.form.getRawValue().gradeFrom,
+-        terms: current.terms?.toString() ?? '', contact: current.contact ?? '' },
++        terms: current.terms?.toString() ?? '', contact: current.contact ?? '',
++        tags: current.tags },
+         { emitEvent: false });
+     } catch {
+       // the editor keeps what was typed; reopening it reads the person again
+@@ -1408,7 +1416,7 @@ export class PeopleList {
+ 
+   private reset(): void {
+     this.editing.set(null);
+-    this.form.reset({ name: '', grade: 'A', gradeFrom: '', terms: '', contact: '' }, { emitEvent: false });
++    this.form.reset({ name: '', grade: 'A', gradeFrom: '', terms: '', contact: '', tags: '' }, { emitEvent: false });
+     this.error.set('');
+   }
+ 
+@@ -1452,9 +1460,9 @@ export class PeopleList {
+   }
+ }
+ 
+-/** A claim's tags, one by one. */
+-function tagsOf(c: Claim): string[] {
+-  return c.tags === '' ? [] : c.tags.split(', ');
++/** Tags as shown (comma and space separated), one by one. */
++function splitTags(tags: string): string[] {
++  return tags === '' ? [] : tags.split(', ');
+ }
+ 
+ /** Downloads the lines as a CSV file of the name given, each line ended by a line feed. */
+diff --git a/src/main/java/net/officefloor/hq/app/person/Person.java b/src/main/java/net/officefloor/hq/app/person/Person.java
+index e43050adf..df8ec9d6d 100644
+--- a/src/main/java/net/officefloor/hq/app/person/Person.java
++++ b/src/main/java/net/officefloor/hq/app/person/Person.java
+@@ -19,6 +19,7 @@ import java.util.Set;
+ import java.util.Comparator;
+ import java.util.List;
+ import java.util.Objects;
++import net.officefloor.hq.app.claim.Tags;
+ 
+ /** A person on a sheet: a name and a grade (A, B or C), dated: each grade applies from its from-date. */
+ @Entity
+@@ -67,6 +68,10 @@ public class Person {
+     @Column(name = "contact")
+     private String contact;
+ 
++    /** The person's tags, sorted and comma separated (see {@link Tags}); null when they have none. */
++    @Column(name = "tags")
++    private String tags;
++
+     /** The person's aliases, each trimmed; unique on the sheet among names and aliases as names are
+      *  compared. */
+     @ElementCollection(fetch = FetchType.EAGER)
+@@ -102,7 +107,7 @@ public class Person {
+     }
+ 
+     /** A copy of the person for another sheet (they were transferred there): their name, every
+-     *  grade they were given (and its from-date), terms, contact and aliases; no holds. They take
++     *  grade they were given (and its from-date), terms, contact, tags and aliases; no holds. They take
+      *  the place given in that sheet's list. */
+     public Person transferredTo(String toSheetId, long toPosition) {
+         Person copy = new Person(toSheetId, (Long) null, name);
+@@ -110,6 +115,7 @@ public class Person {
+         grades.forEach(g -> copy.grades.add(new GradeFrom(g.getFromDate(), g.getGrade())));
+         copy.terms = terms;
+         copy.contact = contact;
++        copy.tags = tags;
+         copy.aliases.addAll(aliases);
+         copy.origin = sheetId;
+         return copy;
+@@ -259,6 +265,15 @@ public class Person {
+         this.contact = contact;
+     }
+ 
++    /** The person's tags as stored (see {@link Tags}); null when they have none. */
++    public String getTags() {
++        return tags;
++    }
++
++    public void setTags(String tags) {
++        this.tags = tags;
++    }
++
+     /** The person's aliases, sorted as names are compared: without regard to case. */
+     public List<String> getAliases() {
+         return aliases.stream()
+diff --git a/src/main/java/net/officefloor/hq/app/person/PersonController.java b/src/main/java/net/officefloor/hq/app/person/PersonController.java
+index 102d94579..9efd89423 100644
+--- a/src/main/java/net/officefloor/hq/app/person/PersonController.java
++++ b/src/main/java/net/officefloor/hq/app/person/PersonController.java
+@@ -13,6 +13,7 @@ import java.util.Locale;
+ import java.util.Map;
+ import java.util.Set;
+ import java.util.function.Predicate;
++import net.officefloor.hq.app.claim.Tags;
+ import net.officefloor.hq.app.history.History;
+ import net.officefloor.hq.app.role.ViewerAllowed;
+ import net.officefloor.hq.app.sheet.AsOfGuard;
+@@ -40,13 +41,14 @@ public class PersonController {
+ 
+     /** What the screen shows of a person; with how many statements were taken of them, and the
+      *  last one's due-total (text with two decimals, null when n/a or none) and day (null when none);
+-     *  whether they are retired, and from which day (null when not); and their past retirements, earliest first; and whether they have any hold, and their holds, earliest first; and their own terms in days (null: none); and their contact (null: none); and their aliases, sorted as names are compared; and whether they clash; and the sheet they were transferred from (null: none) (see
++     *  whether they are retired, and from which day (null when not); and their past retirements, earliest first; and whether they have any hold, and their holds, earliest first; and their own terms in days (null: none); and their contact (null: none); and their aliases, sorted as names are compared; and whether they clash; and the sheet they were transferred from (null: none); and their tags, sorted, comma and space separated (empty when none) (see
+      *  {@link PersonService#clashing}).
+      *  The grade is the one in force on the sheet's today; grades are all those recorded, each from
+      *  its from-date (null: the beginning of time), earliest first. */
+     public record PersonView(long id, String name, String grade, List<GradeView> grades, long version,
+             int statementCount, String statedTotal, LocalDate statementDate, boolean retired, LocalDate retiredFrom,
+-            List<RetirementView> retirements, boolean held, List<HoldView> holds, Integer terms, String contact, List<String> aliases, boolean clashing, String origin) {
++            List<RetirementView> retirements, boolean held, List<HoldView> holds, Integer terms, String contact, List<String> aliases, boolean clashing, String origin,
++            String tags) {
+         public static PersonView of(Person person, StatementSummary statements, LocalDate today,
+                 boolean clashing) {
+             return new PersonView(person.getId(), person.getName(), person.gradeOn(today),
+@@ -57,7 +59,8 @@ public class PersonController {
+                     person.getRetirements().stream().map(r -> new RetirementView(r.getFromDate(), r.getToDate())).toList(),
+                     person.isHeld(),
+                     person.getHolds().stream().map(h -> new HoldView(h.getFromDate(), h.getToDate())).toList(),
+-                    person.getTerms(), person.getContact(), person.getAliases(), clashing, person.getOrigin());
++                    person.getTerms(), person.getContact(), person.getAliases(), clashing, person.getOrigin(),
++                    String.join(", ", Tags.of(person.getTags())));
+         }
+     }
+ 
+@@ -77,10 +80,12 @@ public class PersonController {
+     /** The person form: a required name and a grade of A, B or C. An edit also gives the version
+      *  of the person its editor loaded, and the day the grade applies from (left out, the sheet's
+      *  today). Terms are the person's own, a whole number of days, 0 or more; blank for none. The
+-     *  contact is kept trimmed and lower-cased; blank for none. */
++     *  contact is kept trimmed and lower-cased; blank for none. Tags are comma separated (see
++     *  {@link Tags}); blank for none. */
+     public record PersonForm(@NotBlank @Size(max = 200) String name,
+             @NotNull @Pattern(regexp = "[ABC]") String grade, Long version, LocalDate gradeFrom,
+-            @Pattern(regexp = "\\s*\\d{0,4}\\s*") String terms, @Size(max = 200) String contact) {
++            @Pattern(regexp = "\\s*\\d{0,4}\\s*") String terms, @Size(max = 200) String contact,
++            @Size(max = 1000) String tags) {
+         Integer termsValue() {
+             return terms == null || terms.isBlank() ? null : Integer.valueOf(terms.trim());
+         }
+@@ -88,6 +93,10 @@ public class PersonController {
+         String contactValue() {
+             return contact == null || contact.isBlank() ? null : contact.trim().toLowerCase(Locale.ROOT);
+         }
++
++        String tagsValue() {
++            return Tags.normalise(tags);
++        }
+     }
+ 
+     /** The alias form: a required alias, kept trimmed. */
+@@ -188,7 +197,7 @@ public class PersonController {
+             @RequestHeader("X-User") @NotBlank @Size(max = 100) String user,
+             @Valid @RequestBody PersonForm form) {
+         Person added = service.add(sheetId.trim(), user.trim(), form.name().trim(), form.grade(),
+-                form.termsValue(), form.contactValue());
++                form.termsValue(), form.contactValue(), form.tagsValue());
+         return PersonView.of(added, StatementSummary.NONE, sheets.today(sheetId.trim()),
+                 service.clashing(sheetId.trim(), added));
+     }
+@@ -202,7 +211,7 @@ public class PersonController {
+             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "The version of the person edited is required");
+         }
+         Person saved = service.edit(sheetId.trim(), user.trim(), personId, form.version(), form.name().trim(),
+-                form.grade(), form.gradeFrom(), form.termsValue(), form.contactValue());
++                form.grade(), form.gradeFrom(), form.termsValue(), form.contactValue(), form.tagsValue());
+         return PersonView.of(saved, statements.summary(sheetId.trim(), personId), sheets.today(sheetId.trim()),
+                 service.clashing(sheetId.trim(), saved));
+     }
+diff --git a/src/main/java/net/officefloor/hq/app/person/PersonRevision.java b/src/main/java/net/officefloor/hq/app/person/PersonRevision.java
+index fdd4eaefc..91c8a6d11 100644
+--- a/src/main/java/net/officefloor/hq/app/person/PersonRevision.java
++++ b/src/main/java/net/officefloor/hq/app/person/PersonRevision.java
+@@ -10,8 +10,8 @@ import java.time.LocalDate;
+ import java.util.Objects;
+ import java.util.stream.Collectors;
+ 
+-/** A revision of a person in their sheet's history: their name, grades, holds, retirement, terms and
+- *  contact and aliases after a change, recorded on the sheet's today then. Grades are kept as "from:grade" and holds as
++/** A revision of a person in their sheet's history: their name, grades, holds, retirement, terms,
++ *  contact, tags and aliases after a change, recorded on the sheet's today then. Grades are kept as "from:grade" and holds as
+  *  "from..to" (a day left blank when there is none), separated by ";"; past retirements likewise as "from..to", and aliases separated by ";". */
+ @Entity
+ @Table(name = "person_revision")
+@@ -52,6 +52,9 @@ public class PersonRevision {
+     @Column(name = "contact")
+     private String contact;
+ 
++    @Column(name = "tags")
++    private String tags;
++
+     @Column(name = "aliases", nullable = false)
+     private String aliases;
+ 
+@@ -70,6 +73,7 @@ public class PersonRevision {
+         this.retirements = retirements(person);
+         this.terms = person.getTerms();
+         this.contact = person.getContact();
++        this.tags = person.getTags();
+         this.aliases = aliases(person);
+     }
+ 
+@@ -78,7 +82,8 @@ public class PersonRevision {
+         return name.equals(person.getName()) && grades.equals(grades(person)) && holds.equals(holds(person))
+                 && Objects.equals(retiredFrom, person.getRetiredFrom())
+                 && retirements.equals(retirements(person)) && Objects.equals(terms, person.getTerms())
+-                && Objects.equals(contact, person.getContact()) && aliases.equals(aliases(person));
++                && Objects.equals(contact, person.getContact())
++                && Objects.equals(tags, person.getTags()) && aliases.equals(aliases(person));
+     }
+ 
+     /** The person as this revision has them, detached: for working out figures only, never saved. */
+@@ -99,6 +104,7 @@ public class PersonRevision {
+         }
+         person.setTerms(terms);
+         person.setContact(contact);
++        person.setTags(tags);
+         for (String alias : split(aliases)) {
+             person.addAlias(alias);
+         }
+diff --git a/src/main/java/net/officefloor/hq/app/person/PersonService.java b/src/main/java/net/officefloor/hq/app/person/PersonService.java
+index 00aed3ae3..cece54069 100644
+--- a/src/main/java/net/officefloor/hq/app/person/PersonService.java
++++ b/src/main/java/net/officefloor/hq/app/person/PersonService.java
+@@ -10,6 +10,7 @@ import java.util.Objects;
+ import java.util.Set;
+ import java.util.function.Predicate;
+ import net.officefloor.hq.app.Audit;
++import net.officefloor.hq.app.claim.ClaimService;
+ import net.officefloor.hq.app.role.RoleService;
+ import net.officefloor.hq.app.role.SheetRole;
+ import net.officefloor.hq.app.rollup.Rollup;
+@@ -30,9 +31,11 @@ public class PersonService {
+     private final Rollup rollup;
+     private final Audit audit;
+     private final RoleService roles;
++    private final ClaimService claims;
+ 
+     public PersonService(PersonRepository people, SheetService sheets, Rollup rollup, Audit audit,
+-            RoleService roles) {
++            RoleService roles, ClaimService claims) {
++        this.claims = claims;
+         this.people = people;
+         this.sheets = sheets;
+         this.rollup = rollup;
+@@ -56,6 +59,14 @@ public class PersonService {
+      *  sheet holds it. */
+     @Transactional
+     public Person add(String sheetId, String user, String name, String grade, Integer terms, String contact) {
++        return add(sheetId, user, name, grade, terms, contact, null);
++    }
++
++    /** Add a person to the sheet with a contact (null: none) and tags (as {@link net.officefloor.hq.app.claim.Tags}
++     *  stores them; null: none); refused when another person on the sheet holds the contact. */
++    @Transactional
++    public Person add(String sheetId, String user, String name, String grade, Integer terms, String contact,
++            String tags) {
+         sheets.load(sheetId, user);
+         if (people.existsBySheetIdAndNameIgnoreCase(sheetId, name) || people.existsAlias(sheetId, name)
+                 || inTree(treeNames(sheetId), name)) {
+@@ -68,7 +79,9 @@ public class PersonService {
+             Person fresh = new Person(sheetId, name, grade, people.nextPosition(sheetId));
+             fresh.setTerms(terms);
+             fresh.setContact(contact);
++            fresh.setTags(tags);
+             Person person = saveUnique(fresh);
++            claims.keepTags(sheetId, tags);
+             audit.recordOnCommit(record("PERSON_ADDED", sheetId, user, person, sheets.today(sheetId))
+                     + (terms != null ? " terms=" + terms : "")
+                     + (contact != null ? " contact=" + contact : ""));
+@@ -86,6 +99,16 @@ public class PersonService {
+             LocalDate gradeFrom, Integer terms, String contact) {
+         Person person = people.findByIdAndSheetId(personId, sheetId)
+                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "No such person on this sheet"));
++        return edit(sheetId, user, personId, version, name, grade, gradeFrom, terms, contact, person.getTags());
++    }
++
++    /** Edit a person as above, also setting their tags (as {@link net.officefloor.hq.app.claim.Tags} stores
++     *  them; null: none). */
++    @Transactional
++    public Person edit(String sheetId, String user, long personId, long version, String name, String grade,
++            LocalDate gradeFrom, Integer terms, String contact, String tags) {
++        Person person = people.findByIdAndSheetId(personId, sheetId)
++                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "No such person on this sheet"));
+         if (person.getVersion() != version) {
+             throw changedMeanwhile();
+         }
+@@ -100,7 +123,7 @@ public class PersonService {
+         if (contact != null && people.existsBySheetIdAndContactAndIdNot(sheetId, contact, personId)) {
+             throw contactInUse();
+         }
+-        return save(sheetId, user, person, name, grade, gradeFrom, terms, contact);
++        return save(sheetId, user, person, name, grade, gradeFrom, terms, contact, tags);
+     }
+ 
+     /** Give each of the people a grade from a day (null: the sheet's today), in list order, exactly as the person form would: each keeps their name, terms and contact and
+@@ -117,13 +140,14 @@ public class PersonService {
+             throw new ResponseStatusException(HttpStatus.NOT_FOUND, "No such person on this sheet");
+         }
+         return chosen.stream()
+-                .map(p -> save(sheetId, user, p, p.getName(), grade, gradeFrom, p.getTerms(), p.getContact()))
++                .map(p -> save(sheetId, user, p, p.getName(), grade, gradeFrom, p.getTerms(), p.getContact(),
++                        p.getTags()))
+                 .toList();
+     }
+ 
+-    /** Save the person's name, grade from a day, terms and contact as an edit does, recording it. */
++    /** Save the person's name, grade from a day, terms, contact and tags as an edit does, recording it. */
+     private Person save(String sheetId, String user, Person person, String name, String grade, LocalDate gradeFrom,
+-            Integer terms, String contact) {
++            Integer terms, String contact, String tags) {
+         return rollup.tracking(sheetId, user, () -> {
+             LocalDate today = sheets.today(sheetId);
+             Integer termsBefore = person.getTerms();
+@@ -131,6 +155,8 @@ public class PersonService {
+             person.setName(name);
+             person.setTerms(terms);
+             person.setContact(contact);
++            person.setTags(tags);
++            claims.keepTags(sheetId, tags);
+             if (gradeFrom != null || !grade.equals(person.gradeOn(today))) {
+                 person.setGradeFrom(grade, gradeFrom != null ? gradeFrom : today);
+             }
+diff --git a/src/main/java/net/officefloor/hq/app/person/PersonTransferService.java b/src/main/java/net/officefloor/hq/app/person/PersonTransferService.java
+index dfcb87b9b..53e6c58b3 100644
+--- a/src/main/java/net/officefloor/hq/app/person/PersonTransferService.java
++++ b/src/main/java/net/officefloor/hq/app/person/PersonTransferService.java
+@@ -129,6 +129,7 @@ public class PersonTransferService {
+                 }
+                 Person arrived = into != null ? into
+                         : people.saveAndFlush(from.transferredTo(toSheetId, people.nextPosition(toSheetId)));
++                claimService.keepTags(toSheetId, arrived.getTags());
+                 Map<String, String> numbers = renumber(toSheetId, theirs);
+                 for (Claim claim : theirs) {
+                     Claim copy = claims.saveAndFlush(claim.transferredTo(toSheetId, arrived.getId(), numbers::get));
+diff --git a/src/main/resources/db/migration/V79__person_tags.sql b/src/main/resources/db/migration/V79__person_tags.sql
+new file mode 100644
+index 000000000..dc3e450a6
+--- /dev/null
++++ b/src/main/resources/db/migration/V79__person_tags.sql
+@@ -0,0 +1,4 @@
++-- A person's tags: trimmed, lower-cased, without repeats, sorted and comma separated; null when
++-- they have none. A revision keeps them too. Each is kept in sheet_tag as used on the sheet.
++ALTER TABLE person ADD COLUMN tags VARCHAR(1000);
++ALTER TABLE person_revision ADD COLUMN tags VARCHAR(1000);
