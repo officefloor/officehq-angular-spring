@@ -92,7 +92,7 @@ import { QuickAddBar } from './quick-add-bar';
                   [terms]="terms()" [today]="session.today()" [latePct]="latePct()"
                   [policyDate]="policyDate()" [selected]="selected()"
                   (selectedChange)="select($event.id, $event.selected)"
-                  (saved)="claimSaved($event)" />
+                  [others]="patronChoices(p)" (saved)="claimSaved($event)" />
               </td>
               <td>
                 <button type="button" [attr.data-testid]="'person-edit-' + p.id" (click)="open(p)"
@@ -335,7 +335,7 @@ export class PeopleList {
       const taken = await this.api.statement(p.id);
       this.people.update((ps) => ps.map((x) => (x.id === taken.person.id ? taken.person : x)));
       const byId = new Map(taken.claims.map((c) => [c.id, c]));
-      this.claims.update((cs) => [...cs.filter((c) => !byId.has(c.id)), ...taken.claims].sort((a, b) => b.id - a.id));
+      this.claims.update((cs) => [...cs.filter((c) => !byId.has(c.id)), ...taken.claims].sort((a, b) => b.listed - a.listed));
     } catch {
       this.personError.set({ id: p.id, message: 'The statement could not be taken.' });
     } finally {
@@ -509,9 +509,9 @@ export class PeopleList {
 
   protected claimSaved(claim: Claim): void {
     this.claims.update((cs) =>
-      cs.some((c) => c.id === claim.id)
+      (cs.some((c) => c.id === claim.id)
         ? cs.map((c) => (c.id === claim.id ? claim : c))
-        : [claim, ...cs].sort((a, b) => b.id - a.id),
+        : [claim, ...cs]).sort((a, b) => b.listed - a.listed),
     );
   }
 

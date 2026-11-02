@@ -10,6 +10,7 @@ import jakarta.persistence.Id;
 import jakarta.persistence.Table;
 import java.math.BigDecimal;
 import java.time.LocalDate;
+import org.hibernate.annotations.Generated;
 
 /** A claim a person makes: an amount (two decimals), a date, a note and a status. A claim with a
  *  negative amount is a correction of a settled claim of the same person, named by its number. */
@@ -72,6 +73,12 @@ public class Claim {
     @Column(name = "corrected_date")
     private LocalDate correctedDate;
 
+    /** Where the claim is listed: newest first by this. A new claim takes the next from the
+     *  database, and a moved claim takes the next again (see {@link #moveTo}). */
+    @Generated
+    @Column(name = "listed", insertable = false)
+    private Long listed;
+
     protected Claim() {
     }
 
@@ -100,6 +107,19 @@ public class Claim {
 
     public Long getPersonId() {
         return personId;
+    }
+
+    public Long getListed() {
+        return listed;
+    }
+
+    /** Move the claim to another person, listed at the place given (after every claim listed so far).
+     *  It keeps its number, date and status, but no figure a statement bound it to: it is live
+     *  again until its new person's next statement. */
+    public void moveTo(Long personId, long listed) {
+        this.personId = personId;
+        this.listed = listed;
+        bind(false, null);
     }
 
     public BigDecimal getAmount() {

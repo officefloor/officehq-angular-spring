@@ -55,6 +55,9 @@ export interface Claim {
   /** The date (yyyy-mm-dd) its figures round by: that of the claim a correction corrects, or else
    *  its own. */
   roundsBy: string;
+  /** Where the claim is listed: claims are listed newest first by this (a claim moved to another
+   *  person is listed as that person's newest). */
+  listed: number;
 }
 
 export interface ClaimForm {
@@ -197,6 +200,15 @@ export class Claims {
     const body = action === 'reject' ? { reason: reason ?? '' } : null;
     return firstValueFrom(
       this.http.post<Claim>(`${this.url(sheetId)}/claims/${id}/${action}`, body, { headers: { 'X-User': user } }),
+    );
+  }
+
+  /** Move a draft, open or pending claim to another person on the sheet; refused (403) unless the
+   *  user is a steward, and (409) when the claim is settled or void. */
+  reassign(id: number, personId: number): Promise<Claim> {
+    const { sheetId, user } = this.active();
+    return firstValueFrom(
+      this.http.post<Claim>(`${this.url(sheetId)}/claims/${id}/reassign`, { personId }, { headers: { 'X-User': user } }),
     );
   }
 

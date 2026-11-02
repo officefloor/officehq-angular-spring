@@ -29,18 +29,19 @@ public class ClaimController {
     /** What the screen shows of a claim; the amount, and the due fixed when it was settled (null
      *  when there is none), as text with two decimals; who opened it (null when never opened);
      *  whether the last statement bound it, with the due it bound (null when none); and the number
-     *  of the claim it corrects (null when it is not a correction); and the date its figures round by
-     *  (that of the claim a correction corrects, or else its own). */
+     *  of the claim it corrects (null when it is not a correction); the date its figures round by
+     *  (that of the claim a correction corrects, or else its own); and where it is listed (newest
+     *  first by this). */
     public record ClaimView(long id, long personId, String amount, LocalDate date, String note,
             ClaimStatus status, String number, String settledDue, String openedBy, boolean stated,
-            String statedDue, String corrects, LocalDate roundsBy) {
+            String statedDue, String corrects, LocalDate roundsBy, long listed) {
         public static ClaimView of(Claim claim) {
             return new ClaimView(claim.getId(), claim.getPersonId(), claim.getAmount().setScale(2).toPlainString(),
                     claim.getDate(), claim.getNote(), claim.getStatus(), claim.getNumber(),
                     claim.getSettledDue() == null ? null : claim.getSettledDue().setScale(2).toPlainString(),
                     claim.getOpenedBy(), claim.isStated(),
                     claim.getStatedDue() == null ? null : claim.getStatedDue().setScale(2).toPlainString(),
-                    claim.getCorrects(), claim.roundsBy());
+                    claim.getCorrects(), claim.roundsBy(), claim.getListed());
         }
     }
 
@@ -143,6 +144,18 @@ public class ClaimController {
             @RequestHeader("X-User") @NotBlank @Size(max = 100) String user,
             @Valid @RequestBody RejectForm form) {
         return ClaimView.of(service.reject(sheetId.trim(), user.trim(), claimId, form.reason().trim()));
+    }
+
+    /** The person a steward moves a claim to. */
+    public record ReassignForm(@NotNull Long personId) {
+    }
+
+    @PostMapping("/claims/{claimId}/reassign")
+    public ClaimView reassign(@PathVariable @NotBlank @Size(max = 100) String sheetId,
+            @PathVariable long claimId,
+            @RequestHeader("X-User") @NotBlank @Size(max = 100) String user,
+            @Valid @RequestBody ReassignForm form) {
+        return ClaimView.of(service.reassign(sheetId.trim(), user.trim(), claimId, form.personId()));
     }
 
     @PostMapping("/claims/{claimId}/void")

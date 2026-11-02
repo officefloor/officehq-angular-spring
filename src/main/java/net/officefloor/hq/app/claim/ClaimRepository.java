@@ -9,17 +9,21 @@ import org.springframework.data.jpa.repository.Query;
 
 public interface ClaimRepository extends JpaRepository<Claim, Long> {
 
-    /** The claims on a sheet, newest first. */
-    List<Claim> findBySheetIdOrderByIdDesc(String sheetId);
+    /** The claims on a sheet, newest first (the one listed last first). */
+    List<Claim> findBySheetIdOrderByListedDesc(String sheetId);
 
-    /** A person's claims on a sheet, newest first. */
-    List<Claim> findBySheetIdAndPersonIdOrderByIdDesc(String sheetId, Long personId);
+    /** A person's claims on a sheet, newest first (the one listed last first). */
+    List<Claim> findBySheetIdAndPersonIdOrderByListedDesc(String sheetId, Long personId);
 
     Optional<Claim> findByIdAndSheetId(Long id, String sheetId);
 
     /** A person's claim on a sheet of the number and status. */
     Optional<Claim> findBySheetIdAndPersonIdAndNumberAndStatus(String sheetId, Long personId, String number,
             ClaimStatus status);
+
+    /** The next place a claim is listed at, after every claim listed so far. */
+    @Query(value = "select next value for claim_listed_seq", nativeQuery = true)
+    long nextListed();
 
     /** A claim on a sheet, locked for the rest of the transaction so two status changes to it
      *  happen one after the other. */

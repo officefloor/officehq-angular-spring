@@ -2,7 +2,7 @@ import { HttpErrorResponse } from '@angular/common/http';
 import { Component, inject, input, output, signal } from '@angular/core';
 import { FormControl, FormGroup, ReactiveFormsModule } from '@angular/forms';
 import { CLAIM_AMOUNT, Claim, ClaimAction, Claims, claimDue, dueBy, overdue } from '../../core/claims';
-import { GradeFrom, gradeOn } from '../../core/people';
+import { GradeFrom, Person, gradeOn } from '../../core/people';
 import { Period, periodOf } from '../../core/periods';
 import { Rate } from '../../core/rates';
 
@@ -38,6 +38,15 @@ function refusal(e: unknown, action: ClaimAction): string {
     return 'Enter a reason for rejecting the claim.';
   }
   return 'The claim could not be changed.';
+}
+
+/** The message for a refused reassign of a claim. */
+function reassignRefusal(e: unknown): string {
+  if (e instanceof HttpErrorResponse && e.status === 403) return 'Only a steward can reassign a claim.';
+  if (e instanceof HttpErrorResponse && e.status === 409) return 'Only a draft, open or pending claim can be reassigned.';
+  if (e instanceof HttpErrorResponse && e.status === 423) return CLOSED;
+  if (e instanceof HttpErrorResponse && e.status === 422) return 'The claim is dated after that person\'s retirement.';
+  return 'The claim could not be reassigned.';
 }
 
 // A person's claims, newest first, and the form that adds a claim for them or, once a claim's
@@ -93,6 +102,16 @@ function refusal(e: unknown, action: ClaimAction): string {
             (input)="clearError(c)" />
           <button type="button" data-testid="claim-reject" (click)="act(c, 'reject', reason.value)"
             [attr.aria-label]="'Reject claim of ' + c.amount + ' on ' + c.date">Reject</button>
+          <label [for]="'claim-reassign-to-' + c.id">Reassign to</label>
+          <select [id]="'claim-reassign-to-' + c.id" data-testid="claim-reassign-to" #reassignTo
+            (change)="clearError(c)">
+            <option value="">Choose a person</option>
+            @for (o of others(); track o.id) {
+              <option [value]="o.id">{{ o.name }}</option>
+            }
+          </select>
+          <button type="button" data-testid="claim-reassign" (click)="reassign(c, reassignTo.value)"
+            [attr.aria-label]="'Reassign claim of ' + c.amount + ' on ' + c.date">Reassign</button>
           <button type="button" data-testid="claim-edit" (click)="open(c)"
             [attr.aria-label]="'Edit claim of ' + c.amount + ' on ' + c.date">Edit</button>
           @if (editing() === c.id) {
@@ -128,6 +147,8 @@ export class PersonClaims {
   readonly latePct = input.required<string>();
   /** The sheet's policy date (null when blank): it decides how a claim's live figures round. */
   readonly policyDate = input.required<string | null>();
+  /** The other people on the sheet, whom a claim can be reassigned to. */
+  readonly others = input.required<Person[]>();
   /** The ids of the claims selected for a bulk action. */
   readonly selected = input.required<ReadonlySet<number>>();
   /** A claim's checkbox ticked or cleared. */
@@ -201,6 +222,19 @@ export class PersonClaims {
         id: c.id,
         message: refusal(e, action),
       });
+    }
+  }
+
+  protected async reassign(c: Claim, to: string): Promise<void> {
+    this.claimError.set(null);
+    if (to === '') {
+      this.claimError.set({ id: c.id, message: 'Choose the person to reassign the claim to.' });
+      return;
+    }
+    try {
+      this.saved.emit(await this.api.reassign(c.id, Number(to)));
+    } catch (e) {
+      this.claimError.set({ id: c.id, message: reassignRefusal(e) });
     }
   }
 

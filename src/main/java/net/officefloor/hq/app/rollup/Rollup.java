@@ -72,7 +72,7 @@ public class Rollup {
     }
 
     private Snapshot snapshot(String sheetId) {
-        Map<Long, List<Claim>> byPerson = claims.findBySheetIdOrderByIdDesc(sheetId).stream()
+        Map<Long, List<Claim>> byPerson = claims.findBySheetIdOrderByListedDesc(sheetId).stream()
                 .collect(Collectors.groupingBy(Claim::getPersonId));
         Map<Long, Figures> figures = new LinkedHashMap<>();
         BigDecimal claimedTotal = BigDecimal.ZERO.setScale(2);

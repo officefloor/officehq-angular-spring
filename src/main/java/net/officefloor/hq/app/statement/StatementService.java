@@ -70,7 +70,7 @@ public class StatementService {
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "No such person on this sheet"));
         List<Claim> bound = rollup.tracking(sheetId, user, () -> {
             LocalDate today = sheets.today(sheetId);
-            List<Claim> theirs = claims.findBySheetIdAndPersonIdOrderByIdDesc(sheetId, personId);
+            List<Claim> theirs = claims.findBySheetIdAndPersonIdOrderByListedDesc(sheetId, personId);
             BigDecimal dueTotal = dues.dueTotal(sheetId, person, Dues.live(person, theirs));
             int counted = 0;
             for (Claim claim : theirs) {

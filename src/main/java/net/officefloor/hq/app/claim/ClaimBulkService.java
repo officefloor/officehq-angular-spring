@@ -38,7 +38,7 @@ public class ClaimBulkService {
         for (int i = 0; i < listed.size(); i++) {
             rank.put(listed.get(i).getId(), i);
         }
-        List<Claim> chosen = repository.findBySheetIdOrderByIdDesc(sheetId).stream()
+        List<Claim> chosen = repository.findBySheetIdOrderByListedDesc(sheetId).stream()
                 .filter(c -> claimIds.contains(c.getId()))
                 .sorted(Comparator.comparingInt((Claim c) -> rank.getOrDefault(c.getPersonId(), Integer.MAX_VALUE))
                         .thenComparing(Claim::getId, Comparator.reverseOrder()))
