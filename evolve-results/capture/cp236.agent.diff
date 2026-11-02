@@ -1,0 +1,69 @@
+diff --git a/src/main/frontend/src/app/features/claims/claims.ts b/src/main/frontend/src/app/features/claims/claims.ts
+index 0e42681c5..e1b458147 100644
+--- a/src/main/frontend/src/app/features/claims/claims.ts
++++ b/src/main/frontend/src/app/features/claims/claims.ts
+@@ -145,11 +145,13 @@ export function isBound(c: Claim): boolean {
+ }
+ 
+ /**
+- * Deferred: OPEN with a deferred-until date after the sheet's today. It counts in no total, is not
+- * overdue, cannot be settled and is left unbound by a statement until today reaches that date.
++ * Deferred: a deferred-until date after the sheet's today, and not bound by a statement. It counts in no
++ * total, is not overdue, cannot be settled and is left unbound by a statement until today reaches that date.
++ * A claim a statement has bound stays in the totals while bound: its deferral takes effect only once the
++ * binding ends, whatever its status since (open or SETTLED).
+  */
+ export function isDeferred(c: Claim, today: string | null): boolean {
+-  return c.status === 'OPEN' && c.deferredUntil !== null && today !== null && today < c.deferredUntil;
++  return counts(c) && !isBound(c) && c.deferredUntil !== null && today !== null && today < c.deferredUntil;
+ }
+ 
+ /**
+@@ -639,12 +641,13 @@ export class Claims {
+   }
+ 
+   /**
+-   * Shown as deferred while its deferred-until date is after the sheet's today, whatever its status since
+-   * (a deferred claim voided stays marked); only an OPEN one is kept out of the totals ({@link isDeferred}).
++   * Shown as deferred while its deferred-until date is after the sheet's today and it is not bound by a
++   * statement, whatever its status since (a deferred claim voided stays marked); only one that counts is
++   * kept out of the totals ({@link isDeferred}).
+    */
+   protected deferredOf(c: Claim): boolean {
+     const today = this.session.today();
+-    return c.deferredUntil !== null && today !== null && today < c.deferredUntil;
++    return !isBound(c) && c.deferredUntil !== null && today !== null && today < c.deferredUntil;
+   }
+ 
+   /** The name of the period its due-by falls in, or blank when none. */
+diff --git a/src/main/java/net/officefloor/hq/app/claim/Claim.java b/src/main/java/net/officefloor/hq/app/claim/Claim.java
+index 66f2670cf..a05b0d14a 100644
+--- a/src/main/java/net/officefloor/hq/app/claim/Claim.java
++++ b/src/main/java/net/officefloor/hq/app/claim/Claim.java
+@@ -592,19 +592,21 @@ public class Claim {
+ 
+     /**
+      * Whether it was deferred at the end of the date, with the status it had then: OPEN, deferred on or
+-     * before the date until a date after it.
++     * before the date until a date after it, and not bound by a statement then.
+      */
+     public boolean isDeferredAt(ClaimStatus statusThen, LocalDate date) {
+         return statusThen == ClaimStatus.OPEN && deferredUntil != null && date.isBefore(deferredUntil)
+-                && (deferredOn == null || !deferredOn.isAfter(date));
++                && (deferredOn == null || !deferredOn.isAfter(date)) && bindingAt(date) == null;
+     }
+ 
+     /**
+-     * Whether it is deferred on the date: OPEN, with a deferred-until date after it. A deferred claim counts
+-     * in no total, is not overdue, cannot be settled and is left unbound by a statement.
++     * Whether it is deferred on the date: with a deferred-until date after it, and not bound by a statement. A
++     * deferred claim counts in no total, is not overdue, cannot be settled and is left unbound by a statement.
++     * A claim a statement has bound stays in the totals while bound (it can be settled then): its deferral
++     * takes effect only once the binding ends, whatever its status since (OPEN, PENDING or SETTLED).
+      */
+     public boolean isDeferredOn(LocalDate today) {
+-        return status == ClaimStatus.OPEN && deferredUntil != null && today != null && today.isBefore(deferredUntil);
++        return status.counts() && !stated && deferredUntil != null && today != null && today.isBefore(deferredUntil);
+     }
+ 
+     /** Leave the claim unbound on the sheet's today, its due live again. */
