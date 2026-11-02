@@ -13,13 +13,15 @@ import jakarta.persistence.MapKeyColumn;
 import jakarta.persistence.Table;
 import java.math.BigDecimal;
 import java.time.LocalDate;
+import java.util.ArrayList;
+import java.util.List;
 import java.util.Map;
 import java.util.TreeMap;
 
 /**
  * A period of the sheet: a name unique on the sheet, from and to a date, both inclusive. Once
  * closed, its due-total and each person's due-total and carried figure for it are fixed at what they were when it was
- * closed; reopened, they are live again. Soft-closed, its figures are fixed the same way, but claims
+ * closed, as are its pool members' cuts; reopened, they are live again. Soft-closed, its figures are fixed the same way, but claims
  * due inside it can still change.
  */
 @Entity
@@ -71,6 +73,11 @@ public class Period {
     @Column(name = "carried", nullable = false, precision = 14, scale = 2)
     private Map<Long, BigDecimal> closedPersonCarried = new TreeMap<>();
 
+    /** Each pool member's cut for it fixed when it was closed or soft-closed; empty while it is open. */
+    @ElementCollection(fetch = FetchType.EAGER)
+    @CollectionTable(name = "period_pool_cut", joinColumns = @JoinColumn(name = "period_id"))
+    private List<PoolCutLine> closedPoolCuts = new ArrayList<>();
+
     /** Each person's opening balance for it, the pasted amounts added up, by person id; part of their carried figure. */
     @ElementCollection(fetch = FetchType.EAGER)
     @CollectionTable(name = "period_person_opening", joinColumns = @JoinColumn(name = "period_id"))
@@ -121,6 +128,14 @@ public class Period {
 
     public Map<Long, BigDecimal> getClosedPersonCarried() { return closedPersonCarried; }
 
+    public List<PoolCutLine> getClosedPoolCuts() { return closedPoolCuts; }
+
+    /** Fix each pool member's cut for it, as it stands now. */
+    public void fixPoolCuts(List<PoolCutLine> cuts) {
+        this.closedPoolCuts.clear();
+        this.closedPoolCuts.addAll(cuts);
+    }
+
     public Integer getCap() { return cap; }
 
     public Map<Long, BigDecimal> getOpenings() { return openings; }
@@ -158,6 +173,7 @@ public class Period {
         this.closedDueTotal = null;
         this.closedPersonDues.clear();
         this.closedPersonCarried.clear();
+        this.closedPoolCuts.clear();
     }
 
     /** Whether the date falls in it, both ends inclusive. */

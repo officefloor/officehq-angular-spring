@@ -17,6 +17,7 @@ import net.officefloor.hq.app.claim.ClaimService;
 import net.officefloor.hq.app.claim.ClaimStatus;
 import net.officefloor.hq.app.person.Person;
 import net.officefloor.hq.app.person.PersonRepository;
+import net.officefloor.hq.app.pool.PoolService;
 import net.officefloor.hq.app.setting.Role;
 import net.officefloor.hq.app.setting.SettingService;
 import net.officefloor.hq.app.sheet.SheetNotFoundException;
@@ -31,7 +32,8 @@ import org.springframework.transaction.annotation.Transactional;
  * end of its last day) and carried figure (the same of their claims due in an earlier period and still
  * open at the end of its last day), and its own due-total, the sum of their due-totals. Soft-closing fixes them the same
  * way while claims due inside it can still change; a soft-closed period can then be closed (fixing
- * them afresh). A steward can reopen a closed or soft-closed period, making its figures live again.
+ * them afresh). Closing or soft-closing also fixes every pool member's cut for it as it stands at that
+ * moment. A steward can reopen a closed or soft-closed period, making its figures live again.
  * A steward can lock a period, and unlock it; a locked period cannot be reopened.
  */
 @Service
@@ -43,10 +45,13 @@ public class PeriodService {
     private final PersonRepository people;
     private final ClaimService claimService;
     private final SettingService settings;
+    private final PoolService pools;
     private final Audit audit;
 
     public PeriodService(PeriodRepository periods, SheetRepository sheets, ClaimRepository claims,
-            PersonRepository people, ClaimService claimService, SettingService settings, Audit audit) {
+            PersonRepository people, ClaimService claimService, SettingService settings, PoolService pools,
+            Audit audit) {
+        this.pools = pools;
         this.settings = settings;
         this.periods = periods;
         this.sheets = sheets;
@@ -255,6 +260,14 @@ public class PeriodService {
                 if (figure != null) personCarried.merge(person.getId(), figure, BigDecimal::add);
             }
         }
+        // every pool member's cut as it stands now
+        List<PoolCutLine> cuts = new ArrayList<>();
+        for (PoolService.PoolLine pool : pools.pools(sheetId)) {
+            for (PoolService.Member m : pool.members()) {
+                cuts.add(new PoolCutLine(pool.id(), pool.crewId(), m.personId(), m.poolId(), m.cut()));
+            }
+        }
+        period.fixPoolCuts(cuts);
         if (soft) period.softClose(personDues, personCarried);
         else period.close(personDues, personCarried);
         Period saved = periods.saveAndFlush(period);
