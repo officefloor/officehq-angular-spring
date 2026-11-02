@@ -1,0 +1,315 @@
+diff --git a/src/main/frontend/src/app/core/people.ts b/src/main/frontend/src/app/core/people.ts
+index 6a24fac4e..05354d02f 100644
+--- a/src/main/frontend/src/app/core/people.ts
++++ b/src/main/frontend/src/app/core/people.ts
+@@ -123,6 +123,16 @@ export class People {
+     );
+   }
+ 
++  /** Import people from lines of name,grade,terms,contact, each added as the form would; all or
++   *  none. Answers how many were added and those people as they now show, in order. */
++  importPeople(text: string): Promise<{ added: number; people: Person[] }> {
++    const { sheetId, user } = this.active();
++    return firstValueFrom(
++      this.http.post<{ added: number; people: Person[] }>(`${this.url(sheetId)}/import`, { text },
++        { headers: { 'X-User': user } }),
++    );
++  }
++
+   /** Give the people a grade from a day (null: the sheet's today), each as an edit would; answers
+    *  how many were changed and those people as they now show. */
+   grade(personIds: number[], grade: Grade, from: string | null): Promise<{ graded: number; people: Person[] }> {
+diff --git a/src/main/frontend/src/app/features/people/import-people-box.ts b/src/main/frontend/src/app/features/people/import-people-box.ts
+new file mode 100644
+index 000000000..6b9d506ed
+--- /dev/null
++++ b/src/main/frontend/src/app/features/people/import-people-box.ts
+@@ -0,0 +1,67 @@
++import { HttpErrorResponse } from '@angular/common/http';
++import { Component, inject, output, signal } from '@angular/core';
++import { FormControl, FormGroup, ReactiveFormsModule } from '@angular/forms';
++import { People, Person } from '../../core/people';
++
++/** The message for a refused import: the server names the line that failed. */
++function refusal(e: unknown): string {
++  if (e instanceof HttpErrorResponse && e.status === 403) return 'A viewer may change nothing.';
++  if (e instanceof HttpErrorResponse && typeof e.error?.message === 'string' && e.error.message) return e.error.message;
++  return 'The people could not be imported.';
++}
++
++// The import box: lines of name,grade,terms,contact each add a person as the person form would,
++// all or none.
++@Component({
++  selector: 'app-import-people-box',
++  imports: [ReactiveFormsModule],
++  template: `
++    <form [formGroup]="form" (ngSubmit)="submit()" aria-label="Import people">
++      <label for="import-people">Import people (name,grade,terms,contact per line)</label>
++      <textarea id="import-people" data-testid="import-people" formControlName="text" rows="4"></textarea>
++      <button type="submit" data-testid="import-submit">Import people</button>
++      @if (added() !== null) {
++        <p role="status">Added <strong data-testid="import-added">{{ added() }}</strong></p>
++      }
++      @if (error()) {
++        <p role="alert" data-testid="import-error">{{ error() }}</p>
++      }
++    </form>
++  `,
++})
++export class ImportPeopleBox {
++  private readonly api = inject(People);
++
++  readonly imported = output<Person[]>();
++
++  protected readonly form = new FormGroup({ text: new FormControl('', { nonNullable: true }) });
++  protected readonly error = signal('');
++  protected readonly added = signal<number | null>(null);
++  /** Whether a submit is waiting for its answer: a second submit meanwhile is ignored. */
++  private submitting = false;
++
++  constructor() {
++    this.form.valueChanges.subscribe(() => this.error.set(''));
++  }
++
++  protected async submit(): Promise<void> {
++    if (this.submitting) return;
++    this.error.set('');
++    this.added.set(null);
++    const { text } = this.form.getRawValue();
++    if (!text.trim()) {
++      this.error.set('Paste at least one line.');
++      return;
++    }
++    this.submitting = true;
++    try {
++      const { added, people } = await this.api.importPeople(text);
++      this.added.set(added);
++      this.imported.emit(people);
++    } catch (e) {
++      this.error.set(refusal(e));
++    } finally {
++      this.submitting = false;
++    }
++  }
++}
+diff --git a/src/main/frontend/src/app/features/people/people-list.ts b/src/main/frontend/src/app/features/people/people-list.ts
+index e31d02bc3..4a6389d8c 100644
+--- a/src/main/frontend/src/app/features/people/people-list.ts
++++ b/src/main/frontend/src/app/features/people/people-list.ts
+@@ -19,6 +19,7 @@ import { GradeSummary, PeriodSummary, StatusSummary, SummaryPanel, VoidReasonSum
+ import { HeaderCounters } from '../summary/header-counters';
+ import { QuickAddBar } from './quick-add-bar';
+ import { PasteClaimsBox } from './paste-claims-box';
++import { ImportPeopleBox } from './import-people-box';
+ import { PoolList } from '../pools/pool-list';
+ 
+ /** What leaves no claim out: no holds, not retired. */
+@@ -37,7 +38,7 @@ const NO_LEAVE: Leave = { holds: [], retiredFrom: null };
+ // The signed-in user may watch a person: they are told when a claim of theirs is settled.
+ @Component({
+   selector: 'app-people-list',
+-  imports: [ReactiveFormsModule, PersonClaims, RateForm, PeriodForm, QuickAddBar, PasteClaimsBox, SummaryPanel, HeaderCounters, PoolList],
++  imports: [ReactiveFormsModule, PersonClaims, RateForm, PeriodForm, QuickAddBar, PasteClaimsBox, ImportPeopleBox, SummaryPanel, HeaderCounters, PoolList],
+   template: `
+     <app-header-counters [peopleCount]="people().length" [statuses]="statusSummary()"
+       [dueTotal]="dueTotal()" [overdueTotal]="overdueTotal()" />
+@@ -70,6 +71,7 @@ const NO_LEAVE: Leave = { holds: [], retiredFrom: null };
+       </form>
+       <app-quick-add-bar (added)="quickAdded($event)" />
+       <app-paste-claims-box (pasted)="claimsPasted()" />
++      <app-import-people-box (imported)="peopleImported($event)" />
+       <p>Claimed in total: <strong data-testid="rollup-claimed-total">{{ claimedTotal() }}</strong></p>
+       <p>Due in total: <strong data-testid="rollup-due-total">{{ dueTotal() }}</strong></p>
+       <p>Settled due in total: <strong data-testid="rollup-settled-total">{{ settledTotal() }}</strong></p>
+@@ -1046,6 +1048,11 @@ export class PeopleList {
+     this.claimSaved(claim);
+   }
+ 
++  /** Show the people an import added. */
++  protected peopleImported(added: Person[]): void {
++    this.people.update((ps) => [...ps.filter((p) => !added.some((a) => a.id === p.id)), ...added]);
++  }
++
+   /** Read the sheet's claims again once a paste has added some. */
+   protected async claimsPasted(): Promise<void> {
+     const sheetId = this.session.sheetId();
+diff --git a/src/main/java/net/officefloor/hq/app/person/PersonImportController.java b/src/main/java/net/officefloor/hq/app/person/PersonImportController.java
+new file mode 100644
+index 000000000..57660c2f8
+--- /dev/null
++++ b/src/main/java/net/officefloor/hq/app/person/PersonImportController.java
+@@ -0,0 +1,56 @@
++package net.officefloor.hq.app.person;
++
++import jakarta.validation.Valid;
++import jakarta.validation.constraints.NotBlank;
++import jakarta.validation.constraints.NotNull;
++import jakarta.validation.constraints.Size;
++import java.time.LocalDate;
++import java.util.List;
++import java.util.function.Predicate;
++import net.officefloor.hq.app.person.PersonController.PersonView;
++import net.officefloor.hq.app.sheet.SheetService;
++import net.officefloor.hq.app.statement.StatementSummary;
++import org.springframework.validation.annotation.Validated;
++import org.springframework.web.bind.annotation.PathVariable;
++import org.springframework.web.bind.annotation.PostMapping;
++import org.springframework.web.bind.annotation.RequestBody;
++import org.springframework.web.bind.annotation.RequestHeader;
++import org.springframework.web.bind.annotation.RequestMapping;
++import org.springframework.web.bind.annotation.RestController;
++
++@RestController
++@RequestMapping("/api/sheets/{sheetId}/people/import")
++@Validated
++public class PersonImportController {
++
++    /** The import box: lines of name,grade,terms,contact. */
++    public record ImportForm(@NotNull @Size(max = 200_000) String text) {
++    }
++
++    /** How many people an import added, and those people as they now show, in order. */
++    public record Imported(int added, List<PersonView> people) {
++    }
++
++    private final PersonImportService service;
++    private final PersonService persons;
++    private final SheetService sheets;
++
++    public PersonImportController(PersonImportService service, PersonService persons, SheetService sheets) {
++        this.service = service;
++        this.persons = persons;
++        this.sheets = sheets;
++    }
++
++    @PostMapping
++    public Imported importPeople(@PathVariable @NotBlank @Size(max = 100) String sheetId,
++            @RequestHeader("X-User") @NotBlank @Size(max = 100) String user,
++            @Valid @RequestBody ImportForm form) {
++        String sheet = sheetId.trim();
++        List<Person> added = service.importPeople(sheet, user.trim(), form.text());
++        LocalDate today = sheets.today(sheet);
++        Predicate<Person> clashing = persons.clashing(sheet);
++        return new Imported(added.size(), added.stream()
++                .map(p -> PersonView.of(p, StatementSummary.NONE, today, clashing.test(p)))
++                .toList());
++    }
++}
+diff --git a/src/main/java/net/officefloor/hq/app/person/PersonImportService.java b/src/main/java/net/officefloor/hq/app/person/PersonImportService.java
+new file mode 100644
+index 000000000..0f78b1d4b
+--- /dev/null
++++ b/src/main/java/net/officefloor/hq/app/person/PersonImportService.java
+@@ -0,0 +1,112 @@
++package net.officefloor.hq.app.person;
++
++import java.util.ArrayList;
++import java.util.HashSet;
++import java.util.List;
++import java.util.Locale;
++import java.util.Set;
++import java.util.regex.Pattern;
++import org.springframework.http.HttpStatus;
++import org.springframework.stereotype.Service;
++import org.springframework.transaction.annotation.Transactional;
++import org.springframework.web.server.ResponseStatusException;
++
++/** The import box: lines of name,grade,terms,contact, each adding a person as the person form
++ *  would; the terms and contact may be absent or blank. */
++@Service
++public class PersonImportService {
++
++    /** The person form's longest name and contact. */
++    private static final int NAME_MAX = 200;
++    private static final int CONTACT_MAX = 200;
++
++    /** The person form's grade and terms. */
++    private static final Pattern GRADE = Pattern.compile("[ABC]");
++    private static final Pattern TERMS = Pattern.compile("\\s*\\d{0,4}\\s*");
++
++    /** One parsed line: the name, the grade, the terms (null: none) and the contact (null: none). */
++    private record Line(String name, String grade, Integer terms, String contact) {
++    }
++
++    private final PersonRepository people;
++    private final PersonService service;
++
++    public PersonImportService(PersonRepository people, PersonService service) {
++        this.people = people;
++        this.service = service;
++    }
++
++    /** Add a person per line, in order, checking every line first with the person form's rules; one
++     *  change, so when any line is refused no one is added and nothing is recorded. Blank lines are
++     *  skipped; an import with no lines is refused, and so is one repeating a name or contact within
++     *  it. Returns the people added, in order. */
++    @Transactional
++    public List<Person> importPeople(String sheetId, String user, String text) {
++        List<Line> lines = new ArrayList<>();
++        Set<String> names = new HashSet<>();
++        Set<String> contacts = new HashSet<>();
++        int n = 0;
++        for (String raw : text.split("\\R")) {
++            n++;
++            if (raw.isBlank()) {
++                continue;
++            }
++            Line line = parse(n, raw);
++            if (!names.add(line.name().toLowerCase(Locale.ROOT))) {
++                throw refused(n, "the name \"" + line.name() + "\" is repeated in the import");
++            }
++            if (line.contact() != null && !contacts.add(line.contact())) {
++                throw refused(n, "the contact \"" + line.contact() + "\" is repeated in the import");
++            }
++            if (people.existsBySheetIdAndNameIgnoreCase(sheetId, line.name())
++                    || people.existsAlias(sheetId, line.name())) {
++                throw refused(n, "the name \"" + line.name() + "\" is already in use on this sheet");
++            }
++            if (line.contact() != null && people.existsBySheetIdAndContact(sheetId, line.contact())) {
++                throw refused(n, "the contact \"" + line.contact() + "\" is already held on this sheet");
++            }
++            lines.add(line);
++        }
++        if (lines.isEmpty()) {
++            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Paste at least one line");
++        }
++        List<Person> added = new ArrayList<>();
++        for (Line line : lines) {
++            added.add(service.add(sheetId, user, line.name(), line.grade(), line.terms(), line.contact()));
++        }
++        return added;
++    }
++
++    /** A line of name,grade,terms,contact: the last two may be absent or blank. */
++    private static Line parse(int n, String raw) {
++        String[] fields = raw.split(",", -1);
++        if (fields.length < 2 || fields.length > 4) {
++            throw refused(n, "expected name,grade,terms,contact");
++        }
++        String name = fields[0].trim();
++        if (name.isEmpty()) {
++            throw refused(n, "a name is required");
++        }
++        if (name.length() > NAME_MAX) {
++            throw refused(n, "the name is too long");
++        }
++        String grade = fields[1].trim();
++        if (!GRADE.matcher(grade).matches()) {
++            throw refused(n, "the grade must be A, B or C");
++        }
++        String terms = fields.length > 2 ? fields[2] : "";
++        if (!TERMS.matcher(terms).matches()) {
++            throw refused(n, "the terms must be a whole number of days");
++        }
++        String contact = fields.length > 3 ? fields[3] : "";
++        if (contact.length() > CONTACT_MAX) {
++            throw refused(n, "the contact is too long");
++        }
++        return new Line(name, grade, terms.isBlank() ? null : Integer.valueOf(terms.trim()),
++                contact.isBlank() ? null : contact.trim().toLowerCase(Locale.ROOT));
++    }
++
++    private static ResponseStatusException refused(int n, String why) {
++        return new ResponseStatusException(HttpStatus.BAD_REQUEST, "Line " + n + ": " + why);
++    }
++}
