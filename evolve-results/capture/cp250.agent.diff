@@ -1,0 +1,95 @@
+diff --git a/src/main/frontend/src/app/features/people/people.ts b/src/main/frontend/src/app/features/people/people.ts
+index c8b3f155c..7cfe0b08c 100644
+--- a/src/main/frontend/src/app/features/people/people.ts
++++ b/src/main/frontend/src/app/features/people/people.ts
+@@ -41,6 +41,16 @@ interface Snapshot {
+   dueTotal: string | null;
+ }
+ 
++/** A policy version as the store sends it: its number, from-date, setting, claim count and those claims' ids. */
++interface PolicyVersionLine {
++  version: number;
++  from: string | null;
++  key: string;
++  value: string | null;
++  claims: number;
++  claimIds: number[];
++}
++
+ interface Person {
+   id: number;
+   name: string;
+@@ -445,6 +455,7 @@ function trimmedSum(figures: number[]): number {
+       <button type="button" data-testid="export-people" (click)="exportCsv()">Export CSV</button>
+       <button type="button" data-testid="export-claims" (click)="exportClaims()">Export claims CSV</button>
+       <button type="button" data-testid="export-periods" (click)="exportPeriods()">Export period figures CSV</button>
++      <button type="button" data-testid="export-policy" (click)="exportPolicy()">Export policy versions CSV</button>
+       <button type="button" data-testid="bulk-open" (click)="bulkOpen()">Open selected claims</button>
+       @if (bulkOpened(); as result) {
+         <p role="status">Opened <span data-testid="bulk-opened">{{ result.opened }}</span>,
+@@ -1881,6 +1892,33 @@ export class People {
+     downloadCsv(lines, 'periods.csv');
+   }
+ 
++  /**
++   * Downloads the policy versions as CSV, oldest first: version, from, key, value, how many claims it is the
++   * policy version of and the due-total of those of them that count, as the screen shows their dues.
++   * Re-read from the store first.
++   */
++  protected async exportPolicy(): Promise<void> {
++    const sheet = this.session.sheetId();
++    if (!(await this.reloadForExport()) || !sheet) return;
++    const versions = await firstValueFrom(this.http.get<PolicyVersionLine[]>(
++      `/api/sheets/${encodeURIComponent(sheet)}/policy-versions`, { headers: this.headers() }));
++    if (this.session.sheetId() !== sheet) return;
++    const byId = new Map(this.claims().map((c) => [c.id, c]));
++    const lines = [['version', 'from', 'key', 'value', 'claims', 'due-total']];
++    for (const v of versions) {
++      let total = 0;
++      for (const id of v.claimIds) {
++        const c = byId.get(id);
++        const pctOn = c === undefined ? undefined : this.pctOnOf(c.personId);
++        if (c === undefined || pctOn === undefined || !this.counts(c)) continue;
++        const theirs = this.claimsOf(c.personId);
++        total += claimDueCents(c, pctOn, this.session.floorCentsOn, this.session.late(), roundsOn(c, theirs), this.graceOnOf(c.personId)) ?? 0;
++      }
++      lines.push([String(v.version), v.from ?? '', v.key, v.value ?? '', String(v.claims), money(total)]);
++    }
++    downloadCsv(lines, 'policy-versions.csv');
++  }
++
+   /**
+    * Downloads the person's row as CSV: a cell,value header, then one line per cell (name, grade, claimed,
+    * due-total, statement count, overdue total, hold, retired, aliases and score) with the value as the row shows it.
+diff --git a/src/main/java/net/officefloor/hq/app/setting/PolicyVersionController.java b/src/main/java/net/officefloor/hq/app/setting/PolicyVersionController.java
+index d03289956..9fc19e891 100644
+--- a/src/main/java/net/officefloor/hq/app/setting/PolicyVersionController.java
++++ b/src/main/java/net/officefloor/hq/app/setting/PolicyVersionController.java
+@@ -25,8 +25,8 @@ import org.springframework.web.bind.annotation.RestController;
+ @RequestMapping("/api/sheets/{sheetId}")
+ public class PolicyVersionController {
+ 
+-    /** A policy version: its number, from-date (null: none, the start), key, value (null: none) and claim count. */
+-    public record PolicyVersionView(int version, LocalDate from, String key, String value, long claims) {}
++    /** A policy version: its number, from-date (null: none, the start), key, value (null: none), claim count and those claims' ids. */
++    public record PolicyVersionView(int version, LocalDate from, String key, String value, long claims, List<Long> claimIds) {}
+ 
+     private final SheetRepository sheets;
+     private final ClaimRepository claims;
+@@ -44,12 +44,13 @@ public class PolicyVersionController {
+         Sheet sheet = sheets.findById(sheetId).orElse(null);
+         if (sheet == null) return List.of();
+         List<DatedSettingLine> log = sheet.getPolicyLog();
+-        long[] counts = new long[log.size() + 1];
+-        for (Claim claim : claims.findBySheetIdOrderByIdDesc(sheetId)) counts[sheet.policyVersionOn(claim.getDate())]++;
++        List<List<Long>> ids = new ArrayList<>();
++        for (int i = 0; i <= log.size(); i++) ids.add(new ArrayList<>());
++        for (Claim claim : claims.findBySheetIdOrderByIdDesc(sheetId)) ids.get(sheet.policyVersionOn(claim.getDate())).add(claim.getId());
+         List<PolicyVersionView> views = new ArrayList<>();
+         for (int i = 0; i < log.size(); i++) {
+             DatedSettingLine line = log.get(i);
+-            views.add(new PolicyVersionView(i + 1, line.getFrom(), line.getKey(), line.getValue(), counts[i + 1]));
++            views.add(new PolicyVersionView(i + 1, line.getFrom(), line.getKey(), line.getValue(), ids.get(i + 1).size(), ids.get(i + 1)));
+         }
+         return views;
+     }
