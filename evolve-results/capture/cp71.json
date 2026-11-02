@@ -1,0 +1,64 @@
+{
+  "checkpoint": 71,
+  "stack": {
+    "repo": "/home/daniel/officehq-angular-spring",
+    "origin": "git@github.com:officefloor/officehq-angular-spring.git",
+    "name": "officehq-angular-spring",
+    "base_ref": "base-empty",
+    "base_commit": "65cb8233ea38b2dfa6cfd18709e30cd18fdf3250"
+  },
+  "checkpoint_id": "cp71_cancel-statement",
+  "phase": "early",
+  "type": "additive",
+  "mutates": [],
+  "replaced_tests": [],
+  "request": {
+    "spec": "A steward can cancel a person's last statement (a button on the row; STATEMENT_CANCELLED\nname=<name> due-total=<the cancelled statement's due-total>; anyone else, or a person with no\nstatement, is refused with an error on the row). The claims that statement bound become live\nagain; a figure bound by a statement before it is not restored. The statement count goes down by\none, and the row shows the statement before it (or nothing).\n",
+    "prompt": "You are implementing ONE change to this application.\n\nFIRST read AGENTS.md \u2014 it states the working rules and how the app is tested, and sends you to\nDESIGN.md for the app's stack and conventions. Follow both.\n\nTHE CHANGE REQUEST:\nA steward can cancel a person's last statement (a button on the row; STATEMENT_CANCELLED\nname=<name> due-total=<the cancelled statement's due-total>; anyone else, or a person with no\nstatement, is refused with an error on the row). The claims that statement bound become live\nagain; a figure bound by a statement before it is not restored. The statement count goes down by\none, and the row shows the statement before it (or nothing).\n\nYour work is verified by an automated Playwright UI test already installed under e2e/specs/.\nRead that spec: it declares the exact data-testid anchors, values, test data and any audit\nrecords it expects \u2014 match them. Run `bin/e2e` to build the app, start it, and run the test as\nyou work; iterate until it passes. Change whatever the request needs across the app \u2014 its stored\ndata, its server and its front end. Do NOT edit bin/build, bin/start, bin/stop, bin/e2e,\nAGENTS.md, CLAUDE.md, DESIGN.md, e2e/support/ or the test spec.\n"
+  },
+  "commit_sha": "7f9bc36714a7cce91d3ea3a79ce370d4ceda9fb8",
+  "reset_sha": "",
+  "preagent_sha": "6aea947509bf8df46c5fed5a41f8036ab3079c32",
+  "prev_sha": "6aea947509bf8df46c5fed5a41f8036ab3079c32",
+  "base_sha": "65cb8233ea38b2dfa6cfd18709e30cd18fdf3250",
+  "agent": {
+    "ok": true,
+    "cost_usd": 0.9814496,
+    "input_tokens": 48,
+    "output_tokens": 9521,
+    "cache_read_tokens": 1262748,
+    "cache_creation_tokens": 67286,
+    "num_turns": 25,
+    "duration_ms": 409548,
+    "duration_api_ms": 96276,
+    "model": "claude-opus-5-5",
+    "session_id": "44565067-023a-4a1e-ab3f-a0206d2a3809",
+    "stop_reason": "success",
+    "result_text": "Stewards can now cancel a person's last statement from a button on their row. All 4 tests in `bin/e2e` pass.\n\n**How it works**\n- **Server:** `StatementService.cancelLast`, reached by `DELETE /api/sheets/{sheetId}/people/{personId}/statements/last`. It refuses anyone who isn't acting as a steward, and refuses a person with no statement. When it goes through, it:\n  - deletes the last statement, so the count drops by one and the row shows the one before it, or nothing;\n  - makes all the person's claims live again. Only the last statement's binding is kept, so a figure an earlier statement bound is not restored;\n  - writes `STATEMENT_CANCELLED name=<name> due-total=<that statement's due-total>`, followed by ROLLUP/TOTALS lines only when the figures actually change.\n- **Front end:** a \"Cancel statement\" button (`person-unstate`) next to the Statement button. A refusal shows on the row's `person-error`, and a success updates the person and their claims in place.\n\n**One fix outside the request.** Scenario 3 at first failed for a reason unrelated to statements. When the sheet's today moved past a period's end plus the grace days, the app auto-closed that period even though it was soft-closed. It wrote an extra `PERIOD_CLOSED ... auto=yes` line and changed the period's fixed figure from 10.00 to 10.50, and the test expects neither. The query behind auto-close is documented as picking \"open periods\", but it only skipped fully closed ones. I made it skip soft-closed periods too, in `PeriodRepository.findOpenEndingBefore`. This changes existing behaviour: a soft-closed period now stays soft-closed after its grace days run out instead of being closed automatically.",
+    "error": "",
+    "attempts": [
+      {
+        "ok": true,
+        "limit_reached": false,
+        "retryable": false,
+        "timed_out": false,
+        "cost_usd": 0.9814496,
+        "num_turns": 25,
+        "duration_ms": 409548,
+        "duration_api_ms": 96276,
+        "error": ""
+      }
+    ]
+  },
+  "agent_stream_file": "cp71.agent.jsonl",
+  "agent_diff_file": "cp71.agent.diff",
+  "build_log_file": null,
+  "tests": {
+    "gated": false,
+    "queued": true
+  },
+  "probe": null,
+  "pinned_touched": [],
+  "acceptance_touched": [],
+  "impact_gate": null
+}
