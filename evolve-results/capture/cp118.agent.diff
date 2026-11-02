@@ -1,0 +1,322 @@
+diff --git a/src/main/frontend/src/app/core/rates.ts b/src/main/frontend/src/app/core/rates.ts
+index 5549880da..b3bc13110 100644
+--- a/src/main/frontend/src/app/core/rates.ts
++++ b/src/main/frontend/src/app/core/rates.ts
+@@ -110,6 +110,16 @@ export class Rates {
+     );
+   }
+ 
++  /** Set a rate per line of grade,rate,from,to, all or none; how many were set. */
++  importRates(text: string): Promise<{ set: number }> {
++    const sheetId = this.session.sheetId();
++    const user = this.session.user();
++    if (!sheetId || !user) throw new Error('no sheet loaded');
++    return firstValueFrom(
++      this.http.post<{ set: number }>(`${this.url(sheetId)}/import`, { text }, { headers: { 'X-User': user } }),
++    );
++  }
++
+   /** Preview a candidate rate applying to a grade on every date; nothing is saved. */
+   preview(grade: Grade, pct: string): Promise<RatePreview> {
+     const sheetId = this.session.sheetId();
+diff --git a/src/main/frontend/src/app/features/people/people-list.ts b/src/main/frontend/src/app/features/people/people-list.ts
+index 0c764734d..04d49915a 100644
+--- a/src/main/frontend/src/app/features/people/people-list.ts
++++ b/src/main/frontend/src/app/features/people/people-list.ts
+@@ -42,7 +42,7 @@ const NO_LEAVE: Leave = { holds: [], retiredFrom: null };
+   template: `
+     <app-header-counters [peopleCount]="people().length" [statuses]="statusSummary()"
+       [dueTotal]="dueTotal()" [overdueTotal]="overdueTotal()" />
+-    <app-rate-form [rates]="rates()" (saved)="rateSaved($event)" />
++    <app-rate-form [rates]="rates()" (saved)="rateSaved($event)" (imported)="ratesImported()" />
+     <app-period-form [periods]="periods()" [dueTotals]="periodDueTotals()" (saved)="periodSaved($event)" />
+     <section aria-labelledby="people-heading">
+       <h2 id="people-heading">People</h2>
+@@ -1087,6 +1087,14 @@ export class PeopleList {
+     if (this.session.sheetId() === sheetId) this.claims.set(claims);
+   }
+ 
++  /** Read the sheet's rates again once an import has set some. */
++  protected async ratesImported(): Promise<void> {
++    const sheetId = this.session.sheetId();
++    if (!sheetId) return;
++    const rates = await this.ratesApi.list(sheetId);
++    if (this.session.sheetId() === sheetId) this.rates.set(rates);
++  }
++
+   protected rateSaved(rate: Rate): void {
+     const key = (r: Rate) => r.grade + (r.from ?? '');
+     this.rates.update((rs) =>
+diff --git a/src/main/frontend/src/app/features/rates/rate-form.ts b/src/main/frontend/src/app/features/rates/rate-form.ts
+index 6951f2775..299c977e9 100644
+--- a/src/main/frontend/src/app/features/rates/rate-form.ts
++++ b/src/main/frontend/src/app/features/rates/rate-form.ts
+@@ -1,3 +1,4 @@
++import { HttpErrorResponse } from '@angular/common/http';
+ import { Component, computed, inject, input, output, signal } from '@angular/core';
+ import { FormControl, FormGroup, ReactiveFormsModule } from '@angular/forms';
+ import { Grade } from '../../core/people';
+@@ -30,6 +31,17 @@ import { Session } from '../../core/session';
+           <p role="alert" data-testid="rate-form-error">{{ error() }}</p>
+         }
+       </form>
++      <form [formGroup]="importForm" (ngSubmit)="importRates()" aria-label="Import rates">
++        <label for="import-rates">Import rates (grade,rate,from,to per line)</label>
++        <textarea id="import-rates" data-testid="import-rates" formControlName="text" rows="4"></textarea>
++        <button type="submit" data-testid="import-rates-submit">Import rates</button>
++        @if (importedCount() !== null) {
++          <p role="status">Set <strong data-testid="import-rates-set">{{ importedCount() }}</strong></p>
++        }
++        @if (importError()) {
++          <p role="alert" data-testid="import-rates-error">{{ importError() }}</p>
++        }
++      </form>
+       <form data-testid="rate-preview-form" [formGroup]="previewForm" (ngSubmit)="preview()">
+         <label for="rate-preview-grade">Preview grade</label>
+         <select id="rate-preview-grade" data-testid="rate-preview-grade" formControlName="grade">
+@@ -93,6 +105,8 @@ export class RateForm {
+   protected readonly own = computed(() => this.rates().filter((r) => r.level === 0));
+   /** A rate set through the form. */
+   readonly saved = output<Rate>();
++  /** How many rates an import set. */
++  readonly imported = output<number>();
+ 
+   protected readonly grades: Grade[] = ['A', 'B', 'C'];
+   protected readonly error = signal('');
+@@ -108,6 +122,12 @@ export class RateForm {
+     grade: new FormControl<Grade>('A', { nonNullable: true }),
+     pct: new FormControl('', { nonNullable: true }),
+   });
++  protected readonly importForm = new FormGroup({ text: new FormControl('', { nonNullable: true }) });
++  protected readonly importError = signal('');
++  /** How many rates the last import set; cleared while an import runs. */
++  protected readonly importedCount = signal<number | null>(null);
++  /** Whether an import is waiting for its answer: a second one meanwhile is ignored. */
++  private importing = false;
+   protected readonly previewError = signal('');
+   /** The last preview's result; cleared while a preview runs and when the preview form changes. */
+   protected readonly previewResult = signal<RatePreview | null>(null);
+@@ -127,12 +147,38 @@ export class RateForm {
+ 
+   constructor() {
+     this.form.valueChanges.subscribe(() => this.error.set(''));
++    this.importForm.valueChanges.subscribe(() => this.importError.set(''));
+     this.previewForm.valueChanges.subscribe(() => {
+       this.previewError.set('');
+       this.previewResult.set(null);
+     });
+   }
+ 
++  protected async importRates(): Promise<void> {
++    if (this.importing) return;
++    this.importError.set('');
++    this.importedCount.set(null);
++    const { text } = this.importForm.getRawValue();
++    if (!text.trim()) {
++      this.importError.set('Paste at least one line.');
++      return;
++    }
++    this.importing = true;
++    try {
++      const { set } = await this.api.importRates(text);
++      this.importedCount.set(set);
++      this.imported.emit(set);
++    } catch (e) {
++      this.importError.set(
++        e instanceof HttpErrorResponse && typeof e.error?.message === 'string' && e.error.message
++          ? e.error.message
++          : 'The rates could not be set.',
++      );
++    } finally {
++      this.importing = false;
++    }
++  }
++
+   protected async preview(): Promise<void> {
+     if (this.previewing) return;
+     this.previewError.set('');
+diff --git a/src/main/java/net/officefloor/hq/app/claim/ClaimController.java b/src/main/java/net/officefloor/hq/app/claim/ClaimController.java
+index bf830fbd9..4f798c6c9 100644
+--- a/src/main/java/net/officefloor/hq/app/claim/ClaimController.java
++++ b/src/main/java/net/officefloor/hq/app/claim/ClaimController.java
+@@ -10,6 +10,7 @@ import java.time.LocalDate;
+ import java.util.Comparator;
+ import java.util.List;
+ import java.util.Map;
++import java.util.Objects;
+ import java.util.Set;
+ import java.util.function.Function;
+ import java.util.stream.Collectors;
+@@ -206,10 +207,23 @@ public class ClaimController {
+     public record LastSettleBatch(Integer batch) {
+     }
+ 
+-    /** The number of the sheet's last settle batch. */
++    /** The number of the sheet's last settle batch; as of a day when one is given, the last batch
++     *  that had settled (or left pending) one of the claims as they stood at the end of it. */
+     @GetMapping("/claims/settle-batch")
+-    public LastSettleBatch lastSettleBatch(@PathVariable @NotBlank @Size(max = 100) String sheetId) {
+-        return new LastSettleBatch(sheets.lastSettleBatch(sheetId.trim()));
++    public LastSettleBatch lastSettleBatch(@PathVariable @NotBlank @Size(max = 100) String sheetId,
++            @RequestHeader(value = AsOfGuard.HEADER, required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE)
++            LocalDate asOf) {
++        String sheet = sheetId.trim();
++        if (asOf != null) {
++            Map<Long, Claim> now = service.list(sheet).stream()
++                    .collect(Collectors.toMap(Claim::getId, Function.identity()));
++            return new LastSettleBatch(history.asOf(sheet, asOf).claims().stream()
++                    .filter(then -> then.getStatus() == ClaimStatus.SETTLED || then.getStatus() == ClaimStatus.PENDING)
++                    .map(then -> now.get(then.getId())).filter(Objects::nonNull)
++                    .map(Claim::getSettleBatch).filter(Objects::nonNull)
++                    .max(Integer::compare).orElse(null));
++        }
++        return new LastSettleBatch(sheets.lastSettleBatch(sheet));
+     }
+ 
+     /** Every tag ever used on the sheet, in order. */
+diff --git a/src/main/java/net/officefloor/hq/app/rate/RateImportController.java b/src/main/java/net/officefloor/hq/app/rate/RateImportController.java
+new file mode 100644
+index 000000000..ed5028848
+--- /dev/null
++++ b/src/main/java/net/officefloor/hq/app/rate/RateImportController.java
+@@ -0,0 +1,40 @@
++package net.officefloor.hq.app.rate;
++
++import jakarta.validation.Valid;
++import jakarta.validation.constraints.NotBlank;
++import jakarta.validation.constraints.NotNull;
++import jakarta.validation.constraints.Size;
++import org.springframework.validation.annotation.Validated;
++import org.springframework.web.bind.annotation.PathVariable;
++import org.springframework.web.bind.annotation.PostMapping;
++import org.springframework.web.bind.annotation.RequestBody;
++import org.springframework.web.bind.annotation.RequestHeader;
++import org.springframework.web.bind.annotation.RequestMapping;
++import org.springframework.web.bind.annotation.RestController;
++
++@RestController
++@RequestMapping("/api/sheets/{sheetId}/rates/import")
++@Validated
++public class RateImportController {
++
++    /** The rate import box: lines of grade,rate,from,to. */
++    public record ImportForm(@NotNull @Size(max = 200_000) String text) {
++    }
++
++    /** How many rates an import set. */
++    public record Imported(int set) {
++    }
++
++    private final RateImportService service;
++
++    public RateImportController(RateImportService service) {
++        this.service = service;
++    }
++
++    @PostMapping
++    public Imported importRates(@PathVariable @NotBlank @Size(max = 100) String sheetId,
++            @RequestHeader("X-User") @NotBlank @Size(max = 100) String user,
++            @Valid @RequestBody ImportForm form) {
++        return new Imported(service.importRates(sheetId.trim(), user.trim(), form.text()));
++    }
++}
+diff --git a/src/main/java/net/officefloor/hq/app/rate/RateImportService.java b/src/main/java/net/officefloor/hq/app/rate/RateImportService.java
+new file mode 100644
+index 000000000..321b3648c
+--- /dev/null
++++ b/src/main/java/net/officefloor/hq/app/rate/RateImportService.java
+@@ -0,0 +1,94 @@
++package net.officefloor.hq.app.rate;
++
++import java.math.BigDecimal;
++import java.time.LocalDate;
++import java.time.format.DateTimeParseException;
++import java.util.ArrayList;
++import java.util.List;
++import java.util.regex.Pattern;
++import org.springframework.http.HttpStatus;
++import org.springframework.stereotype.Service;
++import org.springframework.transaction.annotation.Transactional;
++import org.springframework.web.server.ResponseStatusException;
++
++/** The rate import box: lines of grade,rate,from,to, each setting a rate exactly as the rate form
++ *  would. */
++@Service
++public class RateImportService {
++
++    /** The rate form's grades. */
++    private static final Pattern GRADE = Pattern.compile("[ABC]");
++
++    /** The rate form's percent: 0.00 or more with up to two decimals. */
++    private static final Pattern PCT = Pattern.compile("\\s*\\d{1,5}(\\.\\d{1,2})?\\s*");
++
++    /** One parsed line: the grade, the percent, the from-date (null: from the beginning of time) and
++     *  the to-date (null: no end). */
++    private record Line(String grade, BigDecimal pct, LocalDate from, LocalDate to) {
++    }
++
++    private final RateService rates;
++
++    public RateImportService(RateService rates) {
++        this.rates = rates;
++    }
++
++    /** Set a rate per line, in order, checking every line first with the rate form's rules; one
++     *  change, so when any line is refused nothing is set and nothing is recorded. Blank lines are
++     *  skipped; an import with no lines is refused. Returns how many rates were set. */
++    @Transactional
++    public int importRates(String sheetId, String user, String text) {
++        List<Line> lines = new ArrayList<>();
++        int n = 0;
++        for (String raw : text.split("\\R")) {
++            n++;
++            if (!raw.isBlank()) {
++                lines.add(parse(n, raw));
++            }
++        }
++        if (lines.isEmpty()) {
++            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Paste at least one line");
++        }
++        for (Line line : lines) {
++            rates.set(sheetId, user, line.grade(), line.pct(), line.from(), line.to());
++        }
++        return lines.size();
++    }
++
++    /** A line of grade,rate,from,to: the from- and to-dates may be absent or blank. */
++    private Line parse(int n, String raw) {
++        String[] fields = raw.split(",", -1);
++        if (fields.length < 2 || fields.length > 4) {
++            throw refused(n, "expected grade,rate,from,to");
++        }
++        String grade = fields[0].trim();
++        if (!GRADE.matcher(grade).matches()) {
++            throw refused(n, "the grade must be A, B or C");
++        }
++        if (!PCT.matcher(fields[1]).matches()) {
++            throw refused(n, "the rate must be 0.00 or more, with up to two decimals");
++        }
++        BigDecimal pct = new BigDecimal(fields[1].trim()).setScale(2);
++        LocalDate from = date(n, fields, 2, "from-date");
++        LocalDate to = date(n, fields, 3, "to-date");
++        if (from != null && to != null && to.isBefore(from)) {
++            throw refused(n, "the to-date cannot be before the from-date");
++        }
++        return new Line(grade, pct, from, to);
++    }
++
++    private static LocalDate date(int n, String[] fields, int i, String what) {
++        if (fields.length <= i || fields[i].isBlank()) {
++            return null;
++        }
++        try {
++            return LocalDate.parse(fields[i].trim());
++        } catch (DateTimeParseException e) {
++            throw refused(n, "the " + what + " must be YYYY-MM-DD");
++        }
++    }
++
++    private static ResponseStatusException refused(int n, String why) {
++        return new ResponseStatusException(HttpStatus.BAD_REQUEST, "Line " + n + ": " + why);
++    }
++}

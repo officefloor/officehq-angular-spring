@@ -1,0 +1,64 @@
+{
+  "checkpoint": 118,
+  "stack": {
+    "repo": "/home/daniel/officehq-angular-spring",
+    "origin": "git@github.com:officefloor/officehq-angular-spring.git",
+    "name": "officehq-angular-spring",
+    "base_ref": "base-empty",
+    "base_commit": "65cb8233ea38b2dfa6cfd18709e30cd18fdf3250"
+  },
+  "checkpoint_id": "cp118_import-rates",
+  "phase": "mid",
+  "type": "additive",
+  "mutates": [],
+  "replaced_tests": [],
+  "request": {
+    "spec": "Rates can be pasted as lines of grade,rate,from,to (the last two may be absent or blank) into a\nrate import box. Every line is checked first with the rate form's rules; if any fails, an error\nshows and nothing is set; otherwise every line is set in order exactly as the form would set it\n(replacing a rate for the same grade and from-date, writing RATE_SET). Show how many were set.\n",
+    "prompt": "You are implementing ONE change to this application.\n\nFIRST read AGENTS.md \u2014 it states the working rules and how the app is tested, and sends you to\nDESIGN.md for the app's stack and conventions. Follow both.\n\nTHE CHANGE REQUEST:\nRates can be pasted as lines of grade,rate,from,to (the last two may be absent or blank) into a\nrate import box. Every line is checked first with the rate form's rules; if any fails, an error\nshows and nothing is set; otherwise every line is set in order exactly as the form would set it\n(replacing a rate for the same grade and from-date, writing RATE_SET). Show how many were set.\n\nYour work is verified by an automated Playwright UI test already installed under e2e/specs/.\nRead that spec: it declares the exact data-testid anchors, values, test data and any audit\nrecords it expects \u2014 match them. Run `bin/e2e` to build the app, start it, and run the test as\nyou work; iterate until it passes. Change whatever the request needs across the app \u2014 its stored\ndata, its server and its front end. Do NOT edit bin/build, bin/start, bin/stop, bin/e2e,\nAGENTS.md, CLAUDE.md, DESIGN.md, e2e/support/ or the test spec.\n"
+  },
+  "commit_sha": "5e8fe90bd48f8bd8519c77fb98b84ad963a479f7",
+  "reset_sha": "",
+  "preagent_sha": "741fc15849e26d9b469626a2b770033001658604",
+  "prev_sha": "741fc15849e26d9b469626a2b770033001658604",
+  "base_sha": "65cb8233ea38b2dfa6cfd18709e30cd18fdf3250",
+  "agent": {
+    "ok": true,
+    "cost_usd": 1.0112267999999998,
+    "input_tokens": 50,
+    "output_tokens": 12846,
+    "cache_read_tokens": 1200094,
+    "cache_creation_tokens": 64261,
+    "num_turns": 25,
+    "duration_ms": 520337,
+    "duration_api_ms": 121068,
+    "model": "claude-opus-5-5",
+    "session_id": "68075005-6d6b-4917-83bf-85427130ec19",
+    "stop_reason": "success",
+    "result_text": "The rate import box is in, and `bin/e2e` now passes all 4 tests in the spec.\n\n**What I built**\n- **Server:** a new endpoint, `POST /api/sheets/{id}/rates/import` (`RateImportController` and `RateImportService` in the `rate` package). It first checks every non-blank line against the rate form's rules:\n  - the grade is A, B or C;\n  - the rate is 0.00 or more with at most two decimals;\n  - from and to are optional dates, and to is not before from.\n  \n  If any line fails, it returns an error naming that line, and nothing is saved or written to the audit file. Otherwise it sets each line in order through the same `RateService.set` the form uses, so replacing a rate for the same grade and from-date, `RATE_SET` and the ROLLUP/TOTALS lines all behave exactly as they do from the form. An empty paste is refused. It returns how many rates were set.\n- **Front end:** the Rates section now has an import box with `import-rates`, `import-rates-submit`, `import-rates-set` and `import-rates-error`. It clears the old count while an import runs and clears the error when the text changes. After a successful import, the people list reloads the sheet's rates.\n\n**One fix outside the import itself.** Scenario 2 failed at a step that doesn't use the import. When the sheet is viewed as of an earlier date, the \"Last batch\" number (`bulk-settle-batch`) still showed today's batch, because that endpoint ignored the as-of date. Now, for an as-of view, it shows the highest batch number among claims that were already settled or pending by that day, and nothing if there are none. One limit: a claim's history doesn't record its batch number, so this uses the claim's current batch number. If a claim was reopened and settled again in a later batch, a past date could show that later number. Fixing that would need a migration to store the batch with each claim's history; I didn't add one.",
+    "error": "",
+    "attempts": [
+      {
+        "ok": true,
+        "limit_reached": false,
+        "retryable": false,
+        "timed_out": false,
+        "cost_usd": 1.0112267999999998,
+        "num_turns": 25,
+        "duration_ms": 520337,
+        "duration_api_ms": 121068,
+        "error": ""
+      }
+    ]
+  },
+  "agent_stream_file": "cp118.agent.jsonl",
+  "agent_diff_file": "cp118.agent.diff",
+  "build_log_file": null,
+  "tests": {
+    "gated": false,
+    "queued": true
+  },
+  "probe": null,
+  "pinned_touched": [],
+  "acceptance_touched": [],
+  "impact_gate": null
+}
