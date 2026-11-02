@@ -820,12 +820,25 @@ public class ClaimService {
         return threshold != null && due.compareTo(threshold) > 0;
     }
 
-    /** The PENDING claim a steward approves or rejects; refused when not PENDING or not a steward. */
+    /**
+     * The PENDING claim a steward, or its person's approver, approves or rejects; refused when not PENDING
+     * or by anyone else.
+     */
     private Claim pendingForSteward(String sheetId, String user, Long id) {
         Claim claim = claims.findByIdAndSheetId(id, sheetId).orElseThrow(ClaimNotFoundException::new);
         if (claim.getStatus() != ClaimStatus.PENDING) throw new ClaimStatusRefusedException();
-        if (settings.roleOf(sheetId, user) != Role.STEWARD) throw new ClaimNotStewardException();
+        if (settings.roleOf(sheetId, user) != Role.STEWARD && !isApproverOf(sheetId, user, claim)) {
+            throw new ClaimNotStewardException();
+        }
         return claim;
+    }
+
+    /** Whether the user is named the approver of the claim's person. */
+    private boolean isApproverOf(String sheetId, String user, Claim claim) {
+        return people.findByIdAndSheetId(claim.getPersonId(), sheetId)
+                .map(Person::getApprover)
+                .filter(a -> a.equals(user.strip()))
+                .isPresent();
     }
 
     /**

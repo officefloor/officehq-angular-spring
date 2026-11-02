@@ -88,6 +88,8 @@ interface Person {
   snapshots: Snapshot[];
   /** The reason of a steward's flag in force on the sheet's today (on or before its until date); null: none. */
   flag: string | null;
+  /** The user who may approve or reject their PENDING claims as a steward may; null: none. */
+  approver: string | null;
 }
 
 /** The person's grade in force on the date: the one with the latest from-date on or before it. */
@@ -429,7 +431,7 @@ function trimmedSum(figures: number[]): number {
       }
       <table>
         <thead>
-          <tr><th scope="col"><span class="visually-hidden">Select</span></th><th scope="col">Name</th><th scope="col">Grade</th>@if (shows('terms')) {<th scope="col">Terms</th>}@if (shows('contact')) {<th scope="col">Contact</th>}<th scope="col">Tags</th><th scope="col">Aliases</th><th scope="col">Came from</th>@if (shows('claimed')) {<th scope="col">Claimed</th>}@if (shows('due-total')) {<th scope="col">Due total</th>}<th scope="col">Snapshots</th>@if (shows('excess')) {<th scope="col">Excess</th>}<th scope="col">Settled total</th><th scope="col">Open total</th><th scope="col">Cut total</th><th scope="col">Periods</th><th scope="col">Statements</th><th scope="col">Retired</th><th scope="col">Hold</th><th scope="col">Flag</th><th scope="col">Watched</th><th scope="col">Active</th><th scope="col">Clashing</th><th scope="col">Overdue</th><th scope="col">Aged</th><th scope="col">Patrons</th><th scope="col">Plans</th><th scope="col">Claims</th><th scope="col"><span class="visually-hidden">Actions</span></th></tr>
+          <tr><th scope="col"><span class="visually-hidden">Select</span></th><th scope="col">Name</th><th scope="col">Grade</th>@if (shows('terms')) {<th scope="col">Terms</th>}@if (shows('contact')) {<th scope="col">Contact</th>}<th scope="col">Tags</th><th scope="col">Aliases</th><th scope="col">Came from</th>@if (shows('claimed')) {<th scope="col">Claimed</th>}@if (shows('due-total')) {<th scope="col">Due total</th>}<th scope="col">Snapshots</th>@if (shows('excess')) {<th scope="col">Excess</th>}<th scope="col">Settled total</th><th scope="col">Open total</th><th scope="col">Cut total</th><th scope="col">Periods</th><th scope="col">Statements</th><th scope="col">Retired</th><th scope="col">Hold</th><th scope="col">Flag</th><th scope="col">Approver</th><th scope="col">Watched</th><th scope="col">Active</th><th scope="col">Clashing</th><th scope="col">Overdue</th><th scope="col">Aged</th><th scope="col">Patrons</th><th scope="col">Plans</th><th scope="col">Claims</th><th scope="col"><span class="visually-hidden">Actions</span></th></tr>
         </thead>
         <tbody>
           @for (p of sorted(); track p.id) {
@@ -563,6 +565,14 @@ function trimmedSum(figures: number[]): number {
                        #flagUntil (input)="clearPersonError(p.id)" />
                 <button type="button" data-testid="person-flag" (click)="flag(p, flagReason.value, flagUntil.value)"
                         [attr.aria-label]="'Flag ' + p.name">Flag</button>
+              </td>
+              <td>
+                <span data-testid="person-approver">{{ p.approver ?? '' }}</span>
+                <label [for]="'person-approver-input-' + p.id" class="visually-hidden">Approver of {{ p.name }}</label>
+                <input [id]="'person-approver-input-' + p.id" data-testid="person-approver-input" placeholder="User"
+                       #approverInput (input)="clearPersonError(p.id)" />
+                <button type="button" data-testid="person-approver-save" (click)="setApprover(p, approverInput.value)"
+                        [attr.aria-label]="'Set approver of ' + p.name">Set approver</button>
               </td>
               <td>
                 <span data-testid="person-watched">{{ p.watched ? 'yes' : 'no' }}</span>
@@ -1901,6 +1911,26 @@ export class People {
       this.people.update((list) => list.map((x) => (x.id === saved.id ? saved : x)));
     } catch {
       if (this.session.sheetId() === sheet) this.personError.set({ id: p.id, message: 'Only a steward can flag ' + p.name + '.' });
+    }
+  }
+
+  /**
+   * Name the user who may approve or reject the person's PENDING claims as a steward may (still not
+   * their opener or last editor); a blank name clears it.
+   */
+  protected async setApprover(p: Person, userText: string): Promise<void> {
+    this.personError.set(null);
+    this.clearPatronError(p.id);
+    const sheet = this.session.sheetId();
+    if (!sheet) return;
+    try {
+      const saved = await firstValueFrom(
+        this.http.post<Person>(`${this.url(sheet)}/${p.id}/approver`, { user: userText.trim() }, { headers: this.headers() }),
+      );
+      if (this.session.sheetId() !== sheet) return;
+      this.people.update((list) => list.map((x) => (x.id === saved.id ? saved : x)));
+    } catch {
+      if (this.session.sheetId() === sheet) this.personError.set({ id: p.id, message: 'Could not set the approver of ' + p.name + '.' });
     }
   }
 

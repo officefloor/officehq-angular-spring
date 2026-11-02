@@ -161,6 +161,11 @@ public class Person {
     @OptimisticLock(excluded = true)
     private LocalDate flagUntil;
 
+    /** The user who may approve or reject their PENDING claims as a steward may; null when none. Setting it does not move their version. */
+    @Column(name = "approver")
+    @OptimisticLock(excluded = true)
+    private String approver;
+
     @Version
     @Column(name = "version", nullable = false)
     private long version;
@@ -369,6 +374,12 @@ public class Person {
         this.flagReason = reason;
         this.flagUntil = until;
     }
+
+    /** The user who may approve or reject their PENDING claims; null when none. */
+    public String getApprover() { return approver; }
+
+    /** Name the user who may approve or reject their PENDING claims; null for none. */
+    public void setApprover(String approver) { this.approver = approver; }
 
     /** The reason of their flag while it is in force on the date (on or before its until date); null otherwise. */
     public String flagOn(LocalDate date) {

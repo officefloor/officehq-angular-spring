@@ -768,7 +768,7 @@ export class Claims {
           ? 'Only a steward can re-settle a SETTLED claim.'
           : action === 'review'
           ? 'Only a steward can review a REVIEW claim.'
-          : 'Only a steward can approve or reject a PENDING claim.'
+          : 'Only a steward or the person\'s approver can approve or reject a PENDING claim.'
         : 'Could not change that claim.';
       this.claimError.set({ id: c.id, message });
     }

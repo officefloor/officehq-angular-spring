@@ -371,6 +371,22 @@ public class PersonService {
         return saved;
     }
 
+    /**
+     * Name the user who may approve or reject the person's PENDING claims as a steward may (still not
+     * their opener or last editor), replacing any they had; a blank name clears it.
+     */
+    @Transactional
+    public Person setApprover(String sheetId, String user, Long id, String approver) {
+        sheets.findForUpdate(sheetId).orElseThrow(SheetNotFoundException::new);
+        Person person = people.findByIdAndSheetId(id, sheetId).orElseThrow(PersonNotFoundException::new);
+        String name = approver == null || approver.isBlank() ? null : approver.strip();
+        person.setApprover(name);
+        Person saved = people.saveAndFlush(person);
+        audit.recordOnCommit("APPROVER_SET sheet=" + sheetId + " by=" + user.strip()
+                + " name=" + saved.getName() + " user=" + (name == null ? "" : name));
+        return saved;
+    }
+
     /** Give the person an alias, unless it is, as names are compared, a name or an alias on the sheet. */
     @Transactional
     public Person addAlias(String sheetId, String user, Long id, String alias) {
