@@ -413,6 +413,28 @@ public class SettingService {
         return days;
     }
 
+    /** Change the score mid threshold (null: blank); no stored figure changes with it. */
+    @Transactional
+    public Integer setScoreMid(String sheetId, String user, Integer score) {
+        Sheet sheet = sheets.findForUpdate(sheetId).orElseThrow(SheetNotFoundException::new);
+        sheet.setScoreMid(score);
+        sheets.flush();
+        audit.recordOnCommit("SETTING_CHANGED sheet=" + sheetId + " by=" + user.strip() + " key=score-mid value="
+                + (score == null ? "" : score.toString()));
+        return score;
+    }
+
+    /** Change the score high threshold (null: blank); no stored figure changes with it. */
+    @Transactional
+    public Integer setScoreHigh(String sheetId, String user, Integer score) {
+        Sheet sheet = sheets.findForUpdate(sheetId).orElseThrow(SheetNotFoundException::new);
+        sheet.setScoreHigh(score);
+        sheets.flush();
+        audit.recordOnCommit("SETTING_CHANGED sheet=" + sheetId + " by=" + user.strip() + " key=score-high value="
+                + (score == null ? "" : score.toString()));
+        return score;
+    }
+
     /** Change the escalation gap in days (null: off). */
     @Transactional
     public Integer setEscalateAfter(String sheetId, String user, Integer days) {
@@ -586,6 +608,18 @@ public class SettingService {
     @Transactional(readOnly = true)
     public Integer escalateAfter(String sheetId) {
         return sheets.findById(sheetId).orElseThrow(SheetNotFoundException::new).getEscalateAfter();
+    }
+
+    /** The score mid threshold as set; null when blank. */
+    @Transactional(readOnly = true)
+    public Integer scoreMid(String sheetId) {
+        return sheets.findById(sheetId).orElseThrow(SheetNotFoundException::new).getScoreMid();
+    }
+
+    /** The score high threshold as set; null when blank. */
+    @Transactional(readOnly = true)
+    public Integer scoreHigh(String sheetId) {
+        return sheets.findById(sheetId).orElseThrow(SheetNotFoundException::new).getScoreHigh();
     }
 
     /** The review SLA in days as set; null when blank, which means none. */

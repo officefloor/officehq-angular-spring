@@ -15,6 +15,8 @@ interface SheetView {
   lastBatch: number | null;
   reviewSla: number | null;
   role: Role;
+  scoreMid: number | null;
+  scoreHigh: number | null;
 }
 
 /** The role a user acts in on a sheet. */
@@ -161,6 +163,16 @@ export class Session {
   readonly proofKinds = signal('');
   /** The review SLA in days (not dated): a REVIEW claim whose review day plus it is before today is late for review; null when none. */
   readonly reviewSla = signal<number | null>(null);
+  /** The score thresholds (not dated, whole numbers); null when blank. */
+  readonly scoreMid = signal<number | null>(null);
+  readonly scoreHigh = signal<number | null>(null);
+  /** The band of a score: HIGH at or above score high, MID at or above score mid, else LOW; blank while either is. */
+  bandOf(score: number): string {
+    const mid = this.scoreMid();
+    const high = this.scoreHigh();
+    if (mid === null || high === null) return '';
+    return score >= high ? 'HIGH' : score >= mid ? 'MID' : 'LOW';
+  }
   /** Whether a claim is late for review: REVIEW, and its review day plus the review SLA is before the sheet's today. */
   reviewLate(claim: { status: string; reviewOn: string | null }): boolean {
     const sla = this.reviewSla();
@@ -258,6 +270,8 @@ export class Session {
     this.archived.set(res.archived);
     this.lastBatch.set(res.lastBatch);
     this.reviewSla.set(res.reviewSla);
+    this.scoreMid.set(res.scoreMid);
+    this.scoreHigh.set(res.scoreHigh);
     this.role.set(res.role);
     this.clonedTo.set(null);
     this.loads.update((n) => n + 1);

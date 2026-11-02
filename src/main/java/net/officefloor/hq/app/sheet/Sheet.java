@@ -104,6 +104,14 @@ public class Sheet {
     @Column(name = "review_sla")
     private Integer reviewSla;
 
+    /** A person whose score is at or above this is in band MID, while the high one is set too (not dated); null means blank. */
+    @Column(name = "score_mid")
+    private Integer scoreMid;
+
+    /** A person whose score is at or above this is in band HIGH, while the mid one is set too (not dated); null means blank. */
+    @Column(name = "score_high")
+    private Integer scoreHigh;
+
     /** The month (1 to 12) a fiscal year starts in (not dated); 1 unless set. */
     @Column(name = "fiscal_start_month", nullable = false)
     private int fiscalStartMonth = 1;
@@ -345,6 +353,14 @@ public class Sheet {
     public Integer getReviewSla() { return reviewSla; }
 
     public void setReviewSla(Integer reviewSla) { this.reviewSla = reviewSla; }
+
+    public Integer getScoreMid() { return scoreMid; }
+
+    public void setScoreMid(Integer scoreMid) { this.scoreMid = scoreMid; }
+
+    public Integer getScoreHigh() { return scoreHigh; }
+
+    public void setScoreHigh(Integer scoreHigh) { this.scoreHigh = scoreHigh; }
 
     public void setEscalateAfter(Integer escalateAfter) { this.escalateAfter = escalateAfter; }
     public int getFiscalStartMonth() { return fiscalStartMonth; }

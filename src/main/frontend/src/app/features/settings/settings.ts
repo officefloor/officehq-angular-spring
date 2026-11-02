@@ -85,6 +85,9 @@ interface SettingsView {
   /** The proof kinds (not dated), comma separated: a claim above the proof threshold needs a proof of each; empty when none. */
   proofKinds: string;
   defaultGrade: string | null;
+  /** While both are set, a person whose score is at or above the high one is HIGH, at or above the mid one MID, else LOW; null when blank. */
+  scoreMid: number | null;
+  scoreHigh: number | null;
 }
 
 /** A from-date field (yyyy-mm-dd) for a dated setting; blank: the sheet's today. */
@@ -175,6 +178,14 @@ const FROM = 'From (yyyy-mm-dd; blank: the sheet\'s today)';
         <input id="setting-review-sla" data-testid="setting-review-sla" formControlName="reviewSla" inputmode="numeric"
                (keydown.delete)="form.controls.reviewSla.markAsDirty()"
                (keydown.backspace)="form.controls.reviewSla.markAsDirty()" />
+        <label for="setting-score-mid">Score mid (a whole number: a score at or above it is MID, while score high is set too; blank: none)</label>
+        <input id="setting-score-mid" data-testid="setting-score-mid" formControlName="scoreMid" inputmode="numeric"
+               (keydown.delete)="form.controls.scoreMid.markAsDirty()"
+               (keydown.backspace)="form.controls.scoreMid.markAsDirty()" />
+        <label for="setting-score-high">Score high (a whole number: a score at or above it is HIGH, while score mid is set too; blank: none)</label>
+        <input id="setting-score-high" data-testid="setting-score-high" formControlName="scoreHigh" inputmode="numeric"
+               (keydown.delete)="form.controls.scoreHigh.markAsDirty()"
+               (keydown.backspace)="form.controls.scoreHigh.markAsDirty()" />
         <label for="setting-fiscal-start-month">Fiscal year start month (1 to 12)</label>
         <input id="setting-fiscal-start-month" data-testid="setting-fiscal-start-month" formControlName="fiscalStartMonth"
                inputmode="numeric"
@@ -283,6 +294,8 @@ const FROM = 'From (yyyy-mm-dd; blank: the sheet\'s today)';
       <p>Grace days now: <span data-testid="setting-grace-days-current">{{ graceDays() ?? '' }}</span></p>
       <p>Escalate after now: <span data-testid="setting-escalate-after-current">{{ escalateAfter() ?? '' }}</span></p>
       <p>Review SLA now: <span data-testid="setting-review-sla-current">{{ session.reviewSla() ?? '' }}</span></p>
+      <p>Score mid now: <span data-testid="setting-score-mid-current">{{ session.scoreMid() ?? '' }}</span></p>
+      <p>Score high now: <span data-testid="setting-score-high-current">{{ session.scoreHigh() ?? '' }}</span></p>
       <p>Fiscal year start month now: <span data-testid="setting-fiscal-start-month-current">{{ session.fiscalStartMonth() }}</span></p>
       @for (g of grades; track g) {
         <p>Grace days for grade {{ g }} now (blank: none):
@@ -431,6 +444,8 @@ export class Settings {
     graceDays: new FormControl('', { nonNullable: true }),
     escalateAfter: new FormControl('', { nonNullable: true }),
     reviewSla: new FormControl('', { nonNullable: true }),
+    scoreMid: new FormControl('', { nonNullable: true }),
+    scoreHigh: new FormControl('', { nonNullable: true }),
     fiscalStartMonth: new FormControl('', { nonNullable: true }),
     entryDate: new FormControl('', { nonNullable: true }),
     cap: new FormControl('', { nonNullable: true }),
@@ -531,6 +546,8 @@ export class Settings {
       this.graceDays.set(null);
       this.escalateAfter.set(null);
       this.session.reviewSla.set(null);
+      this.session.scoreMid.set(null);
+      this.session.scoreHigh.set(null);
       this.session.fiscalStartMonth.set(1);
       this.entryDate.set(null);
       this.pot.set(null);
@@ -576,6 +593,8 @@ export class Settings {
     this.graceDays.set(view.graceDays);
     this.escalateAfter.set(view.escalateAfter);
     this.session.reviewSla.set(view.reviewSla);
+    this.session.scoreMid.set(view.scoreMid);
+    this.session.scoreHigh.set(view.scoreHigh);
     this.session.fiscalStartMonth.set(view.fiscalStartMonth);
     this.entryDate.set(view.entryDate);
     this.pot.set(view.pot);
@@ -594,7 +613,7 @@ export class Settings {
     this.error.set('');
     const sheet = this.session.sheetId();
     if (!sheet) return;
-    const { clerkLimit, floor, terms, latePct, policyDate, periodNumberingFrom, graceDays, escalateAfter, reviewSla, fiscalStartMonth, entryDate, cap, pot, alertThreshold, proofKinds, defaultGrade, parent, proofThreshold, noteThreshold, reviewThreshold, rounding } = this.form.controls;
+    const { clerkLimit, floor, terms, latePct, policyDate, periodNumberingFrom, graceDays, escalateAfter, reviewSla, scoreMid, scoreHigh, fiscalStartMonth, entryDate, cap, pot, alertThreshold, proofKinds, defaultGrade, parent, proofThreshold, noteThreshold, reviewThreshold, rounding } = this.form.controls;
     const { clerkLimitFrom, floorFrom, termsFrom, latePctFrom, capFrom, proofThresholdFrom, noteThresholdFrom, reviewThresholdFrom, roundingFrom } = this.form.getRawValue();
     const value = clerkLimit.value.trim();
     const floorValue = floor.value.trim();
@@ -605,6 +624,8 @@ export class Settings {
     const graceDaysValue = graceDays.value.trim();
     const escalateAfterValue = escalateAfter.value.trim();
     const reviewSlaValue = reviewSla.value.trim();
+    const scoreMidValue = scoreMid.value.trim();
+    const scoreHighValue = scoreHigh.value.trim();
     const fiscalStartMonthValue = fiscalStartMonth.value.trim();
     const entryDateValue = entryDate.value.trim();
     const capValue = cap.value.trim();
@@ -675,6 +696,14 @@ export class Settings {
     }
     if (reviewSla.dirty && reviewSlaValue && !/^\d{1,4}$/.test(reviewSlaValue)) {
       this.error.set('Enter the review SLA as a whole number of days, 0 or more, or leave it blank for none.');
+      return;
+    }
+    if (scoreMid.dirty && scoreMidValue && !/^-?\d{1,6}$/.test(scoreMidValue)) {
+      this.error.set('Enter score mid as a whole number, or leave it blank for none.');
+      return;
+    }
+    if (scoreHigh.dirty && scoreHighValue && !/^-?\d{1,6}$/.test(scoreHighValue)) {
+      this.error.set('Enter score high as a whole number, or leave it blank for none.');
       return;
     }
     if (fiscalStartMonth.dirty && !/^([1-9]|1[0-2])$/.test(fiscalStartMonthValue)) {
@@ -825,6 +854,22 @@ export class Settings {
             { headers: this.headers() }),
         );
         reviewSla.markAsPristine();
+        if (this.session.sheetId() === sheet) this.show(view);
+      }
+      if (scoreMid.dirty) {
+        const view = await firstValueFrom(
+          this.http.put<SettingsView>(`${this.base(sheet)}/settings/score-mid`, { value: scoreMidValue || null },
+            { headers: this.headers() }),
+        );
+        scoreMid.markAsPristine();
+        if (this.session.sheetId() === sheet) this.show(view);
+      }
+      if (scoreHigh.dirty) {
+        const view = await firstValueFrom(
+          this.http.put<SettingsView>(`${this.base(sheet)}/settings/score-high`, { value: scoreHighValue || null },
+            { headers: this.headers() }),
+        );
+        scoreHigh.markAsPristine();
         if (this.session.sheetId() === sheet) this.show(view);
       }
       if (fiscalStartMonth.dirty) {

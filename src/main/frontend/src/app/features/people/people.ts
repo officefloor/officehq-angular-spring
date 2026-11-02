@@ -489,7 +489,7 @@ function trimmedSum(figures: number[]): number {
       }
       <table>
         <thead>
-          <tr><th scope="col"><span class="visually-hidden">Select</span></th><th scope="col">Name</th><th scope="col">Grade</th>@if (shows('terms')) {<th scope="col">Terms</th>}@if (shows('contact')) {<th scope="col">Contact</th>}<th scope="col">Tags</th><th scope="col">Aliases</th><th scope="col">Came from</th>@if (shows('claimed')) {<th scope="col">Claimed</th>}@if (shows('due-total')) {<th scope="col">Due total</th>}<th scope="col">Snapshots</th>@if (shows('excess')) {<th scope="col">Excess</th>}<th scope="col">Settled total</th><th scope="col">Score</th><th scope="col">Open total</th><th scope="col">Cut total</th><th scope="col">Periods</th><th scope="col">Statements</th><th scope="col">Retired</th><th scope="col">Hold</th><th scope="col">Flag</th><th scope="col">Approver</th><th scope="col">Watched</th><th scope="col">Active</th><th scope="col">Clashing</th><th scope="col">Overdue</th><th scope="col">Aged</th><th scope="col">Patrons</th><th scope="col">Plans</th><th scope="col">Claims</th><th scope="col"><span class="visually-hidden">Actions</span></th></tr>
+          <tr><th scope="col"><span class="visually-hidden">Select</span></th><th scope="col">Name</th><th scope="col">Grade</th>@if (shows('terms')) {<th scope="col">Terms</th>}@if (shows('contact')) {<th scope="col">Contact</th>}<th scope="col">Tags</th><th scope="col">Aliases</th><th scope="col">Came from</th>@if (shows('claimed')) {<th scope="col">Claimed</th>}@if (shows('due-total')) {<th scope="col">Due total</th>}<th scope="col">Snapshots</th>@if (shows('excess')) {<th scope="col">Excess</th>}<th scope="col">Settled total</th><th scope="col">Score</th><th scope="col">Band</th><th scope="col">Open total</th><th scope="col">Cut total</th><th scope="col">Periods</th><th scope="col">Statements</th><th scope="col">Retired</th><th scope="col">Hold</th><th scope="col">Flag</th><th scope="col">Approver</th><th scope="col">Watched</th><th scope="col">Active</th><th scope="col">Clashing</th><th scope="col">Overdue</th><th scope="col">Aged</th><th scope="col">Patrons</th><th scope="col">Plans</th><th scope="col">Claims</th><th scope="col"><span class="visually-hidden">Actions</span></th></tr>
         </thead>
         <tbody>
           @for (p of sorted(); track p.id) {
@@ -552,6 +552,7 @@ function trimmedSum(figures: number[]): number {
               }
               <td data-testid="person-settled-total">{{ money(splitOf(p).settled) | figure }}</td>
               <td data-testid="person-score">{{ scoreOf(p) }}</td>
+              <td data-testid="person-band">{{ session.bandOf(scoreOf(p)) }}</td>
               <td data-testid="person-open-total">{{ money(splitOf(p).open) | figure }}</td>
               <td data-testid="person-cut-total">{{ money(cutTotalOf(p.id)) | figure }}</td>
               <td>
@@ -1579,13 +1580,13 @@ export class People {
    * Their score: their settled figures (in hundreds) less 5 for every overdue claim of theirs that counts,
    * rounded half to even to a whole number.
    */
-  protected scoreOf(p: Person): string {
+  protected scoreOf(p: Person): number {
     // in cents, 10000 to a point
     const units = this.splitOf(p).settled - 50000 * this.overdueOf(p).count;
     const floor = Math.floor(units / 10000);
     const rest = units - floor * 10000;
     const score = rest > 5000 || (rest === 5000 && floor % 2 !== 0) ? floor + 1 : floor;
-    return String(score);
+    return score;
   }
 
   protected agedOf(p: Person): Aged {
