@@ -151,6 +151,20 @@ const NO_LEAVE: Leave = { holds: [], retiredFrom: null };
           <p role="alert" data-testid="person-error">{{ bulkGradeError() }}</p>
         }
       </div>
+      <div role="group" aria-labelledby="bulk-retire-heading">
+        <span id="bulk-retire-heading">Retire selected people</span>
+        <label for="bulk-retire-date">From</label>
+        <input #bulkRetireDate id="bulk-retire-date" type="date" data-testid="bulk-retire-date"
+          (input)="bulkRetireError.set('')" />
+        <button type="button" data-testid="bulk-retire"
+          (click)="retireSelected(bulkRetireDate.value)">Retire selected people</button>
+        @if (bulkRetired() !== null) {
+          <p role="status">Retired <strong data-testid="bulk-retired">{{ bulkRetired() }}</strong></p>
+        }
+        @if (bulkRetireError()) {
+          <p role="alert" data-testid="person-error">{{ bulkRetireError() }}</p>
+        }
+      </div>
       <button type="button" data-testid="export-people" (click)="exportCsv()">Export people (CSV)</button>
       <table data-testid="people">
         <thead>
@@ -567,6 +581,12 @@ export class PeopleList {
   protected readonly bulkGradeError = signal('');
   /** Whether a bulk grade is waiting for its answer: a second press meanwhile is ignored. */
   private grading = false;
+  /** How many people the last bulk retire retired; null while one runs and before the first. */
+  protected readonly bulkRetired = signal<number | null>(null);
+  /** The refusal of the last bulk retire. */
+  protected readonly bulkRetireError = signal('');
+  /** Whether a bulk retire is waiting for its answer: a second press meanwhile is ignored. */
+  private retiringAll = false;
   /** The id of the person whose editor is open, or null when the form adds a person. */
   protected readonly editing = signal<number | null>(null);
   /** The version of the person the open editor loaded. */
@@ -628,6 +648,8 @@ export class PeopleList {
       this.selectedPeople.set(new Set());
       this.bulkGraded.set(null);
       this.bulkGradeError.set('');
+      this.bulkRetired.set(null);
+      this.bulkRetireError.set('');
       this.personError.set(null);
       this.patronError.set(null);
       this.reset();
@@ -967,6 +989,7 @@ export class PeopleList {
 
   protected selectPerson(id: number, on: boolean): void {
     this.bulkGradeError.set('');
+    this.bulkRetireError.set('');
     this.selectedPeople.update((s) => {
       const next = new Set(s);
       if (on) next.add(id);
@@ -1006,6 +1029,36 @@ export class PeopleList {
       this.bulkGradeError.set('The selected people could not be graded.');
     } finally {
       this.grading = false;
+    }
+  }
+
+  /** Retire the selected people listed from the day given (blank: the sheet's today), in list
+   *  order, then show them as they now are and how many were retired. */
+  protected async retireSelected(from: string): Promise<void> {
+    if (this.retiringAll) return;
+    this.bulkRetired.set(null);
+    this.bulkRetireError.set('');
+    const ids = this.shown().filter((p) => this.selectedPeople().has(p.id)).map((p) => p.id);
+    // Retiring is the next action on each selected row: an error left on one of them goes.
+    ids.forEach((id) => this.clearPersonError(id));
+    if (ids.length === 0) {
+      this.bulkRetireError.set('Select the people to retire.');
+      return;
+    }
+    this.retiringAll = true;
+    try {
+      const result = await this.api.retireAll(ids, from.trim() || null);
+      const byId = new Map(result.people.map((p) => [p.id, p]));
+      this.people.update((ps) => ps.map((p) => byId.get(p.id) ?? p));
+      const editing = this.editing();
+      const edited = editing === null ? undefined : byId.get(editing);
+      if (edited) this.version = edited.version;
+      this.selectedPeople.set(new Set());
+      this.bulkRetired.set(result.retired);
+    } catch {
+      this.bulkRetireError.set('The selected people could not be retired.');
+    } finally {
+      this.retiringAll = false;
     }
   }
 

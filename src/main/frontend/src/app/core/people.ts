@@ -146,6 +146,16 @@ export class People {
     );
   }
 
+  /** Retire the people from a day (null: the sheet's today), each as a row's retire would, in list
+   *  order; answers how many were retired and those people as they now show. */
+  retireAll(personIds: number[], from: string | null): Promise<{ retired: number; people: Person[] }> {
+    const { sheetId, user } = this.active();
+    return firstValueFrom(
+      this.http.post<{ retired: number; people: Person[] }>(`${this.url(sheetId)}/retire`, { personIds, from },
+        { headers: { 'X-User': user } }),
+    );
+  }
+
   /** Give the person an alias; refused when it equals any name or alias on the sheet. */
   addAlias(id: number, alias: string): Promise<Person> {
     const { sheetId, user } = this.active();

@@ -118,6 +118,15 @@ public class PersonController {
     public record Graded(int graded, List<PersonView> people) {
     }
 
+    /** The bulk retire form: the people to retire and the day they are retired from (left out, the
+     *  sheet's today). */
+    public record BulkRetireForm(@NotNull @Size(max = 1000) Set<@NotNull Long> personIds, LocalDate from) {
+    }
+
+    /** How many people a bulk retire retired, and those people as they now show. */
+    public record Retired(int retired, List<PersonView> people) {
+    }
+
     private final PersonService service;
     private final StatementService statements;
     private final SheetService sheets;
@@ -202,6 +211,22 @@ public class PersonController {
         LocalDate today = sheets.today(sheet);
         Predicate<Person> clashing = service.clashing(sheet);
         return new Graded(saved.size(), saved.stream()
+                .map(p -> PersonView.of(p, summaries.getOrDefault(p.getId(), StatementSummary.NONE), today,
+                        clashing.test(p)))
+                .toList());
+    }
+
+    @ViewerAllowed
+    @PostMapping("/retire")
+    public Retired retire(@PathVariable @NotBlank @Size(max = 100) String sheetId,
+            @RequestHeader("X-User") @NotBlank @Size(max = 100) String user,
+            @Valid @RequestBody BulkRetireForm form) {
+        String sheet = sheetId.trim();
+        List<Person> saved = service.retire(sheet, user.trim(), form.personIds(), form.from());
+        Map<Long, StatementSummary> summaries = statements.summaries(sheet);
+        LocalDate today = sheets.today(sheet);
+        Predicate<Person> clashing = service.clashing(sheet);
+        return new Retired(saved.size(), saved.stream()
                 .map(p -> PersonView.of(p, summaries.getOrDefault(p.getId(), StatementSummary.NONE), today,
                         clashing.test(p)))
                 .toList());

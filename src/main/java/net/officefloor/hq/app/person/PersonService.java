@@ -224,11 +224,33 @@ public class PersonService {
         return people.findBySheetIdOrderByPositionAscIdAsc(sheetId);
     }
 
+    /** Retire each of the people from a day (null: the sheet's today), in list order, exactly as a
+     *  row's retire would: each is followed by their own PERSON_RETIRED and rollup lines. Refused as
+     *  a whole, changing no one, when an id names no person on the sheet. A viewer has each of them
+     *  refused: no one changes. */
+    @Transactional
+    public List<Person> retire(String sheetId, String user, Set<Long> personIds, LocalDate from) {
+        if (SheetRole.VIEWER.equals(roles.roleOf(sheetId, user))) {
+            return List.of();
+        }
+        List<Person> chosen = people.findBySheetIdOrderByPositionAscIdAsc(sheetId).stream()
+                .filter(p -> personIds.contains(p.getId())).toList();
+        if (chosen.size() != personIds.size()) {
+            throw new ResponseStatusException(HttpStatus.NOT_FOUND, "No such person on this sheet");
+        }
+        return chosen.stream().map(p -> retire(sheetId, user, p, from)).toList();
+    }
+
     /** Retire a person from a day; a day left out takes the sheet's today. */
     @Transactional
     public Person retire(String sheetId, String user, long personId, LocalDate from) {
         Person person = people.findByIdAndSheetId(personId, sheetId)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "No such person on this sheet"));
+        return retire(sheetId, user, person, from);
+    }
+
+    /** Retire the person from a day (null: the sheet's today), recording it. */
+    private Person retire(String sheetId, String user, Person person, LocalDate from) {
         LocalDate on = from != null ? from : sheets.today(sheetId);
         return rollup.tracking(sheetId, user, () -> {
             person.setRetiredFrom(on);
