@@ -3,6 +3,17 @@ import { Injectable, inject } from '@angular/core';
 import { firstValueFrom } from 'rxjs';
 import { Session } from './session';
 
+/** Where a claim is in its life: DRAFT, then OPEN, then SETTLED; a DRAFT or OPEN claim may be VOID. */
+export type ClaimStatus = 'DRAFT' | 'OPEN' | 'SETTLED' | 'VOID';
+
+/** A change of status a claim can be asked for. */
+export type ClaimAction = 'open' | 'settle' | 'void';
+
+/** Whether a claim at this status counts toward claimed, due-total and every total. */
+export function counts(c: Claim): boolean {
+  return c.status === 'OPEN' || c.status === 'SETTLED';
+}
+
 export interface Claim {
   id: number;
   personId: number;
@@ -10,6 +21,7 @@ export interface Claim {
   amount: string;
   date: string;
   note: string;
+  status: ClaimStatus;
 }
 
 export interface ClaimForm {
@@ -50,6 +62,14 @@ export class Claims {
     const { sheetId, user } = this.active();
     return firstValueFrom(
       this.http.put<Claim>(`${this.url(sheetId)}/claims/${id}`, form, { headers: { 'X-User': user } }),
+    );
+  }
+
+  /** Ask for a change of the claim's status; refused (409) when its status does not allow it. */
+  act(id: number, action: ClaimAction): Promise<Claim> {
+    const { sheetId, user } = this.active();
+    return firstValueFrom(
+      this.http.post<Claim>(`${this.url(sheetId)}/claims/${id}/${action}`, null, { headers: { 'X-User': user } }),
     );
   }
 

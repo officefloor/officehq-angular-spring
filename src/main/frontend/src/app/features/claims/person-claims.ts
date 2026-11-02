@@ -1,7 +1,15 @@
+import { HttpErrorResponse } from '@angular/common/http';
 import { Component, inject, input, output, signal } from '@angular/core';
 import { FormControl, FormGroup, ReactiveFormsModule } from '@angular/forms';
-import { AMOUNT, Claim, Claims } from '../../core/claims';
+import { AMOUNT, Claim, ClaimAction, Claims } from '../../core/claims';
 import { due } from '../../core/rates';
+
+/** Why the server refused an action: the claim's status does not allow it. */
+const REFUSALS: Record<ClaimAction, string> = {
+  open: 'Only a draft claim can be opened.',
+  settle: 'Only an open claim can be settled.',
+  void: 'Only a draft or open claim can be voided.',
+};
 
 // A person's claims, newest first, and the form that adds a claim for them or, once a claim's
 // editor is opened, edits it.
@@ -29,10 +37,20 @@ import { due } from '../../core/rates';
           <span data-testid="claim-date">{{ c.date }}</span>
           <span data-testid="claim-note">{{ c.note }}</span>
           <span data-testid="claim-due">{{ dueOf(c) }}</span>
+          <span data-testid="claim-status">{{ c.status }}</span>
+          <button type="button" data-testid="claim-open" (click)="act(c, 'open')"
+            [attr.aria-label]="'Open claim of ' + c.amount + ' on ' + c.date">Open</button>
+          <button type="button" data-testid="claim-settle" (click)="act(c, 'settle')"
+            [attr.aria-label]="'Settle claim of ' + c.amount + ' on ' + c.date">Settle</button>
+          <button type="button" data-testid="claim-void" (click)="act(c, 'void')"
+            [attr.aria-label]="'Void claim of ' + c.amount + ' on ' + c.date">Void</button>
           <button type="button" data-testid="claim-edit" (click)="open(c)"
             [attr.aria-label]="'Edit claim of ' + c.amount + ' on ' + c.date">Edit</button>
           @if (editing() === c.id) {
             <button type="button" data-testid="claim-cancel" (click)="cancel()">Cancel</button>
+          }
+          @if (claimError()?.id === c.id) {
+            <p role="alert" data-testid="claim-error">{{ claimError()?.message }}</p>
           }
         </li>
       }
@@ -53,6 +71,8 @@ export class PersonClaims {
   /** The id of the claim whose editor is open, or null when the form adds a claim. */
   protected readonly editing = signal<number | null>(null);
   protected readonly error = signal('');
+  /** The refusal of the last action taken on a claim's row, shown on that row. */
+  protected readonly claimError = signal<{ id: number; message: string } | null>(null);
   protected readonly form = new FormGroup({
     amount: new FormControl('', { nonNullable: true }),
     date: new FormControl('', { nonNullable: true }),
@@ -68,9 +88,22 @@ export class PersonClaims {
   }
 
   protected open(c: Claim): void {
+    this.claimError.set(null);
     this.editing.set(c.id);
     this.form.setValue({ amount: c.amount, date: c.date, note: c.note }, { emitEvent: false });
     this.error.set('');
+  }
+
+  protected async act(c: Claim, action: ClaimAction): Promise<void> {
+    this.claimError.set(null);
+    try {
+      this.saved.emit(await this.api.act(c.id, action));
+    } catch (e) {
+      this.claimError.set({
+        id: c.id,
+        message: e instanceof HttpErrorResponse && e.status === 409 ? REFUSALS[action] : 'The claim could not be changed.',
+      });
+    }
   }
 
   protected cancel(): void {

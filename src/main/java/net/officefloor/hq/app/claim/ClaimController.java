@@ -26,10 +26,11 @@ import org.springframework.web.bind.annotation.RestController;
 public class ClaimController {
 
     /** What the screen shows of a claim; the amount as text with two decimals. */
-    public record ClaimView(long id, long personId, String amount, LocalDate date, String note) {
+    public record ClaimView(long id, long personId, String amount, LocalDate date, String note,
+            ClaimStatus status) {
         static ClaimView of(Claim claim) {
             return new ClaimView(claim.getId(), claim.getPersonId(), claim.getAmount().setScale(2).toPlainString(),
-                    claim.getDate(), claim.getNote());
+                    claim.getDate(), claim.getNote(), claim.getStatus());
         }
     }
 
@@ -73,5 +74,26 @@ public class ClaimController {
             @RequestHeader("X-User") @NotBlank @Size(max = 100) String user,
             @Valid @RequestBody ClaimForm form) {
         return ClaimView.of(service.edit(sheetId.trim(), user.trim(), claimId, form.amountValue(), form.date(), form.noteValue()));
+    }
+
+    @PostMapping("/claims/{claimId}/open")
+    public ClaimView open(@PathVariable @NotBlank @Size(max = 100) String sheetId,
+            @PathVariable long claimId,
+            @RequestHeader("X-User") @NotBlank @Size(max = 100) String user) {
+        return ClaimView.of(service.changeStatus(sheetId.trim(), user.trim(), claimId, ClaimStatus.OPEN));
+    }
+
+    @PostMapping("/claims/{claimId}/settle")
+    public ClaimView settle(@PathVariable @NotBlank @Size(max = 100) String sheetId,
+            @PathVariable long claimId,
+            @RequestHeader("X-User") @NotBlank @Size(max = 100) String user) {
+        return ClaimView.of(service.changeStatus(sheetId.trim(), user.trim(), claimId, ClaimStatus.SETTLED));
+    }
+
+    @PostMapping("/claims/{claimId}/void")
+    public ClaimView voidClaim(@PathVariable @NotBlank @Size(max = 100) String sheetId,
+            @PathVariable long claimId,
+            @RequestHeader("X-User") @NotBlank @Size(max = 100) String user) {
+        return ClaimView.of(service.changeStatus(sheetId.trim(), user.trim(), claimId, ClaimStatus.VOID));
     }
 }

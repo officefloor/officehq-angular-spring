@@ -1,7 +1,7 @@
 import { HttpErrorResponse } from '@angular/common/http';
 import { Component, computed, effect, inject, signal } from '@angular/core';
 import { FormControl, FormGroup, ReactiveFormsModule } from '@angular/forms';
-import { Claim, Claims, sumAmounts } from '../../core/claims';
+import { Claim, Claims, counts, sumAmounts } from '../../core/claims';
 import { Grade, People, Person } from '../../core/people';
 import { Rate, Rates, due } from '../../core/rates';
 import { Session } from '../../core/session';
@@ -79,13 +79,13 @@ export class PeopleList {
     for (const c of this.claims()) by.set(c.personId, [...(by.get(c.personId) ?? []), c]);
     return by;
   });
-  /** What each person has claimed: the sum of their claims' amounts. */
+  /** What each person has claimed: the sum of their open and settled claims' amounts. */
   protected readonly claimed = computed(() => {
     const by = new Map<number, string>();
-    for (const [id, cs] of this.claimsByPerson()) by.set(id, sumAmounts(cs.map((c) => c.amount)));
+    for (const [id, cs] of this.claimsByPerson()) by.set(id, sumAmounts(cs.filter(counts).map((c) => c.amount)));
     return by;
   });
-  protected readonly claimedTotal = computed(() => sumAmounts(this.claims().map((c) => c.amount)));
+  protected readonly claimedTotal = computed(() => sumAmounts(this.claims().filter(counts).map((c) => c.amount)));
   /** The rates set on the sheet. */
   protected readonly rates = signal<Rate[]>([]);
   /** Each grade's rate; a grade with no rate is missing. */

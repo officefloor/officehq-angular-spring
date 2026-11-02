@@ -57,6 +57,27 @@ public class ClaimService {
         return saved;
     }
 
+    /** Move a claim to a new status; a change its current status does not allow is refused. */
+    @Transactional
+    public Claim changeStatus(String sheetId, String user, long claimId, ClaimStatus to) {
+        Claim claim = claims.lockByIdAndSheetId(claimId, sheetId)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "No such claim on this sheet"));
+        if (!claim.getStatus().canBecome(to)) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT,
+                    "A " + claim.getStatus() + " claim cannot become " + to);
+        }
+        claim.setStatus(to);
+        Claim saved = claims.saveAndFlush(claim);
+        String event = switch (to) {
+            case OPEN -> "CLAIM_OPENED";
+            case SETTLED -> "CLAIM_SETTLED";
+            case VOID -> "CLAIM_VOIDED";
+            case DRAFT -> throw new IllegalStateException("a claim never returns to DRAFT");
+        };
+        audit.recordOnCommit(record(event, sheetId, user, person(sheetId, saved.getPersonId()), saved));
+        return saved;
+    }
+
     private Person person(String sheetId, long personId) {
         return people.findByIdAndSheetId(personId, sheetId)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "No such person on this sheet"));
