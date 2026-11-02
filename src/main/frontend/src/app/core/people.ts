@@ -22,6 +22,8 @@ export interface Person {
   retired: boolean;
   /** The day (yyyy-mm-dd) they are retired from; null when they are not retired. */
   retiredFrom: string | null;
+  /** Whether they are on hold: their open claims then count in no live total. */
+  held: boolean;
 }
 
 /** A statement just taken: the person as they now show, and their claims (newest first) as it
@@ -65,6 +67,14 @@ export class People {
     const { sheetId, user } = this.active();
     return firstValueFrom(
       this.http.post<Person>(`${this.url(sheetId)}/${id}/retire`, { from }, { headers: { 'X-User': user } }),
+    );
+  }
+
+  /** Put the person on hold (true) or take them off it (false). */
+  hold(id: number, held: boolean): Promise<Person> {
+    const { sheetId, user } = this.active();
+    return firstValueFrom(
+      this.http.post<Person>(`${this.url(sheetId)}/${id}/hold`, { held }, { headers: { 'X-User': user } }),
     );
   }
 

@@ -16,6 +16,12 @@ export function counts(c: Claim): boolean {
   return c.status === 'OPEN' || c.status === 'SETTLED';
 }
 
+/** Whether a claim counts in the live totals: it counts, and it is not an open claim of a person
+ *  on hold. */
+export function countsLive(c: Claim, held: boolean): boolean {
+  return counts(c) && !(held && c.status === 'OPEN');
+}
+
 export interface Claim {
   id: number;
   personId: number;

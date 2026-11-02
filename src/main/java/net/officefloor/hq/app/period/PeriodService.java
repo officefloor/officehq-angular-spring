@@ -89,14 +89,14 @@ public class PeriodService {
     }
 
     /** A period's due-total: the due figures of the claims that count whose date falls in it,
-     *  skipping those with no due. */
+     *  skipping those with no due and the open claims of people on hold. */
     private BigDecimal dueTotal(String sheetId, Period period) {
         Map<Long, Person> byId = people.findBySheetIdOrderByIdAsc(sheetId).stream()
                 .collect(Collectors.toMap(Person::getId, Function.identity()));
         BigDecimal total = BigDecimal.ZERO.setScale(2);
         for (Claim c : claims.findBySheetIdOrderByIdDesc(sheetId)) {
             Person person = byId.get(c.getPersonId());
-            if (person == null || !c.getStatus().counts() || c.getDate().isBefore(period.getFromDate())
+            if (person == null || !Dues.countsLive(person, c) || c.getDate().isBefore(period.getFromDate())
                     || c.getDate().isAfter(period.getToDate())) {
                 continue;
             }

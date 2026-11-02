@@ -33,6 +33,17 @@ public class Dues {
         return due(sheetId, person, claim);
     }
 
+    /** Whether a claim of the person counts in the live totals: it counts, and it is not an open
+     *  claim of a person on hold. */
+    public static boolean countsLive(Person person, Claim claim) {
+        return claim.getStatus().counts() && !(person.isHeld() && claim.getStatus() == ClaimStatus.OPEN);
+    }
+
+    /** The claims of a person that count in the live totals. */
+    public static List<Claim> live(Person person, List<Claim> theirs) {
+        return theirs.stream().filter(c -> countsLive(person, c)).toList();
+    }
+
     /** A person's due-total: the sum of the figures of their claims that count; null (n/a) when
      *  their grade has no rate on the sheet's today and no counting claim keeps a fixed figure. */
     public BigDecimal dueTotal(String sheetId, Person person, List<Claim> theirs) {

@@ -84,6 +84,24 @@ public class PersonService {
         });
     }
 
+    /** Put a person on hold (true) or take them off it (false); refused when they already are so. */
+    @Transactional
+    public Person hold(String sheetId, String user, long personId, boolean held) {
+        Person person = people.findByIdAndSheetId(personId, sheetId)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "No such person on this sheet"));
+        if (person.isHeld() == held) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT,
+                    held ? "This person is already on hold" : "This person is not on hold");
+        }
+        return rollup.tracking(sheetId, user, () -> {
+            person.setHeld(held);
+            Person saved = saveUnique(person);
+            audit.recordOnCommit((held ? "PERSON_HELD" : "PERSON_RELEASED") + " sheet=" + sheetId + " by=" + user
+                    + " name=" + saved.getName());
+            return saved;
+        });
+    }
+
     private static String record(String event, String sheetId, String user, Person person) {
         return event + " sheet=" + sheetId + " by=" + user + " name=" + person.getName() + " grade=" + person.getGrade();
     }

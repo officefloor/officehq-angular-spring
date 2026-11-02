@@ -1,7 +1,7 @@
 import { HttpErrorResponse } from '@angular/common/http';
 import { Component, computed, effect, inject, signal } from '@angular/core';
 import { FormControl, FormGroup, ReactiveFormsModule } from '@angular/forms';
-import { Claim, Claims, QuickAdded, claimDue, counts, fixed, sumAmounts } from '../../core/claims';
+import { Claim, Claims, QuickAdded, claimDue, countsLive, fixed, sumAmounts } from '../../core/claims';
 import { Grade, People, Person } from '../../core/people';
 import { Period, Periods, periodOf } from '../../core/periods';
 import { Rate, Rates, pctOn } from '../../core/rates';
@@ -15,6 +15,7 @@ import { QuickAddBar } from './quick-add-bar';
 // once a person's editor is opened, edits them. Each person's row lists their claims and what
 // they have claimed and are due at their grade's rate; the sheet's totals add everyone's up.
 // Retired people are left out of the list unless "show retired" is on; their claims still count.
+// The open claims of a person on hold count in no total; their settled claims still do.
 @Component({
   selector: 'app-people-list',
   imports: [ReactiveFormsModule, PersonClaims, RateForm, PeriodForm, QuickAddBar],
@@ -50,7 +51,7 @@ import { QuickAddBar } from './quick-add-bar';
       </label>
       <table data-testid="people">
         <thead>
-          <tr><th scope="col">Name</th><th scope="col">Grade</th><th scope="col">Claimed</th><th scope="col">Due</th><th scope="col">Statements</th><th scope="col">Last stated</th><th scope="col">Stated on</th><th scope="col">Retired</th><th scope="col">Retired from</th><th scope="col">Claims</th><th scope="col"><span class="visually-hidden">Actions</span></th></tr>
+          <tr><th scope="col">Name</th><th scope="col">Grade</th><th scope="col">Claimed</th><th scope="col">Due</th><th scope="col">Statements</th><th scope="col">Last stated</th><th scope="col">Stated on</th><th scope="col">Retired</th><th scope="col">Retired from</th><th scope="col">On hold</th><th scope="col">Claims</th><th scope="col"><span class="visually-hidden">Actions</span></th></tr>
         </thead>
         <tbody>
           @for (p of shown(); track p.id) {
@@ -64,6 +65,7 @@ import { QuickAddBar } from './quick-add-bar';
               <td data-testid="person-statement-date">{{ p.statementDate ?? '' }}</td>
               <td data-testid="person-retired">{{ p.retired ? 'yes' : 'no' }}</td>
               <td data-testid="person-retired-from">{{ p.retiredFrom ?? '' }}</td>
+              <td data-testid="person-hold">{{ p.held ? 'yes' : 'no' }}</td>
               <td>
                 <app-person-claims [personId]="p.id" [claims]="claimsByPerson().get(p.id) ?? []"
                   [rates]="rates()" [grade]="p.grade" [periods]="periods()"
@@ -78,6 +80,8 @@ import { QuickAddBar } from './quick-add-bar';
                 <input #retireDate type="date" [id]="'person-retire-date-' + p.id" data-testid="person-retire-date" />
                 <button type="button" data-testid="person-retire" (click)="retire(p, retireDate.value)"
                   [attr.aria-label]="'Retire ' + p.name">Retire</button>
+                <button type="button" data-testid="person-hold-toggle" (click)="hold(p)"
+                  [attr.aria-label]="(p.held ? 'Release ' : 'Hold ') + p.name">{{ p.held ? 'Release' : 'Hold' }}</button>
                 @if (personError()?.id === p.id) {
                   <p role="alert" data-testid="person-error">{{ personError()?.message }}</p>
                 }
@@ -111,13 +115,20 @@ export class PeopleList {
     for (const c of this.claims()) by.set(c.personId, [...(by.get(c.personId) ?? []), c]);
     return by;
   });
-  /** What each person has claimed: the sum of their open and settled claims' amounts. */
+  /** The people on hold, by id. */
+  private readonly held = computed(() => new Set(this.people().filter((p) => p.held).map((p) => p.id)));
+  /** The claims that count in the live totals, newest first. */
+  private readonly live = computed(() => this.claims().filter((c) => countsLive(c, this.held().has(c.personId))));
+  /** What each person has claimed: the sum of their open and settled claims' amounts, leaving out
+   *  the open ones while they are on hold. */
   protected readonly claimed = computed(() => {
     const by = new Map<number, string>();
-    for (const [id, cs] of this.claimsByPerson()) by.set(id, sumAmounts(cs.filter(counts).map((c) => c.amount)));
+    for (const [id, cs] of this.claimsByPerson()) {
+      by.set(id, sumAmounts(cs.filter((c) => countsLive(c, this.held().has(id))).map((c) => c.amount)));
+    }
     return by;
   });
-  protected readonly claimedTotal = computed(() => sumAmounts(this.claims().filter(counts).map((c) => c.amount)));
+  protected readonly claimedTotal = computed(() => sumAmounts(this.live().map((c) => c.amount)));
   /** The rates set on the sheet. */
   protected readonly rates = signal<Rate[]>([]);
   /** The periods on the sheet, earliest first. */
@@ -127,7 +138,7 @@ export class PeopleList {
   protected readonly periodDueTotals = computed(() => {
     const grades = new Map(this.people().map((p) => [p.id, p.grade]));
     const figures = new Map<number, string[]>(this.periods().map((p) => [p.id, []]));
-    for (const c of this.claims().filter(counts)) {
+    for (const c of this.live()) {
       const period = periodOf(this.periods(), c.date);
       const grade = grades.get(c.personId);
       if (period === undefined || grade === undefined) continue;
@@ -164,6 +175,8 @@ export class PeopleList {
   protected readonly personError = signal<{ id: number; message: string } | null>(null);
   /** The people whose statement is waiting for its answer: a second press meanwhile is ignored. */
   private readonly stating = new Set<number>();
+  /** The people whose hold is waiting for its answer: a second press meanwhile is ignored. */
+  private readonly holding = new Set<number>();
   /** The people whose retirement is waiting for its answer: a second press meanwhile is ignored. */
   private readonly retiring = new Set<number>();
   protected readonly form = new FormGroup({
@@ -226,6 +239,22 @@ export class PeopleList {
       this.personError.set({ id: p.id, message: 'The person could not be retired.' });
     } finally {
       this.retiring.delete(p.id);
+    }
+  }
+
+  /** Put the person on hold, or take them off it when they are on hold. */
+  protected async hold(p: Person): Promise<void> {
+    if (this.holding.has(p.id)) return;
+    this.holding.add(p.id);
+    this.personError.set(null);
+    try {
+      const saved = await this.api.hold(p.id, !p.held);
+      this.people.update((ps) => ps.map((x) => (x.id === saved.id ? saved : x)));
+      if (this.editing() === saved.id) this.version = saved.version;
+    } catch {
+      this.personError.set({ id: p.id, message: p.held ? 'The person could not be released.' : 'The person could not be put on hold.' });
+    } finally {
+      this.holding.delete(p.id);
     }
   }
 
@@ -314,10 +343,11 @@ export class PeopleList {
     this.periods.update((ps) => [...ps.filter((p) => p.id !== period.id), period].sort((a, b) => (a.from < b.from ? -1 : a.from > b.from ? 1 : 0)));
   }
 
-  /** A person's due-total: the sum of the due figures of their open and settled claims. Null (n/a)
+  /** A person's due-total: the sum of the due figures of their open and settled claims, leaving out
+   *  the open ones while they are on hold. Null (n/a)
    *  when their grade has no rate on the sheet's today and no settled or stated claim keeps a figure. */
   protected dueOf(p: Person): string | null {
-    const counted = (this.claimsByPerson().get(p.id) ?? []).filter(counts);
+    const counted = (this.claimsByPerson().get(p.id) ?? []).filter((c) => countsLive(c, p.held));
     if (!this.pctOf().has(p.grade) && !counted.some(fixed)) {
       return null;
     }

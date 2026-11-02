@@ -30,14 +30,14 @@ public class PersonController {
 
     /** What the screen shows of a person; with how many statements were taken of them, and the
      *  last one's due-total (text with two decimals, null when n/a or none) and day (null when none);
-     *  and whether they are retired, and from which day (null when not). */
+     *  whether they are retired, and from which day (null when not); and whether they are on hold. */
     public record PersonView(long id, String name, String grade, long version, int statementCount,
-            String statedTotal, LocalDate statementDate, boolean retired, LocalDate retiredFrom) {
+            String statedTotal, LocalDate statementDate, boolean retired, LocalDate retiredFrom, boolean held) {
         public static PersonView of(Person person, StatementSummary statements) {
             return new PersonView(person.getId(), person.getName(), person.getGrade(), person.getVersion(),
                     statements.count(),
                     statements.lastDueTotal() == null ? null : statements.lastDueTotal().setScale(2).toPlainString(),
-                    statements.lastTakenOn(), person.isRetired(), person.getRetiredFrom());
+                    statements.lastTakenOn(), person.isRetired(), person.getRetiredFrom(), person.isHeld());
         }
     }
 
@@ -49,6 +49,10 @@ public class PersonController {
 
     /** The retire form: the day the person is retired from; left out, the sheet's today. */
     public record RetireForm(LocalDate from) {
+    }
+
+    /** The hold form: whether the person is to be on hold (true) or taken off it (false). */
+    public record HoldForm(@NotNull Boolean held) {
     }
 
     private final PersonService service;
@@ -96,6 +100,15 @@ public class PersonController {
             @RequestHeader("X-User") @NotBlank @Size(max = 100) String user,
             @RequestBody RetireForm form) {
         Person saved = service.retire(sheetId.trim(), user.trim(), personId, form.from());
+        return PersonView.of(saved, statements.summary(sheetId.trim(), personId));
+    }
+
+    @PostMapping("/{personId}/hold")
+    public PersonView hold(@PathVariable @NotBlank @Size(max = 100) String sheetId,
+            @PathVariable long personId,
+            @RequestHeader("X-User") @NotBlank @Size(max = 100) String user,
+            @Valid @RequestBody HoldForm form) {
+        Person saved = service.hold(sheetId.trim(), user.trim(), personId, form.held());
         return PersonView.of(saved, statements.summary(sheetId.trim(), personId));
     }
 }
