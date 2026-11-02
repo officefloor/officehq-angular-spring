@@ -6,6 +6,7 @@ import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.StandardOpenOption;
+import java.util.List;
 import java.util.Set;
 import java.util.function.Supplier;
 import org.springframework.beans.factory.annotation.Value;
@@ -85,6 +86,17 @@ public class Audit {
             return entry + " for=" + steward;
         }
         return entry;
+    }
+
+    /** Every record the file holds now, oldest first (none when there is no file yet). */
+    public synchronized List<String> lines() {
+        try {
+            return Files.exists(file)
+                    ? Files.readAllLines(file, StandardCharsets.UTF_8).stream().filter(l -> !l.isEmpty()).toList()
+                    : List.of();
+        } catch (IOException e) {
+            throw new UncheckedIOException(e);
+        }
     }
 
     /** Truncate the audit file. */
