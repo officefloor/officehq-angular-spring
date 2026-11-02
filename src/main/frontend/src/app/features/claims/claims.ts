@@ -495,6 +495,11 @@ function notEditable(status: ClaimStatus | undefined): string {
                  (input)="clearClaimError(c.id)" />
           <button type="button" data-testid="claim-split" (click)="split(c, splitAmount.value)"
                   [attr.aria-label]="'Split claim of ' + c.amount + ' on ' + c.date">Split</button>
+          <label [for]="fieldId('settle-part-' + c.id)">Settle part</label>
+          <input [id]="fieldId('settle-part-' + c.id)" data-testid="claim-settle-part-amount" inputmode="decimal"
+                 #settlePartAmount (input)="clearClaimError(c.id)" />
+          <button type="button" data-testid="claim-settle-part" (click)="settlePart(c, settlePartAmount.value)"
+                  [attr.aria-label]="'Settle part of claim of ' + c.amount + ' on ' + c.date">Settle part</button>
           @if (editingId() === c.id) {
             <button type="button" data-testid="claim-cancel" (click)="cancel()">Cancel</button>
           } @else {
@@ -1078,6 +1083,48 @@ export class Claims {
         : e instanceof HttpErrorResponse && e.status === 422
         ? 'Enter an amount more than 0.00 and less than the claim\'s amount to split off.'
         : 'Could not split that claim.';
+      this.claimError.set({ id: c.id, message });
+    }
+  }
+
+  /**
+   * Part-settle an OPEN claim: split the amount off it as the split button does and settle the new claim
+   * at once (PENDING over the clerk limit); the user who opened or edited the original, or a claim needing a
+   * proof, is refused, and a refused split or settle changes nothing.
+   */
+  protected async settlePart(c: Claim, amount: string): Promise<void> {
+    this.claimError.set(null);
+    const sheet = this.session.sheetId();
+    if (!sheet) return;
+    const value = amount.trim();
+    if (!/^\d{1,12}(\.\d{1,2})?$/.test(value) || cents(value) <= 0 || cents(value) >= cents(c.amount)) {
+      this.claimError.set({ id: c.id, message: 'Enter an amount more than 0.00 and less than the claim\'s amount to settle.' });
+      return;
+    }
+    const url = `/api/sheets/${encodeURIComponent(sheet)}/claims/${c.id}/settle-part`;
+    try {
+      const result = await firstValueFrom(
+        this.http.post<{ original: Claim; split: Claim }>(url, { amount: value }, { headers: this.headers() }));
+      if (this.session.sheetId() !== sheet) return;
+      this.saved.emit(result.original);
+      this.saved.emit(result.split);
+    } catch (e) {
+      if (this.session.sheetId() !== sheet) return;
+      const message = e instanceof HttpErrorResponse && e.status === 423
+        ? CLOSED
+        : e instanceof HttpErrorResponse && e.status === 409
+        ? `A ${c.status} claim cannot be part-settled; only an OPEN one can.`
+        : e instanceof HttpErrorResponse && e.status === 412
+        ? `A deferred claim cannot be part-settled until ${c.deferredUntil}.`
+        : e instanceof HttpErrorResponse && e.status === 428
+        ? 'A claim due above the proof threshold cannot be part-settled without a proof.'
+        : e instanceof HttpErrorResponse && e.status === 403
+        ? c.openedBy === this.session.user()
+          ? 'The user who opened a claim cannot settle any part of it.'
+          : 'Your role may not split or settle a claim on this sheet.'
+        : e instanceof HttpErrorResponse && e.status === 422
+        ? 'Enter an amount more than 0.00 and less than the claim\'s amount to settle.'
+        : 'Could not part-settle that claim.';
       this.claimError.set({ id: c.id, message });
     }
   }

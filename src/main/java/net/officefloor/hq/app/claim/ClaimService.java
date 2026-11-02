@@ -231,6 +231,31 @@ public class ClaimService {
     }
 
     private Claim changeStatus(String sheetId, String user, Long id, ClaimStatus next, String reason) {
+        return changeStatus(sheetId, user, id, next, reason, false);
+    }
+
+    /**
+     * Part-settle an OPEN claim: split the amount off it as {@link #split} does, then settle the new claim
+     * by the user as settling one does (PENDING when over the clerk limit). The four-eyes rule and the proof
+     * rule are judged on the original claim (its due before the split), not the new one the user opened; a
+     * refusal of the split or the settle refuses the whole and changes nothing.
+     */
+    @Transactional
+    public Split partSettle(String sheetId, String user, Long id, BigDecimal amount) {
+        sheets.lockForNumbering(sheetId);
+        Claim claim = claims.findByIdAndSheetId(id, sheetId).orElseThrow(ClaimNotFoundException::new);
+        if (claim.getStatus() != ClaimStatus.OPEN) throw new ClaimStatusRefusedException();
+        if (!settings.mayDo(sheetId, user, "settle")) throw new ClaimNotPermittedException();
+        if (claim.isOpenedOrEditedBy(user)) throw new ClaimSettledByOpenerException();
+        Person person = people.findByIdAndSheetId(claim.getPersonId(), sheetId).orElseThrow(PersonNotFoundException::new);
+        refuseUnproved(sheetId, person, claim, chargedFigureOf(sheetId, person, claim));
+        Split split = split(sheetId, user, id, amount);
+        Claim settled = changeStatus(sheetId, user, split.split().getId(), ClaimStatus.SETTLED, null, true);
+        return new Split(split.original(), settled);
+    }
+
+    private Claim changeStatus(String sheetId, String user, Long id, ClaimStatus next, String reason,
+            boolean judgedOnOriginal) {
         // Opening takes the sheet's next number, locking the sheet first so the claim is read only
         // once no other open on the sheet is under way; a refusal rolls the number back.
         Sheet numbering = next == ClaimStatus.OPEN ? sheets.lockForNumbering(sheetId) : null;
@@ -250,7 +275,7 @@ public class ClaimService {
         if (next == ClaimStatus.SETTLED && claim.isDeferredOn(sheets.today(sheetId))) {
             throw new ClaimDeferredException();
         }
-        if (next == ClaimStatus.SETTLED && claim.isOpenedOrEditedBy(user)) {
+        if (next == ClaimStatus.SETTLED && !judgedOnOriginal && claim.isOpenedOrEditedBy(user)) {
             throw new ClaimSettledByOpenerException();
         }
         Person person = people.findByIdAndSheetId(claim.getPersonId(), sheetId).orElseThrow(PersonNotFoundException::new);
@@ -260,7 +285,7 @@ public class ClaimService {
         }
         // Settling freezes the late charge of the moment into the settled due.
         BigDecimal settling = next == ClaimStatus.SETTLED ? chargedFigureOf(sheetId, person, claim) : null;
-        if (next == ClaimStatus.SETTLED) refuseUnproved(sheetId, person, claim, settling);
+        if (next == ClaimStatus.SETTLED && !judgedOnOriginal) refuseUnproved(sheetId, person, claim, settling);
         BigDecimal opening = next == ClaimStatus.OPEN ? chargedFigureOf(sheetId, person, claim) : null;
         if (next == ClaimStatus.OPEN) refuseUnnoted(sheetId, claim, opening);
         if (next == ClaimStatus.SETTLED && overClerkLimit(sheetId, user, settling)) next = ClaimStatus.PENDING;
