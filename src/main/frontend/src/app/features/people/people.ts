@@ -2,7 +2,7 @@ import { HttpClient, HttpErrorResponse } from '@angular/common/http';
 import { Component, computed, effect, inject, signal } from '@angular/core';
 import { firstValueFrom } from 'rxjs';
 import { Session } from '../../core/session';
-import { AMOUNT, Claim, PersonClaims, cents, counts, money } from '../claims/claims';
+import { AMOUNT, Claim, PersonClaims, cents, counts, money, overdue } from '../claims/claims';
 import { DatedDue, Period, Periods } from '../periods/periods';
 import { Rate, Rates, claimDueCents, dueText, fixedDueCents, pctOn } from '../rates/rates';
 import { Roles } from '../roles/roles';
@@ -29,6 +29,8 @@ import { Settings } from '../settings/settings';
 // total (their own, the sheet's or a period's); their SETTLED claims still do.
 // The quick-add bar adds a DRAFT claim of an amount, dated the sheet's today with an empty note, for
 // the person of a name, adding the person with grade A first when the name is not on the sheet.
+// Each person, and the sheet, shows how many of the claims that count are overdue and the sum of
+// their figures (the overdue-total).
 interface Person {
   id: number;
   name: string;
@@ -75,7 +77,7 @@ const GRADES = ['A', 'B', 'C'] as const;
   template: `
     <app-rates [(rates)]="rates" />
     <app-roles />
-    <app-settings [(floor)]="floor" />
+    <app-settings [(floor)]="floor" [(terms)]="terms" />
     <app-periods [(periods)]="periods" [dues]="dues()" />
     <section aria-labelledby="people-heading">
       <h2 id="people-heading">People</h2>
@@ -140,6 +142,8 @@ const GRADES = ['A', 'B', 'C'] as const;
       </label>
       <p>Claimed in total <strong data-testid="rollup-claimed-total">{{ claimedTotal() }}</strong></p>
       <p>Due in total <strong data-testid="rollup-due-total">{{ dueTotal() }}</strong></p>
+      <p>Overdue claims <strong data-testid="rollup-overdue-count">{{ overdueTotals().count }}</strong></p>
+      <p>Overdue in total <strong data-testid="rollup-overdue-total">{{ money(overdueTotals().cents) }}</strong></p>
       <table data-testid="people-list">
         <thead>
           <tr>
@@ -147,6 +151,7 @@ const GRADES = ['A', 'B', 'C'] as const;
             <th scope="col">Grade</th>
             <th scope="col">Claimed</th>
             <th scope="col">Due</th>
+            <th scope="col">Overdue</th>
             <th scope="col">Statements</th>
             <th scope="col">Retired</th>
             <th scope="col">On hold</th>
@@ -161,6 +166,10 @@ const GRADES = ['A', 'B', 'C'] as const;
               <td data-testid="person-grade">{{ p.grade }}</td>
               <td data-testid="person-claimed">{{ claimedOf(p.id) }}</td>
               <td data-testid="person-due-total">{{ dueText(dueOf(p)) }}</td>
+              <td>
+                <span data-testid="person-overdue-count">{{ overdueOf(p).count }}</span>
+                <span>totalling <span data-testid="person-overdue-total">{{ money(overdueOf(p).cents) }}</span></span>
+              </td>
               <td>
                 <span data-testid="person-statement-count">{{ statementOf(p.id)?.count ?? 0 }}</span>
                 <span>Last due <span data-testid="person-stated-total">{{ statementOf(p.id)?.dueTotal ?? '' }}</span></span>
@@ -181,6 +190,7 @@ const GRADES = ['A', 'B', 'C'] as const;
                   [grade]="p.grade"
                   [rates]="rates()"
                   [floor]="floorCents()"
+                  [terms]="terms()"
                   [periods]="periods()"
                   (saved)="claimSaved($event)"
                 />
@@ -265,6 +275,8 @@ export class People {
   /** The sheet's floor: the least a claim's live due can be. */
   protected readonly floor = signal('1.00');
   protected readonly floorCents = computed(() => cents(this.floor()));
+  /** The sheet's terms: the days after its date a claim is due by. */
+  protected readonly terms = signal(14);
   /** The date and figure of each claim that counts and has a figure, for the periods' due-totals. */
   protected readonly dues = computed(() => {
     const out: DatedDue[] = [];
@@ -289,6 +301,17 @@ export class People {
     money(this.people().reduce((sum, p) => sum + (this.dueOf(p) ?? 0), 0)),
   );
   protected readonly dueText = dueText;
+  protected readonly money = money;
+  /** The sheet's overdue claims that count: how many, and the sum of their figures in whole cents. */
+  protected readonly overdueTotals = computed(() =>
+    this.people().reduce(
+      (sum, p) => {
+        const o = this.overdueOf(p);
+        return { count: sum.count + o.count, cents: sum.cents + o.cents };
+      },
+      { count: 0, cents: 0 },
+    ),
+  );
   protected readonly nameInput = signal('');
   protected readonly gradeInput = signal<string>('A');
   protected readonly editingId = signal<number | null>(null);
@@ -363,6 +386,16 @@ export class People {
     const counted = this.claimsOf(p.id).filter((c) => countsFor(p, c));
     if (this.pctOf().get(p.grade) === undefined && !counted.some((c) => fixedDueCents(c) !== null)) return null;
     return counted.reduce((sum, c) => sum + (claimDueCents(c, this.rates(), p.grade, this.floorCents()) ?? 0), 0);
+  }
+
+  /** The person's overdue claims that count: how many, and the sum of their figures in whole cents. */
+  protected overdueOf(p: Person): { count: number; cents: number } {
+    const today = this.session.today();
+    const late = this.claimsOf(p.id).filter((c) => countsFor(p, c) && overdue(c, this.terms(), today));
+    return {
+      count: late.length,
+      cents: late.reduce((sum, c) => sum + (claimDueCents(c, this.rates(), p.grade, this.floorCents()) ?? 0), 0),
+    };
   }
 
   protected statementOf(personId: number): StatementSummary | undefined {

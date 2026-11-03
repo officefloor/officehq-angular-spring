@@ -12,13 +12,15 @@ import org.springframework.transaction.annotation.Transactional;
 
 /**
  * The sheet's settings: its clerk limit (none: no limit) and its floor, the least a claim's live due
- * can be. Changing the floor moves the live figures, so the figures that move are recorded.
+ * can be, and its terms, the days after its date a claim is due by. Changing the floor moves the
+ * live figures, so the figures that move are recorded.
  */
 @Service
 public class SettingService {
 
     public static final String CLERK_LIMIT = "clerk-limit";
     public static final String FLOOR = "floor";
+    public static final String TERMS = "terms";
 
     private final SheetService sheets;
     private final SheetRepository sheetStore;
@@ -39,10 +41,11 @@ public class SettingService {
 
     /**
      * Save the settings given: a clerk limit when {@code changeLimit} (null for no limit), and the
-     * floor when it is not null. Each one saved is recorded, in that order.
+     * floor and the terms when they are not null. Each one saved is recorded, in that order.
      */
     @Transactional
-    public Sheet set(String sheetId, String user, boolean changeLimit, BigDecimal limit, BigDecimal floor) {
+    public Sheet set(String sheetId, String user, boolean changeLimit, BigDecimal limit, BigDecimal floor,
+            Integer terms) {
         Sheet sheet = sheets.load(sheetId, user);
         if (changeLimit) {
             sheet.setClerkLimit(limit);
@@ -55,6 +58,11 @@ public class SettingService {
             sheet = sheetStore.saveAndFlush(sheet);
             audit.recordOnCommit(changed(sheetId, user, FLOOR, text(floor)));
             rollup.recordChanges(sheetId, user, before);
+        }
+        if (terms != null) {
+            sheet.setTerms(terms);
+            sheet = sheetStore.saveAndFlush(sheet);
+            audit.recordOnCommit(changed(sheetId, user, TERMS, String.valueOf(terms)));
         }
         return sheet;
     }

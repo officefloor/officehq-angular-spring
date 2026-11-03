@@ -12,6 +12,8 @@ import { Rate, claimDueCents, dueText } from '../rates/rates';
 // dated inside a closed period cannot be added, edited or moved on: each is refused with an error.
 // Only a DRAFT can be edited; editing any other claim is refused with an error on the claim (to
 // change an open claim, void it and add a new one).
+// Each claim shows its due-by, its date plus the sheet's terms in days, and whether it is overdue:
+// OPEN with its due-by before the sheet's today.
 export type ClaimStatus = 'DRAFT' | 'OPEN' | 'SETTLED' | 'VOID';
 
 export interface Claim {
@@ -53,6 +55,41 @@ export const AMOUNT = /^\d{1,12}(\.\d{1,2})?$/;
 export function cents(amount: string): number {
   const [whole, frac = ''] = amount.split('.');
   return Number(whole) * 100 + Number(frac.padEnd(2, '0'));
+}
+
+/** Days since 1970-01-01 of a yyyy-mm-dd date (proleptic Gregorian). */
+function dayNumber(date: string): number {
+  const [y0, m, d] = date.split('-').map(Number);
+  const y = m <= 2 ? y0 - 1 : y0;
+  const era = Math.floor(y / 400);
+  const yoe = y - era * 400;
+  const doy = Math.floor((153 * (m + (m > 2 ? -3 : 9)) + 2) / 5) + d - 1;
+  const doe = yoe * 365 + Math.floor(yoe / 4) - Math.floor(yoe / 100) + doy;
+  return era * 146097 + doe - 719468;
+}
+
+/** The yyyy-mm-dd date of a number of days since 1970-01-01. */
+function dateOf(days: number): string {
+  const z = days + 719468;
+  const era = Math.floor(z / 146097);
+  const doe = z - era * 146097;
+  const yoe = Math.floor((doe - Math.floor(doe / 1460) + Math.floor(doe / 36524) - Math.floor(doe / 146096)) / 365);
+  const doy = doe - (365 * yoe + Math.floor(yoe / 4) - Math.floor(yoe / 100));
+  const mp = Math.floor((5 * doy + 2) / 153);
+  const d = doy - Math.floor((153 * mp + 2) / 5) + 1;
+  const m = mp < 10 ? mp + 3 : mp - 9;
+  const y = yoe + era * 400 + (m <= 2 ? 1 : 0);
+  return `${String(y).padStart(4, '0')}-${String(m).padStart(2, '0')}-${String(d).padStart(2, '0')}`;
+}
+
+/** The date a claim is due by: its date plus the terms in days. */
+export function dueBy(c: Claim, terms: number): string {
+  return dateOf(dayNumber(c.date) + terms);
+}
+
+/** Whether a claim is overdue: OPEN, and due by a date before the sheet's today. */
+export function overdue(c: Claim, terms: number, today: string | null): boolean {
+  return c.status === 'OPEN' && today !== null && dueBy(c, terms) < today;
 }
 
 /** Whole cents shown with two decimals. */
@@ -103,6 +140,8 @@ export function money(c: number): string {
           <span data-testid="claim-note">{{ c.note }}</span>
           <span>Period <span data-testid="claim-period">{{ periodOf(c) }}</span></span>
           <span>Due <span data-testid="claim-due">{{ dueOf(c) }}</span></span>
+          <span>Due by <span data-testid="claim-due-by">{{ dueByOf(c) }}</span></span>
+          <span>Overdue <span data-testid="claim-overdue">{{ overdueOf(c) ? 'yes' : 'no' }}</span></span>
           <span data-testid="claim-status">{{ c.status }}</span>
           <span>Opened by <span data-testid="claim-opened-by">{{ c.openedBy ?? '' }}</span></span>
           <span>Stated <span data-testid="claim-stated">{{ c.stated ? 'yes' : 'no' }}</span></span>
@@ -141,6 +180,8 @@ export class PersonClaims {
   readonly rates = input.required<Rate[]>();
   /** The sheet's floor in whole cents: the least a claim's live due can be. */
   readonly floor = input.required<number>();
+  /** The sheet's terms: the days after its date a claim is due by. */
+  readonly terms = input.required<number>();
   /** The sheet's periods. */
   readonly periods = input.required<Period[]>();
   readonly saved = output<Claim>();
@@ -160,6 +201,14 @@ export class PersonClaims {
    *  force on the claim's date, never below the sheet's floor. */
   protected dueOf(c: Claim): string {
     return dueText(claimDueCents(c, this.rates(), this.grade(), this.floor()));
+  }
+
+  protected dueByOf(c: Claim): string {
+    return dueBy(c, this.terms());
+  }
+
+  protected overdueOf(c: Claim): boolean {
+    return overdue(c, this.terms(), this.session.today());
   }
 
   /** The name of the period whose dates contain the claim's date; blank when none does. */
