@@ -19,6 +19,8 @@ export interface Claim {
   status: ClaimStatus;
   /** The claim's number on the sheet, given when opened; null while DRAFT or once VOID. */
   number: number | null;
+  /** The due fixed when the claim was settled; null while not settled or if its grade then had no rate. */
+  settledDue: string | null;
 }
 
 /** A move from one status to the next, by the endpoint that makes it. */
@@ -129,8 +131,9 @@ export class PersonClaims {
   /** The error of each claim's last refused status change, by claim id. */
   protected readonly actionErrors = signal<ReadonlyMap<number, string>>(new Map());
 
+  /** A settled claim shows the due fixed when it was settled; any other claim's due is live. */
   protected dueOf(c: Claim): string {
-    return dueText(dueCents(cents(c.amount), this.pct()));
+    return dueText(c.settledDue !== null ? cents(c.settledDue) : dueCents(cents(c.amount), this.pct()));
   }
 
   protected edit(c: Claim): void {

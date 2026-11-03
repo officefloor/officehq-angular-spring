@@ -7,6 +7,8 @@ import java.util.List;
 import net.officefloor.hq.app.Audit;
 import net.officefloor.hq.app.person.Person;
 import net.officefloor.hq.app.person.PersonRepository;
+import net.officefloor.hq.app.rate.Rate;
+import net.officefloor.hq.app.rate.RateRepository;
 import net.officefloor.hq.app.sheet.SheetService;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
@@ -16,19 +18,23 @@ import org.springframework.web.server.ResponseStatusException;
 /**
  * The claims on a sheet: added to a person and edited (amount, date, note). A claim given no date
  * takes the sheet's today. A claim starts as DRAFT and moves through its statuses (see
- * {@link ClaimStatus}); a change its status does not allow is refused.
+ * {@link ClaimStatus}); a change its status does not allow is refused. Settling a claim fixes its
+ * due at the rate its person's grade has then; an open claim's due stays live.
  */
 @Service
 public class ClaimService {
 
     private final ClaimRepository claims;
     private final PersonRepository people;
+    private final RateRepository rates;
     private final SheetService sheets;
     private final Audit audit;
 
-    public ClaimService(ClaimRepository claims, PersonRepository people, SheetService sheets, Audit audit) {
+    public ClaimService(ClaimRepository claims, PersonRepository people, RateRepository rates, SheetService sheets,
+            Audit audit) {
         this.claims = claims;
         this.people = people;
+        this.rates = rates;
         this.sheets = sheets;
         this.audit = audit;
     }
@@ -71,9 +77,12 @@ public class ClaimService {
         }
         // the audit line carries the number the claim had, before voiding clears it
         Integer recorded = next == ClaimStatus.OPEN ? number : claim.getNumber();
+        Person person = person(sheetId, claim.getPersonId());
         claim.setStatus(next);
         if (next == ClaimStatus.OPEN) {
             claim.setNumber(number);
+        } else if (next == ClaimStatus.SETTLED) {
+            claim.setSettledDue(due(sheetId, person, claim.getAmount()));
         } else if (next == ClaimStatus.VOID) {
             claim.setNumber(null);
         }
@@ -84,9 +93,21 @@ public class ClaimService {
             case VOID -> "CLAIM_VOIDED";
             case DRAFT -> throw new IllegalStateException();
         };
-        audit.recordOnCommit(record(event, sheetId, user, person(sheetId, saved.getPersonId()), saved)
-                + (recorded != null ? " number=" + recorded : ""));
+        audit.recordOnCommit(record(event, sheetId, user, person, saved)
+                + (recorded != null ? " number=" + recorded : "")
+                + (next == ClaimStatus.SETTLED ? " due=" + dueText(saved.getSettledDue()) : ""));
         return saved;
+    }
+
+    /** The due on an amount at the rate for the person's grade, half up to the cent; null with no rate. */
+    private BigDecimal due(String sheetId, Person person, BigDecimal amount) {
+        return rates.findBySheetIdAndGrade(sheetId, person.getGrade()).map(Rate::getPct)
+                .map(pct -> amount.multiply(pct).divide(BigDecimal.valueOf(100), 2, RoundingMode.HALF_UP))
+                .orElse(null);
+    }
+
+    private static String dueText(BigDecimal due) {
+        return due == null ? "n/a" : due.setScale(2, RoundingMode.UNNECESSARY).toPlainString();
     }
 
     private Person person(String sheetId, long personId) {
