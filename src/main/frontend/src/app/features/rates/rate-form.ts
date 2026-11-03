@@ -77,6 +77,27 @@ import { FigurePipe } from '../../core/figure';
           }
         </tbody>
       </table>
+      <table data-testid="rate-calendar">
+        <caption>In force on the first of each month of {{ year() }}</caption>
+        <thead>
+          <tr>
+            <th scope="col">Grade</th>
+            @for (m of months(); track m) {
+              <th scope="col">{{ m }}</th>
+            }
+          </tr>
+        </thead>
+        <tbody>
+          @for (g of grades; track g) {
+            <tr>
+              <th scope="row">{{ g }}</th>
+              @for (m of months(); track m) {
+                <td [attr.data-testid]="'rate-month-' + g + '-' + m">{{ calendar().get(g + '-' + m) ?? 'n/a' | figure }}</td>
+              }
+            </tr>
+          }
+        </tbody>
+      </table>
       <table data-testid="rates">
         <caption>All rates</caption>
         <thead>
@@ -143,6 +164,27 @@ export class RateForm {
     for (const g of this.grades) {
       const pct = pctOn(this.rates(), g, today);
       if (pct !== undefined) by.set(g, pct);
+    }
+    return by;
+  });
+
+  /** The calendar year of the sheet's today; null when there is no today. */
+  protected readonly year = computed(() => this.session.today()?.slice(0, 4) ?? null);
+  /** The months (yyyy-mm) of the year of the sheet's today. */
+  protected readonly months = computed(() => {
+    const year = this.year();
+    if (year === null) return [];
+    return Array.from({ length: 12 }, (_, i) => `${year}-${String(i + 1).padStart(2, '0')}`);
+  });
+  /** Each grade's rate in force on the first day of each month, keyed grade-yyyy-mm; a month with
+   *  none is missing. */
+  protected readonly calendar = computed(() => {
+    const by = new Map<string, string>();
+    for (const g of this.grades) {
+      for (const m of this.months()) {
+        const pct = pctOn(this.rates(), g, `${m}-01`);
+        if (pct !== undefined) by.set(`${g}-${m}`, pct);
+      }
     }
     return by;
   });
