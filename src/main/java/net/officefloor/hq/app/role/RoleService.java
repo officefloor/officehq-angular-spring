@@ -110,7 +110,7 @@ public class RoleService {
     }
 
     /** Whether a user name's role on the sheet may take an action of the permission matrix (open,
-     *  settle, void, reassign, close, reopen). */
+     *  settle, void, reassign, close, reopen, today). */
     @Transactional(readOnly = true)
     public boolean may(String sheetId, String userName, String action) {
         return sheets.rolesAllowed(sheetId, action).contains(roleOf(sheetId, userName));

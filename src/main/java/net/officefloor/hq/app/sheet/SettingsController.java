@@ -695,7 +695,7 @@ public class SettingsController {
 
     @PutMapping("/permissions/{action}")
     public SettingsView setPermission(@PathVariable @NotBlank @Size(max = 100) String sheetId,
-            @PathVariable @Pattern(regexp = "open|settle|void|reassign|close|reopen") String action,
+            @PathVariable @Pattern(regexp = "open|settle|void|reassign|close|reopen|today") String action,
             @RequestHeader("X-User") @NotBlank @Size(max = 100) String user,
             @Valid @RequestBody PermissionForm form) {
         return view(service.setPermission(sheetId.trim(), user.trim(), action, form.rolesValue()));

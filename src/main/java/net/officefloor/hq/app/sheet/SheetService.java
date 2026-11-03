@@ -178,6 +178,9 @@ public class SheetService {
     @Transactional
     public synchronized Sheet setToday(String id, String user, LocalDate today) {
         Sheet sheet = load(id, user);
+        if (!roles.may(id, user, "today")) {
+            throw new ResponseStatusException(HttpStatus.FORBIDDEN, "Your role may not change the sheet's today");
+        }
         if (!today.equals(sheet.getToday())) {
             claims.releaseEditLocks(id);
         }
@@ -936,13 +939,14 @@ public class SheetService {
     }
 
     /** The actions the permission matrix covers. */
-    public static final List<String> ACTIONS = List.of("open", "settle", "void", "reassign", "close", "reopen");
+    public static final List<String> ACTIONS = List.of("open", "settle", "void", "reassign", "close", "reopen", "today");
 
     /** The roles that may take each action under the standing rule (a blank entry in the matrix). */
     private static final Map<String, List<String>> STANDING_PERMISSIONS = Map.of(
             "open", List.of("clerk", "steward"), "settle", List.of("clerk", "steward"),
             "void", List.of("clerk", "steward"), "close", List.of("clerk", "steward"),
-            "reassign", List.of("steward"), "reopen", List.of("steward"));
+            "reassign", List.of("steward"), "reopen", List.of("steward"),
+            "today", List.of("clerk", "steward"));
 
     /** The permission matrix as set on the sheet: for each action, the comma separated roles that may
      *  take it, blank ("") when it keeps the standing rule. */

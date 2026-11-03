@@ -347,6 +347,7 @@ export class SettingsForm {
       reassign: new FormControl('', { nonNullable: true }),
       close: new FormControl('', { nonNullable: true }),
       reopen: new FormControl('', { nonNullable: true }),
+      today: new FormControl('', { nonNullable: true }),
     }),
   });
   protected readonly roleForm = new FormGroup({

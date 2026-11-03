@@ -128,14 +128,14 @@ export function graceOn(graces: Graces, grade: Grade | undefined, day: string): 
 }
 
 /** The actions the permission matrix covers. */
-export type PermAction = 'open' | 'settle' | 'void' | 'reassign' | 'close' | 'reopen';
+export type PermAction = 'open' | 'settle' | 'void' | 'reassign' | 'close' | 'reopen' | 'today';
 
-export const PERM_ACTIONS: PermAction[] = ['open', 'settle', 'void', 'reassign', 'close', 'reopen'];
+export const PERM_ACTIONS: PermAction[] = ['open', 'settle', 'void', 'reassign', 'close', 'reopen', 'today'];
 
 /** The roles that may take each action when its entry in the matrix is blank. */
 export const STANDING_PERMISSIONS: Record<PermAction, string> = {
   open: 'clerk,steward', settle: 'clerk,steward', void: 'clerk,steward', close: 'clerk,steward',
-  reassign: 'steward', reopen: 'steward',
+  reassign: 'steward', reopen: 'steward', today: 'clerk,steward',
 };
 
 /** A proof kinds value: receipt, photo or both, comma separated. */
