@@ -19,6 +19,9 @@ public class Sheet {
     /** The terms a sheet starts with, in days. */
     public static final int DEFAULT_TERMS = 14;
 
+    /** The late percent a sheet starts with. */
+    public static final BigDecimal DEFAULT_LATE_PCT = new BigDecimal("0.00");
+
     @Id
     private String id;
 
@@ -47,6 +50,10 @@ public class Sheet {
     /** The days after its date a claim is due by; 14 on a new sheet. */
     @Column(name = "terms", nullable = false)
     private int terms = DEFAULT_TERMS;
+
+    /** The percent of its figure an overdue claim gains for every full 30 days overdue; 0.00 on a new sheet. */
+    @Column(name = "late_pct", nullable = false, precision = 5, scale = 2)
+    private BigDecimal latePct = DEFAULT_LATE_PCT;
 
     protected Sheet() {
     }
@@ -100,6 +107,14 @@ public class Sheet {
 
     public void setTerms(int terms) {
         this.terms = terms;
+    }
+
+    public BigDecimal getLatePct() {
+        return latePct;
+    }
+
+    public void setLatePct(BigDecimal latePct) {
+        this.latePct = latePct;
     }
 
     /** Give out the next claim number on the sheet. */

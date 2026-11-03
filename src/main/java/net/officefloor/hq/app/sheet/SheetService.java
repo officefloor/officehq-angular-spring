@@ -40,6 +40,12 @@ public class SheetService {
         return sheets.findById(id).map(Sheet::getToday).orElseGet(LocalDate::now);
     }
 
+    /** The sheet as the store holds it now; a sheet never loaded reads as a new one, today the real date. */
+    @Transactional(readOnly = true)
+    public Sheet sheet(String id) {
+        return sheets.findById(id).orElseGet(() -> new Sheet(id, null, null, LocalDate.now()));
+    }
+
     /** The sheet's clerk limit: the most a clerk may settle a claim's due at; null for no limit. */
     @Transactional(readOnly = true)
     public BigDecimal clerkLimit(String id) {

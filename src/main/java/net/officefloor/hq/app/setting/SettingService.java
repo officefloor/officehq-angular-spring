@@ -12,8 +12,9 @@ import org.springframework.transaction.annotation.Transactional;
 
 /**
  * The sheet's settings: its clerk limit (none: no limit) and its floor, the least a claim's live due
- * can be, and its terms, the days after its date a claim is due by. Changing the floor moves the
- * live figures, so the figures that move are recorded.
+ * can be, and its terms, the days after its date a claim is due by, and its late percent, what an
+ * overdue claim gains of its figure for every full 30 days overdue. Changing the floor, the terms or
+ * the late percent moves the figures, so the figures that move are recorded.
  */
 @Service
 public class SettingService {
@@ -21,6 +22,7 @@ public class SettingService {
     public static final String CLERK_LIMIT = "clerk-limit";
     public static final String FLOOR = "floor";
     public static final String TERMS = "terms";
+    public static final String LATE_PCT = "late-pct";
 
     private final SheetService sheets;
     private final SheetRepository sheetStore;
@@ -41,11 +43,12 @@ public class SettingService {
 
     /**
      * Save the settings given: a clerk limit when {@code changeLimit} (null for no limit), and the
-     * floor and the terms when they are not null. Each one saved is recorded, in that order.
+     * floor, the terms and the late percent when they are not null. Each one saved is recorded, in
+     * that order.
      */
     @Transactional
     public Sheet set(String sheetId, String user, boolean changeLimit, BigDecimal limit, BigDecimal floor,
-            Integer terms) {
+            Integer terms, BigDecimal latePct) {
         Sheet sheet = sheets.load(sheetId, user);
         if (changeLimit) {
             sheet.setClerkLimit(limit);
@@ -60,9 +63,18 @@ public class SettingService {
             rollup.recordChanges(sheetId, user, before);
         }
         if (terms != null) {
+            RollupService.Snapshot before = rollup.snapshot(sheetId);
             sheet.setTerms(terms);
             sheet = sheetStore.saveAndFlush(sheet);
             audit.recordOnCommit(changed(sheetId, user, TERMS, String.valueOf(terms)));
+            rollup.recordChanges(sheetId, user, before);
+        }
+        if (latePct != null) {
+            RollupService.Snapshot before = rollup.snapshot(sheetId);
+            sheet.setLatePct(latePct);
+            sheet = sheetStore.saveAndFlush(sheet);
+            audit.recordOnCommit(changed(sheetId, user, LATE_PCT, text(latePct)));
+            rollup.recordChanges(sheetId, user, before);
         }
         return sheet;
     }

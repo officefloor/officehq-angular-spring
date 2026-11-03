@@ -3,7 +3,7 @@ import { Component, inject, input, output, signal } from '@angular/core';
 import { firstValueFrom } from 'rxjs';
 import { Session } from '../../core/session';
 import { Period, inClosedPeriod, periodOn } from '../periods/periods';
-import { Rate, claimDueCents, dueText } from '../rates/rates';
+import { Lateness, Rate, chargedDueCents, dueText } from '../rates/rates';
 
 // A person's claims, newest first, and the one form under their row that both adds a claim and
 // edits an existing one (opening a claim's editor fills the form with its values). Each claim
@@ -13,7 +13,8 @@ import { Rate, claimDueCents, dueText } from '../rates/rates';
 // Only a DRAFT can be edited; editing any other claim is refused with an error on the claim (to
 // change an open claim, void it and add a new one).
 // Each claim shows its due-by, its date plus the sheet's terms in days, and whether it is overdue:
-// OPEN with its due-by before the sheet's today.
+// OPEN with its due-by before the sheet's today. An overdue claim's due gains the sheet's late
+// percent of its figure for every full 30 days it is overdue.
 export type ClaimStatus = 'DRAFT' | 'OPEN' | 'SETTLED' | 'VOID';
 
 export interface Claim {
@@ -90,6 +91,11 @@ export function dueBy(c: Claim, terms: number): string {
 /** Whether a claim is overdue: OPEN, and due by a date before the sheet's today. */
 export function overdue(c: Claim, terms: number, today: string | null): boolean {
   return c.status === 'OPEN' && today !== null && dueBy(c, terms) < today;
+}
+
+/** The days a claim is overdue on the sheet's today: past its due-by; 0 when it is not overdue. */
+export function daysOverdue(c: Claim, terms: number, today: string | null): number {
+  return overdue(c, terms, today) && today !== null ? dayNumber(today) - dayNumber(c.date) - terms : 0;
 }
 
 /** Whole cents shown with two decimals. */
@@ -182,6 +188,8 @@ export class PersonClaims {
   readonly floor = input.required<number>();
   /** The sheet's terms: the days after its date a claim is due by. */
   readonly terms = input.required<number>();
+  /** The sheet's late percent: what an overdue claim gains of its figure for every full 30 days. */
+  readonly latePct = input.required<string>();
   /** The sheet's periods. */
   readonly periods = input.required<Period[]>();
   readonly saved = output<Claim>();
@@ -198,9 +206,11 @@ export class PersonClaims {
 
   /** A stated claim shows the figure bound by the last statement, a settled claim the due fixed
    *  when it was settled; any other claim's due is live, at the rate for the person's grade in
-   *  force on the claim's date, never below the sheet's floor. */
+   *  force on the claim's date, never below the sheet's floor. An overdue claim's late charge is
+   *  added on top. */
   protected dueOf(c: Claim): string {
-    return dueText(claimDueCents(c, this.rates(), this.grade(), this.floor()));
+    const late: Lateness = { latePct: this.latePct(), terms: this.terms(), today: this.session.today() };
+    return dueText(chargedDueCents(c, this.rates(), this.grade(), this.floor(), late));
   }
 
   protected dueByOf(c: Claim): string {

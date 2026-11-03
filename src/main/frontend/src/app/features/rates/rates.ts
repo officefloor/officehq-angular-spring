@@ -2,7 +2,7 @@ import { HttpClient } from '@angular/common/http';
 import { Component, computed, effect, inject, model, signal } from '@angular/core';
 import { firstValueFrom } from 'rxjs';
 import { Session } from '../../core/session';
-import { Claim, cents, money } from '../claims/claims';
+import { Claim, cents, daysOverdue, money } from '../claims/claims';
 
 // The sheet's rates for each grade (a percent with two decimals, each from an optional from-date)
 // and the form that sets one. Each grade shows the rate in force on the sheet's today, or n/a when
@@ -63,10 +63,37 @@ export function fixedDueCents(c: Claim): number | null {
  * force on the claim's date, raised to the sheet's floor (in whole cents). Null when it has none.
  */
 export function claimDueCents(c: Claim, rates: readonly Rate[], grade: string, floor: number): number | null {
-  if (c.stated) return fixedDueCents(c);
   if (c.settledDue !== null) return cents(c.settledDue);
+  if (c.stated) return fixedDueCents(c);
   const due = dueCents(cents(c.amount), pctOn(rates, grade, c.date));
   return due === null ? null : Math.max(due, floor);
+}
+
+/** What works out an overdue claim's late charge: the sheet's late percent, terms and today. */
+export interface Lateness {
+  latePct: string;
+  terms: number;
+  today: string | null;
+}
+
+/**
+ * A claim's due in whole cents as shown: its figure (see {@link claimDueCents}) with, when it is
+ * overdue, the late percent of that figure for every full 30 days overdue added on top, rounded
+ * half to even to whole cents. The charge is never bound by a statement; a settled claim's due
+ * already holds the charge it was settled with. Null when it has no figure.
+ */
+export function chargedDueCents(
+  c: Claim,
+  rates: readonly Rate[],
+  grade: string,
+  floor: number,
+  late: Lateness,
+): number | null {
+  const figure = claimDueCents(c, rates, grade, floor);
+  if (figure === null || c.status !== 'OPEN') return figure;
+  const periods = Math.floor(daysOverdue(c, late.terms, late.today) / 30);
+  if (periods <= 0) return figure;
+  return figure + (dueCents(figure * periods, late.latePct) ?? 0);
 }
 
 /** A due in whole cents with two decimals, or n/a when there is no rate. */

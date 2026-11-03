@@ -4,14 +4,16 @@ import { firstValueFrom } from 'rxjs';
 import { Session } from '../../core/session';
 
 // The sheet's settings: its clerk limit (two decimals; blank for no limit), and its floor (two
-// decimals; 1.00 on a new sheet), and its terms (whole days; 14 on a new sheet). A clerk settles a claim only when its due is at or below the
-// limit; a claim's live due is never below the floor; a claim is due by its date plus the terms. Saving saves the clerk limit once its field
-// has been entered (blank: no limit), and the floor and terms when typed (blank: left as they are).
+// decimals; 1.00 on a new sheet), its terms (whole days; 14 on a new sheet) and its late percent (two decimals; 0.00 on a new sheet). A
+// clerk settles a claim only when its due is at or below the limit; a claim's live due is never below the floor; a claim is due by its date
+// plus the terms; an overdue claim's due gains the late percent of its figure for every full 30 days overdue. Saving saves the clerk limit
+// once its field has been entered (blank: no limit), and the floor, terms and late percent when typed (blank: left as they are).
 interface SettingsResponse {
   /** The clerk limit, blank for none. */
   clerkLimit: string;
   floor: string;
   terms: number;
+  latePct: string;
 }
 
 /** A limit or floor: 0.00 or more, with up to two decimals. */
@@ -23,6 +25,11 @@ const DEFAULT_FLOOR = '1.00';
 const TERMS = /^\d{1,4}$/;
 
 const DEFAULT_TERMS = 14;
+
+/** A late percent: 0.00 to 999.99, with up to two decimals. */
+const PCT = /^\d{1,3}(\.\d{1,2})?$/;
+
+const DEFAULT_LATE_PCT = '0.00';
 
 @Component({
   selector: 'app-settings',
@@ -55,6 +62,14 @@ const DEFAULT_TERMS = 14;
           [value]="termsInput() ?? ''"
           (input)="termsInput.set($any($event.target).value); error.set(null)"
         />
+        <label for="setting-late-pct">Late percent per 30 days overdue (blank: leave as it is)</label>
+        <input
+          id="setting-late-pct"
+          data-testid="setting-late-pct"
+          inputmode="decimal"
+          [value]="latePctInput() ?? ''"
+          (input)="latePctInput.set($any($event.target).value); error.set(null)"
+        />
         <button type="submit" data-testid="settings-save">Save settings</button>
         @if (error(); as err) {
           <p role="alert" data-testid="settings-error">{{ err }}</p>
@@ -75,6 +90,10 @@ const DEFAULT_TERMS = 14;
         Terms in force (days):
         <strong data-testid="setting-terms-current">{{ terms() }}</strong>
       </p>
+      <p>
+        Late percent in force:
+        <strong data-testid="setting-late-pct-current">{{ latePct() }}</strong>
+      </p>
     </section>
   `,
 })
@@ -86,6 +105,8 @@ export class Settings {
   readonly floor = model(DEFAULT_FLOOR);
   /** The sheet's terms in days, shared with whoever works out when a claim is due by. */
   readonly terms = model(DEFAULT_TERMS);
+  /** The sheet's late percent, shared with whoever works out an overdue claim's late charge. */
+  readonly latePct = model(DEFAULT_LATE_PCT);
 
   protected readonly limit = signal('');
   /** The clerk limit typed; null while its field has not been entered (left as it is). */
@@ -94,6 +115,8 @@ export class Settings {
   protected readonly floorInput = signal<string | null>(null);
   /** The terms typed; blank (or null) leaves them as they are. */
   protected readonly termsInput = signal<string | null>(null);
+  /** The late percent typed; blank (or null) leaves it as it is. */
+  protected readonly latePctInput = signal<string | null>(null);
   protected readonly error = signal<string | null>(null);
   /** Whether a submit is waiting for its answer: a second submit meanwhile is ignored. */
   private submitting = false;
@@ -106,9 +129,11 @@ export class Settings {
       this.limit.set('');
       this.floor.set(DEFAULT_FLOOR);
       this.terms.set(DEFAULT_TERMS);
+      this.latePct.set(DEFAULT_LATE_PCT);
       this.limitInput.set(null);
       this.floorInput.set(null);
       this.termsInput.set(null);
+      this.latePctInput.set(null);
       this.error.set(null);
       if (sheet) {
         void this.fetch(sheet);
@@ -140,6 +165,7 @@ export class Settings {
     this.limit.set(res.clerkLimit);
     this.floor.set(res.floor);
     this.terms.set(res.terms);
+    this.latePct.set(res.latePct);
   }
 
   protected async save(event: Event): Promise<void> {
@@ -150,6 +176,7 @@ export class Settings {
     const clerkLimit = this.limitInput()?.trim() ?? null;
     const floor = this.floorInput()?.trim() || null;
     const terms = this.termsInput()?.trim() || null;
+    const latePct = this.latePctInput()?.trim() || null;
     if (clerkLimit !== null && clerkLimit !== '' && !LIMIT.test(clerkLimit)) {
       this.error.set('Enter a clerk limit of 0.00 or more, with up to two decimals, or leave it blank.');
       return;
@@ -162,6 +189,10 @@ export class Settings {
       this.error.set('Enter terms of 0 or more whole days.');
       return;
     }
+    if (latePct !== null && !PCT.test(latePct)) {
+      this.error.set('Enter a late percent of 0.00 to 999.99, with up to two decimals.');
+      return;
+    }
     this.submitting = true;
     try {
       const res = await firstValueFrom(
@@ -171,6 +202,7 @@ export class Settings {
           clerkLimit,
           floor,
           terms,
+          latePct,
         }),
       );
       if (this.session.sheet() !== sheet) return;
@@ -178,6 +210,7 @@ export class Settings {
       this.limitInput.set(null);
       this.floorInput.set(null);
       this.termsInput.set(null);
+      this.latePctInput.set(null);
     } catch {
       this.error.set('Could not save the settings.');
     } finally {

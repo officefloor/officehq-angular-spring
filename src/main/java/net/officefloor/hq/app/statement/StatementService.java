@@ -23,8 +23,10 @@ import org.springframework.web.server.ResponseStatusException;
 
 /**
  * Statements on a sheet. Taking a person's statement records their due-total at that moment, taken
- * on the sheet's today, and binds every claim of theirs that counts (OPEN or SETTLED) to the figure
- * it has then; a claim of theirs that does not count is unbound, so its figure is live again.
+ * on the sheet's today, and binds every claim of theirs that counts (OPEN or SETTLED, but not a held
+ * person's OPEN claims) to the figure it has then; a claim of theirs that does not count is unbound,
+ * so its figure is live again. The late charge is never bound: the due-total includes each claim's charge on the day, but a claim is
+ * bound to the figure under it.
  */
 @Service
 public class StatementService {
@@ -80,11 +82,12 @@ public class StatementService {
         boolean anyFigure = false;
         int counted = 0;
         for (Claim claim : theirs) {
-            if (claim.getStatus().counts()) {
+            if (person.counts(claim.getStatus())) {
                 BigDecimal figure = claimService.figure(sheetId, person, claim);
+                BigDecimal charged = claimService.charged(sheetId, person, claim);
                 claim.bind(true, figure);
-                if (figure != null) {
-                    total = total.add(figure);
+                if (charged != null) {
+                    total = total.add(charged);
                     anyFigure = true;
                 }
                 counted++;

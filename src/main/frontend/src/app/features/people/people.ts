@@ -4,7 +4,7 @@ import { firstValueFrom } from 'rxjs';
 import { Session } from '../../core/session';
 import { AMOUNT, Claim, PersonClaims, cents, counts, money, overdue } from '../claims/claims';
 import { DatedDue, Period, Periods } from '../periods/periods';
-import { Rate, Rates, claimDueCents, dueText, fixedDueCents, pctOn } from '../rates/rates';
+import { Lateness, Rate, Rates, chargedDueCents, dueText, fixedDueCents, pctOn } from '../rates/rates';
 import { Roles } from '../roles/roles';
 import { Settings } from '../settings/settings';
 
@@ -30,7 +30,8 @@ import { Settings } from '../settings/settings';
 // The quick-add bar adds a DRAFT claim of an amount, dated the sheet's today with an empty note, for
 // the person of a name, adding the person with grade A first when the name is not on the sheet.
 // Each person, and the sheet, shows how many of the claims that count are overdue and the sum of
-// their figures (the overdue-total).
+// their figures (the overdue-total). An overdue claim's figure has its late charge (the sheet's late
+// percent of it for every full 30 days overdue) added on top, in every figure and total.
 interface Person {
   id: number;
   name: string;
@@ -77,7 +78,7 @@ const GRADES = ['A', 'B', 'C'] as const;
   template: `
     <app-rates [(rates)]="rates" />
     <app-roles />
-    <app-settings [(floor)]="floor" [(terms)]="terms" />
+    <app-settings [(floor)]="floor" [(terms)]="terms" [(latePct)]="latePct" />
     <app-periods [(periods)]="periods" [dues]="dues()" />
     <section aria-labelledby="people-heading">
       <h2 id="people-heading">People</h2>
@@ -191,6 +192,7 @@ const GRADES = ['A', 'B', 'C'] as const;
                   [rates]="rates()"
                   [floor]="floorCents()"
                   [terms]="terms()"
+                  [latePct]="latePct()"
                   [periods]="periods()"
                   (saved)="claimSaved($event)"
                 />
@@ -277,13 +279,21 @@ export class People {
   protected readonly floorCents = computed(() => cents(this.floor()));
   /** The sheet's terms: the days after its date a claim is due by. */
   protected readonly terms = signal(14);
+  /** The sheet's late percent: what an overdue claim gains of its figure for every full 30 days. */
+  protected readonly latePct = signal('0.00');
+  /** What works out an overdue claim's late charge on the sheet's today. */
+  private readonly lateness = computed<Lateness>(() => ({
+    latePct: this.latePct(),
+    terms: this.terms(),
+    today: this.session.today(),
+  }));
   /** The date and figure of each claim that counts and has a figure, for the periods' due-totals. */
   protected readonly dues = computed(() => {
     const out: DatedDue[] = [];
     for (const c of this.claims()) {
       const p = this.peopleById().get(c.personId);
       if (p === undefined || !countsFor(p, c)) continue;
-      const due = claimDueCents(c, this.rates(), p.grade, this.floorCents());
+      const due = chargedDueCents(c, this.rates(), p.grade, this.floorCents(), this.lateness());
       if (due !== null) out.push({ date: c.date, cents: due });
     }
     return out;
@@ -385,7 +395,7 @@ export class People {
   protected dueOf(p: Person): number | null {
     const counted = this.claimsOf(p.id).filter((c) => countsFor(p, c));
     if (this.pctOf().get(p.grade) === undefined && !counted.some((c) => fixedDueCents(c) !== null)) return null;
-    return counted.reduce((sum, c) => sum + (claimDueCents(c, this.rates(), p.grade, this.floorCents()) ?? 0), 0);
+    return counted.reduce((sum, c) => sum + (chargedDueCents(c, this.rates(), p.grade, this.floorCents(), this.lateness()) ?? 0), 0);
   }
 
   /** The person's overdue claims that count: how many, and the sum of their figures in whole cents. */
@@ -394,7 +404,7 @@ export class People {
     const late = this.claimsOf(p.id).filter((c) => countsFor(p, c) && overdue(c, this.terms(), today));
     return {
       count: late.length,
-      cents: late.reduce((sum, c) => sum + (claimDueCents(c, this.rates(), p.grade, this.floorCents()) ?? 0), 0),
+      cents: late.reduce((sum, c) => sum + (chargedDueCents(c, this.rates(), p.grade, this.floorCents(), this.lateness()) ?? 0), 0),
     };
   }
 

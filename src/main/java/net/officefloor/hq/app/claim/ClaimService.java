@@ -30,7 +30,9 @@ import org.springframework.web.server.ResponseStatusException;
  * dated inside a closed period can be added, edited (to or from such a date) or change status. No
  * claim can be added or edited to a date after its person's retirement date. A clerk settles a claim
  * only when its figure is at or below the sheet's clerk limit (a claim with no figure is within any
- * limit); a steward settles any claim. A claim's live due is never below the sheet's floor.
+ * limit); a steward settles any claim. A claim's live due is never below the sheet's floor. An
+ * overdue claim's due gains a late charge on top of its figure (see {@link LateCharge}); a statement
+ * binds only the figure under it, and settling fixes the charge into the settled due.
  */
 @Service
 public class ClaimService {
@@ -57,14 +59,19 @@ public class ClaimService {
     }
 
     /**
-     * A claim's figure now: the one bound by a statement, else the due fixed when settled, else the
-     * live due; null when it has none.
+     * A claim's figure under any late charge: the due fixed when settled, else the one bound by a
+     * statement, else the live due; null when it has none.
      */
     public BigDecimal figure(String sheetId, Person person, Claim claim) {
-        if (claim.isStated()) {
-            return claim.getStatedDue();
+        if (claim.getStatus() == ClaimStatus.SETTLED) {
+            return claim.getSettledDue();
         }
-        return claim.getStatus() == ClaimStatus.SETTLED ? claim.getSettledDue() : due(sheetId, person, claim);
+        return claim.isStated() ? claim.getStatedDue() : due(sheetId, person, claim);
+    }
+
+    /** A claim's figure with its late charge on the sheet's today added on top; null when it has none. */
+    public BigDecimal charged(String sheetId, Person person, Claim claim) {
+        return LateCharge.withCharge(sheets.sheet(sheetId), claim, figure(sheetId, person, claim));
     }
 
     @Transactional(readOnly = true)
@@ -129,16 +136,17 @@ public class ClaimService {
                     "The user who opened a claim cannot settle it.");
         }
         Person person = person(sheetId, claim.getPersonId());
+        // settling fixes the figure with its late charge as it stands on the sheet's today
+        BigDecimal settling = next == ClaimStatus.SETTLED ? charged(sheetId, person, claim) : null;
         if (next == ClaimStatus.SETTLED) {
-            refuseIfAboveClerkLimit(sheetId, user,
-                    claim.isStated() ? claim.getStatedDue() : due(sheetId, person, claim));
+            refuseIfAboveClerkLimit(sheetId, user, settling);
         }
         claim.setStatus(next);
         if (next == ClaimStatus.OPEN) {
             claim.setNumber(number);
             claim.setOpenedBy(user);
         } else if (next == ClaimStatus.SETTLED) {
-            claim.setSettledDue(claim.isStated() ? claim.getStatedDue() : due(sheetId, person, claim));
+            claim.setSettledDue(settling);
         }
         Claim saved = claims.saveAndFlush(claim);
         String event = switch (next) {
