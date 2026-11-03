@@ -1,0 +1,64 @@
+{
+  "checkpoint": 207,
+  "stack": {
+    "repo": "/home/daniel/officehq-angular-spring",
+    "origin": "git@github.com:officefloor/officehq-angular-spring.git",
+    "name": "officehq-angular-spring",
+    "base_ref": "base-empty",
+    "base_commit": "65cb8233ea38b2dfa6cfd18709e30cd18fdf3250"
+  },
+  "checkpoint_id": "cp207_year-end-rollover",
+  "phase": "late",
+  "type": "additive",
+  "mutates": [],
+  "replaced_tests": [],
+  "request": {
+    "spec": "A steward can roll the year over: a year entry and a button. It generates the next fiscal year's\ntwelve periods exactly as the fiscal year generator does, and for each person their open figure at\nthe end of the old year's last period (the due of their claims that count, belonging to a period of\nthe old year, OPEN or PENDING at that period's end) is added to their carried figure for the new\nyear's first period as OPENING_SET lines; then ROLLOVER fy=<old FY> periods=<made> is written. A year\nwith no periods, anyone but a steward, or a bad year is refused with an error.\n",
+    "prompt": "You are implementing ONE change to this application.\n\nFIRST read AGENTS.md \u2014 it states the working rules and how the app is tested, and sends you to\nDESIGN.md for the app's stack and conventions. Follow both.\n\nTHE CHANGE REQUEST:\nA steward can roll the year over: a year entry and a button. It generates the next fiscal year's\ntwelve periods exactly as the fiscal year generator does, and for each person their open figure at\nthe end of the old year's last period (the due of their claims that count, belonging to a period of\nthe old year, OPEN or PENDING at that period's end) is added to their carried figure for the new\nyear's first period as OPENING_SET lines; then ROLLOVER fy=<old FY> periods=<made> is written. A year\nwith no periods, anyone but a steward, or a bad year is refused with an error.\n\nYour work is verified by an automated Playwright UI test already installed under e2e/specs/.\nRead that spec: it declares the exact data-testid anchors, values, test data and any audit\nrecords it expects \u2014 match them. Run `bin/e2e` to build the app, start it, and run the test as\nyou work; iterate until it passes. Change whatever the request needs across the app \u2014 its stored\ndata, its server and its front end. Do NOT edit bin/build, bin/start, bin/stop, bin/e2e,\nAGENTS.md, CLAUDE.md, DESIGN.md, e2e/support/ or the test spec.\n"
+  },
+  "commit_sha": "e668638b6377e87352a285e360bf0a82a675b247",
+  "reset_sha": "",
+  "preagent_sha": "b38ffa1876927d23e35777fea9e96e8e68fba3dc",
+  "prev_sha": "b38ffa1876927d23e35777fea9e96e8e68fba3dc",
+  "base_sha": "65cb8233ea38b2dfa6cfd18709e30cd18fdf3250",
+  "agent": {
+    "ok": true,
+    "cost_usd": 1.2220976,
+    "input_tokens": 54,
+    "output_tokens": 13314,
+    "cache_read_tokens": 1500088,
+    "cache_creation_tokens": 81948,
+    "num_turns": 28,
+    "duration_ms": 416597,
+    "duration_api_ms": 134810,
+    "model": "claude-opus-5-5",
+    "session_id": "d0ded014-f8f9-433d-9f19-260439469227",
+    "stop_reason": "success",
+    "result_text": "I've added the year rollover. Three of the four tests pass, including the main rollover test. The fourth, scenario 2, fails on a check that has nothing to do with rollover, and I left it alone.\n\n**Results of `bin/e2e`:**\n- \u2713 year end rollover: correct periods, carried figures and audit lines.\n- \u2713 scenario 1 and \u2713 scenario 3 (scenario 3 checks that a year with no periods is refused).\n- \u2718 scenario 2: it expects `rate-month-C-2026-04` to show `12.50`, but the screen shows `n/a`.\n\n**Why scenario 2 fails:** scenario 2 never calls rollover; it fails on rates the sheet inherits from its parent sheet, viewed as of a past day. The parent sheet in that test never has its \"today\" set, so the app uses the real date (2026-11-03) as its today. That stamps the parent's rates as recorded on 2026-11-03. The test then views the sheet as of 2026-03-20, so the inherited `12.50` isn't on record yet and the month shows `n/a`. The result depends on the actual date the test runs. The test probably passed when it was written earlier in the year, and it will fail from now on. Fixing it means changing how the history records an unset \"today\", which is outside this change request.\n\n**What I changed:**\n- **Server** (`PeriodService.rollover` and `POST /api/sheets/{id}/periods/rollover` in `PeriodController`):\n  - It refuses anyone but a steward, a badly formed year, and a fiscal year with no periods.\n  - It generates the next fiscal year with the existing fiscal-year generator, so the `PERIOD_ADDED` lines and skipped months match.\n  - For each person it adds up the dues of their claims that count, whose due date falls in an old-year period, and that were OPEN or PENDING at the end of the old year's last period. It adds that sum to the person's opening balance for the new year's first period, writing an `OPENING_SET` line for each.\n  - It then writes `ROLLOVER fy=FYyyyy periods=<n>`. All of it happens in one transaction, so a refused rollover writes nothing.\n- **Front end:** a rollover form in the periods section with `rollover-year`, a `rollover` button, the `rollover-made` count and `rollover-error`. The count clears while the action runs, and the error clears when the year is edited or the button is pressed again.\n\n**Decisions you may want to review:**\n- People whose open figure is 0.00 get no `OPENING_SET` line.\n- If the new year's first month already existed, the rollover still adds to that existing period, even though the generator skipped it.\n- No database migration was needed; it uses the existing opening-balance storage.",
+    "error": "",
+    "attempts": [
+      {
+        "ok": true,
+        "limit_reached": false,
+        "retryable": false,
+        "timed_out": false,
+        "cost_usd": 1.2220976,
+        "num_turns": 28,
+        "duration_ms": 416597,
+        "duration_api_ms": 134810,
+        "error": ""
+      }
+    ]
+  },
+  "agent_stream_file": "cp207.agent.jsonl",
+  "agent_diff_file": "cp207.agent.diff",
+  "build_log_file": null,
+  "tests": {
+    "gated": false,
+    "queued": true
+  },
+  "probe": null,
+  "pinned_touched": [],
+  "acceptance_touched": [],
+  "impact_gate": null
+}
