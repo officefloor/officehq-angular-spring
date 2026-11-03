@@ -52,6 +52,9 @@ public class PeriodRevision {
     @Column(name = "closed_total", precision = 14, scale = 2)
     private BigDecimal closedTotal;
 
+    @Column(name = "claim_cap")
+    private Integer claimCap;
+
     /** Each person's fixed due-total, "person-id:total", separated by ";"; blank while open. */
     @Column(name = "person_totals", nullable = false)
     private String personTotals;
@@ -71,6 +74,7 @@ public class PeriodRevision {
         this.softClosed = period.isSoftClosed();
         this.closedTotal = period.getClosedTotal();
         this.personTotals = totals(period.getPersonTotals());
+        this.claimCap = period.getClaimCap();
     }
 
     private static String totals(Map<Long, BigDecimal> totals) {
@@ -86,7 +90,8 @@ public class PeriodRevision {
                 && softClosed == period.isSoftClosed()
                 && (closedTotal == null ? period.getClosedTotal() == null
                         : period.getClosedTotal() != null && closedTotal.compareTo(period.getClosedTotal()) == 0)
-                && personTotals.equals(totals(period.getPersonTotals()));
+                && personTotals.equals(totals(period.getPersonTotals()))
+                && Objects.equals(claimCap, period.getClaimCap());
     }
 
     /** The period as this revision has it, detached: for showing only, never saved. */
@@ -96,7 +101,7 @@ public class PeriodRevision {
             int at = t.indexOf(':');
             totals.put(Long.valueOf(t.substring(0, at)), new BigDecimal(t.substring(at + 1)));
         });
-        return Period.revised(sheetId, periodId, name, fromDate, toDate, closed, softClosed, closedTotal, totals);
+        return Period.revised(sheetId, periodId, name, fromDate, toDate, closed, softClosed, closedTotal, totals, claimCap);
     }
 
     public Long getPeriodId() {

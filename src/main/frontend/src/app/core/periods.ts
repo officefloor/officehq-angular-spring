@@ -23,12 +23,16 @@ export interface Period {
   closedPersonTotals: Record<number, string>;
   /** The fiscal year its from-date falls in (FYyyyy). */
   fy: string;
+  /** The most open or pending claims a person may have in the period; null for no cap. */
+  cap: number | null;
 }
 
 export interface PeriodForm {
   name: string;
   from: string;
   to: string;
+  /** The most open or pending claims a person may have in the period (1 or more); null for no cap. */
+  cap: number | null;
 }
 
 /** The period whose days contain the day, or undefined when there is none. */

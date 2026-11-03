@@ -19,6 +19,8 @@ const DAY = /^\d{4}-\d{2}-\d{2}$/;
         <input id="period-form-from" type="date" data-testid="period-form-from" formControlName="from" />
         <label for="period-form-to">To</label>
         <input id="period-form-to" type="date" data-testid="period-form-to" formControlName="to" />
+        <label for="period-form-cap">Open claims cap per person</label>
+        <input id="period-form-cap" data-testid="period-form-cap" formControlName="cap" inputmode="numeric" />
         <button type="submit" data-testid="period-form-submit">Add period</button>
         @if (error()) {
           <p role="alert" data-testid="period-form-error">{{ error() }}</p>
@@ -43,7 +45,7 @@ const DAY = /^\d{4}-\d{2}-\d{2}$/;
       </form>
       <table data-testid="periods">
         <thead>
-          <tr><th scope="col">Name</th><th scope="col">From</th><th scope="col">To</th><th scope="col">Due</th><th scope="col">Closed</th><th scope="col">Fiscal year</th><th scope="col"><span class="visually-hidden">Actions</span></th></tr>
+          <tr><th scope="col">Name</th><th scope="col">From</th><th scope="col">To</th><th scope="col">Due</th><th scope="col">Closed</th><th scope="col">Fiscal year</th><th scope="col">Cap</th><th scope="col"><span class="visually-hidden">Actions</span></th></tr>
         </thead>
         <tbody>
           @for (p of periods(); track p.id) {
@@ -54,6 +56,7 @@ const DAY = /^\d{4}-\d{2}-\d{2}$/;
               <td data-testid="period-due-total">{{ dueTotals().get(p.id) ?? '0.00' }}</td>
               <td data-testid="period-closed">{{ p.closed ? 'yes' : p.softClosed ? 'soft' : 'no' }}</td>
               <td data-testid="period-fy">{{ p.fy }}</td>
+              <td data-testid="period-cap">{{ p.cap ?? '' }}</td>
               <td>
                 @if (!p.closed) {
                   <button type="button" data-testid="period-close" (click)="close(p)"
@@ -93,6 +96,7 @@ export class PeriodForm {
     name: new FormControl('', { nonNullable: true }),
     from: new FormControl('', { nonNullable: true }),
     to: new FormControl('', { nonNullable: true }),
+    cap: new FormControl('', { nonNullable: true }),
   });
 
   protected readonly generateError = signal('');
@@ -194,7 +198,7 @@ export class PeriodForm {
   protected async submit(): Promise<void> {
     if (this.submitting) return;
     this.error.set('');
-    const { name, from, to } = this.form.getRawValue();
+    const { name, from, to, cap } = this.form.getRawValue();
     if (!name.trim()) {
       this.error.set('Enter a name.');
       return;
@@ -207,10 +211,21 @@ export class PeriodForm {
       this.error.set('A period cannot end before it starts.');
       return;
     }
+    if (cap.trim() && !(/^\d+$/.test(cap.trim()) && Number(cap.trim()) >= 1)) {
+      this.error.set('The cap must be a whole number of 1 or more, or blank for none.');
+      return;
+    }
     this.submitting = true;
     try {
-      this.saved.emit(await this.api.add({ name: name.trim(), from: from.trim(), to: to.trim() }));
-      this.form.reset({ name: '', from: '', to: '' }, { emitEvent: false });
+      this.saved.emit(
+        await this.api.add({
+          name: name.trim(),
+          from: from.trim(),
+          to: to.trim(),
+          cap: cap.trim() ? Number(cap.trim()) : null,
+        }),
+      );
+      this.form.reset({ name: '', from: '', to: '', cap: '' }, { emitEvent: false });
     } catch (e) {
       this.error.set(
         e instanceof HttpErrorResponse && e.status === 409

@@ -49,6 +49,10 @@ public class Period {
     @Column(name = "closed_total")
     private BigDecimal closedTotal;
 
+    /** The most open or pending claims a person may have in the period; null for no cap. */
+    @Column(name = "claim_cap")
+    private Integer claimCap;
+
     /** Each person's due-total for the period, by the person's id, fixed when it was closed; empty
      *  while it is open. */
     @ElementCollection(fetch = FetchType.EAGER)
@@ -67,8 +71,9 @@ public class Period {
 
     /** A period as a revision in its sheet's history has it, detached: never saved. */
     static Period revised(String sheetId, Long id, String name, LocalDate fromDate, LocalDate toDate,
-            boolean closed, boolean softClosed, BigDecimal closedTotal, Map<Long, BigDecimal> personTotals) {
-        Period period = new Period(sheetId, name, fromDate, toDate);
+            boolean closed, boolean softClosed, BigDecimal closedTotal, Map<Long, BigDecimal> personTotals,
+            Integer claimCap) {
+        Period period = new Period(sheetId, name, fromDate, toDate, claimCap);
         period.id = id;
         period.closed = closed;
         period.softClosed = softClosed;
@@ -78,10 +83,15 @@ public class Period {
     }
 
     public Period(String sheetId, String name, LocalDate fromDate, LocalDate toDate) {
+        this(sheetId, name, fromDate, toDate, null);
+    }
+
+    public Period(String sheetId, String name, LocalDate fromDate, LocalDate toDate, Integer claimCap) {
         this.sheetId = sheetId;
         this.name = name;
         this.fromDate = fromDate;
         this.toDate = toDate;
+        this.claimCap = claimCap;
     }
 
     public Long getId() {
@@ -102,6 +112,11 @@ public class Period {
 
     public LocalDate getToDate() {
         return toDate;
+    }
+
+    /** The most open or pending claims a person may have in the period; null for no cap. */
+    public Integer getClaimCap() {
+        return claimCap;
     }
 
     public boolean isClosed() {

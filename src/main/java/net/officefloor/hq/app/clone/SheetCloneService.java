@@ -131,7 +131,7 @@ public class SheetCloneService {
             Map<Long, Long> personIds = copyPeople(sheetId, toSheetId);
             copyPools(sheetId, toSheetId, personIds);
             periods.findBySheetIdOrderByFromDateAsc(sheetId).forEach(p ->
-                    periods.save(new Period(toSheetId, p.getName(), p.getFromDate(), p.getToDate())));
+                    periods.save(new Period(toSheetId, p.getName(), p.getFromDate(), p.getToDate(), p.getClaimCap())));
             periods.flush();
             copyClaims(sheetId, toSheetId, personIds);
             return null;

@@ -1,6 +1,7 @@
 package net.officefloor.hq.app.period;
 
 import jakarta.validation.Valid;
+import jakarta.validation.constraints.Min;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.NotNull;
 import jakarta.validation.constraints.Pattern;
@@ -32,22 +33,25 @@ public class PeriodController {
     /** What the screen shows of a period: its name, the days it runs from and to, inclusive, whether
      *  it is closed or soft-closed, the due-total fixed when it was closed (null while it is open), and each
      *  person's due-total for it fixed then, by the person's id (empty while it is open), and the
-     *  fiscal year its from-date falls in (FYyyyy). */
+     *  fiscal year its from-date falls in (FYyyyy), and the most open or pending claims a person may
+     *  have in it (null: no cap). */
     public record PeriodView(long id, String name, LocalDate from, LocalDate to, boolean closed,
-            boolean softClosed, String closedTotal, Map<Long, String> closedPersonTotals, String fy) {
+            boolean softClosed, String closedTotal, Map<Long, String> closedPersonTotals, String fy, Integer cap) {
         static PeriodView of(Period period, int fiscalStartMonth) {
             Map<Long, String> personTotals = new TreeMap<>();
             period.getPersonTotals().forEach((id, total) -> personTotals.put(id, total.setScale(2).toPlainString()));
             return new PeriodView(period.getId(), period.getName(), period.getFromDate(), period.getToDate(),
                     period.isClosed(), period.isSoftClosed(),
                     period.getClosedTotal() == null ? null : period.getClosedTotal().setScale(2).toPlainString(),
-                    personTotals, PeriodService.fiscalYear(period.getFromDate(), fiscalStartMonth));
+                    personTotals, PeriodService.fiscalYear(period.getFromDate(), fiscalStartMonth),
+                    period.getClaimCap());
         }
     }
 
-    /** The period form: a required name, and the required days it runs from and to. */
+    /** The period form: a required name, the required days it runs from and to, and the most open
+     *  or pending claims a person may have in it (a whole number of 1 or more; null for no cap). */
     public record PeriodForm(@NotBlank @Size(max = 100) String name, @NotNull LocalDate from,
-            @NotNull LocalDate to) {
+            @NotNull LocalDate to, @Min(1) Integer cap) {
     }
 
     /** The generate form: the day whose month the periods start from (the sheet's today when none
@@ -95,7 +99,7 @@ public class PeriodController {
     public PeriodView add(@PathVariable @NotBlank @Size(max = 100) String sheetId,
             @RequestHeader("X-User") @NotBlank @Size(max = 100) String user,
             @Valid @RequestBody PeriodForm form) {
-        return view(sheetId.trim(), service.add(sheetId.trim(), user.trim(), form.name().trim(), form.from(), form.to()));
+        return view(sheetId.trim(), service.add(sheetId.trim(), user.trim(), form.name().trim(), form.from(), form.to(), form.cap()));
     }
 
     @PostMapping("/generate")

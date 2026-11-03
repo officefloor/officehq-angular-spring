@@ -56,11 +56,16 @@ public class PeriodService {
         return periods.findBySheetIdOrderByFromDateAsc(sheetId);
     }
 
-    /** Add a period, refused when its to-date is before its from-date, its name is in use on the
-     *  sheet, or it shares a day with another period. */
+    /** Add a period, capping each person's open or pending claims in it when a cap is given (null:
+     *  none); refused when its to-date is before its from-date, its cap is below 1, its name is in use
+     *  on the sheet, or it shares a day with another period. */
     @Transactional
-    public synchronized Period add(String sheetId, String user, String name, LocalDate from, LocalDate to) {
+    public synchronized Period add(String sheetId, String user, String name, LocalDate from, LocalDate to,
+            Integer cap) {
         sheets.load(sheetId, user);
+        if (cap != null && cap < 1) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "A period's claim cap must be at least 1");
+        }
         if (to.isBefore(from)) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "A period cannot end before it starts");
         }
@@ -72,12 +77,13 @@ public class PeriodService {
         }
         Period saved;
         try {
-            saved = periods.saveAndFlush(new Period(sheetId, name, from, to));
+            saved = periods.saveAndFlush(new Period(sheetId, name, from, to, cap));
         } catch (DataIntegrityViolationException e) {
             throw nameInUse();
         }
         audit.recordOnCommit("PERIOD_ADDED sheet=" + sheetId + " by=" + user + " period=" + saved.getName()
-                + " from=" + saved.getFromDate() + " to=" + saved.getToDate());
+                + " from=" + saved.getFromDate() + " to=" + saved.getToDate()
+                + (saved.getClaimCap() == null ? "" : " cap=" + saved.getClaimCap()));
         history.record(sheetId);
         return saved;
     }

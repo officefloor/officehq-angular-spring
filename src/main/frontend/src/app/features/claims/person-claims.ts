@@ -12,7 +12,7 @@ import { DatedValue, Graces, graceOn } from '../../core/settings';
 
 /** Why the server refused an action: the claim's status does not allow it. */
 const REFUSALS: Record<ClaimAction, string> = {
-  open: 'Only a draft claim can be opened.',
+  open: 'Only a draft claim can be opened, and only while its person is under its period\'s cap of open claims.',
   settle: 'Only an open claim that is not deferred can be settled.',
   resettle: 'Only a settled claim can be re-settled.',
   void: 'Only a draft, open or pending claim can be voided, or a settled one within 7 days of its settlement.',

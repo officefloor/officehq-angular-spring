@@ -254,6 +254,7 @@ public class ClaimService {
         }
         if (to == ClaimStatus.OPEN) {
             refuseUnnoted(sheetId, claim);
+            refuseOverCap(sheetId, claim);
         }
         if (to == ClaimStatus.SETTLED && claim.isDeferredOn(sheets.today(sheetId))) {
             throw new ResponseStatusException(HttpStatus.CONFLICT,
@@ -762,6 +763,22 @@ public class ClaimService {
             throw new ResponseStatusException(HttpStatus.PRECONDITION_REQUIRED,
                     "A claim whose due is above the proof threshold needs a proof first");
         }
+    }
+
+    /** Refuse opening a claim whose period caps its person's claims when the person already has
+     *  that many open or pending claims due inside it; the period stays locked until the transaction
+     *  ends, so two claims opened in it at once are counted one after the other. */
+    private void refuseOverCap(String sheetId, Claim claim) {
+        periods.findOn(sheetId, claim.getDueBy())
+                .filter(p -> p.getClaimCap() != null)
+                .flatMap(p -> periods.lockByIdAndSheetId(p.getId(), sheetId))
+                .ifPresent(p -> {
+                    if (claims.countOpenDueBetween(sheetId, claim.getPersonId(), p.getFromDate(), p.getToDate())
+                            >= p.getClaimCap()) {
+                        throw new ResponseStatusException(HttpStatus.CONFLICT,
+                                "The person already has " + p.getClaimCap() + " open claims in period " + p.getName());
+                    }
+                });
     }
 
     /** Refuse opening a claim with an empty note whose due is above the sheet's note threshold in

@@ -1,5 +1,6 @@
 package net.officefloor.hq.app.claim;
 
+import java.time.LocalDate;
 import java.util.List;
 import java.util.Optional;
 import jakarta.persistence.LockModeType;
@@ -27,6 +28,13 @@ public interface ClaimRepository extends JpaRepository<Claim, Long> {
     @Query("select count(c) > 0 from Claim c where c.sheetId = :sheetId and upper(c.ref) = upper(:ref)"
             + " and (:exceptId is null or c.id <> :exceptId)")
     boolean refUsed(String sheetId, String ref, Long exceptId);
+
+    /** How many of a person's claims on a sheet are open or pending and due by a day from one date
+     *  to another, inclusive. */
+    @Query("select count(c) from Claim c where c.sheetId = :sheetId and c.personId = :personId"
+            + " and c.status in (net.officefloor.hq.app.claim.ClaimStatus.OPEN, net.officefloor.hq.app.claim.ClaimStatus.PENDING)"
+            + " and c.dueBy >= :from and c.dueBy <= :to")
+    long countOpenDueBetween(String sheetId, Long personId, LocalDate from, LocalDate to);
 
     /** The next place a claim is listed at, after every claim listed so far. */
     @Query(value = "select next value for claim_listed_seq", nativeQuery = true)
