@@ -44,6 +44,17 @@ const DAY = /^\d{4}-\d{2}-\d{2}$/;
           <p role="alert" data-testid="period-generate-error">{{ generateError() }}</p>
         }
       </form>
+      <form data-testid="opening-import-form" [formGroup]="openingForm" (ngSubmit)="importOpenings()">
+        <label for="opening-import">Opening balances (name,period,amount per line)</label>
+        <textarea id="opening-import" data-testid="opening-import" formControlName="text" rows="3"></textarea>
+        <button type="submit" data-testid="opening-import-submit">Paste opening balances</button>
+        @if (openingsDone() !== null) {
+          <p role="status">Went through <span data-testid="opening-import-done">{{ openingsDone() }}</span></p>
+        }
+        @if (openingError()) {
+          <p role="alert" data-testid="opening-error">{{ openingError() }}</p>
+        }
+      </form>
       <table data-testid="periods">
         <thead>
           <tr><th scope="col">Name</th><th scope="col">From</th><th scope="col">To</th><th scope="col">Due</th><th scope="col">Closed</th><th scope="col">Fiscal year</th><th scope="col">Cap</th><th scope="col"><span class="visually-hidden">Actions</span></th></tr>
@@ -110,8 +121,17 @@ export class PeriodForm {
     year: new FormControl('', { nonNullable: true }),
   });
 
+  protected readonly openingError = signal('');
+  /** How many lines the last opening balances paste put through; null while one runs or before the first. */
+  protected readonly openingsDone = signal<number | null>(null);
+  private importing = false;
+  protected readonly openingForm = new FormGroup({
+    text: new FormControl('', { nonNullable: true }),
+  });
+
   constructor() {
     this.form.valueChanges.subscribe(() => this.error.set(''));
+    this.openingForm.valueChanges.subscribe(() => this.openingError.set(''));
     this.generateForm.valueChanges.subscribe(() => this.generateError.set(''));
   }
 
@@ -160,6 +180,32 @@ export class PeriodForm {
       this.generateError.set('The fiscal year could not be generated.');
     } finally {
       this.generating = false;
+    }
+  }
+
+  /** Paste the opening balances typed: every line is checked first, so any error refuses them all. */
+  protected async importOpenings(): Promise<void> {
+    if (this.importing) return;
+    this.openingError.set('');
+    this.openingsDone.set(null);
+    const text = this.openingForm.getRawValue().text;
+    if (!text.trim()) {
+      this.openingError.set('Paste at least one line of name,period,amount.');
+      return;
+    }
+    this.importing = true;
+    try {
+      const imported = await this.api.importOpenings(text);
+      for (const p of imported.periods) this.saved.emit(p);
+      this.openingsDone.set(imported.added);
+    } catch (e) {
+      this.openingError.set(
+        e instanceof HttpErrorResponse && typeof e.error?.message === 'string' && e.error.message.startsWith('Line ')
+          ? e.error.message
+          : 'The opening balances could not be pasted.',
+      );
+    } finally {
+      this.importing = false;
     }
   }
 

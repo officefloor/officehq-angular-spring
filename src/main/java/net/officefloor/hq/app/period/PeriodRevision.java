@@ -63,6 +63,10 @@ public class PeriodRevision {
     @Column(name = "person_carried", nullable = false)
     private String personCarried;
 
+    /** Each person's opening balance, "person-id:opening", separated by ";". */
+    @Column(name = "person_openings", nullable = false)
+    private String personOpenings;
+
     protected PeriodRevision() {
     }
 
@@ -79,6 +83,7 @@ public class PeriodRevision {
         this.closedTotal = period.getClosedTotal();
         this.personTotals = totals(period.getPersonTotals());
         this.personCarried = totals(period.getPersonCarried());
+        this.personOpenings = totals(period.getPersonOpenings());
         this.claimCap = period.getClaimCap();
     }
 
@@ -97,13 +102,14 @@ public class PeriodRevision {
                         : period.getClosedTotal() != null && closedTotal.compareTo(period.getClosedTotal()) == 0)
                 && personTotals.equals(totals(period.getPersonTotals()))
                 && personCarried.equals(totals(period.getPersonCarried()))
+                && personOpenings.equals(totals(period.getPersonOpenings()))
                 && Objects.equals(claimCap, period.getClaimCap());
     }
 
     /** The period as this revision has it, detached: for showing only, never saved. */
     public Period toPeriod() {
         return Period.revised(sheetId, periodId, name, fromDate, toDate, closed, softClosed, closedTotal,
-                parse(personTotals), parse(personCarried), claimCap);
+                parse(personTotals), parse(personCarried), parse(personOpenings), claimCap);
     }
 
     private static Map<Long, BigDecimal> parse(String text) {

@@ -235,16 +235,17 @@ public class PeriodService {
         return totals;
     }
 
-    /** Each person's carried figure for a period, by the person's id: the due figures of their
-     *  claims that count by their status at its end whose due-by falls in a period ending before it
-     *  starts and that were still open (or pending) at its end, skipping those with no due. */
+    /** Each person's carried figure for a period, by the person's id: their opening balance for it
+     *  plus the due figures of their claims that count by their status at its end whose due-by falls
+     *  in a period ending before it starts and that were still open (or pending) at its end, skipping
+     *  those with no due. */
     private Map<Long, BigDecimal> personCarried(String sheetId, Period period) {
         Map<Long, Person> byId = people.findBySheetIdOrderByPositionAscIdAsc(sheetId).stream()
                 .collect(Collectors.toMap(Person::getId, Function.identity()));
         List<Period> all = periods.findBySheetIdOrderByFromDateAsc(sheetId);
         Map<Long, BigDecimal> carried = new HashMap<>();
         for (Long id : byId.keySet()) {
-            carried.put(id, BigDecimal.ZERO.setScale(2));
+            carried.put(id, period.getPersonOpenings().getOrDefault(id, BigDecimal.ZERO).setScale(2));
         }
         LocalDate today = sheets.today(sheetId);
         for (Claim c : claims.findBySheetIdOrderByListedDesc(sheetId)) {

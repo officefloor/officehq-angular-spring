@@ -1579,10 +1579,13 @@ export class PeopleList {
   }
 
   /** A person's carried figure for a period: the one fixed when it was closed or soft-closed (0.00
-   *  for a person added since), or else the live one ({@link carried}); 0.00 when nothing is carried. */
+   *  for a person added since), or else the live one ({@link carried}) plus their opening balance for
+   *  it; 0.00 when nothing is carried. */
   protected carriedOf(personId: number, period: Period): string {
     if (period.closed || period.softClosed) return period.closedPersonCarried[personId] ?? '0.00';
-    return this.carried().get(personId)?.get(period.id) ?? '0.00';
+    const live = this.carried().get(personId)?.get(period.id) ?? '0.00';
+    const opening = period.personOpenings[personId];
+    return opening === undefined ? live : sumAmounts([live, opening]);
   }
 
   /** Each person's due-total by id, as their row shows it; null when n/a. */

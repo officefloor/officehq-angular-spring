@@ -24,6 +24,9 @@ export interface Period {
   /** Each person's carried figure for the period fixed when it was closed or soft-closed, by the
    *  person's id, as text with two decimals; empty while it is open. A person missing from it has 0.00. */
   closedPersonCarried: Record<number, string>;
+  /** Each person's opening balance for the period, by the person's id, as text with two decimals:
+   *  added to their carried figure for it. A person missing from it has 0.00. */
+  personOpenings: Record<number, string>;
   /** The fiscal year its from-date falls in (FYyyyy). */
   fy: string;
   /** The most open or pending claims a person may have in the period; null for no cap. */
@@ -83,6 +86,19 @@ export class Periods {
     if (!sheetId || !user) throw new Error('no sheet loaded');
     return firstValueFrom(
       this.http.post<Period[]>(`${this.url(sheetId)}/generate-fy`, { year }, { headers: { 'X-User': user } }),
+    );
+  }
+
+  /** Paste opening balances, lines of name,period,amount, each adding the amount to the person's
+   *  carried figure for the period; all lines are checked first and any error refuses the whole
+   *  paste. Gives how many lines went through and the periods changed. */
+  importOpenings(text: string): Promise<{ added: number; periods: Period[] }> {
+    const sheetId = this.session.sheetId();
+    const user = this.session.user();
+    if (!sheetId || !user) throw new Error('no sheet loaded');
+    return firstValueFrom(
+      this.http.post<{ added: number; periods: Period[] }>(`${this.url(sheetId)}/openings`, { text },
+        { headers: { 'X-User': user } }),
     );
   }
 

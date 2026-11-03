@@ -69,6 +69,14 @@ public class Period {
     @Column(name = "carried", nullable = false)
     private Map<Long, BigDecimal> personCarried = new HashMap<>();
 
+    /** Each person's opening balance for the period, by the person's id: what pasted opening
+     *  balances have added to their carried figure for it. Kept while the period is open or closed. */
+    @ElementCollection(fetch = FetchType.EAGER)
+    @CollectionTable(name = "period_person_opening", joinColumns = @JoinColumn(name = "period_id"))
+    @MapKeyColumn(name = "person_id")
+    @Column(name = "opening", nullable = false)
+    private Map<Long, BigDecimal> personOpenings = new HashMap<>();
+
     /** The last number given to a claim in the period under period numbering; only ever moved on by
      *  {@link PeriodRepository#advanceClaimNumber}. */
     @Column(name = "last_claim_number", insertable = false, updatable = false)
@@ -80,7 +88,7 @@ public class Period {
     /** A period as a revision in its sheet's history has it, detached: never saved. */
     static Period revised(String sheetId, Long id, String name, LocalDate fromDate, LocalDate toDate,
             boolean closed, boolean softClosed, BigDecimal closedTotal, Map<Long, BigDecimal> personTotals,
-            Map<Long, BigDecimal> personCarried, Integer claimCap) {
+            Map<Long, BigDecimal> personCarried, Map<Long, BigDecimal> personOpenings, Integer claimCap) {
         Period period = new Period(sheetId, name, fromDate, toDate, claimCap);
         period.id = id;
         period.closed = closed;
@@ -88,6 +96,7 @@ public class Period {
         period.closedTotal = closedTotal;
         period.personTotals.putAll(personTotals);
         period.personCarried.putAll(personCarried);
+        period.personOpenings.putAll(personOpenings);
         return period;
     }
 
@@ -153,6 +162,16 @@ public class Period {
         return Map.copyOf(personCarried);
     }
 
+    /** Each person's opening balance for the period, by the person's id; a person missing has 0.00. */
+    public Map<Long, BigDecimal> getPersonOpenings() {
+        return Map.copyOf(personOpenings);
+    }
+
+    /** Add an amount to a person's opening balance for the period. */
+    public void addOpening(Long personId, BigDecimal amount) {
+        personOpenings.merge(personId, amount, BigDecimal::add);
+    }
+
     /** Close the period, fixing each person's due-total and carried figure for it at what they are
      *  now, and its own due-total at the sum of the due-totals. */
     public void close(Map<Long, BigDecimal> personTotals, Map<Long, BigDecimal> personCarried) {
@@ -176,7 +195,7 @@ public class Period {
         this.closedTotal = personTotals.values().stream().reduce(BigDecimal.ZERO.setScale(2), BigDecimal::add);
     }
 
-    /** Fold one person's fixed due-total and carried figure for the period into another's (the one
+    /** Fold one person's fixed due-total, carried figure and opening balance for the period into another's (the one
      *  was merged into the other); the period's own due-total stays as it is. */
     public void mergePersonTotal(Long fromId, Long intoId) {
         BigDecimal from = personTotals.remove(fromId);
@@ -187,13 +206,18 @@ public class Period {
         if (carried != null) {
             personCarried.merge(intoId, carried, BigDecimal::add);
         }
+        BigDecimal opening = personOpenings.remove(fromId);
+        if (opening != null) {
+            personOpenings.merge(intoId, opening, BigDecimal::add);
+        }
     }
 
-    /** Drop one person's fixed due-total and carried figure for the period (they left the sheet);
+    /** Drop one person's fixed due-total, carried figure and opening balance for the period (they left the sheet);
      *  the period's own due-total stays as it is. */
     public void dropPersonTotal(Long personId) {
         personTotals.remove(personId);
         personCarried.remove(personId);
+        personOpenings.remove(personId);
     }
 
     /** Reopen the period: its due-totals and carried figures are live again. */
