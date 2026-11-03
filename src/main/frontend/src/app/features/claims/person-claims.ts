@@ -196,6 +196,16 @@ function splitRefusal(e: unknown): string {
   return 'The claim could not be split.';
 }
 
+/** The message for a refused part-settle of a claim. */
+function settlePartRefusal(e: unknown): string {
+  if (e instanceof HttpErrorResponse && e.status === 423) return CLOSED;
+  if (e instanceof HttpErrorResponse && e.status === 409) return 'Only an open claim that is not deferred can be part-settled.';
+  if (e instanceof HttpErrorResponse && e.status === 403) return 'You may not split or settle this claim.';
+  if (e instanceof HttpErrorResponse && e.status === 428) return 'The claim needs its proofs before it can be settled.';
+  if (e instanceof HttpErrorResponse && e.status === 400) return SPLIT_AMOUNT;
+  return 'The claim could not be part-settled.';
+}
+
 // A person's claims, newest first, and the form that adds a claim for them or, once a claim's
 // editor is opened, edits it.
 @Component({
@@ -371,6 +381,11 @@ function splitRefusal(e: unknown): string {
             inputmode="decimal" (input)="clearError(c)" />
           <button type="button" data-testid="claim-split" (click)="split(c, splitAmount.value)"
             [attr.aria-label]="'Split claim of ' + c.amount + ' on ' + c.date">Split</button>
+          <label [for]="'claim-settle-part-amount-' + c.id">Settle part amount</label>
+          <input [id]="'claim-settle-part-amount-' + c.id" data-testid="claim-settle-part-amount" #settlePartAmount
+            inputmode="decimal" (input)="clearError(c)" />
+          <button type="button" data-testid="claim-settle-part" (click)="settlePart(c, settlePartAmount.value)"
+            [attr.aria-label]="'Settle part of claim of ' + c.amount + ' on ' + c.date">Settle part</button>
           <label [for]="'claim-inline-amount-' + c.id">Amount</label>
           <input [id]="'claim-inline-amount-' + c.id" data-testid="claim-inline-amount" #inlineAmount
             inputmode="decimal" (input)="clearError(c)" />
@@ -721,6 +736,22 @@ export class PersonClaims {
       this.saved.emit(split);
     } catch (e) {
       this.claimError.set({ id: c.id, message: splitRefusal(e) });
+    }
+  }
+
+  protected async settlePart(c: Claim, amount: string): Promise<void> {
+    this.claimError.set(null);
+    const part = amount.trim();
+    if (!AMOUNT.test(part) || Number(part) <= 0 || Number(part) >= Number(c.amount)) {
+      this.claimError.set({ id: c.id, message: SPLIT_AMOUNT });
+      return;
+    }
+    try {
+      const { original, split } = await this.api.settlePart(c.id, part);
+      this.saved.emit(original);
+      this.saved.emit(split);
+    } catch (e) {
+      this.claimError.set({ id: c.id, message: settlePartRefusal(e) });
     }
   }
 

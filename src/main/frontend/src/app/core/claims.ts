@@ -524,6 +524,17 @@ export class Claims {
     );
   }
 
+  /** Part-settle an open claim: split the amount off it and settle the new claim at once (left
+   *  pending when over the clerk limit): the claim with the rest of its amount, and the new claim.
+   *  Refused as a split or a settle of the original claim is, and then nothing changes. */
+  settlePart(id: number, amount: string): Promise<{ original: Claim; split: Claim }> {
+    const { sheetId, user } = this.active();
+    return firstValueFrom(
+      this.http.post<{ original: Claim; split: Claim }>(`${this.url(sheetId)}/claims/${id}/settle-part`, { amount },
+        { headers: { 'X-User': user } }),
+    );
+  }
+
   /** Move a draft, open or pending claim to another person on the sheet; refused (403) unless the
    *  user is a steward, and (409) when the claim is settled or void. */
   reassign(id: number, personId: number): Promise<Claim> {

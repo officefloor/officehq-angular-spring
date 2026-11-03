@@ -236,6 +236,13 @@ public class ClaimService {
     }
 
     private Claim changeStatus(String sheetId, String user, long claimId, ClaimStatus to, String reason) {
+        return changeStatus(sheetId, user, claimId, to, reason, true);
+    }
+
+    /** Change a claim's status; the four-eyes and proof rules of a settle are judged on this claim
+     *  only when asked (a part-settle judges them on the claim it split off). */
+    private Claim changeStatus(String sheetId, String user, long claimId, ClaimStatus to, String reason,
+            boolean judgeSettle) {
         Claim claim = lock(sheetId, claimId);
         refuseClosed(sheetId, claim.getDueBy());
         String voidReason = to == ClaimStatus.VOID ? voidReasons.required(sheetId, reason) : null;
@@ -263,11 +270,8 @@ public class ClaimService {
             throw new ResponseStatusException(HttpStatus.CONFLICT,
                     "A claim deferred until " + claim.getDeferredUntil() + " cannot be settled before then");
         }
-        if (to == ClaimStatus.SETTLED && claim.openedOrEditedBy(user)) {
-            throw new ResponseStatusException(HttpStatus.FORBIDDEN,
-                    "The user who opened or last edited a claim cannot settle it");
-        }
-        if (to == ClaimStatus.SETTLED) {
+        if (to == ClaimStatus.SETTLED && judgeSettle) {
+            refuseSameHands(user, claim);
             refuseUnproved(sheetId, claim);
         }
         ClaimStatus becomes = to == ClaimStatus.SETTLED && overClerkLimit(sheetId, user, claim)
@@ -759,6 +763,34 @@ public class ClaimService {
             audit.recordOnCommit(record("CLAIM_OPENED", sheetId, user, person, split));
             return new Split(original, split);
         });
+    }
+
+    /** Part-settle an open claim: split the amount off it as {@link #split} does, and settle the new
+     *  claim at once as the settle button does (left PENDING when over the clerk limit). The four-eyes
+     *  and proof rules are judged on the original claim, before the split; any refusal of the split or
+     *  the settle refuses the whole and changes nothing. Returns the original and the new claim. */
+    @Transactional
+    public Split settlePart(String sheetId, String user, long claimId, BigDecimal part) {
+        Claim claim = lock(sheetId, claimId);
+        if (claim.getStatus() != ClaimStatus.OPEN) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT, "Only an open claim can be part-settled");
+        }
+        if (!roles.may(sheetId, user, "settle")) {
+            throw new ResponseStatusException(HttpStatus.FORBIDDEN, "Your role may not settle a claim");
+        }
+        refuseSameHands(user, claim);
+        refuseUnproved(sheetId, claim);
+        Split split = split(sheetId, user, claimId, part);
+        return new Split(split.original(),
+                changeStatus(sheetId, user, split.split().getId(), ClaimStatus.SETTLED, null, false));
+    }
+
+    /** Refuse settling a claim the user opened or last edited. */
+    private static void refuseSameHands(String user, Claim claim) {
+        if (claim.openedOrEditedBy(user)) {
+            throw new ResponseStatusException(HttpStatus.FORBIDDEN,
+                    "The user who opened or last edited a claim cannot settle it");
+        }
     }
 
     /** The pending claim a steward approves or rejects, locked; refused when it is not pending, the

@@ -535,6 +535,15 @@ public class ClaimController {
         return new SplitView(ClaimView.of(split.original()), ClaimView.of(split.split()));
     }
 
+    @PostMapping("/claims/{claimId}/settle-part")
+    public SplitView settlePart(@PathVariable @NotBlank @Size(max = 100) String sheetId,
+            @PathVariable long claimId,
+            @RequestHeader("X-User") @NotBlank @Size(max = 100) String user,
+            @Valid @RequestBody SplitForm form) {
+        ClaimService.Split split = service.settlePart(sheetId.trim(), user.trim(), claimId, form.amountValue());
+        return new SplitView(ClaimView.of(split.original()), ClaimView.of(split.split()));
+    }
+
     /** The void form: the reason chosen from the sheet's list (blank or absent when none). */
     public record VoidForm(@Size(max = 200) String reason) {
     }
