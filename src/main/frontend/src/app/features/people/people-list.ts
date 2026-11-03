@@ -58,8 +58,8 @@ const NO_LEAVE: Leave = { holds: [], retiredFrom: null };
       [dueTotal]="dueTotal()" [overdueTotal]="overdueTotal()"
       [myDueTotal]="myDueTotal()" [myOverdueTotal]="myOverdueTotal()" [myCrewDueTotal]="myCrewDueTotal()"
       [watchedDueTotal]="watchedDueTotal()" [myReviewsCount]="myReviewsCount()" />
-    <app-steward-dashboard [steward]="myRole() === 'steward'" [statuses]="statusSummary()"
-      [overdueCount]="overdueCount()" />
+    <app-steward-dashboard [steward]="myRole() === 'steward'" [statuses]="consolidatedStatuses()"
+      [overdueCount]="consolidatedOverdueCount()" />
     <app-rate-form [rates]="rates()" (saved)="rateSaved($event)" (imported)="ratesImported()" />
     <app-period-form [periods]="periods()" [dueTotals]="periodDueTotals()" (saved)="periodSaved($event)"
       (removed)="periodRemoved($event)" />
@@ -945,6 +945,10 @@ export class PeopleList {
       ...this.people().map((p) => this.overdueTotalOf(p)),
       ...(this.descendants().people ?? []).map((p) => p.overdueTotal),
     ]),
+  );
+  /** How many claims that count are overdue on the sheet and its descendants. */
+  protected readonly consolidatedOverdueCount = computed(() =>
+    this.overdueCount() + (this.descendants().overdueCount ?? 0),
   );
   /** Per grade: the sheet's due-total of the people not retired on it and its descendants', added up. */
   protected readonly consolidatedGrades = computed(() =>

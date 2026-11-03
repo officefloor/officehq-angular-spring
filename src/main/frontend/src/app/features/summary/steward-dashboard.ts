@@ -1,8 +1,8 @@
 import { Component, computed, input } from '@angular/core';
 import { StatusSummary } from './summary-panel';
 
-// A steward's dashboard: how many claims on the sheet are pending, how many await review, and how
-// many of the claims that count are overdue. A user who is not a steward sees the cells empty.
+// A steward's dashboard: how many claims on the sheet and all its descendants are pending, how many
+// await review, and how many of the claims that count are overdue. A user who is not a steward sees the cells empty.
 @Component({
   selector: 'app-steward-dashboard',
   template: `

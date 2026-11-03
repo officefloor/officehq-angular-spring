@@ -5,7 +5,7 @@ import { firstValueFrom } from 'rxjs';
 /** A sheet's descendants' figures added up: their people, and each one's due-total and
  *  overdue-total as that sheet shows them; per grade, the due-totals of the people not retired on
  *  it (n/a skipped); per status, how many claims have it; and each of their people. A grade or
- *  status missing has none. */
+ *  status missing has none. And how many of their claims that count are overdue. */
 export interface DescendantFigures {
   peopleCount: number;
   dueTotal: string;
@@ -13,6 +13,7 @@ export interface DescendantFigures {
   gradeDueTotals: Record<string, string>;
   statusCounts: Record<string, number>;
   people: DescendantPerson[];
+  overdueCount: number;
 }
 
 /** A person of a descendant sheet: their name and aliases, and their due-total (null when n/a) and
@@ -31,6 +32,7 @@ export const NO_DESCENDANTS: DescendantFigures = {
   gradeDueTotals: {},
   statusCounts: {},
   people: [],
+  overdueCount: 0,
 };
 
 // The sheets below a sheet: its children (the sheets naming it as their parent), theirs, and so on.

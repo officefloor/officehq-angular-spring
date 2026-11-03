@@ -153,9 +153,10 @@ public class Rollup {
      *  them, added up; per grade, the due-totals of the people not retired on the grade in force on
      *  their sheet's today, skipping those that are n/a, added up; and per status, how many claims
      *  have it; and each of their people (retired included), for the screen to trim and count once
-     *  over the whole tree. */
+     *  over the whole tree; and how many of their claims that count are overdue. */
     public record Descendants(int peopleCount, String dueTotal, String overdueTotal,
-            Map<String, String> gradeDueTotals, Map<String, Integer> statusCounts, List<Member> people) {
+            Map<String, String> gradeDueTotals, Map<String, Integer> statusCounts, List<Member> people,
+            int overdueCount) {
     }
 
     /** A person of a descendant sheet: their name and aliases, and their due-total (null when n/a)
@@ -174,6 +175,7 @@ public class Rollup {
         Map<String, BigDecimal> gradeDue = new LinkedHashMap<>();
         Map<String, Integer> statusCounts = new LinkedHashMap<>();
         List<Member> members = new ArrayList<>();
+        int overdueCount = 0;
         for (String id : sheetStore.descendants(sheetId)) {
             Dues.Basis basis;
             List<Person> sheetPeople;
@@ -192,7 +194,10 @@ public class Rollup {
             count += s.people().size();
             due = due.add(new BigDecimal(s.dueTotal()));
             overdue = overdue.add(new BigDecimal(s.overdueTotal()));
+            Map<Long, List<Claim>> byPerson = sheetClaims.stream().collect(Collectors.groupingBy(Claim::getPersonId));
             for (Person person : sheetPeople) {
+                overdueCount += (int) Dues.live(person, byPerson.getOrDefault(person.getId(), List.of()), basis.today())
+                        .stream().filter(c -> dues.overdue(basis, person, c)).count();
                 Figures personFigures = s.people().get(person.getId());
                 String personDue = personFigures.dueTotal();
                 List<String> names = new ArrayList<>(List.of(person.getName()));
@@ -207,7 +212,7 @@ public class Rollup {
         }
         Map<String, String> gradeDueTotals = new LinkedHashMap<>();
         gradeDue.forEach((grade, total) -> gradeDueTotals.put(grade, text(total)));
-        return new Descendants(count, text(due), text(overdue), gradeDueTotals, statusCounts, members);
+        return new Descendants(count, text(due), text(overdue), gradeDueTotals, statusCounts, members, overdueCount);
     }
 
     /** Add to the per-grade due-totals those of a sheet's people not retired on the grade in force
