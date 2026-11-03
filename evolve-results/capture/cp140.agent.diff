@@ -1,0 +1,45 @@
+diff --git a/src/main/java/net/officefloor/hq/app/pool/PoolService.java b/src/main/java/net/officefloor/hq/app/pool/PoolService.java
+index 96a40f0da..cf38a39ca 100644
+--- a/src/main/java/net/officefloor/hq/app/pool/PoolService.java
++++ b/src/main/java/net/officefloor/hq/app/pool/PoolService.java
+@@ -67,8 +67,8 @@ public class PoolService {
+         /** Each member's cut of the pot, in the members' order: the pot times their share divided by
+          *  the shares of the members with a cut added up, rounded half to even to two decimals (a
+          *  retired or held member getting no cut: 0.00, their share spread over the others), with the
+-         *  remainder of the pot going to the member with a cut with the largest share (the earliest
+-         *  added on a tie), so the cuts total exactly the pot (each 0.00 when no member has a cut);
++         *  remainder of the pot going to the member with the smallest non-zero cut (the latest added
++         *  on a tie; the last member with a cut and a share when no cut is non-zero), so the cuts total exactly the pot (each 0.00 when no member has a cut);
+          *  none (an empty list) when there is no pot, the pool is not balanced or every member in
+          *  force is retired. A member out of
+          *  force has no cut at all: its entry is null. */
+@@ -92,15 +92,24 @@ public class PoolService {
+             if (withCut.signum() == 0) {
+                 return cuts;
+             }
+-            int largest = 0;
+-            for (int i = 1; i < shares.size(); i++) {
+-                if (shares.get(i).compareTo(shares.get(largest)) > 0) {
+-                    largest = i;
++            int target = -1;
++            for (int i = 0; i < shares.size(); i++) {
++                BigDecimal c = cuts.get(i);
++                if (c != null && c.signum() != 0
++                        && (target < 0 || c.compareTo(cuts.get(target)) <= 0)) {
++                    target = i;
++                }
++            }
++            if (target < 0) {
++                for (int i = 0; i < shares.size(); i++) {
++                    if (shares.get(i).signum() != 0) {
++                        target = i;
++                    }
+                 }
+             }
+             BigDecimal remainder = pot.subtract(cuts.stream().filter(c -> c != null)
+                     .reduce(BigDecimal.ZERO, BigDecimal::add));
+-            cuts.set(largest, cuts.get(largest).add(remainder).setScale(2));
++            cuts.set(target, cuts.get(target).add(remainder).setScale(2));
+             return cuts;
+         }
+     }
