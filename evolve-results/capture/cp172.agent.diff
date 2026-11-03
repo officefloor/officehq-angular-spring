@@ -1,0 +1,58 @@
+diff --git a/src/main/frontend/src/app/core/claims.ts b/src/main/frontend/src/app/core/claims.ts
+index f7742269b..a25405c7e 100644
+--- a/src/main/frontend/src/app/core/claims.ts
++++ b/src/main/frontend/src/app/core/claims.ts
+@@ -229,10 +229,10 @@ export function trimmedSum(amounts: string[]): string {
+   return sumAmounts(sorted.slice(1, -1));
+ }
+ 
+-/** Whether a claim is bound by its person's last statement now: it was bound, and it is not
+- *  pending (a pending claim shows its live figure). */
++/** Whether a claim is bound by its person's last statement now (a pending claim is too, showing
++ *  and totalling the bound figure). */
+ function bound(c: Claim): boolean {
+-  return c.stated && c.status !== 'PENDING';
++  return c.stated;
+ }
+ 
+ /** Whether a claim keeps a figure that rates and grades no longer change: settled or bound by a
+diff --git a/src/main/java/net/officefloor/hq/app/claim/ClaimService.java b/src/main/java/net/officefloor/hq/app/claim/ClaimService.java
+index ae6b56477..9bcf379f9 100644
+--- a/src/main/java/net/officefloor/hq/app/claim/ClaimService.java
++++ b/src/main/java/net/officefloor/hq/app/claim/ClaimService.java
+@@ -534,8 +534,8 @@ public class ClaimService {
+         });
+     }
+ 
+-    /** Approve a pending claim: it becomes settled, its due fixed at the figure it has now (its live
+-     *  figure and late charge). Refused unless the claim is pending, the user is a steward and is not
++    /** Approve a pending claim: it becomes settled, its due fixed at the figure it has now (the
++     *  figure a statement bound it to, if any, or its live figure, and its late charge). Refused unless the claim is pending, the user is a steward and is not
+      *  the one who opened or last edited it, the claim's period is open, and it has a proof if it needs one. */
+     @Transactional
+     public Claim approve(String sheetId, String user, long claimId) {
+diff --git a/src/main/java/net/officefloor/hq/app/claim/Dues.java b/src/main/java/net/officefloor/hq/app/claim/Dues.java
+index faa846e09..9c183a274 100644
+--- a/src/main/java/net/officefloor/hq/app/claim/Dues.java
++++ b/src/main/java/net/officefloor/hq/app/claim/Dues.java
+@@ -211,7 +211,7 @@ public class Dues {
+     }
+ 
+     /** The rate figure a statement binds a claim to: the one its person's last statement bound it to,
+-     *  or else its live rate figure (a pending claim is not bound by a statement while it is pending);
++     *  or else its live rate figure (a pending claim is bound like any other claim that counts);
+      *  never the late charge, which keeps following the sheet's today, nor the floor, which is applied
+      *  last. Null when there is none, or when the statement bound it to n/a. */
+     public BigDecimal bindable(String sheetId, Person person, Claim claim) {
+@@ -241,9 +241,9 @@ public class Dues {
+         return due(basis, person, claim) == null;
+     }
+ 
+-    /** Whether a claim is bound by its person's last statement now (a pending claim is not). */
++    /** Whether a claim is bound by its person's last statement now (a pending claim is too). */
+     private static boolean bound(Claim claim) {
+-        return claim.isStated() && claim.getStatus() != ClaimStatus.PENDING;
++        return claim.isStated();
+     }
+ 
+     /** The day a claim's lateness is counted from: its due-by (fixed when it was made) plus the grace
