@@ -21,6 +21,9 @@ export interface Period {
   /** Each person's due-total for the period fixed when it was closed, by the person's id, as text
    *  with two decimals; empty while it is open. A person missing from it has 0.00. */
   closedPersonTotals: Record<number, string>;
+  /** Each person's carried figure for the period fixed when it was closed or soft-closed, by the
+   *  person's id, as text with two decimals; empty while it is open. A person missing from it has 0.00. */
+  closedPersonCarried: Record<number, string>;
   /** The fiscal year its from-date falls in (FYyyyy). */
   fy: string;
   /** The most open or pending claims a person may have in the period; null for no cap. */

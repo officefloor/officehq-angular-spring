@@ -8,10 +8,6 @@ export interface DescendantFigures {
   peopleCount: number;
   dueTotal: string;
   overdueTotal: string;
-  /** The sheet's own figures as it stands now, whatever day the screen shows it as of. */
-  ownPeopleCount: number;
-  ownDueTotal: string;
-  ownOverdueTotal: string;
 }
 
 /** No descendants: nothing to add. */
@@ -19,9 +15,6 @@ export const NO_DESCENDANTS: DescendantFigures = {
   peopleCount: 0,
   dueTotal: '0.00',
   overdueTotal: '0.00',
-  ownPeopleCount: 0,
-  ownDueTotal: '0.00',
-  ownOverdueTotal: '0.00',
 };
 
 // The sheets below a sheet: its children (the sheets naming it as their parent), theirs, and so on.
@@ -29,7 +22,8 @@ export const NO_DESCENDANTS: DescendantFigures = {
 export class Descendants {
   private readonly http = inject(HttpClient);
 
-  /** The figures of the sheet's descendants added up. */
+  /** The figures of the sheet's descendants added up; while an as-of date is set, each as it stood
+   *  at the end of that day. */
   figures(sheetId: string): Promise<DescendantFigures> {
     return firstValueFrom(this.http.get<DescendantFigures>(`/api/sheets/${encodeURIComponent(sheetId)}/descendants`));
   }

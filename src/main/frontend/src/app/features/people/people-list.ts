@@ -711,22 +711,15 @@ export class PeopleList {
   });
   /** The figures of the sheet's descendants added up, as the store held them when it was loaded. */
   private readonly descendants = signal<DescendantFigures>(NO_DESCENDANTS);
-  /** The people of the sheet and all its descendants: the sheet as it stands now, even while it is
-   *  shown as of a date. */
-  protected readonly consolidatedPeopleCount = computed(() =>
-    (this.session.asOf() === null ? this.people().length : this.descendants().ownPeopleCount)
-    + this.descendants().peopleCount,
-  );
+  /** The people of the sheet and all its descendants: while an as-of date is set, each sheet as it
+   *  stood at the end of that day. */
+  protected readonly consolidatedPeopleCount = computed(() => this.people().length + this.descendants().peopleCount);
   /** The sheet's due-total and each descendant's, as each shows it, added up. */
-  protected readonly consolidatedDueTotal = computed(() => sumAmounts([
-    this.session.asOf() === null ? this.dueTotal() : this.descendants().ownDueTotal,
-    this.descendants().dueTotal,
-  ]));
+  protected readonly consolidatedDueTotal = computed(() => sumAmounts([this.dueTotal(), this.descendants().dueTotal]));
   /** The sheet's overdue-total and each descendant's, as each shows it, added up. */
-  protected readonly consolidatedOverdueTotal = computed(() => sumAmounts([
-    this.session.asOf() === null ? this.overdueTotal() : this.descendants().ownOverdueTotal,
-    this.descendants().overdueTotal,
-  ]));
+  protected readonly consolidatedOverdueTotal = computed(() =>
+    sumAmounts([this.overdueTotal(), this.descendants().overdueTotal]),
+  );
   /** Per grade: the people not retired on it on the sheet's today, their due-totals added up,
    *  skipping those that are n/a, and how many of them are active. */
   protected readonly gradeSummary = computed((): GradeSummary[] =>
@@ -1553,8 +1546,10 @@ export class PeopleList {
     return this.livePeriodDues().get(personId)?.get(period.id) ?? '0.00';
   }
 
-  /** A person's carried figure for a period ({@link carried}); 0.00 when nothing is carried. */
+  /** A person's carried figure for a period: the one fixed when it was closed or soft-closed (0.00
+   *  for a person added since), or else the live one ({@link carried}); 0.00 when nothing is carried. */
   protected carriedOf(personId: number, period: Period): string {
+    if (period.closed || period.softClosed) return period.closedPersonCarried[personId] ?? '0.00';
     return this.carried().get(personId)?.get(period.id) ?? '0.00';
   }
 

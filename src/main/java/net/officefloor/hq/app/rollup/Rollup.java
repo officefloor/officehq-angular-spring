@@ -122,27 +122,25 @@ public class Rollup {
 
     /** The figures a sheet's descendants add to its own to consolidate it: over all of them, the
      *  people (retired included), and each one's due-total and overdue-total as that sheet shows
-     *  them, added up; and the sheet's own figures as it stands now (for a screen showing it as of a
-     *  date, which consolidates the sheet as it stands now). */
-    public record Descendants(int peopleCount, String dueTotal, String overdueTotal, int ownPeopleCount,
-            String ownDueTotal, String ownOverdueTotal) {
+     *  them, added up. */
+    public record Descendants(int peopleCount, String dueTotal, String overdueTotal) {
     }
 
-    /** The figures of a sheet's descendants added up (all zero when it has none). */
+    /** The figures of a sheet's descendants added up (all zero when it has none): as each stands now,
+     *  or, as of a day when one is given, as each stood at the end of it with that day as its today
+     *  (see {@link History}). */
     @Transactional(readOnly = true)
-    public Descendants descendants(String sheetId) {
+    public Descendants descendants(String sheetId, LocalDate asOf) {
         int count = 0;
         BigDecimal due = BigDecimal.ZERO.setScale(2);
         BigDecimal overdue = BigDecimal.ZERO.setScale(2);
         for (String id : sheetStore.descendants(sheetId)) {
-            Snapshot s = snapshot(id);
+            Snapshot s = asOf == null ? snapshot(id) : snapshot(history.asOf(id, asOf));
             count += s.people().size();
             due = due.add(new BigDecimal(s.dueTotal()));
             overdue = overdue.add(new BigDecimal(s.overdueTotal()));
         }
-        Snapshot own = snapshot(sheetId);
-        return new Descendants(count, text(due), text(overdue), own.people().size(), own.dueTotal(),
-                own.overdueTotal());
+        return new Descendants(count, text(due), text(overdue));
     }
 
     /** A person found by a search of a sheet's tree: their sheet's id, name and due-total (two
@@ -173,20 +171,30 @@ public class Rollup {
     }
 
     private Snapshot snapshot(String sheetId) {
-        Map<Long, List<Claim>> byPerson = claims.findBySheetIdOrderByListedDesc(sheetId).stream()
-                .collect(Collectors.groupingBy(Claim::getPersonId));
+        return snapshot(dues.now(sheetId), people.findBySheetIdOrderByPositionAscIdAsc(sheetId),
+                claims.findBySheetIdOrderByListedDesc(sheetId));
+    }
+
+    /** The figures of a sheet as it stood at the end of a day, that day as its today. */
+    private Snapshot snapshot(History.SheetAsOf then) {
+        return snapshot(then.basis(), List.copyOf(then.people().values()), then.claims());
+    }
+
+    /** The figures of a sheet's people and claims, worked out on the basis. */
+    private Snapshot snapshot(Dues.Basis basis, List<Person> sheetPeople, List<Claim> sheetClaims) {
+        Map<Long, List<Claim>> byPerson = sheetClaims.stream().collect(Collectors.groupingBy(Claim::getPersonId));
         Map<Long, Figures> figures = new LinkedHashMap<>();
         BigDecimal claimedTotal = BigDecimal.ZERO.setScale(2);
         List<BigDecimal> dueFigures = new ArrayList<>();
         List<BigDecimal> overdueFigures = new ArrayList<>();
-        LocalDate today = sheets.today(sheetId);
-        for (Person person : people.findBySheetIdOrderByPositionAscIdAsc(sheetId)) {
+        LocalDate today = basis.today();
+        for (Person person : sheetPeople) {
             List<Claim> theirs = Dues.live(person, byPerson.getOrDefault(person.getId(), List.of()), today);
             BigDecimal claimed = theirs.stream().filter(c -> c.getCorrects() == null).map(Claim::getAmount)
                     .reduce(BigDecimal.ZERO.setScale(2), BigDecimal::add);
-            BigDecimal due = dues.dueTotal(sheetId, person, theirs);
-            BigDecimal overdue = theirs.stream().filter(c -> dues.overdue(sheetId, person, c))
-                    .map(c -> dues.figure(sheetId, person, c)).filter(Objects::nonNull)
+            BigDecimal due = dues.dueTotal(basis, person, theirs);
+            BigDecimal overdue = theirs.stream().filter(c -> dues.overdue(basis, person, c))
+                    .map(c -> dues.figure(basis, person, c)).filter(Objects::nonNull)
                     .reduce(BigDecimal.ZERO.setScale(2), BigDecimal::add);
             claimedTotal = claimedTotal.add(claimed);
             overdueFigures.add(overdue);

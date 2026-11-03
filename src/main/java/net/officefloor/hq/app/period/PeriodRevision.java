@@ -59,6 +59,10 @@ public class PeriodRevision {
     @Column(name = "person_totals", nullable = false)
     private String personTotals;
 
+    /** Each person's fixed carried figure, "person-id:carried", separated by ";"; blank while open. */
+    @Column(name = "person_carried", nullable = false)
+    private String personCarried;
+
     protected PeriodRevision() {
     }
 
@@ -74,6 +78,7 @@ public class PeriodRevision {
         this.softClosed = period.isSoftClosed();
         this.closedTotal = period.getClosedTotal();
         this.personTotals = totals(period.getPersonTotals());
+        this.personCarried = totals(period.getPersonCarried());
         this.claimCap = period.getClaimCap();
     }
 
@@ -91,17 +96,23 @@ public class PeriodRevision {
                 && (closedTotal == null ? period.getClosedTotal() == null
                         : period.getClosedTotal() != null && closedTotal.compareTo(period.getClosedTotal()) == 0)
                 && personTotals.equals(totals(period.getPersonTotals()))
+                && personCarried.equals(totals(period.getPersonCarried()))
                 && Objects.equals(claimCap, period.getClaimCap());
     }
 
     /** The period as this revision has it, detached: for showing only, never saved. */
     public Period toPeriod() {
-        Map<Long, BigDecimal> totals = new TreeMap<>();
-        Arrays.stream(personTotals.split(";")).filter(t -> !t.isBlank()).forEach(t -> {
+        return Period.revised(sheetId, periodId, name, fromDate, toDate, closed, softClosed, closedTotal,
+                parse(personTotals), parse(personCarried), claimCap);
+    }
+
+    private static Map<Long, BigDecimal> parse(String text) {
+        Map<Long, BigDecimal> figures = new TreeMap<>();
+        Arrays.stream(text.split(";")).filter(t -> !t.isBlank()).forEach(t -> {
             int at = t.indexOf(':');
-            totals.put(Long.valueOf(t.substring(0, at)), new BigDecimal(t.substring(at + 1)));
+            figures.put(Long.valueOf(t.substring(0, at)), new BigDecimal(t.substring(at + 1)));
         });
-        return Period.revised(sheetId, periodId, name, fromDate, toDate, closed, softClosed, closedTotal, totals, claimCap);
+        return figures;
     }
 
     public Long getPeriodId() {

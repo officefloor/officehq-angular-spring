@@ -255,7 +255,11 @@ public class Dues {
     /** Whether a claim is overdue on the sheet's today: it is open (or pending), not deferred on it,
      *  and its {@link #lateFrom} is before it. */
     public boolean overdue(String sheetId, Person person, Claim claim) {
-        Basis basis = now(sheetId);
+        return overdue(now(sheetId), person, claim);
+    }
+
+    /** Whether a claim is overdue on a basis's today (see {@link #overdue(String, Person, Claim)}). */
+    public boolean overdue(Basis basis, Person person, Claim claim) {
         LocalDate today = basis.today();
         return claim.getStatus().isOpen() && !claim.isDeferredOn(today) && lateFrom(basis, person, claim).isBefore(today);
     }
