@@ -517,9 +517,25 @@ export class PeopleList {
   protected readonly columns = PERSON_COLUMNS;
   protected readonly columnsError = signal('');
   /** The people listed: everyone, or only those not retired unless "show retired" is on. */
-  protected readonly shown = computed(() =>
-    this.showRetired() ? this.people() : this.people().filter((p) => !p.retired),
-  );
+  protected readonly shown = computed(() => {
+    const listed = this.showRetired() ? this.people() : this.people().filter((p) => !p.retired);
+    const visible = this.restrictedTo();
+    return visible ? listed.filter((p) => visible.has(p.id)) : listed;
+  });
+  /** For a restricted user, the ids of the people they may see listed: their own person and the
+   *  leads and members of the crews it leads or belongs to (none when no person is theirs); null for
+   *  every other role, who sees everyone. */
+  private readonly restrictedTo = computed<Set<number> | null>(() => {
+    if (this.myRole() !== 'restricted') return null;
+    const me = this.me();
+    if (!me) return new Set();
+    const ids = new Set([me.id]);
+    for (const c of this.crewsApi.list()) {
+      const crewIds = [...(c.lead ? [c.lead.personId] : []), ...c.members.map((m) => m.personId)];
+      if (crewIds.includes(me.id)) crewIds.forEach((id) => ids.add(id));
+    }
+    return ids;
+  });
   /** The key this screen sorts the listed people by; added (list order) when the screen opens,
    *  kept as it is across loads. Only what is shown is sorted: actions keep the list order. */
   protected readonly sortBy = signal<SortKey>('added');

@@ -803,7 +803,7 @@ export class SettingsForm {
       return;
     }
     if (!(ROLES as string[]).includes(role)) {
-      this.roleError.set('Choose a role of clerk, steward or viewer.');
+      this.roleError.set('Choose a role of clerk, steward, viewer or restricted.');
       return;
     }
     this.submitting = true;

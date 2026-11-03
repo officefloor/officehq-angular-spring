@@ -18,6 +18,9 @@ public class SheetRole {
     public static final String STEWARD = "steward";
     /** A viewer sees every screen and figure and may change nothing. */
     public static final String VIEWER = "viewer";
+    /** A restricted user lists only the people of the crews their person leads or belongs to, and
+     *  that person; every other figure is still over the whole sheet. */
+    public static final String RESTRICTED = "restricted";
 
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)

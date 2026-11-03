@@ -10,7 +10,8 @@ import org.springframework.http.HttpStatus;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.server.ResponseStatusException;
 
-/** The roles user names have on a sheet: clerk (the default for any name), steward or viewer
+/** The roles user names have on a sheet: clerk (the default for any name), steward, restricted (who
+ *  lists only the people of their crews and their own person) or viewer
  *  (who may change nothing); and the steward role a steward delegates to a user name for a range of
  *  days, inside which, by the sheet's today, the user acts as a steward. */
 @Service
