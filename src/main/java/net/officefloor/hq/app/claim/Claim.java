@@ -43,7 +43,7 @@ public class Claim {
     @Column(name = "status", nullable = false)
     private ClaimStatus status = ClaimStatus.DRAFT;
 
-    /** The claim's number on its sheet, given when it is opened; none while DRAFT or once VOID. */
+    /** The claim's number on its sheet, given when it is opened and kept once VOID; none while DRAFT. */
     @Column(name = "claim_number")
     private Integer number;
 

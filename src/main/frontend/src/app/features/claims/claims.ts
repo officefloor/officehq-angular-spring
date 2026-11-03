@@ -10,6 +10,8 @@ import { Rate, claimDueCents, dueText } from '../rates/rates';
 // shows its status and the buttons that move it on; a move its status does not allow is refused
 // with an error on the claim, as is the user who opened a claim settling it (four eyes). A claim
 // dated inside a closed period cannot be added, edited or moved on: each is refused with an error.
+// Only a DRAFT can be edited; editing any other claim is refused with an error on the claim (to
+// change an open claim, void it and add a new one).
 export type ClaimStatus = 'DRAFT' | 'OPEN' | 'SETTLED' | 'VOID';
 
 export interface Claim {
@@ -169,6 +171,10 @@ export class PersonClaims {
       this.actionErrors.update((m) => new Map(m).set(c.id, CLOSED));
       return;
     }
+    if (c.status !== 'DRAFT') {
+      this.actionErrors.update((m) => new Map(m).set(c.id, `A ${c.status} claim cannot be edited.`));
+      return;
+    }
     this.editingId.set(c.id);
     this.amountInput.set(c.amount);
     this.dateInput.set(c.date);
@@ -245,9 +251,11 @@ export class PersonClaims {
       this.error.set(
         e instanceof HttpErrorResponse && e.status === 423
           ? CLOSED
-          : id === null
-            ? 'Could not add this claim.'
-            : 'Could not save this claim.',
+          : e instanceof HttpErrorResponse && e.status === 409
+            ? 'Only a DRAFT claim can be edited.'
+            : id === null
+              ? 'Could not add this claim.'
+              : 'Could not save this claim.',
       );
     } finally {
       this.submitting = false;

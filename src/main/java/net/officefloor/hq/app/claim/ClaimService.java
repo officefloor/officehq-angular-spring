@@ -20,7 +20,8 @@ import org.springframework.web.server.ResponseStatusException;
 /**
  * The claims on a sheet: added to a person and edited (amount, date, note). A claim given no date
  * takes the sheet's today. A claim starts as DRAFT and moves through its statuses (see
- * {@link ClaimStatus}); a change its status does not allow is refused. Settling a claim fixes its
+ * {@link ClaimStatus}); a change its status does not allow is refused. Only a DRAFT can be edited:
+ * to change an open claim, void it and add a new one. Settling a claim fixes its
  * due at the rate its person's grade has then for the claim's date; an open claim's due stays live.
  * A claim records who opened it, and that user cannot settle it (four eyes). A claim bound by its
  * person's last statement keeps the figure it had then, and settling it fixes that figure. No claim
@@ -80,6 +81,10 @@ public class ClaimService {
     public Claim update(String sheetId, String user, long id, BigDecimal amount, LocalDate date, String note) {
         Claim claim = claims.findByIdAndSheetId(id, sheetId)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "No such claim on this sheet."));
+        if (claim.getStatus() != ClaimStatus.DRAFT) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT,
+                    "A " + claim.getStatus() + " claim cannot be edited.");
+        }
         LocalDate dated = dateOrToday(sheetId, date);
         periods.refuseIfClosed(sheetId, claim.getDate());
         periods.refuseIfClosed(sheetId, dated);
@@ -113,8 +118,6 @@ public class ClaimService {
             throw new ResponseStatusException(HttpStatus.FORBIDDEN,
                     "The user who opened a claim cannot settle it.");
         }
-        // the audit line carries the number the claim had, before voiding clears it
-        Integer recorded = next == ClaimStatus.OPEN ? number : claim.getNumber();
         Person person = person(sheetId, claim.getPersonId());
         claim.setStatus(next);
         if (next == ClaimStatus.OPEN) {
@@ -122,8 +125,6 @@ public class ClaimService {
             claim.setOpenedBy(user);
         } else if (next == ClaimStatus.SETTLED) {
             claim.setSettledDue(claim.isStated() ? claim.getStatedDue() : due(sheetId, person, claim));
-        } else if (next == ClaimStatus.VOID) {
-            claim.setNumber(null);
         }
         Claim saved = claims.saveAndFlush(claim);
         String event = switch (next) {
@@ -133,7 +134,7 @@ public class ClaimService {
             case DRAFT -> throw new IllegalStateException();
         };
         audit.recordOnCommit(record(event, sheetId, user, person, saved)
-                + (recorded != null ? " number=" + recorded : "")
+                + (saved.getNumber() != null ? " number=" + saved.getNumber() : "")
                 + (next == ClaimStatus.SETTLED ? " due=" + dueText(saved.getSettledDue()) : ""));
         rollup.recordChanges(sheetId, user, before);
         return saved;
