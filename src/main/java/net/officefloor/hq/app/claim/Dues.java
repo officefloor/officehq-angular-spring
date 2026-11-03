@@ -181,9 +181,9 @@ public class Dues {
 
     /** The due figure a claim shows and totals: the one fixed when it was settled, or else its
      *  {@link #bindable} figure: the one its person's last statement bound it to (its late charge no
-     *  longer following the sheet's today), or else its live rate figure with the late charge on that
-     *  figure on top while it is overdue, at least the sheet's floor in force on the claim's date (a
-     *  correction has neither); null when there is none. */
+     *  longer following the sheet's today), or else its live rate figure, at least the sheet's floor in
+     *  force on the claim's date, with the late charge on that floored figure on top while it is
+     *  overdue (a correction has neither); null when there is none. */
     public BigDecimal figure(String sheetId, Person person, Claim claim) {
         return figure(now(sheetId), person, claim);
     }
@@ -196,28 +196,29 @@ public class Dues {
         return bindable(basis, person, claim);
     }
 
-    /** The figure a claim would have today as an open claim bound by no statement: its rate figure
-     *  with the late charge on top while it is overdue, at least the floor in force on its date; null
+    /** The figure a claim would have today as an open claim bound by no statement: its rate figure,
+     *  at least the floor in force on its date, with the late charge on that on top while overdue; null
      *  when there is none. */
     public BigDecimal openFigure(String sheetId, Person person, Claim claim) {
         Basis basis = now(sheetId);
         return floored(basis, person, claim, due(basis, person, claim), true);
     }
 
-    /** A rate figure with its late charge (taken as open or not) on top, then at least the sheet's
-     *  floor in force on the claim's date (a correction has no floor); null when the figure is. */
+    /** A rate figure taken at least the sheet's floor in force on the claim's date (a correction has
+     *  no floor), then with the late charge (taken as open or not) worked out on that floored figure
+     *  on top; null when the figure is. */
     private BigDecimal floored(Basis basis, Person person, Claim claim, BigDecimal figure, boolean open) {
         if (figure == null) {
             return null;
         }
-        BigDecimal charged = figure.add(lateCharge(basis, person, claim, figure, open));
-        return claim.isCorrection() ? charged : charged.max(basis.floor(claim.getDate()));
+        BigDecimal floored = claim.isCorrection() ? figure : figure.max(basis.floor(claim.getDate()));
+        return floored.add(lateCharge(basis, person, claim, floored, open));
     }
 
     /** The figure a statement binds a claim to, its due as shown: the one its person's last statement
      *  bound it to (so a bound figure stays as it is until that statement is cancelled), or else its
-     *  live rate figure with the late charge on top while it is overdue, at least the floor in force on
-     *  its date (a pending claim is bound like any other claim that counts). Null when there is none,
+     *  live rate figure, at least the floor in force on its date, with the late charge on that floored
+     *  figure on top while it is overdue (a pending claim is bound like any other claim that counts). Null when there is none,
      *  or when the statement bound it to n/a. */
     public BigDecimal bindable(String sheetId, Person person, Claim claim) {
         return bindable(now(sheetId), person, claim);
