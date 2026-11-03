@@ -1,0 +1,405 @@
+diff --git a/src/main/frontend/src/app/core/session.ts b/src/main/frontend/src/app/core/session.ts
+index 4a746feff..43e98c601 100644
+--- a/src/main/frontend/src/app/core/session.ts
++++ b/src/main/frontend/src/app/core/session.ts
+@@ -15,6 +15,13 @@ function toLocale(value: string | null | undefined): Locale {
+   return value === 'de' ? 'de' : 'en';
+ }
+ 
++/** The people-list columns a user may switch off on their screen, in the order the chooser lists them. */
++export const PERSON_COLUMNS = [
++  'claimed', 'due-total', 'excess', 'statement-count', 'stated-total', 'statement-date', 'overdue-count',
++  'overdue-total', 'patrons', 'backing', 'hold', 'retired', 'terms', 'contact', 'aliases',
++] as const;
++export type PersonColumn = (typeof PERSON_COLUMNS)[number];
++
+ interface SheetView {
+   id: string;
+   today: string;
+@@ -30,6 +37,10 @@ export class Session {
+   readonly user = signal<string | null>(null);
+   /** The signed-in user's locale, kept per user in the store; en unless chosen. */
+   readonly locale = signal<Locale>('en');
++  /** The people-list columns the signed-in user's screen leaves out, kept per user in the store. */
++  readonly hiddenColumns = signal<ReadonlySet<string>>(new Set());
++  /** Column choices are written one after another, so the store ends with the last one made. */
++  private columnWrites: Promise<unknown> = Promise.resolve();
+   readonly sheetId = signal<string | null>(null);
+   /** The active sheet's today (yyyy-mm-dd) as the store holds it. */
+   readonly sheetToday = signal<string | null>(null);
+@@ -53,6 +64,7 @@ export class Session {
+     const res = await firstValueFrom(this.http.post<SignedIn>('/api/signin', { name }));
+     this.user.set(res.name);
+     this.locale.set(toLocale(res.locale));
++    this.hiddenColumns.set(new Set());
+     this.sheetId.set(null);
+     this.shownId.set(null);
+     this.sheetToday.set(null);
+@@ -77,6 +89,7 @@ export class Session {
+     );
+     this.show(res);
+     await this.readLocale(user);
++    await this.readColumns(user);
+     this.bumpLoads();
+   }
+ 
+@@ -98,6 +111,32 @@ export class Session {
+     this.locale.set(toLocale(res.locale));
+   }
+ 
++  /** Switch a people-list column on or off on the signed-in user's screen; kept for them across sheets. */
++  async setColumnShown(column: PersonColumn, shown: boolean): Promise<void> {
++    const user = this.user();
++    if (!user) throw new Error('not signed in');
++    const hidden = new Set(this.hiddenColumns());
++    if (shown) hidden.delete(column);
++    else hidden.add(column);
++    this.hiddenColumns.set(hidden);
++    const write = this.columnWrites.catch(() => undefined).then(() =>
++      firstValueFrom(
++        this.http.put<{ hidden: string[] }>('/api/me/columns', { hidden: [...hidden] }, { headers: { 'X-User': user } }),
++      ),
++    );
++    this.columnWrites = write;
++    await write;
++  }
++
++  /** Re-read the user's column choice from the store, once any of theirs still being written is in. */
++  private async readColumns(user: string): Promise<void> {
++    await this.columnWrites.catch(() => undefined);
++    const res = await firstValueFrom(
++      this.http.get<{ hidden: string[] }>('/api/me/columns', { headers: { 'X-User': user } }),
++    );
++    this.hiddenColumns.set(new Set(res.hidden));
++  }
++
+   /** Change the active sheet's today. */
+   async setToday(today: string): Promise<void> {
+     const user = this.user();
+diff --git a/src/main/frontend/src/app/features/people/people-list.ts b/src/main/frontend/src/app/features/people/people-list.ts
+index a69ba0f92..8733c7255 100644
+--- a/src/main/frontend/src/app/features/people/people-list.ts
++++ b/src/main/frontend/src/app/features/people/people-list.ts
+@@ -7,7 +7,7 @@ import { Pools, formatCents } from '../../core/pools';
+ import { Grade, Leave, People, Person, Taken, gradeOn } from '../../core/people';
+ import { Period, Periods, periodOf } from '../../core/periods';
+ import { Rate, Rates, pctOn, weightedSum } from '../../core/rates';
+-import { Session } from '../../core/session';
++import { PERSON_COLUMNS, PersonColumn, Session } from '../../core/session';
+ import { downloadCsv } from '../../core/csv';
+ import { DatedValue, Graces, RoundingMode, SheetSettings, graceOn, valueOn } from '../../core/settings';
+ import { Watch, Watches } from '../../core/watches';
+@@ -124,6 +124,19 @@ const NO_LEAVE: Leave = { holds: [], retiredFrom: null };
+           (change)="showRetired.set($any($event.target).checked)" />
+         Show retired
+       </label>
++      <fieldset>
++        <legend>Columns shown on your screen</legend>
++        @for (c of columns; track c) {
++          <label>
++            <input type="checkbox" [attr.data-testid]="'column-' + c" [checked]="shows(c)"
++              (change)="setColumnShown(c, $any($event.target).checked)" />
++            {{ c }}
++          </label>
++        }
++        @if (columnsError()) {
++          <p role="alert" data-testid="columns-error">{{ columnsError() }}</p>
++        }
++      </fieldset>
+       <label for="sort-by">Sort by</label>
+       <select id="sort-by" data-testid="sort-by" [value]="sortBy()"
+         (change)="sortBy.set($any($event.target).value)">
+@@ -201,7 +214,7 @@ const NO_LEAVE: Leave = { holds: [], retiredFrom: null };
+       <button type="button" data-testid="export-claims" (click)="exportClaimsCsv()">Export claims (CSV)</button>
+       <table data-testid="people">
+         <thead>
+-          <tr><th scope="col"><span class="visually-hidden">Select</span></th><th scope="col">Name</th><th scope="col">Grade</th><th scope="col">Active</th><th scope="col">Terms</th><th scope="col">Contact</th><th scope="col">Tags</th><th scope="col">Aliases</th><th scope="col">Clashing</th><th scope="col">Came from</th><th scope="col">Claimed</th><th scope="col">Due</th><th scope="col">Settled due</th><th scope="col">Open due</th>@for (pd of periods(); track pd.id) {<th scope="col">Due in {{ pd.name }}</th>}<th scope="col">Excess</th><th scope="col">Cut total</th><th scope="col">Statements</th><th scope="col">Last stated</th><th scope="col">Stated on</th><th scope="col">Retired</th><th scope="col">Retired from</th><th scope="col">Past retirements</th><th scope="col">Snapshots</th><th scope="col">On hold</th><th scope="col">Overdue</th><th scope="col">Overdue due</th><th scope="col">Due aged 0–30 days</th><th scope="col">Due aged 31–60 days</th><th scope="col">Due aged 61+ days</th><th scope="col">Patrons</th><th scope="col">Backing</th><th scope="col">Watched</th><th scope="col">Plans</th><th scope="col">Claims</th><th scope="col"><span class="visually-hidden">Actions</span></th></tr>
++          <tr><th scope="col"><span class="visually-hidden">Select</span></th><th scope="col">Name</th><th scope="col">Grade</th><th scope="col">Active</th>@if (shows('terms')) {<th scope="col">Terms</th>}@if (shows('contact')) {<th scope="col">Contact</th>}<th scope="col">Tags</th>@if (shows('aliases')) {<th scope="col">Aliases</th>}<th scope="col">Clashing</th><th scope="col">Came from</th>@if (shows('claimed')) {<th scope="col">Claimed</th>}@if (shows('due-total')) {<th scope="col">Due</th>}<th scope="col">Settled due</th><th scope="col">Open due</th>@for (pd of periods(); track pd.id) {<th scope="col">Due in {{ pd.name }}</th>}@if (shows('excess')) {<th scope="col">Excess</th>}<th scope="col">Cut total</th>@if (shows('statement-count')) {<th scope="col">Statements</th>}@if (shows('stated-total')) {<th scope="col">Last stated</th>}@if (shows('statement-date')) {<th scope="col">Stated on</th>}@if (shows('retired')) {<th scope="col">Retired</th>}<th scope="col">Retired from</th><th scope="col">Past retirements</th><th scope="col">Snapshots</th>@if (shows('hold')) {<th scope="col">On hold</th>}@if (shows('overdue-count')) {<th scope="col">Overdue</th>}@if (shows('overdue-total')) {<th scope="col">Overdue due</th>}<th scope="col">Due aged 0–30 days</th><th scope="col">Due aged 31–60 days</th><th scope="col">Due aged 61+ days</th>@if (shows('patrons')) {<th scope="col">Patrons</th>}@if (shows('backing')) {<th scope="col">Backing</th>}<th scope="col">Watched</th><th scope="col">Plans</th><th scope="col">Claims</th><th scope="col"><span class="visually-hidden">Actions</span></th></tr>
+         </thead>
+         <tbody>
+           @for (p of sorted(); track p.id) {
+@@ -214,25 +227,45 @@ const NO_LEAVE: Leave = { holds: [], retiredFrom: null };
+               <td data-testid="person-name">{{ p.name }}</td>
+               <td data-testid="person-grade">{{ gradeOf(p) }}</td>
+               <td data-testid="person-active">{{ activeOf(p) ? 'yes' : 'no' }}</td>
+-              <td data-testid="person-terms">{{ p.terms ?? '' }}</td>
+-              <td data-testid="person-contact">{{ p.contact ?? '' }}</td>
++              @if (shows('terms')) {
++                <td data-testid="person-terms">{{ p.terms ?? '' }}</td>
++              }
++              @if (shows('contact')) {
++                <td data-testid="person-contact">{{ p.contact ?? '' }}</td>
++              }
+               <td data-testid="person-tags">{{ p.tags }}</td>
+-              <td data-testid="person-aliases">{{ p.aliases.join(', ') }}</td>
++              @if (shows('aliases')) {
++                <td data-testid="person-aliases">{{ p.aliases.join(', ') }}</td>
++              }
+               <td data-testid="person-clashing">{{ p.clashing ? 'yes' : 'no' }}</td>
+               <td data-testid="person-origin">{{ p.origin ?? '' }}</td>
+-              <td data-testid="person-claimed">{{ claimed().get(p.id) ?? '0.00' | figure }}</td>
+-              <td data-testid="person-due-total">{{ dueOf(p) ?? 'n/a' | figure }}</td>
++              @if (shows('claimed')) {
++                <td data-testid="person-claimed">{{ claimed().get(p.id) ?? '0.00' | figure }}</td>
++              }
++              @if (shows('due-total')) {
++                <td data-testid="person-due-total">{{ dueOf(p) ?? 'n/a' | figure }}</td>
++              }
+               <td data-testid="person-settled-total">{{ settledTotalOf(p) | figure }}</td>
+               <td data-testid="person-open-total">{{ openTotalOf(p) | figure }}</td>
+               @for (pd of periods(); track pd.id) {
+                 <td [attr.data-testid]="'person-period-' + pd.name + '-due-total'">{{ periodDueOf(p.id, pd) | figure }}</td>
+               }
+-              <td data-testid="person-excess">{{ excessOf(p) | figure }}</td>
++              @if (shows('excess')) {
++                <td data-testid="person-excess">{{ excessOf(p) | figure }}</td>
++              }
+               <td data-testid="person-cut-total">{{ cutTotals().get(p.id) ?? '0.00' | figure }}</td>
+-              <td data-testid="person-statement-count">{{ p.statementCount }}</td>
+-              <td data-testid="person-stated-total">{{ (p.statementCount > 0 ? (p.statedTotal ?? 'n/a') : '') | figure }}</td>
+-              <td data-testid="person-statement-date">{{ p.statementDate ?? '' }}</td>
+-              <td data-testid="person-retired">{{ p.retired ? 'yes' : 'no' }}</td>
++              @if (shows('statement-count')) {
++                <td data-testid="person-statement-count">{{ p.statementCount }}</td>
++              }
++              @if (shows('stated-total')) {
++                <td data-testid="person-stated-total">{{ (p.statementCount > 0 ? (p.statedTotal ?? 'n/a') : '') | figure }}</td>
++              }
++              @if (shows('statement-date')) {
++                <td data-testid="person-statement-date">{{ p.statementDate ?? '' }}</td>
++              }
++              @if (shows('retired')) {
++                <td data-testid="person-retired">{{ p.retired ? 'yes' : 'no' }}</td>
++              }
+               <td data-testid="person-retired-from">{{ p.retiredFrom ?? '' }}</td>
+               <td>
+                 @if (p.retirements.length > 0) {
+@@ -252,24 +285,34 @@ const NO_LEAVE: Leave = { holds: [], retiredFrom: null };
+                   </ul>
+                 }
+               </td>
+-              <td>
+-                <span data-testid="person-hold">{{ p.held ? 'yes' : 'no' }}</span>
+-                @if (p.holds.length > 0) {
+-                  <ul>
+-                    @for (h of p.holds; track $index) {
+-                      <li data-testid="person-hold-line">{{ h.from ?? '…' }} – {{ h.to ?? '…' }}</li>
+-                    }
+-                  </ul>
+-                }
+-              </td>
+-              <td data-testid="person-overdue-count">{{ overdueOf(p).length }}</td>
+-              <td data-testid="person-overdue-total">{{ overdueTotalOf(p) | figure }}</td>
++              @if (shows('hold')) {
++                <td>
++                  <span data-testid="person-hold">{{ p.held ? 'yes' : 'no' }}</span>
++                  @if (p.holds.length > 0) {
++                    <ul>
++                      @for (h of p.holds; track $index) {
++                        <li data-testid="person-hold-line">{{ h.from ?? '…' }} – {{ h.to ?? '…' }}</li>
++                      }
++                    </ul>
++                  }
++                </td>
++              }
++              @if (shows('overdue-count')) {
++                <td data-testid="person-overdue-count">{{ overdueOf(p).length }}</td>
++              }
++              @if (shows('overdue-total')) {
++                <td data-testid="person-overdue-total">{{ overdueTotalOf(p) | figure }}</td>
++              }
+               @let aged = agedOf(p);
+               <td data-testid="person-aged-0-30">{{ aged[0] | figure }}</td>
+               <td data-testid="person-aged-31-60">{{ aged[1] | figure }}</td>
+               <td data-testid="person-aged-61">{{ aged[2] | figure }}</td>
+-              <td data-testid="person-patrons">{{ patronNames().get(p.id) ?? '' }}</td>
+-              <td data-testid="person-backing">{{ backingOf(p) | figure }}</td>
++              @if (shows('patrons')) {
++                <td data-testid="person-patrons">{{ patronNames().get(p.id) ?? '' }}</td>
++              }
++              @if (shows('backing')) {
++                <td data-testid="person-backing">{{ backingOf(p) | figure }}</td>
++              }
+               <td data-testid="person-watched">{{ watched().has(p.id) ? 'yes' : 'no' }}</td>
+               <td>
+                 <app-person-plans [personId]="p.id" [name]="p.name" [plans]="plansByPerson().get(p.id) ?? []"
+@@ -383,6 +426,9 @@ export class PeopleList {
+   protected readonly people = signal<Person[]>([]);
+   /** Whether retired people are listed; off when the screen opens, kept as it is across loads. */
+   protected readonly showRetired = signal(false);
++  /** The people-list columns the signed-in user can switch off on their screen. */
++  protected readonly columns = PERSON_COLUMNS;
++  protected readonly columnsError = signal('');
+   /** The people listed: everyone, or only those not retired unless "show retired" is on. */
+   protected readonly shown = computed(() =>
+     this.showRetired() ? this.people() : this.people().filter((p) => !p.retired),
+@@ -840,6 +886,20 @@ export class PeopleList {
+     });
+   }
+ 
++  /** Whether the signed-in user's screen shows a people-list column. */
++  protected shows(column: PersonColumn): boolean {
++    return !this.session.hiddenColumns().has(column);
++  }
++
++  protected async setColumnShown(column: PersonColumn, shown: boolean): Promise<void> {
++    this.columnsError.set('');
++    try {
++      await this.session.setColumnShown(column, shown);
++    } catch {
++      this.columnsError.set('Your column choice could not be saved.');
++    }
++  }
++
+   protected open(p: Person): void {
+     this.personError.set(null);
+     this.patronError.set(null);
+diff --git a/src/main/java/net/officefloor/hq/app/user/UserColumnsController.java b/src/main/java/net/officefloor/hq/app/user/UserColumnsController.java
+new file mode 100644
+index 000000000..58dc14efb
+--- /dev/null
++++ b/src/main/java/net/officefloor/hq/app/user/UserColumnsController.java
+@@ -0,0 +1,44 @@
++package net.officefloor.hq.app.user;
++
++import jakarta.validation.Valid;
++import jakarta.validation.constraints.NotBlank;
++import jakarta.validation.constraints.NotNull;
++import jakarta.validation.constraints.Size;
++import java.util.List;
++import org.springframework.validation.annotation.Validated;
++import org.springframework.web.bind.annotation.GetMapping;
++import org.springframework.web.bind.annotation.PutMapping;
++import org.springframework.web.bind.annotation.RequestBody;
++import org.springframework.web.bind.annotation.RequestHeader;
++import org.springframework.web.bind.annotation.RequestMapping;
++import org.springframework.web.bind.annotation.RestController;
++
++/** The people-list columns the signed-in user's screen leaves out, kept per user across every sheet. */
++@RestController
++@RequestMapping("/api/me/columns")
++@Validated
++public class UserColumnsController {
++
++    public record ColumnsChange(@NotNull @Size(max = 50) List<@NotBlank String> hidden) {
++    }
++
++    public record ColumnsView(List<String> hidden) {
++    }
++
++    private final UserPrefService service;
++
++    public UserColumnsController(UserPrefService service) {
++        this.service = service;
++    }
++
++    @GetMapping
++    public ColumnsView get(@RequestHeader("X-User") @NotBlank @Size(max = 100) String user) {
++        return new ColumnsView(service.hiddenColumnsOf(user.trim()));
++    }
++
++    @PutMapping
++    public ColumnsView set(@RequestHeader("X-User") @NotBlank @Size(max = 100) String user,
++            @Valid @RequestBody ColumnsChange request) {
++        return new ColumnsView(service.setHiddenColumns(user.trim(), request.hidden()));
++    }
++}
+diff --git a/src/main/java/net/officefloor/hq/app/user/UserPref.java b/src/main/java/net/officefloor/hq/app/user/UserPref.java
+index 0ddd41e72..c5c1f1da6 100644
+--- a/src/main/java/net/officefloor/hq/app/user/UserPref.java
++++ b/src/main/java/net/officefloor/hq/app/user/UserPref.java
+@@ -18,6 +18,10 @@ public class UserPref {
+     @Column(name = "locale", nullable = false)
+     private String locale;
+ 
++    /** The people-list columns this user's screen leaves out, comma-separated; blank shows them all. */
++    @Column(name = "hidden_columns", nullable = false)
++    private String hiddenColumns = "";
++
+     protected UserPref() {
+     }
+ 
+@@ -37,4 +41,12 @@ public class UserPref {
+     public void setLocale(String locale) {
+         this.locale = locale;
+     }
++
++    public String getHiddenColumns() {
++        return hiddenColumns;
++    }
++
++    public void setHiddenColumns(String hiddenColumns) {
++        this.hiddenColumns = hiddenColumns;
++    }
+ }
+diff --git a/src/main/java/net/officefloor/hq/app/user/UserPrefService.java b/src/main/java/net/officefloor/hq/app/user/UserPrefService.java
+index 432179a19..7c6b81141 100644
+--- a/src/main/java/net/officefloor/hq/app/user/UserPrefService.java
++++ b/src/main/java/net/officefloor/hq/app/user/UserPrefService.java
+@@ -1,12 +1,15 @@
+ package net.officefloor.hq.app.user;
+ 
++import java.util.Arrays;
++import java.util.List;
+ import java.util.Set;
+ import org.springframework.http.HttpStatus;
+ import org.springframework.stereotype.Service;
+ import org.springframework.transaction.annotation.Transactional;
+ import org.springframework.web.server.ResponseStatusException;
+ 
+-/** A user's locale: en unless chosen. Choosing one writes no audit line. */
++/** A user's locale, en unless chosen, and the people-list columns their screen leaves out. Choosing
++ *  either writes no audit line. */
+ @Service
+ public class UserPrefService {
+ 
+@@ -14,6 +17,11 @@ public class UserPrefService {
+ 
+     public static final Set<String> LOCALES = Set.of("en", "de");
+ 
++    /** The people-list columns a user may switch off, in the order the chooser lists them. */
++    public static final List<String> COLUMNS = List.of("claimed", "due-total", "excess", "statement-count",
++            "stated-total", "statement-date", "overdue-count", "overdue-total", "patrons", "backing", "hold",
++            "retired", "terms", "contact", "aliases");
++
+     private final UserPrefRepository prefs;
+ 
+     public UserPrefService(UserPrefRepository prefs) {
+@@ -33,4 +41,28 @@ public class UserPrefService {
+         prefs.findById(user).ifPresentOrElse(p -> p.setLocale(locale), () -> prefs.save(new UserPref(user, locale)));
+         return locale;
+     }
++
++    @Transactional(readOnly = true)
++    public List<String> hiddenColumnsOf(String user) {
++        return prefs.findById(user).map(p -> split(p.getHiddenColumns())).orElse(List.of());
++    }
++
++    @Transactional
++    public List<String> setHiddenColumns(String user, List<String> hidden) {
++        if (!COLUMNS.containsAll(hidden)) {
++            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Unknown column");
++        }
++        List<String> ordered = COLUMNS.stream().filter(hidden::contains).toList();
++        String joined = String.join(",", ordered);
++        prefs.findById(user).ifPresentOrElse(p -> p.setHiddenColumns(joined), () -> {
++            UserPref pref = new UserPref(user, DEFAULT_LOCALE);
++            pref.setHiddenColumns(joined);
++            prefs.save(pref);
++        });
++        return ordered;
++    }
++
++    private static List<String> split(String joined) {
++        return joined.isBlank() ? List.of() : Arrays.asList(joined.split(","));
++    }
+ }
+diff --git a/src/main/resources/db/migration/V93__user_columns.sql b/src/main/resources/db/migration/V93__user_columns.sql
+new file mode 100644
+index 000000000..db97f0184
+--- /dev/null
++++ b/src/main/resources/db/migration/V93__user_columns.sql
+@@ -0,0 +1,3 @@
++-- The people-list columns each user has switched off on their screen, comma-separated; blank shows
++-- every column. A user who only chose columns gets the default locale.
++ALTER TABLE user_pref ADD COLUMN hidden_columns VARCHAR(500) DEFAULT '' NOT NULL;

@@ -1,0 +1,64 @@
+{
+  "checkpoint": 158,
+  "stack": {
+    "repo": "/home/daniel/officehq-angular-spring",
+    "origin": "git@github.com:officefloor/officehq-angular-spring.git",
+    "name": "officehq-angular-spring",
+    "base_ref": "base-empty",
+    "base_commit": "65cb8233ea38b2dfa6cfd18709e30cd18fdf3250"
+  },
+  "checkpoint_id": "cp158_column-chooser",
+  "phase": "mid",
+  "type": "additive",
+  "mutates": [],
+  "replaced_tests": [],
+  "request": {
+    "spec": "Each user can choose which columns of the people list their screen shows: a checkbox per column\n(claimed, due-total, statement-count, stated-total, statement-date, overdue-count, overdue-total,\npatrons, backing, hold, retired, terms, contact, aliases), per user's screen. A column switched off has no cell on the screen at all; totals, the header, the summary and every other figure are\nunaffected.\n",
+    "prompt": "You are implementing ONE change to this application.\n\nFIRST read AGENTS.md \u2014 it states the working rules and how the app is tested, and sends you to\nDESIGN.md for the app's stack and conventions. Follow both.\n\nTHE CHANGE REQUEST:\nEach user can choose which columns of the people list their screen shows: a checkbox per column\n(claimed, due-total, statement-count, stated-total, statement-date, overdue-count, overdue-total,\npatrons, backing, hold, retired, terms, contact, aliases), per user's screen. A column switched off has no cell on the screen at all; totals, the header, the summary and every other figure are\nunaffected.\n\nYour work is verified by an automated Playwright UI test already installed under e2e/specs/.\nRead that spec: it declares the exact data-testid anchors, values, test data and any audit\nrecords it expects \u2014 match them. Run `bin/e2e` to build the app, start it, and run the test as\nyou work; iterate until it passes. Change whatever the request needs across the app \u2014 its stored\ndata, its server and its front end. Do NOT edit bin/build, bin/start, bin/stop, bin/e2e,\nAGENTS.md, CLAUDE.md, DESIGN.md, e2e/support/ or the test spec.\n"
+  },
+  "commit_sha": "3c71035891030c309b60739bd22617318e1f4a0e",
+  "reset_sha": "",
+  "preagent_sha": "aba76583e8af91e54a87a5187e068a179372dae4",
+  "prev_sha": "aba76583e8af91e54a87a5187e068a179372dae4",
+  "base_sha": "65cb8233ea38b2dfa6cfd18709e30cd18fdf3250",
+  "agent": {
+    "ok": true,
+    "cost_usd": 0.7087302000000001,
+    "input_tokens": 30,
+    "output_tokens": 9089,
+    "cache_read_tokens": 574591,
+    "cache_creation_tokens": 51489,
+    "num_turns": 15,
+    "duration_ms": 292162,
+    "duration_api_ms": 96731,
+    "model": "claude-opus-5-5",
+    "session_id": "ceafd6eb-add4-4350-8b2c-6a3b31f8163d",
+    "stop_reason": "success",
+    "result_text": "I added a column chooser to the people list, and all 4 Playwright tests pass under `bin/e2e`.\n\n**What the user sees:** below \"Show retired\" there's a \"Columns shown on your screen\" group with one checkbox per column, each with test id `column-<name>`. Unticking one removes that column's cells from every person row entirely, not just hides them. Totals, the header counters, the summary and every other figure stay the same, and another user's screen is unaffected.\n\n**One addition beyond the request:** I added a checkbox for **`excess`**. Your list didn't name it, but the test switches it off and expects its cells to disappear, so the chooser has 15 columns rather than 14.\n\n**Where the choice is kept:** it's saved per user on the server, like the existing locale preference, and applies to every sheet.\n- A new migration, `V93__user_columns.sql`, adds a `hidden_columns` field to `user_pref`.\n- A new `UserColumnsController` provides `GET`/`PUT /api/me/columns`. It rejects unknown column names and writes nothing to the audit file.\n- In the front end, `Session` reads the choice again each time a sheet loads. Each tick shows immediately, and the saves are sent one at a time so the server ends up with the last change made.\n\n**Two decisions you might want to revisit:**\n- I removed each switched-off column's heading in the table along with its cells, so the remaining headings still line up. I read \"the header\" in the request as the header counters, which don't change.\n- If saving a choice fails, a `columns-error` message appears. I avoided a `column-` prefix for it because the test helper treats every `column-*` element as a checkbox.",
+    "error": "",
+    "attempts": [
+      {
+        "ok": true,
+        "limit_reached": false,
+        "retryable": false,
+        "timed_out": false,
+        "cost_usd": 0.7087302000000001,
+        "num_turns": 15,
+        "duration_ms": 292162,
+        "duration_api_ms": 96731,
+        "error": ""
+      }
+    ]
+  },
+  "agent_stream_file": "cp158.agent.jsonl",
+  "agent_diff_file": "cp158.agent.diff",
+  "build_log_file": null,
+  "tests": {
+    "gated": false,
+    "queued": true
+  },
+  "probe": null,
+  "pinned_touched": [],
+  "acceptance_touched": [],
+  "impact_gate": null
+}
