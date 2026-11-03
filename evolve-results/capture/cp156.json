@@ -1,0 +1,69 @@
+{
+  "checkpoint": 156,
+  "stack": {
+    "repo": "/home/daniel/officehq-angular-spring",
+    "origin": "git@github.com:officefloor/officehq-angular-spring.git",
+    "name": "officehq-angular-spring",
+    "base_ref": "base-empty",
+    "base_commit": "65cb8233ea38b2dfa6cfd18709e30cd18fdf3250"
+  },
+  "checkpoint_id": "cp156_forward-only-rates",
+  "phase": "mid",
+  "type": "mutative",
+  "mutates": [
+    118
+  ],
+  "replaced_tests": [
+    "cp118_import-rates.spec.ts::import rates",
+    "cp118_import-rates.spec.ts::import rates scenario 3"
+  ],
+  "request": {
+    "spec": "A rate saved with a from-date on or after the sheet's today is forward-only: it applies only to\nclaims added after it was saved (by any path), and claims already on the sheet keep using the rates\nthat applied to them. A rate with no from-date, or with a from-date before the sheet's today when it\nis saved, applies to every claim as before. The rates panel, the rate preview and the rate calendar\nshow the rate in force without regard to this.\n",
+    "prompt": "You are implementing ONE change to this application.\n\nFIRST read AGENTS.md \u2014 it states the working rules and how the app is tested, and sends you to\nDESIGN.md for the app's stack and conventions. Follow both.\n\nTHE CHANGE REQUEST:\nA rate saved with a from-date on or after the sheet's today is forward-only: it applies only to\nclaims added after it was saved (by any path), and claims already on the sheet keep using the rates\nthat applied to them. A rate with no from-date, or with a from-date before the sheet's today when it\nis saved, applies to every claim as before. The rates panel, the rate preview and the rate calendar\nshow the rate in force without regard to this.\n\nYour work is verified by an automated Playwright UI test already installed under e2e/specs/.\nRead that spec: it declares the exact data-testid anchors, values, test data and any audit\nrecords it expects \u2014 match them. Run `bin/e2e` to build the app, start it, and run the test as\nyou work; iterate until it passes. Change whatever the request needs across the app \u2014 its stored\ndata, its server and its front end. Do NOT edit bin/build, bin/start, bin/stop, bin/e2e,\nAGENTS.md, CLAUDE.md, DESIGN.md, e2e/support/ or the test spec.\n"
+  },
+  "commit_sha": "14cf21da7bccdcc248e4db62ca89de87bf86adaf",
+  "reset_sha": "",
+  "preagent_sha": "c29738d30905ba9369e6e18796392d7e2846dde2",
+  "prev_sha": "c29738d30905ba9369e6e18796392d7e2846dde2",
+  "base_sha": "65cb8233ea38b2dfa6cfd18709e30cd18fdf3250",
+  "agent": {
+    "ok": true,
+    "cost_usd": 2.0370444,
+    "input_tokens": 90,
+    "output_tokens": 28350,
+    "cache_read_tokens": 3264582,
+    "cache_creation_tokens": 102096,
+    "num_turns": 46,
+    "duration_ms": 766144,
+    "duration_api_ms": 282345,
+    "model": "claude-opus-5-5",
+    "session_id": "46f167d1-4a54-4680-b66d-2847e129adb0",
+    "stop_reason": "success",
+    "result_text": "Forward-only rates are in, and `bin/e2e` passes all 4 tests in the spec.\n\n**How it works.** Claims and rates now share one counter that sets their order. A claim gets the next number when it's added, by any path (form, quick-add, paste, import, plan, correction), since all of these go through `ClaimService.add`. A rate saved with a from-date on or after the sheet's today counts as forward-only: it also takes the next number and stores it as `forwardAfter`. It applies to a claim only if the claim's number is higher. A rate saved with no from-date, or with an earlier one, stores nothing, so it applies to every claim as before.\n\nIf a claim is older than a forward-only rate, the rate is skipped for that claim. The claim uses the newest earlier version of that same rate that applied to it, or if there is none, the next rate below it. So claims already on the sheet keep the rates they had.\n\n**What changed:**\n- **Stored data:** migration `V91__forward_only_rate.sql` adds the counter, `claim.added`, and `forward_after` on `rate`, `rate_version` and `rate_revision`. It also adds `added` to `claim_revision` so the as-of view applies the same rule. Claims already stored come before any forward-only rate.\n- **Server:** `RateService.set` decides whether a rate is forward-only, and rate import goes through it too. `Dues` has a new `rateFor(grade, claim)` that claim dues now use, including rates inherited from parent sheets and the as-of view. The rates panel and the person's \"rated\" check still use the plain rate in force. The rate preview applies the candidate rate to every claim, as the request asks.\n- **Front end:** the browser works out dues itself, so it needs the same rule. The rates API now sends each rate's `forwardAfter` and its older versions, and each claim now carries `added`. A new `pctFor` in `core/rates.ts` applies the rule, and `claimDue` uses it. The rates panel and calendar still use `pctOn`, the plain rate in force.\n\n**Choices you may want to change:**\n- **Moved and copied claims:** a claim moved to another sheet, copied by a sheet clone, or split off keeps its original place in the order, so it is treated as an old claim, not a newly added one.\n- **Clone loses older rate versions:** cloning a sheet copies each rate's forward-only marker but, as before this change, not its older versions. On the clone, an old claim may fall back to the next rate down instead of the rate's earlier version.\n- **As-of view uses daily snapshots:** this view finds a rate's older versions from its saved snapshots, which are recorded once per sheet day. A version that was replaced on the same day can be missing there.",
+    "error": "",
+    "attempts": [
+      {
+        "ok": true,
+        "limit_reached": false,
+        "retryable": false,
+        "timed_out": false,
+        "cost_usd": 2.0370444,
+        "num_turns": 46,
+        "duration_ms": 766144,
+        "duration_api_ms": 282345,
+        "error": ""
+      }
+    ]
+  },
+  "agent_stream_file": "cp156.agent.jsonl",
+  "agent_diff_file": "cp156.agent.diff",
+  "build_log_file": null,
+  "tests": {
+    "gated": false,
+    "queued": true
+  },
+  "probe": null,
+  "pinned_touched": [],
+  "acceptance_touched": [],
+  "impact_gate": null
+}
