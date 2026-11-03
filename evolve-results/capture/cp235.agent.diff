@@ -1,0 +1,212 @@
+diff --git a/src/main/frontend/src/app/core/people.ts b/src/main/frontend/src/app/core/people.ts
+index b5c4876e5..874a31563 100644
+--- a/src/main/frontend/src/app/core/people.ts
++++ b/src/main/frontend/src/app/core/people.ts
+@@ -210,6 +210,17 @@ export class People {
+     );
+   }
+ 
++  /** Put the people on hold from a day (null: the sheet's today) to a day (null: open-ended), each
++   *  as a row's hold would, in list order; answers how many were held and those people as they now
++   *  show. */
++  holdAll(personIds: number[], from: string | null, to: string | null): Promise<{ held: number; people: Person[] }> {
++    const { sheetId, user } = this.active();
++    return firstValueFrom(
++      this.http.post<{ held: number; people: Person[] }>(`${this.url(sheetId)}/hold`, { personIds, from, to },
++        { headers: { 'X-User': user } }),
++    );
++  }
++
+   /** Give the person an alias; refused when it equals any name or alias on the sheet. */
+   addAlias(id: number, alias: string): Promise<Person> {
+     const { sheetId, user } = this.active();
+diff --git a/src/main/frontend/src/app/features/people/people-list.ts b/src/main/frontend/src/app/features/people/people-list.ts
+index 9da1bad19..4ff57e4ac 100644
+--- a/src/main/frontend/src/app/features/people/people-list.ts
++++ b/src/main/frontend/src/app/features/people/people-list.ts
+@@ -273,6 +273,23 @@ const NO_LEAVE: Leave = { holds: [], retiredFrom: null };
+           <p role="alert" data-testid="person-error">{{ bulkRetireError() }}</p>
+         }
+       </div>
++      <div role="group" aria-labelledby="bulk-hold-heading">
++        <span id="bulk-hold-heading">Hold selected people</span>
++        <label for="bulk-hold-from">From</label>
++        <input #bulkHoldFrom id="bulk-hold-from" type="date" data-testid="bulk-hold-from"
++          (input)="bulkHoldError.set('')" />
++        <label for="bulk-hold-to">To</label>
++        <input #bulkHoldTo id="bulk-hold-to" type="date" data-testid="bulk-hold-to"
++          (input)="bulkHoldError.set('')" />
++        <button type="button" data-testid="bulk-hold"
++          (click)="holdSelected(bulkHoldFrom.value, bulkHoldTo.value)">Hold selected people</button>
++        @if (bulkHeld() !== null) {
++          <p role="status">Held <strong data-testid="bulk-held">{{ bulkHeld() }}</strong></p>
++        }
++        @if (bulkHoldError()) {
++          <p role="alert" data-testid="person-error">{{ bulkHoldError() }}</p>
++        }
++      </div>
+       <button type="button" data-testid="export-people" (click)="exportCsv()">Export people (CSV)</button>
+       <button type="button" data-testid="export-claims" (click)="exportClaimsCsv()">Export claims (CSV)</button>
+       <button type="button" data-testid="export-periods" (click)="exportPeriodsCsv()">Export period figures (CSV)</button>
+@@ -1082,6 +1099,12 @@ export class PeopleList {
+   protected readonly bulkRetireError = signal('');
+   /** Whether a bulk retire is waiting for its answer: a second press meanwhile is ignored. */
+   private retiringAll = false;
++  /** How many people the last bulk hold held; null while one runs and before the first. */
++  protected readonly bulkHeld = signal<number | null>(null);
++  /** The refusal of the last bulk hold. */
++  protected readonly bulkHoldError = signal('');
++  /** Whether a bulk hold is waiting for its answer: a second press meanwhile is ignored. */
++  private holdingAll = false;
+   /** The id of the person whose editor is open, or null when the form adds a person. */
+   protected readonly editing = signal<number | null>(null);
+   /** The version of the person the open editor loaded. */
+@@ -1163,6 +1186,8 @@ export class PeopleList {
+       this.bulkGradeError.set('');
+       this.bulkRetired.set(null);
+       this.bulkRetireError.set('');
++      this.bulkHeld.set(null);
++      this.bulkHoldError.set('');
+       this.personError.set(null);
+       this.patronError.set(null);
+       this.reset();
+@@ -1642,6 +1667,7 @@ export class PeopleList {
+   protected selectPerson(id: number, on: boolean): void {
+     this.bulkGradeError.set('');
+     this.bulkRetireError.set('');
++    this.bulkHoldError.set('');
+     this.selectedPeople.update((s) => {
+       const next = new Set(s);
+       if (on) next.add(id);
+@@ -1716,6 +1742,37 @@ export class PeopleList {
+     }
+   }
+ 
++  /** Put the selected people listed on hold from the day given (blank: the sheet's today) to the
++   *  day given (blank: open-ended), in list order, then show them as they now are and how many were
++   *  held. */
++  protected async holdSelected(from: string, to: string): Promise<void> {
++    if (this.holdingAll) return;
++    this.bulkHeld.set(null);
++    this.bulkHoldError.set('');
++    const ids = this.shown().filter((p) => this.selectedPeople().has(p.id)).map((p) => p.id);
++    // Holding is the next action on each selected row: an error left on one of them goes.
++    ids.forEach((id) => this.clearPersonError(id));
++    if (ids.length === 0) {
++      this.bulkHoldError.set('Select the people to hold.');
++      return;
++    }
++    this.holdingAll = true;
++    try {
++      const result = await this.api.holdAll(ids, from.trim() || null, to.trim() || null);
++      const byId = new Map(result.people.map((p) => [p.id, p]));
++      this.people.update((ps) => ps.map((p) => byId.get(p.id) ?? p));
++      const editing = this.editing();
++      const edited = editing === null ? undefined : byId.get(editing);
++      if (edited) this.version = edited.version;
++      this.selectedPeople.set(new Set());
++      this.bulkHeld.set(result.held);
++    } catch {
++      this.bulkHoldError.set('The selected people could not be put on hold.');
++    } finally {
++      this.holdingAll = false;
++    }
++  }
++
+   /** Open the selected claims that can be opened, then show the claims as they are now and how many
+    *  were opened and refused. */
+   protected async bulkOpen(): Promise<void> {
+diff --git a/src/main/java/net/officefloor/hq/app/person/PersonController.java b/src/main/java/net/officefloor/hq/app/person/PersonController.java
+index 3a89d7038..3e52f0260 100644
+--- a/src/main/java/net/officefloor/hq/app/person/PersonController.java
++++ b/src/main/java/net/officefloor/hq/app/person/PersonController.java
+@@ -163,6 +163,16 @@ public class PersonController {
+     public record Retired(int retired, List<PersonView> people) {
+     }
+ 
++    /** The bulk hold form: the people to hold, the day the hold starts (left out, the sheet's
++     *  today) and the day it ends (left out, open-ended). */
++    public record BulkHoldForm(@NotNull @Size(max = 1000) Set<@NotNull Long> personIds, LocalDate from,
++            LocalDate to) {
++    }
++
++    /** How many people a bulk hold held, and those people as they now show. */
++    public record Held(int held, List<PersonView> people) {
++    }
++
+     private final PersonService service;
+     private final StatementService statements;
+     private final SheetService sheets;
+@@ -269,6 +279,22 @@ public class PersonController {
+                 .toList());
+     }
+ 
++    @ViewerAllowed
++    @PostMapping("/hold")
++    public Held hold(@PathVariable @NotBlank @Size(max = 100) String sheetId,
++            @RequestHeader("X-User") @NotBlank @Size(max = 100) String user,
++            @Valid @RequestBody BulkHoldForm form) {
++        String sheet = sheetId.trim();
++        List<Person> saved = service.hold(sheet, user.trim(), form.personIds(), form.from(), form.to());
++        Map<Long, StatementSummary> summaries = statements.summaries(sheet);
++        LocalDate today = sheets.today(sheet);
++        Predicate<Person> clashing = service.clashing(sheet);
++        return new Held(saved.size(), saved.stream()
++                .map(p -> PersonView.of(p, summaries.getOrDefault(p.getId(), StatementSummary.NONE), today,
++                        clashing.test(p)))
++                .toList());
++    }
++
+     @PostMapping("/{personId}/aliases")
+     public PersonView addAlias(@PathVariable @NotBlank @Size(max = 100) String sheetId,
+             @PathVariable long personId,
+diff --git a/src/main/java/net/officefloor/hq/app/person/PersonService.java b/src/main/java/net/officefloor/hq/app/person/PersonService.java
+index 5918d860f..a3a0c5186 100644
+--- a/src/main/java/net/officefloor/hq/app/person/PersonService.java
++++ b/src/main/java/net/officefloor/hq/app/person/PersonService.java
+@@ -382,16 +382,45 @@ public class PersonService {
+         });
+     }
+ 
++    /** Put each of the people on hold from a day (null: the sheet's today) to a day (null:
++     *  open-ended), in list order, exactly as a row's hold would: each is followed by their own
++     *  PERSON_HELD and rollup lines. Refused as a whole, changing no one, when an id names no person
++     *  on the sheet or the to-date is before the from-date. A viewer has each of them refused: no
++     *  one changes. */
++    @Transactional
++    public List<Person> hold(String sheetId, String user, Set<Long> personIds, LocalDate from, LocalDate to) {
++        if (SheetRole.VIEWER.equals(roles.roleOf(sheetId, user))) {
++            return List.of();
++        }
++        List<Person> chosen = people.findBySheetIdOrderByPositionAscIdAsc(sheetId).stream()
++                .filter(p -> personIds.contains(p.getId())).toList();
++        if (chosen.size() != personIds.size()) {
++            throw new ResponseStatusException(HttpStatus.NOT_FOUND, "No such person on this sheet");
++        }
++        LocalDate on = holdFrom(sheetId, from, to);
++        return chosen.stream().map(p -> hold(sheetId, user, p, on, to)).toList();
++    }
++
+     /** Put a person on hold from a day (null: the sheet's today) to a day (null: open-ended),
+      *  keeping their other holds; refused when the to-date is before the from-date. */
+     @Transactional
+     public Person hold(String sheetId, String user, long personId, LocalDate from, LocalDate to) {
+         Person person = people.findByIdAndSheetId(personId, sheetId)
+                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "No such person on this sheet"));
++        return hold(sheetId, user, person, holdFrom(sheetId, from, to), to);
++    }
++
++    /** The day a hold starts (null: the sheet's today); refused when the to-date is before it. */
++    private LocalDate holdFrom(String sheetId, LocalDate from, LocalDate to) {
+         LocalDate on = from != null ? from : sheets.today(sheetId);
+         if (to != null && to.isBefore(on)) {
+             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "A hold cannot end before it starts");
+         }
++        return on;
++    }
++
++    /** Put the person on hold from a day to a day (null: open-ended), recording it. */
++    private Person hold(String sheetId, String user, Person person, LocalDate on, LocalDate to) {
+         return rollup.tracking(sheetId, user, () -> {
+             person.addHold(on, to);
+             Person saved = saveUnique(person);
