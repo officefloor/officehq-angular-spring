@@ -1,0 +1,64 @@
+{
+  "checkpoint": 185,
+  "stack": {
+    "repo": "/home/daniel/officehq-angular-spring",
+    "origin": "git@github.com:officefloor/officehq-angular-spring.git",
+    "name": "officehq-angular-spring",
+    "base_ref": "base-empty",
+    "base_commit": "65cb8233ea38b2dfa6cfd18709e30cd18fdf3250"
+  },
+  "checkpoint_id": "cp185_partial-settle",
+  "phase": "late",
+  "type": "additive",
+  "mutates": [],
+  "replaced_tests": [],
+  "request": {
+    "spec": "An OPEN claim can be part-settled: an amount and a button on the claim. The amount is split off\nexactly as the split button does, and the new claim is settled at once by the signed-in user exactly\nas the settle button does (going to PENDING when the clerk limit says so); a split or a settle that\nwould be refused refuses the whole action with an error on the claim and changes nothing; the\nfour-eyes rules and the proof rule are judged on the original claim (the new claim's opener is the\nsigned-in user, as with the split button, who may still part-settle).\n",
+    "prompt": "You are implementing ONE change to this application.\n\nFIRST read AGENTS.md \u2014 it states the working rules and how the app is tested, and sends you to\nDESIGN.md for the app's stack and conventions. Follow both.\n\nTHE CHANGE REQUEST:\nAn OPEN claim can be part-settled: an amount and a button on the claim. The amount is split off\nexactly as the split button does, and the new claim is settled at once by the signed-in user exactly\nas the settle button does (going to PENDING when the clerk limit says so); a split or a settle that\nwould be refused refuses the whole action with an error on the claim and changes nothing; the\nfour-eyes rules and the proof rule are judged on the original claim (the new claim's opener is the\nsigned-in user, as with the split button, who may still part-settle).\n\nYour work is verified by an automated Playwright UI test already installed under e2e/specs/.\nRead that spec: it declares the exact data-testid anchors, values, test data and any audit\nrecords it expects \u2014 match them. Run `bin/e2e` to build the app, start it, and run the test as\nyou work; iterate until it passes. Change whatever the request needs across the app \u2014 its stored\ndata, its server and its front end. Do NOT edit bin/build, bin/start, bin/stop, bin/e2e,\nAGENTS.md, CLAUDE.md, DESIGN.md, e2e/support/ or the test spec.\n"
+  },
+  "commit_sha": "4d8b795f7527f8e3b864981353d84c871474848a",
+  "reset_sha": "",
+  "preagent_sha": "2134698fdc7a24a62cb7855be0b559569c3cd5b3",
+  "prev_sha": "2134698fdc7a24a62cb7855be0b559569c3cd5b3",
+  "base_sha": "65cb8233ea38b2dfa6cfd18709e30cd18fdf3250",
+  "agent": {
+    "ok": true,
+    "cost_usd": 0.5592893999999999,
+    "input_tokens": 26,
+    "output_tokens": 7355,
+    "cache_read_tokens": 425707,
+    "cache_creation_tokens": 40868,
+    "num_turns": 13,
+    "duration_ms": 310101,
+    "duration_api_ms": 93504,
+    "model": "claude-opus-5-5",
+    "session_id": "15903a04-e6c5-4ca8-9606-813fd8597c9b",
+    "stop_reason": "success",
+    "result_text": "I've added part-settle to open claims, and all 4 Playwright tests in `bin/e2e` pass.\n\n**On screen:** each claim row now has a \"Settle part amount\" field and a \"Settle part\" button. A refused part-settle shows `claim-error` on that claim, and typing in the field clears the error. The amount check is the same one the split button uses.\n\n**On the server:** there's a new endpoint, `POST /claims/{id}/settle-part`, backed by `ClaimService.settlePart` in `ClaimService.java`. The whole action runs in one transaction:\n1. It refuses unless the claim is OPEN and the user's role may settle.\n2. It checks the four-eyes rule (the user didn't open or last edit the claim) and the proof rule against the **original** claim. This happens before the split, because splitting lowers the original's due, which would change the proof check.\n3. It calls the existing `split`, so the new claim's opener is the signed-in user, just as with the split button.\n4. It settles the new claim through the normal settle path, which still applies the role, deferral, closed-period and clerk-limit checks (the clerk limit can leave it PENDING). The four-eyes and proof checks are skipped there because step 2 already judged them on the original.\n\nIf any step refuses, the transaction rolls back. Audit records are only written when the transaction commits, so a refused part-settle writes nothing to the store or the audit file. The response carries both the shortened original claim and the new one, so the screen updates both rows.\n\nI moved the \"opened or last edited\" check out of the settle path into a small helper so both paths use it. The ordinary settle behaves as before.",
+    "error": "",
+    "attempts": [
+      {
+        "ok": true,
+        "limit_reached": false,
+        "retryable": false,
+        "timed_out": false,
+        "cost_usd": 0.5592893999999999,
+        "num_turns": 13,
+        "duration_ms": 310101,
+        "duration_api_ms": 93504,
+        "error": ""
+      }
+    ]
+  },
+  "agent_stream_file": "cp185.agent.jsonl",
+  "agent_diff_file": "cp185.agent.diff",
+  "build_log_file": null,
+  "tests": {
+    "gated": false,
+    "queued": true
+  },
+  "probe": null,
+  "pinned_touched": [],
+  "acceptance_touched": [],
+  "impact_gate": null
+}

@@ -1,0 +1,165 @@
+diff --git a/src/main/frontend/src/app/core/claims.ts b/src/main/frontend/src/app/core/claims.ts
+index 8a10d7329..9b1b45955 100644
+--- a/src/main/frontend/src/app/core/claims.ts
++++ b/src/main/frontend/src/app/core/claims.ts
+@@ -524,6 +524,17 @@ export class Claims {
+     );
+   }
+ 
++  /** Part-settle an open claim: split the amount off it and settle the new claim at once (left
++   *  pending when over the clerk limit): the claim with the rest of its amount, and the new claim.
++   *  Refused as a split or a settle of the original claim is, and then nothing changes. */
++  settlePart(id: number, amount: string): Promise<{ original: Claim; split: Claim }> {
++    const { sheetId, user } = this.active();
++    return firstValueFrom(
++      this.http.post<{ original: Claim; split: Claim }>(`${this.url(sheetId)}/claims/${id}/settle-part`, { amount },
++        { headers: { 'X-User': user } }),
++    );
++  }
++
+   /** Move a draft, open or pending claim to another person on the sheet; refused (403) unless the
+    *  user is a steward, and (409) when the claim is settled or void. */
+   reassign(id: number, personId: number): Promise<Claim> {
+diff --git a/src/main/frontend/src/app/features/claims/person-claims.ts b/src/main/frontend/src/app/features/claims/person-claims.ts
+index be82a95be..0ba48e1cd 100644
+--- a/src/main/frontend/src/app/features/claims/person-claims.ts
++++ b/src/main/frontend/src/app/features/claims/person-claims.ts
+@@ -196,6 +196,16 @@ function splitRefusal(e: unknown): string {
+   return 'The claim could not be split.';
+ }
+ 
++/** The message for a refused part-settle of a claim. */
++function settlePartRefusal(e: unknown): string {
++  if (e instanceof HttpErrorResponse && e.status === 423) return CLOSED;
++  if (e instanceof HttpErrorResponse && e.status === 409) return 'Only an open claim that is not deferred can be part-settled.';
++  if (e instanceof HttpErrorResponse && e.status === 403) return 'You may not split or settle this claim.';
++  if (e instanceof HttpErrorResponse && e.status === 428) return 'The claim needs its proofs before it can be settled.';
++  if (e instanceof HttpErrorResponse && e.status === 400) return SPLIT_AMOUNT;
++  return 'The claim could not be part-settled.';
++}
++
+ // A person's claims, newest first, and the form that adds a claim for them or, once a claim's
+ // editor is opened, edits it.
+ @Component({
+@@ -371,6 +381,11 @@ function splitRefusal(e: unknown): string {
+             inputmode="decimal" (input)="clearError(c)" />
+           <button type="button" data-testid="claim-split" (click)="split(c, splitAmount.value)"
+             [attr.aria-label]="'Split claim of ' + c.amount + ' on ' + c.date">Split</button>
++          <label [for]="'claim-settle-part-amount-' + c.id">Settle part amount</label>
++          <input [id]="'claim-settle-part-amount-' + c.id" data-testid="claim-settle-part-amount" #settlePartAmount
++            inputmode="decimal" (input)="clearError(c)" />
++          <button type="button" data-testid="claim-settle-part" (click)="settlePart(c, settlePartAmount.value)"
++            [attr.aria-label]="'Settle part of claim of ' + c.amount + ' on ' + c.date">Settle part</button>
+           <label [for]="'claim-inline-amount-' + c.id">Amount</label>
+           <input [id]="'claim-inline-amount-' + c.id" data-testid="claim-inline-amount" #inlineAmount
+             inputmode="decimal" (input)="clearError(c)" />
+@@ -724,6 +739,22 @@ export class PersonClaims {
+     }
+   }
+ 
++  protected async settlePart(c: Claim, amount: string): Promise<void> {
++    this.claimError.set(null);
++    const part = amount.trim();
++    if (!AMOUNT.test(part) || Number(part) <= 0 || Number(part) >= Number(c.amount)) {
++      this.claimError.set({ id: c.id, message: SPLIT_AMOUNT });
++      return;
++    }
++    try {
++      const { original, split } = await this.api.settlePart(c.id, part);
++      this.saved.emit(original);
++      this.saved.emit(split);
++    } catch (e) {
++      this.claimError.set({ id: c.id, message: settlePartRefusal(e) });
++    }
++  }
++
+   /** Change a draft's amount from its row, under the claim form's rules. */
+   protected async saveAmount(c: Claim, amount: string): Promise<void> {
+     this.claimError.set(null);
+diff --git a/src/main/java/net/officefloor/hq/app/claim/ClaimController.java b/src/main/java/net/officefloor/hq/app/claim/ClaimController.java
+index 7ceb73eea..a45742be6 100644
+--- a/src/main/java/net/officefloor/hq/app/claim/ClaimController.java
++++ b/src/main/java/net/officefloor/hq/app/claim/ClaimController.java
+@@ -535,6 +535,15 @@ public class ClaimController {
+         return new SplitView(ClaimView.of(split.original()), ClaimView.of(split.split()));
+     }
+ 
++    @PostMapping("/claims/{claimId}/settle-part")
++    public SplitView settlePart(@PathVariable @NotBlank @Size(max = 100) String sheetId,
++            @PathVariable long claimId,
++            @RequestHeader("X-User") @NotBlank @Size(max = 100) String user,
++            @Valid @RequestBody SplitForm form) {
++        ClaimService.Split split = service.settlePart(sheetId.trim(), user.trim(), claimId, form.amountValue());
++        return new SplitView(ClaimView.of(split.original()), ClaimView.of(split.split()));
++    }
++
+     /** The void form: the reason chosen from the sheet's list (blank or absent when none). */
+     public record VoidForm(@Size(max = 200) String reason) {
+     }
+diff --git a/src/main/java/net/officefloor/hq/app/claim/ClaimService.java b/src/main/java/net/officefloor/hq/app/claim/ClaimService.java
+index 854e79489..549856ae8 100644
+--- a/src/main/java/net/officefloor/hq/app/claim/ClaimService.java
++++ b/src/main/java/net/officefloor/hq/app/claim/ClaimService.java
+@@ -236,6 +236,13 @@ public class ClaimService {
+     }
+ 
+     private Claim changeStatus(String sheetId, String user, long claimId, ClaimStatus to, String reason) {
++        return changeStatus(sheetId, user, claimId, to, reason, true);
++    }
++
++    /** Change a claim's status; the four-eyes and proof rules of a settle are judged on this claim
++     *  only when asked (a part-settle judges them on the claim it split off). */
++    private Claim changeStatus(String sheetId, String user, long claimId, ClaimStatus to, String reason,
++            boolean judgeSettle) {
+         Claim claim = lock(sheetId, claimId);
+         refuseClosed(sheetId, claim.getDueBy());
+         String voidReason = to == ClaimStatus.VOID ? voidReasons.required(sheetId, reason) : null;
+@@ -263,11 +270,8 @@ public class ClaimService {
+             throw new ResponseStatusException(HttpStatus.CONFLICT,
+                     "A claim deferred until " + claim.getDeferredUntil() + " cannot be settled before then");
+         }
+-        if (to == ClaimStatus.SETTLED && claim.openedOrEditedBy(user)) {
+-            throw new ResponseStatusException(HttpStatus.FORBIDDEN,
+-                    "The user who opened or last edited a claim cannot settle it");
+-        }
+-        if (to == ClaimStatus.SETTLED) {
++        if (to == ClaimStatus.SETTLED && judgeSettle) {
++            refuseSameHands(user, claim);
+             refuseUnproved(sheetId, claim);
+         }
+         ClaimStatus becomes = to == ClaimStatus.SETTLED && overClerkLimit(sheetId, user, claim)
+@@ -761,6 +765,34 @@ public class ClaimService {
+         });
+     }
+ 
++    /** Part-settle an open claim: split the amount off it as {@link #split} does, and settle the new
++     *  claim at once as the settle button does (left PENDING when over the clerk limit). The four-eyes
++     *  and proof rules are judged on the original claim, before the split; any refusal of the split or
++     *  the settle refuses the whole and changes nothing. Returns the original and the new claim. */
++    @Transactional
++    public Split settlePart(String sheetId, String user, long claimId, BigDecimal part) {
++        Claim claim = lock(sheetId, claimId);
++        if (claim.getStatus() != ClaimStatus.OPEN) {
++            throw new ResponseStatusException(HttpStatus.CONFLICT, "Only an open claim can be part-settled");
++        }
++        if (!roles.may(sheetId, user, "settle")) {
++            throw new ResponseStatusException(HttpStatus.FORBIDDEN, "Your role may not settle a claim");
++        }
++        refuseSameHands(user, claim);
++        refuseUnproved(sheetId, claim);
++        Split split = split(sheetId, user, claimId, part);
++        return new Split(split.original(),
++                changeStatus(sheetId, user, split.split().getId(), ClaimStatus.SETTLED, null, false));
++    }
++
++    /** Refuse settling a claim the user opened or last edited. */
++    private static void refuseSameHands(String user, Claim claim) {
++        if (claim.openedOrEditedBy(user)) {
++            throw new ResponseStatusException(HttpStatus.FORBIDDEN,
++                    "The user who opened or last edited a claim cannot settle it");
++        }
++    }
++
+     /** The pending claim a steward approves or rejects, locked; refused when it is not pending, the
+      *  user is not a steward, or its period is closed. */
+     private Claim lockPending(String sheetId, String user, long claimId) {
