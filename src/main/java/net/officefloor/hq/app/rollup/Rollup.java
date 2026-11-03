@@ -196,11 +196,8 @@ public class Rollup {
                 names.addAll(person.getAliases());
                 members.add(new Member(names, "n/a".equals(personDue) ? null : personDue,
                         personFigures.overdueTotal()));
-                String grade = person.gradeOn(basis.today());
-                if (!person.isRetired() && grade != null && !"n/a".equals(personDue)) {
-                    gradeDue.merge(grade, new BigDecimal(personDue), BigDecimal::add);
-                }
             }
+            addGradeDues(gradeDue, basis, sheetPeople, s);
             for (Claim claim : sheetClaims) {
                 statusCounts.merge(claim.getStatus().name(), 1, Integer::sum);
             }
@@ -208,6 +205,41 @@ public class Rollup {
         Map<String, String> gradeDueTotals = new LinkedHashMap<>();
         gradeDue.forEach((grade, total) -> gradeDueTotals.put(grade, text(total)));
         return new Descendants(count, text(due), text(overdue), gradeDueTotals, statusCounts, members);
+    }
+
+    /** Add to the per-grade due-totals those of a sheet's people not retired on the grade in force
+     *  on its today, skipping those that are n/a. */
+    private static void addGradeDues(Map<String, BigDecimal> gradeDue, Dues.Basis basis,
+            List<Person> sheetPeople, Snapshot s) {
+        for (Person person : sheetPeople) {
+            String personDue = s.people().get(person.getId()).dueTotal();
+            String grade = person.gradeOn(basis.today());
+            if (!person.isRetired() && grade != null && !"n/a".equals(personDue)) {
+                gradeDue.merge(grade, new BigDecimal(personDue), BigDecimal::add);
+            }
+        }
+    }
+
+    /** Another sheet's figures to compare a sheet with: whether it exists, and per grade the
+     *  due-totals of its people not retired on it (n/a skipped), added up; a grade missing has none. */
+    public record Comparison(boolean found, Map<String, String> gradeDueTotals) {
+    }
+
+    /** The other sheet's per-grade due-totals as it stands now; not found, with none, when no such
+     *  sheet exists. */
+    @Transactional(readOnly = true)
+    public Comparison comparison(String otherId) {
+        if (!sheetStore.existsById(otherId)) {
+            return new Comparison(false, Map.of());
+        }
+        Dues.Basis basis = dues.now(otherId);
+        List<Person> sheetPeople = people.findBySheetIdOrderByPositionAscIdAsc(otherId);
+        Snapshot s = snapshot(basis, sheetPeople, claims.findBySheetIdOrderByListedDesc(otherId));
+        Map<String, BigDecimal> gradeDue = new LinkedHashMap<>();
+        addGradeDues(gradeDue, basis, sheetPeople, s);
+        Map<String, String> gradeDueTotals = new LinkedHashMap<>();
+        gradeDue.forEach((grade, total) -> gradeDueTotals.put(grade, text(total)));
+        return new Comparison(true, gradeDueTotals);
     }
 
     /** A person found by a search of a sheet's tree: their sheet's id, name as the screen shows it

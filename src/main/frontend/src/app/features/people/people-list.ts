@@ -25,6 +25,7 @@ import { QuickAddBar } from './quick-add-bar';
 import { PasteClaimsBox } from './paste-claims-box';
 import { ImportPeopleBox } from './import-people-box';
 import { TreeSearchBox } from './tree-search-box';
+import { SheetCompareBox } from '../summary/sheet-compare-box';
 import { PoolList } from '../pools/pool-list';
 import { CrewList } from '../crews/crew-list';
 import { Crews, crewDueTotal } from '../../core/crews';
@@ -51,7 +52,7 @@ const NO_LEAVE: Leave = { holds: [], retiredFrom: null };
 // The signed-in user may watch a person: they are told when a claim of theirs is settled.
 @Component({
   selector: 'app-people-list',
-  imports: [ReactiveFormsModule, PersonClaims, RateForm, PeriodForm, QuickAddBar, PasteClaimsBox, ImportPeopleBox, SummaryPanel, ClassicSummaryPanel, HeaderCounters, StewardDashboard, PoolList, CrewList, PersonPlans, PlanGenerateBox, TreeSearchBox, FigurePipe],
+  imports: [ReactiveFormsModule, PersonClaims, RateForm, PeriodForm, QuickAddBar, PasteClaimsBox, ImportPeopleBox, SummaryPanel, ClassicSummaryPanel, HeaderCounters, StewardDashboard, PoolList, CrewList, PersonPlans, PlanGenerateBox, TreeSearchBox, SheetCompareBox, FigurePipe],
   template: `
     <app-header-counters [peopleCount]="people().length" [statuses]="statusSummary()"
       [dueTotal]="dueTotal()" [overdueTotal]="overdueTotal()"
@@ -158,6 +159,7 @@ const NO_LEAVE: Leave = { holds: [], retiredFrom: null };
       }
       <app-summary-panel [grades]="gradeSummary()" [periods]="periodSummary()" [statuses]="statusSummary()"
         [voidReasons]="voidReasonSummary()" [reviewLateCount]="reviewLateCount()" />
+      <app-sheet-compare-box [grades]="gradeSummary()" />
       <app-classic-summary-panel [periods]="classicPeriodSummary()" [dueTotal]="classicDueTotal()" />
       <label>
         <input type="checkbox" data-testid="show-retired" [checked]="showRetired()"

@@ -34,6 +34,14 @@ public class RollupController {
         return rollup.descendants(sheetId.trim(), asOf);
     }
 
+    /** Another sheet's per-grade due-totals, for the screen to compare the sheet with (see
+     *  {@link Rollup#comparison}). */
+    @GetMapping("/compare")
+    public Rollup.Comparison compare(@PathVariable @NotBlank @Size(max = 100) String sheetId,
+            @RequestParam @NotBlank @Size(max = 100) String other) {
+        return rollup.comparison(other.trim());
+    }
+
     /** The people on the sheet and the other sheets of its tree whose name or an alias contains the
      *  text, case ignored (see {@link Rollup#search}). */
     @GetMapping("/search")
