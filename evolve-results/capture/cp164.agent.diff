@@ -1,0 +1,52 @@
+diff --git a/src/main/java/net/officefloor/hq/app/claim/ClaimService.java b/src/main/java/net/officefloor/hq/app/claim/ClaimService.java
+index e4e10165f..16f732cd8 100644
+--- a/src/main/java/net/officefloor/hq/app/claim/ClaimService.java
++++ b/src/main/java/net/officefloor/hq/app/claim/ClaimService.java
+@@ -97,7 +97,7 @@ public class ClaimService {
+         LocalDate dueBy = holidays.businessDaysAfter(sheetId, on, terms);
+         refuseClosed(sheetId, dueBy);
+         refuseRetired(person(sheetId, personId), on);
+-        Claim corrected = corrected(sheetId, personId, amount, corrects);
++        Claim corrected = corrected(sheetId, personId, amount, corrects, null);
+         return rollup.tracking(sheetId, user, () -> {
+             Person person = person(sheetId, personId);
+             Claim draft = new Claim(sheetId, personId, amount, on, note,
+@@ -145,7 +145,7 @@ public class ClaimService {
+             throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
+                     "A claim with lines has their total as its amount");
+         }
+-        Claim corrected = corrected(sheetId, claim.getPersonId(), amount, corrects);
++        Claim corrected = corrected(sheetId, claim.getPersonId(), amount, corrects, claim.getId());
+         return rollup.tracking(sheetId, user, () -> {
+             claim.setAmount(amount);
+             claim.setCorrects(corrected == null ? null : corrected.getNumber());
+@@ -749,15 +749,26 @@ public class ClaimService {
+ 
+     /** The claim a claim of the amount corrects: none for an amount of 0.00 or more; for a correction
+      *  (a negative amount), the one of the number given, which must be a settled claim of the person,
+-     *  or else it is refused. */
+-    private Claim corrected(String sheetId, long personId, BigDecimal amount, String corrects) {
++     *  or else it is refused; refused as well when it exceeds what remains of that claim: its amount
++     *  less the corrections already made against it (VOID and DELETED ones, and the claim being
++     *  edited, left out). */
++    private Claim corrected(String sheetId, long personId, BigDecimal amount, String corrects, Long editing) {
+         if (amount.signum() >= 0) {
+             return null;
+         }
+-        return (corrects == null ? Optional.<Claim>empty()
++        Claim corrected = (corrects == null ? Optional.<Claim>empty()
+                 : claims.findBySheetIdAndPersonIdAndNumberAndStatus(sheetId, personId, corrects, ClaimStatus.SETTLED))
+                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.BAD_REQUEST,
+                         "A negative amount must correct a settled claim of the same person"));
++        BigDecimal remains = claims.findBySheetIdAndPersonIdOrderByListedDesc(sheetId, personId).stream()
++                .filter(c -> corrected.getNumber().equals(c.getCorrects()) && !c.getId().equals(editing)
++                        && c.getStatus() != ClaimStatus.VOID && c.getStatus() != ClaimStatus.DELETED)
++                .map(Claim::getAmount).reduce(corrected.getAmount(), BigDecimal::add);
++        if (amount.negate().compareTo(remains) > 0) {
++            throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
++                    "A correction may not exceed the " + remains + " that remains of claim " + corrects);
++        }
++        return corrected;
+     }
+ 
+     /** Refuse a change to a claim due by the day when the day falls inside a closed period. */
