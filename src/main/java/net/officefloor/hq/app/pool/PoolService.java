@@ -11,6 +11,10 @@ import java.util.function.Function;
 import java.util.regex.Pattern;
 import java.util.stream.Collectors;
 import net.officefloor.hq.app.Audit;
+import net.officefloor.hq.app.crew.Crew;
+import net.officefloor.hq.app.crew.CrewMember;
+import net.officefloor.hq.app.crew.CrewMemberRepository;
+import net.officefloor.hq.app.crew.CrewRepository;
 import net.officefloor.hq.app.history.History;
 import net.officefloor.hq.app.person.Person;
 import net.officefloor.hq.app.person.PersonRepository;
@@ -118,13 +122,18 @@ public class PoolService {
     private final PoolRepository pools;
     private final PoolMemberRepository members;
     private final PersonRepository people;
+    private final CrewRepository crews;
+    private final CrewMemberRepository crewMembers;
     private final SheetService sheets;
     private final History history;
     private final Audit audit;
 
     public PoolService(PoolRepository pools, PoolMemberRepository members, PersonRepository people,
-            SheetService sheets, History history, Audit audit) {
+            CrewRepository crews, CrewMemberRepository crewMembers, SheetService sheets, History history,
+            Audit audit) {
         this.history = history;
+        this.crews = crews;
+        this.crewMembers = crewMembers;
         this.pools = pools;
         this.members = members;
         this.people = people;
@@ -132,7 +141,8 @@ public class PoolService {
         this.audit = audit;
     }
 
-    /** The pools of the sheet in the order they were added, each with its members and its pot. */
+    /** The pools of the sheet in the order they were added, then the crews' pools in the order the
+     *  crews were added, each with its members and its pot. */
     @Transactional(readOnly = true)
     public List<Listed> list(String sheetId) {
         return list(sheetId, null);
@@ -142,7 +152,9 @@ public class PoolService {
      *  (null: the sheet's today) and the sheet's pot as it stood at its end: the sheet as of that day. */
     @Transactional(readOnly = true)
     public List<Listed> list(String sheetId, LocalDate asOf) {
-        List<Pool> all = pools.findBySheetIdOrderByIdAsc(sheetId);
+        List<Pool> stored = pools.findBySheetIdOrderByIdAsc(sheetId);
+        List<Pool> all = new ArrayList<>(stored.stream().filter(p -> !p.isCrew()).toList());
+        all.addAll(stored.stream().filter(Pool::isCrew).toList());
         Map<Long, Pool> poolsById = all.stream().collect(Collectors.toMap(Pool::getId, Function.identity()));
         Map<Long, Person> byId = people.findBySheetIdOrderByPositionAscIdAsc(sheetId).stream()
                 .collect(Collectors.toMap(Person::getId, Function.identity()));
@@ -150,7 +162,15 @@ public class PoolService {
         Map<Long, List<PoolMember>> byPool = memberships.stream().collect(Collectors.groupingBy(PoolMember::getPoolId));
         LocalDate today = asOf != null ? asOf : sheets.today(sheetId);
         Map<Long, List<Member>> membersOf = new HashMap<>();
+        Map<Long, List<PoolMember>> crewsOf = crewMemberships(sheetId, all, byId);
         for (Pool p : all) {
+            if (p.isCrew()) {
+                membersOf.put(p.getId(), crewsOf.getOrDefault(p.getId(), List.of()).stream()
+                        .map(m -> new Member(m, byId.get(m.getPersonId()), null,
+                                byId.get(m.getPersonId()).isHeldOn(today), true))
+                        .toList());
+                continue;
+            }
             membersOf.put(p.getId(), byPool.getOrDefault(p.getId(), List.of()).stream()
                     .filter(m -> m.getPersonId() != null ? byId.containsKey(m.getPersonId())
                             : poolsById.containsKey(m.getMemberPoolId()))
@@ -165,6 +185,53 @@ public class PoolService {
         BigDecimal sheetPot = asOf != null ? history.asOf(sheetId, asOf).pot() : sheets.pot(sheetId);
         Map<Long, Listed> listed = new HashMap<>();
         return all.stream().map(p -> listed(p.getId(), poolsById, membersOf, above, sheetPot, listed, 0)).toList();
+    }
+
+    /** The members of each crew's pool, by the pool's id: its lead, then its members in the order they
+     *  were added (people who have left the sheet left out), at equal shares of 100.00 to two decimals
+     *  rounded down, the remainder on the first of them (the lead while they are on the sheet). The
+     *  memberships are not stored and run without dates. */
+    private Map<Long, List<PoolMember>> crewMemberships(String sheetId, List<Pool> all, Map<Long, Person> byId) {
+        Map<Long, Long> poolOfCrew = all.stream().filter(Pool::isCrew)
+                .collect(Collectors.toMap(Pool::getCrewId, Pool::getId));
+        if (poolOfCrew.isEmpty()) {
+            return Map.of();
+        }
+        Map<Long, List<CrewMember>> byCrew = crewMembers.findByCrewIdInOrderByIdAsc(poolOfCrew.keySet()).stream()
+                .collect(Collectors.groupingBy(CrewMember::getCrewId));
+        Map<Long, List<PoolMember>> out = new HashMap<>();
+        for (Crew c : crews.findBySheetIdOrderByIdAsc(sheetId)) {
+            Long poolId = poolOfCrew.get(c.getId());
+            if (poolId == null) {
+                continue;
+            }
+            List<Long> ids = new ArrayList<>();
+            ids.add(c.getLeadPersonId());
+            byCrew.getOrDefault(c.getId(), List.of()).forEach(m -> ids.add(m.getPersonId()));
+            List<Long> present = ids.stream().filter(byId::containsKey).toList();
+            if (present.isEmpty()) {
+                continue;
+            }
+            List<BigDecimal> shares = equalShares(present.size());
+            List<PoolMember> ms = new ArrayList<>();
+            for (int i = 0; i < present.size(); i++) {
+                ms.add(new PoolMember(poolId, present.get(i), shares.get(i)));
+            }
+            out.put(poolId, ms);
+        }
+        return out;
+    }
+
+    /** 100.00 split equally over a number of members, each share rounded down to two decimals and the
+     *  remainder on the first, so they total exactly 100.00. */
+    static List<BigDecimal> equalShares(int count) {
+        long cents = WHOLE.movePointRight(2).longValueExact();
+        long each = cents / count;
+        List<BigDecimal> shares = new ArrayList<>();
+        for (int i = 0; i < count; i++) {
+            shares.add(BigDecimal.valueOf(i == 0 ? each + cents - each * count : each, 2));
+        }
+        return shares;
     }
 
     /** The pool listed with its pot: the sheet's when it is a member of no pool, else its cut in the
@@ -194,7 +261,7 @@ public class PoolService {
         return l;
     }
 
-    /** Add a pool with a (trimmed) name; refused when blank or already a pool of the sheet. */
+    /** Add a pool with a (trimmed) name; refused when blank or already a pool or a crew of the sheet. */
     @Transactional
     public synchronized Listed add(String sheetId, String user, String name) {
         String text = name == null ? "" : name.trim();
@@ -202,7 +269,7 @@ public class PoolService {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Enter a pool name");
         }
         sheets.load(sheetId, user);
-        if (pools.existsBySheetIdAndName(sheetId, text)) {
+        if (pools.existsBySheetIdAndName(sheetId, text) || crews.existsBySheetIdAndName(sheetId, text)) {
             throw alreadyAPool();
         }
         Pool saved;
@@ -225,6 +292,7 @@ public class PoolService {
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "No such pool"));
         Pool member = pools.findByIdAndSheetId(memberPoolId, sheetId)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "No such pool"));
+        refuseCrew(pool);
         BigDecimal amount = share(share);
         checkDates(from, to);
         List<PoolMember> all = members.findByPoolIdInOrderByIdAsc(
@@ -281,6 +349,7 @@ public class PoolService {
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "No such pool"));
         Person person = people.findByIdAndSheetId(personId, sheetId)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "No such person"));
+        refuseCrew(pool);
         BigDecimal amount = share(share);
         checkDates(from, to);
         if (members.existsByPoolIdAndPersonId(poolId, personId)) {
@@ -296,6 +365,14 @@ public class PoolService {
         audit.recordOnCommit("POOL_MEMBER_ADDED sheet=" + sheetId + " by=" + user + " pool=" + pool.getName()
                 + " name=" + person.getName() + " share=" + amount.toPlainString() + dates(from, to));
         return list(sheetId).stream().filter(l -> l.pool().getId().equals(poolId)).findFirst().orElseThrow();
+    }
+
+    /** Refused when the pool is a crew's: its members are the crew's people. */
+    private static void refuseCrew(Pool pool) {
+        if (pool.isCrew()) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT,
+                    "A crew's pool has the crew's lead and members as its members");
+        }
     }
 
     /** Refused when both dates are given and the to-date is before the from-date. */
@@ -329,7 +406,7 @@ public class PoolService {
     }
 
     private static ResponseStatusException alreadyAPool() {
-        return new ResponseStatusException(HttpStatus.CONFLICT, "That name is already a pool");
+        return new ResponseStatusException(HttpStatus.CONFLICT, "That name is already a pool or a crew");
     }
 
     private static ResponseStatusException alreadyAMember() {

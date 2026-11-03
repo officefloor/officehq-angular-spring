@@ -1,6 +1,7 @@
 import { HttpClient } from '@angular/common/http';
 import { Injectable, effect, inject, signal } from '@angular/core';
 import { firstValueFrom } from 'rxjs';
+import { Pools } from './pools';
 import { Session } from './session';
 import { sumAmounts } from './claims';
 
@@ -30,6 +31,7 @@ export function crewDueTotal(crew: Crew, dues: Map<number, string | null>): stri
 export class Crews {
   private readonly http = inject(HttpClient);
   private readonly session = inject(Session);
+  private readonly pools = inject(Pools);
 
   /** The sheet's crews in the order they were added. */
   readonly list = signal<Crew[]>([]);
@@ -52,6 +54,8 @@ export class Crews {
       this.http.post<Crew>(this.url(sheetId), { name, leadId }, { headers: { 'X-User': user } }),
     );
     this.keep(saved);
+    // the crew is also a pool: read the pools again
+    await this.pools.refresh();
   }
 
   /** Add a person to a crew; refused (409) when they lead it or are already in it. */
@@ -61,6 +65,8 @@ export class Crews {
       this.http.post<Crew>(`${this.url(sheetId)}/${crewId}/members`, { personId }, { headers: { 'X-User': user } }),
     );
     this.keep(saved);
+    // the crew's pool has one more member: read the pools again
+    await this.pools.refresh();
   }
 
   private keep(saved: Crew): void {

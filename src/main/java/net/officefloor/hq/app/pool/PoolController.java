@@ -42,15 +42,17 @@ public class PoolController {
         }
     }
 
-    /** A pool as the screen shows it: its members, their shares' total and whether it is 100.00. */
-    public record PoolView(long id, String name, List<MemberView> members, String totalShare, boolean balanced) {
+    /** A pool as the screen shows it: its members, their shares' total, whether it is 100.00 and
+     *  whether it is a crew's (its members then being the crew's people). */
+    public record PoolView(long id, String name, List<MemberView> members, String totalShare, boolean balanced,
+            boolean crew) {
         static PoolView of(PoolService.Listed l) {
             List<BigDecimal> cuts = l.cuts();
             return new PoolView(l.pool().getId(), l.pool().getName(),
                     IntStream.range(0, l.members().size())
                             .mapToObj(i -> MemberView.of(l.members().get(i), cuts.isEmpty() ? null : cuts.get(i)))
                             .toList(),
-                    l.totalShare().toPlainString(), l.balanced());
+                    l.totalShare().toPlainString(), l.balanced(), l.pool().isCrew());
         }
     }
 

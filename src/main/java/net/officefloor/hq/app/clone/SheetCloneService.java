@@ -174,13 +174,17 @@ public class SheetCloneService {
     }
 
     private void copyPools(String sheetId, String toSheetId, Map<Long, Long> personIds) {
-        List<Pool> theirs = pools.findBySheetIdOrderByIdAsc(sheetId);
+        // a crew's pool is not copied: the crews are not
+        List<Pool> theirs = pools.findBySheetIdOrderByIdAsc(sheetId).stream().filter(p -> !p.isCrew()).toList();
         if (theirs.isEmpty()) {
             return;
         }
         Map<Long, Long> poolIds = new HashMap<>();
         theirs.forEach(p -> poolIds.put(p.getId(), pools.saveAndFlush(new Pool(toSheetId, p.getName())).getId()));
         for (PoolMember m : members.findByPoolIdInOrderByIdAsc(poolIds.keySet())) {
+            if (m.getMemberPoolId() != null && !poolIds.containsKey(m.getMemberPoolId())) {
+                continue;
+            }
             Long poolId = poolIds.get(m.getPoolId());
             PoolMember copy = m.getMemberPoolId() != null
                     ? PoolMember.ofPool(poolId, poolIds.get(m.getMemberPoolId()), m.getShare())

@@ -7,7 +7,8 @@ import jakarta.persistence.GenerationType;
 import jakarta.persistence.Id;
 import jakarta.persistence.Table;
 
-/** A pool on a sheet: a (trimmed) name, unique on the sheet, that people are members of. */
+/** A pool on a sheet: a (trimmed) name, unique on the sheet, that people are members of. A crew's
+ *  pool carries its crew: its members are then the crew's people, not stored ones. */
 @Entity
 @Table(name = "pool")
 public class Pool {
@@ -22,12 +23,23 @@ public class Pool {
     @Column(name = "name", nullable = false)
     private String name;
 
+    /** The crew the pool is; null for a pool added as one. */
+    @Column(name = "crew_id")
+    private Long crewId;
+
     protected Pool() {
     }
 
     public Pool(String sheetId, String name) {
         this.sheetId = sheetId;
         this.name = name;
+    }
+
+    /** A crew's pool, under the crew's name. */
+    public static Pool ofCrew(String sheetId, String name, Long crewId) {
+        Pool p = new Pool(sheetId, name);
+        p.crewId = crewId;
+        return p;
     }
 
     public Long getId() {
@@ -40,5 +52,14 @@ public class Pool {
 
     public String getName() {
         return name;
+    }
+
+    public Long getCrewId() {
+        return crewId;
+    }
+
+    /** Whether the pool is a crew's. */
+    public boolean isCrew() {
+        return crewId != null;
     }
 }

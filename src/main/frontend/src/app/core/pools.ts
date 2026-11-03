@@ -28,13 +28,16 @@ export interface PoolMember {
 }
 
 /** A pool on the sheet: its members in the order they were added, their shares' total and whether
- *  it is exactly 100.00. */
+ *  it is exactly 100.00. A crew is also a pool: its members are then the crew's lead and members at
+ *  equal shares, and none can be added to it here. */
 export interface Pool {
   id: number;
   name: string;
   members: PoolMember[];
   totalShare: string;
   balanced: boolean;
+  /** Whether the pool is a crew's. */
+  crew: boolean;
 }
 
 /** A share as entered: a number with at most two decimals. */
@@ -61,7 +64,7 @@ export class Pools {
   private readonly http = inject(HttpClient);
   private readonly session = inject(Session);
 
-  /** The sheet's pools in the order they were added. */
+  /** The sheet's pools in the order they were added, then the crews' pools. */
   readonly list = signal<Pool[]>([]);
   private reads = 0;
 

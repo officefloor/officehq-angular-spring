@@ -7,6 +7,8 @@ import java.util.stream.Collectors;
 import net.officefloor.hq.app.Audit;
 import net.officefloor.hq.app.person.Person;
 import net.officefloor.hq.app.person.PersonRepository;
+import net.officefloor.hq.app.pool.Pool;
+import net.officefloor.hq.app.pool.PoolRepository;
 import net.officefloor.hq.app.sheet.SheetService;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.http.HttpStatus;
@@ -14,7 +16,8 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.server.ResponseStatusException;
 
-/** The crews of a sheet: each with a lead and its members. */
+/** The crews of a sheet: each with a lead and its members. Each crew is also a pool of the sheet under
+ *  its name, its lead and members the pool's members. */
 @Service
 public class CrewService {
 
@@ -26,11 +29,13 @@ public class CrewService {
     private final CrewRepository crews;
     private final CrewMemberRepository members;
     private final PersonRepository people;
+    private final PoolRepository pools;
     private final SheetService sheets;
     private final Audit audit;
 
     public CrewService(CrewRepository crews, CrewMemberRepository members, PersonRepository people,
-            SheetService sheets, Audit audit) {
+            PoolRepository pools, SheetService sheets, Audit audit) {
+        this.pools = pools;
         this.crews = crews;
         this.members = members;
         this.people = people;
@@ -56,7 +61,7 @@ public class CrewService {
     }
 
     /** Add a crew with a (trimmed) name and a lead; refused when the name is blank or already a crew
-     *  of the sheet, or the lead is not a person of it. */
+     *  or a pool of the sheet, or the lead is not a person of it. Its pool is added with it. */
     @Transactional
     public synchronized Listed add(String sheetId, String user, String name, long leadId) {
         String text = name == null ? "" : name.trim();
@@ -66,12 +71,13 @@ public class CrewService {
         sheets.load(sheetId, user);
         Person lead = people.findByIdAndSheetId(leadId, sheetId)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "No such person"));
-        if (crews.existsBySheetIdAndName(sheetId, text)) {
+        if (crews.existsBySheetIdAndName(sheetId, text) || pools.existsBySheetIdAndName(sheetId, text)) {
             throw alreadyACrew();
         }
         Crew saved;
         try {
             saved = crews.saveAndFlush(new Crew(sheetId, text, lead.getId()));
+            pools.saveAndFlush(Pool.ofCrew(sheetId, text, saved.getId()));
         } catch (DataIntegrityViolationException e) {
             throw alreadyACrew();
         }
@@ -104,7 +110,7 @@ public class CrewService {
     }
 
     private static ResponseStatusException alreadyACrew() {
-        return new ResponseStatusException(HttpStatus.CONFLICT, "That name is already a crew");
+        return new ResponseStatusException(HttpStatus.CONFLICT, "That name is already a crew or a pool");
     }
 
     private static ResponseStatusException alreadyAMember() {

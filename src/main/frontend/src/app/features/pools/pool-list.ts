@@ -70,7 +70,8 @@ export class PoolList {
       return;
     }
     if (this.pools.list().some((p) => p.name === name)) {
-      this.error.set('That name is already a pool.');
+      this.error.set(this.pools.list().some((p) => p.name === name && p.crew)
+        ? 'That name is already a crew.' : 'That name is already a pool.');
       return;
     }
     this.submitting = true;
@@ -80,7 +81,7 @@ export class PoolList {
     } catch (e) {
       this.error.set(
         e instanceof HttpErrorResponse && e.status === 409
-          ? 'That name is already a pool, or the sheet may not be changed.'
+          ? 'That name is already a pool or a crew, or the sheet may not be changed.'
           : e instanceof HttpErrorResponse && e.status === 403
             ? 'A viewer may not add a pool.'
             : 'The pool could not be added.',

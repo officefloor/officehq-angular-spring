@@ -3,6 +3,7 @@ import { Component, inject, input, signal } from '@angular/core';
 import { FormControl, FormGroup, ReactiveFormsModule } from '@angular/forms';
 import { Crews } from '../../core/crews';
 import { Person } from '../../core/people';
+import { Pools } from '../../core/pools';
 import { CrewRow } from './crew-row';
 
 // The sheet's crews, each with its lead, members and due-total, and the form a crew is added with.
@@ -42,6 +43,7 @@ export class CrewList {
   readonly dues = input.required<Map<number, string | null>>();
 
   protected readonly crews = inject(Crews);
+  private readonly pools = inject(Pools);
   protected readonly error = signal('');
   protected readonly form = new FormGroup({
     name: new FormControl('', { nonNullable: true }),
@@ -66,6 +68,10 @@ export class CrewList {
       this.error.set('That name is already a crew.');
       return;
     }
+    if (this.pools.list().some((p) => p.name === name)) {
+      this.error.set('That name is already a pool.');
+      return;
+    }
     const lead = Number(leadId);
     if (leadId === '' || !this.people().some((p) => p.id === lead)) {
       this.error.set('Choose the lead.');
@@ -78,7 +84,7 @@ export class CrewList {
     } catch (e) {
       this.error.set(
         e instanceof HttpErrorResponse && e.status === 409
-          ? 'That name is already a crew, or the sheet may not be changed.'
+          ? 'That name is already a crew or a pool, or the sheet may not be changed.'
           : e instanceof HttpErrorResponse && e.status === 403
             ? 'A viewer may not add a crew.'
             : 'The crew could not be added.',

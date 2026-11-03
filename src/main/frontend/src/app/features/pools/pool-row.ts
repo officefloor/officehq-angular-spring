@@ -32,6 +32,9 @@ import { FigurePipe } from '../../core/figure';
         </li>
       }
     </ul>
+    @if (pool().crew) {
+      <p>A crew: its members are the crew's lead and members, at equal shares.</p>
+    } @else {
     <form [formGroup]="form" (ngSubmit)="submit()">
       <label [for]="'pool-member-select-' + pool().id">Member</label>
       <select [id]="'pool-member-select-' + pool().id" data-testid="pool-member-select" formControlName="personId">
@@ -55,6 +58,7 @@ import { FigurePipe } from '../../core/figure';
         <p role="alert" data-testid="pool-error">{{ error() }}</p>
       }
     </form>
+    }
   `,
 })
 export class PoolRow {
