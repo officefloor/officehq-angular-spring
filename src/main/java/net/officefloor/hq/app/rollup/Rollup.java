@@ -6,6 +6,7 @@ import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 import java.util.Objects;
 import java.util.function.Supplier;
@@ -142,6 +143,33 @@ public class Rollup {
         Snapshot own = snapshot(sheetId);
         return new Descendants(count, text(due), text(overdue), own.people().size(), own.dueTotal(),
                 own.overdueTotal());
+    }
+
+    /** A person found by a search of a sheet's tree: their sheet's id, name and due-total (two
+     *  decimals, or n/a) as that sheet shows it. */
+    public record Found(String sheet, String name, String dueTotal) {
+    }
+
+    /** Every person (retired included) on the sheet and the other sheets of its tree whose name or
+     *  an alias contains the text, case ignored (blank text finds everyone): the sheet's people
+     *  first in list order, then the other sheets' by sheet id, each in its list order. */
+    @Transactional(readOnly = true)
+    public List<Found> search(String sheetId, String text) {
+        String wanted = text == null ? "" : text.toLowerCase(Locale.ROOT);
+        List<String> order = new ArrayList<>(List.of(sheetId));
+        sheets.tree(sheetId).stream().filter(id -> !id.equals(sheetId)).sorted().forEach(order::add);
+        List<Found> found = new ArrayList<>();
+        for (String id : order) {
+            Map<Long, Figures> figures = snapshot(id).people();
+            for (Person person : people.findBySheetIdOrderByPositionAscIdAsc(id)) {
+                boolean matches = person.getName().toLowerCase(Locale.ROOT).contains(wanted)
+                        || person.getAliases().stream().anyMatch(a -> a.toLowerCase(Locale.ROOT).contains(wanted));
+                if (matches) {
+                    found.add(new Found(id, person.getName(), figures.get(person.getId()).dueTotal()));
+                }
+            }
+        }
+        return found;
     }
 
     private Snapshot snapshot(String sheetId) {
