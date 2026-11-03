@@ -4,7 +4,7 @@ import { FormControl, FormGroup, ReactiveFormsModule } from '@angular/forms';
 import { Claim, Claims, QuickAdded, addDays, backingFigure, claimDue, countsAsOf, countsClaimed, countsLive, isOpen, keepsActive, overdue, reviewLate, statusOn, sumAmounts, trimmedSum } from '../../core/claims';
 import { Patron, Patrons, patronShares } from '../../core/patrons';
 import { Pools, formatCents } from '../../core/pools';
-import { Grade, Leave, People, Person, Taken, gradeOn } from '../../core/people';
+import { Grade, Leave, People, Person, Taken, gradeOn, shownName } from '../../core/people';
 import { Period, Periods, periodOf } from '../../core/periods';
 import { Rate, Rates, pctOn, weightedSum } from '../../core/rates';
 import { PERSON_COLUMNS, PersonColumn, Session } from '../../core/session';
@@ -247,7 +247,7 @@ const NO_LEAVE: Leave = { holds: [], retiredFrom: null };
                   (change)="selectPerson(p.id, $any($event.target).checked)"
                   [attr.aria-label]="'Select ' + p.name" />
               </td>
-              <td data-testid="person-name">{{ p.name }}</td>
+              <td data-testid="person-name">{{ nameOf(p) }}</td>
               <td data-testid="person-grade">{{ gradeOf(p) }}</td>
               <td data-testid="person-active">{{ activeOf(p) ? 'yes' : 'no' }}</td>
               @if (shows('terms')) {
@@ -537,15 +537,15 @@ export class PeopleList {
   /** Each person's patrons as name and share, sorted by name and joined by a comma and a space, by
    *  the person's id. */
   protected readonly patronNames = computed(() => {
-    const names = new Map(this.people().map((p) => [p.id, p.name]));
+    const people = this.byId();
     const by = new Map<number, string>();
     for (const [id, ps] of this.patronShares()) {
       const shown = ps.flatMap((x) => {
-        const name = names.get(x.id);
-        return name === undefined ? [] : [{ name, share: x.share }];
+        const p = people.get(x.id);
+        return p === undefined ? [] : [{ name: p.name, shown: this.nameOf(p), share: x.share }];
       });
       shown.sort((a, b) => (a.name < b.name ? -1 : a.name > b.name ? 1 : 0));
-      by.set(id, shown.map((x) => `${x.name} ${formatCents(x.share)}`).join(', '));
+      by.set(id, shown.map((x) => `${x.shown} ${formatCents(x.share)}`).join(', '));
     }
     return by;
   });
@@ -1770,6 +1770,11 @@ export class PeopleList {
       ])),
     );
     downloadCsv(lines, 'claims.csv');
+  }
+
+  /** A person's name as the screen shows it, with the grade in force today. */
+  protected nameOf(p: Person): string {
+    return shownName(p, this.session.today());
   }
 
   protected gradeOf(p: Person): Grade {

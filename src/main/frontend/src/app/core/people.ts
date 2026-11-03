@@ -22,6 +22,11 @@ export function gradeOn(grades: GradeFrom[], day: string | null): Grade | undefi
   return on;
 }
 
+/** A person's name as the screen shows it: <name> (<grade in force on the day>). */
+export function shownName(p: { name: string; grade: Grade; grades: GradeFrom[] }, day: string | null): string {
+  return `${p.name} (${gradeOn(p.grades, day) ?? p.grade})`;
+}
+
 /** A hold on a person from a day (null: from the beginning of time) to a day (null: open-ended),
  *  both included (yyyy-mm-dd). */
 export interface Hold {

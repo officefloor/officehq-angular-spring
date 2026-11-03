@@ -2,7 +2,8 @@ import { HttpErrorResponse } from '@angular/common/http';
 import { Component, computed, inject, input, signal } from '@angular/core';
 import { FormControl, FormGroup, ReactiveFormsModule } from '@angular/forms';
 import { Crew, Crews, crewDueTotal } from '../../core/crews';
-import { Person } from '../../core/people';
+import { Person, shownName } from '../../core/people';
+import { Session } from '../../core/session';
 import { FigurePipe } from '../../core/figure';
 
 // A crew's row: its lead, its members, its due-total (the lead's and the members' due-totals added
@@ -14,7 +15,7 @@ import { FigurePipe } from '../../core/figure';
   template: `
     <h4>{{ crew().name }}</h4>
     <p>
-      Lead <span data-testid="crew-lead">{{ crew().lead?.name ?? '' }}</span>,
+      Lead <span data-testid="crew-lead">{{ leadName() }}</span>,
       due-total <span data-testid="crew-due-total">{{ dueTotal() | figure }}</span>
     </p>
     <ul>
@@ -45,6 +46,15 @@ export class CrewRow {
   readonly dues = input.required<Map<number, string | null>>();
 
   private readonly crews = inject(Crews);
+  private readonly session = inject(Session);
+
+  /** The lead's name as the screen shows it, with the grade in force today. */
+  protected readonly leadName = computed(() => {
+    const lead = this.crew().lead;
+    if (!lead) return '';
+    const p = this.people().find((x) => x.id === lead.personId);
+    return p ? shownName(p, this.session.today()) : lead.name;
+  });
 
   /** The lead's and the members' due-totals added up, n/a ones skipped. */
   protected readonly dueTotal = computed(() => crewDueTotal(this.crew(), this.dues()));

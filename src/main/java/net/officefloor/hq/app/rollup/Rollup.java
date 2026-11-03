@@ -144,8 +144,9 @@ public class Rollup {
         return new Descendants(count, text(due), text(overdue));
     }
 
-    /** A person found by a search of a sheet's tree: their sheet's id, name and due-total (two
-     *  decimals, or n/a) as that sheet shows it. */
+    /** A person found by a search of a sheet's tree: their sheet's id, name as the screen shows it
+     *  ({@code <name> (<grade in force on that sheet's today>)}) and due-total (two decimals, or
+     *  n/a) as that sheet shows it. */
     public record Found(String sheet, String name, String dueTotal) {
     }
 
@@ -160,11 +161,12 @@ public class Rollup {
         List<Found> found = new ArrayList<>();
         for (String id : order) {
             Map<Long, Figures> figures = snapshot(id).people();
+            LocalDate today = sheets.today(id);
             for (Person person : people.findBySheetIdOrderByPositionAscIdAsc(id)) {
                 boolean matches = person.getName().toLowerCase(Locale.ROOT).contains(wanted)
                         || person.getAliases().stream().anyMatch(a -> a.toLowerCase(Locale.ROOT).contains(wanted));
                 if (matches) {
-                    found.add(new Found(id, person.getName(), figures.get(person.getId()).dueTotal()));
+                    found.add(new Found(id, person.getName() + " (" + person.gradeOn(today) + ")", figures.get(person.getId()).dueTotal()));
                 }
             }
         }
