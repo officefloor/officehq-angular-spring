@@ -1,0 +1,109 @@
+diff --git a/src/main/frontend/src/app/features/people/people.ts b/src/main/frontend/src/app/features/people/people.ts
+index 0074e63c5..b5eff3d8c 100644
+--- a/src/main/frontend/src/app/features/people/people.ts
++++ b/src/main/frontend/src/app/features/people/people.ts
+@@ -1,4 +1,4 @@
+-import { HttpClient } from '@angular/common/http';
++import { HttpClient, HttpErrorResponse } from '@angular/common/http';
+ import { Component, effect, inject, signal } from '@angular/core';
+ import { firstValueFrom } from 'rxjs';
+ import { Session } from '../../core/session';
+@@ -157,8 +157,12 @@ export class People {
+         this.people.update((list) => list.map((p) => (p.id === saved.id ? saved : p)));
+       }
+       this.reset();
+-    } catch {
+-      this.error.set(id === null ? 'Could not add this person.' : 'Could not save this person.');
++    } catch (e) {
++      if (e instanceof HttpErrorResponse && e.status === 409) {
++        this.error.set('That name is already in use on this sheet.');
++      } else {
++        this.error.set(id === null ? 'Could not add this person.' : 'Could not save this person.');
++      }
+     }
+   }
+ }
+diff --git a/src/main/java/net/officefloor/hq/app/person/PersonRepository.java b/src/main/java/net/officefloor/hq/app/person/PersonRepository.java
+index 815124bbe..29b3be64e 100644
+--- a/src/main/java/net/officefloor/hq/app/person/PersonRepository.java
++++ b/src/main/java/net/officefloor/hq/app/person/PersonRepository.java
+@@ -10,4 +10,9 @@ public interface PersonRepository extends JpaRepository<Person, Long> {
+     List<Person> findBySheetIdOrderByIdAsc(String sheetId);
+ 
+     Optional<Person> findByIdAndSheetId(Long id, String sheetId);
++
++    /** Whether another person on the sheet has this name, compared without regard to case. */
++    boolean existsBySheetIdAndNameIgnoreCaseAndIdNot(String sheetId, String name, Long id);
++
++    boolean existsBySheetIdAndNameIgnoreCase(String sheetId, String name);
+ }
+diff --git a/src/main/java/net/officefloor/hq/app/person/PersonService.java b/src/main/java/net/officefloor/hq/app/person/PersonService.java
+index f472c00aa..7d2c834f0 100644
+--- a/src/main/java/net/officefloor/hq/app/person/PersonService.java
++++ b/src/main/java/net/officefloor/hq/app/person/PersonService.java
+@@ -2,12 +2,16 @@ package net.officefloor.hq.app.person;
+ 
+ import java.util.List;
+ import net.officefloor.hq.app.sheet.SheetService;
++import org.springframework.dao.DataIntegrityViolationException;
+ import org.springframework.http.HttpStatus;
+ import org.springframework.stereotype.Service;
+ import org.springframework.transaction.annotation.Transactional;
+ import org.springframework.web.server.ResponseStatusException;
+ 
+-/** The people on a sheet: listed in the order they were added, added and edited by name and grade. */
++/**
++ * The people on a sheet: listed in the order they were added, added and edited by name and grade. A
++ * name is unique on the sheet, compared without regard to case (names arrive trimmed).
++ */
+ @Service
+ public class PersonService {
+ 
+@@ -27,15 +31,34 @@ public class PersonService {
+     @Transactional
+     public Person add(String sheetId, String user, String name, String grade) {
+         sheets.load(sheetId, user);
+-        return people.saveAndFlush(new Person(sheetId, name, grade));
++        if (people.existsBySheetIdAndNameIgnoreCase(sheetId, name)) {
++            throw nameInUse();
++        }
++        return save(new Person(sheetId, name, grade));
+     }
+ 
+     @Transactional
+     public Person update(String sheetId, long id, String name, String grade) {
+         Person person = people.findByIdAndSheetId(id, sheetId)
+                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "No such person on this sheet."));
++        if (people.existsBySheetIdAndNameIgnoreCaseAndIdNot(sheetId, name, id)) {
++            throw nameInUse();
++        }
+         person.setName(name);
+         person.setGrade(grade);
+-        return people.saveAndFlush(person);
++        return save(person);
++    }
++
++    /** Save, refusing a name another user took on the sheet since it was checked. */
++    private Person save(Person person) {
++        try {
++            return people.saveAndFlush(person);
++        } catch (DataIntegrityViolationException e) {
++            throw nameInUse();
++        }
++    }
++
++    private static ResponseStatusException nameInUse() {
++        return new ResponseStatusException(HttpStatus.CONFLICT, "That name is already in use on this sheet.");
+     }
+ }
+diff --git a/src/main/resources/db/migration/V4__person_name_unique.sql b/src/main/resources/db/migration/V4__person_name_unique.sql
+new file mode 100644
+index 000000000..e840463ac
+--- /dev/null
++++ b/src/main/resources/db/migration/V4__person_name_unique.sql
+@@ -0,0 +1,5 @@
++-- A person's name is unique on the sheet, compared without regard to case. Names are stored with
++-- surrounding spaces removed, so the comparison key is just the lower-cased name.
++UPDATE person SET name = TRIM(name);
++ALTER TABLE person ADD COLUMN name_key VARCHAR(200) GENERATED ALWAYS AS (LOWER(name));
++CREATE UNIQUE INDEX person_sheet_name ON person (sheet_id, name_key);
