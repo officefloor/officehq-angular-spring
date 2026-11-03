@@ -79,7 +79,7 @@ import { Session } from '../../core/session';
       <table data-testid="rates">
         <caption>All rates</caption>
         <thead>
-          <tr><th scope="col">Grade</th><th scope="col">From</th><th scope="col">To</th><th scope="col">Rate (%)</th></tr>
+          <tr><th scope="col">Grade</th><th scope="col">From</th><th scope="col">To</th><th scope="col">Rate (%)</th><th scope="col">Versions</th></tr>
         </thead>
         <tbody>
           @for (r of own(); track r.grade + '-' + (r.from ?? 'start')) {
@@ -88,6 +88,7 @@ import { Session } from '../../core/session';
               <td data-testid="rate-from">{{ r.from ?? 'start' }}</td>
               <td data-testid="rate-to">{{ r.to ?? '…' }}</td>
               <td data-testid="rate-pct">{{ r.pct }}</td>
+              <td data-testid="rate-version">{{ r.version }}</td>
             </tr>
           }
         </tbody>

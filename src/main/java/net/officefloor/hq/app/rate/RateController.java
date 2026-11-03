@@ -31,15 +31,15 @@ public class RateController {
     /** What the screen shows of a rate; the percent as text with two decimals, the from-date
      *  (null when it applies from the beginning of time) and the to-date (null when it has no end);
      *  and the level it is set on: 0 for the sheet itself, 1 for its parent, 2 for the parent's
-     *  parent, and so on. */
-    public record RateView(String grade, String pct, LocalDate from, LocalDate to, int level) {
+     *  parent, and so on; and how many versions it has had. */
+    public record RateView(String grade, String pct, LocalDate from, LocalDate to, int level, int version) {
         static RateView of(Rate rate) {
             return of(rate, 0);
         }
 
         static RateView of(Rate rate, int level) {
             return new RateView(rate.getGrade(), rate.getPct().setScale(2).toPlainString(), rate.getFromDate(),
-                    rate.getToDate(), level);
+                    rate.getToDate(), level, rate.getVersion());
         }
     }
 

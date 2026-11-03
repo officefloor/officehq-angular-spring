@@ -37,6 +37,10 @@ public class Rate {
     @Column(name = "to_date")
     private LocalDate toDate;
 
+    /** How many versions the rate has had; this row is the newest (see {@link RateVersion}). */
+    @Column(name = "version", nullable = false)
+    private int version = 1;
+
     protected Rate() {
     }
 
@@ -69,6 +73,16 @@ public class Rate {
 
     public void setToDate(LocalDate toDate) {
         this.toDate = toDate;
+    }
+
+    public int getVersion() {
+        return version;
+    }
+
+    /** Make this row the next version of the rate; keep its current values first (see
+     *  {@link RateVersion}). */
+    public void nextVersion() {
+        this.version++;
     }
 
     public BigDecimal getPct() {

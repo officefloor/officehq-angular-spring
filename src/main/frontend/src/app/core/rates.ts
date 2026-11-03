@@ -15,6 +15,8 @@ export interface Rate {
   /** The sheet the rate is set on: 0 for this sheet, 1 for its parent, 2 for the parent's parent,
    *  and so on. */
   level: number;
+  /** How many versions the rate has had; this is the newest, the one in force. */
+  version: number;
 }
 
 /** What a candidate rate would change: how many open and pending claims would show a different

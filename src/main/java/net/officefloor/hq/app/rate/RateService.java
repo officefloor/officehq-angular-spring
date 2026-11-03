@@ -31,10 +31,12 @@ public class RateService {
     private final Dues dues;
     private final PersonRepository people;
     private final ClaimRepository claims;
+    private final RateVersionRepository versions;
 
     public RateService(RateRepository rates, SheetService sheets, Rollup rollup, Audit audit, Dues dues,
-            PersonRepository people, ClaimRepository claims) {
+            PersonRepository people, ClaimRepository claims, RateVersionRepository versions) {
         this.rates = rates;
+        this.versions = versions;
         this.sheets = sheets;
         this.rollup = rollup;
         this.audit = audit;
@@ -138,7 +140,8 @@ public class RateService {
     }
 
     /** Set the rate for a grade from a date (null: from the beginning of time) through a date
-     *  (null: no end), replacing the one the grade had for that from-date. */
+     *  (null: no end). When the grade has one for that from-date already, its value is kept as an
+     *  older version and the new one becomes the newest version, the one in force. */
     @Transactional
     public synchronized Rate set(String sheetId, String user, String grade, BigDecimal pct, LocalDate from,
             LocalDate to) {
@@ -147,6 +150,11 @@ public class RateService {
             Rate rate = (from == null
                     ? rates.findBySheetIdAndGradeAndFromDateIsNull(sheetId, grade)
                     : rates.findBySheetIdAndGradeAndFromDate(sheetId, grade, from))
+                    .map(existing -> {
+                        versions.save(new RateVersion(existing));
+                        existing.nextVersion();
+                        return existing;
+                    })
                     .orElseGet(() -> new Rate(sheetId, grade, pct, from));
             rate.setPct(pct);
             rate.setToDate(to);
