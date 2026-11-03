@@ -459,7 +459,8 @@ public class ClaimService {
 
     /** Remind an open or pending claim: it is reminded on the sheet's today. Refused when the claim
      *  is in any other status, and when it was already reminded on the sheet's today. It changes no
-     *  figure. */
+     *  figure. A reminder at least the sheet's escalation gap after the claim's previous one escalates
+     *  the claim, once ever. */
     @Transactional
     public Claim remind(String sheetId, String user, long claimId) {
         Claim claim = lock(sheetId, claimId);
@@ -473,9 +474,19 @@ public class ClaimService {
                     "The claim was already reminded today");
         }
         Person person = person(sheetId, claim.getPersonId());
+        LocalDate previous = claim.getRemindedOn();
+        Integer gap = sheets.escalateAfter(sheetId);
+        boolean escalate = gap != null && previous != null && !claim.isEscalated()
+                && !previous.plusDays(gap).isAfter(today);
         claim.remindOn(today);
+        if (escalate) {
+            claim.escalate();
+        }
         Claim saved = claims.saveAndFlush(claim);
         audit.recordOnCommit(record("REMIND", sheetId, user, person, saved));
+        if (escalate) {
+            audit.recordOnCommit(record("ESCALATE", sheetId, user, person, saved));
+        }
         return saved;
     }
 

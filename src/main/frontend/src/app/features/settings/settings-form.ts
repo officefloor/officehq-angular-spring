@@ -102,6 +102,8 @@ import { FigurePipe } from '../../core/figure';
                formControlName="periodNumberingFrom" />
         <label for="setting-grace-days">Grace days (a period still open this many days after its end closes when today is changed; blank: off)</label>
         <input id="setting-grace-days" data-testid="setting-grace-days" formControlName="graceDays" inputmode="numeric" />
+        <label for="setting-escalate-after">Escalate after (a reminder this many days or more after the claim's previous one escalates it, once; blank: off)</label>
+        <input id="setting-escalate-after" data-testid="setting-escalate-after" formControlName="escalateAfter" inputmode="numeric" />
         <label for="setting-entry-date">Entry date (a new claim's date when none is given; blank: off, the sheet's today)</label>
         <input id="setting-entry-date" data-testid="setting-entry-date" type="date" formControlName="entryDate" />
         <label for="setting-pot">Pot (a balanced pool's members cut it by their shares; blank: none)</label>
@@ -150,6 +152,7 @@ import { FigurePipe } from '../../core/figure';
       <p>Policy date in force: <span data-testid="setting-policy-date-current">{{ policyDate() ?? '' }}</span></p>
       <p>Period numbering from: <span data-testid="setting-period-numbering-from-current">{{ periodNumberingFrom() ?? '' }}</span></p>
       <p>Grace days: <span data-testid="setting-grace-days-current">{{ graceDays() ?? '' }}</span></p>
+      <p>Escalate after: <span data-testid="setting-escalate-after-current">{{ escalateAfter() ?? '' }}</span></p>
       <p>Entry date: <span data-testid="setting-entry-date-current">{{ entryDate() ?? '' }}</span></p>
       <p>Pot: <span data-testid="setting-pot-current">{{ pot() ?? '' | figure }}</span></p>
       <p>Alert threshold: <span data-testid="setting-alert-threshold-current">{{ alertThreshold() ?? '' | figure }}</span></p>
@@ -217,6 +220,7 @@ export class SettingsForm {
   protected readonly policyDate = signal<string | null>(null);
   protected readonly periodNumberingFrom = signal<string | null>(null);
   protected readonly graceDays = signal<number | null>(null);
+  protected readonly escalateAfter = signal<number | null>(null);
   protected readonly entryDate = signal<string | null>(null);
   protected readonly pot = signal<string | null>(null);
   protected readonly alertThreshold = signal<string | null>(null);
@@ -279,6 +283,7 @@ export class SettingsForm {
     policyDate: new FormControl('', { nonNullable: true }),
     periodNumberingFrom: new FormControl('', { nonNullable: true }),
     graceDays: new FormControl('', { nonNullable: true }),
+    escalateAfter: new FormControl('', { nonNullable: true }),
     entryDate: new FormControl('', { nonNullable: true }),
     pot: new FormControl('', { nonNullable: true }),
     alertThreshold: new FormControl('', { nonNullable: true }),
@@ -320,6 +325,7 @@ export class SettingsForm {
       this.policyDate.set(null);
       this.periodNumberingFrom.set(null);
       this.graceDays.set(null);
+      this.escalateAfter.set(null);
       this.entryDate.set(null);
       this.pot.set(null);
       this.alertThreshold.set(null);
@@ -337,14 +343,14 @@ export class SettingsForm {
     if (this.submitting) return;
     this.settingsError.set('');
     const { clerkLimit, clerkLimitFrom, cap, capFrom, proofThreshold, proofThresholdFrom, gradeProofThresholds, noteThreshold, noteThresholdFrom, reviewThreshold, reviewThresholdFrom, floor, floorFrom, rounding, roundingFrom, terms, termsFrom, gradeTerms, gradeGraces, latePct,
-      latePctFrom, policyDate, periodNumberingFrom, graceDays, entryDate, pot, alertThreshold, parent, fiscalStartMonth, permissions } = this.settingsForm.controls;
+      latePctFrom, policyDate, periodNumberingFrom, graceDays, escalateAfter, entryDate, pot, alertThreshold, parent, fiscalStartMonth, permissions } = this.settingsForm.controls;
     const changed = (...cs: AbstractControl[]) => cs.some((c) => c.dirty || c.touched);
     const none = !changed(clerkLimit, clerkLimitFrom) && !changed(cap, capFrom)
       && !changed(proofThreshold, proofThresholdFrom) && !changed(gradeProofThresholds) && !changed(noteThreshold, noteThresholdFrom)
       && !changed(reviewThreshold, reviewThresholdFrom)
       && !changed(floor, floorFrom) && !changed(rounding, roundingFrom)
       && !changed(terms, termsFrom) && !changed(gradeTerms) && !changed(gradeGraces) && !changed(latePct, latePctFrom) && !changed(policyDate)
-      && !changed(periodNumberingFrom) && !changed(graceDays) && !changed(entryDate) && !changed(pot) && !changed(alertThreshold) && !changed(parent) && !changed(fiscalStartMonth) && !changed(permissions);
+      && !changed(periodNumberingFrom) && !changed(graceDays) && !changed(escalateAfter) && !changed(entryDate) && !changed(pot) && !changed(alertThreshold) && !changed(parent) && !changed(fiscalStartMonth) && !changed(permissions);
     /** A from-date typed, or null when blank (the sheet's today). */
     const from = (c: AbstractControl<string>) => c.value.trim() || null;
     const fromsToSave: AbstractControl<string>[] = [];
@@ -390,6 +396,8 @@ export class SettingsForm {
     const saveNumbering = none || changed(periodNumberingFrom);
     const graceValue = graceDays.value.trim();
     const saveGrace = changed(graceDays) || (none && graceValue !== '');
+    const escalateValue = escalateAfter.value.trim();
+    const saveEscalate = changed(escalateAfter) || (none && escalateValue !== '');
     const entryDateValue = entryDate.value.trim();
     const saveEntryDate = changed(entryDate) || (none && entryDateValue !== '');
     const potValue = pot.value.trim();
@@ -477,6 +485,10 @@ export class SettingsForm {
     }
     if (saveGrace && graceValue !== '' && !TERMS.test(graceValue)) {
       this.settingsError.set('Enter grace days of 0 or more whole days, or leave them blank for off.');
+      return;
+    }
+    if (saveEscalate && escalateValue !== '' && !TERMS.test(escalateValue)) {
+      this.settingsError.set('Enter an escalation gap of 0 or more whole days, or leave it blank for off.');
       return;
     }
     if (saveEntryDate && entryDateValue !== '' && !POLICY_DATE.test(entryDateValue)) {
@@ -623,6 +635,12 @@ export class SettingsForm {
         graceDays.markAsPristine();
         graceDays.markAsUntouched();
       }
+      if (saveEscalate) {
+        const saved = await this.api.setEscalateAfter(escalateValue === '' ? null : escalateValue);
+        this.escalateAfter.set(saved.escalateAfter);
+        escalateAfter.markAsPristine();
+        escalateAfter.markAsUntouched();
+      }
       if (saveEntryDate) {
         const saved = await this.api.setEntryDate(entryDateValue === '' ? null : entryDateValue);
         this.entryDate.set(saved.entryDate);
@@ -722,6 +740,7 @@ export class SettingsForm {
         this.policyDate.set(settings.policyDate);
         this.periodNumberingFrom.set(settings.periodNumberingFrom);
         this.graceDays.set(settings.graceDays);
+        this.escalateAfter.set(settings.escalateAfter);
         this.entryDate.set(settings.entryDate);
         this.pot.set(settings.pot);
         this.alertThreshold.set(settings.alertThreshold);

@@ -474,6 +474,23 @@ public class SheetService {
         return saved;
     }
 
+    /** The sheet's escalation gap in days; null when blank (off). */
+    @Transactional(readOnly = true)
+    public Integer escalateAfter(String id) {
+        return sheets.findById(id).map(Sheet::getEscalateAfter).orElse(null);
+    }
+
+    /** Change the sheet's escalation gap (null: blank, off); recorded even when unchanged. */
+    @Transactional
+    public synchronized Sheet setEscalateAfter(String id, String user, Integer days) {
+        Sheet sheet = load(id, user);
+        sheet.setEscalateAfter(days);
+        Sheet saved = sheets.saveAndFlush(sheet);
+        audit.recordOnCommit("SETTING_CHANGED sheet=" + id + " by=" + user + " key=escalate-after value="
+                + (days == null ? "" : days.toString()));
+        return saved;
+    }
+
     /** The sheet's alert threshold; null when blank (off). */
     @Transactional(readOnly = true)
     public BigDecimal alertThreshold(String id) {

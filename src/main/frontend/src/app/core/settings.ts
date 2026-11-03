@@ -44,6 +44,9 @@ export interface Settings {
   /** The grace days: when the sheet's today is changed, an open period whose to-date plus them is
    *  before it is closed; null when blank (off). */
   graceDays: number | null;
+  /** The escalation gap: reminding a claim this many days or more after its previous reminder
+   *  escalates it, once ever; null when blank (off). Not dated. */
+  escalateAfter: number | null;
   /** The entry date (yyyy-mm-dd): while it is set, a new claim's date when none is given; null when
    *  blank (off, the sheet's today then stands in). */
   entryDate: string | null;
@@ -280,6 +283,12 @@ export class SheetSettings {
   setGraceDays(value: string | null): Promise<Settings> {
     const [sheetId, headers] = this.active();
     return firstValueFrom(this.http.put<Settings>(`${this.url(sheetId)}/settings/grace-days`, { value }, { headers }));
+  }
+
+  /** Set the escalation gap; null for blank (off). */
+  setEscalateAfter(value: string | null): Promise<Settings> {
+    const [sheetId, headers] = this.active();
+    return firstValueFrom(this.http.put<Settings>(`${this.url(sheetId)}/settings/escalate-after`, { value }, { headers }));
   }
 
   /** Set the entry date; null for blank (off). */

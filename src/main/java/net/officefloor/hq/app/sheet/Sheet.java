@@ -52,6 +52,11 @@ public class Sheet {
     @Column(name = "grace_days")
     private Integer graceDays;
 
+    /** The escalation gap in days: a reminder at least this many days after the claim's previous one
+     *  escalates it; null when blank (off). */
+    @Column(name = "escalate_after")
+    private Integer escalateAfter;
+
     /** Entry date: while it is set, the default date of a new claim in place of the sheet's today;
      *  null (blank) is off. */
     @Column(name = "entry_date")
@@ -128,6 +133,14 @@ public class Sheet {
 
     public void setGraceDays(Integer graceDays) {
         this.graceDays = graceDays;
+    }
+
+    public Integer getEscalateAfter() {
+        return escalateAfter;
+    }
+
+    public void setEscalateAfter(Integer escalateAfter) {
+        this.escalateAfter = escalateAfter;
     }
 
     public LocalDate getEntryDate() {

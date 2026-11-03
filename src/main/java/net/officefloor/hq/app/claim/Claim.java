@@ -137,6 +137,10 @@ public class Claim {
     @Column(name = "reminded_on")
     private LocalDate remindedOn;
 
+    /** Whether a reminder has escalated the claim; a claim is escalated once ever. */
+    @Column(name = "escalated", nullable = false)
+    private boolean escalated;
+
     /** The claim's external reference; null when it has none. No two claims of a sheet share one,
      *  comparing without regard to case. */
     @Column(name = "ref")
@@ -265,6 +269,7 @@ public class Claim {
         copy.proofDays.addAll(proofDays);
         copy.splitFrom = renumber.apply(splitFrom);
         copy.remindedOn = remindedOn;
+        copy.escalated = escalated;
         copy.tags = tags;
         copy.voidReason = voidReason;
         copy.lateEntry = lateEntry;
@@ -435,6 +440,14 @@ public class Claim {
 
     public void remindOn(LocalDate day) {
         this.remindedOn = day;
+    }
+
+    public boolean isEscalated() {
+        return escalated;
+    }
+
+    public void escalate() {
+        this.escalated = true;
     }
 
     public int getProofs() {
