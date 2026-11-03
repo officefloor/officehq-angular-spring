@@ -1,0 +1,64 @@
+{
+  "checkpoint": 137,
+  "stack": {
+    "repo": "/home/daniel/officehq-angular-spring",
+    "origin": "git@github.com:officefloor/officehq-angular-spring.git",
+    "name": "officehq-angular-spring",
+    "base_ref": "base-empty",
+    "base_commit": "65cb8233ea38b2dfa6cfd18709e30cd18fdf3250"
+  },
+  "checkpoint_id": "cp137_claim-lines",
+  "phase": "mid",
+  "type": "additive",
+  "mutates": [],
+  "replaced_tests": [],
+  "request": {
+    "spec": "A DRAFT claim may have lines: a label, a quantity (a whole number, at least 1) and a unit amount\n(two decimals), added from the claim (CLAIM_LINE_ADDED naming the claim with its new amount, ending\nlabel=<label> qty=<qty> unit=<unit>). With lines, the claim's amount is the quantities times the\nunit amounts added up, and an edit that types another amount is refused; a line on a claim that is\nnot a DRAFT, in a closed period, or locked by another user is refused. Show the lines on the claim as\n<label> <qty> x <unit>. Adding a line counts as editing the claim.\n",
+    "prompt": "You are implementing ONE change to this application.\n\nFIRST read AGENTS.md \u2014 it states the working rules and how the app is tested, and sends you to\nDESIGN.md for the app's stack and conventions. Follow both.\n\nTHE CHANGE REQUEST:\nA DRAFT claim may have lines: a label, a quantity (a whole number, at least 1) and a unit amount\n(two decimals), added from the claim (CLAIM_LINE_ADDED naming the claim with its new amount, ending\nlabel=<label> qty=<qty> unit=<unit>). With lines, the claim's amount is the quantities times the\nunit amounts added up, and an edit that types another amount is refused; a line on a claim that is\nnot a DRAFT, in a closed period, or locked by another user is refused. Show the lines on the claim as\n<label> <qty> x <unit>. Adding a line counts as editing the claim.\n\nYour work is verified by an automated Playwright UI test already installed under e2e/specs/.\nRead that spec: it declares the exact data-testid anchors, values, test data and any audit\nrecords it expects \u2014 match them. Run `bin/e2e` to build the app, start it, and run the test as\nyou work; iterate until it passes. Change whatever the request needs across the app \u2014 its stored\ndata, its server and its front end. Do NOT edit bin/build, bin/start, bin/stop, bin/e2e,\nAGENTS.md, CLAUDE.md, DESIGN.md, e2e/support/ or the test spec.\n"
+  },
+  "commit_sha": "2783aad475dae9ced664d0f87d189b92e1d79682",
+  "reset_sha": "",
+  "preagent_sha": "14ff5c09d012e3fa714a96cc110e203afaabee6f",
+  "prev_sha": "14ff5c09d012e3fa714a96cc110e203afaabee6f",
+  "base_sha": "65cb8233ea38b2dfa6cfd18709e30cd18fdf3250",
+  "agent": {
+    "ok": true,
+    "cost_usd": 1.078387,
+    "input_tokens": 42,
+    "output_tokens": 12505,
+    "cache_read_tokens": 1153755,
+    "cache_creation_tokens": 74671,
+    "num_turns": 23,
+    "duration_ms": 450972,
+    "duration_api_ms": 109827,
+    "model": "claude-opus-5-5",
+    "session_id": "9f5e2166-e748-4e32-a0e3-72656a86f63c",
+    "stop_reason": "success",
+    "result_text": "Draft claims can now have lines, and all 4 Playwright tests pass with `bin/e2e`.\n\n**How it behaves**\n- Each claim row has fields for a label, a quantity and a unit amount, and an \"Add line\" button. Lines show on the claim as `<label> <qty> x <unit>`, in the order they were added.\n- Adding a line sets the claim's amount to the sum of quantity \u00d7 unit amount over all its lines, and writes `CLAIM_LINE_ADDED \u2026 label=\u2026 qty=\u2026 unit=\u2026` to the audit file.\n- Adding a line counts as editing the claim, so the user who added it can't settle it.\n- A line is refused, with the claim's error shown and nothing saved, when:\n  - the label is empty;\n  - the quantity isn't a whole number of at least 1;\n  - the unit amount has more than two decimals;\n  - the claim isn't a draft;\n  - the claim is in a closed period;\n  - another user has the claim's editor open.\n- Once a claim has lines, an edit (in the editor or in the row) that types a different amount is refused. An edit that keeps the lines' total and changes other fields, like the note, still saves.\n\n**Changes**\n- **Database:** a new migration, `V81__claim_line.sql`, adds a `claim_line` table.\n- **Server:** a new `ClaimLine` entity. Lines are copied when a claim is transferred or its sheet is cloned. There is a new `POST /claims/{id}/lines` endpoint, `ClaimService.addLine`, and the amount check in `ClaimService.edit`.\n- **Front end:** the API call and `ClaimLine` type in `core/claims.ts`, and the row inputs, error messages and line list in `person-claims.ts`.\n\n**Choices the request didn't settle**\n- A unit amount of 0.00 or less is refused.\n- The \"amount differs from the lines' total\" refusal returns a 400 error, not the 409 used for other edit refusals. The screen treats a 409 on a draft as \"another user is editing\", so this lets it say instead that the amount comes from the lines.",
+    "error": "",
+    "attempts": [
+      {
+        "ok": true,
+        "limit_reached": false,
+        "retryable": false,
+        "timed_out": false,
+        "cost_usd": 1.078387,
+        "num_turns": 23,
+        "duration_ms": 450972,
+        "duration_api_ms": 109827,
+        "error": ""
+      }
+    ]
+  },
+  "agent_stream_file": "cp137.agent.jsonl",
+  "agent_diff_file": "cp137.agent.diff",
+  "build_log_file": null,
+  "tests": {
+    "gated": false,
+    "queued": true
+  },
+  "probe": null,
+  "pinned_touched": [],
+  "acceptance_touched": [],
+  "impact_gate": null
+}

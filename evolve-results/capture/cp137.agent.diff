@@ -1,0 +1,405 @@
+diff --git a/src/main/frontend/src/app/core/claims.ts b/src/main/frontend/src/app/core/claims.ts
+index e107005ce..9c424df90 100644
+--- a/src/main/frontend/src/app/core/claims.ts
++++ b/src/main/frontend/src/app/core/claims.ts
+@@ -147,6 +147,16 @@ export interface Claim {
+   /** The number of the bulk settle batch that settled it (or left it pending); null when it was
+    *  settled one at a time, or is not settled or pending. */
+   settleBatch: number | null;
++  /** Its lines, in the order they were added; a claim with lines has their total as its amount. */
++  lines: ClaimLine[];
++}
++
++/** A line of a claim: its label, its quantity (a whole number) and its unit amount as text with
++ *  two decimals. */
++export interface ClaimLine {
++  label: string;
++  qty: number;
++  unit: string;
+ }
+ 
+ /** A comment on a claim: who wrote it, the sheet's today then (yyyy-mm-dd), and its text. */
+@@ -430,6 +440,18 @@ export class Claims {
+     );
+   }
+ 
++  /** Add a line to a draft claim: the claim with its amount the lines' total. Refused (400) when
++   *  the label is empty, the quantity not a whole number of at least 1 or the unit amount not
++   *  above 0.00 with two decimals at most, (409) when it is not a draft or another user is editing
++   *  it, and (423) when its period is closed. */
++  addLine(id: number, label: string, qty: string, unit: string): Promise<Claim> {
++    const { sheetId, user } = this.active();
++    return firstValueFrom(
++      this.http.post<Claim>(`${this.url(sheetId)}/claims/${id}/lines`, { label, qty, unit },
++        { headers: { 'X-User': user } }),
++    );
++  }
++
+   /** Split the amount (above 0.00 and below the claim's amount) off an open claim: the claim with
+    *  the rest of its amount, and the new open claim. Refused (409) when it is not open or is
+    *  deferred, (400) when the amount is out of range, (403) when the user's role may not open a
+diff --git a/src/main/frontend/src/app/features/claims/person-claims.ts b/src/main/frontend/src/app/features/claims/person-claims.ts
+index f96702b1d..f84ceafa3 100644
+--- a/src/main/frontend/src/app/features/claims/person-claims.ts
++++ b/src/main/frontend/src/app/features/claims/person-claims.ts
+@@ -100,6 +100,19 @@ function commentRefusal(e: unknown): string {
+   return 'The comment could not be added.';
+ }
+ 
++/** The message when a line's label, quantity or unit amount is not valid. */
++const LINE_INVALID = 'Enter a label, a whole quantity of at least 1 and a unit amount above 0.00 with two decimals at most.';
++
++/** The message for a refused line on a claim. */
++function lineRefusal(e: unknown): string {
++  if (e instanceof HttpErrorResponse && e.status === 423) return CLOSED;
++  if (e instanceof HttpErrorResponse && e.status === 409) {
++    return 'Only a draft claim no one else is editing can be given a line.';
++  }
++  if (e instanceof HttpErrorResponse && e.status === 400) return LINE_INVALID;
++  return 'The line could not be added.';
++}
++
+ /** The message for a refused defer of a claim. */
+ function deferRefusal(e: unknown): string {
+   if (e instanceof HttpErrorResponse && e.status === 423) return CLOSED;
+@@ -127,8 +140,12 @@ const DEFER_DATE = 'Enter a date after the sheet\'s today to defer the claim to.
+ /** The message when a row's amount entry is not an amount. */
+ const INLINE_AMOUNT = 'Enter an amount with up to two decimals; a negative amount is a correction.';
+ 
++/** The message when an edit types another amount than the total of a claim's lines. */
++const LINED = 'A claim with lines has their total as its amount; add a line to change it.';
++
+ /** The message for a refused change of a claim's amount from its row. */
+ function amountRefusal(e: unknown, c: Claim, amount: string): string {
++  if (e instanceof HttpErrorResponse && e.status === 400 && c.lines.length > 0) return LINED;
+   if (e instanceof HttpErrorResponse && e.status === 400 && amount.startsWith('-')) return CORRECTS;
+   if (e instanceof HttpErrorResponse && e.status === 422) return RETIRED;
+   if (e instanceof HttpErrorResponse && (e.status === 403 || e.status === 409 || e.status === 423)) {
+@@ -231,6 +248,22 @@ function splitRefusal(e: unknown): string {
+               <li data-testid="claim-comments-line">{{ m.by }} on {{ m.on }}: {{ m.text }}</li>
+             }
+           </ol>
++          <ol data-testid="claim-lines" [attr.aria-label]="'Lines of claim of ' + c.amount + ' on ' + c.date">
++            @for (n of c.lines; track $index) {
++              <li data-testid="claim-lines-line">{{ n.label }} {{ n.qty }} x {{ n.unit }}</li>
++            }
++          </ol>
++          <label [for]="'claim-line-label-' + c.id">Line label</label>
++          <input [id]="'claim-line-label-' + c.id" data-testid="claim-line-label" #lineLabel
++            (input)="clearError(c)" />
++          <label [for]="'claim-line-qty-' + c.id">Quantity</label>
++          <input [id]="'claim-line-qty-' + c.id" data-testid="claim-line-qty" #lineQty inputmode="numeric"
++            (input)="clearError(c)" />
++          <label [for]="'claim-line-unit-' + c.id">Unit amount</label>
++          <input [id]="'claim-line-unit-' + c.id" data-testid="claim-line-unit" #lineUnit inputmode="decimal"
++            (input)="clearError(c)" />
++          <button type="button" data-testid="claim-line-add" (click)="addLine(c, lineLabel, lineQty, lineUnit)"
++            [attr.aria-label]="'Add a line to claim of ' + c.amount + ' on ' + c.date">Add line</button>
+           <label [for]="'claim-comment-text-' + c.id">Comment</label>
+           <input [id]="'claim-comment-text-' + c.id" data-testid="claim-comment-text" #commentText
+             (input)="clearError(c)" />
+@@ -516,6 +549,23 @@ export class PersonClaims {
+     }
+   }
+ 
++  protected async addLine(c: Claim, label: HTMLInputElement, qty: HTMLInputElement,
++    unit: HTMLInputElement): Promise<void> {
++    this.claimError.set(null);
++    if (!label.value.trim() || !/^\s*\d+\s*$/.test(qty.value) || !/^\s*\d+(\.\d{1,2})?\s*$/.test(unit.value)) {
++      this.claimError.set({ id: c.id, message: LINE_INVALID });
++      return;
++    }
++    try {
++      this.saved.emit(await this.api.addLine(c.id, label.value.trim(), qty.value.trim(), unit.value.trim()));
++      label.value = '';
++      qty.value = '';
++      unit.value = '';
++    } catch (e) {
++      this.claimError.set({ id: c.id, message: lineRefusal(e) });
++    }
++  }
++
+   protected async defer(c: Claim, until: string): Promise<void> {
+     this.claimError.set(null);
+     if (!/^\d{4}-\d{2}-\d{2}$/.test(until)) {
+@@ -638,6 +688,8 @@ export class PersonClaims {
+     } catch (e) {
+       if (e instanceof HttpErrorResponse && e.status === 423) this.error.set(CLOSED);
+       else if (e instanceof HttpErrorResponse && e.status === 422) this.error.set(RETIRED);
++      else if (e instanceof HttpErrorResponse && e.status === 400 && id !== null
++        && (this.claims().find((x) => x.id === id)?.lines.length ?? 0) > 0) this.error.set(LINED);
+       else if (e instanceof HttpErrorResponse && e.status === 400 && amount.trim().startsWith('-')) this.error.set(CORRECTS);
+       else if (e instanceof HttpErrorResponse && e.status === 409 && reference !== '' && this.refClash(id)) {
+         this.error.set(REF_USED);
+diff --git a/src/main/java/net/officefloor/hq/app/claim/Claim.java b/src/main/java/net/officefloor/hq/app/claim/Claim.java
+index 18e860a40..53495d393 100644
+--- a/src/main/java/net/officefloor/hq/app/claim/Claim.java
++++ b/src/main/java/net/officefloor/hq/app/claim/Claim.java
+@@ -174,6 +174,13 @@ public class Claim {
+     @OrderBy("id")
+     private List<ClaimComment> comments = new ArrayList<>();
+ 
++    /** The claim's lines, in the order they were added (see {@link #addLine}). */
++    @OneToMany(cascade = CascadeType.ALL, orphanRemoval = true, fetch = FetchType.EAGER)
++    @Fetch(FetchMode.SUBSELECT)
++    @JoinColumn(name = "claim_id", nullable = false, updatable = false)
++    @OrderBy("id")
++    private List<ClaimLine> lines = new ArrayList<>();
++
+     protected Claim() {
+     }
+ 
+@@ -234,7 +241,7 @@ public class Claim {
+     }
+ 
+     /** A copy of this claim for a person on another sheet (it was transferred there): its status,
+-     *  dates, note, tags, frozen figures, status log and comments kept, its numbers (its own, the
++     *  dates, note, tags, frozen figures, status log, comments and lines kept, its numbers (its own, the
+      *  one it corrects and the one it was split off) renumbered as given (null: none), and no
+      *  reference, settle batch, editor or figure a statement bound it to. Listed as the newest. */
+     public Claim transferredTo(String toSheetId, Long toPersonId, UnaryOperator<String> renumber) {
+@@ -257,6 +264,7 @@ public class Claim {
+         log.forEach(line -> copy.log.add(new ClaimLog(toSheetId, line.getStatus(), line.getByUser(), line.getOn(),
+                 line.getDue())));
+         comments.forEach(c -> copy.comments.add(new ClaimComment(toSheetId, c.getByUser(), c.getOn(), c.getText())));
++        lines.forEach(l -> copy.lines.add(new ClaimLine(toSheetId, l.getLabel(), l.getQty(), l.getUnit())));
+         return copy;
+     }
+ 
+@@ -560,4 +568,14 @@ public class Claim {
+     public void comment(String user, LocalDate on, String text) {
+         comments.add(new ClaimComment(sheetId, user, on, text));
+     }
++
++    public List<ClaimLine> getLines() {
++        return List.copyOf(lines);
++    }
++
++    /** Add a line to the claim: its amount becomes the lines' amounts added up. */
++    public void addLine(String label, int qty, BigDecimal unit) {
++        lines.add(new ClaimLine(sheetId, label, qty, unit));
++        amount = lines.stream().map(ClaimLine::amount).reduce(BigDecimal.ZERO, BigDecimal::add).setScale(2);
++    }
+ }
+diff --git a/src/main/java/net/officefloor/hq/app/claim/ClaimController.java b/src/main/java/net/officefloor/hq/app/claim/ClaimController.java
+index 956d01f4d..6129f9196 100644
+--- a/src/main/java/net/officefloor/hq/app/claim/ClaimController.java
++++ b/src/main/java/net/officefloor/hq/app/claim/ClaimController.java
+@@ -49,13 +49,14 @@ public class ClaimController {
+      *  was written for it (null when never); and its external reference (null when none); and its tags,
+      *  sorted and comma and space separated (empty when none); and the reason it was voided with (null
+      *  when none); and its comments, in the order they were written; and the number of the bulk
+-     *  settle batch that settled it (null when none, or when it is not settled or pending). */
++     *  settle batch that settled it (null when none, or when it is not settled or pending); and its
++     *  lines, in the order they were added. */
+     public record ClaimView(long id, long personId, String amount, LocalDate date, String note,
+             ClaimStatus status, String number, String settledDue, String openedBy, boolean stated,
+             String statedDue, boolean statedNa, String corrects, LocalDate roundsBy, long listed, LocalDate dueBy,
+             List<LogLineView> log, LocalDate deferredUntil, int proofs, String splitFrom,
+             String editLockedBy, boolean lateEntry, LocalDate remindedOn, String ref, String tags,
+-            String voidReason, List<CommentView> comments, Integer settleBatch) {
++            String voidReason, List<CommentView> comments, Integer settleBatch, List<LineView> lines) {
+         public static ClaimView of(Claim claim) {
+             return new ClaimView(claim.getId(), claim.getPersonId(), claim.getAmount().setScale(2).toPlainString(),
+                     claim.getDate(), claim.getNote(), claim.getStatus(), claim.getNumber(),
+@@ -68,7 +69,8 @@ public class ClaimController {
+                     claim.getRemindedOn(), claim.getRef(), tagsText(claim.getTags()),
+                     claim.getStatus() == ClaimStatus.VOID ? claim.getVoidReason() : null,
+                     claim.getComments().stream().map(CommentView::of).toList(),
+-                    batchOf(claim.getStatus(), claim.getSettleBatch()));
++                    batchOf(claim.getStatus(), claim.getSettleBatch()),
++                    claim.getLines().stream().map(LineView::of).toList());
+         }
+ 
+         /** The claim as it stood at the end of a day: its figures as its revision then has them (see
+@@ -92,7 +94,8 @@ public class ClaimController {
+                     kept.getRef(), tagsText(kept.getTags()),
+                     then.getStatus() == ClaimStatus.VOID ? kept.getVoidReason() : null,
+                     kept.getComments().stream().filter(c -> !c.getOn().isAfter(day)).map(CommentView::of).toList(),
+-                    batchOf(then.getStatus(), kept.getSettleBatch()));
++                    batchOf(then.getStatus(), kept.getSettleBatch()),
++                    kept.getLines().stream().map(LineView::of).toList());
+         }
+ 
+         /** The settle batch a claim shows: only while it is settled or pending. */
+@@ -113,6 +116,13 @@ public class ClaimController {
+         }
+     }
+ 
++    /** A line of a claim: its label, quantity and unit amount as text with two decimals. */
++    public record LineView(String label, int qty, String unit) {
++        static LineView of(ClaimLine line) {
++            return new LineView(line.getLabel(), line.getQty(), line.getUnit().setScale(2).toPlainString());
++        }
++    }
++
+     /** A line of a claim's status log: the status, who changed it to that, the sheet's today then, and
+      *  the claim's due at that moment as text with two decimals (null when it had none). */
+     public record LogLineView(ClaimStatus status, String by, LocalDate on, String due) {
+@@ -386,6 +396,20 @@ public class ClaimController {
+         return ClaimView.of(service.comment(sheetId.trim(), user.trim(), claimId, form.text()));
+     }
+ 
++    /** A line to add to a draft claim: its label, quantity and unit amount (two decimals at most). */
++    public record LineForm(@Size(max = 200) String label, @NotNull @Pattern(regexp = "\\s*\\d{1,9}\\s*") String qty,
++            @NotNull @Pattern(regexp = "\\s*\\d{1,12}(\\.\\d{1,2})?\\s*") String unit) {
++    }
++
++    @PostMapping("/claims/{claimId}/lines")
++    public ClaimView addLine(@PathVariable @NotBlank @Size(max = 100) String sheetId,
++            @PathVariable long claimId,
++            @RequestHeader("X-User") @NotBlank @Size(max = 100) String user,
++            @Valid @RequestBody LineForm form) {
++        return ClaimView.of(service.addLine(sheetId.trim(), user.trim(), claimId, form.label(),
++                Integer.parseInt(form.qty().trim()), new BigDecimal(form.unit().trim())));
++    }
++
+     /** The reason a steward gives for rejecting a pending claim. */
+     public record RejectForm(@NotBlank @Size(max = 500) String reason) {
+     }
+diff --git a/src/main/java/net/officefloor/hq/app/claim/ClaimLine.java b/src/main/java/net/officefloor/hq/app/claim/ClaimLine.java
+new file mode 100644
+index 000000000..97a67392d
+--- /dev/null
++++ b/src/main/java/net/officefloor/hq/app/claim/ClaimLine.java
+@@ -0,0 +1,62 @@
++package net.officefloor.hq.app.claim;
++
++import jakarta.persistence.Column;
++import jakarta.persistence.Entity;
++import jakarta.persistence.GeneratedValue;
++import jakarta.persistence.GenerationType;
++import jakarta.persistence.Id;
++import jakarta.persistence.Table;
++import java.math.BigDecimal;
++
++/** A line of a draft claim: a label, a quantity (a whole number, at least 1) and a unit amount. */
++@Entity
++@Table(name = "claim_line")
++public class ClaimLine {
++
++    @Id
++    @GeneratedValue(strategy = GenerationType.IDENTITY)
++    private Long id;
++
++    @Column(name = "sheet_id", nullable = false)
++    private String sheetId;
++
++    @Column(name = "label", nullable = false)
++    private String label;
++
++    @Column(name = "qty", nullable = false)
++    private int qty;
++
++    @Column(name = "unit", nullable = false, precision = 14, scale = 2)
++    private BigDecimal unit;
++
++    protected ClaimLine() {
++    }
++
++    public ClaimLine(String sheetId, String label, int qty, BigDecimal unit) {
++        this.sheetId = sheetId;
++        this.label = label;
++        this.qty = qty;
++        this.unit = unit;
++    }
++
++    public Long getId() {
++        return id;
++    }
++
++    public String getLabel() {
++        return label;
++    }
++
++    public int getQty() {
++        return qty;
++    }
++
++    public BigDecimal getUnit() {
++        return unit;
++    }
++
++    /** The line's amount: its quantity times its unit amount. */
++    public BigDecimal amount() {
++        return unit.multiply(BigDecimal.valueOf(qty));
++    }
++}
+diff --git a/src/main/java/net/officefloor/hq/app/claim/ClaimService.java b/src/main/java/net/officefloor/hq/app/claim/ClaimService.java
+index 4e3be3f8f..3a4c3f39b 100644
+--- a/src/main/java/net/officefloor/hq/app/claim/ClaimService.java
++++ b/src/main/java/net/officefloor/hq/app/claim/ClaimService.java
+@@ -126,7 +126,8 @@ public class ClaimService {
+      *  takes the sheet's today. Refused when another claim of the sheet has the reference, and
+      *  when the claim is not a draft (an open claim is changed by voiding it and adding a new one), and
+      *  when the claim's due-by (which the edit leaves) falls inside a closed period, and when the new
+-     *  date is after the person's retirement day. */
++     *  date is after the person's retirement day, and when the claim has lines and the amount is not
++     *  their total (400). */
+     @Transactional
+     public Claim edit(String sheetId, String user, long claimId, BigDecimal amount, LocalDate date, String note,
+             String corrects, String ref, String tags) {
+@@ -139,6 +140,10 @@ public class ClaimService {
+         LocalDate on = date != null ? date : sheets.today(sheetId);
+         refuseClosed(sheetId, claim.getDueBy());
+         refuseRetired(person(sheetId, claim.getPersonId()), on);
++        if (!claim.getLines().isEmpty() && amount.compareTo(claim.getAmount()) != 0) {
++            throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
++                    "A claim with lines has their total as its amount");
++        }
+         Claim corrected = corrected(sheetId, claim.getPersonId(), amount, corrects);
+         return rollup.tracking(sheetId, user, () -> {
+             claim.setAmount(amount);
+@@ -457,6 +462,34 @@ public class ClaimService {
+         return saved;
+     }
+ 
++    /** Add a line to a draft claim: its amount becomes the lines' quantities times unit amounts added
++     *  up. Refused when the label is empty, the quantity is below 1 or the unit amount below 0.01
++     *  (400), when the claim is not a draft or another user has its editor open (409), and when its
++     *  due-by falls inside a closed period. Counts as editing the claim. */
++    @Transactional
++    public Claim addLine(String sheetId, String user, long claimId, String label, int qty, BigDecimal unit) {
++        String trimmed = label == null ? "" : label.trim();
++        if (trimmed.isEmpty() || qty < 1 || unit.signum() <= 0) {
++            throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
++                    "A line needs a label, a quantity of at least 1 and a unit amount above 0.00");
++        }
++        Claim claim = lock(sheetId, claimId);
++        if (claim.getStatus() != ClaimStatus.DRAFT || claim.editLockedFor(user)) {
++            throw new ResponseStatusException(HttpStatus.CONFLICT,
++                    "A " + claim.getStatus() + " claim cannot be given a line, nor one another user is editing");
++        }
++        refuseClosed(sheetId, claim.getDueBy());
++        return rollup.tracking(sheetId, user, () -> {
++            Person person = person(sheetId, claim.getPersonId());
++            claim.addLine(trimmed, qty, unit);
++            claim.setEditedBy(user);
++            Claim saved = claims.saveAndFlush(claim);
++            audit.recordOnCommit(record("CLAIM_LINE_ADDED", sheetId, user, person, saved)
++                    + " label=" + trimmed + " qty=" + qty + " unit=" + unit.setScale(2).toPlainString());
++            return saved;
++        });
++    }
++
+     /** Approve a pending claim: it becomes settled, its due fixed at the figure it has now (its live
+      *  figure and late charge). Refused unless the claim is pending, the user is a steward and is not
+      *  the one who opened or last edited it, the claim's period is open, and it has a proof if it needs one. */
+diff --git a/src/main/resources/db/migration/V81__claim_line.sql b/src/main/resources/db/migration/V81__claim_line.sql
+new file mode 100644
+index 000000000..511fafa71
+--- /dev/null
++++ b/src/main/resources/db/migration/V81__claim_line.sql
+@@ -0,0 +1,12 @@
++-- A draft claim's lines, in the order they were added (by id). Each keeps its (trimmed, never
++-- empty) label, its quantity (a whole number, at least 1) and its unit amount (two decimals); a
++-- claim with lines has their quantities times unit amounts added up as its amount.
++CREATE TABLE claim_line (
++    id        BIGINT AUTO_INCREMENT PRIMARY KEY,
++    sheet_id  VARCHAR(100)   NOT NULL REFERENCES sheet (id),
++    claim_id  BIGINT         NOT NULL REFERENCES claim (id),
++    label     VARCHAR(200)   NOT NULL,
++    qty       INT            NOT NULL,
++    unit      DECIMAL(14, 2) NOT NULL
++);
++CREATE INDEX claim_line_claim ON claim_line (claim_id, id);
