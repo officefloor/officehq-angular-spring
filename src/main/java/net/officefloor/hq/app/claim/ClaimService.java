@@ -168,7 +168,7 @@ public class ClaimService {
      */
     public BigDecimal due(String sheetId, Person person, Claim claim) {
         BigDecimal floor = sheets.floor(sheetId);
-        return rates.findInForce(sheetId, person.getGrade(), claim.getDate()).map(Rate::getPct)
+        return rates.findInForce(sheetId, person.gradeOn(claim.getDate()), claim.getDate()).map(Rate::getPct)
                 .map(pct -> claim.getAmount().multiply(pct).divide(BigDecimal.valueOf(100), 2, RoundingMode.HALF_EVEN))
                 .map(due -> due.max(floor))
                 .orElse(null);

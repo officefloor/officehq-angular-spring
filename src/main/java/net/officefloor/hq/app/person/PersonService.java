@@ -14,6 +14,10 @@ import org.springframework.web.server.ResponseStatusException;
 
 /**
  * The people on a sheet: listed in the order they were added, added and edited by name and grade. A
+ * person's grade is dated: the first applies from the beginning of time, and each edit records the
+ * grade from its from-date (the sheet's today when none is given), keeping those already recorded;
+ * an edit leaving the grade in force on the sheet's today as it is, with no from-date, records none.
+ * A
  * name is unique on the sheet, compared without regard to case (names arrive trimmed). A person can
  * be retired from a date (the sheet's today when none is given); they count as retired at once. A
  * person can be put on hold and taken off it again. A person can name other people on the sheet as
@@ -50,13 +54,14 @@ public class PersonService {
             throw nameInUse();
         }
         Person added = save(new Person(sheetId, name, grade));
-        audit.recordOnCommit(record("PERSON_ADDED", sheetId, user, added));
+        audit.recordOnCommit(record("PERSON_ADDED", sheetId, user, added, sheets.today(sheetId)));
         rollup.recordChanges(sheetId, user, before);
         return added;
     }
 
     @Transactional
-    public Person update(String sheetId, String user, long id, long version, String name, String grade) {
+    public Person update(String sheetId, String user, long id, long version, String name, String grade,
+            LocalDate gradeFrom) {
         RollupService.Snapshot before = rollup.snapshot(sheetId);
         Person person = people.findByIdAndSheetId(id, sheetId)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "No such person on this sheet."));
@@ -66,10 +71,13 @@ public class PersonService {
         if (people.existsBySheetIdAndNameIgnoreCaseAndIdNot(sheetId, name, id)) {
             throw nameInUse();
         }
+        LocalDate today = sheets.today(sheetId);
         person.setName(name);
-        person.setGrade(grade);
+        if (gradeFrom != null || !grade.equals(person.gradeOn(today))) {
+            person.setGradeFrom(gradeFrom != null ? gradeFrom : today, grade);
+        }
         Person saved = save(person);
-        audit.recordOnCommit(record("PERSON_EDITED", sheetId, user, saved));
+        audit.recordOnCommit(record("PERSON_EDITED", sheetId, user, saved, today));
         rollup.recordChanges(sheetId, user, before);
         return saved;
     }
@@ -144,9 +152,10 @@ public class PersonService {
         return new ResponseStatusException(HttpStatus.CONFLICT, "That person is already a patron.");
     }
 
-    private static String record(String event, String sheetId, String user, Person person) {
+    /** A person's record, with the grade in force on the sheet's today. */
+    private static String record(String event, String sheetId, String user, Person person, LocalDate today) {
         return event + " sheet=" + sheetId + " by=" + user + " name=" + person.getName() + " grade="
-                + person.getGrade();
+                + person.gradeOn(today);
     }
 
     /**

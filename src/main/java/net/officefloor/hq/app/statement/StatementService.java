@@ -97,7 +97,7 @@ public class StatementService {
         }
         claims.saveAllAndFlush(theirs);
         // as on screen: n/a when the grade has no rate today and no claim that counts has a figure
-        BigDecimal dueTotal = anyFigure || rates.findInForce(sheetId, person.getGrade(), today).isPresent() ? total
+        BigDecimal dueTotal = anyFigure || rates.findInForce(sheetId, person.gradeOn(today), today).isPresent() ? total
                 : null;
         Statement taken = statements.saveAndFlush(new Statement(sheetId, personId, today, dueTotal, counted));
         int count = (int) statements.findBySheetIdOrderByIdAsc(sheetId).stream()

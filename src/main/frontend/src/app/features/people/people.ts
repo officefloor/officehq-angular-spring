@@ -4,12 +4,16 @@ import { firstValueFrom } from 'rxjs';
 import { Session } from '../../core/session';
 import { AMOUNT, Claim, PersonClaims, cents, counts, money, overdue } from '../claims/claims';
 import { DatedDue, Period, Periods } from '../periods/periods';
-import { Lateness, Rate, Rates, chargedDueCents, dueText, fixedDueCents, pctOn } from '../rates/rates';
+import { DatedGrade, Lateness, Rate, Rates, chargedDueCents, dueText, gradeOn, pctOn } from '../rates/rates';
 import { Roles } from '../roles/roles';
 import { Settings } from '../settings/settings';
 
 // The people on the active sheet, in the order they were added, and the one form that both adds
 // a person and edits an existing one (opening a person's editor fills the form with their values).
+// A person's grade is dated: their first applies from the beginning of time, and each save records
+// the form's grade from its from-date (the sheet's today when blank), keeping those recorded before;
+// a save leaving the grade as the row shows it, with the from-date blank, records none. The row
+// shows the grade in force on the sheet's today; each claim uses the one in force on its date.
 // The editor remembers the version of the person it opened; if someone else has saved the person
 // since, the save is refused and the form is refilled with the values the store holds now.
 // Each row shows what the person has claimed and lists their claims; the sheet's claimed-total
@@ -38,7 +42,8 @@ import { Settings } from '../settings/settings';
 interface Person {
   id: number;
   name: string;
-  grade: string;
+  /** Every grade recorded for the person, the one from the beginning of time first. */
+  grades: DatedGrade[];
   /** The version the store holds; an edit sends the version it was opened at. */
   version: number;
   retired: boolean;
@@ -110,6 +115,14 @@ const GRADES = ['A', 'B', 'C'] as const;
             <option [value]="g" [selected]="g === gradeInput()">{{ g }}</option>
           }
         </select>
+        <label for="person-form-grade-from">Grade from</label>
+        <input
+          type="date"
+          id="person-form-grade-from"
+          data-testid="person-form-grade-from"
+          [value]="gradeFromInput()"
+          (input)="gradeFromInput.set($any($event.target).value); error.set(null)"
+        />
         <button type="submit" data-testid="person-form-submit">
           {{ editingId() === null ? 'Add person' : 'Save person' }}
         </button>
@@ -174,7 +187,7 @@ const GRADES = ['A', 'B', 'C'] as const;
           @for (p of listed(); track p.id) {
             <tr [attr.data-testid]="'person-row-' + p.id">
               <td data-testid="person-name">{{ p.name }}</td>
-              <td data-testid="person-grade">{{ p.grade }}</td>
+              <td data-testid="person-grade">{{ gradeToday(p) }}</td>
               <td data-testid="person-claimed">{{ claimedOf(p.id) }}</td>
               <td data-testid="person-due-total">{{ dueText(dueOf(p)) }}</td>
               <td>
@@ -225,7 +238,7 @@ const GRADES = ['A', 'B', 'C'] as const;
                   [personId]="p.id"
                   [personName]="p.name"
                   [claims]="claimsOf(p.id)"
-                  [grade]="p.grade"
+                  [grades]="p.grades"
                   [rates]="rates()"
                   [floor]="floorCents()"
                   [terms]="terms()"
@@ -330,7 +343,7 @@ export class People {
     for (const c of this.claims()) {
       const p = this.peopleById().get(c.personId);
       if (p === undefined || !countsFor(p, c)) continue;
-      const due = chargedDueCents(c, this.rates(), p.grade, this.floorCents(), this.lateness());
+      const due = chargedDueCents(c, this.rates(), gradeOn(p.grades, c.date), this.floorCents(), this.lateness());
       if (due !== null) out.push({ date: c.date, cents: due });
     }
     return out;
@@ -372,6 +385,8 @@ export class People {
   );
   protected readonly nameInput = signal('');
   protected readonly gradeInput = signal<string>('A');
+  /** The date the form's grade is recorded from; blank for the sheet's today. */
+  protected readonly gradeFromInput = signal('');
   protected readonly editingId = signal<number | null>(null);
   /** The version of the person the editor was filled from. */
   private editingVersion = 0;
@@ -426,6 +441,11 @@ export class People {
     }
   }
 
+  /** The person's grade in force on the sheet's today. */
+  protected gradeToday(p: Person): string {
+    return gradeOn(p.grades, this.session.today());
+  }
+
   protected claimsOf(personId: number): Claim[] {
     return this.claimsByPerson().get(personId) ?? [];
   }
@@ -442,13 +462,15 @@ export class People {
 
   /**
    * What the person owes, in whole cents: the sum of the figures of the claims that count. Null
-   * when their grade has no rate in force on the sheet's today, unless a stated or settled claim
-   * that counts keeps a figure.
+   * when their grade in force on the sheet's today has no rate in force then, unless a claim that
+   * counts has a figure.
    */
   protected dueOf(p: Person): number | null {
-    const counted = this.claimsOf(p.id).filter((c) => countsFor(p, c));
-    if (this.pctOf().get(p.grade) === undefined && !counted.some((c) => fixedDueCents(c) !== null)) return null;
-    return counted.reduce((sum, c) => sum + (chargedDueCents(c, this.rates(), p.grade, this.floorCents(), this.lateness()) ?? 0), 0);
+    const figures = this.claimsOf(p.id)
+      .filter((c) => countsFor(p, c))
+      .map((c) => chargedDueCents(c, this.rates(), gradeOn(p.grades, c.date), this.floorCents(), this.lateness()));
+    if (this.pctOf().get(this.gradeToday(p)) === undefined && figures.every((f) => f === null)) return null;
+    return figures.reduce<number>((sum, f) => sum + (f ?? 0), 0);
   }
 
   /** The person's overdue claims that count: how many, and the sum of their figures in whole cents. */
@@ -457,7 +479,7 @@ export class People {
     const late = this.claimsOf(p.id).filter((c) => countsFor(p, c) && overdue(c, this.terms(), today));
     return {
       count: late.length,
-      cents: late.reduce((sum, c) => sum + (chargedDueCents(c, this.rates(), p.grade, this.floorCents(), this.lateness()) ?? 0), 0),
+      cents: late.reduce((sum, c) => sum + (chargedDueCents(c, this.rates(), gradeOn(p.grades, c.date), this.floorCents(), this.lateness()) ?? 0), 0),
     };
   }
 
@@ -650,7 +672,8 @@ export class People {
     this.editingId.set(p.id);
     this.editingVersion = p.version;
     this.nameInput.set(p.name);
-    this.gradeInput.set(p.grade);
+    this.gradeInput.set(this.gradeToday(p));
+    this.gradeFromInput.set('');
     this.error.set(null);
   }
 
@@ -662,6 +685,7 @@ export class People {
     this.editingId.set(null);
     this.nameInput.set('');
     this.gradeInput.set('A');
+    this.gradeFromInput.set('');
     this.error.set(null);
   }
 
@@ -672,12 +696,17 @@ export class People {
     const sheet = this.session.sheet();
     const name = this.nameInput().trim();
     const grade = this.gradeInput();
+    const gradeFrom = this.gradeFromInput().trim();
     if (!name) {
       this.error.set('Enter a name.');
       return;
     }
     if (!GRADES.includes(grade as (typeof GRADES)[number])) {
       this.error.set('Choose a grade of A, B or C.');
+      return;
+    }
+    if (gradeFrom !== '' && !/^\d{4}-\d{2}-\d{2}$/.test(gradeFrom)) {
+      this.error.set('Enter a date the grade is from, or leave it blank for the sheet\'s today.');
       return;
     }
     const id = this.editingId();
@@ -690,7 +719,7 @@ export class People {
         this.people.update((list) => [...list, added]);
       } else {
         const saved = await firstValueFrom(
-          this.http.post<Person>('/api/people/update', { ...body, id, version: this.editingVersion }),
+          this.http.post<Person>('/api/people/update', { ...body, gradeFrom: gradeFrom || null, id, version: this.editingVersion }),
         );
         if (this.session.sheet() !== sheet) return;
         this.people.update((list) => list.map((p) => (p.id === saved.id ? saved : p)));
@@ -720,7 +749,7 @@ export class People {
       if (current && this.editingId() === id) {
         this.editingVersion = current.version;
         this.nameInput.set(current.name);
-        this.gradeInput.set(current.grade);
+        this.gradeInput.set(this.gradeToday(current));
       }
     } catch {
       // the refusal is shown either way

@@ -22,6 +22,25 @@ const PCT = /^\d{1,3}(\.\d{1,2})?$/;
 /** A date as the date input gives it: yyyy-mm-dd. */
 const DATE = /^\d{4}-\d{2}-\d{2}$/;
 
+/** One of a person's grades, from a from-date (null: from the beginning of time). */
+export interface DatedGrade {
+  from: string | null;
+  grade: string;
+}
+
+/**
+ * The grade in force on a date (yyyy-mm-dd): the one with the latest from-date on or before it,
+ * an undated grade counting as from the beginning of time. '' when none applies.
+ */
+export function gradeOn(grades: readonly DatedGrade[], date: string | null): string {
+  let best: DatedGrade | undefined;
+  for (const g of grades) {
+    if (g.from !== null && (date === null || g.from > date)) continue;
+    if (best === undefined || (best.from ?? '') < (g.from ?? '')) best = g;
+  }
+  return best?.grade ?? '';
+}
+
 /**
  * The grade's rate in force on a date (yyyy-mm-dd): the one with the latest from-date on or before
  * it, an undated rate counting as from the beginning of time. Undefined when none applies yet.

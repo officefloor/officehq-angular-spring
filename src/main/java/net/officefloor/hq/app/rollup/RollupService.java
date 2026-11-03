@@ -76,22 +76,21 @@ public class RollupService {
         for (Person person : people.findBySheetIdOrderByIdAsc(sheetId)) {
             BigDecimal claimed = zero();
             BigDecimal due = zero();
-            boolean anyFixed = false;
+            boolean anyFigure = false;
             for (Claim claim : sheetClaims) {
                 if (!claim.getPersonId().equals(person.getId()) || !person.counts(claim.getStatus())) {
                     continue;
                 }
                 claimed = claimed.add(claim.getAmount());
-                if (fixed(claim) != null) {
-                    anyFixed = true;
-                }
                 BigDecimal figure = figure(sheet, sheetRates, floor, person, claim);
                 if (figure != null) {
+                    anyFigure = true;
                     due = due.add(figure);
                 }
             }
-            // as on screen: n/a when the grade has no rate today and no claim that counts keeps a figure
-            boolean none = inForce(sheetRates, person.getGrade(), today).isEmpty() && !anyFixed;
+            // as on screen: n/a when the grade in force today has no rate today and no claim that
+            // counts has a figure
+            boolean none = inForce(sheetRates, person.gradeOn(today), today).isEmpty() && !anyFigure;
             figures.put(person.getId(), new Figures(person.getName(), claimed, none ? null : due));
         }
         return new Snapshot(figures);
@@ -144,11 +143,6 @@ public class RollupService {
         }
     }
 
-    /** A claim's fixed figure: the one bound by the last statement, else the due fixed when settled. */
-    private static BigDecimal fixed(Claim claim) {
-        return claim.isStated() ? claim.getStatedDue() : claim.getSettledDue();
-    }
-
     /**
      * A claim's figure as the screen shows it: the due fixed when settled, else the one bound by the
      * last statement, else its live due raised to the floor, with its late charge added on top;
@@ -160,7 +154,7 @@ public class RollupService {
             return claim.getSettledDue();
         }
         BigDecimal figure = claim.isStated() ? claim.getStatedDue()
-                : inForce(sheetRates, person.getGrade(), claim.getDate()).map(Rate::getPct)
+                : inForce(sheetRates, person.gradeOn(claim.getDate()), claim.getDate()).map(Rate::getPct)
                         .map(pct -> claim.getAmount().multiply(pct).divide(BigDecimal.valueOf(100), 2,
                                 RoundingMode.HALF_EVEN))
                         .map(due -> due.max(floor))

@@ -26,7 +26,7 @@ public class PersonController {
 
     public record UpdatePersonRequest(@NotBlank @Size(max = 100) String sheet,
             @NotBlank @Size(max = 100) String user, @NotNull Long id, @NotBlank @Size(max = 200) String name,
-            @NotNull @Pattern(regexp = "[ABC]") String grade, @NotNull Long version) {
+            @NotNull @Pattern(regexp = "[ABC]") String grade, LocalDate gradeFrom, @NotNull Long version) {
     }
 
     public record RetirePersonRequest(@NotBlank @Size(max = 100) String sheet,
@@ -44,12 +44,19 @@ public class PersonController {
     public record PatronResponse(long personId, long patronId) {
     }
 
-    public record PersonResponse(long id, String name, String grade, long version, boolean retired,
+    /** One of a person's grades, from a from-date (null: from the beginning of time). */
+    public record GradeResponse(LocalDate from, String grade) {
+    }
+
+    /** A person, with every grade recorded for them, the one from the beginning of time first. */
+    public record PersonResponse(long id, String name, List<GradeResponse> grades, long version, boolean retired,
             LocalDate retiredFrom, boolean held) {
     }
 
     public static PersonResponse response(Person person) {
-        return new PersonResponse(person.getId(), person.getName(), person.getGrade(), person.getVersion(),
+        List<GradeResponse> grades = person.getGrades().stream()
+                .map(g -> new GradeResponse(g.getFromDate(), g.getGrade())).toList();
+        return new PersonResponse(person.getId(), person.getName(), grades, person.getVersion(),
                 person.isRetired(), person.getRetiredFrom(), person.isHeld());
     }
 
@@ -72,7 +79,7 @@ public class PersonController {
     @PostMapping("/update")
     public PersonResponse update(@Valid @RequestBody UpdatePersonRequest req) {
         return response(service.update(req.sheet().trim(), req.user().trim(), req.id(), req.version(), req.name().trim(),
-                req.grade()));
+                req.grade(), req.gradeFrom()));
     }
 
     @PostMapping("/retire")

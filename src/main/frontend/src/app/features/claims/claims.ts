@@ -3,7 +3,7 @@ import { Component, inject, input, output, signal } from '@angular/core';
 import { firstValueFrom } from 'rxjs';
 import { Session } from '../../core/session';
 import { Period, inClosedPeriod, periodOn } from '../periods/periods';
-import { Lateness, Rate, chargedDueCents, dueText } from '../rates/rates';
+import { DatedGrade, Lateness, Rate, chargedDueCents, dueText, gradeOn } from '../rates/rates';
 
 // A person's claims, newest first, and the one form under their row that both adds a claim and
 // edits an existing one (opening a claim's editor fills the form with its values). Each claim
@@ -180,8 +180,8 @@ export class PersonClaims {
   readonly personId = input.required<number>();
   readonly personName = input.required<string>();
   readonly claims = input.required<Claim[]>();
-  /** The person's grade, whose rate in force on a claim's date gives what the claim has due. */
-  readonly grade = input.required<string>();
+  /** The person's grades: the one in force on a claim's date, at its rate then, gives what the claim has due. */
+  readonly grades = input.required<DatedGrade[]>();
   /** The sheet's rates. */
   readonly rates = input.required<Rate[]>();
   /** The sheet's floor in whole cents: the least a claim's live due can be. */
@@ -206,11 +206,11 @@ export class PersonClaims {
 
   /** A stated claim shows the figure bound by the last statement, a settled claim the due fixed
    *  when it was settled; any other claim's due is live, at the rate for the person's grade in
-   *  force on the claim's date, never below the sheet's floor. An overdue claim's late charge is
+   *  force on the claim's date (the grade in force then), never below the sheet's floor. An overdue claim's late charge is
    *  added on top. */
   protected dueOf(c: Claim): string {
     const late: Lateness = { latePct: this.latePct(), terms: this.terms(), today: this.session.today() };
-    return dueText(chargedDueCents(c, this.rates(), this.grade(), this.floor(), late));
+    return dueText(chargedDueCents(c, this.rates(), gradeOn(this.grades(), c.date), this.floor(), late));
   }
 
   protected dueByOf(c: Claim): string {
