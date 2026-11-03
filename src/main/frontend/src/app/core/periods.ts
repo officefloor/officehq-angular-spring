@@ -21,6 +21,8 @@ export interface Period {
   /** Each person's due-total for the period fixed when it was closed, by the person's id, as text
    *  with two decimals; empty while it is open. A person missing from it has 0.00. */
   closedPersonTotals: Record<number, string>;
+  /** The fiscal year its from-date falls in (FYyyyy). */
+  fy: string;
 }
 
 export interface PeriodForm {
@@ -63,6 +65,17 @@ export class Periods {
     return firstValueFrom(
       this.http.post<Period[]>(`${this.url(sheetId)}/generate`, { from: from || null, to },
         { headers: { 'X-User': user } }),
+    );
+  }
+
+  /** Generate the twelve monthly periods of the fiscal year named by the year (yyyy), as
+   *  {@link generate} does. */
+  generateFy(year: string): Promise<Period[]> {
+    const sheetId = this.session.sheetId();
+    const user = this.session.user();
+    if (!sheetId || !user) throw new Error('no sheet loaded');
+    return firstValueFrom(
+      this.http.post<Period[]>(`${this.url(sheetId)}/generate-fy`, { year }, { headers: { 'X-User': user } }),
     );
   }
 

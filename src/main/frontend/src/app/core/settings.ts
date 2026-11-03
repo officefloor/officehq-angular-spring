@@ -59,6 +59,9 @@ export interface Settings {
   /** The parent sheet's id: a grade with no rate in force on a date on this sheet takes the
    *  parent's, then its parent's, up to three levels up; null when blank (none). Not dated. */
   parent: string | null;
+  /** The fiscal year start month, 1 to 12 (1 unless set): a fiscal year runs from the first day of
+   *  it. Not dated. */
+  fiscalStartMonth: number;
 }
 
 /** The grace days recorded for each grade (null: blank, none), each from its from-date, earliest
@@ -129,6 +132,9 @@ export const LIMIT = /^\d{1,12}(\.\d{1,2})?$/;
 
 /** Terms: a whole number of days, 0 or more. */
 export const TERMS = /^\d{1,4}$/;
+
+/** A fiscal year start month: 1 to 12. */
+export const FISCAL_MONTH = /^(0?[1-9]|1[0-2])$/;
 
 /** A policy date: yyyy-mm-dd. */
 export const POLICY_DATE = /^\d{4}-\d{2}-\d{2}$/;
@@ -255,6 +261,14 @@ export class SheetSettings {
   setPot(value: string | null): Promise<Settings> {
     const [sheetId, headers] = this.active();
     return firstValueFrom(this.http.put<Settings>(`${this.url(sheetId)}/settings/pot`, { value }, { headers }));
+  }
+
+  /** Set the fiscal year start month (1 to 12). */
+  setFiscalStartMonth(value: string): Promise<Settings> {
+    const [sheetId, headers] = this.active();
+    return firstValueFrom(
+      this.http.put<Settings>(`${this.url(sheetId)}/settings/fiscal-start-month`, { value }, { headers }),
+    );
   }
 
   /** Set the parent sheet; null for blank (none). */

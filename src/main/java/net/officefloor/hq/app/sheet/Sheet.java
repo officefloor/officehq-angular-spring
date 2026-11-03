@@ -60,6 +60,11 @@ public class Sheet {
     @Column(name = "pot")
     private BigDecimal pot;
 
+    /** The fiscal year start month, 1 to 12: a fiscal year runs from the first day of it, and is
+     *  named by the calendar year that day falls in. Not dated. */
+    @Column(name = "fiscal_start_month", nullable = false)
+    private int fiscalStartMonth = 1;
+
     /** The parent sheet's id: a grade with no rate in force on a date on this sheet takes the
      *  parent's rate for that grade and date, then its parent's, up to three levels up; null (blank)
      *  is none. Not dated. */
@@ -133,6 +138,14 @@ public class Sheet {
 
     public void setPot(BigDecimal pot) {
         this.pot = pot;
+    }
+
+    public int getFiscalStartMonth() {
+        return fiscalStartMonth;
+    }
+
+    public void setFiscalStartMonth(int fiscalStartMonth) {
+        this.fiscalStartMonth = fiscalStartMonth;
     }
 
     public String getParentId() {

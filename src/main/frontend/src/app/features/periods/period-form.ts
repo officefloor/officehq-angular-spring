@@ -30,6 +30,10 @@ const DAY = /^\d{4}-\d{2}-\d{2}$/;
         <label for="period-generate-to">Generate to</label>
         <input id="period-generate-to" type="date" data-testid="period-generate-to" formControlName="to" />
         <button type="submit" data-testid="period-generate">Generate monthly periods</button>
+        <label for="period-generate-fy-year">Fiscal year (yyyy)</label>
+        <input id="period-generate-fy-year" data-testid="period-generate-fy-year" formControlName="year"
+               inputmode="numeric" />
+        <button type="button" data-testid="period-generate-fy" (click)="generateFy()">Generate fiscal year</button>
         @if (generated() !== null) {
           <p role="status">Made <span data-testid="period-generated">{{ generated() }}</span></p>
         }
@@ -39,7 +43,7 @@ const DAY = /^\d{4}-\d{2}-\d{2}$/;
       </form>
       <table data-testid="periods">
         <thead>
-          <tr><th scope="col">Name</th><th scope="col">From</th><th scope="col">To</th><th scope="col">Due</th><th scope="col">Closed</th><th scope="col"><span class="visually-hidden">Actions</span></th></tr>
+          <tr><th scope="col">Name</th><th scope="col">From</th><th scope="col">To</th><th scope="col">Due</th><th scope="col">Closed</th><th scope="col">Fiscal year</th><th scope="col"><span class="visually-hidden">Actions</span></th></tr>
         </thead>
         <tbody>
           @for (p of periods(); track p.id) {
@@ -49,6 +53,7 @@ const DAY = /^\d{4}-\d{2}-\d{2}$/;
               <td data-testid="period-to">{{ p.to }}</td>
               <td data-testid="period-due-total">{{ dueTotals().get(p.id) ?? '0.00' }}</td>
               <td data-testid="period-closed">{{ p.closed ? 'yes' : p.softClosed ? 'soft' : 'no' }}</td>
+              <td data-testid="period-fy">{{ p.fy }}</td>
               <td>
                 @if (!p.closed) {
                   <button type="button" data-testid="period-close" (click)="close(p)"
@@ -97,6 +102,7 @@ export class PeriodForm {
   protected readonly generateForm = new FormGroup({
     from: new FormControl('', { nonNullable: true }),
     to: new FormControl('', { nonNullable: true }),
+    year: new FormControl('', { nonNullable: true }),
   });
 
   constructor() {
@@ -125,6 +131,28 @@ export class PeriodForm {
       this.generated.set(made.length);
     } catch {
       this.generateError.set('The periods could not be generated.');
+    } finally {
+      this.generating = false;
+    }
+  }
+
+  /** Generate the twelve monthly periods of the fiscal year typed. */
+  protected async generateFy(): Promise<void> {
+    if (this.generating) return;
+    this.generateError.set('');
+    this.generated.set(null);
+    const year = this.generateForm.getRawValue().year.trim();
+    if (!/^\d{4}$/.test(year)) {
+      this.generateError.set('Enter the fiscal year (yyyy) to generate.');
+      return;
+    }
+    this.generating = true;
+    try {
+      const made = await this.api.generateFy(year);
+      for (const p of made) this.saved.emit(p);
+      this.generated.set(made.length);
+    } catch {
+      this.generateError.set('The fiscal year could not be generated.');
     } finally {
       this.generating = false;
     }

@@ -121,6 +121,7 @@ public class SheetCloneService {
         to.setGraceDays(from.getGraceDays());
         to.setEntryDate(from.getEntryDate());
         to.setPot(from.getPot());
+        to.setFiscalStartMonth(from.getFiscalStartMonth());
         to.setParentId(from.getParentId());
         sheets.saveAndFlush(to);
         rollup.tracking(toSheetId, user, () -> {

@@ -444,6 +444,25 @@ public class SheetService {
         return saved;
     }
 
+    /** The sheet's fiscal year start month, 1 to 12; 1 unless set. */
+    @Transactional(readOnly = true)
+    public int fiscalStartMonth(String id) {
+        return sheets.findById(id).map(Sheet::getFiscalStartMonth).orElse(1);
+    }
+
+    /** Change the sheet's fiscal year start month (1 to 12); recorded even when unchanged. */
+    @Transactional
+    public synchronized Sheet setFiscalStartMonth(String id, String user, int month) {
+        if (month < 1 || month > 12) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "The fiscal year start month is 1 to 12");
+        }
+        Sheet sheet = load(id, user);
+        sheet.setFiscalStartMonth(month);
+        Sheet saved = sheets.saveAndFlush(sheet);
+        audit.recordOnCommit("SETTING_CHANGED sheet=" + id + " by=" + user + " key=fiscal-start-month value=" + month);
+        return saved;
+    }
+
     /** The sheet's parent's id; null when blank (none). */
     @Transactional(readOnly = true)
     public String parent(String id) {
