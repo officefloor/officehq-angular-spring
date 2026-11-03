@@ -7,6 +7,8 @@ import { Rate, Rates, claimDueCents, dueText, pctOn } from '../rates/rates';
 
 // The people on the active sheet, in the order they were added, and the one form that both adds
 // a person and edits an existing one (opening a person's editor fills the form with their values).
+// The editor remembers the version of the person it opened; if someone else has saved the person
+// since, the save is refused and the form is refilled with the values the store holds now.
 // Each row shows what the person has claimed and lists their claims; the sheet's claimed-total
 // adds everyone's up. Only OPEN and SETTLED claims count toward any of these totals. Each claim shows
 // what is due at the rate for the person's grade in force on the claim's date (a settled claim the
@@ -16,6 +18,8 @@ interface Person {
   id: number;
   name: string;
   grade: string;
+  /** The version the store holds; an edit sends the version it was opened at. */
+  version: number;
 }
 
 /** A claim's amount in whole cents when it counts toward the totals, else nothing. */
@@ -135,6 +139,10 @@ export class People {
   protected readonly nameInput = signal('');
   protected readonly gradeInput = signal<string>('A');
   protected readonly editingId = signal<number | null>(null);
+  /** The version of the person the editor was filled from. */
+  private editingVersion = 0;
+  /** Whether a submit is waiting for its answer: a second submit meanwhile is ignored. */
+  private submitting = false;
   protected readonly error = signal<string | null>(null);
 
   constructor() {
@@ -194,6 +202,7 @@ export class People {
 
   protected edit(p: Person): void {
     this.editingId.set(p.id);
+    this.editingVersion = p.version;
     this.nameInput.set(p.name);
     this.gradeInput.set(p.grade);
     this.error.set(null);
@@ -212,6 +221,7 @@ export class People {
 
   protected async save(event: Event): Promise<void> {
     event.preventDefault();
+    if (this.submitting) return;
     this.error.set(null);
     const sheet = this.session.sheet();
     const name = this.nameInput().trim();
@@ -226,23 +236,48 @@ export class People {
     }
     const id = this.editingId();
     const body = { sheet, user: this.session.user(), name, grade };
+    this.submitting = true;
     try {
       if (id === null) {
         const added = await firstValueFrom(this.http.post<Person>('/api/people/add', body));
         if (this.session.sheet() !== sheet) return;
         this.people.update((list) => [...list, added]);
       } else {
-        const saved = await firstValueFrom(this.http.post<Person>('/api/people/update', { ...body, id }));
+        const saved = await firstValueFrom(
+          this.http.post<Person>('/api/people/update', { ...body, id, version: this.editingVersion }),
+        );
         if (this.session.sheet() !== sheet) return;
         this.people.update((list) => list.map((p) => (p.id === saved.id ? saved : p)));
       }
       this.reset();
     } catch (e) {
-      if (e instanceof HttpErrorResponse && e.status === 409) {
+      if (id !== null && e instanceof HttpErrorResponse && e.status === 412) {
+        await this.showCurrent(sheet, id);
+        this.error.set('Someone else has saved this person since you opened it; the form now shows their values.');
+      } else if (e instanceof HttpErrorResponse && e.status === 409) {
         this.error.set('That name is already in use on this sheet.');
       } else {
         this.error.set(id === null ? 'Could not add this person.' : 'Could not save this person.');
       }
+    } finally {
+      this.submitting = false;
+    }
+  }
+
+  /** Re-read the sheet's people and refill the open editor with the person as the store holds them now. */
+  private async showCurrent(sheet: string | null, id: number): Promise<void> {
+    try {
+      const list = await firstValueFrom(this.http.post<Person[]>('/api/people/list', { sheet }));
+      if (this.session.sheet() !== sheet) return;
+      this.people.set(list);
+      const current = list.find((p) => p.id === id);
+      if (current && this.editingId() === id) {
+        this.editingVersion = current.version;
+        this.nameInput.set(current.name);
+        this.gradeInput.set(current.grade);
+      }
+    } catch {
+      // the refusal is shown either way
     }
   }
 }

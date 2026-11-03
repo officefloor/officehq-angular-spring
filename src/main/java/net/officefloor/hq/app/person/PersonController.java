@@ -25,14 +25,14 @@ public class PersonController {
 
     public record UpdatePersonRequest(@NotBlank @Size(max = 100) String sheet,
             @NotBlank @Size(max = 100) String user, @NotNull Long id, @NotBlank @Size(max = 200) String name,
-            @NotNull @Pattern(regexp = "[ABC]") String grade) {
+            @NotNull @Pattern(regexp = "[ABC]") String grade, @NotNull Long version) {
     }
 
-    public record PersonResponse(long id, String name, String grade) {
+    public record PersonResponse(long id, String name, String grade, long version) {
     }
 
     private static PersonResponse response(Person person) {
-        return new PersonResponse(person.getId(), person.getName(), person.getGrade());
+        return new PersonResponse(person.getId(), person.getName(), person.getGrade(), person.getVersion());
     }
 
     private final PersonService service;
@@ -53,6 +53,7 @@ public class PersonController {
 
     @PostMapping("/update")
     public PersonResponse update(@Valid @RequestBody UpdatePersonRequest req) {
-        return response(service.update(req.sheet().trim(), req.user().trim(), req.id(), req.name().trim(), req.grade()));
+        return response(service.update(req.sheet().trim(), req.user().trim(), req.id(), req.version(), req.name().trim(),
+                req.grade()));
     }
 }

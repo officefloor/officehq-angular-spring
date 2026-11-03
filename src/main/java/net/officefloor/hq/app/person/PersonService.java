@@ -4,6 +4,7 @@ import java.util.List;
 import net.officefloor.hq.app.Audit;
 import net.officefloor.hq.app.sheet.SheetService;
 import org.springframework.dao.DataIntegrityViolationException;
+import org.springframework.orm.ObjectOptimisticLockingFailureException;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -43,9 +44,12 @@ public class PersonService {
     }
 
     @Transactional
-    public Person update(String sheetId, String user, long id, String name, String grade) {
+    public Person update(String sheetId, String user, long id, long version, String name, String grade) {
         Person person = people.findByIdAndSheetId(id, sheetId)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "No such person on this sheet."));
+        if (person.getVersion() != version) {
+            throw stale();
+        }
         if (people.existsBySheetIdAndNameIgnoreCaseAndIdNot(sheetId, name, id)) {
             throw nameInUse();
         }
@@ -61,13 +65,24 @@ public class PersonService {
                 + person.getGrade();
     }
 
-    /** Save, refusing a name another user took on the sheet since it was checked. */
+    /**
+     * Save, refusing a name another user took on the sheet since it was checked, and an edit another
+     * user saved over since the person was read.
+     */
     private Person save(Person person) {
         try {
             return people.saveAndFlush(person);
         } catch (DataIntegrityViolationException e) {
             throw nameInUse();
+        } catch (ObjectOptimisticLockingFailureException e) {
+            throw stale();
         }
+    }
+
+    /** The edit was made from a version of the person that another user has since saved over. */
+    private static ResponseStatusException stale() {
+        return new ResponseStatusException(HttpStatus.PRECONDITION_FAILED,
+                "Someone else has saved this person since it was opened.");
     }
 
     private static ResponseStatusException nameInUse() {

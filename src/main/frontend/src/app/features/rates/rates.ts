@@ -159,6 +159,8 @@ export class Rates {
   protected readonly pctInput = signal('');
   protected readonly fromInput = signal('');
   protected readonly error = signal<string | null>(null);
+  /** Whether a submit is waiting for its answer: a second submit meanwhile is ignored. */
+  private submitting = false;
 
   constructor() {
     // Re-read the sheet's rates from the store every time a sheet is loaded.
@@ -187,6 +189,7 @@ export class Rates {
 
   protected async save(event: Event): Promise<void> {
     event.preventDefault();
+    if (this.submitting) return;
     this.error.set(null);
     const sheet = this.session.sheet();
     const grade = this.gradeInput();
@@ -204,6 +207,7 @@ export class Rates {
       this.error.set('Enter a from-date as yyyy-mm-dd, or leave it blank for always.');
       return;
     }
+    this.submitting = true;
     try {
       const saved = await firstValueFrom(
         this.http.post<Rate>('/api/rates/set', { sheet, user: this.session.user(), grade, pct, from }),
@@ -217,6 +221,8 @@ export class Rates {
       this.fromInput.set('');
     } catch {
       this.error.set('Could not set this rate.');
+    } finally {
+      this.submitting = false;
     }
   }
 }
