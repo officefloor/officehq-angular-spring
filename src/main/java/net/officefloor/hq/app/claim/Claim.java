@@ -71,6 +71,13 @@ public class Claim {
     @Column(name = "corrects")
     private String corrects;
 
+    /**
+     * The claim's place in the list, newest (highest) first: taken from the store's sequence when
+     * the claim is added and again when it is moved to another person.
+     */
+    @Column(name = "listed", insertable = false, updatable = false)
+    private Long listed;
+
     protected Claim() {
     }
 
@@ -93,6 +100,15 @@ public class Claim {
 
     public Long getPersonId() {
         return personId;
+    }
+
+    /** Move the claim to another person. */
+    public void setPersonId(Long personId) {
+        this.personId = personId;
+    }
+
+    public Long getListed() {
+        return listed;
     }
 
     public BigDecimal getAmount() {

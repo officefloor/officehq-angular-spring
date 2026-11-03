@@ -48,6 +48,10 @@ public class ClaimController {
             @NotBlank @Size(max = 200) @Pattern(regexp = "\\s*\\S+\\s*") String reason) {
     }
 
+    public record ReassignClaimRequest(@NotBlank @Size(max = 100) String sheet,
+            @NotBlank @Size(max = 100) String user, @NotNull Long id, @NotNull Long personId) {
+    }
+
     public record BulkOpenRequest(@NotBlank @Size(max = 100) String sheet, @NotBlank @Size(max = 100) String user,
             @NotNull @Size(max = 1000) List<@NotNull Long> ids) {
     }
@@ -131,6 +135,11 @@ public class ClaimController {
     @PostMapping("/void")
     public ClaimResponse voidClaim(@Valid @RequestBody ClaimStatusRequest req) {
         return changeStatus(req, ClaimStatus.VOID);
+    }
+
+    @PostMapping("/reassign")
+    public ClaimResponse reassign(@Valid @RequestBody ReassignClaimRequest req) {
+        return response(service.reassign(req.sheet().trim(), req.user().trim(), req.id(), req.personId()));
     }
 
     @PostMapping("/bulk-open")

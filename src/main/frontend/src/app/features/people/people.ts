@@ -269,7 +269,9 @@ const SUMMARY_STATUSES = ['DRAFT', 'OPEN', 'PENDING', 'SETTLED', 'VOID'] as cons
                   [policyDate]="policyDate()"
                   [periods]="periods()"
                   [selected]="selectedClaims()"
+                  [people]="people()"
                   (saved)="claimSaved($event)"
+                  (reassigned)="claimMoved($event)"
                   (selectedChange)="selectClaim($event.id, $event.on)"
                 />
               </td>
@@ -689,6 +691,11 @@ export class People {
     this.claims.update((list) =>
       list.some((c) => c.id === claim.id) ? list.map((c) => (c.id === claim.id ? claim : c)) : [claim, ...list],
     );
+  }
+
+  /** A claim moved to another person: listed first, as their newest claim. */
+  protected claimMoved(claim: Claim): void {
+    this.claims.update((list) => [claim, ...list.filter((c) => c.id !== claim.id)]);
   }
 
   protected selectClaim(id: number, on: boolean): void {

@@ -43,7 +43,9 @@ import org.springframework.web.server.ResponseStatusException;
  * overdue claim's due gains a late charge on top of its figure (see {@link LateCharge}); a statement
  * binds only the figure under it, and settling fixes the charge into the settled due. A claim with
  * a negative amount is a correction: it is allowed only when it names, by number, a SETTLED claim
- * of the same person that it corrects. Its due has no floor and no late charge.
+ * of the same person that it corrects. Its due has no floor and no late charge. A steward can move
+ * a DRAFT, OPEN or PENDING claim to another person: it keeps its number and date, loses any figure
+ * a statement bound it to, and is listed as its new person's newest claim.
  */
 @Service
 public class ClaimService {
@@ -88,7 +90,7 @@ public class ClaimService {
 
     @Transactional(readOnly = true)
     public List<Claim> list(String sheetId) {
-        return claims.findBySheetIdOrderByIdDesc(sheetId);
+        return claims.findBySheetIdOrderByListedDesc(sheetId);
     }
 
     @Transactional
@@ -216,6 +218,48 @@ public class ClaimService {
         return saved;
     }
 
+    /**
+     * Move a DRAFT, OPEN or PENDING claim to another person on the sheet. It keeps its number and
+     * date, is unbound from any statement (live again until its new person's next statement), and
+     * is listed first under its new person. Refused (403) for a clerk, (409) for a SETTLED or VOID
+     * claim or a move to the person it is already on, (400) for a correction (it must stay with
+     * the claim it corrects), (423) when dated inside a closed period and (422) when dated after
+     * the new person's retirement date.
+     */
+    @Transactional
+    public Claim reassign(String sheetId, String user, long id, long toPersonId) {
+        if (!isSteward(sheetId, user)) {
+            throw new ResponseStatusException(HttpStatus.FORBIDDEN, "Only a steward can move a claim.");
+        }
+        RollupService.Snapshot before = rollup.snapshot(sheetId);
+        Claim claim = claims.findByIdAndSheetId(id, sheetId)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "No such claim on this sheet."));
+        if (claim.getStatus() == ClaimStatus.SETTLED || claim.getStatus() == ClaimStatus.VOID) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT,
+                    "A " + claim.getStatus() + " claim cannot be moved.");
+        }
+        Person from = person(sheetId, claim.getPersonId());
+        Person to = person(sheetId, toPersonId);
+        if (from.getId().equals(to.getId())) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT, "That claim is already on that person.");
+        }
+        if (claim.isCorrection()) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "A correction cannot be moved.");
+        }
+        periods.refuseIfClosed(sheetId, claim.getDate());
+        refuseIfRetired(to, claim.getDate());
+        claim.setPersonId(to.getId());
+        claim.bind(false, null);
+        claims.saveAndFlush(claim);
+        claims.listFirst(claim.getId());
+        Claim saved = claims.findByIdAndSheetId(id, sheetId).orElseThrow();
+        audit.recordOnCommit(record("CLAIM_REASSIGNED", sheetId, user, to, saved)
+                + (saved.getNumber() != null ? " number=" + saved.getNumber() : "")
+                + " from=" + from.getName() + " to=" + to.getName());
+        rollup.recordChanges(sheetId, user, before);
+        return saved;
+    }
+
     /** What a bulk open did: how many claims were opened and how many refused, and the claims opened. */
     public record BulkOpened(int opened, int refused, List<Claim> claims) {
     }
@@ -235,7 +279,7 @@ public class ClaimService {
         List<Claim> selected = ids.stream().distinct()
                 .flatMap(id -> claims.findByIdAndSheetId(id, sheetId).stream())
                 .sorted(Comparator.<Claim>comparingInt(c -> personOrder.getOrDefault(c.getPersonId(), Integer.MAX_VALUE))
-                        .thenComparing(Claim::getId, Comparator.reverseOrder()))
+                        .thenComparing(Claim::getListed, Comparator.reverseOrder()))
                 .toList();
         int refused = (int) ids.stream().distinct().count() - selected.size();
         List<Claim> opened = new ArrayList<>();

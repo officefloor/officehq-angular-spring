@@ -1,5 +1,5 @@
 import { HttpClient, HttpErrorResponse } from '@angular/common/http';
-import { Component, inject, input, output, signal } from '@angular/core';
+import { Component, computed, inject, input, output, signal } from '@angular/core';
 import { firstValueFrom } from 'rxjs';
 import { Session } from '../../core/session';
 import { Period, inClosedPeriod, periodOn } from '../periods/periods';
@@ -22,6 +22,8 @@ import { DatedGrade, Lateness, Rate, chargedDueCents, dueText, gradeOn } from '.
 // counts like an OPEN one but is not bound by a statement: it shows its live figure. A steward
 // approves it (SETTLED, its due fixed then) or rejects it with a reason (back to OPEN, bound again
 // by the last statement); the user who opened it cannot approve it.
+// A steward can move a DRAFT, OPEN or PENDING claim to another person: it keeps its number and
+// date, loses any figure a statement bound it to, and is listed first under its new person.
 export type ClaimStatus = 'DRAFT' | 'OPEN' | 'PENDING' | 'SETTLED' | 'VOID';
 
 export interface Claim {
@@ -56,6 +58,12 @@ export function roundingDate(c: Claim, claims: readonly Claim[]): string {
 /** Whether a claim is a correction: its amount is below zero. */
 export function isCorrection(c: Claim): boolean {
   return cents(c.amount) < 0;
+}
+
+/** Another person a claim can be moved to. */
+export interface ClaimTarget {
+  id: number;
+  name: string;
 }
 
 /** A move from one status to the next, by the endpoint that makes it. */
@@ -226,6 +234,18 @@ export function money(c: number): string {
           />
           <button type="button" data-testid="claim-reject" (click)="act(c, 'reject')">Reject</button>
           <button type="button" data-testid="claim-void" (click)="act(c, 'void')">Void</button>
+          <label [for]="'claim-reassign-to-' + c.id">Move to</label>
+          <select
+            [id]="'claim-reassign-to-' + c.id"
+            data-testid="claim-reassign-to"
+            (change)="setTarget(c.id, $any($event.target).value)"
+          >
+            <option value="" [selected]="!targets().get(c.id)">Choose a person</option>
+            @for (o of others(); track o.id) {
+              <option [value]="o.id" [selected]="targets().get(c.id) === '' + o.id">{{ o.name }}</option>
+            }
+          </select>
+          <button type="button" data-testid="claim-reassign" (click)="reassign(c)">Move</button>
           <button
             type="button"
             data-testid="claim-edit"
@@ -268,7 +288,11 @@ export class PersonClaims {
   readonly periods = input.required<Period[]>();
   /** The ids of the claims selected for a bulk action, across the sheet. */
   readonly selected = input.required<ReadonlySet<number>>();
+  /** The sheet's people, by id and name: a claim can be moved to any of them but its own. */
+  readonly people = input.required<ClaimTarget[]>();
   readonly saved = output<Claim>();
+  /** A claim moved to another person: it is listed first under them. */
+  readonly reassigned = output<Claim>();
   /** A claim's checkbox ticked (on) or cleared. */
   readonly selectedChange = output<{ id: number; on: boolean }>();
 
@@ -284,6 +308,10 @@ export class PersonClaims {
   protected readonly actionErrors = signal<ReadonlyMap<number, string>>(new Map());
   /** The reason typed for rejecting each claim, by claim id. */
   protected readonly reasons = signal<ReadonlyMap<number, string>>(new Map());
+  /** The person id chosen to move each claim to, by claim id. */
+  protected readonly targets = signal<ReadonlyMap<number, string>>(new Map());
+  /** The people a claim of this person can be moved to. */
+  protected readonly others = computed(() => this.people().filter((p) => p.id !== this.personId()));
 
   /** A stated claim shows the figure bound by the last statement, a settled claim the due fixed
    *  when it was settled; any other claim's due is live, at the rate for the person's grade in
@@ -352,6 +380,50 @@ export class PersonClaims {
   protected setReason(id: number, reason: string): void {
     this.reasons.update((m) => new Map(m).set(id, reason));
     this.clearActionError(id);
+  }
+
+  protected setTarget(id: number, personId: string): void {
+    this.targets.update((m) => new Map(m).set(id, personId));
+    this.clearActionError(id);
+  }
+
+  /** Move a claim to the chosen person; the server refuses a clerk, and a SETTLED or VOID claim. */
+  protected async reassign(c: Claim): Promise<void> {
+    this.clearActionError(c.id);
+    const sheet = this.session.sheet();
+    const personId = Number(this.targets().get(c.id) ?? '');
+    if (!personId) {
+      this.actionErrors.update((m) => new Map(m).set(c.id, 'Choose the person to move this claim to.'));
+      return;
+    }
+    try {
+      const claim = await firstValueFrom(
+        this.http.post<Claim>('/api/claims/reassign', { sheet, user: this.session.user(), id: c.id, personId }),
+      );
+      if (this.session.sheet() !== sheet) return;
+      this.targets.update((m) => {
+        const next = new Map(m);
+        next.delete(c.id);
+        return next;
+      });
+      this.reassigned.emit(claim);
+    } catch (e) {
+      if (this.session.sheet() !== sheet) return;
+      const status = e instanceof HttpErrorResponse ? e.status : 0;
+      const err =
+        status === 403
+          ? 'Only a steward can move a claim.'
+          : status === 423
+            ? CLOSED
+            : status === 422
+              ? 'A claim cannot be moved to a person retired before its date.'
+              : status === 400
+                ? 'A correction cannot be moved.'
+                : status === 409 && (c.status === 'SETTLED' || c.status === 'VOID')
+                  ? `A ${c.status} claim cannot be moved.`
+                  : 'Could not move this claim.';
+      this.actionErrors.update((m) => new Map(m).set(c.id, err));
+    }
   }
 
   /** Move a claim to its next status; the server refuses a move its status does not allow. */
