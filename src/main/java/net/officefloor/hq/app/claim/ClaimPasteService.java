@@ -7,18 +7,20 @@ import java.util.ArrayList;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Locale;
+import java.util.Objects;
 import java.util.Set;
 import java.util.regex.Pattern;
 import net.officefloor.hq.app.person.Person;
 import net.officefloor.hq.app.person.PersonRepository;
+import net.officefloor.hq.app.sheet.SheetService;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.server.ResponseStatusException;
 
-/** The paste box: lines of name,amount,date,note, each adding a draft claim for the named person. A
- *  note ending in " #reference" gives the claim that external reference, which is then no part of
- *  the note. */
+/** The paste box: lines of name,amount,date,note, each adding a claim for the named person and
+ *  opening it, or updating and opening a draft of theirs with the same date and note. A note ending
+ *  in " #reference" gives the claim that external reference, which is then no part of the note. */
 @Service
 public class ClaimPasteService {
 
@@ -38,19 +40,30 @@ public class ClaimPasteService {
 
     private final PersonRepository people;
     private final ClaimService claims;
+    private final SheetService sheets;
 
-    public ClaimPasteService(PersonRepository people, ClaimService claims) {
+    public ClaimPasteService(PersonRepository people, ClaimService claims, SheetService sheets) {
         this.people = people;
         this.claims = claims;
+        this.sheets = sheets;
     }
 
-    /** Add a draft claim per line, in order, checking every line first; one change, so when any line
-     *  is refused nothing is added and nothing is recorded. Blank lines are skipped; a paste with no
-     *  lines is refused, and so is one with a reference already used on the sheet or by an earlier
-     *  line, comparing without regard to case. Returns how many claims were added. */
+    /** Add and open a claim per line, in order (numbered in paste order), checking every line first;
+     *  one change, so when any line is refused, or any open is refused as the open button would
+     *  refuse it, nothing is changed and nothing is recorded. A line whose person, date and note
+     *  match a claim of theirs as it stood before the paste (not void or deleted) updates the newest
+     *  such draft to the line's amount and opens it instead; a line whose matches hold no draft is
+     *  refused. Blank lines are skipped; a paste with no lines is refused, and so is one with a
+     *  reference already used on the sheet or by an earlier line, comparing without regard to case.
+     *  Returns how many lines went through. */
     @Transactional
     public int paste(String sheetId, String user, String text) {
+        List<Claim> before = claims.list(sheetId);
+        LocalDate entryDay = sheets.entryDay(sheetId);
         List<Line> lines = new ArrayList<>();
+        List<Integer> numbers = new ArrayList<>();
+        List<Claim> drafts = new ArrayList<>();
+        Set<Long> taken = new HashSet<>();
         Set<String> refs = new HashSet<>();
         int n = 0;
         for (String raw : text.split("\\R")) {
@@ -67,15 +80,50 @@ public class ClaimPasteService {
                         throw refused(n, "the reference \"" + line.ref() + "\" is already used on this sheet");
                     }
                 }
+                LocalDate on = line.date() != null ? line.date() : entryDay;
+                List<Claim> matches = before.stream()
+                        .filter(c -> c.getPersonId().equals(line.person().getId()) && on.equals(c.getDate())
+                                && line.note().equals(Objects.requireNonNullElse(c.getNote(), "").trim())
+                                && c.getStatus() != ClaimStatus.VOID && c.getStatus() != ClaimStatus.DELETED)
+                        .toList();
+                Claim draft = null;
+                if (!matches.isEmpty()) {
+                    // the claims are listed newest first
+                    draft = matches.stream()
+                            .filter(c -> c.getStatus() == ClaimStatus.DRAFT && !taken.contains(c.getId()))
+                            .findFirst().orElse(null);
+                    if (draft == null) {
+                        throw refused(n, "the claim with this date and note is no longer a draft");
+                    }
+                    taken.add(draft.getId());
+                }
                 lines.add(line);
+                numbers.add(n);
+                drafts.add(draft);
             }
         }
         if (lines.isEmpty()) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Paste at least one line");
         }
-        for (Line line : lines) {
-            claims.add(sheetId, user, line.person().getId(), line.amount(), line.date(), line.note(),
-                    null, line.ref());
+        for (int i = 0; i < lines.size(); i++) {
+            Line line = lines.get(i);
+            Claim draft = drafts.get(i);
+            try {
+                long claimId;
+                if (draft == null) {
+                    claimId = claims.add(sheetId, user, line.person().getId(), line.amount(), line.date(),
+                            line.note(), null, line.ref()).getId();
+                } else {
+                    claimId = draft.getId();
+                    if (draft.getAmount().compareTo(line.amount()) != 0) {
+                        claims.editAmount(sheetId, user, claimId, line.amount());
+                    }
+                }
+                claims.changeStatus(sheetId, user, claimId, ClaimStatus.OPEN);
+            } catch (ResponseStatusException e) {
+                throw new ResponseStatusException(e.getStatusCode(),
+                        "Line " + numbers.get(i) + ": " + Objects.requireNonNullElse(e.getReason(), "refused"));
+            }
         }
         return lines.size();
     }

@@ -21,7 +21,7 @@ public class ClaimPasteController {
     public record PasteForm(@NotNull @Size(max = 200_000) String text) {
     }
 
-    /** How many claims a paste added. */
+    /** How many lines a paste put through (added or updated, then opened). */
     public record Pasted(int added) {
     }
 

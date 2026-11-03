@@ -1400,7 +1400,7 @@ export class PeopleList {
     }
   };
 
-  /** Read the sheet's claims again once a paste has added some. */
+  /** Read the sheet's claims again once a paste has added or opened some. */
   protected async claimsPasted(): Promise<void> {
     const sheetId = this.session.sheetId();
     if (!sheetId) return;

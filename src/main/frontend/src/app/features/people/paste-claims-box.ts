@@ -8,11 +8,11 @@ function refusal(e: unknown): string {
   if (e instanceof HttpErrorResponse && e.status === 423) return 'A line\'s due-by falls in a closed period.';
   if (e instanceof HttpErrorResponse && e.status === 422) return 'A line is dated after the person\'s retirement.';
   if (e instanceof HttpErrorResponse && typeof e.error?.message === 'string' && e.error.message) return e.error.message;
-  return 'The claims could not be added.';
+  return 'The claims could not be added and opened.';
 }
 
-// The paste box: lines of name,amount,date,note each add a draft claim for the named person, all
-// or none.
+// The paste box: lines of name,amount,date,note each add and open a claim for the named person (or
+// update and open a draft of theirs with the same date and note), all or none.
 @Component({
   selector: 'app-paste-claims-box',
   imports: [ReactiveFormsModule],
@@ -20,9 +20,9 @@ function refusal(e: unknown): string {
     <form [formGroup]="form" (ngSubmit)="submit()" aria-label="Paste claims">
       <label for="paste-claims">Paste claims (name,amount,date,note per line)</label>
       <textarea id="paste-claims" data-testid="paste-claims" formControlName="text" rows="4"></textarea>
-      <button type="submit" data-testid="paste-submit">Add claims</button>
+      <button type="submit" data-testid="paste-submit">Add and open claims</button>
       @if (added() !== null) {
-        <p role="status">Added <strong data-testid="paste-added">{{ added() }}</strong></p>
+        <p role="status">Lines through: <strong data-testid="paste-added">{{ added() }}</strong></p>
       }
       @if (error()) {
         <p role="alert" data-testid="paste-error">{{ error() }}</p>
