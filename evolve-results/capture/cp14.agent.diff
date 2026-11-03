@@ -1,0 +1,302 @@
+diff --git a/src/main/frontend/src/app/features/claims/claims.ts b/src/main/frontend/src/app/features/claims/claims.ts
+index 07a9e2d22..a46b0b2a0 100644
+--- a/src/main/frontend/src/app/features/claims/claims.ts
++++ b/src/main/frontend/src/app/features/claims/claims.ts
+@@ -133,6 +133,8 @@ export class PersonClaims {
+   protected readonly noteInput = signal('');
+   protected readonly editingId = signal<number | null>(null);
+   protected readonly error = signal<string | null>(null);
++  /** Whether a submit is waiting for its answer: a second submit meanwhile is ignored. */
++  private submitting = false;
+   /** The error of each claim's last refused status change, by claim id. */
+   protected readonly actionErrors = signal<ReadonlyMap<number, string>>(new Map());
+ 
+@@ -190,6 +192,7 @@ export class PersonClaims {
+ 
+   protected async save(event: Event): Promise<void> {
+     event.preventDefault();
++    if (this.submitting) return;
+     this.error.set(null);
+     const sheet = this.session.sheet();
+     const amount = this.amountInput().trim();
+@@ -204,6 +207,7 @@ export class PersonClaims {
+     }
+     const id = this.editingId();
+     const body = { sheet, user: this.session.user(), amount, date: date || null, note: this.noteInput().trim() };
++    this.submitting = true;
+     try {
+       const claim =
+         id === null
+@@ -214,6 +218,8 @@ export class PersonClaims {
+       this.reset();
+     } catch {
+       this.error.set(id === null ? 'Could not add this claim.' : 'Could not save this claim.');
++    } finally {
++      this.submitting = false;
+     }
+   }
+ }
+diff --git a/src/main/frontend/src/app/features/people/people.ts b/src/main/frontend/src/app/features/people/people.ts
+index c60f39c57..6cb85ee47 100644
+--- a/src/main/frontend/src/app/features/people/people.ts
++++ b/src/main/frontend/src/app/features/people/people.ts
+@@ -7,6 +7,8 @@ import { Rate, Rates, claimDueCents, dueText, pctOn } from '../rates/rates';
+ 
+ // The people on the active sheet, in the order they were added, and the one form that both adds
+ // a person and edits an existing one (opening a person's editor fills the form with their values).
++// The editor remembers the version of the person it opened; if someone else has saved the person
++// since, the save is refused and the form is refilled with the values the store holds now.
+ // Each row shows what the person has claimed and lists their claims; the sheet's claimed-total
+ // adds everyone's up. Only OPEN and SETTLED claims count toward any of these totals. Each claim shows
+ // what is due at the rate for the person's grade in force on the claim's date (a settled claim the
+@@ -16,6 +18,8 @@ interface Person {
+   id: number;
+   name: string;
+   grade: string;
++  /** The version the store holds; an edit sends the version it was opened at. */
++  version: number;
+ }
+ 
+ /** A claim's amount in whole cents when it counts toward the totals, else nothing. */
+@@ -135,6 +139,10 @@ export class People {
+   protected readonly nameInput = signal('');
+   protected readonly gradeInput = signal<string>('A');
+   protected readonly editingId = signal<number | null>(null);
++  /** The version of the person the editor was filled from. */
++  private editingVersion = 0;
++  /** Whether a submit is waiting for its answer: a second submit meanwhile is ignored. */
++  private submitting = false;
+   protected readonly error = signal<string | null>(null);
+ 
+   constructor() {
+@@ -194,6 +202,7 @@ export class People {
+ 
+   protected edit(p: Person): void {
+     this.editingId.set(p.id);
++    this.editingVersion = p.version;
+     this.nameInput.set(p.name);
+     this.gradeInput.set(p.grade);
+     this.error.set(null);
+@@ -212,6 +221,7 @@ export class People {
+ 
+   protected async save(event: Event): Promise<void> {
+     event.preventDefault();
++    if (this.submitting) return;
+     this.error.set(null);
+     const sheet = this.session.sheet();
+     const name = this.nameInput().trim();
+@@ -226,23 +236,48 @@ export class People {
+     }
+     const id = this.editingId();
+     const body = { sheet, user: this.session.user(), name, grade };
++    this.submitting = true;
+     try {
+       if (id === null) {
+         const added = await firstValueFrom(this.http.post<Person>('/api/people/add', body));
+         if (this.session.sheet() !== sheet) return;
+         this.people.update((list) => [...list, added]);
+       } else {
+-        const saved = await firstValueFrom(this.http.post<Person>('/api/people/update', { ...body, id }));
++        const saved = await firstValueFrom(
++          this.http.post<Person>('/api/people/update', { ...body, id, version: this.editingVersion }),
++        );
+         if (this.session.sheet() !== sheet) return;
+         this.people.update((list) => list.map((p) => (p.id === saved.id ? saved : p)));
+       }
+       this.reset();
+     } catch (e) {
+-      if (e instanceof HttpErrorResponse && e.status === 409) {
++      if (id !== null && e instanceof HttpErrorResponse && e.status === 412) {
++        await this.showCurrent(sheet, id);
++        this.error.set('Someone else has saved this person since you opened it; the form now shows their values.');
++      } else if (e instanceof HttpErrorResponse && e.status === 409) {
+         this.error.set('That name is already in use on this sheet.');
+       } else {
+         this.error.set(id === null ? 'Could not add this person.' : 'Could not save this person.');
+       }
++    } finally {
++      this.submitting = false;
++    }
++  }
++
++  /** Re-read the sheet's people and refill the open editor with the person as the store holds them now. */
++  private async showCurrent(sheet: string | null, id: number): Promise<void> {
++    try {
++      const list = await firstValueFrom(this.http.post<Person[]>('/api/people/list', { sheet }));
++      if (this.session.sheet() !== sheet) return;
++      this.people.set(list);
++      const current = list.find((p) => p.id === id);
++      if (current && this.editingId() === id) {
++        this.editingVersion = current.version;
++        this.nameInput.set(current.name);
++        this.gradeInput.set(current.grade);
++      }
++    } catch {
++      // the refusal is shown either way
+     }
+   }
+ }
+diff --git a/src/main/frontend/src/app/features/rates/rates.ts b/src/main/frontend/src/app/features/rates/rates.ts
+index 6917d7d26..f56e2337f 100644
+--- a/src/main/frontend/src/app/features/rates/rates.ts
++++ b/src/main/frontend/src/app/features/rates/rates.ts
+@@ -159,6 +159,8 @@ export class Rates {
+   protected readonly pctInput = signal('');
+   protected readonly fromInput = signal('');
+   protected readonly error = signal<string | null>(null);
++  /** Whether a submit is waiting for its answer: a second submit meanwhile is ignored. */
++  private submitting = false;
+ 
+   constructor() {
+     // Re-read the sheet's rates from the store every time a sheet is loaded.
+@@ -187,6 +189,7 @@ export class Rates {
+ 
+   protected async save(event: Event): Promise<void> {
+     event.preventDefault();
++    if (this.submitting) return;
+     this.error.set(null);
+     const sheet = this.session.sheet();
+     const grade = this.gradeInput();
+@@ -204,6 +207,7 @@ export class Rates {
+       this.error.set('Enter a from-date as yyyy-mm-dd, or leave it blank for always.');
+       return;
+     }
++    this.submitting = true;
+     try {
+       const saved = await firstValueFrom(
+         this.http.post<Rate>('/api/rates/set', { sheet, user: this.session.user(), grade, pct, from }),
+@@ -217,6 +221,8 @@ export class Rates {
+       this.fromInput.set('');
+     } catch {
+       this.error.set('Could not set this rate.');
++    } finally {
++      this.submitting = false;
+     }
+   }
+ }
+diff --git a/src/main/java/net/officefloor/hq/app/person/Person.java b/src/main/java/net/officefloor/hq/app/person/Person.java
+index 722602432..eabb2fd16 100644
+--- a/src/main/java/net/officefloor/hq/app/person/Person.java
++++ b/src/main/java/net/officefloor/hq/app/person/Person.java
+@@ -6,6 +6,7 @@ import jakarta.persistence.GeneratedValue;
+ import jakarta.persistence.GenerationType;
+ import jakarta.persistence.Id;
+ import jakarta.persistence.Table;
++import jakarta.persistence.Version;
+ 
+ /** A person on a sheet: a name and a grade (A, B or C). */
+ @Entity
+@@ -25,6 +26,11 @@ public class Person {
+     @Column(name = "grade", nullable = false)
+     private String grade;
+ 
++    /** Bumped on every save; an edit must carry the version it was made from. */
++    @Version
++    @Column(name = "version", nullable = false)
++    private long version;
++
+     protected Person() {
+     }
+ 
+@@ -57,4 +63,8 @@ public class Person {
+     public void setGrade(String grade) {
+         this.grade = grade;
+     }
++
++    public long getVersion() {
++        return version;
++    }
+ }
+diff --git a/src/main/java/net/officefloor/hq/app/person/PersonController.java b/src/main/java/net/officefloor/hq/app/person/PersonController.java
+index 8f089223c..f6268e303 100644
+--- a/src/main/java/net/officefloor/hq/app/person/PersonController.java
++++ b/src/main/java/net/officefloor/hq/app/person/PersonController.java
+@@ -25,14 +25,14 @@ public class PersonController {
+ 
+     public record UpdatePersonRequest(@NotBlank @Size(max = 100) String sheet,
+             @NotBlank @Size(max = 100) String user, @NotNull Long id, @NotBlank @Size(max = 200) String name,
+-            @NotNull @Pattern(regexp = "[ABC]") String grade) {
++            @NotNull @Pattern(regexp = "[ABC]") String grade, @NotNull Long version) {
+     }
+ 
+-    public record PersonResponse(long id, String name, String grade) {
++    public record PersonResponse(long id, String name, String grade, long version) {
+     }
+ 
+     private static PersonResponse response(Person person) {
+-        return new PersonResponse(person.getId(), person.getName(), person.getGrade());
++        return new PersonResponse(person.getId(), person.getName(), person.getGrade(), person.getVersion());
+     }
+ 
+     private final PersonService service;
+@@ -53,6 +53,7 @@ public class PersonController {
+ 
+     @PostMapping("/update")
+     public PersonResponse update(@Valid @RequestBody UpdatePersonRequest req) {
+-        return response(service.update(req.sheet().trim(), req.user().trim(), req.id(), req.name().trim(), req.grade()));
++        return response(service.update(req.sheet().trim(), req.user().trim(), req.id(), req.version(), req.name().trim(),
++                req.grade()));
+     }
+ }
+diff --git a/src/main/java/net/officefloor/hq/app/person/PersonService.java b/src/main/java/net/officefloor/hq/app/person/PersonService.java
+index 887a2a989..9cc325194 100644
+--- a/src/main/java/net/officefloor/hq/app/person/PersonService.java
++++ b/src/main/java/net/officefloor/hq/app/person/PersonService.java
+@@ -4,6 +4,7 @@ import java.util.List;
+ import net.officefloor.hq.app.Audit;
+ import net.officefloor.hq.app.sheet.SheetService;
+ import org.springframework.dao.DataIntegrityViolationException;
++import org.springframework.orm.ObjectOptimisticLockingFailureException;
+ import org.springframework.http.HttpStatus;
+ import org.springframework.stereotype.Service;
+ import org.springframework.transaction.annotation.Transactional;
+@@ -43,9 +44,12 @@ public class PersonService {
+     }
+ 
+     @Transactional
+-    public Person update(String sheetId, String user, long id, String name, String grade) {
++    public Person update(String sheetId, String user, long id, long version, String name, String grade) {
+         Person person = people.findByIdAndSheetId(id, sheetId)
+                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "No such person on this sheet."));
++        if (person.getVersion() != version) {
++            throw stale();
++        }
+         if (people.existsBySheetIdAndNameIgnoreCaseAndIdNot(sheetId, name, id)) {
+             throw nameInUse();
+         }
+@@ -61,15 +65,26 @@ public class PersonService {
+                 + person.getGrade();
+     }
+ 
+-    /** Save, refusing a name another user took on the sheet since it was checked. */
++    /**
++     * Save, refusing a name another user took on the sheet since it was checked, and an edit another
++     * user saved over since the person was read.
++     */
+     private Person save(Person person) {
+         try {
+             return people.saveAndFlush(person);
+         } catch (DataIntegrityViolationException e) {
+             throw nameInUse();
++        } catch (ObjectOptimisticLockingFailureException e) {
++            throw stale();
+         }
+     }
+ 
++    /** The edit was made from a version of the person that another user has since saved over. */
++    private static ResponseStatusException stale() {
++        return new ResponseStatusException(HttpStatus.PRECONDITION_FAILED,
++                "Someone else has saved this person since it was opened.");
++    }
++
+     private static ResponseStatusException nameInUse() {
+         return new ResponseStatusException(HttpStatus.CONFLICT, "That name is already in use on this sheet.");
+     }
+diff --git a/src/main/resources/db/migration/V12__person_version.sql b/src/main/resources/db/migration/V12__person_version.sql
+new file mode 100644
+index 000000000..dba709ceb
+--- /dev/null
++++ b/src/main/resources/db/migration/V12__person_version.sql
+@@ -0,0 +1,2 @@
++-- A person's version: bumped on every save, so an edit made from a stale copy is refused.
++ALTER TABLE person ADD COLUMN version BIGINT DEFAULT 0 NOT NULL;
