@@ -1,0 +1,104 @@
+diff --git a/src/main/frontend/src/app/features/claims/claims.ts b/src/main/frontend/src/app/features/claims/claims.ts
+index 3776ec764..cdd54c8a5 100644
+--- a/src/main/frontend/src/app/features/claims/claims.ts
++++ b/src/main/frontend/src/app/features/claims/claims.ts
+@@ -10,6 +10,8 @@ import { Rate, claimDueCents, dueText } from '../rates/rates';
+ // shows its status and the buttons that move it on; a move its status does not allow is refused
+ // with an error on the claim, as is the user who opened a claim settling it (four eyes). A claim
+ // dated inside a closed period cannot be added, edited or moved on: each is refused with an error.
++// Only a DRAFT can be edited; editing any other claim is refused with an error on the claim (to
++// change an open claim, void it and add a new one).
+ export type ClaimStatus = 'DRAFT' | 'OPEN' | 'SETTLED' | 'VOID';
+ 
+ export interface Claim {
+@@ -169,6 +171,10 @@ export class PersonClaims {
+       this.actionErrors.update((m) => new Map(m).set(c.id, CLOSED));
+       return;
+     }
++    if (c.status !== 'DRAFT') {
++      this.actionErrors.update((m) => new Map(m).set(c.id, `A ${c.status} claim cannot be edited.`));
++      return;
++    }
+     this.editingId.set(c.id);
+     this.amountInput.set(c.amount);
+     this.dateInput.set(c.date);
+@@ -245,9 +251,11 @@ export class PersonClaims {
+       this.error.set(
+         e instanceof HttpErrorResponse && e.status === 423
+           ? CLOSED
+-          : id === null
+-            ? 'Could not add this claim.'
+-            : 'Could not save this claim.',
++          : e instanceof HttpErrorResponse && e.status === 409
++            ? 'Only a DRAFT claim can be edited.'
++            : id === null
++              ? 'Could not add this claim.'
++              : 'Could not save this claim.',
+       );
+     } finally {
+       this.submitting = false;
+diff --git a/src/main/java/net/officefloor/hq/app/claim/Claim.java b/src/main/java/net/officefloor/hq/app/claim/Claim.java
+index 41a83fa1c..abc353f83 100644
+--- a/src/main/java/net/officefloor/hq/app/claim/Claim.java
++++ b/src/main/java/net/officefloor/hq/app/claim/Claim.java
+@@ -43,7 +43,7 @@ public class Claim {
+     @Column(name = "status", nullable = false)
+     private ClaimStatus status = ClaimStatus.DRAFT;
+ 
+-    /** The claim's number on its sheet, given when it is opened; none while DRAFT or once VOID. */
++    /** The claim's number on its sheet, given when it is opened and kept once VOID; none while DRAFT. */
+     @Column(name = "claim_number")
+     private Integer number;
+ 
+diff --git a/src/main/java/net/officefloor/hq/app/claim/ClaimService.java b/src/main/java/net/officefloor/hq/app/claim/ClaimService.java
+index 3750ed4fa..baf480115 100644
+--- a/src/main/java/net/officefloor/hq/app/claim/ClaimService.java
++++ b/src/main/java/net/officefloor/hq/app/claim/ClaimService.java
+@@ -20,7 +20,8 @@ import org.springframework.web.server.ResponseStatusException;
+ /**
+  * The claims on a sheet: added to a person and edited (amount, date, note). A claim given no date
+  * takes the sheet's today. A claim starts as DRAFT and moves through its statuses (see
+- * {@link ClaimStatus}); a change its status does not allow is refused. Settling a claim fixes its
++ * {@link ClaimStatus}); a change its status does not allow is refused. Only a DRAFT can be edited:
++ * to change an open claim, void it and add a new one. Settling a claim fixes its
+  * due at the rate its person's grade has then for the claim's date; an open claim's due stays live.
+  * A claim records who opened it, and that user cannot settle it (four eyes). A claim bound by its
+  * person's last statement keeps the figure it had then, and settling it fixes that figure. No claim
+@@ -80,6 +81,10 @@ public class ClaimService {
+     public Claim update(String sheetId, String user, long id, BigDecimal amount, LocalDate date, String note) {
+         Claim claim = claims.findByIdAndSheetId(id, sheetId)
+                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "No such claim on this sheet."));
++        if (claim.getStatus() != ClaimStatus.DRAFT) {
++            throw new ResponseStatusException(HttpStatus.CONFLICT,
++                    "A " + claim.getStatus() + " claim cannot be edited.");
++        }
+         LocalDate dated = dateOrToday(sheetId, date);
+         periods.refuseIfClosed(sheetId, claim.getDate());
+         periods.refuseIfClosed(sheetId, dated);
+@@ -113,8 +118,6 @@ public class ClaimService {
+             throw new ResponseStatusException(HttpStatus.FORBIDDEN,
+                     "The user who opened a claim cannot settle it.");
+         }
+-        // the audit line carries the number the claim had, before voiding clears it
+-        Integer recorded = next == ClaimStatus.OPEN ? number : claim.getNumber();
+         Person person = person(sheetId, claim.getPersonId());
+         claim.setStatus(next);
+         if (next == ClaimStatus.OPEN) {
+@@ -122,8 +125,6 @@ public class ClaimService {
+             claim.setOpenedBy(user);
+         } else if (next == ClaimStatus.SETTLED) {
+             claim.setSettledDue(claim.isStated() ? claim.getStatedDue() : due(sheetId, person, claim));
+-        } else if (next == ClaimStatus.VOID) {
+-            claim.setNumber(null);
+         }
+         Claim saved = claims.saveAndFlush(claim);
+         String event = switch (next) {
+@@ -133,7 +134,7 @@ public class ClaimService {
+             case DRAFT -> throw new IllegalStateException();
+         };
+         audit.recordOnCommit(record(event, sheetId, user, person, saved)
+-                + (recorded != null ? " number=" + recorded : "")
++                + (saved.getNumber() != null ? " number=" + saved.getNumber() : "")
+                 + (next == ClaimStatus.SETTLED ? " due=" + dueText(saved.getSettledDue()) : ""));
+         rollup.recordChanges(sheetId, user, before);
+         return saved;
