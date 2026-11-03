@@ -2,13 +2,14 @@ import { HttpClient, HttpErrorResponse } from '@angular/common/http';
 import { Component, inject, input, output, signal } from '@angular/core';
 import { firstValueFrom } from 'rxjs';
 import { Session } from '../../core/session';
-import { Period, periodOn } from '../periods/periods';
+import { Period, inClosedPeriod, periodOn } from '../periods/periods';
 import { Rate, claimDueCents, dueText } from '../rates/rates';
 
 // A person's claims, newest first, and the one form under their row that both adds a claim and
 // edits an existing one (opening a claim's editor fills the form with its values). Each claim
 // shows its status and the buttons that move it on; a move its status does not allow is refused
-// with an error on the claim, as is the user who opened a claim settling it (four eyes).
+// with an error on the claim, as is the user who opened a claim settling it (four eyes). A claim
+// dated inside a closed period cannot be added, edited or moved on: each is refused with an error.
 export type ClaimStatus = 'DRAFT' | 'OPEN' | 'SETTLED' | 'VOID';
 
 export interface Claim {
@@ -37,6 +38,9 @@ type ClaimAction = 'open' | 'settle' | 'void';
 export function counts(c: Claim): boolean {
   return c.status === 'OPEN' || c.status === 'SETTLED';
 }
+
+/** The refusal of a change to a claim dated inside a closed period. */
+const CLOSED = 'That date is inside a closed period.';
 
 const PAST: Record<ClaimAction, string> = { open: 'opened', settle: 'settled', void: 'voided' };
 
@@ -161,6 +165,10 @@ export class PersonClaims {
 
   protected edit(c: Claim): void {
     this.clearActionError(c.id);
+    if (inClosedPeriod(this.periods(), c.date)) {
+      this.actionErrors.update((m) => new Map(m).set(c.id, CLOSED));
+      return;
+    }
     this.editingId.set(c.id);
     this.amountInput.set(c.amount);
     this.dateInput.set(c.date);
@@ -200,7 +208,9 @@ export class PersonClaims {
       const err =
         e instanceof HttpErrorResponse && e.status === 403
           ? 'The user who opened a claim cannot settle it.'
-          : `A ${c.status} claim cannot be ${PAST[action]}.`;
+          : e instanceof HttpErrorResponse && e.status === 423
+            ? CLOSED
+            : `A ${c.status} claim cannot be ${PAST[action]}.`;
       this.actionErrors.update((m) => new Map(m).set(c.id, err));
     }
   }
@@ -231,8 +241,14 @@ export class PersonClaims {
       if (this.session.sheet() !== sheet) return;
       this.saved.emit(claim);
       this.reset();
-    } catch {
-      this.error.set(id === null ? 'Could not add this claim.' : 'Could not save this claim.');
+    } catch (e) {
+      this.error.set(
+        e instanceof HttpErrorResponse && e.status === 423
+          ? CLOSED
+          : id === null
+            ? 'Could not add this claim.'
+            : 'Could not save this claim.',
+      );
     } finally {
       this.submitting = false;
     }

@@ -6,9 +6,13 @@ import jakarta.persistence.GeneratedValue;
 import jakarta.persistence.GenerationType;
 import jakarta.persistence.Id;
 import jakarta.persistence.Table;
+import java.math.BigDecimal;
 import java.time.LocalDate;
 
-/** A period on a sheet: a name and a from and to date, both inclusive. */
+/**
+ * A period on a sheet: a name and a from and to date, both inclusive. A closed period keeps the
+ * due-total it had when it was closed.
+ */
 @Entity
 @Table(name = "period")
 public class Period {
@@ -28,6 +32,12 @@ public class Period {
 
     @Column(name = "to_date", nullable = false)
     private LocalDate toDate;
+
+    @Column(name = "closed", nullable = false)
+    private boolean closed;
+
+    @Column(name = "closed_due")
+    private BigDecimal closedDue;
 
     protected Period() {
     }
@@ -57,5 +67,19 @@ public class Period {
 
     public LocalDate getToDate() {
         return toDate;
+    }
+
+    public boolean isClosed() {
+        return closed;
+    }
+
+    public BigDecimal getClosedDue() {
+        return closedDue;
+    }
+
+    /** Close the period, fixing its due-total at this moment. */
+    public void close(BigDecimal due) {
+        this.closed = true;
+        this.closedDue = due;
     }
 }

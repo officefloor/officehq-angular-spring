@@ -92,6 +92,29 @@ public class RollupService {
         return new Snapshot(figures);
     }
 
+    /**
+     * The due of the claims that count whose date falls in from..to (both inclusive), each at the
+     * figure the screen shows for it now.
+     */
+    public BigDecimal dueBetween(String sheetId, LocalDate from, LocalDate to) {
+        List<Rate> sheetRates = rates.findBySheetIdOrderByGradeAscFromDateAsc(sheetId);
+        List<Claim> sheetClaims = claims.findBySheetIdOrderByIdDesc(sheetId);
+        BigDecimal due = zero();
+        for (Person person : people.findBySheetIdOrderByIdAsc(sheetId)) {
+            for (Claim claim : sheetClaims) {
+                if (!claim.getPersonId().equals(person.getId()) || !claim.getStatus().counts()
+                        || claim.getDate().isBefore(from) || claim.getDate().isAfter(to)) {
+                    continue;
+                }
+                BigDecimal figure = figure(sheetRates, person, claim);
+                if (figure != null) {
+                    due = due.add(figure);
+                }
+            }
+        }
+        return due;
+    }
+
     /** Record, once the change commits, the figures that moved since the snapshot taken before it. */
     public void recordChanges(String sheetId, String user, Snapshot before) {
         Snapshot after = snapshot(sheetId);

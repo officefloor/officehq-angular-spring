@@ -7,11 +7,16 @@ import { money } from '../claims/claims';
 // The sheet's periods, by from-date, and the form that adds one: a name unique on the sheet and a
 // from and to date, both inclusive, no two periods overlapping. A claim belongs to the period whose
 // dates contain its date, or to none; each period shows the due of the claims that count in it.
+// A period can be closed: its due-total is then the one fixed when it was closed, and no claim
+// dated inside it can be added, edited, opened, settled or voided.
 export interface Period {
   id: number;
   name: string;
   from: string;
   to: string;
+  closed: boolean;
+  /** The due-total fixed when the period was closed; null while it is open. */
+  closedDue: string | null;
 }
 
 /** A claim's date and its figure in whole cents, for a claim that counts. */
@@ -26,6 +31,11 @@ const DATE = /^\d{4}-\d{2}-\d{2}$/;
 /** The period whose dates contain a date (yyyy-mm-dd), if any. */
 export function periodOn(periods: readonly Period[], date: string): Period | undefined {
   return periods.find((p) => p.from <= date && date <= p.to);
+}
+
+/** Whether a date (yyyy-mm-dd) falls inside a closed period. */
+export function inClosedPeriod(periods: readonly Period[], date: string): boolean {
+  return periodOn(periods, date)?.closed ?? false;
 }
 
 @Component({
@@ -69,6 +79,8 @@ export function periodOn(periods: readonly Period[], date: string): Period | und
             <th scope="col">From</th>
             <th scope="col">To</th>
             <th scope="col">Due</th>
+            <th scope="col">Closed</th>
+            <th scope="col"><span class="visually-hidden">Actions</span></th>
           </tr>
         </thead>
         <tbody>
@@ -78,6 +90,20 @@ export function periodOn(periods: readonly Period[], date: string): Period | und
               <td data-testid="period-from">{{ p.from }}</td>
               <td data-testid="period-to">{{ p.to }}</td>
               <td data-testid="period-due-total">{{ dueTotalOf(p) }}</td>
+              <td data-testid="period-closed">{{ p.closed ? 'yes' : 'no' }}</td>
+              <td>
+                <button
+                  type="button"
+                  data-testid="period-close"
+                  [attr.aria-label]="'Close period ' + p.name"
+                  (click)="close(p)"
+                >
+                  Close
+                </button>
+                @if (rowErrors().get(p.id); as err) {
+                  <p role="alert" data-testid="period-error">{{ err }}</p>
+                }
+              </td>
             </tr>
           }
         </tbody>
@@ -98,6 +124,8 @@ export class Periods {
   protected readonly fromInput = signal('');
   protected readonly toInput = signal('');
   protected readonly error = signal<string | null>(null);
+  /** The error of each period's last refused action, by period id. */
+  protected readonly rowErrors = signal<ReadonlyMap<number, string>>(new Map());
   /** Whether a submit is waiting for its answer: a second submit meanwhile is ignored. */
   private submitting = false;
 
@@ -111,15 +139,43 @@ export class Periods {
       this.fromInput.set('');
       this.toInput.set('');
       this.error.set(null);
+      this.rowErrors.set(new Map());
       if (sheet) {
         void this.fetch(sheet);
       }
     });
   }
 
-  /** The due of the claims that count whose date falls in the period. */
+  /** A closed period's due-total fixed when it was closed; an open period's, the due of the claims
+   *  that count whose date falls in it. */
   protected dueTotalOf(p: Period): string {
+    if (p.closed && p.closedDue !== null) return p.closedDue;
     return money(this.dues().reduce((sum, d) => sum + (p.from <= d.date && d.date <= p.to ? d.cents : 0), 0));
+  }
+
+  /** Close a period, fixing its due-total; the server refuses a period already closed. */
+  protected async close(p: Period): Promise<void> {
+    this.rowErrors.update((m) => {
+      if (!m.has(p.id)) return m;
+      const next = new Map(m);
+      next.delete(p.id);
+      return next;
+    });
+    const sheet = this.session.sheet();
+    try {
+      const closed = await firstValueFrom(
+        this.http.post<Period>('/api/periods/close', { sheet, user: this.session.user(), id: p.id }),
+      );
+      if (this.session.sheet() !== sheet) return;
+      this.periods.update((list) => list.map((x) => (x.id === closed.id ? closed : x)));
+    } catch (e) {
+      if (this.session.sheet() !== sheet) return;
+      const err =
+        e instanceof HttpErrorResponse && e.status === 409
+          ? 'Period ' + p.name + ' is already closed.'
+          : 'Could not close period ' + p.name + '.';
+      this.rowErrors.update((m) => new Map(m).set(p.id, err));
+    }
   }
 
   private async fetch(sheet: string): Promise<void> {

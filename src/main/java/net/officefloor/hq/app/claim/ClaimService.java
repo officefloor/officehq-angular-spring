@@ -5,6 +5,7 @@ import java.math.RoundingMode;
 import java.time.LocalDate;
 import java.util.List;
 import net.officefloor.hq.app.Audit;
+import net.officefloor.hq.app.period.PeriodService;
 import net.officefloor.hq.app.person.Person;
 import net.officefloor.hq.app.person.PersonRepository;
 import net.officefloor.hq.app.rate.Rate;
@@ -22,7 +23,8 @@ import org.springframework.web.server.ResponseStatusException;
  * {@link ClaimStatus}); a change its status does not allow is refused. Settling a claim fixes its
  * due at the rate its person's grade has then for the claim's date; an open claim's due stays live.
  * A claim records who opened it, and that user cannot settle it (four eyes). A claim bound by its
- * person's last statement keeps the figure it had then, and settling it fixes that figure.
+ * person's last statement keeps the figure it had then, and settling it fixes that figure. No claim
+ * dated inside a closed period can be added, edited (to or from such a date) or change status.
  */
 @Service
 public class ClaimService {
@@ -33,10 +35,12 @@ public class ClaimService {
     private final SheetService sheets;
     private final Audit audit;
     private final RollupService rollup;
+    private final PeriodService periods;
 
     public ClaimService(ClaimRepository claims, PersonRepository people, RateRepository rates, SheetService sheets,
-            Audit audit, RollupService rollup) {
+            Audit audit, RollupService rollup, PeriodService periods) {
         this.rollup = rollup;
+        this.periods = periods;
         this.claims = claims;
         this.people = people;
         this.rates = rates;
@@ -63,8 +67,10 @@ public class ClaimService {
     @Transactional
     public Claim add(String sheetId, String user, long personId, BigDecimal amount, LocalDate date, String note) {
         Person person = person(sheetId, personId);
+        LocalDate dated = dateOrToday(sheetId, date);
+        periods.refuseIfClosed(sheetId, dated);
         RollupService.Snapshot before = rollup.snapshot(sheetId);
-        Claim added = claims.saveAndFlush(new Claim(sheetId, personId, amount, dateOrToday(sheetId, date), note));
+        Claim added = claims.saveAndFlush(new Claim(sheetId, personId, amount, dated, note));
         audit.recordOnCommit(record("CLAIM_ADDED", sheetId, user, person, added));
         rollup.recordChanges(sheetId, user, before);
         return added;
@@ -72,11 +78,14 @@ public class ClaimService {
 
     @Transactional
     public Claim update(String sheetId, String user, long id, BigDecimal amount, LocalDate date, String note) {
-        RollupService.Snapshot before = rollup.snapshot(sheetId);
         Claim claim = claims.findByIdAndSheetId(id, sheetId)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "No such claim on this sheet."));
+        LocalDate dated = dateOrToday(sheetId, date);
+        periods.refuseIfClosed(sheetId, claim.getDate());
+        periods.refuseIfClosed(sheetId, dated);
+        RollupService.Snapshot before = rollup.snapshot(sheetId);
         claim.setAmount(amount);
-        claim.setDate(dateOrToday(sheetId, date));
+        claim.setDate(dated);
         claim.setNote(note);
         Claim saved = claims.saveAndFlush(claim);
         audit.recordOnCommit(record("CLAIM_EDITED", sheetId, user, person(sheetId, saved.getPersonId()), saved));
@@ -99,6 +108,7 @@ public class ClaimService {
             throw new ResponseStatusException(HttpStatus.CONFLICT,
                     "A " + claim.getStatus() + " claim cannot become " + next + ".");
         }
+        periods.refuseIfClosed(sheetId, claim.getDate());
         if (next == ClaimStatus.SETTLED && user.equals(claim.getOpenedBy())) {
             throw new ResponseStatusException(HttpStatus.FORBIDDEN,
                     "The user who opened a claim cannot settle it.");
