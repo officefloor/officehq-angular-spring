@@ -9,15 +9,19 @@ import java.util.Locale;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 import net.officefloor.hq.app.Audit;
+import net.officefloor.hq.app.claim.Claim;
+import net.officefloor.hq.app.claim.ClaimRepository;
 import net.officefloor.hq.app.person.Person;
 import net.officefloor.hq.app.person.PersonRepository;
 import net.officefloor.hq.app.sheet.SheetRepository;
+import org.springframework.http.HttpStatus;
 import org.springframework.validation.annotation.Validated;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
+import org.springframework.web.server.ResponseStatusException;
 
 /** The audit viewer: the sheet's lines exactly as the audit file holds them, newest first,
  *  optionally only those about one person. For a person, this sheet's lines about them are
@@ -35,11 +39,13 @@ public class AuditController {
     private final Audit audit;
     private final PersonRepository people;
     private final SheetRepository sheets;
+    private final ClaimRepository claims;
 
-    public AuditController(Audit audit, PersonRepository people, SheetRepository sheets) {
+    public AuditController(Audit audit, PersonRepository people, SheetRepository sheets, ClaimRepository claims) {
         this.audit = audit;
         this.people = people;
         this.sheets = sheets;
+        this.claims = claims;
     }
 
     @GetMapping
@@ -58,6 +64,38 @@ public class AuditController {
                 shown.addAll(untilTransfer(about(lines, origin, person), sheet));
             }
         }
+        return shown;
+    }
+
+    /** A claim's timeline: the sheet's lines about the claim, newest first, exactly as the file holds
+     *  them. A numbered claim's lines are those carrying its number; a claim with no number's are
+     *  those carrying no number that name its person, amount and date together. */
+    @GetMapping("/claims/{claimId}")
+    public List<String> timeline(@PathVariable @NotBlank @Size(max = 100) String sheetId,
+            @PathVariable Long claimId) {
+        String sheet = sheetId.trim();
+        Claim claim = claims.findByIdAndSheetId(claimId, sheet)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "No such claim"));
+        String number = claim.getNumber();
+        String person = people.findById(claim.getPersonId()).map(p -> key(p.getName())).orElse(null);
+        String amount = claim.getAmount().setScale(2).toPlainString();
+        String date = String.valueOf(claim.getDate());
+        List<String> shown = new ArrayList<>();
+        for (String line : audit.lines()) {
+            if (!sheet.equals(field(line, "sheet"))) {
+                continue;
+            }
+            String lineNumber = field(line, "number");
+            boolean about = number != null
+                    ? number.equals(lineNumber)
+                    : lineNumber == null && person != null && field(line, "person") != null
+                            && person.equals(key(field(line, "person")))
+                            && amount.equals(field(line, "amount")) && date.equals(field(line, "date"));
+            if (about) {
+                shown.add(line);
+            }
+        }
+        Collections.reverse(shown);
         return shown;
     }
 

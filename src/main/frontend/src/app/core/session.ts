@@ -73,23 +73,32 @@ export class Session {
     this.parent.set(null);
   }
 
+  /** Whether a sheet load is under way: its rows are read again once it is done, so a read
+   *  finished meanwhile does not show the sheet as loaded. */
+  private loading = false;
+
   /** Record that the sheet's people and claims, as read for its latest load, are on screen. */
   markShown(id: string): void {
-    if (this.sheetId() === id) this.shownId.set(id);
+    if (!this.loading && this.sheetId() === id) this.shownId.set(id);
   }
 
   /** Load a sheet by id; one never loaded before starts empty. */
   async loadSheet(id: string): Promise<void> {
     const user = this.user();
     if (!user) throw new Error('not signed in');
-    const res = await firstValueFrom(
-      this.http.post<SheetView>(`/api/sheets/${encodeURIComponent(id)}/load`, null, {
-        headers: { 'X-User': user },
-      }),
-    );
-    this.show(res);
-    await this.readLocale(user);
-    await this.readColumns(user);
+    this.loading = true;
+    try {
+      const res = await firstValueFrom(
+        this.http.post<SheetView>(`/api/sheets/${encodeURIComponent(id)}/load`, null, {
+          headers: { 'X-User': user },
+        }),
+      );
+      this.show(res);
+      await this.readLocale(user);
+      await this.readColumns(user);
+    } finally {
+      this.loading = false;
+    }
     this.bumpLoads();
   }
 

@@ -13,4 +13,11 @@ export class AuditLog {
     const params: Record<string, string> = name.trim() ? { name } : {};
     return firstValueFrom(this.http.get<string[]>(`/api/sheets/${encodeURIComponent(sheetId)}/audit`, { params }));
   }
+
+  /** A claim's timeline: the sheet's audit lines about the claim exactly as the file holds them,
+   *  newest first. */
+  timeline(sheetId: string, claimId: number): Promise<string[]> {
+    return firstValueFrom(
+      this.http.get<string[]>(`/api/sheets/${encodeURIComponent(sheetId)}/audit/claims/${claimId}`));
+  }
 }

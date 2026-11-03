@@ -10,6 +10,7 @@ import { Session } from '../../core/session';
 import { VoidReasons } from '../../core/void-reasons';
 import { DatedValue, Graces, RoundingMode, graceOn } from '../../core/settings';
 import { FigurePipe } from '../../core/figure';
+import { AuditLog } from '../../core/audit-log';
 
 /** Why the server refused an action: the claim's status does not allow it. */
 const REFUSALS: Record<ClaimAction, string> = {
@@ -347,6 +348,16 @@ function splitRefusal(e: unknown): string {
           @if (editing() === c.id) {
             <button type="button" data-testid="claim-cancel" (click)="cancel()">Cancel</button>
           }
+          <button type="button" data-testid="claim-timeline" (click)="showTimeline(c)"
+            [attr.aria-label]="'Timeline of claim of ' + c.amount + ' on ' + c.date">Timeline</button>
+          @if (timeline()?.id === c.id) {
+            <ol data-testid="claim-timeline-lines"
+              [attr.aria-label]="'Timeline of claim of ' + c.amount + ' on ' + c.date">
+              @for (line of timeline()?.lines; track $index) {
+                <li data-testid="claim-timeline-line">{{ line }}</li>
+              }
+            </ol>
+          }
           @if (claimError()?.id === c.id) {
             <p role="alert" data-testid="claim-error">{{ claimError()?.message }}</p>
           }
@@ -358,6 +369,7 @@ function splitRefusal(e: unknown): string {
 export class PersonClaims {
   private readonly api = inject(Claims);
   private readonly session = inject(Session);
+  private readonly auditLog = inject(AuditLog);
   protected readonly voidReasons = inject(VoidReasons);
   protected readonly templates = inject(ClaimTemplates);
 
@@ -401,6 +413,10 @@ export class PersonClaims {
   private submitting = false;
   /** The refusal of the last action taken on a claim's row, shown on that row. */
   protected readonly claimError = signal<{ id: number; message: string } | null>(null);
+  /** The claim whose timeline is shown, with its audit lines newest first. */
+  protected readonly timeline = signal<{ id: number; lines: string[] } | null>(null);
+  /** Counts timeline reads, so only the latest one's answer is shown. */
+  private timelineReads = 0;
   protected readonly form = new FormGroup({
     amount: new FormControl('', { nonNullable: true }),
     date: new FormControl('', { nonNullable: true }),
@@ -533,6 +549,21 @@ export class PersonClaims {
       this.saved.emit(await this.api.addProof(c.id));
     } catch (e) {
       this.claimError.set({ id: c.id, message: proofRefusal(e) });
+    }
+  }
+
+  /** Show the claim's timeline, read afresh from the audit file. */
+  protected async showTimeline(c: Claim): Promise<void> {
+    const sheetId = this.session.sheetId();
+    if (!sheetId) return;
+    const read = ++this.timelineReads;
+    this.claimError.set(null);
+    this.timeline.set(null);
+    try {
+      const lines = await this.auditLog.timeline(sheetId, c.id);
+      if (read === this.timelineReads) this.timeline.set({ id: c.id, lines });
+    } catch {
+      if (read === this.timelineReads) this.claimError.set({ id: c.id, message: 'The timeline could not be read.' });
     }
   }
 
