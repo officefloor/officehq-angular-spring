@@ -1,0 +1,64 @@
+{
+  "checkpoint": 153,
+  "stack": {
+    "repo": "/home/daniel/officehq-angular-spring",
+    "origin": "git@github.com:officefloor/officehq-angular-spring.git",
+    "name": "officehq-angular-spring",
+    "base_ref": "base-empty",
+    "base_commit": "65cb8233ea38b2dfa6cfd18709e30cd18fdf3250"
+  },
+  "checkpoint_id": "cp153_rate-versions",
+  "phase": "mid",
+  "type": "additive",
+  "mutates": [],
+  "replaced_tests": [],
+  "request": {
+    "spec": "A rate is now kept as versions: setting a rate for a grade and from-date that already exist\nkeeps the value it replaces as an older version and adds a new one, and the rate row shows its version count. The rate in force is always the newest version; everything else is as before.\n",
+    "prompt": "You are implementing ONE change to this application.\n\nFIRST read AGENTS.md \u2014 it states the working rules and how the app is tested, and sends you to\nDESIGN.md for the app's stack and conventions. Follow both.\n\nTHE CHANGE REQUEST:\nA rate is now kept as versions: setting a rate for a grade and from-date that already exist\nkeeps the value it replaces as an older version and adds a new one, and the rate row shows its version count. The rate in force is always the newest version; everything else is as before.\n\nYour work is verified by an automated Playwright UI test already installed under e2e/specs/.\nRead that spec: it declares the exact data-testid anchors, values, test data and any audit\nrecords it expects \u2014 match them. Run `bin/e2e` to build the app, start it, and run the test as\nyou work; iterate until it passes. Change whatever the request needs across the app \u2014 its stored\ndata, its server and its front end. Do NOT edit bin/build, bin/start, bin/stop, bin/e2e,\nAGENTS.md, CLAUDE.md, DESIGN.md, e2e/support/ or the test spec.\n"
+  },
+  "commit_sha": "762fa30ca18e76f513c023c3a9ec9a21929aa6c1",
+  "reset_sha": "",
+  "preagent_sha": "b9a5374aa83623ca1a61d4503a862bd60e58f342",
+  "prev_sha": "b9a5374aa83623ca1a61d4503a862bd60e58f342",
+  "base_sha": "65cb8233ea38b2dfa6cfd18709e30cd18fdf3250",
+  "agent": {
+    "ok": true,
+    "cost_usd": 0.5820595999999998,
+    "input_tokens": 28,
+    "output_tokens": 5753,
+    "cache_read_tokens": 479678,
+    "cache_creation_tokens": 46369,
+    "num_turns": 14,
+    "duration_ms": 239713,
+    "duration_api_ms": 55193,
+    "model": "claude-opus-5-5",
+    "session_id": "b776a1af-31e4-4237-8a55-61b7c968bc63",
+    "stop_reason": "success",
+    "result_text": "Rates are now kept as versions, and each rate row shows how many versions it has had. All 4 Playwright tests in `bin/e2e` pass.\n\n**How it works:**\n- The existing `rate` row is always the newest version, which is the rate in force. Because of that, nothing that works out dues, rollups, history or previews needed to change.\n- When you set a rate for a grade and from-date that already has one, the old percent and to-date are saved as an older version, and the row's version count goes up by one before the new value is written. The audit `RATE_SET` line is unchanged.\n- A refused setting still writes nothing, so it adds no version.\n\n**What changed:**\n- **Database:** a new migration, `V89__rate_version.sql`. It adds a `version` column to `rate` (existing rates start at 1) and a new `rate_version` table that holds the replaced values.\n- **Server:** a new `RateVersion` entity and repository. `Rate` now has a version count, `RateService.set` saves the old values before overwriting them, and the rate data sent to the screen now includes `version`.\n- **Screen:** the \"All rates\" table has a new \"Versions\" column (`data-testid=\"rate-version\"`).\n\nTwo limits:\n- **Cloning a sheet** copies only the rate in force, so each copied rate starts at version 1 with no older versions.\n- **No way to view old versions yet:** they are stored in the database, but nothing on the screen or in the API shows them; only the count appears.",
+    "error": "",
+    "attempts": [
+      {
+        "ok": true,
+        "limit_reached": false,
+        "retryable": false,
+        "timed_out": false,
+        "cost_usd": 0.5820595999999998,
+        "num_turns": 14,
+        "duration_ms": 239713,
+        "duration_api_ms": 55193,
+        "error": ""
+      }
+    ]
+  },
+  "agent_stream_file": "cp153.agent.jsonl",
+  "agent_diff_file": "cp153.agent.diff",
+  "build_log_file": null,
+  "tests": {
+    "gated": false,
+    "queued": true
+  },
+  "probe": null,
+  "pinned_touched": [],
+  "acceptance_touched": [],
+  "impact_gate": null
+}
