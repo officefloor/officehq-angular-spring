@@ -206,31 +206,61 @@ public class PoolService {
         return all.stream().map(p -> listed(p.getId(), poolsById, membersOf, above, sheetPot, listed, 0)).toList();
     }
 
-    /** Each member's cut as it stood at the end of each period whose to-date is on or before a day
-     *  (null: the sheet's today): by the period's name, earliest period first, then by the pool's id, the member's key
-     *  ({@link #memberKey}) and their cut then; a member with no cut then has no entry. */
+    /** Each member's cut for each period that is closed or soft-closed, or whose to-date is on or
+     *  before a day (null: the sheet's today), as the sheet stood on that day: for a closed or
+     *  soft-closed period the cut fixed when it was closed, else the cut as it stood at the end of
+     *  the period. By the period's name, earliest period first, then by the pool's id, the member's
+     *  key ({@link #memberKey}) and their cut; a member with no cut has no entry. */
     @Transactional(readOnly = true)
     public Map<String, Map<Long, Map<String, BigDecimal>>> cutHistory(String sheetId, LocalDate asOf) {
         LocalDate today = asOf != null ? asOf : sheets.today(sheetId);
+        List<Period> all = asOf != null ? history.asOf(sheetId, asOf).periods()
+                : periods.findBySheetIdOrderByFromDateAsc(sheetId);
         Map<String, Map<Long, Map<String, BigDecimal>>> out = new LinkedHashMap<>();
-        for (Period period : periods.findBySheetIdOrderByFromDateAsc(sheetId)) {
+        for (Period period : all) {
+            if (period.isClosed() || period.isSoftClosed()) {
+                Map<Long, Map<String, BigDecimal>> byPool = new HashMap<>();
+                period.getPoolCuts().forEach((key, cut) -> {
+                    int at = key.indexOf(':');
+                    byPool.computeIfAbsent(Long.valueOf(key.substring(0, at)), k -> new HashMap<>())
+                            .put(key.substring(at + 1), cut);
+                });
+                out.put(period.getName(), byPool);
+                continue;
+            }
             if (period.getToDate() == null || period.getToDate().isAfter(today)) {
                 continue;
             }
             Map<Long, Map<String, BigDecimal>> byPool = new HashMap<>();
             for (Listed l : list(sheetId, period.getToDate())) {
-                List<BigDecimal> cuts = l.cuts();
-                Map<String, BigDecimal> byMember = new HashMap<>();
-                for (int i = 0; i < cuts.size(); i++) {
-                    if (cuts.get(i) != null) {
-                        byMember.put(memberKey(l.members().get(i).member()), cuts.get(i));
-                    }
-                }
-                byPool.put(l.pool().getId(), byMember);
+                byPool.put(l.pool().getId(), cutsByMember(l));
             }
             out.put(period.getName(), byPool);
         }
         return out;
+    }
+
+    /** Each member's cut as it stands now, by "pool-id:member-key"; a member with no cut has no
+     *  entry. What a period fixes when it is closed or soft-closed. */
+    @Transactional(readOnly = true)
+    public Map<String, BigDecimal> currentCuts(String sheetId) {
+        Map<String, BigDecimal> out = new HashMap<>();
+        for (Listed l : list(sheetId)) {
+            cutsByMember(l).forEach((key, cut) -> out.put(l.pool().getId() + ":" + key, cut));
+        }
+        return out;
+    }
+
+    /** The pool's cuts by the member's key; a member with no cut has no entry. */
+    private static Map<String, BigDecimal> cutsByMember(Listed l) {
+        List<BigDecimal> cuts = l.cuts();
+        Map<String, BigDecimal> byMember = new HashMap<>();
+        for (int i = 0; i < cuts.size(); i++) {
+            if (cuts.get(i) != null) {
+                byMember.put(memberKey(l.members().get(i).member()), cuts.get(i));
+            }
+        }
+        return byMember;
     }
 
     /** A member's key within its pool: p<id> for a person, q<id> for a pool. */

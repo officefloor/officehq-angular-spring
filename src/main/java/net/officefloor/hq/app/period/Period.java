@@ -73,6 +73,14 @@ public class Period {
     @Column(name = "carried", nullable = false)
     private Map<Long, BigDecimal> personCarried = new HashMap<>();
 
+    /** Each pool member's cut for the period, by "pool-id:member-key", fixed when it was closed or
+     *  soft-closed (their cut as it stood at that moment); empty while it is open. */
+    @ElementCollection(fetch = FetchType.EAGER)
+    @CollectionTable(name = "period_pool_cut", joinColumns = @JoinColumn(name = "period_id"))
+    @MapKeyColumn(name = "cut_key")
+    @Column(name = "cut", nullable = false)
+    private Map<String, BigDecimal> poolCuts = new HashMap<>();
+
     /** Each person's opening balance for the period, by the person's id: what pasted opening
      *  balances have added to their carried figure for it. Kept while the period is open or closed. */
     @ElementCollection(fetch = FetchType.EAGER)
@@ -93,7 +101,7 @@ public class Period {
     static Period revised(String sheetId, Long id, String name, LocalDate fromDate, LocalDate toDate,
             boolean closed, boolean softClosed, BigDecimal closedTotal, Map<Long, BigDecimal> personTotals,
             Map<Long, BigDecimal> personCarried, Map<Long, BigDecimal> personOpenings, Integer claimCap,
-            boolean locked) {
+            boolean locked, Map<String, BigDecimal> poolCuts) {
         Period period = new Period(sheetId, name, fromDate, toDate, claimCap);
         period.id = id;
         period.closed = closed;
@@ -103,6 +111,7 @@ public class Period {
         period.personTotals.putAll(personTotals);
         period.personCarried.putAll(personCarried);
         period.personOpenings.putAll(personOpenings);
+        period.poolCuts.putAll(poolCuts);
         return period;
     }
 
@@ -171,6 +180,12 @@ public class Period {
         return Map.copyOf(personTotals);
     }
 
+    /** Each pool member's cut fixed when the period was closed or soft-closed, by "pool-id:member-key";
+     *  empty while it is open. */
+    public Map<String, BigDecimal> getPoolCuts() {
+        return poolCuts;
+    }
+
     /** Each person's carried figure fixed when the period was closed or soft-closed, by the person's
      *  id; empty while it is open. */
     public Map<Long, BigDecimal> getPersonCarried() {
@@ -188,21 +203,27 @@ public class Period {
     }
 
     /** Close the period, fixing each person's due-total and carried figure for it at what they are
-     *  now, and its own due-total at the sum of the due-totals. */
-    public void close(Map<Long, BigDecimal> personTotals, Map<Long, BigDecimal> personCarried) {
+     *  now, each pool member's cut for it at what it is now, and its own due-total at the sum of the
+     *  due-totals. */
+    public void close(Map<Long, BigDecimal> personTotals, Map<Long, BigDecimal> personCarried,
+            Map<String, BigDecimal> poolCuts) {
         this.closed = true;
         this.softClosed = false;
-        fix(personTotals, personCarried);
+        fix(personTotals, personCarried, poolCuts);
     }
 
     /** Soft-close the period, fixing its due-totals as {@link #close} does while leaving claims dated
      *  inside it open to change. */
-    public void softClose(Map<Long, BigDecimal> personTotals, Map<Long, BigDecimal> personCarried) {
+    public void softClose(Map<Long, BigDecimal> personTotals, Map<Long, BigDecimal> personCarried,
+            Map<String, BigDecimal> poolCuts) {
         this.softClosed = true;
-        fix(personTotals, personCarried);
+        fix(personTotals, personCarried, poolCuts);
     }
 
-    private void fix(Map<Long, BigDecimal> personTotals, Map<Long, BigDecimal> personCarried) {
+    private void fix(Map<Long, BigDecimal> personTotals, Map<Long, BigDecimal> personCarried,
+            Map<String, BigDecimal> poolCuts) {
+        this.poolCuts.clear();
+        this.poolCuts.putAll(poolCuts);
         this.personTotals.clear();
         this.personTotals.putAll(personTotals);
         this.personCarried.clear();
@@ -242,5 +263,6 @@ public class Period {
         this.closedTotal = null;
         this.personTotals.clear();
         this.personCarried.clear();
+        this.poolCuts.clear();
     }
 }

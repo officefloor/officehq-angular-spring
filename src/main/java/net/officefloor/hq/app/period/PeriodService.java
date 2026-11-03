@@ -17,9 +17,11 @@ import net.officefloor.hq.app.claim.Dues;
 import net.officefloor.hq.app.history.History;
 import net.officefloor.hq.app.person.Person;
 import net.officefloor.hq.app.person.PersonRepository;
+import net.officefloor.hq.app.pool.PoolService;
 import net.officefloor.hq.app.role.RoleService;
 import net.officefloor.hq.app.role.SheetRole;
 import net.officefloor.hq.app.sheet.SheetService;
+import org.springframework.context.annotation.Lazy;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
@@ -39,9 +41,12 @@ public class PeriodService {
     private final RoleService roles;
     private final History history;
     private final Audit audit;
+    private final PoolService pools;
 
     public PeriodService(PeriodRepository periods, SheetService sheets, ClaimRepository claims,
-            PersonRepository people, Dues dues, RoleService roles, History history, Audit audit) {
+            PersonRepository people, Dues dues, RoleService roles, History history, Audit audit,
+            @Lazy PoolService pools) {
+        this.pools = pools;
         this.history = history;
         this.periods = periods;
         this.sheets = sheets;
@@ -257,7 +262,8 @@ public class PeriodService {
         if (period.isClosed() || period.isSoftClosed()) {
             throw new ResponseStatusException(HttpStatus.CONFLICT, "That period is already closed");
         }
-        period.softClose(personTotals(sheetId, period), personCarried(sheetId, period));
+        period.softClose(personTotals(sheetId, period), personCarried(sheetId, period),
+                pools.currentCuts(sheetId));
         Period saved = periods.saveAndFlush(period);
         audit.recordOnCommit("PERIOD_SOFT_CLOSED sheet=" + sheetId + " by=" + user + " period=" + saved.getName()
                 + " total=" + saved.getClosedTotal().toPlainString());
@@ -276,7 +282,8 @@ public class PeriodService {
 
     /** Close an open period, fixing its due-total at what it is now; the suffix ends its record. */
     private Period closeOpen(String sheetId, String user, Period period, String suffix) {
-        period.close(personTotals(sheetId, period), personCarried(sheetId, period));
+        period.close(personTotals(sheetId, period), personCarried(sheetId, period),
+                pools.currentCuts(sheetId));
         Period saved = periods.saveAndFlush(period);
         audit.recordOnCommit("PERIOD_CLOSED sheet=" + sheetId + " by=" + user + " period=" + saved.getName()
                 + " total=" + saved.getClosedTotal().toPlainString() + suffix);

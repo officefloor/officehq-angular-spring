@@ -1,6 +1,7 @@
 import { HttpClient } from '@angular/common/http';
 import { Injectable, inject } from '@angular/core';
 import { firstValueFrom } from 'rxjs';
+import { Pools } from './pools';
 import { Session } from './session';
 
 export interface Period {
@@ -53,6 +54,7 @@ export function periodOf(periods: Period[], day: string): Period | undefined {
 export class Periods {
   private readonly http = inject(HttpClient);
   private readonly session = inject(Session);
+  private readonly pools = inject(Pools);
 
   /** The periods on the sheet, earliest first. */
   list(sheetId: string): Promise<Period[]> {
@@ -134,9 +136,13 @@ export class Periods {
     const sheetId = this.session.sheetId();
     const user = this.session.user();
     if (!sheetId || !user) throw new Error('no sheet loaded');
+    // the pools' per-period cuts are fixed (or live again) with it
     return firstValueFrom(
       this.http.post<Period>(`${this.url(sheetId)}/${id}/close`, null, { headers: { 'X-User': user } }),
-    );
+    ).then(async (period) => {
+      await this.pools.refresh();
+      return period;
+    });
   }
 
   /** Soft-close a period, fixing its due-totals while its claims stay open to change; refused when
@@ -145,9 +151,13 @@ export class Periods {
     const sheetId = this.session.sheetId();
     const user = this.session.user();
     if (!sheetId || !user) throw new Error('no sheet loaded');
+    // the pools' per-period cuts are fixed (or live again) with it
     return firstValueFrom(
       this.http.post<Period>(`${this.url(sheetId)}/${id}/soft-close`, null, { headers: { 'X-User': user } }),
-    );
+    ).then(async (period) => {
+      await this.pools.refresh();
+      return period;
+    });
   }
 
   /** Reopen a closed or soft-closed period, making its due-total live again; refused when the user is not a
@@ -156,9 +166,13 @@ export class Periods {
     const sheetId = this.session.sheetId();
     const user = this.session.user();
     if (!sheetId || !user) throw new Error('no sheet loaded');
+    // the pools' per-period cuts are fixed (or live again) with it
     return firstValueFrom(
       this.http.post<Period>(`${this.url(sheetId)}/${id}/reopen`, null, { headers: { 'X-User': user } }),
-    );
+    ).then(async (period) => {
+      await this.pools.refresh();
+      return period;
+    });
   }
 
   /** Lock or unlock a period; refused when the user is not a steward, or it is already locked (or,

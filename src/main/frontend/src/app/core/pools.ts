@@ -25,8 +25,9 @@ export interface PoolMember {
   /** Whether the membership's dates include the sheet's today: a member out of force is left out
    *  entirely (not in the total share, not in the balance, no cut). */
   inForce: boolean;
-  /** Their cut as it stood at the end of each period whose to-date is on or before the sheet's
-   *  today, by the period's name, earliest period first; null for a period with none then. */
+  /** Their cut for each period that is closed or soft-closed (fixed as it stood when it was
+   *  closed) or whose to-date is on or before the sheet's today (as it stood at the end of the
+   *  period), by the period's name, earliest period first; null for a period with none then. */
   periodCuts: Record<string, string | null>;
 }
 

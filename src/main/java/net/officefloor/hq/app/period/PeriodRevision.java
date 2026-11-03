@@ -70,6 +70,10 @@ public class PeriodRevision {
     @Column(name = "person_openings", nullable = false)
     private String personOpenings;
 
+    /** Each pool member's fixed cut, "pool-id:member-key=cut", separated by ";"; blank while open. */
+    @Column(name = "pool_cuts", nullable = false)
+    private String poolCuts;
+
     protected PeriodRevision() {
     }
 
@@ -88,6 +92,7 @@ public class PeriodRevision {
         this.personTotals = totals(period.getPersonTotals());
         this.personCarried = totals(period.getPersonCarried());
         this.personOpenings = totals(period.getPersonOpenings());
+        this.poolCuts = cuts(period.getPoolCuts());
         this.claimCap = period.getClaimCap();
     }
 
@@ -95,6 +100,21 @@ public class PeriodRevision {
         return new TreeMap<>(totals).entrySet().stream()
                 .map(e -> e.getKey() + ":" + e.getValue().setScale(2).toPlainString())
                 .collect(Collectors.joining(";"));
+    }
+
+    private static String cuts(Map<String, BigDecimal> cuts) {
+        return new TreeMap<>(cuts).entrySet().stream()
+                .map(e -> e.getKey() + "=" + e.getValue().setScale(2).toPlainString())
+                .collect(Collectors.joining(";"));
+    }
+
+    private static Map<String, BigDecimal> parseCuts(String text) {
+        Map<String, BigDecimal> cuts = new TreeMap<>();
+        Arrays.stream(text.split(";")).filter(t -> !t.isBlank()).forEach(t -> {
+            int at = t.lastIndexOf('=');
+            cuts.put(t.substring(0, at), new BigDecimal(t.substring(at + 1)));
+        });
+        return cuts;
     }
 
     /** Whether the period is now as this revision has it. */
@@ -107,13 +127,15 @@ public class PeriodRevision {
                 && personTotals.equals(totals(period.getPersonTotals()))
                 && personCarried.equals(totals(period.getPersonCarried()))
                 && personOpenings.equals(totals(period.getPersonOpenings()))
+                && poolCuts.equals(cuts(period.getPoolCuts()))
                 && Objects.equals(claimCap, period.getClaimCap());
     }
 
     /** The period as this revision has it, detached: for showing only, never saved. */
     public Period toPeriod() {
         return Period.revised(sheetId, periodId, name, fromDate, toDate, closed, softClosed, closedTotal,
-                parse(personTotals), parse(personCarried), parse(personOpenings), claimCap, locked);
+                parse(personTotals), parse(personCarried), parse(personOpenings), claimCap, locked,
+                parseCuts(poolCuts));
     }
 
     private static Map<Long, BigDecimal> parse(String text) {

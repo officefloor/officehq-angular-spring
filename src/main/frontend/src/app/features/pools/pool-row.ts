@@ -11,7 +11,8 @@ import { FigurePipe } from '../../core/figure';
 // one), and the entry a member is added with. A retired member's share counts in the total but
 // they get no cut, their share spread over the others (no cuts when every member is); a member
 // whose dates do not include the sheet's today is left out of the total and has no cut. Each member
-// also shows their cut as it stood at the end of every period that has ended by the sheet's today.
+// also shows their cut for every closed or soft-closed period, fixed as it stood when the period was
+// closed, and for every other period that has ended by the sheet's today, as it stood at its end.
 @Component({
   selector: 'app-pool-row',
   imports: [ReactiveFormsModule, FigurePipe],
