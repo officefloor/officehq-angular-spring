@@ -2,7 +2,7 @@ import { HttpClient } from '@angular/common/http';
 import { Component, inject, input, output, signal } from '@angular/core';
 import { firstValueFrom } from 'rxjs';
 import { Session } from '../../core/session';
-import { Rate, dueCents, dueText, pctOn } from '../rates/rates';
+import { Rate, claimDueCents, dueText } from '../rates/rates';
 
 // A person's claims, newest first, and the one form under their row that both adds a claim and
 // edits an existing one (opening a claim's editor fills the form with its values). Each claim
@@ -136,7 +136,7 @@ export class PersonClaims {
   /** A settled claim shows the due fixed when it was settled; any other claim's due is live, at
    *  the rate for the person's grade in force on the claim's date. */
   protected dueOf(c: Claim): string {
-    return dueText(c.settledDue !== null ? cents(c.settledDue) : dueCents(cents(c.amount), pctOn(this.rates(), this.grade(), c.date)));
+    return dueText(claimDueCents(c, this.rates(), this.grade()));
   }
 
   protected edit(c: Claim): void {

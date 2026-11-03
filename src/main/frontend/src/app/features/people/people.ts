@@ -3,15 +3,15 @@ import { Component, computed, effect, inject, signal } from '@angular/core';
 import { firstValueFrom } from 'rxjs';
 import { Session } from '../../core/session';
 import { Claim, PersonClaims, cents, counts, money } from '../claims/claims';
-import { Rate, Rates, dueCents, dueText, pctOn } from '../rates/rates';
+import { Rate, Rates, claimDueCents, dueText, pctOn } from '../rates/rates';
 
 // The people on the active sheet, in the order they were added, and the one form that both adds
 // a person and edits an existing one (opening a person's editor fills the form with their values).
 // Each row shows what the person has claimed and lists their claims; the sheet's claimed-total
 // adds everyone's up. Only OPEN and SETTLED claims count toward any of these totals. Each claim shows
-// what is due at the rate for the person's grade in force on the claim's date, each person what is
-// due on all they claimed at the rate in force on the sheet's today, and the sheet's due-total adds
-// up every person's due-total that has a rate.
+// what is due at the rate for the person's grade in force on the claim's date (a settled claim the
+// figure fixed when settled), each person the sum of those figures over the claims that count, and
+// the sheet's due-total adds up every person's due-total that has one.
 interface Person {
   id: number;
   name: string;
@@ -174,9 +174,15 @@ export class People {
     return money(this.claimsOf(personId).reduce((sum, c) => sum + countedCents(c), 0));
   }
 
-  /** What the person owes on all they claimed, in whole cents, or null when their grade has no rate in force on the sheet's today. */
+  /**
+   * What the person owes, in whole cents: the sum of the figures of the claims that count. Null
+   * when their grade has no rate in force on the sheet's today, unless a settled claim that counts
+   * keeps a figure.
+   */
   protected dueOf(p: Person): number | null {
-    return dueCents(this.claimsOf(p.id).reduce((sum, c) => sum + countedCents(c), 0), this.pctOf().get(p.grade));
+    const counted = this.claimsOf(p.id).filter(counts);
+    if (this.pctOf().get(p.grade) === undefined && !counted.some((c) => c.settledDue !== null)) return null;
+    return counted.reduce((sum, c) => sum + (claimDueCents(c, this.rates(), p.grade) ?? 0), 0);
   }
 
   /** A claim added (listed first, newest first) or edited (replaced where it is). */
