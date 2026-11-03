@@ -32,6 +32,18 @@ export class Grades {
     );
   }
 
+  /** Merge a grade into another: everyone on it is given the other from the sheet's today. Refused
+   *  (403) unless the user is a steward, (400) when the grades are the same. How many it changed. */
+  async merge(from: string, into: string): Promise<number> {
+    const sheetId = this.session.sheetId();
+    const user = this.session.user();
+    if (!sheetId || !user) throw new Error('no sheet loaded');
+    const res = await firstValueFrom(
+      this.http.post<{ merged: number }>(`${this.url(sheetId)}/merge`, { from, into }, { headers: { 'X-User': user } }),
+    );
+    return res.merged;
+  }
+
   private url(sheetId: string): string {
     return `/api/sheets/${encodeURIComponent(sheetId)}/grades`;
   }

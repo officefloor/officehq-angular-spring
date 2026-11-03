@@ -157,6 +157,33 @@ public class PersonService {
                 .toList();
     }
 
+    /** Merge a grade into another: every person whose grade in force on the sheet's today is the
+     *  merged grade is given the other from the sheet's today, in list order, exactly as the person
+     *  form would. Refused unless the user is a steward (403), and when the grades are the same or
+     *  either is no grade (400). Answers the people it changed. */
+    @Transactional
+    public List<Person> mergeGrade(String sheetId, String user, String from, String into) {
+        if (!GradeService.GRADES.contains(from) || !GradeService.GRADES.contains(into)) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "A grade is A, B or C");
+        }
+        if (from.equals(into)) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "A grade cannot be merged into itself");
+        }
+        if (!SheetRole.STEWARD.equals(roles.roleOf(sheetId, user))) {
+            throw new ResponseStatusException(HttpStatus.FORBIDDEN, "Only a steward can merge a grade");
+        }
+        sheets.load(sheetId, user);
+        LocalDate today = sheets.today(sheetId);
+        List<Person> chosen = people.findBySheetIdOrderByPositionAscIdAsc(sheetId).stream()
+                .filter(p -> from.equals(p.gradeOn(today))).toList();
+        audit.recordOnCommit("GRADE_MERGED sheet=" + sheetId + " by=" + user + " from=" + from + " into=" + into);
+        // The merge as a whole is a change too: after each person's own lines, the figures it moved.
+        return rollup.tracking(sheetId, user, () -> chosen.stream()
+                .map(p -> save(sheetId, user, p, p.getName(), into, null, p.getTerms(), null, p.getContact(),
+                        p.getTags()))
+                .toList());
+    }
+
     /** Save the person's name, grade from a day, terms from a day, contact and tags as an edit does,
      *  recording it; the terms recorded, when they change, as those in force on the sheet's today. */
     private Person save(String sheetId, String user, Person person, String name, String grade, LocalDate gradeFrom,

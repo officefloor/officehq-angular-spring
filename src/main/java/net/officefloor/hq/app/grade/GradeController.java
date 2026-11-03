@@ -8,6 +8,7 @@ import java.time.LocalDate;
 import java.util.List;
 import java.util.Set;
 import java.util.stream.Collectors;
+import net.officefloor.hq.app.person.PersonService;
 import net.officefloor.hq.app.sheet.AsOfGuard;
 import org.springframework.format.annotation.DateTimeFormat;
 import org.springframework.validation.annotation.Validated;
@@ -32,10 +33,20 @@ public class GradeController {
     public record RetireForm(@NotNull @Size(max = 10) String grade) {
     }
 
-    private final GradeService service;
+    /** The merge form: the grade merged and the grade it is merged into. */
+    public record MergeForm(@NotNull @Size(max = 10) String from, @NotNull @Size(max = 10) String into) {
+    }
 
-    public GradeController(GradeService service) {
+    /** How many people a merge gave the other grade. */
+    public record Merged(int merged) {
+    }
+
+    private final GradeService service;
+    private final PersonService people;
+
+    public GradeController(GradeService service, PersonService people) {
         this.service = service;
+        this.people = people;
     }
 
     @GetMapping
@@ -54,5 +65,14 @@ public class GradeController {
             @Valid @RequestBody RetireForm form) {
         service.retire(sheetId.trim(), user.trim(), form.grade().trim());
         return list(sheetId, null);
+    }
+
+    /** Merge a grade into another: the people on it are given the other (see
+     *  {@link PersonService#mergeGrade}). */
+    @PostMapping("/merge")
+    public Merged merge(@PathVariable @NotBlank @Size(max = 100) String sheetId,
+            @RequestHeader("X-User") @NotBlank @Size(max = 100) String user,
+            @Valid @RequestBody MergeForm form) {
+        return new Merged(people.mergeGrade(sheetId.trim(), user.trim(), form.from().trim(), form.into().trim()).size());
     }
 }
