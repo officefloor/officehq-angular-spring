@@ -1,0 +1,64 @@
+{
+  "checkpoint": 37,
+  "stack": {
+    "repo": "/home/daniel/officehq-angular-spring",
+    "origin": "git@github.com:officefloor/officehq-angular-spring.git",
+    "name": "officehq-angular-spring",
+    "base_ref": "base-empty",
+    "base_commit": "65cb8233ea38b2dfa6cfd18709e30cd18fdf3250"
+  },
+  "checkpoint_id": "cp37_reassign-claim",
+  "phase": "early",
+  "type": "additive",
+  "mutates": [],
+  "replaced_tests": [],
+  "request": {
+    "spec": "A steward can move a DRAFT, OPEN or PENDING claim to another person on the sheet (a refusal shows an\nerror on the claim). The claim keeps its number and date, loses any figure a statement bound it to\n(it is live again until its new person's next statement), every total follows, and CLAIM_REASSIGNED\nis written, naming the claim like every claim line (with the new person) and ending from=<old name>\nto=<new name>. A settled or voided claim cannot move. The moved claim is listed as its new person's\nnewest claim (first under them), whatever its date.\n",
+    "prompt": "You are implementing ONE change to this application.\n\nFIRST read AGENTS.md \u2014 it states the working rules and how the app is tested, and sends you to\nDESIGN.md for the app's stack and conventions. Follow both.\n\nTHE CHANGE REQUEST:\nA steward can move a DRAFT, OPEN or PENDING claim to another person on the sheet (a refusal shows an\nerror on the claim). The claim keeps its number and date, loses any figure a statement bound it to\n(it is live again until its new person's next statement), every total follows, and CLAIM_REASSIGNED\nis written, naming the claim like every claim line (with the new person) and ending from=<old name>\nto=<new name>. A settled or voided claim cannot move. The moved claim is listed as its new person's\nnewest claim (first under them), whatever its date.\n\nYour work is verified by an automated Playwright UI test already installed under e2e/specs/.\nRead that spec: it declares the exact data-testid anchors, values, test data and any audit\nrecords it expects \u2014 match them. Run `bin/e2e` to build the app, start it, and run the test as\nyou work; iterate until it passes. Change whatever the request needs across the app \u2014 its stored\ndata, its server and its front end. Do NOT edit bin/build, bin/start, bin/stop, bin/e2e,\nAGENTS.md, CLAUDE.md, DESIGN.md, e2e/support/ or the test spec.\n"
+  },
+  "commit_sha": "d937bf051b9eb2a684909123cebfe15dfdb835b4",
+  "reset_sha": "",
+  "preagent_sha": "43ff425058c8421f7a4d5bb8e6857fc6112b08ab",
+  "prev_sha": "43ff425058c8421f7a4d5bb8e6857fc6112b08ab",
+  "base_sha": "65cb8233ea38b2dfa6cfd18709e30cd18fdf3250",
+  "agent": {
+    "ok": true,
+    "cost_usd": 1.1862043999999998,
+    "input_tokens": 4,
+    "output_tokens": 139,
+    "cache_read_tokens": 94030,
+    "cache_creation_tokens": 1249,
+    "num_turns": 1,
+    "duration_ms": 2270,
+    "duration_api_ms": 138241,
+    "model": "claude-opus-5-5",
+    "session_id": "f2e35b07-9333-443f-aea9-b8403d1e2810",
+    "stop_reason": "success",
+    "result_text": "That \"failed\" notice is only the helper loop I used to wait for the test run, which I stopped myself. It never exited on its own because its own command line contained the text it was searching for. It doesn't affect the result: all 4 tests passed on `bin/e2e`, and nothing more is needed.",
+    "error": "",
+    "attempts": [
+      {
+        "ok": true,
+        "limit_reached": false,
+        "retryable": false,
+        "timed_out": false,
+        "cost_usd": 1.1862043999999998,
+        "num_turns": 1,
+        "duration_ms": 2270,
+        "duration_api_ms": 138241,
+        "error": ""
+      }
+    ]
+  },
+  "agent_stream_file": "cp37.agent.jsonl",
+  "agent_diff_file": "cp37.agent.diff",
+  "build_log_file": null,
+  "tests": {
+    "gated": false,
+    "queued": true
+  },
+  "probe": null,
+  "pinned_touched": [],
+  "acceptance_touched": [],
+  "impact_gate": null
+}
