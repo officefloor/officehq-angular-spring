@@ -45,7 +45,7 @@ const CLOSED = 'That date is inside a closed period.';
 const PAST: Record<ClaimAction, string> = { open: 'opened', settle: 'settled', void: 'voided' };
 
 /** An amount: 0.00 or more, with up to two decimals. */
-const AMOUNT = /^\d{1,12}(\.\d{1,2})?$/;
+export const AMOUNT = /^\d{1,12}(\.\d{1,2})?$/;
 
 /** An amount in whole cents, so sums are exact. */
 export function cents(amount: string): number {

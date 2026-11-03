@@ -2,7 +2,7 @@ import { HttpClient, HttpErrorResponse } from '@angular/common/http';
 import { Component, computed, effect, inject, signal } from '@angular/core';
 import { firstValueFrom } from 'rxjs';
 import { Session } from '../../core/session';
-import { Claim, PersonClaims, cents, counts, money } from '../claims/claims';
+import { AMOUNT, Claim, PersonClaims, cents, counts, money } from '../claims/claims';
 import { DatedDue, Period, Periods } from '../periods/periods';
 import { Rate, Rates, claimDueCents, dueText, fixedDueCents, pctOn } from '../rates/rates';
 
@@ -19,6 +19,8 @@ import { Rate, Rates, claimDueCents, dueText, fixedDueCents, pctOn } from '../ra
 // (a stated claim shows and totals that figure); each row shows how many statements the person
 // has taken, and the last one's due-total and date.
 // Each claim shows the period its date falls in, and each period the due of the claims that count in it.
+// The quick-add bar adds a DRAFT claim of an amount, dated the sheet's today with an empty note, for
+// the person of a name, adding the person with grade A first when the name is not on the sheet.
 interface Person {
   id: number;
   name: string;
@@ -44,6 +46,13 @@ interface StatementSummary {
 interface StatementTaken {
   summary: StatementSummary;
   claims: Claim[];
+}
+
+/** What a quick-add made: the claim, and its person (`created` when added for it). */
+interface QuickAdded {
+  person: Person;
+  created: boolean;
+  claim: Claim;
 }
 
 const GRADES = ['A', 'B', 'C'] as const;
@@ -83,6 +92,27 @@ const GRADES = ['A', 'B', 'C'] as const;
         }
         @if (error(); as err) {
           <p role="alert" data-testid="person-form-error">{{ err }}</p>
+        }
+      </form>
+      <form aria-label="Quick add" (submit)="quickAdd($event)">
+        <label for="quick-name">Name</label>
+        <input
+          id="quick-name"
+          data-testid="quick-name"
+          [value]="quickName()"
+          (input)="quickName.set($any($event.target).value); quickError.set(null)"
+        />
+        <label for="quick-amount">Amount</label>
+        <input
+          id="quick-amount"
+          data-testid="quick-amount"
+          inputmode="decimal"
+          [value]="quickAmount()"
+          (input)="quickAmount.set($any($event.target).value); quickError.set(null)"
+        />
+        <button type="submit" data-testid="quick-submit">Quick add</button>
+        @if (quickError(); as err) {
+          <p role="alert" data-testid="quick-error">{{ err }}</p>
         }
       </form>
       <p>Claimed in total <strong data-testid="rollup-claimed-total">{{ claimedTotal() }}</strong></p>
@@ -199,6 +229,11 @@ export class People {
   /** Whether a submit is waiting for its answer: a second submit meanwhile is ignored. */
   private submitting = false;
   protected readonly error = signal<string | null>(null);
+  protected readonly quickName = signal('');
+  protected readonly quickAmount = signal('');
+  protected readonly quickError = signal<string | null>(null);
+  /** Whether a quick-add is waiting for its answer: a second one meanwhile is ignored. */
+  private quickSubmitting = false;
 
   constructor() {
     // Re-read the sheet's people from the store every time a sheet is loaded.
@@ -210,6 +245,9 @@ export class People {
       this.statements.set(new Map());
       this.rowErrors.set(new Map());
       this.reset();
+      this.quickName.set('');
+      this.quickAmount.set('');
+      this.quickError.set(null);
       if (sheet) {
         void this.fetch(sheet);
       }
@@ -284,6 +322,44 @@ export class People {
     this.claims.update((list) =>
       list.some((c) => c.id === claim.id) ? list.map((c) => (c.id === claim.id ? claim : c)) : [claim, ...list],
     );
+  }
+
+  /** Quick-add a claim by name; the person is added with it when the name is new to the sheet. */
+  protected async quickAdd(event: Event): Promise<void> {
+    event.preventDefault();
+    if (this.quickSubmitting) return;
+    this.quickError.set(null);
+    const sheet = this.session.sheet();
+    const name = this.quickName().trim();
+    const amount = this.quickAmount().trim();
+    if (!name) {
+      this.quickError.set('Enter a name.');
+      return;
+    }
+    if (!AMOUNT.test(amount)) {
+      this.quickError.set('Enter an amount of 0.00 or more, with up to two decimals.');
+      return;
+    }
+    this.quickSubmitting = true;
+    try {
+      const added = await firstValueFrom(
+        this.http.post<QuickAdded>('/api/quick/add', { sheet, user: this.session.user(), name, amount }),
+      );
+      if (this.session.sheet() !== sheet) return;
+      this.people.update((list) => (list.some((p) => p.id === added.person.id) ? list : [...list, added.person]));
+      this.claimSaved(added.claim);
+      this.quickName.set('');
+      this.quickAmount.set('');
+    } catch (e) {
+      if (this.session.sheet() !== sheet) return;
+      this.quickError.set(
+        e instanceof HttpErrorResponse && e.status === 409
+          ? 'That name is already in use on this sheet.'
+          : 'Could not quick-add this claim.',
+      );
+    } finally {
+      this.quickSubmitting = false;
+    }
   }
 
   protected edit(p: Person): void {

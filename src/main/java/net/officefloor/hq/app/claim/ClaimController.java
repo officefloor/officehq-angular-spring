@@ -20,7 +20,7 @@ import org.springframework.web.bind.annotation.RestController;
 public class ClaimController {
 
     /** An amount: 0.00 or more, with up to two decimals. */
-    private static final String AMOUNT = "\\d{1,12}(\\.\\d{1,2})?";
+    public static final String AMOUNT = "\\d{1,12}(\\.\\d{1,2})?";
 
     public record ListClaimsRequest(@NotBlank @Size(max = 100) String sheet) {
     }
@@ -55,7 +55,7 @@ public class ClaimController {
                 money(claim.getSettledDue()), claim.getOpenedBy(), claim.isStated(), money(claim.getStatedDue()));
     }
 
-    private static BigDecimal amount(String amount) {
+    public static BigDecimal amount(String amount) {
         return new BigDecimal(amount).setScale(2, RoundingMode.UNNECESSARY);
     }
 
