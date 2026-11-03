@@ -5,6 +5,7 @@ import java.time.LocalDate;
 import java.util.List;
 import java.util.Optional;
 import net.officefloor.hq.app.Audit;
+import net.officefloor.hq.app.history.History;
 import net.officefloor.hq.app.holiday.HolidayService;
 import net.officefloor.hq.app.period.PeriodRepository;
 import net.officefloor.hq.app.person.Person;
@@ -36,13 +37,15 @@ public class ClaimService {
     private final SheetTagRepository sheetTags;
     private final VoidReasonService voidReasons;
     private final Audit audit;
+    private final History history;
 
     /** How many days after its settlement a steward may still void a settled claim. */
     static final int VOID_SETTLED_DAYS = 7;
 
     public ClaimService(ClaimRepository claims, PersonRepository people, Dues dues, SheetService sheets,
             Rollup rollup, PeriodRepository periods, RoleService roles, WatchService watches,
-            HolidayService holidays, SheetTagRepository sheetTags, VoidReasonService voidReasons, Audit audit) {
+            HolidayService holidays, SheetTagRepository sheetTags, VoidReasonService voidReasons, Audit audit,
+            History history) {
         this.claims = claims;
         this.people = people;
         this.dues = dues;
@@ -55,6 +58,7 @@ public class ClaimService {
         this.sheetTags = sheetTags;
         this.voidReasons = voidReasons;
         this.audit = audit;
+        this.history = history;
     }
 
     /** The claims on the sheet, newest first. */
@@ -212,6 +216,15 @@ public class ClaimService {
         return changeStatus(sheetId, user, claimId, to, null);
     }
 
+    /** Settle a claim as {@link #changeStatus} does, as of a day (null: the sheet's today) on or
+     *  before the sheet's today: the due it fixes is the claim's due as it stood at the end of that
+     *  day (see {@link History}), that day for its today. Refused (400) when the day is after the
+     *  sheet's today, or when the claim (or its person) was not on the sheet yet then. */
+    @Transactional
+    public Claim settle(String sheetId, String user, long claimId, LocalDate on) {
+        return changeStatus(sheetId, user, claimId, ClaimStatus.SETTLED, null, true, on);
+    }
+
     /** Number the claims a bulk settle settled (or left pending) as the sheet's next settle batch;
      *  nothing when it settled none (0). Returns the batch's number. */
     @Transactional
@@ -243,7 +256,14 @@ public class ClaimService {
      *  only when asked (a part-settle judges them on the claim it split off). */
     private Claim changeStatus(String sheetId, String user, long claimId, ClaimStatus to, String reason,
             boolean judgeSettle) {
+        return changeStatus(sheetId, user, claimId, to, reason, judgeSettle, null);
+    }
+
+    /** Change a claim's status; a settle fixes the due as of a day when one is given (null: now). */
+    private Claim changeStatus(String sheetId, String user, long claimId, ClaimStatus to, String reason,
+            boolean judgeSettle, LocalDate on) {
         Claim claim = lock(sheetId, claimId);
+        BigDecimal dueThen = on == null ? null : dueAsOf(sheetId, claim, on);
         refuseClosed(sheetId, claim.getDueBy());
         String voidReason = to == ClaimStatus.VOID ? voidReasons.required(sheetId, reason) : null;
         if (to == ClaimStatus.VOID && claim.getStatus() == ClaimStatus.SETTLED) {
@@ -283,7 +303,7 @@ public class ClaimService {
                 // Settling fixes the due at what it is now, while the claim is still open (the figure a
                 // statement bound it to, if any, and its late charge); later changes to rates, the
                 // late percent and the sheet's today do not alter it.
-                claim.setSettledDue(dues.figure(sheetId, person, claim));
+                claim.setSettledDue(dueThen != null ? dueThen : dues.figure(sheetId, person, claim));
             }
             // A void claim keeps the number it had (never reused).
             claim.setStatus(becomes);
@@ -309,6 +329,9 @@ public class ClaimService {
             String line = record(event, sheetId, user, person, saved);
             if (becomes == ClaimStatus.SETTLED) {
                 line += " due=" + dueText(saved.getSettledDue());
+                if (on != null) {
+                    line += " on=" + on;
+                }
             }
             line += reasonText(voidReason);
             audit.recordOnCommit(line);
@@ -317,6 +340,24 @@ public class ClaimService {
             }
             return saved;
         });
+    }
+
+    /** A claim's due as it stood at the end of a day on or before the sheet's today, worked out as
+     *  the sheet as of that day works it out. Refused (400) when the day is after the sheet's today,
+     *  or when the claim or its person was not on the sheet yet then. */
+    private BigDecimal dueAsOf(String sheetId, Claim claim, LocalDate on) {
+        if (on.isAfter(sheets.today(sheetId))) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
+                    "A claim cannot be settled as of a day after the sheet's today");
+        }
+        History.SheetAsOf then = history.asOf(sheetId, on);
+        Claim claimThen = then.claims().stream().filter(c -> claim.getId().equals(c.getId())).findFirst()
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.BAD_REQUEST,
+                        "The claim was not on the sheet yet on that day"));
+        Person personThen = then.person(claimThen.getPersonId())
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.BAD_REQUEST,
+                        "The claim's person was not on the sheet yet on that day"));
+        return dues.figure(then.basis(), personThen, claimThen);
     }
 
     /** Review a claim in review: it becomes open, taking its number then, and keeps who opened it.

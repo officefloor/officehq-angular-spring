@@ -427,10 +427,13 @@ export class Claims {
 
   /** Ask for a change of the claim's status; refused (409) when its status does not allow it. A
    *  reject carries its reason, and a void the reason chosen from the sheet's list (refused, 400,
-   *  without one while the list is not empty). */
+   *  without one while the list is not empty). A settle carries the day it is settled as of (blank:
+   *  the sheet's today), refused (400) when after the sheet's today or the claim did not exist then. */
   act(id: number, action: ClaimAction, reason?: string): Promise<Claim> {
     const { sheetId, user } = this.active();
-    const body = action === 'reject' ? { reason: reason ?? '' } : action === 'void' ? { reason: reason || null } : null;
+    const body = action === 'reject' ? { reason: reason ?? '' }
+      : action === 'void' ? { reason: reason || null }
+      : action === 'settle' ? { on: reason || null } : null;
     return firstValueFrom(
       this.http.post<Claim>(`${this.url(sheetId)}/claims/${id}/${action}`, body, { headers: { 'X-User': user } }),
     );

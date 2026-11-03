@@ -351,11 +351,16 @@ public class ClaimController {
         return ClaimView.of(service.restore(sheetId.trim(), user.trim(), claimId));
     }
 
+    /** The settle form: the day the claim is settled as of (absent: the sheet's today). */
+    public record SettleForm(LocalDate on) {
+    }
+
     @PostMapping("/claims/{claimId}/settle")
     public ClaimView settle(@PathVariable @NotBlank @Size(max = 100) String sheetId,
             @PathVariable long claimId,
-            @RequestHeader("X-User") @NotBlank @Size(max = 100) String user) {
-        return ClaimView.of(service.changeStatus(sheetId.trim(), user.trim(), claimId, ClaimStatus.SETTLED));
+            @RequestHeader("X-User") @NotBlank @Size(max = 100) String user,
+            @RequestBody(required = false) SettleForm form) {
+        return ClaimView.of(service.settle(sheetId.trim(), user.trim(), claimId, form == null ? null : form.on()));
     }
 
     @ViewerAllowed

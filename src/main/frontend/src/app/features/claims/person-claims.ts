@@ -54,6 +54,9 @@ function refusal(e: unknown, action: ClaimAction): string {
   if (e instanceof HttpErrorResponse && e.status === 422 && action === 'open') {
     return 'A claim whose due is above the note threshold needs a note before it is opened.';
   }
+  if (e instanceof HttpErrorResponse && e.status === 400 && action === 'settle') {
+    return 'Enter a date on or before the sheet\'s today on which the claim already existed.';
+  }
   if (e instanceof HttpErrorResponse && e.status === 403 && action === 'settle') {
     return 'The user who opened or last edited a claim cannot settle it.';
   }
@@ -308,7 +311,10 @@ function settlePartRefusal(e: unknown): string {
             [attr.aria-label]="'Comment on claim of ' + c.amount + ' on ' + c.date">Add comment</button>
           <button type="button" data-testid="claim-open" (click)="act(c, 'open')"
             [attr.aria-label]="'Open claim of ' + c.amount + ' on ' + c.date">Open</button>
-          <button type="button" data-testid="claim-settle" (click)="act(c, 'settle')"
+          <label [for]="'claim-settle-date-' + c.id">Settle as of</label>
+          <input [id]="'claim-settle-date-' + c.id" type="date" data-testid="claim-settle-date" #settleDate
+            (input)="clearError(c)" />
+          <button type="button" data-testid="claim-settle" (click)="act(c, 'settle', settleDate.value)"
             [attr.aria-label]="'Settle claim of ' + c.amount + ' on ' + c.date">Settle</button>
           <button type="button" data-testid="claim-resettle" (click)="act(c, 'resettle')"
             [attr.aria-label]="'Re-settle claim of ' + c.amount + ' on ' + c.date">Re-settle</button>
