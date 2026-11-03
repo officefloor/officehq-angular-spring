@@ -584,6 +584,16 @@ export class Claims {
     );
   }
 
+  /** Void each of the claims that can be voided, in list order, as voiding one does (with the
+   *  reason, blank when none); the rest are refused and left as they are. */
+  voidAll(claimIds: number[], reason: string): Promise<{ voided: number; refused: number }> {
+    const { sheetId, user } = this.active();
+    return firstValueFrom(
+      this.http.post<{ voided: number; refused: number }>(`${this.url(sheetId)}/claims/void`,
+        { claimIds, reason }, { headers: { 'X-User': user } }),
+    );
+  }
+
   private url(sheetId: string): string {
     return `/api/sheets/${encodeURIComponent(sheetId)}`;
   }

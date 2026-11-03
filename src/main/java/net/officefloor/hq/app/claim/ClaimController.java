@@ -514,6 +514,25 @@ public class ClaimController {
         return new BulkRedated(outcome.done(), outcome.refused());
     }
 
+    /** The claims a bulk void voids, by id, and the reason chosen from the sheet's list (blank or
+     *  absent when none). */
+    public record BulkVoidForm(@NotNull @Size(max = 1000) Set<@NotNull Long> claimIds, @Size(max = 200) String reason) {
+    }
+
+    /** How many claims a bulk void voided, and how many it refused. */
+    public record BulkVoided(int voided, int refused) {
+    }
+
+    @ViewerAllowed
+    @ArchivedAllowed
+    @PostMapping("/claims/void")
+    public BulkVoided voidAll(@PathVariable @NotBlank @Size(max = 100) String sheetId,
+            @RequestHeader("X-User") @NotBlank @Size(max = 100) String user,
+            @Valid @RequestBody BulkVoidForm form) {
+        ClaimBulkService.Outcome outcome = bulk.voidAll(sheetId.trim(), user.trim(), form.claimIds(), form.reason());
+        return new BulkVoided(outcome.done(), outcome.refused());
+    }
+
     /** The amount split off an open claim: above 0.00, with up to two decimals. */
     public record SplitForm(@NotNull @Pattern(regexp = "\\s*\\d{1,12}(\\.\\d{1,2})?\\s*") String amount) {
 

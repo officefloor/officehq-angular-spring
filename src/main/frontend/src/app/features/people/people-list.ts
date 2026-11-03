@@ -183,6 +183,22 @@ const NO_LEAVE: Leave = { holds: [], retiredFrom: null };
         <p role="status">Re-dated <strong data-testid="bulk-redated">{{ b.redated }}</strong>,
           refused <strong data-testid="bulk-redate-refused">{{ b.refused }}</strong></p>
       }
+      @if (voidReasons.list().length > 0) {
+        <label for="bulk-void-reason">Void reason</label>
+        <select id="bulk-void-reason" data-testid="bulk-void-reason"
+          (change)="bulkVoidReason.set($any($event.target).value)">
+          <option value="" [selected]="bulkVoidReason() === ''">Choose a reason</option>
+          @for (r of voidReasons.list(); track r.id) {
+            <option [value]="r.reason" [selected]="r.reason === bulkVoidReason()">{{ r.reason }}</option>
+          }
+        </select>
+      }
+      <button type="button" data-testid="bulk-void" (click)="bulkVoid(bulkVoidReason())">Void
+        selected claims</button>
+      @if (bulkVoided(); as b) {
+        <p role="status">Voided <strong data-testid="bulk-voided">{{ b.voided }}</strong>,
+          refused <strong data-testid="bulk-void-refused">{{ b.refused }}</strong></p>
+      }
       <div role="group" aria-labelledby="bulk-grade-heading">
         <span id="bulk-grade-heading">Grade selected people</span>
         <label for="bulk-grade">Grade</label>
@@ -439,7 +455,7 @@ const NO_LEAVE: Leave = { holds: [], retiredFrom: null };
 })
 export class PeopleList {
   protected readonly session = inject(Session);
-  private readonly voidReasons = inject(VoidReasons);
+  protected readonly voidReasons = inject(VoidReasons);
   private readonly api = inject(People);
   private readonly claimsApi = inject(Claims);
   private readonly ratesApi = inject(Rates);
@@ -851,6 +867,12 @@ export class PeopleList {
   protected readonly bulkRedated = signal<{ redated: number; refused: number } | null>(null);
   /** Whether a bulk re-date is waiting for its answer: a second press meanwhile is ignored. */
   private redating = false;
+  /** What the last bulk void did; null while one runs and before the first. */
+  protected readonly bulkVoided = signal<{ voided: number; refused: number } | null>(null);
+  /** The void reason chosen for a bulk void; blank when none. */
+  protected readonly bulkVoidReason = signal('');
+  /** Whether a bulk void is waiting for its answer: a second press meanwhile is ignored. */
+  private voiding = false;
   /** The ids of the people selected for a bulk grade. */
   protected readonly selectedPeople = signal<ReadonlySet<number>>(new Set());
   /** How many people the last bulk grade changed; null while one runs and before the first. */
@@ -934,6 +956,8 @@ export class PeopleList {
       this.lastSettleBatch.set(null);
       this.bulkReassigned.set(null);
       this.bulkRedated.set(null);
+      this.bulkVoided.set(null);
+      this.bulkVoidReason.set('');
       this.selectedPeople.set(new Set());
       this.bulkGraded.set(null);
       this.bulkGradeError.set('');
@@ -1553,6 +1577,26 @@ export class PeopleList {
       this.bulkRedated.set({ redated: 0, refused: this.selected().size });
     } finally {
       this.redating = false;
+    }
+  }
+
+  /** Void the selected claims that can be voided, with the reason chosen (blank when none), then
+   *  show the claims as they are now and how many were voided and refused. */
+  protected async bulkVoid(reason: string): Promise<void> {
+    const sheetId = this.session.sheetId();
+    if (this.voiding || !sheetId) return;
+    this.voiding = true;
+    this.bulkVoided.set(null);
+    try {
+      const result = await this.claimsApi.voidAll([...this.selected()], reason);
+      this.selected.set(new Set());
+      const [claims] = await Promise.all([this.claimsApi.list(sheetId), this.descendantsApi.figures(sheetId)]);
+      this.claims.set(claims);
+      this.bulkVoided.set(result);
+    } catch {
+      this.bulkVoided.set({ voided: 0, refused: this.selected().size });
+    } finally {
+      this.voiding = false;
     }
   }
 

@@ -130,6 +130,25 @@ public class ClaimBulkService {
         return new Outcome(done, claimIds.size() - done);
     }
 
+    /** Void each of the claims that can be voided, in list order, exactly as voiding one (with the
+     *  reason, which the sheet's void reasons may require); each that cannot is refused and left as
+     *  it is, and so is an id that names no claim on the sheet. */
+    public Outcome voidAll(String sheetId, String user, Set<Long> claimIds, String reason) {
+        if (sheets.archived(sheetId)) {
+            return new Outcome(0, claimIds.size());
+        }
+        int done = 0;
+        for (Claim claim : inListOrder(sheetId, claimIds)) {
+            try {
+                claims.voidClaim(sheetId, user, claim.getId(), reason);
+                done++;
+            } catch (ResponseStatusException refused) {
+                // left as it is
+            }
+        }
+        return new Outcome(done, claimIds.size() - done);
+    }
+
     private Outcome change(String sheetId, String user, Set<Long> claimIds, ClaimStatus to) {
         if (sheets.archived(sheetId)) {
             return new Outcome(0, claimIds.size());
