@@ -1,0 +1,141 @@
+diff --git a/src/main/frontend/src/app/core/audit-log.ts b/src/main/frontend/src/app/core/audit-log.ts
+index 01031ff51..cd2152b5d 100644
+--- a/src/main/frontend/src/app/core/audit-log.ts
++++ b/src/main/frontend/src/app/core/audit-log.ts
+@@ -20,4 +20,10 @@ export class AuditLog {
+     return firstValueFrom(
+       this.http.get<string[]>(`/api/sheets/${encodeURIComponent(sheetId)}/audit/claims/${claimId}`));
+   }
++
++  /** The sheet's activity: one line `<user> <EVENT> <count>` for every user and event in its
++   *  audit lines, sorted by user then event. */
++  activity(sheetId: string): Promise<string[]> {
++    return firstValueFrom(this.http.get<string[]>(`/api/sheets/${encodeURIComponent(sheetId)}/audit/activity`));
++  }
+ }
+diff --git a/src/main/frontend/src/app/features/audit/activity-panel.ts b/src/main/frontend/src/app/features/audit/activity-panel.ts
+new file mode 100644
+index 000000000..6ad79f056
+--- /dev/null
++++ b/src/main/frontend/src/app/features/audit/activity-panel.ts
+@@ -0,0 +1,54 @@
++import { Component, effect, inject, signal } from '@angular/core';
++import { AuditLog } from '../../core/audit-log';
++import { Session } from '../../core/session';
++
++// The sheet's activity: how many of each event every user has in the sheet's audit lines.
++// It reads what the audit file holds; it records nothing of its own.
++@Component({
++  selector: 'app-activity-panel',
++  template: `
++    <section aria-labelledby="activity-heading">
++      <h3 id="activity-heading">Activity</h3>
++      <button type="button" data-testid="activity-show" (click)="show()">Show activity</button>
++      @if (error()) {
++        <p role="alert" data-testid="activity-error">{{ error() }}</p>
++      }
++      <ul data-testid="activity-lines">
++        @for (line of lines(); track $index) {
++          <li data-testid="activity-line">{{ line }}</li>
++        }
++      </ul>
++    </section>
++  `,
++})
++export class ActivityPanel {
++  private readonly api = inject(AuditLog);
++  private readonly session = inject(Session);
++
++  protected readonly lines = signal<string[]>([]);
++  protected readonly error = signal('');
++  private reads = 0;
++
++  constructor() {
++    effect(() => {
++      this.session.loads();
++      this.session.sheetId();
++      this.reads++;
++      this.lines.set([]);
++    });
++  }
++
++  protected async show(): Promise<void> {
++    const sheetId = this.session.sheetId();
++    if (!sheetId) return;
++    const read = ++this.reads;
++    this.error.set('');
++    this.lines.set([]);
++    try {
++      const lines = await this.api.activity(sheetId);
++      if (read === this.reads) this.lines.set(lines);
++    } catch {
++      if (read === this.reads) this.error.set('The activity could not be read.');
++    }
++  }
++}
+diff --git a/src/main/frontend/src/app/features/home/home.ts b/src/main/frontend/src/app/features/home/home.ts
+index 79f7a7f59..be37311a3 100644
+--- a/src/main/frontend/src/app/features/home/home.ts
++++ b/src/main/frontend/src/app/features/home/home.ts
+@@ -1,4 +1,5 @@
+ import { Component, inject } from '@angular/core';
++import { ActivityPanel } from '../audit/activity-panel';
+ import { AuditViewer } from '../audit/audit-viewer';
+ import { ClaimTemplateForm } from '../settings/claim-template-form';
+ import { Session } from '../../core/session';
+@@ -14,7 +15,7 @@ import { SignIn } from '../session/signin';
+ // The one screen: sign in by name, then load a sheet by id and keep its people.
+ @Component({
+   selector: 'app-home',
+-  imports: [SignIn, SheetBar, SettingsForm, DelegationForm, HolidayForm, NoteForm, VoidReasonForm, ClaimTemplateForm, PeopleList, AuditViewer],
++  imports: [SignIn, SheetBar, SettingsForm, DelegationForm, HolidayForm, NoteForm, VoidReasonForm, ClaimTemplateForm, PeopleList, AuditViewer, ActivityPanel],
+   template: `
+     @if (session.user()) {
+       <app-sheet-bar />
+@@ -29,6 +30,7 @@ import { SignIn } from '../session/signin';
+         <app-claim-template-form />
+         <app-people-list />
+         <app-audit-viewer />
++        <app-activity-panel />
+       }
+     } @else {
+       <app-signin />
+diff --git a/src/main/java/net/officefloor/hq/app/audit/AuditController.java b/src/main/java/net/officefloor/hq/app/audit/AuditController.java
+index c3c23767e..07507ec18 100644
+--- a/src/main/java/net/officefloor/hq/app/audit/AuditController.java
++++ b/src/main/java/net/officefloor/hq/app/audit/AuditController.java
+@@ -6,6 +6,8 @@ import java.util.ArrayList;
+ import java.util.Collections;
+ import java.util.List;
+ import java.util.Locale;
++import java.util.Map;
++import java.util.TreeMap;
+ import java.util.regex.Matcher;
+ import java.util.regex.Pattern;
+ import net.officefloor.hq.app.Audit;
+@@ -99,6 +101,25 @@ public class AuditController {
+         return shown;
+     }
+ 
++    /** The sheet's activity: for every user and every event in the sheet's lines, one line
++     *  {@code <user> <EVENT> <count>}, sorted by user then event. */
++    @GetMapping("/activity")
++    public List<String> activity(@PathVariable @NotBlank @Size(max = 100) String sheetId) {
++        String sheet = sheetId.trim();
++        Map<String, Map<String, Integer>> counts = new TreeMap<>();
++        for (String line : audit.lines()) {
++            String by = field(line, "by");
++            if (!sheet.equals(field(line, "sheet")) || by == null) {
++                continue;
++            }
++            String event = line.split(" ", 2)[0];
++            counts.computeIfAbsent(by, u -> new TreeMap<>()).merge(event, 1, Integer::sum);
++        }
++        List<String> shown = new ArrayList<>();
++        counts.forEach((user, events) -> events.forEach((event, count) -> shown.add(user + " " + event + " " + count)));
++        return shown;
++    }
++
+     /** The sheet's lines (about the person, when one is given), newest first. */
+     private static List<String> about(List<String> lines, String sheet, String person) {
+         List<String> shown = new ArrayList<>();
