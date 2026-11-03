@@ -1,0 +1,36 @@
+diff --git a/src/main/java/net/officefloor/hq/app/person/Person.java b/src/main/java/net/officefloor/hq/app/person/Person.java
+index 8137ed447..c650571e6 100644
+--- a/src/main/java/net/officefloor/hq/app/person/Person.java
++++ b/src/main/java/net/officefloor/hq/app/person/Person.java
+@@ -221,6 +221,11 @@ public class Person {
+         grades.add(new GradeFrom(from, grade));
+     }
+ 
++    /** Make every grade recorded for the person on one grade the other, keeping its from-date. */
++    public void regrade(String from, String into) {
++        grades.replaceAll(g -> from.equals(g.getGrade()) ? new GradeFrom(g.getFromDate(), into) : g);
++    }
++
+     public LocalDate getRetiredFrom() {
+         return retiredFrom;
+     }
+diff --git a/src/main/java/net/officefloor/hq/app/person/PersonService.java b/src/main/java/net/officefloor/hq/app/person/PersonService.java
+index 118c4733c..5918d860f 100644
+--- a/src/main/java/net/officefloor/hq/app/person/PersonService.java
++++ b/src/main/java/net/officefloor/hq/app/person/PersonService.java
+@@ -178,9 +178,15 @@ public class PersonService {
+                 .filter(p -> from.equals(p.gradeOn(today))).toList();
+         audit.recordOnCommit("GRADE_MERGED sheet=" + sheetId + " by=" + user + " from=" + from + " into=" + into);
+         // The merge as a whole is a change too: after each person's own lines, the figures it moved.
++        // It is retroactive: after the edit, every grade recorded for them on the merged grade becomes
++        // the other, whatever its from-date.
+         return rollup.tracking(sheetId, user, () -> chosen.stream()
+                 .map(p -> save(sheetId, user, p, p.getName(), into, null, p.getTerms(), null, p.getContact(),
+                         p.getTags()))
++                .map(p -> {
++                    p.regrade(from, into);
++                    return saveUnique(p);
++                })
+                 .toList());
+     }
+ 
