@@ -100,12 +100,20 @@ export function weightedSum(parts: { amount: string; pct: string }[]): string {
   return weighted(parts.reduce((sum, x) => sum + hundredths(x.amount) * hundredths(x.pct), 0n), false);
 }
 
-/** A product of two hundredths (so in ten-thousandths of a hundredth) rounded to two-decimal text. */
-function weighted(signed: bigint, halfUp: boolean): string {
+/** An amount's part at a share percent and a rate percent: amount times share divided by 100, times
+ *  pct divided by 100, rounded once to two decimals half to even, or half up when `halfUp`. */
+export function sharedDue(amount: string, share: string, pct: string, halfUp = false): string {
+  return weighted(hundredths(amount) * hundredths(share) * hundredths(pct), halfUp, 100000000n);
+}
+
+/** A product of hundredths (by default two, so in ten-thousandths of a hundredth) rounded to
+ *  two-decimal text: `per` units of the product make one hundredth. */
+function weighted(signed: bigint, halfUp: boolean, per = 10000n): string {
   const exact = signed < 0n ? -signed : signed;
-  let cents = exact / 10000n;
-  const rest = exact % 10000n;
-  if (rest > 5000n || (rest === 5000n && (halfUp || cents % 2n === 1n))) cents += 1n;
+  let cents = exact / per;
+  const rest = exact % per;
+  const half = per / 2n;
+  if (rest > half || (rest === half && (halfUp || cents % 2n === 1n))) cents += 1n;
   const text = cents.toString().padStart(3, '0');
   return `${signed < 0n && cents > 0n ? '-' : ''}${text.slice(0, -2)}.${text.slice(-2)}`;
 }

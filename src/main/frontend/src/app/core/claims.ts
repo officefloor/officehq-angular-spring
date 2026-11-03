@@ -2,7 +2,7 @@ import { HttpClient } from '@angular/common/http';
 import { Injectable, inject } from '@angular/core';
 import { firstValueFrom } from 'rxjs';
 import { Grade, Leave, Person, retiredOn } from './people';
-import { Rate, atLeast, due, pctFor, weightedSum } from './rates';
+import { Rate, atLeast, due, pctFor, sharedDue, weightedSum } from './rates';
 import { DatedValue, Graces, RoundingMode, STARTING_FLOOR, STARTING_LATE_PCT, graceOn, valueOn } from './settings';
 import { Session } from './session';
 
@@ -196,10 +196,16 @@ export interface ClaimShare {
 /** A share percent: two decimals at most, up to 100.00. */
 export const SHARE_PCT = /^\d{1,3}(\.\d{1,2})?$/;
 
-/** A holder's part of a claim's due figure: the figure times their share divided by 100, rounded
- *  half to even. */
-export function sharePart(figure: string, share: string): string {
-  return weightedSum([{ amount: figure, pct: share }]);
+/** A holder's part of a claim: the claim's amount times their share divided by 100, times the
+ *  percent of the rate of the holder's own grade (their grade in force on the claim's date) that
+ *  applies to the claim, divided by 100, rounded like the claim; null when their grade has no rate
+ *  (a part of 0.00 that is no figure of theirs).
+ *  A settled claim keeps its parts frozen: its settled figure times the share divided by 100,
+ *  rounded half to even. */
+export function sharePart(c: Claim, share: string, rates: Rate[], grade: Grade | undefined, late: Lateness): string | null {
+  if (c.settledDue !== null) return weightedSum([{ amount: c.settledDue, pct: share }]);
+  const pct = grade === undefined ? undefined : pctFor(rates, grade, c);
+  return pct === undefined ? null : sharedDue(c.amount, share, pct, roundsHalfUp(c, late));
 }
 
 /** A line of a claim: its label, its quantity (a whole number) and its unit amount as text with

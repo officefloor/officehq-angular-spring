@@ -2098,20 +2098,27 @@ export class PeopleList {
       .concat((this.heldParts().get(p.id) ?? []).filter((x) => keep(x.claim)).map((x) => x.part)));
   }
 
-  /** The parts of a claim's due figure its holders hold, by holder id in the order the shares were
-   *  given: a share of a person no longer on the sheet, or of the claim's own person, counts nowhere. */
-  private partsOf(c: Claim, figure: string): Map<number, string> {
+  /** The parts of a claim its holders hold (see {@link sharePart}), by holder id in the order the
+   *  shares were given: a share of a person no longer on the sheet, or of the claim's own person,
+   *  counts nowhere, and a holder whose grade has no rate holds none (their part is 0.00 and no
+   *  figure of theirs). */
+  private partsOf(c: Claim): Map<number, string> {
     const people = this.byId();
-    return new Map(c.shares
-      .filter((x) => x.personId !== c.personId && people.has(x.personId))
-      .map((x) => [x.personId, sharePart(figure, x.share)]));
+    const parts = new Map<number, string>();
+    for (const x of c.shares) {
+      const holder = people.get(x.personId);
+      if (x.personId === c.personId || !holder) continue;
+      const part = sharePart(c, x.share, this.rates(), gradeOn(holder.grades, c.date), this.lateness());
+      if (part !== null) parts.set(x.personId, part);
+    }
+    return parts;
   }
 
   /** What a claim's own person keeps of its due figure: the figure less its holders' parts; null
    *  when the figure is. */
   private keptOf(c: Claim, figure: string | null): string | null {
     if (figure === null || c.shares.length === 0) return figure;
-    return sumAmounts([figure, ...[...this.partsOf(c, figure).values()].map((x) => '-' + x)]);
+    return sumAmounts([figure, ...[...this.partsOf(c).values()].map((x) => '-' + x)]);
   }
 
   /** Per holder, by id: their parts of the claims shared with them that count in the live totals
@@ -2124,7 +2131,7 @@ export class PeopleList {
       if (c.shares.length === 0 || !owner || !countsLive(c, owner, today)) continue;
       const d = claimDue(c, this.rates(), gradeOn(owner.grades, c.date), this.floor(), this.lateness());
       if (d === null) continue;
-      for (const [id, part] of this.partsOf(c, d)) by.set(id, [...(by.get(id) ?? []), { claim: c, part }]);
+      for (const [id, part] of this.partsOf(c)) by.set(id, [...(by.get(id) ?? []), { claim: c, part }]);
     }
     return by;
   });

@@ -9,7 +9,6 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
-import java.util.Set;
 import net.officefloor.hq.app.person.Person;
 import net.officefloor.hq.app.rate.Rate;
 import net.officefloor.hq.app.rate.RateRepository;
@@ -346,16 +345,16 @@ public class Dues {
 
     /** A person's due-total on a basis, with their cut total (see {@link #dueTotal(String, Person, List, BigDecimal)}). */
     public BigDecimal dueTotal(Basis basis, Person person, List<Claim> theirs, BigDecimal cut) {
-        return dueTotal(basis, person, theirs, Set.of(), List.of(), cut);
+        return dueTotal(basis, person, theirs, Map.of(), List.of(), cut);
     }
 
     /** A person's due-total on a basis when claims are shared (see {@link #dueTotal(String, Person,
      *  List, BigDecimal)}): each of their claims that counts figures less the parts of it held by the holders
      *  given (see {@link #parts}), and the parts they hold of others' claims count as figures too. */
-    public BigDecimal dueTotal(Basis basis, Person person, List<Claim> theirs, Set<Long> holders,
+    public BigDecimal dueTotal(Basis basis, Person person, List<Claim> theirs, Map<Long, Person> holders,
             List<BigDecimal> held, BigDecimal cut) {
         List<BigDecimal> figures = new ArrayList<>(theirs.stream().filter(c -> c.getStatus().counts())
-                .map(c -> kept(c, figure(basis, person, c), holders)).filter(d -> d != null).toList());
+                .map(c -> kept(basis, c, figure(basis, person, c), holders)).filter(d -> d != null).toList());
         figures.addAll(held);
         LocalDate today = basis.today();
         boolean rated = basis.rateInForce(person.gradeOn(today), today).isPresent();
@@ -367,32 +366,49 @@ public class Dues {
         return cap == null ? sum : sum.min(cap.subtract(cut).max(BigDecimal.ZERO.setScale(2)));
     }
 
-    /** A holder's part of a claim's due figure: the figure times their share divided by 100,
-     *  rounded half to even to two decimals. */
-    public static BigDecimal part(BigDecimal figure, BigDecimal share) {
-        return figure.multiply(share).movePointLeft(2).setScale(2, RoundingMode.HALF_EVEN);
+    /** A holder's part of a claim on a basis: the claim's amount times their share divided by 100,
+     *  times the percent of the rate of the holder's own grade (their grade in force on the claim's
+     *  date) that applies to the claim (see {@link Basis#rateFor}), divided by 100, rounded like the
+     *  claim (see {@link #rounding}); null when their grade has no rate (a part of 0.00 that is no
+     *  figure of theirs). A settled claim keeps its parts frozen: its settled figure times the share
+     *  divided by 100, rounded half to even. */
+    public BigDecimal part(Basis basis, Claim claim, Person holder, BigDecimal share) {
+        if (claim.getSettledDue() != null) {
+            return claim.getSettledDue().multiply(share).movePointLeft(2).setScale(2, RoundingMode.HALF_EVEN);
+        }
+        RoundingMode rounding = rounding(basis, claim);
+        return basis.rateFor(holder.gradeOn(claim.getDate()), claim)
+                .map(rate -> claim.getAmount().multiply(share).multiply(rate.getPct()).movePointLeft(4)
+                        .setScale(2, rounding))
+                .orElse(null);
     }
 
-    /** The parts of a claim's due figure held by its share holders among those given (a share whose
-     *  person is not among them, or is the claim's own person now, counts nowhere), by holder id in the order the shares were given;
-     *  none when the figure is null. */
-    public static Map<Long, BigDecimal> parts(Claim claim, BigDecimal figure, Set<Long> holders) {
+    /** The parts of a claim held by its share holders among those given, by id (a share whose person
+     *  is not among them, or is the claim's own person now, counts nowhere), by holder id in the order
+     *  the shares were given (see {@link #part}), leaving out a holder whose grade has no rate (their
+     *  part is 0.00 and no figure of theirs); none when the claim's figure is null. */
+    public Map<Long, BigDecimal> parts(Basis basis, Claim claim, BigDecimal figure, Map<Long, Person> holders) {
         Map<Long, BigDecimal> parts = new LinkedHashMap<>();
         if (figure != null) {
             claim.getShares().stream()
-                    .filter(s -> holders.contains(s.getPersonId()) && !s.getPersonId().equals(claim.getPersonId()))
-                    .forEach(s -> parts.put(s.getPersonId(), part(figure, s.getShare())));
+                    .filter(s -> holders.containsKey(s.getPersonId()) && !s.getPersonId().equals(claim.getPersonId()))
+                    .forEach(s -> {
+                        BigDecimal part = part(basis, claim, holders.get(s.getPersonId()), s.getShare());
+                        if (part != null) {
+                            parts.put(s.getPersonId(), part);
+                        }
+                    });
         }
         return parts;
     }
 
     /** What a claim's own person keeps of its due figure: the figure less the parts its holders
      *  among those given hold; null when the figure is. */
-    public static BigDecimal kept(Claim claim, BigDecimal figure, Set<Long> holders) {
+    public BigDecimal kept(Basis basis, Claim claim, BigDecimal figure, Map<Long, Person> holders) {
         if (figure == null) {
             return null;
         }
-        return parts(claim, figure, holders).values().stream().reduce(figure, BigDecimal::subtract);
+        return parts(basis, claim, figure, holders).values().stream().reduce(figure, BigDecimal::subtract);
     }
 
     /** A claim's live due at the rate that applies to it (see {@link Basis#rateFor}): the one in

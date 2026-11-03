@@ -11,7 +11,7 @@ import java.time.LocalDate;
 
 /** A share of a claim held by another person of its sheet: the person and their share percent (two
  *  decimals, above 0.00). The holder's due-total counts their part of the claim's due (see
- *  {@link Dues#part}), and the claim's own person's the rest. */
+ *  {@link Dues#part(Dues.Basis, Claim, net.officefloor.hq.app.person.Person, BigDecimal)}), and the claim's own person's the rest. */
 @Entity
 @Table(name = "claim_share")
 public class ClaimShare {

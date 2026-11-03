@@ -11,7 +11,6 @@ import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 import java.util.Objects;
-import java.util.Set;
 import java.util.function.Supplier;
 import java.util.stream.Collectors;
 import net.officefloor.hq.app.Audit;
@@ -326,12 +325,12 @@ public class Rollup {
         List<BigDecimal> dueFigures = new ArrayList<>();
         List<BigDecimal> overdueFigures = new ArrayList<>();
         LocalDate today = basis.today();
-        Set<Long> holders = sheetPeople.stream().map(Person::getId).collect(Collectors.toSet());
+        Map<Long, Person> holders = sheetPeople.stream().collect(Collectors.toMap(Person::getId, p -> p));
         Map<Long, List<BigDecimal>> held = new HashMap<>();
         for (Person person : sheetPeople) {
             for (Claim claim : Dues.live(person, byPerson.getOrDefault(person.getId(), List.of()), today)) {
                 if (!claim.getShares().isEmpty()) {
-                    Dues.parts(claim, dues.figure(basis, person, claim), holders).forEach((holder, part) ->
+                    dues.parts(basis, claim, dues.figure(basis, person, claim), holders).forEach((holder, part) ->
                             held.computeIfAbsent(holder, h -> new ArrayList<>()).add(part));
                 }
             }

@@ -5,7 +5,6 @@ import java.time.LocalDate;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
-import java.util.Set;
 import java.util.stream.Collectors;
 import net.officefloor.hq.app.Audit;
 import net.officefloor.hq.app.claim.Claim;
@@ -125,12 +124,12 @@ public class StatementService {
             Map<Long, List<Claim>> byPerson = (then != null ? then.claims()
                     : claims.findBySheetIdOrderByListedDesc(sheetId)).stream()
                     .collect(Collectors.groupingBy(Claim::getPersonId));
-            Set<Long> holders = everyone.keySet();
+            Map<Long, Person> holders = everyone;
             List<BigDecimal> held = new ArrayList<>();
             for (Person other : everyone.values()) {
                 for (Claim claim : Dues.live(other, byPerson.getOrDefault(other.getId(), List.of()), basis.today())) {
                     if (!claim.getShares().isEmpty()) {
-                        BigDecimal part = Dues.parts(claim, dues.figure(basis, other, claim), holders).get(personId);
+                        BigDecimal part = dues.parts(basis, claim, dues.figure(basis, other, claim), holders).get(personId);
                         if (part != null) {
                             held.add(part);
                         }
