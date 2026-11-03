@@ -9,6 +9,7 @@ import net.officefloor.hq.app.person.Person;
 import net.officefloor.hq.app.person.PersonRepository;
 import net.officefloor.hq.app.role.RoleService;
 import net.officefloor.hq.app.role.SheetRole;
+import net.officefloor.hq.app.sheet.SheetRepository;
 import net.officefloor.hq.app.sheet.SheetService;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
@@ -28,9 +29,11 @@ public class PlanService {
     private final TransactionTemplate transaction;
     private final Audit audit;
     private final RoleService roles;
+    private final SheetRepository sheetStore;
 
     public PlanService(PlanRepository plans, PersonRepository people, ClaimService claims, SheetService sheets,
-            PlatformTransactionManager transactions, Audit audit, RoleService roles) {
+            PlatformTransactionManager transactions, Audit audit, RoleService roles, SheetRepository sheetStore) {
+        this.sheetStore = sheetStore;
         this.plans = plans;
         this.people = people;
         this.claims = claims;
@@ -49,10 +52,11 @@ public class PlanService {
     /** Add a plan for a person, repeating either every so many days or monthly on a day of the month;
      *  a start left out takes the sheet's today. Refused for an amount that is not above zero, neither
      *  or both of an interval and a day, an interval below one day, a day outside 1 to 31, and an end
-     *  before the start. */
+     *  before the start. A plan may name one of the sheet's descendants (null: none), its claims then
+     *  made for the person of the same name there; refused for a sheet that is not a descendant. */
     @Transactional
     public Plan add(String sheetId, String user, long personId, BigDecimal amount, LocalDate start, Integer every,
-            Integer day, LocalDate end) {
+            Integer day, LocalDate end, String targetSheetId) {
         Person person = people.findByIdAndSheetId(personId, sheetId)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "No such person on this sheet"));
         if (amount.signum() <= 0) {
@@ -72,10 +76,15 @@ public class PlanService {
         if (end.isBefore(from)) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "A plan cannot end before it starts");
         }
-        Plan saved = plans.saveAndFlush(new Plan(sheetId, person.getId(), amount, from, every, day, end));
+        if (targetSheetId != null && !sheetStore.descendants(sheetId).contains(targetSheetId)) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "A plan's sheet must be a descendant of this one");
+        }
+        Plan saved = plans.saveAndFlush(
+                new Plan(sheetId, person.getId(), amount, from, every, day, end, targetSheetId));
         audit.recordOnCommit("PLAN_ADDED sheet=" + sheetId + " by=" + user + " name=" + person.getName()
                 + " amount=" + amount.setScale(2).toPlainString() + " start=" + from
-                + (day != null ? " day=" + day : " every=" + every) + " end=" + end);
+                + (day != null ? " day=" + day : " every=" + every) + " end=" + end
+                + (targetSheetId != null ? " sheet=" + targetSheetId : ""));
         return saved;
     }
 
@@ -123,7 +132,9 @@ public class PlanService {
      *  with an empty note for each of its dates up to its end and the sheet's today that has none
      *  yet, oldest first. Each claim is added as the claim form adds it, in a transaction of its
      *  own: a date the form refuses is skipped, and tried again by the next generate. Returns how
-     *  many claims were made. A viewer's generate makes none. */
+     *  many claims were made. A viewer's generate makes none. A plan naming a descendant sheet makes
+     *  its claims there, by that sheet's rules, for the person of the same name (none when there is
+     *  no such person). */
     public int generate(String sheetId, String user) {
         if (SheetRole.VIEWER.equals(roles.roleOf(sheetId, user))) {
             return 0;
@@ -131,6 +142,14 @@ public class PlanService {
         LocalDate today = sheets.today(sheetId);
         int made = 0;
         for (Plan plan : plans.findBySheetIdOrderByIdAsc(sheetId)) {
+            String target = plan.getTargetSheetId() != null ? plan.getTargetSheetId() : sheetId;
+            Long targetPerson = plan.getTargetSheetId() == null ? plan.getPersonId()
+                    : people.findByIdAndSheetId(plan.getPersonId(), sheetId)
+                            .flatMap(p -> people.findBySheetIdAndNameIgnoreCase(target, p.getName()))
+                            .map(Person::getId).orElse(null);
+            if (targetPerson == null) {
+                continue;
+            }
             for (LocalDate date : plan.dueUpTo(today)) {
                 try {
                     transaction.executeWithoutResult(status -> {
@@ -138,7 +157,7 @@ public class PlanService {
                         if (!locked.dueUpTo(date).contains(date)) {
                             return;
                         }
-                        claims.add(sheetId, user, locked.getPersonId(), locked.getAmount(), date, "");
+                        claims.add(target, user, targetPerson, locked.getAmount(), date, "");
                         locked.markMade(date);
                         plans.saveAndFlush(locked);
                     });

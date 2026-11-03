@@ -20,6 +20,8 @@ export interface Plan {
   paused: boolean;
   /** The changes of its amount, oldest first. */
   changes: PlanChange[];
+  /** The descendant sheet its claims are made on; null for its own sheet. */
+  sheet: string | null;
 }
 
 /** A change of a plan's amount: the sheet's today it was changed on and the new amount. */
@@ -28,13 +30,14 @@ export interface PlanChange {
   amount: string;
 }
 
-/** The plan form as typed: a blank start takes the sheet's today. */
+/** The plan form as typed: a blank start takes the sheet's today; a blank sheet is its own. */
 export interface PlanFields {
   amount: string;
   start: string;
   every: string;
   day: string;
   end: string;
+  sheet: string;
 }
 
 // The plans of the people on the active sheet, and the generate that makes their claims.
@@ -48,12 +51,14 @@ export class Plans {
     return firstValueFrom(this.http.get<Plan[]>(`/api/sheets/${encodeURIComponent(sheetId)}/plans`));
   }
 
-  /** Add a plan for the person; refused for a bad amount, interval or day, or an end before the start. */
+  /** Add a plan for the person; refused for a bad amount, interval or day, an end before the start,
+   *  or a sheet that is not a descendant. */
   add(personId: number, f: PlanFields): Promise<Plan> {
     const { sheetId, user } = this.active();
     return firstValueFrom(
       this.http.post<Plan>(`/api/sheets/${encodeURIComponent(sheetId)}/people/${personId}/plans`,
-        { amount: f.amount, start: f.start || null, every: f.every || null, day: f.day || null, end: f.end || null },
+        { amount: f.amount, start: f.start || null, every: f.every || null, day: f.day || null, end: f.end || null,
+          sheet: f.sheet || null },
         { headers: { 'X-User': user } }),
     );
   }

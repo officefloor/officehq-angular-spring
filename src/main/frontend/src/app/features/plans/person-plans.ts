@@ -21,6 +21,9 @@ import { FigurePipe } from '../../core/figure';
             every <span data-testid="plan-every">{{ pl.every }}</span> days
           }
           to <span data-testid="plan-end">{{ pl.end }}</span>;
+          @if (pl.sheet) {
+            on sheet <span data-testid="plan-sheet">{{ pl.sheet }}</span>;
+          }
           made <span data-testid="plan-generated">{{ pl.generated }}</span>;
           next <span data-testid="plan-next-dates">{{ pl.nextDates.join(', ') }}</span>;
           paused <span data-testid="plan-paused">{{ pl.paused ? 'yes' : 'no' }}</span>
@@ -55,6 +58,8 @@ import { FigurePipe } from '../../core/figure';
       <label [for]="'plan-form-day-' + personId()">Or monthly on day (1 to 31)</label>
       <input [id]="'plan-form-day-' + personId()" inputmode="numeric" data-testid="plan-form-day"
         formControlName="day" />
+      <label [for]="'plan-form-sheet-' + personId()">On descendant sheet (optional)</label>
+      <input [id]="'plan-form-sheet-' + personId()" data-testid="plan-form-sheet" formControlName="sheet" />
       <label [for]="'plan-form-end-' + personId()">End</label>
       <input [id]="'plan-form-end-' + personId()" type="date" data-testid="plan-form-end" formControlName="end" />
       <button type="submit" data-testid="plan-form-submit">Add plan</button>
@@ -79,6 +84,7 @@ export class PersonPlans {
     every: new FormControl('', { nonNullable: true }),
     day: new FormControl('', { nonNullable: true }),
     end: new FormControl('', { nonNullable: true }),
+    sheet: new FormControl('', { nonNullable: true }),
   });
   protected readonly error = signal('');
   /** The error of the last pause, resume or amount change of each plan that was refused. */
@@ -151,7 +157,8 @@ export class PersonPlans {
     }
     this.submitting = true;
     try {
-      this.added.emit(await this.api.add(this.personId(), { amount, start: f.start, every, day, end: f.end }));
+      this.added.emit(await this.api.add(this.personId(), { amount, start: f.start, every, day, end: f.end,
+        sheet: f.sheet.trim() }));
     } catch {
       this.error.set('The plan could not be added.');
     } finally {
