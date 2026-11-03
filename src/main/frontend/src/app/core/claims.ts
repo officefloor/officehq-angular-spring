@@ -1,7 +1,7 @@
 import { HttpClient } from '@angular/common/http';
 import { Injectable, inject } from '@angular/core';
 import { firstValueFrom } from 'rxjs';
-import { Grade, Leave, Person, heldOn, retiredOn } from './people';
+import { Grade, Leave, Person, retiredOn } from './people';
 import { Rate, atLeast, due, pctFor } from './rates';
 import { DatedValue, Graces, RoundingMode, STARTING_FLOOR, STARTING_LATE_PCT, graceOn, valueOn } from './settings';
 import { Session } from './session';
@@ -41,8 +41,8 @@ export function deferred(c: Claim, today: string | null): boolean {
 }
 
 /** Whether a claim counts in the live totals on the sheet's today: it counts, it is not deferred,
- *  and it is not an open (or pending) claim, unbound by a statement, dated within one of its
- *  person's holds or of a person retired on that day. */
+ *  and it is not an open (or pending) claim, unbound by a statement, of a person retired on that
+ *  day. A hold does not take it out of any total. */
 export function countsLive(c: Claim, leave: Leave, today: string | null): boolean {
   return counts(c) && !deferred(c, today) && !leftOut(c, leave, today);
 }
@@ -55,9 +55,10 @@ export function countsClaimed(c: Claim, leave: Leave, today: string | null): boo
 }
 
 /** Whether the live rules leave a claim out: it is open (or pending), unbound by a statement, and
- *  held, or dated within one of its person's holds, or its person is retired on the sheet's today. */
+ *  its person is retired on the sheet's today. A hold (of the claim or the person) leaves nothing
+ *  out: it only takes the person's cut out of the pools. */
 function leftOut(c: Claim, leave: Leave, today: string | null): boolean {
-  return isOpen(c) && !c.stated && (c.held || heldOn(leave.holds, c.date) || retiredOn(leave.retiredFrom, today));
+  return isOpen(c) && !c.stated && retiredOn(leave.retiredFrom, today);
 }
 
 /** The day (yyyy-mm-dd) a number of days after another (before it when negative). */
@@ -93,8 +94,8 @@ export function statusOn(c: Claim, day: string): ClaimStatus | null {
 
 /** Whether a claim counts in a period's totals: by the status it had at the end of the period's
  *  last day it counts, and the live rules do not leave it out: it is not deferred on the sheet's
- *  today, and it is not a claim open (or pending) now, unbound by a statement, dated within one of
- *  its person's holds or of a person retired on the sheet's today. */
+ *  today, and it is not a claim open (or pending) now, unbound by a statement, of a person retired
+ *  on the sheet's today. */
 export function countsAsOf(c: Claim, leave: Leave, end: string, today: string | null): boolean {
   const then = statusOn(c, end);
   if (then === null || !(then === 'OPEN' || then === 'PENDING' || then === 'SETTLED')) return false;
@@ -173,8 +174,7 @@ export interface Claim {
   /** How many of its proofs are of each kind. While the sheet has proof kinds, one whose due is
    *  above the proof threshold cannot be settled or approved without a proof of each of them. */
   proofKinds: Record<ProofKind, number>;
-  /** Whether it is held: while open (or pending) and unbound by a statement, it counts in no live
-   *  total. */
+  /** Whether it is held. A held claim still counts in every total. */
   held: boolean;
 }
 

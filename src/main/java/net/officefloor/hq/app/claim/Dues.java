@@ -300,7 +300,7 @@ public class Dues {
 
     /** Whether a claim of the person counts in the live totals on the sheet's today: it counts, it is
      *  not deferred on that day, and it is not an open (or pending) claim, unbound by a statement,
-     *  dated within one of the person's holds or of a person retired on that day. */
+     *  of a person retired on that day. A hold does not take it out of any total. */
     public static boolean countsLive(Person person, Claim claim, LocalDate today) {
         return claim.getStatus().counts() && !claim.isDeferredOn(today) && !leftOut(person, claim, today);
     }
@@ -308,19 +308,17 @@ public class Dues {
     /** Whether a claim of the person counts in a period's totals: by the status it had at the end of
      *  the period's last day (see Claim#statusOn) it counts, and the live rules do not leave it out:
      *  it is not deferred on the sheet's today, and it is not a claim open (or pending) now,
-     *  unbound by a statement, dated within one of the person's holds or of a person retired on the
-     *  sheet's today. */
+     *  unbound by a statement, of a person retired on the sheet's today. */
     public static boolean countsAsOf(Person person, Claim claim, LocalDate end, LocalDate today) {
         ClaimStatus then = claim.statusOn(end);
         return then != null && then.counts() && !claim.isDeferredOn(today) && !leftOut(person, claim, today);
     }
 
     /** Whether the live rules leave a claim of the person out: it is open (or pending) now, unbound
-     *  by a statement, and held, or dated within one of the person's holds, or the person is retired
-     *  on the sheet's today. */
+     *  by a statement, and the person is retired on the sheet's today. A hold (of the claim or the
+     *  person) leaves nothing out: it only takes the person's cut out of the pools. */
     private static boolean leftOut(Person person, Claim claim, LocalDate today) {
-        return claim.getStatus().isOpen() && !claim.isStated()
-                && (claim.isHeld() || person.isHeldOn(claim.getDate()) || person.isRetiredOn(today));
+        return claim.getStatus().isOpen() && !claim.isStated() && person.isRetiredOn(today);
     }
 
     /** Whether a claim of the person counts toward what they have claimed on the sheet's today: it

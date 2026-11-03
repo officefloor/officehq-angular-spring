@@ -42,8 +42,8 @@ const NO_LEAVE: Leave = { holds: [], retiredFrom: null };
 // once a person's editor is opened, edits them. Each person's row lists their claims and what
 // they have claimed and are due at their grade's rate; the sheet's totals add everyone's up.
 // Retired people are left out of the list unless "show retired" is on; their claims still count.
-// A person's open claims dated within one of their holds count in no total, unless a statement
-// bound them; their settled claims and other open claims still do. From the day the sheet's today
+// A person's holds take none of their claims out of any total: a held person only gets no cut of
+// the pools, their share spread over the others. From the day the sheet's today
 // reaches a person's retirement day, none of their open claims a statement did not bind counts either.
 // A person may name other people on the sheet as their patrons; their backing is the settled
 // figures of their patrons' settled claims dated within the 90 days up to the sheet's today, each

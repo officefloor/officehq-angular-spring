@@ -722,8 +722,8 @@ public class ClaimService {
         });
     }
 
-    /** Hold an open or pending claim, or release it when held: while held and unbound by a
-     *  statement it counts in no live total. Refused when the claim is not open or pending. */
+    /** Hold an open or pending claim, or release it when held; a held claim still counts in every
+     *  total. Refused when the claim is not open or pending. */
     @Transactional
     public Claim toggleHold(String sheetId, String user, long claimId) {
         Claim claim = lock(sheetId, claimId);

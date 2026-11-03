@@ -57,7 +57,8 @@ public class Person {
     @CollectionTable(name = "person_retirement", joinColumns = @JoinColumn(name = "person_id"))
     private List<Retirement> retirements = new ArrayList<>();
 
-    /** The person's holds: their open claims dated within one count in no live total. */
+    /** The person's holds: while one is in force on the sheet's today they get no cut of the pools,
+     *  their share spread over the others. Their claims still count in every total. */
     @ElementCollection(fetch = FetchType.EAGER)
     @CollectionTable(name = "person_hold", joinColumns = @JoinColumn(name = "person_id"))
     private List<Hold> holds = new ArrayList<>();
