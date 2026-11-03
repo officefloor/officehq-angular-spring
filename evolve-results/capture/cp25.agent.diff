@@ -1,0 +1,464 @@
+diff --git a/src/main/frontend/src/app/features/claims/claims.ts b/src/main/frontend/src/app/features/claims/claims.ts
+index 2541efb61..1599399bd 100644
+--- a/src/main/frontend/src/app/features/claims/claims.ts
++++ b/src/main/frontend/src/app/features/claims/claims.ts
+@@ -12,6 +12,8 @@ import { Rate, claimDueCents, dueText } from '../rates/rates';
+ // dated inside a closed period cannot be added, edited or moved on: each is refused with an error.
+ // Only a DRAFT can be edited; editing any other claim is refused with an error on the claim (to
+ // change an open claim, void it and add a new one).
++// Each claim shows its due-by, its date plus the sheet's terms in days, and whether it is overdue:
++// OPEN with its due-by before the sheet's today.
+ export type ClaimStatus = 'DRAFT' | 'OPEN' | 'SETTLED' | 'VOID';
+ 
+ export interface Claim {
+@@ -55,6 +57,41 @@ export function cents(amount: string): number {
+   return Number(whole) * 100 + Number(frac.padEnd(2, '0'));
+ }
+ 
++/** Days since 1970-01-01 of a yyyy-mm-dd date (proleptic Gregorian). */
++function dayNumber(date: string): number {
++  const [y0, m, d] = date.split('-').map(Number);
++  const y = m <= 2 ? y0 - 1 : y0;
++  const era = Math.floor(y / 400);
++  const yoe = y - era * 400;
++  const doy = Math.floor((153 * (m + (m > 2 ? -3 : 9)) + 2) / 5) + d - 1;
++  const doe = yoe * 365 + Math.floor(yoe / 4) - Math.floor(yoe / 100) + doy;
++  return era * 146097 + doe - 719468;
++}
++
++/** The yyyy-mm-dd date of a number of days since 1970-01-01. */
++function dateOf(days: number): string {
++  const z = days + 719468;
++  const era = Math.floor(z / 146097);
++  const doe = z - era * 146097;
++  const yoe = Math.floor((doe - Math.floor(doe / 1460) + Math.floor(doe / 36524) - Math.floor(doe / 146096)) / 365);
++  const doy = doe - (365 * yoe + Math.floor(yoe / 4) - Math.floor(yoe / 100));
++  const mp = Math.floor((5 * doy + 2) / 153);
++  const d = doy - Math.floor((153 * mp + 2) / 5) + 1;
++  const m = mp < 10 ? mp + 3 : mp - 9;
++  const y = yoe + era * 400 + (m <= 2 ? 1 : 0);
++  return `${String(y).padStart(4, '0')}-${String(m).padStart(2, '0')}-${String(d).padStart(2, '0')}`;
++}
++
++/** The date a claim is due by: its date plus the terms in days. */
++export function dueBy(c: Claim, terms: number): string {
++  return dateOf(dayNumber(c.date) + terms);
++}
++
++/** Whether a claim is overdue: OPEN, and due by a date before the sheet's today. */
++export function overdue(c: Claim, terms: number, today: string | null): boolean {
++  return c.status === 'OPEN' && today !== null && dueBy(c, terms) < today;
++}
++
+ /** Whole cents shown with two decimals. */
+ export function money(c: number): string {
+   return `${Math.floor(c / 100)}.${String(c % 100).padStart(2, '0')}`;
+@@ -103,6 +140,8 @@ export function money(c: number): string {
+           <span data-testid="claim-note">{{ c.note }}</span>
+           <span>Period <span data-testid="claim-period">{{ periodOf(c) }}</span></span>
+           <span>Due <span data-testid="claim-due">{{ dueOf(c) }}</span></span>
++          <span>Due by <span data-testid="claim-due-by">{{ dueByOf(c) }}</span></span>
++          <span>Overdue <span data-testid="claim-overdue">{{ overdueOf(c) ? 'yes' : 'no' }}</span></span>
+           <span data-testid="claim-status">{{ c.status }}</span>
+           <span>Opened by <span data-testid="claim-opened-by">{{ c.openedBy ?? '' }}</span></span>
+           <span>Stated <span data-testid="claim-stated">{{ c.stated ? 'yes' : 'no' }}</span></span>
+@@ -141,6 +180,8 @@ export class PersonClaims {
+   readonly rates = input.required<Rate[]>();
+   /** The sheet's floor in whole cents: the least a claim's live due can be. */
+   readonly floor = input.required<number>();
++  /** The sheet's terms: the days after its date a claim is due by. */
++  readonly terms = input.required<number>();
+   /** The sheet's periods. */
+   readonly periods = input.required<Period[]>();
+   readonly saved = output<Claim>();
+@@ -162,6 +203,14 @@ export class PersonClaims {
+     return dueText(claimDueCents(c, this.rates(), this.grade(), this.floor()));
+   }
+ 
++  protected dueByOf(c: Claim): string {
++    return dueBy(c, this.terms());
++  }
++
++  protected overdueOf(c: Claim): boolean {
++    return overdue(c, this.terms(), this.session.today());
++  }
++
+   /** The name of the period whose dates contain the claim's date; blank when none does. */
+   protected periodOf(c: Claim): string {
+     return periodOn(this.periods(), c.date)?.name ?? '';
+diff --git a/src/main/frontend/src/app/features/people/people.ts b/src/main/frontend/src/app/features/people/people.ts
+index ec072dc30..357d4e7fe 100644
+--- a/src/main/frontend/src/app/features/people/people.ts
++++ b/src/main/frontend/src/app/features/people/people.ts
+@@ -2,7 +2,7 @@ import { HttpClient, HttpErrorResponse } from '@angular/common/http';
+ import { Component, computed, effect, inject, signal } from '@angular/core';
+ import { firstValueFrom } from 'rxjs';
+ import { Session } from '../../core/session';
+-import { AMOUNT, Claim, PersonClaims, cents, counts, money } from '../claims/claims';
++import { AMOUNT, Claim, PersonClaims, cents, counts, money, overdue } from '../claims/claims';
+ import { DatedDue, Period, Periods } from '../periods/periods';
+ import { Rate, Rates, claimDueCents, dueText, fixedDueCents, pctOn } from '../rates/rates';
+ import { Roles } from '../roles/roles';
+@@ -29,6 +29,8 @@ import { Settings } from '../settings/settings';
+ // total (their own, the sheet's or a period's); their SETTLED claims still do.
+ // The quick-add bar adds a DRAFT claim of an amount, dated the sheet's today with an empty note, for
+ // the person of a name, adding the person with grade A first when the name is not on the sheet.
++// Each person, and the sheet, shows how many of the claims that count are overdue and the sum of
++// their figures (the overdue-total).
+ interface Person {
+   id: number;
+   name: string;
+@@ -75,7 +77,7 @@ const GRADES = ['A', 'B', 'C'] as const;
+   template: `
+     <app-rates [(rates)]="rates" />
+     <app-roles />
+-    <app-settings [(floor)]="floor" />
++    <app-settings [(floor)]="floor" [(terms)]="terms" />
+     <app-periods [(periods)]="periods" [dues]="dues()" />
+     <section aria-labelledby="people-heading">
+       <h2 id="people-heading">People</h2>
+@@ -140,6 +142,8 @@ const GRADES = ['A', 'B', 'C'] as const;
+       </label>
+       <p>Claimed in total <strong data-testid="rollup-claimed-total">{{ claimedTotal() }}</strong></p>
+       <p>Due in total <strong data-testid="rollup-due-total">{{ dueTotal() }}</strong></p>
++      <p>Overdue claims <strong data-testid="rollup-overdue-count">{{ overdueTotals().count }}</strong></p>
++      <p>Overdue in total <strong data-testid="rollup-overdue-total">{{ money(overdueTotals().cents) }}</strong></p>
+       <table data-testid="people-list">
+         <thead>
+           <tr>
+@@ -147,6 +151,7 @@ const GRADES = ['A', 'B', 'C'] as const;
+             <th scope="col">Grade</th>
+             <th scope="col">Claimed</th>
+             <th scope="col">Due</th>
++            <th scope="col">Overdue</th>
+             <th scope="col">Statements</th>
+             <th scope="col">Retired</th>
+             <th scope="col">On hold</th>
+@@ -161,6 +166,10 @@ const GRADES = ['A', 'B', 'C'] as const;
+               <td data-testid="person-grade">{{ p.grade }}</td>
+               <td data-testid="person-claimed">{{ claimedOf(p.id) }}</td>
+               <td data-testid="person-due-total">{{ dueText(dueOf(p)) }}</td>
++              <td>
++                <span data-testid="person-overdue-count">{{ overdueOf(p).count }}</span>
++                <span>totalling <span data-testid="person-overdue-total">{{ money(overdueOf(p).cents) }}</span></span>
++              </td>
+               <td>
+                 <span data-testid="person-statement-count">{{ statementOf(p.id)?.count ?? 0 }}</span>
+                 <span>Last due <span data-testid="person-stated-total">{{ statementOf(p.id)?.dueTotal ?? '' }}</span></span>
+@@ -181,6 +190,7 @@ const GRADES = ['A', 'B', 'C'] as const;
+                   [grade]="p.grade"
+                   [rates]="rates()"
+                   [floor]="floorCents()"
++                  [terms]="terms()"
+                   [periods]="periods()"
+                   (saved)="claimSaved($event)"
+                 />
+@@ -265,6 +275,8 @@ export class People {
+   /** The sheet's floor: the least a claim's live due can be. */
+   protected readonly floor = signal('1.00');
+   protected readonly floorCents = computed(() => cents(this.floor()));
++  /** The sheet's terms: the days after its date a claim is due by. */
++  protected readonly terms = signal(14);
+   /** The date and figure of each claim that counts and has a figure, for the periods' due-totals. */
+   protected readonly dues = computed(() => {
+     const out: DatedDue[] = [];
+@@ -289,6 +301,17 @@ export class People {
+     money(this.people().reduce((sum, p) => sum + (this.dueOf(p) ?? 0), 0)),
+   );
+   protected readonly dueText = dueText;
++  protected readonly money = money;
++  /** The sheet's overdue claims that count: how many, and the sum of their figures in whole cents. */
++  protected readonly overdueTotals = computed(() =>
++    this.people().reduce(
++      (sum, p) => {
++        const o = this.overdueOf(p);
++        return { count: sum.count + o.count, cents: sum.cents + o.cents };
++      },
++      { count: 0, cents: 0 },
++    ),
++  );
+   protected readonly nameInput = signal('');
+   protected readonly gradeInput = signal<string>('A');
+   protected readonly editingId = signal<number | null>(null);
+@@ -365,6 +388,16 @@ export class People {
+     return counted.reduce((sum, c) => sum + (claimDueCents(c, this.rates(), p.grade, this.floorCents()) ?? 0), 0);
+   }
+ 
++  /** The person's overdue claims that count: how many, and the sum of their figures in whole cents. */
++  protected overdueOf(p: Person): { count: number; cents: number } {
++    const today = this.session.today();
++    const late = this.claimsOf(p.id).filter((c) => countsFor(p, c) && overdue(c, this.terms(), today));
++    return {
++      count: late.length,
++      cents: late.reduce((sum, c) => sum + (claimDueCents(c, this.rates(), p.grade, this.floorCents()) ?? 0), 0),
++    };
++  }
++
+   protected statementOf(personId: number): StatementSummary | undefined {
+     return this.statements().get(personId);
+   }
+diff --git a/src/main/frontend/src/app/features/settings/settings.ts b/src/main/frontend/src/app/features/settings/settings.ts
+index ed0bdbfb9..5eca805fd 100644
+--- a/src/main/frontend/src/app/features/settings/settings.ts
++++ b/src/main/frontend/src/app/features/settings/settings.ts
+@@ -4,13 +4,14 @@ import { firstValueFrom } from 'rxjs';
+ import { Session } from '../../core/session';
+ 
+ // The sheet's settings: its clerk limit (two decimals; blank for no limit), and its floor (two
+-// decimals; 1.00 on a new sheet). A clerk settles a claim only when its due is at or below the
+-// limit; a claim's live due is never below the floor. Saving saves the clerk limit once its field
+-// has been entered (blank: no limit), and the floor when one is typed (blank: left as it is).
++// decimals; 1.00 on a new sheet), and its terms (whole days; 14 on a new sheet). A clerk settles a claim only when its due is at or below the
++// limit; a claim's live due is never below the floor; a claim is due by its date plus the terms. Saving saves the clerk limit once its field
++// has been entered (blank: no limit), and the floor and terms when typed (blank: left as they are).
+ interface SettingsResponse {
+   /** The clerk limit, blank for none. */
+   clerkLimit: string;
+   floor: string;
++  terms: number;
+ }
+ 
+ /** A limit or floor: 0.00 or more, with up to two decimals. */
+@@ -18,6 +19,11 @@ const LIMIT = /^\d{1,12}(\.\d{1,2})?$/;
+ 
+ const DEFAULT_FLOOR = '1.00';
+ 
++/** Terms: a whole number of days. */
++const TERMS = /^\d{1,4}$/;
++
++const DEFAULT_TERMS = 14;
++
+ @Component({
+   selector: 'app-settings',
+   template: `
+@@ -41,6 +47,14 @@ const DEFAULT_FLOOR = '1.00';
+           [value]="floorInput() ?? ''"
+           (input)="floorInput.set($any($event.target).value); error.set(null)"
+         />
++        <label for="setting-terms">Terms in days (blank: leave as they are)</label>
++        <input
++          id="setting-terms"
++          data-testid="setting-terms"
++          inputmode="numeric"
++          [value]="termsInput() ?? ''"
++          (input)="termsInput.set($any($event.target).value); error.set(null)"
++        />
+         <button type="submit" data-testid="settings-save">Save settings</button>
+         @if (error(); as err) {
+           <p role="alert" data-testid="settings-error">{{ err }}</p>
+@@ -57,6 +71,10 @@ const DEFAULT_FLOOR = '1.00';
+         Floor in force:
+         <strong data-testid="setting-floor-current">{{ floor() }}</strong>
+       </p>
++      <p>
++        Terms in force (days):
++        <strong data-testid="setting-terms-current">{{ terms() }}</strong>
++      </p>
+     </section>
+   `,
+ })
+@@ -66,12 +84,16 @@ export class Settings {
+ 
+   /** The sheet's floor, shared with whoever works out what is due. */
+   readonly floor = model(DEFAULT_FLOOR);
++  /** The sheet's terms in days, shared with whoever works out when a claim is due by. */
++  readonly terms = model(DEFAULT_TERMS);
+ 
+   protected readonly limit = signal('');
+   /** The clerk limit typed; null while its field has not been entered (left as it is). */
+   protected readonly limitInput = signal<string | null>(null);
+   /** The floor typed; blank (or null) leaves it as it is. */
+   protected readonly floorInput = signal<string | null>(null);
++  /** The terms typed; blank (or null) leaves them as they are. */
++  protected readonly termsInput = signal<string | null>(null);
+   protected readonly error = signal<string | null>(null);
+   /** Whether a submit is waiting for its answer: a second submit meanwhile is ignored. */
+   private submitting = false;
+@@ -83,8 +105,10 @@ export class Settings {
+       this.session.loads();
+       this.limit.set('');
+       this.floor.set(DEFAULT_FLOOR);
++      this.terms.set(DEFAULT_TERMS);
+       this.limitInput.set(null);
+       this.floorInput.set(null);
++      this.termsInput.set(null);
+       this.error.set(null);
+       if (sheet) {
+         void this.fetch(sheet);
+@@ -115,6 +139,7 @@ export class Settings {
+   private show(res: SettingsResponse): void {
+     this.limit.set(res.clerkLimit);
+     this.floor.set(res.floor);
++    this.terms.set(res.terms);
+   }
+ 
+   protected async save(event: Event): Promise<void> {
+@@ -124,6 +149,7 @@ export class Settings {
+     const sheet = this.session.sheet();
+     const clerkLimit = this.limitInput()?.trim() ?? null;
+     const floor = this.floorInput()?.trim() || null;
++    const terms = this.termsInput()?.trim() || null;
+     if (clerkLimit !== null && clerkLimit !== '' && !LIMIT.test(clerkLimit)) {
+       this.error.set('Enter a clerk limit of 0.00 or more, with up to two decimals, or leave it blank.');
+       return;
+@@ -132,6 +158,10 @@ export class Settings {
+       this.error.set('Enter a floor of 0.00 or more, with up to two decimals.');
+       return;
+     }
++    if (terms !== null && !TERMS.test(terms)) {
++      this.error.set('Enter terms of 0 or more whole days.');
++      return;
++    }
+     this.submitting = true;
+     try {
+       const res = await firstValueFrom(
+@@ -140,12 +170,14 @@ export class Settings {
+           user: this.session.user(),
+           clerkLimit,
+           floor,
++          terms,
+         }),
+       );
+       if (this.session.sheet() !== sheet) return;
+       this.show(res);
+       this.limitInput.set(null);
+       this.floorInput.set(null);
++      this.termsInput.set(null);
+     } catch {
+       this.error.set('Could not save the settings.');
+     } finally {
+diff --git a/src/main/java/net/officefloor/hq/app/setting/SettingController.java b/src/main/java/net/officefloor/hq/app/setting/SettingController.java
+index e45875f56..2c07a0684 100644
+--- a/src/main/java/net/officefloor/hq/app/setting/SettingController.java
++++ b/src/main/java/net/officefloor/hq/app/setting/SettingController.java
+@@ -21,19 +21,22 @@ public class SettingController {
+ 
+     /**
+      * The settings to save; a setting left null is left as it is. A clerk limit: an amount with up
+-     * to two decimals, or blank for no limit. A floor: an amount with up to two decimals.
++     * to two decimals, or blank for no limit. A floor: an amount with up to two decimals. Terms: a
++     * whole number of days.
+      */
+     public record SetSettingsRequest(@NotBlank @Size(max = 100) String sheet, @NotBlank @Size(max = 100) String user,
+             @Pattern(regexp = "\\s*|" + ClaimController.AMOUNT) String clerkLimit,
+-            @Pattern(regexp = ClaimController.AMOUNT) String floor) {
++            @Pattern(regexp = ClaimController.AMOUNT) String floor,
++            @Pattern(regexp = "\\s*\\d{1,4}\\s*") String terms) {
+     }
+ 
+     /** The settings in force; the clerk limit blank for none. */
+-    public record SettingsResponse(String clerkLimit, String floor) {
++    public record SettingsResponse(String clerkLimit, String floor, int terms) {
+     }
+ 
+     private static SettingsResponse response(Sheet sheet) {
+-        return new SettingsResponse(SettingService.text(sheet.getClerkLimit()), SettingService.text(sheet.getFloor()));
++        return new SettingsResponse(SettingService.text(sheet.getClerkLimit()), SettingService.text(sheet.getFloor()),
++                sheet.getTerms());
+     }
+ 
+     private final SettingService service;
+@@ -52,6 +55,7 @@ public class SettingController {
+         String limit = req.clerkLimit() == null ? "" : req.clerkLimit().trim();
+         return response(service.set(req.sheet().trim(), req.user().trim(), req.clerkLimit() != null,
+                 limit.isEmpty() ? null : ClaimController.amount(limit),
+-                req.floor() == null ? null : ClaimController.amount(req.floor())));
++                req.floor() == null ? null : ClaimController.amount(req.floor()),
++                req.terms() == null ? null : Integer.valueOf(req.terms().trim())));
+     }
+ }
+diff --git a/src/main/java/net/officefloor/hq/app/setting/SettingService.java b/src/main/java/net/officefloor/hq/app/setting/SettingService.java
+index 55670d3a0..abbf7f91c 100644
+--- a/src/main/java/net/officefloor/hq/app/setting/SettingService.java
++++ b/src/main/java/net/officefloor/hq/app/setting/SettingService.java
+@@ -12,13 +12,15 @@ import org.springframework.transaction.annotation.Transactional;
+ 
+ /**
+  * The sheet's settings: its clerk limit (none: no limit) and its floor, the least a claim's live due
+- * can be. Changing the floor moves the live figures, so the figures that move are recorded.
++ * can be, and its terms, the days after its date a claim is due by. Changing the floor moves the
++ * live figures, so the figures that move are recorded.
+  */
+ @Service
+ public class SettingService {
+ 
+     public static final String CLERK_LIMIT = "clerk-limit";
+     public static final String FLOOR = "floor";
++    public static final String TERMS = "terms";
+ 
+     private final SheetService sheets;
+     private final SheetRepository sheetStore;
+@@ -39,10 +41,11 @@ public class SettingService {
+ 
+     /**
+      * Save the settings given: a clerk limit when {@code changeLimit} (null for no limit), and the
+-     * floor when it is not null. Each one saved is recorded, in that order.
++     * floor and the terms when they are not null. Each one saved is recorded, in that order.
+      */
+     @Transactional
+-    public Sheet set(String sheetId, String user, boolean changeLimit, BigDecimal limit, BigDecimal floor) {
++    public Sheet set(String sheetId, String user, boolean changeLimit, BigDecimal limit, BigDecimal floor,
++            Integer terms) {
+         Sheet sheet = sheets.load(sheetId, user);
+         if (changeLimit) {
+             sheet.setClerkLimit(limit);
+@@ -56,6 +59,11 @@ public class SettingService {
+             audit.recordOnCommit(changed(sheetId, user, FLOOR, text(floor)));
+             rollup.recordChanges(sheetId, user, before);
+         }
++        if (terms != null) {
++            sheet.setTerms(terms);
++            sheet = sheetStore.saveAndFlush(sheet);
++            audit.recordOnCommit(changed(sheetId, user, TERMS, String.valueOf(terms)));
++        }
+         return sheet;
+     }
+ 
+diff --git a/src/main/java/net/officefloor/hq/app/sheet/Sheet.java b/src/main/java/net/officefloor/hq/app/sheet/Sheet.java
+index 7dbd42269..cc7e85e6d 100644
+--- a/src/main/java/net/officefloor/hq/app/sheet/Sheet.java
++++ b/src/main/java/net/officefloor/hq/app/sheet/Sheet.java
+@@ -16,6 +16,9 @@ public class Sheet {
+     /** The floor a sheet starts with. */
+     public static final BigDecimal DEFAULT_FLOOR = new BigDecimal("1.00");
+ 
++    /** The terms a sheet starts with, in days. */
++    public static final int DEFAULT_TERMS = 14;
++
+     @Id
+     private String id;
+ 
+@@ -41,6 +44,10 @@ public class Sheet {
+     @Column(name = "due_floor", nullable = false, precision = 14, scale = 2)
+     private BigDecimal floor = DEFAULT_FLOOR;
+ 
++    /** The days after its date a claim is due by; 14 on a new sheet. */
++    @Column(name = "terms", nullable = false)
++    private int terms = DEFAULT_TERMS;
++
+     protected Sheet() {
+     }
+ 
+@@ -87,6 +94,14 @@ public class Sheet {
+         this.floor = floor;
+     }
+ 
++    public int getTerms() {
++        return terms;
++    }
++
++    public void setTerms(int terms) {
++        this.terms = terms;
++    }
++
+     /** Give out the next claim number on the sheet. */
+     public int nextClaimNumber() {
+         return ++lastClaimNumber;
+diff --git a/src/main/resources/db/migration/V20__sheet_terms.sql b/src/main/resources/db/migration/V20__sheet_terms.sql
+new file mode 100644
+index 000000000..32f89cfe5
+--- /dev/null
++++ b/src/main/resources/db/migration/V20__sheet_terms.sql
+@@ -0,0 +1,2 @@
++-- The sheet's terms: a claim is due by its date plus this many days. 14 on a new sheet.
++ALTER TABLE sheet ADD COLUMN terms INTEGER DEFAULT 14 NOT NULL CHECK (terms >= 0);
