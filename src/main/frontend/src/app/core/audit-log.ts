@@ -20,4 +20,10 @@ export class AuditLog {
     return firstValueFrom(
       this.http.get<string[]>(`/api/sheets/${encodeURIComponent(sheetId)}/audit/claims/${claimId}`));
   }
+
+  /** The sheet's activity: one line `<user> <EVENT> <count>` for every user and event in its
+   *  audit lines, sorted by user then event. */
+  activity(sheetId: string): Promise<string[]> {
+    return firstValueFrom(this.http.get<string[]>(`/api/sheets/${encodeURIComponent(sheetId)}/audit/activity`));
+  }
 }

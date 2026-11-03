@@ -6,6 +6,8 @@ import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
 import java.util.Locale;
+import java.util.Map;
+import java.util.TreeMap;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 import net.officefloor.hq.app.Audit;
@@ -96,6 +98,25 @@ public class AuditController {
             }
         }
         Collections.reverse(shown);
+        return shown;
+    }
+
+    /** The sheet's activity: for every user and every event in the sheet's lines, one line
+     *  {@code <user> <EVENT> <count>}, sorted by user then event. */
+    @GetMapping("/activity")
+    public List<String> activity(@PathVariable @NotBlank @Size(max = 100) String sheetId) {
+        String sheet = sheetId.trim();
+        Map<String, Map<String, Integer>> counts = new TreeMap<>();
+        for (String line : audit.lines()) {
+            String by = field(line, "by");
+            if (!sheet.equals(field(line, "sheet")) || by == null) {
+                continue;
+            }
+            String event = line.split(" ", 2)[0];
+            counts.computeIfAbsent(by, u -> new TreeMap<>()).merge(event, 1, Integer::sum);
+        }
+        List<String> shown = new ArrayList<>();
+        counts.forEach((user, events) -> events.forEach((event, count) -> shown.add(user + " " + event + " " + count)));
         return shown;
     }
 
