@@ -3,7 +3,8 @@ import { FormControl, FormGroup, ReactiveFormsModule } from '@angular/forms';
 import { Plan, Plans } from '../../core/plans';
 import { FigurePipe } from '../../core/figure';
 
-// A person's plans (every so many days or monthly on a day), in the order they were added, each with how many claims it has made so far and its next dates;
+// A person's plans (every so many days or monthly on a day), in the order they were added, each with how many claims it has made so far, its next dates
+// and the changes of its amount, with an entry that changes it;
 // and the form that adds one.
 @Component({
   selector: 'app-person-plans',
@@ -25,6 +26,17 @@ import { FigurePipe } from '../../core/figure';
           paused <span data-testid="plan-paused">{{ pl.paused ? 'yes' : 'no' }}</span>
           <button type="button" data-testid="plan-pause" (click)="setPaused(pl, true)">Pause</button>
           <button type="button" data-testid="plan-resume" (click)="setPaused(pl, false)">Resume</button>
+          <label [for]="'plan-amount-' + pl.id">New amount</label>
+          <input [id]="'plan-amount-' + pl.id" inputmode="decimal" data-testid="plan-amount" #amountInput
+            (input)="clearRowError(pl)" />
+          <button type="button" data-testid="plan-amount-save" (click)="changeAmount(pl, amountInput.value)">
+            Save amount
+          </button>
+          <ol aria-label="Amount changes">
+            @for (c of pl.changes; track $index) {
+              <li data-testid="plan-change-line">{{ c.on }} amount={{ c.amount }}</li>
+            }
+          </ol>
           @if (rowErrors()[pl.id]; as e) {
             <p role="alert" data-testid="plan-error">{{ e }}</p>
           }
@@ -69,13 +81,31 @@ export class PersonPlans {
     end: new FormControl('', { nonNullable: true }),
   });
   protected readonly error = signal('');
-  /** The error of the last pause or resume of each plan that was refused. */
+  /** The error of the last pause, resume or amount change of each plan that was refused. */
   protected readonly rowErrors = signal<Record<number, string>>({});
   /** Whether an add is waiting for its answer: a second submit meanwhile is ignored. */
   private submitting = false;
 
   constructor() {
     this.form.valueChanges.subscribe(() => this.error.set(''));
+  }
+
+  protected clearRowError(plan: Plan): void {
+    this.rowErrors.update(({ [plan.id]: _, ...rest }) => rest);
+  }
+
+  protected async changeAmount(plan: Plan, typed: string): Promise<void> {
+    this.clearRowError(plan);
+    const amount = typed.trim();
+    if (!/^\d{1,12}(\.\d{1,2})?$/.test(amount) || Number(amount) <= 0) {
+      this.rowErrors.update((es) => ({ ...es, [plan.id]: 'Enter an amount above zero with up to two decimals.' }));
+      return;
+    }
+    try {
+      this.changed.emit(await this.api.changeAmount(plan.id, amount));
+    } catch {
+      this.rowErrors.update((es) => ({ ...es, [plan.id]: 'The amount could not be changed.' }));
+    }
   }
 
   protected async setPaused(plan: Plan, paused: boolean): Promise<void> {

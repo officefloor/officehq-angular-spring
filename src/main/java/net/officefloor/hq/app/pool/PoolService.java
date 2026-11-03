@@ -173,6 +173,14 @@ public class PoolService {
         Map<Long, List<PoolMember>> byPool = memberships.stream().collect(Collectors.groupingBy(PoolMember::getPoolId));
         LocalDate today = asOf != null ? asOf : sheets.today(sheetId);
         Map<Long, List<Member>> membersOf = new HashMap<>();
+        // who held a membership then: its person as they stood, or, for one merged into it since,
+        // the person on the sheet then going by one of its aliases
+        Map<Long, Person> now = then == null ? byId : people.findBySheetIdOrderByPositionAscIdAsc(sheetId).stream()
+                .collect(Collectors.toMap(Person::getId, Function.identity()));
+        Function<Long, Person> holderThen = id -> byId.containsKey(id) ? byId.get(id)
+                : !now.containsKey(id) ? null
+                : byId.values().stream().filter(o -> now.get(id).getAliases().contains(o.getName()))
+                        .findFirst().orElse(null);
         Map<Long, List<PoolMember>> crewsOf = crewMemberships(sheetId, all, byId, asOf);
         for (Pool p : all) {
             if (p.isCrew()) {
@@ -183,11 +191,11 @@ public class PoolService {
                 continue;
             }
             membersOf.put(p.getId(), byPool.getOrDefault(p.getId(), List.of()).stream()
-                    .filter(m -> m.getPersonId() != null ? byId.containsKey(m.getPersonId())
+                    .filter(m -> m.getPersonId() != null ? holderThen.apply(m.getPersonId()) != null
                             : poolsById.containsKey(m.getMemberPoolId()))
-                    .map(m -> new Member(m, m.getPersonId() == null ? null : byId.get(m.getPersonId()),
+                    .map(m -> new Member(m, m.getPersonId() == null ? null : holderThen.apply(m.getPersonId()),
                             m.getMemberPoolId() == null ? null : poolsById.get(m.getMemberPoolId()),
-                            m.getPersonId() != null && byId.get(m.getPersonId()).isHeldOn(today),
+                            m.getPersonId() != null && holderThen.apply(m.getPersonId()).isHeldOn(today),
                             m.isInForceOn(today)))
                     .toList());
         }

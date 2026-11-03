@@ -18,6 +18,14 @@ export interface Plan {
   generated: number;
   nextDates: string[];
   paused: boolean;
+  /** The changes of its amount, oldest first. */
+  changes: PlanChange[];
+}
+
+/** A change of a plan's amount: the sheet's today it was changed on and the new amount. */
+export interface PlanChange {
+  on: string;
+  amount: string;
 }
 
 /** The plan form as typed: a blank start takes the sheet's today. */
@@ -57,6 +65,15 @@ export class Plans {
     return firstValueFrom(
       this.http.post<Plan>(`/api/sheets/${encodeURIComponent(sheetId)}/plans/${planId}/${paused ? 'pause' : 'resume'}`,
         null, { headers: { 'X-User': user } }),
+    );
+  }
+
+  /** Change the plan's amount for the claims it makes from now on; refused for a bad amount. */
+  changeAmount(planId: number, amount: string): Promise<Plan> {
+    const { sheetId, user } = this.active();
+    return firstValueFrom(
+      this.http.post<Plan>(`/api/sheets/${encodeURIComponent(sheetId)}/plans/${planId}/amount`,
+        { amount }, { headers: { 'X-User': user } }),
     );
   }
 
