@@ -102,11 +102,10 @@ export function claimDueCents(c: Claim, rates: readonly Rate[], grade: string, f
   return due === null || isCorrection(c) ? due : Math.max(due, floor);
 }
 
-/** What works out an overdue claim's late charge and rounding: the sheet's late percent, terms,
+/** What works out an overdue claim's late charge and rounding: the sheet's late percent,
  *  today and policy date (blank: the sheet's today). */
 export interface Lateness {
   latePct: string;
-  terms: number;
   today: string | null;
   policyDate: string;
 }
@@ -129,7 +128,7 @@ export function chargedDueCents(
   const halfUp = roundsHalfUp(roundOn, late.policyDate, late.today);
   const figure = claimDueCents(c, rates, grade, floor, halfUp);
   if (figure === null || !isOpen(c) || isCorrection(c)) return figure;
-  const periods = Math.floor(daysOverdue(c, late.terms, late.today) / 30);
+  const periods = Math.floor(daysOverdue(c, late.today) / 30);
   if (periods <= 0) return figure;
   return figure + (dueCents(figure * periods, late.latePct, halfUp) ?? 0);
 }

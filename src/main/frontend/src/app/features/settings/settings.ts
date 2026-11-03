@@ -6,12 +6,14 @@ import { Session } from '../../core/session';
 // The sheet's settings: its clerk limit (two decimals; blank for no limit), and its floor (two
 // decimals; 1.00 on a new sheet), its terms (whole days; 14 on a new sheet) and its late percent (two decimals; 0.00 on a new sheet). A
 // clerk settles a claim only when its due is at or below the limit; a claim's live due is never below the floor; a claim is due by its date
-// plus the terms; an overdue claim's due gains the late percent of its figure for every full 30 days overdue. Saving saves the clerk limit
+// plus the terms of its person's grade (fixed when the claim is added); an overdue claim's due gains the late percent of its figure for every full 30 days overdue. Saving saves the clerk limit
 // once its field has been entered (blank: no limit), and the floor, terms and late percent when typed (blank: left as they are).
 // The policy date (blank: the sheet's today) decides how a claim's live figures round: half up when dated before it, half to even
 // on or after it; it saves, like the clerk limit, once its field has been entered (blank: none).
 // Period numbering from (blank: off): while the sheet's today is on or after it, a claim opened is
 // numbered within its period (<period name>-<n>, or X-<n> in no period); it saves like the policy date.
+// Each grade may have its own terms (whole days; blank: left as they are); a grade without its own
+// uses the sheet's terms. A claim's due-by is fixed when it is added, so changing terms moves none.
 interface SettingsResponse {
   /** The clerk limit, blank for none. */
   clerkLimit: string;
@@ -22,7 +24,13 @@ interface SettingsResponse {
   policyDate: string;
   /** The period-numbering-from date, blank for off. */
   periodNumberingFrom: string;
+  /** The terms set for each grade that has its own, by grade. */
+  gradeTerms: Record<string, number>;
 }
+
+/** The grades that may have their own terms. */
+const GRADES = ['A', 'B', 'C'] as const;
+type Grade = (typeof GRADES)[number];
 
 /** A limit or floor: 0.00 or more, with up to two decimals. */
 const LIMIT = /^\d{1,12}(\.\d{1,2})?$/;
@@ -73,6 +81,16 @@ const DATE = /^\d{4}-\d{2}-\d{2}$/;
           [value]="termsInput() ?? ''"
           (input)="termsInput.set($any($event.target).value); error.set(null)"
         />
+        @for (g of grades; track g) {
+          <label [for]="'setting-terms-' + g">Terms in days for grade {{ g }} (blank: leave as they are)</label>
+          <input
+            [id]="'setting-terms-' + g"
+            [attr.data-testid]="'setting-terms-' + g"
+            inputmode="numeric"
+            [value]="gradeTermsInput()[g] ?? ''"
+            (input)="typeGradeTerms(g, $any($event.target).value)"
+          />
+        }
         <label for="setting-late-pct">Late percent per 30 days overdue (blank: leave as it is)</label>
         <input
           id="setting-late-pct"
@@ -119,6 +137,15 @@ const DATE = /^\d{4}-\d{2}-\d{2}$/;
         Terms in force (days):
         <strong data-testid="setting-terms-current">{{ terms() }}</strong>
       </p>
+      @for (g of grades; track g) {
+        <p>
+          Terms in force for grade {{ g }} (days):
+          <strong [attr.data-testid]="'setting-terms-' + g + '-current'">{{ gradeTerms()[g] ?? '' }}</strong>
+          @if (gradeTerms()[g] === undefined) {
+            <span>(the sheet's terms)</span>
+          }
+        </p>
+      }
       <p>
         Late percent in force:
         <strong data-testid="setting-late-pct-current">{{ latePct() }}</strong>
@@ -146,8 +173,13 @@ export class Settings {
 
   /** The sheet's floor, shared with whoever works out what is due. */
   readonly floor = model(DEFAULT_FLOOR);
-  /** The sheet's terms in days, shared with whoever works out when a claim is due by. */
-  readonly terms = model(DEFAULT_TERMS);
+  /** The sheet's terms in days: what a grade without its own terms uses. */
+  protected readonly terms = signal(DEFAULT_TERMS);
+  protected readonly grades = GRADES;
+  /** The terms set for each grade that has its own. */
+  protected readonly gradeTerms = signal<Partial<Record<Grade, number>>>({});
+  /** The terms typed for each grade; blank (or missing) leaves them as they are. */
+  protected readonly gradeTermsInput = signal<Partial<Record<Grade, string>>>({});
   /** The sheet's late percent, shared with whoever works out an overdue claim's late charge. */
   readonly latePct = model(DEFAULT_LATE_PCT);
   /** The sheet's policy date (blank: its today), shared with whoever works out how a claim rounds. */
@@ -180,6 +212,8 @@ export class Settings {
       this.limit.set('');
       this.floor.set(DEFAULT_FLOOR);
       this.terms.set(DEFAULT_TERMS);
+      this.gradeTerms.set({});
+      this.gradeTermsInput.set({});
       this.latePct.set(DEFAULT_LATE_PCT);
       this.policyDate.set('');
       this.numberingFrom.set('');
@@ -232,10 +266,16 @@ export class Settings {
     this.numberingInput.set(this.numberingFrom());
   }
 
+  protected typeGradeTerms(grade: Grade, value: string): void {
+    this.gradeTermsInput.update((m) => ({ ...m, [grade]: value }));
+    this.error.set(null);
+  }
+
   private show(res: SettingsResponse): void {
     this.limit.set(res.clerkLimit);
     this.floor.set(res.floor);
     this.terms.set(res.terms);
+    this.gradeTerms.set(res.gradeTerms ?? {});
     this.latePct.set(res.latePct);
     this.policyDate.set(res.policyDate);
     this.numberingFrom.set(res.periodNumberingFrom);
@@ -264,6 +304,16 @@ export class Settings {
       this.error.set('Enter terms of 0 or more whole days.');
       return;
     }
+    const gradeTerms: Partial<Record<Grade, string>> = {};
+    for (const g of GRADES) {
+      const t = this.gradeTermsInput()[g]?.trim();
+      if (!t) continue;
+      if (!TERMS.test(t)) {
+        this.error.set(`Enter terms for grade ${g} of 0 or more whole days.`);
+        return;
+      }
+      gradeTerms[g] = t;
+    }
     if (latePct !== null && !PCT.test(latePct)) {
       this.error.set('Enter a late percent of 0.00 to 999.99, with up to two decimals.');
       return;
@@ -288,6 +338,9 @@ export class Settings {
           latePct,
           policyDate,
           periodNumberingFrom,
+          termsA: gradeTerms.A ?? null,
+          termsB: gradeTerms.B ?? null,
+          termsC: gradeTerms.C ?? null,
         }),
       );
       if (this.session.sheet() !== sheet) return;
@@ -295,6 +348,7 @@ export class Settings {
       this.limitInput.set(null);
       this.floorInput.set(null);
       this.termsInput.set(null);
+      this.gradeTermsInput.set({});
       this.latePctInput.set(null);
       this.policyInput.set(null);
       this.numberingInput.set(null);

@@ -1,12 +1,20 @@
 package net.officefloor.hq.app.sheet;
 
+import jakarta.persistence.CollectionTable;
 import jakarta.persistence.Column;
+import jakarta.persistence.ElementCollection;
 import jakarta.persistence.Entity;
+import jakarta.persistence.FetchType;
 import jakarta.persistence.Id;
+import jakarta.persistence.JoinColumn;
+import jakarta.persistence.MapKeyColumn;
 import jakarta.persistence.Table;
 import java.math.BigDecimal;
 import java.time.Instant;
 import java.time.LocalDate;
+import java.util.HashMap;
+import java.util.Map;
+import java.util.TreeMap;
 
 /** A sheet: the unit everything else in the app is kept under. Created on its first load. */
 @Entity
@@ -50,6 +58,13 @@ public class Sheet {
     /** The days after its date a claim is due by; 14 on a new sheet. */
     @Column(name = "terms", nullable = false)
     private int terms = DEFAULT_TERMS;
+
+    /** The terms set for a grade, by grade; a grade without its own terms uses the sheet's terms. */
+    @ElementCollection(fetch = FetchType.EAGER)
+    @CollectionTable(name = "sheet_grade_terms", joinColumns = @JoinColumn(name = "sheet_id"))
+    @MapKeyColumn(name = "grade")
+    @Column(name = "terms", nullable = false)
+    private Map<String, Integer> gradeTerms = new HashMap<>();
 
     /** The percent of its figure an overdue claim gains for every full 30 days overdue; 0.00 on a new sheet. */
     @Column(name = "late_pct", nullable = false, precision = 5, scale = 2)
@@ -119,6 +134,21 @@ public class Sheet {
 
     public void setTerms(int terms) {
         this.terms = terms;
+    }
+
+    /** The terms set for each grade that has its own, by grade. */
+    public Map<String, Integer> getGradeTerms() {
+        return new TreeMap<>(gradeTerms);
+    }
+
+    /** Set a grade's own terms. */
+    public void setGradeTerms(String grade, int terms) {
+        gradeTerms.put(grade, terms);
+    }
+
+    /** The terms for a grade: its own, else the sheet's. */
+    public int termsFor(String grade) {
+        return grade == null ? terms : gradeTerms.getOrDefault(grade, terms);
     }
 
     public BigDecimal getLatePct() {

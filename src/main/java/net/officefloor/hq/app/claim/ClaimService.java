@@ -102,7 +102,8 @@ public class ClaimService {
         refuseIfRetired(person, dated);
         String corrected = corrected(sheetId, personId, amount, corrects);
         RollupService.Snapshot before = rollup.snapshot(sheetId);
-        Claim added = claims.saveAndFlush(new Claim(sheetId, personId, amount, dated, note, corrected));
+        Claim added = claims.saveAndFlush(new Claim(sheetId, personId, amount, dated,
+                dated.plusDays(sheets.sheet(sheetId).termsFor(person.gradeOn(dated))), note, corrected));
         audit.recordOnCommit(record("CLAIM_ADDED", sheetId, user, person, added));
         rollup.recordChanges(sheetId, user, before);
         return added;

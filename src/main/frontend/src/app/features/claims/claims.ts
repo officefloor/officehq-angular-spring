@@ -12,7 +12,8 @@ import { DatedGrade, Lateness, Rate, chargedDueCents, dueText, gradeOn } from '.
 // dated inside a closed period cannot be added, edited or moved on: each is refused with an error.
 // Only a DRAFT can be edited; editing any other claim is refused with an error on the claim (to
 // change an open claim, void it and add a new one).
-// Each claim shows its due-by, its date plus the sheet's terms in days, and whether it is overdue:
+// Each claim shows its due-by, fixed when it was added (its date plus the terms of its person's grade
+// in force on its date, or the sheet's terms when that grade has none), and whether it is overdue:
 // OPEN with its due-by before the sheet's today. An overdue claim's due gains the sheet's late
 // percent of its figure for every full 30 days it is overdue.
 // A claim with a negative amount is a correction: it must name, by number, a SETTLED claim of the
@@ -46,6 +47,8 @@ export interface Claim {
   statedDue: string | null;
   /** The number of the claim this correction corrects; null for a claim that is not a correction. */
   corrects: string | null;
+  /** The date the claim is due by, fixed when it was added. */
+  dueBy: string;
 }
 
 /** The date a claim's live figures round by: its own, or for a correction the date of the claim it
@@ -124,33 +127,19 @@ function dayNumber(date: string): number {
   return era * 146097 + doe - 719468;
 }
 
-/** The yyyy-mm-dd date of a number of days since 1970-01-01. */
-function dateOf(days: number): string {
-  const z = days + 719468;
-  const era = Math.floor(z / 146097);
-  const doe = z - era * 146097;
-  const yoe = Math.floor((doe - Math.floor(doe / 1460) + Math.floor(doe / 36524) - Math.floor(doe / 146096)) / 365);
-  const doy = doe - (365 * yoe + Math.floor(yoe / 4) - Math.floor(yoe / 100));
-  const mp = Math.floor((5 * doy + 2) / 153);
-  const d = doy - Math.floor((153 * mp + 2) / 5) + 1;
-  const m = mp < 10 ? mp + 3 : mp - 9;
-  const y = yoe + era * 400 + (m <= 2 ? 1 : 0);
-  return `${String(y).padStart(4, '0')}-${String(m).padStart(2, '0')}-${String(d).padStart(2, '0')}`;
-}
-
-/** The date a claim is due by: its date plus the terms in days. */
-export function dueBy(c: Claim, terms: number): string {
-  return dateOf(dayNumber(c.date) + terms);
+/** The date a claim is due by: fixed when it was added. */
+export function dueBy(c: Claim): string {
+  return c.dueBy;
 }
 
 /** Whether a claim is overdue: open (OPEN or PENDING), and due by a date before the sheet's today. */
-export function overdue(c: Claim, terms: number, today: string | null): boolean {
-  return isOpen(c) && today !== null && dueBy(c, terms) < today;
+export function overdue(c: Claim, today: string | null): boolean {
+  return isOpen(c) && today !== null && dueBy(c) < today;
 }
 
 /** The days a claim is overdue on the sheet's today: past its due-by; 0 when it is not overdue. */
-export function daysOverdue(c: Claim, terms: number, today: string | null): number {
-  return overdue(c, terms, today) && today !== null ? dayNumber(today) - dayNumber(c.date) - terms : 0;
+export function daysOverdue(c: Claim, today: string | null): number {
+  return overdue(c, today) && today !== null ? dayNumber(today) - dayNumber(dueBy(c)) : 0;
 }
 
 /** Whole cents shown with two decimals, with a minus sign below zero. */
@@ -278,8 +267,6 @@ export class PersonClaims {
   readonly rates = input.required<Rate[]>();
   /** The sheet's floor in whole cents: the least a claim's live due can be. */
   readonly floor = input.required<number>();
-  /** The sheet's terms: the days after its date a claim is due by. */
-  readonly terms = input.required<number>();
   /** The sheet's late percent: what an overdue claim gains of its figure for every full 30 days. */
   readonly latePct = input.required<string>();
   /** The sheet's policy date (blank: its today): a claim dated before it rounds half up, else half to even. */
@@ -320,7 +307,6 @@ export class PersonClaims {
   protected dueOf(c: Claim): string {
     const late: Lateness = {
       latePct: this.latePct(),
-      terms: this.terms(),
       today: this.session.today(),
       policyDate: this.policyDate(),
     };
@@ -329,11 +315,11 @@ export class PersonClaims {
   }
 
   protected dueByOf(c: Claim): string {
-    return dueBy(c, this.terms());
+    return dueBy(c);
   }
 
   protected overdueOf(c: Claim): boolean {
-    return overdue(c, this.terms(), this.session.today());
+    return overdue(c, this.session.today());
   }
 
   /** The name of the period whose dates contain the claim's date; blank when none does. */

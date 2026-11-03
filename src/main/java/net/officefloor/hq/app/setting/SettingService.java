@@ -3,6 +3,8 @@ package net.officefloor.hq.app.setting;
 import java.math.BigDecimal;
 import java.math.RoundingMode;
 import java.time.LocalDate;
+import java.util.Map;
+import java.util.TreeMap;
 import net.officefloor.hq.app.Audit;
 import net.officefloor.hq.app.claim.Rounding;
 import net.officefloor.hq.app.rollup.RollupService;
@@ -15,11 +17,13 @@ import org.springframework.transaction.annotation.Transactional;
 /**
  * The sheet's settings: its clerk limit (none: no limit) and its floor, the least a claim's live due
  * can be, and its terms, the days after its date a claim is due by, and its late percent, what an
- * overdue claim gains of its figure for every full 30 days overdue. Changing the floor, the terms or
- * the late percent moves the figures, so the figures that move are recorded. Its policy date (none:
+ * overdue claim gains of its figure for every full 30 days overdue. Changing the floor or the late
+ * percent moves the figures, so the figures that move are recorded. Its policy date (none:
  * the sheet's today) decides how a claim's live figures round (see {@link Rounding}), so changing it
  * records the figures that move too. Its period-numbering-from date (none: off) decides how a claim
  * opened is numbered: on or after it, within its period (see {@link SheetService#nextClaimNumber}).
+ * A grade may have its own terms; a grade without uses the sheet's terms. A claim's due-by is fixed
+ * when it is created, so changing any terms moves no claim's due-by.
  */
 @Service
 public class SettingService {
@@ -27,6 +31,8 @@ public class SettingService {
     public static final String CLERK_LIMIT = "clerk-limit";
     public static final String FLOOR = "floor";
     public static final String TERMS = "terms";
+    /** The key of a grade's own terms: {@code terms-<grade>}. */
+    public static final String GRADE_TERMS = "terms-";
     public static final String LATE_PCT = "late-pct";
     public static final String POLICY_DATE = "policy-date";
     public static final String PERIOD_NUMBERING_FROM = "period-numbering-from";
@@ -52,12 +58,13 @@ public class SettingService {
      * Save the settings given: a clerk limit when {@code changeLimit} (null for no limit), and the
      * floor, the terms and the late percent when they are not null, and a policy date when
      * {@code changePolicy} (null for none), and a period-numbering-from date when
-     * {@code changeNumbering} (null for off). Each one saved is recorded, in that order.
+     * {@code changeNumbering} (null for off), and each grade's own terms given in {@code gradeTerms}
+     * (by grade, in grade order). Each one saved is recorded, in that order.
      */
     @Transactional
     public Sheet set(String sheetId, String user, boolean changeLimit, BigDecimal limit, BigDecimal floor,
             Integer terms, BigDecimal latePct, boolean changePolicy, LocalDate policyDate,
-            boolean changeNumbering, LocalDate numberingFrom) {
+            boolean changeNumbering, LocalDate numberingFrom, Map<String, Integer> gradeTerms) {
         Sheet sheet = sheets.load(sheetId, user);
         if (changeLimit) {
             sheet.setClerkLimit(limit);
@@ -72,11 +79,9 @@ public class SettingService {
             rollup.recordChanges(sheetId, user, before);
         }
         if (terms != null) {
-            RollupService.Snapshot before = rollup.snapshot(sheetId);
             sheet.setTerms(terms);
             sheet = sheetStore.saveAndFlush(sheet);
             audit.recordOnCommit(changed(sheetId, user, TERMS, String.valueOf(terms)));
-            rollup.recordChanges(sheetId, user, before);
         }
         if (latePct != null) {
             RollupService.Snapshot before = rollup.snapshot(sheetId);
@@ -97,6 +102,11 @@ public class SettingService {
             sheet = sheetStore.saveAndFlush(sheet);
             audit.recordOnCommit(changed(sheetId, user, PERIOD_NUMBERING_FROM,
                     numberingFrom == null ? "" : numberingFrom.toString()));
+        }
+        for (Map.Entry<String, Integer> e : new TreeMap<>(gradeTerms).entrySet()) {
+            sheet.setGradeTerms(e.getKey(), e.getValue());
+            sheet = sheetStore.saveAndFlush(sheet);
+            audit.recordOnCommit(changed(sheetId, user, GRADE_TERMS + e.getKey(), String.valueOf(e.getValue())));
         }
         return sheet;
     }

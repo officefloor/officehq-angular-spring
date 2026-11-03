@@ -103,7 +103,7 @@ const SUMMARY_STATUSES = ['DRAFT', 'OPEN', 'PENDING', 'SETTLED', 'VOID'] as cons
   template: `
     <app-rates [(rates)]="rates" />
     <app-roles />
-    <app-settings [(floor)]="floor" [(terms)]="terms" [(latePct)]="latePct" [(policyDate)]="policyDate" />
+    <app-settings [(floor)]="floor" [(latePct)]="latePct" [(policyDate)]="policyDate" />
     <app-periods [(periods)]="periods" [dues]="dues()" />
     <section aria-labelledby="people-heading">
       <h2 id="people-heading">People</h2>
@@ -264,7 +264,6 @@ const SUMMARY_STATUSES = ['DRAFT', 'OPEN', 'PENDING', 'SETTLED', 'VOID'] as cons
                   [grades]="p.grades"
                   [rates]="rates()"
                   [floor]="floorCents()"
-                  [terms]="terms()"
                   [latePct]="latePct()"
                   [policyDate]="policyDate()"
                   [periods]="periods()"
@@ -360,8 +359,6 @@ export class People {
   /** The sheet's floor: the least a claim's live due can be. */
   protected readonly floor = signal('1.00');
   protected readonly floorCents = computed(() => cents(this.floor()));
-  /** The sheet's terms: the days after its date a claim is due by. */
-  protected readonly terms = signal(14);
   /** The sheet's late percent: what an overdue claim gains of its figure for every full 30 days. */
   protected readonly latePct = signal('0.00');
   /** The sheet's policy date (blank: its today): a claim dated before it rounds half up, else half to even. */
@@ -369,7 +366,6 @@ export class People {
   /** What works out an overdue claim's late charge on the sheet's today. */
   private readonly lateness = computed<Lateness>(() => ({
     latePct: this.latePct(),
-    terms: this.terms(),
     today: this.session.today(),
     policyDate: this.policyDate(),
   }));
@@ -539,7 +535,7 @@ export class People {
   /** The person's overdue claims that count: how many, and the sum of their figures in whole cents. */
   protected overdueOf(p: Person): { count: number; cents: number } {
     const today = this.session.today();
-    const late = this.claimsOf(p.id).filter((c) => countsFor(p, c) && overdue(c, this.terms(), today));
+    const late = this.claimsOf(p.id).filter((c) => countsFor(p, c) && overdue(c, today));
     return {
       count: late.length,
       cents: late.reduce((sum, c) => sum + (chargedDueCents(c, this.rates(), gradeOn(p.grades, c.date), this.floorCents(), this.lateness(), this.roundOn(c)) ?? 0), 0),

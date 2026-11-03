@@ -67,6 +67,13 @@ public class Claim {
     @Column(name = "stated_due")
     private BigDecimal statedDue;
 
+    /**
+     * The date the claim is due by: fixed when it is created, its date plus the terms of its
+     * person's grade in force on its date; later changes to the terms or its date leave it as it is.
+     */
+    @Column(name = "due_by", nullable = false)
+    private LocalDate dueBy;
+
     /** The number of the claim this correction corrects; none for a claim that is not a correction. */
     @Column(name = "corrects")
     private String corrects;
@@ -81,11 +88,13 @@ public class Claim {
     protected Claim() {
     }
 
-    public Claim(String sheetId, Long personId, BigDecimal amount, LocalDate date, String note, String corrects) {
+    public Claim(String sheetId, Long personId, BigDecimal amount, LocalDate date, LocalDate dueBy, String note,
+            String corrects) {
         this.sheetId = sheetId;
         this.personId = personId;
         this.amount = amount;
         this.date = date;
+        this.dueBy = dueBy;
         this.note = note;
         this.corrects = corrects;
     }
@@ -125,6 +134,10 @@ public class Claim {
 
     public void setDate(LocalDate date) {
         this.date = date;
+    }
+
+    public LocalDate getDueBy() {
+        return dueBy;
     }
 
     public String getNote() {

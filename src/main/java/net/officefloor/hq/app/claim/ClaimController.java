@@ -61,7 +61,7 @@ public class ClaimController {
 
     public record ClaimResponse(long id, long personId, String amount, LocalDate date, String note,
             ClaimStatus status, String number, String settledDue, String openedBy,
-            boolean stated, String statedDue, String corrects) {
+            boolean stated, String statedDue, String corrects, LocalDate dueBy) {
     }
 
     private static String money(BigDecimal value) {
@@ -73,7 +73,7 @@ public class ClaimController {
                 claim.getAmount().setScale(2, RoundingMode.UNNECESSARY).toPlainString(), claim.getDate(),
                 claim.getNote(), claim.getStatus(), claim.getNumber(),
                 money(claim.getSettledDue()), claim.getOpenedBy(), claim.isStated(), money(claim.getStatedDue()),
-                claim.getCorrects());
+                claim.getCorrects(), claim.getDueBy());
     }
 
     public static BigDecimal amount(String amount) {

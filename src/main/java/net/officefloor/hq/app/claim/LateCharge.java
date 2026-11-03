@@ -1,13 +1,12 @@
 package net.officefloor.hq.app.claim;
 
 import java.math.BigDecimal;
-import java.time.LocalDate;
 import java.time.temporal.ChronoUnit;
 import net.officefloor.hq.app.sheet.Sheet;
 
 /**
  * The late charge on an overdue claim: the sheet's late percent of the claim's figure for every
- * full 30 days it is overdue (OPEN or PENDING, and past its date plus the sheet's terms on the sheet's today),
+ * full 30 days it is overdue (OPEN or PENDING, and past its due-by on the sheet's today),
  * rounded to the cent as the claim rounds (see {@link Rounding}). A correction has none. Never bound by a statement; settling a claim fixes it into its due.
  */
 public final class LateCharge {
@@ -29,8 +28,7 @@ public final class LateCharge {
         if (figure == null || !claim.getStatus().isOpen() || claim.isCorrection()) {
             return zero;
         }
-        LocalDate dueBy = claim.getDate().plusDays(sheet.getTerms());
-        long periods = ChronoUnit.DAYS.between(dueBy, sheet.getToday()) / PERIOD_DAYS;
+        long periods = ChronoUnit.DAYS.between(claim.getDueBy(), sheet.getToday()) / PERIOD_DAYS;
         if (periods <= 0) {
             return zero;
         }

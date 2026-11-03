@@ -6,6 +6,8 @@ import jakarta.validation.constraints.Pattern;
 import jakarta.validation.constraints.Size;
 import java.time.LocalDate;
 import java.time.format.DateTimeParseException;
+import java.util.Map;
+import java.util.TreeMap;
 import net.officefloor.hq.app.claim.ClaimController;
 import net.officefloor.hq.app.sheet.Sheet;
 import org.springframework.http.HttpStatus;
@@ -23,6 +25,9 @@ public class SettingController {
     /** A late percent: 0.00 to 999.99, with up to two decimals. */
     private static final String LATE_PCT = "\\d{1,3}(\\.\\d{1,2})?";
 
+    /** Terms: a whole number of days. */
+    private static final String TERMS = "\\s*\\d{1,4}\\s*";
+
     /** A date setting: yyyy-mm-dd, or blank for none. */
     private static final String DATE = "\\s*|\\s*\\d{4}-\\d{2}-\\d{2}\\s*";
 
@@ -34,29 +39,32 @@ public class SettingController {
      * to two decimals, or blank for no limit. A floor: an amount with up to two decimals. Terms: a
      * whole number of days. A late percent: 0.00 to 999.99, with up to two decimals. A policy date:
      * yyyy-mm-dd, or blank for none (the sheet's today). A period-numbering-from date: yyyy-mm-dd,
-     * or blank for off.
+     * or blank for off. A grade's own terms (A, B or C): a whole number of days.
      */
     public record SetSettingsRequest(@NotBlank @Size(max = 100) String sheet, @NotBlank @Size(max = 100) String user,
             @Pattern(regexp = "\\s*|" + ClaimController.AMOUNT) String clerkLimit,
             @Pattern(regexp = ClaimController.AMOUNT) String floor,
-            @Pattern(regexp = "\\s*\\d{1,4}\\s*") String terms,
+            @Pattern(regexp = TERMS) String terms,
             @Pattern(regexp = LATE_PCT) String latePct,
-            @Pattern(regexp = DATE) String policyDate, @Pattern(regexp = DATE) String periodNumberingFrom) {
+            @Pattern(regexp = DATE) String policyDate, @Pattern(regexp = DATE) String periodNumberingFrom,
+            @Pattern(regexp = TERMS) String termsA, @Pattern(regexp = TERMS) String termsB,
+            @Pattern(regexp = TERMS) String termsC) {
     }
 
     /**
      * The settings in force; the clerk limit blank for none, the policy date blank for none, the
-     * period-numbering-from date blank for off.
+     * period-numbering-from date blank for off; the terms set for each grade that has its own.
      */
     public record SettingsResponse(String clerkLimit, String floor, int terms, String latePct, String policyDate,
-            String periodNumberingFrom) {
+            String periodNumberingFrom, Map<String, Integer> gradeTerms) {
     }
 
     private static SettingsResponse response(Sheet sheet) {
         return new SettingsResponse(SettingService.text(sheet.getClerkLimit()), SettingService.text(sheet.getFloor()),
                 sheet.getTerms(), SettingService.text(sheet.getLatePct()),
                 sheet.getPolicyDate() == null ? "" : sheet.getPolicyDate().toString(),
-                sheet.getPeriodNumberingFrom() == null ? "" : sheet.getPeriodNumberingFrom().toString());
+                sheet.getPeriodNumberingFrom() == null ? "" : sheet.getPeriodNumberingFrom().toString(),
+                sheet.getGradeTerms());
     }
 
     private final SettingService service;
@@ -75,13 +83,17 @@ public class SettingController {
         String limit = req.clerkLimit() == null ? "" : req.clerkLimit().trim();
         String policy = req.policyDate() == null ? "" : req.policyDate().trim();
         String numberingFrom = req.periodNumberingFrom() == null ? "" : req.periodNumberingFrom().trim();
+        Map<String, Integer> gradeTerms = new TreeMap<>();
+        if (req.termsA() != null) gradeTerms.put("A", Integer.valueOf(req.termsA().trim()));
+        if (req.termsB() != null) gradeTerms.put("B", Integer.valueOf(req.termsB().trim()));
+        if (req.termsC() != null) gradeTerms.put("C", Integer.valueOf(req.termsC().trim()));
         return response(service.set(req.sheet().trim(), req.user().trim(), req.clerkLimit() != null,
                 limit.isEmpty() ? null : ClaimController.amount(limit),
                 req.floor() == null ? null : ClaimController.amount(req.floor()),
                 req.terms() == null ? null : Integer.valueOf(req.terms().trim()),
                 req.latePct() == null ? null : ClaimController.amount(req.latePct()), req.policyDate() != null,
                 policy.isEmpty() ? null : date(policy), req.periodNumberingFrom() != null,
-                numberingFrom.isEmpty() ? null : date(numberingFrom)));
+                numberingFrom.isEmpty() ? null : date(numberingFrom), gradeTerms));
     }
 
     private static LocalDate date(String text) {
