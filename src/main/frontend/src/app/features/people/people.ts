@@ -175,6 +175,16 @@ const SUMMARY_STATUSES = ['DRAFT', 'OPEN', 'PENDING', 'SETTLED', 'VOID'] as cons
         Show retired
       </label>
       <button type="button" data-testid="export-people" (click)="exportCsv()">Export people (CSV)</button>
+      <button type="button" data-testid="bulk-open" (click)="bulkOpen()">Open selected claims</button>
+      @if (bulkOpenResult(); as r) {
+        <p>
+          Opened <strong data-testid="bulk-opened">{{ r.opened }}</strong>,
+          refused <strong data-testid="bulk-refused">{{ r.refused }}</strong>
+        </p>
+      }
+      @if (bulkOpenError(); as err) {
+        <p role="alert" data-testid="bulk-open-error">{{ err }}</p>
+      }
       <p>Claimed in total <strong data-testid="rollup-claimed-total">{{ claimedTotal() }}</strong></p>
       <p>Due in total <strong data-testid="rollup-due-total">{{ dueTotal() }}</strong></p>
       <p>Overdue claims <strong data-testid="rollup-overdue-count">{{ overdueTotals().count }}</strong></p>
@@ -258,7 +268,9 @@ const SUMMARY_STATUSES = ['DRAFT', 'OPEN', 'PENDING', 'SETTLED', 'VOID'] as cons
                   [latePct]="latePct()"
                   [policyDate]="policyDate()"
                   [periods]="periods()"
+                  [selected]="selectedClaims()"
                   (saved)="claimSaved($event)"
+                  (selectedChange)="selectClaim($event.id, $event.on)"
                 />
               </td>
               <td>
@@ -327,6 +339,11 @@ export class People {
   protected readonly retireDates = signal<ReadonlyMap<number, string>>(new Map());
   /** The sheet's claims, newest first. */
   protected readonly claims = signal<Claim[]>([]);
+  /** The ids of the claims ticked for a bulk action. */
+  protected readonly selectedClaims = signal<ReadonlySet<number>>(new Set());
+  /** What the last bulk open did; cleared while the next one runs. */
+  protected readonly bulkOpenResult = signal<{ opened: number; refused: number } | null>(null);
+  protected readonly bulkOpenError = signal<string | null>(null);
   private readonly claimsByPerson = computed(() => {
     const by = new Map<number, Claim[]>();
     for (const c of this.claims()) by.set(c.personId, [...(by.get(c.personId) ?? []), c]);
@@ -442,6 +459,9 @@ export class People {
       this.session.loads();
       this.people.set([]);
       this.claims.set([]);
+      this.selectedClaims.set(new Set());
+      this.bulkOpenResult.set(null);
+      this.bulkOpenError.set(null);
       this.statements.set(new Map());
       this.rowErrors.set(new Map());
       this.patrons.set([]);
@@ -669,6 +689,41 @@ export class People {
     this.claims.update((list) =>
       list.some((c) => c.id === claim.id) ? list.map((c) => (c.id === claim.id ? claim : c)) : [claim, ...list],
     );
+  }
+
+  protected selectClaim(id: number, on: boolean): void {
+    this.selectedClaims.update((ids) => {
+      const next = new Set(ids);
+      if (on) next.add(id);
+      else next.delete(id);
+      return next;
+    });
+  }
+
+  /** Open the selected claims together: the server opens and numbers each it can, in list order,
+   *  and refuses the rest, leaving them as they are. */
+  protected async bulkOpen(): Promise<void> {
+    this.bulkOpenResult.set(null);
+    this.bulkOpenError.set(null);
+    const sheet = this.session.sheet();
+    const ids = [...this.selectedClaims()];
+    try {
+      const done = await firstValueFrom(
+        this.http.post<{ opened: number; refused: number; claims: Claim[] }>('/api/claims/bulk-open', {
+          sheet,
+          user: this.session.user(),
+          ids,
+        }),
+      );
+      if (this.session.sheet() !== sheet) return;
+      const byId = new Map(done.claims.map((c) => [c.id, c]));
+      this.claims.update((list) => list.map((c) => byId.get(c.id) ?? c));
+      this.selectedClaims.set(new Set());
+      this.bulkOpenResult.set({ opened: done.opened, refused: done.refused });
+    } catch {
+      if (this.session.sheet() !== sheet) return;
+      this.bulkOpenError.set('Could not open the selected claims.');
+    }
   }
 
   /** Quick-add a claim by name; the person is added with it when the name is new to the sheet. */

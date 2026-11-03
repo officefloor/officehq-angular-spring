@@ -3,7 +3,12 @@ package net.officefloor.hq.app.claim;
 import java.math.BigDecimal;
 import java.math.RoundingMode;
 import java.time.LocalDate;
+import java.util.ArrayList;
+import java.util.Collection;
+import java.util.Comparator;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 import net.officefloor.hq.app.Audit;
 import net.officefloor.hq.app.period.PeriodService;
 import net.officefloor.hq.app.person.Person;
@@ -168,6 +173,39 @@ public class ClaimService {
                 + (next == ClaimStatus.SETTLED ? " due=" + dueText(saved.getSettledDue()) : ""));
         rollup.recordChanges(sheetId, user, before);
         return saved;
+    }
+
+    /** What a bulk open did: how many claims were opened and how many refused, and the claims opened. */
+    public record BulkOpened(int opened, int refused, List<Claim> claims) {
+    }
+
+    /**
+     * Open the given claims together, in list order (the order people were added, newest claim
+     * first within a person), so they are numbered in that order. A claim that cannot be opened
+     * (not on the sheet, not DRAFT, or dated inside a closed period) is refused and left as it is.
+     */
+    @Transactional
+    public BulkOpened bulkOpen(String sheetId, String user, Collection<Long> ids) {
+        Map<Long, Integer> personOrder = new HashMap<>();
+        List<Person> listed = people.findBySheetIdOrderByIdAsc(sheetId);
+        for (int i = 0; i < listed.size(); i++) {
+            personOrder.put(listed.get(i).getId(), i);
+        }
+        List<Claim> selected = ids.stream().distinct()
+                .flatMap(id -> claims.findByIdAndSheetId(id, sheetId).stream())
+                .sorted(Comparator.<Claim>comparingInt(c -> personOrder.getOrDefault(c.getPersonId(), Integer.MAX_VALUE))
+                        .thenComparing(Claim::getId, Comparator.reverseOrder()))
+                .toList();
+        int refused = (int) ids.stream().distinct().count() - selected.size();
+        List<Claim> opened = new ArrayList<>();
+        for (Claim claim : selected) {
+            if (!claim.getStatus().canBecome(ClaimStatus.OPEN) || periods.isClosed(sheetId, claim.getDate())) {
+                refused++;
+                continue;
+            }
+            opened.add(changeStatus(sheetId, user, claim.getId(), ClaimStatus.OPEN));
+        }
+        return new BulkOpened(opened.size(), refused, opened);
     }
 
     /**

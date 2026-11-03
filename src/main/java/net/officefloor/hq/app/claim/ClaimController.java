@@ -44,6 +44,13 @@ public class ClaimController {
             @NotBlank @Size(max = 100) String user, @NotNull Long id) {
     }
 
+    public record BulkOpenRequest(@NotBlank @Size(max = 100) String sheet, @NotBlank @Size(max = 100) String user,
+            @NotNull @Size(max = 1000) List<@NotNull Long> ids) {
+    }
+
+    public record BulkOpenResponse(int opened, int refused, List<ClaimResponse> claims) {
+    }
+
     public record ClaimResponse(long id, long personId, String amount, LocalDate date, String note,
             ClaimStatus status, Integer number, String settledDue, String openedBy,
             boolean stated, String statedDue, Integer corrects) {
@@ -105,6 +112,13 @@ public class ClaimController {
     @PostMapping("/void")
     public ClaimResponse voidClaim(@Valid @RequestBody ClaimStatusRequest req) {
         return changeStatus(req, ClaimStatus.VOID);
+    }
+
+    @PostMapping("/bulk-open")
+    public BulkOpenResponse bulkOpen(@Valid @RequestBody BulkOpenRequest req) {
+        ClaimService.BulkOpened done = service.bulkOpen(req.sheet().trim(), req.user().trim(), req.ids());
+        return new BulkOpenResponse(done.opened(), done.refused(),
+                done.claims().stream().map(ClaimController::response).toList());
     }
 
     private ClaimResponse changeStatus(ClaimStatusRequest req, ClaimStatus next) {

@@ -177,6 +177,13 @@ export function money(c: number): string {
     <ul [attr.aria-label]="'Claims of ' + personName()">
       @for (c of claims(); track c.id) {
         <li [attr.data-testid]="'claim-row-' + c.id">
+          <input
+            type="checkbox"
+            data-testid="claim-select"
+            [attr.aria-label]="'Select claim of ' + c.amount + ' on ' + c.date"
+            [checked]="selected().has(c.id)"
+            (change)="selectedChange.emit({ id: c.id, on: $any($event.target).checked })"
+          />
           <span>No. <span data-testid="claim-number">{{ c.number ?? '' }}</span></span>
           <span data-testid="claim-amount">{{ c.amount }}</span>
           <span data-testid="claim-date">{{ c.date }}</span>
@@ -232,7 +239,11 @@ export class PersonClaims {
   readonly policyDate = input.required<string>();
   /** The sheet's periods. */
   readonly periods = input.required<Period[]>();
+  /** The ids of the claims selected for a bulk action, across the sheet. */
+  readonly selected = input.required<ReadonlySet<number>>();
   readonly saved = output<Claim>();
+  /** A claim's checkbox ticked (on) or cleared. */
+  readonly selectedChange = output<{ id: number; on: boolean }>();
 
   protected readonly amountInput = signal('');
   protected readonly dateInput = signal('');

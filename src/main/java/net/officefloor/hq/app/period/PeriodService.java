@@ -119,10 +119,18 @@ public class PeriodService {
      * period cannot close while the change is under way.
      */
     public void refuseIfClosed(String sheetId, LocalDate date) {
-        sheetRows.findLockedById(sheetId);
-        if (periods.existsBySheetIdAndClosedTrueAndFromDateLessThanEqualAndToDateGreaterThanEqual(sheetId, date,
-                date)) {
+        if (isClosed(sheetId, date)) {
             throw new ResponseStatusException(HttpStatus.LOCKED, "That claim's date is inside a closed period.");
         }
+    }
+
+    /**
+     * Whether a claim dated on this day lies inside a closed period. Holds the sheet first, so a
+     * period cannot close while a change that relies on the answer is under way.
+     */
+    public boolean isClosed(String sheetId, LocalDate date) {
+        sheetRows.findLockedById(sheetId);
+        return periods.existsBySheetIdAndClosedTrueAndFromDateLessThanEqualAndToDateGreaterThanEqual(sheetId, date,
+                date);
     }
 }
