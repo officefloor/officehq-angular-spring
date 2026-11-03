@@ -528,6 +528,24 @@ public class SheetService {
         return saved;
     }
 
+    /** The sheet's maximum of open claims per person; null when blank (none). */
+    @Transactional(readOnly = true)
+    public Integer maxOpen(String id) {
+        return sheets.findById(id).map(Sheet::getMaxOpen).orElse(null);
+    }
+
+    /** Change the sheet's maximum of open claims per person (null: blank, none); recorded even when
+     *  unchanged. */
+    @Transactional
+    public synchronized Sheet setMaxOpen(String id, String user, Integer max) {
+        Sheet sheet = load(id, user);
+        sheet.setMaxOpen(max);
+        Sheet saved = sheets.saveAndFlush(sheet);
+        audit.recordOnCommit("SETTING_CHANGED sheet=" + id + " by=" + user + " key=max-open value="
+                + (max == null ? "" : max.toString()));
+        return saved;
+    }
+
     /** The sheet's review SLA in days; null when blank (none). */
     @Transactional(readOnly = true)
     public Integer reviewSla(String id) {

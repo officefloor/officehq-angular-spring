@@ -36,6 +36,11 @@ public interface ClaimRepository extends JpaRepository<Claim, Long> {
             + " and c.dueBy >= :from and c.dueBy <= :to")
     long countOpenDueBetween(String sheetId, Long personId, LocalDate from, LocalDate to);
 
+    /** How many of a person's claims on a sheet are open or pending. */
+    @Query("select count(c) from Claim c where c.sheetId = :sheetId and c.personId = :personId"
+            + " and c.status in (net.officefloor.hq.app.claim.ClaimStatus.OPEN, net.officefloor.hq.app.claim.ClaimStatus.PENDING)")
+    long countOpen(String sheetId, Long personId);
+
     /** The next place in the order claims are added and forward-only rates saved (see Claim#getAdded). */
     @Query(value = "select next value for claim_added_seq", nativeQuery = true)
     long nextAdded();

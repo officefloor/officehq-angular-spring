@@ -57,6 +57,10 @@ public class Sheet {
     @Column(name = "escalate_after")
     private Integer escalateAfter;
 
+    /** The maximum of open (OPEN or PENDING) claims per person; null when blank (none). */
+    @Column(name = "max_open")
+    private Integer maxOpen;
+
     /** The review SLA in days: a claim in review whose review day plus them is before the sheet's
      *  today is late; null when blank (none). */
     @Column(name = "review_sla")
@@ -177,6 +181,14 @@ public class Sheet {
 
     public void setEscalateAfter(Integer escalateAfter) {
         this.escalateAfter = escalateAfter;
+    }
+
+    public Integer getMaxOpen() {
+        return maxOpen;
+    }
+
+    public void setMaxOpen(Integer maxOpen) {
+        this.maxOpen = maxOpen;
     }
 
     public Integer getReviewSla() {

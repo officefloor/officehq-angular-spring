@@ -286,6 +286,7 @@ public class ClaimService {
             refuseFlagged(sheetId, user, claim);
             refuseUnnoted(sheetId, claim);
             refuseOverCap(sheetId, claim);
+            refuseOverMaxOpen(sheetId, claim);
         }
         if (to == ClaimStatus.SETTLED && claim.isDeferredOn(sheets.today(sheetId))) {
             throw new ResponseStatusException(HttpStatus.CONFLICT,
@@ -956,6 +957,21 @@ public class ClaimService {
         if (due != null && due.compareTo(threshold) > 0) {
             throw new ResponseStatusException(HttpStatus.PRECONDITION_REQUIRED,
                     "A claim whose due is above the proof threshold needs a proof of each kind the sheet lists first");
+        }
+    }
+
+    /** Refuse opening a claim when the sheet has a maximum of open claims per person and its person
+     *  already has that many open or pending claims. */
+    private void refuseOverMaxOpen(String sheetId, Claim claim) {
+        Integer max = sheets.maxOpen(sheetId);
+        if (max == null) {
+            return;
+        }
+        // one open at a time per person, so two opens at once cannot both slip under the maximum
+        people.lockByIdAndSheetId(claim.getPersonId(), sheetId);
+        if (claims.countOpen(sheetId, claim.getPersonId()) >= max) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT,
+                    "The person already has " + max + " open claims, the sheet's maximum");
         }
     }
 

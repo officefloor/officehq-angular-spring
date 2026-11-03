@@ -120,6 +120,7 @@ public class SheetCloneService {
         to.setPeriodNumberingFrom(from.getPeriodNumberingFrom());
         to.setGraceDays(from.getGraceDays());
         to.setEscalateAfter(from.getEscalateAfter());
+        to.setMaxOpen(from.getMaxOpen());
         to.setReviewSla(from.getReviewSla());
         to.setScoreMid(from.getScoreMid());
         to.setScoreHigh(from.getScoreHigh());

@@ -47,6 +47,9 @@ export interface Settings {
   /** The escalation gap: reminding a claim this many days or more after its previous reminder
    *  escalates it, once ever; null when blank (off). Not dated. */
   escalateAfter: number | null;
+  /** The maximum of open claims per person: opening a claim is refused when its person already has
+   *  this many OPEN or PENDING claims; null when blank (none). Not dated. */
+  maxOpen: number | null;
   /** The review SLA: a claim in review whose review day plus this many days is before the sheet's
    *  today is late; null when blank (none). Not dated. */
   reviewSla: number | null;
@@ -343,6 +346,12 @@ export class SheetSettings {
   setEscalateAfter(value: string | null): Promise<Settings> {
     const [sheetId, headers] = this.active();
     return firstValueFrom(this.http.put<Settings>(`${this.url(sheetId)}/settings/escalate-after`, { value }, { headers }));
+  }
+
+  /** Set the maximum of open claims per person; null for blank (none). */
+  setMaxOpen(value: string | null): Promise<Settings> {
+    const [sheetId, headers] = this.active();
+    return firstValueFrom(this.http.put<Settings>(`${this.url(sheetId)}/settings/max-open`, { value }, { headers }));
   }
 
   /** Set the review SLA; null for blank (none). */
