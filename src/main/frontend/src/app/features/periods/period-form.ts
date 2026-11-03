@@ -57,7 +57,7 @@ const DAY = /^\d{4}-\d{2}-\d{2}$/;
       </form>
       <table data-testid="periods">
         <thead>
-          <tr><th scope="col">Name</th><th scope="col">From</th><th scope="col">To</th><th scope="col">Due</th><th scope="col">Closed</th><th scope="col">Fiscal year</th><th scope="col">Cap</th><th scope="col"><span class="visually-hidden">Actions</span></th></tr>
+          <tr><th scope="col">Name</th><th scope="col">From</th><th scope="col">To</th><th scope="col">Due</th><th scope="col">Closed</th><th scope="col">Fiscal year</th><th scope="col">Cap</th><th scope="col">Locked</th><th scope="col"><span class="visually-hidden">Actions</span></th></tr>
         </thead>
         <tbody>
           @for (p of periods(); track p.id) {
@@ -69,6 +69,7 @@ const DAY = /^\d{4}-\d{2}-\d{2}$/;
               <td data-testid="period-closed">{{ p.closed ? 'yes' : p.softClosed ? 'soft' : 'no' }}</td>
               <td data-testid="period-fy">{{ p.fy }}</td>
               <td data-testid="period-cap">{{ p.cap ?? '' | figure }}</td>
+              <td data-testid="period-locked">{{ p.locked ? 'yes' : 'no' }}</td>
               <td>
                 @if (!p.closed) {
                   <button type="button" data-testid="period-close" (click)="close(p)"
@@ -78,6 +79,10 @@ const DAY = /^\d{4}-\d{2}-\d{2}$/;
                 }
                 <button type="button" data-testid="period-reopen" (click)="reopen(p)"
                   [attr.aria-label]="'Reopen period ' + p.name">Reopen</button>
+                <button type="button" data-testid="period-lock" (click)="setLocked(p, true)"
+                  [attr.aria-label]="'Lock period ' + p.name">Lock</button>
+                <button type="button" data-testid="period-unlock" (click)="setLocked(p, false)"
+                  [attr.aria-label]="'Unlock period ' + p.name">Unlock</button>
                 @if (periodError()?.id === p.id) {
                   <p role="alert" data-testid="period-error">{{ periodError()?.message }}</p>
                 }
@@ -96,7 +101,7 @@ export class PeriodForm {
   readonly periods = input.required<Period[]>();
   /** Each period's due-total by its id. */
   readonly dueTotals = input.required<Map<number, string>>();
-  /** A period added through the form, or closed or reopened from its row. */
+  /** A period added through the form, or closed, reopened, locked or unlocked from its row. */
   readonly saved = output<Period>();
 
   protected readonly error = signal('');
@@ -237,7 +242,25 @@ export class PeriodForm {
         message:
           e instanceof HttpErrorResponse && e.status === 403
             ? 'Only a steward may reopen a period.'
-            : 'The period could not be reopened.',
+            : e instanceof HttpErrorResponse && e.status === 409 && p.locked
+              ? 'A locked period cannot be reopened.'
+              : 'The period could not be reopened.',
+      });
+    }
+  }
+
+  protected async setLocked(p: Period, lock: boolean): Promise<void> {
+    this.periodError.set(null);
+    const verb = lock ? 'lock' : 'unlock';
+    try {
+      this.saved.emit(await this.api.setLocked(p.id, lock));
+    } catch (e) {
+      this.periodError.set({
+        id: p.id,
+        message:
+          e instanceof HttpErrorResponse && e.status === 403
+            ? `Only a steward may ${verb} a period.`
+            : lock ? 'The period is already locked.' : 'The period is not locked.',
       });
     }
   }

@@ -36,10 +36,10 @@ public class PeriodController {
      *  fiscal year its from-date falls in (FYyyyy), and the most open or pending claims a person may
      *  have in it (null: no cap), and each person's carried figure for it fixed when it was closed, by
      *  the person's id (empty while it is open), and each person's opening balance for it, by the
-     *  person's id (a person missing has 0.00). */
+     *  person's id (a person missing has 0.00), and whether a steward has locked it. */
     public record PeriodView(long id, String name, LocalDate from, LocalDate to, boolean closed,
             boolean softClosed, String closedTotal, Map<Long, String> closedPersonTotals, String fy, Integer cap,
-            Map<Long, String> closedPersonCarried, Map<Long, String> personOpenings) {
+            Map<Long, String> closedPersonCarried, Map<Long, String> personOpenings, boolean locked) {
         static PeriodView of(Period period, int fiscalStartMonth) {
             Map<Long, String> personTotals = new TreeMap<>();
             period.getPersonTotals().forEach((id, total) -> personTotals.put(id, total.setScale(2).toPlainString()));
@@ -51,7 +51,7 @@ public class PeriodController {
                     period.isClosed(), period.isSoftClosed(),
                     period.getClosedTotal() == null ? null : period.getClosedTotal().setScale(2).toPlainString(),
                     personTotals, PeriodService.fiscalYear(period.getFromDate(), fiscalStartMonth),
-                    period.getClaimCap(), personCarried, personOpenings);
+                    period.getClaimCap(), personCarried, personOpenings, period.isLocked());
         }
     }
 
@@ -143,5 +143,17 @@ public class PeriodController {
     public PeriodView reopen(@PathVariable @NotBlank @Size(max = 100) String sheetId,
             @RequestHeader("X-User") @NotBlank @Size(max = 100) String user, @PathVariable long periodId) {
         return view(sheetId.trim(), service.reopen(sheetId.trim(), user.trim(), periodId));
+    }
+
+    @PostMapping("/{periodId}/lock")
+    public PeriodView lock(@PathVariable @NotBlank @Size(max = 100) String sheetId,
+            @RequestHeader("X-User") @NotBlank @Size(max = 100) String user, @PathVariable long periodId) {
+        return view(sheetId.trim(), service.lock(sheetId.trim(), user.trim(), periodId, true));
+    }
+
+    @PostMapping("/{periodId}/unlock")
+    public PeriodView unlock(@PathVariable @NotBlank @Size(max = 100) String sheetId,
+            @RequestHeader("X-User") @NotBlank @Size(max = 100) String user, @PathVariable long periodId) {
+        return view(sheetId.trim(), service.lock(sheetId.trim(), user.trim(), periodId, false));
     }
 }

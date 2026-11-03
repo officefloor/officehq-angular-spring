@@ -31,6 +31,8 @@ export interface Period {
   fy: string;
   /** The most open or pending claims a person may have in the period; null for no cap. */
   cap: number | null;
+  /** Whether a steward has locked the period: a locked period cannot be reopened. */
+  locked: boolean;
 }
 
 export interface PeriodForm {
@@ -131,6 +133,18 @@ export class Periods {
     if (!sheetId || !user) throw new Error('no sheet loaded');
     return firstValueFrom(
       this.http.post<Period>(`${this.url(sheetId)}/${id}/reopen`, null, { headers: { 'X-User': user } }),
+    );
+  }
+
+  /** Lock or unlock a period; refused when the user is not a steward, or it is already locked (or,
+   *  to unlock, not locked). */
+  setLocked(id: number, lock: boolean): Promise<Period> {
+    const sheetId = this.session.sheetId();
+    const user = this.session.user();
+    if (!sheetId || !user) throw new Error('no sheet loaded');
+    return firstValueFrom(
+      this.http.post<Period>(`${this.url(sheetId)}/${id}/${lock ? 'lock' : 'unlock'}`, null,
+        { headers: { 'X-User': user } }),
     );
   }
 

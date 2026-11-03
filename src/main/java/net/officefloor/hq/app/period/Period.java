@@ -49,6 +49,10 @@ public class Period {
     @Column(name = "closed_total")
     private BigDecimal closedTotal;
 
+    /** Whether a steward has locked the period: a locked period cannot be reopened. */
+    @Column(name = "locked", nullable = false)
+    private boolean locked;
+
     /** The most open or pending claims a person may have in the period; null for no cap. */
     @Column(name = "claim_cap")
     private Integer claimCap;
@@ -88,11 +92,13 @@ public class Period {
     /** A period as a revision in its sheet's history has it, detached: never saved. */
     static Period revised(String sheetId, Long id, String name, LocalDate fromDate, LocalDate toDate,
             boolean closed, boolean softClosed, BigDecimal closedTotal, Map<Long, BigDecimal> personTotals,
-            Map<Long, BigDecimal> personCarried, Map<Long, BigDecimal> personOpenings, Integer claimCap) {
+            Map<Long, BigDecimal> personCarried, Map<Long, BigDecimal> personOpenings, Integer claimCap,
+            boolean locked) {
         Period period = new Period(sheetId, name, fromDate, toDate, claimCap);
         period.id = id;
         period.closed = closed;
         period.softClosed = softClosed;
+        period.locked = locked;
         period.closedTotal = closedTotal;
         period.personTotals.putAll(personTotals);
         period.personCarried.putAll(personCarried);
@@ -143,6 +149,15 @@ public class Period {
 
     public boolean isSoftClosed() {
         return softClosed;
+    }
+
+    public boolean isLocked() {
+        return locked;
+    }
+
+    /** Lock or unlock the period. */
+    public void setLocked(boolean locked) {
+        this.locked = locked;
     }
 
     /** The due-total fixed when the period was closed or soft-closed; null while it is open. */

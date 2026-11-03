@@ -49,6 +49,9 @@ public class PeriodRevision {
     @Column(name = "soft_closed", nullable = false)
     private boolean softClosed;
 
+    @Column(name = "locked", nullable = false)
+    private boolean locked;
+
     @Column(name = "closed_total", precision = 14, scale = 2)
     private BigDecimal closedTotal;
 
@@ -80,6 +83,7 @@ public class PeriodRevision {
         this.toDate = period.getToDate();
         this.closed = period.isClosed();
         this.softClosed = period.isSoftClosed();
+        this.locked = period.isLocked();
         this.closedTotal = period.getClosedTotal();
         this.personTotals = totals(period.getPersonTotals());
         this.personCarried = totals(period.getPersonCarried());
@@ -97,7 +101,7 @@ public class PeriodRevision {
     public boolean matches(Period period) {
         return Objects.equals(name, period.getName()) && Objects.equals(fromDate, period.getFromDate())
                 && Objects.equals(toDate, period.getToDate()) && closed == period.isClosed()
-                && softClosed == period.isSoftClosed()
+                && softClosed == period.isSoftClosed() && locked == period.isLocked()
                 && (closedTotal == null ? period.getClosedTotal() == null
                         : period.getClosedTotal() != null && closedTotal.compareTo(period.getClosedTotal()) == 0)
                 && personTotals.equals(totals(period.getPersonTotals()))
@@ -109,7 +113,7 @@ public class PeriodRevision {
     /** The period as this revision has it, detached: for showing only, never saved. */
     public Period toPeriod() {
         return Period.revised(sheetId, periodId, name, fromDate, toDate, closed, softClosed, closedTotal,
-                parse(personTotals), parse(personCarried), parse(personOpenings), claimCap);
+                parse(personTotals), parse(personCarried), parse(personOpenings), claimCap, locked);
     }
 
     private static Map<Long, BigDecimal> parse(String text) {
