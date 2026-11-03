@@ -1,5 +1,6 @@
 package net.officefloor.hq.app.person;
 
+import java.time.LocalDate;
 import java.util.List;
 import net.officefloor.hq.app.Audit;
 import net.officefloor.hq.app.rollup.RollupService;
@@ -13,7 +14,8 @@ import org.springframework.web.server.ResponseStatusException;
 
 /**
  * The people on a sheet: listed in the order they were added, added and edited by name and grade. A
- * name is unique on the sheet, compared without regard to case (names arrive trimmed).
+ * name is unique on the sheet, compared without regard to case (names arrive trimmed). A person can
+ * be retired from a date (the sheet's today when none is given); they count as retired at once.
  */
 @Service
 public class PersonService {
@@ -64,6 +66,19 @@ public class PersonService {
         Person saved = save(person);
         audit.recordOnCommit(record("PERSON_EDITED", sheetId, user, saved));
         rollup.recordChanges(sheetId, user, before);
+        return saved;
+    }
+
+    /** Retire the person from a date, or from the sheet's today when none is given. */
+    @Transactional
+    public Person retire(String sheetId, String user, long id, LocalDate date) {
+        Person person = people.findByIdAndSheetId(id, sheetId)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "No such person on this sheet."));
+        LocalDate from = date != null ? date : sheets.today(sheetId);
+        person.setRetiredFrom(from);
+        Person saved = save(person);
+        audit.recordOnCommit("PERSON_RETIRED sheet=" + sheetId + " by=" + user + " name=" + saved.getName() + " from="
+                + from);
         return saved;
     }
 

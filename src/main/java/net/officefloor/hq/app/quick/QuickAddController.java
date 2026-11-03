@@ -7,6 +7,7 @@ import jakarta.validation.constraints.Pattern;
 import jakarta.validation.constraints.Size;
 import net.officefloor.hq.app.claim.ClaimController;
 import net.officefloor.hq.app.claim.ClaimController.ClaimResponse;
+import net.officefloor.hq.app.person.PersonController;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
@@ -21,11 +22,8 @@ public class QuickAddController {
             @NotBlank @Size(max = 200) String name, @NotNull @Pattern(regexp = ClaimController.AMOUNT) String amount) {
     }
 
-    public record PersonResponse(long id, String name, String grade, long version) {
-    }
-
     /** The claim added, and its person; `created` when the person was added for it. */
-    public record QuickAddResponse(PersonResponse person, boolean created, ClaimResponse claim) {
+    public record QuickAddResponse(PersonController.PersonResponse person, boolean created, ClaimResponse claim) {
     }
 
     private final QuickAddService service;
@@ -38,8 +36,7 @@ public class QuickAddController {
     public QuickAddResponse add(@Valid @RequestBody QuickAddRequest req) {
         QuickAddService.Added added = service.add(req.sheet().trim(), req.user().trim(), req.name().trim(),
                 ClaimController.amount(req.amount()));
-        return new QuickAddResponse(new PersonResponse(added.person().getId(), added.person().getName(),
-                added.person().getGrade(), added.person().getVersion()), added.created(),
+        return new QuickAddResponse(PersonController.response(added.person()), added.created(),
                 ClaimController.response(added.claim()));
     }
 }

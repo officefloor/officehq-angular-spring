@@ -19,6 +19,9 @@ import { Rate, Rates, claimDueCents, dueText, fixedDueCents, pctOn } from '../ra
 // (a stated claim shows and totals that figure); each row shows how many statements the person
 // has taken, and the last one's due-total and date.
 // Each claim shows the period its date falls in, and each period the due of the claims that count in it.
+// A person can be retired from a date (the sheet's today when left blank); with a date set they count
+// as retired at once, whatever the date. No claim of theirs can be dated after it. Retired people are
+// left out of the list unless "show retired" is on; their claims keep counting in every total.
 // The quick-add bar adds a DRAFT claim of an amount, dated the sheet's today with an empty note, for
 // the person of a name, adding the person with grade A first when the name is not on the sheet.
 interface Person {
@@ -27,6 +30,9 @@ interface Person {
   grade: string;
   /** The version the store holds; an edit sends the version it was opened at. */
   version: number;
+  retired: boolean;
+  /** The date the person is retired from, or null. */
+  retiredFrom: string | null;
 }
 
 /** A claim's amount in whole cents when it counts toward the totals, else nothing. */
@@ -115,6 +121,15 @@ const GRADES = ['A', 'B', 'C'] as const;
           <p role="alert" data-testid="quick-error">{{ err }}</p>
         }
       </form>
+      <label>
+        <input
+          type="checkbox"
+          data-testid="show-retired"
+          [checked]="session.showRetired()"
+          (change)="session.showRetired.set($any($event.target).checked)"
+        />
+        Show retired
+      </label>
       <p>Claimed in total <strong data-testid="rollup-claimed-total">{{ claimedTotal() }}</strong></p>
       <p>Due in total <strong data-testid="rollup-due-total">{{ dueTotal() }}</strong></p>
       <table data-testid="people-list">
@@ -125,12 +140,13 @@ const GRADES = ['A', 'B', 'C'] as const;
             <th scope="col">Claimed</th>
             <th scope="col">Due</th>
             <th scope="col">Statements</th>
+            <th scope="col">Retired</th>
             <th scope="col">Claims</th>
             <th scope="col"><span class="visually-hidden">Actions</span></th>
           </tr>
         </thead>
         <tbody>
-          @for (p of people(); track p.id) {
+          @for (p of listed(); track p.id) {
             <tr [attr.data-testid]="'person-row-' + p.id">
               <td data-testid="person-name">{{ p.name }}</td>
               <td data-testid="person-grade">{{ p.grade }}</td>
@@ -140,6 +156,10 @@ const GRADES = ['A', 'B', 'C'] as const;
                 <span data-testid="person-statement-count">{{ statementOf(p.id)?.count ?? 0 }}</span>
                 <span>Last due <span data-testid="person-stated-total">{{ statementOf(p.id)?.dueTotal ?? '' }}</span></span>
                 <span>on <span data-testid="person-statement-date">{{ statementOf(p.id)?.date ?? '' }}</span></span>
+              </td>
+              <td>
+                <span data-testid="person-retired">{{ p.retired ? 'yes' : 'no' }}</span>
+                <span>from <span data-testid="person-retired-from">{{ p.retiredFrom ?? '' }}</span></span>
               </td>
               <td>
                 <app-person-claims
@@ -169,6 +189,22 @@ const GRADES = ['A', 'B', 'C'] as const;
                 >
                   Statement
                 </button>
+                <label [for]="'person-retire-date-' + p.id">Retire from</label>
+                <input
+                  type="date"
+                  [id]="'person-retire-date-' + p.id"
+                  data-testid="person-retire-date"
+                  [value]="retireDates().get(p.id) ?? ''"
+                  (input)="setRetireDate(p.id, $any($event.target).value)"
+                />
+                <button
+                  type="button"
+                  data-testid="person-retire"
+                  [attr.aria-label]="'Retire ' + p.name"
+                  (click)="retire(p)"
+                >
+                  Retire
+                </button>
                 @if (rowErrors().get(p.id); as err) {
                   <p role="alert" data-testid="person-error">{{ err }}</p>
                 }
@@ -182,10 +218,16 @@ const GRADES = ['A', 'B', 'C'] as const;
 })
 export class People {
   private readonly http = inject(HttpClient);
-  private readonly session = inject(Session);
+  protected readonly session = inject(Session);
 
   protected readonly grades = GRADES;
   protected readonly people = signal<Person[]>([]);
+  /** The people on the list: everyone, or only those not retired unless show-retired is on. */
+  protected readonly listed = computed(() =>
+    this.session.showRetired() ? this.people() : this.people().filter((p) => !p.retired),
+  );
+  /** The retire-from date typed on each person's row, by person id. */
+  protected readonly retireDates = signal<ReadonlyMap<number, string>>(new Map());
   /** The sheet's claims, newest first. */
   protected readonly claims = signal<Claim[]>([]);
   private readonly claimsByPerson = computed(() => {
@@ -244,6 +286,7 @@ export class People {
       this.claims.set([]);
       this.statements.set(new Map());
       this.rowErrors.set(new Map());
+      this.retireDates.set(new Map());
       this.reset();
       this.quickName.set('');
       this.quickAmount.set('');
@@ -294,14 +337,45 @@ export class People {
     return this.statements().get(personId);
   }
 
-  /** Take the person's statement: their claims come back bound (or unbound) as it left them. */
-  protected async takeStatement(p: Person): Promise<void> {
+  private clearRowError(id: number): void {
     this.rowErrors.update((m) => {
-      if (!m.has(p.id)) return m;
+      if (!m.has(id)) return m;
       const next = new Map(m);
-      next.delete(p.id);
+      next.delete(id);
       return next;
     });
+  }
+
+  protected setRetireDate(id: number, date: string): void {
+    this.retireDates.update((m) => new Map(m).set(id, date));
+    this.clearRowError(id);
+  }
+
+  /** Retire the person from the date on their row, or from the sheet's today when it is blank. */
+  protected async retire(p: Person): Promise<void> {
+    this.clearRowError(p.id);
+    const sheet = this.session.sheet();
+    const date = (this.retireDates().get(p.id) ?? '').trim();
+    if (date !== '' && !/^\d{4}-\d{2}-\d{2}$/.test(date)) {
+      this.rowErrors.update((m) => new Map(m).set(p.id, 'Enter a date, or leave it blank for the sheet\'s today.'));
+      return;
+    }
+    try {
+      const saved = await firstValueFrom(
+        this.http.post<Person>('/api/people/retire', { sheet, user: this.session.user(), id: p.id, date: date || null }),
+      );
+      if (this.session.sheet() !== sheet) return;
+      this.people.update((list) => list.map((x) => (x.id === saved.id ? saved : x)));
+      if (this.editingId() === saved.id && this.editingVersion === p.version) this.editingVersion = saved.version;
+    } catch {
+      if (this.session.sheet() !== sheet) return;
+      this.rowErrors.update((m) => new Map(m).set(p.id, 'Could not retire ' + p.name + '.'));
+    }
+  }
+
+  /** Take the person's statement: their claims come back bound (or unbound) as it left them. */
+  protected async takeStatement(p: Person): Promise<void> {
+    this.clearRowError(p.id);
     const sheet = this.session.sheet();
     try {
       const taken = await firstValueFrom(

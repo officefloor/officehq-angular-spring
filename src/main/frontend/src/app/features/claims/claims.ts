@@ -251,6 +251,8 @@ export class PersonClaims {
       this.error.set(
         e instanceof HttpErrorResponse && e.status === 423
           ? CLOSED
+          : e instanceof HttpErrorResponse && e.status === 422
+            ? 'A claim cannot be dated after its person\'s retirement date.'
           : e instanceof HttpErrorResponse && e.status === 409
             ? 'Only a DRAFT claim can be edited.'
             : id === null

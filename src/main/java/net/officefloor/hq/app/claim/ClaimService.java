@@ -25,7 +25,8 @@ import org.springframework.web.server.ResponseStatusException;
  * due at the rate its person's grade has then for the claim's date; an open claim's due stays live.
  * A claim records who opened it, and that user cannot settle it (four eyes). A claim bound by its
  * person's last statement keeps the figure it had then, and settling it fixes that figure. No claim
- * dated inside a closed period can be added, edited (to or from such a date) or change status.
+ * dated inside a closed period can be added, edited (to or from such a date) or change status. No
+ * claim can be added or edited to a date after its person's retirement date.
  */
 @Service
 public class ClaimService {
@@ -70,6 +71,7 @@ public class ClaimService {
         Person person = person(sheetId, personId);
         LocalDate dated = dateOrToday(sheetId, date);
         periods.refuseIfClosed(sheetId, dated);
+        refuseIfRetired(person, dated);
         RollupService.Snapshot before = rollup.snapshot(sheetId);
         Claim added = claims.saveAndFlush(new Claim(sheetId, personId, amount, dated, note));
         audit.recordOnCommit(record("CLAIM_ADDED", sheetId, user, person, added));
@@ -88,6 +90,7 @@ public class ClaimService {
         LocalDate dated = dateOrToday(sheetId, date);
         periods.refuseIfClosed(sheetId, claim.getDate());
         periods.refuseIfClosed(sheetId, dated);
+        refuseIfRetired(person(sheetId, claim.getPersonId()), dated);
         RollupService.Snapshot before = rollup.snapshot(sheetId);
         claim.setAmount(amount);
         claim.setDate(dated);
@@ -152,6 +155,14 @@ public class ClaimService {
 
     private static String dueText(BigDecimal due) {
         return due == null ? "n/a" : due.setScale(2, RoundingMode.UNNECESSARY).toPlainString();
+    }
+
+    /** Refuse (422) a claim dated after its person's retirement date. */
+    private static void refuseIfRetired(Person person, LocalDate date) {
+        if (person.isRetired() && date.isAfter(person.getRetiredFrom())) {
+            throw new ResponseStatusException(HttpStatus.UNPROCESSABLE_ENTITY,
+                    "That claim's date is after its person's retirement date.");
+        }
     }
 
     private Person person(String sheetId, long personId) {

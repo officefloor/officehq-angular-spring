@@ -17,6 +17,8 @@ export class Session {
   readonly user = signal<string | null>(null);
   readonly sheet = signal<string | null>(null);
   readonly today = signal<string | null>(null);
+  /** Whether retired people are listed: off when the screen opens, and left as it is by loading a sheet. */
+  readonly showRetired = signal(false);
   /** Counts sheet loads, so features re-read the store each time a sheet is (re-)loaded. */
   readonly loads = signal(0);
 

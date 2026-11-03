@@ -5,6 +5,7 @@ import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.NotNull;
 import jakarta.validation.constraints.Pattern;
 import jakarta.validation.constraints.Size;
+import java.time.LocalDate;
 import java.util.List;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
@@ -28,11 +29,17 @@ public class PersonController {
             @NotNull @Pattern(regexp = "[ABC]") String grade, @NotNull Long version) {
     }
 
-    public record PersonResponse(long id, String name, String grade, long version) {
+    public record RetirePersonRequest(@NotBlank @Size(max = 100) String sheet,
+            @NotBlank @Size(max = 100) String user, @NotNull Long id, LocalDate date) {
     }
 
-    private static PersonResponse response(Person person) {
-        return new PersonResponse(person.getId(), person.getName(), person.getGrade(), person.getVersion());
+    public record PersonResponse(long id, String name, String grade, long version, boolean retired,
+            LocalDate retiredFrom) {
+    }
+
+    public static PersonResponse response(Person person) {
+        return new PersonResponse(person.getId(), person.getName(), person.getGrade(), person.getVersion(),
+                person.isRetired(), person.getRetiredFrom());
     }
 
     private final PersonService service;
@@ -55,5 +62,10 @@ public class PersonController {
     public PersonResponse update(@Valid @RequestBody UpdatePersonRequest req) {
         return response(service.update(req.sheet().trim(), req.user().trim(), req.id(), req.version(), req.name().trim(),
                 req.grade()));
+    }
+
+    @PostMapping("/retire")
+    public PersonResponse retire(@Valid @RequestBody RetirePersonRequest req) {
+        return response(service.retire(req.sheet().trim(), req.user().trim(), req.id(), req.date()));
     }
 }
