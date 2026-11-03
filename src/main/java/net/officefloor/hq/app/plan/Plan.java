@@ -135,6 +135,32 @@ public class Plan {
         return due;
     }
 
+    /** The first plan dates after the day given and on or before its end, oldest first, at most as
+     *  many as asked for. */
+    public List<LocalDate> nextAfter(LocalDate today, int count) {
+        List<LocalDate> next = new ArrayList<>();
+        if (monthDay != null) {
+            for (YearMonth m = YearMonth.from(startDate); next.size() < count && !m.atDay(1).isAfter(endDate);
+                    m = m.plusMonths(1)) {
+                LocalDate d = m.atDay(Math.min(monthDay, m.lengthOfMonth()));
+                if (!d.isBefore(startDate) && d.isAfter(today) && !d.isAfter(endDate)) {
+                    next.add(d);
+                }
+            }
+            return next;
+        }
+        LocalDate d = startDate;
+        if (d.isBefore(today)) {
+            d = d.plusDays((today.toEpochDay() - d.toEpochDay()) / everyDays * everyDays);
+        }
+        for (; next.size() < count && !d.isAfter(endDate); d = d.plusDays(everyDays)) {
+            if (d.isAfter(today)) {
+                next.add(d);
+            }
+        }
+        return next;
+    }
+
     /** Note that the plan has made its claim for the date. */
     public void markMade(LocalDate date) {
         made.add(date);

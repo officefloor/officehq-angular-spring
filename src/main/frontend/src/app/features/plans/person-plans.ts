@@ -2,7 +2,7 @@ import { Component, inject, input, output, signal } from '@angular/core';
 import { FormControl, FormGroup, ReactiveFormsModule } from '@angular/forms';
 import { Plan, Plans } from '../../core/plans';
 
-// A person's plans (every so many days or monthly on a day), in the order they were added, each with how many claims it has made so far;
+// A person's plans (every so many days or monthly on a day), in the order they were added, each with how many claims it has made so far and its next dates;
 // and the form that adds one.
 @Component({
   selector: 'app-person-plans',
@@ -19,7 +19,8 @@ import { Plan, Plans } from '../../core/plans';
             every <span data-testid="plan-every">{{ pl.every }}</span> days
           }
           to <span data-testid="plan-end">{{ pl.end }}</span>;
-          made <span data-testid="plan-generated">{{ pl.generated }}</span>
+          made <span data-testid="plan-generated">{{ pl.generated }}</span>;
+          next <span data-testid="plan-next-dates">{{ pl.nextDates.join(', ') }}</span>
         </li>
       }
     </ul>

@@ -5,7 +5,7 @@ import { Session } from './session';
 
 /** A person's plan: a draft claim of its amount on its start and every so many days after, or
  *  monthly on a day of the month (the other null), up to its end; with how many claims it has made
- *  so far. */
+ *  so far and its next dates (the first five after the sheet's today, on or before its end). */
 export interface Plan {
   id: number;
   personId: number;
@@ -15,6 +15,7 @@ export interface Plan {
   day: number | null;
   end: string;
   generated: number;
+  nextDates: string[];
 }
 
 /** The plan form as typed: a blank start takes the sheet's today. */
