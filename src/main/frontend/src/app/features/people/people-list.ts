@@ -150,6 +150,14 @@ const NO_LEAVE: Leave = { holds: [], retiredFrom: null };
         <p role="status">Reassigned <strong data-testid="bulk-reassigned">{{ b.reassigned }}</strong>,
           refused <strong data-testid="bulk-reassign-refused">{{ b.refused }}</strong></p>
       }
+      <label for="bulk-redate-date">Re-date selected claims to</label>
+      <input #bulkRedateDate id="bulk-redate-date" type="date" data-testid="bulk-redate-date" />
+      <button type="button" data-testid="bulk-redate" (click)="bulkRedate(bulkRedateDate.value)">Re-date
+        selected claims</button>
+      @if (bulkRedated(); as b) {
+        <p role="status">Re-dated <strong data-testid="bulk-redated">{{ b.redated }}</strong>,
+          refused <strong data-testid="bulk-redate-refused">{{ b.refused }}</strong></p>
+      }
       <div role="group" aria-labelledby="bulk-grade-heading">
         <span id="bulk-grade-heading">Grade selected people</span>
         <label for="bulk-grade">Grade</label>
@@ -686,6 +694,10 @@ export class PeopleList {
   protected readonly bulkReassigned = signal<{ reassigned: number; refused: number } | null>(null);
   /** Whether a bulk reassign is waiting for its answer: a second press meanwhile is ignored. */
   private reassigning = false;
+  /** What the last bulk re-date did; null while one runs and before the first. */
+  protected readonly bulkRedated = signal<{ redated: number; refused: number } | null>(null);
+  /** Whether a bulk re-date is waiting for its answer: a second press meanwhile is ignored. */
+  private redating = false;
   /** The ids of the people selected for a bulk grade. */
   protected readonly selectedPeople = signal<ReadonlySet<number>>(new Set());
   /** How many people the last bulk grade changed; null while one runs and before the first. */
@@ -763,6 +775,7 @@ export class PeopleList {
       this.bulkSettled.set(null);
       this.lastSettleBatch.set(null);
       this.bulkReassigned.set(null);
+      this.bulkRedated.set(null);
       this.selectedPeople.set(new Set());
       this.bulkGraded.set(null);
       this.bulkGradeError.set('');
@@ -1304,6 +1317,26 @@ export class PeopleList {
       this.bulkReassigned.set({ reassigned: 0, refused: this.selected().size });
     } finally {
       this.reassigning = false;
+    }
+  }
+
+  /** Re-date the selected claims that can be re-dated, then show the claims as they are now and
+   *  how many were re-dated and refused. */
+  protected async bulkRedate(date: string): Promise<void> {
+    const sheetId = this.session.sheetId();
+    if (this.redating || !sheetId) return;
+    this.redating = true;
+    this.bulkRedated.set(null);
+    try {
+      if (!date) throw new Error('No date chosen');
+      const result = await this.claimsApi.redateAll([...this.selected()], date);
+      this.selected.set(new Set());
+      this.claims.set(await this.claimsApi.list(sheetId));
+      this.bulkRedated.set(result);
+    } catch {
+      this.bulkRedated.set({ redated: 0, refused: this.selected().size });
+    } finally {
+      this.redating = false;
     }
   }
 

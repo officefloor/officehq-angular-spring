@@ -503,6 +503,16 @@ export class Claims {
     );
   }
 
+  /** Re-date each of the claims that can be re-dated, in list order, as re-dating one does; the
+   *  rest are refused and left as they are. */
+  redateAll(claimIds: number[], date: string): Promise<{ redated: number; refused: number }> {
+    const { sheetId, user } = this.active();
+    return firstValueFrom(
+      this.http.post<{ redated: number; refused: number }>(`${this.url(sheetId)}/claims/redate`,
+        { claimIds, date }, { headers: { 'X-User': user } }),
+    );
+  }
+
   private url(sheetId: string): string {
     return `/api/sheets/${encodeURIComponent(sheetId)}`;
   }

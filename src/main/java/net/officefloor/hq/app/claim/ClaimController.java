@@ -452,6 +452,24 @@ public class ClaimController {
         return new BulkReassigned(outcome.done(), outcome.refused());
     }
 
+    /** The claims a bulk re-date re-dates, by id, and the date it gives them. */
+    public record BulkRedateForm(@NotNull @Size(max = 1000) Set<@NotNull Long> claimIds, @NotNull LocalDate date) {
+    }
+
+    /** How many claims a bulk re-date re-dated, and how many it refused. */
+    public record BulkRedated(int redated, int refused) {
+    }
+
+    @ViewerAllowed
+    @ArchivedAllowed
+    @PostMapping("/claims/redate")
+    public BulkRedated redateAll(@PathVariable @NotBlank @Size(max = 100) String sheetId,
+            @RequestHeader("X-User") @NotBlank @Size(max = 100) String user,
+            @Valid @RequestBody BulkRedateForm form) {
+        ClaimBulkService.Outcome outcome = bulk.redate(sheetId.trim(), user.trim(), form.claimIds(), form.date());
+        return new BulkRedated(outcome.done(), outcome.refused());
+    }
+
     /** The amount split off an open claim: above 0.00, with up to two decimals. */
     public record SplitForm(@NotNull @Pattern(regexp = "\\s*\\d{1,12}(\\.\\d{1,2})?\\s*") String amount) {
 
