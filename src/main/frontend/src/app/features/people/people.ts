@@ -3,13 +3,15 @@ import { Component, computed, effect, inject, signal } from '@angular/core';
 import { firstValueFrom } from 'rxjs';
 import { Session } from '../../core/session';
 import { Claim, PersonClaims, cents, counts, money } from '../claims/claims';
-import { Rate, Rates, dueCents, dueText } from '../rates/rates';
+import { Rate, Rates, dueCents, dueText, pctOn } from '../rates/rates';
 
 // The people on the active sheet, in the order they were added, and the one form that both adds
 // a person and edits an existing one (opening a person's editor fills the form with their values).
 // Each row shows what the person has claimed and lists their claims; the sheet's claimed-total
-// adds everyone's up. Only OPEN and SETTLED claims count toward any of these totals. Each claim and each person also shows what is due at the rate for the
-// person's grade, and the sheet's due-total adds up every person's due-total that has a rate.
+// adds everyone's up. Only OPEN and SETTLED claims count toward any of these totals. Each claim shows
+// what is due at the rate for the person's grade in force on the claim's date, each person what is
+// due on all they claimed at the rate in force on the sheet's today, and the sheet's due-total adds
+// up every person's due-total that has a rate.
 interface Person {
   id: number;
   name: string;
@@ -84,7 +86,8 @@ const GRADES = ['A', 'B', 'C'] as const;
                   [personId]="p.id"
                   [personName]="p.name"
                   [claims]="claimsOf(p.id)"
-                  [pct]="pctOf().get(p.grade)"
+                  [grade]="p.grade"
+                  [rates]="rates()"
                   (saved)="claimSaved($event)"
                 />
               </td>
@@ -120,7 +123,11 @@ export class People {
   });
   protected readonly claimedTotal = computed(() => money(this.claims().reduce((sum, c) => sum + countedCents(c), 0)));
   protected readonly rates = signal<Rate[]>([]);
-  protected readonly pctOf = computed(() => new Map(this.rates().map((r) => [r.grade, r.pct])));
+  /** Each grade's rate in force on the sheet's today. */
+  protected readonly pctOf = computed(() => {
+    const today = this.session.today();
+    return new Map<string, string | undefined>(GRADES.map((g) => [g, pctOn(this.rates(), g, today)]));
+  });
   protected readonly dueTotal = computed(() =>
     money(this.people().reduce((sum, p) => sum + (this.dueOf(p) ?? 0), 0)),
   );
@@ -167,7 +174,7 @@ export class People {
     return money(this.claimsOf(personId).reduce((sum, c) => sum + countedCents(c), 0));
   }
 
-  /** What the person owes on all they claimed, in whole cents, or null when their grade has no rate. */
+  /** What the person owes on all they claimed, in whole cents, or null when their grade has no rate in force on the sheet's today. */
   protected dueOf(p: Person): number | null {
     return dueCents(this.claimsOf(p.id).reduce((sum, c) => sum + countedCents(c), 0), this.pctOf().get(p.grade));
   }

@@ -2,7 +2,7 @@ import { HttpClient } from '@angular/common/http';
 import { Component, inject, input, output, signal } from '@angular/core';
 import { firstValueFrom } from 'rxjs';
 import { Session } from '../../core/session';
-import { dueCents, dueText } from '../rates/rates';
+import { Rate, dueCents, dueText, pctOn } from '../rates/rates';
 
 // A person's claims, newest first, and the one form under their row that both adds a claim and
 // edits an existing one (opening a claim's editor fills the form with its values). Each claim
@@ -119,8 +119,10 @@ export class PersonClaims {
   readonly personId = input.required<number>();
   readonly personName = input.required<string>();
   readonly claims = input.required<Claim[]>();
-  /** The rate for the person's grade, or undefined when the grade has none. */
-  readonly pct = input<string>();
+  /** The person's grade, whose rate in force on a claim's date gives what the claim has due. */
+  readonly grade = input.required<string>();
+  /** The sheet's rates. */
+  readonly rates = input.required<Rate[]>();
   readonly saved = output<Claim>();
 
   protected readonly amountInput = signal('');
@@ -131,9 +133,10 @@ export class PersonClaims {
   /** The error of each claim's last refused status change, by claim id. */
   protected readonly actionErrors = signal<ReadonlyMap<number, string>>(new Map());
 
-  /** A settled claim shows the due fixed when it was settled; any other claim's due is live. */
+  /** A settled claim shows the due fixed when it was settled; any other claim's due is live, at
+   *  the rate for the person's grade in force on the claim's date. */
   protected dueOf(c: Claim): string {
-    return dueText(c.settledDue !== null ? cents(c.settledDue) : dueCents(cents(c.amount), this.pct()));
+    return dueText(c.settledDue !== null ? cents(c.settledDue) : dueCents(cents(c.amount), pctOn(this.rates(), this.grade(), c.date)));
   }
 
   protected edit(c: Claim): void {

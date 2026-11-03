@@ -7,13 +7,14 @@ import jakarta.validation.constraints.Pattern;
 import jakarta.validation.constraints.Size;
 import java.math.BigDecimal;
 import java.math.RoundingMode;
+import java.time.LocalDate;
 import java.util.List;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 
-/** Listing and setting the sheet's rate for each grade. */
+/** Listing and setting the sheet's rates for each grade, each from an optional from-date. */
 @RestController
 @RequestMapping("/api/rates")
 public class RateController {
@@ -25,14 +26,16 @@ public class RateController {
     }
 
     public record SetRateRequest(@NotBlank @Size(max = 100) String sheet, @NotBlank @Size(max = 100) String user,
-            @NotNull @Pattern(regexp = "[ABC]") String grade, @NotNull @Pattern(regexp = PCT) String pct) {
+            @NotNull @Pattern(regexp = "[ABC]") String grade, @NotNull @Pattern(regexp = PCT) String pct,
+            LocalDate from) {
     }
 
-    public record RateResponse(String grade, String pct) {
+    public record RateResponse(String grade, LocalDate from, String pct) {
     }
 
     private static RateResponse response(Rate rate) {
-        return new RateResponse(rate.getGrade(), rate.getPct().setScale(2, RoundingMode.UNNECESSARY).toPlainString());
+        return new RateResponse(rate.getGrade(), rate.getFromDate(),
+                rate.getPct().setScale(2, RoundingMode.UNNECESSARY).toPlainString());
     }
 
     private final RateService service;
@@ -48,7 +51,7 @@ public class RateController {
 
     @PostMapping("/set")
     public RateResponse set(@Valid @RequestBody SetRateRequest req) {
-        return response(service.set(req.sheet().trim(), req.user().trim(), req.grade(),
+        return response(service.set(req.sheet().trim(), req.user().trim(), req.grade(), req.from(),
                 new BigDecimal(req.pct()).setScale(2, RoundingMode.UNNECESSARY)));
     }
 }

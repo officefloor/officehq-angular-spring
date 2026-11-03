@@ -19,7 +19,7 @@ import org.springframework.web.server.ResponseStatusException;
  * The claims on a sheet: added to a person and edited (amount, date, note). A claim given no date
  * takes the sheet's today. A claim starts as DRAFT and moves through its statuses (see
  * {@link ClaimStatus}); a change its status does not allow is refused. Settling a claim fixes its
- * due at the rate its person's grade has then; an open claim's due stays live.
+ * due at the rate its person's grade has then for the claim's date; an open claim's due stays live.
  */
 @Service
 public class ClaimService {
@@ -82,7 +82,7 @@ public class ClaimService {
         if (next == ClaimStatus.OPEN) {
             claim.setNumber(number);
         } else if (next == ClaimStatus.SETTLED) {
-            claim.setSettledDue(due(sheetId, person, claim.getAmount()));
+            claim.setSettledDue(due(sheetId, person, claim));
         } else if (next == ClaimStatus.VOID) {
             claim.setNumber(null);
         }
@@ -99,10 +99,13 @@ public class ClaimService {
         return saved;
     }
 
-    /** The due on an amount at the rate for the person's grade, half up to the cent; null with no rate. */
-    private BigDecimal due(String sheetId, Person person, BigDecimal amount) {
-        return rates.findBySheetIdAndGrade(sheetId, person.getGrade()).map(Rate::getPct)
-                .map(pct -> amount.multiply(pct).divide(BigDecimal.valueOf(100), 2, RoundingMode.HALF_UP))
+    /**
+     * The due on a claim's amount at the rate for the person's grade in force on the claim's date,
+     * half up to the cent; null with no rate in force then.
+     */
+    private BigDecimal due(String sheetId, Person person, Claim claim) {
+        return rates.findInForce(sheetId, person.getGrade(), claim.getDate()).map(Rate::getPct)
+                .map(pct -> claim.getAmount().multiply(pct).divide(BigDecimal.valueOf(100), 2, RoundingMode.HALF_UP))
                 .orElse(null);
     }
 
