@@ -1,0 +1,64 @@
+{
+  "checkpoint": 141,
+  "stack": {
+    "repo": "/home/daniel/officehq-angular-spring",
+    "origin": "git@github.com:officefloor/officehq-angular-spring.git",
+    "name": "officehq-angular-spring",
+    "base_ref": "base-empty",
+    "base_commit": "65cb8233ea38b2dfa6cfd18709e30cd18fdf3250"
+  },
+  "checkpoint_id": "cp141_monthly-plans",
+  "phase": "mid",
+  "type": "additive",
+  "mutates": [],
+  "replaced_tests": [],
+  "request": {
+    "spec": "A plan may instead run monthly on a day of the month (1 to 31): the plan dates are that day in\nevery month from the start's month, a day beyond the month's length falling on its last day, dates\nbefore the start left out (PLAN_ADDED ends day=<day> end=<date> instead of every=).\n",
+    "prompt": "You are implementing ONE change to this application.\n\nFIRST read AGENTS.md \u2014 it states the working rules and how the app is tested, and sends you to\nDESIGN.md for the app's stack and conventions. Follow both.\n\nTHE CHANGE REQUEST:\nA plan may instead run monthly on a day of the month (1 to 31): the plan dates are that day in\nevery month from the start's month, a day beyond the month's length falling on its last day, dates\nbefore the start left out (PLAN_ADDED ends day=<day> end=<date> instead of every=).\n\nYour work is verified by an automated Playwright UI test already installed under e2e/specs/.\nRead that spec: it declares the exact data-testid anchors, values, test data and any audit\nrecords it expects \u2014 match them. Run `bin/e2e` to build the app, start it, and run the test as\nyou work; iterate until it passes. Change whatever the request needs across the app \u2014 its stored\ndata, its server and its front end. Do NOT edit bin/build, bin/start, bin/stop, bin/e2e,\nAGENTS.md, CLAUDE.md, DESIGN.md, e2e/support/ or the test spec.\n"
+  },
+  "commit_sha": "a00dca584e31265f83fc7bd9edb9eec2f0f3d3c8",
+  "reset_sha": "",
+  "preagent_sha": "a479de80c6abccb3d8e7ab19fe41c54d06facaf6",
+  "prev_sha": "a479de80c6abccb3d8e7ab19fe41c54d06facaf6",
+  "base_sha": "65cb8233ea38b2dfa6cfd18709e30cd18fdf3250",
+  "agent": {
+    "ok": true,
+    "cost_usd": 0.5008954,
+    "input_tokens": 22,
+    "output_tokens": 7691,
+    "cache_read_tokens": 332337,
+    "cache_creation_tokens": 35065,
+    "num_turns": 12,
+    "duration_ms": 244399,
+    "duration_api_ms": 64474,
+    "model": "claude-opus-5-5",
+    "session_id": "672e3e7b-7e98-4f9d-9b6a-1f017a5849c7",
+    "stop_reason": "success",
+    "result_text": "Monthly plans are in, and all 4 acceptance tests pass under `bin/e2e`.\n\n**What changed**\n- **Stored data:** a new migration, `V83__plan_month_day.sql`, adds a `month_day` column to the `plan` table. Every plan now has exactly one of `every_days` or `month_day` set, and the database enforces that, along with the day being 1 to 31.\n- **Server:**\n  - `Plan.dueUpTo` works out the monthly dates. It takes the chosen day in each month from the start's month onward, uses the month's last day when the chosen day is past it, and leaves out dates before the start or after the end.\n  - `PlanService.add` refuses a plan that has both a number of days and a day of the month, or neither, or a day outside 1 to 31.\n  - The `PLAN_ADDED` audit record ends `day=<day> end=<date>` for a monthly plan. Plans that repeat every so many days still write `every=` as before.\n  - The controller accepts and returns an optional `day` next to `every`.\n- **Front end:** the plan form has a new \"Or monthly on day (1 to 31)\" field (`plan-form-day`), checked the same way as on the server. A monthly plan's row shows \"monthly on day N\" (`plan-day`) instead of \"every N days\". The existing `plan-every` id is still shown for the other kind of plan.\n\nYou now have to fill in exactly one of \"Every (days)\" and the new day field. Filling in both, or neither, shows the plan error.",
+    "error": "",
+    "attempts": [
+      {
+        "ok": true,
+        "limit_reached": false,
+        "retryable": false,
+        "timed_out": false,
+        "cost_usd": 0.5008954,
+        "num_turns": 12,
+        "duration_ms": 244399,
+        "duration_api_ms": 64474,
+        "error": ""
+      }
+    ]
+  },
+  "agent_stream_file": "cp141.agent.jsonl",
+  "agent_diff_file": "cp141.agent.diff",
+  "build_log_file": null,
+  "tests": {
+    "gated": false,
+    "queued": true
+  },
+  "probe": null,
+  "pinned_touched": [],
+  "acceptance_touched": [],
+  "impact_gate": null
+}
