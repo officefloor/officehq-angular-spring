@@ -1923,10 +1923,12 @@ export class PeopleList {
     return this.statusTotalOf(p, (c) => c.status === 'SETTLED');
   }
 
-  /** A person's score: their settled-total divided by 100, minus 5 for each of their overdue
-   *  claims that count, rounded half to even to a whole number. Worked in whole cents. */
+  /** A person's score: the due figures of their settled claims that count and correct nothing,
+   *  divided by 100, minus 5 for each of their overdue claims that count, rounded half to even to a
+   *  whole number. Worked in whole cents. */
   protected scoreOf(p: Person): string {
-    const cents = Math.round(Number(this.settledTotalOf(p)) * 100) - 50000 * this.overdueOf(p).length;
+    const settled = this.statusTotalOf(p, (c) => c.status === 'SETTLED' && !c.corrects);
+    const cents = Math.round(Number(settled) * 100) - 50000 * this.overdueOf(p).length;
     const whole = Math.floor(cents / 10000);
     const rest = cents - whole * 10000;
     const score = rest > 5000 || (rest === 5000 && whole % 2 !== 0) ? whole + 1 : whole;

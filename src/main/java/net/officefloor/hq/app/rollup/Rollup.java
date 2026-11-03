@@ -108,7 +108,7 @@ public class Rollup {
     }
 
     /** Record in the audit one SCORE line per person (in list order) with their score as it stands
-     *  now: their settled-total divided by 100, minus 5 for each of their overdue claims that count,
+     *  now: the due figures of their settled claims that correct nothing divided by 100, minus 5 for each of their overdue claims that count,
      *  rounded half to even to a whole number. */
     @Transactional(propagation = Propagation.MANDATORY)
     public void recordScores(String sheetId, String user) {
@@ -119,7 +119,7 @@ public class Rollup {
                 .collect(Collectors.groupingBy(Claim::getPersonId));
         for (Person person : people.findBySheetIdOrderByPositionAscIdAsc(sheetId)) {
             List<Claim> theirs = Dues.live(person, byPerson.getOrDefault(person.getId(), List.of()), today);
-            BigDecimal settled = theirs.stream().filter(c -> c.getStatus() == ClaimStatus.SETTLED)
+            BigDecimal settled = theirs.stream().filter(c -> c.getStatus() == ClaimStatus.SETTLED && c.getCorrects() == null)
                     .map(c -> dues.figure(basis, person, c)).filter(Objects::nonNull)
                     .reduce(BigDecimal.ZERO.setScale(2), BigDecimal::add);
             long overdue = theirs.stream().filter(c -> dues.overdue(basis, person, c)).count();
