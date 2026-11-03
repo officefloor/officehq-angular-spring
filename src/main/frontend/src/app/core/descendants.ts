@@ -16,12 +16,15 @@ export interface DescendantFigures {
   overdueCount: number;
 }
 
-/** A person of a descendant sheet: their name and aliases, and their due-total (null when n/a) and
- *  overdue-total as that sheet shows them. */
+/** A person of a descendant sheet: their name and aliases, and their due-total (null when n/a),
+ *  overdue-total, settled-total, open-total and cut total as that sheet shows them. */
 export interface DescendantPerson {
   names: string[];
   dueTotal: string | null;
   overdueTotal: string;
+  settledTotal: string;
+  openTotal: string;
+  cutTotal: string;
 }
 
 /** No descendants: nothing to add. */

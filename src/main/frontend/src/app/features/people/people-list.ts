@@ -139,6 +139,12 @@ const NO_LEAVE: Leave = { holds: [], retiredFrom: null };
         <dd data-testid="consolidated-due-total">{{ consolidatedDueTotal() | figure }}</dd>
         <dt>Overdue, consolidated</dt>
         <dd data-testid="consolidated-overdue-total">{{ consolidatedOverdueTotal() | figure }}</dd>
+        <dt>Settled, consolidated</dt>
+        <dd data-testid="consolidated-settled-total">{{ consolidatedSettledTotal() | figure }}</dd>
+        <dt>Open, consolidated</dt>
+        <dd data-testid="consolidated-open-total">{{ consolidatedOpenTotal() | figure }}</dd>
+        <dt>Cuts, consolidated</dt>
+        <dd data-testid="consolidated-cut-total">{{ consolidatedCutTotal() | figure }}</dd>
         @for (g of consolidatedGrades(); track g.grade) {
           <dt>Due on grade {{ g.grade }}, consolidated</dt>
           <dd [attr.data-testid]="'consolidated-grade-' + g.grade + '-due-total'">{{ g.dueTotal | figure }}</dd>
@@ -845,13 +851,15 @@ export class PeopleList {
   protected readonly dueTotal = computed(() =>
     trimmedSum(this.people().map((p) => this.dueOf(p)).filter((d): d is string => d !== null)),
   );
-  /** The sheet's settled-total: everyone's settled-total added up (not trimmed). */
+  /** The sheet's settled-total: everyone's settled-total added up, leaving out the single highest
+   *  and lowest when there are three or more. */
   protected readonly settledTotal = computed(() =>
-    sumAmounts(this.people().map((p) => this.settledTotalOf(p))),
+    trimmedSum(this.people().map((p) => this.settledTotalOf(p))),
   );
-  /** The sheet's open-total: everyone's open-total added up (not trimmed). */
+  /** The sheet's open-total: everyone's open-total added up, leaving out the single highest and
+   *  lowest when there are three or more. */
   protected readonly openTotal = computed(() =>
-    sumAmounts(this.people().map((p) => this.openTotalOf(p))),
+    trimmedSum(this.people().map((p) => this.openTotalOf(p))),
   );
   /** Per person, their cuts across every pool they are a member of added up (a pool that shows no
    *  cuts adds nothing). */
@@ -865,9 +873,10 @@ export class PeopleList {
     }
     return new Map([...cuts].map(([id, cs]) => [id, sumAmounts(cs)]));
   });
-  /** The sheet's cut total: everyone's cut total added up (not trimmed). */
+  /** The sheet's cut total: everyone's cut total added up, leaving out the single highest and
+   *  lowest when there are three or more. */
   protected readonly cutTotal = computed(() =>
-    sumAmounts(this.people().map((p) => this.cutTotals().get(p.id) ?? '0.00')),
+    trimmedSum(this.people().map((p) => this.cutTotals().get(p.id) ?? '0.00')),
   );
   /** Per tag ever used on the sheet (those the store keeps, and those of the claims and people
    *  shown), in order: the due figures of the claims that count which carry it, or whose person
@@ -990,6 +999,30 @@ export class PeopleList {
     trimmedSum([
       ...this.people().map((p) => this.overdueTotalOf(p)),
       ...(this.descendants().people ?? []).map((p) => p.overdueTotal),
+    ]),
+  );
+  /** Every person's settled-total over the sheet and its descendants, leaving out the single highest
+   *  and lowest when there are three or more. */
+  protected readonly consolidatedSettledTotal = computed(() =>
+    trimmedSum([
+      ...this.people().map((p) => this.settledTotalOf(p)),
+      ...(this.descendants().people ?? []).map((p) => p.settledTotal ?? '0.00'),
+    ]),
+  );
+  /** Every person's open-total over the sheet and its descendants, leaving out the single highest
+   *  and lowest when there are three or more. */
+  protected readonly consolidatedOpenTotal = computed(() =>
+    trimmedSum([
+      ...this.people().map((p) => this.openTotalOf(p)),
+      ...(this.descendants().people ?? []).map((p) => p.openTotal ?? '0.00'),
+    ]),
+  );
+  /** Every person's cut total over the sheet and its descendants, leaving out the single highest
+   *  and lowest when there are three or more. */
+  protected readonly consolidatedCutTotal = computed(() =>
+    trimmedSum([
+      ...this.people().map((p) => this.cutTotals().get(p.id) ?? '0.00'),
+      ...(this.descendants().people ?? []).map((p) => p.cutTotal ?? '0.00'),
     ]),
   );
   /** How many claims that count are overdue on the sheet and its descendants. */

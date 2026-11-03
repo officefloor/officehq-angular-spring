@@ -11,6 +11,7 @@ import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 import java.util.Objects;
+import java.util.function.Predicate;
 import java.util.function.Supplier;
 import java.util.stream.Collectors;
 import net.officefloor.hq.app.Audit;
@@ -162,9 +163,10 @@ public class Rollup {
             int overdueCount) {
     }
 
-    /** A person of a descendant sheet: their name and aliases, and their due-total (null when n/a)
-     *  and overdue-total as that sheet shows them. */
-    public record Member(List<String> names, String dueTotal, String overdueTotal) {
+    /** A person of a descendant sheet: their name and aliases, and their due-total (null when n/a),
+     *  overdue-total, settled-total, open-total and cut total as that sheet shows them. */
+    public record Member(List<String> names, String dueTotal, String overdueTotal, String settledTotal,
+            String openTotal, String cutTotal) {
     }
 
     /** The figures of a sheet's descendants added up (all zero when it has none): as each stands now,
@@ -199,6 +201,8 @@ public class Rollup {
             due = due.add(new BigDecimal(s.dueTotal()));
             overdue = overdue.add(new BigDecimal(s.overdueTotal()));
             Map<Long, List<Claim>> byPerson = sheetClaims.stream().collect(Collectors.groupingBy(Claim::getPersonId));
+            Map<Long, Person> holders = sheetPeople.stream().collect(Collectors.toMap(Person::getId, p -> p));
+            Map<Long, List<Map.Entry<Claim, BigDecimal>>> held = heldParts(basis, sheetPeople, byPerson, holders);
             for (Person person : sheetPeople) {
                 overdueCount += (int) Dues.live(person, byPerson.getOrDefault(person.getId(), List.of()), basis.today())
                         .stream().filter(c -> dues.overdue(basis, person, c)).count();
@@ -206,8 +210,13 @@ public class Rollup {
                 String personDue = personFigures.dueTotal();
                 List<String> names = new ArrayList<>(List.of(person.getName()));
                 names.addAll(person.getAliases());
+                List<Claim> theirs = Dues.live(person, byPerson.getOrDefault(person.getId(), List.of()), basis.today());
+                List<Map.Entry<Claim, BigDecimal>> theirHeld = held.getOrDefault(person.getId(), List.of());
                 members.add(new Member(names, "n/a".equals(personDue) ? null : personDue,
-                        personFigures.overdueTotal()));
+                        personFigures.overdueTotal(),
+                        text(statusTotal(basis, person, theirs, holders, theirHeld, c -> c.getStatus() == ClaimStatus.SETTLED)),
+                        text(statusTotal(basis, person, theirs, holders, theirHeld, c -> c.getStatus().isOpen())),
+                        text(cuts.getOrDefault(person.getId(), BigDecimal.ZERO.setScale(2)))));
             }
             addGradeDues(gradeDue, basis, sheetPeople, s);
             for (Claim claim : sheetClaims) {
@@ -217,6 +226,32 @@ public class Rollup {
         Map<String, String> gradeDueTotals = new LinkedHashMap<>();
         gradeDue.forEach((grade, total) -> gradeDueTotals.put(grade, text(total)));
         return new Descendants(count, text(due), text(overdue), gradeDueTotals, statusCounts, members, overdueCount);
+    }
+
+    /** The parts each person of a sheet holds of others' claims that count, by holder id, with the
+     *  claim each is a part of. */
+    private Map<Long, List<Map.Entry<Claim, BigDecimal>>> heldParts(Dues.Basis basis, List<Person> sheetPeople,
+            Map<Long, List<Claim>> byPerson, Map<Long, Person> holders) {
+        Map<Long, List<Map.Entry<Claim, BigDecimal>>> held = new HashMap<>();
+        for (Person person : sheetPeople) {
+            for (Claim claim : Dues.live(person, byPerson.getOrDefault(person.getId(), List.of()), basis.today())) {
+                if (!claim.getShares().isEmpty()) {
+                    dues.parts(basis, claim, dues.figure(basis, person, claim), holders).forEach((holder, part) ->
+                            held.computeIfAbsent(holder, h -> new ArrayList<>()).add(Map.entry(claim, part)));
+                }
+            }
+        }
+        return held;
+    }
+
+    /** A person's figures of their claims that count and are kept (less the parts others hold), and
+     *  the parts they hold of others' claims that are kept, added up; those with no due skipped. */
+    private BigDecimal statusTotal(Dues.Basis basis, Person person, List<Claim> theirs, Map<Long, Person> holders,
+            List<Map.Entry<Claim, BigDecimal>> held, Predicate<Claim> keep) {
+        BigDecimal sum = theirs.stream().filter(keep)
+                .map(c -> dues.kept(basis, c, dues.figure(basis, person, c), holders)).filter(Objects::nonNull)
+                .reduce(BigDecimal.ZERO.setScale(2), BigDecimal::add);
+        return held.stream().filter(e -> keep.test(e.getKey())).map(Map.Entry::getValue).reduce(sum, BigDecimal::add);
     }
 
     /** Add to the per-grade due-totals those of a sheet's people not retired on the grade in force
