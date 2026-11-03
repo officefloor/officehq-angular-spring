@@ -1,0 +1,91 @@
+diff --git a/src/main/frontend/src/app/core/settings.ts b/src/main/frontend/src/app/core/settings.ts
+index b6714a67b..3034a930e 100644
+--- a/src/main/frontend/src/app/core/settings.ts
++++ b/src/main/frontend/src/app/core/settings.ts
+@@ -128,14 +128,14 @@ export function graceOn(graces: Graces, grade: Grade | undefined, day: string):
+ }
+ 
+ /** The actions the permission matrix covers. */
+-export type PermAction = 'open' | 'settle' | 'void' | 'reassign' | 'close' | 'reopen';
++export type PermAction = 'open' | 'settle' | 'void' | 'reassign' | 'close' | 'reopen' | 'today';
+ 
+-export const PERM_ACTIONS: PermAction[] = ['open', 'settle', 'void', 'reassign', 'close', 'reopen'];
++export const PERM_ACTIONS: PermAction[] = ['open', 'settle', 'void', 'reassign', 'close', 'reopen', 'today'];
+ 
+ /** The roles that may take each action when its entry in the matrix is blank. */
+ export const STANDING_PERMISSIONS: Record<PermAction, string> = {
+   open: 'clerk,steward', settle: 'clerk,steward', void: 'clerk,steward', close: 'clerk,steward',
+-  reassign: 'steward', reopen: 'steward',
++  reassign: 'steward', reopen: 'steward', today: 'clerk,steward',
+ };
+ 
+ /** A proof kinds value: receipt, photo or both, comma separated. */
+diff --git a/src/main/frontend/src/app/features/settings/settings-form.ts b/src/main/frontend/src/app/features/settings/settings-form.ts
+index 3427ad891..ffec5f1b1 100644
+--- a/src/main/frontend/src/app/features/settings/settings-form.ts
++++ b/src/main/frontend/src/app/features/settings/settings-form.ts
+@@ -347,6 +347,7 @@ export class SettingsForm {
+       reassign: new FormControl('', { nonNullable: true }),
+       close: new FormControl('', { nonNullable: true }),
+       reopen: new FormControl('', { nonNullable: true }),
++      today: new FormControl('', { nonNullable: true }),
+     }),
+   });
+   protected readonly roleForm = new FormGroup({
+diff --git a/src/main/java/net/officefloor/hq/app/role/RoleService.java b/src/main/java/net/officefloor/hq/app/role/RoleService.java
+index 17e2c4d07..7f24b1af0 100644
+--- a/src/main/java/net/officefloor/hq/app/role/RoleService.java
++++ b/src/main/java/net/officefloor/hq/app/role/RoleService.java
+@@ -110,7 +110,7 @@ public class RoleService {
+     }
+ 
+     /** Whether a user name's role on the sheet may take an action of the permission matrix (open,
+-     *  settle, void, reassign, close, reopen). */
++     *  settle, void, reassign, close, reopen, today). */
+     @Transactional(readOnly = true)
+     public boolean may(String sheetId, String userName, String action) {
+         return sheets.rolesAllowed(sheetId, action).contains(roleOf(sheetId, userName));
+diff --git a/src/main/java/net/officefloor/hq/app/sheet/SettingsController.java b/src/main/java/net/officefloor/hq/app/sheet/SettingsController.java
+index 92ad48b03..1fbf935a4 100644
+--- a/src/main/java/net/officefloor/hq/app/sheet/SettingsController.java
++++ b/src/main/java/net/officefloor/hq/app/sheet/SettingsController.java
+@@ -695,7 +695,7 @@ public class SettingsController {
+ 
+     @PutMapping("/permissions/{action}")
+     public SettingsView setPermission(@PathVariable @NotBlank @Size(max = 100) String sheetId,
+-            @PathVariable @Pattern(regexp = "open|settle|void|reassign|close|reopen") String action,
++            @PathVariable @Pattern(regexp = "open|settle|void|reassign|close|reopen|today") String action,
+             @RequestHeader("X-User") @NotBlank @Size(max = 100) String user,
+             @Valid @RequestBody PermissionForm form) {
+         return view(service.setPermission(sheetId.trim(), user.trim(), action, form.rolesValue()));
+diff --git a/src/main/java/net/officefloor/hq/app/sheet/SheetService.java b/src/main/java/net/officefloor/hq/app/sheet/SheetService.java
+index a7316f832..814c9ab54 100644
+--- a/src/main/java/net/officefloor/hq/app/sheet/SheetService.java
++++ b/src/main/java/net/officefloor/hq/app/sheet/SheetService.java
+@@ -178,6 +178,9 @@ public class SheetService {
+     @Transactional
+     public synchronized Sheet setToday(String id, String user, LocalDate today) {
+         Sheet sheet = load(id, user);
++        if (!roles.may(id, user, "today")) {
++            throw new ResponseStatusException(HttpStatus.FORBIDDEN, "Your role may not change the sheet's today");
++        }
+         if (!today.equals(sheet.getToday())) {
+             claims.releaseEditLocks(id);
+         }
+@@ -936,13 +939,14 @@ public class SheetService {
+     }
+ 
+     /** The actions the permission matrix covers. */
+-    public static final List<String> ACTIONS = List.of("open", "settle", "void", "reassign", "close", "reopen");
++    public static final List<String> ACTIONS = List.of("open", "settle", "void", "reassign", "close", "reopen", "today");
+ 
+     /** The roles that may take each action under the standing rule (a blank entry in the matrix). */
+     private static final Map<String, List<String>> STANDING_PERMISSIONS = Map.of(
+             "open", List.of("clerk", "steward"), "settle", List.of("clerk", "steward"),
+             "void", List.of("clerk", "steward"), "close", List.of("clerk", "steward"),
+-            "reassign", List.of("steward"), "reopen", List.of("steward"));
++            "reassign", List.of("steward"), "reopen", List.of("steward"),
++            "today", List.of("clerk", "steward"));
+ 
+     /** The permission matrix as set on the sheet: for each action, the comma separated roles that may
+      *  take it, blank ("") when it keeps the standing rule. */

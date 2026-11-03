@@ -1,0 +1,64 @@
+{
+  "checkpoint": 237,
+  "stack": {
+    "repo": "/home/daniel/officehq-angular-spring",
+    "origin": "git@github.com:officefloor/officehq-angular-spring.git",
+    "name": "officehq-angular-spring",
+    "base_ref": "base-empty",
+    "base_commit": "65cb8233ea38b2dfa6cfd18709e30cd18fdf3250"
+  },
+  "checkpoint_id": "cp237_today-permission",
+  "phase": "late",
+  "type": "additive",
+  "mutates": [],
+  "replaced_tests": [],
+  "request": {
+    "spec": "The permission matrix gains today: which roles may change the sheet's today (SETTING_CHANGED\nkey=perm-today value=<roles>; blank keeps the standing rule, anyone but a viewer). A change by a\nrole not allowed is refused with the sheet's error.\n",
+    "prompt": "You are implementing ONE change to this application.\n\nFIRST read AGENTS.md \u2014 it states the working rules and how the app is tested, and sends you to\nDESIGN.md for the app's stack and conventions. Follow both.\n\nTHE CHANGE REQUEST:\nThe permission matrix gains today: which roles may change the sheet's today (SETTING_CHANGED\nkey=perm-today value=<roles>; blank keeps the standing rule, anyone but a viewer). A change by a\nrole not allowed is refused with the sheet's error.\n\nYour work is verified by an automated Playwright UI test already installed under e2e/specs/.\nRead that spec: it declares the exact data-testid anchors, values, test data and any audit\nrecords it expects \u2014 match them. Run `bin/e2e` to build the app, start it, and run the test as\nyou work; iterate until it passes. Change whatever the request needs across the app \u2014 its stored\ndata, its server and its front end. Do NOT edit bin/build, bin/start, bin/stop, bin/e2e,\nAGENTS.md, CLAUDE.md, DESIGN.md, e2e/support/ or the test spec.\n"
+  },
+  "commit_sha": "c02fca92bf97cc4510e89da5999f9a4510c3f942",
+  "reset_sha": "",
+  "preagent_sha": "76febdde4fde379aae4fdb8e551b5d7c43859487",
+  "prev_sha": "76febdde4fde379aae4fdb8e551b5d7c43859487",
+  "base_sha": "65cb8233ea38b2dfa6cfd18709e30cd18fdf3250",
+  "agent": {
+    "ok": true,
+    "cost_usd": 0.43411259999999996,
+    "input_tokens": 36,
+    "output_tokens": 4600,
+    "cache_read_tokens": 524963,
+    "cache_creation_tokens": 29622,
+    "num_turns": 18,
+    "duration_ms": 310886,
+    "duration_api_ms": 59411,
+    "model": "claude-opus-5-5",
+    "session_id": "cd5ac18d-986f-4ce4-9f05-cca39d97600e",
+    "stop_reason": "success",
+    "result_text": "The permission matrix now has a \"today\" entry that controls which roles may change the sheet's today. `bin/e2e` passes all 4 tests.\n\n**Server**\n- `today` is now one of the matrix's actions in `SheetService` (`ACTIONS`), and its standing rule is clerk and steward, the same as \"anyone but a viewer\". Viewers are still turned away by the existing viewer guard as well.\n- `SheetService.setToday` now checks the matrix before changing anything. A role that isn't allowed gets a 403, so nothing is saved and nothing goes to the audit file.\n- The settings endpoint now accepts `today`, so saving it writes `SETTING_CHANGED ... key=perm-today value=<roles>`. Saving it blank deletes the entry and the standing rule applies again.\n\n**Front end**\n- `today` is added to the matrix's action list, its standing rule and the settings form. That gives the `setting-perm-today` input and the `setting-perm-today-current` value the test uses.\n- The screen for changing today already showed `sheet-error` when a change was refused, so I didn't need to change it.",
+    "error": "",
+    "attempts": [
+      {
+        "ok": true,
+        "limit_reached": false,
+        "retryable": false,
+        "timed_out": false,
+        "cost_usd": 0.43411259999999996,
+        "num_turns": 18,
+        "duration_ms": 310886,
+        "duration_api_ms": 59411,
+        "error": ""
+      }
+    ]
+  },
+  "agent_stream_file": "cp237.agent.jsonl",
+  "agent_diff_file": "cp237.agent.diff",
+  "build_log_file": null,
+  "tests": {
+    "gated": false,
+    "queued": true
+  },
+  "probe": null,
+  "pinned_touched": [],
+  "acceptance_touched": [],
+  "impact_gate": null
+}
