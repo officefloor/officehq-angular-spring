@@ -1,0 +1,64 @@
+{
+  "checkpoint": 161,
+  "stack": {
+    "repo": "/home/daniel/officehq-angular-spring",
+    "origin": "git@github.com:officefloor/officehq-angular-spring.git",
+    "name": "officehq-angular-spring",
+    "base_ref": "base-empty",
+    "base_commit": "65cb8233ea38b2dfa6cfd18709e30cd18fdf3250"
+  },
+  "checkpoint_id": "cp161_as-of-exports",
+  "phase": "mid",
+  "type": "additive",
+  "mutates": [],
+  "replaced_tests": [],
+  "request": {
+    "spec": "The people, claims and pools exports taken while an as-of date is set use the as-of figures.\n",
+    "prompt": "You are implementing ONE change to this application.\n\nFIRST read AGENTS.md \u2014 it states the working rules and how the app is tested, and sends you to\nDESIGN.md for the app's stack and conventions. Follow both.\n\nTHE CHANGE REQUEST:\nThe people, claims and pools exports taken while an as-of date is set use the as-of figures.\n\nYour work is verified by an automated Playwright UI test already installed under e2e/specs/.\nRead that spec: it declares the exact data-testid anchors, values, test data and any audit\nrecords it expects \u2014 match them. Run `bin/e2e` to build the app, start it, and run the test as\nyou work; iterate until it passes. Change whatever the request needs across the app \u2014 its stored\ndata, its server and its front end. Do NOT edit bin/build, bin/start, bin/stop, bin/e2e,\nAGENTS.md, CLAUDE.md, DESIGN.md, e2e/support/ or the test spec.\n"
+  },
+  "commit_sha": "52ef71231366e690a1a2a403b695455c123b99bb",
+  "reset_sha": "",
+  "preagent_sha": "431004635ec60472397c9aba172a2fa7e2a5c36b",
+  "prev_sha": "431004635ec60472397c9aba172a2fa7e2a5c36b",
+  "base_sha": "65cb8233ea38b2dfa6cfd18709e30cd18fdf3250",
+  "agent": {
+    "ok": true,
+    "cost_usd": 0.8212262,
+    "input_tokens": 42,
+    "output_tokens": 9361,
+    "cache_read_tokens": 925111,
+    "cache_creation_tokens": 56102,
+    "num_turns": 21,
+    "duration_ms": 513202,
+    "duration_api_ms": 90538,
+    "model": "claude-opus-5-5",
+    "session_id": "026c372b-fb02-48de-9105-8d23d3f7d4a3",
+    "stop_reason": "success",
+    "result_text": "The people, claims and pools exports now use the as-of figures when an as-of date is set. `bin/e2e` passes all 4 tests.\n\n**What was wrong:** the people and claims exports already used as-of figures. The pools export didn't: its \"cut\" column was worked out from the sheet's current pot, because the app never kept a history of the pot. In the test the pot was 10.00 on 2026-03-01 and 20.00 later, so the as-of cut came out as 20.00 when it should have been 10.00.\n\n**What I changed:**\n- **New migration `V95__sheet_revision_pot.sql`:** sheet history records (`sheet_revision`) now store the pot alongside the policy date. Each sheet that already has a pot gets one starting record dated to its today, the same way the original history migration started everything else.\n- **`SheetRevision`:** has the new `pot` field, plus a check for whether a record still matches the sheet's current policy date and pot.\n- **`History`:** a new history record is written when either the policy date or the pot changes. `SheetAsOf` now includes the pot as it stood on the as-of day.\n- **`SheetService.setPot`:** now writes to the history, as the other setting changes already do.\n- **`PoolService.list`:** when an as-of date is set, it uses the as-of pot. The pool rows on screen also come from this list, so they now show as-of cuts too, not just the export.\n\n**Limits:**\n- Pot changes made before this migration weren't recorded. An as-of date earlier than the starting record finds no pot, so no cuts are shown for that date.\n- Copying a sheet sets the new sheet's pot without writing a history record. That matches how copying treats everything else today, so I left it alone.\n- The as-of settings view still shows the current pot. The request covered only the exports, so I didn't change it.",
+    "error": "",
+    "attempts": [
+      {
+        "ok": true,
+        "limit_reached": false,
+        "retryable": false,
+        "timed_out": false,
+        "cost_usd": 0.8212262,
+        "num_turns": 21,
+        "duration_ms": 513202,
+        "duration_api_ms": 90538,
+        "error": ""
+      }
+    ]
+  },
+  "agent_stream_file": "cp161.agent.jsonl",
+  "agent_diff_file": "cp161.agent.diff",
+  "build_log_file": null,
+  "tests": {
+    "gated": false,
+    "queued": true
+  },
+  "probe": null,
+  "pinned_touched": [],
+  "acceptance_touched": [],
+  "impact_gate": null
+}

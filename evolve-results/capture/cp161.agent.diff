@@ -1,0 +1,182 @@
+diff --git a/src/main/java/net/officefloor/hq/app/history/History.java b/src/main/java/net/officefloor/hq/app/history/History.java
+index 24c2d897e..d2c2cfcb7 100644
+--- a/src/main/java/net/officefloor/hq/app/history/History.java
++++ b/src/main/java/net/officefloor/hq/app/history/History.java
+@@ -11,7 +11,6 @@ import java.util.HashSet;
+ import java.util.LinkedHashMap;
+ import java.util.List;
+ import java.util.Map;
+-import java.util.Objects;
+ import java.util.Optional;
+ import java.util.Set;
+ import java.util.function.Function;
+@@ -59,11 +58,11 @@ public class History {
+ 
+     /** A sheet as it stood at the end of a day: its people, claims, rates (by grade and then
+      *  from-date, the one with no from-date first), dated setting values (latest from-date first),
+-     *  policy date (null when blank) and periods (earliest first) then, all detached and never saved;
++     *  policy date (null when blank), periods (earliest first) and pot (null when blank) then, all detached and never saved;
+      *  and the basis its figures are worked out on, the day standing in for its today. */
+     public record SheetAsOf(LocalDate day, Dues.Basis basis, Map<Long, Person> people, List<Claim> claims,
+             List<Rate> rates, List<SettingValue> settings, LocalDate policyDate, List<Period> periods,
+-            List<List<Rate>> inherited) {
++            List<List<Rate>> inherited, BigDecimal pot) {
+ 
+         /** The person as they stood then; empty when they were not on the sheet yet. */
+         public Optional<Person> person(long personId) {
+@@ -180,9 +179,9 @@ public class History {
+                 }
+             }
+             List<SheetRevision> sheetWas = sheetRevisions.findBySheetIdOrderByIdAsc(sheetId);
+-            LocalDate policyWas = sheetWas.isEmpty() ? null : sheetWas.get(sheetWas.size() - 1).getPolicyDate();
+-            if (!Objects.equals(policyWas, sheet.getPolicyDate())) {
+-                sheetRevisions.save(new SheetRevision(sheetId, today, sheet.getPolicyDate()));
++            if (sheetWas.isEmpty() ? sheet.getPolicyDate() != null || sheet.getPot() != null
++                    : !sheetWas.get(sheetWas.size() - 1).matches(sheet)) {
++                sheetRevisions.save(new SheetRevision(sheetId, today, sheet.getPolicyDate(), sheet.getPot()));
+             }
+         });
+     }
+@@ -205,9 +204,10 @@ public class History {
+                 SettingRevision::getRecordedOn, SettingRevision::key, day).values().stream()
+                 .map(SettingRevision::toValue)
+                 .sorted(Comparator.comparing(SettingValue::getFrom).reversed()).toList();
+-        LocalDate policyDate = sheetRevisions.findBySheetIdOrderByIdAsc(sheetId).stream()
+-                .filter(r -> !r.getRecordedOn().isAfter(day)).reduce((a, b) -> b)
+-                .map(SheetRevision::getPolicyDate).orElse(null);
++        Optional<SheetRevision> sheetThen = sheetRevisions.findBySheetIdOrderByIdAsc(sheetId).stream()
++                .filter(r -> !r.getRecordedOn().isAfter(day)).reduce((a, b) -> b);
++        LocalDate policyDate = sheetThen.map(SheetRevision::getPolicyDate).orElse(null);
++        BigDecimal pot = sheetThen.map(SheetRevision::getPot).orElse(null);
+         List<Period> periodsThen = lastOn(periodRevisions.findBySheetIdOrderByIdAsc(sheetId),
+                 PeriodRevision::getRecordedOn, PeriodRevision::getPeriodId, day).values().stream()
+                 .map(PeriodRevision::toPeriod).sorted(Comparator.comparing(Period::getFromDate)).toList();
+@@ -300,7 +300,7 @@ public class History {
+             }
+         };
+         return new SheetAsOf(day, basis, then, claimsThen, ratesListed, settingsThen, policyDate, periodsThen,
+-                inheritedThen.stream().map(History::listed).toList());
++                inheritedThen.stream().map(History::listed).toList(), pot);
+     }
+ 
+     /** A sheet's rates as they stood at the end of a day, the latest from-date first and the one with
+diff --git a/src/main/java/net/officefloor/hq/app/pool/PoolService.java b/src/main/java/net/officefloor/hq/app/pool/PoolService.java
+index cf38a39ca..a5ecd6928 100644
+--- a/src/main/java/net/officefloor/hq/app/pool/PoolService.java
++++ b/src/main/java/net/officefloor/hq/app/pool/PoolService.java
+@@ -11,6 +11,7 @@ import java.util.function.Function;
+ import java.util.regex.Pattern;
+ import java.util.stream.Collectors;
+ import net.officefloor.hq.app.Audit;
++import net.officefloor.hq.app.history.History;
+ import net.officefloor.hq.app.person.Person;
+ import net.officefloor.hq.app.person.PersonRepository;
+ import net.officefloor.hq.app.sheet.SheetService;
+@@ -118,10 +119,12 @@ public class PoolService {
+     private final PoolMemberRepository members;
+     private final PersonRepository people;
+     private final SheetService sheets;
++    private final History history;
+     private final Audit audit;
+ 
+     public PoolService(PoolRepository pools, PoolMemberRepository members, PersonRepository people,
+-            SheetService sheets, Audit audit) {
++            SheetService sheets, History history, Audit audit) {
++        this.history = history;
+         this.pools = pools;
+         this.members = members;
+         this.people = people;
+@@ -136,7 +139,7 @@ public class PoolService {
+     }
+ 
+     /** The pools as {@link #list(String)} has them, with holds and memberships' dates taken on a day
+-     *  (null: the sheet's today): the sheet as of that day. */
++     *  (null: the sheet's today) and the sheet's pot as it stood at its end: the sheet as of that day. */
+     @Transactional(readOnly = true)
+     public List<Listed> list(String sheetId, LocalDate asOf) {
+         List<Pool> all = pools.findBySheetIdOrderByIdAsc(sheetId);
+@@ -159,7 +162,7 @@ public class PoolService {
+         }
+         Map<Long, Long> above = memberships.stream().filter(m -> m.getMemberPoolId() != null)
+                 .collect(Collectors.toMap(PoolMember::getMemberPoolId, PoolMember::getPoolId, (a, b) -> a));
+-        BigDecimal sheetPot = sheets.pot(sheetId);
++        BigDecimal sheetPot = asOf != null ? history.asOf(sheetId, asOf).pot() : sheets.pot(sheetId);
+         Map<Long, Listed> listed = new HashMap<>();
+         return all.stream().map(p -> listed(p.getId(), poolsById, membersOf, above, sheetPot, listed, 0)).toList();
+     }
+diff --git a/src/main/java/net/officefloor/hq/app/sheet/SheetRevision.java b/src/main/java/net/officefloor/hq/app/sheet/SheetRevision.java
+index 153b9dc6a..d6998a601 100644
+--- a/src/main/java/net/officefloor/hq/app/sheet/SheetRevision.java
++++ b/src/main/java/net/officefloor/hq/app/sheet/SheetRevision.java
+@@ -6,10 +6,12 @@ import jakarta.persistence.GeneratedValue;
+ import jakarta.persistence.GenerationType;
+ import jakarta.persistence.Id;
+ import jakarta.persistence.Table;
++import java.math.BigDecimal;
+ import java.time.LocalDate;
++import java.util.Objects;
+ 
+-/** A revision of a sheet's own figure settings in its history: its policy date (null: blank) after a
+- *  change, recorded on the sheet's today then. */
++/** A revision of a sheet's own figure settings in its history: its policy date and its pot (each null:
++ *  blank) after a change, recorded on the sheet's today then. */
+ @Entity
+ @Table(name = "sheet_revision")
+ public class SheetRevision {
+@@ -28,13 +30,17 @@ public class SheetRevision {
+     @Column(name = "policy_date")
+     private LocalDate policyDate;
+ 
++    @Column(name = "pot")
++    private BigDecimal pot;
++
+     protected SheetRevision() {
+     }
+ 
+-    public SheetRevision(String sheetId, LocalDate recordedOn, LocalDate policyDate) {
++    public SheetRevision(String sheetId, LocalDate recordedOn, LocalDate policyDate, BigDecimal pot) {
+         this.sheetId = sheetId;
+         this.recordedOn = recordedOn;
+         this.policyDate = policyDate;
++        this.pot = pot;
+     }
+ 
+     public LocalDate getRecordedOn() {
+@@ -44,4 +50,14 @@ public class SheetRevision {
+     public LocalDate getPolicyDate() {
+         return policyDate;
+     }
++
++    public BigDecimal getPot() {
++        return pot;
++    }
++
++    /** Whether the revision holds the sheet's figure settings as they are. */
++    public boolean matches(Sheet sheet) {
++        return Objects.equals(policyDate, sheet.getPolicyDate())
++                && (pot == null ? sheet.getPot() == null : sheet.getPot() != null && pot.compareTo(sheet.getPot()) == 0);
++    }
+ }
+diff --git a/src/main/java/net/officefloor/hq/app/sheet/SheetService.java b/src/main/java/net/officefloor/hq/app/sheet/SheetService.java
+index 73d053922..57ff373d5 100644
+--- a/src/main/java/net/officefloor/hq/app/sheet/SheetService.java
++++ b/src/main/java/net/officefloor/hq/app/sheet/SheetService.java
+@@ -468,6 +468,7 @@ public class SheetService {
+         Sheet sheet = load(id, user);
+         sheet.setPot(pot);
+         Sheet saved = sheets.saveAndFlush(sheet);
++        history.record(id);
+         audit.recordOnCommit("SETTING_CHANGED sheet=" + id + " by=" + user + " key=pot value="
+                 + (pot == null ? "" : pot.setScale(2).toPlainString()));
+         return saved;
+diff --git a/src/main/resources/db/migration/V95__sheet_revision_pot.sql b/src/main/resources/db/migration/V95__sheet_revision_pot.sql
+new file mode 100644
+index 000000000..6686bd8f0
+--- /dev/null
++++ b/src/main/resources/db/migration/V95__sheet_revision_pot.sql
+@@ -0,0 +1,5 @@
++-- A sheet's pot is kept in its history with its policy date, so the pools' cuts can be worked out
++-- as of an earlier day. The pot a sheet holds already is a revision, stamped with its today.
++ALTER TABLE sheet_revision ADD COLUMN pot DECIMAL(14, 2);
++INSERT INTO sheet_revision (sheet_id, recorded_on, policy_date, pot)
++    SELECT id, today, policy_date, pot FROM sheet WHERE pot IS NOT NULL;
