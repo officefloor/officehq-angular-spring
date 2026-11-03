@@ -24,6 +24,18 @@ import { Session } from '../../core/session';
         </form>
         @if (session.sheet(); as sheet) {
           <p>Sheet <strong data-testid="sheet-current-id">{{ sheet }}</strong></p>
+          <form aria-label="Sheet today" (submit)="saveToday($event)">
+            <p>Today <strong data-testid="sheet-today">{{ session.today() }}</strong></p>
+            <label for="sheet-today-input">Change today</label>
+            <input
+              id="sheet-today-input"
+              type="date"
+              data-testid="sheet-today-input"
+              [value]="todayInput()"
+              (input)="todayInput.set($any($event.target).value); sheetError.set(null)"
+            />
+            <button type="submit" data-testid="sheet-today-save">Set today</button>
+          </form>
         } @else {
           <p data-testid="sheet-none">No sheet loaded.</p>
         }
@@ -51,6 +63,7 @@ export class Home {
   protected readonly sheetInput = signal('');
   protected readonly signinError = signal<string | null>(null);
   protected readonly sheetError = signal<string | null>(null);
+  protected readonly todayInput = signal('');
 
   protected async signIn(event: Event): Promise<void> {
     event.preventDefault();
@@ -79,6 +92,21 @@ export class Home {
       await this.session.loadSheet(id);
     } catch {
       this.sheetError.set('Could not load that sheet.');
+    }
+  }
+
+  protected async saveToday(event: Event): Promise<void> {
+    event.preventDefault();
+    this.sheetError.set(null);
+    const today = this.todayInput().trim();
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(today)) {
+      this.sheetError.set('Enter a date for today.');
+      return;
+    }
+    try {
+      await this.session.setToday(today);
+    } catch {
+      this.sheetError.set('Could not change the sheet\'s today.');
     }
   }
 }
