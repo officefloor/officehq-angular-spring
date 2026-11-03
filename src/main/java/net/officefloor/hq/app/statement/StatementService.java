@@ -80,7 +80,8 @@ public class StatementService {
     }
 
     /** Take a statement of a person: record their due-total now and bind each of their claims that
-     *  counts in the live totals to the rate figure it has now, leaving out any late charge and the floor; any other
+     *  counts in the live totals to its due as shown now, late charge included (a figure an earlier
+     *  statement bound stays as it is); any other
      *  claim (one that does not count, a deferred one, or an open unbound one dated within one of their
      *  holds) is unbound. */
     @Transactional
@@ -91,7 +92,7 @@ public class StatementService {
     /** Take a statement of a person as of a day (null: the sheet's today) on or before the sheet's
      *  today: the sheet as it stood at the end of that day (see {@link History}) stands in for it as
      *  it is now, that day for its today. Their due-total then is recorded, and each claim of theirs
-     *  that counted in the live totals then is bound to the rate figure it had then; every other claim
+     *  that counted in the live totals then is bound to the due it showed then, late charge included; every other claim
      *  of theirs is unbound. Refused when the day is after the sheet's today, or when the person was
      *  not on the sheet yet then. */
     @Transactional

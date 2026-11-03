@@ -177,9 +177,10 @@ public class Dues {
     }
 
     /** The due figure a claim shows and totals: the one fixed when it was settled, or else its
-     *  {@link #bindable} rate figure with the late charge on that figure on top while it is overdue,
-     *  at least the sheet's floor in force on the claim's date (a correction has neither); null when
-     *  there is none. */
+     *  {@link #bindable} figure: the one its person's last statement bound it to (its late charge no
+     *  longer following the sheet's today), or else its live rate figure with the late charge on that
+     *  figure on top while it is overdue, at least the sheet's floor in force on the claim's date (a
+     *  correction has neither); null when there is none. */
     public BigDecimal figure(String sheetId, Person person, Claim claim) {
         return figure(now(sheetId), person, claim);
     }
@@ -189,7 +190,7 @@ public class Dues {
         if (claim.getSettledDue() != null) {
             return claim.getSettledDue();
         }
-        return floored(basis, person, claim, bindable(basis, person, claim), claim.getStatus().isOpen());
+        return bindable(basis, person, claim);
     }
 
     /** The figure a claim would have today as an open claim bound by no statement: its rate figure
@@ -210,10 +211,11 @@ public class Dues {
         return claim.isCorrection() ? charged : charged.max(basis.floor(claim.getDate()));
     }
 
-    /** The rate figure a statement binds a claim to: the one its person's last statement bound it to,
-     *  or else its live rate figure (a pending claim is bound like any other claim that counts);
-     *  never the late charge, which keeps following the sheet's today, nor the floor, which is applied
-     *  last. Null when there is none, or when the statement bound it to n/a. */
+    /** The figure a statement binds a claim to, its due as shown: the one its person's last statement
+     *  bound it to (so a bound figure stays as it is until that statement is cancelled), or else its
+     *  live rate figure with the late charge on top while it is overdue, at least the floor in force on
+     *  its date (a pending claim is bound like any other claim that counts). Null when there is none,
+     *  or when the statement bound it to n/a. */
     public BigDecimal bindable(String sheetId, Person person, Claim claim) {
         return bindable(now(sheetId), person, claim);
     }
@@ -223,7 +225,7 @@ public class Dues {
         if (bound(claim) && (claim.getStatedDue() != null || claim.isStatedNa())) {
             return claim.getStatedDue();
         }
-        return due(basis, person, claim);
+        return floored(basis, person, claim, due(basis, person, claim), claim.getStatus().isOpen());
     }
 
     /** Whether a statement binds a claim to n/a: its person's last statement bound it to n/a, or

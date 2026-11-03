@@ -268,17 +268,18 @@ export function roundsHalfUp(c: Claim, late: Lateness): boolean {
   return policy !== null && c.roundsBy < policy;
 }
 
-/** A claim's due figure: the one fixed when it was settled, or else the greater of the sheet's floor in force on the
- *  claim's date and its rate figure with the late charge on that figure on top while it is overdue. The rate figure is
- *  the one its person's last statement bound it to (n/a when it bound it to n/a), or else its live due at the rate in
+/** A claim's due figure: the one fixed when it was settled, or else the one its person's last statement bound it to
+ *  as it showed then, late charge included (n/a when it bound it to n/a), or else the greater of the sheet's floor in
+ *  force on the claim's date and its rate figure with the late charge on that figure on top while it is overdue. The
+ *  rate figure is its live due at the rate in
  *  force on the claim's date that applies to it (see {@link pctFor}) for the grade (the person's grade in force on that date), rounded by the rounding mode or policy date (a
  *  settled claim's figure already holds the charge and the floor). A correction has no floor and no late charge. Null
  *  when there is none. */
 export function claimDue(c: Claim, rates: Rate[], grade: Grade | undefined, floors: DatedValue[], late: Lateness): string | null {
   if (c.settledDue !== null) return c.settledDue;
   if (bound(c) && c.statedNa) return null;
-  const live = due(c.amount, grade === undefined ? undefined : pctFor(rates, grade, c), roundsHalfUp(c, late));
-  const figure = (bound(c) ? c.statedDue : null) ?? live;
+  if (bound(c) && c.statedDue !== null) return c.statedDue;
+  const figure = due(c.amount, grade === undefined ? undefined : pctFor(rates, grade, c), roundsHalfUp(c, late));
   if (figure === null) return null;
   const charged = sumAmounts([figure, lateCharge(c, figure, late, grade)]);
   return correction(c) ? charged : atLeast(charged, valueOn(floors, c.date, STARTING_FLOOR));
