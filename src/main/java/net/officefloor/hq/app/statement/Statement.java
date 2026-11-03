@@ -47,6 +47,10 @@ public class Statement {
     @Column(name = "cancelled_on")
     private LocalDate cancelledOn;
 
+    /** Whether the statement came to its person with a merge or a transfer (it was another person's). */
+    @Column(name = "carried", nullable = false)
+    private boolean carried;
+
     protected Statement() {
     }
 
@@ -59,6 +63,19 @@ public class Statement {
         this.dueTotal = dueTotal;
         this.claims = claims;
         this.asOf = asOf;
+    }
+
+    /** A copy of this statement carried to a person (on this sheet or another) with a merge or a
+     *  transfer: taken, cancelled and as of the same days, by the same user, to the same figures. */
+    public Statement carriedTo(String toSheetId, Long toPersonId) {
+        Statement copy = new Statement(toSheetId, toPersonId, takenOn, takenBy, dueTotal, claims, asOf);
+        copy.cancelledOn = cancelledOn;
+        copy.carried = true;
+        return copy;
+    }
+
+    public boolean isCarried() {
+        return carried;
     }
 
     public Long getId() {

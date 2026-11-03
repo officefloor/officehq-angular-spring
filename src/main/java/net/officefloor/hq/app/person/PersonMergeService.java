@@ -17,6 +17,7 @@ import net.officefloor.hq.app.pool.PoolRepository;
 import net.officefloor.hq.app.role.RoleService;
 import net.officefloor.hq.app.role.SheetRole;
 import net.officefloor.hq.app.rollup.Rollup;
+import net.officefloor.hq.app.statement.Statement;
 import net.officefloor.hq.app.statement.StatementRepository;
 import net.officefloor.hq.app.watch.WatchRepository;
 import org.springframework.http.HttpStatus;
@@ -61,11 +62,13 @@ public class PersonMergeService {
 
     /** Merge a person into another and return the other as they now stand. The merged person's
      *  claims move to the other (numbers, dates and statuses kept, listed after the other's in the
-     *  order they were added, each losing any figure a statement bound); their name and aliases
+     *  order they were added, each keeping any figure a statement bound); their name and aliases
      *  become aliases of the other; their patrons are added to the other's (not the other
      *  themselves, no repeats), anyone naming them as patron names the other instead (no repeats);
      *  their plans and pool memberships move to the other (shares added where the other is already a member)
-     *  and their fixed due-totals of closed periods fold into the other's. Their statements, holds,
+     *  and their fixed due-totals of closed periods fold into the other's; their statements are carried
+     *  to the other (who counts both, their last statement staying their own or, having none, becoming
+     *  the merged person's last). Their holds,
      *  watchers and contact are dropped, and they leave the sheet. Refused unless the user is a
      *  steward, and for the same person, or when either of them is retired. */
     @Transactional
@@ -93,7 +96,7 @@ public class PersonMergeService {
             plans.flush();
             periods.findBySheetIdOrderByFromDateAsc(sheetId)
                     .forEach(period -> period.mergePersonTotal(from.getId(), into.getId()));
-            statements.deleteAll(statements.findBySheetIdAndPersonIdOrderByIdAsc(sheetId, from.getId()));
+            carryStatements(sheetId, from, into);
             watches.deleteAll(watches.findByPersonIdOrderByIdAsc(from.getId()));
             people.flush();
             Set<String> names = new HashSet<>(from.getAliases());
@@ -105,10 +108,17 @@ public class PersonMergeService {
         });
     }
 
+    private void carryStatements(String sheetId, Person from, Person into) {
+        List<Statement> theirs = statements.findBySheetIdAndPersonIdOrderByIdAsc(sheetId, from.getId());
+        statements.saveAllAndFlush(theirs.stream().map(s -> s.carriedTo(sheetId, into.getId())).toList());
+        statements.deleteAll(theirs);
+        statements.flush();
+    }
+
     private void moveClaims(String sheetId, Person from, Person into) {
         claims.findBySheetIdAndPersonIdOrderByListedDesc(sheetId, from.getId()).stream()
                 .sorted(Comparator.comparing(Claim::getId))
-                .forEach(claim -> claim.moveTo(into.getId(), claims.nextListed()));
+                .forEach(claim -> claim.mergedTo(into.getId(), claims.nextListed()));
         claims.flush();
     }
 

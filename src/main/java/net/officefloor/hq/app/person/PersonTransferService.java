@@ -71,7 +71,9 @@ public class PersonTransferService {
      *  contact and aliases, and their claims (status, dates, notes, tags, frozen figures and logs
      *  kept): each claim that had a number takes the other sheet's next one, in the order the claims
      *  were opened (by the sheet's today then, then by the order they were added); figures a
-     *  statement bound and references are not carried, and they have no statements there. They
+     *  statement bound are kept, references are not carried, and their statements are carried there
+     *  (counted with those of the person they arrive as, whose last statement stays their own or,
+     *  having none, becomes the transferred person's last). They
      *  leave this sheet entirely (patron links, pool memberships, plans, watches and statements dropped).
      *  A sheet never loaded is started empty, as loading it would. When their name or an alias is
      *  already the name or an alias of someone on the other sheet (compared as names are), they
@@ -132,12 +134,16 @@ public class PersonTransferService {
                 claimService.keepTags(toSheetId, arrived.getTags());
                 Map<String, String> numbers = renumber(toSheetId, theirs);
                 for (Claim claim : theirs) {
-                    Claim copy = claims.saveAndFlush(claim.transferredTo(toSheetId, arrived.getId(), numbers::get));
+                    Claim moved = claim.transferredTo(toSheetId, arrived.getId(), numbers::get);
+                    moved.bind(claim.isStated(), claim.getStatedDue(), claim.isStatedNa());
+                    Claim copy = claims.saveAndFlush(moved);
                     claimService.keepTags(toSheetId, copy.getTags());
                 }
+                statements.saveAllAndFlush(statements.findBySheetIdAndPersonIdOrderByIdAsc(sheetId, from.getId())
+                        .stream().map(s -> s.carriedTo(toSheetId, arrived.getId())).toList());
                 if (into != null) {
-                    // Merged as a merge would: their claims after the other's (no figure a statement
-                    // bound), their name and aliases joining the other's aliases.
+                    // Merged as a merge would: their claims after the other's (keeping any figure a
+                    // statement bound), their name and aliases joining the other's aliases.
                     Stream.concat(Stream.of(from.getName()), from.getAliases().stream())
                             .filter(n -> !n.equalsIgnoreCase(into.getName()))
                             .forEach(into::addAlias);

@@ -134,7 +134,8 @@ public class StatementService {
     /** Cancel a person's last statement: only a steward may, and only when one was taken. The claims
      *  it bound become live again (a figure an earlier statement bound is not restored), and the
      *  statement before it, if any, becomes their last. The cancelled statement is kept, marked with
-     *  the sheet's today, so the sheet as of an earlier day still shows it. */
+     *  the sheet's today, so the sheet as of an earlier day still shows it. Their last is their own
+     *  last statement, or, having none, the last one carried to them by a merge or a transfer. */
     @Transactional
     public Taken cancelLast(String sheetId, String user, long personId) {
         if (!SheetRole.STEWARD.equals(roles.roleOf(sheetId, user))) {
@@ -146,7 +147,7 @@ public class StatementService {
         if (taken.isEmpty()) {
             throw new ResponseStatusException(HttpStatus.CONFLICT, "No statement has been taken of this person");
         }
-        Statement last = taken.get(taken.size() - 1);
+        Statement last = StatementSummary.last(taken);
         List<Claim> unbound = rollup.tracking(sheetId, user, () -> {
             List<Claim> theirs = claims.findBySheetIdAndPersonIdOrderByListedDesc(sheetId, personId);
             theirs.forEach(claim -> claim.bind(false, null));

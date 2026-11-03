@@ -226,6 +226,13 @@ public class Claim {
         bind(false, null);
     }
 
+    /** Move the claim to the person its person is merged into, listed at the place given (after every
+     *  claim listed so far). It keeps its date, status and any figure a statement bound it to. */
+    public void mergedTo(Long personId, long listed) {
+        this.personId = personId;
+        this.listed = listed;
+    }
+
     /** A copy of this claim for a person on another sheet (it was transferred there): its status,
      *  dates, note, tags, frozen figures, status log and comments kept, its numbers (its own, the
      *  one it corrects and the one it was split off) renumbered as given (null: none), and no
