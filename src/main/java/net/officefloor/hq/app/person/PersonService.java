@@ -20,7 +20,7 @@ import org.springframework.web.server.ResponseStatusException;
  * A
  * name is unique on the sheet, compared without regard to case (names arrive trimmed). A person can
  * be retired from a date (the sheet's today when none is given); they count as retired at once. A
- * person can be put on hold and taken off it again. A person can name other people on the sheet as
+ * person can be put on hold over a span of dates, and may have several holds over time. A person can name other people on the sheet as
  * their patrons, one at a time: not themselves, and not the same person twice.
  */
 @Service
@@ -96,22 +96,23 @@ public class PersonService {
     }
 
     /**
-     * Put the person on hold (held) or take them off it; refused (409) when they are already so.
-     * Holding takes their OPEN claims out of every live total, so the figures that move are recorded.
+     * Put the person on hold from a date (the sheet's today when none is given) to an optional
+     * to-date; refused (400) when the to-date is before the from-date. Their OPEN claims dated within
+     * the hold leave every live total, so the figures that move are recorded.
      */
     @Transactional
-    public Person hold(String sheetId, String user, long id, boolean held) {
+    public Person hold(String sheetId, String user, long id, LocalDate fromDate, LocalDate toDate) {
         RollupService.Snapshot before = rollup.snapshot(sheetId);
         Person person = people.lockByIdAndSheetId(id, sheetId)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "No such person on this sheet."));
-        if (person.isHeld() == held) {
-            throw new ResponseStatusException(HttpStatus.CONFLICT,
-                    held ? "That person is already on hold." : "That person is not on hold.");
+        LocalDate from = fromDate != null ? fromDate : sheets.today(sheetId);
+        if (toDate != null && toDate.isBefore(from)) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "A hold cannot end before it starts.");
         }
-        person.setHeld(held);
+        person.addHold(from, toDate);
         Person saved = save(person);
-        audit.recordOnCommit((held ? "PERSON_HELD" : "PERSON_RELEASED") + " sheet=" + sheetId + " by=" + user
-                + " name=" + saved.getName());
+        audit.recordOnCommit("PERSON_HELD sheet=" + sheetId + " by=" + user + " name=" + saved.getName() + " from="
+                + from);
         rollup.recordChanges(sheetId, user, before);
         return saved;
     }

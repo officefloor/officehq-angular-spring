@@ -30,8 +30,10 @@ import { GradeSummary, PeriodSummary, StatusSummary, Summary } from '../summary/
 // A person can be retired from a date (the sheet's today when left blank); with a date set they count
 // as retired at once, whatever the date. No claim of theirs can be dated after it. Retired people are
 // left out of the list unless "show retired" is on; their claims keep counting in every total.
-// A person can be put on hold and taken off it again: while held, their OPEN and PENDING claims count
-// in no total (their own, the sheet's or a period's); their SETTLED claims still do.
+// A person can be put on hold from a date (the sheet's today when left blank) to an optional to-date,
+// and may have several holds over time; a hold ends on its to-date. Their OPEN and PENDING claims dated
+// within a hold count in no total (their own, the sheet's or a period's); their other claims still do,
+// and so does a claim bound by a statement, whatever its date. "On hold" shows whether they have any hold.
 // The quick-add bar adds a DRAFT claim of an amount, dated the sheet's today with an empty note, for
 // the person of a name, adding the person with grade A first when the name is not on the sheet.
 // Each person, and the sheet, shows how many of the claims that count are overdue and the sum of
@@ -52,12 +54,29 @@ interface Person {
   retired: boolean;
   /** The date the person is retired from, or null. */
   retiredFrom: string | null;
+  /** Whether the person has any hold. */
   held: boolean;
+  /** The person's holds, by from-date. */
+  holds: DatedHold[];
 }
 
-/** Whether a claim of the person counts toward the totals: a held person's OPEN or PENDING claims do not. */
+/** One of a person's holds: from its from-date to its to-date (null: open-ended), both inclusive. */
+interface DatedHold {
+  from: string;
+  to: string | null;
+}
+
+/** Whether a day lies within one of the person's holds. */
+function heldOn(p: Person, date: string): boolean {
+  return p.holds.some((h) => h.from <= date && (h.to === null || date <= h.to));
+}
+
+/**
+ * Whether a claim of the person counts toward the totals: an OPEN or PENDING claim dated within one
+ * of their holds does not, unless a statement binds it.
+ */
 function countsFor(p: Person | undefined, c: Claim): boolean {
-  return counts(c) && !(p?.held && isOpen(c));
+  return counts(c) && (c.stated || !(p !== undefined && isOpen(c) && heldOn(p, c.date)));
 }
 
 /** One of a person's patrons. */
@@ -228,6 +247,11 @@ const SUMMARY_STATUSES = ['DRAFT', 'OPEN', 'PENDING', 'SETTLED', 'VOID'] as cons
               </td>
               <td>
                 <span data-testid="person-hold">{{ p.held ? 'yes' : 'no' }}</span>
+                <ul>
+                  @for (h of p.holds; track $index) {
+                    <li data-testid="person-hold-line">{{ h.from }} to {{ h.to ?? 'open' }}</li>
+                  }
+                </ul>
               </td>
               <td>
                 <span data-testid="person-patrons">{{ patronNamesOf(p.id) }}</span>
@@ -307,13 +331,29 @@ const SUMMARY_STATUSES = ['DRAFT', 'OPEN', 'PENDING', 'SETTLED', 'VOID'] as cons
                 >
                   Retire
                 </button>
+                <label [for]="'person-hold-from-' + p.id">Hold from</label>
+                <input
+                  type="date"
+                  [id]="'person-hold-from-' + p.id"
+                  data-testid="person-hold-from"
+                  [value]="holdFroms().get(p.id) ?? ''"
+                  (input)="setHoldFrom(p.id, $any($event.target).value)"
+                />
+                <label [for]="'person-hold-to-' + p.id">to</label>
+                <input
+                  type="date"
+                  [id]="'person-hold-to-' + p.id"
+                  data-testid="person-hold-to"
+                  [value]="holdTos().get(p.id) ?? ''"
+                  (input)="setHoldTo(p.id, $any($event.target).value)"
+                />
                 <button
                   type="button"
                   data-testid="person-hold-toggle"
-                  [attr.aria-label]="(p.held ? 'Release ' : 'Hold ') + p.name"
+                  [attr.aria-label]="'Hold ' + p.name"
                   (click)="hold(p)"
                 >
-                  {{ p.held ? 'Release' : 'Hold' }}
+                  Hold
                 </button>
                 @if (rowErrors().get(p.id); as err) {
                   <p role="alert" data-testid="person-error">{{ err }}</p>
@@ -338,6 +378,9 @@ export class People {
   );
   /** The retire-from date typed on each person's row, by person id. */
   protected readonly retireDates = signal<ReadonlyMap<number, string>>(new Map());
+  /** The hold from- and to-dates typed on each person's row, by person id. */
+  protected readonly holdFroms = signal<ReadonlyMap<number, string>>(new Map());
+  protected readonly holdTos = signal<ReadonlyMap<number, string>>(new Map());
   /** The sheet's claims, newest first. */
   protected readonly claims = signal<Claim[]>([]);
   /** The ids of the claims ticked for a bulk action. */
@@ -466,6 +509,8 @@ export class People {
       this.patronChoices.set(new Map());
       this.patronErrors.set(new Map());
       this.retireDates.set(new Map());
+      this.holdFroms.set(new Map());
+      this.holdTos.set(new Map());
       this.reset();
       this.quickName.set('');
       this.quickAmount.set('');
@@ -647,20 +692,43 @@ export class People {
     }
   }
 
-  /** Put the person on hold, or take them off it when they are held. */
+  protected setHoldFrom(id: number, date: string): void {
+    this.holdFroms.update((m) => new Map(m).set(id, date));
+    this.clearRowError(id);
+  }
+
+  protected setHoldTo(id: number, date: string): void {
+    this.holdTos.update((m) => new Map(m).set(id, date));
+    this.clearRowError(id);
+  }
+
+  /** Put the person on hold from the from-date on their row (the sheet's today when blank) to its to-date, if any. */
   protected async hold(p: Person): Promise<void> {
     this.clearRowError(p.id);
     const sheet = this.session.sheet();
+    const from = (this.holdFroms().get(p.id) ?? '').trim();
+    const to = (this.holdTos().get(p.id) ?? '').trim();
+    const isDate = (d: string) => d === '' || /^\d{4}-\d{2}-\d{2}$/.test(d);
+    if (!isDate(from) || !isDate(to)) {
+      this.rowErrors.update((m) => new Map(m).set(p.id, 'Enter dates, or leave the from-date blank for the sheet\'s today.'));
+      return;
+    }
     try {
       const saved = await firstValueFrom(
-        this.http.post<Person>('/api/people/hold', { sheet, user: this.session.user(), id: p.id, held: !p.held }),
+        this.http.post<Person>('/api/people/hold', {
+          sheet,
+          user: this.session.user(),
+          id: p.id,
+          from: from || null,
+          to: to || null,
+        }),
       );
       if (this.session.sheet() !== sheet) return;
       this.people.update((list) => list.map((x) => (x.id === saved.id ? saved : x)));
       if (this.editingId() === saved.id && this.editingVersion === p.version) this.editingVersion = saved.version;
     } catch {
       if (this.session.sheet() !== sheet) return;
-      this.rowErrors.update((m) => new Map(m).set(p.id, (p.held ? 'Could not release ' : 'Could not hold ') + p.name + '.'));
+      this.rowErrors.update((m) => new Map(m).set(p.id, 'Could not hold ' + p.name + '.'));
     }
   }
 

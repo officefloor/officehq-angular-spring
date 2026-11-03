@@ -79,7 +79,7 @@ public class RollupService {
             BigDecimal due = zero();
             boolean anyFigure = false;
             for (Claim claim : sheetClaims) {
-                if (!claim.getPersonId().equals(person.getId()) || !person.counts(claim.getStatus())) {
+                if (!claim.getPersonId().equals(person.getId()) || !person.counts(claim)) {
                     continue;
                 }
                 claimed = claimed.add(claim.getAmount());
@@ -109,7 +109,7 @@ public class RollupService {
         BigDecimal due = zero();
         for (Person person : people.findBySheetIdOrderByIdAsc(sheetId)) {
             for (Claim claim : sheetClaims) {
-                if (!claim.getPersonId().equals(person.getId()) || !person.counts(claim.getStatus())
+                if (!claim.getPersonId().equals(person.getId()) || !person.counts(claim)
                         || claim.getDate().isBefore(from) || claim.getDate().isAfter(to)) {
                     continue;
                 }

@@ -15,10 +15,11 @@ import java.time.LocalDate;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.List;
+import net.officefloor.hq.app.claim.Claim;
 import net.officefloor.hq.app.claim.ClaimStatus;
 
 /** A person on a sheet: a name and their grades (A, B or C), each from a from-date, and the date they are retired from, if any;
- * and whether they are on hold. */
+ * and the holds they have had, each over a span of dates. */
 @Entity
 @Table(name = "person")
 public class Person {
@@ -42,9 +43,10 @@ public class Person {
     @Column(name = "retired_from")
     private LocalDate retiredFrom;
 
-    /** While held, the person's OPEN claims count in no live total. */
-    @Column(name = "held", nullable = false)
-    private boolean held;
+    /** The person's OPEN claims dated within a hold, and not bound by a statement, count in no live total. */
+    @ElementCollection(fetch = FetchType.EAGER)
+    @CollectionTable(name = "person_hold", joinColumns = @JoinColumn(name = "person_id"))
+    private List<DatedHold> holds = new ArrayList<>();
 
     /** Bumped on every save; an edit must carry the version it was made from. */
     @Version
@@ -111,17 +113,33 @@ public class Person {
         return retiredFrom != null;
     }
 
+    /** The holds recorded, by from-date. */
+    public List<DatedHold> getHolds() {
+        return holds.stream().sorted(Comparator.comparing(DatedHold::getFromDate)
+                .thenComparing(DatedHold::getToDate, Comparator.nullsLast(Comparator.naturalOrder()))).toList();
+    }
+
+    public void addHold(LocalDate fromDate, LocalDate toDate) {
+        holds.add(new DatedHold(fromDate, toDate));
+    }
+
+    /** Whether the person has any hold. */
     public boolean isHeld() {
-        return held;
+        return !holds.isEmpty();
     }
 
-    public void setHeld(boolean held) {
-        this.held = held;
+    /** Whether a day lies within one of the person's holds. */
+    public boolean heldOn(LocalDate date) {
+        return holds.stream().anyMatch(h -> h.covers(date));
     }
 
-    /** Whether a claim of this person in the given status counts toward the live totals. */
-    public boolean counts(ClaimStatus status) {
-        return status.counts() && !(held && status.isOpen());
+    /**
+     * Whether a claim of this person counts toward the live totals: an open claim dated within a
+     * hold does not, unless a statement binds it.
+     */
+    public boolean counts(Claim claim) {
+        ClaimStatus status = claim.getStatus();
+        return status.counts() && (claim.isStated() || !(status.isOpen() && heldOn(claim.getDate())));
     }
 
     public long getVersion() {

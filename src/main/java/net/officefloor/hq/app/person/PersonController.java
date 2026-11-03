@@ -34,7 +34,7 @@ public class PersonController {
     }
 
     public record HoldPersonRequest(@NotBlank @Size(max = 100) String sheet,
-            @NotBlank @Size(max = 100) String user, @NotNull Long id, @NotNull Boolean held) {
+            @NotBlank @Size(max = 100) String user, @NotNull Long id, LocalDate from, LocalDate to) {
     }
 
     public record AddPatronRequest(@NotBlank @Size(max = 100) String sheet,
@@ -48,16 +48,21 @@ public class PersonController {
     public record GradeResponse(LocalDate from, String grade) {
     }
 
+    /** One of a person's holds, from a from-date to a to-date (null: open-ended). */
+    public record HoldResponse(LocalDate from, LocalDate to) {
+    }
+
     /** A person, with every grade recorded for them, the one from the beginning of time first. */
     public record PersonResponse(long id, String name, List<GradeResponse> grades, long version, boolean retired,
-            LocalDate retiredFrom, boolean held) {
+            LocalDate retiredFrom, boolean held, List<HoldResponse> holds) {
     }
 
     public static PersonResponse response(Person person) {
         List<GradeResponse> grades = person.getGrades().stream()
                 .map(g -> new GradeResponse(g.getFromDate(), g.getGrade())).toList();
         return new PersonResponse(person.getId(), person.getName(), grades, person.getVersion(),
-                person.isRetired(), person.getRetiredFrom(), person.isHeld());
+                person.isRetired(), person.getRetiredFrom(), person.isHeld(),
+                person.getHolds().stream().map(h -> new HoldResponse(h.getFromDate(), h.getToDate())).toList());
     }
 
     private final PersonService service;
@@ -89,7 +94,7 @@ public class PersonController {
 
     @PostMapping("/hold")
     public PersonResponse hold(@Valid @RequestBody HoldPersonRequest req) {
-        return response(service.hold(req.sheet().trim(), req.user().trim(), req.id(), req.held()));
+        return response(service.hold(req.sheet().trim(), req.user().trim(), req.id(), req.from(), req.to()));
     }
 
     @PostMapping("/patrons/list")
