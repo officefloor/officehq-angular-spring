@@ -13,6 +13,7 @@ import net.officefloor.hq.app.rate.RateRepository;
 import net.officefloor.hq.app.role.Role;
 import net.officefloor.hq.app.role.RoleService;
 import net.officefloor.hq.app.rollup.RollupService;
+import net.officefloor.hq.app.sheet.Sheet;
 import net.officefloor.hq.app.sheet.SheetService;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
@@ -171,15 +172,24 @@ public class ClaimService {
 
     /**
      * The due on a claim's amount at the rate for the person's grade in force on the claim's date,
-     * half to even to the cent and raised to the sheet's floor (a correction's is not); null with no
+     * rounded to the cent as the claim rounds (see {@link Rounding}) and raised to the sheet's floor (a correction's is not); null with no
      * rate in force then.
      */
     public BigDecimal due(String sheetId, Person person, Claim claim) {
-        BigDecimal floor = sheets.floor(sheetId);
+        Sheet sheet = sheets.sheet(sheetId);
+        RoundingMode rounding = Rounding.mode(sheet, roundingDate(sheetId, claim));
         return rates.findInForce(sheetId, person.gradeOn(claim.getDate()), claim.getDate()).map(Rate::getPct)
-                .map(pct -> claim.getAmount().multiply(pct).divide(BigDecimal.valueOf(100), 2, RoundingMode.HALF_EVEN))
-                .map(due -> claim.isCorrection() ? due : due.max(floor))
+                .map(pct -> claim.getAmount().multiply(pct).divide(BigDecimal.valueOf(100), 2, rounding))
+                .map(due -> claim.isCorrection() ? due : due.max(sheet.getFloor()))
                 .orElse(null);
+    }
+
+    /** The date a claim rounds by: its own, or for a correction that of the claim it corrects. */
+    private LocalDate roundingDate(String sheetId, Claim claim) {
+        if (!claim.isCorrection() || claim.getCorrects() == null) {
+            return claim.getDate();
+        }
+        return Rounding.dateOf(claim, claims.findBySheetIdAndPersonIdOrderByIdDesc(sheetId, claim.getPersonId()));
     }
 
     private static String dueText(BigDecimal due) {

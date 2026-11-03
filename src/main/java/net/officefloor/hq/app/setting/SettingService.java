@@ -2,7 +2,9 @@ package net.officefloor.hq.app.setting;
 
 import java.math.BigDecimal;
 import java.math.RoundingMode;
+import java.time.LocalDate;
 import net.officefloor.hq.app.Audit;
+import net.officefloor.hq.app.claim.Rounding;
 import net.officefloor.hq.app.rollup.RollupService;
 import net.officefloor.hq.app.sheet.Sheet;
 import net.officefloor.hq.app.sheet.SheetRepository;
@@ -14,7 +16,9 @@ import org.springframework.transaction.annotation.Transactional;
  * The sheet's settings: its clerk limit (none: no limit) and its floor, the least a claim's live due
  * can be, and its terms, the days after its date a claim is due by, and its late percent, what an
  * overdue claim gains of its figure for every full 30 days overdue. Changing the floor, the terms or
- * the late percent moves the figures, so the figures that move are recorded.
+ * the late percent moves the figures, so the figures that move are recorded. Its policy date (none:
+ * the sheet's today) decides how a claim's live figures round (see {@link Rounding}), so changing it
+ * records the figures that move too.
  */
 @Service
 public class SettingService {
@@ -23,6 +27,7 @@ public class SettingService {
     public static final String FLOOR = "floor";
     public static final String TERMS = "terms";
     public static final String LATE_PCT = "late-pct";
+    public static final String POLICY_DATE = "policy-date";
 
     private final SheetService sheets;
     private final SheetRepository sheetStore;
@@ -43,12 +48,12 @@ public class SettingService {
 
     /**
      * Save the settings given: a clerk limit when {@code changeLimit} (null for no limit), and the
-     * floor, the terms and the late percent when they are not null. Each one saved is recorded, in
-     * that order.
+     * floor, the terms and the late percent when they are not null, and a policy date when
+     * {@code changePolicy} (null for none). Each one saved is recorded, in that order.
      */
     @Transactional
     public Sheet set(String sheetId, String user, boolean changeLimit, BigDecimal limit, BigDecimal floor,
-            Integer terms, BigDecimal latePct) {
+            Integer terms, BigDecimal latePct, boolean changePolicy, LocalDate policyDate) {
         Sheet sheet = sheets.load(sheetId, user);
         if (changeLimit) {
             sheet.setClerkLimit(limit);
@@ -74,6 +79,13 @@ public class SettingService {
             sheet.setLatePct(latePct);
             sheet = sheetStore.saveAndFlush(sheet);
             audit.recordOnCommit(changed(sheetId, user, LATE_PCT, text(latePct)));
+            rollup.recordChanges(sheetId, user, before);
+        }
+        if (changePolicy) {
+            RollupService.Snapshot before = rollup.snapshot(sheetId);
+            sheet.setPolicyDate(policyDate);
+            sheet = sheetStore.saveAndFlush(sheet);
+            audit.recordOnCommit(changed(sheetId, user, POLICY_DATE, policyDate == null ? "" : policyDate.toString()));
             rollup.recordChanges(sheetId, user, before);
         }
         return sheet;

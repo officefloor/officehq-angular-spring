@@ -41,6 +41,13 @@ export interface Claim {
   corrects: number | null;
 }
 
+/** The date a claim's live figures round by: its own, or for a correction the date of the claim it
+ *  corrects, found by number among `claims` (its own when that claim is not among them). */
+export function roundingDate(c: Claim, claims: readonly Claim[]): string {
+  if (!isCorrection(c) || c.corrects === null) return c.date;
+  return claims.find((o) => o.number === c.corrects)?.date ?? c.date;
+}
+
 /** Whether a claim is a correction: its amount is below zero. */
 export function isCorrection(c: Claim): boolean {
   return cents(c.amount) < 0;
@@ -221,6 +228,8 @@ export class PersonClaims {
   readonly terms = input.required<number>();
   /** The sheet's late percent: what an overdue claim gains of its figure for every full 30 days. */
   readonly latePct = input.required<string>();
+  /** The sheet's policy date (blank: its today): a claim dated before it rounds half up, else half to even. */
+  readonly policyDate = input.required<string>();
   /** The sheet's periods. */
   readonly periods = input.required<Period[]>();
   readonly saved = output<Claim>();
@@ -241,8 +250,14 @@ export class PersonClaims {
    *  force on the claim's date (the grade in force then), never below the sheet's floor. An overdue claim's late charge is
    *  added on top. */
   protected dueOf(c: Claim): string {
-    const late: Lateness = { latePct: this.latePct(), terms: this.terms(), today: this.session.today() };
-    return dueText(chargedDueCents(c, this.rates(), gradeOn(this.grades(), c.date), this.floor(), late));
+    const late: Lateness = {
+      latePct: this.latePct(),
+      terms: this.terms(),
+      today: this.session.today(),
+      policyDate: this.policyDate(),
+    };
+    const roundOn = roundingDate(c, this.claims());
+    return dueText(chargedDueCents(c, this.rates(), gradeOn(this.grades(), c.date), this.floor(), late, roundOn));
   }
 
   protected dueByOf(c: Claim): string {

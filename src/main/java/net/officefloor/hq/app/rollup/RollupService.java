@@ -13,6 +13,7 @@ import net.officefloor.hq.app.claim.Claim;
 import net.officefloor.hq.app.claim.ClaimRepository;
 import net.officefloor.hq.app.claim.ClaimStatus;
 import net.officefloor.hq.app.claim.LateCharge;
+import net.officefloor.hq.app.claim.Rounding;
 import net.officefloor.hq.app.person.Person;
 import net.officefloor.hq.app.person.PersonRepository;
 import net.officefloor.hq.app.rate.Rate;
@@ -82,7 +83,7 @@ public class RollupService {
                     continue;
                 }
                 claimed = claimed.add(claim.getAmount());
-                BigDecimal figure = figure(sheet, sheetRates, floor, person, claim);
+                BigDecimal figure = figure(sheet, sheetRates, sheetClaims, floor, person, claim);
                 if (figure != null) {
                     anyFigure = true;
                     due = due.add(figure);
@@ -112,7 +113,7 @@ public class RollupService {
                         || claim.getDate().isBefore(from) || claim.getDate().isAfter(to)) {
                     continue;
                 }
-                BigDecimal figure = figure(sheet, sheetRates, floor, person, claim);
+                BigDecimal figure = figure(sheet, sheetRates, sheetClaims, floor, person, claim);
                 if (figure != null) {
                     due = due.add(figure);
                 }
@@ -145,18 +146,18 @@ public class RollupService {
 
     /**
      * A claim's figure as the screen shows it: the due fixed when settled, else the one bound by the
-     * last statement, else its live due raised to the floor (a correction's is not), with its late charge added on top;
+     * last statement, else its live due (rounded as the claim rounds, see {@link Rounding}) raised to the floor (a correction's is not), with its late charge added on top;
      * null when none.
      */
-    private static BigDecimal figure(Sheet sheet, List<Rate> sheetRates, BigDecimal floor, Person person,
-            Claim claim) {
+    private static BigDecimal figure(Sheet sheet, List<Rate> sheetRates, List<Claim> sheetClaims, BigDecimal floor,
+            Person person, Claim claim) {
         if (claim.getStatus() == ClaimStatus.SETTLED && claim.getSettledDue() != null) {
             return claim.getSettledDue();
         }
         BigDecimal figure = claim.isStated() ? claim.getStatedDue()
                 : inForce(sheetRates, person.gradeOn(claim.getDate()), claim.getDate()).map(Rate::getPct)
                         .map(pct -> claim.getAmount().multiply(pct).divide(BigDecimal.valueOf(100), 2,
-                                RoundingMode.HALF_EVEN))
+                                Rounding.mode(sheet, Rounding.dateOf(claim, sheetClaims))))
                         .map(due -> claim.isCorrection() ? due : due.max(floor))
                         .orElse(null);
         return LateCharge.withCharge(sheet, claim, figure);

@@ -1,7 +1,6 @@
 package net.officefloor.hq.app.claim;
 
 import java.math.BigDecimal;
-import java.math.RoundingMode;
 import java.time.LocalDate;
 import java.time.temporal.ChronoUnit;
 import net.officefloor.hq.app.sheet.Sheet;
@@ -9,7 +8,7 @@ import net.officefloor.hq.app.sheet.Sheet;
 /**
  * The late charge on an overdue claim: the sheet's late percent of the claim's figure for every
  * full 30 days it is overdue (OPEN, and past its date plus the sheet's terms on the sheet's today),
- * half to even to the cent. A correction has none. Never bound by a statement; settling a claim fixes it into its due.
+ * rounded to the cent as the claim rounds (see {@link Rounding}). A correction has none. Never bound by a statement; settling a claim fixes it into its due.
  */
 public final class LateCharge {
 
@@ -36,6 +35,6 @@ public final class LateCharge {
             return zero;
         }
         return figure.multiply(sheet.getLatePct()).multiply(BigDecimal.valueOf(periods))
-                .divide(BigDecimal.valueOf(100), 2, RoundingMode.HALF_EVEN);
+                .divide(BigDecimal.valueOf(100), 2, Rounding.mode(sheet, claim.getDate()));
     }
 }

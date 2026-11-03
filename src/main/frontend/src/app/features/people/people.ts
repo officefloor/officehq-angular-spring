@@ -2,7 +2,7 @@ import { HttpClient, HttpErrorResponse } from '@angular/common/http';
 import { Component, computed, effect, inject, signal } from '@angular/core';
 import { firstValueFrom } from 'rxjs';
 import { Session } from '../../core/session';
-import { AMOUNT, Claim, PersonClaims, cents, counts, money, overdue } from '../claims/claims';
+import { AMOUNT, Claim, PersonClaims, cents, counts, money, overdue, roundingDate } from '../claims/claims';
 import { DatedDue, Period, Periods, periodDueTotal } from '../periods/periods';
 import { DatedGrade, Lateness, Rate, Rates, chargedDueCents, dueText, gradeOn, pctOn } from '../rates/rates';
 import { Roles } from '../roles/roles';
@@ -96,7 +96,7 @@ const SUMMARY_STATUSES = ['DRAFT', 'OPEN', 'PENDING', 'SETTLED', 'VOID'] as cons
   template: `
     <app-rates [(rates)]="rates" />
     <app-roles />
-    <app-settings [(floor)]="floor" [(terms)]="terms" [(latePct)]="latePct" />
+    <app-settings [(floor)]="floor" [(terms)]="terms" [(latePct)]="latePct" [(policyDate)]="policyDate" />
     <app-periods [(periods)]="periods" [dues]="dues()" />
     <section aria-labelledby="people-heading">
       <h2 id="people-heading">People</h2>
@@ -248,6 +248,7 @@ const SUMMARY_STATUSES = ['DRAFT', 'OPEN', 'PENDING', 'SETTLED', 'VOID'] as cons
                   [floor]="floorCents()"
                   [terms]="terms()"
                   [latePct]="latePct()"
+                  [policyDate]="policyDate()"
                   [periods]="periods()"
                   (saved)="claimSaved($event)"
                 />
@@ -336,11 +337,14 @@ export class People {
   protected readonly terms = signal(14);
   /** The sheet's late percent: what an overdue claim gains of its figure for every full 30 days. */
   protected readonly latePct = signal('0.00');
+  /** The sheet's policy date (blank: its today): a claim dated before it rounds half up, else half to even. */
+  protected readonly policyDate = signal('');
   /** What works out an overdue claim's late charge on the sheet's today. */
   private readonly lateness = computed<Lateness>(() => ({
     latePct: this.latePct(),
     terms: this.terms(),
     today: this.session.today(),
+    policyDate: this.policyDate(),
   }));
   /** The date and figure of each claim that counts and has a figure, for the periods' due-totals. */
   protected readonly dues = computed(() => {
@@ -348,7 +352,7 @@ export class People {
     for (const c of this.claims()) {
       const p = this.peopleById().get(c.personId);
       if (p === undefined || !countsFor(p, c)) continue;
-      const due = chargedDueCents(c, this.rates(), gradeOn(p.grades, c.date), this.floorCents(), this.lateness());
+      const due = chargedDueCents(c, this.rates(), gradeOn(p.grades, c.date), this.floorCents(), this.lateness(), this.roundOn(c));
       if (due !== null) out.push({ date: c.date, cents: due });
     }
     return out;
@@ -470,6 +474,11 @@ export class People {
     return gradeOn(p.grades, this.session.today());
   }
 
+  /** The date a claim's live figures round by (see {@link roundingDate}). */
+  private roundOn(c: Claim): string {
+    return roundingDate(c, this.claimsOf(c.personId));
+  }
+
   protected claimsOf(personId: number): Claim[] {
     return this.claimsByPerson().get(personId) ?? [];
   }
@@ -492,7 +501,7 @@ export class People {
   protected dueOf(p: Person): number | null {
     const figures = this.claimsOf(p.id)
       .filter((c) => countsFor(p, c))
-      .map((c) => chargedDueCents(c, this.rates(), gradeOn(p.grades, c.date), this.floorCents(), this.lateness()));
+      .map((c) => chargedDueCents(c, this.rates(), gradeOn(p.grades, c.date), this.floorCents(), this.lateness(), this.roundOn(c)));
     if (this.pctOf().get(this.gradeToday(p)) === undefined && figures.every((f) => f === null)) return null;
     return figures.reduce<number>((sum, f) => sum + (f ?? 0), 0);
   }
@@ -503,7 +512,7 @@ export class People {
     const late = this.claimsOf(p.id).filter((c) => countsFor(p, c) && overdue(c, this.terms(), today));
     return {
       count: late.length,
-      cents: late.reduce((sum, c) => sum + (chargedDueCents(c, this.rates(), gradeOn(p.grades, c.date), this.floorCents(), this.lateness()) ?? 0), 0),
+      cents: late.reduce((sum, c) => sum + (chargedDueCents(c, this.rates(), gradeOn(p.grades, c.date), this.floorCents(), this.lateness(), this.roundOn(c)) ?? 0), 0),
     };
   }
 
