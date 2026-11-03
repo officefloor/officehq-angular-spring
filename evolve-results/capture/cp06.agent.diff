@@ -1,0 +1,199 @@
+diff --git a/src/main/java/net/officefloor/hq/app/Audit.java b/src/main/java/net/officefloor/hq/app/Audit.java
+index f6fe43c41..ed8e905ad 100644
+--- a/src/main/java/net/officefloor/hq/app/Audit.java
++++ b/src/main/java/net/officefloor/hq/app/Audit.java
+@@ -8,6 +8,8 @@ import java.nio.file.Path;
+ import java.nio.file.StandardOpenOption;
+ import org.springframework.beans.factory.annotation.Value;
+ import org.springframework.stereotype.Service;
++import org.springframework.transaction.support.TransactionSynchronization;
++import org.springframework.transaction.support.TransactionSynchronizationManager;
+ 
+ /**
+  * Audit sink: appends one record per line to a KNOWN FILE (app.audit.file, default .run/audit.log)
+@@ -41,6 +43,23 @@ public class Audit {
+         }
+     }
+ 
++    /**
++     * Append one audit record once the current transaction commits, so a change that is refused or
++     * rolled back writes nothing. Outside a transaction the record is appended at once.
++     */
++    public void recordOnCommit(String entry) {
++        if (!TransactionSynchronizationManager.isSynchronizationActive()) {
++            record(entry);
++            return;
++        }
++        TransactionSynchronizationManager.registerSynchronization(new TransactionSynchronization() {
++            @Override
++            public void afterCommit() {
++                record(entry);
++            }
++        });
++    }
++
+     /** Truncate the audit file. */
+     public synchronized void clear() {
+         try {
+diff --git a/src/main/java/net/officefloor/hq/app/claim/ClaimController.java b/src/main/java/net/officefloor/hq/app/claim/ClaimController.java
+index 3d219e887..a750d51e2 100644
+--- a/src/main/java/net/officefloor/hq/app/claim/ClaimController.java
++++ b/src/main/java/net/officefloor/hq/app/claim/ClaimController.java
+@@ -65,13 +65,13 @@ public class ClaimController {
+ 
+     @PostMapping("/add")
+     public ClaimResponse add(@Valid @RequestBody AddClaimRequest req) {
+-        return response(service.add(req.sheet().trim(), req.personId(), amount(req.amount()), req.date(),
++        return response(service.add(req.sheet().trim(), req.user().trim(), req.personId(), amount(req.amount()), req.date(),
+                 note(req.note())));
+     }
+ 
+     @PostMapping("/update")
+     public ClaimResponse update(@Valid @RequestBody UpdateClaimRequest req) {
+-        return response(service.update(req.sheet().trim(), req.id(), amount(req.amount()), req.date(),
++        return response(service.update(req.sheet().trim(), req.user().trim(), req.id(), amount(req.amount()), req.date(),
+                 note(req.note())));
+     }
+ }
+diff --git a/src/main/java/net/officefloor/hq/app/claim/ClaimService.java b/src/main/java/net/officefloor/hq/app/claim/ClaimService.java
+index 47390f8f6..8be875656 100644
+--- a/src/main/java/net/officefloor/hq/app/claim/ClaimService.java
++++ b/src/main/java/net/officefloor/hq/app/claim/ClaimService.java
+@@ -1,8 +1,11 @@
+ package net.officefloor.hq.app.claim;
+ 
+ import java.math.BigDecimal;
++import java.math.RoundingMode;
+ import java.time.LocalDate;
+ import java.util.List;
++import net.officefloor.hq.app.Audit;
++import net.officefloor.hq.app.person.Person;
+ import net.officefloor.hq.app.person.PersonRepository;
+ import net.officefloor.hq.app.sheet.SheetService;
+ import org.springframework.http.HttpStatus;
+@@ -20,11 +23,13 @@ public class ClaimService {
+     private final ClaimRepository claims;
+     private final PersonRepository people;
+     private final SheetService sheets;
++    private final Audit audit;
+ 
+-    public ClaimService(ClaimRepository claims, PersonRepository people, SheetService sheets) {
++    public ClaimService(ClaimRepository claims, PersonRepository people, SheetService sheets, Audit audit) {
+         this.claims = claims;
+         this.people = people;
+         this.sheets = sheets;
++        this.audit = audit;
+     }
+ 
+     @Transactional(readOnly = true)
+@@ -33,21 +38,33 @@ public class ClaimService {
+     }
+ 
+     @Transactional
+-    public Claim add(String sheetId, long personId, BigDecimal amount, LocalDate date, String note) {
+-        if (people.findByIdAndSheetId(personId, sheetId).isEmpty()) {
+-            throw new ResponseStatusException(HttpStatus.NOT_FOUND, "No such person on this sheet.");
+-        }
+-        return claims.saveAndFlush(new Claim(sheetId, personId, amount, dateOrToday(sheetId, date), note));
++    public Claim add(String sheetId, String user, long personId, BigDecimal amount, LocalDate date, String note) {
++        Person person = person(sheetId, personId);
++        Claim added = claims.saveAndFlush(new Claim(sheetId, personId, amount, dateOrToday(sheetId, date), note));
++        audit.recordOnCommit(record("CLAIM_ADDED", sheetId, user, person, added));
++        return added;
+     }
+ 
+     @Transactional
+-    public Claim update(String sheetId, long id, BigDecimal amount, LocalDate date, String note) {
++    public Claim update(String sheetId, String user, long id, BigDecimal amount, LocalDate date, String note) {
+         Claim claim = claims.findByIdAndSheetId(id, sheetId)
+                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "No such claim on this sheet."));
+         claim.setAmount(amount);
+         claim.setDate(dateOrToday(sheetId, date));
+         claim.setNote(note);
+-        return claims.saveAndFlush(claim);
++        Claim saved = claims.saveAndFlush(claim);
++        audit.recordOnCommit(record("CLAIM_EDITED", sheetId, user, person(sheetId, saved.getPersonId()), saved));
++        return saved;
++    }
++
++    private Person person(String sheetId, long personId) {
++        return people.findByIdAndSheetId(personId, sheetId)
++                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "No such person on this sheet."));
++    }
++
++    private static String record(String event, String sheetId, String user, Person person, Claim claim) {
++        return event + " sheet=" + sheetId + " by=" + user + " person=" + person.getName() + " amount="
++                + claim.getAmount().setScale(2, RoundingMode.UNNECESSARY).toPlainString() + " date=" + claim.getDate();
+     }
+ 
+     private LocalDate dateOrToday(String sheetId, LocalDate date) {
+diff --git a/src/main/java/net/officefloor/hq/app/person/PersonController.java b/src/main/java/net/officefloor/hq/app/person/PersonController.java
+index 952f0d68a..8f089223c 100644
+--- a/src/main/java/net/officefloor/hq/app/person/PersonController.java
++++ b/src/main/java/net/officefloor/hq/app/person/PersonController.java
+@@ -53,6 +53,6 @@ public class PersonController {
+ 
+     @PostMapping("/update")
+     public PersonResponse update(@Valid @RequestBody UpdatePersonRequest req) {
+-        return response(service.update(req.sheet().trim(), req.id(), req.name().trim(), req.grade()));
++        return response(service.update(req.sheet().trim(), req.user().trim(), req.id(), req.name().trim(), req.grade()));
+     }
+ }
+diff --git a/src/main/java/net/officefloor/hq/app/person/PersonService.java b/src/main/java/net/officefloor/hq/app/person/PersonService.java
+index 7d2c834f0..887a2a989 100644
+--- a/src/main/java/net/officefloor/hq/app/person/PersonService.java
++++ b/src/main/java/net/officefloor/hq/app/person/PersonService.java
+@@ -1,6 +1,7 @@
+ package net.officefloor.hq.app.person;
+ 
+ import java.util.List;
++import net.officefloor.hq.app.Audit;
+ import net.officefloor.hq.app.sheet.SheetService;
+ import org.springframework.dao.DataIntegrityViolationException;
+ import org.springframework.http.HttpStatus;
+@@ -17,10 +18,12 @@ public class PersonService {
+ 
+     private final PersonRepository people;
+     private final SheetService sheets;
++    private final Audit audit;
+ 
+-    public PersonService(PersonRepository people, SheetService sheets) {
++    public PersonService(PersonRepository people, SheetService sheets, Audit audit) {
+         this.people = people;
+         this.sheets = sheets;
++        this.audit = audit;
+     }
+ 
+     @Transactional(readOnly = true)
+@@ -34,11 +37,13 @@ public class PersonService {
+         if (people.existsBySheetIdAndNameIgnoreCase(sheetId, name)) {
+             throw nameInUse();
+         }
+-        return save(new Person(sheetId, name, grade));
++        Person added = save(new Person(sheetId, name, grade));
++        audit.recordOnCommit(record("PERSON_ADDED", sheetId, user, added));
++        return added;
+     }
+ 
+     @Transactional
+-    public Person update(String sheetId, long id, String name, String grade) {
++    public Person update(String sheetId, String user, long id, String name, String grade) {
+         Person person = people.findByIdAndSheetId(id, sheetId)
+                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "No such person on this sheet."));
+         if (people.existsBySheetIdAndNameIgnoreCaseAndIdNot(sheetId, name, id)) {
+@@ -46,7 +51,14 @@ public class PersonService {
+         }
+         person.setName(name);
+         person.setGrade(grade);
+-        return save(person);
++        Person saved = save(person);
++        audit.recordOnCommit(record("PERSON_EDITED", sheetId, user, saved));
++        return saved;
++    }
++
++    private static String record(String event, String sheetId, String user, Person person) {
++        return event + " sheet=" + sheetId + " by=" + user + " name=" + person.getName() + " grade="
++                + person.getGrade();
+     }
+ 
+     /** Save, refusing a name another user took on the sheet since it was checked. */
