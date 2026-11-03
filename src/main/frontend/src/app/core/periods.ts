@@ -91,6 +91,17 @@ export class Periods {
     );
   }
 
+  /** Generate the four calendar quarters of the year (yyyy) as periods named yyyy-Q1 to yyyy-Q4,
+   *  leaving out a quarter whose name is in use or that overlaps a period. */
+  generateQuarters(year: string): Promise<Period[]> {
+    const sheetId = this.session.sheetId();
+    const user = this.session.user();
+    if (!sheetId || !user) throw new Error('no sheet loaded');
+    return firstValueFrom(
+      this.http.post<Period[]>(`${this.url(sheetId)}/generate-quarters`, { year }, { headers: { 'X-User': user } }),
+    );
+  }
+
   /** Paste opening balances, lines of name,period,amount, each adding the amount to the person's
    *  carried figure for the period; all lines are checked first and any error refuses the whole
    *  paste. Gives how many lines went through and the periods changed. */

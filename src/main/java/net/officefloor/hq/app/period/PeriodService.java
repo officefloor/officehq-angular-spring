@@ -128,6 +128,29 @@ public class PeriodService {
         return generate(sheetId, user, first, first.plusMonths(12).minusDays(1));
     }
 
+    /** Generate the four calendar quarters of the year, each running from the first day of its
+     *  first month to the last day of its third month and named yyyy-Qn; a quarter whose name is in
+     *  use on the sheet, or whose days overlap a period on it, is left out. */
+    @Transactional
+    public synchronized List<Period> generateQuarters(String sheetId, String user, int year) {
+        sheets.load(sheetId, user);
+        List<Period> made = new ArrayList<>();
+        for (int quarter = 1; quarter <= 4; quarter++) {
+            String name = year + "-Q" + quarter;
+            LocalDate first = LocalDate.of(year, quarter * 3 - 2, 1);
+            LocalDate last = YearMonth.of(year, quarter * 3).atEndOfMonth();
+            if (periods.existsBySheetIdAndNameIgnoreCase(sheetId, name) || periods.overlaps(sheetId, first, last)) {
+                continue;
+            }
+            Period saved = periods.saveAndFlush(new Period(sheetId, name, first, last));
+            audit.recordOnCommit("PERIOD_ADDED sheet=" + sheetId + " by=" + user + " period=" + saved.getName()
+                    + " from=" + saved.getFromDate() + " to=" + saved.getToDate());
+            made.add(saved);
+        }
+        history.record(sheetId);
+        return made;
+    }
+
     /** The fiscal year a day falls in (FYyyyy), with fiscal years starting on the first day of the
      *  month: named by the calendar year that first day falls in. */
     public static String fiscalYear(LocalDate day, int fiscalStartMonth) {

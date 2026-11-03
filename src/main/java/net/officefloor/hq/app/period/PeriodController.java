@@ -66,7 +66,8 @@ public class PeriodController {
     public record GenerateForm(LocalDate from, @NotNull LocalDate to) {
     }
 
-    /** The generate fiscal year form: the required year (yyyy) the fiscal year is named by. */
+    /** The generate fiscal year (or quarters) form: the required year (yyyy) the fiscal year is
+     *  named by, or whose calendar quarters are generated. */
     public record GenerateFyForm(@NotBlank @Pattern(regexp = "\\s*\\d{4}\\s*") String year) {
 
         int yearValue() {
@@ -124,6 +125,15 @@ public class PeriodController {
             @Valid @RequestBody GenerateFyForm form) {
         int fiscalStartMonth = sheets.fiscalStartMonth(sheetId.trim());
         return service.generateFiscalYear(sheetId.trim(), user.trim(), form.yearValue()).stream()
+                .map(p -> PeriodView.of(p, fiscalStartMonth)).toList();
+    }
+
+    @PostMapping("/generate-quarters")
+    public List<PeriodView> generateQuarters(@PathVariable @NotBlank @Size(max = 100) String sheetId,
+            @RequestHeader("X-User") @NotBlank @Size(max = 100) String user,
+            @Valid @RequestBody GenerateFyForm form) {
+        int fiscalStartMonth = sheets.fiscalStartMonth(sheetId.trim());
+        return service.generateQuarters(sheetId.trim(), user.trim(), form.yearValue()).stream()
                 .map(p -> PeriodView.of(p, fiscalStartMonth)).toList();
     }
 

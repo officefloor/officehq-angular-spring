@@ -37,6 +37,10 @@ const DAY = /^\d{4}-\d{2}-\d{2}$/;
         <input id="period-generate-fy-year" data-testid="period-generate-fy-year" formControlName="year"
                inputmode="numeric" />
         <button type="button" data-testid="period-generate-fy" (click)="generateFy()">Generate fiscal year</button>
+        <label for="period-generate-quarters-year">Calendar year (yyyy)</label>
+        <input id="period-generate-quarters-year" data-testid="period-generate-quarters-year"
+               formControlName="quartersYear" inputmode="numeric" />
+        <button type="button" data-testid="period-generate-quarters" (click)="generateQuarters()">Generate quarters</button>
         @if (generated() !== null) {
           <p role="status">Made <span data-testid="period-generated">{{ generated() }}</span></p>
         }
@@ -124,6 +128,7 @@ export class PeriodForm {
     from: new FormControl('', { nonNullable: true }),
     to: new FormControl('', { nonNullable: true }),
     year: new FormControl('', { nonNullable: true }),
+    quartersYear: new FormControl('', { nonNullable: true }),
   });
 
   protected readonly openingError = signal('');
@@ -183,6 +188,28 @@ export class PeriodForm {
       this.generated.set(made.length);
     } catch {
       this.generateError.set('The fiscal year could not be generated.');
+    } finally {
+      this.generating = false;
+    }
+  }
+
+  /** Generate the four calendar quarters of the year typed. */
+  protected async generateQuarters(): Promise<void> {
+    if (this.generating) return;
+    this.generateError.set('');
+    this.generated.set(null);
+    const year = this.generateForm.getRawValue().quartersYear.trim();
+    if (!/^\d{4}$/.test(year)) {
+      this.generateError.set('Enter the calendar year (yyyy) to generate quarters for.');
+      return;
+    }
+    this.generating = true;
+    try {
+      const made = await this.api.generateQuarters(year);
+      for (const p of made) this.saved.emit(p);
+      this.generated.set(made.length);
+    } catch {
+      this.generateError.set('The quarters could not be generated.');
     } finally {
       this.generating = false;
     }
