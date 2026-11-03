@@ -1,0 +1,64 @@
+{
+  "checkpoint": 193,
+  "stack": {
+    "repo": "/home/daniel/officehq-angular-spring",
+    "origin": "git@github.com:officefloor/officehq-angular-spring.git",
+    "name": "officehq-angular-spring",
+    "base_ref": "base-empty",
+    "base_commit": "65cb8233ea38b2dfa6cfd18709e30cd18fdf3250"
+  },
+  "checkpoint_id": "cp193_sheet-age-buckets",
+  "phase": "late",
+  "type": "additive",
+  "mutates": [],
+  "replaced_tests": [],
+  "request": {
+    "spec": "Show for the sheet the due of OPEN and PENDING claims that count by age, as the people's age\nbuckets added up (0 to 30, 31 to 60, 61 or more days), not trimmed.\n",
+    "prompt": "You are implementing ONE change to this application.\n\nFIRST read AGENTS.md \u2014 it states the working rules and how the app is tested, and sends you to\nDESIGN.md for the app's stack and conventions. Follow both.\n\nTHE CHANGE REQUEST:\nShow for the sheet the due of OPEN and PENDING claims that count by age, as the people's age\nbuckets added up (0 to 30, 31 to 60, 61 or more days), not trimmed.\n\nYour work is verified by an automated Playwright UI test already installed under e2e/specs/.\nRead that spec: it declares the exact data-testid anchors, values, test data and any audit\nrecords it expects \u2014 match them. Run `bin/e2e` to build the app, start it, and run the test as\nyou work; iterate until it passes. Change whatever the request needs across the app \u2014 its stored\ndata, its server and its front end. Do NOT edit bin/build, bin/start, bin/stop, bin/e2e,\nAGENTS.md, CLAUDE.md, DESIGN.md, e2e/support/ or the test spec.\n"
+  },
+  "commit_sha": "8939d6abf889421b8d2171244f08f720b6a27fad",
+  "reset_sha": "",
+  "preagent_sha": "9a66c24df52ffba85e900362d4997c5ebbbf96d0",
+  "prev_sha": "9a66c24df52ffba85e900362d4997c5ebbbf96d0",
+  "base_sha": "65cb8233ea38b2dfa6cfd18709e30cd18fdf3250",
+  "agent": {
+    "ok": true,
+    "cost_usd": 0.4452778,
+    "input_tokens": 28,
+    "output_tokens": 4339,
+    "cache_read_tokens": 440849,
+    "cache_creation_tokens": 33777,
+    "num_turns": 14,
+    "duration_ms": 445958,
+    "duration_api_ms": 46513,
+    "model": "claude-opus-5-5",
+    "session_id": "5e59c1df-4723-4b92-8ba3-da93dfde49fb",
+    "stop_reason": "success",
+    "result_text": "The sheet now shows its due by claim age, and all 4 tests in `bin/e2e` pass.\n\n**The change:** People already had their own age buckets. The sheet summary now also shows three totals, `rollup-aged-0-30`, `rollup-aged-31-60` and `rollup-aged-61`. Each one adds up that bucket across everyone on the sheet, with nothing trimmed. It reuses the existing per-person calculation, so it counts the same OPEN and PENDING claims. This was a front-end change only, in `src/main/frontend/src/app/features/people/people-list.ts`.\n\n**A second change you should check:** After that change, one scenario still failed on a part the request doesn't mention: the order of a person's statement lines. The server listed them oldest date first, and its code comments said so deliberately. The test expects the 2026-04-08 statement listed before the 2026-04-02 one. So I reversed the order to newest date first, with statements from the same day still in the order they were taken. The change is in `StatementSummary.java`, and I updated the matching comment in `core/people.ts`.\n\nThe test can't tell \"newest date first\" apart from \"in the order taken\", because in its data the statements happen to be taken newest date first. I went with newest date first because that matches how claims are listed. If you meant the order taken, it's a one-line change. Either way this changes behaviour that was documented, so anything relying on the old oldest-first order will see a difference.",
+    "error": "",
+    "attempts": [
+      {
+        "ok": true,
+        "limit_reached": false,
+        "retryable": false,
+        "timed_out": false,
+        "cost_usd": 0.4452778,
+        "num_turns": 14,
+        "duration_ms": 445958,
+        "duration_api_ms": 46513,
+        "error": ""
+      }
+    ]
+  },
+  "agent_stream_file": "cp193.agent.jsonl",
+  "agent_diff_file": "cp193.agent.diff",
+  "build_log_file": null,
+  "tests": {
+    "gated": false,
+    "queued": true
+  },
+  "probe": null,
+  "pinned_touched": [],
+  "acceptance_touched": [],
+  "impact_gate": null
+}

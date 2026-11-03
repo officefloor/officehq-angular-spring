@@ -1,0 +1,62 @@
+diff --git a/src/main/frontend/src/app/core/people.ts b/src/main/frontend/src/app/core/people.ts
+index c7a2d65e7..ea07efc51 100644
+--- a/src/main/frontend/src/app/core/people.ts
++++ b/src/main/frontend/src/app/core/people.ts
+@@ -118,7 +118,7 @@ export interface Person {
+   tags: string;
+   /** Their snapshots, oldest first. */
+   snapshots: Snapshot[];
+-  /** Their statements that stand, oldest first by date (carried ones among them). */
++  /** Their statements that stand, newest first by date (carried ones among them). */
+   statements: StatementLine[];
+   /** The reason of their flag while it is in force on the sheet's today; null when none is. */
+   flag: string | null;
+diff --git a/src/main/frontend/src/app/features/people/people-list.ts b/src/main/frontend/src/app/features/people/people-list.ts
+index bba075c4f..067a6642b 100644
+--- a/src/main/frontend/src/app/features/people/people-list.ts
++++ b/src/main/frontend/src/app/features/people/people-list.ts
+@@ -101,6 +101,9 @@ const NO_LEAVE: Leave = { holds: [], retiredFrom: null };
+       <p>Cuts in total: <strong data-testid="rollup-cut-total">{{ cutTotal() | figure }}</strong></p>
+       <p>Overdue claims: <strong data-testid="rollup-overdue-count">{{ overdueCount() }}</strong></p>
+       <p>Overdue in total: <strong data-testid="rollup-overdue-total">{{ overdueTotal() | figure }}</strong></p>
++      <p>Due aged 0–30 days in total: <strong data-testid="rollup-aged-0-30">{{ agedTotals()[0] | figure }}</strong></p>
++      <p>Due aged 31–60 days in total: <strong data-testid="rollup-aged-31-60">{{ agedTotals()[1] | figure }}</strong></p>
++      <p>Due aged 61+ days in total: <strong data-testid="rollup-aged-61">{{ agedTotals()[2] | figure }}</strong></p>
+       <dl aria-label="Consolidated with descendant sheets">
+         <dt>People, consolidated</dt>
+         <dd data-testid="consolidated-people-count">{{ consolidatedPeopleCount() }}</dd>
+@@ -742,6 +745,12 @@ export class PeopleList {
+   protected readonly overdueTotal = computed(() =>
+     trimmedSum(this.people().map((p) => this.overdueTotalOf(p))),
+   );
++  /** The sheet's due by age: everyone's age buckets (0 to 30, 31 to 60, 61 or more days) added up
++   *  (not trimmed). */
++  protected readonly agedTotals = computed((): [string, string, string] => {
++    const aged = this.people().map((p) => this.agedOf(p));
++    return [sumAmounts(aged.map((a) => a[0])), sumAmounts(aged.map((a) => a[1])), sumAmounts(aged.map((a) => a[2]))];
++  });
+   /** The person on the sheet who has the signed-in user's name, by name or alias, as names are
+    *  compared (case and surrounding spaces ignored); null when there is none. */
+   private readonly me = computed(() => {
+diff --git a/src/main/java/net/officefloor/hq/app/statement/StatementSummary.java b/src/main/java/net/officefloor/hq/app/statement/StatementSummary.java
+index 57f4fb2c1..9bfbb7a90 100644
+--- a/src/main/java/net/officefloor/hq/app/statement/StatementSummary.java
++++ b/src/main/java/net/officefloor/hq/app/statement/StatementSummary.java
+@@ -8,7 +8,7 @@ import java.util.List;
+ /** What a person's statements come to: how many were taken (those carried to them with a merge or a
+  *  transfer too), and the last one's due-total (null when
+  *  it was n/a) and date (the day it was taken as of); both null when none was taken; and every one of
+- *  them, oldest first by its date (those of a day in the order they were taken). */
++ *  them, newest first by its date (those of a day in the order they were taken). */
+ public record StatementSummary(int count, BigDecimal lastDueTotal, LocalDate lastTakenOn, List<Line> lines) {
+ 
+     public static final StatementSummary NONE = new StatementSummary(0, null, null, List.of());
+@@ -24,7 +24,7 @@ public record StatementSummary(int count, BigDecimal lastDueTotal, LocalDate las
+         }
+         Statement last = last(statements);
+         List<Line> lines = statements.stream()
+-                .sorted(Comparator.comparing(Statement::getStatedOn))
++                .sorted(Comparator.comparing(Statement::getStatedOn).reversed())
+                 .map(st -> new Line(st.getStatedOn(), st.getDueTotal()))
+                 .toList();
+         return new StatementSummary(statements.size(), last.getDueTotal(), last.getStatedOn(), lines);
