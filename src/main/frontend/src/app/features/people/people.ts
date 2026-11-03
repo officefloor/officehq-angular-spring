@@ -3,10 +3,11 @@ import { Component, computed, effect, inject, signal } from '@angular/core';
 import { firstValueFrom } from 'rxjs';
 import { Session } from '../../core/session';
 import { AMOUNT, Claim, PersonClaims, cents, counts, money, overdue } from '../claims/claims';
-import { DatedDue, Period, Periods } from '../periods/periods';
+import { DatedDue, Period, Periods, periodDueTotal } from '../periods/periods';
 import { DatedGrade, Lateness, Rate, Rates, chargedDueCents, dueText, gradeOn, pctOn } from '../rates/rates';
 import { Roles } from '../roles/roles';
 import { Settings } from '../settings/settings';
+import { GradeSummary, PeriodSummary, StatusSummary, Summary } from '../summary/summary';
 
 // The people on the active sheet, in the order they were added, and the one form that both adds
 // a person and edits an existing one (opening a person's editor fills the form with their values).
@@ -86,9 +87,12 @@ interface QuickAdded {
 
 const GRADES = ['A', 'B', 'C'] as const;
 
+/** The statuses the summary counts claims in, each shown even when no claim has it. */
+const SUMMARY_STATUSES = ['DRAFT', 'OPEN', 'PENDING', 'SETTLED', 'VOID'] as const;
+
 @Component({
   selector: 'app-people',
-  imports: [PersonClaims, Periods, Rates, Roles, Settings],
+  imports: [PersonClaims, Periods, Rates, Roles, Settings, Summary],
   template: `
     <app-rates [(rates)]="rates" />
     <app-roles />
@@ -167,6 +171,7 @@ const GRADES = ['A', 'B', 'C'] as const;
       <p>Due in total <strong data-testid="rollup-due-total">{{ dueTotal() }}</strong></p>
       <p>Overdue claims <strong data-testid="rollup-overdue-count">{{ overdueTotals().count }}</strong></p>
       <p>Overdue in total <strong data-testid="rollup-overdue-total">{{ money(overdueTotals().cents) }}</strong></p>
+      <app-summary [grades]="gradeSummary()" [periods]="periodSummary()" [statuses]="statusSummary()" />
       <table data-testid="people-list">
         <thead>
           <tr>
@@ -382,6 +387,25 @@ export class People {
       },
       { count: 0, cents: 0 },
     ),
+  );
+  /** Per grade: the people not retired on it today, and their due-totals added up (skipping n/a). */
+  protected readonly gradeSummary = computed<GradeSummary[]>(() => {
+    const active = this.people().filter((p) => !p.retired);
+    return GRADES.map((grade) => {
+      const on = active.filter((p) => this.gradeToday(p) === grade);
+      return { grade, count: on.length, dueTotal: money(on.reduce((sum, p) => sum + (this.dueOf(p) ?? 0), 0)) };
+    });
+  });
+  /** Per period: its due-total, as the periods list shows it. */
+  protected readonly periodSummary = computed<PeriodSummary[]>(() =>
+    this.periods().map((p) => ({ name: p.name, dueTotal: periodDueTotal(p, this.dues()) })),
+  );
+  /** Per status: how many of the sheet's claims have it, retired people's included. */
+  protected readonly statusSummary = computed<StatusSummary[]>(() =>
+    SUMMARY_STATUSES.map((status) => ({
+      status,
+      count: this.claims().filter((c) => c.status === status).length,
+    })),
   );
   protected readonly nameInput = signal('');
   protected readonly gradeInput = signal<string>('A');

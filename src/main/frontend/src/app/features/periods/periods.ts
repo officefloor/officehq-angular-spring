@@ -34,6 +34,13 @@ export function periodOn(periods: readonly Period[], date: string): Period | und
   return periods.find((p) => p.from <= date && date <= p.to);
 }
 
+/** A closed period's due-total fixed when it was closed; an open period's, the due of the claims
+ *  that count whose date falls in it. */
+export function periodDueTotal(p: Period, dues: readonly DatedDue[]): string {
+  if (p.closed && p.closedDue !== null) return p.closedDue;
+  return money(dues.reduce((sum, d) => sum + (p.from <= d.date && d.date <= p.to ? d.cents : 0), 0));
+}
+
 /** Whether a date (yyyy-mm-dd) falls inside a closed period. */
 export function inClosedPeriod(periods: readonly Period[], date: string): boolean {
   return periodOn(periods, date)?.closed ?? false;
@@ -155,11 +162,8 @@ export class Periods {
     });
   }
 
-  /** A closed period's due-total fixed when it was closed; an open period's, the due of the claims
-   *  that count whose date falls in it. */
   protected dueTotalOf(p: Period): string {
-    if (p.closed && p.closedDue !== null) return p.closedDue;
-    return money(this.dues().reduce((sum, d) => sum + (p.from <= d.date && d.date <= p.to ? d.cents : 0), 0));
+    return periodDueTotal(p, this.dues());
   }
 
   /** Close a period, fixing its due-total; the server refuses a period already closed. */
