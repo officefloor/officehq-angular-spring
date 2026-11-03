@@ -2,6 +2,7 @@ import { HttpClient } from '@angular/common/http';
 import { Injectable, effect, inject, signal } from '@angular/core';
 import { firstValueFrom } from 'rxjs';
 import { Session } from './session';
+import { sumAmounts } from './claims';
 
 /** A person of a crew: their id and name. */
 export interface CrewPerson {
@@ -16,6 +17,12 @@ export interface Crew {
   name: string;
   lead: CrewPerson | null;
   members: CrewPerson[];
+}
+
+/** A crew's due-total: its lead's and its members' due-totals added up, n/a ones skipped. */
+export function crewDueTotal(crew: Crew, dues: Map<number, string | null>): string {
+  const ids = [...(crew.lead ? [crew.lead.personId] : []), ...crew.members.map((m) => m.personId)];
+  return sumAmounts(ids.map((id) => dues.get(id) ?? null).filter((d): d is string => d !== null));
 }
 
 // The crews of the active sheet, re-read whenever the sheet is loaded.

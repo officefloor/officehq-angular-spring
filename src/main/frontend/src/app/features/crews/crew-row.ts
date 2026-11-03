@@ -1,8 +1,7 @@
 import { HttpErrorResponse } from '@angular/common/http';
 import { Component, computed, inject, input, signal } from '@angular/core';
 import { FormControl, FormGroup, ReactiveFormsModule } from '@angular/forms';
-import { sumAmounts } from '../../core/claims';
-import { Crew, Crews } from '../../core/crews';
+import { Crew, Crews, crewDueTotal } from '../../core/crews';
 import { Person } from '../../core/people';
 import { FigurePipe } from '../../core/figure';
 
@@ -48,11 +47,7 @@ export class CrewRow {
   private readonly crews = inject(Crews);
 
   /** The lead's and the members' due-totals added up, n/a ones skipped. */
-  protected readonly dueTotal = computed(() => {
-    const c = this.crew();
-    const ids = [...(c.lead ? [c.lead.personId] : []), ...c.members.map((m) => m.personId)];
-    return sumAmounts(ids.map((id) => this.dues().get(id) ?? null).filter((d): d is string => d !== null));
-  });
+  protected readonly dueTotal = computed(() => crewDueTotal(this.crew(), this.dues()));
 
   protected readonly error = signal('');
   protected readonly form = new FormGroup({

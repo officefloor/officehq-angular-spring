@@ -26,6 +26,7 @@ import { ImportPeopleBox } from './import-people-box';
 import { TreeSearchBox } from './tree-search-box';
 import { PoolList } from '../pools/pool-list';
 import { CrewList } from '../crews/crew-list';
+import { Crews, crewDueTotal } from '../../core/crews';
 import { PersonPlans } from '../plans/person-plans';
 import { PlanGenerateBox } from '../plans/plan-generate-box';
 import { FigurePipe } from '../../core/figure';
@@ -53,7 +54,7 @@ const NO_LEAVE: Leave = { holds: [], retiredFrom: null };
   template: `
     <app-header-counters [peopleCount]="people().length" [statuses]="statusSummary()"
       [dueTotal]="dueTotal()" [overdueTotal]="overdueTotal()"
-      [myDueTotal]="myDueTotal()" [myOverdueTotal]="myOverdueTotal()" />
+      [myDueTotal]="myDueTotal()" [myOverdueTotal]="myOverdueTotal()" [myCrewDueTotal]="myCrewDueTotal()" />
     <app-rate-form [rates]="rates()" (saved)="rateSaved($event)" (imported)="ratesImported()" />
     <app-period-form [periods]="periods()" [dueTotals]="periodDueTotals()" (saved)="periodSaved($event)" />
     <section aria-labelledby="people-heading">
@@ -433,6 +434,7 @@ export class PeopleList {
   private readonly plansApi = inject(Plans);
   private readonly poolsApi = inject(Pools);
   private readonly descendantsApi = inject(Descendants);
+  private readonly crewsApi = inject(Crews);
 
   protected readonly grades: Grade[] = ['A', 'B', 'C'];
   protected readonly people = signal<Person[]>([]);
@@ -719,6 +721,13 @@ export class PeopleList {
   protected readonly myOverdueTotal = computed(() => {
     const me = this.me();
     return me ? this.overdueTotalOf(me) : '';
+  });
+  /** The due-totals of the crews the signed-in user's person leads, added up; blank when they lead
+   *  none. */
+  protected readonly myCrewDueTotal = computed(() => {
+    const me = this.me();
+    const led = me ? this.crewsApi.list().filter((c) => c.lead?.personId === me.id) : [];
+    return led.length ? sumAmounts(led.map((c) => crewDueTotal(c, this.dueByPerson()))) : '';
   });
   /** The figures of the sheet's descendants added up, as the store held them when it was loaded. */
   private readonly descendants = signal<DescendantFigures>(NO_DESCENDANTS);
