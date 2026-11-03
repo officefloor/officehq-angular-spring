@@ -96,14 +96,14 @@ public class PersonController {
     public record HoldView(LocalDate from, LocalDate to) {
     }
 
-    /** The person form: a required name and a grade of A, B or C. An edit also gives the version
+    /** The person form: a required name and one of the sheet's grades. An edit also gives the version
      *  of the person its editor loaded, and the day the grade applies from (left out, the sheet's
      *  today). Terms are the person's own, a whole number of days, 0 or more; blank for none; an edit records
      *  them from the terms from-date given (left out, from the beginning of time). The
      *  contact is kept trimmed and lower-cased; blank for none. Tags are comma separated (see
      *  {@link Tags}); blank for none. */
     public record PersonForm(@NotBlank @Size(max = 200) String name,
-            @NotNull @Pattern(regexp = "[ABC]") String grade, Long version, LocalDate gradeFrom,
+            @NotNull @Pattern(regexp = "[A-Z]{1,3}") String grade, Long version, LocalDate gradeFrom,
             @Pattern(regexp = "\\s*\\d{0,4}\\s*") String terms, @Size(max = 200) String contact,
             @Size(max = 1000) String tags, LocalDate termsFrom) {
         Integer termsValue() {
@@ -144,10 +144,10 @@ public class PersonController {
     public record MoveForm(@NotNull @Pattern(regexp = "up|down") String direction) {
     }
 
-    /** The bulk grade form: the people to give the grade, a grade of A, B or C, and the day it
+    /** The bulk grade form: the people to give the grade, one of the sheet's grades, and the day it
      *  applies from (left out, the sheet's today). */
     public record GradeForm(@NotNull @Size(max = 1000) Set<@NotNull Long> personIds,
-            @NotNull @Pattern(regexp = "[ABC]") String grade, LocalDate from) {
+            @NotNull @Pattern(regexp = "[A-Z]{1,3}") String grade, LocalDate from) {
     }
 
     /** How many people a bulk grade changed, and those people as they now show. */

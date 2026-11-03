@@ -1,6 +1,7 @@
 import { HttpErrorResponse } from '@angular/common/http';
 import { Component, computed, inject, input, output, signal } from '@angular/core';
 import { FormControl, FormGroup, ReactiveFormsModule } from '@angular/forms';
+import { Grades } from '../../core/grades';
 import { Grade } from '../../core/people';
 import { PCT, Rate, RatePreview, Rates, pctOn } from '../../core/rates';
 import { Session } from '../../core/session';
@@ -17,7 +18,7 @@ import { FigurePipe } from '../../core/figure';
       <form data-testid="rate-form" [formGroup]="form" (ngSubmit)="submit()">
         <label for="rate-form-grade">Grade</label>
         <select id="rate-form-grade" data-testid="rate-form-grade" formControlName="grade">
-          @for (g of grades; track g) {
+          @for (g of grades(); track g) {
             <option [value]="g">{{ g }}</option>
           }
         </select>
@@ -46,7 +47,7 @@ import { FigurePipe } from '../../core/figure';
       <form data-testid="rate-preview-form" [formGroup]="previewForm" (ngSubmit)="preview()">
         <label for="rate-preview-grade">Preview grade</label>
         <select id="rate-preview-grade" data-testid="rate-preview-grade" formControlName="grade">
-          @for (g of grades; track g) {
+          @for (g of grades(); track g) {
             <option [value]="g">{{ g }}</option>
           }
         </select>
@@ -69,7 +70,7 @@ import { FigurePipe } from '../../core/figure';
           <tr><th scope="col">Grade</th><th scope="col">Rate (%)</th></tr>
         </thead>
         <tbody>
-          @for (g of grades; track g) {
+          @for (g of grades(); track g) {
             <tr>
               <th scope="row">{{ g }}</th>
               <td [attr.data-testid]="'rate-current-' + g">{{ current().get(g) ?? 'n/a' | figure }}</td>
@@ -88,7 +89,7 @@ import { FigurePipe } from '../../core/figure';
           </tr>
         </thead>
         <tbody>
-          @for (g of grades; track g) {
+          @for (g of grades(); track g) {
             <tr>
               <th scope="row">{{ g }}</th>
               @for (m of months(); track m) {
@@ -131,7 +132,8 @@ export class RateForm {
   /** How many rates an import set. */
   readonly imported = output<number>();
 
-  protected readonly grades: Grade[] = ['A', 'B', 'C'];
+  /** The sheet's grades, in order. */
+  protected readonly grades = inject(Grades).codes;
   protected readonly error = signal('');
   /** Whether a submit is waiting for its answer: a second submit meanwhile is ignored. */
   private submitting = false;
@@ -161,7 +163,7 @@ export class RateForm {
     const today = this.session.today();
     const by = new Map<Grade, string>();
     if (today === null) return by;
-    for (const g of this.grades) {
+    for (const g of this.grades()) {
       const pct = pctOn(this.rates(), g, today);
       if (pct !== undefined) by.set(g, pct);
     }
@@ -180,7 +182,7 @@ export class RateForm {
    *  none is missing. */
   protected readonly calendar = computed(() => {
     const by = new Map<string, string>();
-    for (const g of this.grades) {
+    for (const g of this.grades()) {
       for (const m of this.months()) {
         const pct = pctOn(this.rates(), g, `${m}-01`);
         if (pct !== undefined) by.set(`${g}-${m}`, pct);
@@ -228,8 +230,8 @@ export class RateForm {
     this.previewError.set('');
     this.previewResult.set(null);
     const { grade, pct } = this.previewForm.getRawValue();
-    if (!this.grades.includes(grade)) {
-      this.previewError.set('Choose a grade of A, B or C.');
+    if (!this.grades().includes(grade)) {
+      this.previewError.set('Choose one of the sheet\'s grades.');
       return;
     }
     if (!PCT.test(pct.trim())) {
@@ -250,8 +252,8 @@ export class RateForm {
     if (this.submitting) return;
     this.error.set('');
     const { grade, pct, from, to } = this.form.getRawValue();
-    if (!this.grades.includes(grade)) {
-      this.error.set('Choose a grade of A, B or C.');
+    if (!this.grades().includes(grade)) {
+      this.error.set('Choose one of the sheet\'s grades.');
       return;
     }
     if (!PCT.test(pct.trim())) {

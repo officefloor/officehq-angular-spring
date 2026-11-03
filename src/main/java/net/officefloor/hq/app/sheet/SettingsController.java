@@ -358,7 +358,7 @@ public class SettingsController {
     }
 
     /** The default grade form: one of the grades (A, B, C), or blank for A; not dated. */
-    public record DefaultGradeForm(@Pattern(regexp = "\\s*[ABC]?\\s*") String value) {
+    public record DefaultGradeForm(@Pattern(regexp = "\\s*([A-Z]{1,3})?\\s*") String value) {
 
         String gradeValue() {
             return value == null || value.isBlank() ? null : value.trim();
@@ -407,24 +407,24 @@ public class SettingsController {
         LocalDate day = then.day();
         Function<String, BigDecimal> value = key -> then.setting(key, day).map(SettingValue::getValue).orElse(null);
         Map<String, Integer> gradeTerms = new TreeMap<>();
-        for (String grade : List.of("A", "B", "C")) {
+        for (String grade : service.grades(id)) {
             then.setting("terms-" + grade, day).ifPresent(v -> gradeTerms.put(grade, v.getValue().intValue()));
         }
         int terms = then.setting("terms", day).map(v -> v.getValue().intValue()).orElse(SheetService.STARTING_TERMS);
         Map<String, Integer> gradeGraces = new TreeMap<>();
         Map<String, List<SettingValue>> graces = new TreeMap<>();
-        for (String grade : List.of("A", "B", "C")) {
+        for (String grade : service.grades(id)) {
             then.setting("grace-" + grade, day).map(SettingValue::getValue)
                     .ifPresent(v -> gradeGraces.put(grade, v.intValue()));
             graces.put(grade, then.recorded("grace-" + grade));
         }
         Map<String, BigDecimal> gradeProofThresholds = new TreeMap<>();
-        for (String grade : List.of("A", "B", "C")) {
+        for (String grade : service.grades(id)) {
             then.setting("proof-threshold-" + grade, day).map(SettingValue::getValue)
                     .ifPresent(v -> gradeProofThresholds.put(grade, v));
         }
         Map<String, BigDecimal> gradeClerkLimits = new TreeMap<>();
-        for (String grade : List.of("A", "B", "C")) {
+        for (String grade : service.grades(id)) {
             then.setting("clerk-limit-" + grade, day).map(SettingValue::getValue)
                     .ifPresent(v -> gradeClerkLimits.put(grade, v));
         }
@@ -458,7 +458,7 @@ public class SettingsController {
     /** The grace days recorded for each grade of a sheet, earliest from-date first. */
     private Map<String, List<SettingValue>> gracesOf(String id) {
         Map<String, List<SettingValue>> graces = new TreeMap<>();
-        for (String grade : List.of("A", "B", "C")) {
+        for (String grade : service.grades(id)) {
             graces.put(grade, service.recorded(id, "grace-" + grade));
         }
         return graces;
@@ -499,7 +499,7 @@ public class SettingsController {
 
     @PutMapping("/terms/{grade}")
     public SettingsView setGradeTerms(@PathVariable @NotBlank @Size(max = 100) String sheetId,
-            @PathVariable @Pattern(regexp = "[ABC]") String grade,
+            @PathVariable @Pattern(regexp = "[A-Z]{1,3}") String grade,
             @RequestHeader("X-User") @NotBlank @Size(max = 100) String user,
             @Valid @RequestBody TermsForm form) {
         return view(service.setGradeTerms(sheetId.trim(), user.trim(), grade, form.termsValue(), form.fromValue()));
@@ -507,7 +507,7 @@ public class SettingsController {
 
     @PutMapping("/grace/{grade}")
     public SettingsView setGrace(@PathVariable @NotBlank @Size(max = 100) String sheetId,
-            @PathVariable @Pattern(regexp = "[ABC]") String grade,
+            @PathVariable @Pattern(regexp = "[A-Z]{1,3}") String grade,
             @RequestHeader("X-User") @NotBlank @Size(max = 100) String user,
             @Valid @RequestBody GradeGraceForm form) {
         return view(service.setGrace(sheetId.trim(), user.trim(), grade, form.daysValue(), form.fromValue()));
@@ -550,7 +550,7 @@ public class SettingsController {
 
     @PutMapping("/clerk-limit/{grade}")
     public SettingsView setGradeClerkLimit(@PathVariable @NotBlank @Size(max = 100) String sheetId,
-            @PathVariable @Pattern(regexp = "[ABC]") String grade,
+            @PathVariable @Pattern(regexp = "[A-Z]{1,3}") String grade,
             @RequestHeader("X-User") @NotBlank @Size(max = 100) String user,
             @Valid @RequestBody ClerkLimitForm form) {
         return view(service.setGradeClerkLimit(sheetId.trim(), user.trim(), grade, form.limitValue(),
@@ -559,7 +559,7 @@ public class SettingsController {
 
     @PutMapping("/proof-threshold/{grade}")
     public SettingsView setGradeProofThreshold(@PathVariable @NotBlank @Size(max = 100) String sheetId,
-            @PathVariable @Pattern(regexp = "[ABC]") String grade,
+            @PathVariable @Pattern(regexp = "[A-Z]{1,3}") String grade,
             @RequestHeader("X-User") @NotBlank @Size(max = 100) String user,
             @Valid @RequestBody ProofThresholdForm form) {
         return view(service.setGradeProofThreshold(sheetId.trim(), user.trim(), grade, form.thresholdValue(),

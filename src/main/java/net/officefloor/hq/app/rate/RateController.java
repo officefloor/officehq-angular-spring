@@ -108,7 +108,7 @@ public class RateController {
     /** Preview a candidate rate for a grade (see {@link RateService#preview}); nothing is saved. */
     @GetMapping("/{grade}/preview")
     public PreviewView preview(@PathVariable @NotBlank @Size(max = 100) String sheetId,
-            @PathVariable @Pattern(regexp = "[ABC]") String grade,
+            @PathVariable @Pattern(regexp = "[A-Z]{1,3}") String grade,
             @RequestParam @NotNull @Pattern(regexp = "\\s*\\d{1,5}(\\.\\d{1,2})?\\s*") String pct) {
         RateService.Preview preview = service.preview(sheetId.trim(), grade, new BigDecimal(pct.trim()).setScale(2));
         return new PreviewView(preview.count(), preview.diff().toPlainString());
@@ -116,7 +116,7 @@ public class RateController {
 
     @PutMapping("/{grade}")
     public RateView set(@PathVariable @NotBlank @Size(max = 100) String sheetId,
-            @PathVariable @Pattern(regexp = "[ABC]") String grade,
+            @PathVariable @Pattern(regexp = "[A-Z]{1,3}") String grade,
             @RequestHeader("X-User") @NotBlank @Size(max = 100) String user,
             @Valid @RequestBody RateForm form) {
         Rate saved = service.set(sheetId.trim(), user.trim(), grade, form.pctValue(), form.from(), form.to());

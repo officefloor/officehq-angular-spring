@@ -33,6 +33,10 @@ public class GradeController {
     public record RetireForm(@NotNull @Size(max = 10) String grade) {
     }
 
+    /** The add form: the code of the grade to add. */
+    public record AddForm(@NotNull @Size(max = 10) String grade) {
+    }
+
     /** The merge form: the grade merged and the grade it is merged into. */
     public record MergeForm(@NotNull @Size(max = 10) String from, @NotNull @Size(max = 10) String into) {
     }
@@ -56,7 +60,16 @@ public class GradeController {
         Set<String> retired = service.retired(sheetId.trim()).stream()
                 .filter(r -> asOf == null || !r.getRetiredOn().isAfter(asOf))
                 .map(RetiredGrade::getGrade).collect(Collectors.toSet());
-        return GradeService.GRADES.stream().map(g -> new GradeView(g, retired.contains(g))).toList();
+        return service.grades(sheetId.trim()).stream().map(g -> new GradeView(g, retired.contains(g))).toList();
+    }
+
+    /** Add a grade to the sheet (see {@link GradeService#add}); every grade, as it is now. */
+    @PostMapping
+    public List<GradeView> add(@PathVariable @NotBlank @Size(max = 100) String sheetId,
+            @RequestHeader("X-User") @NotBlank @Size(max = 100) String user,
+            @Valid @RequestBody AddForm form) {
+        service.add(sheetId.trim(), user.trim(), form.grade().trim());
+        return list(sheetId, null);
     }
 
     @PostMapping("/retire")

@@ -4,7 +4,8 @@ import { firstValueFrom } from 'rxjs';
 import type { Claim } from './claims';
 import { Session } from './session';
 
-export type Grade = 'A' | 'B' | 'C';
+/** A grade's code: A, B, C or one added to the sheet (one to three capital letters). */
+export type Grade = string;
 
 /** A grade a person was given, from a day (yyyy-mm-dd); null: from the beginning of time. */
 export interface GradeFrom {

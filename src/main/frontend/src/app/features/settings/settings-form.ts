@@ -2,9 +2,10 @@ import { Component, effect, inject, signal } from '@angular/core';
 import { AbstractControl, FormControl, FormGroup, ReactiveFormsModule } from '@angular/forms';
 import { Pools } from '../../core/pools';
 import { Session } from '../../core/session';
+import { BUILT_IN_GRADES, Grades } from '../../core/grades';
 import { Grade } from '../../core/people';
 import {
-  DEFAULT_GRADE, LATE_PCT, LIMIT, PERM_ACTIONS, PERM_ROLES, POLICY_DATE, PROOF_KIND_LIST, PermAction, ROLES, ROUNDING, STANDING_PERMISSIONS, TERMS, SCORE, SWITCH_ON, FISCAL_MONTH, Role, RoleName,
+  LATE_PCT, LIMIT, PERM_ACTIONS, PERM_ROLES, POLICY_DATE, PROOF_KIND_LIST, PermAction, ROLES, ROUNDING, STANDING_PERMISSIONS, TERMS, SCORE, SWITCH_ON, FISCAL_MONTH, Role, RoleName,
   SheetSettings,
 } from '../../core/settings';
 import { FigurePipe } from '../../core/figure';
@@ -12,6 +13,16 @@ import { FigurePipe } from '../../core/figure';
 // The sheet's settings (the clerk limit, the cap, the proof threshold, the proof threshold per grade, the proof kinds, the default grade, the note threshold, the floor, the rounding mode, the terms, the grace days per grade, the late percent, the policy date, period numbering from, the grace days, the entry date, the pot, the alert threshold, the parent sheet and the permission matrix) and the roles it gives user names: clerk, the default for
 // any name, steward, or viewer (who may change nothing). The settings that carry a figure are dated: each is saved from a from-date
 // (blank: the sheet's today), and what shows in force is the value on the sheet's today.
+/** The controls of a per-grade setting: a value and a from-date for each grade. */
+function gradeGroup(): FormGroup<Record<string, FormControl<string>>> {
+  const controls: Record<string, FormControl<string>> = {};
+  for (const g of BUILT_IN_GRADES) {
+    controls[g] = new FormControl('', { nonNullable: true });
+    controls[`${g}From`] = new FormControl('', { nonNullable: true });
+  }
+  return new FormGroup(controls);
+}
+
 @Component({
   selector: 'app-settings-form',
   imports: [ReactiveFormsModule, FigurePipe],
@@ -26,7 +37,7 @@ import { FigurePipe } from '../../core/figure';
         <input id="setting-clerk-limit-from" data-testid="setting-clerk-limit-from" type="date" formControlName="clerkLimitFrom" />
         <fieldset formGroupName="gradeClerkLimits">
           <legend>Clerk limit per grade (blank: the sheet's clerk limit)</legend>
-          @for (g of grades; track g) {
+          @for (g of grades(); track g) {
             <label [for]="'setting-clerk-limit-' + g">Grade {{ g }} clerk limit</label>
             <input [id]="'setting-clerk-limit-' + g" [attr.data-testid]="'setting-clerk-limit-' + g"
                    [formControlName]="g" inputmode="decimal" />
@@ -47,11 +58,11 @@ import { FigurePipe } from '../../core/figure';
                formControlName="proofThresholdFrom" />
         <label for="setting-proof-kinds">Proof kinds (receipt, photo, comma separated; a claim due above the proof threshold needs a proof of each; blank: none)</label>
         <input id="setting-proof-kinds" data-testid="setting-proof-kinds" formControlName="proofKinds" />
-        <label for="setting-default-grade">Default grade (A, B or C; a person added by quick-add, or by an import line with a blank grade, is given it; blank: A)</label>
+        <label for="setting-default-grade">Default grade (one of the sheet's grades; a person added by quick-add, or by an import line with a blank grade, is given it; blank: A)</label>
         <input id="setting-default-grade" data-testid="setting-default-grade" formControlName="defaultGrade" />
         <fieldset formGroupName="gradeProofThresholds">
           <legend>Proof threshold per grade (blank: the sheet's proof threshold)</legend>
-          @for (g of grades; track g) {
+          @for (g of grades(); track g) {
             <label [for]="'setting-proof-threshold-' + g">Grade {{ g }} proof threshold</label>
             <input [id]="'setting-proof-threshold-' + g" [attr.data-testid]="'setting-proof-threshold-' + g"
                    [formControlName]="g" inputmode="decimal" />
@@ -86,7 +97,7 @@ import { FigurePipe } from '../../core/figure';
         <input id="setting-terms-from" data-testid="setting-terms-from" type="date" formControlName="termsFrom" />
         <fieldset formGroupName="gradeTerms">
           <legend>Terms per grade (days; blank: the sheet's terms)</legend>
-          @for (g of grades; track g) {
+          @for (g of grades(); track g) {
             <label [for]="'setting-terms-' + g">Grade {{ g }}</label>
             <input [id]="'setting-terms-' + g" [attr.data-testid]="'setting-terms-' + g" [formControlName]="g"
                    inputmode="numeric" />
@@ -97,7 +108,7 @@ import { FigurePipe } from '../../core/figure';
         </fieldset>
         <fieldset formGroupName="gradeGraces">
           <legend>Grace days per grade (a claim is overdue only once its due-by plus them is before today; blank: none)</legend>
-          @for (g of grades; track g) {
+          @for (g of grades(); track g) {
             <label [for]="'setting-grace-' + g">Grade {{ g }} grace days</label>
             <input [id]="'setting-grace-' + g" [attr.data-testid]="'setting-grace-' + g" [formControlName]="g"
                    inputmode="numeric" />
@@ -154,13 +165,13 @@ import { FigurePipe } from '../../core/figure';
         }
       </form>
       <p>Clerk limit in force: <span data-testid="setting-clerk-limit-current">{{ clerkLimit() ?? '' | figure }}</span></p>
-      @for (g of grades; track g) {
+      @for (g of grades(); track g) {
         <p>Clerk limit in force for grade {{ g }}:
           <span [attr.data-testid]="'setting-clerk-limit-' + g + '-current'">{{ gradeClerkLimits()[g] ?? '' | figure }}</span></p>
       }
       <p>Cap in force: <span data-testid="setting-cap-current">{{ cap() ?? '' | figure }}</span></p>
       <p>Proof threshold in force: <span data-testid="setting-proof-threshold-current">{{ proofThreshold() ?? '' | figure }}</span></p>
-      @for (g of grades; track g) {
+      @for (g of grades(); track g) {
         <p>Proof threshold in force for grade {{ g }}:
           <span [attr.data-testid]="'setting-proof-threshold-' + g + '-current'">{{ gradeProofThresholds()[g] ?? '' | figure }}</span></p>
       }
@@ -169,11 +180,11 @@ import { FigurePipe } from '../../core/figure';
       <p>Floor in force: <span data-testid="setting-floor-current">{{ floor() ?? '' | figure }}</span></p>
       <p>Rounding mode in force: <span data-testid="setting-rounding-current">{{ rounding() ?? '' }}</span></p>
       <p>Terms in force: <span data-testid="setting-terms-current">{{ terms() ?? '' }}</span></p>
-      @for (g of grades; track g) {
+      @for (g of grades(); track g) {
         <p>Terms in force for grade {{ g }}:
           <span [attr.data-testid]="'setting-terms-' + g + '-current'">{{ termsOf(g) ?? '' }}</span></p>
       }
-      @for (g of grades; track g) {
+      @for (g of grades(); track g) {
         <p>Grace days in force for grade {{ g }}:
           <span [attr.data-testid]="'setting-grace-' + g + '-current'">{{ gradeGraces()[g] ?? '' }}</span></p>
       }
@@ -245,7 +256,9 @@ export class SettingsForm {
   protected readonly floor = signal<string | null>(null);
   protected readonly terms = signal<number | null>(null);
   protected readonly rounding = signal<string | null>(null);
-  protected readonly grades: Grade[] = ['A', 'B', 'C'];
+  private readonly sheetGrades = inject(Grades);
+  /** The sheet's grades, in order: each has its controls in the per-grade groups. */
+  protected readonly grades = signal<Grade[]>([...BUILT_IN_GRADES]);
   /** The terms each grade has of its own; a grade not in it takes the sheet's terms. */
   protected readonly gradeTerms = signal<Partial<Record<Grade, number>>>({});
   /** The grace days each grade has in force; a grade not in it has none. */
@@ -286,26 +299,12 @@ export class SettingsForm {
   protected readonly settingsForm = new FormGroup({
     clerkLimit: new FormControl('', { nonNullable: true }),
     clerkLimitFrom: new FormControl('', { nonNullable: true }),
-    gradeClerkLimits: new FormGroup({
-      A: new FormControl('', { nonNullable: true }),
-      AFrom: new FormControl('', { nonNullable: true }),
-      B: new FormControl('', { nonNullable: true }),
-      BFrom: new FormControl('', { nonNullable: true }),
-      C: new FormControl('', { nonNullable: true }),
-      CFrom: new FormControl('', { nonNullable: true }),
-    }),
+    gradeClerkLimits: gradeGroup(),
     cap: new FormControl('', { nonNullable: true }),
     capFrom: new FormControl('', { nonNullable: true }),
     proofThreshold: new FormControl('', { nonNullable: true }),
     proofThresholdFrom: new FormControl('', { nonNullable: true }),
-    gradeProofThresholds: new FormGroup({
-      A: new FormControl('', { nonNullable: true }),
-      AFrom: new FormControl('', { nonNullable: true }),
-      B: new FormControl('', { nonNullable: true }),
-      BFrom: new FormControl('', { nonNullable: true }),
-      C: new FormControl('', { nonNullable: true }),
-      CFrom: new FormControl('', { nonNullable: true }),
-    }),
+    gradeProofThresholds: gradeGroup(),
     noteThreshold: new FormControl('', { nonNullable: true }),
     noteThresholdFrom: new FormControl('', { nonNullable: true }),
     reviewThreshold: new FormControl('', { nonNullable: true }),
@@ -316,22 +315,8 @@ export class SettingsForm {
     roundingFrom: new FormControl('', { nonNullable: true }),
     terms: new FormControl('', { nonNullable: true }),
     termsFrom: new FormControl('', { nonNullable: true }),
-    gradeTerms: new FormGroup({
-      A: new FormControl('', { nonNullable: true }),
-      AFrom: new FormControl('', { nonNullable: true }),
-      B: new FormControl('', { nonNullable: true }),
-      BFrom: new FormControl('', { nonNullable: true }),
-      C: new FormControl('', { nonNullable: true }),
-      CFrom: new FormControl('', { nonNullable: true }),
-    }),
-    gradeGraces: new FormGroup({
-      A: new FormControl('', { nonNullable: true }),
-      AFrom: new FormControl('', { nonNullable: true }),
-      B: new FormControl('', { nonNullable: true }),
-      BFrom: new FormControl('', { nonNullable: true }),
-      C: new FormControl('', { nonNullable: true }),
-      CFrom: new FormControl('', { nonNullable: true }),
-    }),
+    gradeTerms: gradeGroup(),
+    gradeGraces: gradeGroup(),
     latePct: new FormControl('', { nonNullable: true }),
     latePctFrom: new FormControl('', { nonNullable: true }),
     policyDate: new FormControl('', { nonNullable: true }),
@@ -365,6 +350,21 @@ export class SettingsForm {
   });
 
   constructor() {
+    // A grade added to the sheet gets its controls in each per-grade group before it is listed.
+    effect(() => {
+      const codes = this.sheetGrades.codes();
+      const { gradeClerkLimits, gradeProofThresholds, gradeTerms, gradeGraces } = this.settingsForm.controls;
+      for (const group of [gradeClerkLimits, gradeProofThresholds, gradeTerms, gradeGraces]) {
+        for (const g of codes) {
+          for (const name of [g, `${g}From`]) {
+            if (!group.contains(name)) {
+              group.addControl(name, new FormControl('', { nonNullable: true }), { emitEvent: false });
+            }
+          }
+        }
+      }
+      this.grades.set(codes);
+    });
     this.settingsForm.valueChanges.subscribe(() => this.settingsError.set(''));
     this.roleForm.valueChanges.subscribe(() => this.roleError.set(''));
     effect(() => {
@@ -424,7 +424,7 @@ export class SettingsForm {
     const from = (c: AbstractControl<string>) => c.value.trim() || null;
     const fromsToSave: AbstractControl<string>[] = [];
     const limitValue = clerkLimit.value.trim();
-    const gradeLimitsToSave = this.grades
+    const gradeLimitsToSave = this.grades()
       .map((g) => ({
         grade: g, control: gradeClerkLimits.controls[g], fromControl: gradeClerkLimits.controls[`${g}From`],
         value: gradeClerkLimits.controls[g].value.trim(),
@@ -434,7 +434,7 @@ export class SettingsForm {
     const saveCap = changed(cap, capFrom) || (none && capValue !== '');
     const thresholdValue = proofThreshold.value.trim();
     const saveThreshold = changed(proofThreshold, proofThresholdFrom) || (none && thresholdValue !== '');
-    const gradeThresholdsToSave = this.grades
+    const gradeThresholdsToSave = this.grades()
       .map((g) => ({
         grade: g, control: gradeProofThresholds.controls[g], fromControl: gradeProofThresholds.controls[`${g}From`],
         value: gradeProofThresholds.controls[g].value.trim(),
@@ -451,13 +451,13 @@ export class SettingsForm {
     const saveRounding = changed(rounding, roundingFrom) || (none && roundingValue !== '');
     const termsValue = terms.value.trim();
     const saveTerms = none || changed(terms, termsFrom);
-    const gradeTermsToSave = this.grades
+    const gradeTermsToSave = this.grades()
       .map((g) => ({
         grade: g, control: gradeTerms.controls[g], fromControl: gradeTerms.controls[`${g}From`],
         value: gradeTerms.controls[g].value.trim(),
       }))
       .filter((t) => (none || changed(t.control, t.fromControl)) && t.value !== '');
-    const gracesToSave = this.grades
+    const gracesToSave = this.grades()
       .map((g) => ({
         grade: g, control: gradeGraces.controls[g], fromControl: gradeGraces.controls[`${g}From`],
         value: gradeGraces.controls[g].value.trim(),
@@ -625,8 +625,8 @@ export class SettingsForm {
       this.settingsError.set('Enter the proof kinds as receipt, photo or both, comma separated, or leave it blank for none.');
       return;
     }
-    if (saveDefaultGrade && defaultGradeValue !== '' && !DEFAULT_GRADE.test(defaultGradeValue)) {
-      this.settingsError.set('Enter a default grade of A, B or C, or leave it blank for A.');
+    if (saveDefaultGrade && defaultGradeValue !== '' && !this.grades().includes(defaultGradeValue)) {
+      this.settingsError.set('Enter a default grade of one of the sheet\'s grades, or leave it blank for A.');
       return;
     }
     if (permsToSave.some((p) => p.value !== '' && !PERM_ROLES.test(p.value))) {

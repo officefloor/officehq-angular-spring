@@ -17,7 +17,9 @@ import net.officefloor.hq.app.person.Person;
 import net.officefloor.hq.app.person.PersonRepository;
 import net.officefloor.hq.app.rollup.Rollup;
 import net.officefloor.hq.app.sheet.SheetService;
+import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
+import org.springframework.web.server.ResponseStatusException;
 import org.springframework.transaction.annotation.Transactional;
 
 /** The rates for each grade on a sheet, each applying from its from-date. */
@@ -164,6 +166,9 @@ public class RateService {
     @Transactional
     public synchronized Rate set(String sheetId, String user, String grade, BigDecimal pct, LocalDate from,
             LocalDate to) {
+        if (!sheets.isGrade(sheetId, grade)) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "No such grade on the sheet");
+        }
         sheets.load(sheetId, user);
         return rollup.tracking(sheetId, user, () -> {
             Rate rate = (from == null

@@ -23,7 +23,7 @@ import java.util.Objects;
 import net.officefloor.hq.app.claim.Tags;
 import org.hibernate.annotations.OptimisticLock;
 
-/** A person on a sheet: a name and a grade (A, B or C), dated: each grade applies from its from-date. */
+/** A person on a sheet: a name and a grade (one of the sheet's), dated: each grade applies from its from-date. */
 @Entity
 @Table(name = "person")
 public class Person {

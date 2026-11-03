@@ -136,8 +136,6 @@ export const STANDING_PERMISSIONS: Record<PermAction, string> = {
 };
 
 /** A proof kinds value: receipt, photo or both, comma separated. */
-/** A default grade: one of the grades. */
-export const DEFAULT_GRADE = /^[ABC]$/;
 export const PROOF_KIND_LIST = /^\s*(receipt|photo)\s*(,\s*(receipt|photo)\s*)*$/;
 
 /** A permission entry: a comma separated list of roles (clerk, steward). */

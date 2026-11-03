@@ -25,7 +25,7 @@ public class PersonImportService {
     private static final int CONTACT_MAX = 200;
 
     /** The person form's grade and terms. */
-    private static final Pattern GRADE = Pattern.compile("[ABC]");
+    private static final Pattern GRADE = Pattern.compile("[A-Z]{1,3}");
     private static final Pattern TERMS = Pattern.compile("\\s*\\d{0,4}\\s*");
 
     /** One parsed line: the name, the grade, the terms (null: none) and the contact (null: none). */
@@ -90,6 +90,9 @@ public class PersonImportService {
                     : people.existsBySheetIdAndContactAndIdNot(sheetId, line.contact(), match.getId()))) {
                 throw refused(n, "the contact \"" + line.contact() + "\" is already held on this sheet");
             }
+            if (!grades.isGrade(sheetId, line.grade())) {
+                throw refused(n, "the grade " + line.grade() + " is no grade of the sheet");
+            }
             if (grades.isRetired(sheetId, line.grade())
                     && (match == null || !line.grade().equals(match.gradeOn(sheets.today(sheetId))))) {
                 throw refused(n, "the grade " + line.grade() + " is retired");
@@ -136,7 +139,7 @@ public class PersonImportService {
         }
         String grade = fields[1].isBlank() ? defaultGrade : fields[1].trim();
         if (!GRADE.matcher(grade).matches()) {
-            throw refused(n, "the grade must be A, B or C");
+            throw refused(n, "the grade must be one to three capital letters");
         }
         String terms = fields.length > 2 ? fields[2] : "";
         if (!TERMS.matcher(terms).matches()) {

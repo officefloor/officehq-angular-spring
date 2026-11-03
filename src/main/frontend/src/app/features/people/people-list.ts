@@ -4,6 +4,7 @@ import { FormControl, FormGroup, ReactiveFormsModule } from '@angular/forms';
 import { Claim, Claims, QuickAdded, addDays, backingFigure, claimDue, countsAsOf, countsClaimed, countsLive, isOpen, keepsActive, overdue, reviewLate, sharePart, statusOn, sumAmounts, trimmedSum } from '../../core/claims';
 import { Patron, Patrons, patronShares } from '../../core/patrons';
 import { Pools, formatCents } from '../../core/pools';
+import { Grades } from '../../core/grades';
 import { Grade, Leave, People, Person, Taken, gradeOn, shownName } from '../../core/people';
 import { Period, Periods, periodOf } from '../../core/periods';
 import { Rate, Rates, pctOn, weightedSum } from '../../core/rates';
@@ -70,7 +71,7 @@ const NO_LEAVE: Leave = { holds: [], retiredFrom: null };
         <input id="person-form-name" data-testid="person-form-name" formControlName="name" />
         <label for="person-form-grade">Grade</label>
         <select id="person-form-grade" data-testid="person-form-grade" formControlName="grade">
-          @for (g of grades; track g) {
+          @for (g of grades(); track g) {
             <option [value]="g">{{ g }}</option>
           }
         </select>
@@ -240,7 +241,7 @@ const NO_LEAVE: Leave = { holds: [], retiredFrom: null };
         <span id="bulk-grade-heading">Grade selected people</span>
         <label for="bulk-grade">Grade</label>
         <select #bulkGrade id="bulk-grade" data-testid="bulk-grade" (change)="bulkGradeError.set('')">
-          @for (g of grades; track g) {
+          @for (g of grades(); track g) {
             <option [value]="g">{{ g }}</option>
           }
         </select>
@@ -406,7 +407,7 @@ const NO_LEAVE: Leave = { holds: [], retiredFrom: null };
                 <label [for]="'person-inline-grade-' + p.id" class="visually-hidden">Grade of {{ p.name }}</label>
                 <select #inlineGrade [id]="'person-inline-grade-' + p.id" data-testid="person-inline-grade"
                   [value]="gradeOf(p)" (change)="clearPersonError(p.id)">
-                  @for (g of grades; track g) {
+                  @for (g of grades(); track g) {
                     <option [value]="g" [selected]="g === gradeOf(p)">{{ g }}</option>
                   }
                 </select>
@@ -515,7 +516,8 @@ export class PeopleList {
   private readonly descendantsApi = inject(Descendants);
   private readonly crewsApi = inject(Crews);
 
-  protected readonly grades: Grade[] = ['A', 'B', 'C'];
+  /** The sheet's grades, in order. */
+  protected readonly grades = inject(Grades).codes;
   protected readonly people = signal<Person[]>([]);
   /** Whether retired people are listed; off when the screen opens, kept as it is across loads. */
   protected readonly showRetired = signal(false);
@@ -788,7 +790,7 @@ export class PeopleList {
     const today = this.session.today();
     const by = new Map<Grade, string>();
     if (today === null) return by;
-    for (const g of this.grades) {
+    for (const g of this.grades()) {
       const pct = pctOn(this.rates(), g, today);
       if (pct !== undefined) by.set(g, pct);
     }
@@ -967,7 +969,7 @@ export class PeopleList {
   /** Per grade: the people not retired on it on the sheet's today, their due-totals added up,
    *  skipping those that are n/a, and how many of them are active. */
   protected readonly gradeSummary = computed((): GradeSummary[] =>
-    this.grades.map((grade) => {
+    this.grades().map((grade) => {
       const on = this.people().filter((p) => !p.retired && this.gradeOf(p) === grade);
       return {
         grade,
@@ -1325,8 +1327,8 @@ export class PeopleList {
     if (this.regrading.has(p.id)) return;
     this.personError.set(null);
     this.patronError.set(null);
-    if (!this.grades.includes(grade as Grade)) {
-      this.personError.set({ id: p.id, message: 'Choose a grade of A, B or C.' });
+    if (!this.grades().includes(grade as Grade)) {
+      this.personError.set({ id: p.id, message: 'Choose one of the sheet\'s grades.' });
       return;
     }
     this.regrading.add(p.id);
@@ -1554,8 +1556,8 @@ export class PeopleList {
       this.refuse('Enter a name.');
       return;
     }
-    if (!this.grades.includes(grade)) {
-      this.refuse('Choose a grade of A, B or C.');
+    if (!this.grades().includes(grade)) {
+      this.refuse('Choose one of the sheet\'s grades.');
       return;
     }
     if (!/^\d{0,4}$/.test(terms)) {
@@ -1651,8 +1653,8 @@ export class PeopleList {
       this.bulkGradeError.set('Select the people to grade.');
       return;
     }
-    if (!this.grades.includes(grade as Grade)) {
-      this.bulkGradeError.set('Choose a grade of A, B or C.');
+    if (!this.grades().includes(grade as Grade)) {
+      this.bulkGradeError.set('Choose one of the sheet\'s grades.');
       return;
     }
     this.grading = true;

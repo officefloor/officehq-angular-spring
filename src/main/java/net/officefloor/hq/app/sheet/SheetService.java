@@ -16,6 +16,7 @@ import net.officefloor.hq.app.Audit;
 import net.officefloor.hq.app.claim.ClaimRepository;
 import net.officefloor.hq.app.claim.Proof;
 import net.officefloor.hq.app.grade.RetiredGradeRepository;
+import net.officefloor.hq.app.grade.SheetGradeRepository;
 import net.officefloor.hq.app.history.History;
 import net.officefloor.hq.app.period.PeriodService;
 import net.officefloor.hq.app.role.RoleService;
@@ -30,9 +31,6 @@ import org.springframework.web.server.ResponseStatusException;
 /** Loads sheets by id; a sheet that was never loaded before starts empty. */
 @Service
 public class SheetService {
-
-    /** The grades a person can have, each of which may have terms of its own. */
-    private static final List<String> GRADES = List.of("A", "B", "C");
 
     private final SheetRepository sheets;
     private final SettingValueRepository settingValues;
@@ -49,11 +47,14 @@ public class SheetService {
     private final History history;
     private final Audit audit;
     private final RetiredGradeRepository retiredGrades;
+    private final SheetGradeRepository sheetGrades;
 
     public SheetService(SheetRepository sheets, SettingValueRepository settingValues,
             FiscalClaimNumberRepository fiscalNumbers, SheetPermissionRepository permissions, ClaimRepository claims, @Lazy Rollup rollup, @Lazy PeriodService periods,
-            @Lazy RoleService roles, @Lazy History history, Audit audit, RetiredGradeRepository retiredGrades) {
+            @Lazy RoleService roles, @Lazy History history, Audit audit, RetiredGradeRepository retiredGrades,
+            SheetGradeRepository sheetGrades) {
         this.retiredGrades = retiredGrades;
+        this.sheetGrades = sheetGrades;
         this.history = history;
         this.sheets = sheets;
         this.settingValues = settingValues;
@@ -70,6 +71,19 @@ public class SheetService {
     @Transactional
     public synchronized Sheet load(String id, String user) {
         return sheets.findById(id).orElseGet(() -> sheets.save(new Sheet(id, user, LocalDate.now())));
+    }
+
+    /** Every grade of the sheet, each of which may have terms of its own: A, B and C, then those
+     *  added to it in the order they were added. */
+    @Transactional(readOnly = true)
+    public List<String> grades(String id) {
+        return sheetGrades.gradesOf(id);
+    }
+
+    /** Whether the grade is one of the sheet's. */
+    @Transactional(readOnly = true)
+    public boolean isGrade(String id, String grade) {
+        return grade != null && sheetGrades.isGradeOf(id, grade);
     }
 
     /** Whether the sheet is archived (it then refuses every change). */
@@ -237,7 +251,7 @@ public class SheetService {
     public Map<String, BigDecimal> gradeClerkLimits(String id) {
         LocalDate today = today(id);
         Map<String, BigDecimal> limits = new TreeMap<>();
-        for (String grade : GRADES) {
+        for (String grade : grades(id)) {
             inForce(id, "clerk-limit-" + grade, today).map(SettingValue::getValue)
                     .ifPresent(v -> limits.put(grade, v));
         }
@@ -310,7 +324,7 @@ public class SheetService {
     public Map<String, Integer> gradeTerms(String id) {
         LocalDate today = today(id);
         Map<String, Integer> terms = new TreeMap<>();
-        for (String grade : GRADES) {
+        for (String grade : grades(id)) {
             inForce(id, "terms-" + grade, today).ifPresent(v -> terms.put(grade, v.getValue().intValue()));
         }
         return terms;
@@ -337,7 +351,7 @@ public class SheetService {
     public Map<String, Integer> gradeGraces(String id) {
         LocalDate today = today(id);
         Map<String, Integer> graces = new TreeMap<>();
-        for (String grade : GRADES) {
+        for (String grade : grades(id)) {
             inForce(id, "grace-" + grade, today).map(SettingValue::getValue)
                     .ifPresent(v -> graces.put(grade, v.intValue()));
         }
@@ -771,7 +785,7 @@ public class SheetService {
     public Map<String, BigDecimal> gradeProofThresholds(String id) {
         LocalDate today = today(id);
         Map<String, BigDecimal> thresholds = new TreeMap<>();
-        for (String grade : GRADES) {
+        for (String grade : grades(id)) {
             inForce(id, "proof-threshold-" + grade, today).map(SettingValue::getValue)
                     .ifPresent(v -> thresholds.put(grade, v));
         }
@@ -851,8 +865,8 @@ public class SheetService {
     /** Change the sheet's default grade (null: blank, A), one of the grades. It changes no one. */
     @Transactional
     public synchronized Sheet setDefaultGrade(String id, String user, String grade) {
-        if (grade != null && !GRADES.contains(grade)) {
-            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "A default grade is A, B or C");
+        if (grade != null && !isGrade(id, grade)) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "A default grade is one of the sheet's grades");
         }
         Sheet sheet = load(id, user);
         sheet.setDefaultGrade(grade);

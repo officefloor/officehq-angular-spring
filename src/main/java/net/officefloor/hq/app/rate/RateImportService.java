@@ -17,7 +17,7 @@ import org.springframework.web.server.ResponseStatusException;
 public class RateImportService {
 
     /** The rate form's grades. */
-    private static final Pattern GRADE = Pattern.compile("[ABC]");
+    private static final Pattern GRADE = Pattern.compile("[A-Z]{1,3}");
 
     /** The rate form's percent: 0.00 or more with up to two decimals. */
     private static final Pattern PCT = Pattern.compile("\\s*\\d{1,5}(\\.\\d{1,2})?\\s*");
@@ -63,7 +63,7 @@ public class RateImportService {
         }
         String grade = fields[0].trim();
         if (!GRADE.matcher(grade).matches()) {
-            throw refused(n, "the grade must be A, B or C");
+            throw refused(n, "the grade must be one to three capital letters");
         }
         if (!PCT.matcher(fields[1]).matches()) {
             throw refused(n, "the rate must be 0.00 or more, with up to two decimals");

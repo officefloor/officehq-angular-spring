@@ -1,6 +1,7 @@
 package net.officefloor.hq.app.grade;
 
 import java.util.List;
+import java.util.regex.Pattern;
 import net.officefloor.hq.app.Audit;
 import net.officefloor.hq.app.sheet.SheetService;
 import org.springframework.dao.DataIntegrityViolationException;
@@ -13,17 +14,56 @@ import org.springframework.web.server.ResponseStatusException;
 @Service
 public class GradeService {
 
-    /** The grades a person can have. */
-    public static final List<String> GRADES = List.of("A", "B", "C");
+    /** A grade's code: one to three capital letters. */
+    public static final Pattern CODE = Pattern.compile("[A-Z]{1,3}");
 
     private final RetiredGradeRepository retired;
+    private final SheetGradeRepository added;
     private final SheetService sheets;
     private final Audit audit;
 
-    public GradeService(RetiredGradeRepository retired, SheetService sheets, Audit audit) {
+    public GradeService(RetiredGradeRepository retired, SheetGradeRepository added, SheetService sheets, Audit audit) {
         this.retired = retired;
+        this.added = added;
         this.sheets = sheets;
         this.audit = audit;
+    }
+
+    /** Every grade of the sheet: A, B and C, then those added to it in the order they were added. */
+    @Transactional(readOnly = true)
+    public List<String> grades(String sheetId) {
+        return sheets.grades(sheetId);
+    }
+
+    /** Whether the grade is one of the sheet's. */
+    @Transactional(readOnly = true)
+    public boolean isGrade(String sheetId, String grade) {
+        return sheets.isGrade(sheetId, grade);
+    }
+
+    /** Add a grade to the sheet; refused unless it is one to three capital letters not yet a grade
+     *  of it. It changes no one. */
+    @Transactional
+    public synchronized SheetGrade add(String sheetId, String user, String grade) {
+        if (grade == null || !CODE.matcher(grade).matches()) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "A grade is one to three capital letters");
+        }
+        sheets.load(sheetId, user);
+        if (added.isGradeOf(sheetId, grade)) {
+            throw alreadyAGrade();
+        }
+        SheetGrade saved;
+        try {
+            saved = added.saveAndFlush(new SheetGrade(sheetId, grade, sheets.today(sheetId)));
+        } catch (DataIntegrityViolationException e) {
+            throw alreadyAGrade();
+        }
+        audit.recordOnCommit("GRADE_ADDED sheet=" + sheetId + " by=" + user + " grade=" + grade);
+        return saved;
+    }
+
+    private static ResponseStatusException alreadyAGrade() {
+        return new ResponseStatusException(HttpStatus.CONFLICT, "That grade is already a grade of the sheet");
     }
 
     /** The grades retired on the sheet, by grade. */
@@ -38,9 +78,12 @@ public class GradeService {
         return retired.existsBySheetIdAndGrade(sheetId, grade);
     }
 
-    /** Refuse the grade as a choice for a person when it is retired on the sheet. */
+    /** Refuse the grade as a choice for a person when it is no grade of the sheet or is retired on it. */
     @Transactional(readOnly = true)
     public void checkChoosable(String sheetId, String grade) {
+        if (!isGrade(sheetId, grade)) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Grade " + grade + " is no grade of the sheet");
+        }
         if (isRetired(sheetId, grade)) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Grade " + grade + " is retired");
         }
@@ -50,8 +93,8 @@ public class GradeService {
      *  changes no one: people on it keep it. */
     @Transactional
     public synchronized RetiredGrade retire(String sheetId, String user, String grade) {
-        if (!GRADES.contains(grade)) {
-            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "A grade is A, B or C");
+        if (!isGrade(sheetId, grade)) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "No such grade on the sheet");
         }
         sheets.load(sheetId, user);
         if (retired.existsBySheetIdAndGrade(sheetId, grade)) {

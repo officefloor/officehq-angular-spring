@@ -163,8 +163,8 @@ public class PersonService {
      *  either is no grade (400). Answers the people it changed. */
     @Transactional
     public List<Person> mergeGrade(String sheetId, String user, String from, String into) {
-        if (!GradeService.GRADES.contains(from) || !GradeService.GRADES.contains(into)) {
-            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "A grade is A, B or C");
+        if (!grades.isGrade(sheetId, from) || !grades.isGrade(sheetId, into)) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "No such grade on the sheet");
         }
         if (from.equals(into)) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "A grade cannot be merged into itself");
@@ -245,8 +245,11 @@ public class PersonService {
                 || inTree(treeNames(sheetId), alias)) {
             throw nameInUse();
         }
-        person.addAlias(alias);
-        Person saved = saveUnique(person);
+        // Tracked so that the sheet's history holds the alias from the day it was given.
+        Person saved = rollup.tracking(sheetId, user, () -> {
+            person.addAlias(alias);
+            return saveUnique(person);
+        });
         audit.recordOnCommit("PERSON_ALIAS_ADDED sheet=" + sheetId + " by=" + user + " name=" + saved.getName()
                 + " alias=" + alias);
         return saved;

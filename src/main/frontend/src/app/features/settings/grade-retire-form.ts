@@ -1,22 +1,26 @@
 import { HttpErrorResponse } from '@angular/common/http';
 import { Component, effect, inject, signal } from '@angular/core';
 import { FormControl, FormGroup, ReactiveFormsModule } from '@angular/forms';
-import { GradeState, Grades } from '../../core/grades';
-import { Grade } from '../../core/people';
+import { GRADE_CODE, Grades } from '../../core/grades';
 import { Session } from '../../core/session';
 
-// The sheet's grades and the select a grade is retired with. A retired grade can no longer be
-// chosen for a person; the people already on it keep it.
+// The sheet's grades, the entry a grade is added with and the select a grade is retired with. A
+// retired grade can no longer be chosen for a person; the people already on it keep it.
 @Component({
   selector: 'app-grade-retire-form',
   imports: [ReactiveFormsModule],
   template: `
     <section aria-labelledby="grades-heading">
       <h3 id="grades-heading">Grades</h3>
+      <form data-testid="grade-add-form" [formGroup]="addForm" (ngSubmit)="add()">
+        <label for="grade-add-code">New grade (one to three capital letters)</label>
+        <input id="grade-add-code" data-testid="grade-add-code" formControlName="code" autocomplete="off" />
+        <button type="submit" data-testid="grade-add">Add grade</button>
+      </form>
       <form data-testid="grade-retire-form" [formGroup]="form" (ngSubmit)="submit()">
         <label for="grade-retire-select">Grade to retire</label>
         <select id="grade-retire-select" data-testid="grade-retire-select" formControlName="grade">
-          @for (g of codes; track g) {
+          @for (g of codes(); track g) {
             <option [value]="g">{{ g }}</option>
           }
         </select>
@@ -25,13 +29,13 @@ import { Session } from '../../core/session';
       <form data-testid="grade-merge-form" [formGroup]="mergeForm" (ngSubmit)="merge()">
         <label for="grade-merge-from">Grade to merge</label>
         <select id="grade-merge-from" data-testid="grade-merge-from" formControlName="from">
-          @for (g of codes; track g) {
+          @for (g of codes(); track g) {
             <option [value]="g">{{ g }}</option>
           }
         </select>
         <label for="grade-merge-into">Merge into</label>
         <select id="grade-merge-into" data-testid="grade-merge-into" formControlName="into">
-          @for (g of codes; track g) {
+          @for (g of codes(); track g) {
             <option [value]="g">{{ g }}</option>
           }
         </select>
@@ -61,9 +65,12 @@ export class GradeRetireForm {
   private readonly api = inject(Grades);
   private readonly session = inject(Session);
 
-  protected readonly codes: Grade[] = ['A', 'B', 'C'];
-  protected readonly grades = signal<GradeState[]>([]);
+  protected readonly codes = this.api.codes;
+  protected readonly grades = this.api.states;
   protected readonly error = signal('');
+  protected readonly addForm = new FormGroup({
+    code: new FormControl<string>('', { nonNullable: true }),
+  });
   protected readonly form = new FormGroup({
     grade: new FormControl<string>('A', { nonNullable: true }),
   });
@@ -74,26 +81,53 @@ export class GradeRetireForm {
   /** How many people the last merge gave the other grade; empty until one is done. */
   protected readonly merged = signal('');
   private submitting = false;
-  private reads = 0;
 
   constructor() {
     this.form.valueChanges.subscribe(() => this.error.set(''));
     this.mergeForm.valueChanges.subscribe(() => this.error.set(''));
+    this.addForm.valueChanges.subscribe(() => this.error.set(''));
     effect(() => {
       this.session.loads();
-      const sheetId = this.session.sheetId();
-      this.grades.set([]);
+      this.session.sheetId();
       this.merged.set('');
-      if (sheetId) void this.reload(sheetId);
     });
+  }
+
+  protected async add(): Promise<void> {
+    if (this.submitting) return;
+    this.error.set('');
+    const code = this.addForm.getRawValue().code.trim();
+    if (!GRADE_CODE.test(code)) {
+      this.error.set('Enter a grade of one to three capital letters.');
+      return;
+    }
+    if (this.codes().includes(code)) {
+      this.error.set('That is already a grade of the sheet.');
+      return;
+    }
+    this.submitting = true;
+    try {
+      await this.api.add(code);
+      this.addForm.reset({ code: '' }, { emitEvent: false });
+    } catch (e) {
+      this.error.set(
+        e instanceof HttpErrorResponse && e.status === 409
+          ? 'That is already a grade, or the sheet may not be changed.'
+          : e instanceof HttpErrorResponse && e.status === 403
+            ? 'A viewer may not add a grade.'
+            : 'The grade could not be added.',
+      );
+    } finally {
+      this.submitting = false;
+    }
   }
 
   protected async submit(): Promise<void> {
     if (this.submitting) return;
     this.error.set('');
     const { grade } = this.form.getRawValue();
-    if (!this.codes.includes(grade as Grade)) {
-      this.error.set('Choose a grade of A, B or C.');
+    if (!this.codes().includes(grade)) {
+      this.error.set('Choose one of the sheet\'s grades.');
       return;
     }
     if (this.grades().some((g) => g.grade === grade && g.retired)) {
@@ -102,7 +136,7 @@ export class GradeRetireForm {
     }
     this.submitting = true;
     try {
-      this.grades.set(await this.api.retire(grade));
+      await this.api.retire(grade);
     } catch (e) {
       this.error.set(
         e instanceof HttpErrorResponse && e.status === 409
@@ -138,16 +172,6 @@ export class GradeRetireForm {
       );
     } finally {
       this.submitting = false;
-    }
-  }
-
-  private async reload(sheetId: string): Promise<void> {
-    const read = ++this.reads;
-    try {
-      const grades = await this.api.list(sheetId);
-      if (read === this.reads) this.grades.set(grades);
-    } catch {
-      // the list stays empty; the next load reads it again
     }
   }
 }
