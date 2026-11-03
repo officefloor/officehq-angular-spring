@@ -42,27 +42,36 @@ public class PlanService {
         return plans.findBySheetIdOrderByIdAsc(sheetId);
     }
 
-    /** Add a plan for a person; a start left out takes the sheet's today. Refused for an amount that
-     *  is not above zero, an interval below one day, and an end before the start. */
+    /** Add a plan for a person, repeating either every so many days or monthly on a day of the month;
+     *  a start left out takes the sheet's today. Refused for an amount that is not above zero, neither
+     *  or both of an interval and a day, an interval below one day, a day outside 1 to 31, and an end
+     *  before the start. */
     @Transactional
-    public Plan add(String sheetId, String user, long personId, BigDecimal amount, LocalDate start, int every,
-            LocalDate end) {
+    public Plan add(String sheetId, String user, long personId, BigDecimal amount, LocalDate start, Integer every,
+            Integer day, LocalDate end) {
         Person person = people.findByIdAndSheetId(personId, sheetId)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "No such person on this sheet"));
         if (amount.signum() <= 0) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "A plan's amount must be above zero");
         }
-        if (every < 1) {
+        if ((every == null) == (day == null)) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
+                    "A plan repeats either every so many days or on a day of the month");
+        }
+        if (day != null && (day < 1 || day > 31)) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "A plan's day of the month is 1 to 31");
+        }
+        if (every != null && every < 1) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "A plan repeats every one day or more");
         }
         LocalDate from = start != null ? start : sheets.today(sheetId);
         if (end.isBefore(from)) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "A plan cannot end before it starts");
         }
-        Plan saved = plans.saveAndFlush(new Plan(sheetId, person.getId(), amount, from, every, end));
+        Plan saved = plans.saveAndFlush(new Plan(sheetId, person.getId(), amount, from, every, day, end));
         audit.recordOnCommit("PLAN_ADDED sheet=" + sheetId + " by=" + user + " name=" + person.getName()
-                + " amount=" + amount.setScale(2).toPlainString() + " start=" + from + " every=" + every
-                + " end=" + end);
+                + " amount=" + amount.setScale(2).toPlainString() + " start=" + from
+                + (day != null ? " day=" + day : " every=" + every) + " end=" + end);
         return saved;
     }
 

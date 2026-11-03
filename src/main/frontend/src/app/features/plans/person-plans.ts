@@ -2,7 +2,7 @@ import { Component, inject, input, output, signal } from '@angular/core';
 import { FormControl, FormGroup, ReactiveFormsModule } from '@angular/forms';
 import { Plan, Plans } from '../../core/plans';
 
-// A person's plans, in the order they were added, each with how many claims it has made so far;
+// A person's plans (every so many days or monthly on a day), in the order they were added, each with how many claims it has made so far;
 // and the form that adds one.
 @Component({
   selector: 'app-person-plans',
@@ -13,7 +13,11 @@ import { Plan, Plans } from '../../core/plans';
         <li [attr.data-testid]="'plan-row-' + pl.id">
           <span data-testid="plan-amount-shown">{{ pl.amount }}</span>
           from <span data-testid="plan-start">{{ pl.start }}</span>
-          every <span data-testid="plan-every">{{ pl.every }}</span> days
+          @if (pl.day !== null) {
+            monthly on day <span data-testid="plan-day">{{ pl.day }}</span>
+          } @else {
+            every <span data-testid="plan-every">{{ pl.every }}</span> days
+          }
           to <span data-testid="plan-end">{{ pl.end }}</span>;
           made <span data-testid="plan-generated">{{ pl.generated }}</span>
         </li>
@@ -28,6 +32,9 @@ import { Plan, Plans } from '../../core/plans';
       <label [for]="'plan-form-every-' + personId()">Every (days)</label>
       <input [id]="'plan-form-every-' + personId()" inputmode="numeric" data-testid="plan-form-every"
         formControlName="every" />
+      <label [for]="'plan-form-day-' + personId()">Or monthly on day (1 to 31)</label>
+      <input [id]="'plan-form-day-' + personId()" inputmode="numeric" data-testid="plan-form-day"
+        formControlName="day" />
       <label [for]="'plan-form-end-' + personId()">End</label>
       <input [id]="'plan-form-end-' + personId()" type="date" data-testid="plan-form-end" formControlName="end" />
       <button type="submit" data-testid="plan-form-submit">Add plan</button>
@@ -49,6 +56,7 @@ export class PersonPlans {
     amount: new FormControl('', { nonNullable: true }),
     start: new FormControl('', { nonNullable: true }),
     every: new FormControl('', { nonNullable: true }),
+    day: new FormControl('', { nonNullable: true }),
     end: new FormControl('', { nonNullable: true }),
   });
   protected readonly error = signal('');
@@ -69,8 +77,17 @@ export class PersonPlans {
       this.error.set('Enter an amount above zero with up to two decimals.');
       return;
     }
-    if (!/^\d{1,5}$/.test(every) || Number(every) < 1) {
+    const day = f.day.trim();
+    if (!every === !day) {
+      this.error.set('Enter either a number of days or a day of the month.');
+      return;
+    }
+    if (every && (!/^\d{1,5}$/.test(every) || Number(every) < 1)) {
       this.error.set('Enter a whole number of days, at least 1.');
+      return;
+    }
+    if (day && (!/^\d{1,2}$/.test(day) || Number(day) < 1 || Number(day) > 31)) {
+      this.error.set('Enter a day of the month from 1 to 31.');
       return;
     }
     if (!f.end) {
@@ -83,7 +100,7 @@ export class PersonPlans {
     }
     this.submitting = true;
     try {
-      this.added.emit(await this.api.add(this.personId(), { amount, start: f.start, every, end: f.end }));
+      this.added.emit(await this.api.add(this.personId(), { amount, start: f.start, every, day, end: f.end }));
     } catch {
       this.error.set('The plan could not be added.');
     } finally {

@@ -3,14 +3,16 @@ import { Injectable, inject } from '@angular/core';
 import { firstValueFrom } from 'rxjs';
 import { Session } from './session';
 
-/** A person's plan: a draft claim of its amount on its start and every so many days after, up to
- *  its end; with how many claims it has made so far. */
+/** A person's plan: a draft claim of its amount on its start and every so many days after, or
+ *  monthly on a day of the month (the other null), up to its end; with how many claims it has made
+ *  so far. */
 export interface Plan {
   id: number;
   personId: number;
   amount: string;
   start: string;
-  every: number;
+  every: number | null;
+  day: number | null;
   end: string;
   generated: number;
 }
@@ -20,6 +22,7 @@ export interface PlanFields {
   amount: string;
   start: string;
   every: string;
+  day: string;
   end: string;
 }
 
@@ -34,12 +37,12 @@ export class Plans {
     return firstValueFrom(this.http.get<Plan[]>(`/api/sheets/${encodeURIComponent(sheetId)}/plans`));
   }
 
-  /** Add a plan for the person; refused for a bad amount or interval, or an end before the start. */
+  /** Add a plan for the person; refused for a bad amount, interval or day, or an end before the start. */
   add(personId: number, f: PlanFields): Promise<Plan> {
     const { sheetId, user } = this.active();
     return firstValueFrom(
       this.http.post<Plan>(`/api/sheets/${encodeURIComponent(sheetId)}/people/${personId}/plans`,
-        { amount: f.amount, start: f.start || null, every: f.every, end: f.end || null },
+        { amount: f.amount, start: f.start || null, every: f.every || null, day: f.day || null, end: f.end || null },
         { headers: { 'X-User': user } }),
     );
   }

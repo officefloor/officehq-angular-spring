@@ -24,27 +24,34 @@ import org.springframework.web.bind.annotation.RestController;
 @Validated
 public class PlanController {
 
-    /** What the screen shows of a plan: its amount as text with two decimals, its dates and interval,
-     *  and how many claims it has made so far. */
-    public record PlanView(long id, long personId, String amount, LocalDate start, int every, LocalDate end,
-            int generated) {
+    /** What the screen shows of a plan: its amount as text with two decimals, its dates, its interval
+     *  or day of the month (the other null), and how many claims it has made so far. */
+    public record PlanView(long id, long personId, String amount, LocalDate start, Integer every, Integer day,
+            LocalDate end, int generated) {
         static PlanView of(Plan plan) {
             return new PlanView(plan.getId(), plan.getPersonId(), plan.getAmount().setScale(2).toPlainString(),
-                    plan.getStartDate(), plan.getEveryDays(), plan.getEndDate(), plan.getGenerated());
+                    plan.getStartDate(), plan.getEveryDays(), plan.getMonthDay(), plan.getEndDate(),
+                    plan.getGenerated());
         }
     }
 
     /** The plan form: a required amount with up to two decimals, an optional start (the sheet's today
-     *  when left out), a whole number of days it repeats every, and a required end. */
+     *  when left out), either a whole number of days it repeats every or a day of the month it falls
+     *  on (the other blank), and a required end. */
     public record PlanForm(@NotNull @Pattern(regexp = "\\s*\\d{1,12}(\\.\\d{1,2})?\\s*") String amount,
-            LocalDate start, @NotNull @Pattern(regexp = "\\s*\\d{1,5}\\s*") String every, @NotNull LocalDate end) {
+            LocalDate start, @Pattern(regexp = "\\s*(\\d{1,5})?\\s*") String every,
+            @Pattern(regexp = "\\s*(\\d{1,2})?\\s*") String day, @NotNull LocalDate end) {
 
         BigDecimal amountValue() {
             return new BigDecimal(amount.trim()).setScale(2);
         }
 
-        int everyValue() {
-            return Integer.parseInt(every.trim());
+        Integer everyValue() {
+            return every == null || every.isBlank() ? null : Integer.valueOf(every.trim());
+        }
+
+        Integer dayValue() {
+            return day == null || day.isBlank() ? null : Integer.valueOf(day.trim());
         }
     }
 
@@ -69,7 +76,7 @@ public class PlanController {
             @RequestHeader("X-User") @NotBlank @Size(max = 100) String user,
             @Valid @RequestBody PlanForm form) {
         return PlanView.of(service.add(sheetId.trim(), user.trim(), personId, form.amountValue(), form.start(),
-                form.everyValue(), form.end()));
+                form.everyValue(), form.dayValue(), form.end()));
     }
 
     @PostMapping("/plans/generate")

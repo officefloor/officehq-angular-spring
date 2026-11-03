@@ -12,13 +12,15 @@ import jakarta.persistence.JoinColumn;
 import jakarta.persistence.Table;
 import java.math.BigDecimal;
 import java.time.LocalDate;
+import java.time.YearMonth;
 import java.util.ArrayList;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Set;
 
-/** A person's plan: a draft claim of its amount on its start date and every so many days after,
- *  up to its end date. */
+/** A person's plan: a draft claim of its amount on its start date and every so many days after, or
+ *  on a day of every month from the start's month (a day beyond the month's length falling on its
+ *  last day, dates before the start left out), up to its end date. */
 @Entity
 @Table(name = "plan")
 public class Plan {
@@ -39,8 +41,13 @@ public class Plan {
     @Column(name = "start_date", nullable = false)
     private LocalDate startDate;
 
-    @Column(name = "every_days", nullable = false)
-    private int everyDays;
+    /** The days it repeats every; null for a monthly plan. */
+    @Column(name = "every_days")
+    private Integer everyDays;
+
+    /** The day of the month a monthly plan falls on; null for one that repeats every so many days. */
+    @Column(name = "month_day")
+    private Integer monthDay;
 
     @Column(name = "end_date", nullable = false)
     private LocalDate endDate;
@@ -54,13 +61,14 @@ public class Plan {
     protected Plan() {
     }
 
-    public Plan(String sheetId, Long personId, BigDecimal amount, LocalDate startDate, int everyDays,
-            LocalDate endDate) {
+    public Plan(String sheetId, Long personId, BigDecimal amount, LocalDate startDate, Integer everyDays,
+            Integer monthDay, LocalDate endDate) {
         this.sheetId = sheetId;
         this.personId = personId;
         this.amount = amount;
         this.startDate = startDate;
         this.everyDays = everyDays;
+        this.monthDay = monthDay;
         this.endDate = endDate;
     }
 
@@ -89,8 +97,12 @@ public class Plan {
         return startDate;
     }
 
-    public int getEveryDays() {
+    public Integer getEveryDays() {
         return everyDays;
+    }
+
+    public Integer getMonthDay() {
+        return monthDay;
     }
 
     public LocalDate getEndDate() {
@@ -106,6 +118,15 @@ public class Plan {
     public List<LocalDate> dueUpTo(LocalDate today) {
         LocalDate last = endDate.isBefore(today) ? endDate : today;
         List<LocalDate> due = new ArrayList<>();
+        if (monthDay != null) {
+            for (YearMonth m = YearMonth.from(startDate); !m.atDay(1).isAfter(last); m = m.plusMonths(1)) {
+                LocalDate d = m.atDay(Math.min(monthDay, m.lengthOfMonth()));
+                if (!d.isBefore(startDate) && !d.isAfter(last) && !made.contains(d)) {
+                    due.add(d);
+                }
+            }
+            return due;
+        }
         for (LocalDate d = startDate; !d.isAfter(last); d = d.plusDays(everyDays)) {
             if (!made.contains(d)) {
                 due.add(d);
