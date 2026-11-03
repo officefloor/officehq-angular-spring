@@ -129,6 +129,8 @@ export interface PolicyLine {
   key: string;
   value: string | null;
   claims: number;
+  /** The due of its claims that count, added up (two decimals). */
+  dueTotal: string;
 }
 
 /** The policy version in force on a day (yyyy-mm-dd): how many versions have no from-date or one

@@ -13,6 +13,7 @@ import java.util.Map;
 import java.util.Optional;
 import java.util.TreeMap;
 import java.util.function.Function;
+import net.officefloor.hq.app.claim.PolicyDues;
 import net.officefloor.hq.app.history.History;
 import org.springframework.format.annotation.DateTimeFormat;
 import org.springframework.http.HttpStatus;
@@ -405,26 +406,36 @@ public class SettingsController {
 
     private final SheetService service;
     private final History history;
+    private final PolicyDues policyDues;
 
-    public SettingsController(SheetService service, History history) {
+    public SettingsController(SheetService service, History history, PolicyDues policyDues) {
         this.service = service;
         this.history = history;
+        this.policyDues = policyDues;
     }
 
     /** A line of the policy viewer: the version's number, its from-date (null: none, from the start),
      *  its setting and the value it was given (null when not kept), and the count of claims whose
-     *  policy version it is. */
-    public record PolicyLineView(int number, LocalDate from, String key, String value, long claims) {
-        static PolicyLineView of(SheetService.PolicyLine l) {
+     *  policy version it is, and the due of those of them that count, added up (two decimals). */
+    public record PolicyLineView(int number, LocalDate from, String key, String value, long claims,
+            String dueTotal) {
+        static PolicyLineView of(SheetService.PolicyLine l, BigDecimal dueTotal) {
             PolicyVersion v = l.version();
-            return new PolicyLineView(v.getNumber(), v.getFrom(), v.getKey(), v.getShown(), l.claims());
+            return new PolicyLineView(v.getNumber(), v.getFrom(), v.getKey(), v.getShown(), l.claims(),
+                    dueTotal.setScale(2).toPlainString());
         }
     }
 
-    /** The sheet's policy versions, the first made first, each with its count of claims. */
+    /** The sheet's policy versions, the first made first, each with its count of claims and their
+     *  due-total. */
     @GetMapping("/policy-versions")
     public List<PolicyLineView> policyLines(@PathVariable @NotBlank @Size(max = 100) String sheetId) {
-        return service.policyLines(sheetId.trim()).stream().map(PolicyLineView::of).toList();
+        String id = sheetId.trim();
+        List<SheetService.PolicyLine> lines = service.policyLines(id);
+        Map<Integer, BigDecimal> dues = policyDues.dueTotals(id,
+                lines.stream().map(SheetService.PolicyLine::version).toList());
+        return lines.stream().map(l -> PolicyLineView.of(l,
+                dues.getOrDefault(l.version().getNumber(), BigDecimal.ZERO))).toList();
     }
 
     /** The sheet's settings; as of a day when one is given, each dated one (and the policy date) as
