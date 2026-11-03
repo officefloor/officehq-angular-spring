@@ -1,0 +1,49 @@
+diff --git a/src/main/java/net/officefloor/hq/app/audit/AuditController.java b/src/main/java/net/officefloor/hq/app/audit/AuditController.java
+index 2bd332b1c..a7d15b3ce 100644
+--- a/src/main/java/net/officefloor/hq/app/audit/AuditController.java
++++ b/src/main/java/net/officefloor/hq/app/audit/AuditController.java
+@@ -11,6 +11,7 @@ import java.util.regex.Pattern;
+ import net.officefloor.hq.app.Audit;
+ import net.officefloor.hq.app.person.Person;
+ import net.officefloor.hq.app.person.PersonRepository;
++import net.officefloor.hq.app.sheet.SheetRepository;
+ import org.springframework.validation.annotation.Validated;
+ import org.springframework.web.bind.annotation.GetMapping;
+ import org.springframework.web.bind.annotation.PathVariable;
+@@ -19,9 +20,10 @@ import org.springframework.web.bind.annotation.RequestParam;
+ import org.springframework.web.bind.annotation.RestController;
+ 
+ /** The audit viewer: the sheet's lines exactly as the audit file holds them, newest first,
+- *  optionally only those about one person. For a person transferred here, this sheet's lines
+- *  about them are followed by the sheet they came from's lines about them, up to their transfer,
+- *  newest first. It reads the file; it records nothing. */
++ *  optionally only those about one person. For a person, this sheet's lines about them are
++ *  followed by each of its descendants' lines about them (sheets by id, each newest first), then,
++ *  for a person transferred here, by the sheet they came from's lines about them, up to their
++ *  transfer, newest first. It reads the file; it records nothing. */
+ @RestController
+ @RequestMapping("/api/sheets/{sheetId}/audit")
+ @Validated
+@@ -32,10 +34,12 @@ public class AuditController {
+ 
+     private final Audit audit;
+     private final PersonRepository people;
++    private final SheetRepository sheets;
+ 
+-    public AuditController(Audit audit, PersonRepository people) {
++    public AuditController(Audit audit, PersonRepository people, SheetRepository sheets) {
+         this.audit = audit;
+         this.people = people;
++        this.sheets = sheets;
+     }
+ 
+     @GetMapping
+@@ -46,6 +50,8 @@ public class AuditController {
+         List<String> lines = audit.lines();
+         List<String> shown = about(lines, sheet, person);
+         if (person != null) {
++            sheets.descendants(sheet).stream().sorted()
++                    .forEach(descendant -> shown.addAll(about(lines, descendant, person)));
+             String origin = people.findBySheetIdAndNameIgnoreCase(sheet, name.trim()).map(Person::getOrigin)
+                     .orElse(null);
+             if (origin != null) {
