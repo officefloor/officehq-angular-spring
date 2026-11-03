@@ -1,0 +1,169 @@
+diff --git a/src/main/frontend/src/app/core/csv.ts b/src/main/frontend/src/app/core/csv.ts
+new file mode 100644
+index 000000000..b6c7c99c1
+--- /dev/null
++++ b/src/main/frontend/src/app/core/csv.ts
+@@ -0,0 +1,15 @@
++/** Downloads the lines as a CSV file of the name given, each line ended by a line feed. */
++export function downloadCsv(lines: string[][], name: string): void {
++  const text = lines.map((l) => l.map(csvField).join(',') + '\n').join('');
++  const url = URL.createObjectURL(new Blob([text], { type: 'text/csv;charset=utf-8' }));
++  const a = document.createElement('a');
++  a.href = url;
++  a.download = name;
++  a.click();
++  setTimeout(() => URL.revokeObjectURL(url), 1000);
++}
++
++/** A CSV field: quoted, with quotes doubled, when it holds a comma, a quote or a line break. */
++function csvField(v: string): string {
++  return /[",\r\n]/.test(v) ? '"' + v.replace(/"/g, '""') + '"' : v;
++}
+diff --git a/src/main/frontend/src/app/core/pools.ts b/src/main/frontend/src/app/core/pools.ts
+index 478f8f4c8..408299801 100644
+--- a/src/main/frontend/src/app/core/pools.ts
++++ b/src/main/frontend/src/app/core/pools.ts
+@@ -75,9 +75,9 @@ export class Pools {
+   }
+ 
+   /** Read the active sheet's pools again (the pot they cut has changed). */
+-  refresh(): void {
++  async refresh(): Promise<void> {
+     const sheetId = this.session.sheetId();
+-    if (sheetId) void this.reload(sheetId);
++    if (sheetId) await this.reload(sheetId);
+   }
+ 
+   /** Add a pool; refused (400) when the name is blank and (409) when it is already a pool. */
+diff --git a/src/main/frontend/src/app/features/people/people-list.ts b/src/main/frontend/src/app/features/people/people-list.ts
+index 6f32ba6b2..6bfc3c560 100644
+--- a/src/main/frontend/src/app/features/people/people-list.ts
++++ b/src/main/frontend/src/app/features/people/people-list.ts
+@@ -8,6 +8,7 @@ import { Grade, Leave, People, Person, Taken, gradeOn } from '../../core/people'
+ import { Period, Periods, periodOf } from '../../core/periods';
+ import { Rate, Rates, pctOn, weightedSum } from '../../core/rates';
+ import { Session } from '../../core/session';
++import { downloadCsv } from '../../core/csv';
+ import { DatedValue, Graces, SheetSettings, graceOn, valueOn } from '../../core/settings';
+ import { Watch, Watches } from '../../core/watches';
+ import { Plan, Plans } from '../../core/plans';
+@@ -913,6 +914,8 @@ export class PeopleList {
+     this.patronError.set(null);
+     try {
+       const saved = await this.api.retire(p.id, from.trim() || null);
++      // a retired member gets no cut: read the pools again
++      await this.poolsApi.refresh();
+       this.people.update((ps) => ps.map((x) => (x.id === saved.id ? saved : x)));
+       if (this.editing() === saved.id) this.version = saved.version;
+     } catch {
+@@ -930,6 +933,8 @@ export class PeopleList {
+     this.patronError.set(null);
+     try {
+       const saved = await this.api.unretire(p.id);
++      // a retired member gets no cut: read the pools again
++      await this.poolsApi.refresh();
+       this.people.update((ps) => ps.map((x) => (x.id === saved.id ? saved : x)));
+       if (this.editing() === saved.id) this.version = saved.version;
+     } catch {
+@@ -955,7 +960,7 @@ export class PeopleList {
+       await this.api.merge(p.id, id);
+       const sheetId = this.session.sheetId();
+       if (this.editing() === p.id) this.reset();
+-      this.poolsApi.refresh();
++      void this.poolsApi.refresh();
+       if (sheetId) await this.reload(sheetId);
+     } catch {
+       this.personError.set({ id: p.id, message: 'The person could not be merged.' });
+@@ -980,7 +985,7 @@ export class PeopleList {
+       await this.api.transfer(p.id, to);
+       const sheetId = this.session.sheetId();
+       if (this.editing() === p.id) this.reset();
+-      this.poolsApi.refresh();
++      void this.poolsApi.refresh();
+       if (sheetId) await this.reload(sheetId);
+     } catch {
+       this.personError.set({ id: p.id, message: 'The person could not be transferred.' });
+@@ -1182,6 +1187,8 @@ export class PeopleList {
+     this.retiringAll = true;
+     try {
+       const result = await this.api.retireAll(ids, from.trim() || null);
++      // a retired member gets no cut: read the pools again
++      await this.poolsApi.refresh();
+       const byId = new Map(result.people.map((p) => [p.id, p]));
+       this.people.update((ps) => ps.map((p) => byId.get(p.id) ?? p));
+       const editing = this.editing();
+@@ -1512,19 +1519,3 @@ export class PeopleList {
+ function splitTags(tags: string): string[] {
+   return tags === '' ? [] : tags.split(', ');
+ }
+-
+-/** Downloads the lines as a CSV file of the name given, each line ended by a line feed. */
+-function downloadCsv(lines: string[][], name: string): void {
+-  const text = lines.map((l) => l.map(csvField).join(',') + '\n').join('');
+-  const url = URL.createObjectURL(new Blob([text], { type: 'text/csv;charset=utf-8' }));
+-  const a = document.createElement('a');
+-  a.href = url;
+-  a.download = name;
+-  a.click();
+-  setTimeout(() => URL.revokeObjectURL(url), 1000);
+-}
+-
+-/** A CSV field: quoted, with quotes doubled, when it holds a comma, a quote or a line break. */
+-function csvField(v: string): string {
+-  return /[",\r\n]/.test(v) ? '"' + v.replace(/"/g, '""') + '"' : v;
+-}
+diff --git a/src/main/frontend/src/app/features/pools/pool-list.ts b/src/main/frontend/src/app/features/pools/pool-list.ts
+index 7a3d66380..cc60ae9a7 100644
+--- a/src/main/frontend/src/app/features/pools/pool-list.ts
++++ b/src/main/frontend/src/app/features/pools/pool-list.ts
+@@ -1,6 +1,7 @@
+ import { HttpErrorResponse } from '@angular/common/http';
+ import { Component, inject, input, signal } from '@angular/core';
+ import { FormControl, FormGroup, ReactiveFormsModule } from '@angular/forms';
++import { downloadCsv } from '../../core/csv';
+ import { Person } from '../../core/people';
+ import { Pools } from '../../core/pools';
+ import { PoolRow } from './pool-row';
+@@ -21,6 +22,7 @@ import { PoolRow } from './pool-row';
+           <p role="alert" data-testid="pool-form-error">{{ error() }}</p>
+         }
+       </form>
++      <button type="button" data-testid="export-pools" (click)="exportCsv()">Export pools (CSV)</button>
+       <div role="list" data-testid="pools">
+         @for (p of pools.list(); track p.id) {
+           <app-pool-row [pool]="p" [people]="people()" />
+@@ -44,6 +46,21 @@ export class PoolList {
+     this.form.valueChanges.subscribe(() => this.error.set(''));
+   }
+ 
++  /** Downloads the pools as CSV: pools in the order added and each pool's members in the order
++   *  added, a pool member as pool:<name>, with their share and their cut as shown (empty when none). */
++  protected exportCsv(): void {
++    const byId = new Map(this.people().map((p) => [p.id, p]));
++    const lines = [['pool', 'member', 'share', 'cut']].concat(
++      this.pools.list().flatMap((pool) => pool.members.map((m) => [
++        pool.name,
++        m.personId === null ? `pool:${m.name}` : (byId.get(m.personId)?.name ?? m.name),
++        m.share,
++        m.cut ?? '',
++      ])),
++    );
++    downloadCsv(lines, 'pools.csv');
++  }
++
+   protected async submit(): Promise<void> {
+     if (this.submitting) return;
+     this.error.set('');
+diff --git a/src/main/frontend/src/app/features/settings/settings-form.ts b/src/main/frontend/src/app/features/settings/settings-form.ts
+index 9a3d1d34e..f4e001fe6 100644
+--- a/src/main/frontend/src/app/features/settings/settings-form.ts
++++ b/src/main/frontend/src/app/features/settings/settings-form.ts
+@@ -555,7 +555,7 @@ export class SettingsForm {
+         this.pot.set(saved.pot);
+         pot.markAsPristine();
+         pot.markAsUntouched();
+-        this.pools.refresh();
++        void this.pools.refresh();
+       }
+       if (saveParent) {
+         const saved = await this.api.setParent(parentValue === '' ? null : parentValue);
