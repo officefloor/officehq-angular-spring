@@ -382,16 +382,45 @@ public class PersonService {
         });
     }
 
+    /** Put each of the people on hold from a day (null: the sheet's today) to a day (null:
+     *  open-ended), in list order, exactly as a row's hold would: each is followed by their own
+     *  PERSON_HELD and rollup lines. Refused as a whole, changing no one, when an id names no person
+     *  on the sheet or the to-date is before the from-date. A viewer has each of them refused: no
+     *  one changes. */
+    @Transactional
+    public List<Person> hold(String sheetId, String user, Set<Long> personIds, LocalDate from, LocalDate to) {
+        if (SheetRole.VIEWER.equals(roles.roleOf(sheetId, user))) {
+            return List.of();
+        }
+        List<Person> chosen = people.findBySheetIdOrderByPositionAscIdAsc(sheetId).stream()
+                .filter(p -> personIds.contains(p.getId())).toList();
+        if (chosen.size() != personIds.size()) {
+            throw new ResponseStatusException(HttpStatus.NOT_FOUND, "No such person on this sheet");
+        }
+        LocalDate on = holdFrom(sheetId, from, to);
+        return chosen.stream().map(p -> hold(sheetId, user, p, on, to)).toList();
+    }
+
     /** Put a person on hold from a day (null: the sheet's today) to a day (null: open-ended),
      *  keeping their other holds; refused when the to-date is before the from-date. */
     @Transactional
     public Person hold(String sheetId, String user, long personId, LocalDate from, LocalDate to) {
         Person person = people.findByIdAndSheetId(personId, sheetId)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "No such person on this sheet"));
+        return hold(sheetId, user, person, holdFrom(sheetId, from, to), to);
+    }
+
+    /** The day a hold starts (null: the sheet's today); refused when the to-date is before it. */
+    private LocalDate holdFrom(String sheetId, LocalDate from, LocalDate to) {
         LocalDate on = from != null ? from : sheets.today(sheetId);
         if (to != null && to.isBefore(on)) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "A hold cannot end before it starts");
         }
+        return on;
+    }
+
+    /** Put the person on hold from a day to a day (null: open-ended), recording it. */
+    private Person hold(String sheetId, String user, Person person, LocalDate on, LocalDate to) {
         return rollup.tracking(sheetId, user, () -> {
             person.addHold(on, to);
             Person saved = saveUnique(person);

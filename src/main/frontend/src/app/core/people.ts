@@ -210,6 +210,17 @@ export class People {
     );
   }
 
+  /** Put the people on hold from a day (null: the sheet's today) to a day (null: open-ended), each
+   *  as a row's hold would, in list order; answers how many were held and those people as they now
+   *  show. */
+  holdAll(personIds: number[], from: string | null, to: string | null): Promise<{ held: number; people: Person[] }> {
+    const { sheetId, user } = this.active();
+    return firstValueFrom(
+      this.http.post<{ held: number; people: Person[] }>(`${this.url(sheetId)}/hold`, { personIds, from, to },
+        { headers: { 'X-User': user } }),
+    );
+  }
+
   /** Give the person an alias; refused when it equals any name or alias on the sheet. */
   addAlias(id: number, alias: string): Promise<Person> {
     const { sheetId, user } = this.active();

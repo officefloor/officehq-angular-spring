@@ -273,6 +273,23 @@ const NO_LEAVE: Leave = { holds: [], retiredFrom: null };
           <p role="alert" data-testid="person-error">{{ bulkRetireError() }}</p>
         }
       </div>
+      <div role="group" aria-labelledby="bulk-hold-heading">
+        <span id="bulk-hold-heading">Hold selected people</span>
+        <label for="bulk-hold-from">From</label>
+        <input #bulkHoldFrom id="bulk-hold-from" type="date" data-testid="bulk-hold-from"
+          (input)="bulkHoldError.set('')" />
+        <label for="bulk-hold-to">To</label>
+        <input #bulkHoldTo id="bulk-hold-to" type="date" data-testid="bulk-hold-to"
+          (input)="bulkHoldError.set('')" />
+        <button type="button" data-testid="bulk-hold"
+          (click)="holdSelected(bulkHoldFrom.value, bulkHoldTo.value)">Hold selected people</button>
+        @if (bulkHeld() !== null) {
+          <p role="status">Held <strong data-testid="bulk-held">{{ bulkHeld() }}</strong></p>
+        }
+        @if (bulkHoldError()) {
+          <p role="alert" data-testid="person-error">{{ bulkHoldError() }}</p>
+        }
+      </div>
       <button type="button" data-testid="export-people" (click)="exportCsv()">Export people (CSV)</button>
       <button type="button" data-testid="export-claims" (click)="exportClaimsCsv()">Export claims (CSV)</button>
       <button type="button" data-testid="export-periods" (click)="exportPeriodsCsv()">Export period figures (CSV)</button>
@@ -1082,6 +1099,12 @@ export class PeopleList {
   protected readonly bulkRetireError = signal('');
   /** Whether a bulk retire is waiting for its answer: a second press meanwhile is ignored. */
   private retiringAll = false;
+  /** How many people the last bulk hold held; null while one runs and before the first. */
+  protected readonly bulkHeld = signal<number | null>(null);
+  /** The refusal of the last bulk hold. */
+  protected readonly bulkHoldError = signal('');
+  /** Whether a bulk hold is waiting for its answer: a second press meanwhile is ignored. */
+  private holdingAll = false;
   /** The id of the person whose editor is open, or null when the form adds a person. */
   protected readonly editing = signal<number | null>(null);
   /** The version of the person the open editor loaded. */
@@ -1163,6 +1186,8 @@ export class PeopleList {
       this.bulkGradeError.set('');
       this.bulkRetired.set(null);
       this.bulkRetireError.set('');
+      this.bulkHeld.set(null);
+      this.bulkHoldError.set('');
       this.personError.set(null);
       this.patronError.set(null);
       this.reset();
@@ -1642,6 +1667,7 @@ export class PeopleList {
   protected selectPerson(id: number, on: boolean): void {
     this.bulkGradeError.set('');
     this.bulkRetireError.set('');
+    this.bulkHoldError.set('');
     this.selectedPeople.update((s) => {
       const next = new Set(s);
       if (on) next.add(id);
@@ -1713,6 +1739,37 @@ export class PeopleList {
       this.bulkRetireError.set('The selected people could not be retired.');
     } finally {
       this.retiringAll = false;
+    }
+  }
+
+  /** Put the selected people listed on hold from the day given (blank: the sheet's today) to the
+   *  day given (blank: open-ended), in list order, then show them as they now are and how many were
+   *  held. */
+  protected async holdSelected(from: string, to: string): Promise<void> {
+    if (this.holdingAll) return;
+    this.bulkHeld.set(null);
+    this.bulkHoldError.set('');
+    const ids = this.shown().filter((p) => this.selectedPeople().has(p.id)).map((p) => p.id);
+    // Holding is the next action on each selected row: an error left on one of them goes.
+    ids.forEach((id) => this.clearPersonError(id));
+    if (ids.length === 0) {
+      this.bulkHoldError.set('Select the people to hold.');
+      return;
+    }
+    this.holdingAll = true;
+    try {
+      const result = await this.api.holdAll(ids, from.trim() || null, to.trim() || null);
+      const byId = new Map(result.people.map((p) => [p.id, p]));
+      this.people.update((ps) => ps.map((p) => byId.get(p.id) ?? p));
+      const editing = this.editing();
+      const edited = editing === null ? undefined : byId.get(editing);
+      if (edited) this.version = edited.version;
+      this.selectedPeople.set(new Set());
+      this.bulkHeld.set(result.held);
+    } catch {
+      this.bulkHoldError.set('The selected people could not be put on hold.');
+    } finally {
+      this.holdingAll = false;
     }
   }
 

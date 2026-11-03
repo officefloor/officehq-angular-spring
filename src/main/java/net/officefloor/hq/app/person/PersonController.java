@@ -163,6 +163,16 @@ public class PersonController {
     public record Retired(int retired, List<PersonView> people) {
     }
 
+    /** The bulk hold form: the people to hold, the day the hold starts (left out, the sheet's
+     *  today) and the day it ends (left out, open-ended). */
+    public record BulkHoldForm(@NotNull @Size(max = 1000) Set<@NotNull Long> personIds, LocalDate from,
+            LocalDate to) {
+    }
+
+    /** How many people a bulk hold held, and those people as they now show. */
+    public record Held(int held, List<PersonView> people) {
+    }
+
     private final PersonService service;
     private final StatementService statements;
     private final SheetService sheets;
@@ -264,6 +274,22 @@ public class PersonController {
         LocalDate today = sheets.today(sheet);
         Predicate<Person> clashing = service.clashing(sheet);
         return new Retired(saved.size(), saved.stream()
+                .map(p -> PersonView.of(p, summaries.getOrDefault(p.getId(), StatementSummary.NONE), today,
+                        clashing.test(p)))
+                .toList());
+    }
+
+    @ViewerAllowed
+    @PostMapping("/hold")
+    public Held hold(@PathVariable @NotBlank @Size(max = 100) String sheetId,
+            @RequestHeader("X-User") @NotBlank @Size(max = 100) String user,
+            @Valid @RequestBody BulkHoldForm form) {
+        String sheet = sheetId.trim();
+        List<Person> saved = service.hold(sheet, user.trim(), form.personIds(), form.from(), form.to());
+        Map<Long, StatementSummary> summaries = statements.summaries(sheet);
+        LocalDate today = sheets.today(sheet);
+        Predicate<Person> clashing = service.clashing(sheet);
+        return new Held(saved.size(), saved.stream()
                 .map(p -> PersonView.of(p, summaries.getOrDefault(p.getId(), StatementSummary.NONE), today,
                         clashing.test(p)))
                 .toList());
