@@ -1,0 +1,64 @@
+{
+  "checkpoint": 22,
+  "stack": {
+    "repo": "/home/daniel/officehq-angular-spring",
+    "origin": "git@github.com:officefloor/officehq-angular-spring.git",
+    "name": "officehq-angular-spring",
+    "base_ref": "base-empty",
+    "base_commit": "65cb8233ea38b2dfa6cfd18709e30cd18fdf3250"
+  },
+  "checkpoint_id": "cp22_hold",
+  "phase": "early",
+  "type": "additive",
+  "mutates": [],
+  "replaced_tests": [],
+  "request": {
+    "spec": "A person can be put on hold, and taken off hold again. While held, their OPEN claims count in no\nlive total: not their own claimed or due-total, not the sheet's totals, not a period's total. Their\nSETTLED claims still count. Show hold yes/no. Holding writes PERSON_HELD name=<name>; releasing\nwrites PERSON_RELEASED name=<name>.\n",
+    "prompt": "You are implementing ONE change to this application.\n\nFIRST read AGENTS.md \u2014 it states the working rules and how the app is tested, and sends you to\nDESIGN.md for the app's stack and conventions. Follow both.\n\nTHE CHANGE REQUEST:\nA person can be put on hold, and taken off hold again. While held, their OPEN claims count in no\nlive total: not their own claimed or due-total, not the sheet's totals, not a period's total. Their\nSETTLED claims still count. Show hold yes/no. Holding writes PERSON_HELD name=<name>; releasing\nwrites PERSON_RELEASED name=<name>.\n\nYour work is verified by an automated Playwright UI test already installed under e2e/specs/.\nRead that spec: it declares the exact data-testid anchors, values, test data and any audit\nrecords it expects \u2014 match them. Run `bin/e2e` to build the app, start it, and run the test as\nyou work; iterate until it passes. Change whatever the request needs across the app \u2014 its stored\ndata, its server and its front end. Do NOT edit bin/build, bin/start, bin/stop, bin/e2e,\nAGENTS.md, CLAUDE.md, DESIGN.md, e2e/support/ or the test spec.\n"
+  },
+  "commit_sha": "3e60e0c4e9277489ce2f635c89dd51b9a74493d0",
+  "reset_sha": "",
+  "preagent_sha": "a974303ebcd911fd17a801ecedaf116f06fafa40",
+  "prev_sha": "a974303ebcd911fd17a801ecedaf116f06fafa40",
+  "base_sha": "65cb8233ea38b2dfa6cfd18709e30cd18fdf3250",
+  "agent": {
+    "ok": true,
+    "cost_usd": 0.8868762000000001,
+    "input_tokens": 32,
+    "output_tokens": 7906,
+    "cache_read_tokens": 738301,
+    "cache_creation_tokens": 72621,
+    "num_turns": 17,
+    "duration_ms": 183296,
+    "duration_api_ms": 84235,
+    "model": "claude-opus-5-5",
+    "session_id": "19b0f59f-7d74-408c-a690-082859e627d5",
+    "stop_reason": "success",
+    "result_text": "People can now be put on hold and taken off it, and all four tests in the spec pass when run with `bin/e2e`. Port 3000 was already in use by something else, so I ran it on another port (`PORT=3417 bin/e2e`) and left that process alone.\n\n**What changed**\n- **Stored data:** a new migration, `V17__person_held.sql`, adds a `held` yes/no column to people, defaulting to no.\n- **Server:**\n  - A person now knows whether a claim of theirs counts: a held person's OPEN claims don't, and their SETTLED claims still do.\n  - That rule is used for each person's claimed and due-total, the sheet's totals, and a period's due-total when it is closed.\n  - A new `/api/people/hold` call sets the hold. It writes `PERSON_HELD name=<name>` or `PERSON_RELEASED name=<name>`, then the usual ROLLUP/TOTALS lines when the figures move.\n  - Asking to hold someone already held, or to release someone who isn't, is refused and writes nothing.\n- **Front end:** each person's row shows `person-hold` (yes/no) and a `person-hold-toggle` button that says Hold or Release. A refusal shows in the row's `person-error`. The on-screen totals (person, sheet and period) leave out a held person's OPEN claims.\n\n**Things you may want to change**\n- **Statements:** taking a statement still includes a held person's OPEN claims. I read a statement as a fixed record rather than a live total; the tests don't cover this case.\n- **Editing after a hold:** holding or releasing someone counts as saving them. If another user has that person's editor open, their next save is refused as out of date, the same as after someone retires a person.",
+    "error": "",
+    "attempts": [
+      {
+        "ok": true,
+        "limit_reached": false,
+        "retryable": false,
+        "timed_out": false,
+        "cost_usd": 0.8868762000000001,
+        "num_turns": 17,
+        "duration_ms": 183296,
+        "duration_api_ms": 84235,
+        "error": ""
+      }
+    ]
+  },
+  "agent_stream_file": "cp22.agent.jsonl",
+  "agent_diff_file": "cp22.agent.diff",
+  "build_log_file": null,
+  "tests": {
+    "gated": false,
+    "queued": true
+  },
+  "probe": null,
+  "pinned_touched": [],
+  "acceptance_touched": [],
+  "impact_gate": null
+}
