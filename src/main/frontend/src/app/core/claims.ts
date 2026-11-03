@@ -48,9 +48,9 @@ export function countsLive(c: Claim, leave: Leave, today: string | null): boolea
 }
 
 /** Whether the live rules leave a claim out: it is open (or pending), unbound by a statement, and
- *  dated within one of its person's holds or its person is retired on the sheet's today. */
+ *  held, or dated within one of its person's holds, or its person is retired on the sheet's today. */
 function leftOut(c: Claim, leave: Leave, today: string | null): boolean {
-  return isOpen(c) && !c.stated && (heldOn(leave.holds, c.date) || retiredOn(leave.retiredFrom, today));
+  return isOpen(c) && !c.stated && (c.held || heldOn(leave.holds, c.date) || retiredOn(leave.retiredFrom, today));
 }
 
 /** The day (yyyy-mm-dd) a number of days after another (before it when negative). */
@@ -166,6 +166,9 @@ export interface Claim {
   /** How many of its proofs are of each kind. While the sheet has proof kinds, one whose due is
    *  above the proof threshold cannot be settled or approved without a proof of each of them. */
   proofKinds: Record<ProofKind, number>;
+  /** Whether it is held: while open (or pending) and unbound by a statement, it counts in no live
+   *  total. */
+  held: boolean;
 }
 
 /** A line of a claim: its label, its quantity (a whole number) and its unit amount as text with
@@ -451,6 +454,15 @@ export class Claims {
     const { sheetId, user } = this.active();
     return firstValueFrom(
       this.http.post<Claim>(`${this.url(sheetId)}/claims/${id}/waive`, null, { headers: { 'X-User': user } }),
+    );
+  }
+
+  /** Hold an open or pending claim, or release it when held; refused (409) when it is not open or
+   *  pending. */
+  toggleHold(id: number): Promise<Claim> {
+    const { sheetId, user } = this.active();
+    return firstValueFrom(
+      this.http.post<Claim>(`${this.url(sheetId)}/claims/${id}/hold`, null, { headers: { 'X-User': user } }),
     );
   }
 

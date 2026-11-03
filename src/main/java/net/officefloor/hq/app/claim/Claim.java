@@ -144,6 +144,11 @@ public class Claim {
     @Column(name = "waived", nullable = false)
     private boolean waived;
 
+    /** Whether the claim is held: while it is open (or pending) and unbound by a statement, it
+     *  counts in no live total. */
+    @Column(name = "held", nullable = false)
+    private boolean held;
+
     /** The claim's external reference; null when it has none. No two claims of a sheet share one,
      *  comparing without regard to case. */
     @Column(name = "ref")
@@ -207,6 +212,7 @@ public class Claim {
         claim.bind(revision.isStated(), revision.getStatedDue(), revision.isStatedNa());
         claim.deferredUntil = revision.getDeferredUntil();
         claim.waived = revision.isWaived();
+        claim.held = revision.isHeld();
         claim.added = revision.getAdded();
         return claim;
     }
@@ -275,6 +281,7 @@ public class Claim {
         copy.remindedOn = remindedOn;
         copy.escalated = escalated;
         copy.waived = waived;
+        copy.held = held;
         copy.tags = tags;
         copy.voidReason = voidReason;
         copy.lateEntry = lateEntry;
@@ -462,6 +469,15 @@ public class Claim {
     /** Waive the claim's late charge. */
     public void waive() {
         this.waived = true;
+    }
+
+    public boolean isHeld() {
+        return held;
+    }
+
+    /** Hold the claim, or release it when held. */
+    public void toggleHeld() {
+        this.held = !held;
     }
 
     public int getProofs() {

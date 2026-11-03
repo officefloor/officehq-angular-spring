@@ -312,11 +312,11 @@ public class Dues {
     }
 
     /** Whether the live rules leave a claim of the person out: it is open (or pending) now, unbound
-     *  by a statement, and dated within one of the person's holds or the person is retired on the
-     *  sheet's today. */
+     *  by a statement, and held, or dated within one of the person's holds, or the person is retired
+     *  on the sheet's today. */
     private static boolean leftOut(Person person, Claim claim, LocalDate today) {
         return claim.getStatus().isOpen() && !claim.isStated()
-                && (person.isHeldOn(claim.getDate()) || person.isRetiredOn(today));
+                && (claim.isHeld() || person.isHeldOn(claim.getDate()) || person.isRetiredOn(today));
     }
 
     /** The claims of a person that count in the live totals on the sheet's today. */

@@ -52,14 +52,14 @@ public class ClaimController {
      *  when none); and its comments, in the order they were written; and the number of the bulk
      *  settle batch that settled it (null when none, or when it is not settled or pending); and its
      *  lines, in the order they were added; and whether its late charge is waived; and how many of
-     *  its proofs are of each kind (receipt, photo). */
+     *  its proofs are of each kind (receipt, photo); and whether it is held. */
     public record ClaimView(long id, long personId, String amount, LocalDate date, String note,
             ClaimStatus status, String number, String settledDue, String openedBy, boolean stated,
             String statedDue, boolean statedNa, String corrects, LocalDate roundsBy, long listed, LocalDate dueBy,
             List<LogLineView> log, LocalDate deferredUntil, int proofs, String splitFrom,
             String editLockedBy, boolean lateEntry, LocalDate remindedOn, String ref, String tags,
             String voidReason, List<CommentView> comments, Integer settleBatch, List<LineView> lines,
-            long added, boolean waived, Map<String, Integer> proofKinds) {
+            long added, boolean waived, Map<String, Integer> proofKinds, boolean held) {
         public static ClaimView of(Claim claim) {
             return new ClaimView(claim.getId(), claim.getPersonId(), claim.getAmount().setScale(2).toPlainString(),
                     claim.getDate(), claim.getNote(), claim.getStatus(), claim.getNumber(),
@@ -74,7 +74,7 @@ public class ClaimController {
                     claim.getComments().stream().map(CommentView::of).toList(),
                     batchOf(claim.getStatus(), claim.getSettleBatch()),
                     claim.getLines().stream().map(LineView::of).toList(), claim.getAdded(),
-                    claim.isWaived(), proofKinds(claim, null));
+                    claim.isWaived(), proofKinds(claim, null), claim.isHeld());
         }
 
         /** The claim as it stood at the end of a day: its figures as its revision then has them (see
@@ -109,7 +109,7 @@ public class ClaimController {
                     kept.getComments().stream().filter(c -> !c.getOn().isAfter(day)).map(CommentView::of).toList(),
                     batchOf(then.getStatus(), kept.getSettleBatch()),
                     kept.getLines().stream().map(LineView::of).toList(), then.getAdded(),
-                    then.isWaived(), proofKinds(kept, day));
+                    then.isWaived(), proofKinds(kept, day), then.isHeld());
         }
 
         /** The settle batch a claim shows: only while it is settled or pending. */
@@ -392,6 +392,13 @@ public class ClaimController {
             @PathVariable long claimId,
             @RequestHeader("X-User") @NotBlank @Size(max = 100) String user) {
         return ClaimView.of(service.waive(sheetId.trim(), user.trim(), claimId));
+    }
+
+    @PostMapping("/claims/{claimId}/hold")
+    public ClaimView hold(@PathVariable @NotBlank @Size(max = 100) String sheetId,
+            @PathVariable long claimId,
+            @RequestHeader("X-User") @NotBlank @Size(max = 100) String user) {
+        return ClaimView.of(service.toggleHold(sheetId.trim(), user.trim(), claimId));
     }
 
     /** The new date a steward gives an open or pending claim. */

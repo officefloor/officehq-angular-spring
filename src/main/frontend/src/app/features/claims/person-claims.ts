@@ -136,6 +136,12 @@ function waiveRefusal(e: unknown): string {
   return 'The late charge could not be waived.';
 }
 
+/** The message for a refused hold or release of a claim. */
+function holdRefusal(e: unknown): string {
+  if (e instanceof HttpErrorResponse && e.status === 409) return 'Only an open or pending claim can be held or released.';
+  return 'The claim could not be held or released.';
+}
+
 /** The message for a refused re-date of a claim. */
 function redateRefusal(e: unknown): string {
   if (e instanceof HttpErrorResponse && e.status === 403) return 'Only a steward can re-date a claim.';
@@ -250,6 +256,7 @@ function splitRefusal(e: unknown): string {
           <span data-testid="claim-overdue">{{ overdueOf(c) ? 'yes' : 'no' }}</span>
           <span data-testid="claim-deferred">{{ deferredOf(c) ? 'yes' : 'no' }}</span>
           <span data-testid="claim-waived">{{ c.waived ? 'yes' : 'no' }}</span>
+          <span data-testid="claim-held">{{ c.held ? 'yes' : 'no' }}</span>
           <span data-testid="claim-deferred-until">{{ c.deferredUntil ?? '' }}</span>
           <span data-testid="claim-proofs">{{ c.proofs }}</span>
           @for (k of proofKinds; track k) {
@@ -342,6 +349,8 @@ function splitRefusal(e: unknown): string {
             [attr.aria-label]="'Defer claim of ' + c.amount + ' on ' + c.date">Defer</button>
           <button type="button" data-testid="claim-waive" (click)="waive(c)"
             [attr.aria-label]="'Waive the late charge of claim of ' + c.amount + ' on ' + c.date">Waive late charge</button>
+          <button type="button" data-testid="claim-hold" (click)="toggleHold(c)"
+            [attr.aria-label]="(c.held ? 'Release' : 'Hold') + ' claim of ' + c.amount + ' on ' + c.date">{{ c.held ? 'Release' : 'Hold' }}</button>
           <label [for]="'claim-date-new-' + c.id">New date</label>
           <input [id]="'claim-date-new-' + c.id" type="date" data-testid="claim-date-new" #redateDate
             (input)="clearError(c)" />
@@ -661,6 +670,15 @@ export class PersonClaims {
       this.saved.emit(await this.api.waive(c.id));
     } catch (e) {
       this.claimError.set({ id: c.id, message: waiveRefusal(e) });
+    }
+  }
+
+  protected async toggleHold(c: Claim): Promise<void> {
+    this.claimError.set(null);
+    try {
+      this.saved.emit(await this.api.toggleHold(c.id));
+    } catch (e) {
+      this.claimError.set({ id: c.id, message: holdRefusal(e) });
     }
   }
 

@@ -677,6 +677,24 @@ public class ClaimService {
         });
     }
 
+    /** Hold an open or pending claim, or release it when held: while held and unbound by a
+     *  statement it counts in no live total. Refused when the claim is not open or pending. */
+    @Transactional
+    public Claim toggleHold(String sheetId, String user, long claimId) {
+        Claim claim = lock(sheetId, claimId);
+        if (claim.getStatus() != ClaimStatus.OPEN && claim.getStatus() != ClaimStatus.PENDING) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT,
+                    "A " + claim.getStatus() + " claim cannot be held or released");
+        }
+        return rollup.tracking(sheetId, user, () -> {
+            Person person = person(sheetId, claim.getPersonId());
+            claim.toggleHeld();
+            Claim saved = claims.saveAndFlush(claim);
+            audit.recordOnCommit(record(saved.isHeld() ? "CLAIM_HELD" : "CLAIM_RELEASED", sheetId, user, person, saved));
+            return saved;
+        });
+    }
+
     /** Re-date an open or pending claim: it keeps the due-by it was fixed with, and so its period and
      *  number, and any figure a statement bound it to. Refused unless the user is a steward, and when
      *  the claim is not open or pending, its period is closed, or the new date is after the person's
