@@ -120,6 +120,17 @@ export interface PolicyVersion {
   from: string | null;
 }
 
+/** A line of the policy viewer: a version with the value its setting was given (null when not kept)
+ *  and how many of the sheet's claims have it as their policy version. */
+export interface PolicyLine {
+  number: number;
+  /** yyyy-mm-dd; null when it has none (in force from the start). */
+  from: string | null;
+  key: string;
+  value: string | null;
+  claims: number;
+}
+
 /** The policy version in force on a day (yyyy-mm-dd): how many versions have no from-date or one
  *  on or before it. */
 export function policyOn(versions: PolicyVersion[], day: string): number {
@@ -230,6 +241,11 @@ export class SheetSettings {
 
   get(sheetId: string): Promise<Settings> {
     return firstValueFrom(this.http.get<Settings>(`${this.url(sheetId)}/settings`));
+  }
+
+  /** The sheet's policy versions, the first made first, each with its count of claims. */
+  policyLines(sheetId: string): Promise<PolicyLine[]> {
+    return firstValueFrom(this.http.get<PolicyLine[]>(`${this.url(sheetId)}/settings/policy-versions`));
   }
 
   roles(sheetId: string): Promise<Role[]> {

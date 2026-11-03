@@ -27,6 +27,7 @@ import { PasteClaimsBox } from './paste-claims-box';
 import { ImportPeopleBox } from './import-people-box';
 import { TreeSearchBox } from './tree-search-box';
 import { TreeExportButton } from './tree-export-button';
+import { PolicyViewer } from '../settings/policy-viewer';
 import { SheetCompareBox } from '../summary/sheet-compare-box';
 import { PoolList } from '../pools/pool-list';
 import { CrewList } from '../crews/crew-list';
@@ -54,7 +55,7 @@ const NO_LEAVE: Leave = { holds: [], retiredFrom: null };
 // The signed-in user may watch a person: they are told when a claim of theirs is settled.
 @Component({
   selector: 'app-people-list',
-  imports: [ReactiveFormsModule, PersonClaims, RateForm, PeriodForm, QuickAddBar, PasteClaimsBox, ImportPeopleBox, SummaryPanel, ClassicSummaryPanel, HeaderCounters, StewardDashboard, PoolList, CrewList, PersonPlans, PlanGenerateBox, TreeSearchBox, TreeExportButton, SheetCompareBox, FigurePipe],
+  imports: [ReactiveFormsModule, PersonClaims, RateForm, PeriodForm, QuickAddBar, PasteClaimsBox, ImportPeopleBox, SummaryPanel, ClassicSummaryPanel, HeaderCounters, StewardDashboard, PoolList, CrewList, PersonPlans, PlanGenerateBox, TreeSearchBox, TreeExportButton, SheetCompareBox, PolicyViewer, FigurePipe],
   template: `
     <app-header-counters [peopleCount]="people().length" [statuses]="statusSummary()"
       [dueTotal]="dueTotal()" [overdueTotal]="overdueTotal()"
@@ -125,6 +126,7 @@ const NO_LEAVE: Leave = { holds: [], retiredFrom: null };
       </section>
       <p>Claimed in total: <strong data-testid="rollup-claimed-total">{{ claimedTotal() | figure }}</strong></p>
       <p>Policy version: <strong data-testid="policy-version">{{ policyVersions().length }}</strong></p>
+      <app-policy-viewer />
       <p>Due in total: <strong data-testid="rollup-due-total">{{ dueTotal() | figure }}</strong></p>
       <p>Settled due in total: <strong data-testid="rollup-settled-total">{{ settledTotal() | figure }}</strong></p>
       <p>Open due in total: <strong data-testid="rollup-open-total">{{ openTotal() | figure }}</strong></p>

@@ -165,7 +165,7 @@ public class SheetCloneService {
         settingValues.findBySheetId(sheetId).forEach(v ->
                 settingValues.save(new SettingValue(toSheetId, v.getKey(), v.getFrom(), v.getValue())));
         policyVersions.findBySheetIdOrderByNumber(sheetId).forEach(v -> policyVersions.save(
-                new PolicyVersion(toSheetId, v.getNumber(), v.getKey(), v.getFrom(), v.getRecordedOn())));
+                new PolicyVersion(toSheetId, v.getNumber(), v.getKey(), v.getFrom(), v.getRecordedOn(), v.getShown())));
         permissions.findBySheetId(sheetId).forEach(p ->
                 permissions.save(new SheetPermission(toSheetId, p.getAction(), p.getRoles())));
         sheetRoles.findBySheetIdOrderByUserNameAsc(sheetId).forEach(r ->

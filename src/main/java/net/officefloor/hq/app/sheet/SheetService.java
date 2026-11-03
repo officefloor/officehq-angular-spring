@@ -234,7 +234,7 @@ public class SheetService {
         settingValues.saveAndFlush(v);
         if (PolicyVersion.KEYS.contains(key)) {
             policyVersions.saveAndFlush(
-                    new PolicyVersion(id, policyVersions.countBySheetId(id) + 1, key, on, sheet.getToday()));
+                    new PolicyVersion(id, policyVersions.countBySheetId(id) + 1, key, on, sheet.getToday(), shown));
         }
         history.record(id);
         audit.recordOnCommit("SETTING_CHANGED sheet=" + id + " by=" + user + " key=" + key + " value=" + shown
@@ -246,6 +246,21 @@ public class SheetService {
     @Transactional(readOnly = true)
     public int policyVersion(String id) {
         return policyVersions.countBySheetId(id);
+    }
+
+    /** A policy version as the viewer lists it: the version, and how many of the sheet's claims have it
+     *  as their policy version (the one in force on the claim's date). */
+    public record PolicyLine(PolicyVersion version, long claims) {
+    }
+
+    /** The sheet's policy versions, the first made first, each with its count of claims. */
+    @Transactional(readOnly = true)
+    public List<PolicyLine> policyLines(String id) {
+        List<PolicyVersion> versions = policyVersions.findBySheetIdOrderByNumber(id);
+        Map<Integer, Long> counts = new TreeMap<>();
+        claims.findBySheetIdOrderByListedDesc(id)
+                .forEach(c -> counts.merge(PolicyVersion.on(versions, c.getDate()), 1L, Long::sum));
+        return versions.stream().map(v -> new PolicyLine(v, counts.getOrDefault(v.getNumber(), 0L))).toList();
     }
 
     /** The sheet's policy versions, the first made first. */

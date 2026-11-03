@@ -39,10 +39,16 @@ public class PolicyVersion {
     @Column(name = "recorded_on", nullable = false)
     private LocalDate recordedOn;
 
+    /** The value the setting was given, as shown; null when not kept. */
+    @Column(name = "value_shown")
+    private String shown;
+
     protected PolicyVersion() {
     }
 
-    public PolicyVersion(String sheetId, int number, String key, LocalDate from, LocalDate recordedOn) {
+    public PolicyVersion(String sheetId, int number, String key, LocalDate from, LocalDate recordedOn,
+            String shown) {
+        this.shown = shown;
         this.sheetId = sheetId;
         this.number = number;
         this.key = key;
@@ -60,6 +66,10 @@ public class PolicyVersion {
 
     public LocalDate getFrom() {
         return from;
+    }
+
+    public String getShown() {
+        return shown;
     }
 
     public LocalDate getRecordedOn() {

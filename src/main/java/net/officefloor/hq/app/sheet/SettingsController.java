@@ -411,6 +411,22 @@ public class SettingsController {
         this.history = history;
     }
 
+    /** A line of the policy viewer: the version's number, its from-date (null: none, from the start),
+     *  its setting and the value it was given (null when not kept), and the count of claims whose
+     *  policy version it is. */
+    public record PolicyLineView(int number, LocalDate from, String key, String value, long claims) {
+        static PolicyLineView of(SheetService.PolicyLine l) {
+            PolicyVersion v = l.version();
+            return new PolicyLineView(v.getNumber(), v.getFrom(), v.getKey(), v.getShown(), l.claims());
+        }
+    }
+
+    /** The sheet's policy versions, the first made first, each with its count of claims. */
+    @GetMapping("/policy-versions")
+    public List<PolicyLineView> policyLines(@PathVariable @NotBlank @Size(max = 100) String sheetId) {
+        return service.policyLines(sheetId.trim()).stream().map(PolicyLineView::of).toList();
+    }
+
     /** The sheet's settings; as of a day when one is given, each dated one (and the policy date) as
      *  it stood at the end of that day (see {@link History}), in force on that day. */
     @GetMapping
