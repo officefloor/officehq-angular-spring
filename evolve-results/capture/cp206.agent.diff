@@ -1,0 +1,134 @@
+diff --git a/src/main/frontend/src/app/core/settings.ts b/src/main/frontend/src/app/core/settings.ts
+index 371e84dca..09d63a92f 100644
+--- a/src/main/frontend/src/app/core/settings.ts
++++ b/src/main/frontend/src/app/core/settings.ts
+@@ -154,16 +154,16 @@ export function valueOn<V extends string | null>(recorded: DatedValue<V>[], day:
+   return value;
+ }
+ 
+-export type RoleName = 'clerk' | 'steward' | 'viewer';
++export type RoleName = 'clerk' | 'steward' | 'viewer' | 'restricted';
+ 
+ export interface Role {
+   user: string;
+   role: RoleName;
+ }
+ 
+-/** The roles a user name can be given; a name given none is a clerk, and a viewer may change
+- *  nothing. */
+-export const ROLES: RoleName[] = ['clerk', 'steward', 'viewer'];
++/** The roles a user name can be given; a name given none is a clerk, a viewer may change nothing,
++ *  and a restricted user lists only the people of their crews and their own person. */
++export const ROLES: RoleName[] = ['clerk', 'steward', 'viewer', 'restricted'];
+ 
+ /** A limit with up to two decimals, 0.00 or more. */
+ export const LIMIT = /^\d{1,12}(\.\d{1,2})?$/;
+diff --git a/src/main/frontend/src/app/features/people/people-list.ts b/src/main/frontend/src/app/features/people/people-list.ts
+index 9cfc49d2b..41ebb2260 100644
+--- a/src/main/frontend/src/app/features/people/people-list.ts
++++ b/src/main/frontend/src/app/features/people/people-list.ts
+@@ -517,9 +517,25 @@ export class PeopleList {
+   protected readonly columns = PERSON_COLUMNS;
+   protected readonly columnsError = signal('');
+   /** The people listed: everyone, or only those not retired unless "show retired" is on. */
+-  protected readonly shown = computed(() =>
+-    this.showRetired() ? this.people() : this.people().filter((p) => !p.retired),
+-  );
++  protected readonly shown = computed(() => {
++    const listed = this.showRetired() ? this.people() : this.people().filter((p) => !p.retired);
++    const visible = this.restrictedTo();
++    return visible ? listed.filter((p) => visible.has(p.id)) : listed;
++  });
++  /** For a restricted user, the ids of the people they may see listed: their own person and the
++   *  leads and members of the crews it leads or belongs to (none when no person is theirs); null for
++   *  every other role, who sees everyone. */
++  private readonly restrictedTo = computed<Set<number> | null>(() => {
++    if (this.myRole() !== 'restricted') return null;
++    const me = this.me();
++    if (!me) return new Set();
++    const ids = new Set([me.id]);
++    for (const c of this.crewsApi.list()) {
++      const crewIds = [...(c.lead ? [c.lead.personId] : []), ...c.members.map((m) => m.personId)];
++      if (crewIds.includes(me.id)) crewIds.forEach((id) => ids.add(id));
++    }
++    return ids;
++  });
+   /** The key this screen sorts the listed people by; added (list order) when the screen opens,
+    *  kept as it is across loads. Only what is shown is sorted: actions keep the list order. */
+   protected readonly sortBy = signal<SortKey>('added');
+diff --git a/src/main/frontend/src/app/features/settings/settings-form.ts b/src/main/frontend/src/app/features/settings/settings-form.ts
+index 8a2993506..8bdd94e72 100644
+--- a/src/main/frontend/src/app/features/settings/settings-form.ts
++++ b/src/main/frontend/src/app/features/settings/settings-form.ts
+@@ -803,7 +803,7 @@ export class SettingsForm {
+       return;
+     }
+     if (!(ROLES as string[]).includes(role)) {
+-      this.roleError.set('Choose a role of clerk, steward or viewer.');
++      this.roleError.set('Choose a role of clerk, steward, viewer or restricted.');
+       return;
+     }
+     this.submitting = true;
+diff --git a/src/main/java/net/officefloor/hq/app/role/RoleController.java b/src/main/java/net/officefloor/hq/app/role/RoleController.java
+index b4b91356e..42c7c3476 100644
+--- a/src/main/java/net/officefloor/hq/app/role/RoleController.java
++++ b/src/main/java/net/officefloor/hq/app/role/RoleController.java
+@@ -34,8 +34,8 @@ public class RoleController {
+     public record MyRoleView(String role) {
+     }
+ 
+-    /** The role form: a role of clerk, steward or viewer. */
+-    public record RoleForm(@NotNull @Pattern(regexp = "\\s*(clerk|steward|viewer)\\s*") String role) {
++    /** The role form: a role of clerk, steward, viewer or restricted. */
++    public record RoleForm(@NotNull @Pattern(regexp = "\\s*(clerk|steward|viewer|restricted)\\s*") String role) {
+     }
+ 
+     private final RoleService service;
+diff --git a/src/main/java/net/officefloor/hq/app/role/RoleService.java b/src/main/java/net/officefloor/hq/app/role/RoleService.java
+index 347d30d85..547b0fea2 100644
+--- a/src/main/java/net/officefloor/hq/app/role/RoleService.java
++++ b/src/main/java/net/officefloor/hq/app/role/RoleService.java
+@@ -10,7 +10,8 @@ import org.springframework.http.HttpStatus;
+ import org.springframework.transaction.annotation.Transactional;
+ import org.springframework.web.server.ResponseStatusException;
+ 
+-/** The roles user names have on a sheet: clerk (the default for any name), steward or viewer
++/** The roles user names have on a sheet: clerk (the default for any name), steward, restricted (who
++ *  lists only the people of their crews and their own person) or viewer
+  *  (who may change nothing); and the steward role a steward delegates to a user name for a range of
+  *  days, inside which, by the sheet's today, the user acts as a steward. */
+ @Service
+diff --git a/src/main/java/net/officefloor/hq/app/role/SheetRole.java b/src/main/java/net/officefloor/hq/app/role/SheetRole.java
+index 3192a0be7..4ea3e6967 100644
+--- a/src/main/java/net/officefloor/hq/app/role/SheetRole.java
++++ b/src/main/java/net/officefloor/hq/app/role/SheetRole.java
+@@ -18,6 +18,9 @@ public class SheetRole {
+     public static final String STEWARD = "steward";
+     /** A viewer sees every screen and figure and may change nothing. */
+     public static final String VIEWER = "viewer";
++    /** A restricted user lists only the people of the crews their person leads or belongs to, and
++     *  that person; every other figure is still over the whole sheet. */
++    public static final String RESTRICTED = "restricted";
+ 
+     @Id
+     @GeneratedValue(strategy = GenerationType.IDENTITY)
+diff --git a/src/main/resources/db/migration/V116__restricted_role.sql b/src/main/resources/db/migration/V116__restricted_role.sql
+new file mode 100644
+index 000000000..a07dded0e
+--- /dev/null
++++ b/src/main/resources/db/migration/V116__restricted_role.sql
+@@ -0,0 +1,14 @@
++-- A fourth role, restricted: lists only the people of the crews its user's person leads or belongs
++-- to, and that person. The role check is rebuilt to allow it (the column check carries a generated
++-- name, so the table is remade).
++CREATE TABLE sheet_role_new (
++    id        BIGINT AUTO_INCREMENT PRIMARY KEY,
++    sheet_id  VARCHAR(100) NOT NULL REFERENCES sheet (id),
++    user_name VARCHAR(100) NOT NULL,
++    role      VARCHAR(20)  NOT NULL CHECK (role IN ('clerk', 'steward', 'viewer', 'restricted')),
++    CONSTRAINT sheet_role_user_unique_r UNIQUE (sheet_id, user_name)
++);
++INSERT INTO sheet_role_new (id, sheet_id, user_name, role) SELECT id, sheet_id, user_name, role FROM sheet_role;
++DROP TABLE sheet_role;
++ALTER TABLE sheet_role_new RENAME TO sheet_role;
++ALTER TABLE sheet_role ALTER COLUMN id RESTART WITH (SELECT COALESCE(MAX(id), 0) + 1 FROM sheet_role);

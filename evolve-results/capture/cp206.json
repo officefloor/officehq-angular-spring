@@ -1,0 +1,64 @@
+{
+  "checkpoint": 206,
+  "stack": {
+    "repo": "/home/daniel/officehq-angular-spring",
+    "origin": "git@github.com:officefloor/officehq-angular-spring.git",
+    "name": "officehq-angular-spring",
+    "base_ref": "base-empty",
+    "base_commit": "65cb8233ea38b2dfa6cfd18709e30cd18fdf3250"
+  },
+  "checkpoint_id": "cp206_restricted-role",
+  "phase": "late",
+  "type": "additive",
+  "mutates": [],
+  "replaced_tests": [],
+  "request": {
+    "spec": "A fourth role, restricted, can be assigned. A restricted user sees on the people list only the\npeople of the crews they lead or belong to (by a person with the user's name) and that person\nthemselves: no other row is on the screen. Every other figure (the totals row, the header, the\nsummary, the periods, the pools) is still over everyone on the sheet.\n",
+    "prompt": "You are implementing ONE change to this application.\n\nFIRST read AGENTS.md \u2014 it states the working rules and how the app is tested, and sends you to\nDESIGN.md for the app's stack and conventions. Follow both.\n\nTHE CHANGE REQUEST:\nA fourth role, restricted, can be assigned. A restricted user sees on the people list only the\npeople of the crews they lead or belong to (by a person with the user's name) and that person\nthemselves: no other row is on the screen. Every other figure (the totals row, the header, the\nsummary, the periods, the pools) is still over everyone on the sheet.\n\nYour work is verified by an automated Playwright UI test already installed under e2e/specs/.\nRead that spec: it declares the exact data-testid anchors, values, test data and any audit\nrecords it expects \u2014 match them. Run `bin/e2e` to build the app, start it, and run the test as\nyou work; iterate until it passes. Change whatever the request needs across the app \u2014 its stored\ndata, its server and its front end. Do NOT edit bin/build, bin/start, bin/stop, bin/e2e,\nAGENTS.md, CLAUDE.md, DESIGN.md, e2e/support/ or the test spec.\n"
+  },
+  "commit_sha": "01d839489e41dd84a377d659d4c176f64d8d5bd6",
+  "reset_sha": "",
+  "preagent_sha": "decb805c53702136ef03debf5ec8445853ed165c",
+  "prev_sha": "decb805c53702136ef03debf5ec8445853ed165c",
+  "base_sha": "65cb8233ea38b2dfa6cfd18709e30cd18fdf3250",
+  "agent": {
+    "ok": true,
+    "cost_usd": 0.7676441999999999,
+    "input_tokens": 40,
+    "output_tokens": 6982,
+    "cache_read_tokens": 916421,
+    "cache_creation_tokens": 55570,
+    "num_turns": 22,
+    "duration_ms": 347799,
+    "duration_api_ms": 75188,
+    "model": "claude-opus-5-5",
+    "session_id": "f2909669-25ba-43c5-994c-3f0ef5dff2b7",
+    "stop_reason": "success",
+    "result_text": "You can now give someone the `restricted` role. A restricted user's people list shows only their own person and the people in any crew that person leads or belongs to. Every other figure (totals row, header, summary, periods, pools) still covers everyone on the sheet. `bin/e2e` passes all 4 tests. After that run I only edited a comment in `RoleService.java`, so I didn't run it again.\n\n**What changed:**\n- **Database:** a new migration, `V116__restricted_role.sql`, rebuilds the `sheet_role` table so its role check accepts `restricted`. The earlier `viewer` migration did it the same way.\n- **Server:** the role form in `RoleController.java` now accepts `restricted`, and `SheetRole.java` has a `RESTRICTED` constant. `ROLE_SET` audit records are written the same way as before.\n- **Front end:**\n  - `restricted` is added to the role names and the role form's error message in `core/settings.ts` and `settings-form.ts`.\n  - In `people-list.ts`, the list of visible rows is filtered for restricted users. The totals are still worked out from all people, so they don't change.\n  - A user's own person is found the same way as for the \"my\" figures: by name or alias, ignoring case.\n  - A restricted user with no matching person sees no rows.\n\n**Things to know:**\n- **The filter is only on screen.** The server still sends the full people list to a restricted user, because the front end needs everyone to work out the sheet-wide figures. If restricted users must not be able to see other people's data at all, the server would need to send those figures already calculated. That's a bigger change.\n- **No extra permissions were added or removed.** A restricted user is checked against the permission settings by the role name `restricted`. Unless a sheet's permission settings list that role, they can't open or settle claims. The tests only use restricted users to view, so I left this alone.\n- **The bulk-select actions** only act on rows a restricted user can see.",
+    "error": "",
+    "attempts": [
+      {
+        "ok": true,
+        "limit_reached": false,
+        "retryable": false,
+        "timed_out": false,
+        "cost_usd": 0.7676441999999999,
+        "num_turns": 22,
+        "duration_ms": 347799,
+        "duration_api_ms": 75188,
+        "error": ""
+      }
+    ]
+  },
+  "agent_stream_file": "cp206.agent.jsonl",
+  "agent_diff_file": "cp206.agent.diff",
+  "build_log_file": null,
+  "tests": {
+    "gated": false,
+    "queued": true
+  },
+  "probe": null,
+  "pinned_touched": [],
+  "acceptance_touched": [],
+  "impact_gate": null
+}
