@@ -3,11 +3,13 @@ import { Component, computed, effect, inject, signal } from '@angular/core';
 import { firstValueFrom } from 'rxjs';
 import { Session } from '../../core/session';
 import { Claim, PersonClaims, cents, money } from '../claims/claims';
+import { Rate, Rates, dueCents, dueText } from '../rates/rates';
 
 // The people on the active sheet, in the order they were added, and the one form that both adds
 // a person and edits an existing one (opening a person's editor fills the form with their values).
 // Each row shows what the person has claimed and lists their claims; the sheet's claimed-total
-// adds everyone's up.
+// adds everyone's up. Each claim and each person also shows what is due at the rate for the
+// person's grade, and the sheet's due-total adds up every person's due-total that has a rate.
 interface Person {
   id: number;
   name: string;
@@ -18,8 +20,9 @@ const GRADES = ['A', 'B', 'C'] as const;
 
 @Component({
   selector: 'app-people',
-  imports: [PersonClaims],
+  imports: [PersonClaims, Rates],
   template: `
+    <app-rates [(rates)]="rates" />
     <section aria-labelledby="people-heading">
       <h2 id="people-heading">People</h2>
       <form aria-label="Person" (submit)="save($event)">
@@ -52,12 +55,14 @@ const GRADES = ['A', 'B', 'C'] as const;
         }
       </form>
       <p>Claimed in total <strong data-testid="rollup-claimed-total">{{ claimedTotal() }}</strong></p>
+      <p>Due in total <strong data-testid="rollup-due-total">{{ dueTotal() }}</strong></p>
       <table data-testid="people-list">
         <thead>
           <tr>
             <th scope="col">Name</th>
             <th scope="col">Grade</th>
             <th scope="col">Claimed</th>
+            <th scope="col">Due</th>
             <th scope="col">Claims</th>
             <th scope="col"><span class="visually-hidden">Actions</span></th>
           </tr>
@@ -68,11 +73,13 @@ const GRADES = ['A', 'B', 'C'] as const;
               <td data-testid="person-name">{{ p.name }}</td>
               <td data-testid="person-grade">{{ p.grade }}</td>
               <td data-testid="person-claimed">{{ claimedOf(p.id) }}</td>
+              <td data-testid="person-due-total">{{ dueText(dueOf(p)) }}</td>
               <td>
                 <app-person-claims
                   [personId]="p.id"
                   [personName]="p.name"
                   [claims]="claimsOf(p.id)"
+                  [pct]="pctOf().get(p.grade)"
                   (saved)="claimSaved($event)"
                 />
               </td>
@@ -107,6 +114,12 @@ export class People {
     return by;
   });
   protected readonly claimedTotal = computed(() => money(this.claims().reduce((sum, c) => sum + cents(c.amount), 0)));
+  protected readonly rates = signal<Rate[]>([]);
+  protected readonly pctOf = computed(() => new Map(this.rates().map((r) => [r.grade, r.pct])));
+  protected readonly dueTotal = computed(() =>
+    money(this.people().reduce((sum, p) => sum + (this.dueOf(p) ?? 0), 0)),
+  );
+  protected readonly dueText = dueText;
   protected readonly nameInput = signal('');
   protected readonly gradeInput = signal<string>('A');
   protected readonly editingId = signal<number | null>(null);
@@ -147,6 +160,11 @@ export class People {
 
   protected claimedOf(personId: number): string {
     return money(this.claimsOf(personId).reduce((sum, c) => sum + cents(c.amount), 0));
+  }
+
+  /** What the person owes on all they claimed, in whole cents, or null when their grade has no rate. */
+  protected dueOf(p: Person): number | null {
+    return dueCents(this.claimsOf(p.id).reduce((sum, c) => sum + cents(c.amount), 0), this.pctOf().get(p.grade));
   }
 
   /** A claim added (listed first, newest first) or edited (replaced where it is). */

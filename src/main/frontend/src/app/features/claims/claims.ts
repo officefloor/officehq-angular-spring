@@ -2,6 +2,7 @@ import { HttpClient } from '@angular/common/http';
 import { Component, inject, input, output, signal } from '@angular/core';
 import { firstValueFrom } from 'rxjs';
 import { Session } from '../../core/session';
+import { dueCents, dueText } from '../rates/rates';
 
 // A person's claims, newest first, and the one form under their row that both adds a claim and
 // edits an existing one (opening a claim's editor fills the form with its values).
@@ -67,6 +68,7 @@ export function money(c: number): string {
           <span data-testid="claim-amount">{{ c.amount }}</span>
           <span data-testid="claim-date">{{ c.date }}</span>
           <span data-testid="claim-note">{{ c.note }}</span>
+          <span>Due <span data-testid="claim-due">{{ dueOf(c) }}</span></span>
           <button
             type="button"
             data-testid="claim-edit"
@@ -90,6 +92,8 @@ export class PersonClaims {
   readonly personId = input.required<number>();
   readonly personName = input.required<string>();
   readonly claims = input.required<Claim[]>();
+  /** The rate for the person's grade, or undefined when the grade has none. */
+  readonly pct = input<string>();
   readonly saved = output<Claim>();
 
   protected readonly amountInput = signal('');
@@ -97,6 +101,10 @@ export class PersonClaims {
   protected readonly noteInput = signal('');
   protected readonly editingId = signal<number | null>(null);
   protected readonly error = signal<string | null>(null);
+
+  protected dueOf(c: Claim): string {
+    return dueText(dueCents(cents(c.amount), this.pct()));
+  }
 
   protected edit(c: Claim): void {
     this.editingId.set(c.id);
