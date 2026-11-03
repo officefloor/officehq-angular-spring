@@ -340,3 +340,25 @@ export class People {
     return { sheetId, user };
   }
 }
+
+/** A person's timeline: a line for each dated thing about them, in date order, and on a day their
+ *  grade changes, then their claims, then their holds, then their retirements, then their
+ *  unretirements (those of a kind on a day in the order of their lines):
+ *  <date> grade <grade>, <date> claim <amount> <status>, <date> hold [to <date>], <date> retired,
+ *  <date> unretired. A grade or hold with no from-date has no line. */
+export function timelineOf(p: Person, claims: Claim[]): string[] {
+  const items: { date: string; rank: number; line: string }[] = [];
+  const add = (date: string | null, rank: number, what: string) => {
+    if (date !== null) items.push({ date, rank, line: `${date} ${what}` });
+  };
+  for (const g of p.grades) add(g.from, 0, `grade ${g.grade}`);
+  for (const c of claims) add(c.date, 1, `claim ${c.amount} ${c.status}`);
+  for (const h of p.holds) add(h.from, 2, h.to === null ? 'hold' : `hold to ${h.to}`);
+  for (const r of p.retirements) add(r.from, 3, 'retired');
+  add(p.retiredFrom, 3, 'retired');
+  for (const r of p.retirements) add(r.to, 4, 'unretired');
+  const cmp = (a: string, b: string) => (a < b ? -1 : a > b ? 1 : 0);
+  return items
+    .sort((a, b) => cmp(a.date, b.date) || a.rank - b.rank || cmp(a.line, b.line))
+    .map((i) => i.line);
+}

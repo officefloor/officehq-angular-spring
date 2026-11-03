@@ -958,7 +958,12 @@ export class PersonClaims {
       if (e instanceof HttpErrorResponse && e.status === 423) this.error.set(CLOSED);
       else if (e instanceof HttpErrorResponse && e.status === 422) this.error.set(RETIRED);
       else if (e instanceof HttpErrorResponse && e.status === 400 && id !== null
-        && (this.claims().find((x) => x.id === id)?.lines.length ?? 0) > 0) this.error.set(LINED);
+        && (this.claims().find((x) => x.id === id)?.lines.length ?? 0) > 0) {
+        // Its lines fix its amount, so no save of the editor can go through: close it (unlocking
+        // the claim), the form back to adding, and show why.
+        await this.cancel();
+        this.error.set(LINED);
+      }
       else if (e instanceof HttpErrorResponse && e.status === 400 && amount.trim().startsWith('-')) this.error.set(CORRECTS);
       else if (e instanceof HttpErrorResponse && e.status === 409 && reference !== '' && this.refClash(id)) {
         this.error.set(REF_USED);
