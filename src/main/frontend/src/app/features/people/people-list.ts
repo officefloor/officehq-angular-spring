@@ -63,7 +63,7 @@ const NO_LEAVE: Leave = { holds: [], retiredFrom: null };
     <app-steward-dashboard [steward]="myRole() === 'steward'" [statuses]="consolidatedStatuses()"
       [overdueCount]="consolidatedOverdueCount()" />
     <app-rate-form [rates]="rates()" (saved)="rateSaved($event)" (imported)="ratesImported()" />
-    <app-period-form [periods]="periods()" [dueTotals]="periodDueTotals()" (saved)="periodSaved($event)"
+    <app-period-form [periods]="periods()" [dueTotals]="periodDueTotals()" [claimCounts]="periodClaimCounts()" (saved)="periodSaved($event)"
       (removed)="periodRemoved($event)" />
     <section aria-labelledby="people-heading">
       <h2 id="people-heading">People</h2>
@@ -812,6 +812,12 @@ export class PeopleList {
   /** Each period's due-total by its id: the sum of the people's due-totals for it. */
   protected readonly periodDueTotals = computed(() =>
     new Map(this.periods().map((pd) => [pd.id, sumAmounts(this.people().map((p) => this.periodDueOf(p.id, pd)))])),
+  );
+  /** Each period's count of the claims due by a day inside it, by the period's id: void and
+   *  deleted claims are left out. */
+  protected readonly periodClaimCounts = computed(() =>
+    new Map(this.periods().map((pd) => [pd.id, this.claims().filter((c) =>
+      c.status !== 'VOID' && c.status !== 'DELETED' && pd.from <= c.dueBy && c.dueBy <= pd.to).length])),
   );
   /** Each grade's rate in force on the sheet's today; a grade with none is missing. */
   protected readonly pctOf = computed(() => {

@@ -73,7 +73,7 @@ const DAY = /^\d{4}-\d{2}-\d{2}$/;
       </form>
       <table data-testid="periods">
         <thead>
-          <tr><th scope="col">Name</th><th scope="col">From</th><th scope="col">To</th><th scope="col">Due</th><th scope="col">Closed</th><th scope="col">Fiscal year</th><th scope="col">Cap</th><th scope="col">Locked</th><th scope="col"><span class="visually-hidden">Actions</span></th></tr>
+          <tr><th scope="col">Name</th><th scope="col">From</th><th scope="col">To</th><th scope="col">Due</th><th scope="col">Closed</th><th scope="col">Fiscal year</th><th scope="col">Cap</th><th scope="col">Locked</th><th scope="col">Claims</th><th scope="col"><span class="visually-hidden">Actions</span></th></tr>
         </thead>
         <tbody>
           @for (p of periods(); track p.id) {
@@ -86,6 +86,7 @@ const DAY = /^\d{4}-\d{2}-\d{2}$/;
               <td data-testid="period-fy">{{ p.fy }}</td>
               <td data-testid="period-cap">{{ p.cap ?? '' | figure }}</td>
               <td data-testid="period-locked">{{ p.locked ? 'yes' : 'no' }}</td>
+              <td data-testid="period-claims-count">{{ claimCounts().get(p.id) ?? 0 }}</td>
               <td>
                 @if (!p.closed) {
                   <button type="button" data-testid="period-close" (click)="close(p)"
@@ -117,6 +118,8 @@ export class PeriodForm {
   readonly periods = input.required<Period[]>();
   /** Each period's due-total by its id. */
   readonly dueTotals = input.required<Map<number, string>>();
+  /** Each period's count of its claims (void and deleted left out), by the period's id. */
+  readonly claimCounts = input.required<Map<number, number>>();
   /** A period added through the form, or closed, reopened, locked or unlocked from its row. */
   readonly saved = output<Period>();
   /** The id of a period removed, by undoing the rollover that generated it. */
