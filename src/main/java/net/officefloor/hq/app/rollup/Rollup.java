@@ -154,7 +154,7 @@ public class Rollup {
         LocalDate today = sheets.today(sheetId);
         for (Person person : people.findBySheetIdOrderByPositionAscIdAsc(sheetId)) {
             List<Claim> theirs = Dues.live(person, byPerson.getOrDefault(person.getId(), List.of()), today);
-            BigDecimal claimed = theirs.stream().map(Claim::getAmount)
+            BigDecimal claimed = theirs.stream().filter(c -> c.getCorrects() == null).map(Claim::getAmount)
                     .reduce(BigDecimal.ZERO.setScale(2), BigDecimal::add);
             BigDecimal due = dues.dueTotal(sheetId, person, theirs);
             BigDecimal overdue = theirs.stream().filter(c -> dues.overdue(sheetId, person, c))

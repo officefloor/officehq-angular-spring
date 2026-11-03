@@ -469,15 +469,15 @@ export class PeopleList {
   /** The claims that count in the live totals, newest first. */
   private readonly live = computed(() => this.claims().filter((c) => countsLive(c, this.byId().get(c.personId) ?? NO_LEAVE, this.session.today())));
   /** What each person has claimed: the sum of their open and settled claims' amounts, leaving out
-   *  the open ones dated within one of their holds and unbound by a statement. */
+   *  the open ones dated within one of their holds and unbound by a statement, and the corrections. */
   protected readonly claimed = computed(() => {
     const by = new Map<number, string>();
     for (const [id, cs] of this.claimsByPerson()) {
-      by.set(id, sumAmounts(cs.filter((c) => countsLive(c, this.byId().get(id) ?? NO_LEAVE, this.session.today())).map((c) => c.amount)));
+      by.set(id, sumAmounts(cs.filter((c) => !c.corrects && countsLive(c, this.byId().get(id) ?? NO_LEAVE, this.session.today())).map((c) => c.amount)));
     }
     return by;
   });
-  protected readonly claimedTotal = computed(() => sumAmounts(this.live().map((c) => c.amount)));
+  protected readonly claimedTotal = computed(() => sumAmounts(this.live().filter((c) => !c.corrects).map((c) => c.amount)));
   /** The rates set on the sheet. */
   protected readonly rates = signal<Rate[]>([]);
   /** The sheet's floors recorded: the least live due a claim has is the one in force on its date. */
