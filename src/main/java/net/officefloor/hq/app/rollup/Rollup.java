@@ -125,9 +125,15 @@ public class Rollup {
      *  people (retired included), and each one's due-total and overdue-total as that sheet shows
      *  them, added up; per grade, the due-totals of the people not retired on the grade in force on
      *  their sheet's today, skipping those that are n/a, added up; and per status, how many claims
-     *  have it. */
+     *  have it; and each of their people (retired included), for the screen to trim and count once
+     *  over the whole tree. */
     public record Descendants(int peopleCount, String dueTotal, String overdueTotal,
-            Map<String, String> gradeDueTotals, Map<String, Integer> statusCounts) {
+            Map<String, String> gradeDueTotals, Map<String, Integer> statusCounts, List<Member> people) {
+    }
+
+    /** A person of a descendant sheet: their name and aliases, and their due-total (null when n/a)
+     *  and overdue-total as that sheet shows them. */
+    public record Member(List<String> names, String dueTotal, String overdueTotal) {
     }
 
     /** The figures of a sheet's descendants added up (all zero when it has none): as each stands now,
@@ -140,6 +146,7 @@ public class Rollup {
         BigDecimal overdue = BigDecimal.ZERO.setScale(2);
         Map<String, BigDecimal> gradeDue = new LinkedHashMap<>();
         Map<String, Integer> statusCounts = new LinkedHashMap<>();
+        List<Member> members = new ArrayList<>();
         for (String id : sheetStore.descendants(sheetId)) {
             Dues.Basis basis;
             List<Person> sheetPeople;
@@ -159,7 +166,12 @@ public class Rollup {
             due = due.add(new BigDecimal(s.dueTotal()));
             overdue = overdue.add(new BigDecimal(s.overdueTotal()));
             for (Person person : sheetPeople) {
-                String personDue = s.people().get(person.getId()).dueTotal();
+                Figures personFigures = s.people().get(person.getId());
+                String personDue = personFigures.dueTotal();
+                List<String> names = new ArrayList<>(List.of(person.getName()));
+                names.addAll(person.getAliases());
+                members.add(new Member(names, "n/a".equals(personDue) ? null : personDue,
+                        personFigures.overdueTotal()));
                 String grade = person.gradeOn(basis.today());
                 if (!person.isRetired() && grade != null && !"n/a".equals(personDue)) {
                     gradeDue.merge(grade, new BigDecimal(personDue), BigDecimal::add);
@@ -171,7 +183,7 @@ public class Rollup {
         }
         Map<String, String> gradeDueTotals = new LinkedHashMap<>();
         gradeDue.forEach((grade, total) -> gradeDueTotals.put(grade, text(total)));
-        return new Descendants(count, text(due), text(overdue), gradeDueTotals, statusCounts);
+        return new Descendants(count, text(due), text(overdue), gradeDueTotals, statusCounts, members);
     }
 
     /** A person found by a search of a sheet's tree: their sheet's id, name as the screen shows it

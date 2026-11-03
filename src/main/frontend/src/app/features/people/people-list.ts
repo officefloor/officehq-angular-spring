@@ -869,14 +869,42 @@ export class PeopleList {
   /** The role the signed-in user acts in on the sheet (as of the as-of day when one is set); null
    *  until read. */
   protected readonly myRole = signal<string | null>(null);
-  /** The people of the sheet and all its descendants: while an as-of date is set, each sheet as it
-   *  stood at the end of that day. */
-  protected readonly consolidatedPeopleCount = computed(() => this.people().length + this.descendants().peopleCount);
-  /** The sheet's due-total and each descendant's, as each shows it, added up. */
-  protected readonly consolidatedDueTotal = computed(() => sumAmounts([this.dueTotal(), this.descendants().dueTotal]));
-  /** The sheet's overdue-total and each descendant's, as each shows it, added up. */
+  /** The people of the sheet and all its descendants, each person counted once: people whose names
+   *  or aliases match, as names are compared, are one person. While an as-of date is set, each
+   *  sheet as it stood at the end of that day. */
+  protected readonly consolidatedPeopleCount = computed(() => {
+    const groups = [
+      ...this.people().map((p) => [p.name, ...p.aliases]),
+      ...(this.descendants().people ?? []).map((p) => p.names),
+    ].map((names) => names.map((n) => n.trim().toLowerCase()));
+    // Union people sharing a name, so a chain of matches is one person.
+    const parent = groups.map((_, i) => i);
+    const root = (i: number): number => (parent[i] === i ? i : (parent[i] = root(parent[i])));
+    const owner = new Map<string, number>();
+    groups.forEach((names, i) => {
+      for (const n of names) {
+        const j = owner.get(n);
+        if (j === undefined) owner.set(n, i);
+        else parent[root(i)] = root(j);
+      }
+    });
+    return new Set(groups.map((_, i) => root(i))).size;
+  });
+  /** Every person's due-total over the sheet and its descendants, leaving out the single highest
+   *  and lowest when three or more have one (n/a is no figure). */
+  protected readonly consolidatedDueTotal = computed(() =>
+    trimmedSum([
+      ...this.people().map((p) => this.dueOf(p)),
+      ...(this.descendants().people ?? []).map((p) => p.dueTotal),
+    ].filter((d): d is string => d !== null)),
+  );
+  /** Every person's overdue-total over the sheet and its descendants, leaving out the single highest
+   *  and lowest when there are three or more. */
   protected readonly consolidatedOverdueTotal = computed(() =>
-    sumAmounts([this.overdueTotal(), this.descendants().overdueTotal]),
+    trimmedSum([
+      ...this.people().map((p) => this.overdueTotalOf(p)),
+      ...(this.descendants().people ?? []).map((p) => p.overdueTotal),
+    ]),
   );
   /** Per grade: the sheet's due-total of the people not retired on it and its descendants', added up. */
   protected readonly consolidatedGrades = computed(() =>
