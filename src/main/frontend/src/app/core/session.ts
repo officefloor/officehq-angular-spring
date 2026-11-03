@@ -17,6 +17,8 @@ export class Session {
   readonly user = signal<string | null>(null);
   readonly sheet = signal<string | null>(null);
   readonly today = signal<string | null>(null);
+  /** Counts sheet loads, so features re-read the store each time a sheet is (re-)loaded. */
+  readonly loads = signal(0);
 
   async signIn(name: string): Promise<void> {
     const res = await firstValueFrom(this.http.post<{ name: string }>('/api/signin', { name }));
@@ -31,6 +33,7 @@ export class Session {
     );
     this.sheet.set(res.id);
     this.today.set(res.today);
+    this.loads.update((n) => n + 1);
   }
 
   async setToday(today: string): Promise<void> {

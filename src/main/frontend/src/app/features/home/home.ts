@@ -1,10 +1,12 @@
 import { Component, inject, signal } from '@angular/core';
 import { Session } from '../../core/session';
+import { People } from '../people/people';
 
 // The one screen: sign in by name, then load a sheet by id. Everything else hangs off the
 // active sheet.
 @Component({
   selector: 'app-home',
+  imports: [People],
   template: `
     @if (session.user(); as user) {
       <section aria-label="Session">
@@ -36,6 +38,7 @@ import { Session } from '../../core/session';
             />
             <button type="submit" data-testid="sheet-today-save">Set today</button>
           </form>
+          <app-people />
         } @else {
           <p data-testid="sheet-none">No sheet loaded.</p>
         }
