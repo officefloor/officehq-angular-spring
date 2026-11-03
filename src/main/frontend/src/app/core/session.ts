@@ -15,6 +15,13 @@ function toLocale(value: string | null | undefined): Locale {
   return value === 'de' ? 'de' : 'en';
 }
 
+/** The people-list columns a user may switch off on their screen, in the order the chooser lists them. */
+export const PERSON_COLUMNS = [
+  'claimed', 'due-total', 'excess', 'statement-count', 'stated-total', 'statement-date', 'overdue-count',
+  'overdue-total', 'patrons', 'backing', 'hold', 'retired', 'terms', 'contact', 'aliases',
+] as const;
+export type PersonColumn = (typeof PERSON_COLUMNS)[number];
+
 interface SheetView {
   id: string;
   today: string;
@@ -30,6 +37,10 @@ export class Session {
   readonly user = signal<string | null>(null);
   /** The signed-in user's locale, kept per user in the store; en unless chosen. */
   readonly locale = signal<Locale>('en');
+  /** The people-list columns the signed-in user's screen leaves out, kept per user in the store. */
+  readonly hiddenColumns = signal<ReadonlySet<string>>(new Set());
+  /** Column choices are written one after another, so the store ends with the last one made. */
+  private columnWrites: Promise<unknown> = Promise.resolve();
   readonly sheetId = signal<string | null>(null);
   /** The active sheet's today (yyyy-mm-dd) as the store holds it. */
   readonly sheetToday = signal<string | null>(null);
@@ -53,6 +64,7 @@ export class Session {
     const res = await firstValueFrom(this.http.post<SignedIn>('/api/signin', { name }));
     this.user.set(res.name);
     this.locale.set(toLocale(res.locale));
+    this.hiddenColumns.set(new Set());
     this.sheetId.set(null);
     this.shownId.set(null);
     this.sheetToday.set(null);
@@ -77,6 +89,7 @@ export class Session {
     );
     this.show(res);
     await this.readLocale(user);
+    await this.readColumns(user);
     this.bumpLoads();
   }
 
@@ -96,6 +109,32 @@ export class Session {
       this.http.get<{ locale: string }>('/api/me/locale', { headers: { 'X-User': user } }),
     );
     this.locale.set(toLocale(res.locale));
+  }
+
+  /** Switch a people-list column on or off on the signed-in user's screen; kept for them across sheets. */
+  async setColumnShown(column: PersonColumn, shown: boolean): Promise<void> {
+    const user = this.user();
+    if (!user) throw new Error('not signed in');
+    const hidden = new Set(this.hiddenColumns());
+    if (shown) hidden.delete(column);
+    else hidden.add(column);
+    this.hiddenColumns.set(hidden);
+    const write = this.columnWrites.catch(() => undefined).then(() =>
+      firstValueFrom(
+        this.http.put<{ hidden: string[] }>('/api/me/columns', { hidden: [...hidden] }, { headers: { 'X-User': user } }),
+      ),
+    );
+    this.columnWrites = write;
+    await write;
+  }
+
+  /** Re-read the user's column choice from the store, once any of theirs still being written is in. */
+  private async readColumns(user: string): Promise<void> {
+    await this.columnWrites.catch(() => undefined);
+    const res = await firstValueFrom(
+      this.http.get<{ hidden: string[] }>('/api/me/columns', { headers: { 'X-User': user } }),
+    );
+    this.hiddenColumns.set(new Set(res.hidden));
   }
 
   /** Change the active sheet's today. */

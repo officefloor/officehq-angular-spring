@@ -7,7 +7,7 @@ import { Pools, formatCents } from '../../core/pools';
 import { Grade, Leave, People, Person, Taken, gradeOn } from '../../core/people';
 import { Period, Periods, periodOf } from '../../core/periods';
 import { Rate, Rates, pctOn, weightedSum } from '../../core/rates';
-import { Session } from '../../core/session';
+import { PERSON_COLUMNS, PersonColumn, Session } from '../../core/session';
 import { downloadCsv } from '../../core/csv';
 import { DatedValue, Graces, RoundingMode, SheetSettings, graceOn, valueOn } from '../../core/settings';
 import { Watch, Watches } from '../../core/watches';
@@ -124,6 +124,19 @@ const NO_LEAVE: Leave = { holds: [], retiredFrom: null };
           (change)="showRetired.set($any($event.target).checked)" />
         Show retired
       </label>
+      <fieldset>
+        <legend>Columns shown on your screen</legend>
+        @for (c of columns; track c) {
+          <label>
+            <input type="checkbox" [attr.data-testid]="'column-' + c" [checked]="shows(c)"
+              (change)="setColumnShown(c, $any($event.target).checked)" />
+            {{ c }}
+          </label>
+        }
+        @if (columnsError()) {
+          <p role="alert" data-testid="columns-error">{{ columnsError() }}</p>
+        }
+      </fieldset>
       <label for="sort-by">Sort by</label>
       <select id="sort-by" data-testid="sort-by" [value]="sortBy()"
         (change)="sortBy.set($any($event.target).value)">
@@ -201,7 +214,7 @@ const NO_LEAVE: Leave = { holds: [], retiredFrom: null };
       <button type="button" data-testid="export-claims" (click)="exportClaimsCsv()">Export claims (CSV)</button>
       <table data-testid="people">
         <thead>
-          <tr><th scope="col"><span class="visually-hidden">Select</span></th><th scope="col">Name</th><th scope="col">Grade</th><th scope="col">Active</th><th scope="col">Terms</th><th scope="col">Contact</th><th scope="col">Tags</th><th scope="col">Aliases</th><th scope="col">Clashing</th><th scope="col">Came from</th><th scope="col">Claimed</th><th scope="col">Due</th><th scope="col">Settled due</th><th scope="col">Open due</th>@for (pd of periods(); track pd.id) {<th scope="col">Due in {{ pd.name }}</th>}<th scope="col">Excess</th><th scope="col">Cut total</th><th scope="col">Statements</th><th scope="col">Last stated</th><th scope="col">Stated on</th><th scope="col">Retired</th><th scope="col">Retired from</th><th scope="col">Past retirements</th><th scope="col">Snapshots</th><th scope="col">On hold</th><th scope="col">Overdue</th><th scope="col">Overdue due</th><th scope="col">Due aged 0–30 days</th><th scope="col">Due aged 31–60 days</th><th scope="col">Due aged 61+ days</th><th scope="col">Patrons</th><th scope="col">Backing</th><th scope="col">Watched</th><th scope="col">Plans</th><th scope="col">Claims</th><th scope="col"><span class="visually-hidden">Actions</span></th></tr>
+          <tr><th scope="col"><span class="visually-hidden">Select</span></th><th scope="col">Name</th><th scope="col">Grade</th><th scope="col">Active</th>@if (shows('terms')) {<th scope="col">Terms</th>}@if (shows('contact')) {<th scope="col">Contact</th>}<th scope="col">Tags</th>@if (shows('aliases')) {<th scope="col">Aliases</th>}<th scope="col">Clashing</th><th scope="col">Came from</th>@if (shows('claimed')) {<th scope="col">Claimed</th>}@if (shows('due-total')) {<th scope="col">Due</th>}<th scope="col">Settled due</th><th scope="col">Open due</th>@for (pd of periods(); track pd.id) {<th scope="col">Due in {{ pd.name }}</th>}@if (shows('excess')) {<th scope="col">Excess</th>}<th scope="col">Cut total</th>@if (shows('statement-count')) {<th scope="col">Statements</th>}@if (shows('stated-total')) {<th scope="col">Last stated</th>}@if (shows('statement-date')) {<th scope="col">Stated on</th>}@if (shows('retired')) {<th scope="col">Retired</th>}<th scope="col">Retired from</th><th scope="col">Past retirements</th><th scope="col">Snapshots</th>@if (shows('hold')) {<th scope="col">On hold</th>}@if (shows('overdue-count')) {<th scope="col">Overdue</th>}@if (shows('overdue-total')) {<th scope="col">Overdue due</th>}<th scope="col">Due aged 0–30 days</th><th scope="col">Due aged 31–60 days</th><th scope="col">Due aged 61+ days</th>@if (shows('patrons')) {<th scope="col">Patrons</th>}@if (shows('backing')) {<th scope="col">Backing</th>}<th scope="col">Watched</th><th scope="col">Plans</th><th scope="col">Claims</th><th scope="col"><span class="visually-hidden">Actions</span></th></tr>
         </thead>
         <tbody>
           @for (p of sorted(); track p.id) {
@@ -214,25 +227,45 @@ const NO_LEAVE: Leave = { holds: [], retiredFrom: null };
               <td data-testid="person-name">{{ p.name }}</td>
               <td data-testid="person-grade">{{ gradeOf(p) }}</td>
               <td data-testid="person-active">{{ activeOf(p) ? 'yes' : 'no' }}</td>
-              <td data-testid="person-terms">{{ p.terms ?? '' }}</td>
-              <td data-testid="person-contact">{{ p.contact ?? '' }}</td>
+              @if (shows('terms')) {
+                <td data-testid="person-terms">{{ p.terms ?? '' }}</td>
+              }
+              @if (shows('contact')) {
+                <td data-testid="person-contact">{{ p.contact ?? '' }}</td>
+              }
               <td data-testid="person-tags">{{ p.tags }}</td>
-              <td data-testid="person-aliases">{{ p.aliases.join(', ') }}</td>
+              @if (shows('aliases')) {
+                <td data-testid="person-aliases">{{ p.aliases.join(', ') }}</td>
+              }
               <td data-testid="person-clashing">{{ p.clashing ? 'yes' : 'no' }}</td>
               <td data-testid="person-origin">{{ p.origin ?? '' }}</td>
-              <td data-testid="person-claimed">{{ claimed().get(p.id) ?? '0.00' | figure }}</td>
-              <td data-testid="person-due-total">{{ dueOf(p) ?? 'n/a' | figure }}</td>
+              @if (shows('claimed')) {
+                <td data-testid="person-claimed">{{ claimed().get(p.id) ?? '0.00' | figure }}</td>
+              }
+              @if (shows('due-total')) {
+                <td data-testid="person-due-total">{{ dueOf(p) ?? 'n/a' | figure }}</td>
+              }
               <td data-testid="person-settled-total">{{ settledTotalOf(p) | figure }}</td>
               <td data-testid="person-open-total">{{ openTotalOf(p) | figure }}</td>
               @for (pd of periods(); track pd.id) {
                 <td [attr.data-testid]="'person-period-' + pd.name + '-due-total'">{{ periodDueOf(p.id, pd) | figure }}</td>
               }
-              <td data-testid="person-excess">{{ excessOf(p) | figure }}</td>
+              @if (shows('excess')) {
+                <td data-testid="person-excess">{{ excessOf(p) | figure }}</td>
+              }
               <td data-testid="person-cut-total">{{ cutTotals().get(p.id) ?? '0.00' | figure }}</td>
-              <td data-testid="person-statement-count">{{ p.statementCount }}</td>
-              <td data-testid="person-stated-total">{{ (p.statementCount > 0 ? (p.statedTotal ?? 'n/a') : '') | figure }}</td>
-              <td data-testid="person-statement-date">{{ p.statementDate ?? '' }}</td>
-              <td data-testid="person-retired">{{ p.retired ? 'yes' : 'no' }}</td>
+              @if (shows('statement-count')) {
+                <td data-testid="person-statement-count">{{ p.statementCount }}</td>
+              }
+              @if (shows('stated-total')) {
+                <td data-testid="person-stated-total">{{ (p.statementCount > 0 ? (p.statedTotal ?? 'n/a') : '') | figure }}</td>
+              }
+              @if (shows('statement-date')) {
+                <td data-testid="person-statement-date">{{ p.statementDate ?? '' }}</td>
+              }
+              @if (shows('retired')) {
+                <td data-testid="person-retired">{{ p.retired ? 'yes' : 'no' }}</td>
+              }
               <td data-testid="person-retired-from">{{ p.retiredFrom ?? '' }}</td>
               <td>
                 @if (p.retirements.length > 0) {
@@ -252,24 +285,34 @@ const NO_LEAVE: Leave = { holds: [], retiredFrom: null };
                   </ul>
                 }
               </td>
-              <td>
-                <span data-testid="person-hold">{{ p.held ? 'yes' : 'no' }}</span>
-                @if (p.holds.length > 0) {
-                  <ul>
-                    @for (h of p.holds; track $index) {
-                      <li data-testid="person-hold-line">{{ h.from ?? '…' }} – {{ h.to ?? '…' }}</li>
-                    }
-                  </ul>
-                }
-              </td>
-              <td data-testid="person-overdue-count">{{ overdueOf(p).length }}</td>
-              <td data-testid="person-overdue-total">{{ overdueTotalOf(p) | figure }}</td>
+              @if (shows('hold')) {
+                <td>
+                  <span data-testid="person-hold">{{ p.held ? 'yes' : 'no' }}</span>
+                  @if (p.holds.length > 0) {
+                    <ul>
+                      @for (h of p.holds; track $index) {
+                        <li data-testid="person-hold-line">{{ h.from ?? '…' }} – {{ h.to ?? '…' }}</li>
+                      }
+                    </ul>
+                  }
+                </td>
+              }
+              @if (shows('overdue-count')) {
+                <td data-testid="person-overdue-count">{{ overdueOf(p).length }}</td>
+              }
+              @if (shows('overdue-total')) {
+                <td data-testid="person-overdue-total">{{ overdueTotalOf(p) | figure }}</td>
+              }
               @let aged = agedOf(p);
               <td data-testid="person-aged-0-30">{{ aged[0] | figure }}</td>
               <td data-testid="person-aged-31-60">{{ aged[1] | figure }}</td>
               <td data-testid="person-aged-61">{{ aged[2] | figure }}</td>
-              <td data-testid="person-patrons">{{ patronNames().get(p.id) ?? '' }}</td>
-              <td data-testid="person-backing">{{ backingOf(p) | figure }}</td>
+              @if (shows('patrons')) {
+                <td data-testid="person-patrons">{{ patronNames().get(p.id) ?? '' }}</td>
+              }
+              @if (shows('backing')) {
+                <td data-testid="person-backing">{{ backingOf(p) | figure }}</td>
+              }
               <td data-testid="person-watched">{{ watched().has(p.id) ? 'yes' : 'no' }}</td>
               <td>
                 <app-person-plans [personId]="p.id" [name]="p.name" [plans]="plansByPerson().get(p.id) ?? []"
@@ -383,6 +426,9 @@ export class PeopleList {
   protected readonly people = signal<Person[]>([]);
   /** Whether retired people are listed; off when the screen opens, kept as it is across loads. */
   protected readonly showRetired = signal(false);
+  /** The people-list columns the signed-in user can switch off on their screen. */
+  protected readonly columns = PERSON_COLUMNS;
+  protected readonly columnsError = signal('');
   /** The people listed: everyone, or only those not retired unless "show retired" is on. */
   protected readonly shown = computed(() =>
     this.showRetired() ? this.people() : this.people().filter((p) => !p.retired),
@@ -838,6 +884,20 @@ export class PeopleList {
       this.policyDate.set(saved.settings.policyDate);
       this.roundings.set(saved.settings.roundings);
     });
+  }
+
+  /** Whether the signed-in user's screen shows a people-list column. */
+  protected shows(column: PersonColumn): boolean {
+    return !this.session.hiddenColumns().has(column);
+  }
+
+  protected async setColumnShown(column: PersonColumn, shown: boolean): Promise<void> {
+    this.columnsError.set('');
+    try {
+      await this.session.setColumnShown(column, shown);
+    } catch {
+      this.columnsError.set('Your column choice could not be saved.');
+    }
   }
 
   protected open(p: Person): void {
