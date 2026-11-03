@@ -94,6 +94,17 @@ const NO_LEAVE: Leave = { holds: [], retiredFrom: null };
       <app-plan-generate-box [refresh]="plansGenerated" />
       <app-import-people-box (imported)="peopleImported($event)" />
       <app-tree-search-box />
+      <section aria-labelledby="dups-heading">
+        <h3 id="dups-heading">Duplicate claims</h3>
+        <button type="button" data-testid="dups-show" (click)="dupsShown.set(true)">Show duplicates</button>
+        @if (dupsShown()) {
+          <ul>
+            @for (line of dupLines(); track line) {
+              <li data-testid="dup-line">{{ line }}</li>
+            }
+          </ul>
+        }
+      </section>
       <p>Claimed in total: <strong data-testid="rollup-claimed-total">{{ claimedTotal() | figure }}</strong></p>
       <p>Due in total: <strong data-testid="rollup-due-total">{{ dueTotal() | figure }}</strong></p>
       <p>Settled due in total: <strong data-testid="rollup-settled-total">{{ settledTotal() | figure }}</strong></p>
@@ -520,6 +531,28 @@ export class PeopleList {
     const by = new Map<number, Claim[]>();
     for (const c of this.claims()) by.set(c.personId, [...(by.get(c.personId) ?? []), c]);
     return by;
+  });
+  /** Whether the duplicate claims are shown. */
+  protected readonly dupsShown = signal(false);
+  /** The duplicate claims: for each person, date and amount with two or more claims (void and
+   *  deleted ones left out), "<name> <date> <amount> x<count>", people in list order, then by date,
+   *  then by amount. */
+  protected readonly dupLines = computed(() => {
+    const byPerson = this.claimsByPerson();
+    return this.people().flatMap((p) => {
+      const counts = new Map<string, { date: string; amount: string; n: number }>();
+      for (const c of byPerson.get(p.id) ?? []) {
+        if (c.status === 'VOID' || c.status === 'DELETED') continue;
+        const key = `${c.date} ${c.amount}`;
+        const seen = counts.get(key) ?? { date: c.date, amount: c.amount, n: 0 };
+        seen.n++;
+        counts.set(key, seen);
+      }
+      return [...counts.values()]
+        .filter((x) => x.n >= 2)
+        .sort((x, y) => (x.date < y.date ? -1 : x.date > y.date ? 1 : Number(x.amount) - Number(y.amount)))
+        .map((x) => `${p.name} ${x.date} ${x.amount} x${x.n}`);
+    });
   });
   /** The patrons named on the sheet, in the order they were named. */
   protected readonly patrons = signal<Patron[]>([]);
