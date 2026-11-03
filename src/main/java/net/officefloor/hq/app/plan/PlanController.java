@@ -28,13 +28,13 @@ public class PlanController {
 
     /** What the screen shows of a plan: its amount as text with two decimals, its dates, its interval
      *  or day of the month (the other null), how many claims it has made so far, and its next dates:
-     *  the first five after the sheet's today and on or before its end. */
+     *  the first five after the sheet's today and on or before its end; and whether it is paused. */
     public record PlanView(long id, long personId, String amount, LocalDate start, Integer every, Integer day,
-            LocalDate end, int generated, List<LocalDate> nextDates) {
+            LocalDate end, int generated, List<LocalDate> nextDates, boolean paused) {
         static PlanView of(Plan plan, LocalDate today) {
             return new PlanView(plan.getId(), plan.getPersonId(), plan.getAmount().setScale(2).toPlainString(),
                     plan.getStartDate(), plan.getEveryDays(), plan.getMonthDay(), plan.getEndDate(),
-                    plan.getGenerated(), plan.nextAfter(today, 5));
+                    plan.getGenerated(), plan.nextAfter(today, 5), plan.isPaused());
         }
     }
 
@@ -85,6 +85,20 @@ public class PlanController {
         String sheet = sheetId.trim();
         return PlanView.of(service.add(sheet, user.trim(), personId, form.amountValue(), form.start(),
                 form.everyValue(), form.dayValue(), form.end()), sheets.today(sheet));
+    }
+
+    @PostMapping("/plans/{planId}/pause")
+    public PlanView pause(@PathVariable @NotBlank @Size(max = 100) String sheetId, @PathVariable long planId,
+            @RequestHeader("X-User") @NotBlank @Size(max = 100) String user) {
+        String sheet = sheetId.trim();
+        return PlanView.of(service.setPaused(sheet, user.trim(), planId, true), sheets.today(sheet));
+    }
+
+    @PostMapping("/plans/{planId}/resume")
+    public PlanView resume(@PathVariable @NotBlank @Size(max = 100) String sheetId, @PathVariable long planId,
+            @RequestHeader("X-User") @NotBlank @Size(max = 100) String user) {
+        String sheet = sheetId.trim();
+        return PlanView.of(service.setPaused(sheet, user.trim(), planId, false), sheets.today(sheet));
     }
 
     @ViewerAllowed

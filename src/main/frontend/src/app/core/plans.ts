@@ -5,7 +5,8 @@ import { Session } from './session';
 
 /** A person's plan: a draft claim of its amount on its start and every so many days after, or
  *  monthly on a day of the month (the other null), up to its end; with how many claims it has made
- *  so far and its next dates (the first five after the sheet's today, on or before its end). */
+ *  so far, its next dates (the first five after the sheet's today, on or before its end, leaving out
+ *  those a pause skips) and whether it is paused. */
 export interface Plan {
   id: number;
   personId: number;
@@ -16,6 +17,7 @@ export interface Plan {
   end: string;
   generated: number;
   nextDates: string[];
+  paused: boolean;
 }
 
 /** The plan form as typed: a blank start takes the sheet's today. */
@@ -45,6 +47,16 @@ export class Plans {
       this.http.post<Plan>(`/api/sheets/${encodeURIComponent(sheetId)}/people/${personId}/plans`,
         { amount: f.amount, start: f.start || null, every: f.every || null, day: f.day || null, end: f.end || null },
         { headers: { 'X-User': user } }),
+    );
+  }
+
+  /** Pause the plan from the sheet's today (true) or resume it (false); refused for pausing a paused
+   *  plan or resuming a running one. */
+  setPaused(planId: number, paused: boolean): Promise<Plan> {
+    const { sheetId, user } = this.active();
+    return firstValueFrom(
+      this.http.post<Plan>(`/api/sheets/${encodeURIComponent(sheetId)}/plans/${planId}/${paused ? 'pause' : 'resume'}`,
+        null, { headers: { 'X-User': user } }),
     );
   }
 

@@ -384,7 +384,7 @@ const NO_LEAVE: Leave = { holds: [], retiredFrom: null };
               <td data-testid="person-approver">{{ p.approver ?? '' }}</td>
               <td>
                 <app-person-plans [personId]="p.id" [name]="p.name" [plans]="plansByPerson().get(p.id) ?? []"
-                  (added)="planAdded($event)" />
+                  (added)="planAdded($event)" (changed)="planChanged($event)" />
               </td>
               <td>
                 <app-person-claims [personId]="p.id" [claims]="claimsByPerson().get(p.id) ?? []"
@@ -1758,6 +1758,11 @@ export class PeopleList {
   /** Show a plan just added at the end of its person's plans. */
   protected planAdded(plan: Plan): void {
     this.plans.update((xs) => [...xs.filter((x) => x.id !== plan.id), plan]);
+  }
+
+  /** Show a plan just paused or resumed in its place. */
+  protected planChanged(plan: Plan): void {
+    this.plans.update((xs) => xs.map((x) => (x.id === plan.id ? plan : x)));
   }
 
   /** Read the sheet's claims and plans again once a generate has made claims. */

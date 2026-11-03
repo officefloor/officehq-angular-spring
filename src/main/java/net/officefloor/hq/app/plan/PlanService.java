@@ -79,6 +79,29 @@ public class PlanService {
         return saved;
     }
 
+    /** Pause the plan from the sheet's today, or resume it on that day; refused for pausing a paused
+     *  plan or resuming one that is not paused. */
+    @Transactional
+    public Plan setPaused(String sheetId, String user, long planId, boolean paused) {
+        Plan plan = plans.findById(planId).filter(p -> p.getSheetId().equals(sheetId))
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "No such plan on this sheet"));
+        if (plan.isPaused() == paused) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT,
+                    paused ? "The plan is already paused" : "The plan is not paused");
+        }
+        Person person = people.findByIdAndSheetId(plan.getPersonId(), sheetId).orElseThrow();
+        LocalDate today = sheets.today(sheetId);
+        if (paused) {
+            plan.pause(today);
+        } else {
+            plan.resume(today);
+        }
+        Plan saved = plans.saveAndFlush(plan);
+        audit.recordOnCommit((paused ? "PLAN_PAUSED" : "PLAN_RESUMED") + " sheet=" + sheetId + " by=" + user
+                + " name=" + person.getName() + " start=" + plan.getStartDate());
+        return saved;
+    }
+
     /** Make, for every plan on the sheet in the order they were added, a draft claim of its amount
      *  with an empty note for each of its dates up to its end and the sheet's today that has none
      *  yet, oldest first. Each claim is added as the claim form adds it, in a transaction of its

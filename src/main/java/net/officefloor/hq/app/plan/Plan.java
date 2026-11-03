@@ -58,6 +58,11 @@ public class Plan {
     @Column(name = "on_date", nullable = false)
     private Set<LocalDate> made = new HashSet<>();
 
+    /** The times it was paused; a plan date in one is skipped. */
+    @ElementCollection(fetch = FetchType.EAGER)
+    @CollectionTable(name = "plan_pause", joinColumns = @JoinColumn(name = "plan_id"))
+    private List<PlanPause> pauses = new ArrayList<>();
+
     protected Plan() {
     }
 
@@ -114,21 +119,22 @@ public class Plan {
         return made.size();
     }
 
-    /** The plan dates up to its end and the day given, oldest first, that it has made no claim for. */
+    /** The plan dates up to its end and the day given, oldest first, that it has made no claim for
+     *  and that no pause skips. */
     public List<LocalDate> dueUpTo(LocalDate today) {
         LocalDate last = endDate.isBefore(today) ? endDate : today;
         List<LocalDate> due = new ArrayList<>();
         if (monthDay != null) {
             for (YearMonth m = YearMonth.from(startDate); !m.atDay(1).isAfter(last); m = m.plusMonths(1)) {
                 LocalDate d = m.atDay(Math.min(monthDay, m.lengthOfMonth()));
-                if (!d.isBefore(startDate) && !d.isAfter(last) && !made.contains(d)) {
+                if (!d.isBefore(startDate) && !d.isAfter(last) && !made.contains(d) && !skipped(d)) {
                     due.add(d);
                 }
             }
             return due;
         }
         for (LocalDate d = startDate; !d.isAfter(last); d = d.plusDays(everyDays)) {
-            if (!made.contains(d)) {
+            if (!made.contains(d) && !skipped(d)) {
                 due.add(d);
             }
         }
@@ -136,14 +142,17 @@ public class Plan {
     }
 
     /** The first plan dates after the day given and on or before its end, oldest first, at most as
-     *  many as asked for. */
+     *  many as asked for, leaving out those skipped by a pause; none while it is paused. */
     public List<LocalDate> nextAfter(LocalDate today, int count) {
         List<LocalDate> next = new ArrayList<>();
+        if (isPaused()) {
+            return next;
+        }
         if (monthDay != null) {
             for (YearMonth m = YearMonth.from(startDate); next.size() < count && !m.atDay(1).isAfter(endDate);
                     m = m.plusMonths(1)) {
                 LocalDate d = m.atDay(Math.min(monthDay, m.lengthOfMonth()));
-                if (!d.isBefore(startDate) && d.isAfter(today) && !d.isAfter(endDate)) {
+                if (!d.isBefore(startDate) && d.isAfter(today) && !d.isAfter(endDate) && !skipped(d)) {
                     next.add(d);
                 }
             }
@@ -154,7 +163,7 @@ public class Plan {
             d = d.plusDays((today.toEpochDay() - d.toEpochDay()) / everyDays * everyDays);
         }
         for (; next.size() < count && !d.isAfter(endDate); d = d.plusDays(everyDays)) {
-            if (d.isAfter(today)) {
+            if (d.isAfter(today) && !skipped(d)) {
                 next.add(d);
             }
         }
@@ -164,5 +173,25 @@ public class Plan {
     /** Note that the plan has made its claim for the date. */
     public void markMade(LocalDate date) {
         made.add(date);
+    }
+
+    /** Whether the plan is paused and not yet resumed. */
+    public boolean isPaused() {
+        return pauses.stream().anyMatch(PlanPause::isOpen);
+    }
+
+    /** Pause the plan from the day given. */
+    public void pause(LocalDate on) {
+        pauses.add(new PlanPause(on));
+    }
+
+    /** Resume the paused plan on the day given. */
+    public void resume(LocalDate on) {
+        pauses.stream().filter(PlanPause::isOpen).forEach(p -> p.resume(on));
+    }
+
+    /** Whether a pause skips the date. */
+    private boolean skipped(LocalDate date) {
+        return pauses.stream().anyMatch(p -> p.covers(date));
     }
 }

@@ -21,7 +21,13 @@ import { FigurePipe } from '../../core/figure';
           }
           to <span data-testid="plan-end">{{ pl.end }}</span>;
           made <span data-testid="plan-generated">{{ pl.generated }}</span>;
-          next <span data-testid="plan-next-dates">{{ pl.nextDates.join(', ') }}</span>
+          next <span data-testid="plan-next-dates">{{ pl.nextDates.join(', ') }}</span>;
+          paused <span data-testid="plan-paused">{{ pl.paused ? 'yes' : 'no' }}</span>
+          <button type="button" data-testid="plan-pause" (click)="setPaused(pl, true)">Pause</button>
+          <button type="button" data-testid="plan-resume" (click)="setPaused(pl, false)">Resume</button>
+          @if (rowErrors()[pl.id]; as e) {
+            <p role="alert" data-testid="plan-error">{{ e }}</p>
+          }
         </li>
       }
     </ul>
@@ -53,6 +59,7 @@ export class PersonPlans {
   readonly name = input.required<string>();
   readonly plans = input.required<Plan[]>();
   readonly added = output<Plan>();
+  readonly changed = output<Plan>();
 
   protected readonly form = new FormGroup({
     amount: new FormControl('', { nonNullable: true }),
@@ -62,11 +69,23 @@ export class PersonPlans {
     end: new FormControl('', { nonNullable: true }),
   });
   protected readonly error = signal('');
+  /** The error of the last pause or resume of each plan that was refused. */
+  protected readonly rowErrors = signal<Record<number, string>>({});
   /** Whether an add is waiting for its answer: a second submit meanwhile is ignored. */
   private submitting = false;
 
   constructor() {
     this.form.valueChanges.subscribe(() => this.error.set(''));
+  }
+
+  protected async setPaused(plan: Plan, paused: boolean): Promise<void> {
+    this.rowErrors.update(({ [plan.id]: _, ...rest }) => rest);
+    try {
+      this.changed.emit(await this.api.setPaused(plan.id, paused));
+    } catch {
+      this.rowErrors.update((es) => ({ ...es,
+        [plan.id]: paused ? 'The plan could not be paused.' : 'The plan could not be resumed.' }));
+    }
   }
 
   protected async submit(): Promise<void> {
