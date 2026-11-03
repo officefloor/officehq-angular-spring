@@ -11,6 +11,7 @@ import java.util.function.Function;
 import java.util.regex.Pattern;
 import java.util.stream.Collectors;
 import net.officefloor.hq.app.Audit;
+import net.officefloor.hq.app.history.History;
 import net.officefloor.hq.app.person.Person;
 import net.officefloor.hq.app.person.PersonRepository;
 import net.officefloor.hq.app.sheet.SheetService;
@@ -118,10 +119,12 @@ public class PoolService {
     private final PoolMemberRepository members;
     private final PersonRepository people;
     private final SheetService sheets;
+    private final History history;
     private final Audit audit;
 
     public PoolService(PoolRepository pools, PoolMemberRepository members, PersonRepository people,
-            SheetService sheets, Audit audit) {
+            SheetService sheets, History history, Audit audit) {
+        this.history = history;
         this.pools = pools;
         this.members = members;
         this.people = people;
@@ -136,7 +139,7 @@ public class PoolService {
     }
 
     /** The pools as {@link #list(String)} has them, with holds and memberships' dates taken on a day
-     *  (null: the sheet's today): the sheet as of that day. */
+     *  (null: the sheet's today) and the sheet's pot as it stood at its end: the sheet as of that day. */
     @Transactional(readOnly = true)
     public List<Listed> list(String sheetId, LocalDate asOf) {
         List<Pool> all = pools.findBySheetIdOrderByIdAsc(sheetId);
@@ -159,7 +162,7 @@ public class PoolService {
         }
         Map<Long, Long> above = memberships.stream().filter(m -> m.getMemberPoolId() != null)
                 .collect(Collectors.toMap(PoolMember::getMemberPoolId, PoolMember::getPoolId, (a, b) -> a));
-        BigDecimal sheetPot = sheets.pot(sheetId);
+        BigDecimal sheetPot = asOf != null ? history.asOf(sheetId, asOf).pot() : sheets.pot(sheetId);
         Map<Long, Listed> listed = new HashMap<>();
         return all.stream().map(p -> listed(p.getId(), poolsById, membersOf, above, sheetPot, listed, 0)).toList();
     }

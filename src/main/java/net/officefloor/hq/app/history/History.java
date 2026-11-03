@@ -11,7 +11,6 @@ import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
-import java.util.Objects;
 import java.util.Optional;
 import java.util.Set;
 import java.util.function.Function;
@@ -59,11 +58,11 @@ public class History {
 
     /** A sheet as it stood at the end of a day: its people, claims, rates (by grade and then
      *  from-date, the one with no from-date first), dated setting values (latest from-date first),
-     *  policy date (null when blank) and periods (earliest first) then, all detached and never saved;
+     *  policy date (null when blank), periods (earliest first) and pot (null when blank) then, all detached and never saved;
      *  and the basis its figures are worked out on, the day standing in for its today. */
     public record SheetAsOf(LocalDate day, Dues.Basis basis, Map<Long, Person> people, List<Claim> claims,
             List<Rate> rates, List<SettingValue> settings, LocalDate policyDate, List<Period> periods,
-            List<List<Rate>> inherited) {
+            List<List<Rate>> inherited, BigDecimal pot) {
 
         /** The person as they stood then; empty when they were not on the sheet yet. */
         public Optional<Person> person(long personId) {
@@ -180,9 +179,9 @@ public class History {
                 }
             }
             List<SheetRevision> sheetWas = sheetRevisions.findBySheetIdOrderByIdAsc(sheetId);
-            LocalDate policyWas = sheetWas.isEmpty() ? null : sheetWas.get(sheetWas.size() - 1).getPolicyDate();
-            if (!Objects.equals(policyWas, sheet.getPolicyDate())) {
-                sheetRevisions.save(new SheetRevision(sheetId, today, sheet.getPolicyDate()));
+            if (sheetWas.isEmpty() ? sheet.getPolicyDate() != null || sheet.getPot() != null
+                    : !sheetWas.get(sheetWas.size() - 1).matches(sheet)) {
+                sheetRevisions.save(new SheetRevision(sheetId, today, sheet.getPolicyDate(), sheet.getPot()));
             }
         });
     }
@@ -205,9 +204,10 @@ public class History {
                 SettingRevision::getRecordedOn, SettingRevision::key, day).values().stream()
                 .map(SettingRevision::toValue)
                 .sorted(Comparator.comparing(SettingValue::getFrom).reversed()).toList();
-        LocalDate policyDate = sheetRevisions.findBySheetIdOrderByIdAsc(sheetId).stream()
-                .filter(r -> !r.getRecordedOn().isAfter(day)).reduce((a, b) -> b)
-                .map(SheetRevision::getPolicyDate).orElse(null);
+        Optional<SheetRevision> sheetThen = sheetRevisions.findBySheetIdOrderByIdAsc(sheetId).stream()
+                .filter(r -> !r.getRecordedOn().isAfter(day)).reduce((a, b) -> b);
+        LocalDate policyDate = sheetThen.map(SheetRevision::getPolicyDate).orElse(null);
+        BigDecimal pot = sheetThen.map(SheetRevision::getPot).orElse(null);
         List<Period> periodsThen = lastOn(periodRevisions.findBySheetIdOrderByIdAsc(sheetId),
                 PeriodRevision::getRecordedOn, PeriodRevision::getPeriodId, day).values().stream()
                 .map(PeriodRevision::toPeriod).sorted(Comparator.comparing(Period::getFromDate)).toList();
@@ -300,7 +300,7 @@ public class History {
             }
         };
         return new SheetAsOf(day, basis, then, claimsThen, ratesListed, settingsThen, policyDate, periodsThen,
-                inheritedThen.stream().map(History::listed).toList());
+                inheritedThen.stream().map(History::listed).toList(), pot);
     }
 
     /** A sheet's rates as they stood at the end of a day, the latest from-date first and the one with

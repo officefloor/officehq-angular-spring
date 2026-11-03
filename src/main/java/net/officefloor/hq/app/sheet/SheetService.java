@@ -468,6 +468,7 @@ public class SheetService {
         Sheet sheet = load(id, user);
         sheet.setPot(pot);
         Sheet saved = sheets.saveAndFlush(sheet);
+        history.record(id);
         audit.recordOnCommit("SETTING_CHANGED sheet=" + id + " by=" + user + " key=pot value="
                 + (pot == null ? "" : pot.setScale(2).toPlainString()));
         return saved;
