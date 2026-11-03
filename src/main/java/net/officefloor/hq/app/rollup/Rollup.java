@@ -123,8 +123,11 @@ public class Rollup {
 
     /** The figures a sheet's descendants add to its own to consolidate it: over all of them, the
      *  people (retired included), and each one's due-total and overdue-total as that sheet shows
-     *  them, added up. */
-    public record Descendants(int peopleCount, String dueTotal, String overdueTotal) {
+     *  them, added up; per grade, the due-totals of the people not retired on the grade in force on
+     *  their sheet's today, skipping those that are n/a, added up; and per status, how many claims
+     *  have it. */
+    public record Descendants(int peopleCount, String dueTotal, String overdueTotal,
+            Map<String, String> gradeDueTotals, Map<String, Integer> statusCounts) {
     }
 
     /** The figures of a sheet's descendants added up (all zero when it has none): as each stands now,
@@ -135,13 +138,40 @@ public class Rollup {
         int count = 0;
         BigDecimal due = BigDecimal.ZERO.setScale(2);
         BigDecimal overdue = BigDecimal.ZERO.setScale(2);
+        Map<String, BigDecimal> gradeDue = new LinkedHashMap<>();
+        Map<String, Integer> statusCounts = new LinkedHashMap<>();
         for (String id : sheetStore.descendants(sheetId)) {
-            Snapshot s = asOf == null ? snapshot(id) : snapshot(history.asOf(id, asOf));
+            Dues.Basis basis;
+            List<Person> sheetPeople;
+            List<Claim> sheetClaims;
+            if (asOf == null) {
+                basis = dues.now(id);
+                sheetPeople = people.findBySheetIdOrderByPositionAscIdAsc(id);
+                sheetClaims = claims.findBySheetIdOrderByListedDesc(id);
+            } else {
+                History.SheetAsOf then = history.asOf(id, asOf);
+                basis = then.basis();
+                sheetPeople = List.copyOf(then.people().values());
+                sheetClaims = then.claims();
+            }
+            Snapshot s = snapshot(basis, sheetPeople, sheetClaims);
             count += s.people().size();
             due = due.add(new BigDecimal(s.dueTotal()));
             overdue = overdue.add(new BigDecimal(s.overdueTotal()));
+            for (Person person : sheetPeople) {
+                String personDue = s.people().get(person.getId()).dueTotal();
+                String grade = person.gradeOn(basis.today());
+                if (!person.isRetired() && grade != null && !"n/a".equals(personDue)) {
+                    gradeDue.merge(grade, new BigDecimal(personDue), BigDecimal::add);
+                }
+            }
+            for (Claim claim : sheetClaims) {
+                statusCounts.merge(claim.getStatus().name(), 1, Integer::sum);
+            }
         }
-        return new Descendants(count, text(due), text(overdue));
+        Map<String, String> gradeDueTotals = new LinkedHashMap<>();
+        gradeDue.forEach((grade, total) -> gradeDueTotals.put(grade, text(total)));
+        return new Descendants(count, text(due), text(overdue), gradeDueTotals, statusCounts);
     }
 
     /** A person found by a search of a sheet's tree: their sheet's id, name as the screen shows it

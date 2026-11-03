@@ -122,6 +122,14 @@ const NO_LEAVE: Leave = { holds: [], retiredFrom: null };
         <dd data-testid="consolidated-due-total">{{ consolidatedDueTotal() | figure }}</dd>
         <dt>Overdue, consolidated</dt>
         <dd data-testid="consolidated-overdue-total">{{ consolidatedOverdueTotal() | figure }}</dd>
+        @for (g of consolidatedGrades(); track g.grade) {
+          <dt>Due on grade {{ g.grade }}, consolidated</dt>
+          <dd [attr.data-testid]="'consolidated-grade-' + g.grade + '-due-total'">{{ g.dueTotal | figure }}</dd>
+        }
+        @for (s of consolidatedStatuses(); track s.status) {
+          <dt>Claims {{ s.status }}, consolidated</dt>
+          <dd [attr.data-testid]="'consolidated-status-' + s.status + '-count'">{{ s.count }}</dd>
+        }
       </dl>
       @if (tagDueTotals().length > 0) {
         <ul aria-label="Due per tag">
@@ -829,6 +837,20 @@ export class PeopleList {
   /** The sheet's overdue-total and each descendant's, as each shows it, added up. */
   protected readonly consolidatedOverdueTotal = computed(() =>
     sumAmounts([this.overdueTotal(), this.descendants().overdueTotal]),
+  );
+  /** Per grade: the sheet's due-total of the people not retired on it and its descendants', added up. */
+  protected readonly consolidatedGrades = computed(() =>
+    this.gradeSummary().map(({ grade, dueTotal }) => ({
+      grade,
+      dueTotal: sumAmounts([dueTotal, this.descendants().gradeDueTotals?.[grade] ?? '0.00']),
+    })),
+  );
+  /** Per status: how many claims have it on the sheet and its descendants. */
+  protected readonly consolidatedStatuses = computed(() =>
+    this.statusSummary().map(({ status, count }) => ({
+      status,
+      count: count + (this.descendants().statusCounts?.[status] ?? 0),
+    })),
   );
   /** Per grade: the people not retired on it on the sheet's today, their due-totals added up,
    *  skipping those that are n/a, and how many of them are active. */
