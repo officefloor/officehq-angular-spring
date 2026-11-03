@@ -10,7 +10,7 @@ import { Period, Periods, periodOf } from '../../core/periods';
 import { Rate, Rates, pctOn, weightedSum } from '../../core/rates';
 import { PERSON_COLUMNS, PersonColumn, Session } from '../../core/session';
 import { downloadCsv } from '../../core/csv';
-import { DatedValue, Graces, RoundingMode, SheetSettings, graceOn, valueOn } from '../../core/settings';
+import { DatedValue, Graces, PolicyVersion, RoundingMode, SheetSettings, graceOn, valueOn } from '../../core/settings';
 import { Watch, Watches } from '../../core/watches';
 import { Plan, Plans } from '../../core/plans';
 import { DescendantFigures, Descendants, NO_DESCENDANTS } from '../../core/descendants';
@@ -124,6 +124,7 @@ const NO_LEAVE: Leave = { holds: [], retiredFrom: null };
         }
       </section>
       <p>Claimed in total: <strong data-testid="rollup-claimed-total">{{ claimedTotal() | figure }}</strong></p>
+      <p>Policy version: <strong data-testid="policy-version">{{ policyVersions().length }}</strong></p>
       <p>Due in total: <strong data-testid="rollup-due-total">{{ dueTotal() | figure }}</strong></p>
       <p>Settled due in total: <strong data-testid="rollup-settled-total">{{ settledTotal() | figure }}</strong></p>
       <p>Open due in total: <strong data-testid="rollup-open-total">{{ openTotal() | figure }}</strong></p>
@@ -433,7 +434,7 @@ const NO_LEAVE: Leave = { holds: [], retiredFrom: null };
                 <app-person-claims [personId]="p.id" [claims]="claimsByPerson().get(p.id) ?? []"
                   [rates]="rates()" [floor]="floor()" [grades]="p.grades" [periods]="periods()"
                   [today]="session.today()" [latePct]="latePct()" [graces]="graces()" [reviewSla]="reviewSla()" [pendingSla]="pendingSla()"
-                  [policyDate]="policyDate()" [roundings]="roundings()" [selected]="selected()"
+                  [policyDate]="policyDate()" [roundings]="roundings()" [policyVersions]="policyVersions()" [selected]="selected()"
                   (selectedChange)="select($event.id, $event.selected)"
                   [others]="patronChoices(p)" [people]="people()" (saved)="claimSaved($event)" />
               </td>
@@ -744,12 +745,14 @@ export class PeopleList {
   protected readonly floor = signal<DatedValue[]>([]);
   /** The sheet's caps recorded (null: no cap), each from its from-date. */
   private readonly caps = signal<DatedValue<string | null>[]>([]);
-  /** The sheet's cap in force on its today: the most a person's due-total comes to; null when there
-   *  is no cap. */
-  protected readonly cap = computed(() => {
+  /** The sheet's cap in force on a person's day: the date of their latest claim that counts, or
+   *  else the sheet's today; the most their due-total comes to; null when there is no cap. */
+  private capOf(p: Person): string | null {
     const today = this.session.today();
-    return today === null ? null : valueOn(this.caps(), today, null);
-  });
+    const day = (this.claimsByPerson().get(p.id) ?? []).filter((c) => countsLive(c, p, today))
+      .map((c) => c.date).reduce<string | null>((a, b) => (a === null || b > a ? b : a), null) ?? today;
+    return day === null ? null : valueOn(this.caps(), day, null);
+  }
   /** The sheet's late percents recorded: what an overdue claim gains for every full 30 days it is
    *  overdue is the one in force on its date. */
   protected readonly latePct = signal<DatedValue[]>([]);
@@ -777,6 +780,8 @@ export class PeopleList {
   /** The sheet's rounding modes recorded: the one in force on a claim's date decides how its live
    *  figures round, before the policy date. */
   protected readonly roundings = signal<DatedValue<RoundingMode | null>[]>([]);
+  /** The sheet's policy versions, the first made first: the current one is the last made. */
+  protected readonly policyVersions = signal<PolicyVersion[]>([]);
   /** What the late charges of overdue claims, and the rounding of live figures, follow. */
   private readonly lateness = computed(() => ({
     today: this.session.today(), pcts: this.latePct(), graces: this.graces(), policyDate: this.policyDate(),
@@ -1264,6 +1269,7 @@ export class PeopleList {
       this.scoreHigh.set(saved.settings.scoreHigh);
       this.policyDate.set(saved.settings.policyDate);
       this.roundings.set(saved.settings.roundings);
+      this.policyVersions.set(saved.settings.policyVersions);
     });
   }
 
@@ -2074,11 +2080,11 @@ export class PeopleList {
   /** Each person's due-total by id, as their row shows it; null when n/a. */
   protected readonly dueByPerson = computed(() => new Map(this.people().map((p) => [p.id, this.dueOf(p)])));
 
-  /** A person's due-total: the sum of their figures, held to the sheet's cap less their cut total
-   *  (not below 0.00); null when n/a. */
+  /** A person's due-total: the sum of their figures, held to the sheet's cap in force on the date of
+   *  their latest claim that counts less their cut total (not below 0.00); null when n/a. */
   protected dueOf(p: Person): string | null {
     const sum = this.figuresOf(p);
-    const cap = this.cap();
+    const cap = this.capOf(p);
     if (sum === null || cap === null) return sum;
     const room = sumAmounts([cap, '-' + (this.cutTotals().get(p.id) ?? '0.00')]);
     const limit = Number(room) < 0 ? '0.00' : room;
@@ -2359,6 +2365,7 @@ export class PeopleList {
         this.scoreHigh.set(settings.scoreHigh);
         this.policyDate.set(settings.policyDate);
         this.roundings.set(settings.roundings);
+        this.policyVersions.set(settings.policyVersions);
         this.periods.set(periods);
         this.claims.set(claims);
         this.storedTags.set(tags);

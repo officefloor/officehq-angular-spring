@@ -48,11 +48,13 @@ public class SheetService {
     private final Audit audit;
     private final RetiredGradeRepository retiredGrades;
     private final SheetGradeRepository sheetGrades;
+    private final PolicyVersionRepository policyVersions;
 
     public SheetService(SheetRepository sheets, SettingValueRepository settingValues,
             FiscalClaimNumberRepository fiscalNumbers, SheetPermissionRepository permissions, ClaimRepository claims, @Lazy Rollup rollup, @Lazy PeriodService periods,
             @Lazy RoleService roles, @Lazy History history, Audit audit, RetiredGradeRepository retiredGrades,
-            SheetGradeRepository sheetGrades) {
+            SheetGradeRepository sheetGrades, PolicyVersionRepository policyVersions) {
+        this.policyVersions = policyVersions;
         this.retiredGrades = retiredGrades;
         this.sheetGrades = sheetGrades;
         this.history = history;
@@ -221,7 +223,8 @@ public class SheetService {
 
     /** Record a dated setting's value from a date (the sheet's today when none is given), keeping the
      *  values already recorded (one from the same date is replaced); recorded in the audit even when
-     *  it is unchanged, with the from-date at the end when one was given. */
+     *  it is unchanged, with the from-date at the end when one was given. A policy setting (see
+     *  {@link PolicyVersion#KEYS}) makes a new policy version from that date. */
     private Sheet record(String id, String user, String key, BigDecimal value, String shown, LocalDate from) {
         Sheet sheet = load(id, user);
         LocalDate on = from != null ? from : sheet.getToday();
@@ -229,10 +232,26 @@ public class SheetService {
                 .orElseGet(() -> new SettingValue(id, key, on, value));
         v.setValue(value);
         settingValues.saveAndFlush(v);
+        if (PolicyVersion.KEYS.contains(key)) {
+            policyVersions.saveAndFlush(
+                    new PolicyVersion(id, policyVersions.countBySheetId(id) + 1, key, on, sheet.getToday()));
+        }
         history.record(id);
         audit.recordOnCommit("SETTING_CHANGED sheet=" + id + " by=" + user + " key=" + key + " value=" + shown
                 + (from != null ? " from=" + from : ""));
         return sheet;
+    }
+
+    /** The number of the sheet's current policy version: how many have been made; 0 when none has. */
+    @Transactional(readOnly = true)
+    public int policyVersion(String id) {
+        return policyVersions.countBySheetId(id);
+    }
+
+    /** The sheet's policy versions, the first made first. */
+    @Transactional(readOnly = true)
+    public List<PolicyVersion> policyVersions(String id) {
+        return policyVersions.findBySheetIdOrderByNumber(id);
     }
 
     /** The most due a clerk may settle on a claim on the sheet: the limit in force on the sheet's
@@ -261,12 +280,13 @@ public class SheetService {
         return limits;
     }
 
-    /** The most due a clerk may settle on a claim of a person of the grade: the grade's own clerk
-     *  limit in force on the sheet's today when one is set, or else the sheet's; null when neither is. */
+    /** The most due a clerk may settle on a claim dated on the day of a person of the grade: the
+     *  grade's own clerk limit in force on the day when one is set, or else the sheet's; null when
+     *  neither is. */
     @Transactional(readOnly = true)
-    public BigDecimal clerkLimitFor(String id, String grade) {
-        return inForce(id, "clerk-limit-" + grade, today(id)).map(SettingValue::getValue)
-                .orElseGet(() -> clerkLimit(id));
+    public BigDecimal clerkLimitFor(String id, String grade, LocalDate day) {
+        return inForce(id, "clerk-limit-" + grade, day).map(SettingValue::getValue)
+                .orElseGet(() -> inForce(id, "clerk-limit", day).map(SettingValue::getValue).orElse(null));
     }
 
     /** Record a grade's own clerk limit (null: blank, the sheet's) from a date (null: the sheet's
@@ -780,7 +800,13 @@ public class SheetService {
      *  null when there is no cap. */
     @Transactional(readOnly = true)
     public BigDecimal cap(String id) {
-        return inForce(id, "cap", today(id)).map(SettingValue::getValue).orElse(null);
+        return cap(id, today(id));
+    }
+
+    /** The cap in force on a day; null when there is none. */
+    @Transactional(readOnly = true)
+    public BigDecimal cap(String id, LocalDate day) {
+        return inForce(id, "cap", day).map(SettingValue::getValue).orElse(null);
     }
 
     /** Record the sheet's cap (null: no cap) from a date (null: the sheet's today), then the figures

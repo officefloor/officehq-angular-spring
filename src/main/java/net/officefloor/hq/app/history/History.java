@@ -254,8 +254,8 @@ public class History {
             }
 
             @Override
-            public BigDecimal cap() {
-                return inForce(settingsThen, "cap", day).map(SettingValue::getValue).orElse(null);
+            public BigDecimal cap(LocalDate on) {
+                return inForce(settingsThen, "cap", on).map(SettingValue::getValue).orElse(null);
             }
 
             @Override

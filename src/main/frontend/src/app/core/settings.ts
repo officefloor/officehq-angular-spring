@@ -104,6 +104,26 @@ export interface Settings {
   rounding: RoundingMode | null;
   /** The rounding modes recorded (null: blank, none), each from its from-date, earliest first. */
   roundings: DatedValue<RoundingMode | null>[];
+  /** The number of the current policy version: how many have been made (0: none). */
+  policyVersion: number;
+  /** The policy versions, the first made first. */
+  policyVersions: PolicyVersion[];
+}
+
+/** A version of the sheet's policy, made by a change to one of its policy settings (the rounding
+ *  mode, the floor, the cap, the terms, the late percent, the clerk limit). */
+export interface PolicyVersion {
+  number: number;
+  /** The setting whose change made it. */
+  key: string;
+  /** yyyy-mm-dd; null when it has none (in force always). */
+  from: string | null;
+}
+
+/** The policy version in force on a day (yyyy-mm-dd): how many versions have no from-date or one
+ *  on or before it. */
+export function policyOn(versions: PolicyVersion[], day: string): number {
+  return versions.filter((v) => v.from === null || v.from <= day).length;
 }
 
 /** A rounding mode: how a claim's live figures round when one is in force on its date. */

@@ -80,8 +80,8 @@ public class RateService {
             }
 
             @Override
-            public BigDecimal cap() {
-                return now.cap();
+            public BigDecimal cap(LocalDate day) {
+                return now.cap(day);
             }
 
             @Override

@@ -55,7 +55,8 @@ public class SettingsController {
      *  blank: none); and the default grade (null when blank: A); and the clerk limit each grade has of
      *  its own in force, as text with two decimals (a grade not in it takes the sheet's); and the mid
      *  and high score thresholds (null when blank); and whether the score log switch is on; and the
-     *  maximum of open claims per person (null when blank: none). */
+     *  maximum of open claims per person (null when blank: none); and the number of the current policy
+     *  version (0: none), and the policy versions, the first made first. */
     public record SettingsView(String clerkLimit, String floor, int terms, String latePct, LocalDate policyDate,
             LocalDate periodNumberingFrom, Map<String, Integer> gradeTerms, String cap, List<DatedValue> floors,
             List<DatedValue> latePcts, List<DatedValue> caps, String proofThreshold,
@@ -65,7 +66,7 @@ public class SettingsController {
             String alertThreshold, String rounding, List<DatedText> roundings, String reviewThreshold,
             Integer escalateAfter, Integer reviewSla, String proofKinds, String defaultGrade,
             Map<String, String> gradeClerkLimits, Integer scoreMid, Integer scoreHigh, boolean scoreLog,
-            Integer maxOpen, Integer pendingSla) {
+            Integer maxOpen, Integer pendingSla, int policyVersion, List<PolicyVersionView> policyVersions) {
         static SettingsView of(BigDecimal clerkLimit, BigDecimal floor, int terms, BigDecimal latePct,
                 LocalDate policyDate, LocalDate periodNumberingFrom, Map<String, Integer> gradeTerms,
                 BigDecimal cap, List<SettingValue> floors, List<SettingValue> latePcts,
@@ -76,7 +77,7 @@ public class SettingsController {
                 List<SettingValue> roundings, BigDecimal reviewThreshold, Integer escalateAfter,
                 Integer reviewSla, List<String> proofKinds, String defaultGrade,
                 Map<String, BigDecimal> gradeClerkLimits, Integer scoreMid, Integer scoreHigh, boolean scoreLog,
-                Integer maxOpen, Integer pendingSla) {
+                Integer maxOpen, Integer pendingSla, List<PolicyVersion> policyVersions) {
             Map<String, List<DatedDays>> gracesView = new TreeMap<>();
             graces.forEach((grade, values) -> gracesView.put(grade, values.stream().map(DatedDays::of).toList()));
             Map<String, String> thresholdsView = new TreeMap<>();
@@ -93,7 +94,16 @@ public class SettingsController {
                     rounding.map(Rounding::text).orElse(null), roundings.stream().map(DatedText::rounding).toList(),
                     reviewThreshold == null ? null : reviewThreshold.setScale(2).toPlainString(), escalateAfter,
                     reviewSla, String.join(",", proofKinds), defaultGrade, twoDecimals(gradeClerkLimits),
-                    scoreMid, scoreHigh, scoreLog, maxOpen, pendingSla);
+                    scoreMid, scoreHigh, scoreLog, maxOpen, pendingSla, policyVersions.size(),
+                    policyVersions.stream().map(PolicyVersionView::of).toList());
+        }
+    }
+
+    /** A policy version: its number, the setting whose change made it, and its from-date (null: none,
+     *  in force always). */
+    public record PolicyVersionView(int number, String key, LocalDate from) {
+        static PolicyVersionView of(PolicyVersion v) {
+            return new PolicyVersionView(v.getNumber(), v.getKey(), v.getFrom());
         }
     }
 
@@ -437,7 +447,7 @@ public class SettingsController {
                     .ifPresent(v -> gradeClerkLimits.put(grade, v));
         }
         return SettingsView.of(value.apply("clerk-limit"), then.basis().floor(day), terms, then.basis().latePct(day),
-                then.policyDate(), service.periodNumberingFrom(id), gradeTerms, then.basis().cap(),
+                then.policyDate(), service.periodNumberingFrom(id), gradeTerms, then.basis().cap(day),
                 then.recorded("floor"), then.recorded("late-pct"), then.recorded("cap"),
                 value.apply("proof-threshold"), service.permissions(id), service.graceDays(id),
                 value.apply("note-threshold"), service.entryDate(id), gradeGraces, graces,
@@ -446,7 +456,8 @@ public class SettingsController {
                 then.setting(Rounding.KEY, day).map(SettingValue::getValue).flatMap(Rounding::ofCode),
                 then.recorded(Rounding.KEY), value.apply("review-threshold"), service.escalateAfter(id),
                 service.reviewSla(id), service.proofKinds(id), service.defaultGradeSet(id), gradeClerkLimits,
-                service.scoreMid(id), service.scoreHigh(id), service.scoreLog(id), service.maxOpen(id), service.pendingSla(id));
+                service.scoreMid(id), service.scoreHigh(id), service.scoreLog(id), service.maxOpen(id), service.pendingSla(id),
+                service.policyVersions(id).stream().filter(v -> !v.getRecordedOn().isAfter(day)).toList());
     }
 
     /** The settings view of a sheet as the store holds it now. */
@@ -460,7 +471,8 @@ public class SettingsController {
                 service.fiscalStartMonth(id), service.alertThreshold(id), service.rounding(id),
                 service.recorded(id, Rounding.KEY), service.reviewThreshold(id), service.escalateAfter(id),
                 service.reviewSla(id), service.proofKinds(id), service.defaultGradeSet(id),
-                service.gradeClerkLimits(id), service.scoreMid(id), service.scoreHigh(id), service.scoreLog(id), service.maxOpen(id), service.pendingSla(id));
+                service.gradeClerkLimits(id), service.scoreMid(id), service.scoreHigh(id), service.scoreLog(id), service.maxOpen(id), service.pendingSla(id),
+                service.policyVersions(id));
     }
 
     /** The grace days recorded for each grade of a sheet, earliest from-date first. */

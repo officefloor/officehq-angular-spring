@@ -34,6 +34,8 @@ import net.officefloor.hq.app.role.RoleService;
 import net.officefloor.hq.app.role.SheetRole;
 import net.officefloor.hq.app.role.SheetRoleRepository;
 import net.officefloor.hq.app.rollup.Rollup;
+import net.officefloor.hq.app.sheet.PolicyVersion;
+import net.officefloor.hq.app.sheet.PolicyVersionRepository;
 import net.officefloor.hq.app.sheet.SettingValue;
 import net.officefloor.hq.app.sheet.SettingValueRepository;
 import net.officefloor.hq.app.sheet.Sheet;
@@ -55,6 +57,7 @@ public class SheetCloneService {
 
     private final SheetRepository sheets;
     private final SettingValueRepository settingValues;
+    private final PolicyVersionRepository policyVersions;
     private final SheetPermissionRepository permissions;
     private final SheetRoleRepository sheetRoles;
     private final RoleService roles;
@@ -80,7 +83,9 @@ public class SheetCloneService {
             RateRepository rates, HolidayRepository holidays, RetiredGradeRepository retiredGrades, SheetGradeRepository sheetGrades, VoidReasonRepository voidReasons,
             ClaimTemplateRepository templates, PersonRepository people, PatronRepository patrons,
             PoolRepository pools, PoolMemberRepository members, PeriodRepository periods, ClaimRepository claims,
-            ClaimService claimService, SheetTagRepository sheetTags, Rollup rollup, Audit audit) {
+            ClaimService claimService, SheetTagRepository sheetTags, Rollup rollup, Audit audit,
+            PolicyVersionRepository policyVersions) {
+        this.policyVersions = policyVersions;
         this.sheets = sheets;
         this.settingValues = settingValues;
         this.permissions = permissions;
@@ -159,6 +164,8 @@ public class SheetCloneService {
     private void copySettings(String sheetId, String toSheetId) {
         settingValues.findBySheetId(sheetId).forEach(v ->
                 settingValues.save(new SettingValue(toSheetId, v.getKey(), v.getFrom(), v.getValue())));
+        policyVersions.findBySheetIdOrderByNumber(sheetId).forEach(v -> policyVersions.save(
+                new PolicyVersion(toSheetId, v.getNumber(), v.getKey(), v.getFrom(), v.getRecordedOn())));
         permissions.findBySheetId(sheetId).forEach(p ->
                 permissions.save(new SheetPermission(toSheetId, p.getAction(), p.getRoles())));
         sheetRoles.findBySheetIdOrderByUserNameAsc(sheetId).forEach(r ->

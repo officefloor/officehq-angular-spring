@@ -5,6 +5,7 @@ import java.math.RoundingMode;
 import java.time.LocalDate;
 import java.time.temporal.ChronoUnit;
 import java.util.ArrayList;
+import java.util.Comparator;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -35,8 +36,8 @@ public class Dues {
         /** The late percent in force on a day. */
         BigDecimal latePct(LocalDate day);
 
-        /** The cap in force on the basis's today; null when there is none. */
-        BigDecimal cap();
+        /** The cap in force on a day; null when there is none. */
+        BigDecimal cap(LocalDate day);
 
         /** The policy date in force: the one set, or else the basis's today. */
         LocalDate policyDateInForce();
@@ -132,8 +133,8 @@ public class Dues {
             }
 
             @Override
-            public BigDecimal cap() {
-                return sheets.cap(sheetId);
+            public BigDecimal cap(LocalDate day) {
+                return sheets.cap(sheetId, day);
             }
 
             @Override
@@ -337,7 +338,7 @@ public class Dues {
     }
 
     /** A person's due-total: the sum of the figures of their claims that count, at most the sheet's
-     *  cap in force on its today less their cut total (not below 0.00); null (n/a) when their grade on the sheet's today has no rate on it and no counting claim
+     *  cap in force on the date of their latest claim that counts (the sheet's today when none does) less their cut total (not below 0.00); null (n/a) when their grade on the sheet's today has no rate on it and no counting claim
      *  has a figure (one fixed, or a live due at the grade in force on its date). */
     public BigDecimal dueTotal(String sheetId, Person person, List<Claim> theirs, BigDecimal cut) {
         return dueTotal(now(sheetId), person, theirs, cut);
@@ -362,8 +363,15 @@ public class Dues {
             return null;
         }
         BigDecimal sum = figures.stream().reduce(BigDecimal.ZERO.setScale(2), BigDecimal::add);
-        BigDecimal cap = basis.cap();
+        BigDecimal cap = basis.cap(capDay(theirs, today));
         return cap == null ? sum : sum.min(cap.subtract(cut).max(BigDecimal.ZERO.setScale(2)));
+    }
+
+    /** The day a person's cap is the one in force on: the date of their latest claim that counts, or
+     *  else the day given (the basis's today). */
+    private static LocalDate capDay(List<Claim> theirs, LocalDate today) {
+        return theirs.stream().filter(c -> c.getStatus().counts()).map(Claim::getDate)
+                .max(Comparator.naturalOrder()).orElse(today);
     }
 
     /** A holder's part of a claim on a basis: the claim's amount times their share divided by 100,

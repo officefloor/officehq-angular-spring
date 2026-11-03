@@ -8,7 +8,7 @@ import { Period, periodOf } from '../../core/periods';
 import { Rate } from '../../core/rates';
 import { Session } from '../../core/session';
 import { VoidReasons } from '../../core/void-reasons';
-import { DatedValue, Graces, RoundingMode, graceOn } from '../../core/settings';
+import { DatedValue, Graces, PolicyVersion, RoundingMode, graceOn, policyOn } from '../../core/settings';
 import { FigurePipe } from '../../core/figure';
 import { AuditLog } from '../../core/audit-log';
 
@@ -299,6 +299,7 @@ function settlePartRefusal(e: unknown): string {
           <span data-testid="claim-ref">{{ c.ref ?? '' }}</span>
           <span data-testid="claim-tags">{{ c.tags }}</span>
           <span data-testid="claim-due">{{ dueOf(c) | figure }}</span>
+          <span data-testid="claim-policy">{{ policyOf(c) }}</span>
           <span data-testid="claim-status">{{ c.status }}</span>
           <span data-testid="claim-opened-by">{{ c.openedBy ?? '' }}</span>
           <span data-testid="claim-stated">{{ c.stated ? 'yes' : 'no' }}</span>
@@ -520,6 +521,8 @@ export class PersonClaims {
   /** The sheet's rounding modes recorded: the one in force on a claim's date decides how its live
    *  figures round, before the policy date. */
   readonly roundings = input.required<DatedValue<RoundingMode | null>[]>();
+  /** The sheet's policy versions: a claim shows the one in force on its date. */
+  readonly policyVersions = input.required<PolicyVersion[]>();
   /** The other people on the sheet, whom a claim can be reassigned to. */
   readonly others = input.required<Person[]>();
   /** Everyone on the sheet, whom a claim can be shared with (its own person is refused). */
@@ -591,6 +594,11 @@ export class PersonClaims {
 
   protected pendingLateOf(c: Claim): boolean {
     return pendingLate(c, this.today(), this.pendingSla());
+  }
+
+  /** The policy version in force on the claim's date. */
+  protected policyOf(c: Claim): number {
+    return policyOn(this.policyVersions(), c.date);
   }
 
   protected overdueOf(c: Claim): boolean {
