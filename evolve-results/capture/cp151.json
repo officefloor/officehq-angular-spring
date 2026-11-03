@@ -1,0 +1,64 @@
+{
+  "checkpoint": 151,
+  "stack": {
+    "repo": "/home/daniel/officehq-angular-spring",
+    "origin": "git@github.com:officefloor/officehq-angular-spring.git",
+    "name": "officehq-angular-spring",
+    "base_ref": "base-empty",
+    "base_commit": "65cb8233ea38b2dfa6cfd18709e30cd18fdf3250"
+  },
+  "checkpoint_id": "cp151_rounding-mode",
+  "phase": "mid",
+  "type": "additive",
+  "mutates": [],
+  "replaced_tests": [],
+  "request": {
+    "spec": "The sheet gains a rounding mode (settings, dated like the floor; SETTING_CHANGED key=rounding\nvalue=<half-up or half-even>; anything else is refused with an error on the settings; blank means\nnone). A claim whose date has a rounding mode in force rounds every live figure by that mode; a\nclaim with none in force on its date rounds by the policy date as before.\n",
+    "prompt": "You are implementing ONE change to this application.\n\nFIRST read AGENTS.md \u2014 it states the working rules and how the app is tested, and sends you to\nDESIGN.md for the app's stack and conventions. Follow both.\n\nTHE CHANGE REQUEST:\nThe sheet gains a rounding mode (settings, dated like the floor; SETTING_CHANGED key=rounding\nvalue=<half-up or half-even>; anything else is refused with an error on the settings; blank means\nnone). A claim whose date has a rounding mode in force rounds every live figure by that mode; a\nclaim with none in force on its date rounds by the policy date as before.\n\nYour work is verified by an automated Playwright UI test already installed under e2e/specs/.\nRead that spec: it declares the exact data-testid anchors, values, test data and any audit\nrecords it expects \u2014 match them. Run `bin/e2e` to build the app, start it, and run the test as\nyou work; iterate until it passes. Change whatever the request needs across the app \u2014 its stored\ndata, its server and its front end. Do NOT edit bin/build, bin/start, bin/stop, bin/e2e,\nAGENTS.md, CLAUDE.md, DESIGN.md, e2e/support/ or the test spec.\n"
+  },
+  "commit_sha": "f6b4e12eda0004185a77db2a8a58d3caaae5255e",
+  "reset_sha": "",
+  "preagent_sha": "d366e43d8a69e4909812eb5ef05facff4b6a4eeb",
+  "prev_sha": "d366e43d8a69e4909812eb5ef05facff4b6a4eeb",
+  "base_sha": "65cb8233ea38b2dfa6cfd18709e30cd18fdf3250",
+  "agent": {
+    "ok": true,
+    "cost_usd": 1.4913880000000002,
+    "input_tokens": 58,
+    "output_tokens": 14907,
+    "cache_read_tokens": 2000040,
+    "cache_creation_tokens": 99126,
+    "num_turns": 30,
+    "duration_ms": 357139,
+    "duration_api_ms": 135982,
+    "model": "claude-opus-5-5",
+    "session_id": "2c91a167-1dd0-4032-a820-68db76f6407a",
+    "stop_reason": "success",
+    "result_text": "The sheet now has a dated rounding mode setting, and `bin/e2e` passes all 4 tests in the spec.\n\n**How it behaves**\n- In the settings you can enter `half-up` or `half-even` with an optional from-date, or leave it blank for \"none\". Anything else shows `settings-error` and nothing is saved. The mode in force on the sheet's today is shown in `setting-rounding-current`.\n- Each save writes `SETTING_CHANGED \u2026 key=rounding value=<half-up|half-even|blank> [from=<date>]` to the audit file. Like the floor, it also records the ROLLUP and TOTALS lines when the figures change.\n- If a claim's date has a rounding mode in force, its due and late charge round by that mode. If not, they round by the policy date as before. Settled claims and figures fixed by a statement keep the figures they already have.\n\n**Where the changes are**\n- **Stored data:** the setting goes in the existing `setting_value` table under the key `rounding`, so no migration was needed. That table only has a number column, so the mode is saved as a code: 1 for half-up, 2 for half-even, empty for none. The new `sheet/Rounding.java` converts between the code and the text. Because it uses the existing table, sheet cloning and the as-of history view pick up the setting with no extra work.\n- **Server:**\n  - `Dues.Basis` has a new `rounding(day)` method, and `Dues.rounding` checks it before falling back to the policy date.\n  - `Dues`, `History` and `RateService` (rate preview) all implement it.\n  - `SheetService` gains `rounding` and `setRounding`.\n  - `SettingsController` gains `PUT /settings/rounding`, and the settings response now includes `rounding` and `roundings`.\n- **Front end:**\n  - `core/claims.ts`: `roundsHalfUp` checks the rounding mode in force on the claim's date first.\n  - `people-list` and `person-claims` pass the recorded modes in.\n  - `settings-form` has the new field, its from-date, the check on the value and the \"in force\" display.\n\nThe test only covers rounding of the due itself. Rounding of late charges and of the as-of history view use the same code but no test checks them.",
+    "error": "",
+    "attempts": [
+      {
+        "ok": true,
+        "limit_reached": false,
+        "retryable": false,
+        "timed_out": false,
+        "cost_usd": 1.4913880000000002,
+        "num_turns": 30,
+        "duration_ms": 357139,
+        "duration_api_ms": 135982,
+        "error": ""
+      }
+    ]
+  },
+  "agent_stream_file": "cp151.agent.jsonl",
+  "agent_diff_file": "cp151.agent.diff",
+  "build_log_file": null,
+  "tests": {
+    "gated": false,
+    "queued": true
+  },
+  "probe": null,
+  "pinned_touched": [],
+  "acceptance_touched": [],
+  "impact_gate": null
+}
