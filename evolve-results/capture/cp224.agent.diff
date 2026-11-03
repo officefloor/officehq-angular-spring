@@ -1,0 +1,541 @@
+diff --git a/src/main/frontend/src/app/features/people/people-list.ts b/src/main/frontend/src/app/features/people/people-list.ts
+index 09fb5cac8..80fc0cf41 100644
+--- a/src/main/frontend/src/app/features/people/people-list.ts
++++ b/src/main/frontend/src/app/features/people/people-list.ts
+@@ -1921,15 +1921,19 @@ export class PeopleList {
+   /** Each person's due-total by id, as their row shows it; null when n/a. */
+   protected readonly dueByPerson = computed(() => new Map(this.people().map((p) => [p.id, this.dueOf(p)])));
+ 
++  /** A person's due-total: the sum of their figures, held to the sheet's cap less their cut total
++   *  (not below 0.00); null when n/a. */
+   protected dueOf(p: Person): string | null {
+     const sum = this.figuresOf(p);
+     const cap = this.cap();
+     if (sum === null || cap === null) return sum;
+-    return Number(sum) > Number(cap) ? cap : sum;
++    const room = sumAmounts([cap, '-' + (this.cutTotals().get(p.id) ?? '0.00')]);
++    const limit = Number(room) < 0 ? '0.00' : room;
++    return Number(sum) > Number(limit) ? limit : sum;
+   }
+ 
+-  /** A person's excess: how far the sum of their figures is above the sheet's cap; 0.00 when it is
+-   *  not, or when it is n/a. */
++  /** A person's excess: how far the sum of their figures is above the sheet's cap less their cut
++   *  total (not below 0.00); 0.00 when it is not, or when it is n/a. */
+   protected excessOf(p: Person): string {
+     const sum = this.figuresOf(p);
+     const due = this.dueOf(p);
+diff --git a/src/main/java/net/officefloor/hq/app/claim/Dues.java b/src/main/java/net/officefloor/hq/app/claim/Dues.java
+index d26ed66d2..5bc56ea5a 100644
+--- a/src/main/java/net/officefloor/hq/app/claim/Dues.java
++++ b/src/main/java/net/officefloor/hq/app/claim/Dues.java
+@@ -338,22 +338,22 @@ public class Dues {
+     }
+ 
+     /** A person's due-total: the sum of the figures of their claims that count, at most the sheet's
+-     *  cap in force on its today; null (n/a) when their grade on the sheet's today has no rate on it and no counting claim
++     *  cap in force on its today less their cut total (not below 0.00); null (n/a) when their grade on the sheet's today has no rate on it and no counting claim
+      *  has a figure (one fixed, or a live due at the grade in force on its date). */
+-    public BigDecimal dueTotal(String sheetId, Person person, List<Claim> theirs) {
+-        return dueTotal(now(sheetId), person, theirs);
++    public BigDecimal dueTotal(String sheetId, Person person, List<Claim> theirs, BigDecimal cut) {
++        return dueTotal(now(sheetId), person, theirs, cut);
+     }
+ 
+-    /** A person's due-total on a basis (see {@link #dueTotal(String, Person, List)}). */
+-    public BigDecimal dueTotal(Basis basis, Person person, List<Claim> theirs) {
+-        return dueTotal(basis, person, theirs, Set.of(), List.of());
++    /** A person's due-total on a basis, with their cut total (see {@link #dueTotal(String, Person, List, BigDecimal)}). */
++    public BigDecimal dueTotal(Basis basis, Person person, List<Claim> theirs, BigDecimal cut) {
++        return dueTotal(basis, person, theirs, Set.of(), List.of(), cut);
+     }
+ 
+     /** A person's due-total on a basis when claims are shared (see {@link #dueTotal(String, Person,
+-     *  List)}): each of their claims that counts figures less the parts of it held by the holders
++     *  List, BigDecimal)}): each of their claims that counts figures less the parts of it held by the holders
+      *  given (see {@link #parts}), and the parts they hold of others' claims count as figures too. */
+     public BigDecimal dueTotal(Basis basis, Person person, List<Claim> theirs, Set<Long> holders,
+-            List<BigDecimal> held) {
++            List<BigDecimal> held, BigDecimal cut) {
+         List<BigDecimal> figures = new ArrayList<>(theirs.stream().filter(c -> c.getStatus().counts())
+                 .map(c -> kept(c, figure(basis, person, c), holders)).filter(d -> d != null).toList());
+         figures.addAll(held);
+@@ -364,7 +364,7 @@ public class Dues {
+         }
+         BigDecimal sum = figures.stream().reduce(BigDecimal.ZERO.setScale(2), BigDecimal::add);
+         BigDecimal cap = basis.cap();
+-        return cap == null ? sum : sum.min(cap);
++        return cap == null ? sum : sum.min(cap.subtract(cut).max(BigDecimal.ZERO.setScale(2)));
+     }
+ 
+     /** A holder's part of a claim's due figure: the figure times their share divided by 100,
+diff --git a/src/main/java/net/officefloor/hq/app/crew/CrewService.java b/src/main/java/net/officefloor/hq/app/crew/CrewService.java
+index b79d3d699..bdedd43e7 100644
+--- a/src/main/java/net/officefloor/hq/app/crew/CrewService.java
++++ b/src/main/java/net/officefloor/hq/app/crew/CrewService.java
+@@ -7,9 +7,11 @@ import java.util.stream.Collectors;
+ import net.officefloor.hq.app.Audit;
+ import net.officefloor.hq.app.person.Person;
+ import net.officefloor.hq.app.person.PersonRepository;
++import net.officefloor.hq.app.rollup.Rollup;
+ import net.officefloor.hq.app.pool.Pool;
+ import net.officefloor.hq.app.pool.PoolRepository;
+ import net.officefloor.hq.app.sheet.SheetService;
++import org.springframework.context.annotation.Lazy;
+ import org.springframework.dao.DataIntegrityViolationException;
+ import org.springframework.http.HttpStatus;
+ import org.springframework.stereotype.Service;
+@@ -32,9 +34,12 @@ public class CrewService {
+     private final PoolRepository pools;
+     private final SheetService sheets;
+     private final Audit audit;
++    private final Rollup rollup;
+ 
+     public CrewService(CrewRepository crews, CrewMemberRepository members, PersonRepository people,
+-            PoolRepository pools, SheetService sheets, Audit audit) {
++            PoolRepository pools, SheetService sheets, Audit audit,
++            @Lazy Rollup rollup) {
++        this.rollup = rollup;
+         this.pools = pools;
+         this.crews = crews;
+         this.members = members;
+@@ -64,53 +69,57 @@ public class CrewService {
+      *  or a pool of the sheet, or the lead is not a person of it. Its pool is added with it. */
+     @Transactional
+     public synchronized Listed add(String sheetId, String user, String name, long leadId) {
+-        String text = name == null ? "" : name.trim();
+-        if (text.isEmpty()) {
+-            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Enter a crew name");
+-        }
+-        sheets.load(sheetId, user);
+-        Person lead = people.findByIdAndSheetId(leadId, sheetId)
+-                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "No such person"));
+-        if (crews.existsBySheetIdAndName(sheetId, text) || pools.existsBySheetIdAndName(sheetId, text)) {
+-            throw alreadyACrew();
+-        }
+-        Crew saved;
+-        try {
+-            saved = crews.saveAndFlush(new Crew(sheetId, text, lead.getId()));
+-            Pool pool = Pool.ofCrew(sheetId, text, saved.getId());
+-            pool.setAddedOn(sheets.today(sheetId));
+-            pools.saveAndFlush(pool);
+-        } catch (DataIntegrityViolationException e) {
+-            throw alreadyACrew();
+-        }
+-        audit.recordOnCommit("CREW_ADDED sheet=" + sheetId + " by=" + user + " name=" + text
+-                + " lead=" + lead.getName());
+-        return new Listed(saved, lead, List.of());
++        return rollup.tracking(sheetId, user, () -> {
++            String text = name == null ? "" : name.trim();
++            if (text.isEmpty()) {
++                throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Enter a crew name");
++            }
++            sheets.load(sheetId, user);
++            Person lead = people.findByIdAndSheetId(leadId, sheetId)
++                    .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "No such person"));
++            if (crews.existsBySheetIdAndName(sheetId, text) || pools.existsBySheetIdAndName(sheetId, text)) {
++                throw alreadyACrew();
++            }
++            Crew saved;
++            try {
++                saved = crews.saveAndFlush(new Crew(sheetId, text, lead.getId()));
++                Pool pool = Pool.ofCrew(sheetId, text, saved.getId());
++                pool.setAddedOn(sheets.today(sheetId));
++                pools.saveAndFlush(pool);
++            } catch (DataIntegrityViolationException e) {
++                throw alreadyACrew();
++            }
++            audit.recordOnCommit("CREW_ADDED sheet=" + sheetId + " by=" + user + " name=" + text
++                    + " lead=" + lead.getName());
++            return new Listed(saved, lead, List.of());
++        });
+     }
+ 
+     /** Add a person of the sheet to a crew; refused when they are its lead or already in it. */
+     @Transactional
+     public synchronized Listed addMember(String sheetId, String user, long crewId, long personId) {
+-        Crew crew = crews.findByIdAndSheetId(crewId, sheetId)
+-                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "No such crew"));
+-        Person person = people.findByIdAndSheetId(personId, sheetId)
+-                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "No such person"));
+-        if (crew.getLeadPersonId().equals(personId)) {
+-            throw new ResponseStatusException(HttpStatus.CONFLICT, "That person leads the crew");
+-        }
+-        if (members.existsByCrewIdAndPersonId(crewId, personId)) {
+-            throw alreadyAMember();
+-        }
+-        try {
+-            CrewMember m = new CrewMember(crewId, personId);
+-            m.setAddedOn(sheets.today(sheetId));
+-            members.saveAndFlush(m);
+-        } catch (DataIntegrityViolationException e) {
+-            throw alreadyAMember();
+-        }
+-        audit.recordOnCommit("CREW_MEMBER_ADDED sheet=" + sheetId + " by=" + user + " crew=" + crew.getName()
+-                + " name=" + person.getName());
+-        return list(sheetId).stream().filter(l -> l.crew().getId().equals(crewId)).findFirst().orElseThrow();
++        return rollup.tracking(sheetId, user, () -> {
++            Crew crew = crews.findByIdAndSheetId(crewId, sheetId)
++                    .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "No such crew"));
++            Person person = people.findByIdAndSheetId(personId, sheetId)
++                    .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "No such person"));
++            if (crew.getLeadPersonId().equals(personId)) {
++                throw new ResponseStatusException(HttpStatus.CONFLICT, "That person leads the crew");
++            }
++            if (members.existsByCrewIdAndPersonId(crewId, personId)) {
++                throw alreadyAMember();
++            }
++            try {
++                CrewMember m = new CrewMember(crewId, personId);
++                m.setAddedOn(sheets.today(sheetId));
++                members.saveAndFlush(m);
++            } catch (DataIntegrityViolationException e) {
++                throw alreadyAMember();
++            }
++            audit.recordOnCommit("CREW_MEMBER_ADDED sheet=" + sheetId + " by=" + user + " crew=" + crew.getName()
++                    + " name=" + person.getName());
++            return list(sheetId).stream().filter(l -> l.crew().getId().equals(crewId)).findFirst().orElseThrow();
++        });
+     }
+ 
+     private static ResponseStatusException alreadyACrew() {
+diff --git a/src/main/java/net/officefloor/hq/app/pool/PoolService.java b/src/main/java/net/officefloor/hq/app/pool/PoolService.java
+index a8ba0b655..45993e1c7 100644
+--- a/src/main/java/net/officefloor/hq/app/pool/PoolService.java
++++ b/src/main/java/net/officefloor/hq/app/pool/PoolService.java
+@@ -21,7 +21,9 @@ import net.officefloor.hq.app.period.Period;
+ import net.officefloor.hq.app.period.PeriodRepository;
+ import net.officefloor.hq.app.person.Person;
+ import net.officefloor.hq.app.person.PersonRepository;
++import net.officefloor.hq.app.rollup.Rollup;
+ import net.officefloor.hq.app.sheet.SheetService;
++import org.springframework.context.annotation.Lazy;
+ import org.springframework.dao.DataIntegrityViolationException;
+ import org.springframework.http.HttpStatus;
+ import org.springframework.stereotype.Service;
+@@ -131,10 +133,13 @@ public class PoolService {
+     private final History history;
+     private final PeriodRepository periods;
+     private final Audit audit;
++    private final Rollup rollup;
+ 
+     public PoolService(PoolRepository pools, PoolMemberRepository members, PersonRepository people,
+             CrewRepository crews, CrewMemberRepository crewMembers, SheetService sheets, History history,
+-            PeriodRepository periods, Audit audit) {
++            PeriodRepository periods, Audit audit,
++            @Lazy Rollup rollup) {
++        this.rollup = rollup;
+         this.history = history;
+         this.periods = periods;
+         this.crews = crews;
+@@ -251,6 +256,24 @@ public class PoolService {
+         return out;
+     }
+ 
++    /** Each person's cut total, by person id: their cuts across every pool and crew they are a
++     *  member of added up, as the pools stand now or at the end of a day (null: now); a person with
++     *  no cut has no entry. */
++    @Transactional(readOnly = true)
++    public Map<Long, BigDecimal> cutTotals(String sheetId, LocalDate asOf) {
++        Map<Long, BigDecimal> out = new HashMap<>();
++        for (Listed l : list(sheetId, asOf)) {
++            List<BigDecimal> cuts = l.cuts();
++            for (int i = 0; i < cuts.size(); i++) {
++                Long personId = l.members().get(i).member().getPersonId();
++                if (personId != null && cuts.get(i) != null) {
++                    out.merge(personId, cuts.get(i), BigDecimal::add);
++                }
++            }
++        }
++        return out;
++    }
++
+     /** The pool's cuts by the member's key; a member with no cut has no entry. */
+     private static Map<String, BigDecimal> cutsByMember(Listed l) {
+         List<BigDecimal> cuts = l.cuts();
+@@ -374,43 +397,45 @@ public class PoolService {
+     @Transactional
+     public synchronized Listed addPoolMember(String sheetId, String user, long poolId, long memberPoolId,
+             String share, LocalDate from, LocalDate to) {
+-        Pool pool = pools.findByIdAndSheetId(poolId, sheetId)
+-                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "No such pool"));
+-        Pool member = pools.findByIdAndSheetId(memberPoolId, sheetId)
+-                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "No such pool"));
+-        refuseCrew(pool);
+-        BigDecimal amount = share(share);
+-        checkDates(from, to);
+-        List<PoolMember> all = members.findByPoolIdInOrderByIdAsc(
+-                pools.findBySheetIdOrderByIdAsc(sheetId).stream().map(Pool::getId).toList());
+-        Map<Long, Long> above = all.stream().filter(m -> m.getMemberPoolId() != null)
+-                .collect(Collectors.toMap(PoolMember::getMemberPoolId, PoolMember::getPoolId, (a, b) -> a));
+-        if (above.containsKey(memberPoolId)) {
+-            throw new ResponseStatusException(HttpStatus.CONFLICT, "That pool is already a member of a pool");
+-        }
+-        // The pool and the pools above it: the member may be none of them.
+-        int levelsAbove = 0;
+-        for (Long p = poolId; p != null && levelsAbove <= all.size(); p = above.get(p)) {
+-            if (p == memberPoolId) {
+-                throw new ResponseStatusException(HttpStatus.CONFLICT, "A pool cannot contain itself");
++        return rollup.tracking(sheetId, user, () -> {
++            Pool pool = pools.findByIdAndSheetId(poolId, sheetId)
++                    .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "No such pool"));
++            Pool member = pools.findByIdAndSheetId(memberPoolId, sheetId)
++                    .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "No such pool"));
++            refuseCrew(pool);
++            BigDecimal amount = share(share);
++            checkDates(from, to);
++            List<PoolMember> all = members.findByPoolIdInOrderByIdAsc(
++                    pools.findBySheetIdOrderByIdAsc(sheetId).stream().map(Pool::getId).toList());
++            Map<Long, Long> above = all.stream().filter(m -> m.getMemberPoolId() != null)
++                    .collect(Collectors.toMap(PoolMember::getMemberPoolId, PoolMember::getPoolId, (a, b) -> a));
++            if (above.containsKey(memberPoolId)) {
++                throw new ResponseStatusException(HttpStatus.CONFLICT, "That pool is already a member of a pool");
+             }
+-            levelsAbove++;
+-        }
+-        if (levelsAbove + height(memberPoolId, all, 0) > MAX_DEPTH) {
+-            throw new ResponseStatusException(HttpStatus.CONFLICT,
+-                    "A chain of pools is at most " + MAX_DEPTH + " deep");
+-        }
+-        try {
+-            PoolMember m = PoolMember.ofPool(poolId, memberPoolId, amount);
+-            m.setDates(from, to);
+-            m.setAddedOn(sheets.today(sheetId));
+-            members.saveAndFlush(m);
+-        } catch (DataIntegrityViolationException e) {
+-            throw new ResponseStatusException(HttpStatus.CONFLICT, "That pool is already a member of a pool");
+-        }
+-        audit.recordOnCommit("POOL_MEMBER_ADDED sheet=" + sheetId + " by=" + user + " pool=" + pool.getName()
+-                + " name=" + member.getName() + " share=" + amount.toPlainString() + dates(from, to));
+-        return list(sheetId).stream().filter(l -> l.pool().getId().equals(poolId)).findFirst().orElseThrow();
++            // The pool and the pools above it: the member may be none of them.
++            int levelsAbove = 0;
++            for (Long p = poolId; p != null && levelsAbove <= all.size(); p = above.get(p)) {
++                if (p == memberPoolId) {
++                    throw new ResponseStatusException(HttpStatus.CONFLICT, "A pool cannot contain itself");
++                }
++                levelsAbove++;
++            }
++            if (levelsAbove + height(memberPoolId, all, 0) > MAX_DEPTH) {
++                throw new ResponseStatusException(HttpStatus.CONFLICT,
++                        "A chain of pools is at most " + MAX_DEPTH + " deep");
++            }
++            try {
++                PoolMember m = PoolMember.ofPool(poolId, memberPoolId, amount);
++                m.setDates(from, to);
++                m.setAddedOn(sheets.today(sheetId));
++                members.saveAndFlush(m);
++            } catch (DataIntegrityViolationException e) {
++                throw new ResponseStatusException(HttpStatus.CONFLICT, "That pool is already a member of a pool");
++            }
++            audit.recordOnCommit("POOL_MEMBER_ADDED sheet=" + sheetId + " by=" + user + " pool=" + pool.getName()
++                    + " name=" + member.getName() + " share=" + amount.toPlainString() + dates(from, to));
++            return list(sheetId).stream().filter(l -> l.pool().getId().equals(poolId)).findFirst().orElseThrow();
++        });
+     }
+ 
+     /** The levels of pools from the pool down, itself counting as one. */
+@@ -432,27 +457,29 @@ public class PoolService {
+     @Transactional
+     public synchronized Listed addMember(String sheetId, String user, long poolId, long personId, String share,
+             LocalDate from, LocalDate to) {
+-        Pool pool = pools.findByIdAndSheetId(poolId, sheetId)
+-                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "No such pool"));
+-        Person person = people.findByIdAndSheetId(personId, sheetId)
+-                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "No such person"));
+-        refuseCrew(pool);
+-        BigDecimal amount = share(share);
+-        checkDates(from, to);
+-        if (members.existsByPoolIdAndPersonId(poolId, personId)) {
+-            throw alreadyAMember();
+-        }
+-        try {
+-            PoolMember m = new PoolMember(poolId, personId, amount);
+-            m.setDates(from, to);
+-            m.setAddedOn(sheets.today(sheetId));
+-            members.saveAndFlush(m);
+-        } catch (DataIntegrityViolationException e) {
+-            throw alreadyAMember();
+-        }
+-        audit.recordOnCommit("POOL_MEMBER_ADDED sheet=" + sheetId + " by=" + user + " pool=" + pool.getName()
+-                + " name=" + person.getName() + " share=" + amount.toPlainString() + dates(from, to));
+-        return list(sheetId).stream().filter(l -> l.pool().getId().equals(poolId)).findFirst().orElseThrow();
++        return rollup.tracking(sheetId, user, () -> {
++            Pool pool = pools.findByIdAndSheetId(poolId, sheetId)
++                    .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "No such pool"));
++            Person person = people.findByIdAndSheetId(personId, sheetId)
++                    .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "No such person"));
++            refuseCrew(pool);
++            BigDecimal amount = share(share);
++            checkDates(from, to);
++            if (members.existsByPoolIdAndPersonId(poolId, personId)) {
++                throw alreadyAMember();
++            }
++            try {
++                PoolMember m = new PoolMember(poolId, personId, amount);
++                m.setDates(from, to);
++                m.setAddedOn(sheets.today(sheetId));
++                members.saveAndFlush(m);
++            } catch (DataIntegrityViolationException e) {
++                throw alreadyAMember();
++            }
++            audit.recordOnCommit("POOL_MEMBER_ADDED sheet=" + sheetId + " by=" + user + " pool=" + pool.getName()
++                    + " name=" + person.getName() + " share=" + amount.toPlainString() + dates(from, to));
++            return list(sheetId).stream().filter(l -> l.pool().getId().equals(poolId)).findFirst().orElseThrow();
++        });
+     }
+ 
+     /** Refused when the pool is a crew's: its members are the crew's people. */
+diff --git a/src/main/java/net/officefloor/hq/app/rollup/Rollup.java b/src/main/java/net/officefloor/hq/app/rollup/Rollup.java
+index 99838d8b8..0ec07c8da 100644
+--- a/src/main/java/net/officefloor/hq/app/rollup/Rollup.java
++++ b/src/main/java/net/officefloor/hq/app/rollup/Rollup.java
+@@ -22,8 +22,10 @@ import net.officefloor.hq.app.claim.Dues;
+ import net.officefloor.hq.app.history.History;
+ import net.officefloor.hq.app.person.Person;
+ import net.officefloor.hq.app.person.PersonRepository;
++import net.officefloor.hq.app.pool.PoolService;
+ import net.officefloor.hq.app.sheet.SheetRepository;
+ import net.officefloor.hq.app.sheet.SheetService;
++import org.springframework.context.annotation.Lazy;
+ import org.springframework.stereotype.Service;
+ import org.springframework.transaction.annotation.Propagation;
+ import org.springframework.transaction.annotation.Transactional;
+@@ -62,9 +64,11 @@ public class Rollup {
+     private final SheetRepository sheetStore;
+     private final History history;
+     private final Audit audit;
++    private final PoolService pools;
+ 
+     public Rollup(PersonRepository people, ClaimRepository claims, Dues dues, SheetService sheets,
+-            SheetRepository sheetStore, History history, Audit audit) {
++            SheetRepository sheetStore, History history, Audit audit, @Lazy PoolService pools) {
++        this.pools = pools;
+         this.people = people;
+         this.claims = claims;
+         this.dues = dues;
+@@ -180,6 +184,7 @@ public class Rollup {
+             Dues.Basis basis;
+             List<Person> sheetPeople;
+             List<Claim> sheetClaims;
++            Map<Long, BigDecimal> cuts = pools.cutTotals(id, asOf);
+             if (asOf == null) {
+                 basis = dues.now(id);
+                 sheetPeople = people.findBySheetIdOrderByPositionAscIdAsc(id);
+@@ -190,7 +195,7 @@ public class Rollup {
+                 sheetPeople = List.copyOf(then.people().values());
+                 sheetClaims = then.claims();
+             }
+-            Snapshot s = snapshot(basis, sheetPeople, sheetClaims);
++            Snapshot s = snapshot(basis, sheetPeople, sheetClaims, cuts);
+             count += s.people().size();
+             due = due.add(new BigDecimal(s.dueTotal()));
+             overdue = overdue.add(new BigDecimal(s.overdueTotal()));
+@@ -242,7 +247,8 @@ public class Rollup {
+         }
+         Dues.Basis basis = dues.now(otherId);
+         List<Person> sheetPeople = people.findBySheetIdOrderByPositionAscIdAsc(otherId);
+-        Snapshot s = snapshot(basis, sheetPeople, claims.findBySheetIdOrderByListedDesc(otherId));
++        Snapshot s = snapshot(basis, sheetPeople, claims.findBySheetIdOrderByListedDesc(otherId),
++                pools.cutTotals(otherId, null));
+         Map<String, BigDecimal> gradeDue = new LinkedHashMap<>();
+         addGradeDues(gradeDue, basis, sheetPeople, s);
+         Map<String, String> gradeDueTotals = new LinkedHashMap<>();
+@@ -281,16 +287,13 @@ public class Rollup {
+ 
+     private Snapshot snapshot(String sheetId) {
+         return snapshot(dues.now(sheetId), people.findBySheetIdOrderByPositionAscIdAsc(sheetId),
+-                claims.findBySheetIdOrderByListedDesc(sheetId));
++                claims.findBySheetIdOrderByListedDesc(sheetId), pools.cutTotals(sheetId, null));
+     }
+ 
+-    /** The figures of a sheet as it stood at the end of a day, that day as its today. */
+-    private Snapshot snapshot(History.SheetAsOf then) {
+-        return snapshot(then.basis(), List.copyOf(then.people().values()), then.claims());
+-    }
+-
+-    /** The figures of a sheet's people and claims, worked out on the basis. */
+-    private Snapshot snapshot(Dues.Basis basis, List<Person> sheetPeople, List<Claim> sheetClaims) {
++    /** The figures of a sheet's people and claims, worked out on the basis, each person's due-total
++     *  capped with their cut total (by person id; none is 0.00). */
++    private Snapshot snapshot(Dues.Basis basis, List<Person> sheetPeople, List<Claim> sheetClaims,
++            Map<Long, BigDecimal> cuts) {
+         Map<Long, List<Claim>> byPerson = sheetClaims.stream().collect(Collectors.groupingBy(Claim::getPersonId));
+         Map<Long, Figures> figures = new LinkedHashMap<>();
+         BigDecimal claimedTotal = BigDecimal.ZERO.setScale(2);
+@@ -314,7 +317,8 @@ public class Rollup {
+                     .filter(c -> c.getCorrects() == null && Dues.countsClaimed(person, c, today)).map(Claim::getAmount)
+                     .reduce(BigDecimal.ZERO.setScale(2), BigDecimal::add);
+             BigDecimal due = dues.dueTotal(basis, person, theirs, holders,
+-                    held.getOrDefault(person.getId(), List.of()));
++                    held.getOrDefault(person.getId(), List.of()),
++                    cuts.getOrDefault(person.getId(), BigDecimal.ZERO.setScale(2)));
+             BigDecimal overdue = theirs.stream().filter(c -> dues.overdue(basis, person, c))
+                     .map(c -> dues.figure(basis, person, c)).filter(Objects::nonNull)
+                     .reduce(BigDecimal.ZERO.setScale(2), BigDecimal::add);
+diff --git a/src/main/java/net/officefloor/hq/app/sheet/SheetService.java b/src/main/java/net/officefloor/hq/app/sheet/SheetService.java
+index e689d319f..3e5519ba2 100644
+--- a/src/main/java/net/officefloor/hq/app/sheet/SheetService.java
++++ b/src/main/java/net/officefloor/hq/app/sheet/SheetService.java
+@@ -502,16 +502,18 @@ public class SheetService {
+         return sheets.findById(id).map(Sheet::getPot).orElse(null);
+     }
+ 
+-    /** Change the sheet's pot (null: blank, none); recorded even when unchanged. */
++    /** Change the sheet's pot (null: blank, none); recorded even when unchanged, then the figures
++     *  it moves (the pools' cuts count against the cap). */
+     @Transactional
+     public synchronized Sheet setPot(String id, String user, BigDecimal pot) {
+         Sheet sheet = load(id, user);
+-        sheet.setPot(pot);
+-        Sheet saved = sheets.saveAndFlush(sheet);
+-        history.record(id);
+-        audit.recordOnCommit("SETTING_CHANGED sheet=" + id + " by=" + user + " key=pot value="
+-                + (pot == null ? "" : pot.setScale(2).toPlainString()));
+-        return saved;
++        return rollup.tracking(id, user, () -> {
++            sheet.setPot(pot);
++            Sheet saved = sheets.saveAndFlush(sheet);
++            audit.recordOnCommit("SETTING_CHANGED sheet=" + id + " by=" + user + " key=pot value="
++                    + (pot == null ? "" : pot.setScale(2).toPlainString()));
++            return saved;
++        });
+     }
+ 
+     /** The sheet's escalation gap in days; null when blank (off). */
+diff --git a/src/main/java/net/officefloor/hq/app/statement/StatementService.java b/src/main/java/net/officefloor/hq/app/statement/StatementService.java
+index c05165517..0341c3861 100644
+--- a/src/main/java/net/officefloor/hq/app/statement/StatementService.java
++++ b/src/main/java/net/officefloor/hq/app/statement/StatementService.java
+@@ -13,6 +13,7 @@ import net.officefloor.hq.app.history.History;
+ import net.officefloor.hq.app.rollup.Rollup;
+ import net.officefloor.hq.app.person.Person;
+ import net.officefloor.hq.app.person.PersonRepository;
++import net.officefloor.hq.app.pool.PoolService;
+ import net.officefloor.hq.app.role.RoleService;
+ import net.officefloor.hq.app.role.SheetRole;
+ import net.officefloor.hq.app.sheet.SheetService;
+@@ -39,9 +40,12 @@ public class StatementService {
+     private final RoleService roles;
+     private final History history;
+     private final Audit audit;
++    private final PoolService pools;
+ 
+     public StatementService(StatementRepository statements, PersonRepository people, ClaimRepository claims,
+-            Dues dues, SheetService sheets, Rollup rollup, RoleService roles, History history, Audit audit) {
++            Dues dues, SheetService sheets, Rollup rollup, RoleService roles, History history, Audit audit,
++            PoolService pools) {
++        this.pools = pools;
+         this.history = history;
+         this.statements = statements;
+         this.people = people;
+@@ -112,7 +116,8 @@ public class StatementService {
+             List<Claim> theirs = claims.findBySheetIdAndPersonIdOrderByListedDesc(sheetId, personId);
+             Dues.Basis basis = then == null ? dues.now(sheetId) : then.basis();
+             List<Claim> counted = Dues.live(was, then == null ? theirs : then.claimsOf(personId), basis.today());
+-            BigDecimal dueTotal = dues.dueTotal(basis, was, counted);
++            BigDecimal dueTotal = dues.dueTotal(basis, was, counted,
++                    pools.cutTotals(sheetId, asOf).getOrDefault(personId, BigDecimal.ZERO.setScale(2)));
+             Map<Long, Claim> countedById = counted.stream().collect(Collectors.toMap(Claim::getId, c -> c));
+             for (Claim claim : theirs) {
+                 Claim figured = countedById.get(claim.getId());
