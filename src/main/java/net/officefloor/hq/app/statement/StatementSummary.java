@@ -8,7 +8,7 @@ import java.util.List;
 /** What a person's statements come to: how many were taken (those carried to them with a merge or a
  *  transfer too), and the last one's due-total (null when
  *  it was n/a) and date (the day it was taken as of); both null when none was taken; and every one of
- *  them, oldest first by its date (those of a day in the order they were taken). */
+ *  them, newest first by its date (those of a day in the order they were taken). */
 public record StatementSummary(int count, BigDecimal lastDueTotal, LocalDate lastTakenOn, List<Line> lines) {
 
     public static final StatementSummary NONE = new StatementSummary(0, null, null, List.of());
@@ -24,7 +24,7 @@ public record StatementSummary(int count, BigDecimal lastDueTotal, LocalDate las
         }
         Statement last = last(statements);
         List<Line> lines = statements.stream()
-                .sorted(Comparator.comparing(Statement::getStatedOn))
+                .sorted(Comparator.comparing(Statement::getStatedOn).reversed())
                 .map(st -> new Line(st.getStatedOn(), st.getDueTotal()))
                 .toList();
         return new StatementSummary(statements.size(), last.getDueTotal(), last.getStatedOn(), lines);

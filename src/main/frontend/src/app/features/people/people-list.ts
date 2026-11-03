@@ -101,6 +101,9 @@ const NO_LEAVE: Leave = { holds: [], retiredFrom: null };
       <p>Cuts in total: <strong data-testid="rollup-cut-total">{{ cutTotal() | figure }}</strong></p>
       <p>Overdue claims: <strong data-testid="rollup-overdue-count">{{ overdueCount() }}</strong></p>
       <p>Overdue in total: <strong data-testid="rollup-overdue-total">{{ overdueTotal() | figure }}</strong></p>
+      <p>Due aged 0–30 days in total: <strong data-testid="rollup-aged-0-30">{{ agedTotals()[0] | figure }}</strong></p>
+      <p>Due aged 31–60 days in total: <strong data-testid="rollup-aged-31-60">{{ agedTotals()[1] | figure }}</strong></p>
+      <p>Due aged 61+ days in total: <strong data-testid="rollup-aged-61">{{ agedTotals()[2] | figure }}</strong></p>
       <dl aria-label="Consolidated with descendant sheets">
         <dt>People, consolidated</dt>
         <dd data-testid="consolidated-people-count">{{ consolidatedPeopleCount() }}</dd>
@@ -742,6 +745,12 @@ export class PeopleList {
   protected readonly overdueTotal = computed(() =>
     trimmedSum(this.people().map((p) => this.overdueTotalOf(p))),
   );
+  /** The sheet's due by age: everyone's age buckets (0 to 30, 31 to 60, 61 or more days) added up
+   *  (not trimmed). */
+  protected readonly agedTotals = computed((): [string, string, string] => {
+    const aged = this.people().map((p) => this.agedOf(p));
+    return [sumAmounts(aged.map((a) => a[0])), sumAmounts(aged.map((a) => a[1])), sumAmounts(aged.map((a) => a[2]))];
+  });
   /** The person on the sheet who has the signed-in user's name, by name or alias, as names are
    *  compared (case and surrounding spaces ignored); null when there is none. */
   private readonly me = computed(() => {

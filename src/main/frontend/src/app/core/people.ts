@@ -118,7 +118,7 @@ export interface Person {
   tags: string;
   /** Their snapshots, oldest first. */
   snapshots: Snapshot[];
-  /** Their statements that stand, oldest first by date (carried ones among them). */
+  /** Their statements that stand, newest first by date (carried ones among them). */
   statements: StatementLine[];
   /** The reason of their flag while it is in force on the sheet's today; null when none is. */
   flag: string | null;
