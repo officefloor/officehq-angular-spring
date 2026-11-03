@@ -8,6 +8,7 @@ import { Grade, Leave, People, Person, Taken, gradeOn } from '../../core/people'
 import { Period, Periods, periodOf } from '../../core/periods';
 import { Rate, Rates, pctOn, weightedSum } from '../../core/rates';
 import { Session } from '../../core/session';
+import { downloadCsv } from '../../core/csv';
 import { DatedValue, Graces, SheetSettings, graceOn, valueOn } from '../../core/settings';
 import { Watch, Watches } from '../../core/watches';
 import { Plan, Plans } from '../../core/plans';
@@ -913,6 +914,8 @@ export class PeopleList {
     this.patronError.set(null);
     try {
       const saved = await this.api.retire(p.id, from.trim() || null);
+      // a retired member gets no cut: read the pools again
+      await this.poolsApi.refresh();
       this.people.update((ps) => ps.map((x) => (x.id === saved.id ? saved : x)));
       if (this.editing() === saved.id) this.version = saved.version;
     } catch {
@@ -930,6 +933,8 @@ export class PeopleList {
     this.patronError.set(null);
     try {
       const saved = await this.api.unretire(p.id);
+      // a retired member gets no cut: read the pools again
+      await this.poolsApi.refresh();
       this.people.update((ps) => ps.map((x) => (x.id === saved.id ? saved : x)));
       if (this.editing() === saved.id) this.version = saved.version;
     } catch {
@@ -955,7 +960,7 @@ export class PeopleList {
       await this.api.merge(p.id, id);
       const sheetId = this.session.sheetId();
       if (this.editing() === p.id) this.reset();
-      this.poolsApi.refresh();
+      void this.poolsApi.refresh();
       if (sheetId) await this.reload(sheetId);
     } catch {
       this.personError.set({ id: p.id, message: 'The person could not be merged.' });
@@ -980,7 +985,7 @@ export class PeopleList {
       await this.api.transfer(p.id, to);
       const sheetId = this.session.sheetId();
       if (this.editing() === p.id) this.reset();
-      this.poolsApi.refresh();
+      void this.poolsApi.refresh();
       if (sheetId) await this.reload(sheetId);
     } catch {
       this.personError.set({ id: p.id, message: 'The person could not be transferred.' });
@@ -1182,6 +1187,8 @@ export class PeopleList {
     this.retiringAll = true;
     try {
       const result = await this.api.retireAll(ids, from.trim() || null);
+      // a retired member gets no cut: read the pools again
+      await this.poolsApi.refresh();
       const byId = new Map(result.people.map((p) => [p.id, p]));
       this.people.update((ps) => ps.map((p) => byId.get(p.id) ?? p));
       const editing = this.editing();
@@ -1511,20 +1518,4 @@ export class PeopleList {
 /** Tags as shown (comma and space separated), one by one. */
 function splitTags(tags: string): string[] {
   return tags === '' ? [] : tags.split(', ');
-}
-
-/** Downloads the lines as a CSV file of the name given, each line ended by a line feed. */
-function downloadCsv(lines: string[][], name: string): void {
-  const text = lines.map((l) => l.map(csvField).join(',') + '\n').join('');
-  const url = URL.createObjectURL(new Blob([text], { type: 'text/csv;charset=utf-8' }));
-  const a = document.createElement('a');
-  a.href = url;
-  a.download = name;
-  a.click();
-  setTimeout(() => URL.revokeObjectURL(url), 1000);
-}
-
-/** A CSV field: quoted, with quotes doubled, when it holds a comma, a quote or a line break. */
-function csvField(v: string): string {
-  return /[",\r\n]/.test(v) ? '"' + v.replace(/"/g, '""') + '"' : v;
 }

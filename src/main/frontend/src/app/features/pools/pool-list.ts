@@ -1,6 +1,7 @@
 import { HttpErrorResponse } from '@angular/common/http';
 import { Component, inject, input, signal } from '@angular/core';
 import { FormControl, FormGroup, ReactiveFormsModule } from '@angular/forms';
+import { downloadCsv } from '../../core/csv';
 import { Person } from '../../core/people';
 import { Pools } from '../../core/pools';
 import { PoolRow } from './pool-row';
@@ -21,6 +22,7 @@ import { PoolRow } from './pool-row';
           <p role="alert" data-testid="pool-form-error">{{ error() }}</p>
         }
       </form>
+      <button type="button" data-testid="export-pools" (click)="exportCsv()">Export pools (CSV)</button>
       <div role="list" data-testid="pools">
         @for (p of pools.list(); track p.id) {
           <app-pool-row [pool]="p" [people]="people()" />
@@ -42,6 +44,21 @@ export class PoolList {
 
   constructor() {
     this.form.valueChanges.subscribe(() => this.error.set(''));
+  }
+
+  /** Downloads the pools as CSV: pools in the order added and each pool's members in the order
+   *  added, a pool member as pool:<name>, with their share and their cut as shown (empty when none). */
+  protected exportCsv(): void {
+    const byId = new Map(this.people().map((p) => [p.id, p]));
+    const lines = [['pool', 'member', 'share', 'cut']].concat(
+      this.pools.list().flatMap((pool) => pool.members.map((m) => [
+        pool.name,
+        m.personId === null ? `pool:${m.name}` : (byId.get(m.personId)?.name ?? m.name),
+        m.share,
+        m.cut ?? '',
+      ])),
+    );
+    downloadCsv(lines, 'pools.csv');
   }
 
   protected async submit(): Promise<void> {

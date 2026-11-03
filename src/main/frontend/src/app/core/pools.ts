@@ -75,9 +75,9 @@ export class Pools {
   }
 
   /** Read the active sheet's pools again (the pot they cut has changed). */
-  refresh(): void {
+  async refresh(): Promise<void> {
     const sheetId = this.session.sheetId();
-    if (sheetId) void this.reload(sheetId);
+    if (sheetId) await this.reload(sheetId);
   }
 
   /** Add a pool; refused (400) when the name is blank and (409) when it is already a pool. */

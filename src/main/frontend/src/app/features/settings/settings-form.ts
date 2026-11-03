@@ -555,7 +555,7 @@ export class SettingsForm {
         this.pot.set(saved.pot);
         pot.markAsPristine();
         pot.markAsUntouched();
-        this.pools.refresh();
+        void this.pools.refresh();
       }
       if (saveParent) {
         const saved = await this.api.setParent(parentValue === '' ? null : parentValue);
