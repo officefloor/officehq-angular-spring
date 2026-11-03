@@ -19,6 +19,7 @@ import { PeriodForm } from '../periods/period-form';
 import { RateForm } from '../rates/rate-form';
 import { GradeSummary, PeriodSummary, StatusSummary, SummaryPanel, VoidReasonSummary } from '../summary/summary-panel';
 import { HeaderCounters } from '../summary/header-counters';
+import { StewardDashboard } from '../summary/steward-dashboard';
 import { ClassicPeriodSummary, ClassicSummaryPanel } from '../summary/classic-summary-panel';
 import { QuickAddBar } from './quick-add-bar';
 import { PasteClaimsBox } from './paste-claims-box';
@@ -50,11 +51,13 @@ const NO_LEAVE: Leave = { holds: [], retiredFrom: null };
 // The signed-in user may watch a person: they are told when a claim of theirs is settled.
 @Component({
   selector: 'app-people-list',
-  imports: [ReactiveFormsModule, PersonClaims, RateForm, PeriodForm, QuickAddBar, PasteClaimsBox, ImportPeopleBox, SummaryPanel, ClassicSummaryPanel, HeaderCounters, PoolList, CrewList, PersonPlans, PlanGenerateBox, TreeSearchBox, FigurePipe],
+  imports: [ReactiveFormsModule, PersonClaims, RateForm, PeriodForm, QuickAddBar, PasteClaimsBox, ImportPeopleBox, SummaryPanel, ClassicSummaryPanel, HeaderCounters, StewardDashboard, PoolList, CrewList, PersonPlans, PlanGenerateBox, TreeSearchBox, FigurePipe],
   template: `
     <app-header-counters [peopleCount]="people().length" [statuses]="statusSummary()"
       [dueTotal]="dueTotal()" [overdueTotal]="overdueTotal()"
       [myDueTotal]="myDueTotal()" [myOverdueTotal]="myOverdueTotal()" [myCrewDueTotal]="myCrewDueTotal()" />
+    <app-steward-dashboard [steward]="myRole() === 'steward'" [statuses]="statusSummary()"
+      [overdueCount]="overdueCount()" />
     <app-rate-form [rates]="rates()" (saved)="rateSaved($event)" (imported)="ratesImported()" />
     <app-period-form [periods]="periods()" [dueTotals]="periodDueTotals()" (saved)="periodSaved($event)" />
     <section aria-labelledby="people-heading">
@@ -741,6 +744,9 @@ export class PeopleList {
   });
   /** The figures of the sheet's descendants added up, as the store held them when it was loaded. */
   private readonly descendants = signal<DescendantFigures>(NO_DESCENDANTS);
+  /** The role the signed-in user acts in on the sheet (as of the as-of day when one is set); null
+   *  until read. */
+  protected readonly myRole = signal<string | null>(null);
   /** The people of the sheet and all its descendants: while an as-of date is set, each sheet as it
    *  stood at the end of that day. */
   protected readonly consolidatedPeopleCount = computed(() => this.people().length + this.descendants().peopleCount);
@@ -905,6 +911,7 @@ export class PeopleList {
       this.session.loads();
       this.people.set([]);
       this.claims.set([]);
+      this.myRole.set(null);
       this.storedTags.set([]);
       this.rates.set([]);
       this.periods.set([]);
@@ -1742,7 +1749,7 @@ export class PeopleList {
   private async reload(sheetId: string): Promise<void> {
     const read = ++this.reads;
     try {
-      const [people, claims, tags, rates, periods, settings, patrons, watches, lastBatch, descendants, plans] = await Promise.all([
+      const [people, claims, tags, rates, periods, settings, patrons, watches, lastBatch, descendants, plans, myRole] = await Promise.all([
         this.api.list(sheetId),
         this.claimsApi.list(sheetId),
         this.claimsApi.tags(sheetId),
@@ -1754,6 +1761,7 @@ export class PeopleList {
         this.claimsApi.lastSettleBatch(sheetId),
         this.descendantsApi.figures(sheetId),
         this.plansApi.list(sheetId),
+        this.settingsApi.myRole(sheetId),
       ]);
       if (read === this.reads) {
         this.rates.set(rates);
@@ -1772,6 +1780,7 @@ export class PeopleList {
         this.plans.set(plans);
         this.lastSettleBatch.set(lastBatch);
         this.descendants.set(descendants);
+        this.myRole.set(myRole);
         this.people.set(people);
       }
     } catch {

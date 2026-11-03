@@ -17,12 +17,15 @@ import org.springframework.web.server.ResponseStatusException;
 public class RoleService {
 
     private final SheetRoleRepository roles;
+    private final RoleRevisionRepository revisions;
     private final DelegationRepository delegations;
     private final SheetService sheets;
     private final Audit audit;
 
-    public RoleService(SheetRoleRepository roles, DelegationRepository delegations, SheetService sheets, Audit audit) {
+    public RoleService(SheetRoleRepository roles, RoleRevisionRepository revisions, DelegationRepository delegations,
+            SheetService sheets, Audit audit) {
         this.roles = roles;
+        this.revisions = revisions;
         this.delegations = delegations;
         this.sheets = sheets;
         this.audit = audit;
@@ -39,6 +42,20 @@ public class RoleService {
     @Transactional(readOnly = true)
     public String roleOf(String sheetId, String userName) {
         return delegatorOf(sheetId, userName).isPresent() ? SheetRole.STEWARD : givenRoleOf(sheetId, userName);
+    }
+
+    /** The role a user name acted in on the sheet at the end of a day: steward while a delegation to
+     *  it held the day, else the last role given to it on or before the day (clerk when none was). */
+    @Transactional(readOnly = true)
+    public String roleOn(String sheetId, String userName, LocalDate day) {
+        if (delegations.findFirstBySheetIdAndUserNameAndFromDateLessThanEqualAndToDateGreaterThanEqualOrderByIdDesc(
+                sheetId, userName, day, day).isPresent()) {
+            return SheetRole.STEWARD;
+        }
+        return revisions
+                .findFirstBySheetIdAndUserNameAndRecordedOnLessThanEqualOrderByRecordedOnDescIdDesc(sheetId, userName, day)
+                .map(RoleRevision::getRole)
+                .orElse(SheetRole.CLERK);
     }
 
     /** The role given to a user name on the sheet: clerk unless it was given another. */
@@ -99,6 +116,7 @@ public class RoleService {
                 .orElseGet(() -> new SheetRole(sheetId, userName, role));
         given.setRole(role);
         SheetRole saved = roles.saveAndFlush(given);
+        revisions.saveAndFlush(new RoleRevision(sheetId, userName, role, sheets.today(sheetId)));
         audit.recordOnCommit("ROLE_SET sheet=" + sheetId + " by=" + user + " user=" + userName + " role=" + role);
         return saved;
     }

@@ -189,6 +189,17 @@ export class SheetSettings {
     return firstValueFrom(this.http.get<Role[]>(`${this.url(sheetId)}/roles`));
   }
 
+  /** The role the signed-in user acts in on the sheet; while an as-of date is set, the role they had
+   *  at the end of that day. */
+  async myRole(sheetId: string): Promise<string> {
+    const user = this.session.user();
+    if (!user) throw new Error('not signed in');
+    const res = await firstValueFrom(
+      this.http.get<{ role: string }>(`${this.url(sheetId)}/roles/me`, { headers: { 'X-User': user } }),
+    );
+    return res.role;
+  }
+
   /** Record the clerk limit (null for no limit) from a date (null for the sheet's today). */
   setClerkLimit(value: string | null, from: string | null): Promise<Settings> {
     const [sheetId, headers] = this.active();

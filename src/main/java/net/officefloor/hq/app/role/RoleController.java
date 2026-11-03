@@ -5,7 +5,10 @@ import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.NotNull;
 import jakarta.validation.constraints.Pattern;
 import jakarta.validation.constraints.Size;
+import java.time.LocalDate;
 import java.util.List;
+import net.officefloor.hq.app.sheet.AsOfGuard;
+import org.springframework.format.annotation.DateTimeFormat;
 import org.springframework.validation.annotation.Validated;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
@@ -27,6 +30,10 @@ public class RoleController {
         }
     }
 
+    /** The role a user acts in on the sheet. */
+    public record MyRoleView(String role) {
+    }
+
     /** The role form: a role of clerk, steward or viewer. */
     public record RoleForm(@NotNull @Pattern(regexp = "\\s*(clerk|steward|viewer)\\s*") String role) {
     }
@@ -40,6 +47,18 @@ public class RoleController {
     @GetMapping
     public List<RoleView> list(@PathVariable @NotBlank @Size(max = 100) String sheetId) {
         return service.list(sheetId.trim()).stream().map(RoleView::of).toList();
+    }
+
+    /** The role the signed-in user acts in on the sheet now, or as they had it at the end of the
+     *  as-of day when one is given. */
+    @GetMapping("/me")
+    public MyRoleView mine(@PathVariable @NotBlank @Size(max = 100) String sheetId,
+            @RequestHeader("X-User") @NotBlank @Size(max = 100) String user,
+            @RequestHeader(value = AsOfGuard.HEADER, required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE)
+            LocalDate asOf) {
+        String sheet = sheetId.trim();
+        String name = user.trim();
+        return new MyRoleView(asOf == null ? service.roleOf(sheet, name) : service.roleOn(sheet, name, asOf));
     }
 
     @PutMapping("/{userName}")
