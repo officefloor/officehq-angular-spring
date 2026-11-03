@@ -1,0 +1,62 @@
+diff --git a/src/main/frontend/src/app/core/claims.ts b/src/main/frontend/src/app/core/claims.ts
+index 723ccbb23..83e31953b 100644
+--- a/src/main/frontend/src/app/core/claims.ts
++++ b/src/main/frontend/src/app/core/claims.ts
+@@ -34,10 +34,13 @@ export function counts(c: Claim): boolean {
+   return isOpen(c) || c.status === 'SETTLED';
+ }
+ 
+-/** Whether a claim is deferred on the sheet's today: it is OPEN and today is before the day it is
+- *  deferred until. Until then it counts in no total, is not overdue and cannot be settled. */
++/** Whether a claim is deferred on the sheet's today: it is OPEN (or SETTLED while a statement bound
++ *  it), no statement binds it now, and today is before the day it is deferred until. Until then it
++ *  counts in no total, is not overdue and cannot be settled. While a statement binds it, the
++ *  deferral waits until the binding ends. */
+ export function deferred(c: Claim, today: string | null): boolean {
+-  return c.status === 'OPEN' && c.deferredUntil !== null && today !== null && today < c.deferredUntil;
++  return (c.status === 'OPEN' || c.status === 'SETTLED') && !c.stated
++    && c.deferredUntil !== null && today !== null && today < c.deferredUntil;
+ }
+ 
+ /** Whether a claim counts in the live totals on the sheet's today: it counts, it is not deferred,
+diff --git a/src/main/frontend/src/app/features/claims/person-claims.ts b/src/main/frontend/src/app/features/claims/person-claims.ts
+index 277fa936a..142d23ee9 100644
+--- a/src/main/frontend/src/app/features/claims/person-claims.ts
++++ b/src/main/frontend/src/app/features/claims/person-claims.ts
+@@ -598,10 +598,10 @@ export class PersonClaims {
+   }
+ 
+   /** Whether the row shows the claim as deferred: open and deferred, or closed off (voided) while
+-   *  its deferral still runs. */
++   *  its deferral still runs; never while a statement binds it (the deferral waits for that). */
+   protected deferredOf(c: Claim): boolean {
+     const today = this.today();
+-    return deferred(c, today) || (c.deferredUntil !== null && today !== null && today < c.deferredUntil);
++    return deferred(c, today) || (!c.stated && c.deferredUntil !== null && today !== null && today < c.deferredUntil);
+   }
+ 
+   /** The name of the period the claim belongs to; empty when it belongs to none. */
+diff --git a/src/main/java/net/officefloor/hq/app/claim/Claim.java b/src/main/java/net/officefloor/hq/app/claim/Claim.java
+index 8d6d9cf3c..9e8ef359e 100644
+--- a/src/main/java/net/officefloor/hq/app/claim/Claim.java
++++ b/src/main/java/net/officefloor/hq/app/claim/Claim.java
+@@ -543,11 +543,15 @@ public class Claim {
+         this.proofDays.add(new Proof(on, kind));
+     }
+ 
+-    /** Whether the claim is deferred on the day: it is open and the day is before the one it is
+-     *  deferred until. A deferred claim counts in no total, is not overdue, cannot be settled and a
+-     *  statement leaves it unbound; from that day on it is an open claim like any other. */
++    /** Whether the claim is deferred on the day: it is open (or settled while a statement bound it),
++     *  no statement binds it now, and the day is before the one it is deferred until. A deferred
++     *  claim counts in no total, is not overdue, cannot be settled and a statement leaves it unbound;
++     *  from that day on it is a claim like any other. While a statement binds it, the deferral waits:
++     *  it takes effect only once the binding ends (the statement is cancelled, or the next one leaves
++     *  it unbound). */
+     public boolean isDeferredOn(LocalDate day) {
+-        return status == ClaimStatus.OPEN && deferredUntil != null && day.isBefore(deferredUntil);
++        return (status == ClaimStatus.OPEN || status == ClaimStatus.SETTLED) && !stated
++                && deferredUntil != null && day.isBefore(deferredUntil);
+     }
+ 
+     public LocalDate getDate() {
