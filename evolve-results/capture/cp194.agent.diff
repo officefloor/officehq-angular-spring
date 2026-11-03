@@ -1,0 +1,216 @@
+diff --git a/src/main/frontend/src/app/core/claims.ts b/src/main/frontend/src/app/core/claims.ts
+index 8797b619f..4f5a8ee87 100644
+--- a/src/main/frontend/src/app/core/claims.ts
++++ b/src/main/frontend/src/app/core/claims.ts
+@@ -427,10 +427,13 @@ export class Claims {
+ 
+   /** Ask for a change of the claim's status; refused (409) when its status does not allow it. A
+    *  reject carries its reason, and a void the reason chosen from the sheet's list (refused, 400,
+-   *  without one while the list is not empty). */
++   *  without one while the list is not empty). A settle carries the day it is settled as of (blank:
++   *  the sheet's today), refused (400) when after the sheet's today or the claim did not exist then. */
+   act(id: number, action: ClaimAction, reason?: string): Promise<Claim> {
+     const { sheetId, user } = this.active();
+-    const body = action === 'reject' ? { reason: reason ?? '' } : action === 'void' ? { reason: reason || null } : null;
++    const body = action === 'reject' ? { reason: reason ?? '' }
++      : action === 'void' ? { reason: reason || null }
++      : action === 'settle' ? { on: reason || null } : null;
+     return firstValueFrom(
+       this.http.post<Claim>(`${this.url(sheetId)}/claims/${id}/${action}`, body, { headers: { 'X-User': user } }),
+     );
+diff --git a/src/main/frontend/src/app/core/people.ts b/src/main/frontend/src/app/core/people.ts
+index ea07efc51..c7a2d65e7 100644
+--- a/src/main/frontend/src/app/core/people.ts
++++ b/src/main/frontend/src/app/core/people.ts
+@@ -118,7 +118,7 @@ export interface Person {
+   tags: string;
+   /** Their snapshots, oldest first. */
+   snapshots: Snapshot[];
+-  /** Their statements that stand, newest first by date (carried ones among them). */
++  /** Their statements that stand, oldest first by date (carried ones among them). */
+   statements: StatementLine[];
+   /** The reason of their flag while it is in force on the sheet's today; null when none is. */
+   flag: string | null;
+diff --git a/src/main/frontend/src/app/features/claims/person-claims.ts b/src/main/frontend/src/app/features/claims/person-claims.ts
+index 0ba48e1cd..b8262768a 100644
+--- a/src/main/frontend/src/app/features/claims/person-claims.ts
++++ b/src/main/frontend/src/app/features/claims/person-claims.ts
+@@ -54,6 +54,9 @@ function refusal(e: unknown, action: ClaimAction): string {
+   if (e instanceof HttpErrorResponse && e.status === 422 && action === 'open') {
+     return 'A claim whose due is above the note threshold needs a note before it is opened.';
+   }
++  if (e instanceof HttpErrorResponse && e.status === 400 && action === 'settle') {
++    return 'Enter a date on or before the sheet\'s today on which the claim already existed.';
++  }
+   if (e instanceof HttpErrorResponse && e.status === 403 && action === 'settle') {
+     return 'The user who opened or last edited a claim cannot settle it.';
+   }
+@@ -308,7 +311,10 @@ function settlePartRefusal(e: unknown): string {
+             [attr.aria-label]="'Comment on claim of ' + c.amount + ' on ' + c.date">Add comment</button>
+           <button type="button" data-testid="claim-open" (click)="act(c, 'open')"
+             [attr.aria-label]="'Open claim of ' + c.amount + ' on ' + c.date">Open</button>
+-          <button type="button" data-testid="claim-settle" (click)="act(c, 'settle')"
++          <label [for]="'claim-settle-date-' + c.id">Settle as of</label>
++          <input [id]="'claim-settle-date-' + c.id" type="date" data-testid="claim-settle-date" #settleDate
++            (input)="clearError(c)" />
++          <button type="button" data-testid="claim-settle" (click)="act(c, 'settle', settleDate.value)"
+             [attr.aria-label]="'Settle claim of ' + c.amount + ' on ' + c.date">Settle</button>
+           <button type="button" data-testid="claim-resettle" (click)="act(c, 'resettle')"
+             [attr.aria-label]="'Re-settle claim of ' + c.amount + ' on ' + c.date">Re-settle</button>
+diff --git a/src/main/java/net/officefloor/hq/app/claim/ClaimController.java b/src/main/java/net/officefloor/hq/app/claim/ClaimController.java
+index f348e3c54..4525add65 100644
+--- a/src/main/java/net/officefloor/hq/app/claim/ClaimController.java
++++ b/src/main/java/net/officefloor/hq/app/claim/ClaimController.java
+@@ -351,11 +351,16 @@ public class ClaimController {
+         return ClaimView.of(service.restore(sheetId.trim(), user.trim(), claimId));
+     }
+ 
++    /** The settle form: the day the claim is settled as of (absent: the sheet's today). */
++    public record SettleForm(LocalDate on) {
++    }
++
+     @PostMapping("/claims/{claimId}/settle")
+     public ClaimView settle(@PathVariable @NotBlank @Size(max = 100) String sheetId,
+             @PathVariable long claimId,
+-            @RequestHeader("X-User") @NotBlank @Size(max = 100) String user) {
+-        return ClaimView.of(service.changeStatus(sheetId.trim(), user.trim(), claimId, ClaimStatus.SETTLED));
++            @RequestHeader("X-User") @NotBlank @Size(max = 100) String user,
++            @RequestBody(required = false) SettleForm form) {
++        return ClaimView.of(service.settle(sheetId.trim(), user.trim(), claimId, form == null ? null : form.on()));
+     }
+ 
+     @ViewerAllowed
+diff --git a/src/main/java/net/officefloor/hq/app/claim/ClaimService.java b/src/main/java/net/officefloor/hq/app/claim/ClaimService.java
+index 809b4a668..f9d3f688a 100644
+--- a/src/main/java/net/officefloor/hq/app/claim/ClaimService.java
++++ b/src/main/java/net/officefloor/hq/app/claim/ClaimService.java
+@@ -5,6 +5,7 @@ import java.time.LocalDate;
+ import java.util.List;
+ import java.util.Optional;
+ import net.officefloor.hq.app.Audit;
++import net.officefloor.hq.app.history.History;
+ import net.officefloor.hq.app.holiday.HolidayService;
+ import net.officefloor.hq.app.period.PeriodRepository;
+ import net.officefloor.hq.app.person.Person;
+@@ -36,13 +37,15 @@ public class ClaimService {
+     private final SheetTagRepository sheetTags;
+     private final VoidReasonService voidReasons;
+     private final Audit audit;
++    private final History history;
+ 
+     /** How many days after its settlement a steward may still void a settled claim. */
+     static final int VOID_SETTLED_DAYS = 7;
+ 
+     public ClaimService(ClaimRepository claims, PersonRepository people, Dues dues, SheetService sheets,
+             Rollup rollup, PeriodRepository periods, RoleService roles, WatchService watches,
+-            HolidayService holidays, SheetTagRepository sheetTags, VoidReasonService voidReasons, Audit audit) {
++            HolidayService holidays, SheetTagRepository sheetTags, VoidReasonService voidReasons, Audit audit,
++            History history) {
+         this.claims = claims;
+         this.people = people;
+         this.dues = dues;
+@@ -55,6 +58,7 @@ public class ClaimService {
+         this.sheetTags = sheetTags;
+         this.voidReasons = voidReasons;
+         this.audit = audit;
++        this.history = history;
+     }
+ 
+     /** The claims on the sheet, newest first. */
+@@ -212,6 +216,15 @@ public class ClaimService {
+         return changeStatus(sheetId, user, claimId, to, null);
+     }
+ 
++    /** Settle a claim as {@link #changeStatus} does, as of a day (null: the sheet's today) on or
++     *  before the sheet's today: the due it fixes is the claim's due as it stood at the end of that
++     *  day (see {@link History}), that day for its today. Refused (400) when the day is after the
++     *  sheet's today, or when the claim (or its person) was not on the sheet yet then. */
++    @Transactional
++    public Claim settle(String sheetId, String user, long claimId, LocalDate on) {
++        return changeStatus(sheetId, user, claimId, ClaimStatus.SETTLED, null, true, on);
++    }
++
+     /** Number the claims a bulk settle settled (or left pending) as the sheet's next settle batch;
+      *  nothing when it settled none (0). Returns the batch's number. */
+     @Transactional
+@@ -243,7 +256,14 @@ public class ClaimService {
+      *  only when asked (a part-settle judges them on the claim it split off). */
+     private Claim changeStatus(String sheetId, String user, long claimId, ClaimStatus to, String reason,
+             boolean judgeSettle) {
++        return changeStatus(sheetId, user, claimId, to, reason, judgeSettle, null);
++    }
++
++    /** Change a claim's status; a settle fixes the due as of a day when one is given (null: now). */
++    private Claim changeStatus(String sheetId, String user, long claimId, ClaimStatus to, String reason,
++            boolean judgeSettle, LocalDate on) {
+         Claim claim = lock(sheetId, claimId);
++        BigDecimal dueThen = on == null ? null : dueAsOf(sheetId, claim, on);
+         refuseClosed(sheetId, claim.getDueBy());
+         String voidReason = to == ClaimStatus.VOID ? voidReasons.required(sheetId, reason) : null;
+         if (to == ClaimStatus.VOID && claim.getStatus() == ClaimStatus.SETTLED) {
+@@ -283,7 +303,7 @@ public class ClaimService {
+                 // Settling fixes the due at what it is now, while the claim is still open (the figure a
+                 // statement bound it to, if any, and its late charge); later changes to rates, the
+                 // late percent and the sheet's today do not alter it.
+-                claim.setSettledDue(dues.figure(sheetId, person, claim));
++                claim.setSettledDue(dueThen != null ? dueThen : dues.figure(sheetId, person, claim));
+             }
+             // A void claim keeps the number it had (never reused).
+             claim.setStatus(becomes);
+@@ -309,6 +329,9 @@ public class ClaimService {
+             String line = record(event, sheetId, user, person, saved);
+             if (becomes == ClaimStatus.SETTLED) {
+                 line += " due=" + dueText(saved.getSettledDue());
++                if (on != null) {
++                    line += " on=" + on;
++                }
+             }
+             line += reasonText(voidReason);
+             audit.recordOnCommit(line);
+@@ -319,6 +342,24 @@ public class ClaimService {
+         });
+     }
+ 
++    /** A claim's due as it stood at the end of a day on or before the sheet's today, worked out as
++     *  the sheet as of that day works it out. Refused (400) when the day is after the sheet's today,
++     *  or when the claim or its person was not on the sheet yet then. */
++    private BigDecimal dueAsOf(String sheetId, Claim claim, LocalDate on) {
++        if (on.isAfter(sheets.today(sheetId))) {
++            throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
++                    "A claim cannot be settled as of a day after the sheet's today");
++        }
++        History.SheetAsOf then = history.asOf(sheetId, on);
++        Claim claimThen = then.claims().stream().filter(c -> claim.getId().equals(c.getId())).findFirst()
++                .orElseThrow(() -> new ResponseStatusException(HttpStatus.BAD_REQUEST,
++                        "The claim was not on the sheet yet on that day"));
++        Person personThen = then.person(claimThen.getPersonId())
++                .orElseThrow(() -> new ResponseStatusException(HttpStatus.BAD_REQUEST,
++                        "The claim's person was not on the sheet yet on that day"));
++        return dues.figure(then.basis(), personThen, claimThen);
++    }
++
+     /** Review a claim in review: it becomes open, taking its number then, and keeps who opened it.
+      *  Refused unless the claim is in review (409), the user is a steward (403), its period is open,
+      *  and its person is under its period's cap of open claims. */
+diff --git a/src/main/java/net/officefloor/hq/app/statement/StatementSummary.java b/src/main/java/net/officefloor/hq/app/statement/StatementSummary.java
+index 9bfbb7a90..57f4fb2c1 100644
+--- a/src/main/java/net/officefloor/hq/app/statement/StatementSummary.java
++++ b/src/main/java/net/officefloor/hq/app/statement/StatementSummary.java
+@@ -8,7 +8,7 @@ import java.util.List;
+ /** What a person's statements come to: how many were taken (those carried to them with a merge or a
+  *  transfer too), and the last one's due-total (null when
+  *  it was n/a) and date (the day it was taken as of); both null when none was taken; and every one of
+- *  them, newest first by its date (those of a day in the order they were taken). */
++ *  them, oldest first by its date (those of a day in the order they were taken). */
+ public record StatementSummary(int count, BigDecimal lastDueTotal, LocalDate lastTakenOn, List<Line> lines) {
+ 
+     public static final StatementSummary NONE = new StatementSummary(0, null, null, List.of());
+@@ -24,7 +24,7 @@ public record StatementSummary(int count, BigDecimal lastDueTotal, LocalDate las
+         }
+         Statement last = last(statements);
+         List<Line> lines = statements.stream()
+-                .sorted(Comparator.comparing(Statement::getStatedOn).reversed())
++                .sorted(Comparator.comparing(Statement::getStatedOn))
+                 .map(st -> new Line(st.getStatedOn(), st.getDueTotal()))
+                 .toList();
+         return new StatementSummary(statements.size(), last.getDueTotal(), last.getStatedOn(), lines);
