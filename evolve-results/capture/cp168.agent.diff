@@ -1,0 +1,525 @@
+diff --git a/src/main/frontend/src/app/core/crews.ts b/src/main/frontend/src/app/core/crews.ts
+index 544f4c97e..5e4aeff78 100644
+--- a/src/main/frontend/src/app/core/crews.ts
++++ b/src/main/frontend/src/app/core/crews.ts
+@@ -1,6 +1,7 @@
+ import { HttpClient } from '@angular/common/http';
+ import { Injectable, effect, inject, signal } from '@angular/core';
+ import { firstValueFrom } from 'rxjs';
++import { Pools } from './pools';
+ import { Session } from './session';
+ import { sumAmounts } from './claims';
+ 
+@@ -30,6 +31,7 @@ export function crewDueTotal(crew: Crew, dues: Map<number, string | null>): stri
+ export class Crews {
+   private readonly http = inject(HttpClient);
+   private readonly session = inject(Session);
++  private readonly pools = inject(Pools);
+ 
+   /** The sheet's crews in the order they were added. */
+   readonly list = signal<Crew[]>([]);
+@@ -52,6 +54,8 @@ export class Crews {
+       this.http.post<Crew>(this.url(sheetId), { name, leadId }, { headers: { 'X-User': user } }),
+     );
+     this.keep(saved);
++    // the crew is also a pool: read the pools again
++    await this.pools.refresh();
+   }
+ 
+   /** Add a person to a crew; refused (409) when they lead it or are already in it. */
+@@ -61,6 +65,8 @@ export class Crews {
+       this.http.post<Crew>(`${this.url(sheetId)}/${crewId}/members`, { personId }, { headers: { 'X-User': user } }),
+     );
+     this.keep(saved);
++    // the crew's pool has one more member: read the pools again
++    await this.pools.refresh();
+   }
+ 
+   private keep(saved: Crew): void {
+diff --git a/src/main/frontend/src/app/core/pools.ts b/src/main/frontend/src/app/core/pools.ts
+index 408299801..724075d4c 100644
+--- a/src/main/frontend/src/app/core/pools.ts
++++ b/src/main/frontend/src/app/core/pools.ts
+@@ -28,13 +28,16 @@ export interface PoolMember {
+ }
+ 
+ /** A pool on the sheet: its members in the order they were added, their shares' total and whether
+- *  it is exactly 100.00. */
++ *  it is exactly 100.00. A crew is also a pool: its members are then the crew's lead and members at
++ *  equal shares, and none can be added to it here. */
+ export interface Pool {
+   id: number;
+   name: string;
+   members: PoolMember[];
+   totalShare: string;
+   balanced: boolean;
++  /** Whether the pool is a crew's. */
++  crew: boolean;
+ }
+ 
+ /** A share as entered: a number with at most two decimals. */
+@@ -61,7 +64,7 @@ export class Pools {
+   private readonly http = inject(HttpClient);
+   private readonly session = inject(Session);
+ 
+-  /** The sheet's pools in the order they were added. */
++  /** The sheet's pools in the order they were added, then the crews' pools. */
+   readonly list = signal<Pool[]>([]);
+   private reads = 0;
+ 
+diff --git a/src/main/frontend/src/app/features/crews/crew-list.ts b/src/main/frontend/src/app/features/crews/crew-list.ts
+index 27d8b5fac..5fc6ecfd8 100644
+--- a/src/main/frontend/src/app/features/crews/crew-list.ts
++++ b/src/main/frontend/src/app/features/crews/crew-list.ts
+@@ -3,6 +3,7 @@ import { Component, inject, input, signal } from '@angular/core';
+ import { FormControl, FormGroup, ReactiveFormsModule } from '@angular/forms';
+ import { Crews } from '../../core/crews';
+ import { Person } from '../../core/people';
++import { Pools } from '../../core/pools';
+ import { CrewRow } from './crew-row';
+ 
+ // The sheet's crews, each with its lead, members and due-total, and the form a crew is added with.
+@@ -42,6 +43,7 @@ export class CrewList {
+   readonly dues = input.required<Map<number, string | null>>();
+ 
+   protected readonly crews = inject(Crews);
++  private readonly pools = inject(Pools);
+   protected readonly error = signal('');
+   protected readonly form = new FormGroup({
+     name: new FormControl('', { nonNullable: true }),
+@@ -66,6 +68,10 @@ export class CrewList {
+       this.error.set('That name is already a crew.');
+       return;
+     }
++    if (this.pools.list().some((p) => p.name === name)) {
++      this.error.set('That name is already a pool.');
++      return;
++    }
+     const lead = Number(leadId);
+     if (leadId === '' || !this.people().some((p) => p.id === lead)) {
+       this.error.set('Choose the lead.');
+@@ -78,7 +84,7 @@ export class CrewList {
+     } catch (e) {
+       this.error.set(
+         e instanceof HttpErrorResponse && e.status === 409
+-          ? 'That name is already a crew, or the sheet may not be changed.'
++          ? 'That name is already a crew or a pool, or the sheet may not be changed.'
+           : e instanceof HttpErrorResponse && e.status === 403
+             ? 'A viewer may not add a crew.'
+             : 'The crew could not be added.',
+diff --git a/src/main/frontend/src/app/features/pools/pool-list.ts b/src/main/frontend/src/app/features/pools/pool-list.ts
+index cc60ae9a7..f2bcc0fa6 100644
+--- a/src/main/frontend/src/app/features/pools/pool-list.ts
++++ b/src/main/frontend/src/app/features/pools/pool-list.ts
+@@ -70,7 +70,8 @@ export class PoolList {
+       return;
+     }
+     if (this.pools.list().some((p) => p.name === name)) {
+-      this.error.set('That name is already a pool.');
++      this.error.set(this.pools.list().some((p) => p.name === name && p.crew)
++        ? 'That name is already a crew.' : 'That name is already a pool.');
+       return;
+     }
+     this.submitting = true;
+@@ -80,7 +81,7 @@ export class PoolList {
+     } catch (e) {
+       this.error.set(
+         e instanceof HttpErrorResponse && e.status === 409
+-          ? 'That name is already a pool, or the sheet may not be changed.'
++          ? 'That name is already a pool or a crew, or the sheet may not be changed.'
+           : e instanceof HttpErrorResponse && e.status === 403
+             ? 'A viewer may not add a pool.'
+             : 'The pool could not be added.',
+diff --git a/src/main/frontend/src/app/features/pools/pool-row.ts b/src/main/frontend/src/app/features/pools/pool-row.ts
+index 2b639693d..0602ab56b 100644
+--- a/src/main/frontend/src/app/features/pools/pool-row.ts
++++ b/src/main/frontend/src/app/features/pools/pool-row.ts
+@@ -32,6 +32,9 @@ import { FigurePipe } from '../../core/figure';
+         </li>
+       }
+     </ul>
++    @if (pool().crew) {
++      <p>A crew: its members are the crew's lead and members, at equal shares.</p>
++    } @else {
+     <form [formGroup]="form" (ngSubmit)="submit()">
+       <label [for]="'pool-member-select-' + pool().id">Member</label>
+       <select [id]="'pool-member-select-' + pool().id" data-testid="pool-member-select" formControlName="personId">
+@@ -55,6 +58,7 @@ import { FigurePipe } from '../../core/figure';
+         <p role="alert" data-testid="pool-error">{{ error() }}</p>
+       }
+     </form>
++    }
+   `,
+ })
+ export class PoolRow {
+diff --git a/src/main/java/net/officefloor/hq/app/clone/SheetCloneService.java b/src/main/java/net/officefloor/hq/app/clone/SheetCloneService.java
+index a02f02896..ec5ca87f4 100644
+--- a/src/main/java/net/officefloor/hq/app/clone/SheetCloneService.java
++++ b/src/main/java/net/officefloor/hq/app/clone/SheetCloneService.java
+@@ -174,13 +174,17 @@ public class SheetCloneService {
+     }
+ 
+     private void copyPools(String sheetId, String toSheetId, Map<Long, Long> personIds) {
+-        List<Pool> theirs = pools.findBySheetIdOrderByIdAsc(sheetId);
++        // a crew's pool is not copied: the crews are not
++        List<Pool> theirs = pools.findBySheetIdOrderByIdAsc(sheetId).stream().filter(p -> !p.isCrew()).toList();
+         if (theirs.isEmpty()) {
+             return;
+         }
+         Map<Long, Long> poolIds = new HashMap<>();
+         theirs.forEach(p -> poolIds.put(p.getId(), pools.saveAndFlush(new Pool(toSheetId, p.getName())).getId()));
+         for (PoolMember m : members.findByPoolIdInOrderByIdAsc(poolIds.keySet())) {
++            if (m.getMemberPoolId() != null && !poolIds.containsKey(m.getMemberPoolId())) {
++                continue;
++            }
+             Long poolId = poolIds.get(m.getPoolId());
+             PoolMember copy = m.getMemberPoolId() != null
+                     ? PoolMember.ofPool(poolId, poolIds.get(m.getMemberPoolId()), m.getShare())
+diff --git a/src/main/java/net/officefloor/hq/app/crew/CrewService.java b/src/main/java/net/officefloor/hq/app/crew/CrewService.java
+index 9715c61ff..dead700bf 100644
+--- a/src/main/java/net/officefloor/hq/app/crew/CrewService.java
++++ b/src/main/java/net/officefloor/hq/app/crew/CrewService.java
+@@ -7,6 +7,8 @@ import java.util.stream.Collectors;
+ import net.officefloor.hq.app.Audit;
+ import net.officefloor.hq.app.person.Person;
+ import net.officefloor.hq.app.person.PersonRepository;
++import net.officefloor.hq.app.pool.Pool;
++import net.officefloor.hq.app.pool.PoolRepository;
+ import net.officefloor.hq.app.sheet.SheetService;
+ import org.springframework.dao.DataIntegrityViolationException;
+ import org.springframework.http.HttpStatus;
+@@ -14,7 +16,8 @@ import org.springframework.stereotype.Service;
+ import org.springframework.transaction.annotation.Transactional;
+ import org.springframework.web.server.ResponseStatusException;
+ 
+-/** The crews of a sheet: each with a lead and its members. */
++/** The crews of a sheet: each with a lead and its members. Each crew is also a pool of the sheet under
++ *  its name, its lead and members the pool's members. */
+ @Service
+ public class CrewService {
+ 
+@@ -26,11 +29,13 @@ public class CrewService {
+     private final CrewRepository crews;
+     private final CrewMemberRepository members;
+     private final PersonRepository people;
++    private final PoolRepository pools;
+     private final SheetService sheets;
+     private final Audit audit;
+ 
+     public CrewService(CrewRepository crews, CrewMemberRepository members, PersonRepository people,
+-            SheetService sheets, Audit audit) {
++            PoolRepository pools, SheetService sheets, Audit audit) {
++        this.pools = pools;
+         this.crews = crews;
+         this.members = members;
+         this.people = people;
+@@ -56,7 +61,7 @@ public class CrewService {
+     }
+ 
+     /** Add a crew with a (trimmed) name and a lead; refused when the name is blank or already a crew
+-     *  of the sheet, or the lead is not a person of it. */
++     *  or a pool of the sheet, or the lead is not a person of it. Its pool is added with it. */
+     @Transactional
+     public synchronized Listed add(String sheetId, String user, String name, long leadId) {
+         String text = name == null ? "" : name.trim();
+@@ -66,12 +71,13 @@ public class CrewService {
+         sheets.load(sheetId, user);
+         Person lead = people.findByIdAndSheetId(leadId, sheetId)
+                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "No such person"));
+-        if (crews.existsBySheetIdAndName(sheetId, text)) {
++        if (crews.existsBySheetIdAndName(sheetId, text) || pools.existsBySheetIdAndName(sheetId, text)) {
+             throw alreadyACrew();
+         }
+         Crew saved;
+         try {
+             saved = crews.saveAndFlush(new Crew(sheetId, text, lead.getId()));
++            pools.saveAndFlush(Pool.ofCrew(sheetId, text, saved.getId()));
+         } catch (DataIntegrityViolationException e) {
+             throw alreadyACrew();
+         }
+@@ -104,7 +110,7 @@ public class CrewService {
+     }
+ 
+     private static ResponseStatusException alreadyACrew() {
+-        return new ResponseStatusException(HttpStatus.CONFLICT, "That name is already a crew");
++        return new ResponseStatusException(HttpStatus.CONFLICT, "That name is already a crew or a pool");
+     }
+ 
+     private static ResponseStatusException alreadyAMember() {
+diff --git a/src/main/java/net/officefloor/hq/app/pool/Pool.java b/src/main/java/net/officefloor/hq/app/pool/Pool.java
+index 35ce2e201..9b717a56e 100644
+--- a/src/main/java/net/officefloor/hq/app/pool/Pool.java
++++ b/src/main/java/net/officefloor/hq/app/pool/Pool.java
+@@ -7,7 +7,8 @@ import jakarta.persistence.GenerationType;
+ import jakarta.persistence.Id;
+ import jakarta.persistence.Table;
+ 
+-/** A pool on a sheet: a (trimmed) name, unique on the sheet, that people are members of. */
++/** A pool on a sheet: a (trimmed) name, unique on the sheet, that people are members of. A crew's
++ *  pool carries its crew: its members are then the crew's people, not stored ones. */
+ @Entity
+ @Table(name = "pool")
+ public class Pool {
+@@ -22,6 +23,10 @@ public class Pool {
+     @Column(name = "name", nullable = false)
+     private String name;
+ 
++    /** The crew the pool is; null for a pool added as one. */
++    @Column(name = "crew_id")
++    private Long crewId;
++
+     protected Pool() {
+     }
+ 
+@@ -30,6 +35,13 @@ public class Pool {
+         this.name = name;
+     }
+ 
++    /** A crew's pool, under the crew's name. */
++    public static Pool ofCrew(String sheetId, String name, Long crewId) {
++        Pool p = new Pool(sheetId, name);
++        p.crewId = crewId;
++        return p;
++    }
++
+     public Long getId() {
+         return id;
+     }
+@@ -41,4 +53,13 @@ public class Pool {
+     public String getName() {
+         return name;
+     }
++
++    public Long getCrewId() {
++        return crewId;
++    }
++
++    /** Whether the pool is a crew's. */
++    public boolean isCrew() {
++        return crewId != null;
++    }
+ }
+diff --git a/src/main/java/net/officefloor/hq/app/pool/PoolController.java b/src/main/java/net/officefloor/hq/app/pool/PoolController.java
+index 8b73aa298..e1b4dacc0 100644
+--- a/src/main/java/net/officefloor/hq/app/pool/PoolController.java
++++ b/src/main/java/net/officefloor/hq/app/pool/PoolController.java
+@@ -42,15 +42,17 @@ public class PoolController {
+         }
+     }
+ 
+-    /** A pool as the screen shows it: its members, their shares' total and whether it is 100.00. */
+-    public record PoolView(long id, String name, List<MemberView> members, String totalShare, boolean balanced) {
++    /** A pool as the screen shows it: its members, their shares' total, whether it is 100.00 and
++     *  whether it is a crew's (its members then being the crew's people). */
++    public record PoolView(long id, String name, List<MemberView> members, String totalShare, boolean balanced,
++            boolean crew) {
+         static PoolView of(PoolService.Listed l) {
+             List<BigDecimal> cuts = l.cuts();
+             return new PoolView(l.pool().getId(), l.pool().getName(),
+                     IntStream.range(0, l.members().size())
+                             .mapToObj(i -> MemberView.of(l.members().get(i), cuts.isEmpty() ? null : cuts.get(i)))
+                             .toList(),
+-                    l.totalShare().toPlainString(), l.balanced());
++                    l.totalShare().toPlainString(), l.balanced(), l.pool().isCrew());
+         }
+     }
+ 
+diff --git a/src/main/java/net/officefloor/hq/app/pool/PoolService.java b/src/main/java/net/officefloor/hq/app/pool/PoolService.java
+index a5ecd6928..542d1493a 100644
+--- a/src/main/java/net/officefloor/hq/app/pool/PoolService.java
++++ b/src/main/java/net/officefloor/hq/app/pool/PoolService.java
+@@ -11,6 +11,10 @@ import java.util.function.Function;
+ import java.util.regex.Pattern;
+ import java.util.stream.Collectors;
+ import net.officefloor.hq.app.Audit;
++import net.officefloor.hq.app.crew.Crew;
++import net.officefloor.hq.app.crew.CrewMember;
++import net.officefloor.hq.app.crew.CrewMemberRepository;
++import net.officefloor.hq.app.crew.CrewRepository;
+ import net.officefloor.hq.app.history.History;
+ import net.officefloor.hq.app.person.Person;
+ import net.officefloor.hq.app.person.PersonRepository;
+@@ -118,13 +122,18 @@ public class PoolService {
+     private final PoolRepository pools;
+     private final PoolMemberRepository members;
+     private final PersonRepository people;
++    private final CrewRepository crews;
++    private final CrewMemberRepository crewMembers;
+     private final SheetService sheets;
+     private final History history;
+     private final Audit audit;
+ 
+     public PoolService(PoolRepository pools, PoolMemberRepository members, PersonRepository people,
+-            SheetService sheets, History history, Audit audit) {
++            CrewRepository crews, CrewMemberRepository crewMembers, SheetService sheets, History history,
++            Audit audit) {
+         this.history = history;
++        this.crews = crews;
++        this.crewMembers = crewMembers;
+         this.pools = pools;
+         this.members = members;
+         this.people = people;
+@@ -132,7 +141,8 @@ public class PoolService {
+         this.audit = audit;
+     }
+ 
+-    /** The pools of the sheet in the order they were added, each with its members and its pot. */
++    /** The pools of the sheet in the order they were added, then the crews' pools in the order the
++     *  crews were added, each with its members and its pot. */
+     @Transactional(readOnly = true)
+     public List<Listed> list(String sheetId) {
+         return list(sheetId, null);
+@@ -142,7 +152,9 @@ public class PoolService {
+      *  (null: the sheet's today) and the sheet's pot as it stood at its end: the sheet as of that day. */
+     @Transactional(readOnly = true)
+     public List<Listed> list(String sheetId, LocalDate asOf) {
+-        List<Pool> all = pools.findBySheetIdOrderByIdAsc(sheetId);
++        List<Pool> stored = pools.findBySheetIdOrderByIdAsc(sheetId);
++        List<Pool> all = new ArrayList<>(stored.stream().filter(p -> !p.isCrew()).toList());
++        all.addAll(stored.stream().filter(Pool::isCrew).toList());
+         Map<Long, Pool> poolsById = all.stream().collect(Collectors.toMap(Pool::getId, Function.identity()));
+         Map<Long, Person> byId = people.findBySheetIdOrderByPositionAscIdAsc(sheetId).stream()
+                 .collect(Collectors.toMap(Person::getId, Function.identity()));
+@@ -150,7 +162,15 @@ public class PoolService {
+         Map<Long, List<PoolMember>> byPool = memberships.stream().collect(Collectors.groupingBy(PoolMember::getPoolId));
+         LocalDate today = asOf != null ? asOf : sheets.today(sheetId);
+         Map<Long, List<Member>> membersOf = new HashMap<>();
++        Map<Long, List<PoolMember>> crewsOf = crewMemberships(sheetId, all, byId);
+         for (Pool p : all) {
++            if (p.isCrew()) {
++                membersOf.put(p.getId(), crewsOf.getOrDefault(p.getId(), List.of()).stream()
++                        .map(m -> new Member(m, byId.get(m.getPersonId()), null,
++                                byId.get(m.getPersonId()).isHeldOn(today), true))
++                        .toList());
++                continue;
++            }
+             membersOf.put(p.getId(), byPool.getOrDefault(p.getId(), List.of()).stream()
+                     .filter(m -> m.getPersonId() != null ? byId.containsKey(m.getPersonId())
+                             : poolsById.containsKey(m.getMemberPoolId()))
+@@ -167,6 +187,53 @@ public class PoolService {
+         return all.stream().map(p -> listed(p.getId(), poolsById, membersOf, above, sheetPot, listed, 0)).toList();
+     }
+ 
++    /** The members of each crew's pool, by the pool's id: its lead, then its members in the order they
++     *  were added (people who have left the sheet left out), at equal shares of 100.00 to two decimals
++     *  rounded down, the remainder on the first of them (the lead while they are on the sheet). The
++     *  memberships are not stored and run without dates. */
++    private Map<Long, List<PoolMember>> crewMemberships(String sheetId, List<Pool> all, Map<Long, Person> byId) {
++        Map<Long, Long> poolOfCrew = all.stream().filter(Pool::isCrew)
++                .collect(Collectors.toMap(Pool::getCrewId, Pool::getId));
++        if (poolOfCrew.isEmpty()) {
++            return Map.of();
++        }
++        Map<Long, List<CrewMember>> byCrew = crewMembers.findByCrewIdInOrderByIdAsc(poolOfCrew.keySet()).stream()
++                .collect(Collectors.groupingBy(CrewMember::getCrewId));
++        Map<Long, List<PoolMember>> out = new HashMap<>();
++        for (Crew c : crews.findBySheetIdOrderByIdAsc(sheetId)) {
++            Long poolId = poolOfCrew.get(c.getId());
++            if (poolId == null) {
++                continue;
++            }
++            List<Long> ids = new ArrayList<>();
++            ids.add(c.getLeadPersonId());
++            byCrew.getOrDefault(c.getId(), List.of()).forEach(m -> ids.add(m.getPersonId()));
++            List<Long> present = ids.stream().filter(byId::containsKey).toList();
++            if (present.isEmpty()) {
++                continue;
++            }
++            List<BigDecimal> shares = equalShares(present.size());
++            List<PoolMember> ms = new ArrayList<>();
++            for (int i = 0; i < present.size(); i++) {
++                ms.add(new PoolMember(poolId, present.get(i), shares.get(i)));
++            }
++            out.put(poolId, ms);
++        }
++        return out;
++    }
++
++    /** 100.00 split equally over a number of members, each share rounded down to two decimals and the
++     *  remainder on the first, so they total exactly 100.00. */
++    static List<BigDecimal> equalShares(int count) {
++        long cents = WHOLE.movePointRight(2).longValueExact();
++        long each = cents / count;
++        List<BigDecimal> shares = new ArrayList<>();
++        for (int i = 0; i < count; i++) {
++            shares.add(BigDecimal.valueOf(i == 0 ? each + cents - each * count : each, 2));
++        }
++        return shares;
++    }
++
+     /** The pool listed with its pot: the sheet's when it is a member of no pool, else its cut in the
+      *  pool above (none when that pool shows no cuts). */
+     private static Listed listed(Long poolId, Map<Long, Pool> poolsById, Map<Long, List<Member>> membersOf,
+@@ -194,7 +261,7 @@ public class PoolService {
+         return l;
+     }
+ 
+-    /** Add a pool with a (trimmed) name; refused when blank or already a pool of the sheet. */
++    /** Add a pool with a (trimmed) name; refused when blank or already a pool or a crew of the sheet. */
+     @Transactional
+     public synchronized Listed add(String sheetId, String user, String name) {
+         String text = name == null ? "" : name.trim();
+@@ -202,7 +269,7 @@ public class PoolService {
+             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Enter a pool name");
+         }
+         sheets.load(sheetId, user);
+-        if (pools.existsBySheetIdAndName(sheetId, text)) {
++        if (pools.existsBySheetIdAndName(sheetId, text) || crews.existsBySheetIdAndName(sheetId, text)) {
+             throw alreadyAPool();
+         }
+         Pool saved;
+@@ -225,6 +292,7 @@ public class PoolService {
+                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "No such pool"));
+         Pool member = pools.findByIdAndSheetId(memberPoolId, sheetId)
+                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "No such pool"));
++        refuseCrew(pool);
+         BigDecimal amount = share(share);
+         checkDates(from, to);
+         List<PoolMember> all = members.findByPoolIdInOrderByIdAsc(
+@@ -281,6 +349,7 @@ public class PoolService {
+                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "No such pool"));
+         Person person = people.findByIdAndSheetId(personId, sheetId)
+                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "No such person"));
++        refuseCrew(pool);
+         BigDecimal amount = share(share);
+         checkDates(from, to);
+         if (members.existsByPoolIdAndPersonId(poolId, personId)) {
+@@ -298,6 +367,14 @@ public class PoolService {
+         return list(sheetId).stream().filter(l -> l.pool().getId().equals(poolId)).findFirst().orElseThrow();
+     }
+ 
++    /** Refused when the pool is a crew's: its members are the crew's people. */
++    private static void refuseCrew(Pool pool) {
++        if (pool.isCrew()) {
++            throw new ResponseStatusException(HttpStatus.CONFLICT,
++                    "A crew's pool has the crew's lead and members as its members");
++        }
++    }
++
+     /** Refused when both dates are given and the to-date is before the from-date. */
+     private static void checkDates(LocalDate from, LocalDate to) {
+         if (from != null && to != null && to.isBefore(from)) {
+@@ -329,7 +406,7 @@ public class PoolService {
+     }
+ 
+     private static ResponseStatusException alreadyAPool() {
+-        return new ResponseStatusException(HttpStatus.CONFLICT, "That name is already a pool");
++        return new ResponseStatusException(HttpStatus.CONFLICT, "That name is already a pool or a crew");
+     }
+ 
+     private static ResponseStatusException alreadyAMember() {
+diff --git a/src/main/resources/db/migration/V98__crew_pool.sql b/src/main/resources/db/migration/V98__crew_pool.sql
+new file mode 100644
+index 000000000..7eb80509f
+--- /dev/null
++++ b/src/main/resources/db/migration/V98__crew_pool.sql
+@@ -0,0 +1,9 @@
++-- A crew is also a pool: a pool row of the sheet under the crew's name, marked with its crew. Its
++-- members are not stored: they are the crew's lead and members, at equal shares. The pool's name
++-- being unique on the sheet, a pool and a crew never share a name.
++ALTER TABLE pool ADD COLUMN crew_id BIGINT REFERENCES crew (id);
++ALTER TABLE pool ADD CONSTRAINT pool_crew_unique UNIQUE (crew_id);
++INSERT INTO pool (sheet_id, name, crew_id)
++SELECT c.sheet_id, c.name, c.id FROM crew c
++WHERE NOT EXISTS (SELECT 1 FROM pool p WHERE p.sheet_id = c.sheet_id AND p.name = c.name)
++ORDER BY c.id;
