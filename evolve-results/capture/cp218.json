@@ -1,0 +1,64 @@
+{
+  "checkpoint": 218,
+  "stack": {
+    "repo": "/home/daniel/officehq-angular-spring",
+    "origin": "git@github.com:officefloor/officehq-angular-spring.git",
+    "name": "officehq-angular-spring",
+    "base_ref": "base-empty",
+    "base_commit": "65cb8233ea38b2dfa6cfd18709e30cd18fdf3250"
+  },
+  "checkpoint_id": "cp218_review-assignment",
+  "phase": "late",
+  "type": "additive",
+  "mutates": [],
+  "replaced_tests": [],
+  "request": {
+    "spec": "A steward can assign a REVIEW claim to a user (an entry and a button on the claim;\nREVIEW_ASSIGNED naming the claim and ending user=<user>; a blank user, any other status or anyone\nelse is refused). The claim shows the assigned user, and the header shows the signed-in user the\ncount of REVIEW claims assigned to them.\n",
+    "prompt": "You are implementing ONE change to this application.\n\nFIRST read AGENTS.md \u2014 it states the working rules and how the app is tested, and sends you to\nDESIGN.md for the app's stack and conventions. Follow both.\n\nTHE CHANGE REQUEST:\nA steward can assign a REVIEW claim to a user (an entry and a button on the claim;\nREVIEW_ASSIGNED naming the claim and ending user=<user>; a blank user, any other status or anyone\nelse is refused). The claim shows the assigned user, and the header shows the signed-in user the\ncount of REVIEW claims assigned to them.\n\nYour work is verified by an automated Playwright UI test already installed under e2e/specs/.\nRead that spec: it declares the exact data-testid anchors, values, test data and any audit\nrecords it expects \u2014 match them. Run `bin/e2e` to build the app, start it, and run the test as\nyou work; iterate until it passes. Change whatever the request needs across the app \u2014 its stored\ndata, its server and its front end. Do NOT edit bin/build, bin/start, bin/stop, bin/e2e,\nAGENTS.md, CLAUDE.md, DESIGN.md, e2e/support/ or the test spec.\n"
+  },
+  "commit_sha": "029afec5a081ad62901ff44c42b2134828b27bf2",
+  "reset_sha": "",
+  "preagent_sha": "5bec238ba0dfbbb515d9d7d968056d1bc4f5b989",
+  "prev_sha": "5bec238ba0dfbbb515d9d7d968056d1bc4f5b989",
+  "base_sha": "65cb8233ea38b2dfa6cfd18709e30cd18fdf3250",
+  "agent": {
+    "ok": true,
+    "cost_usd": 1.3188775999999998,
+    "input_tokens": 72,
+    "output_tokens": 14654,
+    "cache_read_tokens": 2060428,
+    "cache_creation_tokens": 76678,
+    "num_turns": 37,
+    "duration_ms": 431756,
+    "duration_api_ms": 171668,
+    "model": "claude-opus-5-5",
+    "session_id": "01c04316-7a2e-4157-af30-95e40be07f49",
+    "stop_reason": "success",
+    "result_text": "I'm stopping here: `bin/e2e` passes 3 of the 4 tests, and the one that fails does so because of today's real date, not because of this change.\n\n**Results**\n- **Passing:** the main \"review assignment\" test, plus scenarios 2 and 3. The main test covers every refusal (the viewer, uma before the delegation, a blank user, a claim that isn't in review), both successful assignments, the assignee shown on the claim, `my-reviews-count`, and the exact `REVIEW_ASSIGNED \u2026 user=<user>` audit lines. That includes the one uma writes after vic delegated the steward role, which ends `\u2026 user=vic for=vic`.\n- **Failing: scenario 1, at line 375.** With the view set to 2026-03-20, it expects `rate-current-B` to show `7.50`, but the app shows `n/a`. The sheet's own B rate has ended by that date, so the screen falls back to the parent sheet's rate. But a new sheet's today defaults to the real date (`SheetService.java:69`), and the test never sets the parent sheet's today. So the parent's rates count as recorded on 2026-11-03, and as of 2026-03-20 it has none. That expectation can only pass if the machine's date is on or before 2026-03-20.\n\nThe `my-reviews-count` checks in scenario 1 before line 375 all passed, but the rest of that scenario hasn't run, including the count check at line 605. I couldn't fake the date for the server (no `faketime` installed, and I can't edit `bin/start`). I also didn't change how a new sheet picks its today: that would change rate history for every sheet, which is outside this request. Rerunning with the date set to 2026-03-20 or earlier would show whether the rest passes.\n\n**What I changed**\n- **Stored data:** a new migration, `V123__claim_review_assignee.sql`, adds a `review_assignee` column to claims. The `Claim` entity has the matching field and keeps it when a claim is transferred to another sheet.\n- **Server:**\n  - A new `ClaimService.assignReview` refuses anyone who isn't acting as a steward, any claim not in REVIEW, and a blank user.\n  - On success it saves the assignee and writes the `REVIEW_ASSIGNED` audit line. The `for=<steward>` ending is added by the existing delegation handling.\n  - The new endpoint is `POST /claims/{id}/review-assignee`, and claims now return `reviewAssignee`.\n  - The assignee stays on the claim after it leaves review, as the test expects.\n- **Front end:**\n  - Each claim row has a `claim-review-user` entry and a `claim-review-assign` button. A refusal shows in `claim-error`, which clears when you type in the entry.\n  - A `claim-review-assigned` field shows the assignee.\n  - The header has `my-reviews-count`: the REVIEW claims on the sheet assigned to the signed-in user.",
+    "error": "",
+    "attempts": [
+      {
+        "ok": true,
+        "limit_reached": false,
+        "retryable": false,
+        "timed_out": false,
+        "cost_usd": 1.3188775999999998,
+        "num_turns": 37,
+        "duration_ms": 431756,
+        "duration_api_ms": 171668,
+        "error": ""
+      }
+    ]
+  },
+  "agent_stream_file": "cp218.agent.jsonl",
+  "agent_diff_file": "cp218.agent.diff",
+  "build_log_file": null,
+  "tests": {
+    "gated": false,
+    "queued": true
+  },
+  "probe": null,
+  "pinned_touched": [],
+  "acceptance_touched": [],
+  "impact_gate": null
+}
