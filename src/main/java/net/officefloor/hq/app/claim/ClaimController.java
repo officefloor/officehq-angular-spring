@@ -40,13 +40,13 @@ public class ClaimController {
     }
 
     public record ClaimResponse(long id, long personId, String amount, LocalDate date, String note,
-            ClaimStatus status) {
+            ClaimStatus status, Integer number) {
     }
 
     private static ClaimResponse response(Claim claim) {
         return new ClaimResponse(claim.getId(), claim.getPersonId(),
                 claim.getAmount().setScale(2, RoundingMode.UNNECESSARY).toPlainString(), claim.getDate(),
-                claim.getNote(), claim.getStatus());
+                claim.getNote(), claim.getStatus(), claim.getNumber());
     }
 
     private static BigDecimal amount(String amount) {

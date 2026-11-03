@@ -17,6 +17,8 @@ export interface Claim {
   date: string;
   note: string;
   status: ClaimStatus;
+  /** The claim's number on the sheet, given when opened; null while DRAFT or once VOID. */
+  number: number | null;
 }
 
 /** A move from one status to the next, by the endpoint that makes it. */
@@ -80,6 +82,7 @@ export function money(c: number): string {
     <ul [attr.aria-label]="'Claims of ' + personName()">
       @for (c of claims(); track c.id) {
         <li [attr.data-testid]="'claim-row-' + c.id">
+          <span>No. <span data-testid="claim-number">{{ c.number ?? '' }}</span></span>
           <span data-testid="claim-amount">{{ c.amount }}</span>
           <span data-testid="claim-date">{{ c.date }}</span>
           <span data-testid="claim-note">{{ c.note }}</span>

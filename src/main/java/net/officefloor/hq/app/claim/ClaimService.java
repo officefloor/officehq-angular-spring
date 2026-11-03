@@ -61,13 +61,22 @@ public class ClaimService {
     /** Move a claim to a new status, refused (409) when its current status does not allow it. */
     @Transactional
     public Claim changeStatus(String sheetId, String user, long id, ClaimStatus next) {
+        // lock the sheet's numbering before reading the claim, so a claim is opened (and numbered) once
+        Integer number = next == ClaimStatus.OPEN ? sheets.nextClaimNumber(sheetId) : null;
         Claim claim = claims.findByIdAndSheetId(id, sheetId)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "No such claim on this sheet."));
         if (!claim.getStatus().canBecome(next)) {
             throw new ResponseStatusException(HttpStatus.CONFLICT,
                     "A " + claim.getStatus() + " claim cannot become " + next + ".");
         }
+        // the audit line carries the number the claim had, before voiding clears it
+        Integer recorded = next == ClaimStatus.OPEN ? number : claim.getNumber();
         claim.setStatus(next);
+        if (next == ClaimStatus.OPEN) {
+            claim.setNumber(number);
+        } else if (next == ClaimStatus.VOID) {
+            claim.setNumber(null);
+        }
         Claim saved = claims.saveAndFlush(claim);
         String event = switch (next) {
             case OPEN -> "CLAIM_OPENED";
@@ -75,7 +84,8 @@ public class ClaimService {
             case VOID -> "CLAIM_VOIDED";
             case DRAFT -> throw new IllegalStateException();
         };
-        audit.recordOnCommit(record(event, sheetId, user, person(sheetId, saved.getPersonId()), saved));
+        audit.recordOnCommit(record(event, sheetId, user, person(sheetId, saved.getPersonId()), saved)
+                + (recorded != null ? " number=" + recorded : ""));
         return saved;
     }
 
