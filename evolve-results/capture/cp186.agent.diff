@@ -1,0 +1,138 @@
+diff --git a/src/main/frontend/src/app/core/periods.ts b/src/main/frontend/src/app/core/periods.ts
+index acf8d50b2..e78443741 100644
+--- a/src/main/frontend/src/app/core/periods.ts
++++ b/src/main/frontend/src/app/core/periods.ts
+@@ -91,6 +91,17 @@ export class Periods {
+     );
+   }
+ 
++  /** Generate the four calendar quarters of the year (yyyy) as periods named yyyy-Q1 to yyyy-Q4,
++   *  leaving out a quarter whose name is in use or that overlaps a period. */
++  generateQuarters(year: string): Promise<Period[]> {
++    const sheetId = this.session.sheetId();
++    const user = this.session.user();
++    if (!sheetId || !user) throw new Error('no sheet loaded');
++    return firstValueFrom(
++      this.http.post<Period[]>(`${this.url(sheetId)}/generate-quarters`, { year }, { headers: { 'X-User': user } }),
++    );
++  }
++
+   /** Paste opening balances, lines of name,period,amount, each adding the amount to the person's
+    *  carried figure for the period; all lines are checked first and any error refuses the whole
+    *  paste. Gives how many lines went through and the periods changed. */
+diff --git a/src/main/frontend/src/app/features/periods/period-form.ts b/src/main/frontend/src/app/features/periods/period-form.ts
+index 856bef25f..33b4c823f 100644
+--- a/src/main/frontend/src/app/features/periods/period-form.ts
++++ b/src/main/frontend/src/app/features/periods/period-form.ts
+@@ -37,6 +37,10 @@ const DAY = /^\d{4}-\d{2}-\d{2}$/;
+         <input id="period-generate-fy-year" data-testid="period-generate-fy-year" formControlName="year"
+                inputmode="numeric" />
+         <button type="button" data-testid="period-generate-fy" (click)="generateFy()">Generate fiscal year</button>
++        <label for="period-generate-quarters-year">Calendar year (yyyy)</label>
++        <input id="period-generate-quarters-year" data-testid="period-generate-quarters-year"
++               formControlName="quartersYear" inputmode="numeric" />
++        <button type="button" data-testid="period-generate-quarters" (click)="generateQuarters()">Generate quarters</button>
+         @if (generated() !== null) {
+           <p role="status">Made <span data-testid="period-generated">{{ generated() }}</span></p>
+         }
+@@ -124,6 +128,7 @@ export class PeriodForm {
+     from: new FormControl('', { nonNullable: true }),
+     to: new FormControl('', { nonNullable: true }),
+     year: new FormControl('', { nonNullable: true }),
++    quartersYear: new FormControl('', { nonNullable: true }),
+   });
+ 
+   protected readonly openingError = signal('');
+@@ -188,6 +193,28 @@ export class PeriodForm {
+     }
+   }
+ 
++  /** Generate the four calendar quarters of the year typed. */
++  protected async generateQuarters(): Promise<void> {
++    if (this.generating) return;
++    this.generateError.set('');
++    this.generated.set(null);
++    const year = this.generateForm.getRawValue().quartersYear.trim();
++    if (!/^\d{4}$/.test(year)) {
++      this.generateError.set('Enter the calendar year (yyyy) to generate quarters for.');
++      return;
++    }
++    this.generating = true;
++    try {
++      const made = await this.api.generateQuarters(year);
++      for (const p of made) this.saved.emit(p);
++      this.generated.set(made.length);
++    } catch {
++      this.generateError.set('The quarters could not be generated.');
++    } finally {
++      this.generating = false;
++    }
++  }
++
+   /** Paste the opening balances typed: every line is checked first, so any error refuses them all. */
+   protected async importOpenings(): Promise<void> {
+     if (this.importing) return;
+diff --git a/src/main/java/net/officefloor/hq/app/period/PeriodController.java b/src/main/java/net/officefloor/hq/app/period/PeriodController.java
+index d73d30d46..72f3975b1 100644
+--- a/src/main/java/net/officefloor/hq/app/period/PeriodController.java
++++ b/src/main/java/net/officefloor/hq/app/period/PeriodController.java
+@@ -66,7 +66,8 @@ public class PeriodController {
+     public record GenerateForm(LocalDate from, @NotNull LocalDate to) {
+     }
+ 
+-    /** The generate fiscal year form: the required year (yyyy) the fiscal year is named by. */
++    /** The generate fiscal year (or quarters) form: the required year (yyyy) the fiscal year is
++     *  named by, or whose calendar quarters are generated. */
+     public record GenerateFyForm(@NotBlank @Pattern(regexp = "\\s*\\d{4}\\s*") String year) {
+ 
+         int yearValue() {
+@@ -127,6 +128,15 @@ public class PeriodController {
+                 .map(p -> PeriodView.of(p, fiscalStartMonth)).toList();
+     }
+ 
++    @PostMapping("/generate-quarters")
++    public List<PeriodView> generateQuarters(@PathVariable @NotBlank @Size(max = 100) String sheetId,
++            @RequestHeader("X-User") @NotBlank @Size(max = 100) String user,
++            @Valid @RequestBody GenerateFyForm form) {
++        int fiscalStartMonth = sheets.fiscalStartMonth(sheetId.trim());
++        return service.generateQuarters(sheetId.trim(), user.trim(), form.yearValue()).stream()
++                .map(p -> PeriodView.of(p, fiscalStartMonth)).toList();
++    }
++
+     @PostMapping("/{periodId}/close")
+     public PeriodView close(@PathVariable @NotBlank @Size(max = 100) String sheetId,
+             @RequestHeader("X-User") @NotBlank @Size(max = 100) String user, @PathVariable long periodId) {
+diff --git a/src/main/java/net/officefloor/hq/app/period/PeriodService.java b/src/main/java/net/officefloor/hq/app/period/PeriodService.java
+index ba27bdfc5..40f0e14a4 100644
+--- a/src/main/java/net/officefloor/hq/app/period/PeriodService.java
++++ b/src/main/java/net/officefloor/hq/app/period/PeriodService.java
+@@ -128,6 +128,29 @@ public class PeriodService {
+         return generate(sheetId, user, first, first.plusMonths(12).minusDays(1));
+     }
+ 
++    /** Generate the four calendar quarters of the year, each running from the first day of its
++     *  first month to the last day of its third month and named yyyy-Qn; a quarter whose name is in
++     *  use on the sheet, or whose days overlap a period on it, is left out. */
++    @Transactional
++    public synchronized List<Period> generateQuarters(String sheetId, String user, int year) {
++        sheets.load(sheetId, user);
++        List<Period> made = new ArrayList<>();
++        for (int quarter = 1; quarter <= 4; quarter++) {
++            String name = year + "-Q" + quarter;
++            LocalDate first = LocalDate.of(year, quarter * 3 - 2, 1);
++            LocalDate last = YearMonth.of(year, quarter * 3).atEndOfMonth();
++            if (periods.existsBySheetIdAndNameIgnoreCase(sheetId, name) || periods.overlaps(sheetId, first, last)) {
++                continue;
++            }
++            Period saved = periods.saveAndFlush(new Period(sheetId, name, first, last));
++            audit.recordOnCommit("PERIOD_ADDED sheet=" + sheetId + " by=" + user + " period=" + saved.getName()
++                    + " from=" + saved.getFromDate() + " to=" + saved.getToDate());
++            made.add(saved);
++        }
++        history.record(sheetId);
++        return made;
++    }
++
+     /** The fiscal year a day falls in (FYyyyy), with fiscal years starting on the first day of the
+      *  month: named by the calendar year that first day falls in. */
+     public static String fiscalYear(LocalDate day, int fiscalStartMonth) {
