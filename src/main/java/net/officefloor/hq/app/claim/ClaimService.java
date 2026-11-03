@@ -834,8 +834,8 @@ public class ClaimService {
         }
     }
 
-    /** The pending claim a steward approves or rejects, locked; refused when it is not pending, the
-     *  user is not a steward, or its period is closed. */
+    /** The pending claim a steward or its person's approver approves or rejects, locked; refused when
+     *  it is not pending, the user is neither, or its period is closed. */
     private Claim lockPending(String sheetId, String user, long claimId) {
         Claim claim = lock(sheetId, claimId);
         refuseClosed(sheetId, claim.getDueBy());
@@ -843,9 +843,10 @@ public class ClaimService {
             throw new ResponseStatusException(HttpStatus.CONFLICT,
                     "Only a PENDING claim can be approved or rejected");
         }
-        if (!SheetRole.STEWARD.equals(roles.roleOf(sheetId, user))) {
+        if (!SheetRole.STEWARD.equals(roles.roleOf(sheetId, user))
+                && !person(sheetId, claim.getPersonId()).isApprover(user)) {
             throw new ResponseStatusException(HttpStatus.FORBIDDEN,
-                    "Only a steward can approve or reject a claim");
+                    "Only a steward or the person's approver can approve or reject a claim");
         }
         return claim;
     }

@@ -122,6 +122,8 @@ export interface Person {
   statements: StatementLine[];
   /** The reason of their flag while it is in force on the sheet's today; null when none is. */
   flag: string | null;
+  /** The user who may approve or reject their pending claims as a steward may; null when none. */
+  approver: string | null;
 }
 
 /** A statement just taken: the person as they now show, and their claims (newest first) as it
@@ -278,6 +280,14 @@ export class People {
     const { sheetId, user } = this.active();
     return firstValueFrom(
       this.http.post<Person>(`${this.url(sheetId)}/${id}/flag`, { reason, until }, { headers: { 'X-User': user } }),
+    );
+  }
+
+  /** Set the person's approver: the user (blank: none) who may approve or reject their pending claims. */
+  setApprover(id: number, approver: string): Promise<Person> {
+    const { sheetId, user } = this.active();
+    return firstValueFrom(
+      this.http.post<Person>(`${this.url(sheetId)}/${id}/approver`, { user: approver }, { headers: { 'X-User': user } }),
     );
   }
 

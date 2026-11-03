@@ -70,8 +70,9 @@ function refusal(e: unknown, action: ClaimAction): string {
     return 'Only a steward can re-settle a claim.';
   }
   if (e instanceof HttpErrorResponse && e.status === 403 && (action === 'approve' || action === 'reject')) {
-    return action === 'approve' ? 'Only a steward who did not open or last edit the claim can approve it.'
-      : 'Only a steward can reject a claim.';
+    return action === 'approve'
+      ? "Only a steward or the person's approver who did not open or last edit the claim can approve it."
+      : "Only a steward or the person's approver can reject a claim.";
   }
   if (e instanceof HttpErrorResponse && e.status === 400 && action === 'reject') {
     return 'Enter a reason for rejecting the claim.';

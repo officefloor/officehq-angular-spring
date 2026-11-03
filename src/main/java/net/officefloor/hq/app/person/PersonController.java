@@ -41,7 +41,7 @@ public class PersonController {
 
     /** What the screen shows of a person; with how many statements were taken of them, and the
      *  last one's due-total (text with two decimals, null when n/a or none) and day (null when none);
-     *  whether they are retired, and from which day (null when not); and their past retirements, earliest first; and whether they have any hold, and their holds, earliest first; and their own terms in force on the sheet's today in days (null: none); and their contact (null: none); and their aliases, sorted as names are compared; and whether they clash; and the sheet they were transferred from (null: none); and their tags, sorted, comma and space separated (empty when none); and their snapshots, oldest first, each the day being left and the due-total; and their statements that stand, oldest first by date, each its date and due-total; and their own undated terms (null: none) and their dated terms, earliest first; and the reason of their flag while it is in force on the sheet's today (null: none) (see
+     *  whether they are retired, and from which day (null when not); and their past retirements, earliest first; and whether they have any hold, and their holds, earliest first; and their own terms in force on the sheet's today in days (null: none); and their contact (null: none); and their aliases, sorted as names are compared; and whether they clash; and the sheet they were transferred from (null: none); and their tags, sorted, comma and space separated (empty when none); and their snapshots, oldest first, each the day being left and the due-total; and their statements that stand, oldest first by date, each its date and due-total; and their own undated terms (null: none) and their dated terms, earliest first; and the reason of their flag while it is in force on the sheet's today (null: none); and their approver (null: none) (see
      *  {@link PersonService#clashing}).
      *  The grade is the one in force on the sheet's today; grades are all those recorded, each from
      *  its from-date (null: the beginning of time), earliest first. */
@@ -49,7 +49,7 @@ public class PersonController {
             int statementCount, String statedTotal, LocalDate statementDate, boolean retired, LocalDate retiredFrom,
             List<RetirementView> retirements, boolean held, List<HoldView> holds, Integer terms, String contact, List<String> aliases, boolean clashing, String origin,
             String tags, List<SnapshotView> snapshots, List<StatementLineView> statements, Integer undatedTerms,
-            List<TermsView> datedTerms, String flag) {
+            List<TermsView> datedTerms, String flag, String approver) {
         public static PersonView of(Person person, StatementSummary statements, LocalDate today,
                 boolean clashing) {
             return new PersonView(person.getId(), person.getName(), person.gradeOn(today),
@@ -67,7 +67,7 @@ public class PersonController {
                             l.dueTotal() == null ? null : l.dueTotal().setScale(2).toPlainString())).toList(),
                     person.getTerms(),
                     person.getDatedTerms().stream().map(t -> new TermsView(t.getTerms(), t.getFromDate())).toList(),
-                    person.flagOn(today));
+                    person.flagOn(today), person.getApprover());
         }
     }
 
@@ -303,6 +303,10 @@ public class PersonController {
     public record FlagForm(@Size(max = 200) String reason, LocalDate until) {
     }
 
+    /** The approver form: the user who may approve or reject the person's pending claims (blank: none). */
+    public record ApproverForm(@Size(max = 100) String user) {
+    }
+
     /** Undo the transfer that brought the person to this sheet today; they go back to where they
      *  came from. */
     @PostMapping("/{personId}/transfer-undo")
@@ -364,6 +368,16 @@ public class PersonController {
             @RequestHeader("X-User") @NotBlank @Size(max = 100) String user,
             @Valid @RequestBody FlagForm form) {
         Person saved = service.flag(sheetId.trim(), user.trim(), personId, form.reason(), form.until());
+        return PersonView.of(saved, statements.summary(sheetId.trim(), personId), sheets.today(sheetId.trim()),
+                service.clashing(sheetId.trim(), saved));
+    }
+
+    @PostMapping("/{personId}/approver")
+    public PersonView approver(@PathVariable @NotBlank @Size(max = 100) String sheetId,
+            @PathVariable long personId,
+            @RequestHeader("X-User") @NotBlank @Size(max = 100) String user,
+            @Valid @RequestBody ApproverForm form) {
+        Person saved = service.setApprover(sheetId.trim(), user.trim(), personId, form.user());
         return PersonView.of(saved, statements.summary(sheetId.trim(), personId), sheets.today(sheetId.trim()),
                 service.clashing(sheetId.trim(), saved));
     }

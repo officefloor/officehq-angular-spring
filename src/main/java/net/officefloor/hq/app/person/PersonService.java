@@ -372,6 +372,20 @@ public class PersonService {
         return saved;
     }
 
+    /** Set the person's approver: the user (kept trimmed; blank: none) who may approve or reject
+     *  their pending claims as a steward may. */
+    @Transactional
+    public Person setApprover(String sheetId, String user, long personId, String approver) {
+        Person person = people.findByIdAndSheetId(personId, sheetId)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "No such person on this sheet"));
+        String who = approver == null || approver.isBlank() ? null : approver.trim();
+        person.setApprover(who);
+        Person saved = saveUnique(person);
+        audit.recordOnCommit("APPROVER_SET sheet=" + sheetId + " by=" + user + " name=" + saved.getName()
+                + " user=" + (who == null ? "" : who));
+        return saved;
+    }
+
     /** A record of the person with the grade in force on the sheet's today. */
     private static String record(String event, String sheetId, String user, Person person, LocalDate today) {
         return event + " sheet=" + sheetId + " by=" + user + " name=" + person.getName() + " grade="

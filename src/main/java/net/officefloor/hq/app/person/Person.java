@@ -109,6 +109,11 @@ public class Person {
     @Column(name = "flag_until")
     private LocalDate flagUntil;
 
+    /** The user who may approve or reject the person's pending claims as a steward may; null when
+     *  they have none. */
+    @Column(name = "approver")
+    private String approver;
+
     /** Raised each time the person is saved. */
     @Version
     @Column(name = "version", nullable = false)
@@ -156,7 +161,7 @@ public class Person {
 
     /** A copy of the person for a clone of their sheet: their name, place in the list, every grade
      *  they were given (and its from-date), terms, contact, aliases, holds, flag, retirement and past
-     *  retirements, and the sheet they were transferred from. */
+     *  retirements, approver, and the sheet they were transferred from. */
     public Person clonedTo(String toSheetId) {
         Person copy = transferredTo(toSheetId, position);
         copy.origin = origin;
@@ -165,6 +170,7 @@ public class Person {
         holds.forEach(h -> copy.holds.add(new Hold(h.getFromDate(), h.getToDate())));
         copy.flagReason = flagReason;
         copy.flagUntil = flagUntil;
+        copy.approver = approver;
         return copy;
     }
 
@@ -349,6 +355,20 @@ public class Person {
     /** The sheet's today on which the person arrived on it by a transfer; null when they did not. */
     public LocalDate getArrivedOn() {
         return arrivedOn;
+    }
+
+    /** The user who may approve or reject the person's pending claims; null when they have none. */
+    public String getApprover() {
+        return approver;
+    }
+
+    public void setApprover(String approver) {
+        this.approver = approver;
+    }
+
+    /** Whether the user is the person's approver. */
+    public boolean isApprover(String user) {
+        return approver != null && approver.equals(user);
     }
 
     /** The person's contact, held by no one else on the sheet; null when they have none. */

@@ -251,7 +251,7 @@ const NO_LEAVE: Leave = { holds: [], retiredFrom: null };
       <button type="button" data-testid="export-claims" (click)="exportClaimsCsv()">Export claims (CSV)</button>
       <table data-testid="people">
         <thead>
-          <tr><th scope="col"><span class="visually-hidden">Select</span></th><th scope="col">Name</th><th scope="col">Grade</th><th scope="col">Active</th>@if (shows('terms')) {<th scope="col">Terms</th>}@if (shows('contact')) {<th scope="col">Contact</th>}<th scope="col">Tags</th>@if (shows('aliases')) {<th scope="col">Aliases</th>}<th scope="col">Clashing</th><th scope="col">Came from</th>@if (shows('claimed')) {<th scope="col">Claimed</th>}@if (shows('due-total')) {<th scope="col">Due</th>}<th scope="col">Settled due</th><th scope="col">Open due</th>@for (pd of periods(); track pd.id) {<th scope="col">Due in {{ pd.name }}</th><th scope="col">Carried into {{ pd.name }}</th>}@if (shows('excess')) {<th scope="col">Excess</th>}<th scope="col">Cut total</th>@if (shows('statement-count')) {<th scope="col">Statements</th>}@if (shows('stated-total')) {<th scope="col">Last stated</th>}@if (shows('statement-date')) {<th scope="col">Stated on</th>}@if (shows('retired')) {<th scope="col">Retired</th>}<th scope="col">Retired from</th><th scope="col">Past retirements</th><th scope="col">Snapshots</th><th scope="col">Statements taken</th>@if (shows('hold')) {<th scope="col">On hold</th>}@if (shows('overdue-count')) {<th scope="col">Overdue</th>}@if (shows('overdue-total')) {<th scope="col">Overdue due</th>}<th scope="col">Due aged 0–30 days</th><th scope="col">Due aged 31–60 days</th><th scope="col">Due aged 61+ days</th>@if (shows('patrons')) {<th scope="col">Patrons</th>}@if (shows('backing')) {<th scope="col">Backing</th>}<th scope="col">Watched</th><th scope="col">Flag</th><th scope="col">Plans</th><th scope="col">Claims</th><th scope="col"><span class="visually-hidden">Actions</span></th></tr>
+          <tr><th scope="col"><span class="visually-hidden">Select</span></th><th scope="col">Name</th><th scope="col">Grade</th><th scope="col">Active</th>@if (shows('terms')) {<th scope="col">Terms</th>}@if (shows('contact')) {<th scope="col">Contact</th>}<th scope="col">Tags</th>@if (shows('aliases')) {<th scope="col">Aliases</th>}<th scope="col">Clashing</th><th scope="col">Came from</th>@if (shows('claimed')) {<th scope="col">Claimed</th>}@if (shows('due-total')) {<th scope="col">Due</th>}<th scope="col">Settled due</th><th scope="col">Open due</th>@for (pd of periods(); track pd.id) {<th scope="col">Due in {{ pd.name }}</th><th scope="col">Carried into {{ pd.name }}</th>}@if (shows('excess')) {<th scope="col">Excess</th>}<th scope="col">Cut total</th>@if (shows('statement-count')) {<th scope="col">Statements</th>}@if (shows('stated-total')) {<th scope="col">Last stated</th>}@if (shows('statement-date')) {<th scope="col">Stated on</th>}@if (shows('retired')) {<th scope="col">Retired</th>}<th scope="col">Retired from</th><th scope="col">Past retirements</th><th scope="col">Snapshots</th><th scope="col">Statements taken</th>@if (shows('hold')) {<th scope="col">On hold</th>}@if (shows('overdue-count')) {<th scope="col">Overdue</th>}@if (shows('overdue-total')) {<th scope="col">Overdue due</th>}<th scope="col">Due aged 0–30 days</th><th scope="col">Due aged 31–60 days</th><th scope="col">Due aged 61+ days</th>@if (shows('patrons')) {<th scope="col">Patrons</th>}@if (shows('backing')) {<th scope="col">Backing</th>}<th scope="col">Watched</th><th scope="col">Flag</th><th scope="col">Approver</th><th scope="col">Plans</th><th scope="col">Claims</th><th scope="col"><span class="visually-hidden">Actions</span></th></tr>
         </thead>
         <tbody>
           @for (p of sorted(); track p.id) {
@@ -362,6 +362,7 @@ const NO_LEAVE: Leave = { holds: [], retiredFrom: null };
               }
               <td data-testid="person-watched">{{ watched().has(p.id) ? 'yes' : 'no' }}</td>
               <td data-testid="person-flag-shown">{{ p.flag ?? '' }}</td>
+              <td data-testid="person-approver">{{ p.approver ?? '' }}</td>
               <td>
                 <app-person-plans [personId]="p.id" [name]="p.name" [plans]="plansByPerson().get(p.id) ?? []"
                   (added)="planAdded($event)" />
@@ -418,6 +419,11 @@ const NO_LEAVE: Leave = { holds: [], retiredFrom: null };
                   (input)="clearPersonError(p.id)" />
                 <button type="button" data-testid="person-flag" (click)="flag(p, flagReason.value, flagUntil.value)"
                   [attr.aria-label]="'Flag ' + p.name">Flag</button>
+                <label [for]="'person-approver-input-' + p.id" class="visually-hidden">Approver of {{ p.name }}</label>
+                <input #approverInput [id]="'person-approver-input-' + p.id" data-testid="person-approver-input"
+                  (input)="clearPersonError(p.id)" />
+                <button type="button" data-testid="person-approver-save" (click)="setApprover(p, approverInput.value)"
+                  [attr.aria-label]="'Set approver of ' + p.name">Set approver</button>
                 <label [for]="'person-alias-input-' + p.id" class="visually-hidden">Alias of {{ p.name }}</label>
                 <input #aliasInput [id]="'person-alias-input-' + p.id" data-testid="person-alias-input"
                   (input)="clearPersonError(p.id)" />
@@ -946,6 +952,8 @@ export class PeopleList {
   private readonly naming = new Set<number>();
   /** The people whose statement is waiting for its answer: a second press meanwhile is ignored. */
   private readonly stating = new Set<number>();
+  /** The people whose approver is waiting for its answer: a second press meanwhile is ignored. */
+  private readonly settingApprover = new Set<number>();
   /** The people whose flag is waiting for its answer: a second press meanwhile is ignored. */
   private readonly flagging = new Set<number>();
   /** The people whose hold is waiting for its answer: a second press meanwhile is ignored. */
@@ -1351,6 +1359,23 @@ export class PeopleList {
       this.personError.set({ id: p.id, message: 'The person could not be put on hold.' });
     } finally {
       this.holding.delete(p.id);
+    }
+  }
+
+  /** Set the person's approver (left blank, none). */
+  protected async setApprover(p: Person, approver: string): Promise<void> {
+    if (this.settingApprover.has(p.id)) return;
+    this.personError.set(null);
+    this.patronError.set(null);
+    this.settingApprover.add(p.id);
+    try {
+      const saved = await this.api.setApprover(p.id, approver.trim());
+      this.people.update((ps) => ps.map((x) => (x.id === saved.id ? saved : x)));
+      if (this.editing() === saved.id) this.version = saved.version;
+    } catch {
+      this.personError.set({ id: p.id, message: 'The approver could not be set.' });
+    } finally {
+      this.settingApprover.delete(p.id);
     }
   }
 
