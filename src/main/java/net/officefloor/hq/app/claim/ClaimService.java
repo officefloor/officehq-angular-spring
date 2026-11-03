@@ -102,8 +102,10 @@ public class ClaimService {
         refuseIfRetired(person, dated);
         String corrected = corrected(sheetId, personId, amount, corrects);
         RollupService.Snapshot before = rollup.snapshot(sheetId);
-        Claim added = claims.saveAndFlush(new Claim(sheetId, personId, amount, dated,
-                dated.plusDays(sheets.sheet(sheetId).termsFor(person.gradeOn(dated))), note, corrected));
+        Claim claim = new Claim(sheetId, personId, amount, dated,
+                dated.plusDays(sheets.sheet(sheetId).termsFor(person.gradeOn(dated))), note, corrected);
+        logStatus(sheetId, user, person, claim);
+        Claim added = claims.saveAndFlush(claim);
         audit.recordOnCommit(record("CLAIM_ADDED", sheetId, user, person, added));
         rollup.recordChanges(sheetId, user, before);
         return added;
@@ -203,6 +205,7 @@ public class ClaimService {
         } else if (next == ClaimStatus.SETTLED) {
             claim.setSettledDue(settling);
         }
+        logStatus(sheetId, user, person, claim);
         Claim saved = claims.saveAndFlush(claim);
         String event = switch (next) {
             case OPEN -> review ? "CLAIM_REJECTED" : "CLAIM_OPENED";
@@ -314,6 +317,12 @@ public class ClaimService {
             return claim.getDate();
         }
         return Rounding.dateOf(claim, claims.findBySheetIdAndPersonIdOrderByIdDesc(sheetId, claim.getPersonId()));
+    }
+
+    /** Log the claim's status as it is now: by the user, on the sheet's today, with its due as computed now. */
+    private void logStatus(String sheetId, String user, Person person, Claim claim) {
+        claim.log(new ClaimLogEntry(claim.getStatus(), user, sheets.today(sheetId),
+                dueText(charged(sheetId, person, claim))));
     }
 
     private static String dueText(BigDecimal due) {

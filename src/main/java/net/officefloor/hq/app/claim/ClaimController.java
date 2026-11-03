@@ -61,7 +61,11 @@ public class ClaimController {
 
     public record ClaimResponse(long id, long personId, String amount, LocalDate date, String note,
             ClaimStatus status, String number, String settledDue, String openedBy,
-            boolean stated, String statedDue, String corrects, LocalDate dueBy) {
+            boolean stated, String statedDue, String corrects, LocalDate dueBy, List<ClaimLogLine> log) {
+    }
+
+    /** One line of a claim's status log, oldest first. */
+    public record ClaimLogLine(ClaimStatus status, String by, LocalDate date, String due) {
     }
 
     private static String money(BigDecimal value) {
@@ -73,7 +77,9 @@ public class ClaimController {
                 claim.getAmount().setScale(2, RoundingMode.UNNECESSARY).toPlainString(), claim.getDate(),
                 claim.getNote(), claim.getStatus(), claim.getNumber(),
                 money(claim.getSettledDue()), claim.getOpenedBy(), claim.isStated(), money(claim.getStatedDue()),
-                claim.getCorrects(), claim.getDueBy());
+                claim.getCorrects(), claim.getDueBy(),
+                claim.getLog().stream().map(l -> new ClaimLogLine(l.getStatus(), l.getBy(), l.getDate(), l.getDue()))
+                        .toList());
     }
 
     public static BigDecimal amount(String amount) {

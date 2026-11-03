@@ -1,15 +1,23 @@
 package net.officefloor.hq.app.claim;
 
+import jakarta.persistence.CollectionTable;
 import jakarta.persistence.Column;
+import jakarta.persistence.ElementCollection;
 import jakarta.persistence.Entity;
 import jakarta.persistence.EnumType;
 import jakarta.persistence.Enumerated;
 import jakarta.persistence.GeneratedValue;
 import jakarta.persistence.GenerationType;
+import jakarta.persistence.FetchType;
 import jakarta.persistence.Id;
+import jakarta.persistence.JoinColumn;
+import jakarta.persistence.OrderColumn;
 import jakarta.persistence.Table;
 import java.math.BigDecimal;
 import java.time.LocalDate;
+import java.util.ArrayList;
+import java.util.List;
+import org.hibernate.annotations.BatchSize;
 
 /**
  * A claim by a person on a sheet: an amount (two decimals; below zero only for a correction, which
@@ -84,6 +92,13 @@ public class Claim {
      */
     @Column(name = "listed", insertable = false, updatable = false)
     private Long listed;
+
+    /** The claim's status log: one entry per status it has had, oldest first. */
+    @ElementCollection(fetch = FetchType.EAGER)
+    @CollectionTable(name = "claim_log", joinColumns = @JoinColumn(name = "claim_id"))
+    @OrderColumn(name = "seq")
+    @BatchSize(size = 100)
+    private List<ClaimLogEntry> log = new ArrayList<>();
 
     protected Claim() {
     }
@@ -205,5 +220,14 @@ public class Claim {
     public void bind(boolean stated, BigDecimal statedDue) {
         this.stated = stated;
         this.statedDue = stated ? statedDue : null;
+    }
+
+    public List<ClaimLogEntry> getLog() {
+        return List.copyOf(log);
+    }
+
+    /** Add a line to the claim's status log. */
+    public void log(ClaimLogEntry entry) {
+        log.add(entry);
     }
 }

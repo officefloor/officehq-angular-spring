@@ -49,6 +49,17 @@ export interface Claim {
   corrects: string | null;
   /** The date the claim is due by, fixed when it was added. */
   dueBy: string;
+  /** The claim's status log, oldest first: who moved it to each status, on the sheet's today then,
+   *  with its due as computed at that moment. */
+  log: ClaimLogLine[];
+}
+
+/** One line of a claim's status log. */
+export interface ClaimLogLine {
+  status: ClaimStatus;
+  by: string;
+  date: string;
+  due: string;
 }
 
 /** The date a claim's live figures round by: its own, or for a correction the date of the claim it
@@ -211,6 +222,11 @@ export function money(c: number): string {
           <span data-testid="claim-status">{{ c.status }}</span>
           <span>Opened by <span data-testid="claim-opened-by">{{ c.openedBy ?? '' }}</span></span>
           <span>Stated <span data-testid="claim-stated">{{ c.stated ? 'yes' : 'no' }}</span></span>
+          <ol [attr.aria-label]="'Status log of claim of ' + c.amount + ' on ' + c.date">
+            @for (l of c.log; track $index) {
+              <li data-testid="claim-log-line">{{ l.status }} by {{ l.by }} on {{ l.date }} due={{ l.due }}</li>
+            }
+          </ol>
           <button type="button" data-testid="claim-open" (click)="act(c, 'open')">Open</button>
           <button type="button" data-testid="claim-settle" (click)="act(c, 'settle')">Settle</button>
           <button type="button" data-testid="claim-approve" (click)="act(c, 'approve')">Approve</button>
