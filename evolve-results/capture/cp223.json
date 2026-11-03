@@ -1,0 +1,64 @@
+{
+  "checkpoint": 223,
+  "stack": {
+    "repo": "/home/daniel/officehq-angular-spring",
+    "origin": "git@github.com:officefloor/officehq-angular-spring.git",
+    "name": "officehq-angular-spring",
+    "base_ref": "base-empty",
+    "base_commit": "65cb8233ea38b2dfa6cfd18709e30cd18fdf3250"
+  },
+  "checkpoint_id": "cp223_grade-retire",
+  "phase": "late",
+  "type": "additive",
+  "mutates": [],
+  "replaced_tests": [],
+  "request": {
+    "spec": "A grade can be retired (a select and a button; GRADE_RETIRED grade=<grade>; a retired grade is\nrefused). People on a retired grade keep it (an edit leaving it as it was, with no from-date, is\nnot a choice of it), but it cannot be chosen for a new person or in an edit, by the form, the quick-add bar (the default grade falling back to A) or an import.\n",
+    "prompt": "You are implementing ONE change to this application.\n\nFIRST read AGENTS.md \u2014 it states the working rules and how the app is tested, and sends you to\nDESIGN.md for the app's stack and conventions. Follow both.\n\nTHE CHANGE REQUEST:\nA grade can be retired (a select and a button; GRADE_RETIRED grade=<grade>; a retired grade is\nrefused). People on a retired grade keep it (an edit leaving it as it was, with no from-date, is\nnot a choice of it), but it cannot be chosen for a new person or in an edit, by the form, the quick-add bar (the default grade falling back to A) or an import.\n\nYour work is verified by an automated Playwright UI test already installed under e2e/specs/.\nRead that spec: it declares the exact data-testid anchors, values, test data and any audit\nrecords it expects \u2014 match them. Run `bin/e2e` to build the app, start it, and run the test as\nyou work; iterate until it passes. Change whatever the request needs across the app \u2014 its stored\ndata, its server and its front end. Do NOT edit bin/build, bin/start, bin/stop, bin/e2e,\nAGENTS.md, CLAUDE.md, DESIGN.md, e2e/support/ or the test spec.\n"
+  },
+  "commit_sha": "a6e37d3a1ba78f4eba16dd7bd244bcb75335a891",
+  "reset_sha": "",
+  "preagent_sha": "8d9f03dbe9ae72151af37cbec4e4541726b3bc2e",
+  "prev_sha": "8d9f03dbe9ae72151af37cbec4e4541726b3bc2e",
+  "base_sha": "65cb8233ea38b2dfa6cfd18709e30cd18fdf3250",
+  "agent": {
+    "ok": true,
+    "cost_usd": 1.6095160000000002,
+    "input_tokens": 70,
+    "output_tokens": 18957,
+    "cache_read_tokens": 2447160,
+    "cache_creation_tokens": 92583,
+    "num_turns": 35,
+    "duration_ms": 985533,
+    "duration_api_ms": 226385,
+    "model": "claude-opus-5-5",
+    "session_id": "bbdd3b39-69fc-4ae2-a74d-f3a65e34b79b",
+    "stop_reason": "success",
+    "result_text": "Grades can now be retired, and `bin/e2e` passes all 4 tests: the new \"grade retire\" test and the three existing scenario tests. Before the change, only the new test failed.\n\n**What it does**\n- **Retiring:** a new \"Grades\" panel on the home screen has a select (A/B/C) and a \"Retire grade\" button. Each grade has a row showing whether it's retired. Retiring a grade writes `GRADE_RETIRED sheet=<id> by=<user> grade=<grade>` to the audit file. Retiring a grade that's already retired, or one that doesn't exist, shows `grade-error` and changes nothing.\n- **Refusing a retired grade:** the server checks this when a person is added and in every edit path, so it covers the person form, the inline grade on a row and the bulk grade action.\n  - An edit that leaves someone's current grade as it was, with no from-date, doesn't count as choosing it. People already on a retired grade keep it and can still be edited.\n  - An import line with a retired grade refuses the whole import before anything is written. A line that updates someone already on that grade is allowed.\n- **Default grade:** you can still set the default grade to a retired grade. While it's retired, the quick-add bar and blank-grade import lines use A instead.\n\n**Where it lives**\n- **Stored data:** a new `retired_grade` table (migration `V126__retired_grade.sql`).\n- **Server:** a new `grade` package with a `GradeService` and the endpoints `GET` and `POST /api/sheets/{id}/grades[/retire]`. The checks are in `PersonService`, `PersonImportService` and `SheetService.defaultGrade`.\n- **Front end:** `core/grades.ts` and `features/settings/grade-retire-form.ts`.\n\n**Choices you might want to revisit**\n- When a sheet is cloned, its retired grades are copied to the clone. The request didn't mention cloning.\n- The person form and inline grade select still list all three grades, so someone already on a retired grade can save their row. Choosing a retired grade there gets the existing generic \"could not be added/saved\" error, not a message saying the grade is retired.",
+    "error": "",
+    "attempts": [
+      {
+        "ok": true,
+        "limit_reached": false,
+        "retryable": false,
+        "timed_out": false,
+        "cost_usd": 1.6095160000000002,
+        "num_turns": 35,
+        "duration_ms": 985533,
+        "duration_api_ms": 226385,
+        "error": ""
+      }
+    ]
+  },
+  "agent_stream_file": "cp223.agent.jsonl",
+  "agent_diff_file": "cp223.agent.diff",
+  "build_log_file": null,
+  "tests": {
+    "gated": false,
+    "queued": true
+  },
+  "probe": null,
+  "pinned_touched": [],
+  "acceptance_touched": [],
+  "impact_gate": null
+}
