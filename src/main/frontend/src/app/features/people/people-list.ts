@@ -385,6 +385,8 @@ const NO_LEAVE: Leave = { holds: [], retiredFrom: null };
                   [attr.aria-label]="'Take a statement of ' + p.name">Statement</button>
                 <button type="button" data-testid="person-unstate" (click)="unstate(p)"
                   [attr.aria-label]="'Cancel the last statement of ' + p.name">Cancel statement</button>
+                <button type="button" data-testid="person-export-statement" (click)="exportStatementCsv(p)"
+                  [attr.aria-label]="'Download the statement of ' + p.name + ' as CSV'">Statement (CSV)</button>
                 <label [for]="'person-retire-date-' + p.id" class="visually-hidden">Retire {{ p.name }} from</label>
                 <input #retireDate type="date" [id]="'person-retire-date-' + p.id" data-testid="person-retire-date" />
                 <button type="button" data-testid="person-retire" (click)="retire(p, retireDate.value)"
@@ -1779,6 +1781,21 @@ export class PeopleList {
       ])),
     );
     downloadCsv(lines, 'claims.csv');
+  }
+
+  /** Downloads a person's statement as CSV: each of their claims their last statement bound, oldest
+   *  first, with its number, date, amount, figure (the bound figure as the claim shows it) and status. */
+  protected exportStatementCsv(p: Person): void {
+    const lines = [['number', 'date', 'amount', 'figure', 'status']].concat(
+      [...(this.claimsByPerson().get(p.id) ?? [])].reverse().filter((c) => c.stated).map((c) => [
+        c.number ?? '',
+        c.date,
+        c.amount,
+        claimDue(c, this.rates(), gradeOn(p.grades, c.date), this.floor(), this.lateness()) ?? 'n/a',
+        c.status,
+      ]),
+    );
+    downloadCsv(lines, 'statement-' + p.name + '.csv');
   }
 
   /** A person's name as the screen shows it, with the grade in force today. */
