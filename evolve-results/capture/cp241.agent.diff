@@ -1,0 +1,109 @@
+diff --git a/src/main/java/net/officefloor/hq/app/person/PersonService.java b/src/main/java/net/officefloor/hq/app/person/PersonService.java
+index a3a0c5186..fdabc90c4 100644
+--- a/src/main/java/net/officefloor/hq/app/person/PersonService.java
++++ b/src/main/java/net/officefloor/hq/app/person/PersonService.java
+@@ -191,7 +191,8 @@ public class PersonService {
+     }
+ 
+     /** Save the person's name, grade from a day, terms from a day, contact and tags as an edit does,
+-     *  recording it; the terms recorded, when they change, as those in force on the sheet's today. */
++     *  recording it; the terms recorded, when they change or the person has their own in force, as those
++     *  in force on the sheet's today. */
+     private Person save(String sheetId, String user, Person person, String name, String grade, LocalDate gradeFrom,
+             Integer terms, LocalDate termsFrom, String contact, String tags) {
+         if (choosesGrade(sheetId, person, grade, gradeFrom)) {
+@@ -215,7 +216,7 @@ public class PersonService {
+             }
+             Person saved = saveUnique(person);
+             audit.recordOnCommit(record("PERSON_EDITED", sheetId, user, saved, today)
+-                    + (termsChanged ? " terms=" + (termsNow != null ? termsNow : "") : "")
++                    + (termsChanged || termsNow != null ? " terms=" + (termsNow != null ? termsNow : "") : "")
+                     + (Objects.equals(contactBefore, contact) ? "" : " contact=" + (contact != null ? contact : "")));
+             return saved;
+         });
+diff --git a/src/main/java/net/officefloor/hq/app/role/RoleController.java b/src/main/java/net/officefloor/hq/app/role/RoleController.java
+index 42c7c3476..8764a0c2b 100644
+--- a/src/main/java/net/officefloor/hq/app/role/RoleController.java
++++ b/src/main/java/net/officefloor/hq/app/role/RoleController.java
+@@ -44,9 +44,13 @@ public class RoleController {
+         this.service = service;
+     }
+ 
++    /** The roles given on the sheet, or those in force at the end of the as-of day when one is given. */
+     @GetMapping
+-    public List<RoleView> list(@PathVariable @NotBlank @Size(max = 100) String sheetId) {
+-        return service.list(sheetId.trim()).stream().map(RoleView::of).toList();
++    public List<RoleView> list(@PathVariable @NotBlank @Size(max = 100) String sheetId,
++            @RequestHeader(value = AsOfGuard.HEADER, required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE)
++            LocalDate asOf) {
++        String sheet = sheetId.trim();
++        return (asOf == null ? service.list(sheet) : service.listOn(sheet, asOf)).stream().map(RoleView::of).toList();
+     }
+ 
+     /** The role the signed-in user acts in on the sheet now, or as they had it at the end of the
+diff --git a/src/main/java/net/officefloor/hq/app/role/RoleRevision.java b/src/main/java/net/officefloor/hq/app/role/RoleRevision.java
+index b90ac1e73..c97a62110 100644
+--- a/src/main/java/net/officefloor/hq/app/role/RoleRevision.java
++++ b/src/main/java/net/officefloor/hq/app/role/RoleRevision.java
+@@ -41,6 +41,10 @@ public class RoleRevision {
+         this.recordedOn = recordedOn;
+     }
+ 
++    public String getUserName() {
++        return userName;
++    }
++
+     public String getRole() {
+         return role;
+     }
+diff --git a/src/main/java/net/officefloor/hq/app/role/RoleRevisionRepository.java b/src/main/java/net/officefloor/hq/app/role/RoleRevisionRepository.java
+index d408ef1d0..f1ae75b6c 100644
+--- a/src/main/java/net/officefloor/hq/app/role/RoleRevisionRepository.java
++++ b/src/main/java/net/officefloor/hq/app/role/RoleRevisionRepository.java
+@@ -1,6 +1,7 @@
+ package net.officefloor.hq.app.role;
+ 
+ import java.time.LocalDate;
++import java.util.List;
+ import java.util.Optional;
+ import org.springframework.data.jpa.repository.JpaRepository;
+ 
+@@ -9,4 +10,7 @@ public interface RoleRevisionRepository extends JpaRepository<RoleRevision, Long
+     /** The last role given to a user name on or before a day. */
+     Optional<RoleRevision> findFirstBySheetIdAndUserNameAndRecordedOnLessThanEqualOrderByRecordedOnDescIdDesc(
+             String sheetId, String userName, LocalDate day);
++
++    /** The roles given on a sheet on or before a day, in the order they were given. */
++    List<RoleRevision> findBySheetIdAndRecordedOnLessThanEqualOrderByRecordedOnAscIdAsc(String sheetId, LocalDate day);
+ }
+diff --git a/src/main/java/net/officefloor/hq/app/role/RoleService.java b/src/main/java/net/officefloor/hq/app/role/RoleService.java
+index 7f24b1af0..002a07030 100644
+--- a/src/main/java/net/officefloor/hq/app/role/RoleService.java
++++ b/src/main/java/net/officefloor/hq/app/role/RoleService.java
+@@ -2,6 +2,8 @@ package net.officefloor.hq.app.role;
+ 
+ import java.time.LocalDate;
+ import java.util.List;
++import java.util.Map;
++import java.util.TreeMap;
+ import java.util.Optional;
+ import net.officefloor.hq.app.Audit;
+ import net.officefloor.hq.app.sheet.SheetService;
+@@ -38,6 +40,17 @@ public class RoleService {
+         return roles.findBySheetIdOrderByUserNameAsc(sheetId);
+     }
+ 
++    /** The roles in force on the sheet at the end of a day, by user name: the last role given to each
++     *  name on or before the day; a name given none by then is not listed. */
++    @Transactional(readOnly = true)
++    public List<SheetRole> listOn(String sheetId, LocalDate day) {
++        Map<String, SheetRole> then = new TreeMap<>();
++        for (RoleRevision r : revisions.findBySheetIdAndRecordedOnLessThanEqualOrderByRecordedOnAscIdAsc(sheetId, day)) {
++            then.put(r.getUserName(), new SheetRole(sheetId, r.getUserName(), r.getRole()));
++        }
++        return List.copyOf(then.values());
++    }
++
+     /** The role a user name acts in on the sheet: steward while a delegation to it holds the sheet's
+      *  today, else the role it was given. */
+     @Transactional(readOnly = true)
