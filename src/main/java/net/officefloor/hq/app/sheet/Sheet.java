@@ -61,6 +61,11 @@ public class Sheet {
     @Column(name = "pot")
     private BigDecimal pot;
 
+    /** The alert threshold: a person whose due-total goes from at or below it to above it is
+     *  alerted; null (blank) is off. Not dated. */
+    @Column(name = "alert_threshold")
+    private BigDecimal alertThreshold;
+
     /** The fiscal year start month, 1 to 12: a fiscal year runs from the first day of it, and is
      *  named by the calendar year that day falls in. Not dated. */
     @Column(name = "fiscal_start_month", nullable = false)
@@ -139,6 +144,14 @@ public class Sheet {
 
     public void setPot(BigDecimal pot) {
         this.pot = pot;
+    }
+
+    public BigDecimal getAlertThreshold() {
+        return alertThreshold;
+    }
+
+    public void setAlertThreshold(BigDecimal alertThreshold) {
+        this.alertThreshold = alertThreshold;
     }
 
     public int getFiscalStartMonth() {

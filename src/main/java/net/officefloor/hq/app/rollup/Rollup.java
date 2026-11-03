@@ -29,7 +29,8 @@ import org.springframework.transaction.annotation.Transactional;
  * out the single highest and the single lowest person's figure when three or more people have one
  * (a due-total of n/a is no figure). A change made through {@link #tracking} is followed in the audit by one
  * ROLLUP line per person whose figures it moved (in the order they were added), then a TOTALS line
- * when the sheet's totals moved; and the sheet's {@link History} records what it changed.
+ * when the sheet's totals moved, then one ALERT line per person (in list order) whose due-total it
+ * took from at or below the sheet's alert threshold (or n/a, or no figures) to above it; and the sheet's {@link History} records what it changed.
  */
 @Service
 public class Rollup {
@@ -88,6 +89,16 @@ public class Rollup {
                 || !Objects.equals(before.overdueTotal(), after.overdueTotal())) {
             audit.recordOnCommit("TOTALS" + prefix + " claimed-total=" + after.claimedTotal()
                     + " due-total=" + after.dueTotal() + " overdue-total=" + after.overdueTotal());
+        }
+        BigDecimal threshold = sheets.alertThreshold(sheetId);
+        if (threshold != null) {
+            after.people().forEach((id, figures) -> {
+                Figures was = before.people().get(id);
+                if (above(figures, threshold) && (was == null || !above(was, threshold))) {
+                    audit.recordOnCommit("ALERT" + prefix + " name=" + figures.name()
+                            + " due-total=" + figures.dueTotal());
+                }
+            });
         }
         return result;
     }
@@ -155,6 +166,11 @@ public class Rollup {
 
     /** The figures added up, leaving out the single highest and the single lowest when there are
      *  three or more. */
+    /** Whether a person's due-total is a figure above the threshold. */
+    private static boolean above(Figures figures, BigDecimal threshold) {
+        return !"n/a".equals(figures.dueTotal()) && new BigDecimal(figures.dueTotal()).compareTo(threshold) > 0;
+    }
+
     private static BigDecimal trimmedSum(List<BigDecimal> figures) {
         List<BigDecimal> kept = new ArrayList<>(figures);
         if (kept.size() >= 3) {

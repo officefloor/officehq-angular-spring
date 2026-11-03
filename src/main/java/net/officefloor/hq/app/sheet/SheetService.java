@@ -452,6 +452,23 @@ public class SheetService {
         return saved;
     }
 
+    /** The sheet's alert threshold; null when blank (off). */
+    @Transactional(readOnly = true)
+    public BigDecimal alertThreshold(String id) {
+        return sheets.findById(id).map(Sheet::getAlertThreshold).orElse(null);
+    }
+
+    /** Change the sheet's alert threshold (null: blank, off); recorded even when unchanged. */
+    @Transactional
+    public synchronized Sheet setAlertThreshold(String id, String user, BigDecimal threshold) {
+        Sheet sheet = load(id, user);
+        sheet.setAlertThreshold(threshold);
+        Sheet saved = sheets.saveAndFlush(sheet);
+        audit.recordOnCommit("SETTING_CHANGED sheet=" + id + " by=" + user + " key=alert-threshold value="
+                + (threshold == null ? "" : threshold.setScale(2).toPlainString()));
+        return saved;
+    }
+
     /** The sheet's fiscal year start month, 1 to 12; 1 unless set. */
     @Transactional(readOnly = true)
     public int fiscalStartMonth(String id) {

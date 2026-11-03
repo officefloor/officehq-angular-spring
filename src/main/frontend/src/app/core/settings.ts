@@ -62,6 +62,9 @@ export interface Settings {
   /** The fiscal year start month, 1 to 12 (1 unless set): a fiscal year runs from the first day of
    *  it. Not dated. */
   fiscalStartMonth: number;
+  /** The alert threshold: a person whose due-total crosses above it is alerted, as text with two
+   *  decimals; null when blank (off). Not dated. */
+  alertThreshold: string | null;
 }
 
 /** The grace days recorded for each grade (null: blank, none), each from its from-date, earliest
@@ -261,6 +264,12 @@ export class SheetSettings {
   setPot(value: string | null): Promise<Settings> {
     const [sheetId, headers] = this.active();
     return firstValueFrom(this.http.put<Settings>(`${this.url(sheetId)}/settings/pot`, { value }, { headers }));
+  }
+
+  /** Set the alert threshold; null for blank (off). */
+  setAlertThreshold(value: string | null): Promise<Settings> {
+    const [sheetId, headers] = this.active();
+    return firstValueFrom(this.http.put<Settings>(`${this.url(sheetId)}/settings/alert-threshold`, { value }, { headers }));
   }
 
   /** Set the fiscal year start month (1 to 12). */

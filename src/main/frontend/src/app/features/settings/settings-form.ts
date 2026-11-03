@@ -8,7 +8,7 @@ import {
   SheetSettings,
 } from '../../core/settings';
 
-// The sheet's settings (the clerk limit, the cap, the proof threshold, the proof threshold per grade, the note threshold, the floor, the terms, the grace days per grade, the late percent, the policy date, period numbering from, the grace days, the entry date, the pot, the parent sheet and the permission matrix) and the roles it gives user names: clerk, the default for
+// The sheet's settings (the clerk limit, the cap, the proof threshold, the proof threshold per grade, the note threshold, the floor, the terms, the grace days per grade, the late percent, the policy date, period numbering from, the grace days, the entry date, the pot, the alert threshold, the parent sheet and the permission matrix) and the roles it gives user names: clerk, the default for
 // any name, steward, or viewer (who may change nothing). The settings that carry a figure are dated: each is saved from a from-date
 // (blank: the sheet's today), and what shows in force is the value on the sheet's today.
 @Component({
@@ -95,6 +95,9 @@ import {
         <input id="setting-entry-date" data-testid="setting-entry-date" type="date" formControlName="entryDate" />
         <label for="setting-pot">Pot (a balanced pool's members cut it by their shares; blank: none)</label>
         <input id="setting-pot" data-testid="setting-pot" formControlName="pot" inputmode="decimal" />
+        <label for="setting-alert-threshold">Alert threshold (a person whose due-total crosses above it is alerted; blank: off)</label>
+        <input id="setting-alert-threshold" data-testid="setting-alert-threshold" formControlName="alertThreshold"
+               inputmode="decimal" />
         <label for="setting-fiscal-start-month">Fiscal year start month (1 to 12; a fiscal year runs from the first day of it)</label>
         <input id="setting-fiscal-start-month" data-testid="setting-fiscal-start-month" formControlName="fiscalStartMonth"
                inputmode="numeric" />
@@ -136,6 +139,7 @@ import {
       <p>Grace days: <span data-testid="setting-grace-days-current">{{ graceDays() ?? '' }}</span></p>
       <p>Entry date: <span data-testid="setting-entry-date-current">{{ entryDate() ?? '' }}</span></p>
       <p>Pot: <span data-testid="setting-pot-current">{{ pot() ?? '' }}</span></p>
+      <p>Alert threshold: <span data-testid="setting-alert-threshold-current">{{ alertThreshold() ?? '' }}</span></p>
       <p>Fiscal year start month: <span data-testid="setting-fiscal-start-month-current">{{ fiscalStartMonth() ?? '' }}</span></p>
       <p>Parent sheet: <span data-testid="setting-parent-current">{{ parent() ?? '' }}</span></p>
       @for (a of permActions; track a) {
@@ -200,6 +204,7 @@ export class SettingsForm {
   protected readonly graceDays = signal<number | null>(null);
   protected readonly entryDate = signal<string | null>(null);
   protected readonly pot = signal<string | null>(null);
+  protected readonly alertThreshold = signal<string | null>(null);
   protected readonly parent = signal<string | null>(null);
   protected readonly fiscalStartMonth = signal<number | null>(null);
   protected readonly permActions = PERM_ACTIONS;
@@ -257,6 +262,7 @@ export class SettingsForm {
     graceDays: new FormControl('', { nonNullable: true }),
     entryDate: new FormControl('', { nonNullable: true }),
     pot: new FormControl('', { nonNullable: true }),
+    alertThreshold: new FormControl('', { nonNullable: true }),
     parent: new FormControl('', { nonNullable: true }),
     fiscalStartMonth: new FormControl('', { nonNullable: true }),
     permissions: new FormGroup({
@@ -295,6 +301,7 @@ export class SettingsForm {
       this.graceDays.set(null);
       this.entryDate.set(null);
       this.pot.set(null);
+      this.alertThreshold.set(null);
       this.parent.set(null);
       this.fiscalStartMonth.set(null);
       this.permissions.set({});
@@ -309,13 +316,13 @@ export class SettingsForm {
     if (this.submitting) return;
     this.settingsError.set('');
     const { clerkLimit, clerkLimitFrom, cap, capFrom, proofThreshold, proofThresholdFrom, gradeProofThresholds, noteThreshold, noteThresholdFrom, floor, floorFrom, terms, termsFrom, gradeTerms, gradeGraces, latePct,
-      latePctFrom, policyDate, periodNumberingFrom, graceDays, entryDate, pot, parent, fiscalStartMonth, permissions } = this.settingsForm.controls;
+      latePctFrom, policyDate, periodNumberingFrom, graceDays, entryDate, pot, alertThreshold, parent, fiscalStartMonth, permissions } = this.settingsForm.controls;
     const changed = (...cs: AbstractControl[]) => cs.some((c) => c.dirty || c.touched);
     const none = !changed(clerkLimit, clerkLimitFrom) && !changed(cap, capFrom)
       && !changed(proofThreshold, proofThresholdFrom) && !changed(gradeProofThresholds) && !changed(noteThreshold, noteThresholdFrom)
       && !changed(floor, floorFrom)
       && !changed(terms, termsFrom) && !changed(gradeTerms) && !changed(gradeGraces) && !changed(latePct, latePctFrom) && !changed(policyDate)
-      && !changed(periodNumberingFrom) && !changed(graceDays) && !changed(entryDate) && !changed(pot) && !changed(parent) && !changed(fiscalStartMonth) && !changed(permissions);
+      && !changed(periodNumberingFrom) && !changed(graceDays) && !changed(entryDate) && !changed(pot) && !changed(alertThreshold) && !changed(parent) && !changed(fiscalStartMonth) && !changed(permissions);
     /** A from-date typed, or null when blank (the sheet's today). */
     const from = (c: AbstractControl<string>) => c.value.trim() || null;
     const fromsToSave: AbstractControl<string>[] = [];
@@ -361,6 +368,8 @@ export class SettingsForm {
     const saveEntryDate = changed(entryDate) || (none && entryDateValue !== '');
     const potValue = pot.value.trim();
     const savePot = changed(pot) || (none && potValue !== '');
+    const alertValue = alertThreshold.value.trim();
+    const saveAlert = changed(alertThreshold) || (none && alertValue !== '');
     const parentValue = parent.value.trim();
     const fiscalValue = fiscalStartMonth.value.trim();
     const saveFiscal = changed(fiscalStartMonth) || (none && fiscalValue !== '');
@@ -440,6 +449,10 @@ export class SettingsForm {
     }
     if (savePot && potValue !== '' && !LIMIT.test(potValue)) {
       this.settingsError.set('Enter a pot of 0.00 or more with up to two decimals, or leave it blank for none.');
+      return;
+    }
+    if (saveAlert && alertValue !== '' && !LIMIT.test(alertValue)) {
+      this.settingsError.set('Enter an alert threshold of 0.00 or more with up to two decimals, or leave it blank for off.');
       return;
     }
     if (saveFiscal && !FISCAL_MONTH.test(fiscalValue)) {
@@ -570,6 +583,12 @@ export class SettingsForm {
         pot.markAsUntouched();
         void this.pools.refresh();
       }
+      if (saveAlert) {
+        const saved = await this.api.setAlertThreshold(alertValue === '' ? null : alertValue);
+        this.alertThreshold.set(saved.alertThreshold);
+        alertThreshold.markAsPristine();
+        alertThreshold.markAsUntouched();
+      }
       if (saveFiscal) {
         const saved = await this.api.setFiscalStartMonth(fiscalValue);
         this.fiscalStartMonth.set(saved.fiscalStartMonth);
@@ -650,6 +669,7 @@ export class SettingsForm {
         this.graceDays.set(settings.graceDays);
         this.entryDate.set(settings.entryDate);
         this.pot.set(settings.pot);
+        this.alertThreshold.set(settings.alertThreshold);
         this.parent.set(settings.parent);
         this.fiscalStartMonth.set(settings.fiscalStartMonth);
         this.permissions.set(settings.permissions);
