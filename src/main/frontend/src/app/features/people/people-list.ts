@@ -25,6 +25,7 @@ import { PasteClaimsBox } from './paste-claims-box';
 import { ImportPeopleBox } from './import-people-box';
 import { TreeSearchBox } from './tree-search-box';
 import { PoolList } from '../pools/pool-list';
+import { CrewList } from '../crews/crew-list';
 import { PersonPlans } from '../plans/person-plans';
 import { PlanGenerateBox } from '../plans/plan-generate-box';
 import { FigurePipe } from '../../core/figure';
@@ -48,7 +49,7 @@ const NO_LEAVE: Leave = { holds: [], retiredFrom: null };
 // The signed-in user may watch a person: they are told when a claim of theirs is settled.
 @Component({
   selector: 'app-people-list',
-  imports: [ReactiveFormsModule, PersonClaims, RateForm, PeriodForm, QuickAddBar, PasteClaimsBox, ImportPeopleBox, SummaryPanel, ClassicSummaryPanel, HeaderCounters, PoolList, PersonPlans, PlanGenerateBox, TreeSearchBox, FigurePipe],
+  imports: [ReactiveFormsModule, PersonClaims, RateForm, PeriodForm, QuickAddBar, PasteClaimsBox, ImportPeopleBox, SummaryPanel, ClassicSummaryPanel, HeaderCounters, PoolList, CrewList, PersonPlans, PlanGenerateBox, TreeSearchBox, FigurePipe],
   template: `
     <app-header-counters [peopleCount]="people().length" [statuses]="statusSummary()"
       [dueTotal]="dueTotal()" [overdueTotal]="overdueTotal()"
@@ -416,6 +417,7 @@ const NO_LEAVE: Leave = { holds: [], retiredFrom: null };
       </table>
     </section>
     <app-pool-list [people]="people()" />
+    <app-crew-list [people]="people()" [dues]="dueByPerson()" />
   `,
 })
 export class PeopleList {
@@ -1561,6 +1563,9 @@ export class PeopleList {
     if (period.closed || period.softClosed) return period.closedPersonCarried[personId] ?? '0.00';
     return this.carried().get(personId)?.get(period.id) ?? '0.00';
   }
+
+  /** Each person's due-total by id, as their row shows it; null when n/a. */
+  protected readonly dueByPerson = computed(() => new Map(this.people().map((p) => [p.id, this.dueOf(p)])));
 
   protected dueOf(p: Person): string | null {
     const sum = this.figuresOf(p);
