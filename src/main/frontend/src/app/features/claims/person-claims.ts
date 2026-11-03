@@ -146,6 +146,17 @@ function holdRefusal(e: unknown): string {
   return 'The claim could not be held or released.';
 }
 
+/** The message for a refused review assignment of a claim. */
+function assignReviewRefusal(e: unknown): string {
+  if (e instanceof HttpErrorResponse && e.status === 403) return 'Only a steward can assign a review.';
+  if (e instanceof HttpErrorResponse && e.status === 409) return 'Only a claim in REVIEW can be assigned.';
+  if (e instanceof HttpErrorResponse && e.status === 400) return REVIEW_USER;
+  return 'The review could not be assigned.';
+}
+
+/** The message when a review assignment's user is missing. */
+const REVIEW_USER = 'Enter the user to assign the review to.';
+
 /** The message for a refused re-date of a claim. */
 function redateRefusal(e: unknown): string {
   if (e instanceof HttpErrorResponse && e.status === 403) return 'Only a steward can re-date a claim.';
@@ -295,6 +306,7 @@ function settlePartRefusal(e: unknown): string {
           <span data-testid="claim-split-from">{{ c.splitFrom ?? '' }}</span>
           <span data-testid="claim-batch">{{ c.settleBatch ?? '' }}</span>
           <span data-testid="claim-reminded">{{ c.remindedOn ?? '' }}</span>
+          <span data-testid="claim-review-assigned">{{ c.reviewAssignee ?? '' }}</span>
           <ol data-testid="claim-log" [attr.aria-label]="'Status log of claim of ' + c.amount + ' on ' + c.date">
             @for (l of c.log; track $index) {
               <li data-testid="claim-log-line">{{ l.status }} by {{ l.by }} on {{ l.on }} due={{ l.due ?? 'n/a' }}</li>
@@ -398,6 +410,11 @@ function settlePartRefusal(e: unknown): string {
             [attr.aria-label]="'Waive the late charge of claim of ' + c.amount + ' on ' + c.date">Waive late charge</button>
           <button type="button" data-testid="claim-hold" (click)="toggleHold(c)"
             [attr.aria-label]="(c.held ? 'Release' : 'Hold') + ' claim of ' + c.amount + ' on ' + c.date">{{ c.held ? 'Release' : 'Hold' }}</button>
+          <label [for]="'claim-review-user-' + c.id">Assign review to</label>
+          <input [id]="'claim-review-user-' + c.id" type="text" data-testid="claim-review-user" #reviewUser
+            (input)="clearError(c)" />
+          <button type="button" data-testid="claim-review-assign" (click)="assignReview(c, reviewUser.value)"
+            [attr.aria-label]="'Assign the review of claim of ' + c.amount + ' on ' + c.date">Assign review</button>
           <label [for]="'claim-date-new-' + c.id">New date</label>
           <input [id]="'claim-date-new-' + c.id" type="date" data-testid="claim-date-new" #redateDate
             (input)="clearError(c)" />
@@ -733,6 +750,19 @@ export class PersonClaims {
       this.saved.emit(await this.api.toggleHold(c.id));
     } catch (e) {
       this.claimError.set({ id: c.id, message: holdRefusal(e) });
+    }
+  }
+
+  protected async assignReview(c: Claim, assignee: string): Promise<void> {
+    this.claimError.set(null);
+    if (!assignee.trim()) {
+      this.claimError.set({ id: c.id, message: REVIEW_USER });
+      return;
+    }
+    try {
+      this.saved.emit(await this.api.assignReview(c.id, assignee));
+    } catch (e) {
+      this.claimError.set({ id: c.id, message: assignReviewRefusal(e) });
     }
   }
 

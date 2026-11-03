@@ -178,6 +178,8 @@ export interface Claim {
   held: boolean;
   /** The shares other people of the sheet hold of it, in the order they were given. */
   shares: ClaimShare[];
+  /** The user a steward assigned it to while it was in review; null when never assigned. */
+  reviewAssignee: string | null;
 }
 
 /** A share of a claim: the id of the person holding it and their share percent as text with two
@@ -464,6 +466,16 @@ export class Claims {
     const { sheetId, user } = this.active();
     return firstValueFrom(
       this.http.post<Claim>(`${this.url(sheetId)}/claims/${id}/defer`, { until }, { headers: { 'X-User': user } }),
+    );
+  }
+
+  /** Assign a claim in review to a user; refused (403) when the user is not a steward, (409) when it
+   *  is not in review, and (400) when the user to assign is blank. */
+  assignReview(id: number, assignee: string): Promise<Claim> {
+    const { sheetId, user } = this.active();
+    return firstValueFrom(
+      this.http.post<Claim>(`${this.url(sheetId)}/claims/${id}/review-assignee`, { user: assignee },
+        { headers: { 'X-User': user } }),
     );
   }
 

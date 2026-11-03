@@ -56,7 +56,8 @@ const NO_LEAVE: Leave = { holds: [], retiredFrom: null };
   template: `
     <app-header-counters [peopleCount]="people().length" [statuses]="statusSummary()"
       [dueTotal]="dueTotal()" [overdueTotal]="overdueTotal()"
-      [myDueTotal]="myDueTotal()" [myOverdueTotal]="myOverdueTotal()" [myCrewDueTotal]="myCrewDueTotal()" />
+      [myDueTotal]="myDueTotal()" [myOverdueTotal]="myOverdueTotal()" [myCrewDueTotal]="myCrewDueTotal()"
+      [myReviewsCount]="myReviewsCount()" />
     <app-steward-dashboard [steward]="myRole() === 'steward'" [statuses]="statusSummary()"
       [overdueCount]="overdueCount()" />
     <app-rate-form [rates]="rates()" (saved)="rateSaved($event)" (imported)="ratesImported()" />
@@ -890,6 +891,11 @@ export class PeopleList {
     const me = this.me();
     const led = me ? this.crewsApi.list().filter((c) => c.lead?.personId === me.id) : [];
     return led.length ? sumAmounts(led.map((c) => crewDueTotal(c, this.dueByPerson()))) : '';
+  });
+  /** How many claims in review on the sheet are assigned to the signed-in user. */
+  protected readonly myReviewsCount = computed(() => {
+    const user = this.session.user()?.trim();
+    return user ? this.claims().filter((c) => c.status === 'REVIEW' && c.reviewAssignee === user).length : 0;
   });
   /** The figures of the sheet's descendants added up, as the store held them when it was loaded. */
   private readonly descendants = signal<DescendantFigures>(NO_DESCENDANTS);

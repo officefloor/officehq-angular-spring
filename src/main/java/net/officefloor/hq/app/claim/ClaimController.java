@@ -53,14 +53,16 @@ public class ClaimController {
      *  settle batch that settled it (null when none, or when it is not settled or pending); and its
      *  lines, in the order they were added; and whether its late charge is waived; and how many of
      *  its proofs are of each kind (receipt, photo); and whether it is held; and the shares other
-     *  people hold of it, in the order they were given. */
+     *  people hold of it, in the order they were given; and the user its review is assigned to (null
+     *  when none). */
     public record ClaimView(long id, long personId, String amount, LocalDate date, String note,
             ClaimStatus status, String number, String settledDue, String openedBy, boolean stated,
             String statedDue, boolean statedNa, String corrects, LocalDate roundsBy, long listed, LocalDate dueBy,
             List<LogLineView> log, LocalDate deferredUntil, int proofs, String splitFrom,
             String editLockedBy, boolean lateEntry, LocalDate remindedOn, String ref, String tags,
             String voidReason, List<CommentView> comments, Integer settleBatch, List<LineView> lines,
-            long added, boolean waived, Map<String, Integer> proofKinds, boolean held, List<ShareView> shares) {
+            long added, boolean waived, Map<String, Integer> proofKinds, boolean held, List<ShareView> shares,
+            String reviewAssignee) {
         public static ClaimView of(Claim claim) {
             return new ClaimView(claim.getId(), claim.getPersonId(), claim.getAmount().setScale(2).toPlainString(),
                     claim.getDate(), claim.getNote(), claim.getStatus(), claim.getNumber(),
@@ -76,7 +78,7 @@ public class ClaimController {
                     batchOf(claim.getStatus(), claim.getSettleBatch()),
                     claim.getLines().stream().map(LineView::of).toList(), claim.getAdded(),
                     claim.isWaived(), proofKinds(claim, null), claim.isHeld(),
-                    claim.getShares().stream().map(ShareView::of).toList());
+                    claim.getShares().stream().map(ShareView::of).toList(), claim.getReviewAssignee());
         }
 
         /** The claim as it stood at the end of a day: its figures as its revision then has them (see
@@ -117,7 +119,7 @@ public class ClaimController {
                     batchOf(then.getStatus(), kept.getSettleBatch()),
                     kept.getLines().stream().map(LineView::of).toList(), then.getAdded(),
                     then.isWaived(), proofKinds(kept, day), then.isHeld(),
-                    kept.getShares().stream().map(ShareView::of).toList());
+                    kept.getShares().stream().map(ShareView::of).toList(), kept.getReviewAssignee());
         }
 
         /** The settle batch a claim shows: only while it is settled or pending. */
@@ -420,6 +422,18 @@ public class ClaimController {
             @PathVariable long claimId,
             @RequestHeader("X-User") @NotBlank @Size(max = 100) String user) {
         return ClaimView.of(service.toggleHold(sheetId.trim(), user.trim(), claimId));
+    }
+
+    /** The user a steward assigns a claim in review to. */
+    public record AssignReviewForm(@Size(max = 100) String user) {
+    }
+
+    @PostMapping("/claims/{claimId}/review-assignee")
+    public ClaimView assignReview(@PathVariable @NotBlank @Size(max = 100) String sheetId,
+            @PathVariable long claimId,
+            @RequestHeader("X-User") @NotBlank @Size(max = 100) String user,
+            @Valid @RequestBody AssignReviewForm form) {
+        return ClaimView.of(service.assignReview(sheetId.trim(), user.trim(), claimId, form.user()));
     }
 
     /** The new date a steward gives an open or pending claim. */

@@ -5,7 +5,8 @@ import { FigurePipe } from '../../core/figure';
 // The sheet's counters, always on top: how many people it has (retired included), how many
 // claims are in each status, and its due-total and overdue-total, each the figure it repeats;
 // and the signed-in user's own due-total and overdue-total, when a person on the sheet is theirs,
-// and their crew total, when that person leads a crew.
+// and their crew total, when that person leads a crew; and how many claims in review are assigned
+// to them.
 @Component({
   selector: 'app-header-counters',
   imports: [FigurePipe],
@@ -28,6 +29,8 @@ import { FigurePipe } from '../../core/figure';
         <dd data-testid="my-overdue-total">{{ myOverdueTotal() | figure }}</dd>
         <dt>My crews' due</dt>
         <dd data-testid="my-crew-due-total">{{ myCrewDueTotal() | figure }}</dd>
+        <dt>My reviews</dt>
+        <dd data-testid="my-reviews-count">{{ myReviewsCount() }}</dd>
       </dl>
     </header>
   `,
@@ -44,4 +47,6 @@ export class HeaderCounters {
   /** The due-totals of the crews the signed-in user's person leads, added up: blank when they lead
    *  none. */
   readonly myCrewDueTotal = input.required<string>();
+  /** How many claims in review on the sheet are assigned to the signed-in user. */
+  readonly myReviewsCount = input.required<number>();
 }

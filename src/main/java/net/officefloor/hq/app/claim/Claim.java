@@ -136,6 +136,10 @@ public class Claim {
     @Column(name = "reminded_on")
     private LocalDate remindedOn;
 
+    /** The user a steward assigned the claim to while it was in review; null when never assigned. */
+    @Column(name = "review_assignee")
+    private String reviewAssignee;
+
     /** Whether a reminder has escalated the claim; a claim is escalated once ever. */
     @Column(name = "escalated", nullable = false)
     private boolean escalated;
@@ -285,6 +289,7 @@ public class Claim {
         proofDays.forEach(p -> copy.proofDays.add(p.copy()));
         copy.splitFrom = renumber.apply(splitFrom);
         copy.remindedOn = remindedOn;
+        copy.reviewAssignee = reviewAssignee;
         copy.escalated = escalated;
         copy.waived = waived;
         copy.held = held;
@@ -458,6 +463,14 @@ public class Claim {
 
     public void remindOn(LocalDate day) {
         this.remindedOn = day;
+    }
+
+    public String getReviewAssignee() {
+        return reviewAssignee;
+    }
+
+    public void assignReview(String user) {
+        this.reviewAssignee = user;
     }
 
     public boolean isEscalated() {

@@ -385,6 +385,27 @@ public class ClaimService {
         });
     }
 
+    /** Assign a claim in review to a user. Refused unless the user is a steward (403), and when the
+     *  claim is not in review (409) or the assignee is blank (400). */
+    @Transactional
+    public Claim assignReview(String sheetId, String user, long claimId, String assignee) {
+        Claim claim = lock(sheetId, claimId);
+        if (!SheetRole.STEWARD.equals(roles.roleOf(sheetId, user))) {
+            throw new ResponseStatusException(HttpStatus.FORBIDDEN, "Only a steward can assign a review");
+        }
+        if (claim.getStatus() != ClaimStatus.REVIEW) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT, "Only a claim in REVIEW can be assigned");
+        }
+        if (assignee == null || assignee.isBlank()) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Give the user to assign the review to");
+        }
+        Person person = person(sheetId, claim.getPersonId());
+        claim.assignReview(assignee.trim());
+        Claim saved = claims.saveAndFlush(claim);
+        audit.recordOnCommit(record("REVIEW_ASSIGNED", sheetId, user, person, saved) + " user=" + saved.getReviewAssignee());
+        return saved;
+    }
+
     /** Delete a draft claim: it counts nowhere, and cannot be edited, opened or voided. Refused when
      *  the claim is not a draft, or its period is closed. */
     @Transactional
