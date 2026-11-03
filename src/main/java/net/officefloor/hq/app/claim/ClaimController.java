@@ -43,6 +43,11 @@ public class ClaimController {
             @NotBlank @Size(max = 100) String user, @NotNull Long id) {
     }
 
+    public record RejectClaimRequest(@NotBlank @Size(max = 100) String sheet,
+            @NotBlank @Size(max = 100) String user, @NotNull Long id,
+            @NotBlank @Size(max = 200) @Pattern(regexp = "\\s*\\S+\\s*") String reason) {
+    }
+
     public record BulkOpenRequest(@NotBlank @Size(max = 100) String sheet, @NotBlank @Size(max = 100) String user,
             @NotNull @Size(max = 1000) List<@NotNull Long> ids) {
     }
@@ -111,6 +116,16 @@ public class ClaimController {
     @PostMapping("/settle")
     public ClaimResponse settle(@Valid @RequestBody ClaimStatusRequest req) {
         return changeStatus(req, ClaimStatus.SETTLED);
+    }
+
+    @PostMapping("/approve")
+    public ClaimResponse approve(@Valid @RequestBody ClaimStatusRequest req) {
+        return response(service.approve(req.sheet().trim(), req.user().trim(), req.id()));
+    }
+
+    @PostMapping("/reject")
+    public ClaimResponse reject(@Valid @RequestBody RejectClaimRequest req) {
+        return response(service.reject(req.sheet().trim(), req.user().trim(), req.id(), req.reason().trim()));
     }
 
     @PostMapping("/void")

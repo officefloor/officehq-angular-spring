@@ -2,7 +2,7 @@ import { HttpClient } from '@angular/common/http';
 import { Component, computed, effect, inject, model, signal } from '@angular/core';
 import { firstValueFrom } from 'rxjs';
 import { Session } from '../../core/session';
-import { Claim, cents, daysOverdue, isCorrection, money } from '../claims/claims';
+import { Claim, cents, daysOverdue, isCorrection, isOpen, money } from '../claims/claims';
 
 // The sheet's rates for each grade (a percent with two decimals, each from an optional from-date)
 // and the form that sets one. Each grade shows the rate in force on the sheet's today, or n/a when
@@ -74,7 +74,7 @@ export function dueCents(amountCents: number, pct: string | undefined, halfUp = 
  * due fixed when it was settled. Null when it has none (its figure is live, or there was no rate).
  */
 export function fixedDueCents(c: Claim): number | null {
-  const fixed = c.stated ? c.statedDue : c.settledDue;
+  const fixed = c.stated && c.status !== 'PENDING' ? c.statedDue : c.settledDue;
   return fixed !== null ? cents(fixed) : null;
 }
 
@@ -89,14 +89,15 @@ export function roundsHalfUp(roundOn: string, policyDate: string, today: string 
 }
 
 /**
- * A claim's figure in whole cents: a stated claim's figure bound by the last statement, a settled
+ * A claim's figure in whole cents: a stated claim's figure bound by the last statement (not while
+ * PENDING: its figure is live), a settled
  * claim's due fixed when it was settled, any other claim's live due at the rate for the grade in
  * force on the claim's date, rounded half up when `halfUp` (else half to even), raised to the
  * sheet's floor (in whole cents; a correction's is not). Null when it has none.
  */
 export function claimDueCents(c: Claim, rates: readonly Rate[], grade: string, floor: number, halfUp = false): number | null {
   if (c.settledDue !== null) return cents(c.settledDue);
-  if (c.stated) return fixedDueCents(c);
+  if (c.stated && c.status !== 'PENDING') return fixedDueCents(c);
   const due = dueCents(cents(c.amount), pctOn(rates, grade, c.date), halfUp);
   return due === null || isCorrection(c) ? due : Math.max(due, floor);
 }
@@ -127,7 +128,7 @@ export function chargedDueCents(
 ): number | null {
   const halfUp = roundsHalfUp(roundOn, late.policyDate, late.today);
   const figure = claimDueCents(c, rates, grade, floor, halfUp);
-  if (figure === null || c.status !== 'OPEN' || isCorrection(c)) return figure;
+  if (figure === null || !isOpen(c) || isCorrection(c)) return figure;
   const periods = Math.floor(daysOverdue(c, late.terms, late.today) / 30);
   if (periods <= 0) return figure;
   return figure + (dueCents(figure * periods, late.latePct, halfUp) ?? 0);

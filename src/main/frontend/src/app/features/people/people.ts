@@ -2,7 +2,7 @@ import { HttpClient, HttpErrorResponse } from '@angular/common/http';
 import { Component, computed, effect, inject, signal } from '@angular/core';
 import { firstValueFrom } from 'rxjs';
 import { Session } from '../../core/session';
-import { AMOUNT, Claim, PersonClaims, cents, counts, money, overdue, roundingDate } from '../claims/claims';
+import { AMOUNT, Claim, PersonClaims, cents, counts, isOpen, money, overdue, roundingDate } from '../claims/claims';
 import { DatedDue, Period, Periods, periodDueTotal } from '../periods/periods';
 import { DatedGrade, Lateness, Rate, Rates, chargedDueCents, dueText, gradeOn, pctOn } from '../rates/rates';
 import { Roles } from '../roles/roles';
@@ -18,7 +18,7 @@ import { GradeSummary, PeriodSummary, StatusSummary, Summary } from '../summary/
 // The editor remembers the version of the person it opened; if someone else has saved the person
 // since, the save is refused and the form is refilled with the values the store holds now.
 // Each row shows what the person has claimed and lists their claims; the sheet's claimed-total
-// adds everyone's up. Only OPEN and SETTLED claims count toward any of these totals. Each claim shows
+// adds everyone's up. Only OPEN, PENDING and SETTLED claims count toward any of these totals. Each claim shows
 // what is due at the rate for the person's grade in force on the claim's date (a settled claim the
 // figure fixed when settled), each person the sum of those figures over the claims that count, and
 // the sheet's due-total adds up every person's due-total that has one. A live due is never below
@@ -30,8 +30,8 @@ import { GradeSummary, PeriodSummary, StatusSummary, Summary } from '../summary/
 // A person can be retired from a date (the sheet's today when left blank); with a date set they count
 // as retired at once, whatever the date. No claim of theirs can be dated after it. Retired people are
 // left out of the list unless "show retired" is on; their claims keep counting in every total.
-// A person can be put on hold and taken off it again: while held, their OPEN claims count in no
-// total (their own, the sheet's or a period's); their SETTLED claims still do.
+// A person can be put on hold and taken off it again: while held, their OPEN and PENDING claims count
+// in no total (their own, the sheet's or a period's); their SETTLED claims still do.
 // The quick-add bar adds a DRAFT claim of an amount, dated the sheet's today with an empty note, for
 // the person of a name, adding the person with grade A first when the name is not on the sheet.
 // Each person, and the sheet, shows how many of the claims that count are overdue and the sum of
@@ -55,9 +55,9 @@ interface Person {
   held: boolean;
 }
 
-/** Whether a claim of the person counts toward the totals: a held person's OPEN claims do not. */
+/** Whether a claim of the person counts toward the totals: a held person's OPEN or PENDING claims do not. */
 function countsFor(p: Person | undefined, c: Claim): boolean {
-  return counts(c) && !(p?.held && c.status === 'OPEN');
+  return counts(c) && !(p?.held && isOpen(c));
 }
 
 /** One of a person's patrons. */

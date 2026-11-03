@@ -18,7 +18,11 @@ import { DatedGrade, Lateness, Rate, chargedDueCents, dueText, gradeOn } from '.
 // A claim with a negative amount is a correction: it must name, by number, a SETTLED claim of the
 // same person that it corrects, else it is refused. Its due has no floor and no late charge, and
 // it shows the number it corrects.
-export type ClaimStatus = 'DRAFT' | 'OPEN' | 'SETTLED' | 'VOID';
+// A clerk settling a claim whose due is above the clerk limit makes it PENDING. A PENDING claim
+// counts like an OPEN one but is not bound by a statement: it shows its live figure. A steward
+// approves it (SETTLED, its due fixed then) or rejects it with a reason (back to OPEN, bound again
+// by the last statement); the user who opened it cannot approve it.
+export type ClaimStatus = 'DRAFT' | 'OPEN' | 'PENDING' | 'SETTLED' | 'VOID';
 
 export interface Claim {
   id: number;
@@ -55,11 +59,16 @@ export function isCorrection(c: Claim): boolean {
 }
 
 /** A move from one status to the next, by the endpoint that makes it. */
-type ClaimAction = 'open' | 'settle' | 'void';
+type ClaimAction = 'open' | 'settle' | 'approve' | 'reject' | 'void';
 
-/** Whether a claim counts toward claimed, due-total and every total: only OPEN and SETTLED do. */
+/** Whether a claim counts toward claimed, due-total and every total: only OPEN, PENDING and SETTLED do. */
 export function counts(c: Claim): boolean {
-  return c.status === 'OPEN' || c.status === 'SETTLED';
+  return isOpen(c) || c.status === 'SETTLED';
+}
+
+/** Whether a claim is open: OPEN or PENDING. Only an open claim goes overdue, and a hold takes it out of the totals. */
+export function isOpen(c: Claim): boolean {
+  return c.status === 'OPEN' || c.status === 'PENDING';
 }
 
 /** The refusal of a change to a claim dated inside a closed period. */
@@ -68,7 +77,16 @@ const CLOSED = 'That date is inside a closed period.';
 /** The refusal of a correction that names no SETTLED claim of its person. */
 const UNCORRECTABLE = 'A negative amount must correct a SETTLED claim of this person, by its number.';
 
-const PAST: Record<ClaimAction, string> = { open: 'opened', settle: 'settled', void: 'voided' };
+const PAST: Record<ClaimAction, string> = {
+  open: 'opened',
+  settle: 'settled',
+  approve: 'approved',
+  reject: 'rejected',
+  void: 'voided',
+};
+
+/** A reason for rejecting a claim: one word. */
+const REASON = /^\S{1,200}$/;
 
 /** An amount: 0.00 or more, with up to two decimals. */
 export const AMOUNT = /^\d{1,12}(\.\d{1,2})?$/;
@@ -117,9 +135,9 @@ export function dueBy(c: Claim, terms: number): string {
   return dateOf(dayNumber(c.date) + terms);
 }
 
-/** Whether a claim is overdue: OPEN, and due by a date before the sheet's today. */
+/** Whether a claim is overdue: open (OPEN or PENDING), and due by a date before the sheet's today. */
 export function overdue(c: Claim, terms: number, today: string | null): boolean {
-  return c.status === 'OPEN' && today !== null && dueBy(c, terms) < today;
+  return isOpen(c) && today !== null && dueBy(c, terms) < today;
 }
 
 /** The days a claim is overdue on the sheet's today: past its due-by; 0 when it is not overdue. */
@@ -198,6 +216,15 @@ export function money(c: number): string {
           <span>Stated <span data-testid="claim-stated">{{ c.stated ? 'yes' : 'no' }}</span></span>
           <button type="button" data-testid="claim-open" (click)="act(c, 'open')">Open</button>
           <button type="button" data-testid="claim-settle" (click)="act(c, 'settle')">Settle</button>
+          <button type="button" data-testid="claim-approve" (click)="act(c, 'approve')">Approve</button>
+          <label [for]="'claim-reject-reason-' + c.id">Reject reason</label>
+          <input
+            [id]="'claim-reject-reason-' + c.id"
+            data-testid="claim-reject-reason"
+            [value]="reasons().get(c.id) ?? ''"
+            (input)="setReason(c.id, $any($event.target).value)"
+          />
+          <button type="button" data-testid="claim-reject" (click)="act(c, 'reject')">Reject</button>
           <button type="button" data-testid="claim-void" (click)="act(c, 'void')">Void</button>
           <button
             type="button"
@@ -255,6 +282,8 @@ export class PersonClaims {
   private submitting = false;
   /** The error of each claim's last refused status change, by claim id. */
   protected readonly actionErrors = signal<ReadonlyMap<number, string>>(new Map());
+  /** The reason typed for rejecting each claim, by claim id. */
+  protected readonly reasons = signal<ReadonlyMap<number, string>>(new Map());
 
   /** A stated claim shows the figure bound by the last statement, a settled claim the due fixed
    *  when it was settled; any other claim's due is live, at the rate for the person's grade in
@@ -320,23 +349,35 @@ export class PersonClaims {
     });
   }
 
+  protected setReason(id: number, reason: string): void {
+    this.reasons.update((m) => new Map(m).set(id, reason));
+    this.clearActionError(id);
+  }
+
   /** Move a claim to its next status; the server refuses a move its status does not allow. */
   protected async act(c: Claim, action: ClaimAction): Promise<void> {
     this.clearActionError(c.id);
     const sheet = this.session.sheet();
+    const reason = (this.reasons().get(c.id) ?? '').trim();
+    if (action === 'reject' && !REASON.test(reason)) {
+      this.actionErrors.update((m) => new Map(m).set(c.id, 'Enter a one-word reason to reject this claim.'));
+      return;
+    }
+    const body = { sheet, user: this.session.user(), id: c.id, ...(action === 'reject' ? { reason } : {}) };
     try {
-      const claim = await firstValueFrom(
-        this.http.post<Claim>(`/api/claims/${action}`, { sheet, user: this.session.user(), id: c.id }),
-      );
+      const claim = await firstValueFrom(this.http.post<Claim>(`/api/claims/${action}`, body));
       if (this.session.sheet() !== sheet) return;
+      if (action === 'reject') this.setReason(c.id, '');
       this.saved.emit(claim);
     } catch (e) {
       if (this.session.sheet() !== sheet) return;
       const err =
         e instanceof HttpErrorResponse && e.status === 403
-          ? c.openedBy === this.session.user()
-            ? 'The user who opened a claim cannot settle it.'
-            : 'A clerk cannot settle a claim whose due is above the clerk limit.'
+          ? action === 'approve' || action === 'reject'
+            ? c.openedBy === this.session.user() && action === 'approve'
+              ? 'The user who opened a claim cannot approve it.'
+              : 'Only a steward can approve or reject a PENDING claim.'
+            : 'The user who opened a claim cannot settle it.'
           : e instanceof HttpErrorResponse && e.status === 423
             ? CLOSED
             : `A ${c.status} claim cannot be ${PAST[action]}.`;

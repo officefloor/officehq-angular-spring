@@ -121,7 +121,7 @@ public class Person {
 
     /** Whether a claim of this person in the given status counts toward the live totals. */
     public boolean counts(ClaimStatus status) {
-        return status.counts() && !(held && status == ClaimStatus.OPEN);
+        return status.counts() && !(held && status.isOpen());
     }
 
     public long getVersion() {

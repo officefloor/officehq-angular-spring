@@ -4,7 +4,8 @@ import { firstValueFrom } from 'rxjs';
 import { Session } from '../../core/session';
 
 // The roles the sheet assigns to user names: clerk (the default for any name) or steward, and the
-// form that assigns one. A steward settles any claim; a clerk only up to the clerk limit.
+// form that assigns one. A steward settles any claim, and approves or rejects a PENDING one; a
+// clerk settling a claim above the clerk limit makes it PENDING.
 interface Role {
   user: string;
   role: string;

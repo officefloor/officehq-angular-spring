@@ -7,7 +7,7 @@ import net.officefloor.hq.app.sheet.Sheet;
 
 /**
  * The late charge on an overdue claim: the sheet's late percent of the claim's figure for every
- * full 30 days it is overdue (OPEN, and past its date plus the sheet's terms on the sheet's today),
+ * full 30 days it is overdue (OPEN or PENDING, and past its date plus the sheet's terms on the sheet's today),
  * rounded to the cent as the claim rounds (see {@link Rounding}). A correction has none. Never bound by a statement; settling a claim fixes it into its due.
  */
 public final class LateCharge {
@@ -26,7 +26,7 @@ public final class LateCharge {
     /** The late charge on a claim's figure on the sheet's today; zero when it is not overdue. */
     public static BigDecimal charge(Sheet sheet, Claim claim, BigDecimal figure) {
         BigDecimal zero = BigDecimal.ZERO.setScale(2);
-        if (figure == null || claim.getStatus() != ClaimStatus.OPEN || claim.isCorrection()) {
+        if (figure == null || !claim.getStatus().isOpen() || claim.isCorrection()) {
             return zero;
         }
         LocalDate dueBy = claim.getDate().plusDays(sheet.getTerms());
