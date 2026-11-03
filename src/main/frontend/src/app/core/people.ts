@@ -115,6 +115,8 @@ export interface Person {
   snapshots: Snapshot[];
   /** Their statements that stand, oldest first by date (carried ones among them). */
   statements: StatementLine[];
+  /** The reason of their flag while it is in force on the sheet's today; null when none is. */
+  flag: string | null;
 }
 
 /** A statement just taken: the person as they now show, and their claims (newest first) as it
@@ -263,6 +265,14 @@ export class People {
     const { sheetId, user } = this.active();
     return firstValueFrom(
       this.http.post<Person>(`${this.url(sheetId)}/${id}/hold`, { from, to }, { headers: { 'X-User': user } }),
+    );
+  }
+
+  /** Flag the person (a steward only) with a reason until a day (included; null: the sheet's today). */
+  flag(id: number, reason: string, until: string | null): Promise<Person> {
+    const { sheetId, user } = this.active();
+    return firstValueFrom(
+      this.http.post<Person>(`${this.url(sheetId)}/${id}/flag`, { reason, until }, { headers: { 'X-User': user } }),
     );
   }
 

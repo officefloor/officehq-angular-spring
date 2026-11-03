@@ -255,6 +255,7 @@ public class ClaimService {
             throw new ResponseStatusException(HttpStatus.FORBIDDEN, "Your role may not " + action + " a claim");
         }
         if (to == ClaimStatus.OPEN) {
+            refuseFlagged(sheetId, user, claim);
             refuseUnnoted(sheetId, claim);
             refuseOverCap(sheetId, claim);
         }
@@ -810,6 +811,15 @@ public class ClaimService {
                     "A correction may not exceed the " + remains + " that remains of claim " + corrects);
         }
         return corrected;
+    }
+
+    /** Refuse opening a claim of a person flagged on the sheet's today unless the user is a steward. */
+    private void refuseFlagged(String sheetId, String user, Claim claim) {
+        if (person(sheetId, claim.getPersonId()).isFlaggedOn(sheets.today(sheetId))
+                && !SheetRole.STEWARD.equals(roles.roleOf(sheetId, user))) {
+            throw new ResponseStatusException(HttpStatus.FORBIDDEN,
+                    "Only a steward can open a claim of a flagged person");
+        }
     }
 
     /** Refuse a change to a claim due by the day when the day falls inside a closed period. */

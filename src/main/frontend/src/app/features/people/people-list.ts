@@ -221,7 +221,7 @@ const NO_LEAVE: Leave = { holds: [], retiredFrom: null };
       <button type="button" data-testid="export-claims" (click)="exportClaimsCsv()">Export claims (CSV)</button>
       <table data-testid="people">
         <thead>
-          <tr><th scope="col"><span class="visually-hidden">Select</span></th><th scope="col">Name</th><th scope="col">Grade</th><th scope="col">Active</th>@if (shows('terms')) {<th scope="col">Terms</th>}@if (shows('contact')) {<th scope="col">Contact</th>}<th scope="col">Tags</th>@if (shows('aliases')) {<th scope="col">Aliases</th>}<th scope="col">Clashing</th><th scope="col">Came from</th>@if (shows('claimed')) {<th scope="col">Claimed</th>}@if (shows('due-total')) {<th scope="col">Due</th>}<th scope="col">Settled due</th><th scope="col">Open due</th>@for (pd of periods(); track pd.id) {<th scope="col">Due in {{ pd.name }}</th><th scope="col">Carried into {{ pd.name }}</th>}@if (shows('excess')) {<th scope="col">Excess</th>}<th scope="col">Cut total</th>@if (shows('statement-count')) {<th scope="col">Statements</th>}@if (shows('stated-total')) {<th scope="col">Last stated</th>}@if (shows('statement-date')) {<th scope="col">Stated on</th>}@if (shows('retired')) {<th scope="col">Retired</th>}<th scope="col">Retired from</th><th scope="col">Past retirements</th><th scope="col">Snapshots</th><th scope="col">Statements taken</th>@if (shows('hold')) {<th scope="col">On hold</th>}@if (shows('overdue-count')) {<th scope="col">Overdue</th>}@if (shows('overdue-total')) {<th scope="col">Overdue due</th>}<th scope="col">Due aged 0–30 days</th><th scope="col">Due aged 31–60 days</th><th scope="col">Due aged 61+ days</th>@if (shows('patrons')) {<th scope="col">Patrons</th>}@if (shows('backing')) {<th scope="col">Backing</th>}<th scope="col">Watched</th><th scope="col">Plans</th><th scope="col">Claims</th><th scope="col"><span class="visually-hidden">Actions</span></th></tr>
+          <tr><th scope="col"><span class="visually-hidden">Select</span></th><th scope="col">Name</th><th scope="col">Grade</th><th scope="col">Active</th>@if (shows('terms')) {<th scope="col">Terms</th>}@if (shows('contact')) {<th scope="col">Contact</th>}<th scope="col">Tags</th>@if (shows('aliases')) {<th scope="col">Aliases</th>}<th scope="col">Clashing</th><th scope="col">Came from</th>@if (shows('claimed')) {<th scope="col">Claimed</th>}@if (shows('due-total')) {<th scope="col">Due</th>}<th scope="col">Settled due</th><th scope="col">Open due</th>@for (pd of periods(); track pd.id) {<th scope="col">Due in {{ pd.name }}</th><th scope="col">Carried into {{ pd.name }}</th>}@if (shows('excess')) {<th scope="col">Excess</th>}<th scope="col">Cut total</th>@if (shows('statement-count')) {<th scope="col">Statements</th>}@if (shows('stated-total')) {<th scope="col">Last stated</th>}@if (shows('statement-date')) {<th scope="col">Stated on</th>}@if (shows('retired')) {<th scope="col">Retired</th>}<th scope="col">Retired from</th><th scope="col">Past retirements</th><th scope="col">Snapshots</th><th scope="col">Statements taken</th>@if (shows('hold')) {<th scope="col">On hold</th>}@if (shows('overdue-count')) {<th scope="col">Overdue</th>}@if (shows('overdue-total')) {<th scope="col">Overdue due</th>}<th scope="col">Due aged 0–30 days</th><th scope="col">Due aged 31–60 days</th><th scope="col">Due aged 61+ days</th>@if (shows('patrons')) {<th scope="col">Patrons</th>}@if (shows('backing')) {<th scope="col">Backing</th>}<th scope="col">Watched</th><th scope="col">Flag</th><th scope="col">Plans</th><th scope="col">Claims</th><th scope="col"><span class="visually-hidden">Actions</span></th></tr>
         </thead>
         <tbody>
           @for (p of sorted(); track p.id) {
@@ -331,6 +331,7 @@ const NO_LEAVE: Leave = { holds: [], retiredFrom: null };
                 <td data-testid="person-backing">{{ backingOf(p) | figure }}</td>
               }
               <td data-testid="person-watched">{{ watched().has(p.id) ? 'yes' : 'no' }}</td>
+              <td data-testid="person-flag-shown">{{ p.flag ?? '' }}</td>
               <td>
                 <app-person-plans [personId]="p.id" [name]="p.name" [plans]="plansByPerson().get(p.id) ?? []"
                   (added)="planAdded($event)" />
@@ -377,6 +378,14 @@ const NO_LEAVE: Leave = { holds: [], retiredFrom: null };
                 <input #holdTo type="date" [id]="'person-hold-to-' + p.id" data-testid="person-hold-to" />
                 <button type="button" data-testid="person-hold-toggle" (click)="hold(p, holdFrom.value, holdTo.value)"
                   [attr.aria-label]="'Hold ' + p.name">Hold</button>
+                <label [for]="'person-flag-reason-' + p.id" class="visually-hidden">Reason to flag {{ p.name }}</label>
+                <input #flagReason [id]="'person-flag-reason-' + p.id" data-testid="person-flag-reason"
+                  (input)="clearPersonError(p.id)" />
+                <label [for]="'person-flag-until-' + p.id" class="visually-hidden">Flag {{ p.name }} until</label>
+                <input #flagUntil type="date" [id]="'person-flag-until-' + p.id" data-testid="person-flag-until"
+                  (input)="clearPersonError(p.id)" />
+                <button type="button" data-testid="person-flag" (click)="flag(p, flagReason.value, flagUntil.value)"
+                  [attr.aria-label]="'Flag ' + p.name">Flag</button>
                 <label [for]="'person-alias-input-' + p.id" class="visually-hidden">Alias of {{ p.name }}</label>
                 <input #aliasInput [id]="'person-alias-input-' + p.id" data-testid="person-alias-input"
                   (input)="clearPersonError(p.id)" />
@@ -872,6 +881,8 @@ export class PeopleList {
   private readonly naming = new Set<number>();
   /** The people whose statement is waiting for its answer: a second press meanwhile is ignored. */
   private readonly stating = new Set<number>();
+  /** The people whose flag is waiting for its answer: a second press meanwhile is ignored. */
+  private readonly flagging = new Set<number>();
   /** The people whose hold is waiting for its answer: a second press meanwhile is ignored. */
   private readonly holding = new Set<number>();
   /** The people whose watch is waiting for its answer: a second press meanwhile is ignored. */
@@ -1273,6 +1284,27 @@ export class PeopleList {
       this.personError.set({ id: p.id, message: 'The person could not be put on hold.' });
     } finally {
       this.holding.delete(p.id);
+    }
+  }
+
+  /** Flag the person with a reason until a day (left blank, the sheet's today); a steward only. */
+  protected async flag(p: Person, reason: string, until: string): Promise<void> {
+    if (this.flagging.has(p.id)) return;
+    this.personError.set(null);
+    this.patronError.set(null);
+    if (!reason.trim()) {
+      this.personError.set({ id: p.id, message: 'Give a reason for the flag.' });
+      return;
+    }
+    this.flagging.add(p.id);
+    try {
+      const saved = await this.api.flag(p.id, reason.trim(), until.trim() || null);
+      this.people.update((ps) => ps.map((x) => (x.id === saved.id ? saved : x)));
+      if (this.editing() === saved.id) this.version = saved.version;
+    } catch {
+      this.personError.set({ id: p.id, message: 'The person could not be flagged.' });
+    } finally {
+      this.flagging.delete(p.id);
     }
   }
 

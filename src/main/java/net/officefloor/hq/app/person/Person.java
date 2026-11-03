@@ -101,6 +101,14 @@ public class Person {
     @Column(name = "arrived_on")
     private LocalDate arrivedOn;
 
+    /** The reason the person is flagged; null when they never were. */
+    @Column(name = "flag_reason")
+    private String flagReason;
+
+    /** The last day (included) the person's flag is in force; null when they were never flagged. */
+    @Column(name = "flag_until")
+    private LocalDate flagUntil;
+
     /** Raised each time the person is saved. */
     @Version
     @Column(name = "version", nullable = false)
@@ -147,7 +155,7 @@ public class Person {
     }
 
     /** A copy of the person for a clone of their sheet: their name, place in the list, every grade
-     *  they were given (and its from-date), terms, contact, aliases, holds, retirement and past
+     *  they were given (and its from-date), terms, contact, aliases, holds, flag, retirement and past
      *  retirements, and the sheet they were transferred from. */
     public Person clonedTo(String toSheetId) {
         Person copy = transferredTo(toSheetId, position);
@@ -155,6 +163,8 @@ public class Person {
         copy.retiredFrom = retiredFrom;
         retirements.forEach(r -> copy.retirements.add(new Retirement(r.getFromDate(), r.getToDate())));
         holds.forEach(h -> copy.holds.add(new Hold(h.getFromDate(), h.getToDate())));
+        copy.flagReason = flagReason;
+        copy.flagUntil = flagUntil;
         return copy;
     }
 
@@ -275,6 +285,22 @@ public class Person {
     /** Add a hold, keeping the others. */
     public void addHold(LocalDate from, LocalDate to) {
         holds.add(new Hold(from, to));
+    }
+
+    /** Flag the person with a reason until a day (included), replacing any flag they had. */
+    public void flag(String reason, LocalDate until) {
+        this.flagReason = reason;
+        this.flagUntil = until;
+    }
+
+    /** The reason the person's flag gives while it is in force on a day; null when it is not. */
+    public String flagOn(LocalDate day) {
+        return flagUntil != null && !day.isAfter(flagUntil) ? flagReason : null;
+    }
+
+    /** Whether the person's flag is in force on a day: on or before its until-date. */
+    public boolean isFlaggedOn(LocalDate day) {
+        return flagOn(day) != null;
     }
 
     /** The person's own undated terms in days (from the beginning of time, until their earliest

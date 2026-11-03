@@ -351,6 +351,27 @@ public class PersonService {
         });
     }
 
+    /** Flag a person with a reason (kept trimmed) until a day (included; null: the sheet's
+     *  today), replacing any flag they had. Refused unless the user is a steward (403) and the reason is not blank (400). */
+    @Transactional
+    public Person flag(String sheetId, String user, long personId, String reason, LocalDate until) {
+        Person person = people.findByIdAndSheetId(personId, sheetId)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "No such person on this sheet"));
+        if (!SheetRole.STEWARD.equals(roles.roleOf(sheetId, user))) {
+            throw new ResponseStatusException(HttpStatus.FORBIDDEN, "Only a steward can flag a person");
+        }
+        if (reason == null || reason.isBlank()) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Give a reason for the flag");
+        }
+        String why = reason.trim();
+        LocalDate last = until != null ? until : sheets.today(sheetId);
+        person.flag(why, last);
+        Person saved = saveUnique(person);
+        audit.recordOnCommit("PERSON_FLAGGED sheet=" + sheetId + " by=" + user + " name=" + saved.getName()
+                + " reason=" + why + " until=" + last);
+        return saved;
+    }
+
     /** A record of the person with the grade in force on the sheet's today. */
     private static String record(String event, String sheetId, String user, Person person, LocalDate today) {
         return event + " sheet=" + sheetId + " by=" + user + " name=" + person.getName() + " grade="
