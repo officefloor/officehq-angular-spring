@@ -155,6 +155,8 @@ export interface Claim {
   /** The claim's place in the order claims are added and forward-only rates saved: a forward-only
    *  rate applies to it only when it was added after the rate was saved (see {@link pctFor}). */
   added: number;
+  /** Whether a steward waived its late charge: it bears none from then on. */
+  waived: boolean;
 }
 
 /** A line of a claim: its label, its quantity (a whole number) and its unit amount as text with
@@ -285,9 +287,10 @@ export function claimDue(c: Claim, rates: Rate[], grade: Grade | undefined, floo
 /** The late charge on an overdue claim (its grade being its person's grade in force on its date): for each full
  *  30 days it is overdue, the late percent in force on that boundary (its late-from plus 30, 60, 90 ... days) of its
  *  figure plus the charges of the boundaries before it (the charge compounds), rounded like a due, the charges added
- *  up (a boundary whose percent is 0.00 adds nothing); 0.00 when it is not overdue, and on a correction. */
+ *  up (a boundary whose percent is 0.00 adds nothing); 0.00 when it is not overdue, on a correction, and when its
+ *  late charge is waived. */
 export function lateCharge(c: Claim, figure: string, late: Lateness, grade: Grade | undefined): string {
-  if (correction(c)) return '0.00';
+  if (correction(c) || c.waived) return '0.00';
   const grace = graceOn(late.graces, grade, c.date);
   if (!overdue(c, late.today, grace) || late.today === null) return '0.00';
   const from = Date.parse(lateFrom(c, grace));
@@ -429,6 +432,15 @@ export class Claims {
     const { sheetId, user } = this.active();
     return firstValueFrom(
       this.http.post<Claim>(`${this.url(sheetId)}/claims/${id}/redate`, { date }, { headers: { 'X-User': user } }),
+    );
+  }
+
+  /** Waive an open or pending claim's late charge; refused (403) when the user is not a steward, and
+   *  (409) when it is not open or pending or is waived already. */
+  waive(id: number): Promise<Claim> {
+    const { sheetId, user } = this.active();
+    return firstValueFrom(
+      this.http.post<Claim>(`${this.url(sheetId)}/claims/${id}/waive`, null, { headers: { 'X-User': user } }),
     );
   }
 

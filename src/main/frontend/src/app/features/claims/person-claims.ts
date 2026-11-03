@@ -127,6 +127,15 @@ function deferRefusal(e: unknown): string {
   return 'The claim could not be deferred.';
 }
 
+/** The message for a refused waiver of a claim's late charge. */
+function waiveRefusal(e: unknown): string {
+  if (e instanceof HttpErrorResponse && e.status === 403) return 'Only a steward can waive a late charge.';
+  if (e instanceof HttpErrorResponse && e.status === 409) {
+    return 'Only an open or pending claim not waived already can have its late charge waived.';
+  }
+  return 'The late charge could not be waived.';
+}
+
 /** The message for a refused re-date of a claim. */
 function redateRefusal(e: unknown): string {
   if (e instanceof HttpErrorResponse && e.status === 403) return 'Only a steward can re-date a claim.';
@@ -240,6 +249,7 @@ function splitRefusal(e: unknown): string {
           <span data-testid="claim-review-late">{{ reviewLateOf(c) ? 'yes' : 'no' }}</span>
           <span data-testid="claim-overdue">{{ overdueOf(c) ? 'yes' : 'no' }}</span>
           <span data-testid="claim-deferred">{{ deferredOf(c) ? 'yes' : 'no' }}</span>
+          <span data-testid="claim-waived">{{ c.waived ? 'yes' : 'no' }}</span>
           <span data-testid="claim-deferred-until">{{ c.deferredUntil ?? '' }}</span>
           <span data-testid="claim-proofs">{{ c.proofs }}</span>
           <span data-testid="claim-split-from">{{ c.splitFrom ?? '' }}</span>
@@ -319,6 +329,8 @@ function splitRefusal(e: unknown): string {
             (input)="clearError(c)" />
           <button type="button" data-testid="claim-defer" (click)="defer(c, deferDate.value)"
             [attr.aria-label]="'Defer claim of ' + c.amount + ' on ' + c.date">Defer</button>
+          <button type="button" data-testid="claim-waive" (click)="waive(c)"
+            [attr.aria-label]="'Waive the late charge of claim of ' + c.amount + ' on ' + c.date">Waive late charge</button>
           <label [for]="'claim-date-new-' + c.id">New date</label>
           <input [id]="'claim-date-new-' + c.id" type="date" data-testid="claim-date-new" #redateDate
             (input)="clearError(c)" />
@@ -625,6 +637,15 @@ export class PersonClaims {
       this.saved.emit(await this.api.defer(c.id, until));
     } catch (e) {
       this.claimError.set({ id: c.id, message: deferRefusal(e) });
+    }
+  }
+
+  protected async waive(c: Claim): Promise<void> {
+    this.claimError.set(null);
+    try {
+      this.saved.emit(await this.api.waive(c.id));
+    } catch (e) {
+      this.claimError.set({ id: c.id, message: waiveRefusal(e) });
     }
   }
 

@@ -646,6 +646,31 @@ public class ClaimService {
         });
     }
 
+    /** Waive an open or pending claim's late charge: it bears none from then on, whether overdue or
+     *  not. Refused unless the user is a steward, and when the claim is not open or pending or its
+     *  late charge is waived already. */
+    @Transactional
+    public Claim waive(String sheetId, String user, long claimId) {
+        Claim claim = lock(sheetId, claimId);
+        if (!SheetRole.STEWARD.equals(roles.roleOf(sheetId, user))) {
+            throw new ResponseStatusException(HttpStatus.FORBIDDEN, "Only a steward can waive a late charge");
+        }
+        if (claim.getStatus() != ClaimStatus.OPEN && claim.getStatus() != ClaimStatus.PENDING) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT,
+                    "A " + claim.getStatus() + " claim's late charge cannot be waived");
+        }
+        if (claim.isWaived()) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT, "The claim's late charge is waived already");
+        }
+        return rollup.tracking(sheetId, user, () -> {
+            Person person = person(sheetId, claim.getPersonId());
+            claim.waive();
+            Claim saved = claims.saveAndFlush(claim);
+            audit.recordOnCommit(record("CLAIM_WAIVED", sheetId, user, person, saved));
+            return saved;
+        });
+    }
+
     /** Re-date an open or pending claim: it keeps the due-by it was fixed with, and so its period and
      *  number, and any figure a statement bound it to. Refused unless the user is a steward, and when
      *  the claim is not open or pending, its period is closed, or the new date is after the person's

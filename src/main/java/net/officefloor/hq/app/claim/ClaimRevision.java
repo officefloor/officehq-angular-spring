@@ -66,6 +66,9 @@ public class ClaimRevision {
     @Column(name = "deferred_until")
     private LocalDate deferredUntil;
 
+    @Column(name = "waived", nullable = false)
+    private boolean waived;
+
     /** The claim's place in the order claims are added (see Claim#getAdded). */
     @Column(name = "added", nullable = false)
     private long added;
@@ -93,6 +96,7 @@ public class ClaimRevision {
         this.correctedDate = claim.getCorrectedDate();
         this.dueBy = claim.getDueBy();
         this.deferredUntil = claim.getDeferredUntil();
+        this.waived = claim.isWaived();
         this.added = claim.getAdded();
     }
 
@@ -114,6 +118,7 @@ public class ClaimRevision {
         left.correctedDate = correctedDate;
         left.dueBy = dueBy;
         left.deferredUntil = deferredUntil;
+        left.waived = waived;
         left.added = added;
         left.gone = true;
         return left;
@@ -131,7 +136,7 @@ public class ClaimRevision {
                 && same(settledDue, claim.getSettledDue()) && stated == claim.isStated()
                 && same(statedDue, claim.getStatedDue()) && statedNa == claim.isStatedNa()
                 && Objects.equals(correctedDate, claim.getCorrectedDate()) && Objects.equals(dueBy, claim.getDueBy())
-                && Objects.equals(deferredUntil, claim.getDeferredUntil());
+                && Objects.equals(deferredUntil, claim.getDeferredUntil()) && waived == claim.isWaived();
     }
 
     private static boolean same(BigDecimal a, BigDecimal b) {
@@ -205,5 +210,9 @@ public class ClaimRevision {
 
     LocalDate getDeferredUntil() {
         return deferredUntil;
+    }
+
+    boolean isWaived() {
+        return waived;
     }
 }

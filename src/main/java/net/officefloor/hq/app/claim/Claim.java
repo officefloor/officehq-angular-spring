@@ -141,6 +141,10 @@ public class Claim {
     @Column(name = "escalated", nullable = false)
     private boolean escalated;
 
+    /** Whether a steward waived the claim's late charge: it bears none from then on. */
+    @Column(name = "waived", nullable = false)
+    private boolean waived;
+
     /** The claim's external reference; null when it has none. No two claims of a sheet share one,
      *  comparing without regard to case. */
     @Column(name = "ref")
@@ -203,6 +207,7 @@ public class Claim {
         claim.settledDue = revision.getSettledDue();
         claim.bind(revision.isStated(), revision.getStatedDue(), revision.isStatedNa());
         claim.deferredUntil = revision.getDeferredUntil();
+        claim.waived = revision.isWaived();
         claim.added = revision.getAdded();
         return claim;
     }
@@ -270,6 +275,7 @@ public class Claim {
         copy.splitFrom = renumber.apply(splitFrom);
         copy.remindedOn = remindedOn;
         copy.escalated = escalated;
+        copy.waived = waived;
         copy.tags = tags;
         copy.voidReason = voidReason;
         copy.lateEntry = lateEntry;
@@ -448,6 +454,15 @@ public class Claim {
 
     public void escalate() {
         this.escalated = true;
+    }
+
+    public boolean isWaived() {
+        return waived;
+    }
+
+    /** Waive the claim's late charge. */
+    public void waive() {
+        this.waived = true;
     }
 
     public int getProofs() {
