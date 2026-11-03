@@ -1,0 +1,160 @@
+diff --git a/src/main/frontend/src/app/features/people/people-list.ts b/src/main/frontend/src/app/features/people/people-list.ts
+index 0078a9bad..3d57e0369 100644
+--- a/src/main/frontend/src/app/features/people/people-list.ts
++++ b/src/main/frontend/src/app/features/people/people-list.ts
+@@ -1827,9 +1827,18 @@ export class PeopleList {
+     this.plans.update((xs) => [...xs.filter((x) => x.id !== plan.id), plan]);
+   }
+ 
+-  /** Show a plan just paused or resumed in its place. */
+-  protected planChanged(plan: Plan): void {
++  /** Show a plan just paused, resumed or changed in its place, and read the sheet's claims again
++   *  (a change of its amount reaches the drafts it made). */
++  protected async planChanged(plan: Plan): Promise<void> {
+     this.plans.update((xs) => xs.map((x) => (x.id === plan.id ? plan : x)));
++    const sheetId = this.session.sheetId();
++    if (!sheetId) return;
++    try {
++      const claims = await this.claimsApi.list(sheetId);
++      if (this.session.sheetId() === sheetId) this.claims.set(claims);
++    } catch {
++      // the claims show again on the next load
++    }
+   }
+ 
+   /** Read the sheet's claims and plans again once a generate has made claims. */
+diff --git a/src/main/java/net/officefloor/hq/app/plan/Plan.java b/src/main/java/net/officefloor/hq/app/plan/Plan.java
+index 54591264f..af58b4ebc 100644
+--- a/src/main/java/net/officefloor/hq/app/plan/Plan.java
++++ b/src/main/java/net/officefloor/hq/app/plan/Plan.java
+@@ -63,6 +63,12 @@ public class Plan {
+     @Column(name = "on_date", nullable = false)
+     private Set<LocalDate> made = new HashSet<>();
+ 
++    /** The claims it has generated. */
++    @ElementCollection(fetch = FetchType.EAGER)
++    @CollectionTable(name = "plan_claim", joinColumns = @JoinColumn(name = "plan_id"))
++    @Column(name = "claim_id", nullable = false)
++    private Set<Long> claims = new HashSet<>();
++
+     /** The times it was paused; a plan date in one is skipped. */
+     @ElementCollection(fetch = FetchType.EAGER)
+     @CollectionTable(name = "plan_pause", joinColumns = @JoinColumn(name = "plan_id"))
+@@ -203,6 +209,17 @@ public class Plan {
+         made.add(date);
+     }
+ 
++    /** Note that the plan has made its claim for the date, the claim given. */
++    public void markMade(LocalDate date, Long claimId) {
++        made.add(date);
++        claims.add(claimId);
++    }
++
++    /** The ids of the claims it has generated, oldest first. */
++    public List<Long> getClaimIds() {
++        return claims.stream().sorted().toList();
++    }
++
+     /** Whether the plan is paused and not yet resumed. */
+     public boolean isPaused() {
+         return pauses.stream().anyMatch(PlanPause::isOpen);
+diff --git a/src/main/java/net/officefloor/hq/app/plan/PlanService.java b/src/main/java/net/officefloor/hq/app/plan/PlanService.java
+index 1d595b4f1..8edbd9a23 100644
+--- a/src/main/java/net/officefloor/hq/app/plan/PlanService.java
++++ b/src/main/java/net/officefloor/hq/app/plan/PlanService.java
+@@ -4,7 +4,10 @@ import java.math.BigDecimal;
+ import java.time.LocalDate;
+ import java.util.List;
+ import net.officefloor.hq.app.Audit;
++import net.officefloor.hq.app.claim.Claim;
++import net.officefloor.hq.app.claim.ClaimRepository;
+ import net.officefloor.hq.app.claim.ClaimService;
++import net.officefloor.hq.app.claim.ClaimStatus;
+ import net.officefloor.hq.app.person.Person;
+ import net.officefloor.hq.app.person.PersonRepository;
+ import net.officefloor.hq.app.role.RoleService;
+@@ -30,9 +33,12 @@ public class PlanService {
+     private final Audit audit;
+     private final RoleService roles;
+     private final SheetRepository sheetStore;
++    private final ClaimRepository claimStore;
+ 
+     public PlanService(PlanRepository plans, PersonRepository people, ClaimService claims, SheetService sheets,
+-            PlatformTransactionManager transactions, Audit audit, RoleService roles, SheetRepository sheetStore) {
++            PlatformTransactionManager transactions, Audit audit, RoleService roles, SheetRepository sheetStore,
++            ClaimRepository claimStore) {
++        this.claimStore = claimStore;
+         this.sheetStore = sheetStore;
+         this.plans = plans;
+         this.people = people;
+@@ -111,20 +117,34 @@ public class PlanService {
+         return saved;
+     }
+ 
+-    /** Change the plan's amount from the sheet's today: the claims it makes from then on take it,
+-     *  those it has made keep theirs. Refused for an amount that is not above zero. */
+-    @Transactional
++    /** Change the plan's amount from the sheet's today: the claims it makes from then on take it, and
++     *  so do those it has made that are still drafts, oldest first, each edited as the claim form's
++     *  amount entry edits it in a transaction of its own after the change (a draft the form refuses
++     *  to edit keeps its amount); those in any other status keep theirs. Refused for an amount that
++     *  is not above zero. */
+     public Plan changeAmount(String sheetId, String user, long planId, BigDecimal amount) {
+-        Plan plan = plans.findById(planId).filter(p -> p.getSheetId().equals(sheetId))
+-                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "No such plan on this sheet"));
+-        if (amount.signum() <= 0) {
+-            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "A plan's amount must be above zero");
++        Plan saved = transaction.execute(status -> {
++            Plan plan = plans.findById(planId).filter(p -> p.getSheetId().equals(sheetId))
++                    .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "No such plan on this sheet"));
++            if (amount.signum() <= 0) {
++                throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "A plan's amount must be above zero");
++            }
++            Person person = people.findByIdAndSheetId(plan.getPersonId(), sheetId).orElseThrow();
++            plan.changeAmount(sheets.today(sheetId), amount);
++            Plan changed = plans.saveAndFlush(plan);
++            audit.recordOnCommit("PLAN_CHANGED sheet=" + sheetId + " by=" + user + " name=" + person.getName()
++                    + " start=" + plan.getStartDate() + " amount=" + amount.setScale(2).toPlainString());
++            return changed;
++        });
++        for (Long claimId : saved.getClaimIds()) {
++            try {
++                transaction.executeWithoutResult(status -> claimStore.findById(claimId)
++                        .filter(c -> c.getStatus() == ClaimStatus.DRAFT)
++                        .ifPresent(c -> claims.editAmount(c.getSheetId(), user, c.getId(), amount)));
++            } catch (ResponseStatusException refused) {
++                // the claim form refused the edit: the draft keeps its amount
++            }
+         }
+-        Person person = people.findByIdAndSheetId(plan.getPersonId(), sheetId).orElseThrow();
+-        plan.changeAmount(sheets.today(sheetId), amount);
+-        Plan saved = plans.saveAndFlush(plan);
+-        audit.recordOnCommit("PLAN_CHANGED sheet=" + sheetId + " by=" + user + " name=" + person.getName()
+-                + " start=" + plan.getStartDate() + " amount=" + amount.setScale(2).toPlainString());
+         return saved;
+     }
+ 
+@@ -157,8 +177,8 @@ public class PlanService {
+                         if (!locked.dueUpTo(date).contains(date)) {
+                             return;
+                         }
+-                        claims.add(target, user, targetPerson, locked.getAmount(), date, "");
+-                        locked.markMade(date);
++                        Claim claim = claims.add(target, user, targetPerson, locked.getAmount(), date, "");
++                        locked.markMade(date, claim.getId());
+                         plans.saveAndFlush(locked);
+                     });
+                     made++;
+diff --git a/src/main/resources/db/migration/V125__plan_claim.sql b/src/main/resources/db/migration/V125__plan_claim.sql
+new file mode 100644
+index 000000000..aaf7c11a6
+--- /dev/null
++++ b/src/main/resources/db/migration/V125__plan_claim.sql
+@@ -0,0 +1,7 @@
++-- The claims a plan has generated (on its own sheet or the descendant it names), each at most once;
++-- a change of the plan's amount reaches those still in draft.
++CREATE TABLE plan_claim (
++    plan_id  BIGINT NOT NULL REFERENCES plan (id) ON DELETE CASCADE,
++    claim_id BIGINT NOT NULL,
++    CONSTRAINT plan_claim_unique UNIQUE (plan_id, claim_id)
++);
