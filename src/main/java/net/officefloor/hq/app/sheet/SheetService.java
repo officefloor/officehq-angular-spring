@@ -95,9 +95,14 @@ public class SheetService {
         return saved;
     }
 
-    /** The sheet's today: the date every date-dependent decision and default date on it uses. */
+    /** The sheet's today: the date every date-dependent decision and default date on it uses; while a
+     *  read from a screen previewing a date is answered, that date. */
     @Transactional(readOnly = true)
     public LocalDate today(String id) {
+        LocalDate preview = PreviewDay.current();
+        if (preview != null) {
+            return preview;
+        }
         return sheets.findById(id).map(Sheet::getToday).orElseGet(LocalDate::now);
     }
 
@@ -407,7 +412,7 @@ public class SheetService {
     /** The policy date in force: the one set, or else the sheet's today. */
     @Transactional(readOnly = true)
     public LocalDate policyDateInForce(String id) {
-        return sheets.findById(id).map(s -> s.getPolicyDate() != null ? s.getPolicyDate() : s.getToday())
+        return sheets.findById(id).map(s -> s.getPolicyDate() != null ? s.getPolicyDate() : today(id))
                 .orElseGet(LocalDate::now);
     }
 

@@ -59,6 +59,16 @@ import { LOCALES, Locale, Session } from '../../core/session';
         }
       </form>
       <p>As of: <strong data-testid="sheet-asof">{{ session.asOf() ?? '' }}</strong></p>
+      <form data-testid="preview-form" [formGroup]="previewForm" (ngSubmit)="setPreview()">
+        <label for="preview-date">Preview the sheet as if today were</label>
+        <input id="preview-date" type="date" data-testid="preview-date" formControlName="day" />
+        <button type="submit" data-testid="preview-set">Set preview</button>
+        <button type="button" data-testid="preview-clear" (click)="clearPreview()">Clear preview</button>
+        @if (previewError()) {
+          <p role="alert" data-testid="preview-error">{{ previewError() }}</p>
+        }
+      </form>
+      <p>Preview: <strong data-testid="sheet-preview">{{ session.preview() ?? '' }}</strong></p>
     }
   `,
 })
@@ -73,6 +83,8 @@ export class SheetBar {
   protected readonly clonedTo = signal('');
   protected readonly asOfForm = new FormGroup({ day: new FormControl('', { nonNullable: true }) });
   protected readonly asOfError = signal('');
+  protected readonly previewForm = new FormGroup({ day: new FormControl('', { nonNullable: true }) });
+  protected readonly previewError = signal('');
   protected readonly locales = LOCALES;
   protected readonly localeForm = new FormGroup({
     locale: new FormControl<Locale>(this.session.locale(), { nonNullable: true }),
@@ -83,6 +95,7 @@ export class SheetBar {
     this.form.valueChanges.subscribe(() => this.error.set(''));
     this.todayForm.valueChanges.subscribe(() => this.sheetError.set(''));
     this.asOfForm.valueChanges.subscribe(() => this.asOfError.set(''));
+    this.previewForm.valueChanges.subscribe(() => this.previewError.set(''));
     this.cloneForm.valueChanges.subscribe(() => this.sheetError.set(''));
     this.localeForm.valueChanges.subscribe(() => this.localeError.set(''));
     // The select shows the locale the store holds for this user, re-read on every sheet load.
@@ -116,6 +129,24 @@ export class SheetBar {
     this.sheetError.set('');
     this.asOfForm.controls.day.setValue('', { emitEvent: false });
     this.session.setAsOf(null);
+  }
+
+  /** Show every figure, on this screen only, as if the sheet's today were the day entered. */
+  setPreview(): void {
+    this.previewError.set('');
+    const day = this.previewForm.controls.day.value.trim();
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(day)) {
+      this.previewError.set('Enter a date to preview.');
+      return;
+    }
+    this.session.setPreview(day);
+  }
+
+  /** Show every figure on the sheet's today again. */
+  clearPreview(): void {
+    this.previewError.set('');
+    this.previewForm.controls.day.setValue('', { emitEvent: false });
+    this.session.setPreview(null);
   }
 
   async load(): Promise<void> {

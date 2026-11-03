@@ -2,8 +2,10 @@ package net.officefloor.hq.app.statement;
 
 import java.math.BigDecimal;
 import java.time.LocalDate;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.stream.Collectors;
 import net.officefloor.hq.app.Audit;
 import net.officefloor.hq.app.claim.Claim;
@@ -116,7 +118,26 @@ public class StatementService {
             List<Claim> theirs = claims.findBySheetIdAndPersonIdOrderByListedDesc(sheetId, personId);
             Dues.Basis basis = then == null ? dues.now(sheetId) : then.basis();
             List<Claim> counted = Dues.live(was, then == null ? theirs : then.claimsOf(personId), basis.today());
-            BigDecimal dueTotal = dues.dueTotal(basis, was, counted,
+            // their parts of claims shared with them count, and the parts others hold of theirs do not
+            Map<Long, Person> everyone = then != null ? then.people()
+                    : people.findBySheetIdOrderByPositionAscIdAsc(sheetId).stream()
+                            .collect(Collectors.toMap(Person::getId, p -> p));
+            Map<Long, List<Claim>> byPerson = (then != null ? then.claims()
+                    : claims.findBySheetIdOrderByListedDesc(sheetId)).stream()
+                    .collect(Collectors.groupingBy(Claim::getPersonId));
+            Set<Long> holders = everyone.keySet();
+            List<BigDecimal> held = new ArrayList<>();
+            for (Person other : everyone.values()) {
+                for (Claim claim : Dues.live(other, byPerson.getOrDefault(other.getId(), List.of()), basis.today())) {
+                    if (!claim.getShares().isEmpty()) {
+                        BigDecimal part = Dues.parts(claim, dues.figure(basis, other, claim), holders).get(personId);
+                        if (part != null) {
+                            held.add(part);
+                        }
+                    }
+                }
+            }
+            BigDecimal dueTotal = dues.dueTotal(basis, was, counted, holders, held,
                     pools.cutTotals(sheetId, asOf).getOrDefault(personId, BigDecimal.ZERO.setScale(2)));
             Map<Long, Claim> countedById = counted.stream().collect(Collectors.toMap(Claim::getId, c -> c));
             for (Claim claim : theirs) {

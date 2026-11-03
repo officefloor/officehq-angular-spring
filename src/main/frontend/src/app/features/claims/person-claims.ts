@@ -550,7 +550,7 @@ export class PersonClaims {
     // A new sheet's today closes every editor held open.
     let today: string | null | undefined;
     effect(() => {
-      const now = this.today();
+      const now = this.session.changeToday();
       if (today !== undefined && now !== today) untracked(() => this.reset());
       today = now;
     });

@@ -47,9 +47,15 @@ export class Session {
   /** The day (yyyy-mm-dd) this user's screen shows every sheet as it stood at the end of; null when
    *  it shows the sheet as it is now. While it is set every change is refused. */
   readonly asOf = signal<string | null>(null);
-  /** The day every date decision and default date uses: the as-of day when one is set, or else the
-   *  sheet's today. */
-  readonly today = computed(() => this.asOf() ?? this.sheetToday());
+  /** The day (yyyy-mm-dd) this user's screen shows every figure as if it were the sheet's today,
+   *  over the sheet's current records; null when it previews nothing. Every change still uses the
+   *  sheet's real today. */
+  readonly preview = signal<string | null>(null);
+  /** The day every figure on the screen is worked out on: the as-of day when one is set, or else the
+   *  preview date when one is, or else the sheet's today. */
+  readonly today = computed(() => this.asOf() ?? this.preview() ?? this.sheetToday());
+  /** The day the sheet's changes run on: the as-of day when one is set, or else the sheet's today. */
+  readonly changeToday = computed(() => this.asOf() ?? this.sheetToday());
   /** Whether the active sheet is archived: it stays visible and refuses every change. */
   readonly archived = signal(false);
   /** The active sheet's parent's id; null when it has none. */
@@ -69,6 +75,7 @@ export class Session {
     this.shownId.set(null);
     this.sheetToday.set(null);
     this.asOf.set(null);
+    this.preview.set(null);
     this.archived.set(false);
     this.parent.set(null);
   }
@@ -188,6 +195,12 @@ export class Session {
   /** Show every sheet as it stood at the end of a day (null: as it is now), re-reading it. */
   setAsOf(day: string | null): void {
     this.asOf.set(day);
+    this.bumpLoads();
+  }
+
+  /** Show every figure as if the sheet's today were a day (null: the sheet's today), re-reading it. */
+  setPreview(day: string | null): void {
+    this.preview.set(day);
     this.bumpLoads();
   }
 
