@@ -2,6 +2,7 @@ import { HttpClient, HttpErrorResponse } from '@angular/common/http';
 import { Component, inject, input, output, signal } from '@angular/core';
 import { firstValueFrom } from 'rxjs';
 import { Session } from '../../core/session';
+import { Period, periodOn } from '../periods/periods';
 import { Rate, claimDueCents, dueText } from '../rates/rates';
 
 // A person's claims, newest first, and the one form under their row that both adds a claim and
@@ -94,6 +95,7 @@ export function money(c: number): string {
           <span data-testid="claim-amount">{{ c.amount }}</span>
           <span data-testid="claim-date">{{ c.date }}</span>
           <span data-testid="claim-note">{{ c.note }}</span>
+          <span>Period <span data-testid="claim-period">{{ periodOf(c) }}</span></span>
           <span>Due <span data-testid="claim-due">{{ dueOf(c) }}</span></span>
           <span data-testid="claim-status">{{ c.status }}</span>
           <span>Opened by <span data-testid="claim-opened-by">{{ c.openedBy ?? '' }}</span></span>
@@ -131,6 +133,8 @@ export class PersonClaims {
   readonly grade = input.required<string>();
   /** The sheet's rates. */
   readonly rates = input.required<Rate[]>();
+  /** The sheet's periods. */
+  readonly periods = input.required<Period[]>();
   readonly saved = output<Claim>();
 
   protected readonly amountInput = signal('');
@@ -148,6 +152,11 @@ export class PersonClaims {
    *  force on the claim's date. */
   protected dueOf(c: Claim): string {
     return dueText(claimDueCents(c, this.rates(), this.grade()));
+  }
+
+  /** The name of the period whose dates contain the claim's date; blank when none does. */
+  protected periodOf(c: Claim): string {
+    return periodOn(this.periods(), c.date)?.name ?? '';
   }
 
   protected edit(c: Claim): void {

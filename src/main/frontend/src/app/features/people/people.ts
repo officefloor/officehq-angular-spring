@@ -3,6 +3,7 @@ import { Component, computed, effect, inject, signal } from '@angular/core';
 import { firstValueFrom } from 'rxjs';
 import { Session } from '../../core/session';
 import { Claim, PersonClaims, cents, counts, money } from '../claims/claims';
+import { DatedDue, Period, Periods } from '../periods/periods';
 import { Rate, Rates, claimDueCents, dueText, fixedDueCents, pctOn } from '../rates/rates';
 
 // The people on the active sheet, in the order they were added, and the one form that both adds
@@ -17,6 +18,7 @@ import { Rate, Rates, claimDueCents, dueText, fixedDueCents, pctOn } from '../ra
 // Taking a person's statement binds each of their claims that counts to the figure it has then
 // (a stated claim shows and totals that figure); each row shows how many statements the person
 // has taken, and the last one's due-total and date.
+// Each claim shows the period its date falls in, and each period the due of the claims that count in it.
 interface Person {
   id: number;
   name: string;
@@ -48,9 +50,10 @@ const GRADES = ['A', 'B', 'C'] as const;
 
 @Component({
   selector: 'app-people',
-  imports: [PersonClaims, Rates],
+  imports: [PersonClaims, Periods, Rates],
   template: `
     <app-rates [(rates)]="rates" />
+    <app-periods [(periods)]="periods" [dues]="dues()" />
     <section aria-labelledby="people-heading">
       <h2 id="people-heading">People</h2>
       <form aria-label="Person" (submit)="save($event)">
@@ -115,6 +118,7 @@ const GRADES = ['A', 'B', 'C'] as const;
                   [claims]="claimsOf(p.id)"
                   [grade]="p.grade"
                   [rates]="rates()"
+                  [periods]="periods()"
                   (saved)="claimSaved($event)"
                 />
               </td>
@@ -161,6 +165,19 @@ export class People {
   });
   protected readonly claimedTotal = computed(() => money(this.claims().reduce((sum, c) => sum + countedCents(c), 0)));
   protected readonly rates = signal<Rate[]>([]);
+  protected readonly periods = signal<Period[]>([]);
+  /** The date and figure of each claim that counts and has a figure, for the periods' due-totals. */
+  protected readonly dues = computed(() => {
+    const grades = new Map(this.people().map((p) => [p.id, p.grade]));
+    const out: DatedDue[] = [];
+    for (const c of this.claims()) {
+      const grade = grades.get(c.personId);
+      if (grade === undefined || !counts(c)) continue;
+      const due = claimDueCents(c, this.rates(), grade);
+      if (due !== null) out.push({ date: c.date, cents: due });
+    }
+    return out;
+  });
   /** Each person's statements, by person id. */
   protected readonly statements = signal<ReadonlyMap<number, StatementSummary>>(new Map());
   /** The error of each person's last refused row action, by person id. */
