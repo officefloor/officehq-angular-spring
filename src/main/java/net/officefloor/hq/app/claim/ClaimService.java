@@ -126,7 +126,8 @@ public class ClaimService {
      *  takes the sheet's today. Refused when another claim of the sheet has the reference, and
      *  when the claim is not a draft (an open claim is changed by voiding it and adding a new one), and
      *  when the claim's due-by (which the edit leaves) falls inside a closed period, and when the new
-     *  date is after the person's retirement day. */
+     *  date is after the person's retirement day, and when the claim has lines and the amount is not
+     *  their total (400). */
     @Transactional
     public Claim edit(String sheetId, String user, long claimId, BigDecimal amount, LocalDate date, String note,
             String corrects, String ref, String tags) {
@@ -139,6 +140,10 @@ public class ClaimService {
         LocalDate on = date != null ? date : sheets.today(sheetId);
         refuseClosed(sheetId, claim.getDueBy());
         refuseRetired(person(sheetId, claim.getPersonId()), on);
+        if (!claim.getLines().isEmpty() && amount.compareTo(claim.getAmount()) != 0) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
+                    "A claim with lines has their total as its amount");
+        }
         Claim corrected = corrected(sheetId, claim.getPersonId(), amount, corrects);
         return rollup.tracking(sheetId, user, () -> {
             claim.setAmount(amount);
@@ -455,6 +460,34 @@ public class ClaimService {
         Claim saved = claims.saveAndFlush(claim);
         audit.recordOnCommit(record("COMMENT_ADDED", sheetId, user, person, saved) + " text=" + trimmed);
         return saved;
+    }
+
+    /** Add a line to a draft claim: its amount becomes the lines' quantities times unit amounts added
+     *  up. Refused when the label is empty, the quantity is below 1 or the unit amount below 0.01
+     *  (400), when the claim is not a draft or another user has its editor open (409), and when its
+     *  due-by falls inside a closed period. Counts as editing the claim. */
+    @Transactional
+    public Claim addLine(String sheetId, String user, long claimId, String label, int qty, BigDecimal unit) {
+        String trimmed = label == null ? "" : label.trim();
+        if (trimmed.isEmpty() || qty < 1 || unit.signum() <= 0) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
+                    "A line needs a label, a quantity of at least 1 and a unit amount above 0.00");
+        }
+        Claim claim = lock(sheetId, claimId);
+        if (claim.getStatus() != ClaimStatus.DRAFT || claim.editLockedFor(user)) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT,
+                    "A " + claim.getStatus() + " claim cannot be given a line, nor one another user is editing");
+        }
+        refuseClosed(sheetId, claim.getDueBy());
+        return rollup.tracking(sheetId, user, () -> {
+            Person person = person(sheetId, claim.getPersonId());
+            claim.addLine(trimmed, qty, unit);
+            claim.setEditedBy(user);
+            Claim saved = claims.saveAndFlush(claim);
+            audit.recordOnCommit(record("CLAIM_LINE_ADDED", sheetId, user, person, saved)
+                    + " label=" + trimmed + " qty=" + qty + " unit=" + unit.setScale(2).toPlainString());
+            return saved;
+        });
     }
 
     /** Approve a pending claim: it becomes settled, its due fixed at the figure it has now (its live

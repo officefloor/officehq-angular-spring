@@ -100,6 +100,19 @@ function commentRefusal(e: unknown): string {
   return 'The comment could not be added.';
 }
 
+/** The message when a line's label, quantity or unit amount is not valid. */
+const LINE_INVALID = 'Enter a label, a whole quantity of at least 1 and a unit amount above 0.00 with two decimals at most.';
+
+/** The message for a refused line on a claim. */
+function lineRefusal(e: unknown): string {
+  if (e instanceof HttpErrorResponse && e.status === 423) return CLOSED;
+  if (e instanceof HttpErrorResponse && e.status === 409) {
+    return 'Only a draft claim no one else is editing can be given a line.';
+  }
+  if (e instanceof HttpErrorResponse && e.status === 400) return LINE_INVALID;
+  return 'The line could not be added.';
+}
+
 /** The message for a refused defer of a claim. */
 function deferRefusal(e: unknown): string {
   if (e instanceof HttpErrorResponse && e.status === 423) return CLOSED;
@@ -127,8 +140,12 @@ const DEFER_DATE = 'Enter a date after the sheet\'s today to defer the claim to.
 /** The message when a row's amount entry is not an amount. */
 const INLINE_AMOUNT = 'Enter an amount with up to two decimals; a negative amount is a correction.';
 
+/** The message when an edit types another amount than the total of a claim's lines. */
+const LINED = 'A claim with lines has their total as its amount; add a line to change it.';
+
 /** The message for a refused change of a claim's amount from its row. */
 function amountRefusal(e: unknown, c: Claim, amount: string): string {
+  if (e instanceof HttpErrorResponse && e.status === 400 && c.lines.length > 0) return LINED;
   if (e instanceof HttpErrorResponse && e.status === 400 && amount.startsWith('-')) return CORRECTS;
   if (e instanceof HttpErrorResponse && e.status === 422) return RETIRED;
   if (e instanceof HttpErrorResponse && (e.status === 403 || e.status === 409 || e.status === 423)) {
@@ -231,6 +248,22 @@ function splitRefusal(e: unknown): string {
               <li data-testid="claim-comments-line">{{ m.by }} on {{ m.on }}: {{ m.text }}</li>
             }
           </ol>
+          <ol data-testid="claim-lines" [attr.aria-label]="'Lines of claim of ' + c.amount + ' on ' + c.date">
+            @for (n of c.lines; track $index) {
+              <li data-testid="claim-lines-line">{{ n.label }} {{ n.qty }} x {{ n.unit }}</li>
+            }
+          </ol>
+          <label [for]="'claim-line-label-' + c.id">Line label</label>
+          <input [id]="'claim-line-label-' + c.id" data-testid="claim-line-label" #lineLabel
+            (input)="clearError(c)" />
+          <label [for]="'claim-line-qty-' + c.id">Quantity</label>
+          <input [id]="'claim-line-qty-' + c.id" data-testid="claim-line-qty" #lineQty inputmode="numeric"
+            (input)="clearError(c)" />
+          <label [for]="'claim-line-unit-' + c.id">Unit amount</label>
+          <input [id]="'claim-line-unit-' + c.id" data-testid="claim-line-unit" #lineUnit inputmode="decimal"
+            (input)="clearError(c)" />
+          <button type="button" data-testid="claim-line-add" (click)="addLine(c, lineLabel, lineQty, lineUnit)"
+            [attr.aria-label]="'Add a line to claim of ' + c.amount + ' on ' + c.date">Add line</button>
           <label [for]="'claim-comment-text-' + c.id">Comment</label>
           <input [id]="'claim-comment-text-' + c.id" data-testid="claim-comment-text" #commentText
             (input)="clearError(c)" />
@@ -516,6 +549,23 @@ export class PersonClaims {
     }
   }
 
+  protected async addLine(c: Claim, label: HTMLInputElement, qty: HTMLInputElement,
+    unit: HTMLInputElement): Promise<void> {
+    this.claimError.set(null);
+    if (!label.value.trim() || !/^\s*\d+\s*$/.test(qty.value) || !/^\s*\d+(\.\d{1,2})?\s*$/.test(unit.value)) {
+      this.claimError.set({ id: c.id, message: LINE_INVALID });
+      return;
+    }
+    try {
+      this.saved.emit(await this.api.addLine(c.id, label.value.trim(), qty.value.trim(), unit.value.trim()));
+      label.value = '';
+      qty.value = '';
+      unit.value = '';
+    } catch (e) {
+      this.claimError.set({ id: c.id, message: lineRefusal(e) });
+    }
+  }
+
   protected async defer(c: Claim, until: string): Promise<void> {
     this.claimError.set(null);
     if (!/^\d{4}-\d{2}-\d{2}$/.test(until)) {
@@ -638,6 +688,8 @@ export class PersonClaims {
     } catch (e) {
       if (e instanceof HttpErrorResponse && e.status === 423) this.error.set(CLOSED);
       else if (e instanceof HttpErrorResponse && e.status === 422) this.error.set(RETIRED);
+      else if (e instanceof HttpErrorResponse && e.status === 400 && id !== null
+        && (this.claims().find((x) => x.id === id)?.lines.length ?? 0) > 0) this.error.set(LINED);
       else if (e instanceof HttpErrorResponse && e.status === 400 && amount.trim().startsWith('-')) this.error.set(CORRECTS);
       else if (e instanceof HttpErrorResponse && e.status === 409 && reference !== '' && this.refClash(id)) {
         this.error.set(REF_USED);

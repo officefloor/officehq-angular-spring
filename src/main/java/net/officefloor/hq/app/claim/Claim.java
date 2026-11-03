@@ -174,6 +174,13 @@ public class Claim {
     @OrderBy("id")
     private List<ClaimComment> comments = new ArrayList<>();
 
+    /** The claim's lines, in the order they were added (see {@link #addLine}). */
+    @OneToMany(cascade = CascadeType.ALL, orphanRemoval = true, fetch = FetchType.EAGER)
+    @Fetch(FetchMode.SUBSELECT)
+    @JoinColumn(name = "claim_id", nullable = false, updatable = false)
+    @OrderBy("id")
+    private List<ClaimLine> lines = new ArrayList<>();
+
     protected Claim() {
     }
 
@@ -234,7 +241,7 @@ public class Claim {
     }
 
     /** A copy of this claim for a person on another sheet (it was transferred there): its status,
-     *  dates, note, tags, frozen figures, status log and comments kept, its numbers (its own, the
+     *  dates, note, tags, frozen figures, status log, comments and lines kept, its numbers (its own, the
      *  one it corrects and the one it was split off) renumbered as given (null: none), and no
      *  reference, settle batch, editor or figure a statement bound it to. Listed as the newest. */
     public Claim transferredTo(String toSheetId, Long toPersonId, UnaryOperator<String> renumber) {
@@ -257,6 +264,7 @@ public class Claim {
         log.forEach(line -> copy.log.add(new ClaimLog(toSheetId, line.getStatus(), line.getByUser(), line.getOn(),
                 line.getDue())));
         comments.forEach(c -> copy.comments.add(new ClaimComment(toSheetId, c.getByUser(), c.getOn(), c.getText())));
+        lines.forEach(l -> copy.lines.add(new ClaimLine(toSheetId, l.getLabel(), l.getQty(), l.getUnit())));
         return copy;
     }
 
@@ -559,5 +567,15 @@ public class Claim {
     /** Add a comment the user wrote on the day (the sheet's today). */
     public void comment(String user, LocalDate on, String text) {
         comments.add(new ClaimComment(sheetId, user, on, text));
+    }
+
+    public List<ClaimLine> getLines() {
+        return List.copyOf(lines);
+    }
+
+    /** Add a line to the claim: its amount becomes the lines' amounts added up. */
+    public void addLine(String label, int qty, BigDecimal unit) {
+        lines.add(new ClaimLine(sheetId, label, qty, unit));
+        amount = lines.stream().map(ClaimLine::amount).reduce(BigDecimal.ZERO, BigDecimal::add).setScale(2);
     }
 }

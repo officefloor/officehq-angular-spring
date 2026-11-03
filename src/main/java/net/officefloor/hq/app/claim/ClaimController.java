@@ -49,13 +49,14 @@ public class ClaimController {
      *  was written for it (null when never); and its external reference (null when none); and its tags,
      *  sorted and comma and space separated (empty when none); and the reason it was voided with (null
      *  when none); and its comments, in the order they were written; and the number of the bulk
-     *  settle batch that settled it (null when none, or when it is not settled or pending). */
+     *  settle batch that settled it (null when none, or when it is not settled or pending); and its
+     *  lines, in the order they were added. */
     public record ClaimView(long id, long personId, String amount, LocalDate date, String note,
             ClaimStatus status, String number, String settledDue, String openedBy, boolean stated,
             String statedDue, boolean statedNa, String corrects, LocalDate roundsBy, long listed, LocalDate dueBy,
             List<LogLineView> log, LocalDate deferredUntil, int proofs, String splitFrom,
             String editLockedBy, boolean lateEntry, LocalDate remindedOn, String ref, String tags,
-            String voidReason, List<CommentView> comments, Integer settleBatch) {
+            String voidReason, List<CommentView> comments, Integer settleBatch, List<LineView> lines) {
         public static ClaimView of(Claim claim) {
             return new ClaimView(claim.getId(), claim.getPersonId(), claim.getAmount().setScale(2).toPlainString(),
                     claim.getDate(), claim.getNote(), claim.getStatus(), claim.getNumber(),
@@ -68,7 +69,8 @@ public class ClaimController {
                     claim.getRemindedOn(), claim.getRef(), tagsText(claim.getTags()),
                     claim.getStatus() == ClaimStatus.VOID ? claim.getVoidReason() : null,
                     claim.getComments().stream().map(CommentView::of).toList(),
-                    batchOf(claim.getStatus(), claim.getSettleBatch()));
+                    batchOf(claim.getStatus(), claim.getSettleBatch()),
+                    claim.getLines().stream().map(LineView::of).toList());
         }
 
         /** The claim as it stood at the end of a day: its figures as its revision then has them (see
@@ -92,7 +94,8 @@ public class ClaimController {
                     kept.getRef(), tagsText(kept.getTags()),
                     then.getStatus() == ClaimStatus.VOID ? kept.getVoidReason() : null,
                     kept.getComments().stream().filter(c -> !c.getOn().isAfter(day)).map(CommentView::of).toList(),
-                    batchOf(then.getStatus(), kept.getSettleBatch()));
+                    batchOf(then.getStatus(), kept.getSettleBatch()),
+                    kept.getLines().stream().map(LineView::of).toList());
         }
 
         /** The settle batch a claim shows: only while it is settled or pending. */
@@ -110,6 +113,13 @@ public class ClaimController {
     public record CommentView(String by, LocalDate on, String text) {
         static CommentView of(ClaimComment comment) {
             return new CommentView(comment.getByUser(), comment.getOn(), comment.getText());
+        }
+    }
+
+    /** A line of a claim: its label, quantity and unit amount as text with two decimals. */
+    public record LineView(String label, int qty, String unit) {
+        static LineView of(ClaimLine line) {
+            return new LineView(line.getLabel(), line.getQty(), line.getUnit().setScale(2).toPlainString());
         }
     }
 
@@ -384,6 +394,20 @@ public class ClaimController {
             @RequestHeader("X-User") @NotBlank @Size(max = 100) String user,
             @Valid @RequestBody CommentForm form) {
         return ClaimView.of(service.comment(sheetId.trim(), user.trim(), claimId, form.text()));
+    }
+
+    /** A line to add to a draft claim: its label, quantity and unit amount (two decimals at most). */
+    public record LineForm(@Size(max = 200) String label, @NotNull @Pattern(regexp = "\\s*\\d{1,9}\\s*") String qty,
+            @NotNull @Pattern(regexp = "\\s*\\d{1,12}(\\.\\d{1,2})?\\s*") String unit) {
+    }
+
+    @PostMapping("/claims/{claimId}/lines")
+    public ClaimView addLine(@PathVariable @NotBlank @Size(max = 100) String sheetId,
+            @PathVariable long claimId,
+            @RequestHeader("X-User") @NotBlank @Size(max = 100) String user,
+            @Valid @RequestBody LineForm form) {
+        return ClaimView.of(service.addLine(sheetId.trim(), user.trim(), claimId, form.label(),
+                Integer.parseInt(form.qty().trim()), new BigDecimal(form.unit().trim())));
     }
 
     /** The reason a steward gives for rejecting a pending claim. */

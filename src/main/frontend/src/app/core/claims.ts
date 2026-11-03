@@ -147,6 +147,16 @@ export interface Claim {
   /** The number of the bulk settle batch that settled it (or left it pending); null when it was
    *  settled one at a time, or is not settled or pending. */
   settleBatch: number | null;
+  /** Its lines, in the order they were added; a claim with lines has their total as its amount. */
+  lines: ClaimLine[];
+}
+
+/** A line of a claim: its label, its quantity (a whole number) and its unit amount as text with
+ *  two decimals. */
+export interface ClaimLine {
+  label: string;
+  qty: number;
+  unit: string;
 }
 
 /** A comment on a claim: who wrote it, the sheet's today then (yyyy-mm-dd), and its text. */
@@ -426,6 +436,18 @@ export class Claims {
     const { sheetId, user } = this.active();
     return firstValueFrom(
       this.http.post<Claim>(`${this.url(sheetId)}/claims/${id}/comments`, { text },
+        { headers: { 'X-User': user } }),
+    );
+  }
+
+  /** Add a line to a draft claim: the claim with its amount the lines' total. Refused (400) when
+   *  the label is empty, the quantity not a whole number of at least 1 or the unit amount not
+   *  above 0.00 with two decimals at most, (409) when it is not a draft or another user is editing
+   *  it, and (423) when its period is closed. */
+  addLine(id: number, label: string, qty: string, unit: string): Promise<Claim> {
+    const { sheetId, user } = this.active();
+    return firstValueFrom(
+      this.http.post<Claim>(`${this.url(sheetId)}/claims/${id}/lines`, { label, qty, unit },
         { headers: { 'X-User': user } }),
     );
   }
