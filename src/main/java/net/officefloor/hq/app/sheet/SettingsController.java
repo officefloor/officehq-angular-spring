@@ -53,7 +53,8 @@ public class SettingsController {
      *  decimals (null when there is none); and the escalation gap in days (null when blank: off); and
      *  the review SLA in days (null when blank: none); and the proof kinds, comma separated (empty when
      *  blank: none); and the default grade (null when blank: A); and the clerk limit each grade has of
-     *  its own in force, as text with two decimals (a grade not in it takes the sheet's). */
+     *  its own in force, as text with two decimals (a grade not in it takes the sheet's); and the mid
+     *  and high score thresholds (null when blank). */
     public record SettingsView(String clerkLimit, String floor, int terms, String latePct, LocalDate policyDate,
             LocalDate periodNumberingFrom, Map<String, Integer> gradeTerms, String cap, List<DatedValue> floors,
             List<DatedValue> latePcts, List<DatedValue> caps, String proofThreshold,
@@ -62,7 +63,7 @@ public class SettingsController {
             Map<String, String> gradeProofThresholds, String pot, String parent, int fiscalStartMonth,
             String alertThreshold, String rounding, List<DatedText> roundings, String reviewThreshold,
             Integer escalateAfter, Integer reviewSla, String proofKinds, String defaultGrade,
-            Map<String, String> gradeClerkLimits) {
+            Map<String, String> gradeClerkLimits, Integer scoreMid, Integer scoreHigh) {
         static SettingsView of(BigDecimal clerkLimit, BigDecimal floor, int terms, BigDecimal latePct,
                 LocalDate policyDate, LocalDate periodNumberingFrom, Map<String, Integer> gradeTerms,
                 BigDecimal cap, List<SettingValue> floors, List<SettingValue> latePcts,
@@ -72,7 +73,7 @@ public class SettingsController {
                 String parent, int fiscalStartMonth, BigDecimal alertThreshold, Optional<Rounding> rounding,
                 List<SettingValue> roundings, BigDecimal reviewThreshold, Integer escalateAfter,
                 Integer reviewSla, List<String> proofKinds, String defaultGrade,
-                Map<String, BigDecimal> gradeClerkLimits) {
+                Map<String, BigDecimal> gradeClerkLimits, Integer scoreMid, Integer scoreHigh) {
             Map<String, List<DatedDays>> gracesView = new TreeMap<>();
             graces.forEach((grade, values) -> gracesView.put(grade, values.stream().map(DatedDays::of).toList()));
             Map<String, String> thresholdsView = new TreeMap<>();
@@ -88,7 +89,8 @@ public class SettingsController {
                     fiscalStartMonth, alertThreshold == null ? null : alertThreshold.setScale(2).toPlainString(),
                     rounding.map(Rounding::text).orElse(null), roundings.stream().map(DatedText::rounding).toList(),
                     reviewThreshold == null ? null : reviewThreshold.setScale(2).toPlainString(), escalateAfter,
-                    reviewSla, String.join(",", proofKinds), defaultGrade, twoDecimals(gradeClerkLimits));
+                    reviewSla, String.join(",", proofKinds), defaultGrade, twoDecimals(gradeClerkLimits),
+                    scoreMid, scoreHigh);
         }
     }
 
@@ -282,6 +284,14 @@ public class SettingsController {
         }
     }
 
+    /** A score threshold form: a whole number, which may be below 0, or blank for none; not dated. */
+    public record ScoreThresholdForm(@Pattern(regexp = "\\s*(-?\\d{1,6})?\\s*") String value) {
+
+        Integer scoreValue() {
+            return value == null || value.isBlank() ? null : Integer.valueOf(value.trim());
+        }
+    }
+
     /** A grade's grace days form: a whole number of days, 0 or more, or blank for none; from a date,
      *  or blank for the sheet's today. */
     public record GradeGraceForm(@Pattern(regexp = "\\s*(\\d{1,4})?\\s*") String value,
@@ -407,7 +417,8 @@ public class SettingsController {
                 service.alertThreshold(id),
                 then.setting(Rounding.KEY, day).map(SettingValue::getValue).flatMap(Rounding::ofCode),
                 then.recorded(Rounding.KEY), value.apply("review-threshold"), service.escalateAfter(id),
-                service.reviewSla(id), service.proofKinds(id), service.defaultGradeSet(id), gradeClerkLimits);
+                service.reviewSla(id), service.proofKinds(id), service.defaultGradeSet(id), gradeClerkLimits,
+                service.scoreMid(id), service.scoreHigh(id));
     }
 
     /** The settings view of a sheet as the store holds it now. */
@@ -421,7 +432,7 @@ public class SettingsController {
                 service.fiscalStartMonth(id), service.alertThreshold(id), service.rounding(id),
                 service.recorded(id, Rounding.KEY), service.reviewThreshold(id), service.escalateAfter(id),
                 service.reviewSla(id), service.proofKinds(id), service.defaultGradeSet(id),
-                service.gradeClerkLimits(id));
+                service.gradeClerkLimits(id), service.scoreMid(id), service.scoreHigh(id));
     }
 
     /** The grace days recorded for each grade of a sheet, earliest from-date first. */
@@ -582,6 +593,20 @@ public class SettingsController {
             @RequestHeader("X-User") @NotBlank @Size(max = 100) String user,
             @Valid @RequestBody ReviewSlaForm form) {
         return view(service.setReviewSla(sheetId.trim(), user.trim(), form.daysValue()));
+    }
+
+    @PutMapping("/score-mid")
+    public SettingsView setScoreMid(@PathVariable @NotBlank @Size(max = 100) String sheetId,
+            @RequestHeader("X-User") @NotBlank @Size(max = 100) String user,
+            @Valid @RequestBody ScoreThresholdForm form) {
+        return view(service.setScoreMid(sheetId.trim(), user.trim(), form.scoreValue()));
+    }
+
+    @PutMapping("/score-high")
+    public SettingsView setScoreHigh(@PathVariable @NotBlank @Size(max = 100) String sheetId,
+            @RequestHeader("X-User") @NotBlank @Size(max = 100) String user,
+            @Valid @RequestBody ScoreThresholdForm form) {
+        return view(service.setScoreHigh(sheetId.trim(), user.trim(), form.scoreValue()));
     }
 
     @PutMapping("/alert-threshold")

@@ -4,7 +4,7 @@ import { Pools } from '../../core/pools';
 import { Session } from '../../core/session';
 import { Grade } from '../../core/people';
 import {
-  DEFAULT_GRADE, LATE_PCT, LIMIT, PERM_ACTIONS, PERM_ROLES, POLICY_DATE, PROOF_KIND_LIST, PermAction, ROLES, ROUNDING, STANDING_PERMISSIONS, TERMS, FISCAL_MONTH, Role, RoleName,
+  DEFAULT_GRADE, LATE_PCT, LIMIT, PERM_ACTIONS, PERM_ROLES, POLICY_DATE, PROOF_KIND_LIST, PermAction, ROLES, ROUNDING, STANDING_PERMISSIONS, TERMS, SCORE, FISCAL_MONTH, Role, RoleName,
   SheetSettings,
 } from '../../core/settings';
 import { FigurePipe } from '../../core/figure';
@@ -121,6 +121,10 @@ import { FigurePipe } from '../../core/figure';
         <input id="setting-escalate-after" data-testid="setting-escalate-after" formControlName="escalateAfter" inputmode="numeric" />
         <label for="setting-review-sla">Review SLA (a claim in review longer than this many days is late; blank: none)</label>
         <input id="setting-review-sla" data-testid="setting-review-sla" formControlName="reviewSla" inputmode="numeric" />
+        <label for="setting-score-mid">Score mid threshold (with the high one set, a score at or above it is MID; blank: no bands)</label>
+        <input id="setting-score-mid" data-testid="setting-score-mid" formControlName="scoreMid" inputmode="numeric" />
+        <label for="setting-score-high">Score high threshold (with the mid one set, a score at or above it is HIGH; blank: no bands)</label>
+        <input id="setting-score-high" data-testid="setting-score-high" formControlName="scoreHigh" inputmode="numeric" />
         <label for="setting-entry-date">Entry date (a new claim's date when none is given; blank: off, the sheet's today)</label>
         <input id="setting-entry-date" data-testid="setting-entry-date" type="date" formControlName="entryDate" />
         <label for="setting-pot">Pot (a balanced pool's members cut it by their shares; blank: none)</label>
@@ -175,6 +179,8 @@ import { FigurePipe } from '../../core/figure';
       <p>Grace days: <span data-testid="setting-grace-days-current">{{ graceDays() ?? '' }}</span></p>
       <p>Escalate after: <span data-testid="setting-escalate-after-current">{{ escalateAfter() ?? '' }}</span></p>
       <p>Review SLA: <span data-testid="setting-review-sla-current">{{ reviewSla() ?? '' }}</span></p>
+      <p>Score mid threshold: <span data-testid="setting-score-mid-current">{{ scoreMid() ?? '' }}</span></p>
+      <p>Score high threshold: <span data-testid="setting-score-high-current">{{ scoreHigh() ?? '' }}</span></p>
       <p>Entry date: <span data-testid="setting-entry-date-current">{{ entryDate() ?? '' }}</span></p>
       <p>Pot: <span data-testid="setting-pot-current">{{ pot() ?? '' | figure }}</span></p>
       <p>Alert threshold: <span data-testid="setting-alert-threshold-current">{{ alertThreshold() ?? '' | figure }}</span></p>
@@ -248,6 +254,8 @@ export class SettingsForm {
   protected readonly graceDays = signal<number | null>(null);
   protected readonly escalateAfter = signal<number | null>(null);
   protected readonly reviewSla = signal<number | null>(null);
+  protected readonly scoreMid = signal<number | null>(null);
+  protected readonly scoreHigh = signal<number | null>(null);
   protected readonly entryDate = signal<string | null>(null);
   protected readonly pot = signal<string | null>(null);
   protected readonly alertThreshold = signal<string | null>(null);
@@ -322,6 +330,8 @@ export class SettingsForm {
     graceDays: new FormControl('', { nonNullable: true }),
     escalateAfter: new FormControl('', { nonNullable: true }),
     reviewSla: new FormControl('', { nonNullable: true }),
+    scoreMid: new FormControl('', { nonNullable: true }),
+    scoreHigh: new FormControl('', { nonNullable: true }),
     entryDate: new FormControl('', { nonNullable: true }),
     pot: new FormControl('', { nonNullable: true }),
     alertThreshold: new FormControl('', { nonNullable: true }),
@@ -368,6 +378,8 @@ export class SettingsForm {
       this.graceDays.set(null);
       this.escalateAfter.set(null);
       this.reviewSla.set(null);
+      this.scoreMid.set(null);
+      this.scoreHigh.set(null);
       this.entryDate.set(null);
       this.pot.set(null);
       this.alertThreshold.set(null);
@@ -387,14 +399,14 @@ export class SettingsForm {
     if (this.submitting) return;
     this.settingsError.set('');
     const { clerkLimit, clerkLimitFrom, gradeClerkLimits, cap, capFrom, proofThreshold, proofThresholdFrom, gradeProofThresholds, noteThreshold, noteThresholdFrom, reviewThreshold, reviewThresholdFrom, floor, floorFrom, rounding, roundingFrom, terms, termsFrom, gradeTerms, gradeGraces, latePct,
-      latePctFrom, policyDate, periodNumberingFrom, graceDays, escalateAfter, reviewSla, entryDate, pot, alertThreshold, parent, proofKinds, defaultGrade, fiscalStartMonth, permissions } = this.settingsForm.controls;
+      latePctFrom, policyDate, periodNumberingFrom, graceDays, escalateAfter, reviewSla, scoreMid, scoreHigh, entryDate, pot, alertThreshold, parent, proofKinds, defaultGrade, fiscalStartMonth, permissions } = this.settingsForm.controls;
     const changed = (...cs: AbstractControl[]) => cs.some((c) => c.dirty || c.touched);
     const none = !changed(clerkLimit, clerkLimitFrom) && !changed(gradeClerkLimits) && !changed(cap, capFrom)
       && !changed(proofThreshold, proofThresholdFrom) && !changed(gradeProofThresholds) && !changed(noteThreshold, noteThresholdFrom)
       && !changed(reviewThreshold, reviewThresholdFrom)
       && !changed(floor, floorFrom) && !changed(rounding, roundingFrom)
       && !changed(terms, termsFrom) && !changed(gradeTerms) && !changed(gradeGraces) && !changed(latePct, latePctFrom) && !changed(policyDate)
-      && !changed(periodNumberingFrom) && !changed(graceDays) && !changed(escalateAfter) && !changed(reviewSla) && !changed(entryDate) && !changed(pot) && !changed(alertThreshold) && !changed(parent) && !changed(proofKinds) && !changed(defaultGrade) && !changed(fiscalStartMonth) && !changed(permissions);
+      && !changed(periodNumberingFrom) && !changed(graceDays) && !changed(escalateAfter) && !changed(reviewSla) && !changed(scoreMid) && !changed(scoreHigh) && !changed(entryDate) && !changed(pot) && !changed(alertThreshold) && !changed(parent) && !changed(proofKinds) && !changed(defaultGrade) && !changed(fiscalStartMonth) && !changed(permissions);
     /** A from-date typed, or null when blank (the sheet's today). */
     const from = (c: AbstractControl<string>) => c.value.trim() || null;
     const fromsToSave: AbstractControl<string>[] = [];
@@ -450,6 +462,10 @@ export class SettingsForm {
     const saveEscalate = changed(escalateAfter) || (none && escalateValue !== '');
     const reviewSlaValue = reviewSla.value.trim();
     const saveReviewSla = changed(reviewSla) || (none && reviewSlaValue !== '');
+    const scoreMidValue = scoreMid.value.trim();
+    const saveScoreMid = changed(scoreMid) || (none && scoreMidValue !== '');
+    const scoreHighValue = scoreHigh.value.trim();
+    const saveScoreHigh = changed(scoreHigh) || (none && scoreHighValue !== '');
     const entryDateValue = entryDate.value.trim();
     const saveEntryDate = changed(entryDate) || (none && entryDateValue !== '');
     const potValue = pot.value.trim();
@@ -554,6 +570,14 @@ export class SettingsForm {
     }
     if (saveReviewSla && reviewSlaValue !== '' && !TERMS.test(reviewSlaValue)) {
       this.settingsError.set('Enter a review SLA of 0 or more whole days, or leave it blank for none.');
+      return;
+    }
+    if (saveScoreMid && scoreMidValue !== '' && !SCORE.test(scoreMidValue)) {
+      this.settingsError.set('Enter a score mid threshold as a whole number, or leave it blank for no bands.');
+      return;
+    }
+    if (saveScoreHigh && scoreHighValue !== '' && !SCORE.test(scoreHighValue)) {
+      this.settingsError.set('Enter a score high threshold as a whole number, or leave it blank for no bands.');
       return;
     }
     if (saveEntryDate && entryDateValue !== '' && !POLICY_DATE.test(entryDateValue)) {
@@ -729,6 +753,18 @@ export class SettingsForm {
         reviewSla.markAsPristine();
         reviewSla.markAsUntouched();
       }
+      if (saveScoreMid) {
+        const saved = await this.api.setScoreMid(scoreMidValue === '' ? null : scoreMidValue);
+        this.scoreMid.set(saved.scoreMid);
+        scoreMid.markAsPristine();
+        scoreMid.markAsUntouched();
+      }
+      if (saveScoreHigh) {
+        const saved = await this.api.setScoreHigh(scoreHighValue === '' ? null : scoreHighValue);
+        this.scoreHigh.set(saved.scoreHigh);
+        scoreHigh.markAsPristine();
+        scoreHigh.markAsUntouched();
+      }
       if (saveEntryDate) {
         const saved = await this.api.setEntryDate(entryDateValue === '' ? null : entryDateValue);
         this.entryDate.set(saved.entryDate);
@@ -843,6 +879,8 @@ export class SettingsForm {
         this.graceDays.set(settings.graceDays);
         this.escalateAfter.set(settings.escalateAfter);
         this.reviewSla.set(settings.reviewSla);
+        this.scoreMid.set(settings.scoreMid);
+        this.scoreHigh.set(settings.scoreHigh);
         this.entryDate.set(settings.entryDate);
         this.pot.set(settings.pot);
         this.alertThreshold.set(settings.alertThreshold);

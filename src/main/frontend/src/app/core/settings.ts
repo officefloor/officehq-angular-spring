@@ -50,6 +50,12 @@ export interface Settings {
   /** The review SLA: a claim in review whose review day plus this many days is before the sheet's
    *  today is late; null when blank (none). Not dated. */
   reviewSla: number | null;
+  /** The mid score threshold: while both thresholds are set, a person whose score is at or above
+   *  it is MID; null when blank. Not dated. */
+  scoreMid: number | null;
+  /** The high score threshold: while both thresholds are set, a person whose score is at or above
+   *  it is HIGH; null when blank. Not dated. */
+  scoreHigh: number | null;
   /** The entry date (yyyy-mm-dd): while it is set, a new claim's date when none is given; null when
    *  blank (off, the sheet's today then stands in). */
   entryDate: string | null;
@@ -170,6 +176,9 @@ export const LIMIT = /^\d{1,12}(\.\d{1,2})?$/;
 
 /** Terms: a whole number of days, 0 or more. */
 export const TERMS = /^\d{1,4}$/;
+
+/** A score threshold: a whole number, which may be below 0. */
+export const SCORE = /^-?\d{1,6}$/;
 
 /** A fiscal year start month: 1 to 12. */
 export const FISCAL_MONTH = /^(0?[1-9]|1[0-2])$/;
@@ -334,6 +343,18 @@ export class SheetSettings {
   setReviewSla(value: string | null): Promise<Settings> {
     const [sheetId, headers] = this.active();
     return firstValueFrom(this.http.put<Settings>(`${this.url(sheetId)}/settings/review-sla`, { value }, { headers })).then((settings) => this.record(sheetId, settings));
+  }
+
+  /** Set the mid score threshold; null for blank. */
+  setScoreMid(value: string | null): Promise<Settings> {
+    const [sheetId, headers] = this.active();
+    return firstValueFrom(this.http.put<Settings>(`${this.url(sheetId)}/settings/score-mid`, { value }, { headers })).then((settings) => this.record(sheetId, settings));
+  }
+
+  /** Set the high score threshold; null for blank. */
+  setScoreHigh(value: string | null): Promise<Settings> {
+    const [sheetId, headers] = this.active();
+    return firstValueFrom(this.http.put<Settings>(`${this.url(sheetId)}/settings/score-high`, { value }, { headers })).then((settings) => this.record(sheetId, settings));
   }
 
   /** Set the entry date; null for blank (off). */

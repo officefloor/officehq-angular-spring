@@ -62,6 +62,16 @@ public class Sheet {
     @Column(name = "review_sla")
     private Integer reviewSla;
 
+    /** The mid score threshold: a person whose score is at or above it is MID (or HIGH); null when
+     *  blank (no bands). */
+    @Column(name = "score_mid")
+    private Integer scoreMid;
+
+    /** The high score threshold: a person whose score is at or above it is HIGH; null when blank
+     *  (no bands). */
+    @Column(name = "score_high")
+    private Integer scoreHigh;
+
     /** Entry date: while it is set, the default date of a new claim in place of the sheet's today;
      *  null (blank) is off. */
     @Column(name = "entry_date")
@@ -170,6 +180,22 @@ public class Sheet {
 
     public void setReviewSla(Integer reviewSla) {
         this.reviewSla = reviewSla;
+    }
+
+    public Integer getScoreMid() {
+        return scoreMid;
+    }
+
+    public void setScoreMid(Integer scoreMid) {
+        this.scoreMid = scoreMid;
+    }
+
+    public Integer getScoreHigh() {
+        return scoreHigh;
+    }
+
+    public void setScoreHigh(Integer scoreHigh) {
+        this.scoreHigh = scoreHigh;
     }
 
     public LocalDate getEntryDate() {

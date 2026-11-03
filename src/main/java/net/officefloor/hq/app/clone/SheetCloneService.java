@@ -121,6 +121,8 @@ public class SheetCloneService {
         to.setGraceDays(from.getGraceDays());
         to.setEscalateAfter(from.getEscalateAfter());
         to.setReviewSla(from.getReviewSla());
+        to.setScoreMid(from.getScoreMid());
+        to.setScoreHigh(from.getScoreHigh());
         to.setEntryDate(from.getEntryDate());
         to.setPot(from.getPot());
         to.setAlertThreshold(from.getAlertThreshold());

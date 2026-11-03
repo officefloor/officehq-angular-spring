@@ -542,6 +542,40 @@ public class SheetService {
         return saved;
     }
 
+    /** The sheet's mid score threshold; null when blank. */
+    @Transactional(readOnly = true)
+    public Integer scoreMid(String id) {
+        return sheets.findById(id).map(Sheet::getScoreMid).orElse(null);
+    }
+
+    /** Change the sheet's mid score threshold (null: blank); recorded even when unchanged. */
+    @Transactional
+    public synchronized Sheet setScoreMid(String id, String user, Integer value) {
+        Sheet sheet = load(id, user);
+        sheet.setScoreMid(value);
+        Sheet saved = sheets.saveAndFlush(sheet);
+        audit.recordOnCommit("SETTING_CHANGED sheet=" + id + " by=" + user + " key=score-mid value="
+                + (value == null ? "" : value.toString()));
+        return saved;
+    }
+
+    /** The sheet's high score threshold; null when blank. */
+    @Transactional(readOnly = true)
+    public Integer scoreHigh(String id) {
+        return sheets.findById(id).map(Sheet::getScoreHigh).orElse(null);
+    }
+
+    /** Change the sheet's high score threshold (null: blank); recorded even when unchanged. */
+    @Transactional
+    public synchronized Sheet setScoreHigh(String id, String user, Integer value) {
+        Sheet sheet = load(id, user);
+        sheet.setScoreHigh(value);
+        Sheet saved = sheets.saveAndFlush(sheet);
+        audit.recordOnCommit("SETTING_CHANGED sheet=" + id + " by=" + user + " key=score-high value="
+                + (value == null ? "" : value.toString()));
+        return saved;
+    }
+
     /** The sheet's alert threshold; null when blank (off). */
     @Transactional(readOnly = true)
     public BigDecimal alertThreshold(String id) {

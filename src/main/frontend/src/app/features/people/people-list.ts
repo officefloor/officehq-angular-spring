@@ -270,7 +270,7 @@ const NO_LEAVE: Leave = { holds: [], retiredFrom: null };
       <button type="button" data-testid="export-claims" (click)="exportClaimsCsv()">Export claims (CSV)</button>
       <table data-testid="people">
         <thead>
-          <tr><th scope="col"><span class="visually-hidden">Select</span></th><th scope="col">Name</th><th scope="col">Grade</th><th scope="col">Active</th>@if (shows('terms')) {<th scope="col">Terms</th>}@if (shows('contact')) {<th scope="col">Contact</th>}<th scope="col">Tags</th>@if (shows('aliases')) {<th scope="col">Aliases</th>}<th scope="col">Clashing</th><th scope="col">Came from</th>@if (shows('claimed')) {<th scope="col">Claimed</th>}@if (shows('due-total')) {<th scope="col">Due</th>}<th scope="col">Settled due</th><th scope="col">Score</th><th scope="col">Open due</th>@for (pd of periods(); track pd.id) {<th scope="col">Due in {{ pd.name }}</th><th scope="col">Carried into {{ pd.name }}</th>}@if (shows('excess')) {<th scope="col">Excess</th>}<th scope="col">Cut total</th>@if (shows('statement-count')) {<th scope="col">Statements</th>}@if (shows('stated-total')) {<th scope="col">Last stated</th>}@if (shows('statement-date')) {<th scope="col">Stated on</th>}@if (shows('retired')) {<th scope="col">Retired</th>}<th scope="col">Retired from</th><th scope="col">Past retirements</th><th scope="col">Snapshots</th><th scope="col">Statements taken</th>@if (shows('hold')) {<th scope="col">On hold</th>}@if (shows('overdue-count')) {<th scope="col">Overdue</th>}@if (shows('overdue-total')) {<th scope="col">Overdue due</th>}<th scope="col">Due aged 0–30 days</th><th scope="col">Due aged 31–60 days</th><th scope="col">Due aged 61+ days</th>@if (shows('patrons')) {<th scope="col">Patrons</th>}@if (shows('backing')) {<th scope="col">Backing</th>}<th scope="col">Watched</th><th scope="col">Flag</th><th scope="col">Approver</th><th scope="col">Plans</th><th scope="col">Claims</th><th scope="col"><span class="visually-hidden">Actions</span></th></tr>
+          <tr><th scope="col"><span class="visually-hidden">Select</span></th><th scope="col">Name</th><th scope="col">Grade</th><th scope="col">Active</th>@if (shows('terms')) {<th scope="col">Terms</th>}@if (shows('contact')) {<th scope="col">Contact</th>}<th scope="col">Tags</th>@if (shows('aliases')) {<th scope="col">Aliases</th>}<th scope="col">Clashing</th><th scope="col">Came from</th>@if (shows('claimed')) {<th scope="col">Claimed</th>}@if (shows('due-total')) {<th scope="col">Due</th>}<th scope="col">Settled due</th><th scope="col">Score</th><th scope="col">Band</th><th scope="col">Open due</th>@for (pd of periods(); track pd.id) {<th scope="col">Due in {{ pd.name }}</th><th scope="col">Carried into {{ pd.name }}</th>}@if (shows('excess')) {<th scope="col">Excess</th>}<th scope="col">Cut total</th>@if (shows('statement-count')) {<th scope="col">Statements</th>}@if (shows('stated-total')) {<th scope="col">Last stated</th>}@if (shows('statement-date')) {<th scope="col">Stated on</th>}@if (shows('retired')) {<th scope="col">Retired</th>}<th scope="col">Retired from</th><th scope="col">Past retirements</th><th scope="col">Snapshots</th><th scope="col">Statements taken</th>@if (shows('hold')) {<th scope="col">On hold</th>}@if (shows('overdue-count')) {<th scope="col">Overdue</th>}@if (shows('overdue-total')) {<th scope="col">Overdue due</th>}<th scope="col">Due aged 0–30 days</th><th scope="col">Due aged 31–60 days</th><th scope="col">Due aged 61+ days</th>@if (shows('patrons')) {<th scope="col">Patrons</th>}@if (shows('backing')) {<th scope="col">Backing</th>}<th scope="col">Watched</th><th scope="col">Flag</th><th scope="col">Approver</th><th scope="col">Plans</th><th scope="col">Claims</th><th scope="col"><span class="visually-hidden">Actions</span></th></tr>
         </thead>
         <tbody>
           @for (p of sorted(); track p.id) {
@@ -303,6 +303,7 @@ const NO_LEAVE: Leave = { holds: [], retiredFrom: null };
               }
               <td data-testid="person-settled-total">{{ settledTotalOf(p) | figure }}</td>
               <td data-testid="person-score">{{ scoreOf(p) }}</td>
+              <td data-testid="person-band">{{ bandOf(p) }}</td>
               <td data-testid="person-open-total">{{ openTotalOf(p) | figure }}</td>
               @for (pd of periods(); track pd.id) {
                 <td [attr.data-testid]="'person-period-' + pd.name + '-due-total'">{{ periodDueOf(p.id, pd) | figure }}</td>
@@ -706,6 +707,10 @@ export class PeopleList {
   protected readonly graces = signal<Graces>({});
   /** The sheet's review SLA in days (null when blank): a claim in review longer than it is late. */
   protected readonly reviewSla = signal<number | null>(null);
+  /** The sheet's mid score threshold (null when blank). */
+  protected readonly scoreMid = signal<number | null>(null);
+  /** The sheet's high score threshold (null when blank). */
+  protected readonly scoreHigh = signal<number | null>(null);
   /** How many claims on the sheet are in review past the review SLA. */
   protected readonly reviewLateCount = computed(() =>
     this.claims().filter((c) => reviewLate(c, this.session.today(), this.reviewSla())).length,
@@ -1139,6 +1144,8 @@ export class PeopleList {
       this.latePct.set(saved.settings.latePcts);
       this.graces.set(saved.settings.graces);
       this.reviewSla.set(saved.settings.reviewSla);
+      this.scoreMid.set(saved.settings.scoreMid);
+      this.scoreHigh.set(saved.settings.scoreHigh);
       this.policyDate.set(saved.settings.policyDate);
       this.roundings.set(saved.settings.roundings);
     });
@@ -1926,6 +1933,16 @@ export class PeopleList {
     return String(score);
   }
 
+  /** A person's band by their score while both score thresholds are set: HIGH at or above the high
+   *  one, MID at or above the mid one, else LOW; empty while either is blank. */
+  protected bandOf(p: Person): string {
+    const mid = this.scoreMid();
+    const high = this.scoreHigh();
+    if (mid === null || high === null) return '';
+    const score = Number(this.scoreOf(p));
+    return score >= high ? 'HIGH' : score >= mid ? 'MID' : 'LOW';
+  }
+
   /** A person's open-total: the due figures of their open and pending claims that count (held,
    *  deferred and retired-and-excluded ones are left out), skipping those with no due. With the
    *  settled-total it adds up to their due-total before the cap. */
@@ -2062,6 +2079,8 @@ export class PeopleList {
         this.latePct.set(settings.latePcts);
         this.graces.set(settings.graces);
         this.reviewSla.set(settings.reviewSla);
+        this.scoreMid.set(settings.scoreMid);
+        this.scoreHigh.set(settings.scoreHigh);
         this.policyDate.set(settings.policyDate);
         this.roundings.set(settings.roundings);
         this.periods.set(periods);
