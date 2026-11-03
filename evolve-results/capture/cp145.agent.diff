@@ -1,0 +1,153 @@
+diff --git a/src/main/frontend/src/app/core/claims.ts b/src/main/frontend/src/app/core/claims.ts
+index 9c424df90..06057cb7b 100644
+--- a/src/main/frontend/src/app/core/claims.ts
++++ b/src/main/frontend/src/app/core/claims.ts
+@@ -503,6 +503,16 @@ export class Claims {
+     );
+   }
+ 
++  /** Re-date each of the claims that can be re-dated, in list order, as re-dating one does; the
++   *  rest are refused and left as they are. */
++  redateAll(claimIds: number[], date: string): Promise<{ redated: number; refused: number }> {
++    const { sheetId, user } = this.active();
++    return firstValueFrom(
++      this.http.post<{ redated: number; refused: number }>(`${this.url(sheetId)}/claims/redate`,
++        { claimIds, date }, { headers: { 'X-User': user } }),
++    );
++  }
++
+   private url(sheetId: string): string {
+     return `/api/sheets/${encodeURIComponent(sheetId)}`;
+   }
+diff --git a/src/main/frontend/src/app/features/people/people-list.ts b/src/main/frontend/src/app/features/people/people-list.ts
+index 7153f898c..369e4b6bf 100644
+--- a/src/main/frontend/src/app/features/people/people-list.ts
++++ b/src/main/frontend/src/app/features/people/people-list.ts
+@@ -150,6 +150,14 @@ const NO_LEAVE: Leave = { holds: [], retiredFrom: null };
+         <p role="status">Reassigned <strong data-testid="bulk-reassigned">{{ b.reassigned }}</strong>,
+           refused <strong data-testid="bulk-reassign-refused">{{ b.refused }}</strong></p>
+       }
++      <label for="bulk-redate-date">Re-date selected claims to</label>
++      <input #bulkRedateDate id="bulk-redate-date" type="date" data-testid="bulk-redate-date" />
++      <button type="button" data-testid="bulk-redate" (click)="bulkRedate(bulkRedateDate.value)">Re-date
++        selected claims</button>
++      @if (bulkRedated(); as b) {
++        <p role="status">Re-dated <strong data-testid="bulk-redated">{{ b.redated }}</strong>,
++          refused <strong data-testid="bulk-redate-refused">{{ b.refused }}</strong></p>
++      }
+       <div role="group" aria-labelledby="bulk-grade-heading">
+         <span id="bulk-grade-heading">Grade selected people</span>
+         <label for="bulk-grade">Grade</label>
+@@ -686,6 +694,10 @@ export class PeopleList {
+   protected readonly bulkReassigned = signal<{ reassigned: number; refused: number } | null>(null);
+   /** Whether a bulk reassign is waiting for its answer: a second press meanwhile is ignored. */
+   private reassigning = false;
++  /** What the last bulk re-date did; null while one runs and before the first. */
++  protected readonly bulkRedated = signal<{ redated: number; refused: number } | null>(null);
++  /** Whether a bulk re-date is waiting for its answer: a second press meanwhile is ignored. */
++  private redating = false;
+   /** The ids of the people selected for a bulk grade. */
+   protected readonly selectedPeople = signal<ReadonlySet<number>>(new Set());
+   /** How many people the last bulk grade changed; null while one runs and before the first. */
+@@ -763,6 +775,7 @@ export class PeopleList {
+       this.bulkSettled.set(null);
+       this.lastSettleBatch.set(null);
+       this.bulkReassigned.set(null);
++      this.bulkRedated.set(null);
+       this.selectedPeople.set(new Set());
+       this.bulkGraded.set(null);
+       this.bulkGradeError.set('');
+@@ -1307,6 +1320,26 @@ export class PeopleList {
+     }
+   }
+ 
++  /** Re-date the selected claims that can be re-dated, then show the claims as they are now and
++   *  how many were re-dated and refused. */
++  protected async bulkRedate(date: string): Promise<void> {
++    const sheetId = this.session.sheetId();
++    if (this.redating || !sheetId) return;
++    this.redating = true;
++    this.bulkRedated.set(null);
++    try {
++      if (!date) throw new Error('No date chosen');
++      const result = await this.claimsApi.redateAll([...this.selected()], date);
++      this.selected.set(new Set());
++      this.claims.set(await this.claimsApi.list(sheetId));
++      this.bulkRedated.set(result);
++    } catch {
++      this.bulkRedated.set({ redated: 0, refused: this.selected().size });
++    } finally {
++      this.redating = false;
++    }
++  }
++
+   protected claimSaved(claim: Claim): void {
+     this.clearPersonError(claim.personId);
+     this.claims.update((cs) =>
+diff --git a/src/main/java/net/officefloor/hq/app/claim/ClaimBulkService.java b/src/main/java/net/officefloor/hq/app/claim/ClaimBulkService.java
+index b2f99ff56..a2e284e73 100644
+--- a/src/main/java/net/officefloor/hq/app/claim/ClaimBulkService.java
++++ b/src/main/java/net/officefloor/hq/app/claim/ClaimBulkService.java
+@@ -2,6 +2,7 @@ package net.officefloor.hq.app.claim;
+ 
+ import java.math.BigDecimal;
+ import java.math.RoundingMode;
++import java.time.LocalDate;
+ import java.util.ArrayList;
+ import java.util.Comparator;
+ import java.util.HashMap;
+@@ -110,6 +111,25 @@ public class ClaimBulkService {
+         return new Outcome(done, claimIds.size() - done);
+     }
+ 
++    /** Re-date each of the claims that can be re-dated, in list order, exactly as re-dating one;
++     *  each that cannot is refused and left as it is, and so is an id that names no claim on the
++     *  sheet. */
++    public Outcome redate(String sheetId, String user, Set<Long> claimIds, LocalDate date) {
++        if (sheets.archived(sheetId)) {
++            return new Outcome(0, claimIds.size());
++        }
++        int done = 0;
++        for (Claim claim : inListOrder(sheetId, claimIds)) {
++            try {
++                claims.redate(sheetId, user, claim.getId(), date);
++                done++;
++            } catch (ResponseStatusException refused) {
++                // left as it is
++            }
++        }
++        return new Outcome(done, claimIds.size() - done);
++    }
++
+     private Outcome change(String sheetId, String user, Set<Long> claimIds, ClaimStatus to) {
+         if (sheets.archived(sheetId)) {
+             return new Outcome(0, claimIds.size());
+diff --git a/src/main/java/net/officefloor/hq/app/claim/ClaimController.java b/src/main/java/net/officefloor/hq/app/claim/ClaimController.java
+index dc3386ade..5ebe05a94 100644
+--- a/src/main/java/net/officefloor/hq/app/claim/ClaimController.java
++++ b/src/main/java/net/officefloor/hq/app/claim/ClaimController.java
+@@ -452,6 +452,24 @@ public class ClaimController {
+         return new BulkReassigned(outcome.done(), outcome.refused());
+     }
+ 
++    /** The claims a bulk re-date re-dates, by id, and the date it gives them. */
++    public record BulkRedateForm(@NotNull @Size(max = 1000) Set<@NotNull Long> claimIds, @NotNull LocalDate date) {
++    }
++
++    /** How many claims a bulk re-date re-dated, and how many it refused. */
++    public record BulkRedated(int redated, int refused) {
++    }
++
++    @ViewerAllowed
++    @ArchivedAllowed
++    @PostMapping("/claims/redate")
++    public BulkRedated redateAll(@PathVariable @NotBlank @Size(max = 100) String sheetId,
++            @RequestHeader("X-User") @NotBlank @Size(max = 100) String user,
++            @Valid @RequestBody BulkRedateForm form) {
++        ClaimBulkService.Outcome outcome = bulk.redate(sheetId.trim(), user.trim(), form.claimIds(), form.date());
++        return new BulkRedated(outcome.done(), outcome.refused());
++    }
++
+     /** The amount split off an open claim: above 0.00, with up to two decimals. */
+     public record SplitForm(@NotNull @Pattern(regexp = "\\s*\\d{1,12}(\\.\\d{1,2})?\\s*") String amount) {
+ 

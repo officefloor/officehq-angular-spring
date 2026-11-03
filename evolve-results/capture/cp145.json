@@ -1,0 +1,64 @@
+{
+  "checkpoint": 145,
+  "stack": {
+    "repo": "/home/daniel/officehq-angular-spring",
+    "origin": "git@github.com:officefloor/officehq-angular-spring.git",
+    "name": "officehq-angular-spring",
+    "base_ref": "base-empty",
+    "base_commit": "65cb8233ea38b2dfa6cfd18709e30cd18fdf3250"
+  },
+  "checkpoint_id": "cp145_bulk-redate",
+  "phase": "mid",
+  "type": "additive",
+  "mutates": [],
+  "replaced_tests": [],
+  "request": {
+    "spec": "Selected claims can be re-dated together: a date entry and a button beside the bulk buttons.\nEach selected claim is re-dated in list order exactly as the row's re-date does (who may, which\nstatuses, closed periods, renumbering on a period change, CLAIM_REDATED); show how many were re-dated\nand how many refused.\n",
+    "prompt": "You are implementing ONE change to this application.\n\nFIRST read AGENTS.md \u2014 it states the working rules and how the app is tested, and sends you to\nDESIGN.md for the app's stack and conventions. Follow both.\n\nTHE CHANGE REQUEST:\nSelected claims can be re-dated together: a date entry and a button beside the bulk buttons.\nEach selected claim is re-dated in list order exactly as the row's re-date does (who may, which\nstatuses, closed periods, renumbering on a period change, CLAIM_REDATED); show how many were re-dated\nand how many refused.\n\nYour work is verified by an automated Playwright UI test already installed under e2e/specs/.\nRead that spec: it declares the exact data-testid anchors, values, test data and any audit\nrecords it expects \u2014 match them. Run `bin/e2e` to build the app, start it, and run the test as\nyou work; iterate until it passes. Change whatever the request needs across the app \u2014 its stored\ndata, its server and its front end. Do NOT edit bin/build, bin/start, bin/stop, bin/e2e,\nAGENTS.md, CLAUDE.md, DESIGN.md, e2e/support/ or the test spec.\n"
+  },
+  "commit_sha": "797d1c09b041c6c6e90b0d70121b460c273dec9f",
+  "reset_sha": "",
+  "preagent_sha": "54c16a9d7a2f670958cde235825a765b19538bce",
+  "prev_sha": "54c16a9d7a2f670958cde235825a765b19538bce",
+  "base_sha": "65cb8233ea38b2dfa6cfd18709e30cd18fdf3250",
+  "agent": {
+    "ok": true,
+    "cost_usd": 0.5937640000000001,
+    "input_tokens": 22,
+    "output_tokens": 6158,
+    "cache_read_tokens": 378820,
+    "cache_creation_tokens": 49344,
+    "num_turns": 12,
+    "duration_ms": 249877,
+    "duration_api_ms": 70272,
+    "model": "claude-opus-5-5",
+    "session_id": "7cbd13b4-0b9a-4f20-ba3a-1e67a743900c",
+    "stop_reason": "success",
+    "result_text": "You can now re-date several selected claims at once, and all 4 acceptance tests pass in `bin/e2e`.\n\nEach selected claim is passed to the existing row re-date, so it follows the same rules on who may, which statuses, closed periods and period numbering, and writes the same `CLAIM_REDATED` record. Claims are handled in list order (people in the order they were added, newest claim first), not the order they were ticked.\n\nWhat changed:\n- **Server:** a new `ClaimBulkService.redate` sits beside bulk reassign. A claim the row re-date would refuse is counted as refused and left unchanged, and on an archived sheet every claim is refused. A new `POST /claims/redate` endpoint in `ClaimController` returns `{redated, refused}`. Like bulk reassign, it is open to viewers and archived sheets and refuses them claim by claim instead of rejecting the whole request.\n- **Front end:** `redateAll` is added in `core/claims.ts`. In `people-list.ts`, a date entry (`bulk-redate-date`) and button (`bulk-redate`) sit beside the other bulk buttons. When the action finishes, the selection is cleared, the claims are reloaded, and the `bulk-redated` and `bulk-redate-refused` counts are shown. The old counts are hidden while it runs.\n\nPressing the button with no date entered counts every selected claim as refused, as bulk reassign does when no person is chosen.",
+    "error": "",
+    "attempts": [
+      {
+        "ok": true,
+        "limit_reached": false,
+        "retryable": false,
+        "timed_out": false,
+        "cost_usd": 0.5937640000000001,
+        "num_turns": 12,
+        "duration_ms": 249877,
+        "duration_api_ms": 70272,
+        "error": ""
+      }
+    ]
+  },
+  "agent_stream_file": "cp145.agent.jsonl",
+  "agent_diff_file": "cp145.agent.diff",
+  "build_log_file": null,
+  "tests": {
+    "gated": false,
+    "queued": true
+  },
+  "probe": null,
+  "pinned_touched": [],
+  "acceptance_touched": [],
+  "impact_gate": null
+}
