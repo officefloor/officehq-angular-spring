@@ -1,0 +1,64 @@
+{
+  "checkpoint": 174,
+  "stack": {
+    "repo": "/home/daniel/officehq-angular-spring",
+    "origin": "git@github.com:officefloor/officehq-angular-spring.git",
+    "name": "officehq-angular-spring",
+    "base_ref": "base-empty",
+    "base_commit": "65cb8233ea38b2dfa6cfd18709e30cd18fdf3250"
+  },
+  "checkpoint_id": "cp174_late-charge-waiver",
+  "phase": "late",
+  "type": "additive",
+  "mutates": [],
+  "replaced_tests": [],
+  "request": {
+    "spec": "A steward can waive a claim's late charge (a button on an OPEN or PENDING claim; CLAIM_WAIVED\nnaming the claim; anyone else, any other status, or a claim already waived is refused with an error\non the claim). A waived claim bears no late charge from then on, whatever its overdue state; show\nwaived yes/no on the claim.\n",
+    "prompt": "You are implementing ONE change to this application.\n\nFIRST read AGENTS.md \u2014 it states the working rules and how the app is tested, and sends you to\nDESIGN.md for the app's stack and conventions. Follow both.\n\nTHE CHANGE REQUEST:\nA steward can waive a claim's late charge (a button on an OPEN or PENDING claim; CLAIM_WAIVED\nnaming the claim; anyone else, any other status, or a claim already waived is refused with an error\non the claim). A waived claim bears no late charge from then on, whatever its overdue state; show\nwaived yes/no on the claim.\n\nYour work is verified by an automated Playwright UI test already installed under e2e/specs/.\nRead that spec: it declares the exact data-testid anchors, values, test data and any audit\nrecords it expects \u2014 match them. Run `bin/e2e` to build the app, start it, and run the test as\nyou work; iterate until it passes. Change whatever the request needs across the app \u2014 its stored\ndata, its server and its front end. Do NOT edit bin/build, bin/start, bin/stop, bin/e2e,\nAGENTS.md, CLAUDE.md, DESIGN.md, e2e/support/ or the test spec.\n"
+  },
+  "commit_sha": "5cbe1db65a5ba7d5cf4f04943e67c83c3b65d2f3",
+  "reset_sha": "",
+  "preagent_sha": "1330e34e824d573a66178cb36015e65f423b9cfd",
+  "prev_sha": "1330e34e824d573a66178cb36015e65f423b9cfd",
+  "base_sha": "65cb8233ea38b2dfa6cfd18709e30cd18fdf3250",
+  "agent": {
+    "ok": true,
+    "cost_usd": 0.8978712,
+    "input_tokens": 38,
+    "output_tokens": 8551,
+    "cache_read_tokens": 896416,
+    "cache_creation_tokens": 68427,
+    "num_turns": 20,
+    "duration_ms": 244499,
+    "duration_api_ms": 78891,
+    "model": "claude-opus-5-5",
+    "session_id": "72882947-be29-4f4e-a088-6a7da26bc7d1",
+    "stop_reason": "success",
+    "result_text": "Stewards can now waive the late charge on an open or pending claim. `bin/e2e` passes all four tests in the spec.\n\n**How it works**\n- **The button:** each claim row has a \"Waive late charge\" button and shows waived yes/no.\n- **Refusals:** the waiver is refused, with the error shown on the claim, if the user isn't a steward, the claim isn't OPEN or PENDING, or it is already waived. A refused waiver saves nothing and writes nothing to the audit file.\n- **Effect:** a waived claim never gets a late charge again, whether or not it's overdue. It still counts as overdue and still gets the floor (the minimum due), so the waived 20.00 claim shows 3.00 overdue in the test.\n- **Audit:** a successful waiver writes `CLAIM_WAIVED sheet=\u2026 by=\u2026 person=\u2026 amount=\u2026 date=\u2026 number=\u2026`. Rollup records are written only when the totals change, the same way other claim actions do.\n- **Settling:** a waived claim that is settled keeps its due without a late charge.\n\n**What changed**\n- **Database:** migration `V102__claim_waived.sql` adds a `waived` column to both `claim` and `claim_revision`, so the sheet's history keeps the flag too.\n- **Server:**\n  - `Claim` has the `waived` flag, which is also kept when a claim is transferred or cloned to another sheet.\n  - `ClaimRevision` stores the flag in the sheet's history.\n  - `Dues.lateCharge` returns no charge for a waived claim.\n  - The new `ClaimService.waive` checks the three refusals above.\n  - The new endpoint is `POST /claims/{id}/waive`, and the claim data sent to the screen now includes `waived`.\n- **Front end:** the screen works out due figures itself as well, so `lateCharge` in `core/claims.ts` also returns no charge for a waived claim. I also added the `waive` API call and the button, the yes/no field and the error messages in `person-claims.ts`.\n\nA waiver is allowed even when the claim's period is closed, because the request didn't list that as a refusal. If waivers in closed periods should be blocked, one check would do it \u2014 re-dating a claim already has one.",
+    "error": "",
+    "attempts": [
+      {
+        "ok": true,
+        "limit_reached": false,
+        "retryable": false,
+        "timed_out": false,
+        "cost_usd": 0.8978712,
+        "num_turns": 20,
+        "duration_ms": 244499,
+        "duration_api_ms": 78891,
+        "error": ""
+      }
+    ]
+  },
+  "agent_stream_file": "cp174.agent.jsonl",
+  "agent_diff_file": "cp174.agent.diff",
+  "build_log_file": null,
+  "tests": {
+    "gated": false,
+    "queued": true
+  },
+  "probe": null,
+  "pinned_touched": [],
+  "acceptance_touched": [],
+  "impact_gate": null
+}
