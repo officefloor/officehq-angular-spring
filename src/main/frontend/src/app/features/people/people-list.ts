@@ -30,7 +30,7 @@ import { CrewList } from '../crews/crew-list';
 import { Crews, crewDueTotal } from '../../core/crews';
 import { PersonPlans } from '../plans/person-plans';
 import { PlanGenerateBox } from '../plans/plan-generate-box';
-import { FigurePipe } from '../../core/figure';
+import { FigurePipe, formatFigure } from '../../core/figure';
 
 /** What the people list can be sorted by on the screen. */
 type SortKey = 'added' | 'name' | 'grade' | 'due-total';
@@ -94,6 +94,17 @@ const NO_LEAVE: Leave = { holds: [], retiredFrom: null };
       <app-plan-generate-box [refresh]="plansGenerated" />
       <app-import-people-box (imported)="peopleImported($event)" />
       <app-tree-search-box />
+      <section aria-labelledby="snapshot-heading">
+        <h3 id="snapshot-heading">Compare snapshots</h3>
+        <label>From <input type="date" data-testid="snapshot-from" [value]="snapshotFrom()" (input)="snapshotFrom.set($any($event.target).value)" /></label>
+        <label>To <input type="date" data-testid="snapshot-to" [value]="snapshotTo()" (input)="snapshotTo.set($any($event.target).value)" /></label>
+        <button type="button" data-testid="snapshot-compare" (click)="compareSnapshots()">Compare</button>
+        <ul>
+          @for (line of snapshotLines(); track $index) {
+            <li data-testid="snapshot-line">{{ line }}</li>
+          }
+        </ul>
+      </section>
       <section aria-labelledby="dups-heading">
         <h3 id="dups-heading">Duplicate claims</h3>
         <button type="button" data-testid="dups-show" (click)="dupsShown.set(true)">Show duplicates</button>
@@ -546,6 +557,35 @@ export class PeopleList {
     for (const c of this.claims()) by.set(c.personId, [...(by.get(c.personId) ?? []), c]);
     return by;
   });
+  /** The from-date of the snapshot comparison (blank: the sheet's today). */
+  protected readonly snapshotFrom = signal('');
+  /** The to-date of the snapshot comparison (blank: as things stand now). */
+  protected readonly snapshotTo = signal('');
+  /** The snapshot comparison as last listed: "<name> <then> <now>", people in list order. */
+  protected readonly snapshotLines = signal<string[]>([]);
+  /** List, per person in list order, their due-total in the snapshot written when the sheet's
+   *  today was changed away from the from-date (blank: the sheet's today), and in the one for the
+   *  to-date, or their due-total now when the to-date is blank; a figure with no snapshot is empty
+   *  and each line is trimmed. */
+  protected async compareSnapshots(): Promise<void> {
+    const sheetId = this.session.sheetId();
+    const from = this.snapshotFrom() || (this.session.today() ?? '');
+    const to = this.snapshotTo();
+    this.snapshotLines.set([]);
+    if (!sheetId) return;
+    // The snapshots as the store keeps them now: changing the sheet's today writes new ones.
+    const stored = new Map((await this.api.list(sheetId)).map((p) => [p.id, p.snapshots]));
+    const locale = this.session.locale();
+    const shot = (p: Person, day: string): string =>
+      (stored.get(p.id) ?? p.snapshots).filter((s) => s.day === day).at(-1)?.dueTotal ?? '';
+    this.snapshotLines.set(
+      this.people().map((p) => {
+        const then = shot(p, from);
+        const now = to ? shot(p, to) : (this.dueOf(p) ?? 'n/a');
+        return [p.name, formatFigure(then, locale), formatFigure(now, locale)].join(' ').trim();
+      }),
+    );
+  }
   /** Whether the duplicate claims are shown. */
   protected readonly dupsShown = signal(false);
   /** The duplicate claims: for each person, date and amount with two or more claims (void and
