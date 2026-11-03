@@ -104,6 +104,7 @@ public class ClaimService {
                     corrected == null ? null : corrected.getNumber(), corrected == null ? null : corrected.getDate(),
                     dueBy);
             draft.setTerms(terms);
+            draft.markAdded(claims.nextAdded());
             draft.setRef(ref);
             draft.setTags(tags);
             boolean late = periods.softClosedOn(sheetId, dueBy);

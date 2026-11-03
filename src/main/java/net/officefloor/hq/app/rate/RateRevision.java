@@ -39,6 +39,9 @@ public class RateRevision {
     @Column(name = "to_date")
     private LocalDate toDate;
 
+    @Column(name = "forward_after")
+    private Long forwardAfter;
+
     protected RateRevision() {
     }
 
@@ -50,6 +53,7 @@ public class RateRevision {
         this.recordedOn = recordedOn;
         this.pct = rate.getPct();
         this.toDate = rate.getToDate();
+        this.forwardAfter = rate.getForwardAfter();
     }
 
     /** Which rate the revision is of: its grade and from-date ("" for none). */
@@ -68,13 +72,15 @@ public class RateRevision {
 
     /** Whether the rate is now as this revision has it. */
     public boolean matches(Rate rate) {
-        return pct.compareTo(rate.getPct()) == 0 && Objects.equals(toDate, rate.getToDate());
+        return pct.compareTo(rate.getPct()) == 0 && Objects.equals(toDate, rate.getToDate())
+                && Objects.equals(forwardAfter, rate.getForwardAfter());
     }
 
     /** The rate as this revision has it, detached: for working out figures only, never saved. */
     public Rate toRate() {
         Rate rate = new Rate(sheetId, grade, pct, fromDate);
         rate.setToDate(toDate);
+        rate.setForwardAfter(forwardAfter);
         return rate;
     }
 

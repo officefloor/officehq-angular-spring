@@ -102,6 +102,16 @@ public class RateService {
             public Optional<Rate> inherited(String g, LocalDate day) {
                 return g.equals(grade) ? Optional.empty() : now.inherited(g, day);
             }
+
+            @Override
+            public Optional<Rate> inheritedFor(String g, Claim claim) {
+                return g.equals(grade) ? Optional.empty() : now.inheritedFor(g, claim);
+            }
+
+            @Override
+            public List<Rate> olderVersions(Rate rate) {
+                return now.olderVersions(rate);
+            }
         };
         Map<Long, Person> byId = people.findBySheetIdOrderByPositionAscIdAsc(sheetId).stream()
                 .collect(Collectors.toMap(Person::getId, Function.identity()));
@@ -132,6 +142,12 @@ public class RateService {
         return rates.findBySheetIdOrdered(sheetId);
     }
 
+    /** The older versions of a rate, the newest first, detached. */
+    @Transactional(readOnly = true)
+    public List<Rate> olderVersions(Rate rate) {
+        return versions.findByRateIdOrderByVersionDesc(rate.getId()).stream().map(v -> v.toRate(rate)).toList();
+    }
+
     /** The rates set on each of the sheet's ancestors, nearest first (its parent's, then the
      *  parent's parent's, up to three levels up), each by grade and then from-date. */
     @Transactional(readOnly = true)
@@ -141,7 +157,9 @@ public class RateService {
 
     /** Set the rate for a grade from a date (null: from the beginning of time) through a date
      *  (null: no end). When the grade has one for that from-date already, its value is kept as an
-     *  older version and the new one becomes the newest version, the one in force. */
+     *  older version and the new one becomes the newest version, the one in force. Saved with a
+     *  from-date on or after the sheet's today, it is forward-only: it applies only to claims added
+     *  after it, the claims already on the sheet keeping the rates that applied to them. */
     @Transactional
     public synchronized Rate set(String sheetId, String user, String grade, BigDecimal pct, LocalDate from,
             LocalDate to) {
@@ -158,6 +176,8 @@ public class RateService {
                     .orElseGet(() -> new Rate(sheetId, grade, pct, from));
             rate.setPct(pct);
             rate.setToDate(to);
+            boolean forwardOnly = from != null && !from.isBefore(sheets.today(sheetId));
+            rate.setForwardAfter(forwardOnly ? claims.nextAdded() : null);
             Rate saved = rates.saveAndFlush(rate);
             audit.recordOnCommit("RATE_SET sheet=" + sheetId + " by=" + user + " grade=" + grade
                     + " rate=" + saved.getPct().setScale(2).toPlainString()

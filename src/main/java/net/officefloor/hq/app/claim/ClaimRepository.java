@@ -36,6 +36,10 @@ public interface ClaimRepository extends JpaRepository<Claim, Long> {
             + " and c.dueBy >= :from and c.dueBy <= :to")
     long countOpenDueBetween(String sheetId, Long personId, LocalDate from, LocalDate to);
 
+    /** The next place in the order claims are added and forward-only rates saved (see Claim#getAdded). */
+    @Query(value = "select next value for claim_added_seq", nativeQuery = true)
+    long nextAdded();
+
     /** The next place a claim is listed at, after every claim listed so far. */
     @Query(value = "select next value for claim_listed_seq", nativeQuery = true)
     long nextListed();

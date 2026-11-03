@@ -17,6 +17,20 @@ export interface Rate {
   level: number;
   /** How many versions the rate has had; this is the newest, the one in force. */
   version: number;
+  /** Where a forward-only rate (one saved with a from-date on or after the sheet's today) was saved
+   *  in the order claims are added: it applies only to claims added after it. Null when it applies
+   *  to every claim. */
+  forwardAfter: number | null;
+  /** The rate's older versions, the newest first. */
+  older: RateVersion[];
+}
+
+/** An older version of a rate: its percent and to-date, and where it was saved when it was
+ *  forward-only (see {@link Rate}). */
+export interface RateVersion {
+  pct: string;
+  to: string | null;
+  forwardAfter: number | null;
 }
 
 /** What a candidate rate would change: how many open and pending claims would show a different
@@ -35,6 +49,17 @@ export function pctOn(rates: Rate[], grade: Grade, day: string): string | undefi
     if (pct !== undefined) return pct;
   }
   return undefined;
+}
+
+/** The percent of a grade's rate that applies to a claim: as {@link pctOn} on the claim's date, each
+ *  rate taken as the newest of its versions that applies to the claim (a forward-only one only to a
+ *  claim added after it was saved), and passed over when none does. */
+export function pctFor(rates: Rate[], grade: Grade, claim: { date: string; added: number }): string | undefined {
+  const applying = rates.flatMap((r) => {
+    const version = [r, ...r.older].find((v) => v.forwardAfter === null || claim.added > v.forwardAfter);
+    return version === undefined ? [] : [{ ...r, pct: version.pct, to: version.to }];
+  });
+  return pctOn(applying, grade, claim.date);
 }
 
 /** The percent of a grade's rate in force on a day among the rates of one sheet: the rate with the

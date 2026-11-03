@@ -3,7 +3,10 @@ package net.officefloor.hq.app.history;
 import java.math.BigDecimal;
 import java.math.RoundingMode;
 import java.time.LocalDate;
+import java.util.ArrayList;
+import java.util.Collections;
 import java.util.Comparator;
+import java.util.HashMap;
 import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -12,6 +15,7 @@ import java.util.Objects;
 import java.util.Optional;
 import java.util.Set;
 import java.util.function.Function;
+import java.util.stream.Stream;
 import net.officefloor.hq.app.claim.Claim;
 import net.officefloor.hq.app.claim.ClaimRepository;
 import net.officefloor.hq.app.claim.ClaimRevision;
@@ -210,6 +214,13 @@ public class History {
         List<Rate> ratesListed = listed(ratesThen);
         // the parent is not dated: the ancestors are the sheet's now, each one's rates as they stood then
         List<List<Rate>> inheritedThen = sheets.ancestors(sheetId).stream().map(id -> ratesThen(id, day)).toList();
+        // each rate's revisions recorded by then, the oldest first: its older versions, for a claim a
+        // forward-only rate does not apply to
+        Map<String, List<Rate>> rateRevisionsThen = new HashMap<>();
+        Stream.concat(Stream.of(sheetId), sheets.ancestors(sheetId).stream()).forEach(id ->
+                rateRevisions.findBySheetIdOrderByIdAsc(id).stream().filter(r -> !r.getRecordedOn().isAfter(day))
+                        .forEach(r -> rateRevisionsThen.computeIfAbsent(id + "|" + r.key(), k -> new ArrayList<>())
+                                .add(r.toRate())));
         Dues.Basis basis = new Dues.Basis() {
             @Override
             public LocalDate today() {
@@ -265,6 +276,27 @@ public class History {
                     }
                 }
                 return Optional.empty();
+            }
+
+            @Override
+            public Optional<Rate> inheritedFor(String grade, Claim claim) {
+                for (List<Rate> theirs : inheritedThen) {
+                    Optional<Rate> rate = RateRepository.inForce(
+                            applying(theirs.stream().filter(r -> r.getGrade().equals(grade)).toList(), claim),
+                            claim.getDate());
+                    if (rate.isPresent()) {
+                        return rate;
+                    }
+                }
+                return Optional.empty();
+            }
+
+            @Override
+            public List<Rate> olderVersions(Rate rate) {
+                List<Rate> revisions = new ArrayList<>(rateRevisionsThen.getOrDefault(
+                        rate.getSheetId() + "|" + RateRevision.key(rate), List.of()));
+                Collections.reverse(revisions);
+                return revisions.stream().skip(1).toList();
             }
         };
         return new SheetAsOf(day, basis, then, claimsThen, ratesListed, settingsThen, policyDate, periodsThen,

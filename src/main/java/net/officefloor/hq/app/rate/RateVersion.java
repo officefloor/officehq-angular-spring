@@ -32,6 +32,9 @@ public class RateVersion {
     @Column(name = "to_date")
     private LocalDate toDate;
 
+    @Column(name = "forward_after")
+    private Long forwardAfter;
+
     protected RateVersion() {
     }
 
@@ -41,6 +44,15 @@ public class RateVersion {
         this.version = rate.getVersion();
         this.pct = rate.getPct();
         this.toDate = rate.getToDate();
+        this.forwardAfter = rate.getForwardAfter();
+    }
+
+    /** The rate as this version had it, detached: for working out figures only, never saved. */
+    public Rate toRate(Rate rate) {
+        Rate was = new Rate(rate.getSheetId(), rate.getGrade(), pct, rate.getFromDate());
+        was.setToDate(toDate);
+        was.setForwardAfter(forwardAfter);
+        return was;
     }
 
     public int getVersion() {

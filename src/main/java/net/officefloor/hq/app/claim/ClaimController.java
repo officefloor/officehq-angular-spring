@@ -56,7 +56,8 @@ public class ClaimController {
             String statedDue, boolean statedNa, String corrects, LocalDate roundsBy, long listed, LocalDate dueBy,
             List<LogLineView> log, LocalDate deferredUntil, int proofs, String splitFrom,
             String editLockedBy, boolean lateEntry, LocalDate remindedOn, String ref, String tags,
-            String voidReason, List<CommentView> comments, Integer settleBatch, List<LineView> lines) {
+            String voidReason, List<CommentView> comments, Integer settleBatch, List<LineView> lines,
+            long added) {
         public static ClaimView of(Claim claim) {
             return new ClaimView(claim.getId(), claim.getPersonId(), claim.getAmount().setScale(2).toPlainString(),
                     claim.getDate(), claim.getNote(), claim.getStatus(), claim.getNumber(),
@@ -70,7 +71,7 @@ public class ClaimController {
                     claim.getStatus() == ClaimStatus.VOID ? claim.getVoidReason() : null,
                     claim.getComments().stream().map(CommentView::of).toList(),
                     batchOf(claim.getStatus(), claim.getSettleBatch()),
-                    claim.getLines().stream().map(LineView::of).toList());
+                    claim.getLines().stream().map(LineView::of).toList(), claim.getAdded());
         }
 
         /** The claim as it stood at the end of a day: its figures as its revision then has them (see
@@ -97,7 +98,7 @@ public class ClaimController {
                     then.getStatus() == ClaimStatus.VOID ? kept.getVoidReason() : null,
                     kept.getComments().stream().filter(c -> !c.getOn().isAfter(day)).map(CommentView::of).toList(),
                     batchOf(then.getStatus(), kept.getSettleBatch()),
-                    kept.getLines().stream().map(LineView::of).toList());
+                    kept.getLines().stream().map(LineView::of).toList(), then.getAdded());
         }
 
         /** The settle batch a claim shows: only while it is settled or pending. */

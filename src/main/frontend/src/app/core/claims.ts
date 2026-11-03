@@ -2,7 +2,7 @@ import { HttpClient } from '@angular/common/http';
 import { Injectable, inject } from '@angular/core';
 import { firstValueFrom } from 'rxjs';
 import { Grade, Leave, Person, heldOn, retiredOn } from './people';
-import { Rate, atLeast, due, pctOn } from './rates';
+import { Rate, atLeast, due, pctFor } from './rates';
 import { DatedValue, Graces, RoundingMode, STARTING_FLOOR, STARTING_LATE_PCT, graceOn, valueOn } from './settings';
 import { Session } from './session';
 
@@ -152,6 +152,9 @@ export interface Claim {
   settleBatch: number | null;
   /** Its lines, in the order they were added; a claim with lines has their total as its amount. */
   lines: ClaimLine[];
+  /** The claim's place in the order claims are added and forward-only rates saved: a forward-only
+   *  rate applies to it only when it was added after the rate was saved (see {@link pctFor}). */
+  added: number;
 }
 
 /** A line of a claim: its label, its quantity (a whole number) and its unit amount as text with
@@ -266,13 +269,13 @@ export function roundsHalfUp(c: Claim, late: Lateness): boolean {
 /** A claim's due figure: the one fixed when it was settled, or else the greater of the sheet's floor in force on the
  *  claim's date and its rate figure with the late charge on that figure on top while it is overdue. The rate figure is
  *  the one its person's last statement bound it to (n/a when it bound it to n/a), or else its live due at the rate in
- *  force on the claim's date for the grade (the person's grade in force on that date), rounded by the rounding mode or policy date (a
+ *  force on the claim's date that applies to it (see {@link pctFor}) for the grade (the person's grade in force on that date), rounded by the rounding mode or policy date (a
  *  settled claim's figure already holds the charge and the floor). A correction has no floor and no late charge. Null
  *  when there is none. */
 export function claimDue(c: Claim, rates: Rate[], grade: Grade | undefined, floors: DatedValue[], late: Lateness): string | null {
   if (c.settledDue !== null) return c.settledDue;
   if (bound(c) && c.statedNa) return null;
-  const live = due(c.amount, grade === undefined ? undefined : pctOn(rates, grade, c.date), roundsHalfUp(c, late));
+  const live = due(c.amount, grade === undefined ? undefined : pctFor(rates, grade, c), roundsHalfUp(c, late));
   const figure = (bound(c) ? c.statedDue : null) ?? live;
   if (figure === null) return null;
   const charged = sumAmounts([figure, lateCharge(c, figure, late, grade)]);

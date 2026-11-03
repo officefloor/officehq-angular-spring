@@ -154,6 +154,12 @@ public class Claim {
     @Column(name = "late_entry", nullable = false)
     private boolean lateEntry;
 
+    /** The claim's place in the order claims are added and forward-only rates saved (see
+     *  {@link net.officefloor.hq.app.rate.Rate#appliesTo}): taken when it is added, kept when it is
+     *  moved, copied or split. */
+    @Column(name = "added", nullable = false)
+    private long added;
+
     /** Where the claim is listed: newest first by this. A new claim takes the next from the
      *  database, and a moved claim takes the next again (see {@link #moveTo}). */
     @Generated
@@ -193,6 +199,7 @@ public class Claim {
         claim.settledDue = revision.getSettledDue();
         claim.bind(revision.isStated(), revision.getStatedDue(), revision.isStatedNa());
         claim.deferredUntil = revision.getDeferredUntil();
+        claim.added = revision.getAdded();
         return claim;
     }
 
@@ -261,6 +268,7 @@ public class Claim {
         copy.tags = tags;
         copy.voidReason = voidReason;
         copy.lateEntry = lateEntry;
+        copy.added = added;
         log.forEach(line -> copy.log.add(new ClaimLog(toSheetId, line.getStatus(), line.getByUser(), line.getOn(),
                 line.getDue())));
         comments.forEach(c -> copy.comments.add(new ClaimComment(toSheetId, c.getByUser(), c.getOn(), c.getText())));
@@ -298,6 +306,7 @@ public class Claim {
         split.editedBy = this.editedBy;
         split.splitFrom = this.number;
         split.lateEntry = this.lateEntry;
+        split.added = this.added;
         split.tags = this.tags;
         return split;
     }
@@ -336,6 +345,15 @@ public class Claim {
 
     public void markLateEntry() {
         this.lateEntry = true;
+    }
+
+    public long getAdded() {
+        return added;
+    }
+
+    /** Take the claim's place in the order claims are added (see {@link #getAdded}). */
+    public void markAdded(long added) {
+        this.added = added;
     }
 
     public String getEditLockedBy() {

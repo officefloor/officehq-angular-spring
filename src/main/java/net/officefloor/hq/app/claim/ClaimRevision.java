@@ -66,6 +66,10 @@ public class ClaimRevision {
     @Column(name = "deferred_until")
     private LocalDate deferredUntil;
 
+    /** The claim's place in the order claims are added (see Claim#getAdded). */
+    @Column(name = "added", nullable = false)
+    private long added;
+
     /** Whether the claim had left the sheet by then (see {@link #gone(LocalDate)}). */
     @Column(name = "gone", nullable = false)
     private boolean gone;
@@ -89,6 +93,7 @@ public class ClaimRevision {
         this.correctedDate = claim.getCorrectedDate();
         this.dueBy = claim.getDueBy();
         this.deferredUntil = claim.getDeferredUntil();
+        this.added = claim.getAdded();
     }
 
     /** The revision recording, on the day, that the claim has left the sheet: as this one has it
@@ -109,6 +114,7 @@ public class ClaimRevision {
         left.correctedDate = correctedDate;
         left.dueBy = dueBy;
         left.deferredUntil = deferredUntil;
+        left.added = added;
         left.gone = true;
         return left;
     }
@@ -139,6 +145,10 @@ public class ClaimRevision {
 
     public Long getId() {
         return id;
+    }
+
+    public long getAdded() {
+        return added;
     }
 
     public Long getClaimId() {

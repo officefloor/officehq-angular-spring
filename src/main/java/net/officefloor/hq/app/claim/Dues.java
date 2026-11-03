@@ -4,11 +4,13 @@ import java.math.BigDecimal;
 import java.math.RoundingMode;
 import java.time.LocalDate;
 import java.time.temporal.ChronoUnit;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
 import net.officefloor.hq.app.person.Person;
 import net.officefloor.hq.app.rate.Rate;
 import net.officefloor.hq.app.rate.RateRepository;
+import net.officefloor.hq.app.rate.RateVersionRepository;
 import net.officefloor.hq.app.sheet.Rounding;
 import net.officefloor.hq.app.sheet.SheetRepository;
 import net.officefloor.hq.app.sheet.SheetService;
@@ -57,14 +59,51 @@ public class Dues {
         default Optional<Rate> inherited(String grade, LocalDate day) {
             return Optional.empty();
         }
+
+        /** The rate of a grade that applies to a claim: the one in force on the claim's date (as
+         *  {@link #rateInForce}), each rate taken as the newest of its versions that applies to the
+         *  claim (see Rate#appliesTo) and passed over when none does; empty when none applies. */
+        default Optional<Rate> rateFor(String grade, Claim claim) {
+            return RateRepository.inForce(applying(rates(grade), claim), claim.getDate())
+                    .or(() -> inheritedFor(grade, claim));
+        }
+
+        /** The rate of a grade that applies to a claim on the sheet's parent, or else its parent's, up
+         *  to three levels up (see {@link #rateFor}); empty when none does. */
+        default Optional<Rate> inheritedFor(String grade, Claim claim) {
+            return Optional.empty();
+        }
+
+        /** The older versions of a rate, the newest first; none when they are not kept. */
+        default List<Rate> olderVersions(Rate rate) {
+            return List.of();
+        }
+
+        /** Rates given latest from-date first, each as the newest of its versions that applies to the
+         *  claim, leaving out those none of whose versions does. */
+        default List<Rate> applying(List<Rate> latestFirst, Claim claim) {
+            List<Rate> applying = new ArrayList<>();
+            for (Rate rate : latestFirst) {
+                if (rate.appliesTo(claim)) {
+                    applying.add(rate);
+                } else {
+                    olderVersions(rate).stream().filter(v -> v.appliesTo(claim)).findFirst()
+                            .ifPresent(applying::add);
+                }
+            }
+            return applying;
+        }
     }
 
     private final RateRepository rates;
     private final SheetService sheets;
     private final SheetRepository sheetStore;
+    private final RateVersionRepository versions;
 
-    public Dues(RateRepository rates, SheetService sheets, SheetRepository sheetStore) {
+    public Dues(RateRepository rates, SheetService sheets, SheetRepository sheetStore,
+            RateVersionRepository versions) {
         this.rates = rates;
+        this.versions = versions;
         this.sheets = sheets;
         this.sheetStore = sheetStore;
     }
@@ -115,6 +154,24 @@ public class Dues {
             @Override
             public Optional<Rate> inherited(String grade, LocalDate day) {
                 return rates.findInForceUp(sheetStore.ancestors(sheetId), grade, day);
+            }
+
+            @Override
+            public Optional<Rate> inheritedFor(String grade, Claim claim) {
+                for (String ancestor : sheetStore.ancestors(sheetId)) {
+                    Optional<Rate> rate = RateRepository.inForce(
+                            applying(rates.findLatestFirst(ancestor, grade), claim), claim.getDate());
+                    if (rate.isPresent()) {
+                        return rate;
+                    }
+                }
+                return Optional.empty();
+            }
+
+            @Override
+            public List<Rate> olderVersions(Rate rate) {
+                return versions.findByRateIdOrderByVersionDesc(rate.getId()).stream().map(v -> v.toRate(rate))
+                        .toList();
             }
         };
     }
@@ -281,13 +338,13 @@ public class Dues {
         return cap == null ? sum : sum.min(cap);
     }
 
-    /** A claim's live due at the rate, in force on the claim's date, for the person's grade in force
-     *  on that date (taken from the sheet's ancestors when it has none
+    /** A claim's live due at the rate that applies to it (see {@link Basis#rateFor}): the one in
+     *  force on the claim's date, for the person's grade in force on that date, that applies to it (taken from the sheet's ancestors when it has none
      *  of its own in force then): amount times pct divided by 100, rounded to two decimals by the claim's {@link #rounding} (the floor is
      *  applied later, see {@link #floored}); null when no rate applies on that date. */
     private BigDecimal due(Basis basis, Person person, Claim claim) {
         RoundingMode rounding = rounding(basis, claim);
-        return basis.rateInForce(person.gradeOn(claim.getDate()), claim.getDate())
+        return basis.rateFor(person.gradeOn(claim.getDate()), claim)
                 .map(Rate::getPct)
                 .map(pct -> claim.getAmount().multiply(pct).movePointLeft(2).setScale(2, rounding))
                 .orElse(null);

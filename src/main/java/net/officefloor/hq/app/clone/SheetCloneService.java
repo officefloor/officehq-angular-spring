@@ -148,6 +148,7 @@ public class SheetCloneService {
         rates.findBySheetIdOrdered(sheetId).forEach(r -> {
             Rate copy = new Rate(toSheetId, r.getGrade(), r.getPct(), r.getFromDate());
             copy.setToDate(r.getToDate());
+            copy.setForwardAfter(r.getForwardAfter());
             rates.save(copy);
         });
         holidays.findBySheetIdOrderByDayAsc(sheetId).forEach(h ->
