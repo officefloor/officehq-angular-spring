@@ -1,0 +1,64 @@
+{
+  "checkpoint": 198,
+  "stack": {
+    "repo": "/home/daniel/officehq-angular-spring",
+    "origin": "git@github.com:officefloor/officehq-angular-spring.git",
+    "name": "officehq-angular-spring",
+    "base_ref": "base-empty",
+    "base_commit": "65cb8233ea38b2dfa6cfd18709e30cd18fdf3250"
+  },
+  "checkpoint_id": "cp198_duplicate-claims",
+  "phase": "late",
+  "type": "additive",
+  "mutates": [],
+  "replaced_tests": [],
+  "request": {
+    "spec": "Show the duplicate claims: for each person, date and amount with two or more claims (VOID and\nDELETED claims left out), one line <name> <date> <amount> x<count>, people in list order, then by\ndate, then by amount.\n",
+    "prompt": "You are implementing ONE change to this application.\n\nFIRST read AGENTS.md \u2014 it states the working rules and how the app is tested, and sends you to\nDESIGN.md for the app's stack and conventions. Follow both.\n\nTHE CHANGE REQUEST:\nShow the duplicate claims: for each person, date and amount with two or more claims (VOID and\nDELETED claims left out), one line <name> <date> <amount> x<count>, people in list order, then by\ndate, then by amount.\n\nYour work is verified by an automated Playwright UI test already installed under e2e/specs/.\nRead that spec: it declares the exact data-testid anchors, values, test data and any audit\nrecords it expects \u2014 match them. Run `bin/e2e` to build the app, start it, and run the test as\nyou work; iterate until it passes. Change whatever the request needs across the app \u2014 its stored\ndata, its server and its front end. Do NOT edit bin/build, bin/start, bin/stop, bin/e2e,\nAGENTS.md, CLAUDE.md, DESIGN.md, e2e/support/ or the test spec.\n"
+  },
+  "commit_sha": "d8be462e0104933cf414e200d97cf90b85a3226c",
+  "reset_sha": "",
+  "preagent_sha": "96f887392b191a5e2a6f05d0be2fbf1f0b21cf4e",
+  "prev_sha": "96f887392b191a5e2a6f05d0be2fbf1f0b21cf4e",
+  "base_sha": "65cb8233ea38b2dfa6cfd18709e30cd18fdf3250",
+  "agent": {
+    "ok": true,
+    "cost_usd": 0.476913,
+    "input_tokens": 24,
+    "output_tokens": 4140,
+    "cache_read_tokens": 376765,
+    "cache_creation_tokens": 39833,
+    "num_turns": 13,
+    "duration_ms": 788595,
+    "duration_api_ms": 66383,
+    "model": "claude-opus-5-5",
+    "session_id": "aa2afaa6-bfc8-44af-9d71-e369f4f508f5",
+    "stop_reason": "success",
+    "result_text": "The sheet now has a duplicate claims list, and `bin/e2e` passes all 4 tests in the spec.\n\n**What it does:** a \"Show duplicates\" button (`dups-show`) lists one `dup-line` per group as `<name> <date> <amount> x<count>`. A group is one person's claims on the same date for the same amount, counted only when there are two or more, with VOID and DELETED claims left out. Lines follow the people list order, then date, then amount. Amounts sort as numbers, so 9.00 comes before 10.00.\n\n**How it's built:** the change is entirely in the front end, in `src/main/frontend/src/app/features/people/people-list.ts`. That screen already loads every claim on the sheet, so the list is worked out there. No server, database or audit changes were needed, because the spec expects no new audit records. Once shown, the list keeps up with changes such as a delete or a person merge.\n\nTwo choices of mine:\n- Each line uses the person's plain name, not the name the people list displays, which could add the grade, e.g. \"Ada (A)\". The test expects the plain name.\n- Retired people are included even when the people list hides them.",
+    "error": "",
+    "attempts": [
+      {
+        "ok": true,
+        "limit_reached": false,
+        "retryable": false,
+        "timed_out": false,
+        "cost_usd": 0.476913,
+        "num_turns": 13,
+        "duration_ms": 788595,
+        "duration_api_ms": 66383,
+        "error": ""
+      }
+    ]
+  },
+  "agent_stream_file": "cp198.agent.jsonl",
+  "agent_diff_file": "cp198.agent.diff",
+  "build_log_file": null,
+  "tests": {
+    "gated": false,
+    "queued": true
+  },
+  "probe": null,
+  "pinned_touched": [],
+  "acceptance_touched": [],
+  "impact_gate": null
+}
