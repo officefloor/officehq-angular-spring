@@ -47,6 +47,9 @@ export interface Settings {
   /** The escalation gap: reminding a claim this many days or more after its previous reminder
    *  escalates it, once ever; null when blank (off). Not dated. */
   escalateAfter: number | null;
+  /** The review SLA: a claim in review whose review day plus this many days is before the sheet's
+   *  today is late; null when blank (none). Not dated. */
+  reviewSla: number | null;
   /** The entry date (yyyy-mm-dd): while it is set, a new claim's date when none is given; null when
    *  blank (off, the sheet's today then stands in). */
   entryDate: string | null;
@@ -289,6 +292,12 @@ export class SheetSettings {
   setEscalateAfter(value: string | null): Promise<Settings> {
     const [sheetId, headers] = this.active();
     return firstValueFrom(this.http.put<Settings>(`${this.url(sheetId)}/settings/escalate-after`, { value }, { headers }));
+  }
+
+  /** Set the review SLA; null for blank (none). */
+  setReviewSla(value: string | null): Promise<Settings> {
+    const [sheetId, headers] = this.active();
+    return firstValueFrom(this.http.put<Settings>(`${this.url(sheetId)}/settings/review-sla`, { value }, { headers })).then((settings) => this.record(sheetId, settings));
   }
 
   /** Set the entry date; null for blank (off). */

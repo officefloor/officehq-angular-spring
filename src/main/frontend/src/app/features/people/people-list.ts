@@ -1,7 +1,7 @@
 import { HttpErrorResponse } from '@angular/common/http';
 import { Component, computed, effect, inject, signal, untracked } from '@angular/core';
 import { FormControl, FormGroup, ReactiveFormsModule } from '@angular/forms';
-import { Claim, Claims, QuickAdded, addDays, backingFigure, claimDue, countsAsOf, countsLive, isOpen, keepsActive, overdue, statusOn, sumAmounts, trimmedSum } from '../../core/claims';
+import { Claim, Claims, QuickAdded, addDays, backingFigure, claimDue, countsAsOf, countsLive, isOpen, keepsActive, overdue, reviewLate, statusOn, sumAmounts, trimmedSum } from '../../core/claims';
 import { Patron, Patrons, patronShares } from '../../core/patrons';
 import { Pools, formatCents } from '../../core/pools';
 import { Grade, Leave, People, Person, Taken, gradeOn } from '../../core/people';
@@ -121,7 +121,7 @@ const NO_LEAVE: Leave = { holds: [], retiredFrom: null };
         </ul>
       }
       <app-summary-panel [grades]="gradeSummary()" [periods]="periodSummary()" [statuses]="statusSummary()"
-        [voidReasons]="voidReasonSummary()" />
+        [voidReasons]="voidReasonSummary()" [reviewLateCount]="reviewLateCount()" />
       <app-classic-summary-panel [periods]="classicPeriodSummary()" [dueTotal]="classicDueTotal()" />
       <label>
         <input type="checkbox" data-testid="show-retired" [checked]="showRetired()"
@@ -335,7 +335,7 @@ const NO_LEAVE: Leave = { holds: [], retiredFrom: null };
               <td>
                 <app-person-claims [personId]="p.id" [claims]="claimsByPerson().get(p.id) ?? []"
                   [rates]="rates()" [floor]="floor()" [grades]="p.grades" [periods]="periods()"
-                  [today]="session.today()" [latePct]="latePct()" [graces]="graces()"
+                  [today]="session.today()" [latePct]="latePct()" [graces]="graces()" [reviewSla]="reviewSla()"
                   [policyDate]="policyDate()" [roundings]="roundings()" [selected]="selected()"
                   (selectedChange)="select($event.id, $event.selected)"
                   [others]="patronChoices(p)" (saved)="claimSaved($event)" />
@@ -563,6 +563,12 @@ export class PeopleList {
   /** The grace days recorded for each grade: a claim is overdue only once its due-by plus those in
    *  force on its date for its person's grade then is before the sheet's today. */
   protected readonly graces = signal<Graces>({});
+  /** The sheet's review SLA in days (null when blank): a claim in review longer than it is late. */
+  protected readonly reviewSla = signal<number | null>(null);
+  /** How many claims on the sheet are in review past the review SLA. */
+  protected readonly reviewLateCount = computed(() =>
+    this.claims().filter((c) => reviewLate(c, this.session.today(), this.reviewSla())).length,
+  );
   /** The sheet's policy date (null when blank): it decides how a claim's live figures round. */
   protected readonly policyDate = signal<string | null>(null);
   /** The sheet's rounding modes recorded: the one in force on a claim's date decides how its live
@@ -926,6 +932,7 @@ export class PeopleList {
       this.caps.set(saved.settings.caps);
       this.latePct.set(saved.settings.latePcts);
       this.graces.set(saved.settings.graces);
+      this.reviewSla.set(saved.settings.reviewSla);
       this.policyDate.set(saved.settings.policyDate);
       this.roundings.set(saved.settings.roundings);
     });
@@ -1729,6 +1736,7 @@ export class PeopleList {
         this.caps.set(settings.caps);
         this.latePct.set(settings.latePcts);
         this.graces.set(settings.graces);
+        this.reviewSla.set(settings.reviewSla);
         this.policyDate.set(settings.policyDate);
         this.roundings.set(settings.roundings);
         this.periods.set(periods);

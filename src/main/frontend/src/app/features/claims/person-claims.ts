@@ -1,7 +1,7 @@
 import { HttpErrorResponse } from '@angular/common/http';
 import { Component, effect, inject, input, output, signal, untracked } from '@angular/core';
 import { FormControl, FormGroup, ReactiveFormsModule } from '@angular/forms';
-import { AMOUNT, CLAIM_AMOUNT, Claim, ClaimAction, Claims, claimDue, deferred, overdue } from '../../core/claims';
+import { AMOUNT, CLAIM_AMOUNT, Claim, ClaimAction, Claims, claimDue, deferred, overdue, reviewLate } from '../../core/claims';
 import { ClaimTemplates } from '../../core/claim-templates';
 import { GradeFrom, Person, gradeOn } from '../../core/people';
 import { Period, periodOf } from '../../core/periods';
@@ -237,6 +237,7 @@ function splitRefusal(e: unknown): string {
           <span data-testid="claim-period">{{ periodName(c) }}</span>
           <span data-testid="claim-late-entry">{{ c.lateEntry ? 'yes' : 'no' }}</span>
           <span data-testid="claim-due-by">{{ dueByOf(c) }}</span>
+          <span data-testid="claim-review-late">{{ reviewLateOf(c) ? 'yes' : 'no' }}</span>
           <span data-testid="claim-overdue">{{ overdueOf(c) ? 'yes' : 'no' }}</span>
           <span data-testid="claim-deferred">{{ deferredOf(c) ? 'yes' : 'no' }}</span>
           <span data-testid="claim-deferred-until">{{ c.deferredUntil ?? '' }}</span>
@@ -392,6 +393,8 @@ export class PersonClaims {
   /** The grace days recorded for each grade: a claim is overdue only once its due-by plus those in
    *  force on its date for the person's grade then is before the sheet's today. */
   readonly graces = input.required<Graces>();
+  /** The sheet's review SLA in days (null when blank): a claim in review longer than it is late. */
+  readonly reviewSla = input.required<number | null>();
   /** The sheet's policy date (null when blank): it decides how a claim's live figures round. */
   readonly policyDate = input.required<string | null>();
   /** The sheet's rounding modes recorded: the one in force on a claim's date decides how its live
@@ -456,6 +459,10 @@ export class PersonClaims {
 
   protected dueByOf(c: Claim): string {
     return c.dueBy;
+  }
+
+  protected reviewLateOf(c: Claim): boolean {
+    return reviewLate(c, this.today(), this.reviewSla());
   }
 
   protected overdueOf(c: Claim): boolean {

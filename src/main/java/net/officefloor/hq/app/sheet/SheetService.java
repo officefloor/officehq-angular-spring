@@ -491,6 +491,23 @@ public class SheetService {
         return saved;
     }
 
+    /** The sheet's review SLA in days; null when blank (none). */
+    @Transactional(readOnly = true)
+    public Integer reviewSla(String id) {
+        return sheets.findById(id).map(Sheet::getReviewSla).orElse(null);
+    }
+
+    /** Change the sheet's review SLA (null: blank, none); recorded even when unchanged. */
+    @Transactional
+    public synchronized Sheet setReviewSla(String id, String user, Integer days) {
+        Sheet sheet = load(id, user);
+        sheet.setReviewSla(days);
+        Sheet saved = sheets.saveAndFlush(sheet);
+        audit.recordOnCommit("SETTING_CHANGED sheet=" + id + " by=" + user + " key=review-sla value="
+                + (days == null ? "" : days.toString()));
+        return saved;
+    }
+
     /** The sheet's alert threshold; null when blank (off). */
     @Transactional(readOnly = true)
     public BigDecimal alertThreshold(String id) {

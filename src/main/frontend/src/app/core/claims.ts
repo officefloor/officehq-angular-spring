@@ -309,6 +309,14 @@ export function lateFrom(c: Claim, grace: number): string {
   return grace === 0 ? c.dueBy : addDays(c.dueBy, grace);
 }
 
+/** Whether a claim in review is late: its review day (the sheet's today when it last went to review)
+ *  plus the sheet's review SLA days is before the sheet's today; never while there is no SLA. */
+export function reviewLate(c: Claim, today: string | null, sla: number | null): boolean {
+  if (c.status !== 'REVIEW' || today === null || sla === null) return false;
+  const day = c.log.filter((l) => l.status === 'REVIEW').at(-1)?.on;
+  return day !== undefined && addDays(day, sla) < today;
+}
+
 /** Whether a claim is overdue: it is open (or pending), not deferred, and its due-by plus its grace
  *  days is before the sheet's today. */
 export function overdue(c: Claim, today: string | null, grace = 0): boolean {

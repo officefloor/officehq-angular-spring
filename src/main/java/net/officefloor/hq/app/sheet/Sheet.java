@@ -57,6 +57,11 @@ public class Sheet {
     @Column(name = "escalate_after")
     private Integer escalateAfter;
 
+    /** The review SLA in days: a claim in review whose review day plus them is before the sheet's
+     *  today is late; null when blank (none). */
+    @Column(name = "review_sla")
+    private Integer reviewSla;
+
     /** Entry date: while it is set, the default date of a new claim in place of the sheet's today;
      *  null (blank) is off. */
     @Column(name = "entry_date")
@@ -141,6 +146,14 @@ public class Sheet {
 
     public void setEscalateAfter(Integer escalateAfter) {
         this.escalateAfter = escalateAfter;
+    }
+
+    public Integer getReviewSla() {
+        return reviewSla;
+    }
+
+    public void setReviewSla(Integer reviewSla) {
+        this.reviewSla = reviewSla;
     }
 
     public LocalDate getEntryDate() {
