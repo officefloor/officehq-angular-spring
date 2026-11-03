@@ -1,0 +1,231 @@
+diff --git a/src/main/frontend/src/app/core/settings.ts b/src/main/frontend/src/app/core/settings.ts
+index 321202bba..1e9ce8653 100644
+--- a/src/main/frontend/src/app/core/settings.ts
++++ b/src/main/frontend/src/app/core/settings.ts
+@@ -120,6 +120,17 @@ export interface PolicyVersion {
+   from: string | null;
+ }
+ 
++/** A line of the policy viewer: a version with the value its setting was given (null when not kept)
++ *  and how many of the sheet's claims have it as their policy version. */
++export interface PolicyLine {
++  number: number;
++  /** yyyy-mm-dd; null when it has none (in force from the start). */
++  from: string | null;
++  key: string;
++  value: string | null;
++  claims: number;
++}
++
+ /** The policy version in force on a day (yyyy-mm-dd): how many versions have no from-date or one
+  *  on or before it. */
+ export function policyOn(versions: PolicyVersion[], day: string): number {
+@@ -232,6 +243,11 @@ export class SheetSettings {
+     return firstValueFrom(this.http.get<Settings>(`${this.url(sheetId)}/settings`));
+   }
+ 
++  /** The sheet's policy versions, the first made first, each with its count of claims. */
++  policyLines(sheetId: string): Promise<PolicyLine[]> {
++    return firstValueFrom(this.http.get<PolicyLine[]>(`${this.url(sheetId)}/settings/policy-versions`));
++  }
++
+   roles(sheetId: string): Promise<Role[]> {
+     return firstValueFrom(this.http.get<Role[]>(`${this.url(sheetId)}/roles`));
+   }
+diff --git a/src/main/frontend/src/app/features/people/people-list.ts b/src/main/frontend/src/app/features/people/people-list.ts
+index 1e5758a94..04e651d68 100644
+--- a/src/main/frontend/src/app/features/people/people-list.ts
++++ b/src/main/frontend/src/app/features/people/people-list.ts
+@@ -27,6 +27,7 @@ import { PasteClaimsBox } from './paste-claims-box';
+ import { ImportPeopleBox } from './import-people-box';
+ import { TreeSearchBox } from './tree-search-box';
+ import { TreeExportButton } from './tree-export-button';
++import { PolicyViewer } from '../settings/policy-viewer';
+ import { SheetCompareBox } from '../summary/sheet-compare-box';
+ import { PoolList } from '../pools/pool-list';
+ import { CrewList } from '../crews/crew-list';
+@@ -54,7 +55,7 @@ const NO_LEAVE: Leave = { holds: [], retiredFrom: null };
+ // The signed-in user may watch a person: they are told when a claim of theirs is settled.
+ @Component({
+   selector: 'app-people-list',
+-  imports: [ReactiveFormsModule, PersonClaims, RateForm, PeriodForm, QuickAddBar, PasteClaimsBox, ImportPeopleBox, SummaryPanel, ClassicSummaryPanel, HeaderCounters, StewardDashboard, PoolList, CrewList, PersonPlans, PlanGenerateBox, TreeSearchBox, TreeExportButton, SheetCompareBox, FigurePipe],
++  imports: [ReactiveFormsModule, PersonClaims, RateForm, PeriodForm, QuickAddBar, PasteClaimsBox, ImportPeopleBox, SummaryPanel, ClassicSummaryPanel, HeaderCounters, StewardDashboard, PoolList, CrewList, PersonPlans, PlanGenerateBox, TreeSearchBox, TreeExportButton, SheetCompareBox, PolicyViewer, FigurePipe],
+   template: `
+     <app-header-counters [peopleCount]="people().length" [statuses]="statusSummary()"
+       [dueTotal]="dueTotal()" [overdueTotal]="overdueTotal()"
+@@ -125,6 +126,7 @@ const NO_LEAVE: Leave = { holds: [], retiredFrom: null };
+       </section>
+       <p>Claimed in total: <strong data-testid="rollup-claimed-total">{{ claimedTotal() | figure }}</strong></p>
+       <p>Policy version: <strong data-testid="policy-version">{{ policyVersions().length }}</strong></p>
++      <app-policy-viewer />
+       <p>Due in total: <strong data-testid="rollup-due-total">{{ dueTotal() | figure }}</strong></p>
+       <p>Settled due in total: <strong data-testid="rollup-settled-total">{{ settledTotal() | figure }}</strong></p>
+       <p>Open due in total: <strong data-testid="rollup-open-total">{{ openTotal() | figure }}</strong></p>
+diff --git a/src/main/frontend/src/app/features/settings/policy-viewer.ts b/src/main/frontend/src/app/features/settings/policy-viewer.ts
+new file mode 100644
+index 000000000..f2bfb43d5
+--- /dev/null
++++ b/src/main/frontend/src/app/features/settings/policy-viewer.ts
+@@ -0,0 +1,45 @@
++import { Component, inject, signal } from '@angular/core';
++import { Session } from '../../core/session';
++import { SheetSettings } from '../../core/settings';
++
++// The policy viewer: one line per policy version, the first made first, as
++// <version> <from or start> <key>=<value> <count of claims whose policy version it is>.
++@Component({
++  selector: 'app-policy-viewer',
++  template: `
++    <section aria-labelledby="policy-heading">
++      <h3 id="policy-heading">Policy versions</h3>
++      <button type="button" data-testid="policy-show" (click)="show()">Show policy versions</button>
++      @if (error()) {
++        <p role="alert" data-testid="policy-error">{{ error() }}</p>
++      }
++      @if (lines(); as shown) {
++        <ul>
++          @for (line of shown; track $index) {
++            <li data-testid="policy-line">{{ line }}</li>
++          }
++        </ul>
++      }
++    </section>
++  `,
++})
++export class PolicyViewer {
++  private readonly api = inject(SheetSettings);
++  private readonly session = inject(Session);
++
++  protected readonly lines = signal<string[] | null>(null);
++  protected readonly error = signal('');
++
++  protected async show(): Promise<void> {
++    const sheet = this.session.sheetId();
++    if (!sheet) return;
++    this.error.set('');
++    this.lines.set(null);
++    try {
++      const versions = await this.api.policyLines(sheet);
++      this.lines.set(versions.map((v) => `${v.number} ${v.from ?? 'start'} ${v.key}=${v.value ?? ''} ${v.claims}`));
++    } catch {
++      this.error.set('The policy versions could not be shown.');
++    }
++  }
++}
+diff --git a/src/main/java/net/officefloor/hq/app/clone/SheetCloneService.java b/src/main/java/net/officefloor/hq/app/clone/SheetCloneService.java
+index 93cf4d746..6a48e4ecb 100644
+--- a/src/main/java/net/officefloor/hq/app/clone/SheetCloneService.java
++++ b/src/main/java/net/officefloor/hq/app/clone/SheetCloneService.java
+@@ -165,7 +165,7 @@ public class SheetCloneService {
+         settingValues.findBySheetId(sheetId).forEach(v ->
+                 settingValues.save(new SettingValue(toSheetId, v.getKey(), v.getFrom(), v.getValue())));
+         policyVersions.findBySheetIdOrderByNumber(sheetId).forEach(v -> policyVersions.save(
+-                new PolicyVersion(toSheetId, v.getNumber(), v.getKey(), v.getFrom(), v.getRecordedOn())));
++                new PolicyVersion(toSheetId, v.getNumber(), v.getKey(), v.getFrom(), v.getRecordedOn(), v.getShown())));
+         permissions.findBySheetId(sheetId).forEach(p ->
+                 permissions.save(new SheetPermission(toSheetId, p.getAction(), p.getRoles())));
+         sheetRoles.findBySheetIdOrderByUserNameAsc(sheetId).forEach(r ->
+diff --git a/src/main/java/net/officefloor/hq/app/sheet/PolicyVersion.java b/src/main/java/net/officefloor/hq/app/sheet/PolicyVersion.java
+index 12ae7b0f1..c916ef7ae 100644
+--- a/src/main/java/net/officefloor/hq/app/sheet/PolicyVersion.java
++++ b/src/main/java/net/officefloor/hq/app/sheet/PolicyVersion.java
+@@ -39,10 +39,16 @@ public class PolicyVersion {
+     @Column(name = "recorded_on", nullable = false)
+     private LocalDate recordedOn;
+ 
++    /** The value the setting was given, as shown; null when not kept. */
++    @Column(name = "value_shown")
++    private String shown;
++
+     protected PolicyVersion() {
+     }
+ 
+-    public PolicyVersion(String sheetId, int number, String key, LocalDate from, LocalDate recordedOn) {
++    public PolicyVersion(String sheetId, int number, String key, LocalDate from, LocalDate recordedOn,
++            String shown) {
++        this.shown = shown;
+         this.sheetId = sheetId;
+         this.number = number;
+         this.key = key;
+@@ -62,6 +68,10 @@ public class PolicyVersion {
+         return from;
+     }
+ 
++    public String getShown() {
++        return shown;
++    }
++
+     public LocalDate getRecordedOn() {
+         return recordedOn;
+     }
+diff --git a/src/main/java/net/officefloor/hq/app/sheet/SettingsController.java b/src/main/java/net/officefloor/hq/app/sheet/SettingsController.java
+index 6068cbc8c..56555c060 100644
+--- a/src/main/java/net/officefloor/hq/app/sheet/SettingsController.java
++++ b/src/main/java/net/officefloor/hq/app/sheet/SettingsController.java
+@@ -411,6 +411,22 @@ public class SettingsController {
+         this.history = history;
+     }
+ 
++    /** A line of the policy viewer: the version's number, its from-date (null: none, from the start),
++     *  its setting and the value it was given (null when not kept), and the count of claims whose
++     *  policy version it is. */
++    public record PolicyLineView(int number, LocalDate from, String key, String value, long claims) {
++        static PolicyLineView of(SheetService.PolicyLine l) {
++            PolicyVersion v = l.version();
++            return new PolicyLineView(v.getNumber(), v.getFrom(), v.getKey(), v.getShown(), l.claims());
++        }
++    }
++
++    /** The sheet's policy versions, the first made first, each with its count of claims. */
++    @GetMapping("/policy-versions")
++    public List<PolicyLineView> policyLines(@PathVariable @NotBlank @Size(max = 100) String sheetId) {
++        return service.policyLines(sheetId.trim()).stream().map(PolicyLineView::of).toList();
++    }
++
+     /** The sheet's settings; as of a day when one is given, each dated one (and the policy date) as
+      *  it stood at the end of that day (see {@link History}), in force on that day. */
+     @GetMapping
+diff --git a/src/main/java/net/officefloor/hq/app/sheet/SheetService.java b/src/main/java/net/officefloor/hq/app/sheet/SheetService.java
+index b7b4b4012..500f4c3c6 100644
+--- a/src/main/java/net/officefloor/hq/app/sheet/SheetService.java
++++ b/src/main/java/net/officefloor/hq/app/sheet/SheetService.java
+@@ -234,7 +234,7 @@ public class SheetService {
+         settingValues.saveAndFlush(v);
+         if (PolicyVersion.KEYS.contains(key)) {
+             policyVersions.saveAndFlush(
+-                    new PolicyVersion(id, policyVersions.countBySheetId(id) + 1, key, on, sheet.getToday()));
++                    new PolicyVersion(id, policyVersions.countBySheetId(id) + 1, key, on, sheet.getToday(), shown));
+         }
+         history.record(id);
+         audit.recordOnCommit("SETTING_CHANGED sheet=" + id + " by=" + user + " key=" + key + " value=" + shown
+@@ -248,6 +248,21 @@ public class SheetService {
+         return policyVersions.countBySheetId(id);
+     }
+ 
++    /** A policy version as the viewer lists it: the version, and how many of the sheet's claims have it
++     *  as their policy version (the one in force on the claim's date). */
++    public record PolicyLine(PolicyVersion version, long claims) {
++    }
++
++    /** The sheet's policy versions, the first made first, each with its count of claims. */
++    @Transactional(readOnly = true)
++    public List<PolicyLine> policyLines(String id) {
++        List<PolicyVersion> versions = policyVersions.findBySheetIdOrderByNumber(id);
++        Map<Integer, Long> counts = new TreeMap<>();
++        claims.findBySheetIdOrderByListedDesc(id)
++                .forEach(c -> counts.merge(PolicyVersion.on(versions, c.getDate()), 1L, Long::sum));
++        return versions.stream().map(v -> new PolicyLine(v, counts.getOrDefault(v.getNumber(), 0L))).toList();
++    }
++
+     /** The sheet's policy versions, the first made first. */
+     @Transactional(readOnly = true)
+     public List<PolicyVersion> policyVersions(String id) {
+diff --git a/src/main/resources/db/migration/V134__policy_version_value.sql b/src/main/resources/db/migration/V134__policy_version_value.sql
+new file mode 100644
+index 000000000..1639ce588
+--- /dev/null
++++ b/src/main/resources/db/migration/V134__policy_version_value.sql
+@@ -0,0 +1,3 @@
++-- The value a policy version's setting was given when the version was made, as shown (null: made
++-- before it was kept).
++ALTER TABLE policy_version ADD COLUMN value_shown VARCHAR(100);
