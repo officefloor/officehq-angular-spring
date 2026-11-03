@@ -1,0 +1,394 @@
+diff --git a/src/main/frontend/src/app/core/periods.ts b/src/main/frontend/src/app/core/periods.ts
+index 9145d4da7..56d7b1f36 100644
+--- a/src/main/frontend/src/app/core/periods.ts
++++ b/src/main/frontend/src/app/core/periods.ts
+@@ -1,6 +1,7 @@
+ import { HttpClient } from '@angular/common/http';
+ import { Injectable, inject } from '@angular/core';
+ import { firstValueFrom } from 'rxjs';
++import { Pools } from './pools';
+ import { Session } from './session';
+ 
+ export interface Period {
+@@ -53,6 +54,7 @@ export function periodOf(periods: Period[], day: string): Period | undefined {
+ export class Periods {
+   private readonly http = inject(HttpClient);
+   private readonly session = inject(Session);
++  private readonly pools = inject(Pools);
+ 
+   /** The periods on the sheet, earliest first. */
+   list(sheetId: string): Promise<Period[]> {
+@@ -134,9 +136,13 @@ export class Periods {
+     const sheetId = this.session.sheetId();
+     const user = this.session.user();
+     if (!sheetId || !user) throw new Error('no sheet loaded');
++    // the pools' per-period cuts are fixed (or live again) with it
+     return firstValueFrom(
+       this.http.post<Period>(`${this.url(sheetId)}/${id}/close`, null, { headers: { 'X-User': user } }),
+-    );
++    ).then(async (period) => {
++      await this.pools.refresh();
++      return period;
++    });
+   }
+ 
+   /** Soft-close a period, fixing its due-totals while its claims stay open to change; refused when
+@@ -145,9 +151,13 @@ export class Periods {
+     const sheetId = this.session.sheetId();
+     const user = this.session.user();
+     if (!sheetId || !user) throw new Error('no sheet loaded');
++    // the pools' per-period cuts are fixed (or live again) with it
+     return firstValueFrom(
+       this.http.post<Period>(`${this.url(sheetId)}/${id}/soft-close`, null, { headers: { 'X-User': user } }),
+-    );
++    ).then(async (period) => {
++      await this.pools.refresh();
++      return period;
++    });
+   }
+ 
+   /** Reopen a closed or soft-closed period, making its due-total live again; refused when the user is not a
+@@ -156,9 +166,13 @@ export class Periods {
+     const sheetId = this.session.sheetId();
+     const user = this.session.user();
+     if (!sheetId || !user) throw new Error('no sheet loaded');
++    // the pools' per-period cuts are fixed (or live again) with it
+     return firstValueFrom(
+       this.http.post<Period>(`${this.url(sheetId)}/${id}/reopen`, null, { headers: { 'X-User': user } }),
+-    );
++    ).then(async (period) => {
++      await this.pools.refresh();
++      return period;
++    });
+   }
+ 
+   /** Lock or unlock a period; refused when the user is not a steward, or it is already locked (or,
+diff --git a/src/main/frontend/src/app/core/pools.ts b/src/main/frontend/src/app/core/pools.ts
+index e1f0e244c..04f1cefb1 100644
+--- a/src/main/frontend/src/app/core/pools.ts
++++ b/src/main/frontend/src/app/core/pools.ts
+@@ -25,8 +25,9 @@ export interface PoolMember {
+   /** Whether the membership's dates include the sheet's today: a member out of force is left out
+    *  entirely (not in the total share, not in the balance, no cut). */
+   inForce: boolean;
+-  /** Their cut as it stood at the end of each period whose to-date is on or before the sheet's
+-   *  today, by the period's name, earliest period first; null for a period with none then. */
++  /** Their cut for each period that is closed or soft-closed (fixed as it stood when it was
++   *  closed) or whose to-date is on or before the sheet's today (as it stood at the end of the
++   *  period), by the period's name, earliest period first; null for a period with none then. */
+   periodCuts: Record<string, string | null>;
+ }
+ 
+diff --git a/src/main/frontend/src/app/features/pools/pool-row.ts b/src/main/frontend/src/app/features/pools/pool-row.ts
+index e0b6fb88f..4f967337d 100644
+--- a/src/main/frontend/src/app/features/pools/pool-row.ts
++++ b/src/main/frontend/src/app/features/pools/pool-row.ts
+@@ -11,7 +11,8 @@ import { FigurePipe } from '../../core/figure';
+ // one), and the entry a member is added with. A retired member's share counts in the total but
+ // they get no cut, their share spread over the others (no cuts when every member is); a member
+ // whose dates do not include the sheet's today is left out of the total and has no cut. Each member
+-// also shows their cut as it stood at the end of every period that has ended by the sheet's today.
++// also shows their cut for every closed or soft-closed period, fixed as it stood when the period was
++// closed, and for every other period that has ended by the sheet's today, as it stood at its end.
+ @Component({
+   selector: 'app-pool-row',
+   imports: [ReactiveFormsModule, FigurePipe],
+diff --git a/src/main/java/net/officefloor/hq/app/period/Period.java b/src/main/java/net/officefloor/hq/app/period/Period.java
+index 02c06f201..ff6d175c1 100644
+--- a/src/main/java/net/officefloor/hq/app/period/Period.java
++++ b/src/main/java/net/officefloor/hq/app/period/Period.java
+@@ -73,6 +73,14 @@ public class Period {
+     @Column(name = "carried", nullable = false)
+     private Map<Long, BigDecimal> personCarried = new HashMap<>();
+ 
++    /** Each pool member's cut for the period, by "pool-id:member-key", fixed when it was closed or
++     *  soft-closed (their cut as it stood at that moment); empty while it is open. */
++    @ElementCollection(fetch = FetchType.EAGER)
++    @CollectionTable(name = "period_pool_cut", joinColumns = @JoinColumn(name = "period_id"))
++    @MapKeyColumn(name = "cut_key")
++    @Column(name = "cut", nullable = false)
++    private Map<String, BigDecimal> poolCuts = new HashMap<>();
++
+     /** Each person's opening balance for the period, by the person's id: what pasted opening
+      *  balances have added to their carried figure for it. Kept while the period is open or closed. */
+     @ElementCollection(fetch = FetchType.EAGER)
+@@ -93,7 +101,7 @@ public class Period {
+     static Period revised(String sheetId, Long id, String name, LocalDate fromDate, LocalDate toDate,
+             boolean closed, boolean softClosed, BigDecimal closedTotal, Map<Long, BigDecimal> personTotals,
+             Map<Long, BigDecimal> personCarried, Map<Long, BigDecimal> personOpenings, Integer claimCap,
+-            boolean locked) {
++            boolean locked, Map<String, BigDecimal> poolCuts) {
+         Period period = new Period(sheetId, name, fromDate, toDate, claimCap);
+         period.id = id;
+         period.closed = closed;
+@@ -103,6 +111,7 @@ public class Period {
+         period.personTotals.putAll(personTotals);
+         period.personCarried.putAll(personCarried);
+         period.personOpenings.putAll(personOpenings);
++        period.poolCuts.putAll(poolCuts);
+         return period;
+     }
+ 
+@@ -171,6 +180,12 @@ public class Period {
+         return Map.copyOf(personTotals);
+     }
+ 
++    /** Each pool member's cut fixed when the period was closed or soft-closed, by "pool-id:member-key";
++     *  empty while it is open. */
++    public Map<String, BigDecimal> getPoolCuts() {
++        return poolCuts;
++    }
++
+     /** Each person's carried figure fixed when the period was closed or soft-closed, by the person's
+      *  id; empty while it is open. */
+     public Map<Long, BigDecimal> getPersonCarried() {
+@@ -188,21 +203,27 @@ public class Period {
+     }
+ 
+     /** Close the period, fixing each person's due-total and carried figure for it at what they are
+-     *  now, and its own due-total at the sum of the due-totals. */
+-    public void close(Map<Long, BigDecimal> personTotals, Map<Long, BigDecimal> personCarried) {
++     *  now, each pool member's cut for it at what it is now, and its own due-total at the sum of the
++     *  due-totals. */
++    public void close(Map<Long, BigDecimal> personTotals, Map<Long, BigDecimal> personCarried,
++            Map<String, BigDecimal> poolCuts) {
+         this.closed = true;
+         this.softClosed = false;
+-        fix(personTotals, personCarried);
++        fix(personTotals, personCarried, poolCuts);
+     }
+ 
+     /** Soft-close the period, fixing its due-totals as {@link #close} does while leaving claims dated
+      *  inside it open to change. */
+-    public void softClose(Map<Long, BigDecimal> personTotals, Map<Long, BigDecimal> personCarried) {
++    public void softClose(Map<Long, BigDecimal> personTotals, Map<Long, BigDecimal> personCarried,
++            Map<String, BigDecimal> poolCuts) {
+         this.softClosed = true;
+-        fix(personTotals, personCarried);
++        fix(personTotals, personCarried, poolCuts);
+     }
+ 
+-    private void fix(Map<Long, BigDecimal> personTotals, Map<Long, BigDecimal> personCarried) {
++    private void fix(Map<Long, BigDecimal> personTotals, Map<Long, BigDecimal> personCarried,
++            Map<String, BigDecimal> poolCuts) {
++        this.poolCuts.clear();
++        this.poolCuts.putAll(poolCuts);
+         this.personTotals.clear();
+         this.personTotals.putAll(personTotals);
+         this.personCarried.clear();
+@@ -242,5 +263,6 @@ public class Period {
+         this.closedTotal = null;
+         this.personTotals.clear();
+         this.personCarried.clear();
++        this.poolCuts.clear();
+     }
+ }
+diff --git a/src/main/java/net/officefloor/hq/app/period/PeriodRevision.java b/src/main/java/net/officefloor/hq/app/period/PeriodRevision.java
+index 5a4952bda..da36ae7af 100644
+--- a/src/main/java/net/officefloor/hq/app/period/PeriodRevision.java
++++ b/src/main/java/net/officefloor/hq/app/period/PeriodRevision.java
+@@ -70,6 +70,10 @@ public class PeriodRevision {
+     @Column(name = "person_openings", nullable = false)
+     private String personOpenings;
+ 
++    /** Each pool member's fixed cut, "pool-id:member-key=cut", separated by ";"; blank while open. */
++    @Column(name = "pool_cuts", nullable = false)
++    private String poolCuts;
++
+     protected PeriodRevision() {
+     }
+ 
+@@ -88,6 +92,7 @@ public class PeriodRevision {
+         this.personTotals = totals(period.getPersonTotals());
+         this.personCarried = totals(period.getPersonCarried());
+         this.personOpenings = totals(period.getPersonOpenings());
++        this.poolCuts = cuts(period.getPoolCuts());
+         this.claimCap = period.getClaimCap();
+     }
+ 
+@@ -97,6 +102,21 @@ public class PeriodRevision {
+                 .collect(Collectors.joining(";"));
+     }
+ 
++    private static String cuts(Map<String, BigDecimal> cuts) {
++        return new TreeMap<>(cuts).entrySet().stream()
++                .map(e -> e.getKey() + "=" + e.getValue().setScale(2).toPlainString())
++                .collect(Collectors.joining(";"));
++    }
++
++    private static Map<String, BigDecimal> parseCuts(String text) {
++        Map<String, BigDecimal> cuts = new TreeMap<>();
++        Arrays.stream(text.split(";")).filter(t -> !t.isBlank()).forEach(t -> {
++            int at = t.lastIndexOf('=');
++            cuts.put(t.substring(0, at), new BigDecimal(t.substring(at + 1)));
++        });
++        return cuts;
++    }
++
+     /** Whether the period is now as this revision has it. */
+     public boolean matches(Period period) {
+         return Objects.equals(name, period.getName()) && Objects.equals(fromDate, period.getFromDate())
+@@ -107,13 +127,15 @@ public class PeriodRevision {
+                 && personTotals.equals(totals(period.getPersonTotals()))
+                 && personCarried.equals(totals(period.getPersonCarried()))
+                 && personOpenings.equals(totals(period.getPersonOpenings()))
++                && poolCuts.equals(cuts(period.getPoolCuts()))
+                 && Objects.equals(claimCap, period.getClaimCap());
+     }
+ 
+     /** The period as this revision has it, detached: for showing only, never saved. */
+     public Period toPeriod() {
+         return Period.revised(sheetId, periodId, name, fromDate, toDate, closed, softClosed, closedTotal,
+-                parse(personTotals), parse(personCarried), parse(personOpenings), claimCap, locked);
++                parse(personTotals), parse(personCarried), parse(personOpenings), claimCap, locked,
++                parseCuts(poolCuts));
+     }
+ 
+     private static Map<Long, BigDecimal> parse(String text) {
+diff --git a/src/main/java/net/officefloor/hq/app/period/PeriodService.java b/src/main/java/net/officefloor/hq/app/period/PeriodService.java
+index 9ff1fd59a..38cc0da36 100644
+--- a/src/main/java/net/officefloor/hq/app/period/PeriodService.java
++++ b/src/main/java/net/officefloor/hq/app/period/PeriodService.java
+@@ -17,9 +17,11 @@ import net.officefloor.hq.app.claim.Dues;
+ import net.officefloor.hq.app.history.History;
+ import net.officefloor.hq.app.person.Person;
+ import net.officefloor.hq.app.person.PersonRepository;
++import net.officefloor.hq.app.pool.PoolService;
+ import net.officefloor.hq.app.role.RoleService;
+ import net.officefloor.hq.app.role.SheetRole;
+ import net.officefloor.hq.app.sheet.SheetService;
++import org.springframework.context.annotation.Lazy;
+ import org.springframework.dao.DataIntegrityViolationException;
+ import org.springframework.http.HttpStatus;
+ import org.springframework.stereotype.Service;
+@@ -39,9 +41,12 @@ public class PeriodService {
+     private final RoleService roles;
+     private final History history;
+     private final Audit audit;
++    private final PoolService pools;
+ 
+     public PeriodService(PeriodRepository periods, SheetService sheets, ClaimRepository claims,
+-            PersonRepository people, Dues dues, RoleService roles, History history, Audit audit) {
++            PersonRepository people, Dues dues, RoleService roles, History history, Audit audit,
++            @Lazy PoolService pools) {
++        this.pools = pools;
+         this.history = history;
+         this.periods = periods;
+         this.sheets = sheets;
+@@ -257,7 +262,8 @@ public class PeriodService {
+         if (period.isClosed() || period.isSoftClosed()) {
+             throw new ResponseStatusException(HttpStatus.CONFLICT, "That period is already closed");
+         }
+-        period.softClose(personTotals(sheetId, period), personCarried(sheetId, period));
++        period.softClose(personTotals(sheetId, period), personCarried(sheetId, period),
++                pools.currentCuts(sheetId));
+         Period saved = periods.saveAndFlush(period);
+         audit.recordOnCommit("PERIOD_SOFT_CLOSED sheet=" + sheetId + " by=" + user + " period=" + saved.getName()
+                 + " total=" + saved.getClosedTotal().toPlainString());
+@@ -276,7 +282,8 @@ public class PeriodService {
+ 
+     /** Close an open period, fixing its due-total at what it is now; the suffix ends its record. */
+     private Period closeOpen(String sheetId, String user, Period period, String suffix) {
+-        period.close(personTotals(sheetId, period), personCarried(sheetId, period));
++        period.close(personTotals(sheetId, period), personCarried(sheetId, period),
++                pools.currentCuts(sheetId));
+         Period saved = periods.saveAndFlush(period);
+         audit.recordOnCommit("PERIOD_CLOSED sheet=" + sheetId + " by=" + user + " period=" + saved.getName()
+                 + " total=" + saved.getClosedTotal().toPlainString() + suffix);
+diff --git a/src/main/java/net/officefloor/hq/app/pool/PoolService.java b/src/main/java/net/officefloor/hq/app/pool/PoolService.java
+index 7cf0f0c32..a8ba0b655 100644
+--- a/src/main/java/net/officefloor/hq/app/pool/PoolService.java
++++ b/src/main/java/net/officefloor/hq/app/pool/PoolService.java
+@@ -206,33 +206,63 @@ public class PoolService {
+         return all.stream().map(p -> listed(p.getId(), poolsById, membersOf, above, sheetPot, listed, 0)).toList();
+     }
+ 
+-    /** Each member's cut as it stood at the end of each period whose to-date is on or before a day
+-     *  (null: the sheet's today): by the period's name, earliest period first, then by the pool's id, the member's key
+-     *  ({@link #memberKey}) and their cut then; a member with no cut then has no entry. */
++    /** Each member's cut for each period that is closed or soft-closed, or whose to-date is on or
++     *  before a day (null: the sheet's today), as the sheet stood on that day: for a closed or
++     *  soft-closed period the cut fixed when it was closed, else the cut as it stood at the end of
++     *  the period. By the period's name, earliest period first, then by the pool's id, the member's
++     *  key ({@link #memberKey}) and their cut; a member with no cut has no entry. */
+     @Transactional(readOnly = true)
+     public Map<String, Map<Long, Map<String, BigDecimal>>> cutHistory(String sheetId, LocalDate asOf) {
+         LocalDate today = asOf != null ? asOf : sheets.today(sheetId);
++        List<Period> all = asOf != null ? history.asOf(sheetId, asOf).periods()
++                : periods.findBySheetIdOrderByFromDateAsc(sheetId);
+         Map<String, Map<Long, Map<String, BigDecimal>>> out = new LinkedHashMap<>();
+-        for (Period period : periods.findBySheetIdOrderByFromDateAsc(sheetId)) {
++        for (Period period : all) {
++            if (period.isClosed() || period.isSoftClosed()) {
++                Map<Long, Map<String, BigDecimal>> byPool = new HashMap<>();
++                period.getPoolCuts().forEach((key, cut) -> {
++                    int at = key.indexOf(':');
++                    byPool.computeIfAbsent(Long.valueOf(key.substring(0, at)), k -> new HashMap<>())
++                            .put(key.substring(at + 1), cut);
++                });
++                out.put(period.getName(), byPool);
++                continue;
++            }
+             if (period.getToDate() == null || period.getToDate().isAfter(today)) {
+                 continue;
+             }
+             Map<Long, Map<String, BigDecimal>> byPool = new HashMap<>();
+             for (Listed l : list(sheetId, period.getToDate())) {
+-                List<BigDecimal> cuts = l.cuts();
+-                Map<String, BigDecimal> byMember = new HashMap<>();
+-                for (int i = 0; i < cuts.size(); i++) {
+-                    if (cuts.get(i) != null) {
+-                        byMember.put(memberKey(l.members().get(i).member()), cuts.get(i));
+-                    }
+-                }
+-                byPool.put(l.pool().getId(), byMember);
++                byPool.put(l.pool().getId(), cutsByMember(l));
+             }
+             out.put(period.getName(), byPool);
+         }
+         return out;
+     }
+ 
++    /** Each member's cut as it stands now, by "pool-id:member-key"; a member with no cut has no
++     *  entry. What a period fixes when it is closed or soft-closed. */
++    @Transactional(readOnly = true)
++    public Map<String, BigDecimal> currentCuts(String sheetId) {
++        Map<String, BigDecimal> out = new HashMap<>();
++        for (Listed l : list(sheetId)) {
++            cutsByMember(l).forEach((key, cut) -> out.put(l.pool().getId() + ":" + key, cut));
++        }
++        return out;
++    }
++
++    /** The pool's cuts by the member's key; a member with no cut has no entry. */
++    private static Map<String, BigDecimal> cutsByMember(Listed l) {
++        List<BigDecimal> cuts = l.cuts();
++        Map<String, BigDecimal> byMember = new HashMap<>();
++        for (int i = 0; i < cuts.size(); i++) {
++            if (cuts.get(i) != null) {
++                byMember.put(memberKey(l.members().get(i).member()), cuts.get(i));
++            }
++        }
++        return byMember;
++    }
++
+     /** A member's key within its pool: p<id> for a person, q<id> for a pool. */
+     public static String memberKey(PoolMember m) {
+         return m.getPersonId() != null ? "p" + m.getPersonId() : "q" + m.getMemberPoolId();
+diff --git a/src/main/resources/db/migration/V121__period_pool_cut.sql b/src/main/resources/db/migration/V121__period_pool_cut.sql
+new file mode 100644
+index 000000000..9c6002c0b
+--- /dev/null
++++ b/src/main/resources/db/migration/V121__period_pool_cut.sql
+@@ -0,0 +1,11 @@
++-- Each pool member's cut for a closed or soft-closed period, fixed when it was closed: their cut
++-- as it stood at that moment, keyed "pool-id:member-key" (member key p<person-id> or q<pool-id>).
++-- A member with no cut then has no row. The rows go when the period is reopened.
++CREATE TABLE period_pool_cut (
++    period_id BIGINT         NOT NULL REFERENCES period (id),
++    cut_key   VARCHAR(100)   NOT NULL,
++    cut       DECIMAL(14, 2) NOT NULL,
++    PRIMARY KEY (period_id, cut_key)
++);
++-- The sheet's history keeps them too, as text: "pool-id:member-key=cut", separated by ";".
++ALTER TABLE period_revision ADD COLUMN pool_cuts VARCHAR(20000) DEFAULT '' NOT NULL;
