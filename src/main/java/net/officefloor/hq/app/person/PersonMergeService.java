@@ -7,6 +7,10 @@ import java.util.Set;
 import net.officefloor.hq.app.Audit;
 import net.officefloor.hq.app.claim.Claim;
 import net.officefloor.hq.app.claim.ClaimRepository;
+import net.officefloor.hq.app.crew.Crew;
+import net.officefloor.hq.app.crew.CrewMember;
+import net.officefloor.hq.app.crew.CrewMemberRepository;
+import net.officefloor.hq.app.crew.CrewRepository;
 import net.officefloor.hq.app.patron.Patron;
 import net.officefloor.hq.app.patron.PatronRepository;
 import net.officefloor.hq.app.period.PeriodRepository;
@@ -34,6 +38,8 @@ public class PersonMergeService {
     private final PatronRepository patrons;
     private final PoolRepository pools;
     private final PoolMemberRepository members;
+    private final CrewRepository crews;
+    private final CrewMemberRepository crewMembers;
     private final StatementRepository statements;
     private final WatchRepository watches;
     private final PeriodRepository periods;
@@ -43,7 +49,8 @@ public class PersonMergeService {
     private final Audit audit;
 
     public PersonMergeService(PersonRepository people, ClaimRepository claims, PatronRepository patrons,
-            PoolRepository pools, PoolMemberRepository members, StatementRepository statements,
+            PoolRepository pools, PoolMemberRepository members, CrewRepository crews,
+            CrewMemberRepository crewMembers, StatementRepository statements,
             WatchRepository watches, PeriodRepository periods, PlanRepository plans, RoleService roles, Rollup rollup,
             Audit audit) {
         this.people = people;
@@ -51,6 +58,8 @@ public class PersonMergeService {
         this.patrons = patrons;
         this.pools = pools;
         this.members = members;
+        this.crews = crews;
+        this.crewMembers = crewMembers;
         this.statements = statements;
         this.watches = watches;
         this.periods = periods;
@@ -65,7 +74,9 @@ public class PersonMergeService {
      *  order they were added, each keeping any figure a statement bound); their name and aliases
      *  become aliases of the other; their patrons are added to the other's (not the other
      *  themselves, no repeats), anyone naming them as patron names the other instead (no repeats);
-     *  their plans and pool memberships move to the other (shares added where the other is already a member)
+     *  their plans and pool memberships move to the other (shares added where the other is already a member),
+     *  the crews they lead are led by the other and their crew memberships move to the other (dropped
+     *  where the other is already in the crew)
      *  and their fixed due-totals of closed periods fold into the other's; their statements are carried
      *  to the other (who counts both, their last statement staying their own or, having none, becoming
      *  the merged person's last). Their holds,
@@ -92,6 +103,7 @@ public class PersonMergeService {
             moveClaims(sheetId, from, into);
             movePatrons(sheetId, from, into);
             movePoolMemberships(sheetId, from, into);
+            moveCrews(sheetId, from, into);
             plans.findByPersonIdOrderByIdAsc(from.getId()).forEach(plan -> plan.setPersonId(into.getId()));
             plans.flush();
             periods.findBySheetIdOrderByFromDateAsc(sheetId)
@@ -150,6 +162,43 @@ public class PersonMergeService {
             }
         }
         patrons.flush();
+    }
+
+    private void moveCrews(String sheetId, Person from, Person into) {
+        List<Crew> all = crews.findBySheetIdOrderByIdAsc(sheetId);
+        if (all.isEmpty()) {
+            return;
+        }
+        List<CrewMember> memberships = crewMembers.findByCrewIdInOrderByIdAsc(all.stream().map(Crew::getId).toList());
+        for (Crew crew : all) {
+            boolean ledByFrom = from.getId().equals(crew.getLeadPersonId());
+            if (ledByFrom) {
+                crew.setLeadPersonId(into.getId());
+            }
+            boolean intoIn = into.getId().equals(crew.getLeadPersonId());
+            for (CrewMember m : memberships) {
+                if (!m.getCrewId().equals(crew.getId())) {
+                    continue;
+                }
+                if (into.getId().equals(m.getPersonId()) && ledByFrom) {
+                    crewMembers.delete(m);
+                } else if (into.getId().equals(m.getPersonId())) {
+                    intoIn = true;
+                }
+            }
+            crewMembers.flush();
+            for (CrewMember m : memberships) {
+                if (m.getCrewId().equals(crew.getId()) && from.getId().equals(m.getPersonId())) {
+                    if (intoIn) {
+                        crewMembers.delete(m);
+                    } else {
+                        m.setPersonId(into.getId());
+                    }
+                }
+            }
+        }
+        crews.flush();
+        crewMembers.flush();
     }
 
     private void movePoolMemberships(String sheetId, Person from, Person into) {

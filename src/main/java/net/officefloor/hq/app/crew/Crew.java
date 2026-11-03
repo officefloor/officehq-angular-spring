@@ -49,4 +49,9 @@ public class Crew {
     public Long getLeadPersonId() {
         return leadPersonId;
     }
+
+    /** Make the crew another person's to lead (its lead was merged into them). */
+    public void setLeadPersonId(Long leadPersonId) {
+        this.leadPersonId = leadPersonId;
+    }
 }

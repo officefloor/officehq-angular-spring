@@ -4,12 +4,12 @@ import { Pools } from '../../core/pools';
 import { Session } from '../../core/session';
 import { Grade } from '../../core/people';
 import {
-  LATE_PCT, LIMIT, PERM_ACTIONS, PERM_ROLES, POLICY_DATE, PROOF_KIND_LIST, PermAction, ROLES, ROUNDING, STANDING_PERMISSIONS, TERMS, FISCAL_MONTH, Role, RoleName,
+  DEFAULT_GRADE, LATE_PCT, LIMIT, PERM_ACTIONS, PERM_ROLES, POLICY_DATE, PROOF_KIND_LIST, PermAction, ROLES, ROUNDING, STANDING_PERMISSIONS, TERMS, FISCAL_MONTH, Role, RoleName,
   SheetSettings,
 } from '../../core/settings';
 import { FigurePipe } from '../../core/figure';
 
-// The sheet's settings (the clerk limit, the cap, the proof threshold, the proof threshold per grade, the proof kinds, the note threshold, the floor, the rounding mode, the terms, the grace days per grade, the late percent, the policy date, period numbering from, the grace days, the entry date, the pot, the alert threshold, the parent sheet and the permission matrix) and the roles it gives user names: clerk, the default for
+// The sheet's settings (the clerk limit, the cap, the proof threshold, the proof threshold per grade, the proof kinds, the default grade, the note threshold, the floor, the rounding mode, the terms, the grace days per grade, the late percent, the policy date, period numbering from, the grace days, the entry date, the pot, the alert threshold, the parent sheet and the permission matrix) and the roles it gives user names: clerk, the default for
 // any name, steward, or viewer (who may change nothing). The settings that carry a figure are dated: each is saved from a from-date
 // (blank: the sheet's today), and what shows in force is the value on the sheet's today.
 @Component({
@@ -36,6 +36,8 @@ import { FigurePipe } from '../../core/figure';
                formControlName="proofThresholdFrom" />
         <label for="setting-proof-kinds">Proof kinds (receipt, photo, comma separated; a claim due above the proof threshold needs a proof of each; blank: none)</label>
         <input id="setting-proof-kinds" data-testid="setting-proof-kinds" formControlName="proofKinds" />
+        <label for="setting-default-grade">Default grade (A, B or C; a person added by quick-add, or by an import line with a blank grade, is given it; blank: A)</label>
+        <input id="setting-default-grade" data-testid="setting-default-grade" formControlName="defaultGrade" />
         <fieldset formGroupName="gradeProofThresholds">
           <legend>Proof threshold per grade (blank: the sheet's proof threshold)</legend>
           @for (g of grades; track g) {
@@ -163,6 +165,7 @@ import { FigurePipe } from '../../core/figure';
       <p>Alert threshold: <span data-testid="setting-alert-threshold-current">{{ alertThreshold() ?? '' | figure }}</span></p>
       <p>Fiscal year start month: <span data-testid="setting-fiscal-start-month-current">{{ fiscalStartMonth() ?? '' }}</span></p>
       <p>Proof kinds: <span data-testid="setting-proof-kinds-current">{{ proofKinds() }}</span></p>
+      <p>Default grade: <span data-testid="setting-default-grade-current">{{ defaultGrade() ?? '' }}</span></p>
       <p>Parent sheet: <span data-testid="setting-parent-current">{{ parent() ?? '' }}</span></p>
       @for (a of permActions; track a) {
         <p>Roles that may {{ a }}:
@@ -233,6 +236,7 @@ export class SettingsForm {
   protected readonly alertThreshold = signal<string | null>(null);
   protected readonly parent = signal<string | null>(null);
   protected readonly proofKinds = signal('');
+  protected readonly defaultGrade = signal<string | null>(null);
   protected readonly fiscalStartMonth = signal<number | null>(null);
   protected readonly permActions = PERM_ACTIONS;
   protected readonly standing = STANDING_PERMISSIONS;
@@ -298,6 +302,7 @@ export class SettingsForm {
     alertThreshold: new FormControl('', { nonNullable: true }),
     parent: new FormControl('', { nonNullable: true }),
     proofKinds: new FormControl('', { nonNullable: true }),
+    defaultGrade: new FormControl('', { nonNullable: true }),
     fiscalStartMonth: new FormControl('', { nonNullable: true }),
     permissions: new FormGroup({
       open: new FormControl('', { nonNullable: true }),
@@ -342,6 +347,7 @@ export class SettingsForm {
       this.alertThreshold.set(null);
       this.parent.set(null);
       this.proofKinds.set('');
+      this.defaultGrade.set(null);
       this.fiscalStartMonth.set(null);
       this.permissions.set({});
       this.roles.set([]);
@@ -355,14 +361,14 @@ export class SettingsForm {
     if (this.submitting) return;
     this.settingsError.set('');
     const { clerkLimit, clerkLimitFrom, cap, capFrom, proofThreshold, proofThresholdFrom, gradeProofThresholds, noteThreshold, noteThresholdFrom, reviewThreshold, reviewThresholdFrom, floor, floorFrom, rounding, roundingFrom, terms, termsFrom, gradeTerms, gradeGraces, latePct,
-      latePctFrom, policyDate, periodNumberingFrom, graceDays, escalateAfter, reviewSla, entryDate, pot, alertThreshold, parent, proofKinds, fiscalStartMonth, permissions } = this.settingsForm.controls;
+      latePctFrom, policyDate, periodNumberingFrom, graceDays, escalateAfter, reviewSla, entryDate, pot, alertThreshold, parent, proofKinds, defaultGrade, fiscalStartMonth, permissions } = this.settingsForm.controls;
     const changed = (...cs: AbstractControl[]) => cs.some((c) => c.dirty || c.touched);
     const none = !changed(clerkLimit, clerkLimitFrom) && !changed(cap, capFrom)
       && !changed(proofThreshold, proofThresholdFrom) && !changed(gradeProofThresholds) && !changed(noteThreshold, noteThresholdFrom)
       && !changed(reviewThreshold, reviewThresholdFrom)
       && !changed(floor, floorFrom) && !changed(rounding, roundingFrom)
       && !changed(terms, termsFrom) && !changed(gradeTerms) && !changed(gradeGraces) && !changed(latePct, latePctFrom) && !changed(policyDate)
-      && !changed(periodNumberingFrom) && !changed(graceDays) && !changed(escalateAfter) && !changed(reviewSla) && !changed(entryDate) && !changed(pot) && !changed(alertThreshold) && !changed(parent) && !changed(proofKinds) && !changed(fiscalStartMonth) && !changed(permissions);
+      && !changed(periodNumberingFrom) && !changed(graceDays) && !changed(escalateAfter) && !changed(reviewSla) && !changed(entryDate) && !changed(pot) && !changed(alertThreshold) && !changed(parent) && !changed(proofKinds) && !changed(defaultGrade) && !changed(fiscalStartMonth) && !changed(permissions);
     /** A from-date typed, or null when blank (the sheet's today). */
     const from = (c: AbstractControl<string>) => c.value.trim() || null;
     const fromsToSave: AbstractControl<string>[] = [];
@@ -424,6 +430,8 @@ export class SettingsForm {
     const saveParent = changed(parent) || (none && parentValue !== '');
     const kindsValue = proofKinds.value.trim();
     const saveKinds = changed(proofKinds) || (none && kindsValue !== '');
+    const defaultGradeValue = defaultGrade.value.trim();
+    const saveDefaultGrade = changed(defaultGrade) || (none && defaultGradeValue !== '');
     const permsToSave = this.permActions
       .map((a) => ({ action: a, control: permissions.controls[a], value: permissions.controls[a].value.trim() }))
       .filter((p) => changed(p.control) || (none && p.value !== ''));
@@ -533,6 +541,10 @@ export class SettingsForm {
     }
     if (saveKinds && kindsValue !== '' && !PROOF_KIND_LIST.test(kindsValue)) {
       this.settingsError.set('Enter the proof kinds as receipt, photo or both, comma separated, or leave it blank for none.');
+      return;
+    }
+    if (saveDefaultGrade && defaultGradeValue !== '' && !DEFAULT_GRADE.test(defaultGradeValue)) {
+      this.settingsError.set('Enter a default grade of A, B or C, or leave it blank for A.');
       return;
     }
     if (permsToSave.some((p) => p.value !== '' && !PERM_ROLES.test(p.value))) {
@@ -709,6 +721,12 @@ export class SettingsForm {
         proofKinds.markAsPristine();
         proofKinds.markAsUntouched();
       }
+      if (saveDefaultGrade) {
+        const saved = await this.api.setDefaultGrade(defaultGradeValue === '' ? null : defaultGradeValue);
+        this.defaultGrade.set(saved.defaultGrade);
+        defaultGrade.markAsPristine();
+        defaultGrade.markAsUntouched();
+      }
       for (const p of permsToSave) {
         const saved = await this.api.setPermission(p.action, p.value === '' ? null : p.value);
         this.permissions.set(saved.permissions);
@@ -783,6 +801,7 @@ export class SettingsForm {
         this.alertThreshold.set(settings.alertThreshold);
         this.parent.set(settings.parent);
         this.proofKinds.set(settings.proofKinds);
+        this.defaultGrade.set(settings.defaultGrade);
         this.fiscalStartMonth.set(settings.fiscalStartMonth);
         this.permissions.set(settings.permissions);
         this.roles.set(roles);

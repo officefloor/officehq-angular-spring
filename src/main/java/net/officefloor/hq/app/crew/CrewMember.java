@@ -47,6 +47,11 @@ public class CrewMember {
         return personId;
     }
 
+    /** Make the membership another person's (the member was merged into them). */
+    public void setPersonId(Long personId) {
+        this.personId = personId;
+    }
+
     public LocalDate getAddedOn() {
         return addedOn;
     }

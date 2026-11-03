@@ -11,7 +11,8 @@ function refusal(e: unknown): string {
 }
 
 // The import box: lines of name,grade,terms,contact each add a person as the person form would,
-// or update the person the name matches (by name or alias), all or none.
+// or update the person the name matches (by name or alias), all or none; a blank grade is the
+// sheet's default grade.
 @Component({
   selector: 'app-import-people-box',
   imports: [ReactiveFormsModule],

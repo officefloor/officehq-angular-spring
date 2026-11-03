@@ -176,6 +176,8 @@ public class SheetService {
     public static final BigDecimal STARTING_LATE_PCT = new BigDecimal("0.00");
     /** The terms a sheet starts with, in force before every from-date of its own. */
     public static final int STARTING_TERMS = 14;
+    /** The grade a new person takes when none is given and the sheet's default grade is blank. */
+    public static final String DEFAULT_GRADE = "A";
 
     /** The value a dated setting of the sheet has recorded in force on a day: the one with the latest
      *  from-date on or before it; empty when none is (the value itself is null when blank). */
@@ -716,6 +718,34 @@ public class SheetService {
         sheet.setProofKinds(value.isEmpty() ? null : value);
         Sheet saved = sheets.saveAndFlush(sheet);
         audit.recordOnCommit("SETTING_CHANGED sheet=" + id + " by=" + user + " key=proof-kinds value=" + value);
+        return saved;
+    }
+
+    /** The grade a new person on the sheet takes when none is given (by the quick-add bar, or an
+     *  import line with a blank grade): the sheet's default grade, or A when it is blank. Not dated. */
+    @Transactional(readOnly = true)
+    public String defaultGrade(String id) {
+        String grade = sheets.findById(id).map(Sheet::getDefaultGrade).orElse(null);
+        return grade == null ? DEFAULT_GRADE : grade;
+    }
+
+    /** The sheet's default grade as set; null when blank (A stands in). Not dated. */
+    @Transactional(readOnly = true)
+    public String defaultGradeSet(String id) {
+        return sheets.findById(id).map(Sheet::getDefaultGrade).orElse(null);
+    }
+
+    /** Change the sheet's default grade (null: blank, A), one of the grades. It changes no one. */
+    @Transactional
+    public synchronized Sheet setDefaultGrade(String id, String user, String grade) {
+        if (grade != null && !GRADES.contains(grade)) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "A default grade is A, B or C");
+        }
+        Sheet sheet = load(id, user);
+        sheet.setDefaultGrade(grade);
+        Sheet saved = sheets.saveAndFlush(sheet);
+        audit.recordOnCommit("SETTING_CHANGED sheet=" + id + " by=" + user + " key=default-grade value="
+                + (grade == null ? "" : grade));
         return saved;
     }
 

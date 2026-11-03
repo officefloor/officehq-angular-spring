@@ -52,7 +52,7 @@ public class SettingsController {
      *  from-date, earliest first (null: blank); and the review threshold in force as text with two
      *  decimals (null when there is none); and the escalation gap in days (null when blank: off); and
      *  the review SLA in days (null when blank: none); and the proof kinds, comma separated (empty when
-     *  blank: none). */
+     *  blank: none); and the default grade (null when blank: A). */
     public record SettingsView(String clerkLimit, String floor, int terms, String latePct, LocalDate policyDate,
             LocalDate periodNumberingFrom, Map<String, Integer> gradeTerms, String cap, List<DatedValue> floors,
             List<DatedValue> latePcts, List<DatedValue> caps, String proofThreshold,
@@ -60,7 +60,7 @@ public class SettingsController {
             Map<String, Integer> gradeGraces, Map<String, List<DatedDays>> graces,
             Map<String, String> gradeProofThresholds, String pot, String parent, int fiscalStartMonth,
             String alertThreshold, String rounding, List<DatedText> roundings, String reviewThreshold,
-            Integer escalateAfter, Integer reviewSla, String proofKinds) {
+            Integer escalateAfter, Integer reviewSla, String proofKinds, String defaultGrade) {
         static SettingsView of(BigDecimal clerkLimit, BigDecimal floor, int terms, BigDecimal latePct,
                 LocalDate policyDate, LocalDate periodNumberingFrom, Map<String, Integer> gradeTerms,
                 BigDecimal cap, List<SettingValue> floors, List<SettingValue> latePcts,
@@ -69,7 +69,7 @@ public class SettingsController {
                 Map<String, List<SettingValue>> graces, Map<String, BigDecimal> gradeProofThresholds, BigDecimal pot,
                 String parent, int fiscalStartMonth, BigDecimal alertThreshold, Optional<Rounding> rounding,
                 List<SettingValue> roundings, BigDecimal reviewThreshold, Integer escalateAfter,
-                Integer reviewSla, List<String> proofKinds) {
+                Integer reviewSla, List<String> proofKinds, String defaultGrade) {
             Map<String, List<DatedDays>> gracesView = new TreeMap<>();
             graces.forEach((grade, values) -> gracesView.put(grade, values.stream().map(DatedDays::of).toList()));
             Map<String, String> thresholdsView = new TreeMap<>();
@@ -85,7 +85,7 @@ public class SettingsController {
                     fiscalStartMonth, alertThreshold == null ? null : alertThreshold.setScale(2).toPlainString(),
                     rounding.map(Rounding::text).orElse(null), roundings.stream().map(DatedText::rounding).toList(),
                     reviewThreshold == null ? null : reviewThreshold.setScale(2).toPlainString(), escalateAfter,
-                    reviewSla, String.join(",", proofKinds));
+                    reviewSla, String.join(",", proofKinds), defaultGrade);
         }
     }
 
@@ -317,6 +317,14 @@ public class SettingsController {
         }
     }
 
+    /** The default grade form: one of the grades (A, B, C), or blank for A; not dated. */
+    public record DefaultGradeForm(@Pattern(regexp = "\\s*[ABC]?\\s*") String value) {
+
+        String gradeValue() {
+            return value == null || value.isBlank() ? null : value.trim();
+        }
+    }
+
     /** The parent form: a sheet id, or blank for none; not dated. */
     public record ParentForm(@Size(max = 100) String value) {
 
@@ -384,7 +392,7 @@ public class SettingsController {
                 service.alertThreshold(id),
                 then.setting(Rounding.KEY, day).map(SettingValue::getValue).flatMap(Rounding::ofCode),
                 then.recorded(Rounding.KEY), value.apply("review-threshold"), service.escalateAfter(id),
-                service.reviewSla(id), service.proofKinds(id));
+                service.reviewSla(id), service.proofKinds(id), service.defaultGradeSet(id));
     }
 
     /** The settings view of a sheet as the store holds it now. */
@@ -397,7 +405,7 @@ public class SettingsController {
                 gracesOf(id), service.gradeProofThresholds(id), service.pot(id), service.parent(id),
                 service.fiscalStartMonth(id), service.alertThreshold(id), service.rounding(id),
                 service.recorded(id, Rounding.KEY), service.reviewThreshold(id), service.escalateAfter(id),
-                service.reviewSla(id), service.proofKinds(id));
+                service.reviewSla(id), service.proofKinds(id), service.defaultGradeSet(id));
     }
 
     /** The grace days recorded for each grade of a sheet, earliest from-date first. */
@@ -570,6 +578,13 @@ public class SettingsController {
             @RequestHeader("X-User") @NotBlank @Size(max = 100) String user,
             @Valid @RequestBody ProofKindsForm form) {
         return view(service.setProofKinds(sheetId.trim(), user.trim(), form.kindsValue()));
+    }
+
+    @PutMapping("/default-grade")
+    public SettingsView setDefaultGrade(@PathVariable @NotBlank @Size(max = 100) String sheetId,
+            @RequestHeader("X-User") @NotBlank @Size(max = 100) String user,
+            @Valid @RequestBody DefaultGradeForm form) {
+        return view(service.setDefaultGrade(sheetId.trim(), user.trim(), form.gradeValue()));
     }
 
     @PutMapping("/parent")

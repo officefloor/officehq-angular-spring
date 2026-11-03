@@ -128,6 +128,7 @@ public class SheetCloneService {
         to.setParentId(from.getParentId());
         to.setSourceId(sheetId);
         to.setProofKinds(from.getProofKinds());
+        to.setDefaultGrade(from.getDefaultGrade());
         sheets.saveAndFlush(to);
         rollup.tracking(toSheetId, user, () -> {
             audit.recordOnCommit("SHEET_CLONED sheet=" + toSheetId + " by=" + user + " from=" + sheetId);

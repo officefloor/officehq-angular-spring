@@ -6,6 +6,7 @@ import java.util.List;
 import java.util.Locale;
 import java.util.Set;
 import java.util.regex.Pattern;
+import net.officefloor.hq.app.sheet.SheetService;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -13,7 +14,8 @@ import org.springframework.web.server.ResponseStatusException;
 
 /** The import box: lines of name,grade,terms,contact, each adding a person as the person form
  *  would, or, when the name matches a person on the sheet (by name or alias, as names are compared),
- *  editing that person as the person form would; the terms and contact may be absent or blank. */
+ *  editing that person as the person form would; the terms and contact may be absent or blank, and a
+ *  blank grade is the sheet's default grade. */
 @Service
 public class PersonImportService {
 
@@ -40,10 +42,12 @@ public class PersonImportService {
 
     private final PersonRepository people;
     private final PersonService service;
+    private final SheetService sheets;
 
-    public PersonImportService(PersonRepository people, PersonService service) {
+    public PersonImportService(PersonRepository people, PersonService service, SheetService sheets) {
         this.people = people;
         this.service = service;
+        this.sheets = sheets;
     }
 
     /** Add or update a person per line, in order, checking every line first with the person form's
@@ -59,13 +63,14 @@ public class PersonImportService {
         Set<String> names = new HashSet<>();
         Set<Long> matched = new HashSet<>();
         Set<String> contacts = new HashSet<>();
+        String defaultGrade = sheets.defaultGrade(sheetId);
         int n = 0;
         for (String raw : text.split("\\R")) {
             n++;
             if (raw.isBlank()) {
                 continue;
             }
-            Line line = parse(n, raw);
+            Line line = parse(n, raw, defaultGrade);
             if (!names.add(line.name().toLowerCase(Locale.ROOT))) {
                 throw refused(n, "the name \"" + line.name() + "\" is repeated in the import");
             }
@@ -107,8 +112,9 @@ public class PersonImportService {
         return new Result(added, updated, all);
     }
 
-    /** A line of name,grade,terms,contact: the last two may be absent or blank. */
-    private static Line parse(int n, String raw) {
+    /** A line of name,grade,terms,contact: the last two may be absent or blank, and a blank grade
+     *  is the default grade. */
+    private static Line parse(int n, String raw, String defaultGrade) {
         String[] fields = raw.split(",", -1);
         if (fields.length < 2 || fields.length > 4) {
             throw refused(n, "expected name,grade,terms,contact");
@@ -120,7 +126,7 @@ public class PersonImportService {
         if (name.length() > NAME_MAX) {
             throw refused(n, "the name is too long");
         }
-        String grade = fields[1].trim();
+        String grade = fields[1].isBlank() ? defaultGrade : fields[1].trim();
         if (!GRADE.matcher(grade).matches()) {
             throw refused(n, "the grade must be A, B or C");
         }

@@ -12,7 +12,7 @@ function refusal(e: unknown): string {
 
 // The quick-add bar: a name and an amount make a draft claim dated the sheet's entry date (or its
 // today when none is set) for the
-// person of that name, who is added at grade A when the name is not on the sheet.
+// person of that name, who is added at the sheet's default grade when the name is not on the sheet.
 @Component({
   selector: 'app-quick-add-bar',
   imports: [ReactiveFormsModule],

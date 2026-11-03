@@ -98,6 +98,11 @@ public class Sheet {
     @Column(name = "proof_kinds")
     private String proofKinds;
 
+    /** The sheet's default grade: the grade a person added by the quick-add bar, or by an import
+     *  line with a blank grade, is given; null (blank) is A. Not dated. */
+    @Column(name = "default_grade")
+    private String defaultGrade;
+
     /** Whether a steward has archived the sheet: it stays visible and refuses every change. */
     @Column(name = "archived", nullable = false)
     private boolean archived;
@@ -221,6 +226,14 @@ public class Sheet {
 
     public void setProofKinds(String proofKinds) {
         this.proofKinds = proofKinds;
+    }
+
+    public String getDefaultGrade() {
+        return defaultGrade;
+    }
+
+    public void setDefaultGrade(String defaultGrade) {
+        this.defaultGrade = defaultGrade;
     }
 
     public boolean isArchived() {

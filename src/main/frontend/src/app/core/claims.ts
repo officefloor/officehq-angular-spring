@@ -376,7 +376,7 @@ export class Claims {
   }
 
   /** Add a draft claim of the amount, dated the sheet's today, for the person of the name, who is
-   *  added at grade A first when the name is not on the sheet. */
+   *  added at the sheet's default grade first when the name is not on the sheet. */
   quickAdd(name: string, amount: string): Promise<QuickAdded> {
     const { sheetId, user } = this.active();
     return firstValueFrom(

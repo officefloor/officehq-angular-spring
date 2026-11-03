@@ -72,6 +72,9 @@ export interface Settings {
    *  needs at least one proof of each before it is settled or approved; empty when blank (none).
    *  Not dated. */
   proofKinds: string;
+  /** The default grade: a person added by the quick-add bar, or by an import line with a blank
+   *  grade, is given it; null when blank (A). Not dated. */
+  defaultGrade: Grade | null;
   /** The fiscal year start month, 1 to 12 (1 unless set): a fiscal year runs from the first day of
    *  it. Not dated. */
   fiscalStartMonth: number;
@@ -118,6 +121,8 @@ export const STANDING_PERMISSIONS: Record<PermAction, string> = {
 };
 
 /** A proof kinds value: receipt, photo or both, comma separated. */
+/** A default grade: one of the grades. */
+export const DEFAULT_GRADE = /^[ABC]$/;
 export const PROOF_KIND_LIST = /^\s*(receipt|photo)\s*(,\s*(receipt|photo)\s*)*$/;
 
 /** A permission entry: a comma separated list of roles (clerk, steward). */
@@ -348,6 +353,12 @@ export class SheetSettings {
   setProofKinds(value: string | null): Promise<Settings> {
     const [sheetId, headers] = this.active();
     return firstValueFrom(this.http.put<Settings>(`${this.url(sheetId)}/settings/proof-kinds`, { value }, { headers }));
+  }
+
+  /** Set the default grade; null for blank (A). */
+  setDefaultGrade(value: string | null): Promise<Settings> {
+    const [sheetId, headers] = this.active();
+    return firstValueFrom(this.http.put<Settings>(`${this.url(sheetId)}/settings/default-grade`, { value }, { headers }));
   }
 
   /** Set the parent sheet; null for blank (none). */
