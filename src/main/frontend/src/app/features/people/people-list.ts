@@ -57,7 +57,7 @@ const NO_LEAVE: Leave = { holds: [], retiredFrom: null };
     <app-header-counters [peopleCount]="people().length" [statuses]="statusSummary()"
       [dueTotal]="dueTotal()" [overdueTotal]="overdueTotal()"
       [myDueTotal]="myDueTotal()" [myOverdueTotal]="myOverdueTotal()" [myCrewDueTotal]="myCrewDueTotal()"
-      [myReviewsCount]="myReviewsCount()" />
+      [watchedDueTotal]="watchedDueTotal()" [myReviewsCount]="myReviewsCount()" />
     <app-steward-dashboard [steward]="myRole() === 'steward'" [statuses]="statusSummary()"
       [overdueCount]="overdueCount()" />
     <app-rate-form [rates]="rates()" (saved)="rateSaved($event)" (imported)="ratesImported()" />
@@ -892,6 +892,12 @@ export class PeopleList {
     const me = this.me();
     const led = me ? this.crewsApi.list().filter((c) => c.lead?.personId === me.id) : [];
     return led.length ? sumAmounts(led.map((c) => crewDueTotal(c, this.dueByPerson()))) : '';
+  });
+  /** The due-totals of the people the signed-in user watches, added up, n/a ones skipped; 0.00
+   *  when they watch no one. */
+  protected readonly watchedDueTotal = computed(() => {
+    const dues = this.dueByPerson();
+    return sumAmounts([...this.watched()].map((id) => dues.get(id)).filter((d): d is string => !!d));
   });
   /** How many claims in review on the sheet are assigned to the signed-in user. */
   protected readonly myReviewsCount = computed(() => {
