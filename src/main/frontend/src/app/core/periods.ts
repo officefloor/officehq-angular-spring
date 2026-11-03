@@ -102,6 +102,20 @@ export class Periods {
     );
   }
 
+  /** Roll the fiscal year (yyyy) over: generate the next fiscal year's periods as {@link generateFy}
+   *  does and carry each person's open figure at the old year's end into the new year's first
+   *  period. Refused when the user is not a steward or the year has no periods. Gives how many
+   *  periods it made and the periods changed. */
+  rollover(year: string): Promise<{ made: number; periods: Period[] }> {
+    const sheetId = this.session.sheetId();
+    const user = this.session.user();
+    if (!sheetId || !user) throw new Error('no sheet loaded');
+    return firstValueFrom(
+      this.http.post<{ made: number; periods: Period[] }>(`${this.url(sheetId)}/rollover`, { year },
+        { headers: { 'X-User': user } }),
+    );
+  }
+
   /** Paste opening balances, lines of name,period,amount, each adding the amount to the person's
    *  carried figure for the period; all lines are checked first and any error refuses the whole
    *  paste. Gives how many lines went through and the periods changed. */

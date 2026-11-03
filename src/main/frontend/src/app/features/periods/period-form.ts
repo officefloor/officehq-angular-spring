@@ -48,6 +48,17 @@ const DAY = /^\d{4}-\d{2}-\d{2}$/;
           <p role="alert" data-testid="period-generate-error">{{ generateError() }}</p>
         }
       </form>
+      <form data-testid="rollover-form" [formGroup]="rolloverForm" (ngSubmit)="rollover()">
+        <label for="rollover-year">Fiscal year to roll over (yyyy)</label>
+        <input id="rollover-year" data-testid="rollover-year" formControlName="year" inputmode="numeric" />
+        <button type="submit" data-testid="rollover">Roll year over</button>
+        @if (rolledOver() !== null) {
+          <p role="status">Made <span data-testid="rollover-made">{{ rolledOver() }}</span></p>
+        }
+        @if (rolloverError()) {
+          <p role="alert" data-testid="rollover-error">{{ rolloverError() }}</p>
+        }
+      </form>
       <form data-testid="opening-import-form" [formGroup]="openingForm" (ngSubmit)="importOpenings()">
         <label for="opening-import">Opening balances (name,period,amount per line)</label>
         <textarea id="opening-import" data-testid="opening-import" formControlName="text" rows="3"></textarea>
@@ -131,6 +142,14 @@ export class PeriodForm {
     quartersYear: new FormControl('', { nonNullable: true }),
   });
 
+  protected readonly rolloverError = signal('');
+  /** How many periods the last rollover made; null while one runs or before the first. */
+  protected readonly rolledOver = signal<number | null>(null);
+  private rollingOver = false;
+  protected readonly rolloverForm = new FormGroup({
+    year: new FormControl('', { nonNullable: true }),
+  });
+
   protected readonly openingError = signal('');
   /** How many lines the last opening balances paste put through; null while one runs or before the first. */
   protected readonly openingsDone = signal<number | null>(null);
@@ -143,6 +162,7 @@ export class PeriodForm {
     this.form.valueChanges.subscribe(() => this.error.set(''));
     this.openingForm.valueChanges.subscribe(() => this.openingError.set(''));
     this.generateForm.valueChanges.subscribe(() => this.generateError.set(''));
+    this.rolloverForm.valueChanges.subscribe(() => this.rolloverError.set(''));
   }
 
   protected async generate(): Promise<void> {
@@ -212,6 +232,32 @@ export class PeriodForm {
       this.generateError.set('The quarters could not be generated.');
     } finally {
       this.generating = false;
+    }
+  }
+
+  /** Roll the fiscal year typed over into the next one. */
+  protected async rollover(): Promise<void> {
+    if (this.rollingOver) return;
+    this.rolloverError.set('');
+    this.rolledOver.set(null);
+    const year = this.rolloverForm.getRawValue().year.trim();
+    if (!/^\d{4}$/.test(year)) {
+      this.rolloverError.set('Enter the fiscal year (yyyy) to roll over.');
+      return;
+    }
+    this.rollingOver = true;
+    try {
+      const done = await this.api.rollover(year);
+      for (const p of done.periods) this.saved.emit(p);
+      this.rolledOver.set(done.made);
+    } catch (e) {
+      this.rolloverError.set(
+        e instanceof HttpErrorResponse && e.status === 403
+          ? 'Only a steward may roll a year over.'
+          : 'The year could not be rolled over: it has no periods.',
+      );
+    } finally {
+      this.rollingOver = false;
     }
   }
 

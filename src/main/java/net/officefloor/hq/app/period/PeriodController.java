@@ -128,6 +128,20 @@ public class PeriodController {
                 .map(p -> PeriodView.of(p, fiscalStartMonth)).toList();
     }
 
+    /** What a rollover shows: how many periods it made, and every period it changed. */
+    public record RolloverView(int made, List<PeriodView> periods) {
+    }
+
+    @PostMapping("/rollover")
+    public RolloverView rollover(@PathVariable @NotBlank @Size(max = 100) String sheetId,
+            @RequestHeader("X-User") @NotBlank @Size(max = 100) String user,
+            @Valid @RequestBody GenerateFyForm form) {
+        int fiscalStartMonth = sheets.fiscalStartMonth(sheetId.trim());
+        PeriodService.RolledOver done = service.rollover(sheetId.trim(), user.trim(), form.yearValue());
+        return new RolloverView(done.made().size(),
+                done.changed().stream().map(p -> PeriodView.of(p, fiscalStartMonth)).toList());
+    }
+
     @PostMapping("/generate-quarters")
     public List<PeriodView> generateQuarters(@PathVariable @NotBlank @Size(max = 100) String sheetId,
             @RequestHeader("X-User") @NotBlank @Size(max = 100) String user,
