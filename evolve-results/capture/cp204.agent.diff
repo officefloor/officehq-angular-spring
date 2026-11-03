@@ -1,0 +1,144 @@
+diff --git a/src/main/frontend/src/app/core/descendants.ts b/src/main/frontend/src/app/core/descendants.ts
+index 1eb91fb08..743fe6d0a 100644
+--- a/src/main/frontend/src/app/core/descendants.ts
++++ b/src/main/frontend/src/app/core/descendants.ts
+@@ -4,13 +4,23 @@ import { firstValueFrom } from 'rxjs';
+ 
+ /** A sheet's descendants' figures added up: their people, and each one's due-total and
+  *  overdue-total as that sheet shows them; per grade, the due-totals of the people not retired on
+- *  it (n/a skipped); and per status, how many claims have it. A grade or status missing has none. */
++ *  it (n/a skipped); per status, how many claims have it; and each of their people. A grade or
++ *  status missing has none. */
+ export interface DescendantFigures {
+   peopleCount: number;
+   dueTotal: string;
+   overdueTotal: string;
+   gradeDueTotals: Record<string, string>;
+   statusCounts: Record<string, number>;
++  people: DescendantPerson[];
++}
++
++/** A person of a descendant sheet: their name and aliases, and their due-total (null when n/a) and
++ *  overdue-total as that sheet shows them. */
++export interface DescendantPerson {
++  names: string[];
++  dueTotal: string | null;
++  overdueTotal: string;
+ }
+ 
+ /** No descendants: nothing to add. */
+@@ -20,6 +30,7 @@ export const NO_DESCENDANTS: DescendantFigures = {
+   overdueTotal: '0.00',
+   gradeDueTotals: {},
+   statusCounts: {},
++  people: [],
+ };
+ 
+ // The sheets below a sheet: its children (the sheets naming it as their parent), theirs, and so on.
+diff --git a/src/main/frontend/src/app/features/people/people-list.ts b/src/main/frontend/src/app/features/people/people-list.ts
+index 9873f5f33..9cfc49d2b 100644
+--- a/src/main/frontend/src/app/features/people/people-list.ts
++++ b/src/main/frontend/src/app/features/people/people-list.ts
+@@ -869,14 +869,42 @@ export class PeopleList {
+   /** The role the signed-in user acts in on the sheet (as of the as-of day when one is set); null
+    *  until read. */
+   protected readonly myRole = signal<string | null>(null);
+-  /** The people of the sheet and all its descendants: while an as-of date is set, each sheet as it
+-   *  stood at the end of that day. */
+-  protected readonly consolidatedPeopleCount = computed(() => this.people().length + this.descendants().peopleCount);
+-  /** The sheet's due-total and each descendant's, as each shows it, added up. */
+-  protected readonly consolidatedDueTotal = computed(() => sumAmounts([this.dueTotal(), this.descendants().dueTotal]));
+-  /** The sheet's overdue-total and each descendant's, as each shows it, added up. */
++  /** The people of the sheet and all its descendants, each person counted once: people whose names
++   *  or aliases match, as names are compared, are one person. While an as-of date is set, each
++   *  sheet as it stood at the end of that day. */
++  protected readonly consolidatedPeopleCount = computed(() => {
++    const groups = [
++      ...this.people().map((p) => [p.name, ...p.aliases]),
++      ...(this.descendants().people ?? []).map((p) => p.names),
++    ].map((names) => names.map((n) => n.trim().toLowerCase()));
++    // Union people sharing a name, so a chain of matches is one person.
++    const parent = groups.map((_, i) => i);
++    const root = (i: number): number => (parent[i] === i ? i : (parent[i] = root(parent[i])));
++    const owner = new Map<string, number>();
++    groups.forEach((names, i) => {
++      for (const n of names) {
++        const j = owner.get(n);
++        if (j === undefined) owner.set(n, i);
++        else parent[root(i)] = root(j);
++      }
++    });
++    return new Set(groups.map((_, i) => root(i))).size;
++  });
++  /** Every person's due-total over the sheet and its descendants, leaving out the single highest
++   *  and lowest when three or more have one (n/a is no figure). */
++  protected readonly consolidatedDueTotal = computed(() =>
++    trimmedSum([
++      ...this.people().map((p) => this.dueOf(p)),
++      ...(this.descendants().people ?? []).map((p) => p.dueTotal),
++    ].filter((d): d is string => d !== null)),
++  );
++  /** Every person's overdue-total over the sheet and its descendants, leaving out the single highest
++   *  and lowest when there are three or more. */
+   protected readonly consolidatedOverdueTotal = computed(() =>
+-    sumAmounts([this.overdueTotal(), this.descendants().overdueTotal]),
++    trimmedSum([
++      ...this.people().map((p) => this.overdueTotalOf(p)),
++      ...(this.descendants().people ?? []).map((p) => p.overdueTotal),
++    ]),
+   );
+   /** Per grade: the sheet's due-total of the people not retired on it and its descendants', added up. */
+   protected readonly consolidatedGrades = computed(() =>
+diff --git a/src/main/java/net/officefloor/hq/app/rollup/Rollup.java b/src/main/java/net/officefloor/hq/app/rollup/Rollup.java
+index 4c9844cf3..3d66158ee 100644
+--- a/src/main/java/net/officefloor/hq/app/rollup/Rollup.java
++++ b/src/main/java/net/officefloor/hq/app/rollup/Rollup.java
+@@ -125,9 +125,15 @@ public class Rollup {
+      *  people (retired included), and each one's due-total and overdue-total as that sheet shows
+      *  them, added up; per grade, the due-totals of the people not retired on the grade in force on
+      *  their sheet's today, skipping those that are n/a, added up; and per status, how many claims
+-     *  have it. */
++     *  have it; and each of their people (retired included), for the screen to trim and count once
++     *  over the whole tree. */
+     public record Descendants(int peopleCount, String dueTotal, String overdueTotal,
+-            Map<String, String> gradeDueTotals, Map<String, Integer> statusCounts) {
++            Map<String, String> gradeDueTotals, Map<String, Integer> statusCounts, List<Member> people) {
++    }
++
++    /** A person of a descendant sheet: their name and aliases, and their due-total (null when n/a)
++     *  and overdue-total as that sheet shows them. */
++    public record Member(List<String> names, String dueTotal, String overdueTotal) {
+     }
+ 
+     /** The figures of a sheet's descendants added up (all zero when it has none): as each stands now,
+@@ -140,6 +146,7 @@ public class Rollup {
+         BigDecimal overdue = BigDecimal.ZERO.setScale(2);
+         Map<String, BigDecimal> gradeDue = new LinkedHashMap<>();
+         Map<String, Integer> statusCounts = new LinkedHashMap<>();
++        List<Member> members = new ArrayList<>();
+         for (String id : sheetStore.descendants(sheetId)) {
+             Dues.Basis basis;
+             List<Person> sheetPeople;
+@@ -159,7 +166,12 @@ public class Rollup {
+             due = due.add(new BigDecimal(s.dueTotal()));
+             overdue = overdue.add(new BigDecimal(s.overdueTotal()));
+             for (Person person : sheetPeople) {
+-                String personDue = s.people().get(person.getId()).dueTotal();
++                Figures personFigures = s.people().get(person.getId());
++                String personDue = personFigures.dueTotal();
++                List<String> names = new ArrayList<>(List.of(person.getName()));
++                names.addAll(person.getAliases());
++                members.add(new Member(names, "n/a".equals(personDue) ? null : personDue,
++                        personFigures.overdueTotal()));
+                 String grade = person.gradeOn(basis.today());
+                 if (!person.isRetired() && grade != null && !"n/a".equals(personDue)) {
+                     gradeDue.merge(grade, new BigDecimal(personDue), BigDecimal::add);
+@@ -171,7 +183,7 @@ public class Rollup {
+         }
+         Map<String, String> gradeDueTotals = new LinkedHashMap<>();
+         gradeDue.forEach((grade, total) -> gradeDueTotals.put(grade, text(total)));
+-        return new Descendants(count, text(due), text(overdue), gradeDueTotals, statusCounts);
++        return new Descendants(count, text(due), text(overdue), gradeDueTotals, statusCounts, members);
+     }
+ 
+     /** A person found by a search of a sheet's tree: their sheet's id, name as the screen shows it
