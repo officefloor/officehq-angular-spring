@@ -104,12 +104,19 @@ public class Rollup {
     }
 
     /** Record in the audit one SNAPSHOT line per person (in the order they were added) with their
-     *  due-total as it stands now. */
+     *  due-total as it stands now, and keep it on the person with the day being left (the sheet's
+     *  today). */
     @Transactional(propagation = Propagation.MANDATORY)
     public void recordSnapshot(String sheetId, String user) {
         String prefix = " sheet=" + sheetId + " by=" + user;
-        snapshot(sheetId).people().values().forEach(figures -> audit.recordOnCommit(
-                "SNAPSHOT" + prefix + " name=" + figures.name() + " due-total=" + figures.dueTotal()));
+        LocalDate leaving = sheets.today(sheetId);
+        Map<Long, Person> byId = people.findBySheetIdOrderByPositionAscIdAsc(sheetId).stream()
+                .collect(Collectors.toMap(Person::getId, p -> p));
+        snapshot(sheetId).people().forEach((id, figures) -> {
+            byId.get(id).addSnapshot(leaving, figures.dueTotal());
+            audit.recordOnCommit(
+                    "SNAPSHOT" + prefix + " name=" + figures.name() + " due-total=" + figures.dueTotal());
+        });
     }
 
     /** The figures a sheet's descendants add to its own to consolidate it: over all of them, the

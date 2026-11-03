@@ -53,6 +53,13 @@ export interface Retirement {
   to: string;
 }
 
+/** A snapshot of a person: the day being left (yyyy-mm-dd) and their due-total on it (two
+ *  decimals, or n/a). */
+export interface Snapshot {
+  day: string;
+  dueTotal: string;
+}
+
 export interface Person {
   id: number;
   name: string;
@@ -92,6 +99,8 @@ export interface Person {
   origin: string | null;
   /** Their tags, sorted and comma and space separated; empty when they have none. */
   tags: string;
+  /** Their snapshots, oldest first. */
+  snapshots: Snapshot[];
 }
 
 /** A statement just taken: the person as they now show, and their claims (newest first) as it

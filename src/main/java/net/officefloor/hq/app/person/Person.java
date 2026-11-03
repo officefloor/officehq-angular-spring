@@ -9,6 +9,7 @@ import jakarta.persistence.GeneratedValue;
 import jakarta.persistence.GenerationType;
 import jakarta.persistence.Id;
 import jakarta.persistence.JoinColumn;
+import jakarta.persistence.OrderColumn;
 import jakarta.persistence.Table;
 import jakarta.persistence.Version;
 import java.time.LocalDate;
@@ -20,6 +21,7 @@ import java.util.Comparator;
 import java.util.List;
 import java.util.Objects;
 import net.officefloor.hq.app.claim.Tags;
+import org.hibernate.annotations.OptimisticLock;
 
 /** A person on a sheet: a name and a grade (A, B or C), dated: each grade applies from its from-date. */
 @Entity
@@ -59,6 +61,13 @@ public class Person {
     @ElementCollection(fetch = FetchType.EAGER)
     @CollectionTable(name = "person_hold", joinColumns = @JoinColumn(name = "person_id"))
     private List<Hold> holds = new ArrayList<>();
+
+    /** The person's snapshots, oldest first; writing one does not raise the version. */
+    @ElementCollection(fetch = FetchType.EAGER)
+    @CollectionTable(name = "person_snapshot", joinColumns = @JoinColumn(name = "person_id"))
+    @OrderColumn(name = "position")
+    @OptimisticLock(excluded = true)
+    private List<Snapshot> snapshots = new ArrayList<>();
 
     /** The person's own terms in days; null when they have none. */
     @Column(name = "terms")
@@ -218,6 +227,16 @@ public class Person {
     /** Whether a day falls after the from-date and before the to-date of a past retirement. */
     public boolean isWithinPastRetirement(LocalDate day) {
         return retirements.stream().anyMatch(r -> r.within(day));
+    }
+
+    /** The person's snapshots, oldest first. */
+    public List<Snapshot> getSnapshots() {
+        return List.copyOf(snapshots);
+    }
+
+    /** Add a snapshot after the others. */
+    public void addSnapshot(LocalDate day, String dueTotal) {
+        snapshots.add(new Snapshot(day, dueTotal));
     }
 
     /** The person's holds, earliest from-date first, those with none first of all. */
