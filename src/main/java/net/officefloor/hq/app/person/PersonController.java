@@ -53,6 +53,6 @@ public class PersonController {
 
     @PostMapping("/update")
     public PersonResponse update(@Valid @RequestBody UpdatePersonRequest req) {
-        return response(service.update(req.sheet().trim(), req.id(), req.name().trim(), req.grade()));
+        return response(service.update(req.sheet().trim(), req.user().trim(), req.id(), req.name().trim(), req.grade()));
     }
 }

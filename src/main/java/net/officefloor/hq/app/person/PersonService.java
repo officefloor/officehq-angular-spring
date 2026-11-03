@@ -1,6 +1,7 @@
 package net.officefloor.hq.app.person;
 
 import java.util.List;
+import net.officefloor.hq.app.Audit;
 import net.officefloor.hq.app.sheet.SheetService;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.http.HttpStatus;
@@ -17,10 +18,12 @@ public class PersonService {
 
     private final PersonRepository people;
     private final SheetService sheets;
+    private final Audit audit;
 
-    public PersonService(PersonRepository people, SheetService sheets) {
+    public PersonService(PersonRepository people, SheetService sheets, Audit audit) {
         this.people = people;
         this.sheets = sheets;
+        this.audit = audit;
     }
 
     @Transactional(readOnly = true)
@@ -34,11 +37,13 @@ public class PersonService {
         if (people.existsBySheetIdAndNameIgnoreCase(sheetId, name)) {
             throw nameInUse();
         }
-        return save(new Person(sheetId, name, grade));
+        Person added = save(new Person(sheetId, name, grade));
+        audit.recordOnCommit(record("PERSON_ADDED", sheetId, user, added));
+        return added;
     }
 
     @Transactional
-    public Person update(String sheetId, long id, String name, String grade) {
+    public Person update(String sheetId, String user, long id, String name, String grade) {
         Person person = people.findByIdAndSheetId(id, sheetId)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "No such person on this sheet."));
         if (people.existsBySheetIdAndNameIgnoreCaseAndIdNot(sheetId, name, id)) {
@@ -46,7 +51,14 @@ public class PersonService {
         }
         person.setName(name);
         person.setGrade(grade);
-        return save(person);
+        Person saved = save(person);
+        audit.recordOnCommit(record("PERSON_EDITED", sheetId, user, saved));
+        return saved;
+    }
+
+    private static String record(String event, String sheetId, String user, Person person) {
+        return event + " sheet=" + sheetId + " by=" + user + " name=" + person.getName() + " grade="
+                + person.getGrade();
     }
 
     /** Save, refusing a name another user took on the sheet since it was checked. */

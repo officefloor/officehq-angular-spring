@@ -65,13 +65,13 @@ public class ClaimController {
 
     @PostMapping("/add")
     public ClaimResponse add(@Valid @RequestBody AddClaimRequest req) {
-        return response(service.add(req.sheet().trim(), req.personId(), amount(req.amount()), req.date(),
+        return response(service.add(req.sheet().trim(), req.user().trim(), req.personId(), amount(req.amount()), req.date(),
                 note(req.note())));
     }
 
     @PostMapping("/update")
     public ClaimResponse update(@Valid @RequestBody UpdateClaimRequest req) {
-        return response(service.update(req.sheet().trim(), req.id(), amount(req.amount()), req.date(),
+        return response(service.update(req.sheet().trim(), req.user().trim(), req.id(), amount(req.amount()), req.date(),
                 note(req.note())));
     }
 }
