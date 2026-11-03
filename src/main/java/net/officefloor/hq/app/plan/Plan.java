@@ -63,6 +63,12 @@ public class Plan {
     @Column(name = "on_date", nullable = false)
     private Set<LocalDate> made = new HashSet<>();
 
+    /** The claims it has generated. */
+    @ElementCollection(fetch = FetchType.EAGER)
+    @CollectionTable(name = "plan_claim", joinColumns = @JoinColumn(name = "plan_id"))
+    @Column(name = "claim_id", nullable = false)
+    private Set<Long> claims = new HashSet<>();
+
     /** The times it was paused; a plan date in one is skipped. */
     @ElementCollection(fetch = FetchType.EAGER)
     @CollectionTable(name = "plan_pause", joinColumns = @JoinColumn(name = "plan_id"))
@@ -201,6 +207,17 @@ public class Plan {
     /** Note that the plan has made its claim for the date. */
     public void markMade(LocalDate date) {
         made.add(date);
+    }
+
+    /** Note that the plan has made its claim for the date, the claim given. */
+    public void markMade(LocalDate date, Long claimId) {
+        made.add(date);
+        claims.add(claimId);
+    }
+
+    /** The ids of the claims it has generated, oldest first. */
+    public List<Long> getClaimIds() {
+        return claims.stream().sorted().toList();
     }
 
     /** Whether the plan is paused and not yet resumed. */

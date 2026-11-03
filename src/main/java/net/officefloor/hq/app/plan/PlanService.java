@@ -4,7 +4,10 @@ import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.util.List;
 import net.officefloor.hq.app.Audit;
+import net.officefloor.hq.app.claim.Claim;
+import net.officefloor.hq.app.claim.ClaimRepository;
 import net.officefloor.hq.app.claim.ClaimService;
+import net.officefloor.hq.app.claim.ClaimStatus;
 import net.officefloor.hq.app.person.Person;
 import net.officefloor.hq.app.person.PersonRepository;
 import net.officefloor.hq.app.role.RoleService;
@@ -30,9 +33,12 @@ public class PlanService {
     private final Audit audit;
     private final RoleService roles;
     private final SheetRepository sheetStore;
+    private final ClaimRepository claimStore;
 
     public PlanService(PlanRepository plans, PersonRepository people, ClaimService claims, SheetService sheets,
-            PlatformTransactionManager transactions, Audit audit, RoleService roles, SheetRepository sheetStore) {
+            PlatformTransactionManager transactions, Audit audit, RoleService roles, SheetRepository sheetStore,
+            ClaimRepository claimStore) {
+        this.claimStore = claimStore;
         this.sheetStore = sheetStore;
         this.plans = plans;
         this.people = people;
@@ -111,20 +117,34 @@ public class PlanService {
         return saved;
     }
 
-    /** Change the plan's amount from the sheet's today: the claims it makes from then on take it,
-     *  those it has made keep theirs. Refused for an amount that is not above zero. */
-    @Transactional
+    /** Change the plan's amount from the sheet's today: the claims it makes from then on take it, and
+     *  so do those it has made that are still drafts, oldest first, each edited as the claim form's
+     *  amount entry edits it in a transaction of its own after the change (a draft the form refuses
+     *  to edit keeps its amount); those in any other status keep theirs. Refused for an amount that
+     *  is not above zero. */
     public Plan changeAmount(String sheetId, String user, long planId, BigDecimal amount) {
-        Plan plan = plans.findById(planId).filter(p -> p.getSheetId().equals(sheetId))
-                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "No such plan on this sheet"));
-        if (amount.signum() <= 0) {
-            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "A plan's amount must be above zero");
+        Plan saved = transaction.execute(status -> {
+            Plan plan = plans.findById(planId).filter(p -> p.getSheetId().equals(sheetId))
+                    .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "No such plan on this sheet"));
+            if (amount.signum() <= 0) {
+                throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "A plan's amount must be above zero");
+            }
+            Person person = people.findByIdAndSheetId(plan.getPersonId(), sheetId).orElseThrow();
+            plan.changeAmount(sheets.today(sheetId), amount);
+            Plan changed = plans.saveAndFlush(plan);
+            audit.recordOnCommit("PLAN_CHANGED sheet=" + sheetId + " by=" + user + " name=" + person.getName()
+                    + " start=" + plan.getStartDate() + " amount=" + amount.setScale(2).toPlainString());
+            return changed;
+        });
+        for (Long claimId : saved.getClaimIds()) {
+            try {
+                transaction.executeWithoutResult(status -> claimStore.findById(claimId)
+                        .filter(c -> c.getStatus() == ClaimStatus.DRAFT)
+                        .ifPresent(c -> claims.editAmount(c.getSheetId(), user, c.getId(), amount)));
+            } catch (ResponseStatusException refused) {
+                // the claim form refused the edit: the draft keeps its amount
+            }
         }
-        Person person = people.findByIdAndSheetId(plan.getPersonId(), sheetId).orElseThrow();
-        plan.changeAmount(sheets.today(sheetId), amount);
-        Plan saved = plans.saveAndFlush(plan);
-        audit.recordOnCommit("PLAN_CHANGED sheet=" + sheetId + " by=" + user + " name=" + person.getName()
-                + " start=" + plan.getStartDate() + " amount=" + amount.setScale(2).toPlainString());
         return saved;
     }
 
@@ -157,8 +177,8 @@ public class PlanService {
                         if (!locked.dueUpTo(date).contains(date)) {
                             return;
                         }
-                        claims.add(target, user, targetPerson, locked.getAmount(), date, "");
-                        locked.markMade(date);
+                        Claim claim = claims.add(target, user, targetPerson, locked.getAmount(), date, "");
+                        locked.markMade(date, claim.getId());
                         plans.saveAndFlush(locked);
                     });
                     made++;

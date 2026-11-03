@@ -1827,9 +1827,18 @@ export class PeopleList {
     this.plans.update((xs) => [...xs.filter((x) => x.id !== plan.id), plan]);
   }
 
-  /** Show a plan just paused or resumed in its place. */
-  protected planChanged(plan: Plan): void {
+  /** Show a plan just paused, resumed or changed in its place, and read the sheet's claims again
+   *  (a change of its amount reaches the drafts it made). */
+  protected async planChanged(plan: Plan): Promise<void> {
     this.plans.update((xs) => xs.map((x) => (x.id === plan.id ? plan : x)));
+    const sheetId = this.session.sheetId();
+    if (!sheetId) return;
+    try {
+      const claims = await this.claimsApi.list(sheetId);
+      if (this.session.sheetId() === sheetId) this.claims.set(claims);
+    } catch {
+      // the claims show again on the next load
+    }
   }
 
   /** Read the sheet's claims and plans again once a generate has made claims. */
