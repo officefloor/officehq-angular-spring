@@ -1,0 +1,74 @@
+{
+  "checkpoint": 136,
+  "stack": {
+    "repo": "/home/daniel/officehq-angular-spring",
+    "origin": "git@github.com:officefloor/officehq-angular-spring.git",
+    "name": "officehq-angular-spring",
+    "base_ref": "base-empty",
+    "base_commit": "65cb8233ea38b2dfa6cfd18709e30cd18fdf3250"
+  },
+  "checkpoint_id": "cp136_bindings-follow",
+  "phase": "mid",
+  "type": "mutative",
+  "mutates": [
+    107,
+    108,
+    111,
+    128
+  ],
+  "replaced_tests": [
+    "cp107_merge-people.spec.ts::merge people",
+    "cp108_patron-shares.spec.ts::patron shares scenario 1",
+    "cp111_transfer-person.spec.ts::transfer person",
+    "cp128_transfer-merges.spec.ts::transfer merges"
+  ],
+  "request": {
+    "spec": "Claims that move with a merge or a transfer now keep the figure a statement bound them to, and\nthe receiving person's statement count becomes their own plus the other's; the receiving person's\nlast statement stays theirs (or, having none, becomes the other's).\n",
+    "prompt": "You are implementing ONE change to this application.\n\nFIRST read AGENTS.md \u2014 it states the working rules and how the app is tested, and sends you to\nDESIGN.md for the app's stack and conventions. Follow both.\n\nTHE CHANGE REQUEST:\nClaims that move with a merge or a transfer now keep the figure a statement bound them to, and\nthe receiving person's statement count becomes their own plus the other's; the receiving person's\nlast statement stays theirs (or, having none, becomes the other's).\n\nYour work is verified by an automated Playwright UI test already installed under e2e/specs/.\nRead that spec: it declares the exact data-testid anchors, values, test data and any audit\nrecords it expects \u2014 match them. Run `bin/e2e` to build the app, start it, and run the test as\nyou work; iterate until it passes. Change whatever the request needs across the app \u2014 its stored\ndata, its server and its front end. Do NOT edit bin/build, bin/start, bin/stop, bin/e2e,\nAGENTS.md, CLAUDE.md, DESIGN.md, e2e/support/ or the test spec.\n"
+  },
+  "commit_sha": "8dcb06758414ac761b84defcf5aeb5417df0a2ae",
+  "reset_sha": "",
+  "preagent_sha": "09ec2916e13caacf75fab4fe35864390bdea8794",
+  "prev_sha": "09ec2916e13caacf75fab4fe35864390bdea8794",
+  "base_sha": "65cb8233ea38b2dfa6cfd18709e30cd18fdf3250",
+  "agent": {
+    "ok": true,
+    "cost_usd": 0.6603401999999999,
+    "input_tokens": 26,
+    "output_tokens": 7669,
+    "cache_read_tokens": 549481,
+    "cache_creation_tokens": 49620,
+    "num_turns": 15,
+    "duration_ms": 259675,
+    "duration_api_ms": 74290,
+    "model": "claude-opus-5-5",
+    "session_id": "6cd976bd-4da9-4a0f-9151-5e3ebfcc629f",
+    "stop_reason": "success",
+    "result_text": "Merged and transferred claims now keep the figure their statement bound them to, and the person receiving them gets the other person's statements too. `bin/e2e` passes all 4 tests: the main \"bindings follow\" test and the 3 existing scenarios.\n\n**What changed (all on the server; the front end didn't need any changes):**\n- **Claims:**\n  - **Merge:** moved claims now go through a new `Claim.mergedTo` that keeps the binding. The existing `moveTo` still drops it, because moving a single claim to another person should still lose its figure.\n  - **Transfer:** the copied claim gets the original's binding set back on it before it is saved. Cloning a sheet still carries no bindings, as before.\n- **Statements:** they used to be deleted on a merge or transfer. Now they are copied to the receiving person and marked as carried, using a new `carried` column added by migration `V80__statement_carried.sql`.\n  - The statement count includes the carried ones.\n  - The last statement is the receiving person's own last one, or, if they have none, the last carried one. This rule lives in `StatementSummary.last`.\n  - Cancelling the last statement uses the same rule, so it cancels whichever statement is shown as last.\n\n**One choice you may want to check:** when a transferred person matches nobody on the other sheet, they arrive as a new person and bring their statements and bound figures with them. Before, they arrived with no statements. I read \"the receiving person\" as covering this case too, but the test only checks a transfer that merges into an existing person.\n\nThe comments on the merge, transfer and statement-cancel methods have been updated to describe the new behaviour.",
+    "error": "",
+    "attempts": [
+      {
+        "ok": true,
+        "limit_reached": false,
+        "retryable": false,
+        "timed_out": false,
+        "cost_usd": 0.6603401999999999,
+        "num_turns": 15,
+        "duration_ms": 259675,
+        "duration_api_ms": 74290,
+        "error": ""
+      }
+    ]
+  },
+  "agent_stream_file": "cp136.agent.jsonl",
+  "agent_diff_file": "cp136.agent.diff",
+  "build_log_file": null,
+  "tests": {
+    "gated": false,
+    "queued": true
+  },
+  "probe": null,
+  "pinned_touched": [],
+  "acceptance_touched": [],
+  "impact_gate": null
+}

@@ -1,0 +1,211 @@
+diff --git a/src/main/java/net/officefloor/hq/app/claim/Claim.java b/src/main/java/net/officefloor/hq/app/claim/Claim.java
+index 2d8d362b6..18e860a40 100644
+--- a/src/main/java/net/officefloor/hq/app/claim/Claim.java
++++ b/src/main/java/net/officefloor/hq/app/claim/Claim.java
+@@ -226,6 +226,13 @@ public class Claim {
+         bind(false, null);
+     }
+ 
++    /** Move the claim to the person its person is merged into, listed at the place given (after every
++     *  claim listed so far). It keeps its date, status and any figure a statement bound it to. */
++    public void mergedTo(Long personId, long listed) {
++        this.personId = personId;
++        this.listed = listed;
++    }
++
+     /** A copy of this claim for a person on another sheet (it was transferred there): its status,
+      *  dates, note, tags, frozen figures, status log and comments kept, its numbers (its own, the
+      *  one it corrects and the one it was split off) renumbered as given (null: none), and no
+diff --git a/src/main/java/net/officefloor/hq/app/person/PersonMergeService.java b/src/main/java/net/officefloor/hq/app/person/PersonMergeService.java
+index 3b45c7c75..30effec77 100644
+--- a/src/main/java/net/officefloor/hq/app/person/PersonMergeService.java
++++ b/src/main/java/net/officefloor/hq/app/person/PersonMergeService.java
+@@ -17,6 +17,7 @@ import net.officefloor.hq.app.pool.PoolRepository;
+ import net.officefloor.hq.app.role.RoleService;
+ import net.officefloor.hq.app.role.SheetRole;
+ import net.officefloor.hq.app.rollup.Rollup;
++import net.officefloor.hq.app.statement.Statement;
+ import net.officefloor.hq.app.statement.StatementRepository;
+ import net.officefloor.hq.app.watch.WatchRepository;
+ import org.springframework.http.HttpStatus;
+@@ -61,11 +62,13 @@ public class PersonMergeService {
+ 
+     /** Merge a person into another and return the other as they now stand. The merged person's
+      *  claims move to the other (numbers, dates and statuses kept, listed after the other's in the
+-     *  order they were added, each losing any figure a statement bound); their name and aliases
++     *  order they were added, each keeping any figure a statement bound); their name and aliases
+      *  become aliases of the other; their patrons are added to the other's (not the other
+      *  themselves, no repeats), anyone naming them as patron names the other instead (no repeats);
+      *  their plans and pool memberships move to the other (shares added where the other is already a member)
+-     *  and their fixed due-totals of closed periods fold into the other's. Their statements, holds,
++     *  and their fixed due-totals of closed periods fold into the other's; their statements are carried
++     *  to the other (who counts both, their last statement staying their own or, having none, becoming
++     *  the merged person's last). Their holds,
+      *  watchers and contact are dropped, and they leave the sheet. Refused unless the user is a
+      *  steward, and for the same person, or when either of them is retired. */
+     @Transactional
+@@ -93,7 +96,7 @@ public class PersonMergeService {
+             plans.flush();
+             periods.findBySheetIdOrderByFromDateAsc(sheetId)
+                     .forEach(period -> period.mergePersonTotal(from.getId(), into.getId()));
+-            statements.deleteAll(statements.findBySheetIdAndPersonIdOrderByIdAsc(sheetId, from.getId()));
++            carryStatements(sheetId, from, into);
+             watches.deleteAll(watches.findByPersonIdOrderByIdAsc(from.getId()));
+             people.flush();
+             Set<String> names = new HashSet<>(from.getAliases());
+@@ -105,10 +108,17 @@ public class PersonMergeService {
+         });
+     }
+ 
++    private void carryStatements(String sheetId, Person from, Person into) {
++        List<Statement> theirs = statements.findBySheetIdAndPersonIdOrderByIdAsc(sheetId, from.getId());
++        statements.saveAllAndFlush(theirs.stream().map(s -> s.carriedTo(sheetId, into.getId())).toList());
++        statements.deleteAll(theirs);
++        statements.flush();
++    }
++
+     private void moveClaims(String sheetId, Person from, Person into) {
+         claims.findBySheetIdAndPersonIdOrderByListedDesc(sheetId, from.getId()).stream()
+                 .sorted(Comparator.comparing(Claim::getId))
+-                .forEach(claim -> claim.moveTo(into.getId(), claims.nextListed()));
++                .forEach(claim -> claim.mergedTo(into.getId(), claims.nextListed()));
+         claims.flush();
+     }
+ 
+diff --git a/src/main/java/net/officefloor/hq/app/person/PersonTransferService.java b/src/main/java/net/officefloor/hq/app/person/PersonTransferService.java
+index 53e6c58b3..72c1a27d8 100644
+--- a/src/main/java/net/officefloor/hq/app/person/PersonTransferService.java
++++ b/src/main/java/net/officefloor/hq/app/person/PersonTransferService.java
+@@ -71,7 +71,9 @@ public class PersonTransferService {
+      *  contact and aliases, and their claims (status, dates, notes, tags, frozen figures and logs
+      *  kept): each claim that had a number takes the other sheet's next one, in the order the claims
+      *  were opened (by the sheet's today then, then by the order they were added); figures a
+-     *  statement bound and references are not carried, and they have no statements there. They
++     *  statement bound are kept, references are not carried, and their statements are carried there
++     *  (counted with those of the person they arrive as, whose last statement stays their own or,
++     *  having none, becomes the transferred person's last). They
+      *  leave this sheet entirely (patron links, pool memberships, plans, watches and statements dropped).
+      *  A sheet never loaded is started empty, as loading it would. When their name or an alias is
+      *  already the name or an alias of someone on the other sheet (compared as names are), they
+@@ -132,12 +134,16 @@ public class PersonTransferService {
+                 claimService.keepTags(toSheetId, arrived.getTags());
+                 Map<String, String> numbers = renumber(toSheetId, theirs);
+                 for (Claim claim : theirs) {
+-                    Claim copy = claims.saveAndFlush(claim.transferredTo(toSheetId, arrived.getId(), numbers::get));
++                    Claim moved = claim.transferredTo(toSheetId, arrived.getId(), numbers::get);
++                    moved.bind(claim.isStated(), claim.getStatedDue(), claim.isStatedNa());
++                    Claim copy = claims.saveAndFlush(moved);
+                     claimService.keepTags(toSheetId, copy.getTags());
+                 }
++                statements.saveAllAndFlush(statements.findBySheetIdAndPersonIdOrderByIdAsc(sheetId, from.getId())
++                        .stream().map(s -> s.carriedTo(toSheetId, arrived.getId())).toList());
+                 if (into != null) {
+-                    // Merged as a merge would: their claims after the other's (no figure a statement
+-                    // bound), their name and aliases joining the other's aliases.
++                    // Merged as a merge would: their claims after the other's (keeping any figure a
++                    // statement bound), their name and aliases joining the other's aliases.
+                     Stream.concat(Stream.of(from.getName()), from.getAliases().stream())
+                             .filter(n -> !n.equalsIgnoreCase(into.getName()))
+                             .forEach(into::addAlias);
+diff --git a/src/main/java/net/officefloor/hq/app/statement/Statement.java b/src/main/java/net/officefloor/hq/app/statement/Statement.java
+index cca9f28df..3eacee4b3 100644
+--- a/src/main/java/net/officefloor/hq/app/statement/Statement.java
++++ b/src/main/java/net/officefloor/hq/app/statement/Statement.java
+@@ -47,6 +47,10 @@ public class Statement {
+     @Column(name = "cancelled_on")
+     private LocalDate cancelledOn;
+ 
++    /** Whether the statement came to its person with a merge or a transfer (it was another person's). */
++    @Column(name = "carried", nullable = false)
++    private boolean carried;
++
+     protected Statement() {
+     }
+ 
+@@ -61,6 +65,19 @@ public class Statement {
+         this.asOf = asOf;
+     }
+ 
++    /** A copy of this statement carried to a person (on this sheet or another) with a merge or a
++     *  transfer: taken, cancelled and as of the same days, by the same user, to the same figures. */
++    public Statement carriedTo(String toSheetId, Long toPersonId) {
++        Statement copy = new Statement(toSheetId, toPersonId, takenOn, takenBy, dueTotal, claims, asOf);
++        copy.cancelledOn = cancelledOn;
++        copy.carried = true;
++        return copy;
++    }
++
++    public boolean isCarried() {
++        return carried;
++    }
++
+     public Long getId() {
+         return id;
+     }
+diff --git a/src/main/java/net/officefloor/hq/app/statement/StatementService.java b/src/main/java/net/officefloor/hq/app/statement/StatementService.java
+index 8941e8903..17caee7b9 100644
+--- a/src/main/java/net/officefloor/hq/app/statement/StatementService.java
++++ b/src/main/java/net/officefloor/hq/app/statement/StatementService.java
+@@ -134,7 +134,8 @@ public class StatementService {
+     /** Cancel a person's last statement: only a steward may, and only when one was taken. The claims
+      *  it bound become live again (a figure an earlier statement bound is not restored), and the
+      *  statement before it, if any, becomes their last. The cancelled statement is kept, marked with
+-     *  the sheet's today, so the sheet as of an earlier day still shows it. */
++     *  the sheet's today, so the sheet as of an earlier day still shows it. Their last is their own
++     *  last statement, or, having none, the last one carried to them by a merge or a transfer. */
+     @Transactional
+     public Taken cancelLast(String sheetId, String user, long personId) {
+         if (!SheetRole.STEWARD.equals(roles.roleOf(sheetId, user))) {
+@@ -146,7 +147,7 @@ public class StatementService {
+         if (taken.isEmpty()) {
+             throw new ResponseStatusException(HttpStatus.CONFLICT, "No statement has been taken of this person");
+         }
+-        Statement last = taken.get(taken.size() - 1);
++        Statement last = StatementSummary.last(taken);
+         List<Claim> unbound = rollup.tracking(sheetId, user, () -> {
+             List<Claim> theirs = claims.findBySheetIdAndPersonIdOrderByListedDesc(sheetId, personId);
+             theirs.forEach(claim -> claim.bind(false, null));
+diff --git a/src/main/java/net/officefloor/hq/app/statement/StatementSummary.java b/src/main/java/net/officefloor/hq/app/statement/StatementSummary.java
+index eddb67fab..5002f27d6 100644
+--- a/src/main/java/net/officefloor/hq/app/statement/StatementSummary.java
++++ b/src/main/java/net/officefloor/hq/app/statement/StatementSummary.java
+@@ -4,7 +4,8 @@ import java.math.BigDecimal;
+ import java.time.LocalDate;
+ import java.util.List;
+ 
+-/** What a person's statements come to: how many were taken, and the last one's due-total (null when
++/** What a person's statements come to: how many were taken (those carried to them with a merge or a
++ *  transfer too), and the last one's due-total (null when
+  *  it was n/a) and date (the day it was taken as of); both null when none was taken. */
+ public record StatementSummary(int count, BigDecimal lastDueTotal, LocalDate lastTakenOn) {
+ 
+@@ -15,7 +16,19 @@ public record StatementSummary(int count, BigDecimal lastDueTotal, LocalDate las
+         if (statements.isEmpty()) {
+             return NONE;
+         }
+-        Statement last = statements.get(statements.size() - 1);
++        Statement last = last(statements);
+         return new StatementSummary(statements.size(), last.getDueTotal(), last.getStatedOn());
+     }
++
++    /** A person's last statement, of theirs given in the order they were taken: the last of their
++     *  own, or, having none, the last one carried to them; null when there are none. */
++    public static Statement last(List<Statement> statements) {
++        Statement last = null;
++        for (Statement s : statements) {
++            if (last == null || !s.isCarried() || last.isCarried()) {
++                last = s;
++            }
++        }
++        return last;
++    }
+ }
+diff --git a/src/main/resources/db/migration/V80__statement_carried.sql b/src/main/resources/db/migration/V80__statement_carried.sql
+new file mode 100644
+index 000000000..2fabdfefb
+--- /dev/null
++++ b/src/main/resources/db/migration/V80__statement_carried.sql
+@@ -0,0 +1,3 @@
++-- Whether a statement came to its person with a merge or a transfer (it was another person's). A
++-- person's last statement is their own last one, or, having none, the last one carried to them.
++ALTER TABLE statement ADD COLUMN carried BOOLEAN NOT NULL DEFAULT FALSE;
