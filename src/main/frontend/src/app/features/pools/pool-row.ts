@@ -10,7 +10,8 @@ import { FigurePipe } from '../../core/figure';
 // pool is balanced and has a pot: the sheet's, or its cut in the pool above when it is a member of
 // one), and the entry a member is added with. A retired member's share counts in the total but
 // they get no cut, their share spread over the others (no cuts when every member is); a member
-// whose dates do not include the sheet's today is left out of the total and has no cut.
+// whose dates do not include the sheet's today is left out of the total and has no cut. Each member
+// also shows their cut as it stood at the end of every period that has ended by the sheet's today.
 @Component({
   selector: 'app-pool-row',
   imports: [ReactiveFormsModule, FigurePipe],
@@ -29,6 +30,9 @@ import { FigurePipe } from '../../core/figure';
           @if (isRetired(m)) { (retired) }
           @if (m.from || m.to) { ({{ m.from ?? '' }} to {{ m.to ?? '' }}) }
           @if (!m.inForce) { (not in force) }
+          @for (pc of periodCuts(m); track pc.period) {
+            , {{ pc.period }} cut <span [attr.data-testid]="'pool-cut-' + pc.period">{{ pc.cut ?? '' | figure }}</span>
+          }
         </li>
       }
     </ul>
@@ -93,6 +97,11 @@ export class PoolRow {
   /** The member's key in its data-testid: the person's id, or pool-<name> for a pool. */
   protected memberKey(m: PoolMember): string {
     return m.personId === null ? `pool-${m.name}` : String(m.personId);
+  }
+
+  /** The member's cuts at the ends of the periods that have ended, earliest period first. */
+  protected periodCuts(m: PoolMember): { period: string; cut: string | null }[] {
+    return Object.entries(m.periodCuts ?? {}).map(([period, cut]) => ({ period, cut }));
   }
 
   protected nameOf(m: PoolMember): string {

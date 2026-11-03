@@ -6,6 +6,8 @@ import jakarta.validation.constraints.Size;
 import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.util.List;
+import java.util.Map;
+import java.util.LinkedHashMap;
 import java.util.stream.IntStream;
 import net.officefloor.hq.app.sheet.AsOfGuard;
 import org.springframework.format.annotation.DateTimeFormat;
@@ -29,16 +31,18 @@ public class PoolController {
     /** A member as the screen shows them: the person (null for a pool member) or the pool (null for
      *  a person) and its name, their share, whether they are retired, their cut of the pot as text
      *  with two decimals (null when the pool shows no cut, or the member is out of force), the days
-     *  the membership runs (null: open-ended) and whether they include the sheet's today. */
+     *  the membership runs (null: open-ended), whether they include the sheet's today, and their cut
+     *  as it stood at the end of each period whose to-date is on or before the sheet's today, by the
+     *  period's name, earliest period first (null for a period with none then). */
     public record MemberView(Long personId, Long poolId, String name, String share, boolean retired, String cut,
-            LocalDate from, LocalDate to, boolean inForce) {
-        static MemberView of(PoolService.Member m, BigDecimal cut) {
+            LocalDate from, LocalDate to, boolean inForce, Map<String, String> periodCuts) {
+        static MemberView of(PoolService.Member m, BigDecimal cut, Map<String, String> periodCuts) {
             return new MemberView(m.person() == null ? null : m.person().getId(),
                     m.pool() == null ? null : m.pool().getId(),
                     m.person() != null ? m.person().getName() : m.pool().getName(),
                     m.member().getShare().toPlainString(), m.retired(),
                     cut == null ? null : cut.toPlainString(),
-                    m.member().getFromDate(), m.member().getToDate(), m.inForce());
+                    m.member().getFromDate(), m.member().getToDate(), m.inForce(), periodCuts);
         }
     }
 
@@ -46,14 +50,28 @@ public class PoolController {
      *  whether it is a crew's (its members then being the crew's people). */
     public record PoolView(long id, String name, List<MemberView> members, String totalShare, boolean balanced,
             boolean crew) {
-        static PoolView of(PoolService.Listed l) {
+        static PoolView of(PoolService.Listed l, Map<String, Map<Long, Map<String, BigDecimal>>> history) {
             List<BigDecimal> cuts = l.cuts();
             return new PoolView(l.pool().getId(), l.pool().getName(),
                     IntStream.range(0, l.members().size())
-                            .mapToObj(i -> MemberView.of(l.members().get(i), cuts.isEmpty() ? null : cuts.get(i)))
+                            .mapToObj(i -> MemberView.of(l.members().get(i), cuts.isEmpty() ? null : cuts.get(i),
+                                    periodCuts(history, l.pool().getId(),
+                                            PoolService.memberKey(l.members().get(i).member()))))
                             .toList(),
                     l.totalShare().toPlainString(), l.balanced(), l.pool().isCrew());
         }
+    }
+
+    /** A member's cuts at the ends of the periods, by the period's name in the periods' order (null:
+     *  none then). */
+    private static Map<String, String> periodCuts(Map<String, Map<Long, Map<String, BigDecimal>>> history,
+            Long poolId, String memberKey) {
+        Map<String, String> out = new LinkedHashMap<>();
+        history.forEach((period, byPool) -> {
+            BigDecimal cut = byPool.getOrDefault(poolId, Map.of()).get(memberKey);
+            out.put(period, cut == null ? null : cut.toPlainString());
+        });
+        return out;
     }
 
     /** The pool form: the required name (trimmed). */
@@ -76,7 +94,8 @@ public class PoolController {
     public List<PoolView> list(@PathVariable @NotBlank @Size(max = 100) String sheetId,
             @RequestHeader(value = AsOfGuard.HEADER, required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE)
             LocalDate asOf) {
-        return service.list(sheetId.trim(), asOf).stream().map(PoolView::of).toList();
+        var history = service.cutHistory(sheetId.trim(), asOf);
+        return service.list(sheetId.trim(), asOf).stream().map(l -> PoolView.of(l, history)).toList();
     }
 
     @PostMapping
@@ -84,7 +103,8 @@ public class PoolController {
     public PoolView add(@PathVariable @NotBlank @Size(max = 100) String sheetId,
             @RequestHeader("X-User") @NotBlank @Size(max = 100) String user,
             @Valid @RequestBody PoolForm form) {
-        return PoolView.of(service.add(sheetId.trim(), user.trim(), form.name()));
+        PoolService.Listed added = service.add(sheetId.trim(), user.trim(), form.name());
+        return PoolView.of(added, service.cutHistory(sheetId.trim(), null));
     }
 
     @PostMapping("/{poolId}/members")
@@ -95,8 +115,9 @@ public class PoolController {
         if ((form.personId() == null) == (form.poolId() == null)) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Choose a person or a pool");
         }
-        return PoolView.of(form.personId() != null
+        PoolService.Listed listed = form.personId() != null
                 ? service.addMember(sheetId.trim(), user.trim(), poolId, form.personId(), form.share(), form.from(), form.to())
-                : service.addPoolMember(sheetId.trim(), user.trim(), poolId, form.poolId(), form.share(), form.from(), form.to()));
+                : service.addPoolMember(sheetId.trim(), user.trim(), poolId, form.poolId(), form.share(), form.from(), form.to());
+        return PoolView.of(listed, service.cutHistory(sheetId.trim(), null));
     }
 }

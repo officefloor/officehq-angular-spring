@@ -40,6 +40,10 @@ public class PoolMember {
     @Column(name = "to_date")
     private LocalDate toDate;
 
+    /** The sheet's today when it was added; null: before this was kept (always there). */
+    @Column(name = "added_on")
+    private LocalDate addedOn;
+
     protected PoolMember() {
     }
 
@@ -103,5 +107,19 @@ public class PoolMember {
     /** Add a share to the member's own (a person merged into them was a member too). */
     public void addShare(BigDecimal more) {
         this.share = share.add(more);
+    }
+
+    public LocalDate getAddedOn() {
+        return addedOn;
+    }
+
+    /** Stamp the day it was added (the sheet's today then). */
+    public void setAddedOn(LocalDate addedOn) {
+        this.addedOn = addedOn;
+    }
+
+    /** Whether it was there at the end of a day. */
+    public boolean isAddedBy(LocalDate day) {
+        return addedOn == null || !addedOn.isAfter(day);
     }
 }

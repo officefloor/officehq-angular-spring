@@ -77,7 +77,9 @@ public class CrewService {
         Crew saved;
         try {
             saved = crews.saveAndFlush(new Crew(sheetId, text, lead.getId()));
-            pools.saveAndFlush(Pool.ofCrew(sheetId, text, saved.getId()));
+            Pool pool = Pool.ofCrew(sheetId, text, saved.getId());
+            pool.setAddedOn(sheets.today(sheetId));
+            pools.saveAndFlush(pool);
         } catch (DataIntegrityViolationException e) {
             throw alreadyACrew();
         }
@@ -100,7 +102,9 @@ public class CrewService {
             throw alreadyAMember();
         }
         try {
-            members.saveAndFlush(new CrewMember(crewId, personId));
+            CrewMember m = new CrewMember(crewId, personId);
+            m.setAddedOn(sheets.today(sheetId));
+            members.saveAndFlush(m);
         } catch (DataIntegrityViolationException e) {
             throw alreadyAMember();
         }

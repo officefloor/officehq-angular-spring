@@ -6,6 +6,7 @@ import jakarta.persistence.GeneratedValue;
 import jakarta.persistence.GenerationType;
 import jakarta.persistence.Id;
 import jakarta.persistence.Table;
+import java.time.LocalDate;
 
 /** A pool on a sheet: a (trimmed) name, unique on the sheet, that people are members of. A crew's
  *  pool carries its crew: its members are then the crew's people, not stored ones. */
@@ -26,6 +27,10 @@ public class Pool {
     /** The crew the pool is; null for a pool added as one. */
     @Column(name = "crew_id")
     private Long crewId;
+
+    /** The sheet's today when it was added; null: before this was kept (always there). */
+    @Column(name = "added_on")
+    private LocalDate addedOn;
 
     protected Pool() {
     }
@@ -61,5 +66,19 @@ public class Pool {
     /** Whether the pool is a crew's. */
     public boolean isCrew() {
         return crewId != null;
+    }
+
+    public LocalDate getAddedOn() {
+        return addedOn;
+    }
+
+    /** Stamp the day it was added (the sheet's today then). */
+    public void setAddedOn(LocalDate addedOn) {
+        this.addedOn = addedOn;
+    }
+
+    /** Whether it was there at the end of a day. */
+    public boolean isAddedBy(LocalDate day) {
+        return addedOn == null || !addedOn.isAfter(day);
     }
 }

@@ -6,6 +6,7 @@ import jakarta.persistence.GeneratedValue;
 import jakarta.persistence.GenerationType;
 import jakarta.persistence.Id;
 import jakarta.persistence.Table;
+import java.time.LocalDate;
 
 /** A person's membership of a crew (other than as its lead). */
 @Entity
@@ -21,6 +22,10 @@ public class CrewMember {
 
     @Column(name = "person_id", nullable = false)
     private Long personId;
+
+    /** The sheet's today when it was added; null: before this was kept (always there). */
+    @Column(name = "added_on")
+    private LocalDate addedOn;
 
     protected CrewMember() {
     }
@@ -40,5 +45,19 @@ public class CrewMember {
 
     public Long getPersonId() {
         return personId;
+    }
+
+    public LocalDate getAddedOn() {
+        return addedOn;
+    }
+
+    /** Stamp the day it was added (the sheet's today then). */
+    public void setAddedOn(LocalDate addedOn) {
+        this.addedOn = addedOn;
+    }
+
+    /** Whether it was there at the end of a day. */
+    public boolean isAddedBy(LocalDate day) {
+        return addedOn == null || !addedOn.isAfter(day);
     }
 }

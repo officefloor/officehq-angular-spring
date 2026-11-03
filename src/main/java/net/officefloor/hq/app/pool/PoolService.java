@@ -5,6 +5,7 @@ import java.math.RoundingMode;
 import java.time.LocalDate;
 import java.util.ArrayList;
 import java.util.HashMap;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.function.Function;
@@ -16,6 +17,8 @@ import net.officefloor.hq.app.crew.CrewMember;
 import net.officefloor.hq.app.crew.CrewMemberRepository;
 import net.officefloor.hq.app.crew.CrewRepository;
 import net.officefloor.hq.app.history.History;
+import net.officefloor.hq.app.period.Period;
+import net.officefloor.hq.app.period.PeriodRepository;
 import net.officefloor.hq.app.person.Person;
 import net.officefloor.hq.app.person.PersonRepository;
 import net.officefloor.hq.app.sheet.SheetService;
@@ -126,12 +129,14 @@ public class PoolService {
     private final CrewMemberRepository crewMembers;
     private final SheetService sheets;
     private final History history;
+    private final PeriodRepository periods;
     private final Audit audit;
 
     public PoolService(PoolRepository pools, PoolMemberRepository members, PersonRepository people,
             CrewRepository crews, CrewMemberRepository crewMembers, SheetService sheets, History history,
-            Audit audit) {
+            PeriodRepository periods, Audit audit) {
         this.history = history;
+        this.periods = periods;
         this.crews = crews;
         this.crewMembers = crewMembers;
         this.pools = pools;
@@ -148,21 +153,27 @@ public class PoolService {
         return list(sheetId, null);
     }
 
-    /** The pools as {@link #list(String)} has them, with holds and memberships' dates taken on a day
-     *  (null: the sheet's today) and the sheet's pot as it stood at its end: the sheet as of that day. */
+    /** The pools as {@link #list(String)} has them, as they stood at the end of a day (null: the
+     *  sheet's today, as they are now): only the pools, memberships and crew memberships added by
+     *  then, the people as they were then (their holds and retirements), holds and memberships' dates
+     *  taken on that day and the sheet's pot as it stood at its end: the sheet as of that day. */
     @Transactional(readOnly = true)
     public List<Listed> list(String sheetId, LocalDate asOf) {
-        List<Pool> stored = pools.findBySheetIdOrderByIdAsc(sheetId);
+        List<Pool> stored = pools.findBySheetIdOrderByIdAsc(sheetId).stream()
+                .filter(p -> asOf == null || p.isAddedBy(asOf)).toList();
         List<Pool> all = new ArrayList<>(stored.stream().filter(p -> !p.isCrew()).toList());
         all.addAll(stored.stream().filter(Pool::isCrew).toList());
         Map<Long, Pool> poolsById = all.stream().collect(Collectors.toMap(Pool::getId, Function.identity()));
-        Map<Long, Person> byId = people.findBySheetIdOrderByPositionAscIdAsc(sheetId).stream()
-                .collect(Collectors.toMap(Person::getId, Function.identity()));
-        List<PoolMember> memberships = members.findByPoolIdInOrderByIdAsc(poolsById.keySet());
+        History.SheetAsOf then = asOf == null ? null : history.asOf(sheetId, asOf);
+        Map<Long, Person> byId = then != null ? then.people()
+                : people.findBySheetIdOrderByPositionAscIdAsc(sheetId).stream()
+                        .collect(Collectors.toMap(Person::getId, Function.identity()));
+        List<PoolMember> memberships = members.findByPoolIdInOrderByIdAsc(poolsById.keySet()).stream()
+                .filter(m -> asOf == null || m.isAddedBy(asOf)).toList();
         Map<Long, List<PoolMember>> byPool = memberships.stream().collect(Collectors.groupingBy(PoolMember::getPoolId));
         LocalDate today = asOf != null ? asOf : sheets.today(sheetId);
         Map<Long, List<Member>> membersOf = new HashMap<>();
-        Map<Long, List<PoolMember>> crewsOf = crewMemberships(sheetId, all, byId);
+        Map<Long, List<PoolMember>> crewsOf = crewMemberships(sheetId, all, byId, asOf);
         for (Pool p : all) {
             if (p.isCrew()) {
                 membersOf.put(p.getId(), crewsOf.getOrDefault(p.getId(), List.of()).stream()
@@ -182,16 +193,50 @@ public class PoolService {
         }
         Map<Long, Long> above = memberships.stream().filter(m -> m.getMemberPoolId() != null)
                 .collect(Collectors.toMap(PoolMember::getMemberPoolId, PoolMember::getPoolId, (a, b) -> a));
-        BigDecimal sheetPot = asOf != null ? history.asOf(sheetId, asOf).pot() : sheets.pot(sheetId);
+        BigDecimal sheetPot = then != null ? then.pot() : sheets.pot(sheetId);
         Map<Long, Listed> listed = new HashMap<>();
         return all.stream().map(p -> listed(p.getId(), poolsById, membersOf, above, sheetPot, listed, 0)).toList();
+    }
+
+    /** Each member's cut as it stood at the end of each period whose to-date is on or before a day
+     *  (null: the sheet's today): by the period's name, earliest period first, then by the pool's id, the member's key
+     *  ({@link #memberKey}) and their cut then; a member with no cut then has no entry. */
+    @Transactional(readOnly = true)
+    public Map<String, Map<Long, Map<String, BigDecimal>>> cutHistory(String sheetId, LocalDate asOf) {
+        LocalDate today = asOf != null ? asOf : sheets.today(sheetId);
+        Map<String, Map<Long, Map<String, BigDecimal>>> out = new LinkedHashMap<>();
+        for (Period period : periods.findBySheetIdOrderByFromDateAsc(sheetId)) {
+            if (period.getToDate() == null || period.getToDate().isAfter(today)) {
+                continue;
+            }
+            Map<Long, Map<String, BigDecimal>> byPool = new HashMap<>();
+            for (Listed l : list(sheetId, period.getToDate())) {
+                List<BigDecimal> cuts = l.cuts();
+                Map<String, BigDecimal> byMember = new HashMap<>();
+                for (int i = 0; i < cuts.size(); i++) {
+                    if (cuts.get(i) != null) {
+                        byMember.put(memberKey(l.members().get(i).member()), cuts.get(i));
+                    }
+                }
+                byPool.put(l.pool().getId(), byMember);
+            }
+            out.put(period.getName(), byPool);
+        }
+        return out;
+    }
+
+    /** A member's key within its pool: p<id> for a person, q<id> for a pool. */
+    public static String memberKey(PoolMember m) {
+        return m.getPersonId() != null ? "p" + m.getPersonId() : "q" + m.getMemberPoolId();
     }
 
     /** The members of each crew's pool, by the pool's id: its lead, then its members in the order they
      *  were added (people who have left the sheet left out), at equal shares of 100.00 to two decimals
      *  rounded down, the remainder on the first of them (the lead while they are on the sheet). The
-     *  memberships are not stored and run without dates. */
-    private Map<Long, List<PoolMember>> crewMemberships(String sheetId, List<Pool> all, Map<Long, Person> byId) {
+     *  memberships are not stored and run without dates. As of a day (null: now), only the crew
+     *  members added by then count. */
+    private Map<Long, List<PoolMember>> crewMemberships(String sheetId, List<Pool> all, Map<Long, Person> byId,
+            LocalDate asOf) {
         Map<Long, Long> poolOfCrew = all.stream().filter(Pool::isCrew)
                 .collect(Collectors.toMap(Pool::getCrewId, Pool::getId));
         if (poolOfCrew.isEmpty()) {
@@ -207,7 +252,8 @@ public class PoolService {
             }
             List<Long> ids = new ArrayList<>();
             ids.add(c.getLeadPersonId());
-            byCrew.getOrDefault(c.getId(), List.of()).forEach(m -> ids.add(m.getPersonId()));
+            byCrew.getOrDefault(c.getId(), List.of()).stream().filter(m -> asOf == null || m.isAddedBy(asOf))
+                    .forEach(m -> ids.add(m.getPersonId()));
             List<Long> present = ids.stream().filter(byId::containsKey).toList();
             if (present.isEmpty()) {
                 continue;
@@ -274,7 +320,9 @@ public class PoolService {
         }
         Pool saved;
         try {
-            saved = pools.saveAndFlush(new Pool(sheetId, text));
+            Pool pool = new Pool(sheetId, text);
+            pool.setAddedOn(sheets.today(sheetId));
+            saved = pools.saveAndFlush(pool);
         } catch (DataIntegrityViolationException e) {
             throw alreadyAPool();
         }
@@ -317,6 +365,7 @@ public class PoolService {
         try {
             PoolMember m = PoolMember.ofPool(poolId, memberPoolId, amount);
             m.setDates(from, to);
+            m.setAddedOn(sheets.today(sheetId));
             members.saveAndFlush(m);
         } catch (DataIntegrityViolationException e) {
             throw new ResponseStatusException(HttpStatus.CONFLICT, "That pool is already a member of a pool");
@@ -358,6 +407,7 @@ public class PoolService {
         try {
             PoolMember m = new PoolMember(poolId, personId, amount);
             m.setDates(from, to);
+            m.setAddedOn(sheets.today(sheetId));
             members.saveAndFlush(m);
         } catch (DataIntegrityViolationException e) {
             throw alreadyAMember();
