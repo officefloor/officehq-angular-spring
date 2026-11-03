@@ -6,6 +6,7 @@ import java.util.ArrayDeque;
 import java.util.ArrayList;
 import java.util.Deque;
 import java.util.HashSet;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
@@ -13,6 +14,7 @@ import java.util.Set;
 import java.util.TreeMap;
 import net.officefloor.hq.app.Audit;
 import net.officefloor.hq.app.claim.ClaimRepository;
+import net.officefloor.hq.app.claim.Proof;
 import net.officefloor.hq.app.history.History;
 import net.officefloor.hq.app.period.PeriodService;
 import net.officefloor.hq.app.role.RoleService;
@@ -685,6 +687,29 @@ public class SheetService {
     public synchronized Sheet setProofThreshold(String id, String user, BigDecimal threshold, LocalDate from) {
         return record(id, user, "proof-threshold", threshold,
                 threshold == null ? "" : threshold.setScale(2).toPlainString(), from);
+    }
+
+    /** The sheet's proof kinds: the kinds a claim above the proof threshold needs at least one proof
+     *  of each before it is settled or approved; empty when blank (none). Not dated. */
+    @Transactional(readOnly = true)
+    public List<String> proofKinds(String id) {
+        String kinds = sheets.findById(id).map(Sheet::getProofKinds).orElse(null);
+        return kinds == null ? List.of() : List.of(kinds.split(","));
+    }
+
+    /** Change the sheet's proof kinds (empty: blank, none), each receipt or photo, kept in the order
+     *  given without repeats. It changes no figure. */
+    @Transactional
+    public synchronized Sheet setProofKinds(String id, String user, List<String> kinds) {
+        if (!Proof.KINDS.containsAll(kinds)) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "A proof kind is receipt or photo");
+        }
+        Sheet sheet = load(id, user);
+        String value = String.join(",", new LinkedHashSet<>(kinds));
+        sheet.setProofKinds(value.isEmpty() ? null : value);
+        Sheet saved = sheets.saveAndFlush(sheet);
+        audit.recordOnCommit("SETTING_CHANGED sheet=" + id + " by=" + user + " key=proof-kinds value=" + value);
+        return saved;
     }
 
     /** The due above which a claim on the sheet dated on the day cannot be opened with an empty

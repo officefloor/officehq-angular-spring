@@ -1,7 +1,7 @@
 import { HttpErrorResponse } from '@angular/common/http';
 import { Component, effect, inject, input, output, signal, untracked } from '@angular/core';
 import { FormControl, FormGroup, ReactiveFormsModule } from '@angular/forms';
-import { AMOUNT, CLAIM_AMOUNT, Claim, ClaimAction, Claims, claimDue, deferred, overdue, reviewLate } from '../../core/claims';
+import { AMOUNT, CLAIM_AMOUNT, Claim, ClaimAction, Claims, PROOF_KINDS, ProofKind, claimDue, deferred, overdue, reviewLate } from '../../core/claims';
 import { ClaimTemplates } from '../../core/claim-templates';
 import { GradeFrom, Person, gradeOn } from '../../core/people';
 import { Period, periodOf } from '../../core/periods';
@@ -80,7 +80,7 @@ function refusal(e: unknown, action: ClaimAction): string {
 }
 
 /** The message when a claim due above the proof threshold has no proof to be settled or approved. */
-const NEEDS_PROOF = 'The claim\'s due is above the proof threshold: add a proof first.';
+const NEEDS_PROOF = 'The claim\'s due is above the proof threshold: add a proof (of each proof kind the sheet lists) first.';
 
 /** The message for a refused proof of a claim. */
 function proofRefusal(e: unknown): string {
@@ -252,6 +252,9 @@ function splitRefusal(e: unknown): string {
           <span data-testid="claim-waived">{{ c.waived ? 'yes' : 'no' }}</span>
           <span data-testid="claim-deferred-until">{{ c.deferredUntil ?? '' }}</span>
           <span data-testid="claim-proofs">{{ c.proofs }}</span>
+          @for (k of proofKinds; track k) {
+            <span [attr.data-testid]="'claim-proofs-' + k" [attr.aria-label]="k + ' proofs'">{{ c.proofKinds[k] ?? 0 }}</span>
+          }
           <span data-testid="claim-split-from">{{ c.splitFrom ?? '' }}</span>
           <span data-testid="claim-batch">{{ c.settleBatch ?? '' }}</span>
           <span data-testid="claim-reminded">{{ c.remindedOn ?? '' }}</span>
@@ -320,7 +323,15 @@ function splitRefusal(e: unknown): string {
             [attr.aria-label]="'Reject claim of ' + c.amount + ' on ' + c.date">Reject</button>
           <button type="button" data-testid="claim-review" (click)="act(c, 'review')"
             [attr.aria-label]="'Review claim of ' + c.amount + ' on ' + c.date">Review</button>
-          <button type="button" data-testid="claim-proof" (click)="addProof(c)"
+          <label [for]="'claim-proof-kind-' + c.id">Proof kind</label>
+          <select [id]="'claim-proof-kind-' + c.id" data-testid="claim-proof-kind" #proofKind
+            (change)="clearError(c)">
+            <option value="">(none: receipt)</option>
+            @for (k of proofKinds; track k) {
+              <option [value]="k">{{ k }}</option>
+            }
+          </select>
+          <button type="button" data-testid="claim-proof" (click)="addProof(c, proofKind)"
             [attr.aria-label]="'Add a proof to claim of ' + c.amount + ' on ' + c.date">Add proof</button>
           <button type="button" data-testid="claim-remind" (click)="remind(c)"
             [attr.aria-label]="'Remind claim of ' + c.amount + ' on ' + c.date">Remind</button>
@@ -427,6 +438,8 @@ export class PersonClaims {
   /** Whether a submit is waiting for its answer: a second submit meanwhile is ignored. */
   private submitting = false;
   /** The refusal of the last action taken on a claim's row, shown on that row. */
+  /** The kinds a proof may be, as the claim's proof kind select offers them. */
+  protected readonly proofKinds = PROOF_KINDS;
   protected readonly claimError = signal<{ id: number; message: string } | null>(null);
   /** The claim whose timeline is shown, with its audit lines newest first. */
   protected readonly timeline = signal<{ id: number; lines: string[] } | null>(null);
@@ -562,10 +575,12 @@ export class PersonClaims {
     }
   }
 
-  protected async addProof(c: Claim): Promise<void> {
+  protected async addProof(c: Claim, kind: HTMLSelectElement): Promise<void> {
     this.claimError.set(null);
     try {
-      this.saved.emit(await this.api.addProof(c.id));
+      const saved = await this.api.addProof(c.id, (kind.value || null) as ProofKind | null);
+      kind.value = '';
+      this.saved.emit(saved);
     } catch (e) {
       this.claimError.set({ id: c.id, message: proofRefusal(e) });
     }

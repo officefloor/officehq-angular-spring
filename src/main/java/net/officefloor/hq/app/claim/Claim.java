@@ -117,11 +117,10 @@ public class Claim {
     @Column(name = "proofs", nullable = false)
     private int proofs;
 
-    /** The day each proof was given; proofs given before these were kept have none. */
+    /** The day and kind each proof was given; proofs given before these were kept have none. */
     @ElementCollection(fetch = FetchType.EAGER)
     @CollectionTable(name = "claim_proof", joinColumns = @JoinColumn(name = "claim_id"))
-    @Column(name = "added_on")
-    private List<LocalDate> proofDays = new ArrayList<>();
+    private List<Proof> proofDays = new ArrayList<>();
 
     /** The number of the claim this claim was split off (see {@link #splitOff}); null for a claim
      *  that was not split off one. */
@@ -271,7 +270,7 @@ public class Claim {
         copy.terms = terms;
         copy.deferredUntil = deferredUntil;
         copy.proofs = proofs;
-        copy.proofDays.addAll(proofDays);
+        proofDays.forEach(p -> copy.proofDays.add(p.copy()));
         copy.splitFrom = renumber.apply(splitFrom);
         copy.remindedOn = remindedOn;
         copy.escalated = escalated;
@@ -471,13 +470,26 @@ public class Claim {
 
     /** How many proofs the claim had at the end of a day: those given after it are left out. */
     public int getProofsOn(LocalDate day) {
-        return proofs - (int) proofDays.stream().filter(d -> d.isAfter(day)).count();
+        return proofs - (int) proofDays.stream().filter(p -> p.getAddedOn().isAfter(day)).count();
     }
 
-    /** Raise the claim's proofs count by one, given on the day. */
-    public void addProof(LocalDate on) {
+    /** How many of the claim's proofs are of a kind; those given before kinds were kept are receipts. */
+    public int getProofsOf(String kind) {
+        return getProofsOf(kind, null);
+    }
+
+    /** How many of the claim's proofs of a kind it had at the end of a day (null: now). */
+    public int getProofsOf(String kind, LocalDate day) {
+        int kept = (int) proofDays.stream().filter(p -> day == null || !p.getAddedOn().isAfter(day))
+                .filter(p -> p.getKind().equals(kind)).count();
+        // proofs given before these were kept are receipts
+        return Proof.KINDS.get(0).equals(kind) ? kept + proofs - proofDays.size() : kept;
+    }
+
+    /** Raise the claim's proofs count by one, of a kind (receipt or photo), given on the day. */
+    public void addProof(LocalDate on, String kind) {
         this.proofs++;
-        this.proofDays.add(on);
+        this.proofDays.add(new Proof(on, kind));
     }
 
     /** Whether the claim is deferred on the day: it is open and the day is before the one it is

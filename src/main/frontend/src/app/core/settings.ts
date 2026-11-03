@@ -68,6 +68,10 @@ export interface Settings {
   /** The parent sheet's id: a grade with no rate in force on a date on this sheet takes the
    *  parent's, then its parent's, up to three levels up; null when blank (none). Not dated. */
   parent: string | null;
+  /** The proof kinds, comma separated: while set, a claim whose due is above the proof threshold
+   *  needs at least one proof of each before it is settled or approved; empty when blank (none).
+   *  Not dated. */
+  proofKinds: string;
   /** The fiscal year start month, 1 to 12 (1 unless set): a fiscal year runs from the first day of
    *  it. Not dated. */
   fiscalStartMonth: number;
@@ -112,6 +116,9 @@ export const STANDING_PERMISSIONS: Record<PermAction, string> = {
   open: 'clerk,steward', settle: 'clerk,steward', void: 'clerk,steward', close: 'clerk,steward',
   reassign: 'steward', reopen: 'steward',
 };
+
+/** A proof kinds value: receipt, photo or both, comma separated. */
+export const PROOF_KIND_LIST = /^\s*(receipt|photo)\s*(,\s*(receipt|photo)\s*)*$/;
 
 /** A permission entry: a comma separated list of roles (clerk, steward). */
 export const PERM_ROLES = /^\s*(clerk|steward)\s*(,\s*(clerk|steward)\s*)*$/;
@@ -324,6 +331,12 @@ export class SheetSettings {
     return firstValueFrom(
       this.http.put<Settings>(`${this.url(sheetId)}/settings/fiscal-start-month`, { value }, { headers }),
     );
+  }
+
+  /** Set the proof kinds (comma separated); null for blank (none). */
+  setProofKinds(value: string | null): Promise<Settings> {
+    const [sheetId, headers] = this.active();
+    return firstValueFrom(this.http.put<Settings>(`${this.url(sheetId)}/settings/proof-kinds`, { value }, { headers }));
   }
 
   /** Set the parent sheet; null for blank (none). */

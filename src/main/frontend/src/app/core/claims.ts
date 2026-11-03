@@ -14,6 +14,12 @@ import { Session } from './session';
  *  with no number) until a steward reviews it (OPEN); a REVIEW claim may be VOID. */
 export type ClaimStatus = 'DRAFT' | 'OPEN' | 'PENDING' | 'SETTLED' | 'VOID' | 'DELETED' | 'REVIEW';
 
+/** The kinds a proof may be; a proof added with none chosen is a receipt. */
+export const PROOF_KINDS = ['receipt', 'photo'] as const;
+
+/** A kind of proof. */
+export type ProofKind = (typeof PROOF_KINDS)[number];
+
 /** A change of status a claim can be asked for. */
 export type ClaimAction = 'open' | 'settle' | 'resettle' | 'void' | 'approve' | 'reject' | 'delete' | 'restore'
   | 'review';
@@ -157,6 +163,9 @@ export interface Claim {
   added: number;
   /** Whether a steward waived its late charge: it bears none from then on. */
   waived: boolean;
+  /** How many of its proofs are of each kind. While the sheet has proof kinds, one whose due is
+   *  above the proof threshold cannot be settled or approved without a proof of each of them. */
+  proofKinds: Record<ProofKind, number>;
 }
 
 /** A line of a claim: its label, its quantity (a whole number) and its unit amount as text with
@@ -445,12 +454,12 @@ export class Claims {
     );
   }
 
-  /** Raise a claim's proofs count by one; refused (409) when it is settled or void, and (423) when
-   *  its period is closed. */
-  addProof(id: number): Promise<Claim> {
+  /** Raise a claim's proofs count by one, with a proof of a kind (null for none chosen: a
+   *  receipt); refused (409) when it is settled or void, and (423) when its period is closed. */
+  addProof(id: number, kind: ProofKind | null): Promise<Claim> {
     const { sheetId, user } = this.active();
     return firstValueFrom(
-      this.http.post<Claim>(`${this.url(sheetId)}/claims/${id}/proof`, null, { headers: { 'X-User': user } }),
+      this.http.post<Claim>(`${this.url(sheetId)}/claims/${id}/proof`, { kind }, { headers: { 'X-User': user } }),
     );
   }
 

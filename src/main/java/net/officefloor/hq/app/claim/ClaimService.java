@@ -439,10 +439,14 @@ public class ClaimService {
         });
     }
 
-    /** Raise a claim's proofs count by one. Refused when the claim is settled or void, or its period
-     *  is closed. It changes no figure. */
+    /** Raise a claim's proofs count by one, with a proof of a kind, receipt or photo (null: none
+     *  chosen, a receipt). Refused when the kind is neither, the claim is settled or void, or its
+     *  period is closed. It changes no figure. */
     @Transactional
-    public Claim addProof(String sheetId, String user, long claimId) {
+    public Claim addProof(String sheetId, String user, long claimId, String kind) {
+        if (kind != null && !Proof.KINDS.contains(kind)) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "A proof is a receipt or a photo");
+        }
         Claim claim = lock(sheetId, claimId);
         refuseClosed(sheetId, claim.getDueBy());
         if (claim.getStatus() == ClaimStatus.SETTLED || claim.getStatus() == ClaimStatus.VOID
@@ -451,9 +455,10 @@ public class ClaimService {
                     "A " + claim.getStatus() + " claim cannot be given a proof");
         }
         Person person = person(sheetId, claim.getPersonId());
-        claim.addProof(sheets.today(sheetId));
+        claim.addProof(sheets.today(sheetId), kind == null ? Proof.KINDS.get(0) : kind);
         Claim saved = claims.saveAndFlush(claim);
-        audit.recordOnCommit(record("CLAIM_PROOF_ADDED", sheetId, user, person, saved) + " proofs=" + saved.getProofs());
+        audit.recordOnCommit(record("CLAIM_PROOF_ADDED", sheetId, user, person, saved) + " proofs=" + saved.getProofs()
+                + (kind == null ? "" : " kind=" + kind));
         return saved;
     }
 
@@ -825,11 +830,13 @@ public class ClaimService {
         return due != null && due.compareTo(limit) > 0;
     }
 
-    /** Refuse settling or approving a claim with no proofs whose due is above the proof threshold in
-     *  force on the claim's date: its person's grade's (on that date) when one is set, or else the
-     *  sheet's; a claim with no due (n/a) and a claim with no threshold need none. */
+    /** Refuse settling or approving a claim whose due is above the proof threshold in force on the
+     *  claim's date (its person's grade's on that date when one is set, or else the sheet's) when it
+     *  has no proofs, or, while the sheet has proof kinds, no proof of one of them; a claim with no
+     *  due (n/a) and a claim with no threshold need none. */
     private void refuseUnproved(String sheetId, Claim claim) {
-        if (claim.getProofs() > 0) {
+        if (claim.getProofs() > 0
+                && sheets.proofKinds(sheetId).stream().allMatch(k -> claim.getProofsOf(k) > 0)) {
             return;
         }
         Person person = person(sheetId, claim.getPersonId());
@@ -840,7 +847,7 @@ public class ClaimService {
         BigDecimal due = dues.figure(sheetId, person, claim);
         if (due != null && due.compareTo(threshold) > 0) {
             throw new ResponseStatusException(HttpStatus.PRECONDITION_REQUIRED,
-                    "A claim whose due is above the proof threshold needs a proof first");
+                    "A claim whose due is above the proof threshold needs a proof of each kind the sheet lists first");
         }
     }
 

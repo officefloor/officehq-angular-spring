@@ -87,6 +87,11 @@ public class Sheet {
     @Column(name = "parent_id")
     private String parentId;
 
+    /** The sheet's proof kinds, comma separated: a claim above the proof threshold needs at least one
+     *  proof of each before it is settled or approved; null (blank) is none. Not dated. */
+    @Column(name = "proof_kinds")
+    private String proofKinds;
+
     /** Whether a steward has archived the sheet: it stays visible and refuses every change. */
     @Column(name = "archived", nullable = false)
     private boolean archived;
@@ -194,6 +199,14 @@ public class Sheet {
 
     public void setParentId(String parentId) {
         this.parentId = parentId;
+    }
+
+    public String getProofKinds() {
+        return proofKinds;
+    }
+
+    public void setProofKinds(String proofKinds) {
+        this.proofKinds = proofKinds;
     }
 
     public boolean isArchived() {

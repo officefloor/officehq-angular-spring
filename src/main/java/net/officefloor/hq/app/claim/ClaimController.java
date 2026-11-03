@@ -8,6 +8,7 @@ import jakarta.validation.constraints.Size;
 import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.util.Comparator;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
@@ -50,14 +51,15 @@ public class ClaimController {
      *  sorted and comma and space separated (empty when none); and the reason it was voided with (null
      *  when none); and its comments, in the order they were written; and the number of the bulk
      *  settle batch that settled it (null when none, or when it is not settled or pending); and its
-     *  lines, in the order they were added; and whether its late charge is waived. */
+     *  lines, in the order they were added; and whether its late charge is waived; and how many of
+     *  its proofs are of each kind (receipt, photo). */
     public record ClaimView(long id, long personId, String amount, LocalDate date, String note,
             ClaimStatus status, String number, String settledDue, String openedBy, boolean stated,
             String statedDue, boolean statedNa, String corrects, LocalDate roundsBy, long listed, LocalDate dueBy,
             List<LogLineView> log, LocalDate deferredUntil, int proofs, String splitFrom,
             String editLockedBy, boolean lateEntry, LocalDate remindedOn, String ref, String tags,
             String voidReason, List<CommentView> comments, Integer settleBatch, List<LineView> lines,
-            long added, boolean waived) {
+            long added, boolean waived, Map<String, Integer> proofKinds) {
         public static ClaimView of(Claim claim) {
             return new ClaimView(claim.getId(), claim.getPersonId(), claim.getAmount().setScale(2).toPlainString(),
                     claim.getDate(), claim.getNote(), claim.getStatus(), claim.getNumber(),
@@ -72,13 +74,20 @@ public class ClaimController {
                     claim.getComments().stream().map(CommentView::of).toList(),
                     batchOf(claim.getStatus(), claim.getSettleBatch()),
                     claim.getLines().stream().map(LineView::of).toList(), claim.getAdded(),
-                    claim.isWaived());
+                    claim.isWaived(), proofKinds(claim, null));
         }
 
         /** The claim as it stood at the end of a day: its figures as its revision then has them (see
          *  {@link History}), its log as far as that day, and its number and who opened it only once it
          *  had been opened by then (who opened it once it had been sent to review); its proofs as given by that day; what no revision keeps (its note, reference, tags, where it is listed) as it is
          *  now (null: the claim is gone now; it is then listed last). No one has its editor open then. */
+        /** How many proofs of each kind the claim had at the end of a day (null: now), by kind. */
+        static Map<String, Integer> proofKinds(Claim claim, LocalDate day) {
+            Map<String, Integer> counts = new LinkedHashMap<>();
+            Proof.KINDS.forEach(k -> counts.put(k, claim.getProofsOf(k, day)));
+            return counts;
+        }
+
         static ClaimView asOf(Claim then, Claim now, LocalDate day) {
             Claim kept = now != null ? now : then;
             List<ClaimLog> log = kept.getLog().stream().filter(l -> !l.getOn().isAfter(day)).toList();
@@ -100,7 +109,7 @@ public class ClaimController {
                     kept.getComments().stream().filter(c -> !c.getOn().isAfter(day)).map(CommentView::of).toList(),
                     batchOf(then.getStatus(), kept.getSettleBatch()),
                     kept.getLines().stream().map(LineView::of).toList(), then.getAdded(),
-                    then.isWaived());
+                    then.isWaived(), proofKinds(kept, day));
         }
 
         /** The settle batch a claim shows: only while it is settled or pending. */
@@ -134,6 +143,14 @@ public class ClaimController {
         static LogLineView of(ClaimLog line) {
             return new LogLineView(line.getStatus(), line.getByUser(), line.getOn(),
                     line.getDue() == null ? null : line.getDue().setScale(2).toPlainString());
+        }
+    }
+
+    /** The proof form: the proof's kind, receipt or photo, or blank for none chosen (a receipt). */
+    public record ProofForm(@Pattern(regexp = "\\s*(receipt|photo)?\\s*") String kind) {
+
+        String kindValue() {
+            return kind == null || kind.isBlank() ? null : kind.trim();
         }
     }
 
@@ -392,8 +409,10 @@ public class ClaimController {
     @PostMapping("/claims/{claimId}/proof")
     public ClaimView addProof(@PathVariable @NotBlank @Size(max = 100) String sheetId,
             @PathVariable long claimId,
-            @RequestHeader("X-User") @NotBlank @Size(max = 100) String user) {
-        return ClaimView.of(service.addProof(sheetId.trim(), user.trim(), claimId));
+            @RequestHeader("X-User") @NotBlank @Size(max = 100) String user,
+            @Valid @RequestBody(required = false) ProofForm form) {
+        return ClaimView.of(service.addProof(sheetId.trim(), user.trim(), claimId,
+                form == null ? null : form.kindValue()));
     }
 
     @PostMapping("/claims/{claimId}/remind")
