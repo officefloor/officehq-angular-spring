@@ -1,0 +1,51 @@
+diff --git a/src/main/java/net/officefloor/hq/app/claim/Claim.java b/src/main/java/net/officefloor/hq/app/claim/Claim.java
+index 1933f044d..650502d8d 100644
+--- a/src/main/java/net/officefloor/hq/app/claim/Claim.java
++++ b/src/main/java/net/officefloor/hq/app/claim/Claim.java
+@@ -100,8 +100,8 @@ public class Claim {
+     private LocalDate correctedDate;
+ 
+     /** The day the claim is due by: fixed when it is made, the terms-th business day after its date
+-     *  by the terms of its person's grade in force on that date; later changes to the terms or its
+-     *  date leave it, but a holiday added on or before it fixes it again (see {@link #refixDueBy}). */
++     *  by the terms in force on the day it was made (the sheet's today then); later changes to the
++     *  terms or its date leave it, but a holiday added on or before it fixes it again (see {@link #refixDueBy}). */
+     @Column(name = "due_by", nullable = false)
+     private LocalDate dueBy;
+ 
+diff --git a/src/main/java/net/officefloor/hq/app/claim/ClaimService.java b/src/main/java/net/officefloor/hq/app/claim/ClaimService.java
+index 5caef403f..bcc7d305e 100644
+--- a/src/main/java/net/officefloor/hq/app/claim/ClaimService.java
++++ b/src/main/java/net/officefloor/hq/app/claim/ClaimService.java
+@@ -93,7 +93,7 @@ public class ClaimService {
+             String corrects, String ref, String tags) {
+         refuseRefUsed(sheetId, ref, null);
+         LocalDate on = date != null ? date : sheets.entryDay(sheetId);
+-        int terms = terms(sheetId, person(sheetId, personId), on);
++        int terms = terms(sheetId, person(sheetId, personId), sheets.today(sheetId));
+         LocalDate dueBy = holidays.businessDaysAfter(sheetId, on, terms);
+         refuseClosed(sheetId, dueBy);
+         refuseRetired(person(sheetId, personId), on);
+@@ -731,7 +731,7 @@ public class ClaimService {
+         }
+         return rollup.tracking(sheetId, user, () -> {
+             Person person = person(sheetId, claim.getPersonId());
+-            int terms = terms(sheetId, person, claim.getDate());
++            int terms = terms(sheetId, person, sheets.today(sheetId));
+             LocalDate dueBy = holidays.businessDaysAfter(sheetId, claim.getDate(), terms);
+             Claim draft = claim.splitOff(part, nextNumber(sheetId, dueBy), user, dueBy, terms);
+             logStatus(sheetId, user, person, draft);
+@@ -912,9 +912,10 @@ public class ClaimService {
+         }
+     }
+ 
+-    /** The terms a claim of the person dated on the day has its due-by fixed with (the terms-th
+-     *  business day after its date, skipping every Saturday, Sunday and holiday of the sheet): the
+-     *  first of the person's own terms, their grade's and the sheet's, each as in force on the day. */
++    /** The terms a claim of the person made on the day (the sheet's today then) has its due-by fixed
++     *  with (the terms-th business day after its date, skipping every Saturday, Sunday and holiday of
++     *  the sheet): the first of the person's own terms, those of the grade they had on the day and the
++     *  sheet's, each as in force on the day. */
+     private int terms(String sheetId, Person person, LocalDate on) {
+         Integer own = person.termsOn(on);
+         return own != null ? own : sheets.termsFor(sheetId, person.gradeOn(on), on);
