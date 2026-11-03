@@ -44,9 +44,13 @@ public class RoleController {
         this.service = service;
     }
 
+    /** The roles given on the sheet, or those in force at the end of the as-of day when one is given. */
     @GetMapping
-    public List<RoleView> list(@PathVariable @NotBlank @Size(max = 100) String sheetId) {
-        return service.list(sheetId.trim()).stream().map(RoleView::of).toList();
+    public List<RoleView> list(@PathVariable @NotBlank @Size(max = 100) String sheetId,
+            @RequestHeader(value = AsOfGuard.HEADER, required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE)
+            LocalDate asOf) {
+        String sheet = sheetId.trim();
+        return (asOf == null ? service.list(sheet) : service.listOn(sheet, asOf)).stream().map(RoleView::of).toList();
     }
 
     /** The role the signed-in user acts in on the sheet now, or as they had it at the end of the

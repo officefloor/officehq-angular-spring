@@ -191,7 +191,8 @@ public class PersonService {
     }
 
     /** Save the person's name, grade from a day, terms from a day, contact and tags as an edit does,
-     *  recording it; the terms recorded, when they change, as those in force on the sheet's today. */
+     *  recording it; the terms recorded, when they change or the person has their own in force, as those
+     *  in force on the sheet's today. */
     private Person save(String sheetId, String user, Person person, String name, String grade, LocalDate gradeFrom,
             Integer terms, LocalDate termsFrom, String contact, String tags) {
         if (choosesGrade(sheetId, person, grade, gradeFrom)) {
@@ -215,7 +216,7 @@ public class PersonService {
             }
             Person saved = saveUnique(person);
             audit.recordOnCommit(record("PERSON_EDITED", sheetId, user, saved, today)
-                    + (termsChanged ? " terms=" + (termsNow != null ? termsNow : "") : "")
+                    + (termsChanged || termsNow != null ? " terms=" + (termsNow != null ? termsNow : "") : "")
                     + (Objects.equals(contactBefore, contact) ? "" : " contact=" + (contact != null ? contact : "")));
             return saved;
         });

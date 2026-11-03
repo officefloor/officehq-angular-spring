@@ -41,6 +41,10 @@ public class RoleRevision {
         this.recordedOn = recordedOn;
     }
 
+    public String getUserName() {
+        return userName;
+    }
+
     public String getRole() {
         return role;
     }

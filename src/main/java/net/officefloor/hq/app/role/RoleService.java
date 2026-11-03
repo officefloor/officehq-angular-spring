@@ -2,6 +2,8 @@ package net.officefloor.hq.app.role;
 
 import java.time.LocalDate;
 import java.util.List;
+import java.util.Map;
+import java.util.TreeMap;
 import java.util.Optional;
 import net.officefloor.hq.app.Audit;
 import net.officefloor.hq.app.sheet.SheetService;
@@ -36,6 +38,17 @@ public class RoleService {
     @Transactional(readOnly = true)
     public List<SheetRole> list(String sheetId) {
         return roles.findBySheetIdOrderByUserNameAsc(sheetId);
+    }
+
+    /** The roles in force on the sheet at the end of a day, by user name: the last role given to each
+     *  name on or before the day; a name given none by then is not listed. */
+    @Transactional(readOnly = true)
+    public List<SheetRole> listOn(String sheetId, LocalDate day) {
+        Map<String, SheetRole> then = new TreeMap<>();
+        for (RoleRevision r : revisions.findBySheetIdAndRecordedOnLessThanEqualOrderByRecordedOnAscIdAsc(sheetId, day)) {
+            then.put(r.getUserName(), new SheetRole(sheetId, r.getUserName(), r.getRole()));
+        }
+        return List.copyOf(then.values());
     }
 
     /** The role a user name acts in on the sheet: steward while a delegation to it holds the sheet's
