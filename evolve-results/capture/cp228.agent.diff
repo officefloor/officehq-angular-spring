@@ -1,0 +1,40 @@
+diff --git a/src/main/java/net/officefloor/hq/app/period/PeriodService.java b/src/main/java/net/officefloor/hq/app/period/PeriodService.java
+index 606738492..c2d136b81 100644
+--- a/src/main/java/net/officefloor/hq/app/period/PeriodService.java
++++ b/src/main/java/net/officefloor/hq/app/period/PeriodService.java
+@@ -149,7 +149,8 @@ public class PeriodService {
+      *  year's last period to their opening balance for the new year's first period. A person's open
+      *  figure is the due of their claims that count, whose due-by falls in a period of the old year,
+      *  and that were OPEN or PENDING at that last period's end; what an earlier rollover of the same
+-     *  year, not undone, added there is taken off it. The rollover is kept so it can be undone
++     *  year, not undone, added there is taken off it. Every period of the old year still open is then
++     *  soft-closed, earliest first, as {@link #softClose} would. The rollover is kept so it can be undone
+      *  ({@link #undoRollover}). Refused unless the user acts as a steward, or when the old year has
+      *  no periods. */
+     @Transactional
+@@ -220,6 +221,13 @@ public class PeriodService {
+         history.record(sheetId);
+         List<Period> changed = new ArrayList<>(made.stream().filter(p -> !p.getId().equals(saved.getId())).toList());
+         changed.add(saved);
++        // every period of the old year still open is soft-closed, earliest first
++        for (Period old : oldYear) {
++            Period period = periods.lockByIdAndSheetId(old.getId(), sheetId).orElse(null);
++            if (period != null && !period.isClosed() && !period.isSoftClosed()) {
++                changed.add(softCloseOpen(sheetId, user, period));
++            }
++        }
+         return new RolledOver(made, changed);
+     }
+ 
+@@ -334,6 +342,11 @@ public class PeriodService {
+         if (period.isClosed() || period.isSoftClosed()) {
+             throw new ResponseStatusException(HttpStatus.CONFLICT, "That period is already closed");
+         }
++        return softCloseOpen(sheetId, user, period);
++    }
++
++    /** Soft-close an open period, fixing its due-total and each person's for it at what they are now. */
++    private Period softCloseOpen(String sheetId, String user, Period period) {
+         period.softClose(personTotals(sheetId, period), personCarried(sheetId, period),
+                 pools.currentCuts(sheetId));
+         Period saved = periods.saveAndFlush(period);
