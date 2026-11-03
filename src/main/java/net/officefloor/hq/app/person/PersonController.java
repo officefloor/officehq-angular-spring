@@ -41,14 +41,14 @@ public class PersonController {
 
     /** What the screen shows of a person; with how many statements were taken of them, and the
      *  last one's due-total (text with two decimals, null when n/a or none) and day (null when none);
-     *  whether they are retired, and from which day (null when not); and their past retirements, earliest first; and whether they have any hold, and their holds, earliest first; and their own terms in days (null: none); and their contact (null: none); and their aliases, sorted as names are compared; and whether they clash; and the sheet they were transferred from (null: none); and their tags, sorted, comma and space separated (empty when none); and their snapshots, oldest first, each the day being left and the due-total (see
+     *  whether they are retired, and from which day (null when not); and their past retirements, earliest first; and whether they have any hold, and their holds, earliest first; and their own terms in days (null: none); and their contact (null: none); and their aliases, sorted as names are compared; and whether they clash; and the sheet they were transferred from (null: none); and their tags, sorted, comma and space separated (empty when none); and their snapshots, oldest first, each the day being left and the due-total; and their statements that stand, oldest first by date, each its date and due-total (see
      *  {@link PersonService#clashing}).
      *  The grade is the one in force on the sheet's today; grades are all those recorded, each from
      *  its from-date (null: the beginning of time), earliest first. */
     public record PersonView(long id, String name, String grade, List<GradeView> grades, long version,
             int statementCount, String statedTotal, LocalDate statementDate, boolean retired, LocalDate retiredFrom,
             List<RetirementView> retirements, boolean held, List<HoldView> holds, Integer terms, String contact, List<String> aliases, boolean clashing, String origin,
-            String tags, List<SnapshotView> snapshots) {
+            String tags, List<SnapshotView> snapshots, List<StatementLineView> statements) {
         public static PersonView of(Person person, StatementSummary statements, LocalDate today,
                 boolean clashing) {
             return new PersonView(person.getId(), person.getName(), person.gradeOn(today),
@@ -61,7 +61,9 @@ public class PersonController {
                     person.getHolds().stream().map(h -> new HoldView(h.getFromDate(), h.getToDate())).toList(),
                     person.getTerms(), person.getContact(), person.getAliases(), clashing, person.getOrigin(),
                     String.join(", ", Tags.of(person.getTags())),
-                    person.getSnapshots().stream().map(s -> new SnapshotView(s.getDay(), s.getDueTotal())).toList());
+                    person.getSnapshots().stream().map(s -> new SnapshotView(s.getDay(), s.getDueTotal())).toList(),
+                    statements.lines().stream().map(l -> new StatementLineView(l.date(),
+                            l.dueTotal() == null ? null : l.dueTotal().setScale(2).toPlainString())).toList());
         }
     }
 
@@ -76,6 +78,10 @@ public class PersonController {
 
     /** A snapshot of a person: the day being left and their due-total on it (two decimals, or n/a). */
     public record SnapshotView(LocalDate day, String dueTotal) {
+    }
+
+    /** A statement of a person that stands: its date and its due-total (two decimals; null when n/a). */
+    public record StatementLineView(LocalDate date, String dueTotal) {
     }
 
     /** A hold on a person, from a day (null: from the beginning of time) to a day (null: open-ended). */

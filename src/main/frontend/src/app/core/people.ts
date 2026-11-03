@@ -53,6 +53,13 @@ export interface Retirement {
   to: string;
 }
 
+/** A statement of a person that stands: its date (yyyy-mm-dd) and their due-total in it (two
+ *  decimals; null when it was n/a). */
+export interface StatementLine {
+  date: string;
+  dueTotal: string | null;
+}
+
 /** A snapshot of a person: the day being left (yyyy-mm-dd) and their due-total on it (two
  *  decimals, or n/a). */
 export interface Snapshot {
@@ -101,6 +108,8 @@ export interface Person {
   tags: string;
   /** Their snapshots, oldest first. */
   snapshots: Snapshot[];
+  /** Their statements that stand, oldest first by date (carried ones among them). */
+  statements: StatementLine[];
 }
 
 /** A statement just taken: the person as they now show, and their claims (newest first) as it
