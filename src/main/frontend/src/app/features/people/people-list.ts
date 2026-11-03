@@ -61,7 +61,8 @@ const NO_LEAVE: Leave = { holds: [], retiredFrom: null };
     <app-steward-dashboard [steward]="myRole() === 'steward'" [statuses]="statusSummary()"
       [overdueCount]="overdueCount()" />
     <app-rate-form [rates]="rates()" (saved)="rateSaved($event)" (imported)="ratesImported()" />
-    <app-period-form [periods]="periods()" [dueTotals]="periodDueTotals()" (saved)="periodSaved($event)" />
+    <app-period-form [periods]="periods()" [dueTotals]="periodDueTotals()" (saved)="periodSaved($event)"
+      (removed)="periodRemoved($event)" />
     <section aria-labelledby="people-heading">
       <h2 id="people-heading">People</h2>
       <form data-testid="person-form" [formGroup]="form" (ngSubmit)="submit()">
@@ -1873,6 +1874,10 @@ export class PeopleList {
 
   protected periodSaved(period: Period): void {
     this.periods.update((ps) => [...ps.filter((p) => p.id !== period.id), period].sort((a, b) => (a.from < b.from ? -1 : a.from > b.from ? 1 : 0)));
+  }
+
+  protected periodRemoved(id: number): void {
+    this.periods.update((ps) => ps.filter((p) => p.id !== id));
   }
 
   /** A person's due-total: the sum of their figures ({@link figuresOf}), at most the sheet's cap.

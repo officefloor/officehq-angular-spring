@@ -118,6 +118,20 @@ export class Periods {
     );
   }
 
+  /** Undo the last rollover on the sheet: remove the periods it generated and take back the opening
+   *  balances it set. Refused unless the user is the steward who made it, on the sheet-today it was
+   *  made, and no claim now belongs to a period it generated. Gives the ids of the periods removed
+   *  and the period whose openings were taken back (null when none stayed). */
+  undoRollover(): Promise<{ removed: number[]; changed: Period | null }> {
+    const sheetId = this.session.sheetId();
+    const user = this.session.user();
+    if (!sheetId || !user) throw new Error('no sheet loaded');
+    return firstValueFrom(
+      this.http.post<{ removed: number[]; changed: Period | null }>(`${this.url(sheetId)}/rollover/undo`, null,
+        { headers: { 'X-User': user } }),
+    );
+  }
+
   /** Paste opening balances, lines of name,period,amount, each adding the amount to the person's
    *  carried figure for the period; all lines are checked first and any error refuses the whole
    *  paste. Gives how many lines went through and the periods changed. */

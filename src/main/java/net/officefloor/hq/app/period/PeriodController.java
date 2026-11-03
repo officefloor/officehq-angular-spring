@@ -11,6 +11,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.TreeMap;
 import net.officefloor.hq.app.history.History;
+import net.officefloor.hq.app.role.ViewerAllowed;
 import net.officefloor.hq.app.sheet.AsOfGuard;
 import net.officefloor.hq.app.sheet.SheetService;
 import org.springframework.format.annotation.DateTimeFormat;
@@ -110,6 +111,7 @@ public class PeriodController {
         return view(sheetId.trim(), service.add(sheetId.trim(), user.trim(), form.name().trim(), form.from(), form.to(), form.cap()));
     }
 
+    @ViewerAllowed
     @PostMapping("/generate")
     public List<PeriodView> generate(@PathVariable @NotBlank @Size(max = 100) String sheetId,
             @RequestHeader("X-User") @NotBlank @Size(max = 100) String user,
@@ -140,6 +142,20 @@ public class PeriodController {
         PeriodService.RolledOver done = service.rollover(sheetId.trim(), user.trim(), form.yearValue());
         return new RolloverView(done.made().size(),
                 done.changed().stream().map(p -> PeriodView.of(p, fiscalStartMonth)).toList());
+    }
+
+    /** What undoing a rollover shows: the ids of the periods it removed, and the period whose
+     *  opening balances it took back (null when none stayed). */
+    public record RolloverUndoView(List<Long> removed, PeriodView changed) {
+    }
+
+    @PostMapping("/rollover/undo")
+    public RolloverUndoView undoRollover(@PathVariable @NotBlank @Size(max = 100) String sheetId,
+            @RequestHeader("X-User") @NotBlank @Size(max = 100) String user) {
+        int fiscalStartMonth = sheets.fiscalStartMonth(sheetId.trim());
+        PeriodService.RolloverUndone done = service.undoRollover(sheetId.trim(), user.trim());
+        return new RolloverUndoView(done.removed(),
+                done.changed() == null ? null : PeriodView.of(done.changed(), fiscalStartMonth));
     }
 
     @PostMapping("/generate-quarters")

@@ -42,11 +42,13 @@ public class PeriodService {
     private final History history;
     private final Audit audit;
     private final PoolService pools;
+    private final RolloverRepository rollovers;
 
     public PeriodService(PeriodRepository periods, SheetService sheets, ClaimRepository claims,
             PersonRepository people, Dues dues, RoleService roles, History history, Audit audit,
-            @Lazy PoolService pools) {
+            @Lazy PoolService pools, RolloverRepository rollovers) {
         this.pools = pools;
+        this.rollovers = rollovers;
         this.history = history;
         this.periods = periods;
         this.sheets = sheets;
@@ -98,7 +100,8 @@ public class PeriodService {
     /** Generate one period per calendar month from the from-date's month to the to-date's month
      *  (the from-date the sheet's today when none is given), each running from the first to the last
      *  day of its month and named yyyy-mm; a month whose name is in use on the sheet, or whose days
-     *  overlap a period on it, is left out. Refused when the to-date is before the from-date. */
+     *  overlap a period on it, is left out. Refused when the to-date is before the from-date. A
+     *  viewer's generate makes none. */
     @Transactional
     public synchronized List<Period> generate(String sheetId, String user, LocalDate from, LocalDate to) {
         sheets.load(sheetId, user);
@@ -107,6 +110,9 @@ public class PeriodService {
         }
         if (to.isBefore(from)) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "The to-date cannot be before the from-date");
+        }
+        if (SheetRole.VIEWER.equals(roles.roleOf(sheetId, user))) {
+            return List.of();
         }
         List<Period> made = new ArrayList<>();
         for (YearMonth month = YearMonth.from(from); !month.isAfter(YearMonth.from(to)); month = month.plusMonths(1)) {
@@ -142,8 +148,10 @@ public class PeriodService {
      *  {@link #generateFiscalYear} does, then add each person's open figure at the end of the old
      *  year's last period to their opening balance for the new year's first period. A person's open
      *  figure is the due of their claims that count, whose due-by falls in a period of the old year,
-     *  and that were OPEN or PENDING at that last period's end. Refused unless the user acts as a
-     *  steward, or when the old year has no periods. */
+     *  and that were OPEN or PENDING at that last period's end; what an earlier rollover of the same
+     *  year, not undone, added there is taken off it. The rollover is kept so it can be undone
+     *  ({@link #undoRollover}). Refused unless the user acts as a steward, or when the old year has
+     *  no periods. */
     @Transactional
     public synchronized RolledOver rollover(String sheetId, String user, int year) {
         sheets.load(sheetId, user);
@@ -185,22 +193,86 @@ public class PeriodService {
         }
         Period locked = periods.lockByIdAndSheetId(first.getId(), sheetId)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "No such period on this sheet"));
+        // what an earlier rollover of the year, not undone, already set there is not set again
+        Map<Long, BigDecimal> already = new HashMap<>();
+        for (Rollover earlier : rollovers.findBySheetIdAndFyAndUndoneFalse(sheetId, oldFy)) {
+            if (earlier.getOpeningPeriodId().equals(locked.getId())) {
+                earlier.getOpenings().forEach((personId, amount) -> already.merge(personId, amount, BigDecimal::add));
+            }
+        }
+        Map<Long, BigDecimal> openings = new HashMap<>();
         for (Person person : onSheet) {
-            BigDecimal amount = open.get(person.getId());
-            if (amount == null || amount.signum() == 0) {
+            BigDecimal amount = open.getOrDefault(person.getId(), BigDecimal.ZERO)
+                    .subtract(already.getOrDefault(person.getId(), BigDecimal.ZERO));
+            if (amount.signum() == 0) {
                 continue;
             }
             amount = amount.setScale(2);
             locked.addOpening(person.getId(), amount);
+            openings.put(person.getId(), amount);
             audit.recordOnCommit("OPENING_SET sheet=" + sheetId + " by=" + user + " name=" + person.getName()
                     + " period=" + locked.getName() + " amount=" + amount.toPlainString());
         }
         Period saved = periods.saveAndFlush(locked);
+        rollovers.save(new Rollover(sheetId, user, today, oldFy, saved.getId(),
+                made.stream().map(Period::getId).collect(Collectors.toSet()), openings));
         audit.recordOnCommit("ROLLOVER sheet=" + sheetId + " by=" + user + " fy=" + oldFy + " periods=" + made.size());
         history.record(sheetId);
         List<Period> changed = new ArrayList<>(made.stream().filter(p -> !p.getId().equals(saved.getId())).toList());
         changed.add(saved);
         return new RolledOver(made, changed);
+    }
+
+    /** What undoing a rollover came to: the ids of the periods it removed, and the period whose
+     *  opening balances it took back (null when that period was one it removed). */
+    public record RolloverUndone(List<Long> removed, Period changed) {
+    }
+
+    /** Undo the last rollover made on the sheet: remove the periods it generated and take back the
+     *  opening balances it set. Refused unless the user is a steward and the one who made it, on the
+     *  sheet-today it was made, it is not already undone, and no claim on the sheet now belongs to
+     *  (is due by a day inside) a period it generated. */
+    @Transactional
+    public synchronized RolloverUndone undoRollover(String sheetId, String user) {
+        sheets.load(sheetId, user);
+        if (!SheetRole.STEWARD.equals(roles.roleOf(sheetId, user))) {
+            throw new ResponseStatusException(HttpStatus.FORBIDDEN, "Only a steward may undo a rollover");
+        }
+        Rollover last = rollovers.findFirstBySheetIdOrderByIdDesc(sheetId)
+                .filter(r -> !r.isUndone())
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.CONFLICT, "There is no rollover to undo"));
+        if (!last.getMadeBy().equals(user)) {
+            throw new ResponseStatusException(HttpStatus.FORBIDDEN, "Only the steward who made the rollover may undo it");
+        }
+        if (!last.getMadeOn().equals(sheets.today(sheetId))) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT, "A rollover can only be undone on the day it was made");
+        }
+        List<Period> generated = periods.findBySheetIdOrderByFromDateAsc(sheetId).stream()
+                .filter(p -> last.getPeriodIds().contains(p.getId())).toList();
+        for (Claim c : claims.findBySheetIdOrderByListedDesc(sheetId)) {
+            boolean inGenerated = generated.stream().anyMatch(p -> !c.getDueBy().isBefore(p.getFromDate())
+                    && !c.getDueBy().isAfter(p.getToDate()));
+            if (inGenerated) {
+                throw new ResponseStatusException(HttpStatus.CONFLICT,
+                        "A claim now belongs to a period the rollover generated");
+            }
+        }
+        Period changed = null;
+        if (!last.getPeriodIds().contains(last.getOpeningPeriodId())) {
+            Period first = periods.lockByIdAndSheetId(last.getOpeningPeriodId(), sheetId).orElse(null);
+            if (first != null) {
+                last.getOpenings().forEach((personId, amount) -> first.addOpening(personId, amount.negate()));
+                first.dropZeroOpenings();
+                changed = periods.saveAndFlush(first);
+            }
+        }
+        periods.deleteAll(generated);
+        periods.flush();
+        last.undo();
+        rollovers.save(last);
+        audit.recordOnCommit("ROLLOVER_UNDONE sheet=" + sheetId + " by=" + user + " fy=" + last.getFy());
+        history.record(sheetId);
+        return new RolloverUndone(generated.stream().map(Period::getId).toList(), changed);
     }
 
     /** Generate the four calendar quarters of the year, each running from the first day of its

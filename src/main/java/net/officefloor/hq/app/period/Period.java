@@ -202,6 +202,11 @@ public class Period {
         personOpenings.merge(personId, amount, BigDecimal::add);
     }
 
+    /** Drop the opening balances that have come to zero: a person missing has 0.00. */
+    public void dropZeroOpenings() {
+        personOpenings.values().removeIf(amount -> amount.signum() == 0);
+    }
+
     /** Close the period, fixing each person's due-total and carried figure for it at what they are
      *  now, each pool member's cut for it at what it is now, and its own due-total at the sum of the
      *  due-totals. */

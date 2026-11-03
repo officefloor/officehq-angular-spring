@@ -52,6 +52,7 @@ const DAY = /^\d{4}-\d{2}-\d{2}$/;
         <label for="rollover-year">Fiscal year to roll over (yyyy)</label>
         <input id="rollover-year" data-testid="rollover-year" formControlName="year" inputmode="numeric" />
         <button type="submit" data-testid="rollover">Roll year over</button>
+        <button type="button" data-testid="rollover-undo" (click)="undoRollover()">Undo last rollover</button>
         @if (rolledOver() !== null) {
           <p role="status">Made <span data-testid="rollover-made">{{ rolledOver() }}</span></p>
         }
@@ -118,6 +119,8 @@ export class PeriodForm {
   readonly dueTotals = input.required<Map<number, string>>();
   /** A period added through the form, or closed, reopened, locked or unlocked from its row. */
   readonly saved = output<Period>();
+  /** The id of a period removed, by undoing the rollover that generated it. */
+  readonly removed = output<number>();
 
   protected readonly error = signal('');
   /** The refusal of the last action taken on a period's row, shown on that row. */
@@ -255,6 +258,26 @@ export class PeriodForm {
         e instanceof HttpErrorResponse && e.status === 403
           ? 'Only a steward may roll a year over.'
           : 'The year could not be rolled over: it has no periods.',
+      );
+    } finally {
+      this.rollingOver = false;
+    }
+  }
+
+  /** Undo the last rollover: its periods go and the opening balances it set are taken back. */
+  protected async undoRollover(): Promise<void> {
+    if (this.rollingOver) return;
+    this.rolloverError.set('');
+    this.rollingOver = true;
+    try {
+      const done = await this.api.undoRollover();
+      for (const id of done.removed) this.removed.emit(id);
+      if (done.changed) this.saved.emit(done.changed);
+    } catch (e) {
+      this.rolloverError.set(
+        e instanceof HttpErrorResponse && e.status === 403
+          ? 'Only the steward who made the rollover may undo it.'
+          : 'The rollover could not be undone: there is none to undo today, or a claim now belongs to a period it made.',
       );
     } finally {
       this.rollingOver = false;
