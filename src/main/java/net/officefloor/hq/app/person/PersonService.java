@@ -178,9 +178,15 @@ public class PersonService {
                 .filter(p -> from.equals(p.gradeOn(today))).toList();
         audit.recordOnCommit("GRADE_MERGED sheet=" + sheetId + " by=" + user + " from=" + from + " into=" + into);
         // The merge as a whole is a change too: after each person's own lines, the figures it moved.
+        // It is retroactive: after the edit, every grade recorded for them on the merged grade becomes
+        // the other, whatever its from-date.
         return rollup.tracking(sheetId, user, () -> chosen.stream()
                 .map(p -> save(sheetId, user, p, p.getName(), into, null, p.getTerms(), null, p.getContact(),
                         p.getTags()))
+                .map(p -> {
+                    p.regrade(from, into);
+                    return saveUnique(p);
+                })
                 .toList());
     }
 

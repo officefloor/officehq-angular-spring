@@ -221,6 +221,11 @@ public class Person {
         grades.add(new GradeFrom(from, grade));
     }
 
+    /** Make every grade recorded for the person on one grade the other, keeping its from-date. */
+    public void regrade(String from, String into) {
+        grades.replaceAll(g -> from.equals(g.getGrade()) ? new GradeFrom(g.getFromDate(), into) : g);
+    }
+
     public LocalDate getRetiredFrom() {
         return retiredFrom;
     }
