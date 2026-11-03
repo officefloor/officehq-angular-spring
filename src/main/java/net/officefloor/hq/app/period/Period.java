@@ -39,6 +39,10 @@ public class Period {
     @Column(name = "closed_due")
     private BigDecimal closedDue;
 
+    /** The last number given to a claim opened in this period under numbering per period. */
+    @Column(name = "last_claim_number", nullable = false)
+    private int lastClaimNumber;
+
     protected Period() {
     }
 
@@ -75,6 +79,11 @@ public class Period {
 
     public BigDecimal getClosedDue() {
         return closedDue;
+    }
+
+    /** Give out the next claim number within this period. */
+    public int nextClaimNumber() {
+        return ++lastClaimNumber;
     }
 
     /** Close the period, fixing its due-total at this moment. */

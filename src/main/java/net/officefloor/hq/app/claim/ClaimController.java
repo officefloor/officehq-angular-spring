@@ -4,7 +4,6 @@ import jakarta.validation.Valid;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.NotNull;
 import jakarta.validation.constraints.Pattern;
-import jakarta.validation.constraints.Positive;
 import jakarta.validation.constraints.Size;
 import java.math.BigDecimal;
 import java.math.RoundingMode;
@@ -31,13 +30,13 @@ public class ClaimController {
 
     public record AddClaimRequest(@NotBlank @Size(max = 100) String sheet, @NotBlank @Size(max = 100) String user,
             @NotNull Long personId, @NotNull @Pattern(regexp = SIGNED_AMOUNT) String amount, LocalDate date,
-            @Size(max = 1000) String note, @Positive Integer corrects) {
+            @Size(max = 1000) String note, @Size(max = 120) String corrects) {
     }
 
     public record UpdateClaimRequest(@NotBlank @Size(max = 100) String sheet,
             @NotBlank @Size(max = 100) String user, @NotNull Long id,
             @NotNull @Pattern(regexp = SIGNED_AMOUNT) String amount, LocalDate date, @Size(max = 1000) String note,
-            @Positive Integer corrects) {
+            @Size(max = 120) String corrects) {
     }
 
     public record ClaimStatusRequest(@NotBlank @Size(max = 100) String sheet,
@@ -52,8 +51,8 @@ public class ClaimController {
     }
 
     public record ClaimResponse(long id, long personId, String amount, LocalDate date, String note,
-            ClaimStatus status, Integer number, String settledDue, String openedBy,
-            boolean stated, String statedDue, Integer corrects) {
+            ClaimStatus status, String number, String settledDue, String openedBy,
+            boolean stated, String statedDue, String corrects) {
     }
 
     private static String money(BigDecimal value) {
@@ -70,6 +69,11 @@ public class ClaimController {
 
     public static BigDecimal amount(String amount) {
         return new BigDecimal(amount).setScale(2, RoundingMode.UNNECESSARY);
+    }
+
+    /** The number a correction names, trimmed; null when none is named. */
+    private static String corrects(String corrects) {
+        return corrects == null || corrects.isBlank() ? null : corrects.trim();
     }
 
     private static String note(String note) {
@@ -90,13 +94,13 @@ public class ClaimController {
     @PostMapping("/add")
     public ClaimResponse add(@Valid @RequestBody AddClaimRequest req) {
         return response(service.add(req.sheet().trim(), req.user().trim(), req.personId(), amount(req.amount()), req.date(),
-                note(req.note()), req.corrects()));
+                note(req.note()), corrects(req.corrects())));
     }
 
     @PostMapping("/update")
     public ClaimResponse update(@Valid @RequestBody UpdateClaimRequest req) {
         return response(service.update(req.sheet().trim(), req.user().trim(), req.id(), amount(req.amount()), req.date(),
-                note(req.note()), req.corrects()));
+                note(req.note()), corrects(req.corrects())));
     }
 
     @PostMapping("/open")

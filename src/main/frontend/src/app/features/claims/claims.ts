@@ -27,8 +27,9 @@ export interface Claim {
   date: string;
   note: string;
   status: ClaimStatus;
-  /** The claim's number on the sheet, given when opened; null while DRAFT or once VOID. */
-  number: number | null;
+  /** The claim's number on the sheet, given when opened; null while DRAFT. Sheet-wide (1, 2, ...), or
+   *  under numbering per period <period name>-<n>, or X-<n> in no period. */
+  number: string | null;
   /** The due fixed when the claim was settled; null while not settled or if its grade then had no rate. */
   settledDue: string | null;
   /** The user who opened the claim; null while DRAFT, or if voided without being opened. */
@@ -38,7 +39,7 @@ export interface Claim {
   /** The figure bound by the last statement; null while unbound or if it had no rate then. */
   statedDue: string | null;
   /** The number of the claim this correction corrects; null for a claim that is not a correction. */
-  corrects: number | null;
+  corrects: string | null;
 }
 
 /** The date a claim's live figures round by: its own, or for a correction the date of the claim it
@@ -75,8 +76,8 @@ export const AMOUNT = /^\d{1,12}(\.\d{1,2})?$/;
 /** A claim's amount: as {@link AMOUNT}, or below zero for a correction. */
 const SIGNED_AMOUNT = /^-?\d{1,12}(\.\d{1,2})?$/;
 
-/** A claim number: a whole number from 1. */
-const NUMBER = /^[1-9]\d{0,8}$/;
+/** A claim number: a whole number from 1, or a period's (or X) with its number in it, as <name>-<n>. */
+const NUMBER = /^(.{1,100}-)?[1-9]\d{0,8}$/;
 
 /** An amount in whole cents, so sums are exact; below zero for a negative amount. */
 export function cents(amount: string): number {
@@ -163,7 +164,6 @@ export function money(c: number): string {
       <input
         [id]="'claim-corrects-' + personId()"
         data-testid="claim-form-corrects"
-        inputmode="numeric"
         [value]="correctsInput()"
         (input)="correctsInput.set($any($event.target).value); error.set(null)"
       />
@@ -298,7 +298,7 @@ export class PersonClaims {
     this.amountInput.set(c.amount);
     this.dateInput.set(c.date);
     this.noteInput.set(c.note);
-    this.correctsInput.set(c.corrects === null ? '' : String(c.corrects));
+    this.correctsInput.set(c.corrects ?? '');
     this.error.set(null);
   }
 
@@ -346,7 +346,7 @@ export class PersonClaims {
 
   /** Whether a claim number names a SETTLED claim of this person, as a correction must. */
   private correctable(corrects: string): boolean {
-    return NUMBER.test(corrects) && this.claims().some((c) => c.number === Number(corrects) && c.status === 'SETTLED');
+    return NUMBER.test(corrects) && this.claims().some((c) => c.number === corrects && c.status === 'SETTLED');
   }
 
   protected async save(event: Event): Promise<void> {
@@ -372,7 +372,7 @@ export class PersonClaims {
     }
     const id = this.editingId();
     const body = { sheet, user: this.session.user(), amount, date: date || null, note: this.noteInput().trim(),
-      corrects: correction ? Number(corrects) : null };
+      corrects: correction ? corrects : null };
     this.submitting = true;
     try {
       const claim =

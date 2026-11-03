@@ -89,12 +89,12 @@ public class ClaimService {
 
     @Transactional
     public Claim add(String sheetId, String user, long personId, BigDecimal amount, LocalDate date, String note,
-            Integer corrects) {
+            String corrects) {
         Person person = person(sheetId, personId);
         LocalDate dated = dateOrToday(sheetId, date);
         periods.refuseIfClosed(sheetId, dated);
         refuseIfRetired(person, dated);
-        Integer corrected = corrected(sheetId, personId, amount, corrects);
+        String corrected = corrected(sheetId, personId, amount, corrects);
         RollupService.Snapshot before = rollup.snapshot(sheetId);
         Claim added = claims.saveAndFlush(new Claim(sheetId, personId, amount, dated, note, corrected));
         audit.recordOnCommit(record("CLAIM_ADDED", sheetId, user, person, added));
@@ -104,7 +104,7 @@ public class ClaimService {
 
     @Transactional
     public Claim update(String sheetId, String user, long id, BigDecimal amount, LocalDate date, String note,
-            Integer corrects) {
+            String corrects) {
         Claim claim = claims.findByIdAndSheetId(id, sheetId)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "No such claim on this sheet."));
         if (claim.getStatus() != ClaimStatus.DRAFT) {
@@ -115,7 +115,7 @@ public class ClaimService {
         periods.refuseIfClosed(sheetId, claim.getDate());
         periods.refuseIfClosed(sheetId, dated);
         refuseIfRetired(person(sheetId, claim.getPersonId()), dated);
-        Integer corrected = corrected(sheetId, claim.getPersonId(), amount, corrects);
+        String corrected = corrected(sheetId, claim.getPersonId(), amount, corrects);
         RollupService.Snapshot before = rollup.snapshot(sheetId);
         claim.setAmount(amount);
         claim.setDate(dated);
@@ -135,7 +135,9 @@ public class ClaimService {
     @Transactional
     public Claim changeStatus(String sheetId, String user, long id, ClaimStatus next) {
         // lock the sheet's numbering before reading the claim, so a claim is opened (and numbered) once
-        Integer number = next == ClaimStatus.OPEN ? sheets.nextClaimNumber(sheetId) : null;
+        if (next == ClaimStatus.OPEN) {
+            sheets.lock(sheetId);
+        }
         RollupService.Snapshot before = rollup.snapshot(sheetId);
         Claim claim = claims.findByIdAndSheetId(id, sheetId)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "No such claim on this sheet."));
@@ -156,7 +158,7 @@ public class ClaimService {
         }
         claim.setStatus(next);
         if (next == ClaimStatus.OPEN) {
-            claim.setNumber(number);
+            claim.setNumber(sheets.nextClaimNumber(sheetId, claim.getDate()));
             claim.setOpenedBy(user);
         } else if (next == ClaimStatus.SETTLED) {
             claim.setSettledDue(settling);
@@ -249,7 +251,7 @@ public class ClaimService {
      * The number a claim corrects: none unless its amount is negative, when it must name the number
      * of a SETTLED claim of the same person, else it is refused (400).
      */
-    private Integer corrected(String sheetId, long personId, BigDecimal amount, Integer corrects) {
+    private String corrected(String sheetId, long personId, BigDecimal amount, String corrects) {
         if (amount.signum() >= 0) {
             return null;
         }

@@ -18,7 +18,8 @@ import org.springframework.transaction.annotation.Transactional;
  * overdue claim gains of its figure for every full 30 days overdue. Changing the floor, the terms or
  * the late percent moves the figures, so the figures that move are recorded. Its policy date (none:
  * the sheet's today) decides how a claim's live figures round (see {@link Rounding}), so changing it
- * records the figures that move too.
+ * records the figures that move too. Its period-numbering-from date (none: off) decides how a claim
+ * opened is numbered: on or after it, within its period (see {@link SheetService#nextClaimNumber}).
  */
 @Service
 public class SettingService {
@@ -28,6 +29,7 @@ public class SettingService {
     public static final String TERMS = "terms";
     public static final String LATE_PCT = "late-pct";
     public static final String POLICY_DATE = "policy-date";
+    public static final String PERIOD_NUMBERING_FROM = "period-numbering-from";
 
     private final SheetService sheets;
     private final SheetRepository sheetStore;
@@ -49,11 +51,13 @@ public class SettingService {
     /**
      * Save the settings given: a clerk limit when {@code changeLimit} (null for no limit), and the
      * floor, the terms and the late percent when they are not null, and a policy date when
-     * {@code changePolicy} (null for none). Each one saved is recorded, in that order.
+     * {@code changePolicy} (null for none), and a period-numbering-from date when
+     * {@code changeNumbering} (null for off). Each one saved is recorded, in that order.
      */
     @Transactional
     public Sheet set(String sheetId, String user, boolean changeLimit, BigDecimal limit, BigDecimal floor,
-            Integer terms, BigDecimal latePct, boolean changePolicy, LocalDate policyDate) {
+            Integer terms, BigDecimal latePct, boolean changePolicy, LocalDate policyDate,
+            boolean changeNumbering, LocalDate numberingFrom) {
         Sheet sheet = sheets.load(sheetId, user);
         if (changeLimit) {
             sheet.setClerkLimit(limit);
@@ -87,6 +91,12 @@ public class SettingService {
             sheet = sheetStore.saveAndFlush(sheet);
             audit.recordOnCommit(changed(sheetId, user, POLICY_DATE, policyDate == null ? "" : policyDate.toString()));
             rollup.recordChanges(sheetId, user, before);
+        }
+        if (changeNumbering) {
+            sheet.setPeriodNumberingFrom(numberingFrom);
+            sheet = sheetStore.saveAndFlush(sheet);
+            audit.recordOnCommit(changed(sheetId, user, PERIOD_NUMBERING_FROM,
+                    numberingFrom == null ? "" : numberingFrom.toString()));
         }
         return sheet;
     }

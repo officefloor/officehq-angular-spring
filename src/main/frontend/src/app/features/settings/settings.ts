@@ -10,6 +10,8 @@ import { Session } from '../../core/session';
 // once its field has been entered (blank: no limit), and the floor, terms and late percent when typed (blank: left as they are).
 // The policy date (blank: the sheet's today) decides how a claim's live figures round: half up when dated before it, half to even
 // on or after it; it saves, like the clerk limit, once its field has been entered (blank: none).
+// Period numbering from (blank: off): while the sheet's today is on or after it, a claim opened is
+// numbered within its period (<period name>-<n>, or X-<n> in no period); it saves like the policy date.
 interface SettingsResponse {
   /** The clerk limit, blank for none. */
   clerkLimit: string;
@@ -18,6 +20,8 @@ interface SettingsResponse {
   latePct: string;
   /** The policy date, blank for none (the sheet's today). */
   policyDate: string;
+  /** The period-numbering-from date, blank for off. */
+  periodNumberingFrom: string;
 }
 
 /** A limit or floor: 0.00 or more, with up to two decimals. */
@@ -86,6 +90,15 @@ const DATE = /^\d{4}-\d{2}-\d{2}$/;
           (focus)="enterPolicy($any($event.target))"
           (input)="policyInput.set($any($event.target).value); error.set(null)"
         />
+        <label for="setting-period-numbering-from">Period numbering from (blank: off)</label>
+        <input
+          id="setting-period-numbering-from"
+          data-testid="setting-period-numbering-from"
+          type="date"
+          [value]="numberingInput() ?? ''"
+          (focus)="enterNumbering($any($event.target))"
+          (input)="numberingInput.set($any($event.target).value); error.set(null)"
+        />
         <button type="submit" data-testid="settings-save">Save settings</button>
         @if (error(); as err) {
           <p role="alert" data-testid="settings-error">{{ err }}</p>
@@ -117,6 +130,13 @@ const DATE = /^\d{4}-\d{2}-\d{2}$/;
           <span>(the sheet's today)</span>
         }
       </p>
+      <p>
+        Period numbering from:
+        <strong data-testid="setting-period-numbering-from-current">{{ numberingFrom() }}</strong>
+        @if (numberingFrom() === '') {
+          <span>(off)</span>
+        }
+      </p>
     </section>
   `,
 })
@@ -134,6 +154,8 @@ export class Settings {
   readonly policyDate = model('');
 
   protected readonly limit = signal('');
+  /** The period-numbering-from date in force; blank for off. */
+  protected readonly numberingFrom = signal('');
   /** The clerk limit typed; null while its field has not been entered (left as it is). */
   protected readonly limitInput = signal<string | null>(null);
   /** The floor typed; blank (or null) leaves it as it is. */
@@ -144,6 +166,8 @@ export class Settings {
   protected readonly latePctInput = signal<string | null>(null);
   /** The policy date typed; null while its field has not been entered (left as it is). */
   protected readonly policyInput = signal<string | null>(null);
+  /** The period-numbering-from date typed; null while its field has not been entered (left as it is). */
+  protected readonly numberingInput = signal<string | null>(null);
   protected readonly error = signal<string | null>(null);
   /** Whether a submit is waiting for its answer: a second submit meanwhile is ignored. */
   private submitting = false;
@@ -158,11 +182,13 @@ export class Settings {
       this.terms.set(DEFAULT_TERMS);
       this.latePct.set(DEFAULT_LATE_PCT);
       this.policyDate.set('');
+      this.numberingFrom.set('');
       this.limitInput.set(null);
       this.floorInput.set(null);
       this.termsInput.set(null);
       this.latePctInput.set(null);
       this.policyInput.set(null);
+      this.numberingInput.set(null);
       this.error.set(null);
       if (sheet) {
         void this.fetch(sheet);
@@ -198,12 +224,21 @@ export class Settings {
     this.policyInput.set(this.policyDate());
   }
 
+  /** Entering the period-numbering-from field fills it with the date in force, so it saves as it is
+   *  unless changed. */
+  protected enterNumbering(input: HTMLInputElement): void {
+    if (this.numberingInput() !== null) return;
+    input.value = this.numberingFrom();
+    this.numberingInput.set(this.numberingFrom());
+  }
+
   private show(res: SettingsResponse): void {
     this.limit.set(res.clerkLimit);
     this.floor.set(res.floor);
     this.terms.set(res.terms);
     this.latePct.set(res.latePct);
     this.policyDate.set(res.policyDate);
+    this.numberingFrom.set(res.periodNumberingFrom);
   }
 
   protected async save(event: Event): Promise<void> {
@@ -216,6 +251,7 @@ export class Settings {
     const terms = this.termsInput()?.trim() || null;
     const latePct = this.latePctInput()?.trim() || null;
     const policyDate = this.policyInput()?.trim() ?? null;
+    const periodNumberingFrom = this.numberingInput()?.trim() ?? null;
     if (clerkLimit !== null && clerkLimit !== '' && !LIMIT.test(clerkLimit)) {
       this.error.set('Enter a clerk limit of 0.00 or more, with up to two decimals, or leave it blank.');
       return;
@@ -236,6 +272,10 @@ export class Settings {
       this.error.set('Enter a policy date as a date, or leave it blank for the sheet\'s today.');
       return;
     }
+    if (periodNumberingFrom !== null && periodNumberingFrom !== '' && !DATE.test(periodNumberingFrom)) {
+      this.error.set('Enter a period-numbering-from date as a date, or leave it blank for off.');
+      return;
+    }
     this.submitting = true;
     try {
       const res = await firstValueFrom(
@@ -247,6 +287,7 @@ export class Settings {
           terms,
           latePct,
           policyDate,
+          periodNumberingFrom,
         }),
       );
       if (this.session.sheet() !== sheet) return;
@@ -256,6 +297,7 @@ export class Settings {
       this.termsInput.set(null);
       this.latePctInput.set(null);
       this.policyInput.set(null);
+      this.numberingInput.set(null);
     } catch {
       this.error.set('Could not save the settings.');
     } finally {

@@ -16,6 +16,10 @@ public interface PeriodRepository extends JpaRepository<Period, Long> {
     boolean existsBySheetIdAndFromDateLessThanEqualAndToDateGreaterThanEqual(String sheetId, LocalDate to,
             LocalDate from);
 
+    /** The period on the sheet containing the date (periods never overlap). */
+    Optional<Period> findBySheetIdAndFromDateLessThanEqualAndToDateGreaterThanEqual(String sheetId, LocalDate date,
+            LocalDate sameDate);
+
     Optional<Period> findByIdAndSheetId(Long id, String sheetId);
 
     /** Whether a closed period on the sheet contains the date. */
