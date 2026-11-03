@@ -1,0 +1,340 @@
+diff --git a/src/main/frontend/src/app/core/settings.ts b/src/main/frontend/src/app/core/settings.ts
+index bda757c91..6fe35598c 100644
+--- a/src/main/frontend/src/app/core/settings.ts
++++ b/src/main/frontend/src/app/core/settings.ts
+@@ -47,6 +47,9 @@ export interface Settings {
+   /** The escalation gap: reminding a claim this many days or more after its previous reminder
+    *  escalates it, once ever; null when blank (off). Not dated. */
+   escalateAfter: number | null;
++  /** The maximum of open claims per person: opening a claim is refused when its person already has
++   *  this many OPEN or PENDING claims; null when blank (none). Not dated. */
++  maxOpen: number | null;
+   /** The review SLA: a claim in review whose review day plus this many days is before the sheet's
+    *  today is late; null when blank (none). Not dated. */
+   reviewSla: number | null;
+@@ -345,6 +348,12 @@ export class SheetSettings {
+     return firstValueFrom(this.http.put<Settings>(`${this.url(sheetId)}/settings/escalate-after`, { value }, { headers }));
+   }
+ 
++  /** Set the maximum of open claims per person; null for blank (none). */
++  setMaxOpen(value: string | null): Promise<Settings> {
++    const [sheetId, headers] = this.active();
++    return firstValueFrom(this.http.put<Settings>(`${this.url(sheetId)}/settings/max-open`, { value }, { headers }));
++  }
++
+   /** Set the review SLA; null for blank (none). */
+   setReviewSla(value: string | null): Promise<Settings> {
+     const [sheetId, headers] = this.active();
+diff --git a/src/main/frontend/src/app/features/settings/settings-form.ts b/src/main/frontend/src/app/features/settings/settings-form.ts
+index c6b62f38f..a111b79ef 100644
+--- a/src/main/frontend/src/app/features/settings/settings-form.ts
++++ b/src/main/frontend/src/app/features/settings/settings-form.ts
+@@ -119,6 +119,8 @@ import { FigurePipe } from '../../core/figure';
+         <input id="setting-grace-days" data-testid="setting-grace-days" formControlName="graceDays" inputmode="numeric" />
+         <label for="setting-escalate-after">Escalate after (a reminder this many days or more after the claim's previous one escalates it, once; blank: off)</label>
+         <input id="setting-escalate-after" data-testid="setting-escalate-after" formControlName="escalateAfter" inputmode="numeric" />
++        <label for="setting-max-open">Max open claims (opening a claim is refused when its person already has this many open or pending; blank: none)</label>
++        <input id="setting-max-open" data-testid="setting-max-open" formControlName="maxOpen" inputmode="numeric" />
+         <label for="setting-review-sla">Review SLA (a claim in review longer than this many days is late; blank: none)</label>
+         <input id="setting-review-sla" data-testid="setting-review-sla" formControlName="reviewSla" inputmode="numeric" />
+         <label for="setting-score-mid">Score mid threshold (with the high one set, a score at or above it is MID; blank: no bands)</label>
+@@ -180,6 +182,7 @@ import { FigurePipe } from '../../core/figure';
+       <p>Period numbering from: <span data-testid="setting-period-numbering-from-current">{{ periodNumberingFrom() ?? '' }}</span></p>
+       <p>Grace days: <span data-testid="setting-grace-days-current">{{ graceDays() ?? '' }}</span></p>
+       <p>Escalate after: <span data-testid="setting-escalate-after-current">{{ escalateAfter() ?? '' }}</span></p>
++      <p>Max open claims: <span data-testid="setting-max-open-current">{{ maxOpen() ?? '' }}</span></p>
+       <p>Review SLA: <span data-testid="setting-review-sla-current">{{ reviewSla() ?? '' }}</span></p>
+       <p>Score mid threshold: <span data-testid="setting-score-mid-current">{{ scoreMid() ?? '' }}</span></p>
+       <p>Score high threshold: <span data-testid="setting-score-high-current">{{ scoreHigh() ?? '' }}</span></p>
+@@ -256,6 +259,7 @@ export class SettingsForm {
+   protected readonly periodNumberingFrom = signal<string | null>(null);
+   protected readonly graceDays = signal<number | null>(null);
+   protected readonly escalateAfter = signal<number | null>(null);
++  protected readonly maxOpen = signal<number | null>(null);
+   protected readonly reviewSla = signal<number | null>(null);
+   protected readonly scoreMid = signal<number | null>(null);
+   protected readonly scoreHigh = signal<number | null>(null);
+@@ -334,6 +338,7 @@ export class SettingsForm {
+     periodNumberingFrom: new FormControl('', { nonNullable: true }),
+     graceDays: new FormControl('', { nonNullable: true }),
+     escalateAfter: new FormControl('', { nonNullable: true }),
++    maxOpen: new FormControl('', { nonNullable: true }),
+     reviewSla: new FormControl('', { nonNullable: true }),
+     scoreMid: new FormControl('', { nonNullable: true }),
+     scoreHigh: new FormControl('', { nonNullable: true }),
+@@ -383,6 +388,7 @@ export class SettingsForm {
+       this.periodNumberingFrom.set(null);
+       this.graceDays.set(null);
+       this.escalateAfter.set(null);
++      this.maxOpen.set(null);
+       this.reviewSla.set(null);
+       this.scoreMid.set(null);
+       this.scoreHigh.set(null);
+@@ -406,14 +412,14 @@ export class SettingsForm {
+     if (this.submitting) return;
+     this.settingsError.set('');
+     const { clerkLimit, clerkLimitFrom, gradeClerkLimits, cap, capFrom, proofThreshold, proofThresholdFrom, gradeProofThresholds, noteThreshold, noteThresholdFrom, reviewThreshold, reviewThresholdFrom, floor, floorFrom, rounding, roundingFrom, terms, termsFrom, gradeTerms, gradeGraces, latePct,
+-      latePctFrom, policyDate, periodNumberingFrom, graceDays, escalateAfter, reviewSla, scoreMid, scoreHigh, scoreLog, entryDate, pot, alertThreshold, parent, proofKinds, defaultGrade, fiscalStartMonth, permissions } = this.settingsForm.controls;
++      latePctFrom, policyDate, periodNumberingFrom, graceDays, escalateAfter, maxOpen, reviewSla, scoreMid, scoreHigh, scoreLog, entryDate, pot, alertThreshold, parent, proofKinds, defaultGrade, fiscalStartMonth, permissions } = this.settingsForm.controls;
+     const changed = (...cs: AbstractControl[]) => cs.some((c) => c.dirty || c.touched);
+     const none = !changed(clerkLimit, clerkLimitFrom) && !changed(gradeClerkLimits) && !changed(cap, capFrom)
+       && !changed(proofThreshold, proofThresholdFrom) && !changed(gradeProofThresholds) && !changed(noteThreshold, noteThresholdFrom)
+       && !changed(reviewThreshold, reviewThresholdFrom)
+       && !changed(floor, floorFrom) && !changed(rounding, roundingFrom)
+       && !changed(terms, termsFrom) && !changed(gradeTerms) && !changed(gradeGraces) && !changed(latePct, latePctFrom) && !changed(policyDate)
+-      && !changed(periodNumberingFrom) && !changed(graceDays) && !changed(escalateAfter) && !changed(reviewSla) && !changed(scoreMid) && !changed(scoreHigh) && !changed(scoreLog) && !changed(entryDate) && !changed(pot) && !changed(alertThreshold) && !changed(parent) && !changed(proofKinds) && !changed(defaultGrade) && !changed(fiscalStartMonth) && !changed(permissions);
++      && !changed(periodNumberingFrom) && !changed(graceDays) && !changed(escalateAfter) && !changed(maxOpen) && !changed(reviewSla) && !changed(scoreMid) && !changed(scoreHigh) && !changed(scoreLog) && !changed(entryDate) && !changed(pot) && !changed(alertThreshold) && !changed(parent) && !changed(proofKinds) && !changed(defaultGrade) && !changed(fiscalStartMonth) && !changed(permissions);
+     /** A from-date typed, or null when blank (the sheet's today). */
+     const from = (c: AbstractControl<string>) => c.value.trim() || null;
+     const fromsToSave: AbstractControl<string>[] = [];
+@@ -467,6 +473,8 @@ export class SettingsForm {
+     const saveGrace = changed(graceDays) || (none && graceValue !== '');
+     const escalateValue = escalateAfter.value.trim();
+     const saveEscalate = changed(escalateAfter) || (none && escalateValue !== '');
++    const maxOpenValue = maxOpen.value.trim();
++    const saveMaxOpen = changed(maxOpen) || (none && maxOpenValue !== '');
+     const reviewSlaValue = reviewSla.value.trim();
+     const saveReviewSla = changed(reviewSla) || (none && reviewSlaValue !== '');
+     const scoreMidValue = scoreMid.value.trim();
+@@ -760,6 +768,12 @@ export class SettingsForm {
+         escalateAfter.markAsPristine();
+         escalateAfter.markAsUntouched();
+       }
++      if (saveMaxOpen) {
++        const saved = await this.api.setMaxOpen(maxOpenValue === '' ? null : maxOpenValue);
++        this.maxOpen.set(saved.maxOpen);
++        maxOpen.markAsPristine();
++        maxOpen.markAsUntouched();
++      }
+       if (saveReviewSla) {
+         const saved = await this.api.setReviewSla(reviewSlaValue === '' ? null : reviewSlaValue);
+         this.reviewSla.set(saved.reviewSla);
+@@ -897,6 +911,7 @@ export class SettingsForm {
+         this.periodNumberingFrom.set(settings.periodNumberingFrom);
+         this.graceDays.set(settings.graceDays);
+         this.escalateAfter.set(settings.escalateAfter);
++        this.maxOpen.set(settings.maxOpen);
+         this.reviewSla.set(settings.reviewSla);
+         this.scoreMid.set(settings.scoreMid);
+         this.scoreHigh.set(settings.scoreHigh);
+diff --git a/src/main/java/net/officefloor/hq/app/claim/ClaimRepository.java b/src/main/java/net/officefloor/hq/app/claim/ClaimRepository.java
+index 9149381d7..5cda9bd3f 100644
+--- a/src/main/java/net/officefloor/hq/app/claim/ClaimRepository.java
++++ b/src/main/java/net/officefloor/hq/app/claim/ClaimRepository.java
+@@ -36,6 +36,11 @@ public interface ClaimRepository extends JpaRepository<Claim, Long> {
+             + " and c.dueBy >= :from and c.dueBy <= :to")
+     long countOpenDueBetween(String sheetId, Long personId, LocalDate from, LocalDate to);
+ 
++    /** How many of a person's claims on a sheet are open or pending. */
++    @Query("select count(c) from Claim c where c.sheetId = :sheetId and c.personId = :personId"
++            + " and c.status in (net.officefloor.hq.app.claim.ClaimStatus.OPEN, net.officefloor.hq.app.claim.ClaimStatus.PENDING)")
++    long countOpen(String sheetId, Long personId);
++
+     /** The next place in the order claims are added and forward-only rates saved (see Claim#getAdded). */
+     @Query(value = "select next value for claim_added_seq", nativeQuery = true)
+     long nextAdded();
+diff --git a/src/main/java/net/officefloor/hq/app/claim/ClaimService.java b/src/main/java/net/officefloor/hq/app/claim/ClaimService.java
+index 15198cc1b..eaf75faac 100644
+--- a/src/main/java/net/officefloor/hq/app/claim/ClaimService.java
++++ b/src/main/java/net/officefloor/hq/app/claim/ClaimService.java
+@@ -286,6 +286,7 @@ public class ClaimService {
+             refuseFlagged(sheetId, user, claim);
+             refuseUnnoted(sheetId, claim);
+             refuseOverCap(sheetId, claim);
++            refuseOverMaxOpen(sheetId, claim);
+         }
+         if (to == ClaimStatus.SETTLED && claim.isDeferredOn(sheets.today(sheetId))) {
+             throw new ResponseStatusException(HttpStatus.CONFLICT,
+@@ -959,6 +960,21 @@ public class ClaimService {
+         }
+     }
+ 
++    /** Refuse opening a claim when the sheet has a maximum of open claims per person and its person
++     *  already has that many open or pending claims. */
++    private void refuseOverMaxOpen(String sheetId, Claim claim) {
++        Integer max = sheets.maxOpen(sheetId);
++        if (max == null) {
++            return;
++        }
++        // one open at a time per person, so two opens at once cannot both slip under the maximum
++        people.lockByIdAndSheetId(claim.getPersonId(), sheetId);
++        if (claims.countOpen(sheetId, claim.getPersonId()) >= max) {
++            throw new ResponseStatusException(HttpStatus.CONFLICT,
++                    "The person already has " + max + " open claims, the sheet's maximum");
++        }
++    }
++
+     /** Refuse opening a claim whose period caps its person's claims when the person already has
+      *  that many open or pending claims due inside it; the period stays locked until the transaction
+      *  ends, so two claims opened in it at once are counted one after the other. */
+diff --git a/src/main/java/net/officefloor/hq/app/clone/SheetCloneService.java b/src/main/java/net/officefloor/hq/app/clone/SheetCloneService.java
+index 523a2aa2b..725bd3418 100644
+--- a/src/main/java/net/officefloor/hq/app/clone/SheetCloneService.java
++++ b/src/main/java/net/officefloor/hq/app/clone/SheetCloneService.java
+@@ -120,6 +120,7 @@ public class SheetCloneService {
+         to.setPeriodNumberingFrom(from.getPeriodNumberingFrom());
+         to.setGraceDays(from.getGraceDays());
+         to.setEscalateAfter(from.getEscalateAfter());
++        to.setMaxOpen(from.getMaxOpen());
+         to.setReviewSla(from.getReviewSla());
+         to.setScoreMid(from.getScoreMid());
+         to.setScoreHigh(from.getScoreHigh());
+diff --git a/src/main/java/net/officefloor/hq/app/sheet/SettingsController.java b/src/main/java/net/officefloor/hq/app/sheet/SettingsController.java
+index defa93a00..49186a71d 100644
+--- a/src/main/java/net/officefloor/hq/app/sheet/SettingsController.java
++++ b/src/main/java/net/officefloor/hq/app/sheet/SettingsController.java
+@@ -54,7 +54,8 @@ public class SettingsController {
+      *  the review SLA in days (null when blank: none); and the proof kinds, comma separated (empty when
+      *  blank: none); and the default grade (null when blank: A); and the clerk limit each grade has of
+      *  its own in force, as text with two decimals (a grade not in it takes the sheet's); and the mid
+-     *  and high score thresholds (null when blank); and whether the score log switch is on. */
++     *  and high score thresholds (null when blank); and whether the score log switch is on; and the
++     *  maximum of open claims per person (null when blank: none). */
+     public record SettingsView(String clerkLimit, String floor, int terms, String latePct, LocalDate policyDate,
+             LocalDate periodNumberingFrom, Map<String, Integer> gradeTerms, String cap, List<DatedValue> floors,
+             List<DatedValue> latePcts, List<DatedValue> caps, String proofThreshold,
+@@ -63,7 +64,8 @@ public class SettingsController {
+             Map<String, String> gradeProofThresholds, String pot, String parent, int fiscalStartMonth,
+             String alertThreshold, String rounding, List<DatedText> roundings, String reviewThreshold,
+             Integer escalateAfter, Integer reviewSla, String proofKinds, String defaultGrade,
+-            Map<String, String> gradeClerkLimits, Integer scoreMid, Integer scoreHigh, boolean scoreLog) {
++            Map<String, String> gradeClerkLimits, Integer scoreMid, Integer scoreHigh, boolean scoreLog,
++            Integer maxOpen) {
+         static SettingsView of(BigDecimal clerkLimit, BigDecimal floor, int terms, BigDecimal latePct,
+                 LocalDate policyDate, LocalDate periodNumberingFrom, Map<String, Integer> gradeTerms,
+                 BigDecimal cap, List<SettingValue> floors, List<SettingValue> latePcts,
+@@ -73,7 +75,8 @@ public class SettingsController {
+                 String parent, int fiscalStartMonth, BigDecimal alertThreshold, Optional<Rounding> rounding,
+                 List<SettingValue> roundings, BigDecimal reviewThreshold, Integer escalateAfter,
+                 Integer reviewSla, List<String> proofKinds, String defaultGrade,
+-                Map<String, BigDecimal> gradeClerkLimits, Integer scoreMid, Integer scoreHigh, boolean scoreLog) {
++                Map<String, BigDecimal> gradeClerkLimits, Integer scoreMid, Integer scoreHigh, boolean scoreLog,
++                Integer maxOpen) {
+             Map<String, List<DatedDays>> gracesView = new TreeMap<>();
+             graces.forEach((grade, values) -> gracesView.put(grade, values.stream().map(DatedDays::of).toList()));
+             Map<String, String> thresholdsView = new TreeMap<>();
+@@ -90,7 +93,7 @@ public class SettingsController {
+                     rounding.map(Rounding::text).orElse(null), roundings.stream().map(DatedText::rounding).toList(),
+                     reviewThreshold == null ? null : reviewThreshold.setScale(2).toPlainString(), escalateAfter,
+                     reviewSla, String.join(",", proofKinds), defaultGrade, twoDecimals(gradeClerkLimits),
+-                    scoreMid, scoreHigh, scoreLog);
++                    scoreMid, scoreHigh, scoreLog, maxOpen);
+         }
+     }
+ 
+@@ -276,6 +279,15 @@ public class SettingsController {
+         }
+     }
+ 
++    /** The maximum open claims form: a whole number of claims, 0 or more, or blank for none; not
++     *  dated. */
++    public record MaxOpenForm(@Pattern(regexp = "\\s*(\\d{1,4})?\\s*") String value) {
++
++        Integer maxValue() {
++            return value == null || value.isBlank() ? null : Integer.valueOf(value.trim());
++        }
++    }
++
+     /** The review SLA form: a whole number of days, 0 or more, or blank for none; not dated. */
+     public record ReviewSlaForm(@Pattern(regexp = "\\s*(\\d{1,4})?\\s*") String value) {
+ 
+@@ -426,7 +438,7 @@ public class SettingsController {
+                 then.setting(Rounding.KEY, day).map(SettingValue::getValue).flatMap(Rounding::ofCode),
+                 then.recorded(Rounding.KEY), value.apply("review-threshold"), service.escalateAfter(id),
+                 service.reviewSla(id), service.proofKinds(id), service.defaultGradeSet(id), gradeClerkLimits,
+-                service.scoreMid(id), service.scoreHigh(id), service.scoreLog(id));
++                service.scoreMid(id), service.scoreHigh(id), service.scoreLog(id), service.maxOpen(id));
+     }
+ 
+     /** The settings view of a sheet as the store holds it now. */
+@@ -440,7 +452,7 @@ public class SettingsController {
+                 service.fiscalStartMonth(id), service.alertThreshold(id), service.rounding(id),
+                 service.recorded(id, Rounding.KEY), service.reviewThreshold(id), service.escalateAfter(id),
+                 service.reviewSla(id), service.proofKinds(id), service.defaultGradeSet(id),
+-                service.gradeClerkLimits(id), service.scoreMid(id), service.scoreHigh(id), service.scoreLog(id));
++                service.gradeClerkLimits(id), service.scoreMid(id), service.scoreHigh(id), service.scoreLog(id), service.maxOpen(id));
+     }
+ 
+     /** The grace days recorded for each grade of a sheet, earliest from-date first. */
+@@ -596,6 +608,13 @@ public class SettingsController {
+         return view(service.setEscalateAfter(sheetId.trim(), user.trim(), form.daysValue()));
+     }
+ 
++    @PutMapping("/max-open")
++    public SettingsView setMaxOpen(@PathVariable @NotBlank @Size(max = 100) String sheetId,
++            @RequestHeader("X-User") @NotBlank @Size(max = 100) String user,
++            @Valid @RequestBody MaxOpenForm form) {
++        return view(service.setMaxOpen(sheetId.trim(), user.trim(), form.maxValue()));
++    }
++
+     @PutMapping("/review-sla")
+     public SettingsView setReviewSla(@PathVariable @NotBlank @Size(max = 100) String sheetId,
+             @RequestHeader("X-User") @NotBlank @Size(max = 100) String user,
+diff --git a/src/main/java/net/officefloor/hq/app/sheet/Sheet.java b/src/main/java/net/officefloor/hq/app/sheet/Sheet.java
+index b515592c3..971b3131e 100644
+--- a/src/main/java/net/officefloor/hq/app/sheet/Sheet.java
++++ b/src/main/java/net/officefloor/hq/app/sheet/Sheet.java
+@@ -57,6 +57,10 @@ public class Sheet {
+     @Column(name = "escalate_after")
+     private Integer escalateAfter;
+ 
++    /** The maximum of open (OPEN or PENDING) claims per person; null when blank (none). */
++    @Column(name = "max_open")
++    private Integer maxOpen;
++
+     /** The review SLA in days: a claim in review whose review day plus them is before the sheet's
+      *  today is late; null when blank (none). */
+     @Column(name = "review_sla")
+@@ -179,6 +183,14 @@ public class Sheet {
+         this.escalateAfter = escalateAfter;
+     }
+ 
++    public Integer getMaxOpen() {
++        return maxOpen;
++    }
++
++    public void setMaxOpen(Integer maxOpen) {
++        this.maxOpen = maxOpen;
++    }
++
+     public Integer getReviewSla() {
+         return reviewSla;
+     }
+diff --git a/src/main/java/net/officefloor/hq/app/sheet/SheetService.java b/src/main/java/net/officefloor/hq/app/sheet/SheetService.java
+index 65daaae0d..e25b9a27e 100644
+--- a/src/main/java/net/officefloor/hq/app/sheet/SheetService.java
++++ b/src/main/java/net/officefloor/hq/app/sheet/SheetService.java
+@@ -528,6 +528,24 @@ public class SheetService {
+         return saved;
+     }
+ 
++    /** The sheet's maximum of open claims per person; null when blank (none). */
++    @Transactional(readOnly = true)
++    public Integer maxOpen(String id) {
++        return sheets.findById(id).map(Sheet::getMaxOpen).orElse(null);
++    }
++
++    /** Change the sheet's maximum of open claims per person (null: blank, none); recorded even when
++     *  unchanged. */
++    @Transactional
++    public synchronized Sheet setMaxOpen(String id, String user, Integer max) {
++        Sheet sheet = load(id, user);
++        sheet.setMaxOpen(max);
++        Sheet saved = sheets.saveAndFlush(sheet);
++        audit.recordOnCommit("SETTING_CHANGED sheet=" + id + " by=" + user + " key=max-open value="
++                + (max == null ? "" : max.toString()));
++        return saved;
++    }
++
+     /** The sheet's review SLA in days; null when blank (none). */
+     @Transactional(readOnly = true)
+     public Integer reviewSla(String id) {
+diff --git a/src/main/resources/db/migration/V120__sheet_max_open.sql b/src/main/resources/db/migration/V120__sheet_max_open.sql
+new file mode 100644
+index 000000000..b1c49e55b
+--- /dev/null
++++ b/src/main/resources/db/migration/V120__sheet_max_open.sql
+@@ -0,0 +1,3 @@
++-- The sheet's maximum of open claims per person: opening a claim is refused when its person already
++-- has this many OPEN or PENDING claims; null (blank) is none.
++ALTER TABLE sheet ADD COLUMN max_open INTEGER;

@@ -1,0 +1,64 @@
+{
+  "checkpoint": 214,
+  "stack": {
+    "repo": "/home/daniel/officehq-angular-spring",
+    "origin": "git@github.com:officefloor/officehq-angular-spring.git",
+    "name": "officehq-angular-spring",
+    "base_ref": "base-empty",
+    "base_commit": "65cb8233ea38b2dfa6cfd18709e30cd18fdf3250"
+  },
+  "checkpoint_id": "cp214_max-open-claims",
+  "phase": "late",
+  "type": "additive",
+  "mutates": [],
+  "replaced_tests": [],
+  "request": {
+    "spec": "The sheet has a maximum of open claims per person (settings, a whole number, blank means none, not\ndated; SETTING_CHANGED key=max-open value=<n>). Opening a claim, alone or by the bulk button or a\npaste, is refused when the person already has that many OPEN or PENDING claims.\n",
+    "prompt": "You are implementing ONE change to this application.\n\nFIRST read AGENTS.md \u2014 it states the working rules and how the app is tested, and sends you to\nDESIGN.md for the app's stack and conventions. Follow both.\n\nTHE CHANGE REQUEST:\nThe sheet has a maximum of open claims per person (settings, a whole number, blank means none, not\ndated; SETTING_CHANGED key=max-open value=<n>). Opening a claim, alone or by the bulk button or a\npaste, is refused when the person already has that many OPEN or PENDING claims.\n\nYour work is verified by an automated Playwright UI test already installed under e2e/specs/.\nRead that spec: it declares the exact data-testid anchors, values, test data and any audit\nrecords it expects \u2014 match them. Run `bin/e2e` to build the app, start it, and run the test as\nyou work; iterate until it passes. Change whatever the request needs across the app \u2014 its stored\ndata, its server and its front end. Do NOT edit bin/build, bin/start, bin/stop, bin/e2e,\nAGENTS.md, CLAUDE.md, DESIGN.md, e2e/support/ or the test spec.\n"
+  },
+  "commit_sha": "3df3f68941e97402c203609886bd14d9ead2c930",
+  "reset_sha": "",
+  "preagent_sha": "59e6c7ef1ef238779d034d14f0c60b20e087a062",
+  "prev_sha": "59e6c7ef1ef238779d034d14f0c60b20e087a062",
+  "base_sha": "65cb8233ea38b2dfa6cfd18709e30cd18fdf3250",
+  "agent": {
+    "ok": true,
+    "cost_usd": 0.7338802,
+    "input_tokens": 36,
+    "output_tokens": 9107,
+    "cache_read_tokens": 714541,
+    "cache_creation_tokens": 51086,
+    "num_turns": 19,
+    "duration_ms": 320711,
+    "duration_api_ms": 85212,
+    "model": "claude-opus-5-5",
+    "session_id": "b18062eb-76d2-473f-9941-ad9c2e451f38",
+    "stop_reason": "success",
+    "result_text": "I added the per-person maximum of open claims, and all 4 tests in `bin/e2e` pass.\n\n**What it does**\n- There's a new \"Max open claims\" setting. It's a whole number, blank means no limit, and it isn't dated. Saving it writes `SETTING_CHANGED key=max-open value=<n>` to the audit file, with an empty value when it's cleared.\n- Opening a claim is refused when its person already has that many OPEN or PENDING claims. The single open button, the bulk open button and a paste all go through the same code path, so all three are covered:\n  - **Bulk open:** each claim over the limit is refused on its own and counted as refused, while the others still open.\n  - **Paste:** if any line's open is refused, nothing from the paste is written, including the claims it would have added.\n\n**Where the changes are**\n- **Stored data:** migration `V120__sheet_max_open.sql` adds a `max_open` column to `Sheet`, and cloning a sheet copies the value.\n- **Server:**\n  - `SheetService` reads and saves the setting.\n  - `SettingsController` has a new `PUT /settings/max-open` endpoint and returns the value with the other settings.\n  - `ClaimRepository.countOpen` counts a person's open claims.\n  - The check is in `ClaimService.refuseOverMaxOpen`, called wherever a claim is opened. It locks the person's row first, so two opens at the same moment can't both get under the limit.\n- **Front end:** the settings form has the `setting-max-open` input and the `setting-max-open-current` display, plus a `setMaxOpen` call in `core/settings.ts`.\n\nApproving a claim that is in review doesn't check the new limit; it is still limited only by its period's cap, as before. The request only mentioned opening, so I left it alone \u2014 say if you want the limit to apply there too.",
+    "error": "",
+    "attempts": [
+      {
+        "ok": true,
+        "limit_reached": false,
+        "retryable": false,
+        "timed_out": false,
+        "cost_usd": 0.7338802,
+        "num_turns": 19,
+        "duration_ms": 320711,
+        "duration_api_ms": 85212,
+        "error": ""
+      }
+    ]
+  },
+  "agent_stream_file": "cp214.agent.jsonl",
+  "agent_diff_file": "cp214.agent.diff",
+  "build_log_file": null,
+  "tests": {
+    "gated": false,
+    "queued": true
+  },
+  "probe": null,
+  "pinned_touched": [],
+  "acceptance_touched": [],
+  "impact_gate": null
+}
