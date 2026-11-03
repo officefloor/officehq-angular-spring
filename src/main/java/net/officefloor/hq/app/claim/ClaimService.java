@@ -9,6 +9,7 @@ import net.officefloor.hq.app.person.Person;
 import net.officefloor.hq.app.person.PersonRepository;
 import net.officefloor.hq.app.rate.Rate;
 import net.officefloor.hq.app.rate.RateRepository;
+import net.officefloor.hq.app.rollup.RollupService;
 import net.officefloor.hq.app.sheet.SheetService;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
@@ -31,9 +32,11 @@ public class ClaimService {
     private final RateRepository rates;
     private final SheetService sheets;
     private final Audit audit;
+    private final RollupService rollup;
 
     public ClaimService(ClaimRepository claims, PersonRepository people, RateRepository rates, SheetService sheets,
-            Audit audit) {
+            Audit audit, RollupService rollup) {
+        this.rollup = rollup;
         this.claims = claims;
         this.people = people;
         this.rates = rates;
@@ -60,13 +63,16 @@ public class ClaimService {
     @Transactional
     public Claim add(String sheetId, String user, long personId, BigDecimal amount, LocalDate date, String note) {
         Person person = person(sheetId, personId);
+        RollupService.Snapshot before = rollup.snapshot(sheetId);
         Claim added = claims.saveAndFlush(new Claim(sheetId, personId, amount, dateOrToday(sheetId, date), note));
         audit.recordOnCommit(record("CLAIM_ADDED", sheetId, user, person, added));
+        rollup.recordChanges(sheetId, user, before);
         return added;
     }
 
     @Transactional
     public Claim update(String sheetId, String user, long id, BigDecimal amount, LocalDate date, String note) {
+        RollupService.Snapshot before = rollup.snapshot(sheetId);
         Claim claim = claims.findByIdAndSheetId(id, sheetId)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "No such claim on this sheet."));
         claim.setAmount(amount);
@@ -74,6 +80,7 @@ public class ClaimService {
         claim.setNote(note);
         Claim saved = claims.saveAndFlush(claim);
         audit.recordOnCommit(record("CLAIM_EDITED", sheetId, user, person(sheetId, saved.getPersonId()), saved));
+        rollup.recordChanges(sheetId, user, before);
         return saved;
     }
 
@@ -85,6 +92,7 @@ public class ClaimService {
     public Claim changeStatus(String sheetId, String user, long id, ClaimStatus next) {
         // lock the sheet's numbering before reading the claim, so a claim is opened (and numbered) once
         Integer number = next == ClaimStatus.OPEN ? sheets.nextClaimNumber(sheetId) : null;
+        RollupService.Snapshot before = rollup.snapshot(sheetId);
         Claim claim = claims.findByIdAndSheetId(id, sheetId)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "No such claim on this sheet."));
         if (!claim.getStatus().canBecome(next)) {
@@ -117,6 +125,7 @@ public class ClaimService {
         audit.recordOnCommit(record(event, sheetId, user, person, saved)
                 + (recorded != null ? " number=" + recorded : "")
                 + (next == ClaimStatus.SETTLED ? " due=" + dueText(saved.getSettledDue()) : ""));
+        rollup.recordChanges(sheetId, user, before);
         return saved;
     }
 

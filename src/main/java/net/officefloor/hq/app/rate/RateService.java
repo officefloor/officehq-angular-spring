@@ -5,6 +5,7 @@ import java.math.RoundingMode;
 import java.time.LocalDate;
 import java.util.List;
 import net.officefloor.hq.app.Audit;
+import net.officefloor.hq.app.rollup.RollupService;
 import net.officefloor.hq.app.sheet.SheetService;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.http.HttpStatus;
@@ -22,8 +23,10 @@ public class RateService {
     private final RateRepository rates;
     private final SheetService sheets;
     private final Audit audit;
+    private final RollupService rollup;
 
-    public RateService(RateRepository rates, SheetService sheets, Audit audit) {
+    public RateService(RateRepository rates, SheetService sheets, Audit audit, RollupService rollup) {
+        this.rollup = rollup;
         this.rates = rates;
         this.sheets = sheets;
         this.audit = audit;
@@ -37,6 +40,7 @@ public class RateService {
     @Transactional
     public Rate set(String sheetId, String user, String grade, LocalDate fromDate, BigDecimal pct) {
         sheets.load(sheetId, user);
+        RollupService.Snapshot before = rollup.snapshot(sheetId);
         Rate rate = rates.findBySheetIdAndGradeAndFrom(sheetId, grade, fromDate)
                 .orElseGet(() -> new Rate(sheetId, grade, fromDate, pct));
         rate.setPct(pct);
@@ -50,6 +54,7 @@ public class RateService {
         audit.recordOnCommit("RATE_SET sheet=" + sheetId + " by=" + user + " grade=" + grade + " rate="
                 + saved.getPct().setScale(2, RoundingMode.UNNECESSARY).toPlainString()
                 + (fromDate != null ? " from=" + fromDate : ""));
+        rollup.recordChanges(sheetId, user, before);
         return saved;
     }
 }

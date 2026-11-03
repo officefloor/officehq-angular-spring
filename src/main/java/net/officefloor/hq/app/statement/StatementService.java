@@ -14,6 +14,7 @@ import net.officefloor.hq.app.claim.ClaimService;
 import net.officefloor.hq.app.person.Person;
 import net.officefloor.hq.app.person.PersonRepository;
 import net.officefloor.hq.app.rate.RateRepository;
+import net.officefloor.hq.app.rollup.RollupService;
 import net.officefloor.hq.app.sheet.SheetService;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
@@ -43,9 +44,11 @@ public class StatementService {
     private final RateRepository rates;
     private final SheetService sheets;
     private final Audit audit;
+    private final RollupService rollup;
 
     public StatementService(StatementRepository statements, PersonRepository people, ClaimRepository claims,
-            ClaimService claimService, RateRepository rates, SheetService sheets, Audit audit) {
+            ClaimService claimService, RateRepository rates, SheetService sheets, Audit audit, RollupService rollup) {
+        this.rollup = rollup;
         this.statements = statements;
         this.people = people;
         this.claims = claims;
@@ -71,6 +74,7 @@ public class StatementService {
         Person person = people.lockByIdAndSheetId(personId, sheetId)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "No such person on this sheet."));
         LocalDate today = sheets.today(sheetId);
+        RollupService.Snapshot before = rollup.snapshot(sheetId);
         List<Claim> theirs = claims.findBySheetIdAndPersonIdOrderByIdDesc(sheetId, personId);
         BigDecimal total = BigDecimal.ZERO.setScale(2);
         boolean anyFigure = false;
@@ -97,6 +101,7 @@ public class StatementService {
                 .filter(s -> Objects.equals(s.getPersonId(), personId)).count();
         audit.recordOnCommit("STATEMENT sheet=" + sheetId + " by=" + user + " name=" + person.getName()
                 + " due-total=" + money(dueTotal) + " claims=" + counted);
+        rollup.recordChanges(sheetId, user, before);
         return new Taken(new Summary(personId, count, taken), theirs);
     }
 
