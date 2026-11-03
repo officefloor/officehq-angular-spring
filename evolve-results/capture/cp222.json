@@ -1,0 +1,64 @@
+{
+  "checkpoint": 222,
+  "stack": {
+    "repo": "/home/daniel/officehq-angular-spring",
+    "origin": "git@github.com:officefloor/officehq-angular-spring.git",
+    "name": "officehq-angular-spring",
+    "base_ref": "base-empty",
+    "base_commit": "65cb8233ea38b2dfa6cfd18709e30cd18fdf3250"
+  },
+  "checkpoint_id": "cp222_dashboard-over-tree",
+  "phase": "late",
+  "type": "additive",
+  "mutates": [],
+  "replaced_tests": [],
+  "request": {
+    "spec": "The steward's dashboard counts are now over the sheet and all its descendants.\n",
+    "prompt": "You are implementing ONE change to this application.\n\nFIRST read AGENTS.md \u2014 it states the working rules and how the app is tested, and sends you to\nDESIGN.md for the app's stack and conventions. Follow both.\n\nTHE CHANGE REQUEST:\nThe steward's dashboard counts are now over the sheet and all its descendants.\n\nYour work is verified by an automated Playwright UI test already installed under e2e/specs/.\nRead that spec: it declares the exact data-testid anchors, values, test data and any audit\nrecords it expects \u2014 match them. Run `bin/e2e` to build the app, start it, and run the test as\nyou work; iterate until it passes. Change whatever the request needs across the app \u2014 its stored\ndata, its server and its front end. Do NOT edit bin/build, bin/start, bin/stop, bin/e2e,\nAGENTS.md, CLAUDE.md, DESIGN.md, e2e/support/ or the test spec.\n"
+  },
+  "commit_sha": "f4d724275b8b8a7afc0d79129f3f40948323682e",
+  "reset_sha": "",
+  "preagent_sha": "2e9f834ea782c4411fa2dd49f6fe5e6eb697dcea",
+  "prev_sha": "2e9f834ea782c4411fa2dd49f6fe5e6eb697dcea",
+  "base_sha": "65cb8233ea38b2dfa6cfd18709e30cd18fdf3250",
+  "agent": {
+    "ok": true,
+    "cost_usd": 0.49011340000000003,
+    "input_tokens": 34,
+    "output_tokens": 4684,
+    "cache_read_tokens": 546767,
+    "cache_creation_tokens": 35868,
+    "num_turns": 17,
+    "duration_ms": 236204,
+    "duration_api_ms": 48385,
+    "model": "claude-opus-5-5",
+    "session_id": "9bd18a4e-7bda-49cb-880e-e0c482c3eacd",
+    "stop_reason": "success",
+    "result_text": "The steward's dashboard now counts claims on the sheet and all the sheets below it. `bin/e2e` passes all 4 tests.\n\n**Server** (`Rollup.java`): the descendants endpoint already sent claim counts per status for the sheets below. I added an `overdueCount` field at the end of that response: the number of overdue claims across those sheets. It only counts claims that count towards the live totals, using the same overdue rule the sheet's own figures already use.\n\n**Front end:**\n- `core/descendants.ts`: added the new `overdueCount` field, and set it to 0 for a sheet with no descendants.\n- `people-list.ts`: the dashboard's pending and to-review counts now come from the existing `consolidatedStatuses()`, which adds the descendants' per-status counts to the sheet's own. I added `consolidatedOverdueCount()`, which adds the descendants' overdue count to the sheet's, and the overdue cell now shows that.\n- `steward-dashboard.ts`: updated the comment to say the counts cover the sheet and its descendants.\n\nNothing else on the screen changed: the header counters and the sheet's own summary panel still count only the current sheet. There was no stored-data change, so no new migration.",
+    "error": "",
+    "attempts": [
+      {
+        "ok": true,
+        "limit_reached": false,
+        "retryable": false,
+        "timed_out": false,
+        "cost_usd": 0.49011340000000003,
+        "num_turns": 17,
+        "duration_ms": 236204,
+        "duration_api_ms": 48385,
+        "error": ""
+      }
+    ]
+  },
+  "agent_stream_file": "cp222.agent.jsonl",
+  "agent_diff_file": "cp222.agent.diff",
+  "build_log_file": null,
+  "tests": {
+    "gated": false,
+    "queued": true
+  },
+  "probe": null,
+  "pinned_touched": [],
+  "acceptance_touched": [],
+  "impact_gate": null
+}
