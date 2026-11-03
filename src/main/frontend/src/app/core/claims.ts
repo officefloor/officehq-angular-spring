@@ -47,6 +47,13 @@ export function countsLive(c: Claim, leave: Leave, today: string | null): boolea
   return counts(c) && !deferred(c, today) && !leftOut(c, leave, today);
 }
 
+/** Whether a claim counts toward what its person has claimed on the sheet's today: it counts, it is
+ *  not deferred, and it is not an open (or pending) claim, unbound by a statement, of a person
+ *  retired on that day. A hold does not take it out of claimed. */
+export function countsClaimed(c: Claim, leave: Leave, today: string | null): boolean {
+  return counts(c) && !deferred(c, today) && !(isOpen(c) && !c.stated && retiredOn(leave.retiredFrom, today));
+}
+
 /** Whether the live rules leave a claim out: it is open (or pending), unbound by a statement, and
  *  held, or dated within one of its person's holds, or its person is retired on the sheet's today. */
 function leftOut(c: Claim, leave: Leave, today: string | null): boolean {

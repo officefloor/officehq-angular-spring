@@ -1,7 +1,7 @@
 import { HttpErrorResponse } from '@angular/common/http';
 import { Component, computed, effect, inject, signal, untracked } from '@angular/core';
 import { FormControl, FormGroup, ReactiveFormsModule } from '@angular/forms';
-import { Claim, Claims, QuickAdded, addDays, backingFigure, claimDue, countsAsOf, countsLive, isOpen, keepsActive, overdue, reviewLate, statusOn, sumAmounts, trimmedSum } from '../../core/claims';
+import { Claim, Claims, QuickAdded, addDays, backingFigure, claimDue, countsAsOf, countsClaimed, countsLive, isOpen, keepsActive, overdue, reviewLate, statusOn, sumAmounts, trimmedSum } from '../../core/claims';
 import { Patron, Patrons, patronShares } from '../../core/patrons';
 import { Pools, formatCents } from '../../core/pools';
 import { Grade, Leave, People, Person, Taken, gradeOn } from '../../core/people';
@@ -547,18 +547,17 @@ export class PeopleList {
   protected readonly watched = computed(() => new Set(this.watches().map((w) => w.personId)));
   /** Each person, by id: their holds and retirement leave claims out of the live totals. */
   private readonly byId = computed(() => new Map(this.people().map((p) => [p.id, p])));
-  /** The claims that count in the live totals, newest first. */
-  private readonly live = computed(() => this.claims().filter((c) => countsLive(c, this.byId().get(c.personId) ?? NO_LEAVE, this.session.today())));
+  /** The claims that count toward claimed: a hold does not take a claim out of it. */
+  private readonly claimedClaims = computed(() =>
+    this.claims().filter((c) => !c.corrects && countsClaimed(c, this.byId().get(c.personId) ?? NO_LEAVE, this.session.today())));
   /** What each person has claimed: the sum of their open and settled claims' amounts, leaving out
-   *  the open ones dated within one of their holds and unbound by a statement, and the corrections. */
+   *  the deferred ones, the open ones of a retired person unbound by a statement, and the corrections. */
   protected readonly claimed = computed(() => {
-    const by = new Map<number, string>();
-    for (const [id, cs] of this.claimsByPerson()) {
-      by.set(id, sumAmounts(cs.filter((c) => !c.corrects && countsLive(c, this.byId().get(id) ?? NO_LEAVE, this.session.today())).map((c) => c.amount)));
-    }
-    return by;
+    const by = new Map<number, string[]>();
+    for (const c of this.claimedClaims()) by.set(c.personId, [...(by.get(c.personId) ?? []), c.amount]);
+    return new Map([...by].map(([id, amounts]) => [id, sumAmounts(amounts)]));
   });
-  protected readonly claimedTotal = computed(() => sumAmounts(this.live().filter((c) => !c.corrects).map((c) => c.amount)));
+  protected readonly claimedTotal = computed(() => sumAmounts(this.claimedClaims().map((c) => c.amount)));
   /** The rates set on the sheet. */
   protected readonly rates = signal<Rate[]>([]);
   /** The sheet's floors recorded: the least live due a claim has is the one in force on its date. */

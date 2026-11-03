@@ -319,6 +319,14 @@ public class Dues {
                 && (claim.isHeld() || person.isHeldOn(claim.getDate()) || person.isRetiredOn(today));
     }
 
+    /** Whether a claim of the person counts toward what they have claimed on the sheet's today: it
+     *  counts, it is not deferred on that day, and it is not an open (or pending) claim, unbound by a
+     *  statement, of a person retired on that day. A hold does not take it out of claimed. */
+    public static boolean countsClaimed(Person person, Claim claim, LocalDate today) {
+        return claim.getStatus().counts() && !claim.isDeferredOn(today)
+                && !(claim.getStatus().isOpen() && !claim.isStated() && person.isRetiredOn(today));
+    }
+
     /** The claims of a person that count in the live totals on the sheet's today. */
     public static List<Claim> live(Person person, List<Claim> theirs, LocalDate today) {
         return theirs.stream().filter(c -> countsLive(person, c, today)).toList();

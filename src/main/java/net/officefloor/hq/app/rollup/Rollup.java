@@ -25,7 +25,8 @@ import org.springframework.transaction.annotation.Propagation;
 import org.springframework.transaction.annotation.Transactional;
 
 /**
- * The figures a sheet rolls up to: what each person has claimed, their due-total and their
+ * The figures a sheet rolls up to: what each person has claimed (a hold does not take a claim out
+ * of it), their due-total and their
  * overdue-total, and the sheet's totals of all three. The sheet's due-total and overdue-total leave
  * out the single highest and the single lowest person's figure when three or more people have one
  * (a due-total of n/a is no figure). A change made through {@link #tracking} is followed in the audit by one
@@ -189,8 +190,10 @@ public class Rollup {
         List<BigDecimal> overdueFigures = new ArrayList<>();
         LocalDate today = basis.today();
         for (Person person : sheetPeople) {
-            List<Claim> theirs = Dues.live(person, byPerson.getOrDefault(person.getId(), List.of()), today);
-            BigDecimal claimed = theirs.stream().filter(c -> c.getCorrects() == null).map(Claim::getAmount)
+            List<Claim> all = byPerson.getOrDefault(person.getId(), List.of());
+            List<Claim> theirs = Dues.live(person, all, today);
+            BigDecimal claimed = all.stream()
+                    .filter(c -> c.getCorrects() == null && Dues.countsClaimed(person, c, today)).map(Claim::getAmount)
                     .reduce(BigDecimal.ZERO.setScale(2), BigDecimal::add);
             BigDecimal due = dues.dueTotal(basis, person, theirs);
             BigDecimal overdue = theirs.stream().filter(c -> dues.overdue(basis, person, c))
