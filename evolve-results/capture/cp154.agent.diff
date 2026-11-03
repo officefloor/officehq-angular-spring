@@ -1,0 +1,105 @@
+diff --git a/src/main/frontend/src/app/features/people/people-list.ts b/src/main/frontend/src/app/features/people/people-list.ts
+index ada951eb8..a1352b2d6 100644
+--- a/src/main/frontend/src/app/features/people/people-list.ts
++++ b/src/main/frontend/src/app/features/people/people-list.ts
+@@ -19,6 +19,7 @@ import { PeriodForm } from '../periods/period-form';
+ import { RateForm } from '../rates/rate-form';
+ import { GradeSummary, PeriodSummary, StatusSummary, SummaryPanel, VoidReasonSummary } from '../summary/summary-panel';
+ import { HeaderCounters } from '../summary/header-counters';
++import { ClassicPeriodSummary, ClassicSummaryPanel } from '../summary/classic-summary-panel';
+ import { QuickAddBar } from './quick-add-bar';
+ import { PasteClaimsBox } from './paste-claims-box';
+ import { ImportPeopleBox } from './import-people-box';
+@@ -46,7 +47,7 @@ const NO_LEAVE: Leave = { holds: [], retiredFrom: null };
+ // The signed-in user may watch a person: they are told when a claim of theirs is settled.
+ @Component({
+   selector: 'app-people-list',
+-  imports: [ReactiveFormsModule, PersonClaims, RateForm, PeriodForm, QuickAddBar, PasteClaimsBox, ImportPeopleBox, SummaryPanel, HeaderCounters, PoolList, PersonPlans, PlanGenerateBox, TreeSearchBox],
++  imports: [ReactiveFormsModule, PersonClaims, RateForm, PeriodForm, QuickAddBar, PasteClaimsBox, ImportPeopleBox, SummaryPanel, ClassicSummaryPanel, HeaderCounters, PoolList, PersonPlans, PlanGenerateBox, TreeSearchBox],
+   template: `
+     <app-header-counters [peopleCount]="people().length" [statuses]="statusSummary()"
+       [dueTotal]="dueTotal()" [overdueTotal]="overdueTotal()"
+@@ -116,6 +117,7 @@ const NO_LEAVE: Leave = { holds: [], retiredFrom: null };
+       }
+       <app-summary-panel [grades]="gradeSummary()" [periods]="periodSummary()" [statuses]="statusSummary()"
+         [voidReasons]="voidReasonSummary()" />
++      <app-classic-summary-panel [periods]="classicPeriodSummary()" [dueTotal]="classicDueTotal()" />
+       <label>
+         <input type="checkbox" data-testid="show-retired" [checked]="showRetired()"
+           (change)="showRetired.set($any($event.target).checked)" />
+@@ -680,6 +682,30 @@ export class PeopleList {
+       change: changes.get(p.id) ?? '',
+     }));
+   });
++  /** Per period, as listed: the due figures of the claims whose due-by falls in it that count by
++   *  their status now, skipping those with no due (a closed period shows the figure fixed when it
++   *  closed). */
++  protected readonly classicPeriodSummary = computed((): ClassicPeriodSummary[] => {
++    const figures = new Map<number, string[]>();
++    for (const c of this.claims()) {
++      const period = periodOf(this.periods(), c.dueBy);
++      const person = this.byId().get(c.personId);
++      if (period === undefined || person === undefined) continue;
++      if (!countsLive(c, person, this.session.today())) continue;
++      const d = claimDue(c, this.rates(), gradeOn(person.grades, c.date), this.floor(), this.lateness());
++      if (d !== null) figures.set(period.id, [...(figures.get(period.id) ?? []), d]);
++    }
++    return this.periods().map((p) => ({
++      name: p.name,
++      dueTotal: p.closed || p.softClosed
++        ? (this.periodDueTotals().get(p.id) ?? '0.00')
++        : sumAmounts(figures.get(p.id) ?? []),
++    }));
++  });
++  /** The sheet's due-total with no trimming: everyone's due-total added up, skipping those that are n/a. */
++  protected readonly classicDueTotal = computed(() =>
++    sumAmounts(this.people().map((p) => this.dueOf(p)).filter((d): d is string => d !== null)),
++  );
+   /** Per status: how many claims on the sheet have it. */
+   protected readonly statusSummary = computed((): StatusSummary[] =>
+     PeopleList.statuses.map((status) => ({ status, count: this.claims().filter((c) => c.status === status).length })),
+diff --git a/src/main/frontend/src/app/features/summary/classic-summary-panel.ts b/src/main/frontend/src/app/features/summary/classic-summary-panel.ts
+new file mode 100644
+index 000000000..56994b457
+--- /dev/null
++++ b/src/main/frontend/src/app/features/summary/classic-summary-panel.ts
+@@ -0,0 +1,39 @@
++import { Component, input } from '@angular/core';
++
++/** A period's line of the classic summary: its due-total counting each claim by its status now. */
++export interface ClassicPeriodSummary {
++  name: string;
++  dueTotal: string;
++}
++
++// The sheet summed up the classic way: per period by each claim's status now, and the due-total untrimmed.
++@Component({
++  selector: 'app-classic-summary-panel',
++  template: `
++    <section aria-labelledby="classic-summary-heading" data-testid="classic-summary">
++      <h2 id="classic-summary-heading">Classic summary</h2>
++      <table>
++        <caption>By period</caption>
++        <thead>
++          <tr><th scope="col">Period</th><th scope="col">Due</th></tr>
++        </thead>
++        <tbody>
++          @for (p of periods(); track p.name) {
++            <tr>
++              <th scope="row">{{ p.name }}</th>
++              <td [attr.data-testid]="'classic-period-' + p.name + '-due-total'">{{ p.dueTotal }}</td>
++            </tr>
++          }
++        </tbody>
++      </table>
++      <dl>
++        <dt>Due, untrimmed</dt>
++        <dd data-testid="classic-due-total">{{ dueTotal() }}</dd>
++      </dl>
++    </section>
++  `,
++})
++export class ClassicSummaryPanel {
++  readonly periods = input.required<ClassicPeriodSummary[]>();
++  readonly dueTotal = input.required<string>();
++}
