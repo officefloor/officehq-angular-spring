@@ -66,4 +66,8 @@ public class RateVersion {
     public LocalDate getToDate() {
         return toDate;
     }
+
+    public Long getForwardAfter() {
+        return forwardAfter;
+    }
 }

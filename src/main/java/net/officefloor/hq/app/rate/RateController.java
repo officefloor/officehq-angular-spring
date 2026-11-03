@@ -14,7 +14,9 @@ import java.util.function.Function;
 import net.officefloor.hq.app.history.History;
 import net.officefloor.hq.app.sheet.AsOfGuard;
 import org.springframework.format.annotation.DateTimeFormat;
+import org.springframework.http.ResponseEntity;
 import org.springframework.validation.annotation.Validated;
+import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PutMapping;
@@ -121,5 +123,17 @@ public class RateController {
             @Valid @RequestBody RateForm form) {
         Rate saved = service.set(sheetId.trim(), user.trim(), grade, form.pctValue(), form.from(), form.to());
         return RateView.of(saved, service.olderVersions(saved));
+    }
+
+    /** Withdraw the newest version of a grade's rate for a from-date (left out: the rate from the
+     *  beginning of time); the rate as it now stands, or no content when it is gone. */
+    @DeleteMapping("/{grade}")
+    public ResponseEntity<RateView> withdraw(@PathVariable @NotBlank @Size(max = 100) String sheetId,
+            @PathVariable @Pattern(regexp = "[A-Z]{1,3}") String grade,
+            @RequestHeader("X-User") @NotBlank @Size(max = 100) String user,
+            @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate from) {
+        return service.withdraw(sheetId.trim(), user.trim(), grade, from)
+                .map(rate -> ResponseEntity.ok(RateView.of(rate, service.olderVersions(rate))))
+                .orElseGet(() -> ResponseEntity.noContent().build());
     }
 }

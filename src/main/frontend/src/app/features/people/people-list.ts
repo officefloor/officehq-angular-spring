@@ -62,7 +62,8 @@ const NO_LEAVE: Leave = { holds: [], retiredFrom: null };
       [watchedDueTotal]="watchedDueTotal()" [myReviewsCount]="myReviewsCount()" />
     <app-steward-dashboard [steward]="myRole() === 'steward'" [statuses]="consolidatedStatuses()"
       [overdueCount]="consolidatedOverdueCount()" />
-    <app-rate-form [rates]="rates()" (saved)="rateSaved($event)" (imported)="ratesImported()" />
+    <app-rate-form [rates]="rates()" (saved)="rateSaved($event)" (imported)="ratesImported()"
+      (withdrawn)="ratesWithdrawn()" />
     <app-period-form [periods]="periods()" [dueTotals]="periodDueTotals()" [claimCounts]="periodClaimCounts()" (saved)="periodSaved($event)"
       (removed)="periodRemoved($event)" />
     <section aria-labelledby="people-heading">
@@ -2021,6 +2022,11 @@ export class PeopleList {
     if (!sheetId) return;
     const rates = await this.ratesApi.list(sheetId);
     if (this.session.sheetId() === sheetId) this.rates.set(rates);
+  }
+
+  /** Read the sheet's rates again once a rate's newest version was withdrawn. */
+  protected ratesWithdrawn(): Promise<void> {
+    return this.ratesImported();
   }
 
   protected rateSaved(rate: Rate): void {

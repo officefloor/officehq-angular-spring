@@ -102,7 +102,7 @@ import { FigurePipe } from '../../core/figure';
       <table data-testid="rates">
         <caption>All rates</caption>
         <thead>
-          <tr><th scope="col">Grade</th><th scope="col">From</th><th scope="col">To</th><th scope="col">Rate (%)</th><th scope="col">Versions</th></tr>
+          <tr><th scope="col">Grade</th><th scope="col">From</th><th scope="col">To</th><th scope="col">Rate (%)</th><th scope="col">Versions</th><th scope="col"><span class="visually-hidden">Actions</span></th></tr>
         </thead>
         <tbody>
           @for (r of own(); track r.grade + '-' + (r.from ?? 'start')) {
@@ -112,6 +112,10 @@ import { FigurePipe } from '../../core/figure';
               <td data-testid="rate-to">{{ r.to ?? '…' }}</td>
               <td data-testid="rate-pct">{{ r.pct | figure }}</td>
               <td data-testid="rate-version">{{ r.version }}</td>
+              <td>
+                <button type="button" data-testid="rate-withdraw" (click)="withdraw(r)"
+                  [attr.aria-label]="'Withdraw rate ' + r.grade + ' from ' + (r.from ?? 'start')">Withdraw</button>
+              </td>
             </tr>
           }
         </tbody>
@@ -131,12 +135,16 @@ export class RateForm {
   readonly saved = output<Rate>();
   /** How many rates an import set. */
   readonly imported = output<number>();
+  /** A rate's newest version withdrawn. */
+  readonly withdrawn = output<void>();
 
   /** The sheet's grades, in order. */
   protected readonly grades = inject(Grades).codes;
   protected readonly error = signal('');
   /** Whether a submit is waiting for its answer: a second submit meanwhile is ignored. */
   private submitting = false;
+  /** Whether a withdraw is waiting for its answer: a second one meanwhile is ignored. */
+  private withdrawing = false;
   protected readonly form = new FormGroup({
     grade: new FormControl<Grade>('A', { nonNullable: true }),
     pct: new FormControl('', { nonNullable: true }),
@@ -282,6 +290,24 @@ export class RateForm {
       this.error.set('The rate could not be set.');
     } finally {
       this.submitting = false;
+    }
+  }
+
+  protected async withdraw(rate: Rate): Promise<void> {
+    if (this.withdrawing) return;
+    this.error.set('');
+    this.withdrawing = true;
+    try {
+      await this.api.withdraw(rate.grade, rate.from);
+      this.withdrawn.emit();
+    } catch (e) {
+      this.error.set(
+        e instanceof HttpErrorResponse && e.status === 403
+          ? 'Only a steward can withdraw a rate.'
+          : 'The rate could not be withdrawn.',
+      );
+    } finally {
+      this.withdrawing = false;
     }
   }
 }

@@ -42,6 +42,10 @@ public class RateRevision {
     @Column(name = "forward_after")
     private Long forwardAfter;
 
+    /** Whether the rate had left the sheet by then (see {@link #gone(LocalDate)}). */
+    @Column(name = "gone", nullable = false)
+    private boolean gone;
+
     protected RateRevision() {
     }
 
@@ -54,6 +58,26 @@ public class RateRevision {
         this.pct = rate.getPct();
         this.toDate = rate.getToDate();
         this.forwardAfter = rate.getForwardAfter();
+    }
+
+    /** The revision recording, on the day, that the rate has left the sheet: as this one has it
+     *  otherwise. */
+    public RateRevision gone(LocalDate recordedOn) {
+        RateRevision left = new RateRevision();
+        left.sheetId = sheetId;
+        left.grade = grade;
+        left.fromDate = fromDate;
+        left.recordedOn = recordedOn;
+        left.pct = pct;
+        left.toDate = toDate;
+        left.forwardAfter = forwardAfter;
+        left.gone = true;
+        return left;
+    }
+
+    /** Whether the rate had left the sheet by this revision. */
+    public boolean isGone() {
+        return gone;
     }
 
     /** Which rate the revision is of: its grade and from-date ("" for none). */

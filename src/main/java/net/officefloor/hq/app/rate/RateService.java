@@ -15,6 +15,8 @@ import net.officefloor.hq.app.claim.ClaimStatus;
 import net.officefloor.hq.app.claim.Dues;
 import net.officefloor.hq.app.person.Person;
 import net.officefloor.hq.app.person.PersonRepository;
+import net.officefloor.hq.app.role.RoleService;
+import net.officefloor.hq.app.role.SheetRole;
 import net.officefloor.hq.app.rollup.Rollup;
 import net.officefloor.hq.app.sheet.SheetService;
 import org.springframework.http.HttpStatus;
@@ -34,10 +36,12 @@ public class RateService {
     private final PersonRepository people;
     private final ClaimRepository claims;
     private final RateVersionRepository versions;
+    private final RoleService roles;
 
     public RateService(RateRepository rates, SheetService sheets, Rollup rollup, Audit audit, Dues dues,
-            PersonRepository people, ClaimRepository claims, RateVersionRepository versions) {
+            PersonRepository people, ClaimRepository claims, RateVersionRepository versions, RoleService roles) {
         this.rates = rates;
+        this.roles = roles;
         this.versions = versions;
         this.sheets = sheets;
         this.rollup = rollup;
@@ -190,6 +194,36 @@ public class RateService {
                     + (from != null ? " from=" + from : "")
                     + (to != null ? " to=" + to : ""));
             return saved;
+        });
+    }
+
+    /** Withdraw the newest version of a grade's rate for a from-date (null: from the beginning of
+     *  time): only a steward may. The version before it, when there is one, applies again; with none
+     *  the rate is gone. Empty when the rate is gone. */
+    @Transactional
+    public synchronized Optional<Rate> withdraw(String sheetId, String user, String grade, LocalDate from) {
+        if (!SheetRole.STEWARD.equals(roles.roleOf(sheetId, user))) {
+            throw new ResponseStatusException(HttpStatus.FORBIDDEN, "Only a steward can withdraw a rate");
+        }
+        Rate rate = (from == null
+                ? rates.findBySheetIdAndGradeAndFromDateIsNull(sheetId, grade)
+                : rates.findBySheetIdAndGradeAndFromDate(sheetId, grade, from))
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "No such rate on the sheet"));
+        sheets.load(sheetId, user);
+        return rollup.tracking(sheetId, user, () -> {
+            Optional<RateVersion> older = versions.findByRateIdOrderByVersionDesc(rate.getId()).stream().findFirst();
+            Optional<Rate> left = older.map(version -> {
+                rate.previousVersion(version);
+                versions.delete(version);
+                return rates.saveAndFlush(rate);
+            });
+            if (left.isEmpty()) {
+                rates.delete(rate);
+                rates.flush();
+            }
+            audit.recordOnCommit("RATE_WITHDRAWN sheet=" + sheetId + " by=" + user + " grade=" + grade
+                    + (from != null ? " from=" + from : ""));
+            return left;
         });
     }
 }

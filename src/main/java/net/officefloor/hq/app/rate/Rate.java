@@ -105,6 +105,14 @@ public class Rate {
         this.version++;
     }
 
+    /** Make this row the older version again, taking back its values: the newest version is gone. */
+    public void previousVersion(RateVersion older) {
+        this.version = older.getVersion();
+        this.pct = older.getPct();
+        this.toDate = older.getToDate();
+        this.forwardAfter = older.getForwardAfter();
+    }
+
     public BigDecimal getPct() {
         return pct;
     }

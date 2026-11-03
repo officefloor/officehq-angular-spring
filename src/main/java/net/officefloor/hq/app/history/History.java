@@ -156,12 +156,19 @@ public class History {
             });
             Map<String, RateRevision> ratesWere = last(rateRevisions.findBySheetIdOrderByIdAsc(sheetId),
                     RateRevision::key);
+            Set<String> ratesNow = new HashSet<>();
             for (Rate rate : rates.findBySheetIdOrdered(sheetId)) {
+                ratesNow.add(RateRevision.key(rate));
                 RateRevision was = ratesWere.get(RateRevision.key(rate));
-                if (was == null || !was.matches(rate)) {
+                if (was == null || was.isGone() || !was.matches(rate)) {
                     rateRevisions.save(new RateRevision(rate, today));
                 }
             }
+            ratesWere.forEach((key, was) -> {
+                if (!was.isGone() && !ratesNow.contains(key)) {
+                    rateRevisions.save(was.gone(today));
+                }
+            });
             Map<String, SettingRevision> settingsWere = last(settingRevisions.findBySheetIdOrderByIdAsc(sheetId),
                     SettingRevision::key);
             for (SettingValue value : settingValues.findBySheetId(sheetId)) {
@@ -219,8 +226,15 @@ public class History {
         Map<String, List<Rate>> rateRevisionsThen = new HashMap<>();
         Stream.concat(Stream.of(sheetId), sheets.rateSources(sheetId).stream()).forEach(id ->
                 rateRevisions.findBySheetIdOrderByIdAsc(id).stream().filter(r -> !r.getRecordedOn().isAfter(day))
-                        .forEach(r -> rateRevisionsThen.computeIfAbsent(id + "|" + r.key(), k -> new ArrayList<>())
-                                .add(r.toRate())));
+                        .forEach(r -> {
+                            List<Rate> revisions = rateRevisionsThen.computeIfAbsent(id + "|" + r.key(),
+                                    k -> new ArrayList<>());
+                            if (r.isGone()) {
+                                revisions.clear();
+                            } else {
+                                revisions.add(r.toRate());
+                            }
+                        }));
         Dues.Basis basis = new Dues.Basis() {
             @Override
             public LocalDate today() {
@@ -307,7 +321,7 @@ public class History {
      *  none last. */
     private List<Rate> ratesThen(String sheetId, LocalDate day) {
         return lastOn(rateRevisions.findBySheetIdOrderByIdAsc(sheetId), RateRevision::getRecordedOn,
-                RateRevision::key, day).values().stream().map(RateRevision::toRate)
+                RateRevision::key, day).values().stream().filter(r -> !r.isGone()).map(RateRevision::toRate)
                 .sorted(Comparator.comparing(Rate::getFromDate, Comparator.nullsFirst(Comparator.<LocalDate>naturalOrder()))
                         .reversed())
                 .toList();

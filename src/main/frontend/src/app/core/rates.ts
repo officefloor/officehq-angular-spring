@@ -145,6 +145,20 @@ export class Rates {
     );
   }
 
+  /** Withdraw the newest version of a grade's rate for a from-date (null: from the beginning of
+   *  time); the version before it applies again, or with none the rate is gone. */
+  async withdraw(grade: Grade, from: string | null): Promise<void> {
+    const sheetId = this.session.sheetId();
+    const user = this.session.user();
+    if (!sheetId || !user) throw new Error('no sheet loaded');
+    await firstValueFrom(
+      this.http.delete(`${this.url(sheetId)}/${grade}`, {
+        headers: { 'X-User': user },
+        params: from === null ? {} : { from },
+      }),
+    );
+  }
+
   /** Set a rate per line of grade,rate,from,to, all or none; how many were set. */
   importRates(text: string): Promise<{ set: number }> {
     const sheetId = this.session.sheetId();
