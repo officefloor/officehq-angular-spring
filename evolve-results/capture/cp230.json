@@ -1,0 +1,64 @@
+{
+  "checkpoint": 230,
+  "stack": {
+    "repo": "/home/daniel/officehq-angular-spring",
+    "origin": "git@github.com:officefloor/officehq-angular-spring.git",
+    "name": "officehq-angular-spring",
+    "base_ref": "base-empty",
+    "base_commit": "65cb8233ea38b2dfa6cfd18709e30cd18fdf3250"
+  },
+  "checkpoint_id": "cp230_pending-sla",
+  "phase": "late",
+  "type": "additive",
+  "mutates": [],
+  "replaced_tests": [],
+  "request": {
+    "spec": "The sheet has a pending SLA (settings, days, not dated; SETTING_CHANGED key=pending-sla\nvalue=<days>; blank means none). A PENDING claim whose pending day (the sheet's today when it went\nto PENDING, the latest time) plus the SLA is before the sheet's today shows pending-late yes; the\nsummary counts such claims.\n",
+    "prompt": "You are implementing ONE change to this application.\n\nFIRST read AGENTS.md \u2014 it states the working rules and how the app is tested, and sends you to\nDESIGN.md for the app's stack and conventions. Follow both.\n\nTHE CHANGE REQUEST:\nThe sheet has a pending SLA (settings, days, not dated; SETTING_CHANGED key=pending-sla\nvalue=<days>; blank means none). A PENDING claim whose pending day (the sheet's today when it went\nto PENDING, the latest time) plus the SLA is before the sheet's today shows pending-late yes; the\nsummary counts such claims.\n\nYour work is verified by an automated Playwright UI test already installed under e2e/specs/.\nRead that spec: it declares the exact data-testid anchors, values, test data and any audit\nrecords it expects \u2014 match them. Run `bin/e2e` to build the app, start it, and run the test as\nyou work; iterate until it passes. Change whatever the request needs across the app \u2014 its stored\ndata, its server and its front end. Do NOT edit bin/build, bin/start, bin/stop, bin/e2e,\nAGENTS.md, CLAUDE.md, DESIGN.md, e2e/support/ or the test spec.\n"
+  },
+  "commit_sha": "e5bfe13e05acf3eef2e2a4eae63f68825a318546",
+  "reset_sha": "",
+  "preagent_sha": "63aaced932ac94f01e45e120c45cd432cf2c4273",
+  "prev_sha": "63aaced932ac94f01e45e120c45cd432cf2c4273",
+  "base_sha": "65cb8233ea38b2dfa6cfd18709e30cd18fdf3250",
+  "agent": {
+    "ok": true,
+    "cost_usd": 1.0159998,
+    "input_tokens": 50,
+    "output_tokens": 12516,
+    "cache_read_tokens": 1246719,
+    "cache_creation_tokens": 64517,
+    "num_turns": 26,
+    "duration_ms": 589640,
+    "duration_api_ms": 116342,
+    "model": "claude-opus-5-5",
+    "session_id": "6b36dc5b-eca3-4a34-b817-0dea576eb94d",
+    "stop_reason": "success",
+    "result_text": "The pending SLA is in and `bin/e2e` now passes all 4 tests. To get the last one passing I also had to fix an older bug with claim shares, described at the end.\n\n**Pending SLA.** I built it the same way as the existing review SLA:\n- **Stored data:** a new nullable `pending_sla` column on `sheet` (migration `V128__pending_sla.sql`). Copying a sheet copies it too.\n- **Server:** the settings now include the pending SLA, and there's a new `PUT /settings/pending-sla` endpoint. It accepts a whole number of days or blank for none, and writes `SETTING_CHANGED sheet=\u2026 by=\u2026 key=pending-sla value=<days>` to the audit file.\n- **Settings screen:** a `setting-pending-sla` input with its saved value shown in `setting-pending-sla-current`. A value that isn't a whole number of days shows an error and saves nothing.\n- **Claim rows and summary:** each claim row shows `claim-pending-late` as yes or no, and the summary shows `summary-pending-late-count`. A claim is late when it is PENDING and the day it most recently went to PENDING, plus the SLA, is before the sheet's today. So a claim that is rejected and later settled again starts its clock from the new day, which is what the first test checks.\n\n**Fix to claim shares.** One test failed outside the new feature: the as-of view showed a share that was given after the as-of day, because shares weren't dated. I added an `on_day` column to `claim_share` (`V129__claim_share_on.sql`) that records the sheet's today when the share is given. The as-of claim view now leaves out shares given after that day. Shares that already existed have no date and still always show. This only changes what the claim row displays; I didn't change how shares count in the as-of rollups or dues.",
+    "error": "",
+    "attempts": [
+      {
+        "ok": true,
+        "limit_reached": false,
+        "retryable": false,
+        "timed_out": false,
+        "cost_usd": 1.0159998,
+        "num_turns": 26,
+        "duration_ms": 589640,
+        "duration_api_ms": 116342,
+        "error": ""
+      }
+    ]
+  },
+  "agent_stream_file": "cp230.agent.jsonl",
+  "agent_diff_file": "cp230.agent.diff",
+  "build_log_file": null,
+  "tests": {
+    "gated": false,
+    "queued": true
+  },
+  "probe": null,
+  "pinned_touched": [],
+  "acceptance_touched": [],
+  "impact_gate": null
+}
