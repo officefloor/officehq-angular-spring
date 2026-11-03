@@ -16,7 +16,8 @@ import org.springframework.web.server.ResponseStatusException;
  * The people on a sheet: listed in the order they were added, added and edited by name and grade. A
  * name is unique on the sheet, compared without regard to case (names arrive trimmed). A person can
  * be retired from a date (the sheet's today when none is given); they count as retired at once. A
- * person can be put on hold and taken off it again.
+ * person can be put on hold and taken off it again. A person can name other people on the sheet as
+ * their patrons, one at a time: not themselves, and not the same person twice.
  */
 @Service
 public class PersonService {
@@ -25,9 +26,12 @@ public class PersonService {
     private final SheetService sheets;
     private final Audit audit;
     private final RollupService rollup;
+    private final PatronRepository patrons;
 
-    public PersonService(PersonRepository people, SheetService sheets, Audit audit, RollupService rollup) {
+    public PersonService(PersonRepository people, SheetService sheets, Audit audit, RollupService rollup,
+            PatronRepository patrons) {
         this.people = people;
+        this.patrons = patrons;
         this.sheets = sheets;
         this.audit = audit;
         this.rollup = rollup;
@@ -102,6 +106,42 @@ public class PersonService {
                 + " name=" + saved.getName());
         rollup.recordChanges(sheetId, user, before);
         return saved;
+    }
+
+    @Transactional(readOnly = true)
+    public List<Patron> patrons(String sheetId) {
+        return patrons.findBySheetIdOrderByIdAsc(sheetId);
+    }
+
+    /**
+     * Name another person on the sheet as the person's patron; refused (409) when it is the person
+     * themselves or already one of their patrons.
+     */
+    @Transactional
+    public Patron addPatron(String sheetId, String user, long id, long patronId) {
+        Person person = people.findByIdAndSheetId(id, sheetId)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "No such person on this sheet."));
+        Person patron = people.findByIdAndSheetId(patronId, sheetId)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "No such patron on this sheet."));
+        if (person.getId().equals(patron.getId())) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT, "A person cannot be their own patron.");
+        }
+        if (patrons.existsByPersonIdAndPatronId(person.getId(), patron.getId())) {
+            throw patronTaken();
+        }
+        Patron added;
+        try {
+            added = patrons.saveAndFlush(new Patron(sheetId, person.getId(), patron.getId()));
+        } catch (DataIntegrityViolationException e) {
+            throw patronTaken();
+        }
+        audit.recordOnCommit("PATRON_ADDED sheet=" + sheetId + " by=" + user + " name=" + person.getName()
+                + " patron=" + patron.getName());
+        return added;
+    }
+
+    private static ResponseStatusException patronTaken() {
+        return new ResponseStatusException(HttpStatus.CONFLICT, "That person is already a patron.");
     }
 
     private static String record(String event, String sheetId, String user, Person person) {

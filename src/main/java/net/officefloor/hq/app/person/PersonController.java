@@ -37,6 +37,13 @@ public class PersonController {
             @NotBlank @Size(max = 100) String user, @NotNull Long id, @NotNull Boolean held) {
     }
 
+    public record AddPatronRequest(@NotBlank @Size(max = 100) String sheet,
+            @NotBlank @Size(max = 100) String user, @NotNull Long id, @NotNull Long patronId) {
+    }
+
+    public record PatronResponse(long personId, long patronId) {
+    }
+
     public record PersonResponse(long id, String name, String grade, long version, boolean retired,
             LocalDate retiredFrom, boolean held) {
     }
@@ -76,5 +83,17 @@ public class PersonController {
     @PostMapping("/hold")
     public PersonResponse hold(@Valid @RequestBody HoldPersonRequest req) {
         return response(service.hold(req.sheet().trim(), req.user().trim(), req.id(), req.held()));
+    }
+
+    @PostMapping("/patrons/list")
+    public List<PatronResponse> patrons(@Valid @RequestBody ListPeopleRequest req) {
+        return service.patrons(req.sheet().trim()).stream()
+                .map(p -> new PatronResponse(p.getPersonId(), p.getPatronId())).toList();
+    }
+
+    @PostMapping("/patrons/add")
+    public PatronResponse addPatron(@Valid @RequestBody AddPatronRequest req) {
+        Patron added = service.addPatron(req.sheet().trim(), req.user().trim(), req.id(), req.patronId());
+        return new PatronResponse(added.getPersonId(), added.getPatronId());
     }
 }
