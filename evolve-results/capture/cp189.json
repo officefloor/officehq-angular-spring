@@ -1,0 +1,64 @@
+{
+  "checkpoint": 189,
+  "stack": {
+    "repo": "/home/daniel/officehq-angular-spring",
+    "origin": "git@github.com:officefloor/officehq-angular-spring.git",
+    "name": "officehq-angular-spring",
+    "base_ref": "base-empty",
+    "base_commit": "65cb8233ea38b2dfa6cfd18709e30cd18fdf3250"
+  },
+  "checkpoint_id": "cp189_default-grade",
+  "phase": "late",
+  "type": "additive",
+  "mutates": [],
+  "replaced_tests": [],
+  "request": {
+    "spec": "The sheet has a default grade (settings, one of the grades, blank means A, not dated;\nSETTING_CHANGED key=default-grade value=<grade>; anything else is refused). The quick-add bar gives\na new person that grade, and an import line with a blank grade uses it. Changing it changes no\none.\n",
+    "prompt": "You are implementing ONE change to this application.\n\nFIRST read AGENTS.md \u2014 it states the working rules and how the app is tested, and sends you to\nDESIGN.md for the app's stack and conventions. Follow both.\n\nTHE CHANGE REQUEST:\nThe sheet has a default grade (settings, one of the grades, blank means A, not dated;\nSETTING_CHANGED key=default-grade value=<grade>; anything else is refused). The quick-add bar gives\na new person that grade, and an import line with a blank grade uses it. Changing it changes no\none.\n\nYour work is verified by an automated Playwright UI test already installed under e2e/specs/.\nRead that spec: it declares the exact data-testid anchors, values, test data and any audit\nrecords it expects \u2014 match them. Run `bin/e2e` to build the app, start it, and run the test as\nyou work; iterate until it passes. Change whatever the request needs across the app \u2014 its stored\ndata, its server and its front end. Do NOT edit bin/build, bin/start, bin/stop, bin/e2e,\nAGENTS.md, CLAUDE.md, DESIGN.md, e2e/support/ or the test spec.\n"
+  },
+  "commit_sha": "71289e0210f1a95bca2d7abfbd3e3c616f3dceea",
+  "reset_sha": "",
+  "preagent_sha": "da73317a2897d2bcab547a13448c28b3a1822be3",
+  "prev_sha": "da73317a2897d2bcab547a13448c28b3a1822be3",
+  "base_sha": "65cb8233ea38b2dfa6cfd18709e30cd18fdf3250",
+  "agent": {
+    "ok": true,
+    "cost_usd": 1.8572719999999998,
+    "input_tokens": 72,
+    "output_tokens": 16924,
+    "cache_read_tokens": 2905320,
+    "cache_creation_tokens": 117180,
+    "num_turns": 37,
+    "duration_ms": 829305,
+    "duration_api_ms": 263666,
+    "model": "claude-opus-5-5",
+    "session_id": "2c4abb0d-12a4-4287-950a-67e5ce32ed1b",
+    "stop_reason": "success",
+    "result_text": "The sheet now has a default grade, and `bin/e2e` passes all 4 tests in the spec.\n\n**What I changed for the default grade**\n- **Stored data:** a new migration `V112__sheet_default_grade.sql` adds a `default_grade` column to the sheet. It is not dated, and when it's blank the grade is A.\n- **Server:**\n  - A new `PUT /settings/default-grade` endpoint accepts A, B, C or blank and refuses anything else. A refused value writes nothing.\n  - A saved value writes `SETTING_CHANGED sheet=\u2026 by=\u2026 key=default-grade value=<grade>` to the audit file, with nothing after `value=` when it's blank.\n  - The settings view now includes the default grade.\n  - Saving it doesn't change anyone already on the sheet.\n- **Quick-add bar:** a new person gets the sheet's default grade instead of a fixed A.\n- **Import:** a line with a blank grade (e.g. `Ben,`) uses the default grade. A blank grade was refused before.\n- **Front end:** the settings form has a `setting-default-grade` field and shows the value in force in `setting-default-grade-current`. Anything other than A, B or C shows `settings-error`.\n- **Cloning a sheet** now copies the default grade too, as it already did for the other undated settings.\n\n**Choice for you:** if an import line has a blank grade and its name matches someone already on the sheet, that person is given the default grade, because the request says a blank-grade line \"uses it\". If you'd rather a blank grade left an existing person's grade as it is, that's a small change in `PersonImportService`.\n\n**Change outside the request:** scenario 1 failed for a reason unrelated to the default grade. When a person who leads a crew was merged into someone else, the crew was left with no lead. The spec expects the crew to be led by the person they were merged into (\"Cam\"). I changed `PersonMergeService` to move crew leads and crew memberships to that person, dropping a membership that would be a duplicate. This matches how merge already moves pool memberships.",
+    "error": "",
+    "attempts": [
+      {
+        "ok": true,
+        "limit_reached": false,
+        "retryable": false,
+        "timed_out": false,
+        "cost_usd": 1.8572719999999998,
+        "num_turns": 37,
+        "duration_ms": 829305,
+        "duration_api_ms": 263666,
+        "error": ""
+      }
+    ]
+  },
+  "agent_stream_file": "cp189.agent.jsonl",
+  "agent_diff_file": "cp189.agent.diff",
+  "build_log_file": null,
+  "tests": {
+    "gated": false,
+    "queued": true
+  },
+  "probe": null,
+  "pinned_touched": [],
+  "acceptance_touched": [],
+  "impact_gate": null
+}
