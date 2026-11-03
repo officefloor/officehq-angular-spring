@@ -1,0 +1,192 @@
+diff --git a/src/main/java/net/officefloor/hq/app/claim/Dues.java b/src/main/java/net/officefloor/hq/app/claim/Dues.java
+index f03f27605..7dc3dcffa 100644
+--- a/src/main/java/net/officefloor/hq/app/claim/Dues.java
++++ b/src/main/java/net/officefloor/hq/app/claim/Dues.java
+@@ -49,13 +49,15 @@ public class Dues {
+         int grace(String grade, LocalDate day);
+ 
+         /** The rate of a grade in force on a day: the sheet's own, or else, when it has none in force
+-         *  on it, its ancestors' (see {@link #inherited}); empty when none is. */
++         *  on it, its ancestors' or its clone source's (see {@link #inherited}); empty when none is. */
+         default Optional<Rate> rateInForce(String grade, LocalDate day) {
+             return RateRepository.inForce(rates(grade), day).or(() -> inherited(grade, day));
+         }
+ 
+         /** The rate of a grade in force on a day on the sheet's parent, or else its parent's, up to
+-         *  three levels up; empty when none is (or the sheet has no parent). */
++         *  three levels up, or else, when the sheet was cloned, on the sheet it was cloned from and
++         *  so on up that sheet's parents and source (see SheetRepository#rateSources); empty when
++         *  none is. */
+         default Optional<Rate> inherited(String grade, LocalDate day) {
+             return Optional.empty();
+         }
+@@ -69,7 +71,8 @@ public class Dues {
+         }
+ 
+         /** The rate of a grade that applies to a claim on the sheet's parent, or else its parent's, up
+-         *  to three levels up (see {@link #rateFor}); empty when none does. */
++         *  to three levels up, or else on the sheet it was cloned from and so on (see {@link #rateFor}
++         *  and {@link #inherited}); empty when none does. */
+         default Optional<Rate> inheritedFor(String grade, Claim claim) {
+             return Optional.empty();
+         }
+@@ -153,14 +156,14 @@ public class Dues {
+ 
+             @Override
+             public Optional<Rate> inherited(String grade, LocalDate day) {
+-                return rates.findInForceUp(sheetStore.ancestors(sheetId), grade, day);
++                return rates.findInForceUp(sheetStore.rateSources(sheetId), grade, day);
+             }
+ 
+             @Override
+             public Optional<Rate> inheritedFor(String grade, Claim claim) {
+-                for (String ancestor : sheetStore.ancestors(sheetId)) {
++                for (String source : sheetStore.rateSources(sheetId)) {
+                     Optional<Rate> rate = RateRepository.inForce(
+-                            applying(rates.findLatestFirst(ancestor, grade), claim), claim.getDate());
++                            applying(rates.findLatestFirst(source, grade), claim), claim.getDate());
+                     if (rate.isPresent()) {
+                         return rate;
+                     }
+diff --git a/src/main/java/net/officefloor/hq/app/clone/SheetCloneService.java b/src/main/java/net/officefloor/hq/app/clone/SheetCloneService.java
+index 7ae10f111..9b66be8c5 100644
+--- a/src/main/java/net/officefloor/hq/app/clone/SheetCloneService.java
++++ b/src/main/java/net/officefloor/hq/app/clone/SheetCloneService.java
+@@ -126,6 +126,7 @@ public class SheetCloneService {
+         to.setAlertThreshold(from.getAlertThreshold());
+         to.setFiscalStartMonth(from.getFiscalStartMonth());
+         to.setParentId(from.getParentId());
++        to.setSourceId(sheetId);
+         to.setProofKinds(from.getProofKinds());
+         sheets.saveAndFlush(to);
+         rollup.tracking(toSheetId, user, () -> {
+diff --git a/src/main/java/net/officefloor/hq/app/history/History.java b/src/main/java/net/officefloor/hq/app/history/History.java
+index d2c2cfcb7..b518ee37d 100644
+--- a/src/main/java/net/officefloor/hq/app/history/History.java
++++ b/src/main/java/net/officefloor/hq/app/history/History.java
+@@ -212,12 +212,12 @@ public class History {
+                 PeriodRevision::getRecordedOn, PeriodRevision::getPeriodId, day).values().stream()
+                 .map(PeriodRevision::toPeriod).sorted(Comparator.comparing(Period::getFromDate)).toList();
+         List<Rate> ratesListed = listed(ratesThen);
+-        // the parent is not dated: the ancestors are the sheet's now, each one's rates as they stood then
+-        List<List<Rate>> inheritedThen = sheets.ancestors(sheetId).stream().map(id -> ratesThen(id, day)).toList();
++        // the parent is not dated: the rate sources are the sheet's now, each one's rates as they stood then
++        List<List<Rate>> inheritedThen = sheets.rateSources(sheetId).stream().map(id -> ratesThen(id, day)).toList();
+         // each rate's revisions recorded by then, the oldest first: its older versions, for a claim a
+         // forward-only rate does not apply to
+         Map<String, List<Rate>> rateRevisionsThen = new HashMap<>();
+-        Stream.concat(Stream.of(sheetId), sheets.ancestors(sheetId).stream()).forEach(id ->
++        Stream.concat(Stream.of(sheetId), sheets.rateSources(sheetId).stream()).forEach(id ->
+                 rateRevisions.findBySheetIdOrderByIdAsc(id).stream().filter(r -> !r.getRecordedOn().isAfter(day))
+                         .forEach(r -> rateRevisionsThen.computeIfAbsent(id + "|" + r.key(), k -> new ArrayList<>())
+                                 .add(r.toRate())));
+diff --git a/src/main/java/net/officefloor/hq/app/rate/RateService.java b/src/main/java/net/officefloor/hq/app/rate/RateService.java
+index bed3bbecb..efd0119f1 100644
+--- a/src/main/java/net/officefloor/hq/app/rate/RateService.java
++++ b/src/main/java/net/officefloor/hq/app/rate/RateService.java
+@@ -148,11 +148,12 @@ public class RateService {
+         return versions.findByRateIdOrderByVersionDesc(rate.getId()).stream().map(v -> v.toRate(rate)).toList();
+     }
+ 
+-    /** The rates set on each of the sheet's ancestors, nearest first (its parent's, then the
+-     *  parent's parent's, up to three levels up), each by grade and then from-date. */
++    /** The rates set on each of the sheets the sheet's rates are taken from, nearest first (its
++     *  parent's, then the parent's parent's, up to three levels up, then those of the sheet it was
++     *  cloned from and its own, see SheetRepository#rateSources), each by grade and then from-date. */
+     @Transactional(readOnly = true)
+     public List<List<Rate>> inherited(String sheetId) {
+-        return sheets.ancestors(sheetId).stream().map(rates::findBySheetIdOrdered).toList();
++        return sheets.rateSources(sheetId).stream().map(rates::findBySheetIdOrdered).toList();
+     }
+ 
+     /** Set the rate for a grade from a date (null: from the beginning of time) through a date
+diff --git a/src/main/java/net/officefloor/hq/app/sheet/Sheet.java b/src/main/java/net/officefloor/hq/app/sheet/Sheet.java
+index 23b0bbc0f..8ff988c6e 100644
+--- a/src/main/java/net/officefloor/hq/app/sheet/Sheet.java
++++ b/src/main/java/net/officefloor/hq/app/sheet/Sheet.java
+@@ -87,6 +87,12 @@ public class Sheet {
+     @Column(name = "parent_id")
+     private String parentId;
+ 
++    /** The id of the sheet this one was cloned from: a grade with no rate in force on a date on this
++     *  sheet nor on its parents takes that sheet's rate (see SheetRepository#rateSources); null when
++     *  it was not cloned. Not dated. */
++    @Column(name = "source_id")
++    private String sourceId;
++
+     /** The sheet's proof kinds, comma separated: a claim above the proof threshold needs at least one
+      *  proof of each before it is settled or approved; null (blank) is none. Not dated. */
+     @Column(name = "proof_kinds")
+@@ -201,6 +207,14 @@ public class Sheet {
+         this.parentId = parentId;
+     }
+ 
++    public String getSourceId() {
++        return sourceId;
++    }
++
++    public void setSourceId(String sourceId) {
++        this.sourceId = sourceId;
++    }
++
+     public String getProofKinds() {
+         return proofKinds;
+     }
+diff --git a/src/main/java/net/officefloor/hq/app/sheet/SheetRepository.java b/src/main/java/net/officefloor/hq/app/sheet/SheetRepository.java
+index 6e26a8c32..fd9875d1f 100644
+--- a/src/main/java/net/officefloor/hq/app/sheet/SheetRepository.java
++++ b/src/main/java/net/officefloor/hq/app/sheet/SheetRepository.java
+@@ -89,4 +89,26 @@ public interface SheetRepository extends JpaRepository<Sheet, String> {
+         }
+         return up;
+     }
++
++    /** The ids of the sheets a sheet's rates are taken from when it has none in force, nearest first:
++     *  its {@link #ancestors}, then, when it was cloned, the sheet it was cloned from and that sheet's
++     *  own rate sources (its ancestors, then the sheet it was cloned from, and so on), each once and
++     *  never the sheet itself. */
++    default List<String> rateSources(String id) {
++        List<String> sources = new ArrayList<>();
++        Set<String> visited = new HashSet<>();
++        String at = id;
++        while (at != null && visited.add(at)) {
++            for (String ancestor : ancestors(at)) {
++                if (!ancestor.equals(id) && !sources.contains(ancestor)) {
++                    sources.add(ancestor);
++                }
++            }
++            at = findById(at).map(Sheet::getSourceId).orElse(null);
++            if (at != null && !at.equals(id) && !sources.contains(at)) {
++                sources.add(at);
++            }
++        }
++        return sources;
++    }
+ }
+diff --git a/src/main/java/net/officefloor/hq/app/sheet/SheetService.java b/src/main/java/net/officefloor/hq/app/sheet/SheetService.java
+index 22f795e31..eb1eacb11 100644
+--- a/src/main/java/net/officefloor/hq/app/sheet/SheetService.java
++++ b/src/main/java/net/officefloor/hq/app/sheet/SheetService.java
+@@ -585,6 +585,13 @@ public class SheetService {
+         return sheets.ancestors(id);
+     }
+ 
++    /** The ids of the sheets the sheet's rates are taken from, nearest first: its ancestors, then
++     *  the sheet it was cloned from and its own (see {@link SheetRepository#rateSources}). */
++    @Transactional(readOnly = true)
++    public List<String> rateSources(String id) {
++        return sheets.rateSources(id);
++    }
++
+     /** The ids of the other sheets of the sheet's tree, among the sheets that exist: its ancestors,
+      *  however many levels up, and its descendants, however many levels down. */
+     @Transactional(readOnly = true)
+diff --git a/src/main/resources/db/migration/V111__sheet_source.sql b/src/main/resources/db/migration/V111__sheet_source.sql
+new file mode 100644
+index 000000000..851572b77
+--- /dev/null
++++ b/src/main/resources/db/migration/V111__sheet_source.sql
+@@ -0,0 +1,3 @@
++-- The id of the sheet a sheet was cloned from (null: it was not cloned): a grade with no rate in
++-- force on a date on the sheet nor on its parents takes that sheet's rate.
++ALTER TABLE sheet ADD COLUMN source_id VARCHAR(100);
