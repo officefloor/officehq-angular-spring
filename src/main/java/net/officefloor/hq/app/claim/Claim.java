@@ -543,11 +543,15 @@ public class Claim {
         this.proofDays.add(new Proof(on, kind));
     }
 
-    /** Whether the claim is deferred on the day: it is open and the day is before the one it is
-     *  deferred until. A deferred claim counts in no total, is not overdue, cannot be settled and a
-     *  statement leaves it unbound; from that day on it is an open claim like any other. */
+    /** Whether the claim is deferred on the day: it is open (or settled while a statement bound it),
+     *  no statement binds it now, and the day is before the one it is deferred until. A deferred
+     *  claim counts in no total, is not overdue, cannot be settled and a statement leaves it unbound;
+     *  from that day on it is a claim like any other. While a statement binds it, the deferral waits:
+     *  it takes effect only once the binding ends (the statement is cancelled, or the next one leaves
+     *  it unbound). */
     public boolean isDeferredOn(LocalDate day) {
-        return status == ClaimStatus.OPEN && deferredUntil != null && day.isBefore(deferredUntil);
+        return (status == ClaimStatus.OPEN || status == ClaimStatus.SETTLED) && !stated
+                && deferredUntil != null && day.isBefore(deferredUntil);
     }
 
     public LocalDate getDate() {

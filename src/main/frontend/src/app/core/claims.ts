@@ -34,10 +34,13 @@ export function counts(c: Claim): boolean {
   return isOpen(c) || c.status === 'SETTLED';
 }
 
-/** Whether a claim is deferred on the sheet's today: it is OPEN and today is before the day it is
- *  deferred until. Until then it counts in no total, is not overdue and cannot be settled. */
+/** Whether a claim is deferred on the sheet's today: it is OPEN (or SETTLED while a statement bound
+ *  it), no statement binds it now, and today is before the day it is deferred until. Until then it
+ *  counts in no total, is not overdue and cannot be settled. While a statement binds it, the
+ *  deferral waits until the binding ends. */
 export function deferred(c: Claim, today: string | null): boolean {
-  return c.status === 'OPEN' && c.deferredUntil !== null && today !== null && today < c.deferredUntil;
+  return (c.status === 'OPEN' || c.status === 'SETTLED') && !c.stated
+    && c.deferredUntil !== null && today !== null && today < c.deferredUntil;
 }
 
 /** Whether a claim counts in the live totals on the sheet's today: it counts, it is not deferred,

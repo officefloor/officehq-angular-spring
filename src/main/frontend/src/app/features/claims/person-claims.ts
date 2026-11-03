@@ -598,10 +598,10 @@ export class PersonClaims {
   }
 
   /** Whether the row shows the claim as deferred: open and deferred, or closed off (voided) while
-   *  its deferral still runs. */
+   *  its deferral still runs; never while a statement binds it (the deferral waits for that). */
   protected deferredOf(c: Claim): boolean {
     const today = this.today();
-    return deferred(c, today) || (c.deferredUntil !== null && today !== null && today < c.deferredUntil);
+    return deferred(c, today) || (!c.stated && c.deferredUntil !== null && today !== null && today < c.deferredUntil);
   }
 
   /** The name of the period the claim belongs to; empty when it belongs to none. */
