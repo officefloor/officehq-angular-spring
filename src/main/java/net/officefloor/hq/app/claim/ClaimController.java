@@ -40,14 +40,15 @@ public class ClaimController {
     }
 
     public record ClaimResponse(long id, long personId, String amount, LocalDate date, String note,
-            ClaimStatus status, Integer number, String settledDue) {
+            ClaimStatus status, Integer number, String settledDue, String openedBy) {
     }
 
     private static ClaimResponse response(Claim claim) {
         return new ClaimResponse(claim.getId(), claim.getPersonId(),
                 claim.getAmount().setScale(2, RoundingMode.UNNECESSARY).toPlainString(), claim.getDate(),
                 claim.getNote(), claim.getStatus(), claim.getNumber(),
-                claim.getSettledDue() == null ? null : claim.getSettledDue().setScale(2, RoundingMode.UNNECESSARY).toPlainString());
+                claim.getSettledDue() == null ? null : claim.getSettledDue().setScale(2, RoundingMode.UNNECESSARY).toPlainString(),
+                claim.getOpenedBy());
     }
 
     private static BigDecimal amount(String amount) {

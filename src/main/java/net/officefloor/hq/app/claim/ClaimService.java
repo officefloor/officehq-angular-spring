@@ -20,6 +20,7 @@ import org.springframework.web.server.ResponseStatusException;
  * takes the sheet's today. A claim starts as DRAFT and moves through its statuses (see
  * {@link ClaimStatus}); a change its status does not allow is refused. Settling a claim fixes its
  * due at the rate its person's grade has then for the claim's date; an open claim's due stays live.
+ * A claim records who opened it, and that user cannot settle it (four eyes).
  */
 @Service
 public class ClaimService {
@@ -64,7 +65,10 @@ public class ClaimService {
         return saved;
     }
 
-    /** Move a claim to a new status, refused (409) when its current status does not allow it. */
+    /**
+     * Move a claim to a new status, refused (409) when its current status does not allow it, and
+     * refused (403) when the user who opened it tries to settle it.
+     */
     @Transactional
     public Claim changeStatus(String sheetId, String user, long id, ClaimStatus next) {
         // lock the sheet's numbering before reading the claim, so a claim is opened (and numbered) once
@@ -75,12 +79,17 @@ public class ClaimService {
             throw new ResponseStatusException(HttpStatus.CONFLICT,
                     "A " + claim.getStatus() + " claim cannot become " + next + ".");
         }
+        if (next == ClaimStatus.SETTLED && user.equals(claim.getOpenedBy())) {
+            throw new ResponseStatusException(HttpStatus.FORBIDDEN,
+                    "The user who opened a claim cannot settle it.");
+        }
         // the audit line carries the number the claim had, before voiding clears it
         Integer recorded = next == ClaimStatus.OPEN ? number : claim.getNumber();
         Person person = person(sheetId, claim.getPersonId());
         claim.setStatus(next);
         if (next == ClaimStatus.OPEN) {
             claim.setNumber(number);
+            claim.setOpenedBy(user);
         } else if (next == ClaimStatus.SETTLED) {
             claim.setSettledDue(due(sheetId, person, claim));
         } else if (next == ClaimStatus.VOID) {

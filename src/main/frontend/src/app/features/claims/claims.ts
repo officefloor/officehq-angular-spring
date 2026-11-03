@@ -1,4 +1,4 @@
-import { HttpClient } from '@angular/common/http';
+import { HttpClient, HttpErrorResponse } from '@angular/common/http';
 import { Component, inject, input, output, signal } from '@angular/core';
 import { firstValueFrom } from 'rxjs';
 import { Session } from '../../core/session';
@@ -7,7 +7,7 @@ import { Rate, claimDueCents, dueText } from '../rates/rates';
 // A person's claims, newest first, and the one form under their row that both adds a claim and
 // edits an existing one (opening a claim's editor fills the form with its values). Each claim
 // shows its status and the buttons that move it on; a move its status does not allow is refused
-// with an error on the claim.
+// with an error on the claim, as is the user who opened a claim settling it (four eyes).
 export type ClaimStatus = 'DRAFT' | 'OPEN' | 'SETTLED' | 'VOID';
 
 export interface Claim {
@@ -21,6 +21,8 @@ export interface Claim {
   number: number | null;
   /** The due fixed when the claim was settled; null while not settled or if its grade then had no rate. */
   settledDue: string | null;
+  /** The user who opened the claim; null while DRAFT, or if voided without being opened. */
+  openedBy: string | null;
 }
 
 /** A move from one status to the next, by the endpoint that makes it. */
@@ -90,6 +92,7 @@ export function money(c: number): string {
           <span data-testid="claim-note">{{ c.note }}</span>
           <span>Due <span data-testid="claim-due">{{ dueOf(c) }}</span></span>
           <span data-testid="claim-status">{{ c.status }}</span>
+          <span>Opened by <span data-testid="claim-opened-by">{{ c.openedBy ?? '' }}</span></span>
           <button type="button" data-testid="claim-open" (click)="act(c, 'open')">Open</button>
           <button type="button" data-testid="claim-settle" (click)="act(c, 'settle')">Settle</button>
           <button type="button" data-testid="claim-void" (click)="act(c, 'void')">Void</button>
@@ -175,9 +178,13 @@ export class PersonClaims {
       );
       if (this.session.sheet() !== sheet) return;
       this.saved.emit(claim);
-    } catch {
+    } catch (e) {
       if (this.session.sheet() !== sheet) return;
-      this.actionErrors.update((m) => new Map(m).set(c.id, `A ${c.status} claim cannot be ${PAST[action]}.`));
+      const err =
+        e instanceof HttpErrorResponse && e.status === 403
+          ? 'The user who opened a claim cannot settle it.'
+          : `A ${c.status} claim cannot be ${PAST[action]}.`;
+      this.actionErrors.update((m) => new Map(m).set(c.id, err));
     }
   }
 
