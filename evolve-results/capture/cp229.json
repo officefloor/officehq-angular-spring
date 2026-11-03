@@ -1,0 +1,64 @@
+{
+  "checkpoint": 229,
+  "stack": {
+    "repo": "/home/daniel/officehq-angular-spring",
+    "origin": "git@github.com:officefloor/officehq-angular-spring.git",
+    "name": "officehq-angular-spring",
+    "base_ref": "base-empty",
+    "base_commit": "65cb8233ea38b2dfa6cfd18709e30cd18fdf3250"
+  },
+  "checkpoint_id": "cp229_grades-editable",
+  "phase": "late",
+  "type": "additive",
+  "mutates": [],
+  "replaced_tests": [],
+  "request": {
+    "spec": "Grades can be added (an entry and a button; GRADE_ADDED grade=<grade>): a code of one to three\ncapital letters not yet a grade; anything else is refused. A new grade appears in every grade\nselect, the summary, the rates and the rate calendar.\n",
+    "prompt": "You are implementing ONE change to this application.\n\nFIRST read AGENTS.md \u2014 it states the working rules and how the app is tested, and sends you to\nDESIGN.md for the app's stack and conventions. Follow both.\n\nTHE CHANGE REQUEST:\nGrades can be added (an entry and a button; GRADE_ADDED grade=<grade>): a code of one to three\ncapital letters not yet a grade; anything else is refused. A new grade appears in every grade\nselect, the summary, the rates and the rate calendar.\n\nYour work is verified by an automated Playwright UI test already installed under e2e/specs/.\nRead that spec: it declares the exact data-testid anchors, values, test data and any audit\nrecords it expects \u2014 match them. Run `bin/e2e` to build the app, start it, and run the test as\nyou work; iterate until it passes. Change whatever the request needs across the app \u2014 its stored\ndata, its server and its front end. Do NOT edit bin/build, bin/start, bin/stop, bin/e2e,\nAGENTS.md, CLAUDE.md, DESIGN.md, e2e/support/ or the test spec.\n"
+  },
+  "commit_sha": "5e33027623226f1c1c72db538e3237be6b063d59",
+  "reset_sha": "",
+  "preagent_sha": "6b97bacf13a328a160189b5d25d567d43648d222",
+  "prev_sha": "6b97bacf13a328a160189b5d25d567d43648d222",
+  "base_sha": "65cb8233ea38b2dfa6cfd18709e30cd18fdf3250",
+  "agent": {
+    "ok": true,
+    "cost_usd": 2.8304342,
+    "input_tokens": 106,
+    "output_tokens": 29825,
+    "cache_read_tokens": 5319271,
+    "cache_creation_tokens": 146207,
+    "num_turns": 54,
+    "duration_ms": 775222,
+    "duration_api_ms": 347050,
+    "model": "claude-opus-5-5",
+    "session_id": "6c54047a-af25-4a78-ab9e-165d27fd4a84",
+    "stop_reason": "success",
+    "result_text": "Grades can now be added, and `bin/e2e` passes all 4 tests in the spec.\n\n**What it does:** the Grades section has a new entry (`grade-add-code`) and button (`grade-add`). The entry is trimmed, so \" XY \" is accepted. A code of one to three capital letters that isn't already a grade on the sheet is added and written to the audit file as `GRADE_ADDED sheet=\u2026 by=\u2026 grade=\u2026`. Anything else (\"dd\", \"ABCD\", \"E1\", or a repeat like \"D\") shows `grade-error`, and nothing is stored or audited. Once added, a grade appears everywhere grades are listed: every grade select (person form, inline and bulk grade, rate form, rate preview, retire/merge), the summary, the consolidated figures, current rates, the rate calendar and the per-grade settings.\n\n**Changes by layer:**\n- **Stored data:** a new migration, `V127__sheet_grade.java`, adds a per-sheet grades table. It also removes the database rules that only allowed A, B or C and widens the grade columns to three letters.\n- **Server:**\n  - Every place that had A, B, C hard-coded now asks for the sheet's own grades: the add/edit/bulk/merge checks, rates, both imports, the default grade, per-grade settings and the settings view.\n  - Setting a rate for a grade the sheet doesn't have is now refused.\n  - Cloning a sheet copies its added grades.\n- **Front end:** `core/grades.ts` now holds the sheet's grade list, re-read each time the sheet loads. The `Grade` type is now any string rather than just 'A' | 'B' | 'C'. The settings form adds input fields for a new grade's per-grade settings as soon as the grade appears.\n\n**One fix outside the request:** scenario 3 doesn't add any grades, but it still failed. Adding an alias wasn't recorded in the sheet's history, so the \"as of\" view left out an alias added that same day. I changed `PersonService.addAlias` to record history the way other changes do. It writes no extra audit lines.\n\n**Not handled:** if a person on an added grade (say XY) is transferred to a sheet that doesn't have XY, that sheet doesn't gain the grade. No test covers this.",
+    "error": "",
+    "attempts": [
+      {
+        "ok": true,
+        "limit_reached": false,
+        "retryable": false,
+        "timed_out": false,
+        "cost_usd": 2.8304342,
+        "num_turns": 54,
+        "duration_ms": 775222,
+        "duration_api_ms": 347050,
+        "error": ""
+      }
+    ]
+  },
+  "agent_stream_file": "cp229.agent.jsonl",
+  "agent_diff_file": "cp229.agent.diff",
+  "build_log_file": null,
+  "tests": {
+    "gated": false,
+    "queued": true
+  },
+  "probe": null,
+  "pinned_touched": [],
+  "acceptance_touched": [],
+  "impact_gate": null
+}
