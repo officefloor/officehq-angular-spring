@@ -72,6 +72,8 @@ const NO_LEAVE: Leave = { holds: [], retiredFrom: null };
         <input id="person-form-grade-from" type="date" data-testid="person-form-grade-from" formControlName="gradeFrom" />
         <label for="person-form-terms">Terms (business days)</label>
         <input id="person-form-terms" inputmode="numeric" data-testid="person-form-terms" formControlName="terms" />
+        <label for="person-form-terms-from">Terms from</label>
+        <input id="person-form-terms-from" type="date" data-testid="person-form-terms-from" formControlName="termsFrom" />
         <label for="person-form-contact">Contact</label>
         <input id="person-form-contact" data-testid="person-form-contact" formControlName="contact" />
         <label for="person-form-tags">Tags (comma separated)</label>
@@ -878,6 +880,8 @@ export class PeopleList {
     gradeFrom: new FormControl('', { nonNullable: true }),
     /** The person's own terms in days; blank for none. */
     terms: new FormControl('', { nonNullable: true }),
+    /** The day an edit's terms apply from; blank records them from the beginning of time. */
+    termsFrom: new FormControl('', { nonNullable: true }),
     /** The person's contact; blank for none. */
     contact: new FormControl('', { nonNullable: true }),
     /** The person's tags, comma separated; blank for none. */
@@ -946,8 +950,8 @@ export class PeopleList {
     this.patronError.set(null);
     this.editing.set(p.id);
     this.version = p.version;
-    this.form.setValue({ name: p.name, grade: this.gradeOf(p), gradeFrom: '', terms: p.terms?.toString() ?? '',
-      contact: p.contact ?? '', tags: p.tags });
+    this.form.setValue({ name: p.name, grade: this.gradeOf(p), gradeFrom: '',
+      terms: p.undatedTerms?.toString() ?? '', termsFrom: '', contact: p.contact ?? '', tags: p.tags });
     this.error.set('');
   }
 
@@ -1087,7 +1091,7 @@ export class PeopleList {
     this.regrading.add(p.id);
     try {
       const saved = await this.api.edit(p.id, p.version, { name: p.name, grade: grade as Grade, gradeFrom: null,
-        terms: p.terms?.toString() ?? '', contact: p.contact ?? '', tags: p.tags });
+        terms: p.undatedTerms?.toString() ?? '', contact: p.contact ?? '', tags: p.tags });
       this.people.update((ps) => ps.map((x) => (x.id === saved.id ? saved : x)));
       if (this.editing() === saved.id) this.version = saved.version;
     } catch (e) {
@@ -1243,7 +1247,7 @@ export class PeopleList {
   protected async submit(): Promise<void> {
     if (this.submitting) return;
     this.error.set('');
-    const { name, grade, gradeFrom } = this.form.getRawValue();
+    const { name, grade, gradeFrom, termsFrom } = this.form.getRawValue();
     const terms = this.form.controls.terms.value.trim();
     const contact = this.form.controls.contact.value.trim().toLowerCase();
     const tags = this.form.controls.tags.value;
@@ -1267,7 +1271,7 @@ export class PeopleList {
         this.people.update((ps) => [...ps, added]);
       } else {
         const saved = await this.api.edit(id, this.version, { name, grade, gradeFrom: gradeFrom.trim() || null, terms,
-          contact, tags });
+          termsFrom: termsFrom.trim() || null, contact, tags });
         this.people.update((ps) => ps.map((p) => (p.id === saved.id ? saved : p)));
       }
       this.reset();
@@ -1305,7 +1309,8 @@ export class PeopleList {
       this.people.update((ps) => ps.map((p) => (p.id === id ? current : p)));
       this.version = current.version;
       this.form.setValue({ name: current.name, grade: this.gradeOf(current), gradeFrom: this.form.getRawValue().gradeFrom,
-        terms: current.terms?.toString() ?? '', contact: current.contact ?? '',
+        terms: current.undatedTerms?.toString() ?? '', termsFrom: this.form.getRawValue().termsFrom,
+        contact: current.contact ?? '',
         tags: current.tags },
         { emitEvent: false });
     } catch {
@@ -1697,7 +1702,8 @@ export class PeopleList {
 
   private reset(): void {
     this.editing.set(null);
-    this.form.reset({ name: '', grade: 'A', gradeFrom: '', terms: '', contact: '', tags: '' }, { emitEvent: false });
+    this.form.reset({ name: '', grade: 'A', gradeFrom: '', terms: '', termsFrom: '', contact: '', tags: '' },
+      { emitEvent: false });
     this.error.set('');
   }
 

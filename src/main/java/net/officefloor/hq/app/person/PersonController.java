@@ -41,14 +41,15 @@ public class PersonController {
 
     /** What the screen shows of a person; with how many statements were taken of them, and the
      *  last one's due-total (text with two decimals, null when n/a or none) and day (null when none);
-     *  whether they are retired, and from which day (null when not); and their past retirements, earliest first; and whether they have any hold, and their holds, earliest first; and their own terms in days (null: none); and their contact (null: none); and their aliases, sorted as names are compared; and whether they clash; and the sheet they were transferred from (null: none); and their tags, sorted, comma and space separated (empty when none); and their snapshots, oldest first, each the day being left and the due-total; and their statements that stand, oldest first by date, each its date and due-total (see
+     *  whether they are retired, and from which day (null when not); and their past retirements, earliest first; and whether they have any hold, and their holds, earliest first; and their own terms in force on the sheet's today in days (null: none); and their contact (null: none); and their aliases, sorted as names are compared; and whether they clash; and the sheet they were transferred from (null: none); and their tags, sorted, comma and space separated (empty when none); and their snapshots, oldest first, each the day being left and the due-total; and their statements that stand, oldest first by date, each its date and due-total; and their own undated terms (null: none) and their dated terms, earliest first (see
      *  {@link PersonService#clashing}).
      *  The grade is the one in force on the sheet's today; grades are all those recorded, each from
      *  its from-date (null: the beginning of time), earliest first. */
     public record PersonView(long id, String name, String grade, List<GradeView> grades, long version,
             int statementCount, String statedTotal, LocalDate statementDate, boolean retired, LocalDate retiredFrom,
             List<RetirementView> retirements, boolean held, List<HoldView> holds, Integer terms, String contact, List<String> aliases, boolean clashing, String origin,
-            String tags, List<SnapshotView> snapshots, List<StatementLineView> statements) {
+            String tags, List<SnapshotView> snapshots, List<StatementLineView> statements, Integer undatedTerms,
+            List<TermsView> datedTerms) {
         public static PersonView of(Person person, StatementSummary statements, LocalDate today,
                 boolean clashing) {
             return new PersonView(person.getId(), person.getName(), person.gradeOn(today),
@@ -59,12 +60,18 @@ public class PersonController {
                     person.getRetirements().stream().map(r -> new RetirementView(r.getFromDate(), r.getToDate())).toList(),
                     person.isHeld(),
                     person.getHolds().stream().map(h -> new HoldView(h.getFromDate(), h.getToDate())).toList(),
-                    person.getTerms(), person.getContact(), person.getAliases(), clashing, person.getOrigin(),
+                    person.termsOn(today), person.getContact(), person.getAliases(), clashing, person.getOrigin(),
                     String.join(", ", Tags.of(person.getTags())),
                     person.getSnapshots().stream().map(s -> new SnapshotView(s.getDay(), s.getDueTotal())).toList(),
                     statements.lines().stream().map(l -> new StatementLineView(l.date(),
-                            l.dueTotal() == null ? null : l.dueTotal().setScale(2).toPlainString())).toList());
+                            l.dueTotal() == null ? null : l.dueTotal().setScale(2).toPlainString())).toList(),
+                    person.getTerms(),
+                    person.getDatedTerms().stream().map(t -> new TermsView(t.getTerms(), t.getFromDate())).toList());
         }
+    }
+
+    /** A person's own terms recorded from a day (terms null: none from then). */
+    public record TermsView(Integer terms, LocalDate from) {
     }
 
     /** A grade recorded for a person, from a day (null: from the beginning of time). */
@@ -90,13 +97,14 @@ public class PersonController {
 
     /** The person form: a required name and a grade of A, B or C. An edit also gives the version
      *  of the person its editor loaded, and the day the grade applies from (left out, the sheet's
-     *  today). Terms are the person's own, a whole number of days, 0 or more; blank for none. The
+     *  today). Terms are the person's own, a whole number of days, 0 or more; blank for none; an edit records
+     *  them from the terms from-date given (left out, from the beginning of time). The
      *  contact is kept trimmed and lower-cased; blank for none. Tags are comma separated (see
      *  {@link Tags}); blank for none. */
     public record PersonForm(@NotBlank @Size(max = 200) String name,
             @NotNull @Pattern(regexp = "[ABC]") String grade, Long version, LocalDate gradeFrom,
             @Pattern(regexp = "\\s*\\d{0,4}\\s*") String terms, @Size(max = 200) String contact,
-            @Size(max = 1000) String tags) {
+            @Size(max = 1000) String tags, LocalDate termsFrom) {
         Integer termsValue() {
             return terms == null || terms.isBlank() ? null : Integer.valueOf(terms.trim());
         }
@@ -222,7 +230,8 @@ public class PersonController {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "The version of the person edited is required");
         }
         Person saved = service.edit(sheetId.trim(), user.trim(), personId, form.version(), form.name().trim(),
-                form.grade(), form.gradeFrom(), form.termsValue(), form.contactValue(), form.tagsValue());
+                form.grade(), form.gradeFrom(), form.termsValue(), form.termsFrom(), form.contactValue(),
+                form.tagsValue());
         return PersonView.of(saved, statements.summary(sheetId.trim(), personId), sheets.today(sheetId.trim()),
                 service.clashing(sheetId.trim(), saved));
     }

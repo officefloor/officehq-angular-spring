@@ -92,8 +92,13 @@ export interface Person {
   held: boolean;
   /** Their holds, earliest first: their open claims dated within one count in no live total. */
   holds: Hold[];
-  /** Their own terms in days, ahead of their grade's and the sheet's; null when they have none. */
+  /** Their own terms in force on the sheet's today in days, ahead of their grade's and the sheet's;
+   *  null when they have none in force. */
   terms: number | null;
+  /** Their own undated terms (from the beginning of time); null when none. */
+  undatedTerms: number | null;
+  /** Their own terms recorded from a day, earliest first. */
+  datedTerms: DatedTerms[];
   /** Their contact, trimmed and lower-cased; null when they have none. */
   contact: string | null;
   /** Their aliases, sorted as names are compared. */
@@ -119,6 +124,12 @@ export interface Taken {
   claims: Claim[];
 }
 
+/** A person's own terms recorded from a day; terms null: none from then. */
+export interface DatedTerms {
+  terms: number | null;
+  from: string;
+}
+
 export interface PersonForm {
   name: string;
   grade: Grade;
@@ -126,6 +137,8 @@ export interface PersonForm {
   gradeFrom?: string | null;
   /** Their own terms: a whole number of days; blank for none. */
   terms: string;
+  /** The day (yyyy-mm-dd) an edit's terms apply from; null records them from the beginning of time. */
+  termsFrom?: string | null;
   /** Their contact; blank for none. */
   contact: string;
   /** Comma separated tags (the store trims, lower-cases and drops repeats); empty for none. */

@@ -107,6 +107,14 @@ public class PersonService {
     @Transactional
     public Person edit(String sheetId, String user, long personId, long version, String name, String grade,
             LocalDate gradeFrom, Integer terms, String contact, String tags) {
+        return edit(sheetId, user, personId, version, name, grade, gradeFrom, terms, null, contact, tags);
+    }
+
+    /** Edit a person as above, recording their terms from a day (null: from the beginning of time),
+     *  keeping those recorded for other days. */
+    @Transactional
+    public Person edit(String sheetId, String user, long personId, long version, String name, String grade,
+            LocalDate gradeFrom, Integer terms, LocalDate termsFrom, String contact, String tags) {
         Person person = people.findByIdAndSheetId(personId, sheetId)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "No such person on this sheet"));
         if (person.getVersion() != version) {
@@ -123,7 +131,7 @@ public class PersonService {
         if (contact != null && people.existsBySheetIdAndContactAndIdNot(sheetId, contact, personId)) {
             throw contactInUse();
         }
-        return save(sheetId, user, person, name, grade, gradeFrom, terms, contact, tags);
+        return save(sheetId, user, person, name, grade, gradeFrom, terms, termsFrom, contact, tags);
     }
 
     /** Give each of the people a grade from a day (null: the sheet's today), in list order, exactly as the person form would: each keeps their name, terms and contact and
@@ -140,20 +148,25 @@ public class PersonService {
             throw new ResponseStatusException(HttpStatus.NOT_FOUND, "No such person on this sheet");
         }
         return chosen.stream()
-                .map(p -> save(sheetId, user, p, p.getName(), grade, gradeFrom, p.getTerms(), p.getContact(),
+                .map(p -> save(sheetId, user, p, p.getName(), grade, gradeFrom, p.getTerms(), null, p.getContact(),
                         p.getTags()))
                 .toList();
     }
 
-    /** Save the person's name, grade from a day, terms, contact and tags as an edit does, recording it. */
+    /** Save the person's name, grade from a day, terms from a day, contact and tags as an edit does,
+     *  recording it; the terms recorded, when they change, as those in force on the sheet's today. */
     private Person save(String sheetId, String user, Person person, String name, String grade, LocalDate gradeFrom,
-            Integer terms, String contact, String tags) {
+            Integer terms, LocalDate termsFrom, String contact, String tags) {
         return rollup.tracking(sheetId, user, () -> {
             LocalDate today = sheets.today(sheetId);
-            Integer termsBefore = person.getTerms();
+            Integer undatedBefore = person.getTerms();
+            List<TermsFrom> datedBefore = person.getDatedTerms();
             String contactBefore = person.getContact();
             person.setName(name);
-            person.setTerms(terms);
+            person.setTermsFrom(terms, termsFrom);
+            boolean termsChanged = !Objects.equals(undatedBefore, person.getTerms())
+                    || !sameTerms(datedBefore, person.getDatedTerms());
+            Integer termsNow = person.termsOn(today);
             person.setContact(contact);
             person.setTags(tags);
             claims.keepTags(sheetId, tags);
@@ -162,10 +175,23 @@ public class PersonService {
             }
             Person saved = saveUnique(person);
             audit.recordOnCommit(record("PERSON_EDITED", sheetId, user, saved, today)
-                    + (Objects.equals(termsBefore, terms) ? "" : " terms=" + (terms != null ? terms : ""))
+                    + (termsChanged ? " terms=" + (termsNow != null ? termsNow : "") : "")
                     + (Objects.equals(contactBefore, contact) ? "" : " contact=" + (contact != null ? contact : "")));
             return saved;
         });
+    }
+
+    private static boolean sameTerms(List<TermsFrom> a, List<TermsFrom> b) {
+        if (a.size() != b.size()) {
+            return false;
+        }
+        for (int i = 0; i < a.size(); i++) {
+            if (!a.get(i).getFromDate().equals(b.get(i).getFromDate())
+                    || !Objects.equals(a.get(i).getTerms(), b.get(i).getTerms())) {
+                return false;
+            }
+        }
+        return true;
     }
 
     /** Give a person an alias, keeping their others; refused when it equals, as names are compared,

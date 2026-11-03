@@ -73,6 +73,11 @@ public class Person {
     @Column(name = "terms")
     private Integer terms;
 
+    /** The person's own terms recorded from a from-date, each until a later one takes over. */
+    @ElementCollection(fetch = FetchType.EAGER)
+    @CollectionTable(name = "person_terms", joinColumns = @JoinColumn(name = "person_id"))
+    private List<TermsFrom> datedTerms = new ArrayList<>();
+
     /** The person's contact, trimmed and lower-cased; null when they have none. */
     @Column(name = "contact")
     private String contact;
@@ -123,6 +128,7 @@ public class Person {
         copy.position = toPosition;
         grades.forEach(g -> copy.grades.add(new GradeFrom(g.getFromDate(), g.getGrade())));
         copy.terms = terms;
+        datedTerms.forEach(t -> copy.datedTerms.add(new TermsFrom(t.getFromDate(), t.getTerms())));
         copy.contact = contact;
         copy.tags = tags;
         copy.aliases.addAll(aliases);
@@ -261,13 +267,42 @@ public class Person {
         holds.add(new Hold(from, to));
     }
 
-    /** The person's own terms in days, ahead of their grade's and the sheet's; null when none. */
+    /** The person's own undated terms in days (from the beginning of time, until their earliest
+     *  dated terms), ahead of their grade's and the sheet's; null when none. */
     public Integer getTerms() {
         return terms;
     }
 
     public void setTerms(Integer terms) {
         this.terms = terms;
+    }
+
+    /** The person's own terms recorded from a from-date, earliest first. */
+    public List<TermsFrom> getDatedTerms() {
+        return datedTerms.stream().sorted(Comparator.comparing(TermsFrom::getFromDate)).toList();
+    }
+
+    /** The person's own terms in force on a day: those with the latest from-date on or before it,
+     *  or else their undated terms; null when none are in force (their grade's or the sheet's apply). */
+    public Integer termsOn(LocalDate day) {
+        Integer on = terms;
+        for (TermsFrom t : getDatedTerms()) {
+            if (!t.getFromDate().isAfter(day)) {
+                on = t.getTerms();
+            }
+        }
+        return on;
+    }
+
+    /** Record the person's own terms (null: none) from a day, replacing those recorded for that day
+     *  and keeping the others; with no day, set their undated terms. */
+    public void setTermsFrom(Integer terms, LocalDate from) {
+        if (from == null) {
+            this.terms = terms;
+            return;
+        }
+        datedTerms.removeIf(t -> from.equals(t.getFromDate()));
+        datedTerms.add(new TermsFrom(from, terms));
     }
 
     /** The sheet the person was transferred from; null when they were not transferred. */

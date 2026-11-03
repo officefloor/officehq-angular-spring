@@ -874,7 +874,7 @@ public class ClaimService {
      *  business day after its date, skipping every Saturday, Sunday and holiday of the sheet): the
      *  first of the person's own terms, their grade's and the sheet's, each as in force on the day. */
     private int terms(String sheetId, Person person, LocalDate on) {
-        Integer own = person.getTerms();
+        Integer own = person.termsOn(on);
         return own != null ? own : sheets.termsFor(sheetId, person.gradeOn(on), on);
     }
 

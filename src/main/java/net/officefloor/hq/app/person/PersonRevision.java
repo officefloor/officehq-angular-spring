@@ -10,7 +10,7 @@ import java.time.LocalDate;
 import java.util.Objects;
 import java.util.stream.Collectors;
 
-/** A revision of a person in their sheet's history: their name, grades, holds, retirement, terms,
+/** A revision of a person in their sheet's history: their name, grades, holds, retirement, terms (and dated terms, as "from:terms"),
  *  contact, tags and aliases after a change, recorded on the sheet's today then. Grades are kept as "from:grade" and holds as
  *  "from..to" (a day left blank when there is none), separated by ";"; past retirements likewise as "from..to", and aliases separated by ";". */
 @Entity
@@ -49,6 +49,9 @@ public class PersonRevision {
     @Column(name = "terms")
     private Integer terms;
 
+    @Column(name = "terms_from", nullable = false)
+    private String termsFrom;
+
     @Column(name = "contact")
     private String contact;
 
@@ -76,6 +79,7 @@ public class PersonRevision {
         this.retiredFrom = person.getRetiredFrom();
         this.retirements = retirements(person);
         this.terms = person.getTerms();
+        this.termsFrom = termsFrom(person);
         this.contact = person.getContact();
         this.tags = person.getTags();
         this.aliases = aliases(person);
@@ -94,6 +98,7 @@ public class PersonRevision {
         left.retiredFrom = retiredFrom;
         left.retirements = retirements;
         left.terms = terms;
+        left.termsFrom = termsFrom;
         left.contact = contact;
         left.tags = tags;
         left.aliases = aliases;
@@ -111,6 +116,7 @@ public class PersonRevision {
         return name.equals(person.getName()) && grades.equals(grades(person)) && holds.equals(holds(person))
                 && Objects.equals(retiredFrom, person.getRetiredFrom())
                 && retirements.equals(retirements(person)) && Objects.equals(terms, person.getTerms())
+                && termsFrom.equals(termsFrom(person))
                 && Objects.equals(contact, person.getContact())
                 && Objects.equals(tags, person.getTags()) && aliases.equals(aliases(person));
     }
@@ -132,6 +138,11 @@ public class PersonRevision {
             person.addRetirement(day(retirement.substring(0, at)), day(retirement.substring(at + 2)));
         }
         person.setTerms(terms);
+        for (String dated : split(termsFrom)) {
+            int at = dated.indexOf(':');
+            String days = dated.substring(at + 1);
+            person.setTermsFrom(days.isEmpty() ? null : Integer.valueOf(days), day(dated.substring(0, at)));
+        }
         person.setContact(contact);
         person.setTags(tags);
         for (String alias : split(aliases)) {
@@ -150,6 +161,12 @@ public class PersonRevision {
 
     private static String grades(Person person) {
         return person.getGrades().stream().map(g -> text(g.getFromDate()) + ":" + g.getGrade())
+                .collect(Collectors.joining(";"));
+    }
+
+    private static String termsFrom(Person person) {
+        return person.getDatedTerms().stream()
+                .map(t -> text(t.getFromDate()) + ":" + (t.getTerms() == null ? "" : t.getTerms()))
                 .collect(Collectors.joining(";"));
     }
 
