@@ -1,0 +1,36 @@
+diff --git a/src/main/frontend/src/app/features/people/people-list.ts b/src/main/frontend/src/app/features/people/people-list.ts
+index ca1d598cf..23006d484 100644
+--- a/src/main/frontend/src/app/features/people/people-list.ts
++++ b/src/main/frontend/src/app/features/people/people-list.ts
+@@ -469,15 +469,15 @@ export class PeopleList {
+   /** The claims that count in the live totals, newest first. */
+   private readonly live = computed(() => this.claims().filter((c) => countsLive(c, this.byId().get(c.personId) ?? NO_LEAVE, this.session.today())));
+   /** What each person has claimed: the sum of their open and settled claims' amounts, leaving out
+-   *  the open ones dated within one of their holds and unbound by a statement. */
++   *  the open ones dated within one of their holds and unbound by a statement, and the corrections. */
+   protected readonly claimed = computed(() => {
+     const by = new Map<number, string>();
+     for (const [id, cs] of this.claimsByPerson()) {
+-      by.set(id, sumAmounts(cs.filter((c) => countsLive(c, this.byId().get(id) ?? NO_LEAVE, this.session.today())).map((c) => c.amount)));
++      by.set(id, sumAmounts(cs.filter((c) => !c.corrects && countsLive(c, this.byId().get(id) ?? NO_LEAVE, this.session.today())).map((c) => c.amount)));
+     }
+     return by;
+   });
+-  protected readonly claimedTotal = computed(() => sumAmounts(this.live().map((c) => c.amount)));
++  protected readonly claimedTotal = computed(() => sumAmounts(this.live().filter((c) => !c.corrects).map((c) => c.amount)));
+   /** The rates set on the sheet. */
+   protected readonly rates = signal<Rate[]>([]);
+   /** The sheet's floors recorded: the least live due a claim has is the one in force on its date. */
+diff --git a/src/main/java/net/officefloor/hq/app/rollup/Rollup.java b/src/main/java/net/officefloor/hq/app/rollup/Rollup.java
+index 8ab8200c8..b18970a05 100644
+--- a/src/main/java/net/officefloor/hq/app/rollup/Rollup.java
++++ b/src/main/java/net/officefloor/hq/app/rollup/Rollup.java
+@@ -154,7 +154,7 @@ public class Rollup {
+         LocalDate today = sheets.today(sheetId);
+         for (Person person : people.findBySheetIdOrderByPositionAscIdAsc(sheetId)) {
+             List<Claim> theirs = Dues.live(person, byPerson.getOrDefault(person.getId(), List.of()), today);
+-            BigDecimal claimed = theirs.stream().map(Claim::getAmount)
++            BigDecimal claimed = theirs.stream().filter(c -> c.getCorrects() == null).map(Claim::getAmount)
+                     .reduce(BigDecimal.ZERO.setScale(2), BigDecimal::add);
+             BigDecimal due = dues.dueTotal(sheetId, person, theirs);
+             BigDecimal overdue = theirs.stream().filter(c -> dues.overdue(sheetId, person, c))
