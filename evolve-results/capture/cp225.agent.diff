@@ -1,0 +1,199 @@
+diff --git a/src/main/frontend/src/app/core/grades.ts b/src/main/frontend/src/app/core/grades.ts
+index 1d18d4374..b928ec392 100644
+--- a/src/main/frontend/src/app/core/grades.ts
++++ b/src/main/frontend/src/app/core/grades.ts
+@@ -32,6 +32,18 @@ export class Grades {
+     );
+   }
+ 
++  /** Merge a grade into another: everyone on it is given the other from the sheet's today. Refused
++   *  (403) unless the user is a steward, (400) when the grades are the same. How many it changed. */
++  async merge(from: string, into: string): Promise<number> {
++    const sheetId = this.session.sheetId();
++    const user = this.session.user();
++    if (!sheetId || !user) throw new Error('no sheet loaded');
++    const res = await firstValueFrom(
++      this.http.post<{ merged: number }>(`${this.url(sheetId)}/merge`, { from, into }, { headers: { 'X-User': user } }),
++    );
++    return res.merged;
++  }
++
+   private url(sheetId: string): string {
+     return `/api/sheets/${encodeURIComponent(sheetId)}/grades`;
+   }
+diff --git a/src/main/frontend/src/app/features/settings/grade-retire-form.ts b/src/main/frontend/src/app/features/settings/grade-retire-form.ts
+index fe726a5be..32f4770ea 100644
+--- a/src/main/frontend/src/app/features/settings/grade-retire-form.ts
++++ b/src/main/frontend/src/app/features/settings/grade-retire-form.ts
+@@ -21,10 +21,26 @@ import { Session } from '../../core/session';
+           }
+         </select>
+         <button type="submit" data-testid="grade-retire">Retire grade</button>
+-        @if (error()) {
+-          <p role="alert" data-testid="grade-error">{{ error() }}</p>
+-        }
+       </form>
++      <form data-testid="grade-merge-form" [formGroup]="mergeForm" (ngSubmit)="merge()">
++        <label for="grade-merge-from">Grade to merge</label>
++        <select id="grade-merge-from" data-testid="grade-merge-from" formControlName="from">
++          @for (g of codes; track g) {
++            <option [value]="g">{{ g }}</option>
++          }
++        </select>
++        <label for="grade-merge-into">Merge into</label>
++        <select id="grade-merge-into" data-testid="grade-merge-into" formControlName="into">
++          @for (g of codes; track g) {
++            <option [value]="g">{{ g }}</option>
++          }
++        </select>
++        <button type="submit" data-testid="grade-merge">Merge grade</button>
++        <output data-testid="grade-merged">{{ merged() }}</output>
++      </form>
++      @if (error()) {
++        <p role="alert" data-testid="grade-error">{{ error() }}</p>
++      }
+       <table data-testid="grades">
+         <thead>
+           <tr><th scope="col">Grade</th><th scope="col">Retired</th></tr>
+@@ -51,15 +67,23 @@ export class GradeRetireForm {
+   protected readonly form = new FormGroup({
+     grade: new FormControl<string>('A', { nonNullable: true }),
+   });
++  protected readonly mergeForm = new FormGroup({
++    from: new FormControl<string>('A', { nonNullable: true }),
++    into: new FormControl<string>('B', { nonNullable: true }),
++  });
++  /** How many people the last merge gave the other grade; empty until one is done. */
++  protected readonly merged = signal('');
+   private submitting = false;
+   private reads = 0;
+ 
+   constructor() {
+     this.form.valueChanges.subscribe(() => this.error.set(''));
++    this.mergeForm.valueChanges.subscribe(() => this.error.set(''));
+     effect(() => {
+       this.session.loads();
+       const sheetId = this.session.sheetId();
+       this.grades.set([]);
++      this.merged.set('');
+       if (sheetId) void this.reload(sheetId);
+     });
+   }
+@@ -92,6 +116,31 @@ export class GradeRetireForm {
+     }
+   }
+ 
++  protected async merge(): Promise<void> {
++    if (this.submitting) return;
++    this.error.set('');
++    this.merged.set('');
++    const { from, into } = this.mergeForm.getRawValue();
++    if (from === into) {
++      this.error.set('Choose two different grades to merge.');
++      return;
++    }
++    this.submitting = true;
++    try {
++      this.merged.set(String(await this.api.merge(from, into)));
++    } catch (e) {
++      this.error.set(
++        e instanceof HttpErrorResponse && e.status === 403
++          ? 'Only a steward may merge a grade.'
++          : e instanceof HttpErrorResponse && e.status === 409
++            ? 'The sheet may not be changed.'
++            : 'The grade could not be merged.',
++      );
++    } finally {
++      this.submitting = false;
++    }
++  }
++
+   private async reload(sheetId: string): Promise<void> {
+     const read = ++this.reads;
+     try {
+diff --git a/src/main/java/net/officefloor/hq/app/grade/GradeController.java b/src/main/java/net/officefloor/hq/app/grade/GradeController.java
+index 911d3c000..454708221 100644
+--- a/src/main/java/net/officefloor/hq/app/grade/GradeController.java
++++ b/src/main/java/net/officefloor/hq/app/grade/GradeController.java
+@@ -8,6 +8,7 @@ import java.time.LocalDate;
+ import java.util.List;
+ import java.util.Set;
+ import java.util.stream.Collectors;
++import net.officefloor.hq.app.person.PersonService;
+ import net.officefloor.hq.app.sheet.AsOfGuard;
+ import org.springframework.format.annotation.DateTimeFormat;
+ import org.springframework.validation.annotation.Validated;
+@@ -32,10 +33,20 @@ public class GradeController {
+     public record RetireForm(@NotNull @Size(max = 10) String grade) {
+     }
+ 
++    /** The merge form: the grade merged and the grade it is merged into. */
++    public record MergeForm(@NotNull @Size(max = 10) String from, @NotNull @Size(max = 10) String into) {
++    }
++
++    /** How many people a merge gave the other grade. */
++    public record Merged(int merged) {
++    }
++
+     private final GradeService service;
++    private final PersonService people;
+ 
+-    public GradeController(GradeService service) {
++    public GradeController(GradeService service, PersonService people) {
+         this.service = service;
++        this.people = people;
+     }
+ 
+     @GetMapping
+@@ -55,4 +66,13 @@ public class GradeController {
+         service.retire(sheetId.trim(), user.trim(), form.grade().trim());
+         return list(sheetId, null);
+     }
++
++    /** Merge a grade into another: the people on it are given the other (see
++     *  {@link PersonService#mergeGrade}). */
++    @PostMapping("/merge")
++    public Merged merge(@PathVariable @NotBlank @Size(max = 100) String sheetId,
++            @RequestHeader("X-User") @NotBlank @Size(max = 100) String user,
++            @Valid @RequestBody MergeForm form) {
++        return new Merged(people.mergeGrade(sheetId.trim(), user.trim(), form.from().trim(), form.into().trim()).size());
++    }
+ }
+diff --git a/src/main/java/net/officefloor/hq/app/person/PersonService.java b/src/main/java/net/officefloor/hq/app/person/PersonService.java
+index 4f1cbd7d1..3a37558b0 100644
+--- a/src/main/java/net/officefloor/hq/app/person/PersonService.java
++++ b/src/main/java/net/officefloor/hq/app/person/PersonService.java
+@@ -157,6 +157,33 @@ public class PersonService {
+                 .toList();
+     }
+ 
++    /** Merge a grade into another: every person whose grade in force on the sheet's today is the
++     *  merged grade is given the other from the sheet's today, in list order, exactly as the person
++     *  form would. Refused unless the user is a steward (403), and when the grades are the same or
++     *  either is no grade (400). Answers the people it changed. */
++    @Transactional
++    public List<Person> mergeGrade(String sheetId, String user, String from, String into) {
++        if (!GradeService.GRADES.contains(from) || !GradeService.GRADES.contains(into)) {
++            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "A grade is A, B or C");
++        }
++        if (from.equals(into)) {
++            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "A grade cannot be merged into itself");
++        }
++        if (!SheetRole.STEWARD.equals(roles.roleOf(sheetId, user))) {
++            throw new ResponseStatusException(HttpStatus.FORBIDDEN, "Only a steward can merge a grade");
++        }
++        sheets.load(sheetId, user);
++        LocalDate today = sheets.today(sheetId);
++        List<Person> chosen = people.findBySheetIdOrderByPositionAscIdAsc(sheetId).stream()
++                .filter(p -> from.equals(p.gradeOn(today))).toList();
++        audit.recordOnCommit("GRADE_MERGED sheet=" + sheetId + " by=" + user + " from=" + from + " into=" + into);
++        // The merge as a whole is a change too: after each person's own lines, the figures it moved.
++        return rollup.tracking(sheetId, user, () -> chosen.stream()
++                .map(p -> save(sheetId, user, p, p.getName(), into, null, p.getTerms(), null, p.getContact(),
++                        p.getTags()))
++                .toList());
++    }
++
+     /** Save the person's name, grade from a day, terms from a day, contact and tags as an edit does,
+      *  recording it; the terms recorded, when they change, as those in force on the sheet's today. */
+     private Person save(String sheetId, String user, Person person, String name, String grade, LocalDate gradeFrom,
