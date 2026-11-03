@@ -1,0 +1,64 @@
+{
+  "checkpoint": 178,
+  "stack": {
+    "repo": "/home/daniel/officehq-angular-spring",
+    "origin": "git@github.com:officefloor/officehq-angular-spring.git",
+    "name": "officehq-angular-spring",
+    "base_ref": "base-empty",
+    "base_commit": "65cb8233ea38b2dfa6cfd18709e30cd18fdf3250"
+  },
+  "checkpoint_id": "cp178_steward-dashboard",
+  "phase": "late",
+  "type": "additive",
+  "mutates": [],
+  "replaced_tests": [],
+  "request": {
+    "spec": "The screen shows a steward's dashboard: the count of PENDING claims, of REVIEW claims and of overdue\nclaims that count, over the sheet. A user who is not a steward sees the three cells empty. Under an\nas-of date the cells show the counts as they stood then, for the role the user had then.\n",
+    "prompt": "You are implementing ONE change to this application.\n\nFIRST read AGENTS.md \u2014 it states the working rules and how the app is tested, and sends you to\nDESIGN.md for the app's stack and conventions. Follow both.\n\nTHE CHANGE REQUEST:\nThe screen shows a steward's dashboard: the count of PENDING claims, of REVIEW claims and of overdue\nclaims that count, over the sheet. A user who is not a steward sees the three cells empty. Under an\nas-of date the cells show the counts as they stood then, for the role the user had then.\n\nYour work is verified by an automated Playwright UI test already installed under e2e/specs/.\nRead that spec: it declares the exact data-testid anchors, values, test data and any audit\nrecords it expects \u2014 match them. Run `bin/e2e` to build the app, start it, and run the test as\nyou work; iterate until it passes. Change whatever the request needs across the app \u2014 its stored\ndata, its server and its front end. Do NOT edit bin/build, bin/start, bin/stop, bin/e2e,\nAGENTS.md, CLAUDE.md, DESIGN.md, e2e/support/ or the test spec.\n"
+  },
+  "commit_sha": "18bcf5f9e0c16c0f3c5b342240d5fc1a4fc310ae",
+  "reset_sha": "",
+  "preagent_sha": "d15cc1c96958d0af8e7bec9c838fcfd232372e7a",
+  "prev_sha": "d15cc1c96958d0af8e7bec9c838fcfd232372e7a",
+  "base_sha": "65cb8233ea38b2dfa6cfd18709e30cd18fdf3250",
+  "agent": {
+    "ok": true,
+    "cost_usd": 2.1110446,
+    "input_tokens": 102,
+    "output_tokens": 24783,
+    "cache_read_tokens": 3850643,
+    "cache_creation_tokens": 105606,
+    "num_turns": 52,
+    "duration_ms": 1094359,
+    "duration_api_ms": 279398,
+    "model": "claude-opus-5-5",
+    "session_id": "a16033ea-93ac-4af2-9537-fcc831d4f327",
+    "stop_reason": "success",
+    "result_text": "The steward's dashboard is in place, but `bin/e2e` is not fully green: 3 of the 4 tests pass and \"scenario 3\" fails. It stops at line 1171 on `rate-current-A` (shows `n/a`, expected `12.50`), before it reaches any dashboard check, and the cause is unrelated to this change.\n\n**Why scenario 3 fails**\n- A new sheet takes the real clock as its today (`SheetService.java:69`, `LocalDate.now()`, so 2026-11-03).\n- The test makes a parent sheet and sets its rates on that day. Viewed as of 2026-03-20, those rates didn't exist yet, so nothing is inherited.\n- The expected `12.50` only holds if the machine's clock is on or before 2026-03-20.\n- To confirm, I rebuilt with my front-end change switched off. Scenario 3 failed at the same line, while tests 1 and 2 failed only on the dashboard cells.\n- I didn't change how a new sheet picks its today to force the pass, because that would change behaviour beyond this request. Tell me if you want it handled another way.\n- Its dashboard checks come later (lines 1235 and 1548) and expect empty cells for `uma`, who isn't a steward. My code gives that, but it isn't confirmed by a run.\n\n**What I built**\n- **Role history:** roles used to be stored with no date, so \"the role the user had then\" needed history. The new migration `V105__role_revision.sql` adds a `role_revision` table, and each role change is stamped with the sheet's today. Roles given before this change count from the start.\n- **Server:** `RoleService.roleOn(sheet, user, day)` gives the role a user had on a day: steward if a delegation covered that day, otherwise the last role given on or before it, otherwise clerk. A new `GET /api/sheets/{id}/roles/me` returns the current role, or the role on the as-of date if one is set.\n- **Front end:** a new `steward-dashboard.ts` shows `dash-pending-count`, `dash-review-count` and `dash-overdue-count`.\n  - The pending and review counts are the sheet's existing per-status counts.\n  - The overdue count is the existing count of overdue claims that count.\n  - The cells are empty unless the user is a steward.\n  - The people list reads the user's role each time the sheet loads, as-of included.\n\n**Choice to check:** under an as-of date, a delegation counts if its date range covers that day, even if it was made later. Delegations don't record when they were made.\n\nNo audit records were added, since the spec expects none.",
+    "error": "",
+    "attempts": [
+      {
+        "ok": true,
+        "limit_reached": false,
+        "retryable": false,
+        "timed_out": false,
+        "cost_usd": 2.1110446,
+        "num_turns": 52,
+        "duration_ms": 1094359,
+        "duration_api_ms": 279398,
+        "error": ""
+      }
+    ]
+  },
+  "agent_stream_file": "cp178.agent.jsonl",
+  "agent_diff_file": "cp178.agent.diff",
+  "build_log_file": null,
+  "tests": {
+    "gated": false,
+    "queued": true
+  },
+  "probe": null,
+  "pinned_touched": [],
+  "acceptance_touched": [],
+  "impact_gate": null
+}

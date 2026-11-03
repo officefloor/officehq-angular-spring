@@ -1,0 +1,319 @@
+diff --git a/src/main/frontend/src/app/core/settings.ts b/src/main/frontend/src/app/core/settings.ts
+index ba237a4db..b89603f42 100644
+--- a/src/main/frontend/src/app/core/settings.ts
++++ b/src/main/frontend/src/app/core/settings.ts
+@@ -189,6 +189,17 @@ export class SheetSettings {
+     return firstValueFrom(this.http.get<Role[]>(`${this.url(sheetId)}/roles`));
+   }
+ 
++  /** The role the signed-in user acts in on the sheet; while an as-of date is set, the role they had
++   *  at the end of that day. */
++  async myRole(sheetId: string): Promise<string> {
++    const user = this.session.user();
++    if (!user) throw new Error('not signed in');
++    const res = await firstValueFrom(
++      this.http.get<{ role: string }>(`${this.url(sheetId)}/roles/me`, { headers: { 'X-User': user } }),
++    );
++    return res.role;
++  }
++
+   /** Record the clerk limit (null for no limit) from a date (null for the sheet's today). */
+   setClerkLimit(value: string | null, from: string | null): Promise<Settings> {
+     const [sheetId, headers] = this.active();
+diff --git a/src/main/frontend/src/app/features/people/people-list.ts b/src/main/frontend/src/app/features/people/people-list.ts
+index f97bd3ee2..69b3ad3b5 100644
+--- a/src/main/frontend/src/app/features/people/people-list.ts
++++ b/src/main/frontend/src/app/features/people/people-list.ts
+@@ -19,6 +19,7 @@ import { PeriodForm } from '../periods/period-form';
+ import { RateForm } from '../rates/rate-form';
+ import { GradeSummary, PeriodSummary, StatusSummary, SummaryPanel, VoidReasonSummary } from '../summary/summary-panel';
+ import { HeaderCounters } from '../summary/header-counters';
++import { StewardDashboard } from '../summary/steward-dashboard';
+ import { ClassicPeriodSummary, ClassicSummaryPanel } from '../summary/classic-summary-panel';
+ import { QuickAddBar } from './quick-add-bar';
+ import { PasteClaimsBox } from './paste-claims-box';
+@@ -50,11 +51,13 @@ const NO_LEAVE: Leave = { holds: [], retiredFrom: null };
+ // The signed-in user may watch a person: they are told when a claim of theirs is settled.
+ @Component({
+   selector: 'app-people-list',
+-  imports: [ReactiveFormsModule, PersonClaims, RateForm, PeriodForm, QuickAddBar, PasteClaimsBox, ImportPeopleBox, SummaryPanel, ClassicSummaryPanel, HeaderCounters, PoolList, CrewList, PersonPlans, PlanGenerateBox, TreeSearchBox, FigurePipe],
++  imports: [ReactiveFormsModule, PersonClaims, RateForm, PeriodForm, QuickAddBar, PasteClaimsBox, ImportPeopleBox, SummaryPanel, ClassicSummaryPanel, HeaderCounters, StewardDashboard, PoolList, CrewList, PersonPlans, PlanGenerateBox, TreeSearchBox, FigurePipe],
+   template: `
+     <app-header-counters [peopleCount]="people().length" [statuses]="statusSummary()"
+       [dueTotal]="dueTotal()" [overdueTotal]="overdueTotal()"
+       [myDueTotal]="myDueTotal()" [myOverdueTotal]="myOverdueTotal()" [myCrewDueTotal]="myCrewDueTotal()" />
++    <app-steward-dashboard [steward]="myRole() === 'steward'" [statuses]="statusSummary()"
++      [overdueCount]="overdueCount()" />
+     <app-rate-form [rates]="rates()" (saved)="rateSaved($event)" (imported)="ratesImported()" />
+     <app-period-form [periods]="periods()" [dueTotals]="periodDueTotals()" (saved)="periodSaved($event)" />
+     <section aria-labelledby="people-heading">
+@@ -741,6 +744,9 @@ export class PeopleList {
+   });
+   /** The figures of the sheet's descendants added up, as the store held them when it was loaded. */
+   private readonly descendants = signal<DescendantFigures>(NO_DESCENDANTS);
++  /** The role the signed-in user acts in on the sheet (as of the as-of day when one is set); null
++   *  until read. */
++  protected readonly myRole = signal<string | null>(null);
+   /** The people of the sheet and all its descendants: while an as-of date is set, each sheet as it
+    *  stood at the end of that day. */
+   protected readonly consolidatedPeopleCount = computed(() => this.people().length + this.descendants().peopleCount);
+@@ -905,6 +911,7 @@ export class PeopleList {
+       this.session.loads();
+       this.people.set([]);
+       this.claims.set([]);
++      this.myRole.set(null);
+       this.storedTags.set([]);
+       this.rates.set([]);
+       this.periods.set([]);
+@@ -1742,7 +1749,7 @@ export class PeopleList {
+   private async reload(sheetId: string): Promise<void> {
+     const read = ++this.reads;
+     try {
+-      const [people, claims, tags, rates, periods, settings, patrons, watches, lastBatch, descendants, plans] = await Promise.all([
++      const [people, claims, tags, rates, periods, settings, patrons, watches, lastBatch, descendants, plans, myRole] = await Promise.all([
+         this.api.list(sheetId),
+         this.claimsApi.list(sheetId),
+         this.claimsApi.tags(sheetId),
+@@ -1754,6 +1761,7 @@ export class PeopleList {
+         this.claimsApi.lastSettleBatch(sheetId),
+         this.descendantsApi.figures(sheetId),
+         this.plansApi.list(sheetId),
++        this.settingsApi.myRole(sheetId),
+       ]);
+       if (read === this.reads) {
+         this.rates.set(rates);
+@@ -1772,6 +1780,7 @@ export class PeopleList {
+         this.plans.set(plans);
+         this.lastSettleBatch.set(lastBatch);
+         this.descendants.set(descendants);
++        this.myRole.set(myRole);
+         this.people.set(people);
+       }
+     } catch {
+diff --git a/src/main/frontend/src/app/features/summary/steward-dashboard.ts b/src/main/frontend/src/app/features/summary/steward-dashboard.ts
+new file mode 100644
+index 000000000..409660ca3
+--- /dev/null
++++ b/src/main/frontend/src/app/features/summary/steward-dashboard.ts
+@@ -0,0 +1,32 @@
++import { Component, computed, input } from '@angular/core';
++import { StatusSummary } from './summary-panel';
++
++// A steward's dashboard: how many claims on the sheet are pending, how many await review, and how
++// many of the claims that count are overdue. A user who is not a steward sees the cells empty.
++@Component({
++  selector: 'app-steward-dashboard',
++  template: `
++    <section aria-label="Steward's dashboard" data-testid="dash">
++      <dl>
++        <dt>Pending</dt>
++        <dd data-testid="dash-pending-count">{{ steward() ? countOf('PENDING') : '' }}</dd>
++        <dt>To review</dt>
++        <dd data-testid="dash-review-count">{{ steward() ? countOf('REVIEW') : '' }}</dd>
++        <dt>Overdue</dt>
++        <dd data-testid="dash-overdue-count">{{ steward() ? overdueCount() : '' }}</dd>
++      </dl>
++    </section>
++  `,
++})
++export class StewardDashboard {
++  /** Whether the signed-in user is a steward (as of the as-of day when one is set). */
++  readonly steward = input.required<boolean>();
++  readonly statuses = input.required<StatusSummary[]>();
++  readonly overdueCount = input.required<number>();
++
++  private readonly counts = computed(() => new Map(this.statuses().map((s) => [s.status, s.count])));
++
++  protected countOf(status: string): number {
++    return this.counts().get(status) ?? 0;
++  }
++}
+diff --git a/src/main/java/net/officefloor/hq/app/role/RoleController.java b/src/main/java/net/officefloor/hq/app/role/RoleController.java
+index 9060ba04e..b4b91356e 100644
+--- a/src/main/java/net/officefloor/hq/app/role/RoleController.java
++++ b/src/main/java/net/officefloor/hq/app/role/RoleController.java
+@@ -5,7 +5,10 @@ import jakarta.validation.constraints.NotBlank;
+ import jakarta.validation.constraints.NotNull;
+ import jakarta.validation.constraints.Pattern;
+ import jakarta.validation.constraints.Size;
++import java.time.LocalDate;
+ import java.util.List;
++import net.officefloor.hq.app.sheet.AsOfGuard;
++import org.springframework.format.annotation.DateTimeFormat;
+ import org.springframework.validation.annotation.Validated;
+ import org.springframework.web.bind.annotation.GetMapping;
+ import org.springframework.web.bind.annotation.PathVariable;
+@@ -27,6 +30,10 @@ public class RoleController {
+         }
+     }
+ 
++    /** The role a user acts in on the sheet. */
++    public record MyRoleView(String role) {
++    }
++
+     /** The role form: a role of clerk, steward or viewer. */
+     public record RoleForm(@NotNull @Pattern(regexp = "\\s*(clerk|steward|viewer)\\s*") String role) {
+     }
+@@ -42,6 +49,18 @@ public class RoleController {
+         return service.list(sheetId.trim()).stream().map(RoleView::of).toList();
+     }
+ 
++    /** The role the signed-in user acts in on the sheet now, or as they had it at the end of the
++     *  as-of day when one is given. */
++    @GetMapping("/me")
++    public MyRoleView mine(@PathVariable @NotBlank @Size(max = 100) String sheetId,
++            @RequestHeader("X-User") @NotBlank @Size(max = 100) String user,
++            @RequestHeader(value = AsOfGuard.HEADER, required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE)
++            LocalDate asOf) {
++        String sheet = sheetId.trim();
++        String name = user.trim();
++        return new MyRoleView(asOf == null ? service.roleOf(sheet, name) : service.roleOn(sheet, name, asOf));
++    }
++
+     @PutMapping("/{userName}")
+     public RoleView set(@PathVariable @NotBlank @Size(max = 100) String sheetId,
+             @PathVariable @NotBlank @Size(max = 100) String userName,
+diff --git a/src/main/java/net/officefloor/hq/app/role/RoleRevision.java b/src/main/java/net/officefloor/hq/app/role/RoleRevision.java
+new file mode 100644
+index 000000000..b90ac1e73
+--- /dev/null
++++ b/src/main/java/net/officefloor/hq/app/role/RoleRevision.java
+@@ -0,0 +1,51 @@
++package net.officefloor.hq.app.role;
++
++import jakarta.persistence.Column;
++import jakarta.persistence.Entity;
++import jakarta.persistence.GeneratedValue;
++import jakarta.persistence.GenerationType;
++import jakarta.persistence.Id;
++import jakarta.persistence.Table;
++import java.time.LocalDate;
++
++/** A role given to a user name on a sheet, recorded on the sheet's today then: the role the user had
++ *  at the end of a day is the last one recorded on or before it. */
++@Entity
++@Table(name = "role_revision")
++public class RoleRevision {
++
++    @Id
++    @GeneratedValue(strategy = GenerationType.IDENTITY)
++    private Long id;
++
++    @Column(name = "sheet_id", nullable = false)
++    private String sheetId;
++
++    @Column(name = "user_name", nullable = false)
++    private String userName;
++
++    @Column(name = "role", nullable = false)
++    private String role;
++
++    /** The sheet's today when the role was given. */
++    @Column(name = "recorded_on", nullable = false)
++    private LocalDate recordedOn;
++
++    protected RoleRevision() {
++    }
++
++    public RoleRevision(String sheetId, String userName, String role, LocalDate recordedOn) {
++        this.sheetId = sheetId;
++        this.userName = userName;
++        this.role = role;
++        this.recordedOn = recordedOn;
++    }
++
++    public String getRole() {
++        return role;
++    }
++
++    public LocalDate getRecordedOn() {
++        return recordedOn;
++    }
++}
+diff --git a/src/main/java/net/officefloor/hq/app/role/RoleRevisionRepository.java b/src/main/java/net/officefloor/hq/app/role/RoleRevisionRepository.java
+new file mode 100644
+index 000000000..d408ef1d0
+--- /dev/null
++++ b/src/main/java/net/officefloor/hq/app/role/RoleRevisionRepository.java
+@@ -0,0 +1,12 @@
++package net.officefloor.hq.app.role;
++
++import java.time.LocalDate;
++import java.util.Optional;
++import org.springframework.data.jpa.repository.JpaRepository;
++
++public interface RoleRevisionRepository extends JpaRepository<RoleRevision, Long> {
++
++    /** The last role given to a user name on or before a day. */
++    Optional<RoleRevision> findFirstBySheetIdAndUserNameAndRecordedOnLessThanEqualOrderByRecordedOnDescIdDesc(
++            String sheetId, String userName, LocalDate day);
++}
+diff --git a/src/main/java/net/officefloor/hq/app/role/RoleService.java b/src/main/java/net/officefloor/hq/app/role/RoleService.java
+index b142aac22..347d30d85 100644
+--- a/src/main/java/net/officefloor/hq/app/role/RoleService.java
++++ b/src/main/java/net/officefloor/hq/app/role/RoleService.java
+@@ -17,12 +17,15 @@ import org.springframework.web.server.ResponseStatusException;
+ public class RoleService {
+ 
+     private final SheetRoleRepository roles;
++    private final RoleRevisionRepository revisions;
+     private final DelegationRepository delegations;
+     private final SheetService sheets;
+     private final Audit audit;
+ 
+-    public RoleService(SheetRoleRepository roles, DelegationRepository delegations, SheetService sheets, Audit audit) {
++    public RoleService(SheetRoleRepository roles, RoleRevisionRepository revisions, DelegationRepository delegations,
++            SheetService sheets, Audit audit) {
+         this.roles = roles;
++        this.revisions = revisions;
+         this.delegations = delegations;
+         this.sheets = sheets;
+         this.audit = audit;
+@@ -41,6 +44,20 @@ public class RoleService {
+         return delegatorOf(sheetId, userName).isPresent() ? SheetRole.STEWARD : givenRoleOf(sheetId, userName);
+     }
+ 
++    /** The role a user name acted in on the sheet at the end of a day: steward while a delegation to
++     *  it held the day, else the last role given to it on or before the day (clerk when none was). */
++    @Transactional(readOnly = true)
++    public String roleOn(String sheetId, String userName, LocalDate day) {
++        if (delegations.findFirstBySheetIdAndUserNameAndFromDateLessThanEqualAndToDateGreaterThanEqualOrderByIdDesc(
++                sheetId, userName, day, day).isPresent()) {
++            return SheetRole.STEWARD;
++        }
++        return revisions
++                .findFirstBySheetIdAndUserNameAndRecordedOnLessThanEqualOrderByRecordedOnDescIdDesc(sheetId, userName, day)
++                .map(RoleRevision::getRole)
++                .orElse(SheetRole.CLERK);
++    }
++
+     /** The role given to a user name on the sheet: clerk unless it was given another. */
+     @Transactional(readOnly = true)
+     public String givenRoleOf(String sheetId, String userName) {
+@@ -99,6 +116,7 @@ public class RoleService {
+                 .orElseGet(() -> new SheetRole(sheetId, userName, role));
+         given.setRole(role);
+         SheetRole saved = roles.saveAndFlush(given);
++        revisions.saveAndFlush(new RoleRevision(sheetId, userName, role, sheets.today(sheetId)));
+         audit.recordOnCommit("ROLE_SET sheet=" + sheetId + " by=" + user + " user=" + userName + " role=" + role);
+         return saved;
+     }
+diff --git a/src/main/resources/db/migration/V105__role_revision.sql b/src/main/resources/db/migration/V105__role_revision.sql
+new file mode 100644
+index 000000000..9f802d31f
+--- /dev/null
++++ b/src/main/resources/db/migration/V105__role_revision.sql
+@@ -0,0 +1,13 @@
++-- Each role given to a user name on a sheet, stamped with the sheet's today then, so the role a
++-- user had on a past day is the last one given on or before it. Roles given before revisions were
++-- kept count from the start.
++CREATE TABLE role_revision (
++    id          BIGINT AUTO_INCREMENT PRIMARY KEY,
++    sheet_id    VARCHAR(100) NOT NULL REFERENCES sheet (id),
++    user_name   VARCHAR(100) NOT NULL,
++    role        VARCHAR(20)  NOT NULL,
++    recorded_on DATE         NOT NULL
++);
++CREATE INDEX role_revision_sheet_user ON role_revision (sheet_id, user_name);
++INSERT INTO role_revision (sheet_id, user_name, role, recorded_on)
++    SELECT sheet_id, user_name, role, DATE '0001-01-01' FROM sheet_role;
