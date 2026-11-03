@@ -1,0 +1,501 @@
+diff --git a/src/main/frontend/src/app/core/descendants.ts b/src/main/frontend/src/app/core/descendants.ts
+index 880f786f9..8ddfffdac 100644
+--- a/src/main/frontend/src/app/core/descendants.ts
++++ b/src/main/frontend/src/app/core/descendants.ts
+@@ -8,10 +8,6 @@ export interface DescendantFigures {
+   peopleCount: number;
+   dueTotal: string;
+   overdueTotal: string;
+-  /** The sheet's own figures as it stands now, whatever day the screen shows it as of. */
+-  ownPeopleCount: number;
+-  ownDueTotal: string;
+-  ownOverdueTotal: string;
+ }
+ 
+ /** No descendants: nothing to add. */
+@@ -19,9 +15,6 @@ export const NO_DESCENDANTS: DescendantFigures = {
+   peopleCount: 0,
+   dueTotal: '0.00',
+   overdueTotal: '0.00',
+-  ownPeopleCount: 0,
+-  ownDueTotal: '0.00',
+-  ownOverdueTotal: '0.00',
+ };
+ 
+ // The sheets below a sheet: its children (the sheets naming it as their parent), theirs, and so on.
+@@ -29,7 +22,8 @@ export const NO_DESCENDANTS: DescendantFigures = {
+ export class Descendants {
+   private readonly http = inject(HttpClient);
+ 
+-  /** The figures of the sheet's descendants added up. */
++  /** The figures of the sheet's descendants added up; while an as-of date is set, each as it stood
++   *  at the end of that day. */
+   figures(sheetId: string): Promise<DescendantFigures> {
+     return firstValueFrom(this.http.get<DescendantFigures>(`/api/sheets/${encodeURIComponent(sheetId)}/descendants`));
+   }
+diff --git a/src/main/frontend/src/app/core/periods.ts b/src/main/frontend/src/app/core/periods.ts
+index ed4524339..6a0226495 100644
+--- a/src/main/frontend/src/app/core/periods.ts
++++ b/src/main/frontend/src/app/core/periods.ts
+@@ -21,6 +21,9 @@ export interface Period {
+   /** Each person's due-total for the period fixed when it was closed, by the person's id, as text
+    *  with two decimals; empty while it is open. A person missing from it has 0.00. */
+   closedPersonTotals: Record<number, string>;
++  /** Each person's carried figure for the period fixed when it was closed or soft-closed, by the
++   *  person's id, as text with two decimals; empty while it is open. A person missing from it has 0.00. */
++  closedPersonCarried: Record<number, string>;
+   /** The fiscal year its from-date falls in (FYyyyy). */
+   fy: string;
+   /** The most open or pending claims a person may have in the period; null for no cap. */
+diff --git a/src/main/frontend/src/app/features/people/people-list.ts b/src/main/frontend/src/app/features/people/people-list.ts
+index e19bfeeb3..f7aaa0b93 100644
+--- a/src/main/frontend/src/app/features/people/people-list.ts
++++ b/src/main/frontend/src/app/features/people/people-list.ts
+@@ -711,22 +711,15 @@ export class PeopleList {
+   });
+   /** The figures of the sheet's descendants added up, as the store held them when it was loaded. */
+   private readonly descendants = signal<DescendantFigures>(NO_DESCENDANTS);
+-  /** The people of the sheet and all its descendants: the sheet as it stands now, even while it is
+-   *  shown as of a date. */
+-  protected readonly consolidatedPeopleCount = computed(() =>
+-    (this.session.asOf() === null ? this.people().length : this.descendants().ownPeopleCount)
+-    + this.descendants().peopleCount,
+-  );
++  /** The people of the sheet and all its descendants: while an as-of date is set, each sheet as it
++   *  stood at the end of that day. */
++  protected readonly consolidatedPeopleCount = computed(() => this.people().length + this.descendants().peopleCount);
+   /** The sheet's due-total and each descendant's, as each shows it, added up. */
+-  protected readonly consolidatedDueTotal = computed(() => sumAmounts([
+-    this.session.asOf() === null ? this.dueTotal() : this.descendants().ownDueTotal,
+-    this.descendants().dueTotal,
+-  ]));
++  protected readonly consolidatedDueTotal = computed(() => sumAmounts([this.dueTotal(), this.descendants().dueTotal]));
+   /** The sheet's overdue-total and each descendant's, as each shows it, added up. */
+-  protected readonly consolidatedOverdueTotal = computed(() => sumAmounts([
+-    this.session.asOf() === null ? this.overdueTotal() : this.descendants().ownOverdueTotal,
+-    this.descendants().overdueTotal,
+-  ]));
++  protected readonly consolidatedOverdueTotal = computed(() =>
++    sumAmounts([this.overdueTotal(), this.descendants().overdueTotal]),
++  );
+   /** Per grade: the people not retired on it on the sheet's today, their due-totals added up,
+    *  skipping those that are n/a, and how many of them are active. */
+   protected readonly gradeSummary = computed((): GradeSummary[] =>
+@@ -1553,8 +1546,10 @@ export class PeopleList {
+     return this.livePeriodDues().get(personId)?.get(period.id) ?? '0.00';
+   }
+ 
+-  /** A person's carried figure for a period ({@link carried}); 0.00 when nothing is carried. */
++  /** A person's carried figure for a period: the one fixed when it was closed or soft-closed (0.00
++   *  for a person added since), or else the live one ({@link carried}); 0.00 when nothing is carried. */
+   protected carriedOf(personId: number, period: Period): string {
++    if (period.closed || period.softClosed) return period.closedPersonCarried[personId] ?? '0.00';
+     return this.carried().get(personId)?.get(period.id) ?? '0.00';
+   }
+ 
+diff --git a/src/main/java/net/officefloor/hq/app/claim/Dues.java b/src/main/java/net/officefloor/hq/app/claim/Dues.java
+index 15dc0b720..faa846e09 100644
+--- a/src/main/java/net/officefloor/hq/app/claim/Dues.java
++++ b/src/main/java/net/officefloor/hq/app/claim/Dues.java
+@@ -255,7 +255,11 @@ public class Dues {
+     /** Whether a claim is overdue on the sheet's today: it is open (or pending), not deferred on it,
+      *  and its {@link #lateFrom} is before it. */
+     public boolean overdue(String sheetId, Person person, Claim claim) {
+-        Basis basis = now(sheetId);
++        return overdue(now(sheetId), person, claim);
++    }
++
++    /** Whether a claim is overdue on a basis's today (see {@link #overdue(String, Person, Claim)}). */
++    public boolean overdue(Basis basis, Person person, Claim claim) {
+         LocalDate today = basis.today();
+         return claim.getStatus().isOpen() && !claim.isDeferredOn(today) && lateFrom(basis, person, claim).isBefore(today);
+     }
+diff --git a/src/main/java/net/officefloor/hq/app/period/Period.java b/src/main/java/net/officefloor/hq/app/period/Period.java
+index 3fcda7677..2cb6ab372 100644
+--- a/src/main/java/net/officefloor/hq/app/period/Period.java
++++ b/src/main/java/net/officefloor/hq/app/period/Period.java
+@@ -61,6 +61,14 @@ public class Period {
+     @Column(name = "total", nullable = false)
+     private Map<Long, BigDecimal> personTotals = new HashMap<>();
+ 
++    /** Each person's carried figure for the period, by the person's id, fixed when it was closed or
++     *  soft-closed; empty while it is open. */
++    @ElementCollection(fetch = FetchType.EAGER)
++    @CollectionTable(name = "period_person_carried", joinColumns = @JoinColumn(name = "period_id"))
++    @MapKeyColumn(name = "person_id")
++    @Column(name = "carried", nullable = false)
++    private Map<Long, BigDecimal> personCarried = new HashMap<>();
++
+     /** The last number given to a claim in the period under period numbering; only ever moved on by
+      *  {@link PeriodRepository#advanceClaimNumber}. */
+     @Column(name = "last_claim_number", insertable = false, updatable = false)
+@@ -72,13 +80,14 @@ public class Period {
+     /** A period as a revision in its sheet's history has it, detached: never saved. */
+     static Period revised(String sheetId, Long id, String name, LocalDate fromDate, LocalDate toDate,
+             boolean closed, boolean softClosed, BigDecimal closedTotal, Map<Long, BigDecimal> personTotals,
+-            Integer claimCap) {
++            Map<Long, BigDecimal> personCarried, Integer claimCap) {
+         Period period = new Period(sheetId, name, fromDate, toDate, claimCap);
+         period.id = id;
+         period.closed = closed;
+         period.softClosed = softClosed;
+         period.closedTotal = closedTotal;
+         period.personTotals.putAll(personTotals);
++        period.personCarried.putAll(personCarried);
+         return period;
+     }
+ 
+@@ -138,47 +147,61 @@ public class Period {
+         return Map.copyOf(personTotals);
+     }
+ 
+-    /** Close the period, fixing each person's due-total for it at what it is now, and its own
+-     *  due-total at their sum. */
+-    public void close(Map<Long, BigDecimal> personTotals) {
++    /** Each person's carried figure fixed when the period was closed or soft-closed, by the person's
++     *  id; empty while it is open. */
++    public Map<Long, BigDecimal> getPersonCarried() {
++        return Map.copyOf(personCarried);
++    }
++
++    /** Close the period, fixing each person's due-total and carried figure for it at what they are
++     *  now, and its own due-total at the sum of the due-totals. */
++    public void close(Map<Long, BigDecimal> personTotals, Map<Long, BigDecimal> personCarried) {
+         this.closed = true;
+         this.softClosed = false;
+-        fix(personTotals);
++        fix(personTotals, personCarried);
+     }
+ 
+     /** Soft-close the period, fixing its due-totals as {@link #close} does while leaving claims dated
+      *  inside it open to change. */
+-    public void softClose(Map<Long, BigDecimal> personTotals) {
++    public void softClose(Map<Long, BigDecimal> personTotals, Map<Long, BigDecimal> personCarried) {
+         this.softClosed = true;
+-        fix(personTotals);
++        fix(personTotals, personCarried);
+     }
+ 
+-    private void fix(Map<Long, BigDecimal> personTotals) {
++    private void fix(Map<Long, BigDecimal> personTotals, Map<Long, BigDecimal> personCarried) {
+         this.personTotals.clear();
+         this.personTotals.putAll(personTotals);
++        this.personCarried.clear();
++        this.personCarried.putAll(personCarried);
+         this.closedTotal = personTotals.values().stream().reduce(BigDecimal.ZERO.setScale(2), BigDecimal::add);
+     }
+ 
+-    /** Fold one person's fixed due-total for the period into another's (the one was merged into
+-     *  the other); the period's own due-total stays as it is. */
++    /** Fold one person's fixed due-total and carried figure for the period into another's (the one
++     *  was merged into the other); the period's own due-total stays as it is. */
+     public void mergePersonTotal(Long fromId, Long intoId) {
+         BigDecimal from = personTotals.remove(fromId);
+         if (from != null) {
+             personTotals.merge(intoId, from, BigDecimal::add);
+         }
++        BigDecimal carried = personCarried.remove(fromId);
++        if (carried != null) {
++            personCarried.merge(intoId, carried, BigDecimal::add);
++        }
+     }
+ 
+-    /** Drop one person's fixed due-total for the period (they left the sheet); the period's own
+-     *  due-total stays as it is. */
++    /** Drop one person's fixed due-total and carried figure for the period (they left the sheet);
++     *  the period's own due-total stays as it is. */
+     public void dropPersonTotal(Long personId) {
+         personTotals.remove(personId);
++        personCarried.remove(personId);
+     }
+ 
+-    /** Reopen the period: its due-total is live again. */
++    /** Reopen the period: its due-totals and carried figures are live again. */
+     public void reopen() {
+         this.closed = false;
+         this.softClosed = false;
+         this.closedTotal = null;
+         this.personTotals.clear();
++        this.personCarried.clear();
+     }
+ }
+diff --git a/src/main/java/net/officefloor/hq/app/period/PeriodController.java b/src/main/java/net/officefloor/hq/app/period/PeriodController.java
+index 09daf6c5d..bcec4ae56 100644
+--- a/src/main/java/net/officefloor/hq/app/period/PeriodController.java
++++ b/src/main/java/net/officefloor/hq/app/period/PeriodController.java
+@@ -34,17 +34,21 @@ public class PeriodController {
+      *  it is closed or soft-closed, the due-total fixed when it was closed (null while it is open), and each
+      *  person's due-total for it fixed then, by the person's id (empty while it is open), and the
+      *  fiscal year its from-date falls in (FYyyyy), and the most open or pending claims a person may
+-     *  have in it (null: no cap). */
++     *  have in it (null: no cap), and each person's carried figure for it fixed when it was closed, by
++     *  the person's id (empty while it is open). */
+     public record PeriodView(long id, String name, LocalDate from, LocalDate to, boolean closed,
+-            boolean softClosed, String closedTotal, Map<Long, String> closedPersonTotals, String fy, Integer cap) {
++            boolean softClosed, String closedTotal, Map<Long, String> closedPersonTotals, String fy, Integer cap,
++            Map<Long, String> closedPersonCarried) {
+         static PeriodView of(Period period, int fiscalStartMonth) {
+             Map<Long, String> personTotals = new TreeMap<>();
+             period.getPersonTotals().forEach((id, total) -> personTotals.put(id, total.setScale(2).toPlainString()));
++            Map<Long, String> personCarried = new TreeMap<>();
++            period.getPersonCarried().forEach((id, carried) -> personCarried.put(id, carried.setScale(2).toPlainString()));
+             return new PeriodView(period.getId(), period.getName(), period.getFromDate(), period.getToDate(),
+                     period.isClosed(), period.isSoftClosed(),
+                     period.getClosedTotal() == null ? null : period.getClosedTotal().setScale(2).toPlainString(),
+                     personTotals, PeriodService.fiscalYear(period.getFromDate(), fiscalStartMonth),
+-                    period.getClaimCap());
++                    period.getClaimCap(), personCarried);
+         }
+     }
+ 
+diff --git a/src/main/java/net/officefloor/hq/app/period/PeriodRevision.java b/src/main/java/net/officefloor/hq/app/period/PeriodRevision.java
+index e4556bc53..131a403cc 100644
+--- a/src/main/java/net/officefloor/hq/app/period/PeriodRevision.java
++++ b/src/main/java/net/officefloor/hq/app/period/PeriodRevision.java
+@@ -59,6 +59,10 @@ public class PeriodRevision {
+     @Column(name = "person_totals", nullable = false)
+     private String personTotals;
+ 
++    /** Each person's fixed carried figure, "person-id:carried", separated by ";"; blank while open. */
++    @Column(name = "person_carried", nullable = false)
++    private String personCarried;
++
+     protected PeriodRevision() {
+     }
+ 
+@@ -74,6 +78,7 @@ public class PeriodRevision {
+         this.softClosed = period.isSoftClosed();
+         this.closedTotal = period.getClosedTotal();
+         this.personTotals = totals(period.getPersonTotals());
++        this.personCarried = totals(period.getPersonCarried());
+         this.claimCap = period.getClaimCap();
+     }
+ 
+@@ -91,17 +96,23 @@ public class PeriodRevision {
+                 && (closedTotal == null ? period.getClosedTotal() == null
+                         : period.getClosedTotal() != null && closedTotal.compareTo(period.getClosedTotal()) == 0)
+                 && personTotals.equals(totals(period.getPersonTotals()))
++                && personCarried.equals(totals(period.getPersonCarried()))
+                 && Objects.equals(claimCap, period.getClaimCap());
+     }
+ 
+     /** The period as this revision has it, detached: for showing only, never saved. */
+     public Period toPeriod() {
+-        Map<Long, BigDecimal> totals = new TreeMap<>();
+-        Arrays.stream(personTotals.split(";")).filter(t -> !t.isBlank()).forEach(t -> {
++        return Period.revised(sheetId, periodId, name, fromDate, toDate, closed, softClosed, closedTotal,
++                parse(personTotals), parse(personCarried), claimCap);
++    }
++
++    private static Map<Long, BigDecimal> parse(String text) {
++        Map<Long, BigDecimal> figures = new TreeMap<>();
++        Arrays.stream(text.split(";")).filter(t -> !t.isBlank()).forEach(t -> {
+             int at = t.indexOf(':');
+-            totals.put(Long.valueOf(t.substring(0, at)), new BigDecimal(t.substring(at + 1)));
++            figures.put(Long.valueOf(t.substring(0, at)), new BigDecimal(t.substring(at + 1)));
+         });
+-        return Period.revised(sheetId, periodId, name, fromDate, toDate, closed, softClosed, closedTotal, totals, claimCap);
++        return figures;
+     }
+ 
+     public Long getPeriodId() {
+diff --git a/src/main/java/net/officefloor/hq/app/period/PeriodService.java b/src/main/java/net/officefloor/hq/app/period/PeriodService.java
+index c4ac51624..bf1ccdef2 100644
+--- a/src/main/java/net/officefloor/hq/app/period/PeriodService.java
++++ b/src/main/java/net/officefloor/hq/app/period/PeriodService.java
+@@ -12,6 +12,7 @@ import java.util.stream.Collectors;
+ import net.officefloor.hq.app.Audit;
+ import net.officefloor.hq.app.claim.Claim;
+ import net.officefloor.hq.app.claim.ClaimRepository;
++import net.officefloor.hq.app.claim.ClaimStatus;
+ import net.officefloor.hq.app.claim.Dues;
+ import net.officefloor.hq.app.history.History;
+ import net.officefloor.hq.app.person.Person;
+@@ -162,7 +163,7 @@ public class PeriodService {
+         if (period.isClosed() || period.isSoftClosed()) {
+             throw new ResponseStatusException(HttpStatus.CONFLICT, "That period is already closed");
+         }
+-        period.softClose(personTotals(sheetId, period));
++        period.softClose(personTotals(sheetId, period), personCarried(sheetId, period));
+         Period saved = periods.saveAndFlush(period);
+         audit.recordOnCommit("PERIOD_SOFT_CLOSED sheet=" + sheetId + " by=" + user + " period=" + saved.getName()
+                 + " total=" + saved.getClosedTotal().toPlainString());
+@@ -181,7 +182,7 @@ public class PeriodService {
+ 
+     /** Close an open period, fixing its due-total at what it is now; the suffix ends its record. */
+     private Period closeOpen(String sheetId, String user, Period period, String suffix) {
+-        period.close(personTotals(sheetId, period));
++        period.close(personTotals(sheetId, period), personCarried(sheetId, period));
+         Period saved = periods.saveAndFlush(period);
+         audit.recordOnCommit("PERIOD_CLOSED sheet=" + sheetId + " by=" + user + " period=" + saved.getName()
+                 + " total=" + saved.getClosedTotal().toPlainString() + suffix);
+@@ -234,6 +235,37 @@ public class PeriodService {
+         return totals;
+     }
+ 
++    /** Each person's carried figure for a period, by the person's id: the due figures of their
++     *  claims that count by their status at its end whose due-by falls in a period ending before it
++     *  starts and that were still open (or pending) at its end, skipping those with no due. */
++    private Map<Long, BigDecimal> personCarried(String sheetId, Period period) {
++        Map<Long, Person> byId = people.findBySheetIdOrderByPositionAscIdAsc(sheetId).stream()
++                .collect(Collectors.toMap(Person::getId, Function.identity()));
++        List<Period> all = periods.findBySheetIdOrderByFromDateAsc(sheetId);
++        Map<Long, BigDecimal> carried = new HashMap<>();
++        for (Long id : byId.keySet()) {
++            carried.put(id, BigDecimal.ZERO.setScale(2));
++        }
++        LocalDate today = sheets.today(sheetId);
++        for (Claim c : claims.findBySheetIdOrderByListedDesc(sheetId)) {
++            Person person = byId.get(c.getPersonId());
++            boolean earlier = all.stream().anyMatch(p -> !c.getDueBy().isBefore(p.getFromDate())
++                    && !c.getDueBy().isAfter(p.getToDate()) && p.getToDate().isBefore(period.getFromDate()));
++            if (person == null || !earlier || !Dues.countsAsOf(person, c, period.getToDate(), today)) {
++                continue;
++            }
++            ClaimStatus then = c.statusOn(period.getToDate());
++            if (then != ClaimStatus.OPEN && then != ClaimStatus.PENDING) {
++                continue;
++            }
++            BigDecimal figure = dues.figure(sheetId, person, c);
++            if (figure != null) {
++                carried.merge(person.getId(), figure, BigDecimal::add);
++            }
++        }
++        return carried;
++    }
++
+     private static ResponseStatusException nameInUse() {
+         return new ResponseStatusException(HttpStatus.CONFLICT, "That period name is already in use on this sheet");
+     }
+diff --git a/src/main/java/net/officefloor/hq/app/rollup/Rollup.java b/src/main/java/net/officefloor/hq/app/rollup/Rollup.java
+index f2d64c4e2..cd13d7651 100644
+--- a/src/main/java/net/officefloor/hq/app/rollup/Rollup.java
++++ b/src/main/java/net/officefloor/hq/app/rollup/Rollup.java
+@@ -122,27 +122,25 @@ public class Rollup {
+ 
+     /** The figures a sheet's descendants add to its own to consolidate it: over all of them, the
+      *  people (retired included), and each one's due-total and overdue-total as that sheet shows
+-     *  them, added up; and the sheet's own figures as it stands now (for a screen showing it as of a
+-     *  date, which consolidates the sheet as it stands now). */
+-    public record Descendants(int peopleCount, String dueTotal, String overdueTotal, int ownPeopleCount,
+-            String ownDueTotal, String ownOverdueTotal) {
++     *  them, added up. */
++    public record Descendants(int peopleCount, String dueTotal, String overdueTotal) {
+     }
+ 
+-    /** The figures of a sheet's descendants added up (all zero when it has none). */
++    /** The figures of a sheet's descendants added up (all zero when it has none): as each stands now,
++     *  or, as of a day when one is given, as each stood at the end of it with that day as its today
++     *  (see {@link History}). */
+     @Transactional(readOnly = true)
+-    public Descendants descendants(String sheetId) {
++    public Descendants descendants(String sheetId, LocalDate asOf) {
+         int count = 0;
+         BigDecimal due = BigDecimal.ZERO.setScale(2);
+         BigDecimal overdue = BigDecimal.ZERO.setScale(2);
+         for (String id : sheetStore.descendants(sheetId)) {
+-            Snapshot s = snapshot(id);
++            Snapshot s = asOf == null ? snapshot(id) : snapshot(history.asOf(id, asOf));
+             count += s.people().size();
+             due = due.add(new BigDecimal(s.dueTotal()));
+             overdue = overdue.add(new BigDecimal(s.overdueTotal()));
+         }
+-        Snapshot own = snapshot(sheetId);
+-        return new Descendants(count, text(due), text(overdue), own.people().size(), own.dueTotal(),
+-                own.overdueTotal());
++        return new Descendants(count, text(due), text(overdue));
+     }
+ 
+     /** A person found by a search of a sheet's tree: their sheet's id, name and due-total (two
+@@ -173,20 +171,30 @@ public class Rollup {
+     }
+ 
+     private Snapshot snapshot(String sheetId) {
+-        Map<Long, List<Claim>> byPerson = claims.findBySheetIdOrderByListedDesc(sheetId).stream()
+-                .collect(Collectors.groupingBy(Claim::getPersonId));
++        return snapshot(dues.now(sheetId), people.findBySheetIdOrderByPositionAscIdAsc(sheetId),
++                claims.findBySheetIdOrderByListedDesc(sheetId));
++    }
++
++    /** The figures of a sheet as it stood at the end of a day, that day as its today. */
++    private Snapshot snapshot(History.SheetAsOf then) {
++        return snapshot(then.basis(), List.copyOf(then.people().values()), then.claims());
++    }
++
++    /** The figures of a sheet's people and claims, worked out on the basis. */
++    private Snapshot snapshot(Dues.Basis basis, List<Person> sheetPeople, List<Claim> sheetClaims) {
++        Map<Long, List<Claim>> byPerson = sheetClaims.stream().collect(Collectors.groupingBy(Claim::getPersonId));
+         Map<Long, Figures> figures = new LinkedHashMap<>();
+         BigDecimal claimedTotal = BigDecimal.ZERO.setScale(2);
+         List<BigDecimal> dueFigures = new ArrayList<>();
+         List<BigDecimal> overdueFigures = new ArrayList<>();
+-        LocalDate today = sheets.today(sheetId);
+-        for (Person person : people.findBySheetIdOrderByPositionAscIdAsc(sheetId)) {
++        LocalDate today = basis.today();
++        for (Person person : sheetPeople) {
+             List<Claim> theirs = Dues.live(person, byPerson.getOrDefault(person.getId(), List.of()), today);
+             BigDecimal claimed = theirs.stream().filter(c -> c.getCorrects() == null).map(Claim::getAmount)
+                     .reduce(BigDecimal.ZERO.setScale(2), BigDecimal::add);
+-            BigDecimal due = dues.dueTotal(sheetId, person, theirs);
+-            BigDecimal overdue = theirs.stream().filter(c -> dues.overdue(sheetId, person, c))
+-                    .map(c -> dues.figure(sheetId, person, c)).filter(Objects::nonNull)
++            BigDecimal due = dues.dueTotal(basis, person, theirs);
++            BigDecimal overdue = theirs.stream().filter(c -> dues.overdue(basis, person, c))
++                    .map(c -> dues.figure(basis, person, c)).filter(Objects::nonNull)
+                     .reduce(BigDecimal.ZERO.setScale(2), BigDecimal::add);
+             claimedTotal = claimedTotal.add(claimed);
+             overdueFigures.add(overdue);
+diff --git a/src/main/java/net/officefloor/hq/app/rollup/RollupController.java b/src/main/java/net/officefloor/hq/app/rollup/RollupController.java
+index 6657dbb91..f5b00b2d7 100644
+--- a/src/main/java/net/officefloor/hq/app/rollup/RollupController.java
++++ b/src/main/java/net/officefloor/hq/app/rollup/RollupController.java
+@@ -2,10 +2,14 @@ package net.officefloor.hq.app.rollup;
+ 
+ import jakarta.validation.constraints.NotBlank;
+ import jakarta.validation.constraints.Size;
++import java.time.LocalDate;
+ import java.util.List;
++import net.officefloor.hq.app.sheet.AsOfGuard;
++import org.springframework.format.annotation.DateTimeFormat;
+ import org.springframework.validation.annotation.Validated;
+ import org.springframework.web.bind.annotation.GetMapping;
+ import org.springframework.web.bind.annotation.PathVariable;
++import org.springframework.web.bind.annotation.RequestHeader;
+ import org.springframework.web.bind.annotation.RequestMapping;
+ import org.springframework.web.bind.annotation.RequestParam;
+ import org.springframework.web.bind.annotation.RestController;
+@@ -21,10 +25,13 @@ public class RollupController {
+         this.rollup = rollup;
+     }
+ 
+-    /** The figures of the sheet's descendants added up, for the screen to consolidate with its own. */
++    /** The figures of the sheet's descendants added up, for the screen to consolidate with its own;
++     *  as of a day when one is given, each as it stood at the end of it. */
+     @GetMapping("/descendants")
+-    public Rollup.Descendants descendants(@PathVariable @NotBlank @Size(max = 100) String sheetId) {
+-        return rollup.descendants(sheetId.trim());
++    public Rollup.Descendants descendants(@PathVariable @NotBlank @Size(max = 100) String sheetId,
++            @RequestHeader(value = AsOfGuard.HEADER, required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE)
++            LocalDate asOf) {
++        return rollup.descendants(sheetId.trim(), asOf);
+     }
+ 
+     /** The people on the sheet and the other sheets of its tree whose name or an alias contains the
+diff --git a/src/main/resources/db/migration/V94__period_person_carried.sql b/src/main/resources/db/migration/V94__period_person_carried.sql
+new file mode 100644
+index 000000000..11d2e1602
+--- /dev/null
++++ b/src/main/resources/db/migration/V94__period_person_carried.sql
+@@ -0,0 +1,12 @@
++-- Each person's carried figure for a closed or soft-closed period, fixed when it was closed: the due
++-- of their claims that count whose due-by falls in an earlier period and that were still open (or
++-- pending) at its end. A person with no row has 0.00 carried into it. The rows go when the period is
++-- reopened. A period closed before this was kept has none fixed: its carried figures show 0.00.
++CREATE TABLE period_person_carried (
++    period_id BIGINT         NOT NULL REFERENCES period (id),
++    person_id BIGINT         NOT NULL REFERENCES person (id),
++    carried   DECIMAL(14, 2) NOT NULL,
++    PRIMARY KEY (period_id, person_id)
++);
++-- The sheet's history keeps them too, as text: "person-id:carried", separated by ";".
++ALTER TABLE period_revision ADD COLUMN person_carried VARCHAR(4000) DEFAULT '' NOT NULL;
