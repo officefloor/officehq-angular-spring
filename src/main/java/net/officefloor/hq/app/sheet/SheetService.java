@@ -33,6 +33,7 @@ public class SheetService {
 
     private final SheetRepository sheets;
     private final SettingValueRepository settingValues;
+    private final FiscalClaimNumberRepository fiscalNumbers;
     private final SheetPermissionRepository permissions;
     private final ClaimRepository claims;
     /** Lazy: the rollup reads the sheet's today through this service. */
@@ -46,11 +47,12 @@ public class SheetService {
     private final Audit audit;
 
     public SheetService(SheetRepository sheets, SettingValueRepository settingValues,
-            SheetPermissionRepository permissions, ClaimRepository claims, @Lazy Rollup rollup, @Lazy PeriodService periods,
+            FiscalClaimNumberRepository fiscalNumbers, SheetPermissionRepository permissions, ClaimRepository claims, @Lazy Rollup rollup, @Lazy PeriodService periods,
             @Lazy RoleService roles, @Lazy History history, Audit audit) {
         this.history = history;
         this.sheets = sheets;
         this.settingValues = settingValues;
+        this.fiscalNumbers = fiscalNumbers;
         this.permissions = permissions;
         this.claims = claims;
         this.rollup = rollup;
@@ -94,10 +96,12 @@ public class SheetService {
         return sheets.findById(id).map(Sheet::getToday).orElseGet(LocalDate::now);
     }
 
-    /** The next claim number on the sheet: the sheets of a tree share one sequence, so it is the
-     *  next after the last number given on any sheet of the sheet's tree (1 for the tree's first). */
+    /** The next claim number on the sheet for a claim due by the day: <FY>-<n>, counting from 1 within
+     *  the fiscal year (by the sheet's fiscal start month) the day falls in; the sheets of a tree share
+     *  one sequence per fiscal year, so it is the next after the last number given within that fiscal
+     *  year on any sheet of the sheet's tree. */
     @Transactional
-    public int nextClaimNumber(String id) {
+    public String nextClaimNumber(String id, LocalDate dueBy) {
         // the tree's root row is locked until the transaction ends, so two claims opened on its
         // sheets at once get one number each
         String root = sheets.root(id);
@@ -105,11 +109,15 @@ public class SheetService {
         if (sheets.lockClaimNumber(id) != 1) {
             throw new IllegalStateException("No sheet " + id);
         }
+        String fiscalYear = PeriodService.fiscalYear(dueBy, fiscalStartMonth(id));
         List<String> tree = new ArrayList<>(sheets.descendants(root));
         tree.add(root);
-        int next = sheets.lastClaimNumber(tree) + 1;
-        sheets.setLastClaimNumber(id, next);
-        return next;
+        int next = fiscalNumbers.lastNumber(tree, fiscalYear) + 1;
+        FiscalClaimNumber last = fiscalNumbers.findById(new FiscalClaimNumber.Key(id, fiscalYear))
+                .orElseGet(() -> new FiscalClaimNumber(id, fiscalYear, 0));
+        last.setLastNumber(next);
+        fiscalNumbers.saveAndFlush(last);
+        return fiscalYear + "-" + next;
     }
 
     /** The next settle batch number on the sheet: 1 for its first bulk settle that settled a claim,

@@ -22,7 +22,8 @@ public class Sheet {
     @Column(name = "today", nullable = false)
     private LocalDate today;
 
-    /** The last claim number given on the sheet; only ever moved on by {@link SheetService#nextClaimNumber}. */
+    /** The last plain claim number given on the sheet, before numbering restarted each fiscal year
+     *  ({@link FiscalClaimNumber}); no longer moved on. */
     @Column(name = "last_claim_number", insertable = false, updatable = false)
     private int lastClaimNumber;
 

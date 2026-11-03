@@ -1,7 +1,6 @@
 package net.officefloor.hq.app.sheet;
 
 import java.util.ArrayList;
-import java.util.Collection;
 import java.util.HashSet;
 import java.util.Set;
 import java.util.List;
@@ -11,22 +10,10 @@ import org.springframework.data.jpa.repository.Query;
 
 public interface SheetRepository extends JpaRepository<Sheet, String> {
 
-    @Query("select s.lastClaimNumber from Sheet s where s.id = :id")
-    int lastClaimNumber(String id);
-
     /** Lock the sheet's row until the transaction ends (a no-op update); 0 when there is no such sheet. */
     @Modifying
     @Query("update Sheet s set s.lastClaimNumber = s.lastClaimNumber where s.id = :id")
     int lockClaimNumber(String id);
-
-    /** The last claim number given on any of the sheets. */
-    @Query("select coalesce(max(s.lastClaimNumber), 0) from Sheet s where s.id in :ids")
-    int lastClaimNumber(Collection<String> ids);
-
-    /** Set the sheet's last claim number. */
-    @Modifying
-    @Query("update Sheet s set s.lastClaimNumber = :number where s.id = :id")
-    int setLastClaimNumber(String id, int number);
 
     /** Move the sheet's last X-number (for claims in no period) on by one; the row stays locked
      *  until the transaction ends. */

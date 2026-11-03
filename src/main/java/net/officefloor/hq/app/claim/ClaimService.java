@@ -700,10 +700,11 @@ public class ClaimService {
     }
 
     /** The number for a claim due by the day opened now: under period numbering, the next in its period
-     *  (<period name>-<n>), or for one in no period the next X-<n>; otherwise the next on the sheet. */
+     *  (<period name>-<n>), or for one in no period the next X-<n>; otherwise the next on the sheet
+     *  within the fiscal year of its due-by day (<FY>-<n>). */
     public String nextNumber(String sheetId, LocalDate dueBy) {
         if (!sheets.periodNumbering(sheetId)) {
-            return String.valueOf(sheets.nextClaimNumber(sheetId));
+            return sheets.nextClaimNumber(sheetId, dueBy);
         }
         return periods.findOn(sheetId, dueBy)
                 .map(p -> {
