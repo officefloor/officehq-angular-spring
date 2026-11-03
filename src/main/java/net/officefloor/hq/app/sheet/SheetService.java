@@ -587,6 +587,23 @@ public class SheetService {
         return saved;
     }
 
+    /** The sheet's pending SLA in days; null when blank (none). */
+    @Transactional(readOnly = true)
+    public Integer pendingSla(String id) {
+        return sheets.findById(id).map(Sheet::getPendingSla).orElse(null);
+    }
+
+    /** Change the sheet's pending SLA (null: blank, none); recorded even when unchanged. */
+    @Transactional
+    public synchronized Sheet setPendingSla(String id, String user, Integer days) {
+        Sheet sheet = load(id, user);
+        sheet.setPendingSla(days);
+        Sheet saved = sheets.saveAndFlush(sheet);
+        audit.recordOnCommit("SETTING_CHANGED sheet=" + id + " by=" + user + " key=pending-sla value="
+                + (days == null ? "" : days.toString()));
+        return saved;
+    }
+
     /** The sheet's mid score threshold; null when blank. */
     @Transactional(readOnly = true)
     public Integer scoreMid(String id) {

@@ -66,6 +66,11 @@ public class Sheet {
     @Column(name = "review_sla")
     private Integer reviewSla;
 
+    /** The pending SLA in days: a pending claim whose pending day plus them is before the sheet's
+     *  today is late; null when blank (none). */
+    @Column(name = "pending_sla")
+    private Integer pendingSla;
+
     /** The mid score threshold: a person whose score is at or above it is MID (or HIGH); null when
      *  blank (no bands). */
     @Column(name = "score_mid")
@@ -197,6 +202,14 @@ public class Sheet {
 
     public void setReviewSla(Integer reviewSla) {
         this.reviewSla = reviewSla;
+    }
+
+    public Integer getPendingSla() {
+        return pendingSla;
+    }
+
+    public void setPendingSla(Integer pendingSla) {
+        this.pendingSla = pendingSla;
     }
 
     public Integer getScoreMid() {

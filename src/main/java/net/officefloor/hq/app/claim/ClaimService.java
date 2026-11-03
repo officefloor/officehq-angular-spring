@@ -744,7 +744,7 @@ public class ClaimService {
         }
         return rollup.tracking(sheetId, user, () -> {
             Person person = person(sheetId, claim.getPersonId());
-            claim.share(with.getId(), share.setScale(2));
+            claim.share(with.getId(), share.setScale(2), sheets.today(sheetId));
             Claim saved = claims.saveAndFlush(claim);
             audit.recordOnCommit(record("CLAIM_SHARED", sheetId, user, person, saved)
                     + " with=" + with.getName() + " share=" + share.setScale(2).toPlainString());

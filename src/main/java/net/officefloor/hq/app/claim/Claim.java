@@ -677,7 +677,7 @@ public class Claim {
     }
 
     /** Give a share of the claim to another person of its sheet. */
-    public void share(Long personId, BigDecimal share) {
-        shares.add(new ClaimShare(sheetId, personId, share));
+    public void share(Long personId, BigDecimal share, LocalDate on) {
+        shares.add(new ClaimShare(sheetId, personId, share, on));
     }
 }

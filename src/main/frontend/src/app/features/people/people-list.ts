@@ -1,7 +1,7 @@
 import { HttpErrorResponse } from '@angular/common/http';
 import { Component, computed, effect, inject, signal, untracked } from '@angular/core';
 import { FormControl, FormGroup, ReactiveFormsModule } from '@angular/forms';
-import { Claim, Claims, QuickAdded, addDays, backingFigure, claimDue, countsAsOf, countsClaimed, countsLive, isOpen, keepsActive, overdue, reviewLate, sharePart, statusOn, sumAmounts, trimmedSum } from '../../core/claims';
+import { Claim, Claims, QuickAdded, addDays, backingFigure, claimDue, countsAsOf, countsClaimed, countsLive, isOpen, keepsActive, overdue, pendingLate, reviewLate, sharePart, statusOn, sumAmounts, trimmedSum } from '../../core/claims';
 import { Patron, Patrons, patronShares } from '../../core/patrons';
 import { Pools, formatCents } from '../../core/pools';
 import { Grades } from '../../core/grades';
@@ -161,7 +161,7 @@ const NO_LEAVE: Leave = { holds: [], retiredFrom: null };
         </ul>
       }
       <app-summary-panel [grades]="gradeSummary()" [periods]="periodSummary()" [statuses]="statusSummary()"
-        [voidReasons]="voidReasonSummary()" [reviewLateCount]="reviewLateCount()" />
+        [voidReasons]="voidReasonSummary()" [reviewLateCount]="reviewLateCount()" [pendingLateCount]="pendingLateCount()" />
       <app-sheet-compare-box [grades]="gradeSummary()" />
       <app-classic-summary-panel [periods]="classicPeriodSummary()" [dueTotal]="classicDueTotal()" />
       <label>
@@ -396,7 +396,7 @@ const NO_LEAVE: Leave = { holds: [], retiredFrom: null };
               <td>
                 <app-person-claims [personId]="p.id" [claims]="claimsByPerson().get(p.id) ?? []"
                   [rates]="rates()" [floor]="floor()" [grades]="p.grades" [periods]="periods()"
-                  [today]="session.today()" [latePct]="latePct()" [graces]="graces()" [reviewSla]="reviewSla()"
+                  [today]="session.today()" [latePct]="latePct()" [graces]="graces()" [reviewSla]="reviewSla()" [pendingSla]="pendingSla()"
                   [policyDate]="policyDate()" [roundings]="roundings()" [selected]="selected()"
                   (selectedChange)="select($event.id, $event.selected)"
                   [others]="patronChoices(p)" [people]="people()" (saved)="claimSaved($event)" />
@@ -713,6 +713,8 @@ export class PeopleList {
   protected readonly graces = signal<Graces>({});
   /** The sheet's review SLA in days (null when blank): a claim in review longer than it is late. */
   protected readonly reviewSla = signal<number | null>(null);
+  /** The sheet's pending SLA in days (null when blank: none). */
+  protected readonly pendingSla = signal<number | null>(null);
   /** The sheet's mid score threshold (null when blank). */
   protected readonly scoreMid = signal<number | null>(null);
   /** The sheet's high score threshold (null when blank). */
@@ -720,6 +722,10 @@ export class PeopleList {
   /** How many claims on the sheet are in review past the review SLA. */
   protected readonly reviewLateCount = computed(() =>
     this.claims().filter((c) => reviewLate(c, this.session.today(), this.reviewSla())).length,
+  );
+  /** How many claims on the sheet are pending past the pending SLA. */
+  protected readonly pendingLateCount = computed(() =>
+    this.claims().filter((c) => pendingLate(c, this.session.today(), this.pendingSla())).length,
   );
   /** The sheet's policy date (null when blank): it decides how a claim's live figures round. */
   protected readonly policyDate = signal<string | null>(null);
@@ -1167,6 +1173,7 @@ export class PeopleList {
       this.latePct.set(saved.settings.latePcts);
       this.graces.set(saved.settings.graces);
       this.reviewSla.set(saved.settings.reviewSla);
+      this.pendingSla.set(saved.settings.pendingSla);
       this.scoreMid.set(saved.settings.scoreMid);
       this.scoreHigh.set(saved.settings.scoreHigh);
       this.policyDate.set(saved.settings.policyDate);
@@ -2167,6 +2174,7 @@ export class PeopleList {
         this.latePct.set(settings.latePcts);
         this.graces.set(settings.graces);
         this.reviewSla.set(settings.reviewSla);
+        this.pendingSla.set(settings.pendingSla);
         this.scoreMid.set(settings.scoreMid);
         this.scoreHigh.set(settings.scoreHigh);
         this.policyDate.set(settings.policyDate);

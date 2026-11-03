@@ -130,6 +130,7 @@ public class SheetCloneService {
         to.setEscalateAfter(from.getEscalateAfter());
         to.setMaxOpen(from.getMaxOpen());
         to.setReviewSla(from.getReviewSla());
+        to.setPendingSla(from.getPendingSla());
         to.setScoreMid(from.getScoreMid());
         to.setScoreHigh(from.getScoreHigh());
         to.setScoreLog(from.isScoreLog());

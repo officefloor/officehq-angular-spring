@@ -85,6 +85,8 @@ export interface VoidReasonSummary {
       </table>
       <p>Claims in review past the review SLA:
         <strong data-testid="summary-review-late-count">{{ reviewLateCount() }}</strong></p>
+      <p>Claims pending past the pending SLA:
+        <strong data-testid="summary-pending-late-count">{{ pendingLateCount() }}</strong></p>
       @if (voidReasons().length > 0) {
         <table>
           <caption>By void reason</caption>
@@ -111,4 +113,5 @@ export class SummaryPanel {
   readonly voidReasons = input.required<VoidReasonSummary[]>();
   /** How many claims are in review past the sheet's review SLA. */
   readonly reviewLateCount = input.required<number>();
+  readonly pendingLateCount = input.required<number>();
 }

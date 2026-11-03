@@ -7,6 +7,7 @@ import jakarta.persistence.GenerationType;
 import jakarta.persistence.Id;
 import jakarta.persistence.Table;
 import java.math.BigDecimal;
+import java.time.LocalDate;
 
 /** A share of a claim held by another person of its sheet: the person and their share percent (two
  *  decimals, above 0.00). The holder's due-total counts their part of the claim's due (see
@@ -28,13 +29,18 @@ public class ClaimShare {
     @Column(name = "share", nullable = false, precision = 5, scale = 2)
     private BigDecimal share;
 
+    /** The sheet's today when the share was given; null when given before this was kept. */
+    @Column(name = "on_day")
+    private LocalDate on;
+
     protected ClaimShare() {
     }
 
-    public ClaimShare(String sheetId, Long personId, BigDecimal share) {
+    public ClaimShare(String sheetId, Long personId, BigDecimal share, LocalDate on) {
         this.sheetId = sheetId;
         this.personId = personId;
         this.share = share;
+        this.on = on;
     }
 
     public Long getId() {
@@ -47,5 +53,9 @@ public class ClaimShare {
 
     public BigDecimal getShare() {
         return share;
+    }
+
+    public LocalDate getOn() {
+        return on;
     }
 }

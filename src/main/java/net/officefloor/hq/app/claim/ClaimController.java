@@ -119,7 +119,8 @@ public class ClaimController {
                     batchOf(then.getStatus(), kept.getSettleBatch()),
                     kept.getLines().stream().map(LineView::of).toList(), then.getAdded(),
                     then.isWaived(), proofKinds(kept, day), then.isHeld(),
-                    kept.getShares().stream().map(ShareView::of).toList(), kept.getReviewAssignee());
+                    kept.getShares().stream().filter(s -> s.getOn() == null || !s.getOn().isAfter(day))
+                            .map(ShareView::of).toList(), kept.getReviewAssignee());
         }
 
         /** The settle batch a claim shows: only while it is settled or pending. */

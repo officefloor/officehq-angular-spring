@@ -1,7 +1,7 @@
 import { HttpErrorResponse } from '@angular/common/http';
 import { Component, effect, inject, input, output, signal, untracked } from '@angular/core';
 import { FormControl, FormGroup, ReactiveFormsModule } from '@angular/forms';
-import { AMOUNT, CLAIM_AMOUNT, Claim, ClaimAction, Claims, PROOF_KINDS, SHARE_PCT, ProofKind, claimDue, deferred, overdue, reviewLate } from '../../core/claims';
+import { AMOUNT, CLAIM_AMOUNT, Claim, ClaimAction, Claims, PROOF_KINDS, SHARE_PCT, ProofKind, claimDue, deferred, overdue, pendingLate, reviewLate } from '../../core/claims';
 import { ClaimTemplates } from '../../core/claim-templates';
 import { GradeFrom, Person, gradeOn } from '../../core/people';
 import { Period, periodOf } from '../../core/periods';
@@ -294,6 +294,7 @@ function settlePartRefusal(e: unknown): string {
           <span data-testid="claim-late-entry">{{ c.lateEntry ? 'yes' : 'no' }}</span>
           <span data-testid="claim-due-by">{{ dueByOf(c) }}</span>
           <span data-testid="claim-review-late">{{ reviewLateOf(c) ? 'yes' : 'no' }}</span>
+          <span data-testid="claim-pending-late">{{ pendingLateOf(c) ? 'yes' : 'no' }}</span>
           <span data-testid="claim-overdue">{{ overdueOf(c) ? 'yes' : 'no' }}</span>
           <span data-testid="claim-deferred">{{ deferredOf(c) ? 'yes' : 'no' }}</span>
           <span data-testid="claim-waived">{{ c.waived ? 'yes' : 'no' }}</span>
@@ -496,6 +497,7 @@ export class PersonClaims {
   readonly graces = input.required<Graces>();
   /** The sheet's review SLA in days (null when blank): a claim in review longer than it is late. */
   readonly reviewSla = input.required<number | null>();
+  readonly pendingSla = input.required<number | null>();
   /** The sheet's policy date (null when blank): it decides how a claim's live figures round. */
   readonly policyDate = input.required<string | null>();
   /** The sheet's rounding modes recorded: the one in force on a claim's date decides how its live
@@ -568,6 +570,10 @@ export class PersonClaims {
 
   protected reviewLateOf(c: Claim): boolean {
     return reviewLate(c, this.today(), this.reviewSla());
+  }
+
+  protected pendingLateOf(c: Claim): boolean {
+    return pendingLate(c, this.today(), this.pendingSla());
   }
 
   protected overdueOf(c: Claim): boolean {

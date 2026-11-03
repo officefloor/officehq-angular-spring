@@ -53,6 +53,9 @@ export interface Settings {
   /** The review SLA: a claim in review whose review day plus this many days is before the sheet's
    *  today is late; null when blank (none). Not dated. */
   reviewSla: number | null;
+  /** The pending SLA: a pending claim whose pending day plus this many days is before the sheet's
+   *  today is late; null when blank (none). Not dated. */
+  pendingSla: number | null;
   /** The mid score threshold: while both thresholds are set, a person whose score is at or above
    *  it is MID; null when blank. Not dated. */
   scoreMid: number | null;
@@ -356,6 +359,12 @@ export class SheetSettings {
   setReviewSla(value: string | null): Promise<Settings> {
     const [sheetId, headers] = this.active();
     return firstValueFrom(this.http.put<Settings>(`${this.url(sheetId)}/settings/review-sla`, { value }, { headers })).then((settings) => this.record(sheetId, settings));
+  }
+
+  /** Set the pending SLA; null for blank (none). */
+  setPendingSla(value: string | null): Promise<Settings> {
+    const [sheetId, headers] = this.active();
+    return firstValueFrom(this.http.put<Settings>(`${this.url(sheetId)}/settings/pending-sla`, { value }, { headers })).then((settings) => this.record(sheetId, settings));
   }
 
   /** Set the mid score threshold; null for blank. */

@@ -65,7 +65,7 @@ public class SettingsController {
             String alertThreshold, String rounding, List<DatedText> roundings, String reviewThreshold,
             Integer escalateAfter, Integer reviewSla, String proofKinds, String defaultGrade,
             Map<String, String> gradeClerkLimits, Integer scoreMid, Integer scoreHigh, boolean scoreLog,
-            Integer maxOpen) {
+            Integer maxOpen, Integer pendingSla) {
         static SettingsView of(BigDecimal clerkLimit, BigDecimal floor, int terms, BigDecimal latePct,
                 LocalDate policyDate, LocalDate periodNumberingFrom, Map<String, Integer> gradeTerms,
                 BigDecimal cap, List<SettingValue> floors, List<SettingValue> latePcts,
@@ -76,7 +76,7 @@ public class SettingsController {
                 List<SettingValue> roundings, BigDecimal reviewThreshold, Integer escalateAfter,
                 Integer reviewSla, List<String> proofKinds, String defaultGrade,
                 Map<String, BigDecimal> gradeClerkLimits, Integer scoreMid, Integer scoreHigh, boolean scoreLog,
-                Integer maxOpen) {
+                Integer maxOpen, Integer pendingSla) {
             Map<String, List<DatedDays>> gracesView = new TreeMap<>();
             graces.forEach((grade, values) -> gracesView.put(grade, values.stream().map(DatedDays::of).toList()));
             Map<String, String> thresholdsView = new TreeMap<>();
@@ -93,7 +93,7 @@ public class SettingsController {
                     rounding.map(Rounding::text).orElse(null), roundings.stream().map(DatedText::rounding).toList(),
                     reviewThreshold == null ? null : reviewThreshold.setScale(2).toPlainString(), escalateAfter,
                     reviewSla, String.join(",", proofKinds), defaultGrade, twoDecimals(gradeClerkLimits),
-                    scoreMid, scoreHigh, scoreLog, maxOpen);
+                    scoreMid, scoreHigh, scoreLog, maxOpen, pendingSla);
         }
     }
 
@@ -296,6 +296,14 @@ public class SettingsController {
         }
     }
 
+    /** The pending SLA form: a whole number of days, 0 or more, or blank for none; not dated. */
+    public record PendingSlaForm(@Pattern(regexp = "\\s*(\\d{1,4})?\\s*") String value) {
+
+        Integer daysValue() {
+            return value == null || value.isBlank() ? null : Integer.valueOf(value.trim());
+        }
+    }
+
     /** A score threshold form: a whole number, which may be below 0, or blank for none; not dated. */
     public record ScoreThresholdForm(@Pattern(regexp = "\\s*(-?\\d{1,6})?\\s*") String value) {
 
@@ -438,7 +446,7 @@ public class SettingsController {
                 then.setting(Rounding.KEY, day).map(SettingValue::getValue).flatMap(Rounding::ofCode),
                 then.recorded(Rounding.KEY), value.apply("review-threshold"), service.escalateAfter(id),
                 service.reviewSla(id), service.proofKinds(id), service.defaultGradeSet(id), gradeClerkLimits,
-                service.scoreMid(id), service.scoreHigh(id), service.scoreLog(id), service.maxOpen(id));
+                service.scoreMid(id), service.scoreHigh(id), service.scoreLog(id), service.maxOpen(id), service.pendingSla(id));
     }
 
     /** The settings view of a sheet as the store holds it now. */
@@ -452,7 +460,7 @@ public class SettingsController {
                 service.fiscalStartMonth(id), service.alertThreshold(id), service.rounding(id),
                 service.recorded(id, Rounding.KEY), service.reviewThreshold(id), service.escalateAfter(id),
                 service.reviewSla(id), service.proofKinds(id), service.defaultGradeSet(id),
-                service.gradeClerkLimits(id), service.scoreMid(id), service.scoreHigh(id), service.scoreLog(id), service.maxOpen(id));
+                service.gradeClerkLimits(id), service.scoreMid(id), service.scoreHigh(id), service.scoreLog(id), service.maxOpen(id), service.pendingSla(id));
     }
 
     /** The grace days recorded for each grade of a sheet, earliest from-date first. */
@@ -620,6 +628,13 @@ public class SettingsController {
             @RequestHeader("X-User") @NotBlank @Size(max = 100) String user,
             @Valid @RequestBody ReviewSlaForm form) {
         return view(service.setReviewSla(sheetId.trim(), user.trim(), form.daysValue()));
+    }
+
+    @PutMapping("/pending-sla")
+    public SettingsView setPendingSla(@PathVariable @NotBlank @Size(max = 100) String sheetId,
+            @RequestHeader("X-User") @NotBlank @Size(max = 100) String user,
+            @Valid @RequestBody PendingSlaForm form) {
+        return view(service.setPendingSla(sheetId.trim(), user.trim(), form.daysValue()));
     }
 
     @PutMapping("/score-mid")
