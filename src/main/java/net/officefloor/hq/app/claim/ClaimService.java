@@ -694,6 +694,43 @@ public class ClaimService {
         });
     }
 
+    /** Share a claim with another person on the sheet: they hold the share percent given (two
+     *  decimals, above 0.00) of its due, which their due-total counts and its own person's no longer
+     *  does (see {@link Dues#parts}). Refused when the share is not above 0.00 (400), the claim is
+     *  settled, void or deleted (409), the person is the claim's own person or already holds a share
+     *  of it (409), or its shares would add up to more than 100.00 (422). */
+    @Transactional
+    public Claim share(String sheetId, String user, long claimId, long withPersonId, BigDecimal share) {
+        if (share.signum() <= 0) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "A share must be above 0.00");
+        }
+        Claim claim = lock(sheetId, claimId);
+        if (claim.getStatus() == ClaimStatus.SETTLED || claim.getStatus() == ClaimStatus.VOID
+                || claim.getStatus() == ClaimStatus.DELETED) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT,
+                    "A " + claim.getStatus() + " claim cannot be shared");
+        }
+        Person with = person(sheetId, withPersonId);
+        if (claim.getPersonId().equals(with.getId())
+                || claim.getShares().stream().anyMatch(s -> s.getPersonId().equals(with.getId()))) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT,
+                    "A claim cannot be shared with its own person, nor twice with one person");
+        }
+        BigDecimal total = claim.getShares().stream().map(ClaimShare::getShare).reduce(share, BigDecimal::add);
+        if (total.compareTo(BigDecimal.valueOf(100)) > 0) {
+            throw new ResponseStatusException(HttpStatus.UNPROCESSABLE_ENTITY,
+                    "A claim's shares cannot add up to more than 100.00");
+        }
+        return rollup.tracking(sheetId, user, () -> {
+            Person person = person(sheetId, claim.getPersonId());
+            claim.share(with.getId(), share.setScale(2));
+            Claim saved = claims.saveAndFlush(claim);
+            audit.recordOnCommit(record("CLAIM_SHARED", sheetId, user, person, saved)
+                    + " with=" + with.getName() + " share=" + share.setScale(2).toPlainString());
+            return saved;
+        });
+    }
+
     /** Waive an open or pending claim's late charge: it bears none from then on, whether overdue or
      *  not. Refused unless the user is a steward, and when the claim is not open or pending or its
      *  late charge is waived already. */

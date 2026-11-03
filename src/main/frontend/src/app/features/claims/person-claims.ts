@@ -1,7 +1,7 @@
 import { HttpErrorResponse } from '@angular/common/http';
 import { Component, effect, inject, input, output, signal, untracked } from '@angular/core';
 import { FormControl, FormGroup, ReactiveFormsModule } from '@angular/forms';
-import { AMOUNT, CLAIM_AMOUNT, Claim, ClaimAction, Claims, PROOF_KINDS, ProofKind, claimDue, deferred, overdue, reviewLate } from '../../core/claims';
+import { AMOUNT, CLAIM_AMOUNT, Claim, ClaimAction, Claims, PROOF_KINDS, SHARE_PCT, ProofKind, claimDue, deferred, overdue, reviewLate } from '../../core/claims';
 import { ClaimTemplates } from '../../core/claim-templates';
 import { GradeFrom, Person, gradeOn } from '../../core/people';
 import { Period, periodOf } from '../../core/periods';
@@ -179,6 +179,22 @@ function amountRefusal(e: unknown, c: Claim, amount: string): string {
   return 'The claim\'s amount could not be saved.';
 }
 
+/** The message when a share percent is not above 0.00 with two decimals at most. */
+const SHARE_INVALID = 'Enter a share percent above 0.00 with up to two decimals.';
+
+/** The message when a claim would be shared with its own person, or twice with one person. */
+const SHARE_HOLDER = 'A claim cannot be shared with its own person, nor twice with one person.';
+
+/** The message for a refused share of a claim. */
+function shareRefusal(e: unknown): string {
+  if (e instanceof HttpErrorResponse && e.status === 400) return SHARE_INVALID;
+  if (e instanceof HttpErrorResponse && e.status === 422) return 'A claim\'s shares cannot add up to more than 100.00.';
+  if (e instanceof HttpErrorResponse && e.status === 409) {
+    return 'Only a claim that is not settled, void or deleted can be shared, and not with its own person or twice with one person.';
+  }
+  return 'The claim could not be shared.';
+}
+
 /** The message for a refused reassign of a claim. */
 function reassignRefusal(e: unknown): string {
   if (e instanceof HttpErrorResponse && e.status === 403) return 'Only a steward can reassign a claim.';
@@ -305,6 +321,20 @@ function settlePartRefusal(e: unknown): string {
             (input)="clearError(c)" />
           <button type="button" data-testid="claim-line-add" (click)="addLine(c, lineLabel, lineQty, lineUnit)"
             [attr.aria-label]="'Add a line to claim of ' + c.amount + ' on ' + c.date">Add line</button>
+          <span data-testid="claim-shares">{{ sharesOf(c) }}</span>
+          <label [for]="'claim-share-select-' + c.id">Share with</label>
+          <select [id]="'claim-share-select-' + c.id" data-testid="claim-share-select" #shareWith
+            (change)="clearError(c)">
+            <option value="">Choose a person</option>
+            @for (o of people(); track o.id) {
+              <option [value]="o.id">{{ o.name }}</option>
+            }
+          </select>
+          <label [for]="'claim-share-pct-' + c.id">Share percent</label>
+          <input [id]="'claim-share-pct-' + c.id" data-testid="claim-share-pct" #sharePct inputmode="decimal"
+            (input)="clearError(c)" />
+          <button type="button" data-testid="claim-share-add" (click)="share(c, shareWith.value, sharePct.value)"
+            [attr.aria-label]="'Share claim of ' + c.amount + ' on ' + c.date">Share</button>
           <label [for]="'claim-comment-text-' + c.id">Comment</label>
           <input [id]="'claim-comment-text-' + c.id" data-testid="claim-comment-text" #commentText
             (input)="clearError(c)" />
@@ -456,6 +486,8 @@ export class PersonClaims {
   readonly roundings = input.required<DatedValue<RoundingMode | null>[]>();
   /** The other people on the sheet, whom a claim can be reassigned to. */
   readonly others = input.required<Person[]>();
+  /** Everyone on the sheet, whom a claim can be shared with (its own person is refused). */
+  readonly people = input.required<Person[]>();
   /** The ids of the claims selected for a bulk action. */
   readonly selected = input.required<ReadonlySet<number>>();
   /** A claim's checkbox ticked or cleared. */
@@ -714,6 +746,36 @@ export class PersonClaims {
       this.saved.emit(await this.api.redate(c.id, date));
     } catch (e) {
       this.claimError.set({ id: c.id, message: redateRefusal(e) });
+    }
+  }
+
+  /** The shares of a claim as its row shows them: "<name> <share>" in the order they were given,
+   *  joined by a comma and a space. */
+  protected sharesOf(c: Claim): string {
+    const names = new Map(this.people().map((p) => [p.id, p.name]));
+    return c.shares.map((x) => `${names.get(x.personId) ?? ''} ${x.share}`.trim()).join(', ');
+  }
+
+  protected async share(c: Claim, with_: string, pct: string): Promise<void> {
+    this.claimError.set(null);
+    const share = pct.trim();
+    if (with_ === '') {
+      this.claimError.set({ id: c.id, message: 'Choose the person to share the claim with.' });
+      return;
+    }
+    const holder = Number(with_);
+    if (!SHARE_PCT.test(share) || Number(share) <= 0) {
+      this.claimError.set({ id: c.id, message: SHARE_INVALID });
+      return;
+    }
+    if (holder === c.personId || c.shares.some((x) => x.personId === holder)) {
+      this.claimError.set({ id: c.id, message: SHARE_HOLDER });
+      return;
+    }
+    try {
+      this.saved.emit(await this.api.share(c.id, holder, share));
+    } catch (e) {
+      this.claimError.set({ id: c.id, message: shareRefusal(e) });
     }
   }
 

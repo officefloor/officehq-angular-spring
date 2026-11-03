@@ -46,13 +46,20 @@ public class RoleService {
     }
 
     /** The role a user name acted in on the sheet at the end of a day: steward while a delegation to
-     *  it held the day, else the last role given to it on or before the day (clerk when none was). */
+     *  it held the day from a user who had been given the steward role by then, else the last role
+     *  given to it on or before the day (clerk when none was). */
     @Transactional(readOnly = true)
     public String roleOn(String sheetId, String userName, LocalDate day) {
         if (delegations.findFirstBySheetIdAndUserNameAndFromDateLessThanEqualAndToDateGreaterThanEqualOrderByIdDesc(
-                sheetId, userName, day, day).isPresent()) {
+                sheetId, userName, day, day)
+                .filter(d -> SheetRole.STEWARD.equals(givenRoleOn(sheetId, d.getDelegatedBy(), day))).isPresent()) {
             return SheetRole.STEWARD;
         }
+        return givenRoleOn(sheetId, userName, day);
+    }
+
+    /** The last role given to a user name on the sheet on or before a day (clerk when none was). */
+    private String givenRoleOn(String sheetId, String userName, LocalDate day) {
         return revisions
                 .findFirstBySheetIdAndUserNameAndRecordedOnLessThanEqualOrderByRecordedOnDescIdDesc(sheetId, userName, day)
                 .map(RoleRevision::getRole)

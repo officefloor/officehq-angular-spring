@@ -1,7 +1,7 @@
 import { HttpErrorResponse } from '@angular/common/http';
 import { Component, computed, effect, inject, signal, untracked } from '@angular/core';
 import { FormControl, FormGroup, ReactiveFormsModule } from '@angular/forms';
-import { Claim, Claims, QuickAdded, addDays, backingFigure, claimDue, countsAsOf, countsClaimed, countsLive, isOpen, keepsActive, overdue, reviewLate, statusOn, sumAmounts, trimmedSum } from '../../core/claims';
+import { Claim, Claims, QuickAdded, addDays, backingFigure, claimDue, countsAsOf, countsClaimed, countsLive, isOpen, keepsActive, overdue, reviewLate, sharePart, statusOn, sumAmounts, trimmedSum } from '../../core/claims';
 import { Patron, Patrons, patronShares } from '../../core/patrons';
 import { Pools, formatCents } from '../../core/pools';
 import { Grade, Leave, People, Person, Taken, gradeOn, shownName } from '../../core/people';
@@ -396,7 +396,7 @@ const NO_LEAVE: Leave = { holds: [], retiredFrom: null };
                   [today]="session.today()" [latePct]="latePct()" [graces]="graces()" [reviewSla]="reviewSla()"
                   [policyDate]="policyDate()" [roundings]="roundings()" [selected]="selected()"
                   (selectedChange)="select($event.id, $event.selected)"
-                  [others]="patronChoices(p)" (saved)="claimSaved($event)" />
+                  [others]="patronChoices(p)" [people]="people()" (saved)="claimSaved($event)" />
               </td>
               <td>
                 <button type="button" [attr.data-testid]="'person-edit-' + p.id" (click)="open(p)"
@@ -1906,13 +1906,16 @@ export class PeopleList {
     return sum === null || due === null ? '0.00' : sumAmounts([sum, '-' + due]);
   }
 
-  /** The sum of the due figures of a person's open and settled claims, leaving out
+  /** The sum of the due figures of a person's open and settled claims (less the parts others hold
+   *  of them, and with their parts of the claims shared with them), leaving out
    *  the open ones dated within one of their holds and unbound by a statement. Null (n/a)
    *  when their grade on the sheet's today has no rate on it and no claim that counts has a figure
    *  (one kept by settling or a statement, or a live due at the grade in force on its date). */
   private figuresOf(p: Person): string | null {
     const counted = (this.claimsByPerson().get(p.id) ?? []).filter((c) => countsLive(c, p, this.session.today()));
-    const figures = counted.map((c) => claimDue(c, this.rates(), gradeOn(p.grades, c.date), this.floor(), this.lateness())).filter((d): d is string => d !== null);
+    const figures = counted.map((c) => this.keptOf(c, claimDue(c, this.rates(), gradeOn(p.grades, c.date), this.floor(), this.lateness())))
+      .filter((d): d is string => d !== null)
+      .concat((this.heldParts().get(p.id) ?? []).map((x) => x.part));
     if (!this.pctOf().has(this.gradeOf(p)) && figures.length === 0) {
       return null;
     }
@@ -1958,9 +1961,41 @@ export class PeopleList {
     const today = this.session.today();
     return sumAmounts((this.claimsByPerson().get(p.id) ?? [])
       .filter((c) => keep(c) && countsLive(c, p, today))
-      .map((c) => claimDue(c, this.rates(), gradeOn(p.grades, c.date), this.floor(), this.lateness()))
-      .filter((d): d is string => d !== null));
+      .map((c) => this.keptOf(c, claimDue(c, this.rates(), gradeOn(p.grades, c.date), this.floor(), this.lateness())))
+      .filter((d): d is string => d !== null)
+      .concat((this.heldParts().get(p.id) ?? []).filter((x) => keep(x.claim)).map((x) => x.part)));
   }
+
+  /** The parts of a claim's due figure its holders hold, by holder id in the order the shares were
+   *  given: a share of a person no longer on the sheet, or of the claim's own person, counts nowhere. */
+  private partsOf(c: Claim, figure: string): Map<number, string> {
+    const people = this.byId();
+    return new Map(c.shares
+      .filter((x) => x.personId !== c.personId && people.has(x.personId))
+      .map((x) => [x.personId, sharePart(figure, x.share)]));
+  }
+
+  /** What a claim's own person keeps of its due figure: the figure less its holders' parts; null
+   *  when the figure is. */
+  private keptOf(c: Claim, figure: string | null): string | null {
+    if (figure === null || c.shares.length === 0) return figure;
+    return sumAmounts([figure, ...[...this.partsOf(c, figure).values()].map((x) => '-' + x)]);
+  }
+
+  /** Per holder, by id: their parts of the claims shared with them that count in the live totals
+   *  for the claims' own people, with the claims. */
+  private readonly heldParts = computed(() => {
+    const today = this.session.today();
+    const by = new Map<number, { claim: Claim; part: string }[]>();
+    for (const c of this.claims()) {
+      const owner = this.byId().get(c.personId);
+      if (c.shares.length === 0 || !owner || !countsLive(c, owner, today)) continue;
+      const d = claimDue(c, this.rates(), gradeOn(owner.grades, c.date), this.floor(), this.lateness());
+      if (d === null) continue;
+      for (const [id, part] of this.partsOf(c, d)) by.set(id, [...(by.get(id) ?? []), { claim: c, part }]);
+    }
+    return by;
+  });
 
   /** The grade a person shows: the one in force on the sheet's today. */
   /** Downloads everyone, retired included, in list order as CSV: name, grade in force today,

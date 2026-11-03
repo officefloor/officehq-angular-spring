@@ -2,7 +2,7 @@ import { HttpClient } from '@angular/common/http';
 import { Injectable, inject } from '@angular/core';
 import { firstValueFrom } from 'rxjs';
 import { Grade, Leave, Person, retiredOn } from './people';
-import { Rate, atLeast, due, pctFor } from './rates';
+import { Rate, atLeast, due, pctFor, weightedSum } from './rates';
 import { DatedValue, Graces, RoundingMode, STARTING_FLOOR, STARTING_LATE_PCT, graceOn, valueOn } from './settings';
 import { Session } from './session';
 
@@ -176,6 +176,25 @@ export interface Claim {
   proofKinds: Record<ProofKind, number>;
   /** Whether it is held. A held claim still counts in every total. */
   held: boolean;
+  /** The shares other people of the sheet hold of it, in the order they were given. */
+  shares: ClaimShare[];
+}
+
+/** A share of a claim: the id of the person holding it and their share percent as text with two
+ *  decimals. The holder's due-total counts their part of the claim's due (see {@link sharePart}),
+ *  and the claim's own person's the rest. */
+export interface ClaimShare {
+  personId: number;
+  share: string;
+}
+
+/** A share percent: two decimals at most, up to 100.00. */
+export const SHARE_PCT = /^\d{1,3}(\.\d{1,2})?$/;
+
+/** A holder's part of a claim's due figure: the figure times their share divided by 100, rounded
+ *  half to even. */
+export function sharePart(figure: string, share: string): string {
+  return weightedSum([{ amount: figure, pct: share }]);
 }
 
 /** A line of a claim: its label, its quantity (a whole number) and its unit amount as text with
@@ -511,6 +530,18 @@ export class Claims {
     const { sheetId, user } = this.active();
     return firstValueFrom(
       this.http.post<Claim>(`${this.url(sheetId)}/claims/${id}/lines`, { label, qty, unit },
+        { headers: { 'X-User': user } }),
+    );
+  }
+
+  /** Share a claim with another person of the sheet, who holds the share percent given of its due.
+   *  Refused (400) when the share is not above 0.00, (409) when the claim is settled, void or
+   *  deleted, or the person is its own or already holds a share of it, and (422) when its shares
+   *  would add up to more than 100.00. */
+  share(id: number, personId: number, share: string): Promise<Claim> {
+    const { sheetId, user } = this.active();
+    return firstValueFrom(
+      this.http.post<Claim>(`${this.url(sheetId)}/claims/${id}/shares`, { personId, share },
         { headers: { 'X-User': user } }),
     );
   }

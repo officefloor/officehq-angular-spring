@@ -198,6 +198,13 @@ public class Claim {
     @OrderBy("id")
     private List<ClaimLine> lines = new ArrayList<>();
 
+    /** The shares of the claim other people hold, in the order they were given (see {@link #share}). */
+    @OneToMany(cascade = CascadeType.ALL, orphanRemoval = true, fetch = FetchType.EAGER)
+    @Fetch(FetchMode.SUBSELECT)
+    @JoinColumn(name = "claim_id", nullable = false, updatable = false)
+    @OrderBy("id")
+    private List<ClaimShare> shares = new ArrayList<>();
+
     protected Claim() {
     }
 
@@ -650,5 +657,14 @@ public class Claim {
     public void addLine(String label, int qty, BigDecimal unit) {
         lines.add(new ClaimLine(sheetId, label, qty, unit));
         amount = lines.stream().map(ClaimLine::amount).reduce(BigDecimal.ZERO, BigDecimal::add).setScale(2);
+    }
+
+    public List<ClaimShare> getShares() {
+        return List.copyOf(shares);
+    }
+
+    /** Give a share of the claim to another person of its sheet. */
+    public void share(Long personId, BigDecimal share) {
+        shares.add(new ClaimShare(sheetId, personId, share));
     }
 }

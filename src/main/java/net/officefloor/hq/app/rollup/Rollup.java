@@ -5,11 +5,13 @@ import java.math.RoundingMode;
 import java.time.LocalDate;
 import java.util.ArrayList;
 import java.util.Comparator;
+import java.util.HashMap;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 import java.util.Objects;
+import java.util.Set;
 import java.util.function.Supplier;
 import java.util.stream.Collectors;
 import net.officefloor.hq.app.Audit;
@@ -28,7 +30,8 @@ import org.springframework.transaction.annotation.Transactional;
 
 /**
  * The figures a sheet rolls up to: what each person has claimed (a hold does not take a claim out
- * of it), their due-total and their
+ * of it), their due-total (counting their parts of claims shared with them, less the parts others
+ * hold of theirs) and their
  * overdue-total, and the sheet's totals of all three. The sheet's due-total and overdue-total leave
  * out the single highest and the single lowest person's figure when three or more people have one
  * (a due-total of n/a is no figure). A change made through {@link #tracking} is followed in the audit by one
@@ -289,13 +292,24 @@ public class Rollup {
         List<BigDecimal> dueFigures = new ArrayList<>();
         List<BigDecimal> overdueFigures = new ArrayList<>();
         LocalDate today = basis.today();
+        Set<Long> holders = sheetPeople.stream().map(Person::getId).collect(Collectors.toSet());
+        Map<Long, List<BigDecimal>> held = new HashMap<>();
+        for (Person person : sheetPeople) {
+            for (Claim claim : Dues.live(person, byPerson.getOrDefault(person.getId(), List.of()), today)) {
+                if (!claim.getShares().isEmpty()) {
+                    Dues.parts(claim, dues.figure(basis, person, claim), holders).forEach((holder, part) ->
+                            held.computeIfAbsent(holder, h -> new ArrayList<>()).add(part));
+                }
+            }
+        }
         for (Person person : sheetPeople) {
             List<Claim> all = byPerson.getOrDefault(person.getId(), List.of());
             List<Claim> theirs = Dues.live(person, all, today);
             BigDecimal claimed = all.stream()
                     .filter(c -> c.getCorrects() == null && Dues.countsClaimed(person, c, today)).map(Claim::getAmount)
                     .reduce(BigDecimal.ZERO.setScale(2), BigDecimal::add);
-            BigDecimal due = dues.dueTotal(basis, person, theirs);
+            BigDecimal due = dues.dueTotal(basis, person, theirs, holders,
+                    held.getOrDefault(person.getId(), List.of()));
             BigDecimal overdue = theirs.stream().filter(c -> dues.overdue(basis, person, c))
                     .map(c -> dues.figure(basis, person, c)).filter(Objects::nonNull)
                     .reduce(BigDecimal.ZERO.setScale(2), BigDecimal::add);

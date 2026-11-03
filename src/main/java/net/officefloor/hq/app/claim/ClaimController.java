@@ -52,14 +52,15 @@ public class ClaimController {
      *  when none); and its comments, in the order they were written; and the number of the bulk
      *  settle batch that settled it (null when none, or when it is not settled or pending); and its
      *  lines, in the order they were added; and whether its late charge is waived; and how many of
-     *  its proofs are of each kind (receipt, photo); and whether it is held. */
+     *  its proofs are of each kind (receipt, photo); and whether it is held; and the shares other
+     *  people hold of it, in the order they were given. */
     public record ClaimView(long id, long personId, String amount, LocalDate date, String note,
             ClaimStatus status, String number, String settledDue, String openedBy, boolean stated,
             String statedDue, boolean statedNa, String corrects, LocalDate roundsBy, long listed, LocalDate dueBy,
             List<LogLineView> log, LocalDate deferredUntil, int proofs, String splitFrom,
             String editLockedBy, boolean lateEntry, LocalDate remindedOn, String ref, String tags,
             String voidReason, List<CommentView> comments, Integer settleBatch, List<LineView> lines,
-            long added, boolean waived, Map<String, Integer> proofKinds, boolean held) {
+            long added, boolean waived, Map<String, Integer> proofKinds, boolean held, List<ShareView> shares) {
         public static ClaimView of(Claim claim) {
             return new ClaimView(claim.getId(), claim.getPersonId(), claim.getAmount().setScale(2).toPlainString(),
                     claim.getDate(), claim.getNote(), claim.getStatus(), claim.getNumber(),
@@ -74,7 +75,8 @@ public class ClaimController {
                     claim.getComments().stream().map(CommentView::of).toList(),
                     batchOf(claim.getStatus(), claim.getSettleBatch()),
                     claim.getLines().stream().map(LineView::of).toList(), claim.getAdded(),
-                    claim.isWaived(), proofKinds(claim, null), claim.isHeld());
+                    claim.isWaived(), proofKinds(claim, null), claim.isHeld(),
+                    claim.getShares().stream().map(ShareView::of).toList());
         }
 
         /** The claim as it stood at the end of a day: its figures as its revision then has them (see
@@ -114,7 +116,8 @@ public class ClaimController {
                     kept.getComments().stream().filter(c -> !c.getOn().isAfter(day)).map(CommentView::of).toList(),
                     batchOf(then.getStatus(), kept.getSettleBatch()),
                     kept.getLines().stream().map(LineView::of).toList(), then.getAdded(),
-                    then.isWaived(), proofKinds(kept, day), then.isHeld());
+                    then.isWaived(), proofKinds(kept, day), then.isHeld(),
+                    kept.getShares().stream().map(ShareView::of).toList());
         }
 
         /** The settle batch a claim shows: only while it is settled or pending. */
@@ -132,6 +135,14 @@ public class ClaimController {
     public record CommentView(String by, LocalDate on, String text) {
         static CommentView of(ClaimComment comment) {
             return new CommentView(comment.getByUser(), comment.getOn(), comment.getText());
+        }
+    }
+
+    /** A share of a claim: the id of the person holding it and their share percent as text with two
+     *  decimals. */
+    public record ShareView(long personId, String share) {
+        static ShareView of(ClaimShare share) {
+            return new ShareView(share.getPersonId(), share.getShare().setScale(2).toPlainString());
         }
     }
 
@@ -463,6 +474,20 @@ public class ClaimController {
             @Valid @RequestBody LineForm form) {
         return ClaimView.of(service.addLine(sheetId.trim(), user.trim(), claimId, form.label(),
                 Integer.parseInt(form.qty().trim()), new BigDecimal(form.unit().trim())));
+    }
+
+    /** A share of a claim to give: the person to hold it and their share percent (two decimals at
+     *  most). */
+    public record ShareForm(@NotNull Long personId, @NotNull @Pattern(regexp = "\\s*\\d{1,3}(\\.\\d{1,2})?\\s*") String share) {
+    }
+
+    @PostMapping("/claims/{claimId}/shares")
+    public ClaimView share(@PathVariable @NotBlank @Size(max = 100) String sheetId,
+            @PathVariable long claimId,
+            @RequestHeader("X-User") @NotBlank @Size(max = 100) String user,
+            @Valid @RequestBody ShareForm form) {
+        return ClaimView.of(service.share(sheetId.trim(), user.trim(), claimId, form.personId(),
+                new BigDecimal(form.share().trim())));
     }
 
     /** The reason a steward gives for rejecting a pending claim. */
