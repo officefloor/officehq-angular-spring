@@ -3,7 +3,7 @@ import { Injectable, inject } from '@angular/core';
 import { firstValueFrom } from 'rxjs';
 import { Grade, Leave, Person, heldOn, retiredOn } from './people';
 import { Rate, atLeast, due, pctOn } from './rates';
-import { DatedValue, Graces, STARTING_FLOOR, STARTING_LATE_PCT, graceOn, valueOn } from './settings';
+import { DatedValue, Graces, RoundingMode, STARTING_FLOOR, STARTING_LATE_PCT, graceOn, valueOn } from './settings';
 import { Session } from './session';
 
 /** Where a claim is in its life: DRAFT, then OPEN, then SETTLED; a clerk's settle above the clerk
@@ -236,8 +236,8 @@ export function fixed(c: Claim): boolean {
 }
 
 /** What a claim's late charge follows: the sheet's today and its late percents (each 30-day boundary
- *  takes the one in force on it), and the grace days of each grade; and the sheet's policy date, which
- *  decides how its live figures round. */
+ *  takes the one in force on it), and the grace days of each grade; and the sheet's rounding modes and
+ *  policy date, which decide how its live figures round. */
 export interface Lateness {
   today: string | null;
   /** The late percents recorded, each from its from-date, earliest first. */
@@ -246,11 +246,16 @@ export interface Lateness {
   graces: Graces;
   /** The policy date set (yyyy-mm-dd); null when blank, the sheet's today then stands in. */
   policyDate: string | null;
+  /** The rounding modes recorded (null: blank, none), each from its from-date, earliest first. */
+  roundings: DatedValue<RoundingMode | null>[];
 }
 
-/** Whether a claim's live figures round half up: the date it rounds by is before the policy date
- *  in force (the one set, or else the sheet's today); otherwise they round half to even. */
+/** Whether a claim's live figures round half up: by the rounding mode in force on its date, or,
+ *  when none is, when the date it rounds by is before the policy date in force (the one set, or
+ *  else the sheet's today); otherwise they round half to even. */
 export function roundsHalfUp(c: Claim, late: Lateness): boolean {
+  const mode = valueOn<RoundingMode | null>(late.roundings, c.date, null);
+  if (mode !== null) return mode === 'half-up';
   const policy = late.policyDate ?? late.today;
   return policy !== null && c.roundsBy < policy;
 }
@@ -258,7 +263,7 @@ export function roundsHalfUp(c: Claim, late: Lateness): boolean {
 /** A claim's due figure: the one fixed when it was settled, or else the greater of the sheet's floor in force on the
  *  claim's date and its rate figure with the late charge on that figure on top while it is overdue. The rate figure is
  *  the one its person's last statement bound it to (n/a when it bound it to n/a), or else its live due at the rate in
- *  force on the claim's date for the grade (the person's grade in force on that date), rounded by the policy date (a
+ *  force on the claim's date for the grade (the person's grade in force on that date), rounded by the rounding mode or policy date (a
  *  settled claim's figure already holds the charge and the floor). A correction has no floor and no late charge. Null
  *  when there is none. */
 export function claimDue(c: Claim, rates: Rate[], grade: Grade | undefined, floors: DatedValue[], late: Lateness): string | null {

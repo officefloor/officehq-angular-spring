@@ -65,7 +65,18 @@ export interface Settings {
   /** The alert threshold: a person whose due-total crosses above it is alerted, as text with two
    *  decimals; null when blank (off). Not dated. */
   alertThreshold: string | null;
+  /** The rounding mode in force on the sheet's today; null when blank (none: a claim rounds by the
+   *  policy date). */
+  rounding: RoundingMode | null;
+  /** The rounding modes recorded (null: blank, none), each from its from-date, earliest first. */
+  roundings: DatedValue<RoundingMode | null>[];
 }
+
+/** A rounding mode: how a claim's live figures round when one is in force on its date. */
+export type RoundingMode = 'half-up' | 'half-even';
+
+/** A rounding mode typed: half-up or half-even. */
+export const ROUNDING = /^(half-up|half-even)$/;
 
 /** The grace days recorded for each grade (null: blank, none), each from its from-date, earliest
  *  first: a claim whose person's grade on its date has grace on that date is overdue only once its
@@ -204,6 +215,12 @@ export class SheetSettings {
   setFloor(value: string, from: string | null): Promise<Settings> {
     const [sheetId, headers] = this.active();
     return firstValueFrom(this.http.put<Settings>(`${this.url(sheetId)}/settings/floor`, { value, from }, { headers })).then((settings) => this.record(sheetId, settings));
+  }
+
+  /** Record the rounding mode (null for blank, none) from a date (null for the sheet's today). */
+  setRounding(value: string | null, from: string | null): Promise<Settings> {
+    const [sheetId, headers] = this.active();
+    return firstValueFrom(this.http.put<Settings>(`${this.url(sheetId)}/settings/rounding`, { value, from }, { headers })).then((settings) => this.record(sheetId, settings));
   }
 
   /** Record the terms from a date (null for the sheet's today). */

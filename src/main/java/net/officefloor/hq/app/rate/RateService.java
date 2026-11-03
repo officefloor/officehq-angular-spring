@@ -1,6 +1,7 @@
 package net.officefloor.hq.app.rate;
 
 import java.math.BigDecimal;
+import java.math.RoundingMode;
 import java.time.LocalDate;
 import java.util.List;
 import java.util.Map;
@@ -78,6 +79,11 @@ public class RateService {
             @Override
             public LocalDate policyDateInForce() {
                 return now.policyDateInForce();
+            }
+
+            @Override
+            public RoundingMode rounding(LocalDate day) {
+                return now.rounding(day);
             }
 
             @Override

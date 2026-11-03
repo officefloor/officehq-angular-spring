@@ -9,7 +9,7 @@ import { Period, Periods, periodOf } from '../../core/periods';
 import { Rate, Rates, pctOn, weightedSum } from '../../core/rates';
 import { Session } from '../../core/session';
 import { downloadCsv } from '../../core/csv';
-import { DatedValue, Graces, SheetSettings, graceOn, valueOn } from '../../core/settings';
+import { DatedValue, Graces, RoundingMode, SheetSettings, graceOn, valueOn } from '../../core/settings';
 import { Watch, Watches } from '../../core/watches';
 import { Plan, Plans } from '../../core/plans';
 import { DescendantFigures, Descendants, NO_DESCENDANTS } from '../../core/descendants';
@@ -276,7 +276,7 @@ const NO_LEAVE: Leave = { holds: [], retiredFrom: null };
                 <app-person-claims [personId]="p.id" [claims]="claimsByPerson().get(p.id) ?? []"
                   [rates]="rates()" [floor]="floor()" [grades]="p.grades" [periods]="periods()"
                   [today]="session.today()" [latePct]="latePct()" [graces]="graces()"
-                  [policyDate]="policyDate()" [selected]="selected()"
+                  [policyDate]="policyDate()" [roundings]="roundings()" [selected]="selected()"
                   (selectedChange)="select($event.id, $event.selected)"
                   [others]="patronChoices(p)" (saved)="claimSaved($event)" />
               </td>
@@ -500,9 +500,13 @@ export class PeopleList {
   protected readonly graces = signal<Graces>({});
   /** The sheet's policy date (null when blank): it decides how a claim's live figures round. */
   protected readonly policyDate = signal<string | null>(null);
+  /** The sheet's rounding modes recorded: the one in force on a claim's date decides how its live
+   *  figures round, before the policy date. */
+  protected readonly roundings = signal<DatedValue<RoundingMode | null>[]>([]);
   /** What the late charges of overdue claims, and the rounding of live figures, follow. */
   private readonly lateness = computed(() => ({
     today: this.session.today(), pcts: this.latePct(), graces: this.graces(), policyDate: this.policyDate(),
+    roundings: this.roundings(),
   }));
   /** The periods on the sheet, earliest first. */
   protected readonly periods = signal<Period[]>([]);
@@ -805,6 +809,7 @@ export class PeopleList {
       this.latePct.set(saved.settings.latePcts);
       this.graces.set(saved.settings.graces);
       this.policyDate.set(saved.settings.policyDate);
+      this.roundings.set(saved.settings.roundings);
     });
   }
 
@@ -1581,6 +1586,7 @@ export class PeopleList {
         this.latePct.set(settings.latePcts);
         this.graces.set(settings.graces);
         this.policyDate.set(settings.policyDate);
+        this.roundings.set(settings.roundings);
         this.periods.set(periods);
         this.claims.set(claims);
         this.storedTags.set(tags);

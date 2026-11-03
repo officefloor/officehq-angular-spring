@@ -8,7 +8,7 @@ import { Period, periodOf } from '../../core/periods';
 import { Rate } from '../../core/rates';
 import { Session } from '../../core/session';
 import { VoidReasons } from '../../core/void-reasons';
-import { DatedValue, Graces, graceOn } from '../../core/settings';
+import { DatedValue, Graces, RoundingMode, graceOn } from '../../core/settings';
 
 /** Why the server refused an action: the claim's status does not allow it. */
 const REFUSALS: Record<ClaimAction, string> = {
@@ -375,6 +375,9 @@ export class PersonClaims {
   readonly graces = input.required<Graces>();
   /** The sheet's policy date (null when blank): it decides how a claim's live figures round. */
   readonly policyDate = input.required<string | null>();
+  /** The sheet's rounding modes recorded: the one in force on a claim's date decides how its live
+   *  figures round, before the policy date. */
+  readonly roundings = input.required<DatedValue<RoundingMode | null>[]>();
   /** The other people on the sheet, whom a claim can be reassigned to. */
   readonly others = input.required<Person[]>();
   /** The ids of the claims selected for a bulk action. */
@@ -424,7 +427,8 @@ export class PersonClaims {
 
   protected dueOf(c: Claim): string {
     return claimDue(c, this.rates(), gradeOn(this.grades(), c.date), this.floor(),
-      { today: this.today(), pcts: this.latePct(), graces: this.graces(), policyDate: this.policyDate() }) ?? 'n/a';
+      { today: this.today(), pcts: this.latePct(), graces: this.graces(), policyDate: this.policyDate(),
+        roundings: this.roundings() }) ?? 'n/a';
   }
 
   protected dueByOf(c: Claim): string {

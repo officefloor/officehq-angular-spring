@@ -1,6 +1,7 @@
 package net.officefloor.hq.app.history;
 
 import java.math.BigDecimal;
+import java.math.RoundingMode;
 import java.time.LocalDate;
 import java.util.Comparator;
 import java.util.HashSet;
@@ -30,6 +31,7 @@ import net.officefloor.hq.app.rate.RateRevision;
 import net.officefloor.hq.app.rate.RateRevisionRepository;
 import net.officefloor.hq.app.sheet.SettingRevision;
 import net.officefloor.hq.app.sheet.SettingRevisionRepository;
+import net.officefloor.hq.app.sheet.Rounding;
 import net.officefloor.hq.app.sheet.SettingValue;
 import net.officefloor.hq.app.sheet.SettingValueRepository;
 import net.officefloor.hq.app.sheet.SheetRepository;
@@ -234,6 +236,12 @@ public class History {
             @Override
             public LocalDate policyDateInForce() {
                 return policyDate != null ? policyDate : day;
+            }
+
+            @Override
+            public RoundingMode rounding(LocalDate on) {
+                return inForce(settingsThen, Rounding.KEY, on).map(SettingValue::getValue).flatMap(Rounding::ofCode)
+                        .map(Rounding::mode).orElse(null);
             }
 
             @Override

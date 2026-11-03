@@ -4,11 +4,11 @@ import { Pools } from '../../core/pools';
 import { Session } from '../../core/session';
 import { Grade } from '../../core/people';
 import {
-  LATE_PCT, LIMIT, PERM_ACTIONS, PERM_ROLES, POLICY_DATE, PermAction, ROLES, STANDING_PERMISSIONS, TERMS, FISCAL_MONTH, Role, RoleName,
+  LATE_PCT, LIMIT, PERM_ACTIONS, PERM_ROLES, POLICY_DATE, PermAction, ROLES, ROUNDING, STANDING_PERMISSIONS, TERMS, FISCAL_MONTH, Role, RoleName,
   SheetSettings,
 } from '../../core/settings';
 
-// The sheet's settings (the clerk limit, the cap, the proof threshold, the proof threshold per grade, the note threshold, the floor, the terms, the grace days per grade, the late percent, the policy date, period numbering from, the grace days, the entry date, the pot, the alert threshold, the parent sheet and the permission matrix) and the roles it gives user names: clerk, the default for
+// The sheet's settings (the clerk limit, the cap, the proof threshold, the proof threshold per grade, the note threshold, the floor, the rounding mode, the terms, the grace days per grade, the late percent, the policy date, period numbering from, the grace days, the entry date, the pot, the alert threshold, the parent sheet and the permission matrix) and the roles it gives user names: clerk, the default for
 // any name, steward, or viewer (who may change nothing). The settings that carry a figure are dated: each is saved from a from-date
 // (blank: the sheet's today), and what shows in force is the value on the sheet's today.
 @Component({
@@ -54,6 +54,10 @@ import {
         <input id="setting-floor" data-testid="setting-floor" formControlName="floor" inputmode="decimal" />
         <label for="setting-floor-from">Floor from (blank: today)</label>
         <input id="setting-floor-from" data-testid="setting-floor-from" type="date" formControlName="floorFrom" />
+        <label for="setting-rounding">Rounding mode (half-up or half-even; blank: none, the policy date decides)</label>
+        <input id="setting-rounding" data-testid="setting-rounding" formControlName="rounding" />
+        <label for="setting-rounding-from">Rounding mode from (blank: today)</label>
+        <input id="setting-rounding-from" data-testid="setting-rounding-from" type="date" formControlName="roundingFrom" />
         <label for="setting-terms">Terms (business days)</label>
         <input id="setting-terms" data-testid="setting-terms" formControlName="terms" inputmode="numeric" />
         <label for="setting-terms-from">Terms from (blank: today)</label>
@@ -124,6 +128,7 @@ import {
       }
       <p>Note threshold in force: <span data-testid="setting-note-threshold-current">{{ noteThreshold() ?? '' }}</span></p>
       <p>Floor in force: <span data-testid="setting-floor-current">{{ floor() ?? '' }}</span></p>
+      <p>Rounding mode in force: <span data-testid="setting-rounding-current">{{ rounding() ?? '' }}</span></p>
       <p>Terms in force: <span data-testid="setting-terms-current">{{ terms() ?? '' }}</span></p>
       @for (g of grades; track g) {
         <p>Terms in force for grade {{ g }}:
@@ -191,6 +196,7 @@ export class SettingsForm {
   protected readonly noteThreshold = signal<string | null>(null);
   protected readonly floor = signal<string | null>(null);
   protected readonly terms = signal<number | null>(null);
+  protected readonly rounding = signal<string | null>(null);
   protected readonly grades: Grade[] = ['A', 'B', 'C'];
   /** The terms each grade has of its own; a grade not in it takes the sheet's terms. */
   protected readonly gradeTerms = signal<Partial<Record<Grade, number>>>({});
@@ -237,6 +243,8 @@ export class SettingsForm {
     noteThresholdFrom: new FormControl('', { nonNullable: true }),
     floor: new FormControl('', { nonNullable: true }),
     floorFrom: new FormControl('', { nonNullable: true }),
+    rounding: new FormControl('', { nonNullable: true }),
+    roundingFrom: new FormControl('', { nonNullable: true }),
     terms: new FormControl('', { nonNullable: true }),
     termsFrom: new FormControl('', { nonNullable: true }),
     gradeTerms: new FormGroup({
@@ -291,6 +299,7 @@ export class SettingsForm {
       this.proofThreshold.set(null);
       this.noteThreshold.set(null);
       this.floor.set(null);
+      this.rounding.set(null);
       this.terms.set(null);
       this.gradeTerms.set({});
       this.gradeGraces.set({});
@@ -315,12 +324,12 @@ export class SettingsForm {
   protected async saveSettings(): Promise<void> {
     if (this.submitting) return;
     this.settingsError.set('');
-    const { clerkLimit, clerkLimitFrom, cap, capFrom, proofThreshold, proofThresholdFrom, gradeProofThresholds, noteThreshold, noteThresholdFrom, floor, floorFrom, terms, termsFrom, gradeTerms, gradeGraces, latePct,
+    const { clerkLimit, clerkLimitFrom, cap, capFrom, proofThreshold, proofThresholdFrom, gradeProofThresholds, noteThreshold, noteThresholdFrom, floor, floorFrom, rounding, roundingFrom, terms, termsFrom, gradeTerms, gradeGraces, latePct,
       latePctFrom, policyDate, periodNumberingFrom, graceDays, entryDate, pot, alertThreshold, parent, fiscalStartMonth, permissions } = this.settingsForm.controls;
     const changed = (...cs: AbstractControl[]) => cs.some((c) => c.dirty || c.touched);
     const none = !changed(clerkLimit, clerkLimitFrom) && !changed(cap, capFrom)
       && !changed(proofThreshold, proofThresholdFrom) && !changed(gradeProofThresholds) && !changed(noteThreshold, noteThresholdFrom)
-      && !changed(floor, floorFrom)
+      && !changed(floor, floorFrom) && !changed(rounding, roundingFrom)
       && !changed(terms, termsFrom) && !changed(gradeTerms) && !changed(gradeGraces) && !changed(latePct, latePctFrom) && !changed(policyDate)
       && !changed(periodNumberingFrom) && !changed(graceDays) && !changed(entryDate) && !changed(pot) && !changed(alertThreshold) && !changed(parent) && !changed(fiscalStartMonth) && !changed(permissions);
     /** A from-date typed, or null when blank (the sheet's today). */
@@ -342,6 +351,8 @@ export class SettingsForm {
     const floorValue = floor.value.trim();
     const saveLimit = none || changed(clerkLimit, clerkLimitFrom);
     const saveFloor = none || changed(floor, floorFrom);
+    const roundingValue = rounding.value.trim();
+    const saveRounding = changed(rounding, roundingFrom) || (none && roundingValue !== '');
     const termsValue = terms.value.trim();
     const saveTerms = none || changed(terms, termsFrom);
     const gradeTermsToSave = this.grades
@@ -383,6 +394,7 @@ export class SettingsForm {
     gradeThresholdsToSave.forEach((t) => fromsToSave.push(t.fromControl));
     if (saveNoteThreshold) fromsToSave.push(noteThresholdFrom);
     if (saveFloor && floorValue !== '') fromsToSave.push(floorFrom);
+    if (saveRounding) fromsToSave.push(roundingFrom);
     if (saveTerms && termsValue !== '') fromsToSave.push(termsFrom);
     gradeTermsToSave.forEach((t) => fromsToSave.push(t.fromControl));
     gracesToSave.forEach((t) => fromsToSave.push(t.fromControl));
@@ -413,6 +425,10 @@ export class SettingsForm {
     }
     if (saveFloor && !(none && floorValue === '') && !LIMIT.test(floorValue)) {
       this.settingsError.set('Enter a floor of 0.00 or more with up to two decimals.');
+      return;
+    }
+    if (saveRounding && roundingValue !== '' && !ROUNDING.test(roundingValue)) {
+      this.settingsError.set('Enter a rounding mode of half-up or half-even, or leave it blank for none.');
       return;
     }
     if (saveTerms && !(none && termsValue === '') && !TERMS.test(termsValue)) {
@@ -516,6 +532,14 @@ export class SettingsForm {
         const saved = await this.api.setFloor(floorValue, from(floorFrom));
         this.floor.set(saved.floor);
         for (const c of [floor, floorFrom]) {
+          c.markAsPristine();
+          c.markAsUntouched();
+        }
+      }
+      if (saveRounding) {
+        const saved = await this.api.setRounding(roundingValue === '' ? null : roundingValue, from(roundingFrom));
+        this.rounding.set(saved.rounding);
+        for (const c of [rounding, roundingFrom]) {
           c.markAsPristine();
           c.markAsUntouched();
         }
@@ -659,6 +683,7 @@ export class SettingsForm {
         this.proofThreshold.set(settings.proofThreshold);
         this.noteThreshold.set(settings.noteThreshold);
         this.floor.set(settings.floor);
+        this.rounding.set(settings.rounding);
         this.terms.set(settings.terms);
         this.gradeTerms.set(settings.gradeTerms);
         this.gradeGraces.set(settings.gradeGraces);

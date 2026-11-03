@@ -337,6 +337,27 @@ public class SheetService {
                 () -> record(id, user, "late-pct", latePct, latePct.setScale(2).toPlainString(), from));
     }
 
+    /** The rounding mode in force on a day on the sheet; empty when none is (blank, or never set). */
+    @Transactional(readOnly = true)
+    public Optional<Rounding> rounding(String id, LocalDate day) {
+        return inForce(id, Rounding.KEY, day).map(SettingValue::getValue).flatMap(Rounding::ofCode);
+    }
+
+    /** The rounding mode in force on the sheet's today; empty when none is. */
+    @Transactional(readOnly = true)
+    public Optional<Rounding> rounding(String id) {
+        return rounding(id, today(id));
+    }
+
+    /** Record the sheet's rounding mode (null: blank, none) from a date (null: the sheet's today), then
+     *  the figures it moves. */
+    @Transactional
+    public synchronized Sheet setRounding(String id, String user, Rounding rounding, LocalDate from) {
+        load(id, user);
+        return rollup.tracking(id, user, () -> record(id, user, Rounding.KEY,
+                rounding == null ? null : rounding.code(), rounding == null ? "" : rounding.text(), from));
+    }
+
     /** The sheet's policy date as set; null when it is blank (the sheet's today then stands in). */
     @Transactional(readOnly = true)
     public LocalDate policyDate(String id) {

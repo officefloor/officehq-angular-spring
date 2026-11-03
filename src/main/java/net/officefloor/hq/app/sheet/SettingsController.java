@@ -10,6 +10,7 @@ import java.time.format.DateTimeParseException;
 import java.util.Arrays;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import java.util.TreeMap;
 import java.util.function.Function;
 import net.officefloor.hq.app.history.History;
@@ -46,21 +47,24 @@ public class SettingsController {
      *  own in force, as text with two decimals (a grade not in it takes the sheet's); and the pot as
      *  text with two decimals (null when there is none); and the parent sheet's id (null when there is
      *  none); and the fiscal year start month, 1 to 12; and the alert threshold as text with two
-     *  decimals (null when blank: off). */
+     *  decimals (null when blank: off); and the rounding mode in force, half-up or half-even (null when
+     *  blank: none, a claim rounds by the policy date), and the rounding modes recorded, each from its
+     *  from-date, earliest first (null: blank). */
     public record SettingsView(String clerkLimit, String floor, int terms, String latePct, LocalDate policyDate,
             LocalDate periodNumberingFrom, Map<String, Integer> gradeTerms, String cap, List<DatedValue> floors,
             List<DatedValue> latePcts, List<DatedValue> caps, String proofThreshold,
             Map<String, String> permissions, Integer graceDays, String noteThreshold, LocalDate entryDate,
             Map<String, Integer> gradeGraces, Map<String, List<DatedDays>> graces,
             Map<String, String> gradeProofThresholds, String pot, String parent, int fiscalStartMonth,
-            String alertThreshold) {
+            String alertThreshold, String rounding, List<DatedText> roundings) {
         static SettingsView of(BigDecimal clerkLimit, BigDecimal floor, int terms, BigDecimal latePct,
                 LocalDate policyDate, LocalDate periodNumberingFrom, Map<String, Integer> gradeTerms,
                 BigDecimal cap, List<SettingValue> floors, List<SettingValue> latePcts,
                 List<SettingValue> caps, BigDecimal proofThreshold, Map<String, String> permissions,
                 Integer graceDays, BigDecimal noteThreshold, LocalDate entryDate, Map<String, Integer> gradeGraces,
                 Map<String, List<SettingValue>> graces, Map<String, BigDecimal> gradeProofThresholds, BigDecimal pot,
-                String parent, int fiscalStartMonth, BigDecimal alertThreshold) {
+                String parent, int fiscalStartMonth, BigDecimal alertThreshold, Optional<Rounding> rounding,
+                List<SettingValue> roundings) {
             Map<String, List<DatedDays>> gracesView = new TreeMap<>();
             graces.forEach((grade, values) -> gracesView.put(grade, values.stream().map(DatedDays::of).toList()));
             Map<String, String> thresholdsView = new TreeMap<>();
@@ -73,7 +77,8 @@ public class SettingsController {
                     proofThreshold == null ? null : proofThreshold.setScale(2).toPlainString(), permissions, graceDays,
                     noteThreshold == null ? null : noteThreshold.setScale(2).toPlainString(), entryDate, gradeGraces,
                     gracesView, thresholdsView, pot == null ? null : pot.setScale(2).toPlainString(), parent,
-                    fiscalStartMonth, alertThreshold == null ? null : alertThreshold.setScale(2).toPlainString());
+                    fiscalStartMonth, alertThreshold == null ? null : alertThreshold.setScale(2).toPlainString(),
+                    rounding.map(Rounding::text).orElse(null), roundings.stream().map(DatedText::rounding).toList());
         }
     }
 
@@ -88,6 +93,13 @@ public class SettingsController {
     public record DatedValue(LocalDate from, String value) {
         static DatedValue of(SettingValue v) {
             return new DatedValue(v.getFrom(), v.getValue() == null ? null : v.getValue().setScale(2).toPlainString());
+        }
+    }
+
+    /** A word a dated setting takes from a date; null when blank. */
+    public record DatedText(LocalDate from, String value) {
+        static DatedText rounding(SettingValue v) {
+            return new DatedText(v.getFrom(), Rounding.ofCode(v.getValue()).map(Rounding::text).orElse(null));
         }
     }
 
@@ -162,6 +174,16 @@ public class SettingsController {
 
         BigDecimal floorValue() {
             return new BigDecimal(value.trim()).setScale(2);
+        }
+    }
+
+    /** The rounding mode form: half-up or half-even, or blank for none; from a date, or blank for
+     *  the sheet's today. */
+    public record RoundingForm(@Pattern(regexp = "\\s*(half-up|half-even)?\\s*") String value,
+            @Pattern(regexp = DATE) String from) implements Dated {
+
+        Rounding roundingValue() {
+            return value == null || value.isBlank() ? null : Rounding.ofText(value.trim()).orElseThrow();
         }
     }
 
@@ -315,7 +337,9 @@ public class SettingsController {
                 value.apply("proof-threshold"), service.permissions(id), service.graceDays(id),
                 value.apply("note-threshold"), service.entryDate(id), gradeGraces, graces,
                 gradeProofThresholds, service.pot(id), service.parent(id), service.fiscalStartMonth(id),
-                service.alertThreshold(id));
+                service.alertThreshold(id),
+                then.setting(Rounding.KEY, day).map(SettingValue::getValue).flatMap(Rounding::ofCode),
+                then.recorded(Rounding.KEY));
     }
 
     /** The settings view of a sheet as the store holds it now. */
@@ -326,7 +350,8 @@ public class SettingsController {
                 service.recorded(id, "cap"), service.proofThreshold(id), service.permissions(id),
                 service.graceDays(id), service.noteThreshold(id), service.entryDate(id), service.gradeGraces(id),
                 gracesOf(id), service.gradeProofThresholds(id), service.pot(id), service.parent(id),
-                service.fiscalStartMonth(id), service.alertThreshold(id));
+                service.fiscalStartMonth(id), service.alertThreshold(id), service.rounding(id),
+                service.recorded(id, Rounding.KEY));
     }
 
     /** The grace days recorded for each grade of a sheet, earliest from-date first. */
@@ -355,6 +380,13 @@ public class SettingsController {
             @RequestHeader("X-User") @NotBlank @Size(max = 100) String user,
             @Valid @RequestBody FloorForm form) {
         return view(service.setFloor(sheetId.trim(), user.trim(), form.floorValue(), form.fromValue()));
+    }
+
+    @PutMapping("/rounding")
+    public SettingsView setRounding(@PathVariable @NotBlank @Size(max = 100) String sheetId,
+            @RequestHeader("X-User") @NotBlank @Size(max = 100) String user,
+            @Valid @RequestBody RoundingForm form) {
+        return view(service.setRounding(sheetId.trim(), user.trim(), form.roundingValue(), form.fromValue()));
     }
 
     @PutMapping("/terms")

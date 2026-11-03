@@ -9,6 +9,7 @@ import java.util.Optional;
 import net.officefloor.hq.app.person.Person;
 import net.officefloor.hq.app.rate.Rate;
 import net.officefloor.hq.app.rate.RateRepository;
+import net.officefloor.hq.app.sheet.Rounding;
 import net.officefloor.hq.app.sheet.SheetRepository;
 import net.officefloor.hq.app.sheet.SheetService;
 import org.springframework.stereotype.Service;
@@ -35,6 +36,9 @@ public class Dues {
 
         /** The policy date in force: the one set, or else the basis's today. */
         LocalDate policyDateInForce();
+
+        /** The rounding mode in force on a day; null when none is (blank, or never set). */
+        RoundingMode rounding(LocalDate day);
 
         /** The rates of a grade, the latest from-date first and the one with none last. */
         List<Rate> rates(String grade);
@@ -91,6 +95,11 @@ public class Dues {
             @Override
             public LocalDate policyDateInForce() {
                 return sheets.policyDateInForce(sheetId);
+            }
+
+            @Override
+            public RoundingMode rounding(LocalDate day) {
+                return sheets.rounding(sheetId, day).map(Rounding::mode).orElse(null);
             }
 
             @Override
@@ -284,9 +293,14 @@ public class Dues {
                 .orElse(null);
     }
 
-    /** How a claim's live figures round: half up when the date it rounds by (a correction's is that of
-     *  the claim it corrects) is before the sheet's policy date, else half to even. */
+    /** How a claim's live figures round: by the sheet's rounding mode in force on the claim's date,
+     *  or, when none is, half up when the date it rounds by (a correction's is that of the claim it
+     *  corrects) is before the sheet's policy date, else half to even. */
     private RoundingMode rounding(Basis basis, Claim claim) {
+        RoundingMode mode = basis.rounding(claim.getDate());
+        if (mode != null) {
+            return mode;
+        }
         return claim.roundsBy().isBefore(basis.policyDateInForce()) ? RoundingMode.HALF_UP
                 : RoundingMode.HALF_EVEN;
     }
