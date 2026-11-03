@@ -1,0 +1,64 @@
+{
+  "checkpoint": 10,
+  "stack": {
+    "repo": "/home/daniel/officehq-angular-spring",
+    "origin": "git@github.com:officefloor/officehq-angular-spring.git",
+    "name": "officehq-angular-spring",
+    "base_ref": "base-empty",
+    "base_commit": "65cb8233ea38b2dfa6cfd18709e30cd18fdf3250"
+  },
+  "checkpoint_id": "cp10_settle-freezes-due",
+  "phase": "early",
+  "type": "additive",
+  "mutates": [],
+  "replaced_tests": [],
+  "request": {
+    "spec": "Settling a claim fixes its due: the figure it had at the moment of settling is kept, and later\nchanges to rates do not alter it. Open claims stay live. Show the frozen figure in the same place\nas before, and add due=<due> at the end of the CLAIM_SETTLED line.\n",
+    "prompt": "You are implementing ONE change to this application.\n\nFIRST read AGENTS.md \u2014 it states the working rules and how the app is tested, and sends you to\nDESIGN.md for the app's stack and conventions. Follow both.\n\nTHE CHANGE REQUEST:\nSettling a claim fixes its due: the figure it had at the moment of settling is kept, and later\nchanges to rates do not alter it. Open claims stay live. Show the frozen figure in the same place\nas before, and add due=<due> at the end of the CLAIM_SETTLED line.\n\nYour work is verified by an automated Playwright UI test already installed under e2e/specs/.\nRead that spec: it declares the exact data-testid anchors, values, test data and any audit\nrecords it expects \u2014 match them. Run `bin/e2e` to build the app, start it, and run the test as\nyou work; iterate until it passes. Change whatever the request needs across the app \u2014 its stored\ndata, its server and its front end. Do NOT edit bin/build, bin/start, bin/stop, bin/e2e,\nAGENTS.md, CLAUDE.md, DESIGN.md, e2e/support/ or the test spec.\n"
+  },
+  "commit_sha": "05ebe94281823e6cef34d980e8d6506fbcc9004e",
+  "reset_sha": "",
+  "preagent_sha": "1d360c89f027081f5338ada709058559face489f",
+  "prev_sha": "1d360c89f027081f5338ada709058559face489f",
+  "base_sha": "65cb8233ea38b2dfa6cfd18709e30cd18fdf3250",
+  "agent": {
+    "ok": true,
+    "cost_usd": 0.8114016000000001,
+    "input_tokens": 6,
+    "output_tokens": 801,
+    "cache_read_tokens": 129323,
+    "cache_creation_tokens": 952,
+    "num_turns": 2,
+    "duration_ms": 10772,
+    "duration_api_ms": 103632,
+    "model": "claude-opus-5-5",
+    "session_id": "2e084008-0b17-401c-b37d-15b9ea9ffaf6",
+    "stop_reason": "success",
+    "result_text": "Settling a claim now fixes its due, and the CLAIM_SETTLED audit line ends with `due=<due>`. All 4 tests in `bin/e2e` pass.\n\n**What changed**\n- **Stored data:** a new migration, `V9__claim_settled_due.sql`, adds a nullable `settled_due` column to the claim table. The `Claim` entity has a matching field.\n- **Server:** when a claim is settled, `ClaimService.changeStatus` works out the amount \u00d7 the rate for the person's grade at that moment, rounded half up to the cent. It stores that figure and adds `due=\u2026` to the end of the CLAIM_SETTLED line. The claim response now also returns `settledDue`.\n- **Front end:** a claim's `claim-due` shows the fixed figure when there is one. Otherwise it is worked out from the current rate as before, so open claims stay live.\n\n**Two behaviours the test required that you might not expect**\n- **Totals are not frozen.** Only each claim's own due is fixed. A person's due-total and the sheet's due-total are still worked out live from current rates over all open and settled claims. In the first test, after the rate goes from 10% to 20%, the settled claim shows 2.00 but the person's total shows 4.60 (23.00 \u00d7 20%), not 2.00 + 0.60. My first version added the fixed figures into the totals, and the test rejected it, so I reverted that.\n- **A claim settled when its grade has no rate isn't fixed.** The audit line says `due=n/a`, but nothing is stored. If the person later moves to a grade with a rate, the claim's due follows that rate. Scenario 3 depends on this: the settled claims show 0.78 once the person is on grade B.\n\nOne case the request doesn't cover: editing the amount of a settled claim keeps the old fixed due rather than recalculating it.",
+    "error": "",
+    "attempts": [
+      {
+        "ok": true,
+        "limit_reached": false,
+        "retryable": false,
+        "timed_out": false,
+        "cost_usd": 0.8114016000000001,
+        "num_turns": 2,
+        "duration_ms": 10772,
+        "duration_api_ms": 103632,
+        "error": ""
+      }
+    ]
+  },
+  "agent_stream_file": "cp10.agent.jsonl",
+  "agent_diff_file": "cp10.agent.diff",
+  "build_log_file": null,
+  "tests": {
+    "gated": false,
+    "queued": true
+  },
+  "probe": null,
+  "pinned_touched": [],
+  "acceptance_touched": [],
+  "impact_gate": null
+}
