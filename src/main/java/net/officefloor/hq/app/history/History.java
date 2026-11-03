@@ -3,11 +3,13 @@ package net.officefloor.hq.app.history;
 import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.util.Comparator;
+import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
+import java.util.Set;
 import java.util.function.Function;
 import net.officefloor.hq.app.claim.Claim;
 import net.officefloor.hq.app.claim.ClaimRepository;
@@ -43,7 +45,8 @@ import org.springframework.transaction.annotation.Transactional;
  * person, rate and dated setting the change left different from its last revision (and of the
  * policy date), stamped with the sheet's today then. The sheet as it stood at the end of a day is
  * the last revision of each stamped on or before that day: every change made while the sheet's
- * today was on or before it counts, every later one does not.
+ * today was on or before it counts, every later one does not. A person or claim that leaves the
+ * sheet gets a last revision marked gone: from that day on the sheet no longer has them.
  */
 @Service
 public class History {
@@ -118,20 +121,34 @@ public class History {
             LocalDate today = sheet.getToday();
             Map<Long, ClaimRevision> claimsWere = last(claimRevisions.findBySheetIdOrderByIdAsc(sheetId),
                     ClaimRevision::getClaimId);
+            Set<Long> claimsNow = new HashSet<>();
             for (Claim claim : claims.findBySheetIdOrderByListedDesc(sheetId)) {
+                claimsNow.add(claim.getId());
                 ClaimRevision was = claimsWere.get(claim.getId());
-                if (was == null || !was.matches(claim)) {
+                if (was == null || was.isGone() || !was.matches(claim)) {
                     claimRevisions.save(new ClaimRevision(claim, today));
                 }
             }
+            claimsWere.forEach((id, was) -> {
+                if (!was.isGone() && !claimsNow.contains(id)) {
+                    claimRevisions.save(was.gone(today));
+                }
+            });
             Map<Long, PersonRevision> peopleWere = last(personRevisions.findBySheetIdOrderByIdAsc(sheetId),
                     PersonRevision::getPersonId);
+            Set<Long> peopleNow = new HashSet<>();
             for (Person person : people.findBySheetIdOrderByPositionAscIdAsc(sheetId)) {
+                peopleNow.add(person.getId());
                 PersonRevision was = peopleWere.get(person.getId());
-                if (was == null || !was.matches(person)) {
+                if (was == null || was.isGone() || !was.matches(person)) {
                     personRevisions.save(new PersonRevision(person, today));
                 }
             }
+            peopleWere.forEach((id, was) -> {
+                if (!was.isGone() && !peopleNow.contains(id)) {
+                    personRevisions.save(was.gone(today));
+                }
+            });
             Map<String, RateRevision> ratesWere = last(rateRevisions.findBySheetIdOrderByIdAsc(sheetId),
                     RateRevision::key);
             for (Rate rate : rates.findBySheetIdOrdered(sheetId)) {
@@ -169,10 +186,14 @@ public class History {
     public SheetAsOf asOf(String sheetId, LocalDate day) {
         Map<Long, Person> then = new LinkedHashMap<>();
         lastOn(personRevisions.findBySheetIdOrderByIdAsc(sheetId), PersonRevision::getRecordedOn,
-                PersonRevision::getPersonId, day).forEach((id, revision) -> then.put(id, revision.toPerson()));
+                PersonRevision::getPersonId, day).forEach((id, revision) -> {
+                    if (!revision.isGone()) {
+                        then.put(id, revision.toPerson());
+                    }
+                });
         List<Claim> claimsThen = lastOn(claimRevisions.findBySheetIdOrderByIdAsc(sheetId),
                 ClaimRevision::getRecordedOn, ClaimRevision::getClaimId, day).values().stream()
-                .map(ClaimRevision::toClaim).toList();
+                .filter(r -> !r.isGone()).map(ClaimRevision::toClaim).toList();
         List<Rate> ratesThen = ratesThen(sheetId, day);
         List<SettingValue> settingsThen = lastOn(settingRevisions.findBySheetIdOrderByIdAsc(sheetId),
                 SettingRevision::getRecordedOn, SettingRevision::key, day).values().stream()

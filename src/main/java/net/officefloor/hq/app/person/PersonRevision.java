@@ -58,6 +58,10 @@ public class PersonRevision {
     @Column(name = "aliases", nullable = false)
     private String aliases;
 
+    /** Whether the person had left the sheet by then (see {@link #gone(LocalDate)}). */
+    @Column(name = "gone", nullable = false)
+    private boolean gone;
+
     protected PersonRevision() {
     }
 
@@ -75,6 +79,31 @@ public class PersonRevision {
         this.contact = person.getContact();
         this.tags = person.getTags();
         this.aliases = aliases(person);
+    }
+
+    /** The revision recording, on the day, that the person has left the sheet: as this one has them
+     *  otherwise. */
+    public PersonRevision gone(LocalDate recordedOn) {
+        PersonRevision left = new PersonRevision();
+        left.sheetId = sheetId;
+        left.personId = personId;
+        left.recordedOn = recordedOn;
+        left.name = name;
+        left.grades = grades;
+        left.holds = holds;
+        left.retiredFrom = retiredFrom;
+        left.retirements = retirements;
+        left.terms = terms;
+        left.contact = contact;
+        left.tags = tags;
+        left.aliases = aliases;
+        left.gone = true;
+        return left;
+    }
+
+    /** Whether the person had left the sheet by this revision. */
+    public boolean isGone() {
+        return gone;
     }
 
     /** Whether the person is now as this revision has them. */

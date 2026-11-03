@@ -66,6 +66,10 @@ public class ClaimRevision {
     @Column(name = "deferred_until")
     private LocalDate deferredUntil;
 
+    /** Whether the claim had left the sheet by then (see {@link #gone(LocalDate)}). */
+    @Column(name = "gone", nullable = false)
+    private boolean gone;
+
     protected ClaimRevision() {
     }
 
@@ -85,6 +89,33 @@ public class ClaimRevision {
         this.correctedDate = claim.getCorrectedDate();
         this.dueBy = claim.getDueBy();
         this.deferredUntil = claim.getDeferredUntil();
+    }
+
+    /** The revision recording, on the day, that the claim has left the sheet: as this one has it
+     *  otherwise. */
+    public ClaimRevision gone(LocalDate recordedOn) {
+        ClaimRevision left = new ClaimRevision();
+        left.sheetId = sheetId;
+        left.claimId = claimId;
+        left.recordedOn = recordedOn;
+        left.personId = personId;
+        left.amount = amount;
+        left.date = date;
+        left.status = status;
+        left.settledDue = settledDue;
+        left.stated = stated;
+        left.statedDue = statedDue;
+        left.statedNa = statedNa;
+        left.correctedDate = correctedDate;
+        left.dueBy = dueBy;
+        left.deferredUntil = deferredUntil;
+        left.gone = true;
+        return left;
+    }
+
+    /** Whether the claim had left the sheet by this revision. */
+    public boolean isGone() {
+        return gone;
     }
 
     /** Whether the claim is now as this revision has it. */

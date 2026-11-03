@@ -264,6 +264,15 @@ const NO_LEAVE: Leave = { holds: [], retiredFrom: null };
               <td>
                 <button type="button" [attr.data-testid]="'person-edit-' + p.id" (click)="open(p)"
                   [attr.aria-label]="'Edit ' + p.name">Edit</button>
+                <label [for]="'person-inline-grade-' + p.id" class="visually-hidden">Grade of {{ p.name }}</label>
+                <select #inlineGrade [id]="'person-inline-grade-' + p.id" data-testid="person-inline-grade"
+                  [value]="gradeOf(p)" (change)="clearPersonError(p.id)">
+                  @for (g of grades; track g) {
+                    <option [value]="g" [selected]="g === gradeOf(p)">{{ g }}</option>
+                  }
+                </select>
+                <button type="button" data-testid="person-inline-grade-save" (click)="saveGrade(p, inlineGrade.value)"
+                  [attr.aria-label]="'Save the grade of ' + p.name">Save grade</button>
                 <button type="button" data-testid="person-move-up" (click)="move(p, 'up')"
                   [attr.aria-label]="'Move ' + p.name + ' up'">Up</button>
                 <button type="button" data-testid="person-move-down" (click)="move(p, 'down')"
@@ -712,6 +721,8 @@ export class PeopleList {
   private readonly watching = new Set<number>();
   /** The people whose retirement is waiting for its answer: a second press meanwhile is ignored. */
   private readonly retiring = new Set<number>();
+  /** The people whose row grade is waiting for its answer: a second press meanwhile is ignored. */
+  private readonly regrading = new Set<number>();
   private readonly moving = new Set<number>();
   /** The people whose merge is waiting for its answer: a second press meanwhile is ignored. */
   private readonly merging = new Set<number>();
@@ -903,6 +914,34 @@ export class PeopleList {
       this.personError.set({ id: p.id, message: `The person could not be moved ${direction}.` });
     } finally {
       this.moving.delete(p.id);
+    }
+  }
+
+  /** Give the person the grade chosen on their row from the sheet's today, saved as the person form
+   *  would save it over the version the row shows. */
+  protected async saveGrade(p: Person, grade: string): Promise<void> {
+    if (this.regrading.has(p.id)) return;
+    this.personError.set(null);
+    this.patronError.set(null);
+    if (!this.grades.includes(grade as Grade)) {
+      this.personError.set({ id: p.id, message: 'Choose a grade of A, B or C.' });
+      return;
+    }
+    this.regrading.add(p.id);
+    try {
+      const saved = await this.api.edit(p.id, p.version, { name: p.name, grade: grade as Grade, gradeFrom: null,
+        terms: p.terms?.toString() ?? '', contact: p.contact ?? '', tags: p.tags });
+      this.people.update((ps) => ps.map((x) => (x.id === saved.id ? saved : x)));
+      if (this.editing() === saved.id) this.version = saved.version;
+    } catch (e) {
+      this.personError.set({
+        id: p.id,
+        message: e instanceof HttpErrorResponse && e.status === 412
+          ? 'Someone else saved this person in the meantime. Load the sheet again to see their current values.'
+          : 'The grade could not be saved.',
+      });
+    } finally {
+      this.regrading.delete(p.id);
     }
   }
 
