@@ -130,7 +130,8 @@ public class PersonTransferService {
                             + from.getName() + " into=" + into.getName());
                 }
                 Person arrived = into != null ? into
-                        : people.saveAndFlush(from.transferredTo(toSheetId, people.nextPosition(toSheetId)));
+                        : people.saveAndFlush(from.transferredTo(toSheetId, people.nextPosition(toSheetId),
+                                sheets.today(toSheetId)));
                 claimService.keepTags(toSheetId, arrived.getTags());
                 Map<String, String> numbers = renumber(toSheetId, theirs);
                 for (Claim claim : theirs) {
@@ -152,6 +153,30 @@ public class PersonTransferService {
                 return arrived;
             });
             leave(sheetId, from, theirs);
+            return null;
+        });
+    }
+
+    /** Undo the transfer that brought a person to this sheet: they are transferred back to the sheet
+     *  they came from, exactly as {@link #transfer} would, and this sheet records the undo. Refused
+     *  unless the user is a steward and the person arrived by a transfer on the sheet's today. */
+    @Transactional
+    public void undo(String sheetId, String user, long personId) {
+        if (!SheetRole.STEWARD.equals(roles.roleOf(sheetId, user))) {
+            throw new ResponseStatusException(HttpStatus.FORBIDDEN, "Only a steward may undo a transfer");
+        }
+        Person arrived = people.lockByIdAndSheetId(personId, sheetId)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "No such person on this sheet"));
+        if (arrived.getOrigin() == null || arrived.getArrivedOn() == null
+                || !arrived.getArrivedOn().equals(sheets.today(sheetId))) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT, "The person did not arrive by a transfer today");
+        }
+        String name = arrived.getName();
+        String toSheetId = arrived.getOrigin();
+        rollup.tracking(sheetId, user, () -> {
+            transfer(sheetId, user, personId, toSheetId);
+            audit.recordOnCommit("PERSON_TRANSFER_UNDONE sheet=" + sheetId + " by=" + user + " name=" + name
+                    + " to=" + toSheetId);
             return null;
         });
     }

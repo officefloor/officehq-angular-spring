@@ -224,6 +224,15 @@ export class People {
     );
   }
 
+  /** Undo the transfer that brought the person to this sheet today; they go back to where they came
+   *  from and leave this sheet. */
+  transferUndo(id: number): Promise<void> {
+    const { sheetId, user } = this.active();
+    return firstValueFrom(
+      this.http.post<void>(`${this.url(sheetId)}/${id}/transfer-undo`, {}, { headers: { 'X-User': user } }),
+    );
+  }
+
   /** Swap the person with the one above (up) or below (down) them in the list; answers the people
    *  in their new list order. Refused at the top moving up and at the bottom moving down. */
   move(id: number, direction: 'up' | 'down'): Promise<Person[]> {

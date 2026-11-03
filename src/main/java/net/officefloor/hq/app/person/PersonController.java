@@ -298,6 +298,15 @@ public class PersonController {
         transfers.transfer(sheetId.trim(), user.trim(), personId, form.toSheet().trim());
     }
 
+    /** Undo the transfer that brought the person to this sheet today; they go back to where they
+     *  came from. */
+    @PostMapping("/{personId}/transfer-undo")
+    public void transferUndo(@PathVariable @NotBlank @Size(max = 100) String sheetId,
+            @PathVariable long personId,
+            @RequestHeader("X-User") @NotBlank @Size(max = 100) String user) {
+        transfers.undo(sheetId.trim(), user.trim(), personId);
+    }
+
     /** Swap the person with the one above or below them; answers the people in their new order. */
     @PostMapping("/{personId}/move")
     public List<PersonView> move(@PathVariable @NotBlank @Size(max = 100) String sheetId,

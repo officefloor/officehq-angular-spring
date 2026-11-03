@@ -97,6 +97,10 @@ public class Person {
     @Column(name = "origin")
     private String origin;
 
+    /** The sheet's today on which the person arrived on it by a transfer; null when they did not. */
+    @Column(name = "arrived_on")
+    private LocalDate arrivedOn;
+
     /** Raised each time the person is saved. */
     @Version
     @Column(name = "version", nullable = false)
@@ -124,6 +128,11 @@ public class Person {
      *  grade they were given (and its from-date), terms, contact, tags and aliases; no holds. They take
      *  the place given in that sheet's list. */
     public Person transferredTo(String toSheetId, long toPosition) {
+        return transferredTo(toSheetId, toPosition, null);
+    }
+
+    /** As {@link #transferredTo(String, long)}, arriving there on the day given (that sheet's today). */
+    public Person transferredTo(String toSheetId, long toPosition, LocalDate arrivedOn) {
         Person copy = new Person(toSheetId, (Long) null, name);
         copy.position = toPosition;
         grades.forEach(g -> copy.grades.add(new GradeFrom(g.getFromDate(), g.getGrade())));
@@ -133,6 +142,7 @@ public class Person {
         copy.tags = tags;
         copy.aliases.addAll(aliases);
         copy.origin = sheetId;
+        copy.arrivedOn = arrivedOn;
         return copy;
     }
 
@@ -308,6 +318,11 @@ public class Person {
     /** The sheet the person was transferred from; null when they were not transferred. */
     public String getOrigin() {
         return origin;
+    }
+
+    /** The sheet's today on which the person arrived on it by a transfer; null when they did not. */
+    public LocalDate getArrivedOn() {
+        return arrivedOn;
     }
 
     /** The person's contact, held by no one else on the sheet; null when they have none. */

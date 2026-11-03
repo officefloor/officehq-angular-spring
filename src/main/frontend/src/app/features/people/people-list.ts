@@ -404,6 +404,8 @@ const NO_LEAVE: Leave = { holds: [], retiredFrom: null };
                   (input)="clearPersonError(p.id)" />
                 <button type="button" data-testid="person-transfer" (click)="transfer(p, transferTo.value)"
                   [attr.aria-label]="'Transfer ' + p.name + ' to the sheet given'">Transfer</button>
+                <button type="button" data-testid="person-transfer-undo" (click)="transferUndo(p)"
+                  [attr.aria-label]="'Undo the transfer that brought ' + p.name + ' here'">Undo transfer</button>
                 <button type="button" data-testid="person-watch" (click)="toggleWatch(p)"
                   [attr.aria-pressed]="watched().has(p.id)"
                   [attr.aria-label]="'Watch ' + p.name">{{ watched().has(p.id) ? 'Unwatch' : 'Watch' }}</button>
@@ -1196,6 +1198,26 @@ export class PeopleList {
       if (sheetId) await this.reload(sheetId);
     } catch {
       this.personError.set({ id: p.id, message: 'The person could not be transferred.' });
+    } finally {
+      this.transferring.delete(p.id);
+    }
+  }
+
+  /** Undo the transfer that brought the person here, then read the sheet again: the person is gone
+   *  from it, back on the sheet they came from. */
+  protected async transferUndo(p: Person): Promise<void> {
+    if (this.transferring.has(p.id)) return;
+    this.personError.set(null);
+    this.patronError.set(null);
+    this.transferring.add(p.id);
+    try {
+      await this.api.transferUndo(p.id);
+      const sheetId = this.session.sheetId();
+      if (this.editing() === p.id) this.reset();
+      void this.poolsApi.refresh();
+      if (sheetId) await this.reload(sheetId);
+    } catch {
+      this.personError.set({ id: p.id, message: 'The transfer could not be undone.' });
     } finally {
       this.transferring.delete(p.id);
     }
