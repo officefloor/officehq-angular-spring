@@ -15,6 +15,7 @@ import java.util.TreeMap;
 import net.officefloor.hq.app.Audit;
 import net.officefloor.hq.app.claim.ClaimRepository;
 import net.officefloor.hq.app.claim.Proof;
+import net.officefloor.hq.app.grade.RetiredGradeRepository;
 import net.officefloor.hq.app.history.History;
 import net.officefloor.hq.app.period.PeriodService;
 import net.officefloor.hq.app.role.RoleService;
@@ -47,10 +48,12 @@ public class SheetService {
     /** Lazy: the history reads the sheet's settings through their repositories. */
     private final History history;
     private final Audit audit;
+    private final RetiredGradeRepository retiredGrades;
 
     public SheetService(SheetRepository sheets, SettingValueRepository settingValues,
             FiscalClaimNumberRepository fiscalNumbers, SheetPermissionRepository permissions, ClaimRepository claims, @Lazy Rollup rollup, @Lazy PeriodService periods,
-            @Lazy RoleService roles, @Lazy History history, Audit audit) {
+            @Lazy RoleService roles, @Lazy History history, Audit audit, RetiredGradeRepository retiredGrades) {
+        this.retiredGrades = retiredGrades;
         this.history = history;
         this.sheets = sheets;
         this.settingValues = settingValues;
@@ -824,11 +827,12 @@ public class SheetService {
     }
 
     /** The grade a new person on the sheet takes when none is given (by the quick-add bar, or an
-     *  import line with a blank grade): the sheet's default grade, or A when it is blank. Not dated. */
+     *  import line with a blank grade): the sheet's default grade, or A when it is blank or retired.
+     *  Not dated. */
     @Transactional(readOnly = true)
     public String defaultGrade(String id) {
         String grade = sheets.findById(id).map(Sheet::getDefaultGrade).orElse(null);
-        return grade == null ? DEFAULT_GRADE : grade;
+        return grade == null || retiredGrades.existsBySheetIdAndGrade(id, grade) ? DEFAULT_GRADE : grade;
     }
 
     /** The sheet's default grade as set; null when blank (A stands in). Not dated. */

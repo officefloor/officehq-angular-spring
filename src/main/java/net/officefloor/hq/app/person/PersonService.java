@@ -11,6 +11,7 @@ import java.util.Set;
 import java.util.function.Predicate;
 import net.officefloor.hq.app.Audit;
 import net.officefloor.hq.app.claim.ClaimService;
+import net.officefloor.hq.app.grade.GradeService;
 import net.officefloor.hq.app.role.RoleService;
 import net.officefloor.hq.app.role.SheetRole;
 import net.officefloor.hq.app.rollup.Rollup;
@@ -32,9 +33,11 @@ public class PersonService {
     private final Audit audit;
     private final RoleService roles;
     private final ClaimService claims;
+    private final GradeService grades;
 
     public PersonService(PersonRepository people, SheetService sheets, Rollup rollup, Audit audit,
-            RoleService roles, ClaimService claims) {
+            RoleService roles, ClaimService claims, GradeService grades) {
+        this.grades = grades;
         this.claims = claims;
         this.people = people;
         this.sheets = sheets;
@@ -75,6 +78,7 @@ public class PersonService {
         if (contact != null && people.existsBySheetIdAndContact(sheetId, contact)) {
             throw contactInUse();
         }
+        grades.checkChoosable(sheetId, grade);
         return rollup.tracking(sheetId, user, () -> {
             Person fresh = new Person(sheetId, name, grade, people.nextPosition(sheetId));
             fresh.setTerms(terms);
@@ -157,6 +161,9 @@ public class PersonService {
      *  recording it; the terms recorded, when they change, as those in force on the sheet's today. */
     private Person save(String sheetId, String user, Person person, String name, String grade, LocalDate gradeFrom,
             Integer terms, LocalDate termsFrom, String contact, String tags) {
+        if (choosesGrade(sheetId, person, grade, gradeFrom)) {
+            grades.checkChoosable(sheetId, grade);
+        }
         return rollup.tracking(sheetId, user, () -> {
             LocalDate today = sheets.today(sheetId);
             Integer undatedBefore = person.getTerms();
@@ -170,7 +177,7 @@ public class PersonService {
             person.setContact(contact);
             person.setTags(tags);
             claims.keepTags(sheetId, tags);
-            if (gradeFrom != null || !grade.equals(person.gradeOn(today))) {
+            if (choosesGrade(sheetId, person, grade, gradeFrom)) {
                 person.setGradeFrom(grade, gradeFrom != null ? gradeFrom : today);
             }
             Person saved = saveUnique(person);
@@ -179,6 +186,13 @@ public class PersonService {
                     + (Objects.equals(contactBefore, contact) ? "" : " contact=" + (contact != null ? contact : "")));
             return saved;
         });
+    }
+
+    /** Whether saving the grade from a day (null: the sheet's today) records it for the person, so
+     *  is a choice of it: a grade left as the one in force on the sheet's today, with no day given,
+     *  is not. */
+    private boolean choosesGrade(String sheetId, Person person, String grade, LocalDate gradeFrom) {
+        return gradeFrom != null || !grade.equals(person.gradeOn(sheets.today(sheetId)));
     }
 
     private static boolean sameTerms(List<TermsFrom> a, List<TermsFrom> b) {

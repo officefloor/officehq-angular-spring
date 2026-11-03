@@ -1,0 +1,58 @@
+package net.officefloor.hq.app.grade;
+
+import jakarta.validation.Valid;
+import jakarta.validation.constraints.NotBlank;
+import jakarta.validation.constraints.NotNull;
+import jakarta.validation.constraints.Size;
+import java.time.LocalDate;
+import java.util.List;
+import java.util.Set;
+import java.util.stream.Collectors;
+import net.officefloor.hq.app.sheet.AsOfGuard;
+import org.springframework.format.annotation.DateTimeFormat;
+import org.springframework.validation.annotation.Validated;
+import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.PathVariable;
+import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.RequestBody;
+import org.springframework.web.bind.annotation.RequestHeader;
+import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RestController;
+
+@RestController
+@RequestMapping("/api/sheets/{sheetId}/grades")
+@Validated
+public class GradeController {
+
+    /** A grade as the screen shows it: its code and whether it is retired. */
+    public record GradeView(String grade, boolean retired) {
+    }
+
+    /** The retire form: the grade to retire. */
+    public record RetireForm(@NotNull @Size(max = 10) String grade) {
+    }
+
+    private final GradeService service;
+
+    public GradeController(GradeService service) {
+        this.service = service;
+    }
+
+    @GetMapping
+    public List<GradeView> list(@PathVariable @NotBlank @Size(max = 100) String sheetId,
+            @RequestHeader(value = AsOfGuard.HEADER, required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE)
+            LocalDate asOf) {
+        Set<String> retired = service.retired(sheetId.trim()).stream()
+                .filter(r -> asOf == null || !r.getRetiredOn().isAfter(asOf))
+                .map(RetiredGrade::getGrade).collect(Collectors.toSet());
+        return GradeService.GRADES.stream().map(g -> new GradeView(g, retired.contains(g))).toList();
+    }
+
+    @PostMapping("/retire")
+    public List<GradeView> retire(@PathVariable @NotBlank @Size(max = 100) String sheetId,
+            @RequestHeader("X-User") @NotBlank @Size(max = 100) String user,
+            @Valid @RequestBody RetireForm form) {
+        service.retire(sheetId.trim(), user.trim(), form.grade().trim());
+        return list(sheetId, null);
+    }
+}

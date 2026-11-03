@@ -6,6 +6,7 @@ import java.util.List;
 import java.util.Locale;
 import java.util.Set;
 import java.util.regex.Pattern;
+import net.officefloor.hq.app.grade.GradeService;
 import net.officefloor.hq.app.sheet.SheetService;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
@@ -43,8 +44,11 @@ public class PersonImportService {
     private final PersonRepository people;
     private final PersonService service;
     private final SheetService sheets;
+    private final GradeService grades;
 
-    public PersonImportService(PersonRepository people, PersonService service, SheetService sheets) {
+    public PersonImportService(PersonRepository people, PersonService service, SheetService sheets,
+            GradeService grades) {
+        this.grades = grades;
         this.people = people;
         this.service = service;
         this.sheets = sheets;
@@ -85,6 +89,10 @@ public class PersonImportService {
                     ? people.existsBySheetIdAndContact(sheetId, line.contact())
                     : people.existsBySheetIdAndContactAndIdNot(sheetId, line.contact(), match.getId()))) {
                 throw refused(n, "the contact \"" + line.contact() + "\" is already held on this sheet");
+            }
+            if (grades.isRetired(sheetId, line.grade())
+                    && (match == null || !line.grade().equals(match.gradeOn(sheets.today(sheetId))))) {
+                throw refused(n, "the grade " + line.grade() + " is retired");
             }
             lines.add(new Planned(line, match));
         }

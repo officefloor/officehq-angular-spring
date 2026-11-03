@@ -13,6 +13,8 @@ import net.officefloor.hq.app.claim.ClaimService;
 import net.officefloor.hq.app.claim.SheetTag;
 import net.officefloor.hq.app.claim.SheetTagRepository;
 import net.officefloor.hq.app.holiday.Holiday;
+import net.officefloor.hq.app.grade.RetiredGrade;
+import net.officefloor.hq.app.grade.RetiredGradeRepository;
 import net.officefloor.hq.app.holiday.HolidayRepository;
 import net.officefloor.hq.app.patron.Patron;
 import net.officefloor.hq.app.patron.PatronRepository;
@@ -56,6 +58,7 @@ public class SheetCloneService {
     private final RoleService roles;
     private final RateRepository rates;
     private final HolidayRepository holidays;
+    private final RetiredGradeRepository retiredGrades;
     private final VoidReasonRepository voidReasons;
     private final ClaimTemplateRepository templates;
     private final PersonRepository people;
@@ -71,7 +74,7 @@ public class SheetCloneService {
 
     public SheetCloneService(SheetRepository sheets, SettingValueRepository settingValues,
             SheetPermissionRepository permissions, SheetRoleRepository sheetRoles, RoleService roles,
-            RateRepository rates, HolidayRepository holidays, VoidReasonRepository voidReasons,
+            RateRepository rates, HolidayRepository holidays, RetiredGradeRepository retiredGrades, VoidReasonRepository voidReasons,
             ClaimTemplateRepository templates, PersonRepository people, PatronRepository patrons,
             PoolRepository pools, PoolMemberRepository members, PeriodRepository periods, ClaimRepository claims,
             ClaimService claimService, SheetTagRepository sheetTags, Rollup rollup, Audit audit) {
@@ -82,6 +85,7 @@ public class SheetCloneService {
         this.roles = roles;
         this.rates = rates;
         this.holidays = holidays;
+        this.retiredGrades = retiredGrades;
         this.voidReasons = voidReasons;
         this.templates = templates;
         this.people = people;
@@ -97,7 +101,7 @@ public class SheetCloneService {
     }
 
     /** Clone the sheet to another id, which must never have been used. The clone has the sheet's
-     *  today, settings, roles, rates, holidays, void reasons, templates, people (grades, terms,
+     *  today, settings, roles, rates, holidays, retired grades, void reasons, templates, people (grades, terms,
      *  contacts, aliases, holds, retirements, patrons), pools, periods (all open) and claims (status,
      *  frozen figures, dates, notes, tags, logs), each claim that had a number taking the clone's next
      *  one, person by person in the order they are listed, in the order their claims were opened (by
@@ -162,6 +166,8 @@ public class SheetCloneService {
         });
         holidays.findBySheetIdOrderByDayAsc(sheetId).forEach(h ->
                 holidays.save(new Holiday(toSheetId, h.getDay(), h.getAddedOn())));
+        retiredGrades.findBySheetIdOrderByGradeAsc(sheetId).forEach(g ->
+                retiredGrades.save(new RetiredGrade(toSheetId, g.getGrade(), g.getRetiredOn())));
         voidReasons.findBySheetIdOrderByIdAsc(sheetId).forEach(r ->
                 voidReasons.save(new VoidReason(toSheetId, r.getReason(), r.getAddedOn())));
         templates.findBySheetIdOrderByIdAsc(sheetId).forEach(t ->
