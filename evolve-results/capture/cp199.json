@@ -1,0 +1,64 @@
+{
+  "checkpoint": 199,
+  "stack": {
+    "repo": "/home/daniel/officehq-angular-spring",
+    "origin": "git@github.com:officefloor/officehq-angular-spring.git",
+    "name": "officehq-angular-spring",
+    "base_ref": "base-empty",
+    "base_commit": "65cb8233ea38b2dfa6cfd18709e30cd18fdf3250"
+  },
+  "checkpoint_id": "cp199_approvers",
+  "phase": "late",
+  "type": "additive",
+  "mutates": [],
+  "replaced_tests": [],
+  "request": {
+    "spec": "A person may have an approver: a user name on the row (an entry and a button; APPROVER_SET\nname=<name> user=<user>). That user may approve or reject the person's PENDING claims as a steward\nmay (the opener and the last editor still may not approve their own).\n",
+    "prompt": "You are implementing ONE change to this application.\n\nFIRST read AGENTS.md \u2014 it states the working rules and how the app is tested, and sends you to\nDESIGN.md for the app's stack and conventions. Follow both.\n\nTHE CHANGE REQUEST:\nA person may have an approver: a user name on the row (an entry and a button; APPROVER_SET\nname=<name> user=<user>). That user may approve or reject the person's PENDING claims as a steward\nmay (the opener and the last editor still may not approve their own).\n\nYour work is verified by an automated Playwright UI test already installed under e2e/specs/.\nRead that spec: it declares the exact data-testid anchors, values, test data and any audit\nrecords it expects \u2014 match them. Run `bin/e2e` to build the app, start it, and run the test as\nyou work; iterate until it passes. Change whatever the request needs across the app \u2014 its stored\ndata, its server and its front end. Do NOT edit bin/build, bin/start, bin/stop, bin/e2e,\nAGENTS.md, CLAUDE.md, DESIGN.md, e2e/support/ or the test spec.\n"
+  },
+  "commit_sha": "a661233937b590ebeb359c88c5a3773a2cdee8ab",
+  "reset_sha": "",
+  "preagent_sha": "ace56bebe972430f711cb729118e34ed08ab5c3b",
+  "prev_sha": "ace56bebe972430f711cb729118e34ed08ab5c3b",
+  "base_sha": "65cb8233ea38b2dfa6cfd18709e30cd18fdf3250",
+  "agent": {
+    "ok": true,
+    "cost_usd": 0.8819613999999999,
+    "input_tokens": 8,
+    "output_tokens": 965,
+    "cache_read_tokens": 194841,
+    "cache_creation_tokens": 3658,
+    "num_turns": 3,
+    "duration_ms": 265730,
+    "duration_api_ms": 101093,
+    "model": "claude-opus-5-5",
+    "session_id": "d7f35cb9-1c7d-466e-9cf0-bba6d79a6cc8",
+    "stop_reason": "success",
+    "result_text": "Each person can now have an approver, who can approve or reject that person's PENDING claims the same way a steward can. All 4 acceptance tests pass with `bin/e2e`, including on a rerun of the final code.\n\n**What changed:**\n- **Stored data:** a new migration `V113__person_approver.sql` adds an `approver` column to `person`. The `Person` entity has the field, and copying a sheet (`clonedTo`) carries it over.\n- **Server:**\n  - A new endpoint, `POST /{personId}/approver`, sets the approver. A blank value clears it.\n  - Each change writes an `APPROVER_SET sheet=\u2026 by=\u2026 name=<person> user=<approver>` record to the audit file.\n  - The person's details sent to the screen now include the approver.\n  - The approve/reject permission check in `ClaimService` (`lockPending`) now accepts a steward or the person's approver. The existing rule still applies: whoever opened or last edited a claim cannot approve it.\n- **Front end:** each person's row shows the approver (`person-approver`) and has an input and button to set it (`person-approver-input`, `person-approver-save`). A failure shows in `person-error`. I also reworded the approve/reject refusal messages to mention the approver.\n\n**Decisions to check:**\n- **Who can set an approver:** anyone signed in can, because the request doesn't restrict it and the test never expects a refusal. If only stewards should, it's a one-line role check in `PersonService.setApprover`.\n- **No name check:** any typed name is accepted, without checking it's a user of the sheet.\n- **Transfers and history:** moving a person to another sheet doesn't take the approver with them. Approver changes also aren't kept in the person's revision history, so undoing an edit leaves the approver as it is.",
+    "error": "",
+    "attempts": [
+      {
+        "ok": true,
+        "limit_reached": false,
+        "retryable": false,
+        "timed_out": false,
+        "cost_usd": 0.8819613999999999,
+        "num_turns": 3,
+        "duration_ms": 265730,
+        "duration_api_ms": 101093,
+        "error": ""
+      }
+    ]
+  },
+  "agent_stream_file": "cp199.agent.jsonl",
+  "agent_diff_file": "cp199.agent.diff",
+  "build_log_file": null,
+  "tests": {
+    "gated": false,
+    "queued": true
+  },
+  "probe": null,
+  "pinned_touched": [],
+  "acceptance_touched": [],
+  "impact_gate": null
+}
