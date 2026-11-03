@@ -213,7 +213,9 @@ export class PersonClaims {
       if (this.session.sheet() !== sheet) return;
       const err =
         e instanceof HttpErrorResponse && e.status === 403
-          ? 'The user who opened a claim cannot settle it.'
+          ? c.openedBy === this.session.user()
+            ? 'The user who opened a claim cannot settle it.'
+            : 'A clerk cannot settle a claim whose due is above the clerk limit.'
           : e instanceof HttpErrorResponse && e.status === 423
             ? CLOSED
             : `A ${c.status} claim cannot be ${PAST[action]}.`;

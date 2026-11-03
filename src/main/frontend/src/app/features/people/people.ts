@@ -5,6 +5,8 @@ import { Session } from '../../core/session';
 import { AMOUNT, Claim, PersonClaims, cents, counts, money } from '../claims/claims';
 import { DatedDue, Period, Periods } from '../periods/periods';
 import { Rate, Rates, claimDueCents, dueText, fixedDueCents, pctOn } from '../rates/rates';
+import { Roles } from '../roles/roles';
+import { Settings } from '../settings/settings';
 
 // The people on the active sheet, in the order they were added, and the one form that both adds
 // a person and edits an existing one (opening a person's editor fills the form with their values).
@@ -68,9 +70,11 @@ const GRADES = ['A', 'B', 'C'] as const;
 
 @Component({
   selector: 'app-people',
-  imports: [PersonClaims, Periods, Rates],
+  imports: [PersonClaims, Periods, Rates, Roles, Settings],
   template: `
     <app-rates [(rates)]="rates" />
+    <app-roles />
+    <app-settings />
     <app-periods [(periods)]="periods" [dues]="dues()" />
     <section aria-labelledby="people-heading">
       <h2 id="people-heading">People</h2>

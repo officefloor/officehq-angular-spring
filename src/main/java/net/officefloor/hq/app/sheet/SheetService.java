@@ -1,5 +1,6 @@
 package net.officefloor.hq.app.sheet;
 
+import java.math.BigDecimal;
 import java.time.Instant;
 import java.time.LocalDate;
 import net.officefloor.hq.app.rollup.RollupService;
@@ -37,6 +38,12 @@ public class SheetService {
     @Transactional(readOnly = true)
     public LocalDate today(String id) {
         return sheets.findById(id).map(Sheet::getToday).orElseGet(LocalDate::now);
+    }
+
+    /** The sheet's clerk limit: the most a clerk may settle a claim's due at; null for no limit. */
+    @Transactional(readOnly = true)
+    public BigDecimal clerkLimit(String id) {
+        return sheets.findById(id).map(Sheet::getClerkLimit).orElse(null);
     }
 
     /**

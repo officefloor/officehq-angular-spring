@@ -10,6 +10,8 @@ import net.officefloor.hq.app.person.Person;
 import net.officefloor.hq.app.person.PersonRepository;
 import net.officefloor.hq.app.rate.Rate;
 import net.officefloor.hq.app.rate.RateRepository;
+import net.officefloor.hq.app.role.Role;
+import net.officefloor.hq.app.role.RoleService;
 import net.officefloor.hq.app.rollup.RollupService;
 import net.officefloor.hq.app.sheet.SheetService;
 import org.springframework.http.HttpStatus;
@@ -26,7 +28,9 @@ import org.springframework.web.server.ResponseStatusException;
  * A claim records who opened it, and that user cannot settle it (four eyes). A claim bound by its
  * person's last statement keeps the figure it had then, and settling it fixes that figure. No claim
  * dated inside a closed period can be added, edited (to or from such a date) or change status. No
- * claim can be added or edited to a date after its person's retirement date.
+ * claim can be added or edited to a date after its person's retirement date. A clerk settles a claim
+ * only when its figure is at or below the sheet's clerk limit (a claim with no figure is within any
+ * limit); a steward settles any claim.
  */
 @Service
 public class ClaimService {
@@ -38,9 +42,11 @@ public class ClaimService {
     private final Audit audit;
     private final RollupService rollup;
     private final PeriodService periods;
+    private final RoleService roles;
 
     public ClaimService(ClaimRepository claims, PersonRepository people, RateRepository rates, SheetService sheets,
-            Audit audit, RollupService rollup, PeriodService periods) {
+            Audit audit, RollupService rollup, PeriodService periods, RoleService roles) {
+        this.roles = roles;
         this.rollup = rollup;
         this.periods = periods;
         this.claims = claims;
@@ -103,7 +109,8 @@ public class ClaimService {
 
     /**
      * Move a claim to a new status, refused (409) when its current status does not allow it, and
-     * refused (403) when the user who opened it tries to settle it.
+     * refused (403) when the user who opened it tries to settle it, or a clerk tries to settle one
+     * whose figure is above the sheet's clerk limit.
      */
     @Transactional
     public Claim changeStatus(String sheetId, String user, long id, ClaimStatus next) {
@@ -122,6 +129,10 @@ public class ClaimService {
                     "The user who opened a claim cannot settle it.");
         }
         Person person = person(sheetId, claim.getPersonId());
+        if (next == ClaimStatus.SETTLED) {
+            refuseIfAboveClerkLimit(sheetId, user,
+                    claim.isStated() ? claim.getStatedDue() : due(sheetId, person, claim));
+        }
         claim.setStatus(next);
         if (next == ClaimStatus.OPEN) {
             claim.setNumber(number);
@@ -155,6 +166,17 @@ public class ClaimService {
 
     private static String dueText(BigDecimal due) {
         return due == null ? "n/a" : due.setScale(2, RoundingMode.UNNECESSARY).toPlainString();
+    }
+
+    /** Refuse (403) a clerk settling a claim whose figure is above the sheet's clerk limit. */
+    private void refuseIfAboveClerkLimit(String sheetId, String user, BigDecimal figure) {
+        BigDecimal limit = sheets.clerkLimit(sheetId);
+        if (figure == null || limit == null || figure.compareTo(limit) <= 0
+                || Role.STEWARD.equals(roles.roleOf(sheetId, user))) {
+            return;
+        }
+        throw new ResponseStatusException(HttpStatus.FORBIDDEN,
+                "A clerk cannot settle a claim whose due is above the clerk limit of " + dueText(limit) + ".");
     }
 
     /** Refuse (422) a claim dated after its person's retirement date. */
