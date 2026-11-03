@@ -5,14 +5,29 @@ import { Session } from '../../core/session';
 import { dueCents, dueText } from '../rates/rates';
 
 // A person's claims, newest first, and the one form under their row that both adds a claim and
-// edits an existing one (opening a claim's editor fills the form with its values).
+// edits an existing one (opening a claim's editor fills the form with its values). Each claim
+// shows its status and the buttons that move it on; a move its status does not allow is refused
+// with an error on the claim.
+export type ClaimStatus = 'DRAFT' | 'OPEN' | 'SETTLED' | 'VOID';
+
 export interface Claim {
   id: number;
   personId: number;
   amount: string;
   date: string;
   note: string;
+  status: ClaimStatus;
 }
+
+/** A move from one status to the next, by the endpoint that makes it. */
+type ClaimAction = 'open' | 'settle' | 'void';
+
+/** Whether a claim counts toward claimed, due-total and every total: only OPEN and SETTLED do. */
+export function counts(c: Claim): boolean {
+  return c.status === 'OPEN' || c.status === 'SETTLED';
+}
+
+const PAST: Record<ClaimAction, string> = { open: 'opened', settle: 'settled', void: 'voided' };
 
 /** An amount: 0.00 or more, with up to two decimals. */
 const AMOUNT = /^\d{1,12}(\.\d{1,2})?$/;
@@ -69,6 +84,10 @@ export function money(c: number): string {
           <span data-testid="claim-date">{{ c.date }}</span>
           <span data-testid="claim-note">{{ c.note }}</span>
           <span>Due <span data-testid="claim-due">{{ dueOf(c) }}</span></span>
+          <span data-testid="claim-status">{{ c.status }}</span>
+          <button type="button" data-testid="claim-open" (click)="act(c, 'open')">Open</button>
+          <button type="button" data-testid="claim-settle" (click)="act(c, 'settle')">Settle</button>
+          <button type="button" data-testid="claim-void" (click)="act(c, 'void')">Void</button>
           <button
             type="button"
             data-testid="claim-edit"
@@ -79,6 +98,9 @@ export function money(c: number): string {
           </button>
           @if (editingId() === c.id) {
             <button type="button" data-testid="claim-cancel" (click)="reset()">Cancel</button>
+          }
+          @if (actionErrors().get(c.id); as err) {
+            <p role="alert" data-testid="claim-error">{{ err }}</p>
           }
         </li>
       }
@@ -101,12 +123,15 @@ export class PersonClaims {
   protected readonly noteInput = signal('');
   protected readonly editingId = signal<number | null>(null);
   protected readonly error = signal<string | null>(null);
+  /** The error of each claim's last refused status change, by claim id. */
+  protected readonly actionErrors = signal<ReadonlyMap<number, string>>(new Map());
 
   protected dueOf(c: Claim): string {
     return dueText(dueCents(cents(c.amount), this.pct()));
   }
 
   protected edit(c: Claim): void {
+    this.clearActionError(c.id);
     this.editingId.set(c.id);
     this.amountInput.set(c.amount);
     this.dateInput.set(c.date);
@@ -120,6 +145,31 @@ export class PersonClaims {
     this.dateInput.set('');
     this.noteInput.set('');
     this.error.set(null);
+  }
+
+  private clearActionError(id: number): void {
+    this.actionErrors.update((m) => {
+      if (!m.has(id)) return m;
+      const next = new Map(m);
+      next.delete(id);
+      return next;
+    });
+  }
+
+  /** Move a claim to its next status; the server refuses a move its status does not allow. */
+  protected async act(c: Claim, action: ClaimAction): Promise<void> {
+    this.clearActionError(c.id);
+    const sheet = this.session.sheet();
+    try {
+      const claim = await firstValueFrom(
+        this.http.post<Claim>(`/api/claims/${action}`, { sheet, user: this.session.user(), id: c.id }),
+      );
+      if (this.session.sheet() !== sheet) return;
+      this.saved.emit(claim);
+    } catch {
+      if (this.session.sheet() !== sheet) return;
+      this.actionErrors.update((m) => new Map(m).set(c.id, `A ${c.status} claim cannot be ${PAST[action]}.`));
+    }
   }
 
   protected async save(event: Event): Promise<void> {

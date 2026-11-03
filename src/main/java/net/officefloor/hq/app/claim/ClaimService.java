@@ -15,7 +15,8 @@ import org.springframework.web.server.ResponseStatusException;
 
 /**
  * The claims on a sheet: added to a person and edited (amount, date, note). A claim given no date
- * takes the sheet's today.
+ * takes the sheet's today. A claim starts as DRAFT and moves through its statuses (see
+ * {@link ClaimStatus}); a change its status does not allow is refused.
  */
 @Service
 public class ClaimService {
@@ -54,6 +55,27 @@ public class ClaimService {
         claim.setNote(note);
         Claim saved = claims.saveAndFlush(claim);
         audit.recordOnCommit(record("CLAIM_EDITED", sheetId, user, person(sheetId, saved.getPersonId()), saved));
+        return saved;
+    }
+
+    /** Move a claim to a new status, refused (409) when its current status does not allow it. */
+    @Transactional
+    public Claim changeStatus(String sheetId, String user, long id, ClaimStatus next) {
+        Claim claim = claims.findByIdAndSheetId(id, sheetId)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "No such claim on this sheet."));
+        if (!claim.getStatus().canBecome(next)) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT,
+                    "A " + claim.getStatus() + " claim cannot become " + next + ".");
+        }
+        claim.setStatus(next);
+        Claim saved = claims.saveAndFlush(claim);
+        String event = switch (next) {
+            case OPEN -> "CLAIM_OPENED";
+            case SETTLED -> "CLAIM_SETTLED";
+            case VOID -> "CLAIM_VOIDED";
+            case DRAFT -> throw new IllegalStateException();
+        };
+        audit.recordOnCommit(record(event, sheetId, user, person(sheetId, saved.getPersonId()), saved));
         return saved;
     }
 

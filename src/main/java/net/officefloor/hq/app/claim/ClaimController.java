@@ -14,7 +14,7 @@ import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 
-/** Listing, adding and editing the claims on a sheet. */
+/** Listing, adding and editing the claims on a sheet, and changing their status. */
 @RestController
 @RequestMapping("/api/claims")
 public class ClaimController {
@@ -35,13 +35,18 @@ public class ClaimController {
             LocalDate date, @Size(max = 1000) String note) {
     }
 
-    public record ClaimResponse(long id, long personId, String amount, LocalDate date, String note) {
+    public record ClaimStatusRequest(@NotBlank @Size(max = 100) String sheet,
+            @NotBlank @Size(max = 100) String user, @NotNull Long id) {
+    }
+
+    public record ClaimResponse(long id, long personId, String amount, LocalDate date, String note,
+            ClaimStatus status) {
     }
 
     private static ClaimResponse response(Claim claim) {
         return new ClaimResponse(claim.getId(), claim.getPersonId(),
                 claim.getAmount().setScale(2, RoundingMode.UNNECESSARY).toPlainString(), claim.getDate(),
-                claim.getNote());
+                claim.getNote(), claim.getStatus());
     }
 
     private static BigDecimal amount(String amount) {
@@ -73,5 +78,24 @@ public class ClaimController {
     public ClaimResponse update(@Valid @RequestBody UpdateClaimRequest req) {
         return response(service.update(req.sheet().trim(), req.user().trim(), req.id(), amount(req.amount()), req.date(),
                 note(req.note())));
+    }
+
+    @PostMapping("/open")
+    public ClaimResponse open(@Valid @RequestBody ClaimStatusRequest req) {
+        return changeStatus(req, ClaimStatus.OPEN);
+    }
+
+    @PostMapping("/settle")
+    public ClaimResponse settle(@Valid @RequestBody ClaimStatusRequest req) {
+        return changeStatus(req, ClaimStatus.SETTLED);
+    }
+
+    @PostMapping("/void")
+    public ClaimResponse voidClaim(@Valid @RequestBody ClaimStatusRequest req) {
+        return changeStatus(req, ClaimStatus.VOID);
+    }
+
+    private ClaimResponse changeStatus(ClaimStatusRequest req, ClaimStatus next) {
+        return response(service.changeStatus(req.sheet().trim(), req.user().trim(), req.id(), next));
     }
 }
