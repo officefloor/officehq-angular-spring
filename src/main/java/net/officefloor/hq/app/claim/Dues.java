@@ -211,7 +211,7 @@ public class Dues {
     }
 
     /** The rate figure a statement binds a claim to: the one its person's last statement bound it to,
-     *  or else its live rate figure (a pending claim is not bound by a statement while it is pending);
+     *  or else its live rate figure (a pending claim is bound like any other claim that counts);
      *  never the late charge, which keeps following the sheet's today, nor the floor, which is applied
      *  last. Null when there is none, or when the statement bound it to n/a. */
     public BigDecimal bindable(String sheetId, Person person, Claim claim) {
@@ -241,9 +241,9 @@ public class Dues {
         return due(basis, person, claim) == null;
     }
 
-    /** Whether a claim is bound by its person's last statement now (a pending claim is not). */
+    /** Whether a claim is bound by its person's last statement now (a pending claim is too). */
     private static boolean bound(Claim claim) {
-        return claim.isStated() && claim.getStatus() != ClaimStatus.PENDING;
+        return claim.isStated();
     }
 
     /** The day a claim's lateness is counted from: its due-by (fixed when it was made) plus the grace

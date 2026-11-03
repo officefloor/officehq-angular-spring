@@ -534,8 +534,8 @@ public class ClaimService {
         });
     }
 
-    /** Approve a pending claim: it becomes settled, its due fixed at the figure it has now (its live
-     *  figure and late charge). Refused unless the claim is pending, the user is a steward and is not
+    /** Approve a pending claim: it becomes settled, its due fixed at the figure it has now (the
+     *  figure a statement bound it to, if any, or its live figure, and its late charge). Refused unless the claim is pending, the user is a steward and is not
      *  the one who opened or last edited it, the claim's period is open, and it has a proof if it needs one. */
     @Transactional
     public Claim approve(String sheetId, String user, long claimId) {

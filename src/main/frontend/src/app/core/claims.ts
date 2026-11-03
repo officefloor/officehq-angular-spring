@@ -229,10 +229,10 @@ export function trimmedSum(amounts: string[]): string {
   return sumAmounts(sorted.slice(1, -1));
 }
 
-/** Whether a claim is bound by its person's last statement now: it was bound, and it is not
- *  pending (a pending claim shows its live figure). */
+/** Whether a claim is bound by its person's last statement now (a pending claim is too, showing
+ *  and totalling the bound figure). */
 function bound(c: Claim): boolean {
-  return c.stated && c.status !== 'PENDING';
+  return c.stated;
 }
 
 /** Whether a claim keeps a figure that rates and grades no longer change: settled or bound by a
