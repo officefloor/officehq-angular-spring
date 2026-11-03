@@ -9,6 +9,15 @@ export interface Found {
   dueTotal: string;
 }
 
+/** A person of a sheet's tree as the tree export lists them: their sheet's id, name, grade and
+ *  due-total (two decimals, or n/a). */
+export interface TreePerson {
+  sheet: string;
+  name: string;
+  grade: string;
+  dueTotal: string;
+}
+
 // The search over a sheet and every other sheet of its tree (its ancestors and descendants).
 @Injectable({ providedIn: 'root' })
 export class TreeSearch {
@@ -20,5 +29,11 @@ export class TreeSearch {
     return firstValueFrom(
       this.http.get<Found[]>(`/api/sheets/${encodeURIComponent(sheetId)}/search`, { params: { text } }),
     );
+  }
+
+  /** Everyone on the sheet's tree: the sheet's people first in list order, then the other sheets'
+   *  by sheet id. */
+  people(sheetId: string): Promise<TreePerson[]> {
+    return firstValueFrom(this.http.get<TreePerson[]>(`/api/sheets/${encodeURIComponent(sheetId)}/tree-people`));
   }
 }

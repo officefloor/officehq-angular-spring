@@ -268,10 +268,8 @@ public class Rollup {
     @Transactional(readOnly = true)
     public List<Found> search(String sheetId, String text) {
         String wanted = text == null ? "" : text.toLowerCase(Locale.ROOT);
-        List<String> order = new ArrayList<>(List.of(sheetId));
-        sheets.tree(sheetId).stream().filter(id -> !id.equals(sheetId)).sorted().forEach(order::add);
         List<Found> found = new ArrayList<>();
-        for (String id : order) {
+        for (String id : treeOrder(sheetId)) {
             Map<Long, Figures> figures = snapshot(id).people();
             LocalDate today = sheets.today(id);
             for (Person person : people.findBySheetIdOrderByPositionAscIdAsc(id)) {
@@ -283,6 +281,34 @@ public class Rollup {
             }
         }
         return found;
+    }
+
+    /** A person of a sheet's tree as the tree export lists them: their sheet's id, name, grade in
+     *  force on that sheet's today, and due-total (two decimals, or n/a) as that sheet shows it. */
+    public record TreePerson(String sheet, String name, String grade, String dueTotal) {
+    }
+
+    /** Every person (retired included) on the sheet and the other sheets of its tree: the sheet's
+     *  people first in list order, then the other sheets' by sheet id, each in its list order. */
+    @Transactional(readOnly = true)
+    public List<TreePerson> treePeople(String sheetId) {
+        List<TreePerson> listed = new ArrayList<>();
+        for (String id : treeOrder(sheetId)) {
+            Map<Long, Figures> figures = snapshot(id).people();
+            LocalDate today = sheets.today(id);
+            for (Person person : people.findBySheetIdOrderByPositionAscIdAsc(id)) {
+                listed.add(new TreePerson(id, person.getName(), person.gradeOn(today),
+                        figures.get(person.getId()).dueTotal()));
+            }
+        }
+        return listed;
+    }
+
+    /** The sheet's id, then those of the other sheets of its tree by id. */
+    private List<String> treeOrder(String sheetId) {
+        List<String> order = new ArrayList<>(List.of(sheetId));
+        sheets.tree(sheetId).stream().filter(id -> !id.equals(sheetId)).sorted().forEach(order::add);
+        return order;
     }
 
     private Snapshot snapshot(String sheetId) {

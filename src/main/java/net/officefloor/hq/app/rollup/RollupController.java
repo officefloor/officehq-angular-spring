@@ -49,4 +49,11 @@ public class RollupController {
             @RequestParam(defaultValue = "") @Size(max = 200) String text) {
         return rollup.search(sheetId.trim(), text);
     }
+
+    /** Everyone on the sheet and the other sheets of its tree, for the tree export (see
+     *  {@link Rollup#treePeople}). */
+    @GetMapping("/tree-people")
+    public List<Rollup.TreePerson> treePeople(@PathVariable @NotBlank @Size(max = 100) String sheetId) {
+        return rollup.treePeople(sheetId.trim());
+    }
 }

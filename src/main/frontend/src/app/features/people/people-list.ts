@@ -26,6 +26,7 @@ import { QuickAddBar } from './quick-add-bar';
 import { PasteClaimsBox } from './paste-claims-box';
 import { ImportPeopleBox } from './import-people-box';
 import { TreeSearchBox } from './tree-search-box';
+import { TreeExportButton } from './tree-export-button';
 import { SheetCompareBox } from '../summary/sheet-compare-box';
 import { PoolList } from '../pools/pool-list';
 import { CrewList } from '../crews/crew-list';
@@ -53,7 +54,7 @@ const NO_LEAVE: Leave = { holds: [], retiredFrom: null };
 // The signed-in user may watch a person: they are told when a claim of theirs is settled.
 @Component({
   selector: 'app-people-list',
-  imports: [ReactiveFormsModule, PersonClaims, RateForm, PeriodForm, QuickAddBar, PasteClaimsBox, ImportPeopleBox, SummaryPanel, ClassicSummaryPanel, HeaderCounters, StewardDashboard, PoolList, CrewList, PersonPlans, PlanGenerateBox, TreeSearchBox, SheetCompareBox, FigurePipe],
+  imports: [ReactiveFormsModule, PersonClaims, RateForm, PeriodForm, QuickAddBar, PasteClaimsBox, ImportPeopleBox, SummaryPanel, ClassicSummaryPanel, HeaderCounters, StewardDashboard, PoolList, CrewList, PersonPlans, PlanGenerateBox, TreeSearchBox, TreeExportButton, SheetCompareBox, FigurePipe],
   template: `
     <app-header-counters [peopleCount]="people().length" [statuses]="statusSummary()"
       [dueTotal]="dueTotal()" [overdueTotal]="overdueTotal()"
@@ -98,6 +99,7 @@ const NO_LEAVE: Leave = { holds: [], retiredFrom: null };
       <app-plan-generate-box [refresh]="plansGenerated" />
       <app-import-people-box (imported)="peopleImported($event)" />
       <app-tree-search-box />
+      <app-tree-export-button />
       <section aria-labelledby="snapshot-heading">
         <h3 id="snapshot-heading">Compare snapshots</h3>
         <label>From <input type="date" data-testid="snapshot-from" [value]="snapshotFrom()" (input)="snapshotFrom.set($any($event.target).value)" /></label>
