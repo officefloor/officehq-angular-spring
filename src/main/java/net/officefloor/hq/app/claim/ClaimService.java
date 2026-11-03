@@ -4,6 +4,7 @@ import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.util.List;
 import java.util.Optional;
+import java.util.Objects;
 import net.officefloor.hq.app.Audit;
 import net.officefloor.hq.app.history.History;
 import net.officefloor.hq.app.holiday.HolidayService;
@@ -210,7 +211,7 @@ public class ClaimService {
      *  closed period, and any change the permission matrix does not allow the user's role. A clerk settling a claim whose due is above the sheet's clerk limit leaves it pending
      *  a steward's approval instead; but settling a claim that needs a proof and has none is refused
      *  before the clerk limit is considered. Opening a claim whose due is above the review threshold
-     *  in force on its date leaves it in review instead, with no number until a steward reviews it. */
+     *  in force on its date leaves it in review instead. A claim takes its number only when it is settled or approved. */
     @Transactional
     public Claim changeStatus(String sheetId, String user, long claimId, ClaimStatus to) {
         return changeStatus(sheetId, user, claimId, to, null);
@@ -304,14 +305,12 @@ public class ClaimService {
                 // statement bound it to, if any, and its late charge); later changes to rates, the
                 // late percent and the sheet's today do not alter it.
                 claim.setSettledDue(dueThen != null ? dueThen : dues.figure(sheetId, person, claim));
+                numberOnSettle(sheetId, claim);
             }
             // A void claim keeps the number it had (never reused).
             claim.setStatus(becomes);
             if (becomes == ClaimStatus.VOID) {
                 claim.setVoidReason(voidReason);
-            }
-            if (becomes == ClaimStatus.OPEN) {
-                claim.setNumber(nextNumber(sheetId, claim.getDueBy()));
             }
             if (becomes == ClaimStatus.OPEN || becomes == ClaimStatus.REVIEW) {
                 claim.setOpenedBy(user);
@@ -360,7 +359,7 @@ public class ClaimService {
         return dues.figure(then.basis(), personThen, claimThen);
     }
 
-    /** Review a claim in review: it becomes open, taking its number then, and keeps who opened it.
+    /** Review a claim in review: it becomes open (still with no number), and keeps who opened it.
      *  Refused unless the claim is in review (409), the user is a steward (403), its period is open,
      *  and its person is under its period's cap of open claims. */
     @Transactional
@@ -378,7 +377,6 @@ public class ClaimService {
             Person person = person(sheetId, claim.getPersonId());
             audit.recordOnCommit(record("CLAIM_REVIEWED", sheetId, user, person, claim));
             claim.setStatus(ClaimStatus.OPEN);
-            claim.setNumber(nextNumber(sheetId, claim.getDueBy()));
             logStatus(sheetId, user, person, claim);
             Claim saved = claims.saveAndFlush(claim);
             audit.recordOnCommit(record("CLAIM_OPENED", sheetId, user, person, saved));
@@ -599,6 +597,7 @@ public class ClaimService {
         return rollup.tracking(sheetId, user, () -> {
             Person person = person(sheetId, claim.getPersonId());
             claim.setSettledDue(dues.figure(sheetId, person, claim));
+            numberOnSettle(sheetId, claim);
             claim.setStatus(ClaimStatus.SETTLED);
             logStatus(sheetId, user, person, claim);
             Claim saved = claims.saveAndFlush(claim);
@@ -655,7 +654,7 @@ public class ClaimService {
     }
 
     /** Move a draft, open or pending claim to another person on the sheet. It keeps its date and
-     *  status, takes the next number (a draft, having none, gets none), loses any figure a statement bound it to, and is listed as its new person's newest
+     *  status (an unsettled claim has no number to keep), loses any figure a statement bound it to, and is listed as its new person's newest
      *  claim. Refused unless the permission matrix allows the user's role to reassign, and when the claim is settled or void, the person
      *  is the one it is already for, the claim's period is closed, or the claim is dated after the
      *  new person's retirement day. */
@@ -685,11 +684,8 @@ public class ClaimService {
         Person to = person(sheetId, toPersonId);
         refuseRetired(to, claim.getDate());
         return rollup.tracking(sheetId, user, () -> {
+            // an unsettled claim has no number yet; one numbered before numbering moved to settlement keeps it
             claim.moveTo(to.getId(), claims.nextListed());
-            if (claim.getNumber() != null) {
-                // a moved claim takes the next number; its old one is never used again
-                claim.setNumber(nextNumber(sheetId, claim.getDueBy()));
-            }
             Claim saved = claims.saveAndFlush(claim);
             audit.recordOnCommit(record("CLAIM_REASSIGNED", sheetId, user, to, saved)
                     + " from=" + from.getName() + " to=" + to.getName());
@@ -774,7 +770,7 @@ public class ClaimService {
 
     /** Split an amount (above 0.00 and below the claim's amount) off an open claim: it keeps the rest
      *  of its amount and loses any figure a statement bound it to, and a new open claim of the amount,
-     *  the same date and note, the next number, opened by the user and due by the terms in force on
+     *  the same date and note, no number yet, opened by the user and due by the terms in force on
      *  the date, is listed as its person's newest claim. Refused when the claim is not open (or is
      *  deferred), its period is closed, the amount is out of range, or the permission matrix does not
      *  allow the user's role to open a claim. */
@@ -796,11 +792,11 @@ public class ClaimService {
             Person person = person(sheetId, claim.getPersonId());
             int terms = terms(sheetId, person, sheets.today(sheetId));
             LocalDate dueBy = holidays.businessDaysAfter(sheetId, claim.getDate(), terms);
-            Claim draft = claim.splitOff(part, nextNumber(sheetId, dueBy), user, dueBy, terms);
+            Claim draft = claim.splitOff(part, null, user, dueBy, terms);
             logStatus(sheetId, user, person, draft);
             Claim original = claims.saveAndFlush(claim);
             Claim split = claims.saveAndFlush(draft);
-            audit.recordOnCommit(record("CLAIM_SPLIT", sheetId, user, person, original) + " into=" + split.getNumber());
+            audit.recordOnCommit(record("CLAIM_SPLIT", sheetId, user, person, original) + " into=" + Objects.requireNonNullElse(split.getNumber(), ""));
             audit.recordOnCommit(record("CLAIM_OPENED", sheetId, user, person, split));
             return new Split(original, split);
         });
@@ -866,7 +862,15 @@ public class ClaimService {
         return due == null ? "n/a" : due.setScale(2).toPlainString();
     }
 
-    /** The number for a claim due by the day opened now: under period numbering, the next in its period
+    /** Give a claim being settled (or approved) the next number in its sequence by its due-by day;
+     *  one numbered already (before numbering moved to settlement) keeps its number. */
+    private void numberOnSettle(String sheetId, Claim claim) {
+        if (claim.getNumber() == null) {
+            claim.setNumber(nextNumber(sheetId, claim.getDueBy()));
+        }
+    }
+
+    /** The number for a claim due by the day settled now: under period numbering, the next in its period
      *  (<period name>-<n>), or for one in no period the next X-<n>; otherwise the next on the sheet
      *  within the fiscal year of its due-by day (<FY>-<n>). */
     public String nextNumber(String sheetId, LocalDate dueBy) {

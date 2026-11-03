@@ -53,8 +53,8 @@ public class Claim {
     @Column(name = "status", nullable = false)
     private ClaimStatus status = ClaimStatus.DRAFT;
 
-    /** The claim's number on its sheet, given when it is opened and kept when voided; null for a
-     *  claim never opened. */
+    /** The claim's number on its sheet, given when it is settled (or approved) and kept when voided;
+     *  null for a claim never settled. */
     @Column(name = "number")
     private String number;
 

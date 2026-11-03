@@ -94,8 +94,13 @@ public class ClaimController {
             boolean opened = kept.getLog().isEmpty() ? then.getStatus() != ClaimStatus.DRAFT
                     : log.stream().anyMatch(l -> l.getStatus() == ClaimStatus.OPEN);
             boolean sentToReview = log.stream().anyMatch(l -> l.getStatus() == ClaimStatus.REVIEW);
+            // a claim is numbered when settled; one numbered when opened (before that) shows it once opened
+            boolean settledOnce = kept.getStatus() == ClaimStatus.SETTLED || kept.getStatus() == ClaimStatus.VOID;
+            boolean numbered = kept.getLog().isEmpty()
+                    ? then.getStatus() == ClaimStatus.SETTLED || then.getStatus() == ClaimStatus.VOID
+                    : settledOnce ? log.stream().anyMatch(l -> l.getStatus() == ClaimStatus.SETTLED) : opened;
             return new ClaimView(then.getId(), then.getPersonId(), then.getAmount().setScale(2).toPlainString(),
-                    then.getDate(), kept.getNote(), then.getStatus(), opened ? kept.getNumber() : null,
+                    then.getDate(), kept.getNote(), then.getStatus(), numbered ? kept.getNumber() : null,
                     then.getSettledDue() == null ? null : then.getSettledDue().setScale(2).toPlainString(),
                     opened || sentToReview ? kept.getOpenedBy() : null, then.isStated(),
                     then.getStatedDue() == null ? null : then.getStatedDue().setScale(2).toPlainString(),
