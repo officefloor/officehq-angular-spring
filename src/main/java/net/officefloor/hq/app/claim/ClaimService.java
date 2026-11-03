@@ -93,7 +93,7 @@ public class ClaimService {
             String corrects, String ref, String tags) {
         refuseRefUsed(sheetId, ref, null);
         LocalDate on = date != null ? date : sheets.entryDay(sheetId);
-        int terms = terms(sheetId, person(sheetId, personId), on);
+        int terms = terms(sheetId, person(sheetId, personId), sheets.today(sheetId));
         LocalDate dueBy = holidays.businessDaysAfter(sheetId, on, terms);
         refuseClosed(sheetId, dueBy);
         refuseRetired(person(sheetId, personId), on);
@@ -731,7 +731,7 @@ public class ClaimService {
         }
         return rollup.tracking(sheetId, user, () -> {
             Person person = person(sheetId, claim.getPersonId());
-            int terms = terms(sheetId, person, claim.getDate());
+            int terms = terms(sheetId, person, sheets.today(sheetId));
             LocalDate dueBy = holidays.businessDaysAfter(sheetId, claim.getDate(), terms);
             Claim draft = claim.splitOff(part, nextNumber(sheetId, dueBy), user, dueBy, terms);
             logStatus(sheetId, user, person, draft);
@@ -912,9 +912,10 @@ public class ClaimService {
         }
     }
 
-    /** The terms a claim of the person dated on the day has its due-by fixed with (the terms-th
-     *  business day after its date, skipping every Saturday, Sunday and holiday of the sheet): the
-     *  first of the person's own terms, their grade's and the sheet's, each as in force on the day. */
+    /** The terms a claim of the person made on the day (the sheet's today then) has its due-by fixed
+     *  with (the terms-th business day after its date, skipping every Saturday, Sunday and holiday of
+     *  the sheet): the first of the person's own terms, those of the grade they had on the day and the
+     *  sheet's, each as in force on the day. */
     private int terms(String sheetId, Person person, LocalDate on) {
         Integer own = person.termsOn(on);
         return own != null ? own : sheets.termsFor(sheetId, person.gradeOn(on), on);

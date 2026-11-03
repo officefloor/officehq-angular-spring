@@ -100,8 +100,8 @@ public class Claim {
     private LocalDate correctedDate;
 
     /** The day the claim is due by: fixed when it is made, the terms-th business day after its date
-     *  by the terms of its person's grade in force on that date; later changes to the terms or its
-     *  date leave it, but a holiday added on or before it fixes it again (see {@link #refixDueBy}). */
+     *  by the terms in force on the day it was made (the sheet's today then); later changes to the
+     *  terms or its date leave it, but a holiday added on or before it fixes it again (see {@link #refixDueBy}). */
     @Column(name = "due_by", nullable = false)
     private LocalDate dueBy;
 
