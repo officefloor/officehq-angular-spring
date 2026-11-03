@@ -1,0 +1,64 @@
+{
+  "checkpoint": 29,
+  "stack": {
+    "repo": "/home/daniel/officehq-angular-spring",
+    "origin": "git@github.com:officefloor/officehq-angular-spring.git",
+    "name": "officehq-angular-spring",
+    "base_ref": "base-empty",
+    "base_commit": "65cb8233ea38b2dfa6cfd18709e30cd18fdf3250"
+  },
+  "checkpoint_id": "cp29_reopen-period",
+  "phase": "early",
+  "type": "additive",
+  "mutates": [],
+  "replaced_tests": [],
+  "request": {
+    "spec": "A closed period can be reopened, by a steward only (anyone else is refused with an error on the\nperiod). Reopening makes its due-total live again: the claims in it show and total their current\nfigures, bound ones at their bound figure. Reopening writes PERIOD_REOPENED period=<name>.\n",
+    "prompt": "You are implementing ONE change to this application.\n\nFIRST read AGENTS.md \u2014 it states the working rules and how the app is tested, and sends you to\nDESIGN.md for the app's stack and conventions. Follow both.\n\nTHE CHANGE REQUEST:\nA closed period can be reopened, by a steward only (anyone else is refused with an error on the\nperiod). Reopening makes its due-total live again: the claims in it show and total their current\nfigures, bound ones at their bound figure. Reopening writes PERIOD_REOPENED period=<name>.\n\nYour work is verified by an automated Playwright UI test already installed under e2e/specs/.\nRead that spec: it declares the exact data-testid anchors, values, test data and any audit\nrecords it expects \u2014 match them. Run `bin/e2e` to build the app, start it, and run the test as\nyou work; iterate until it passes. Change whatever the request needs across the app \u2014 its stored\ndata, its server and its front end. Do NOT edit bin/build, bin/start, bin/stop, bin/e2e,\nAGENTS.md, CLAUDE.md, DESIGN.md, e2e/support/ or the test spec.\n"
+  },
+  "commit_sha": "1a2ad57e7c0557c1b63922ccaa5a168f8f3a5b95",
+  "reset_sha": "",
+  "preagent_sha": "537682be1ae10637a5ce6035acd2ad523ec60346",
+  "prev_sha": "537682be1ae10637a5ce6035acd2ad523ec60346",
+  "base_sha": "65cb8233ea38b2dfa6cfd18709e30cd18fdf3250",
+  "agent": {
+    "ok": true,
+    "cost_usd": 0.46083100000000005,
+    "input_tokens": 22,
+    "output_tokens": 5352,
+    "cache_read_tokens": 344955,
+    "cache_creation_tokens": 35589,
+    "num_turns": 12,
+    "duration_ms": 266160,
+    "duration_api_ms": 55105,
+    "model": "claude-opus-5-5",
+    "session_id": "b91a872d-cef7-43c5-9999-b4c21e073e19",
+    "stop_reason": "success",
+    "result_text": "Stewards can now reopen a closed period, and anyone else is refused with an error on the period. `bin/e2e` passes all 4 tests in the spec.\n\n**Server** (`period/`):\n- There's a new `POST /api/periods/reopen` endpoint.\n- It refuses anyone who isn't a steward (403), and a period that isn't closed (409). A refusal writes nothing to the store or the audit file.\n- On success it clears the period's closed flag and its saved due-total, and writes `PERIOD_REOPENED sheet=<id> by=<user> period=<name>`.\n\n**Front end** (`features/periods/periods.ts`):\n- Each period row has a `period-reopen` button.\n- A refusal shows in the row's existing `period-error`.\n- I merged the close and reopen handlers into one shared row-action helper.\n\nNo database change was needed. Claims already show their current figures, with stated (bound) claims at their bound figure. So once the saved total is cleared, the period's due-total goes back to being worked out live from its claims. In the main test that takes P1 from the 6.00 fixed at closing to 11.00.",
+    "error": "",
+    "attempts": [
+      {
+        "ok": true,
+        "limit_reached": false,
+        "retryable": false,
+        "timed_out": false,
+        "cost_usd": 0.46083100000000005,
+        "num_turns": 12,
+        "duration_ms": 266160,
+        "duration_api_ms": 55105,
+        "error": ""
+      }
+    ]
+  },
+  "agent_stream_file": "cp29.agent.jsonl",
+  "agent_diff_file": "cp29.agent.diff",
+  "build_log_file": null,
+  "tests": {
+    "gated": false,
+    "queued": true
+  },
+  "probe": null,
+  "pinned_touched": [],
+  "acceptance_touched": [],
+  "impact_gate": null
+}
