@@ -8,7 +8,8 @@ import { money } from '../claims/claims';
 // from and to date, both inclusive, no two periods overlapping. A claim belongs to the period whose
 // dates contain its date, or to none; each period shows the due of the claims that count in it.
 // A period can be closed: its due-total is then the one fixed when it was closed, and no claim
-// dated inside it can be added, edited, opened, settled or voided.
+// dated inside it can be added, edited, opened, settled or voided. A steward can reopen a closed
+// period, making its due-total live again.
 export interface Period {
   id: number;
   name: string;
@@ -100,6 +101,14 @@ export function inClosedPeriod(periods: readonly Period[], date: string): boolea
                 >
                   Close
                 </button>
+                <button
+                  type="button"
+                  data-testid="period-reopen"
+                  [attr.aria-label]="'Reopen period ' + p.name"
+                  (click)="reopen(p)"
+                >
+                  Reopen
+                </button>
                 @if (rowErrors().get(p.id); as err) {
                   <p role="alert" data-testid="period-error">{{ err }}</p>
                 }
@@ -154,7 +163,26 @@ export class Periods {
   }
 
   /** Close a period, fixing its due-total; the server refuses a period already closed. */
-  protected async close(p: Period): Promise<void> {
+  protected close(p: Period): Promise<void> {
+    return this.act(p, 'close', (status) =>
+      status === 409 ? 'Period ' + p.name + ' is already closed.' : 'Could not close period ' + p.name + '.',
+    );
+  }
+
+  /** Reopen a closed period, making its due-total live again; the server refuses anyone but a
+   *  steward, and a period that is not closed. */
+  protected reopen(p: Period): Promise<void> {
+    return this.act(p, 'reopen', (status) =>
+      status === 403
+        ? 'Only a steward can reopen period ' + p.name + '.'
+        : status === 409
+          ? 'Period ' + p.name + ' is not closed.'
+          : 'Could not reopen period ' + p.name + '.',
+    );
+  }
+
+  /** Take an action on a period's row, showing the error the server's refusal maps to. */
+  private async act(p: Period, action: string, refusal: (status: number) => string): Promise<void> {
     this.rowErrors.update((m) => {
       if (!m.has(p.id)) return m;
       const next = new Map(m);
@@ -163,17 +191,14 @@ export class Periods {
     });
     const sheet = this.session.sheet();
     try {
-      const closed = await firstValueFrom(
-        this.http.post<Period>('/api/periods/close', { sheet, user: this.session.user(), id: p.id }),
+      const changed = await firstValueFrom(
+        this.http.post<Period>('/api/periods/' + action, { sheet, user: this.session.user(), id: p.id }),
       );
       if (this.session.sheet() !== sheet) return;
-      this.periods.update((list) => list.map((x) => (x.id === closed.id ? closed : x)));
+      this.periods.update((list) => list.map((x) => (x.id === changed.id ? changed : x)));
     } catch (e) {
       if (this.session.sheet() !== sheet) return;
-      const err =
-        e instanceof HttpErrorResponse && e.status === 409
-          ? 'Period ' + p.name + ' is already closed.'
-          : 'Could not close period ' + p.name + '.';
+      const err = refusal(e instanceof HttpErrorResponse ? e.status : 0);
       this.rowErrors.update((m) => new Map(m).set(p.id, err));
     }
   }

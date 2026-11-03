@@ -13,7 +13,7 @@ import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 
-/** Listing, adding and closing the periods on a sheet. */
+/** Listing, adding, closing and reopening the periods on a sheet. */
 @RestController
 @RequestMapping("/api/periods")
 public class PeriodController {
@@ -57,6 +57,11 @@ public class PeriodController {
     @PostMapping("/add")
     public PeriodResponse add(@Valid @RequestBody AddPeriodRequest req) {
         return response(service.add(req.sheet().trim(), req.user().trim(), req.name().trim(), req.from(), req.to()));
+    }
+
+    @PostMapping("/reopen")
+    public PeriodResponse reopen(@Valid @RequestBody ClosePeriodRequest req) {
+        return response(service.reopen(req.sheet().trim(), req.user().trim(), req.id()));
     }
 
     @PostMapping("/close")

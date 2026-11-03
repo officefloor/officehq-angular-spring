@@ -5,6 +5,8 @@ import java.util.List;
 import java.math.BigDecimal;
 import java.math.RoundingMode;
 import net.officefloor.hq.app.Audit;
+import net.officefloor.hq.app.role.Role;
+import net.officefloor.hq.app.role.RoleService;
 import net.officefloor.hq.app.rollup.RollupService;
 import net.officefloor.hq.app.sheet.SheetRepository;
 import net.officefloor.hq.app.sheet.SheetService;
@@ -18,7 +20,8 @@ import org.springframework.web.server.ResponseStatusException;
  * The sheet's periods: added on the screen, each a name unique on the sheet (without regard to
  * case) and a from and to date, both inclusive; no two periods on a sheet overlap. A period can be
  * closed once: closing fixes its due-total at that moment, and no claim dated inside a closed
- * period can be added, edited, opened, settled or voided.
+ * period can be added, edited, opened, settled or voided. A steward can reopen a closed period, which
+ * makes its due-total live again.
  */
 @Service
 public class PeriodService {
@@ -28,10 +31,12 @@ public class PeriodService {
     private final SheetRepository sheetRows;
     private final Audit audit;
     private final RollupService rollup;
+    private final RoleService roles;
 
     public PeriodService(PeriodRepository periods, SheetService sheets, SheetRepository sheetRows, Audit audit,
-            RollupService rollup) {
+            RollupService rollup, RoleService roles) {
         this.rollup = rollup;
+        this.roles = roles;
         this.periods = periods;
         this.sheets = sheets;
         this.sheetRows = sheetRows;
@@ -84,6 +89,28 @@ public class PeriodService {
         Period saved = periods.saveAndFlush(period);
         audit.recordOnCommit("PERIOD_CLOSED sheet=" + sheetId + " by=" + user + " period=" + saved.getName()
                 + " total=" + due.setScale(2, RoundingMode.UNNECESSARY).toPlainString());
+        return saved;
+    }
+
+    /**
+     * Reopen a closed period, making its due-total live again; refused (403) for anyone but a
+     * steward and (409) when the period is not closed.
+     */
+    @Transactional
+    public Period reopen(String sheetId, String user, long id) {
+        sheetRows.findLockedById(sheetId)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "No such sheet."));
+        Period period = periods.findByIdAndSheetId(id, sheetId)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "No such period on this sheet."));
+        if (!Role.STEWARD.equals(roles.roleOf(sheetId, user))) {
+            throw new ResponseStatusException(HttpStatus.FORBIDDEN, "Only a steward can reopen a period.");
+        }
+        if (!period.isClosed()) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT, "That period is not closed.");
+        }
+        period.reopen();
+        Period saved = periods.saveAndFlush(period);
+        audit.recordOnCommit("PERIOD_REOPENED sheet=" + sheetId + " by=" + user + " period=" + saved.getName());
         return saved;
     }
 
