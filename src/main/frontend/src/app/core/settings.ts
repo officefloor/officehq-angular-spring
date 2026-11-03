@@ -56,6 +56,9 @@ export interface Settings {
   /** The high score threshold: while both thresholds are set, a person whose score is at or above
    *  it is HIGH; null when blank. Not dated. */
   scoreHigh: number | null;
+  /** The score log switch: while on, changing the sheet's today records each person's score on
+   *  the day being left. Not dated. */
+  scoreLog: boolean;
   /** The entry date (yyyy-mm-dd): while it is set, a new claim's date when none is given; null when
    *  blank (off, the sheet's today then stands in). */
   entryDate: string | null;
@@ -179,6 +182,9 @@ export const TERMS = /^\d{1,4}$/;
 
 /** A score threshold: a whole number, which may be below 0. */
 export const SCORE = /^-?\d{1,6}$/;
+
+/** A switch setting turned on: "on" (blank is off). */
+export const SWITCH_ON = /^on$/;
 
 /** A fiscal year start month: 1 to 12. */
 export const FISCAL_MONTH = /^(0?[1-9]|1[0-2])$/;
@@ -355,6 +361,12 @@ export class SheetSettings {
   setScoreHigh(value: string | null): Promise<Settings> {
     const [sheetId, headers] = this.active();
     return firstValueFrom(this.http.put<Settings>(`${this.url(sheetId)}/settings/score-high`, { value }, { headers })).then((settings) => this.record(sheetId, settings));
+  }
+
+  /** Turn the score log switch on ("on") or off (null for blank). */
+  setScoreLog(value: string | null): Promise<Settings> {
+    const [sheetId, headers] = this.active();
+    return firstValueFrom(this.http.put<Settings>(`${this.url(sheetId)}/settings/score-log`, { value }, { headers })).then((settings) => this.record(sheetId, settings));
   }
 
   /** Set the entry date; null for blank (off). */

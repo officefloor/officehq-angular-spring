@@ -72,6 +72,11 @@ public class Sheet {
     @Column(name = "score_high")
     private Integer scoreHigh;
 
+    /** The score log switch: while on, changing the sheet's today records each person's score on
+     *  the day being left; false (blank) is off. */
+    @Column(name = "score_log")
+    private boolean scoreLog;
+
     /** Entry date: while it is set, the default date of a new claim in place of the sheet's today;
      *  null (blank) is off. */
     @Column(name = "entry_date")
@@ -196,6 +201,14 @@ public class Sheet {
 
     public void setScoreHigh(Integer scoreHigh) {
         this.scoreHigh = scoreHigh;
+    }
+
+    public boolean isScoreLog() {
+        return scoreLog;
+    }
+
+    public void setScoreLog(boolean scoreLog) {
+        this.scoreLog = scoreLog;
     }
 
     public LocalDate getEntryDate() {

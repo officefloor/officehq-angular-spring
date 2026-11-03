@@ -1,6 +1,7 @@
 package net.officefloor.hq.app.rollup;
 
 import java.math.BigDecimal;
+import java.math.RoundingMode;
 import java.time.LocalDate;
 import java.util.ArrayList;
 import java.util.Comparator;
@@ -14,6 +15,7 @@ import java.util.stream.Collectors;
 import net.officefloor.hq.app.Audit;
 import net.officefloor.hq.app.claim.Claim;
 import net.officefloor.hq.app.claim.ClaimRepository;
+import net.officefloor.hq.app.claim.ClaimStatus;
 import net.officefloor.hq.app.claim.Dues;
 import net.officefloor.hq.app.history.History;
 import net.officefloor.hq.app.person.Person;
@@ -103,6 +105,28 @@ public class Rollup {
             });
         }
         return result;
+    }
+
+    /** Record in the audit one SCORE line per person (in list order) with their score as it stands
+     *  now: their settled-total divided by 100, minus 5 for each of their overdue claims that count,
+     *  rounded half to even to a whole number. */
+    @Transactional(propagation = Propagation.MANDATORY)
+    public void recordScores(String sheetId, String user) {
+        String prefix = " sheet=" + sheetId + " by=" + user;
+        Dues.Basis basis = dues.now(sheetId);
+        LocalDate today = basis.today();
+        Map<Long, List<Claim>> byPerson = claims.findBySheetIdOrderByListedDesc(sheetId).stream()
+                .collect(Collectors.groupingBy(Claim::getPersonId));
+        for (Person person : people.findBySheetIdOrderByPositionAscIdAsc(sheetId)) {
+            List<Claim> theirs = Dues.live(person, byPerson.getOrDefault(person.getId(), List.of()), today);
+            BigDecimal settled = theirs.stream().filter(c -> c.getStatus() == ClaimStatus.SETTLED)
+                    .map(c -> dues.figure(basis, person, c)).filter(Objects::nonNull)
+                    .reduce(BigDecimal.ZERO.setScale(2), BigDecimal::add);
+            long overdue = theirs.stream().filter(c -> dues.overdue(basis, person, c)).count();
+            BigDecimal score = settled.subtract(BigDecimal.valueOf(500 * overdue))
+                    .divide(BigDecimal.valueOf(100)).setScale(0, RoundingMode.HALF_EVEN);
+            audit.recordOnCommit("SCORE" + prefix + " name=" + person.getName() + " score=" + score.toPlainString());
+        }
     }
 
     /** Record in the audit one SNAPSHOT line per person (in the order they were added) with their

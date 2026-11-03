@@ -4,7 +4,7 @@ import { Pools } from '../../core/pools';
 import { Session } from '../../core/session';
 import { Grade } from '../../core/people';
 import {
-  DEFAULT_GRADE, LATE_PCT, LIMIT, PERM_ACTIONS, PERM_ROLES, POLICY_DATE, PROOF_KIND_LIST, PermAction, ROLES, ROUNDING, STANDING_PERMISSIONS, TERMS, SCORE, FISCAL_MONTH, Role, RoleName,
+  DEFAULT_GRADE, LATE_PCT, LIMIT, PERM_ACTIONS, PERM_ROLES, POLICY_DATE, PROOF_KIND_LIST, PermAction, ROLES, ROUNDING, STANDING_PERMISSIONS, TERMS, SCORE, SWITCH_ON, FISCAL_MONTH, Role, RoleName,
   SheetSettings,
 } from '../../core/settings';
 import { FigurePipe } from '../../core/figure';
@@ -125,6 +125,8 @@ import { FigurePipe } from '../../core/figure';
         <input id="setting-score-mid" data-testid="setting-score-mid" formControlName="scoreMid" inputmode="numeric" />
         <label for="setting-score-high">Score high threshold (with the mid one set, a score at or above it is HIGH; blank: no bands)</label>
         <input id="setting-score-high" data-testid="setting-score-high" formControlName="scoreHigh" inputmode="numeric" />
+        <label for="setting-score-log">Score log (on: changing today records each person's score on the day being left; blank: off)</label>
+        <input id="setting-score-log" data-testid="setting-score-log" formControlName="scoreLog" />
         <label for="setting-entry-date">Entry date (a new claim's date when none is given; blank: off, the sheet's today)</label>
         <input id="setting-entry-date" data-testid="setting-entry-date" type="date" formControlName="entryDate" />
         <label for="setting-pot">Pot (a balanced pool's members cut it by their shares; blank: none)</label>
@@ -181,6 +183,7 @@ import { FigurePipe } from '../../core/figure';
       <p>Review SLA: <span data-testid="setting-review-sla-current">{{ reviewSla() ?? '' }}</span></p>
       <p>Score mid threshold: <span data-testid="setting-score-mid-current">{{ scoreMid() ?? '' }}</span></p>
       <p>Score high threshold: <span data-testid="setting-score-high-current">{{ scoreHigh() ?? '' }}</span></p>
+      <p>Score log: <span data-testid="setting-score-log-current">{{ scoreLog() ? 'on' : '' }}</span></p>
       <p>Entry date: <span data-testid="setting-entry-date-current">{{ entryDate() ?? '' }}</span></p>
       <p>Pot: <span data-testid="setting-pot-current">{{ pot() ?? '' | figure }}</span></p>
       <p>Alert threshold: <span data-testid="setting-alert-threshold-current">{{ alertThreshold() ?? '' | figure }}</span></p>
@@ -256,6 +259,8 @@ export class SettingsForm {
   protected readonly reviewSla = signal<number | null>(null);
   protected readonly scoreMid = signal<number | null>(null);
   protected readonly scoreHigh = signal<number | null>(null);
+  /** Whether the score log switch is on. */
+  protected readonly scoreLog = signal(false);
   protected readonly entryDate = signal<string | null>(null);
   protected readonly pot = signal<string | null>(null);
   protected readonly alertThreshold = signal<string | null>(null);
@@ -332,6 +337,7 @@ export class SettingsForm {
     reviewSla: new FormControl('', { nonNullable: true }),
     scoreMid: new FormControl('', { nonNullable: true }),
     scoreHigh: new FormControl('', { nonNullable: true }),
+    scoreLog: new FormControl('', { nonNullable: true }),
     entryDate: new FormControl('', { nonNullable: true }),
     pot: new FormControl('', { nonNullable: true }),
     alertThreshold: new FormControl('', { nonNullable: true }),
@@ -380,6 +386,7 @@ export class SettingsForm {
       this.reviewSla.set(null);
       this.scoreMid.set(null);
       this.scoreHigh.set(null);
+      this.scoreLog.set(false);
       this.entryDate.set(null);
       this.pot.set(null);
       this.alertThreshold.set(null);
@@ -399,14 +406,14 @@ export class SettingsForm {
     if (this.submitting) return;
     this.settingsError.set('');
     const { clerkLimit, clerkLimitFrom, gradeClerkLimits, cap, capFrom, proofThreshold, proofThresholdFrom, gradeProofThresholds, noteThreshold, noteThresholdFrom, reviewThreshold, reviewThresholdFrom, floor, floorFrom, rounding, roundingFrom, terms, termsFrom, gradeTerms, gradeGraces, latePct,
-      latePctFrom, policyDate, periodNumberingFrom, graceDays, escalateAfter, reviewSla, scoreMid, scoreHigh, entryDate, pot, alertThreshold, parent, proofKinds, defaultGrade, fiscalStartMonth, permissions } = this.settingsForm.controls;
+      latePctFrom, policyDate, periodNumberingFrom, graceDays, escalateAfter, reviewSla, scoreMid, scoreHigh, scoreLog, entryDate, pot, alertThreshold, parent, proofKinds, defaultGrade, fiscalStartMonth, permissions } = this.settingsForm.controls;
     const changed = (...cs: AbstractControl[]) => cs.some((c) => c.dirty || c.touched);
     const none = !changed(clerkLimit, clerkLimitFrom) && !changed(gradeClerkLimits) && !changed(cap, capFrom)
       && !changed(proofThreshold, proofThresholdFrom) && !changed(gradeProofThresholds) && !changed(noteThreshold, noteThresholdFrom)
       && !changed(reviewThreshold, reviewThresholdFrom)
       && !changed(floor, floorFrom) && !changed(rounding, roundingFrom)
       && !changed(terms, termsFrom) && !changed(gradeTerms) && !changed(gradeGraces) && !changed(latePct, latePctFrom) && !changed(policyDate)
-      && !changed(periodNumberingFrom) && !changed(graceDays) && !changed(escalateAfter) && !changed(reviewSla) && !changed(scoreMid) && !changed(scoreHigh) && !changed(entryDate) && !changed(pot) && !changed(alertThreshold) && !changed(parent) && !changed(proofKinds) && !changed(defaultGrade) && !changed(fiscalStartMonth) && !changed(permissions);
+      && !changed(periodNumberingFrom) && !changed(graceDays) && !changed(escalateAfter) && !changed(reviewSla) && !changed(scoreMid) && !changed(scoreHigh) && !changed(scoreLog) && !changed(entryDate) && !changed(pot) && !changed(alertThreshold) && !changed(parent) && !changed(proofKinds) && !changed(defaultGrade) && !changed(fiscalStartMonth) && !changed(permissions);
     /** A from-date typed, or null when blank (the sheet's today). */
     const from = (c: AbstractControl<string>) => c.value.trim() || null;
     const fromsToSave: AbstractControl<string>[] = [];
@@ -466,6 +473,8 @@ export class SettingsForm {
     const saveScoreMid = changed(scoreMid) || (none && scoreMidValue !== '');
     const scoreHighValue = scoreHigh.value.trim();
     const saveScoreHigh = changed(scoreHigh) || (none && scoreHighValue !== '');
+    const scoreLogValue = scoreLog.value.trim();
+    const saveScoreLog = changed(scoreLog) || (none && scoreLogValue !== '');
     const entryDateValue = entryDate.value.trim();
     const saveEntryDate = changed(entryDate) || (none && entryDateValue !== '');
     const potValue = pot.value.trim();
@@ -578,6 +587,10 @@ export class SettingsForm {
     }
     if (saveScoreHigh && scoreHighValue !== '' && !SCORE.test(scoreHighValue)) {
       this.settingsError.set('Enter a score high threshold as a whole number, or leave it blank for no bands.');
+      return;
+    }
+    if (saveScoreLog && scoreLogValue !== '' && !SWITCH_ON.test(scoreLogValue)) {
+      this.settingsError.set('Enter on for the score log, or leave it blank for off.');
       return;
     }
     if (saveEntryDate && entryDateValue !== '' && !POLICY_DATE.test(entryDateValue)) {
@@ -765,6 +778,12 @@ export class SettingsForm {
         scoreHigh.markAsPristine();
         scoreHigh.markAsUntouched();
       }
+      if (saveScoreLog) {
+        const saved = await this.api.setScoreLog(scoreLogValue === '' ? null : scoreLogValue);
+        this.scoreLog.set(saved.scoreLog);
+        scoreLog.markAsPristine();
+        scoreLog.markAsUntouched();
+      }
       if (saveEntryDate) {
         const saved = await this.api.setEntryDate(entryDateValue === '' ? null : entryDateValue);
         this.entryDate.set(saved.entryDate);
@@ -881,6 +900,7 @@ export class SettingsForm {
         this.reviewSla.set(settings.reviewSla);
         this.scoreMid.set(settings.scoreMid);
         this.scoreHigh.set(settings.scoreHigh);
+        this.scoreLog.set(settings.scoreLog);
         this.entryDate.set(settings.entryDate);
         this.pot.set(settings.pot);
         this.alertThreshold.set(settings.alertThreshold);

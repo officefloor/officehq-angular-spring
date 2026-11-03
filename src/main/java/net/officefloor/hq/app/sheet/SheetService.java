@@ -159,6 +159,9 @@ public class SheetService {
         if (!today.equals(sheet.getToday())) {
             claims.releaseEditLocks(id);
         }
+        if (sheet.isScoreLog()) {
+            rollup.recordScores(id, user);
+        }
         rollup.recordSnapshot(id, user);
         return rollup.tracking(id, user, () -> {
             sheet.setToday(today);
@@ -573,6 +576,23 @@ public class SheetService {
         Sheet saved = sheets.saveAndFlush(sheet);
         audit.recordOnCommit("SETTING_CHANGED sheet=" + id + " by=" + user + " key=score-high value="
                 + (value == null ? "" : value.toString()));
+        return saved;
+    }
+
+    /** Whether the sheet's score log switch is on. */
+    @Transactional(readOnly = true)
+    public boolean scoreLog(String id) {
+        return sheets.findById(id).map(Sheet::isScoreLog).orElse(false);
+    }
+
+    /** Turn the sheet's score log switch on or off (blank); recorded even when unchanged. */
+    @Transactional
+    public synchronized Sheet setScoreLog(String id, String user, boolean on) {
+        Sheet sheet = load(id, user);
+        sheet.setScoreLog(on);
+        Sheet saved = sheets.saveAndFlush(sheet);
+        audit.recordOnCommit("SETTING_CHANGED sheet=" + id + " by=" + user + " key=score-log value="
+                + (on ? "on" : ""));
         return saved;
     }
 

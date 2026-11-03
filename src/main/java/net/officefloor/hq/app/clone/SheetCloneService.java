@@ -123,6 +123,7 @@ public class SheetCloneService {
         to.setReviewSla(from.getReviewSla());
         to.setScoreMid(from.getScoreMid());
         to.setScoreHigh(from.getScoreHigh());
+        to.setScoreLog(from.isScoreLog());
         to.setEntryDate(from.getEntryDate());
         to.setPot(from.getPot());
         to.setAlertThreshold(from.getAlertThreshold());
