@@ -673,6 +673,27 @@ public class SheetService {
                 threshold == null ? "" : threshold.setScale(2).toPlainString(), from);
     }
 
+    /** The due above which a claim on the sheet dated on the day goes to review when it is opened:
+     *  the review threshold in force on it; null when there is none. */
+    @Transactional(readOnly = true)
+    public BigDecimal reviewThreshold(String id, LocalDate day) {
+        return inForce(id, "review-threshold", day).map(SettingValue::getValue).orElse(null);
+    }
+
+    /** The review threshold in force on the sheet's today. */
+    @Transactional(readOnly = true)
+    public BigDecimal reviewThreshold(String id) {
+        return reviewThreshold(id, today(id));
+    }
+
+    /** Record the sheet's review threshold (null: none) from a date (null: the sheet's today). It
+     *  changes no figure. */
+    @Transactional
+    public synchronized Sheet setReviewThreshold(String id, String user, BigDecimal threshold, LocalDate from) {
+        return record(id, user, "review-threshold", threshold,
+                threshold == null ? "" : threshold.setScale(2).toPlainString(), from);
+    }
+
     /** The actions the permission matrix covers. */
     public static final List<String> ACTIONS = List.of("open", "settle", "void", "reassign", "close", "reopen");
 

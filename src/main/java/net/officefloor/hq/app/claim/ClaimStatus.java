@@ -5,19 +5,21 @@ package net.officefloor.hq.app.claim;
  *  again); a draft, open or pending claim may be voided, and a steward may void a settled claim
  *  within days of its settlement (see {@code ClaimService}). A voided claim cannot change status.
  *  A draft may be deleted, and restored to a draft on the same sheet-today; a deleted claim counts
- *  nowhere. */
+ *  nowhere. A claim whose due is above the review threshold goes to review when opened, until a
+ *  steward reviews it (open); while in review it counts nowhere and may only be voided. */
 public enum ClaimStatus {
-    DRAFT, OPEN, PENDING, SETTLED, VOID, DELETED;
+    DRAFT, OPEN, PENDING, SETTLED, VOID, DELETED, REVIEW;
 
     /** Whether a claim at this status may move to {@code to}: a pending claim moves to settled or
-     *  back to open only by approval or rejection, which ask for it by {@link #PENDING} itself. */
+     *  back to open only by approval or rejection, which ask for it by {@link #PENDING} itself; a
+     *  claim goes to review (and from it to open) only by opening and reviewing it. */
     public boolean canBecome(ClaimStatus to) {
         return switch (to) {
             case OPEN -> this == DRAFT;
             case SETTLED, PENDING -> this == OPEN;
-            case VOID -> this == DRAFT || isOpen();
+            case VOID -> this == DRAFT || this == REVIEW || isOpen();
             case DELETED -> this == DRAFT;
-            case DRAFT -> false;
+            case DRAFT, REVIEW -> false;
         };
     }
 

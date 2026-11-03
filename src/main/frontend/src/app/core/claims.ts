@@ -9,11 +9,14 @@ import { Session } from './session';
 /** Where a claim is in its life: DRAFT, then OPEN, then SETTLED; a clerk's settle above the clerk
  *  limit leaves it PENDING until a steward approves it (SETTLED) or rejects it (OPEN again); a
  *  DRAFT, OPEN or PENDING claim may be VOID, and a steward may void a SETTLED one within 7 days of
- *  its settlement. A DRAFT may be DELETED (counting nowhere), and restored to DRAFT the same day. */
-export type ClaimStatus = 'DRAFT' | 'OPEN' | 'PENDING' | 'SETTLED' | 'VOID' | 'DELETED';
+ *  its settlement. A DRAFT may be DELETED (counting nowhere), and restored to DRAFT the same day.
+ *  Opening a claim whose due is above the review threshold leaves it in REVIEW (counting nowhere,
+ *  with no number) until a steward reviews it (OPEN); a REVIEW claim may be VOID. */
+export type ClaimStatus = 'DRAFT' | 'OPEN' | 'PENDING' | 'SETTLED' | 'VOID' | 'DELETED' | 'REVIEW';
 
 /** A change of status a claim can be asked for. */
-export type ClaimAction = 'open' | 'settle' | 'resettle' | 'void' | 'approve' | 'reject' | 'delete' | 'restore';
+export type ClaimAction = 'open' | 'settle' | 'resettle' | 'void' | 'approve' | 'reject' | 'delete' | 'restore'
+  | 'review';
 
 /** Whether a claim is open: OPEN, or PENDING approval of its settle. */
 export function isOpen(c: Claim): boolean {

@@ -718,7 +718,7 @@ export class PeopleList {
     })),
   );
   /** The statuses the summary counts claims of. */
-  private static readonly statuses = ['DRAFT', 'OPEN', 'PENDING', 'SETTLED', 'VOID'];
+  private static readonly statuses = ['DRAFT', 'OPEN', 'PENDING', 'SETTLED', 'VOID', 'REVIEW'];
   /** The ids of the claims selected for a bulk action. */
   protected readonly selected = signal<ReadonlySet<number>>(new Set());
   /** What the last bulk open did; null while one runs and before the first. */

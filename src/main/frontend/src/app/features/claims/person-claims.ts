@@ -15,11 +15,12 @@ const REFUSALS: Record<ClaimAction, string> = {
   open: 'Only a draft claim can be opened, and only while its person is under its period\'s cap of open claims.',
   settle: 'Only an open claim that is not deferred can be settled.',
   resettle: 'Only a settled claim can be re-settled.',
-  void: 'Only a draft, open or pending claim can be voided, or a settled one within 7 days of its settlement.',
+  void: 'Only a draft, review, open or pending claim can be voided, or a settled one within 7 days of its settlement.',
   approve: 'Only a pending claim can be approved.',
   reject: 'Only a pending claim can be rejected.',
   delete: 'Only a draft claim can be deleted.',
   restore: 'Only a deleted claim can be restored, on the day it was deleted.',
+  review: 'Only a claim in review can be reviewed.',
 };
 
 /** The message when an edit of a claim that is not a draft is refused. */
@@ -56,6 +57,9 @@ function refusal(e: unknown, action: ClaimAction): string {
   }
   if (e instanceof HttpErrorResponse && e.status === 403 && action === 'void') {
     return 'Your role may not void this claim; only a steward may void a settled claim.';
+  }
+  if (e instanceof HttpErrorResponse && e.status === 403 && action === 'review') {
+    return 'Only a steward can review a claim.';
   }
   if (e instanceof HttpErrorResponse && e.status === 403 && action === 'resettle') {
     return 'Only a steward can re-settle a claim.';
@@ -301,6 +305,8 @@ function splitRefusal(e: unknown): string {
             (input)="clearError(c)" />
           <button type="button" data-testid="claim-reject" (click)="act(c, 'reject', reason.value)"
             [attr.aria-label]="'Reject claim of ' + c.amount + ' on ' + c.date">Reject</button>
+          <button type="button" data-testid="claim-review" (click)="act(c, 'review')"
+            [attr.aria-label]="'Review claim of ' + c.amount + ' on ' + c.date">Review</button>
           <button type="button" data-testid="claim-proof" (click)="addProof(c)"
             [attr.aria-label]="'Add a proof to claim of ' + c.amount + ' on ' + c.date">Add proof</button>
           <button type="button" data-testid="claim-remind" (click)="remind(c)"

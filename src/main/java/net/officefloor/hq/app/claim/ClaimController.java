@@ -75,17 +75,18 @@ public class ClaimController {
 
         /** The claim as it stood at the end of a day: its figures as its revision then has them (see
          *  {@link History}), its log as far as that day, and its number and who opened it only once it
-         *  had been opened by then; its proofs as given by that day; what no revision keeps (its note, reference, tags, where it is listed) as it is
+         *  had been opened by then (who opened it once it had been sent to review); its proofs as given by that day; what no revision keeps (its note, reference, tags, where it is listed) as it is
          *  now (null: the claim is gone now; it is then listed last). No one has its editor open then. */
         static ClaimView asOf(Claim then, Claim now, LocalDate day) {
             Claim kept = now != null ? now : then;
             List<ClaimLog> log = kept.getLog().stream().filter(l -> !l.getOn().isAfter(day)).toList();
             boolean opened = kept.getLog().isEmpty() ? then.getStatus() != ClaimStatus.DRAFT
                     : log.stream().anyMatch(l -> l.getStatus() == ClaimStatus.OPEN);
+            boolean sentToReview = log.stream().anyMatch(l -> l.getStatus() == ClaimStatus.REVIEW);
             return new ClaimView(then.getId(), then.getPersonId(), then.getAmount().setScale(2).toPlainString(),
                     then.getDate(), kept.getNote(), then.getStatus(), opened ? kept.getNumber() : null,
                     then.getSettledDue() == null ? null : then.getSettledDue().setScale(2).toPlainString(),
-                    opened ? kept.getOpenedBy() : null, then.isStated(),
+                    opened || sentToReview ? kept.getOpenedBy() : null, then.isStated(),
                     then.getStatedDue() == null ? null : then.getStatedDue().setScale(2).toPlainString(),
                     then.isStatedNa(), kept.getCorrects(), then.roundsBy(),
                     kept.getListed() == null ? 0 : kept.getListed(), then.getDueBy(),
@@ -307,6 +308,13 @@ public class ClaimController {
             @Valid @RequestBody BulkForm form) {
         ClaimBulkService.Outcome outcome = bulk.open(sheetId.trim(), user.trim(), form.claimIds());
         return new BulkOpened(outcome.done(), outcome.refused());
+    }
+
+    @PostMapping("/claims/{claimId}/review")
+    public ClaimView review(@PathVariable @NotBlank @Size(max = 100) String sheetId,
+            @PathVariable long claimId,
+            @RequestHeader("X-User") @NotBlank @Size(max = 100) String user) {
+        return ClaimView.of(service.review(sheetId.trim(), user.trim(), claimId));
     }
 
     @PostMapping("/claims/{claimId}/delete")

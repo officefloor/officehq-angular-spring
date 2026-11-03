@@ -50,6 +50,12 @@ import {
         <label for="setting-note-threshold-from">Note threshold from (blank: today)</label>
         <input id="setting-note-threshold-from" data-testid="setting-note-threshold-from" type="date"
                formControlName="noteThresholdFrom" />
+        <label for="setting-review-threshold">Review threshold (a claim due above it goes to review when opened; blank: none)</label>
+        <input id="setting-review-threshold" data-testid="setting-review-threshold" formControlName="reviewThreshold"
+               inputmode="decimal" />
+        <label for="setting-review-threshold-from">Review threshold from (blank: today)</label>
+        <input id="setting-review-threshold-from" data-testid="setting-review-threshold-from" type="date"
+               formControlName="reviewThresholdFrom" />
         <label for="setting-floor">Floor</label>
         <input id="setting-floor" data-testid="setting-floor" formControlName="floor" inputmode="decimal" />
         <label for="setting-floor-from">Floor from (blank: today)</label>
@@ -127,6 +133,7 @@ import {
           <span [attr.data-testid]="'setting-proof-threshold-' + g + '-current'">{{ gradeProofThresholds()[g] ?? '' }}</span></p>
       }
       <p>Note threshold in force: <span data-testid="setting-note-threshold-current">{{ noteThreshold() ?? '' }}</span></p>
+      <p>Review threshold in force: <span data-testid="setting-review-threshold-current">{{ reviewThreshold() ?? '' }}</span></p>
       <p>Floor in force: <span data-testid="setting-floor-current">{{ floor() ?? '' }}</span></p>
       <p>Rounding mode in force: <span data-testid="setting-rounding-current">{{ rounding() ?? '' }}</span></p>
       <p>Terms in force: <span data-testid="setting-terms-current">{{ terms() ?? '' }}</span></p>
@@ -194,6 +201,7 @@ export class SettingsForm {
   protected readonly cap = signal<string | null>(null);
   protected readonly proofThreshold = signal<string | null>(null);
   protected readonly noteThreshold = signal<string | null>(null);
+  protected readonly reviewThreshold = signal<string | null>(null);
   protected readonly floor = signal<string | null>(null);
   protected readonly terms = signal<number | null>(null);
   protected readonly rounding = signal<string | null>(null);
@@ -241,6 +249,8 @@ export class SettingsForm {
     }),
     noteThreshold: new FormControl('', { nonNullable: true }),
     noteThresholdFrom: new FormControl('', { nonNullable: true }),
+    reviewThreshold: new FormControl('', { nonNullable: true }),
+    reviewThresholdFrom: new FormControl('', { nonNullable: true }),
     floor: new FormControl('', { nonNullable: true }),
     floorFrom: new FormControl('', { nonNullable: true }),
     rounding: new FormControl('', { nonNullable: true }),
@@ -298,6 +308,7 @@ export class SettingsForm {
       this.cap.set(null);
       this.proofThreshold.set(null);
       this.noteThreshold.set(null);
+      this.reviewThreshold.set(null);
       this.floor.set(null);
       this.rounding.set(null);
       this.terms.set(null);
@@ -324,11 +335,12 @@ export class SettingsForm {
   protected async saveSettings(): Promise<void> {
     if (this.submitting) return;
     this.settingsError.set('');
-    const { clerkLimit, clerkLimitFrom, cap, capFrom, proofThreshold, proofThresholdFrom, gradeProofThresholds, noteThreshold, noteThresholdFrom, floor, floorFrom, rounding, roundingFrom, terms, termsFrom, gradeTerms, gradeGraces, latePct,
+    const { clerkLimit, clerkLimitFrom, cap, capFrom, proofThreshold, proofThresholdFrom, gradeProofThresholds, noteThreshold, noteThresholdFrom, reviewThreshold, reviewThresholdFrom, floor, floorFrom, rounding, roundingFrom, terms, termsFrom, gradeTerms, gradeGraces, latePct,
       latePctFrom, policyDate, periodNumberingFrom, graceDays, entryDate, pot, alertThreshold, parent, fiscalStartMonth, permissions } = this.settingsForm.controls;
     const changed = (...cs: AbstractControl[]) => cs.some((c) => c.dirty || c.touched);
     const none = !changed(clerkLimit, clerkLimitFrom) && !changed(cap, capFrom)
       && !changed(proofThreshold, proofThresholdFrom) && !changed(gradeProofThresholds) && !changed(noteThreshold, noteThresholdFrom)
+      && !changed(reviewThreshold, reviewThresholdFrom)
       && !changed(floor, floorFrom) && !changed(rounding, roundingFrom)
       && !changed(terms, termsFrom) && !changed(gradeTerms) && !changed(gradeGraces) && !changed(latePct, latePctFrom) && !changed(policyDate)
       && !changed(periodNumberingFrom) && !changed(graceDays) && !changed(entryDate) && !changed(pot) && !changed(alertThreshold) && !changed(parent) && !changed(fiscalStartMonth) && !changed(permissions);
@@ -348,6 +360,8 @@ export class SettingsForm {
       .filter((t) => changed(t.control, t.fromControl) || (none && t.value !== ''));
     const noteThresholdValue = noteThreshold.value.trim();
     const saveNoteThreshold = changed(noteThreshold, noteThresholdFrom) || (none && noteThresholdValue !== '');
+    const reviewThresholdValue = reviewThreshold.value.trim();
+    const saveReviewThreshold = changed(reviewThreshold, reviewThresholdFrom) || (none && reviewThresholdValue !== '');
     const floorValue = floor.value.trim();
     const saveLimit = none || changed(clerkLimit, clerkLimitFrom);
     const saveFloor = none || changed(floor, floorFrom);
@@ -393,6 +407,7 @@ export class SettingsForm {
     if (saveThreshold) fromsToSave.push(proofThresholdFrom);
     gradeThresholdsToSave.forEach((t) => fromsToSave.push(t.fromControl));
     if (saveNoteThreshold) fromsToSave.push(noteThresholdFrom);
+    if (saveReviewThreshold) fromsToSave.push(reviewThresholdFrom);
     if (saveFloor && floorValue !== '') fromsToSave.push(floorFrom);
     if (saveRounding) fromsToSave.push(roundingFrom);
     if (saveTerms && termsValue !== '') fromsToSave.push(termsFrom);
@@ -421,6 +436,10 @@ export class SettingsForm {
     }
     if (saveNoteThreshold && noteThresholdValue !== '' && !LIMIT.test(noteThresholdValue)) {
       this.settingsError.set('Enter a note threshold of 0.00 or more with up to two decimals, or leave it blank for none.');
+      return;
+    }
+    if (saveReviewThreshold && reviewThresholdValue !== '' && !LIMIT.test(reviewThresholdValue)) {
+      this.settingsError.set('Enter a review threshold of 0.00 or more with up to two decimals, or leave it blank for none.');
       return;
     }
     if (saveFloor && !(none && floorValue === '') && !LIMIT.test(floorValue)) {
@@ -524,6 +543,15 @@ export class SettingsForm {
           from(noteThresholdFrom));
         this.noteThreshold.set(saved.noteThreshold);
         for (const c of [noteThreshold, noteThresholdFrom]) {
+          c.markAsPristine();
+          c.markAsUntouched();
+        }
+      }
+      if (saveReviewThreshold) {
+        const saved = await this.api.setReviewThreshold(reviewThresholdValue === '' ? null : reviewThresholdValue,
+          from(reviewThresholdFrom));
+        this.reviewThreshold.set(saved.reviewThreshold);
+        for (const c of [reviewThreshold, reviewThresholdFrom]) {
           c.markAsPristine();
           c.markAsUntouched();
         }
@@ -682,6 +710,7 @@ export class SettingsForm {
         this.cap.set(settings.cap);
         this.proofThreshold.set(settings.proofThreshold);
         this.noteThreshold.set(settings.noteThreshold);
+        this.reviewThreshold.set(settings.reviewThreshold);
         this.floor.set(settings.floor);
         this.rounding.set(settings.rounding);
         this.terms.set(settings.terms);

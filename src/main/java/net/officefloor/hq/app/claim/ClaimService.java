@@ -204,7 +204,8 @@ public class ClaimService {
      *  is settling a claim by the user who opened or last edited it, and any change to a claim whose due-by falls inside a
      *  closed period, and any change the permission matrix does not allow the user's role. A clerk settling a claim whose due is above the sheet's clerk limit leaves it pending
      *  a steward's approval instead; but settling a claim that needs a proof and has none is refused
-     *  before the clerk limit is considered. */
+     *  before the clerk limit is considered. Opening a claim whose due is above the review threshold
+     *  in force on its date leaves it in review instead, with no number until a steward reviews it. */
     @Transactional
     public Claim changeStatus(String sheetId, String user, long claimId, ClaimStatus to) {
         return changeStatus(sheetId, user, claimId, to, null);
@@ -268,7 +269,8 @@ public class ClaimService {
             refuseUnproved(sheetId, claim);
         }
         ClaimStatus becomes = to == ClaimStatus.SETTLED && overClerkLimit(sheetId, user, claim)
-                ? ClaimStatus.PENDING : to;
+                ? ClaimStatus.PENDING
+                : to == ClaimStatus.OPEN && overReviewThreshold(sheetId, claim) ? ClaimStatus.REVIEW : to;
         return rollup.tracking(sheetId, user, () -> {
             Person person = person(sheetId, claim.getPersonId());
             if (becomes == ClaimStatus.SETTLED) {
@@ -284,12 +286,15 @@ public class ClaimService {
             }
             if (becomes == ClaimStatus.OPEN) {
                 claim.setNumber(nextNumber(sheetId, claim.getDueBy()));
+            }
+            if (becomes == ClaimStatus.OPEN || becomes == ClaimStatus.REVIEW) {
                 claim.setOpenedBy(user);
             }
             logStatus(sheetId, user, person, claim);
             Claim saved = claims.saveAndFlush(claim);
             String event = switch (becomes) {
                 case OPEN -> "CLAIM_OPENED";
+                case REVIEW -> "CLAIM_REVIEW";
                 case PENDING -> "CLAIM_PENDING";
                 case SETTLED -> "CLAIM_SETTLED";
                 case VOID -> "CLAIM_VOIDED";
@@ -304,6 +309,32 @@ public class ClaimService {
             if (becomes == ClaimStatus.SETTLED) {
                 watches.notifyWatchers(sheetId, user, person, saved.getNumber());
             }
+            return saved;
+        });
+    }
+
+    /** Review a claim in review: it becomes open, taking its number then, and keeps who opened it.
+     *  Refused unless the claim is in review (409), the user is a steward (403), its period is open,
+     *  and its person is under its period's cap of open claims. */
+    @Transactional
+    public Claim review(String sheetId, String user, long claimId) {
+        Claim claim = lock(sheetId, claimId);
+        refuseClosed(sheetId, claim.getDueBy());
+        if (claim.getStatus() != ClaimStatus.REVIEW) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT, "Only a claim in REVIEW can be reviewed");
+        }
+        if (!SheetRole.STEWARD.equals(roles.roleOf(sheetId, user))) {
+            throw new ResponseStatusException(HttpStatus.FORBIDDEN, "Only a steward can review a claim");
+        }
+        refuseOverCap(sheetId, claim);
+        return rollup.tracking(sheetId, user, () -> {
+            Person person = person(sheetId, claim.getPersonId());
+            audit.recordOnCommit(record("CLAIM_REVIEWED", sheetId, user, person, claim));
+            claim.setStatus(ClaimStatus.OPEN);
+            claim.setNumber(nextNumber(sheetId, claim.getDueBy()));
+            logStatus(sheetId, user, person, claim);
+            Claim saved = claims.saveAndFlush(claim);
+            audit.recordOnCommit(record("CLAIM_OPENED", sheetId, user, person, saved));
             return saved;
         });
     }
@@ -793,6 +824,17 @@ public class ClaimService {
             throw new ResponseStatusException(HttpStatus.UNPROCESSABLE_CONTENT,
                     "A claim whose due is above the note threshold needs a note before it is opened");
         }
+    }
+
+    /** Whether a claim opened now goes to review: its due is above the sheet's review threshold in
+     *  force on the claim's date; a claim with no due (n/a) and a sheet with no threshold do not. */
+    private boolean overReviewThreshold(String sheetId, Claim claim) {
+        BigDecimal threshold = sheets.reviewThreshold(sheetId, claim.getDate());
+        if (threshold == null) {
+            return false;
+        }
+        BigDecimal due = dues.figure(sheetId, person(sheetId, claim.getPersonId()), claim);
+        return due != null && due.compareTo(threshold) > 0;
     }
 
     /** Refuse a claim of the person dated after the day they are retired from, or after the from-date

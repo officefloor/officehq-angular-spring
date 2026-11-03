@@ -35,6 +35,9 @@ export interface Settings {
   /** The due above which a claim cannot be opened with an empty note, as text with two decimals;
    *  null when there is none. */
   noteThreshold: string | null;
+  /** The due above which a claim goes to review when it is opened, as text with two decimals; null
+   *  when there is none. */
+  reviewThreshold: string | null;
   /** The permission matrix: for each action, the comma separated roles that may take it; blank when
    *  it keeps the standing rule. */
   permissions: Record<PermAction, string>;
@@ -208,6 +211,14 @@ export class SheetSettings {
     const [sheetId, headers] = this.active();
     return firstValueFrom(
       this.http.put<Settings>(`${this.url(sheetId)}/settings/note-threshold`, { value, from }, { headers }),
+    );
+  }
+
+  /** Record the review threshold (null for none) from a date (null for the sheet's today). */
+  setReviewThreshold(value: string | null, from: string | null): Promise<Settings> {
+    const [sheetId, headers] = this.active();
+    return firstValueFrom(
+      this.http.put<Settings>(`${this.url(sheetId)}/settings/review-threshold`, { value, from }, { headers }),
     );
   }
 
