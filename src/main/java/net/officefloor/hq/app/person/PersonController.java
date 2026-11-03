@@ -33,13 +33,17 @@ public class PersonController {
             @NotBlank @Size(max = 100) String user, @NotNull Long id, LocalDate date) {
     }
 
+    public record HoldPersonRequest(@NotBlank @Size(max = 100) String sheet,
+            @NotBlank @Size(max = 100) String user, @NotNull Long id, @NotNull Boolean held) {
+    }
+
     public record PersonResponse(long id, String name, String grade, long version, boolean retired,
-            LocalDate retiredFrom) {
+            LocalDate retiredFrom, boolean held) {
     }
 
     public static PersonResponse response(Person person) {
         return new PersonResponse(person.getId(), person.getName(), person.getGrade(), person.getVersion(),
-                person.isRetired(), person.getRetiredFrom());
+                person.isRetired(), person.getRetiredFrom(), person.isHeld());
     }
 
     private final PersonService service;
@@ -67,5 +71,10 @@ public class PersonController {
     @PostMapping("/retire")
     public PersonResponse retire(@Valid @RequestBody RetirePersonRequest req) {
         return response(service.retire(req.sheet().trim(), req.user().trim(), req.id(), req.date()));
+    }
+
+    @PostMapping("/hold")
+    public PersonResponse hold(@Valid @RequestBody HoldPersonRequest req) {
+        return response(service.hold(req.sheet().trim(), req.user().trim(), req.id(), req.held()));
     }
 }

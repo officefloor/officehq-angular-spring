@@ -15,7 +15,8 @@ import org.springframework.web.server.ResponseStatusException;
 /**
  * The people on a sheet: listed in the order they were added, added and edited by name and grade. A
  * name is unique on the sheet, compared without regard to case (names arrive trimmed). A person can
- * be retired from a date (the sheet's today when none is given); they count as retired at once.
+ * be retired from a date (the sheet's today when none is given); they count as retired at once. A
+ * person can be put on hold and taken off it again.
  */
 @Service
 public class PersonService {
@@ -79,6 +80,27 @@ public class PersonService {
         Person saved = save(person);
         audit.recordOnCommit("PERSON_RETIRED sheet=" + sheetId + " by=" + user + " name=" + saved.getName() + " from="
                 + from);
+        return saved;
+    }
+
+    /**
+     * Put the person on hold (held) or take them off it; refused (409) when they are already so.
+     * Holding takes their OPEN claims out of every live total, so the figures that move are recorded.
+     */
+    @Transactional
+    public Person hold(String sheetId, String user, long id, boolean held) {
+        RollupService.Snapshot before = rollup.snapshot(sheetId);
+        Person person = people.lockByIdAndSheetId(id, sheetId)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "No such person on this sheet."));
+        if (person.isHeld() == held) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT,
+                    held ? "That person is already on hold." : "That person is not on hold.");
+        }
+        person.setHeld(held);
+        Person saved = save(person);
+        audit.recordOnCommit((held ? "PERSON_HELD" : "PERSON_RELEASED") + " sheet=" + sheetId + " by=" + user
+                + " name=" + saved.getName());
+        rollup.recordChanges(sheetId, user, before);
         return saved;
     }
 

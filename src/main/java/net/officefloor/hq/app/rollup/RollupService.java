@@ -25,7 +25,8 @@ import org.springframework.stereotype.Service;
  * sheet's claimed-total and due-total. A change takes a {@link #snapshot} before it alters anything
  * and calls {@link #recordChanges} after its own audit lines, which appends one ROLLUP line per
  * person whose figures moved (people in the order they were added; a new person counts as moved),
- * then a TOTALS line when the sheet's totals moved.
+ * then a TOTALS line when the sheet's totals moved. A held person's OPEN claims count in none of
+ * these, nor in a period's due-total; their SETTLED claims still do.
  */
 @Service
 public class RollupService {
@@ -73,7 +74,7 @@ public class RollupService {
             BigDecimal due = zero();
             boolean anyFixed = false;
             for (Claim claim : sheetClaims) {
-                if (!claim.getPersonId().equals(person.getId()) || !claim.getStatus().counts()) {
+                if (!claim.getPersonId().equals(person.getId()) || !person.counts(claim.getStatus())) {
                     continue;
                 }
                 claimed = claimed.add(claim.getAmount());
@@ -102,7 +103,7 @@ public class RollupService {
         BigDecimal due = zero();
         for (Person person : people.findBySheetIdOrderByIdAsc(sheetId)) {
             for (Claim claim : sheetClaims) {
-                if (!claim.getPersonId().equals(person.getId()) || !claim.getStatus().counts()
+                if (!claim.getPersonId().equals(person.getId()) || !person.counts(claim.getStatus())
                         || claim.getDate().isBefore(from) || claim.getDate().isAfter(to)) {
                     continue;
                 }

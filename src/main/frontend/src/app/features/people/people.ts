@@ -22,6 +22,8 @@ import { Rate, Rates, claimDueCents, dueText, fixedDueCents, pctOn } from '../ra
 // A person can be retired from a date (the sheet's today when left blank); with a date set they count
 // as retired at once, whatever the date. No claim of theirs can be dated after it. Retired people are
 // left out of the list unless "show retired" is on; their claims keep counting in every total.
+// A person can be put on hold and taken off it again: while held, their OPEN claims count in no
+// total (their own, the sheet's or a period's); their SETTLED claims still do.
 // The quick-add bar adds a DRAFT claim of an amount, dated the sheet's today with an empty note, for
 // the person of a name, adding the person with grade A first when the name is not on the sheet.
 interface Person {
@@ -33,11 +35,12 @@ interface Person {
   retired: boolean;
   /** The date the person is retired from, or null. */
   retiredFrom: string | null;
+  held: boolean;
 }
 
-/** A claim's amount in whole cents when it counts toward the totals, else nothing. */
-function countedCents(c: Claim): number {
-  return counts(c) ? cents(c.amount) : 0;
+/** Whether a claim of the person counts toward the totals: a held person's OPEN claims do not. */
+function countsFor(p: Person | undefined, c: Claim): boolean {
+  return counts(c) && !(p?.held && c.status === 'OPEN');
 }
 
 /** A person's statements: how many, and the last one's due-total (n/a when it had none) and date. */
@@ -141,6 +144,7 @@ const GRADES = ['A', 'B', 'C'] as const;
             <th scope="col">Due</th>
             <th scope="col">Statements</th>
             <th scope="col">Retired</th>
+            <th scope="col">On hold</th>
             <th scope="col">Claims</th>
             <th scope="col"><span class="visually-hidden">Actions</span></th>
           </tr>
@@ -160,6 +164,9 @@ const GRADES = ['A', 'B', 'C'] as const;
               <td>
                 <span data-testid="person-retired">{{ p.retired ? 'yes' : 'no' }}</span>
                 <span>from <span data-testid="person-retired-from">{{ p.retiredFrom ?? '' }}</span></span>
+              </td>
+              <td>
+                <span data-testid="person-hold">{{ p.held ? 'yes' : 'no' }}</span>
               </td>
               <td>
                 <app-person-claims
@@ -205,6 +212,14 @@ const GRADES = ['A', 'B', 'C'] as const;
                 >
                   Retire
                 </button>
+                <button
+                  type="button"
+                  data-testid="person-hold-toggle"
+                  [attr.aria-label]="(p.held ? 'Release ' : 'Hold ') + p.name"
+                  (click)="hold(p)"
+                >
+                  {{ p.held ? 'Release' : 'Hold' }}
+                </button>
                 @if (rowErrors().get(p.id); as err) {
                   <p role="alert" data-testid="person-error">{{ err }}</p>
                 }
@@ -235,17 +250,19 @@ export class People {
     for (const c of this.claims()) by.set(c.personId, [...(by.get(c.personId) ?? []), c]);
     return by;
   });
-  protected readonly claimedTotal = computed(() => money(this.claims().reduce((sum, c) => sum + countedCents(c), 0)));
+  private readonly peopleById = computed(() => new Map(this.people().map((p) => [p.id, p])));
+  protected readonly claimedTotal = computed(() =>
+    money(this.claims().reduce((sum, c) => sum + this.countedCents(this.peopleById().get(c.personId), c), 0)),
+  );
   protected readonly rates = signal<Rate[]>([]);
   protected readonly periods = signal<Period[]>([]);
   /** The date and figure of each claim that counts and has a figure, for the periods' due-totals. */
   protected readonly dues = computed(() => {
-    const grades = new Map(this.people().map((p) => [p.id, p.grade]));
     const out: DatedDue[] = [];
     for (const c of this.claims()) {
-      const grade = grades.get(c.personId);
-      if (grade === undefined || !counts(c)) continue;
-      const due = claimDueCents(c, this.rates(), grade);
+      const p = this.peopleById().get(c.personId);
+      if (p === undefined || !countsFor(p, c)) continue;
+      const due = claimDueCents(c, this.rates(), p.grade);
       if (due !== null) out.push({ date: c.date, cents: due });
     }
     return out;
@@ -319,7 +336,13 @@ export class People {
   }
 
   protected claimedOf(personId: number): string {
-    return money(this.claimsOf(personId).reduce((sum, c) => sum + countedCents(c), 0));
+    const p = this.peopleById().get(personId);
+    return money(this.claimsOf(personId).reduce((sum, c) => sum + this.countedCents(p, c), 0));
+  }
+
+  /** A claim's amount in whole cents when it counts toward the totals, else nothing. */
+  private countedCents(p: Person | undefined, c: Claim): number {
+    return countsFor(p, c) ? cents(c.amount) : 0;
   }
 
   /**
@@ -328,7 +351,7 @@ export class People {
    * that counts keeps a figure.
    */
   protected dueOf(p: Person): number | null {
-    const counted = this.claimsOf(p.id).filter(counts);
+    const counted = this.claimsOf(p.id).filter((c) => countsFor(p, c));
     if (this.pctOf().get(p.grade) === undefined && !counted.some((c) => fixedDueCents(c) !== null)) return null;
     return counted.reduce((sum, c) => sum + (claimDueCents(c, this.rates(), p.grade) ?? 0), 0);
   }
@@ -370,6 +393,23 @@ export class People {
     } catch {
       if (this.session.sheet() !== sheet) return;
       this.rowErrors.update((m) => new Map(m).set(p.id, 'Could not retire ' + p.name + '.'));
+    }
+  }
+
+  /** Put the person on hold, or take them off it when they are held. */
+  protected async hold(p: Person): Promise<void> {
+    this.clearRowError(p.id);
+    const sheet = this.session.sheet();
+    try {
+      const saved = await firstValueFrom(
+        this.http.post<Person>('/api/people/hold', { sheet, user: this.session.user(), id: p.id, held: !p.held }),
+      );
+      if (this.session.sheet() !== sheet) return;
+      this.people.update((list) => list.map((x) => (x.id === saved.id ? saved : x)));
+      if (this.editingId() === saved.id && this.editingVersion === p.version) this.editingVersion = saved.version;
+    } catch {
+      if (this.session.sheet() !== sheet) return;
+      this.rowErrors.update((m) => new Map(m).set(p.id, (p.held ? 'Could not release ' : 'Could not hold ') + p.name + '.'));
     }
   }
 
