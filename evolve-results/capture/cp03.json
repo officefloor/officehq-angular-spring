@@ -1,0 +1,64 @@
+{
+  "checkpoint": 3,
+  "stack": {
+    "repo": "/home/daniel/officehq-angular-spring",
+    "origin": "git@github.com:officefloor/officehq-angular-spring.git",
+    "name": "officehq-angular-spring",
+    "base_ref": "base-empty",
+    "base_commit": "65cb8233ea38b2dfa6cfd18709e30cd18fdf3250"
+  },
+  "checkpoint_id": "cp03_people",
+  "phase": "early",
+  "type": "additive",
+  "mutates": [],
+  "replaced_tests": [],
+  "request": {
+    "spec": "Keep a list of people on the sheet. Each has a name (required; an empty name is refused with an\nerror on the form) and a grade, one of A, B or C. People are added through a form, and an\nexisting person can be edited through the same form (opening a person's editor fills the form\nwith their values). Show all the people in the order they were added, each with their name and\ngrade.\n",
+    "prompt": "You are implementing ONE change to this application.\n\nFIRST read AGENTS.md \u2014 it states the working rules and how the app is tested, and sends you to\nDESIGN.md for the app's stack and conventions. Follow both.\n\nTHE CHANGE REQUEST:\nKeep a list of people on the sheet. Each has a name (required; an empty name is refused with an\nerror on the form) and a grade, one of A, B or C. People are added through a form, and an\nexisting person can be edited through the same form (opening a person's editor fills the form\nwith their values). Show all the people in the order they were added, each with their name and\ngrade.\n\nYour work is verified by an automated Playwright UI test already installed under e2e/specs/.\nRead that spec: it declares the exact data-testid anchors, values, test data and any audit\nrecords it expects \u2014 match them. Run `bin/e2e` to build the app, start it, and run the test as\nyou work; iterate until it passes. Change whatever the request needs across the app \u2014 its stored\ndata, its server and its front end. Do NOT edit bin/build, bin/start, bin/stop, bin/e2e,\nAGENTS.md, CLAUDE.md, DESIGN.md, e2e/support/ or the test spec.\n"
+  },
+  "commit_sha": "eb65ba33c1cc538872c344afdb67324f8800a5de",
+  "reset_sha": "",
+  "preagent_sha": "9592b9bd61e6573c51a4b8023b7cb7ee454e655d",
+  "prev_sha": "9592b9bd61e6573c51a4b8023b7cb7ee454e655d",
+  "base_sha": "65cb8233ea38b2dfa6cfd18709e30cd18fdf3250",
+  "agent": {
+    "ok": true,
+    "cost_usd": 0.5423300000000001,
+    "input_tokens": 22,
+    "output_tokens": 8391,
+    "cache_read_tokens": 344390,
+    "cache_creation_tokens": 38193,
+    "num_turns": 12,
+    "duration_ms": 158552,
+    "duration_api_ms": 70874,
+    "model": "claude-opus-5-5",
+    "session_id": "c4b7acc0-334b-4c39-864f-ed16bb8ed3d0",
+    "stop_reason": "success",
+    "result_text": "I've added a list of people to the sheet, and the Playwright test passes when run with `bin/e2e`.\n\n**What it does**\n- A form above the list adds a person with a name and a grade of A, B or C. An empty or spaces-only name is refused with an error on the form, and nothing is saved.\n- Each person in the list has an Edit button. It fills the same form with that person's name and grade; saving updates the person, and Cancel puts the form back to adding.\n- People are shown in the order they were added, each with their name and grade. The list is re-read from the database every time the sheet is loaded, so you see what other signed-in users have changed after reloading.\n\n**How it's built**\n- **Data:** a new migration, `V3__person.sql`, creates a `person` table kept per sheet. The database also rejects any grade other than A, B or C.\n- **Server:** a new `person` package with endpoints under `/api/people` to list, add and update people. The server checks the name and grade too, not just the form.\n- **Front end:** a new `People` component in `features/people/people.ts`, shown under the sheet section of the home screen.\n\n**Things to know**\n- To make the list re-read the store on every load, I added a load counter to `core/session.ts`. Without it, loading the same sheet id twice in a row wouldn't trigger a refresh.\n- Spaces at the start and end of a name are removed before saving, so \" ada \" is stored and shown as \"ada\". The test accepts this because it ignores those spaces when comparing.\n- Nothing is written to the audit file, since neither the request nor the test asks for audit records.",
+    "error": "",
+    "attempts": [
+      {
+        "ok": true,
+        "limit_reached": false,
+        "retryable": false,
+        "timed_out": false,
+        "cost_usd": 0.5423300000000001,
+        "num_turns": 12,
+        "duration_ms": 158552,
+        "duration_api_ms": 70874,
+        "error": ""
+      }
+    ]
+  },
+  "agent_stream_file": "cp03.agent.jsonl",
+  "agent_diff_file": "cp03.agent.diff",
+  "build_log_file": null,
+  "tests": {
+    "gated": false,
+    "queued": true
+  },
+  "probe": null,
+  "pinned_touched": [],
+  "acceptance_touched": [],
+  "impact_gate": null
+}
