@@ -4,6 +4,7 @@ import jakarta.validation.Valid;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.NotNull;
 import jakarta.validation.constraints.Pattern;
+import jakarta.validation.constraints.Positive;
 import jakarta.validation.constraints.Size;
 import java.math.BigDecimal;
 import java.math.RoundingMode;
@@ -22,17 +23,21 @@ public class ClaimController {
     /** An amount: 0.00 or more, with up to two decimals. */
     public static final String AMOUNT = "\\d{1,12}(\\.\\d{1,2})?";
 
+    /** A claim's amount: as {@link #AMOUNT}, or below zero for a correction. */
+    public static final String SIGNED_AMOUNT = "-?" + AMOUNT;
+
     public record ListClaimsRequest(@NotBlank @Size(max = 100) String sheet) {
     }
 
     public record AddClaimRequest(@NotBlank @Size(max = 100) String sheet, @NotBlank @Size(max = 100) String user,
-            @NotNull Long personId, @NotNull @Pattern(regexp = AMOUNT) String amount, LocalDate date,
-            @Size(max = 1000) String note) {
+            @NotNull Long personId, @NotNull @Pattern(regexp = SIGNED_AMOUNT) String amount, LocalDate date,
+            @Size(max = 1000) String note, @Positive Integer corrects) {
     }
 
     public record UpdateClaimRequest(@NotBlank @Size(max = 100) String sheet,
-            @NotBlank @Size(max = 100) String user, @NotNull Long id, @NotNull @Pattern(regexp = AMOUNT) String amount,
-            LocalDate date, @Size(max = 1000) String note) {
+            @NotBlank @Size(max = 100) String user, @NotNull Long id,
+            @NotNull @Pattern(regexp = SIGNED_AMOUNT) String amount, LocalDate date, @Size(max = 1000) String note,
+            @Positive Integer corrects) {
     }
 
     public record ClaimStatusRequest(@NotBlank @Size(max = 100) String sheet,
@@ -41,7 +46,7 @@ public class ClaimController {
 
     public record ClaimResponse(long id, long personId, String amount, LocalDate date, String note,
             ClaimStatus status, Integer number, String settledDue, String openedBy,
-            boolean stated, String statedDue) {
+            boolean stated, String statedDue, Integer corrects) {
     }
 
     private static String money(BigDecimal value) {
@@ -52,7 +57,8 @@ public class ClaimController {
         return new ClaimResponse(claim.getId(), claim.getPersonId(),
                 claim.getAmount().setScale(2, RoundingMode.UNNECESSARY).toPlainString(), claim.getDate(),
                 claim.getNote(), claim.getStatus(), claim.getNumber(),
-                money(claim.getSettledDue()), claim.getOpenedBy(), claim.isStated(), money(claim.getStatedDue()));
+                money(claim.getSettledDue()), claim.getOpenedBy(), claim.isStated(), money(claim.getStatedDue()),
+                claim.getCorrects());
     }
 
     public static BigDecimal amount(String amount) {
@@ -77,13 +83,13 @@ public class ClaimController {
     @PostMapping("/add")
     public ClaimResponse add(@Valid @RequestBody AddClaimRequest req) {
         return response(service.add(req.sheet().trim(), req.user().trim(), req.personId(), amount(req.amount()), req.date(),
-                note(req.note())));
+                note(req.note()), req.corrects()));
     }
 
     @PostMapping("/update")
     public ClaimResponse update(@Valid @RequestBody UpdateClaimRequest req) {
         return response(service.update(req.sheet().trim(), req.user().trim(), req.id(), amount(req.amount()), req.date(),
-                note(req.note())));
+                note(req.note()), req.corrects()));
     }
 
     @PostMapping("/open")

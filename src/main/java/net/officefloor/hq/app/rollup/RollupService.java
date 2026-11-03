@@ -145,7 +145,7 @@ public class RollupService {
 
     /**
      * A claim's figure as the screen shows it: the due fixed when settled, else the one bound by the
-     * last statement, else its live due raised to the floor, with its late charge added on top;
+     * last statement, else its live due raised to the floor (a correction's is not), with its late charge added on top;
      * null when none.
      */
     private static BigDecimal figure(Sheet sheet, List<Rate> sheetRates, BigDecimal floor, Person person,
@@ -157,7 +157,7 @@ public class RollupService {
                 : inForce(sheetRates, person.gradeOn(claim.getDate()), claim.getDate()).map(Rate::getPct)
                         .map(pct -> claim.getAmount().multiply(pct).divide(BigDecimal.valueOf(100), 2,
                                 RoundingMode.HALF_EVEN))
-                        .map(due -> due.max(floor))
+                        .map(due -> claim.isCorrection() ? due : due.max(floor))
                         .orElse(null);
         return LateCharge.withCharge(sheet, claim, figure);
     }

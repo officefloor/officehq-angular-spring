@@ -12,8 +12,8 @@ import java.math.BigDecimal;
 import java.time.LocalDate;
 
 /**
- * A claim by a person on a sheet: an amount (0.00 or more, two decimals), a date, a note and a
- * status, once opened its number on the sheet and who opened it, and once settled the due fixed at
+ * A claim by a person on a sheet: an amount (two decimals; below zero only for a correction, which
+ * names the number of the settled claim it corrects), a date, a note and a status, once opened its number on the sheet and who opened it, and once settled the due fixed at
  * that moment, and while bound by its person's last statement the figure it had then.
  */
 @Entity
@@ -63,15 +63,20 @@ public class Claim {
     @Column(name = "stated_due")
     private BigDecimal statedDue;
 
+    /** The number of the claim this correction corrects; none for a claim that is not a correction. */
+    @Column(name = "corrects")
+    private Integer corrects;
+
     protected Claim() {
     }
 
-    public Claim(String sheetId, Long personId, BigDecimal amount, LocalDate date, String note) {
+    public Claim(String sheetId, Long personId, BigDecimal amount, LocalDate date, String note, Integer corrects) {
         this.sheetId = sheetId;
         this.personId = personId;
         this.amount = amount;
         this.date = date;
         this.note = note;
+        this.corrects = corrects;
     }
 
     public Long getId() {
@@ -108,6 +113,19 @@ public class Claim {
 
     public void setNote(String note) {
         this.note = note;
+    }
+
+    public Integer getCorrects() {
+        return corrects;
+    }
+
+    public void setCorrects(Integer corrects) {
+        this.corrects = corrects;
+    }
+
+    /** Whether the claim is a correction: its amount is below zero. Its due has no floor and no late charge. */
+    public boolean isCorrection() {
+        return amount.signum() < 0;
     }
 
     public ClaimStatus getStatus() {

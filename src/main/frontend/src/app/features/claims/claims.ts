@@ -15,6 +15,9 @@ import { DatedGrade, Lateness, Rate, chargedDueCents, dueText, gradeOn } from '.
 // Each claim shows its due-by, its date plus the sheet's terms in days, and whether it is overdue:
 // OPEN with its due-by before the sheet's today. An overdue claim's due gains the sheet's late
 // percent of its figure for every full 30 days it is overdue.
+// A claim with a negative amount is a correction: it must name, by number, a SETTLED claim of the
+// same person that it corrects, else it is refused. Its due has no floor and no late charge, and
+// it shows the number it corrects.
 export type ClaimStatus = 'DRAFT' | 'OPEN' | 'SETTLED' | 'VOID';
 
 export interface Claim {
@@ -34,6 +37,13 @@ export interface Claim {
   stated: boolean;
   /** The figure bound by the last statement; null while unbound or if it had no rate then. */
   statedDue: string | null;
+  /** The number of the claim this correction corrects; null for a claim that is not a correction. */
+  corrects: number | null;
+}
+
+/** Whether a claim is a correction: its amount is below zero. */
+export function isCorrection(c: Claim): boolean {
+  return cents(c.amount) < 0;
 }
 
 /** A move from one status to the next, by the endpoint that makes it. */
@@ -47,15 +57,26 @@ export function counts(c: Claim): boolean {
 /** The refusal of a change to a claim dated inside a closed period. */
 const CLOSED = 'That date is inside a closed period.';
 
+/** The refusal of a correction that names no SETTLED claim of its person. */
+const UNCORRECTABLE = 'A negative amount must correct a SETTLED claim of this person, by its number.';
+
 const PAST: Record<ClaimAction, string> = { open: 'opened', settle: 'settled', void: 'voided' };
 
 /** An amount: 0.00 or more, with up to two decimals. */
 export const AMOUNT = /^\d{1,12}(\.\d{1,2})?$/;
 
-/** An amount in whole cents, so sums are exact. */
+/** A claim's amount: as {@link AMOUNT}, or below zero for a correction. */
+const SIGNED_AMOUNT = /^-?\d{1,12}(\.\d{1,2})?$/;
+
+/** A claim number: a whole number from 1. */
+const NUMBER = /^[1-9]\d{0,8}$/;
+
+/** An amount in whole cents, so sums are exact; below zero for a negative amount. */
 export function cents(amount: string): number {
-  const [whole, frac = ''] = amount.split('.');
-  return Number(whole) * 100 + Number(frac.padEnd(2, '0'));
+  const negative = amount.startsWith('-');
+  const [whole, frac = ''] = (negative ? amount.slice(1) : amount).split('.');
+  const c = Number(whole) * 100 + Number(frac.padEnd(2, '0'));
+  return negative ? -c : c;
 }
 
 /** Days since 1970-01-01 of a yyyy-mm-dd date (proleptic Gregorian). */
@@ -98,9 +119,10 @@ export function daysOverdue(c: Claim, terms: number, today: string | null): numb
   return overdue(c, terms, today) && today !== null ? dayNumber(today) - dayNumber(c.date) - terms : 0;
 }
 
-/** Whole cents shown with two decimals. */
+/** Whole cents shown with two decimals, with a minus sign below zero. */
 export function money(c: number): string {
-  return `${Math.floor(c / 100)}.${String(c % 100).padStart(2, '0')}`;
+  const a = Math.abs(c);
+  return `${c < 0 ? '-' : ''}${Math.floor(a / 100)}.${String(a % 100).padStart(2, '0')}`;
 }
 
 @Component({
@@ -130,6 +152,14 @@ export function money(c: number): string {
         [value]="noteInput()"
         (input)="noteInput.set($any($event.target).value); error.set(null)"
       />
+      <label [for]="'claim-corrects-' + personId()">Corrects claim no.</label>
+      <input
+        [id]="'claim-corrects-' + personId()"
+        data-testid="claim-form-corrects"
+        inputmode="numeric"
+        [value]="correctsInput()"
+        (input)="correctsInput.set($any($event.target).value); error.set(null)"
+      />
       <button type="submit" data-testid="claim-form-submit">
         {{ editingId() === null ? 'Add claim' : 'Save claim' }}
       </button>
@@ -144,6 +174,7 @@ export function money(c: number): string {
           <span data-testid="claim-amount">{{ c.amount }}</span>
           <span data-testid="claim-date">{{ c.date }}</span>
           <span data-testid="claim-note">{{ c.note }}</span>
+          <span>Corrects <span data-testid="claim-corrects">{{ c.corrects ?? '' }}</span></span>
           <span>Period <span data-testid="claim-period">{{ periodOf(c) }}</span></span>
           <span>Due <span data-testid="claim-due">{{ dueOf(c) }}</span></span>
           <span>Due by <span data-testid="claim-due-by">{{ dueByOf(c) }}</span></span>
@@ -197,6 +228,7 @@ export class PersonClaims {
   protected readonly amountInput = signal('');
   protected readonly dateInput = signal('');
   protected readonly noteInput = signal('');
+  protected readonly correctsInput = signal('');
   protected readonly editingId = signal<number | null>(null);
   protected readonly error = signal<string | null>(null);
   /** Whether a submit is waiting for its answer: a second submit meanwhile is ignored. */
@@ -240,6 +272,7 @@ export class PersonClaims {
     this.amountInput.set(c.amount);
     this.dateInput.set(c.date);
     this.noteInput.set(c.note);
+    this.correctsInput.set(c.corrects === null ? '' : String(c.corrects));
     this.error.set(null);
   }
 
@@ -248,6 +281,7 @@ export class PersonClaims {
     this.amountInput.set('');
     this.dateInput.set('');
     this.noteInput.set('');
+    this.correctsInput.set('');
     this.error.set(null);
   }
 
@@ -284,6 +318,11 @@ export class PersonClaims {
     }
   }
 
+  /** Whether a claim number names a SETTLED claim of this person, as a correction must. */
+  private correctable(corrects: string): boolean {
+    return NUMBER.test(corrects) && this.claims().some((c) => c.number === Number(corrects) && c.status === 'SETTLED');
+  }
+
   protected async save(event: Event): Promise<void> {
     event.preventDefault();
     if (this.submitting) return;
@@ -291,8 +330,14 @@ export class PersonClaims {
     const sheet = this.session.sheet();
     const amount = this.amountInput().trim();
     const date = this.dateInput().trim();
-    if (!AMOUNT.test(amount)) {
-      this.error.set('Enter an amount of 0.00 or more, with up to two decimals.');
+    const corrects = this.correctsInput().trim();
+    if (!SIGNED_AMOUNT.test(amount)) {
+      this.error.set('Enter an amount with up to two decimals (below zero only for a correction).');
+      return;
+    }
+    const correction = cents(amount) < 0;
+    if (correction && !this.correctable(corrects)) {
+      this.error.set(UNCORRECTABLE);
       return;
     }
     if (date !== '' && !/^\d{4}-\d{2}-\d{2}$/.test(date)) {
@@ -300,7 +345,8 @@ export class PersonClaims {
       return;
     }
     const id = this.editingId();
-    const body = { sheet, user: this.session.user(), amount, date: date || null, note: this.noteInput().trim() };
+    const body = { sheet, user: this.session.user(), amount, date: date || null, note: this.noteInput().trim(),
+      corrects: correction ? Number(corrects) : null };
     this.submitting = true;
     try {
       const claim =
@@ -316,6 +362,8 @@ export class PersonClaims {
           ? CLOSED
           : e instanceof HttpErrorResponse && e.status === 422
             ? 'A claim cannot be dated after its person\'s retirement date.'
+          : e instanceof HttpErrorResponse && e.status === 400 && correction
+            ? UNCORRECTABLE
           : e instanceof HttpErrorResponse && e.status === 409
             ? 'Only a DRAFT claim can be edited.'
             : id === null
