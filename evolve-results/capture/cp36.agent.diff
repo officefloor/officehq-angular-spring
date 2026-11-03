@@ -1,0 +1,577 @@
+diff --git a/src/main/frontend/src/app/features/claims/claims.ts b/src/main/frontend/src/app/features/claims/claims.ts
+index ade4e6e7a..b46e306f4 100644
+--- a/src/main/frontend/src/app/features/claims/claims.ts
++++ b/src/main/frontend/src/app/features/claims/claims.ts
+@@ -18,7 +18,11 @@ import { DatedGrade, Lateness, Rate, chargedDueCents, dueText, gradeOn } from '.
+ // A claim with a negative amount is a correction: it must name, by number, a SETTLED claim of the
+ // same person that it corrects, else it is refused. Its due has no floor and no late charge, and
+ // it shows the number it corrects.
+-export type ClaimStatus = 'DRAFT' | 'OPEN' | 'SETTLED' | 'VOID';
++// A clerk settling a claim whose due is above the clerk limit makes it PENDING. A PENDING claim
++// counts like an OPEN one but is not bound by a statement: it shows its live figure. A steward
++// approves it (SETTLED, its due fixed then) or rejects it with a reason (back to OPEN, bound again
++// by the last statement); the user who opened it cannot approve it.
++export type ClaimStatus = 'DRAFT' | 'OPEN' | 'PENDING' | 'SETTLED' | 'VOID';
+ 
+ export interface Claim {
+   id: number;
+@@ -55,11 +59,16 @@ export function isCorrection(c: Claim): boolean {
+ }
+ 
+ /** A move from one status to the next, by the endpoint that makes it. */
+-type ClaimAction = 'open' | 'settle' | 'void';
++type ClaimAction = 'open' | 'settle' | 'approve' | 'reject' | 'void';
+ 
+-/** Whether a claim counts toward claimed, due-total and every total: only OPEN and SETTLED do. */
++/** Whether a claim counts toward claimed, due-total and every total: only OPEN, PENDING and SETTLED do. */
+ export function counts(c: Claim): boolean {
+-  return c.status === 'OPEN' || c.status === 'SETTLED';
++  return isOpen(c) || c.status === 'SETTLED';
++}
++
++/** Whether a claim is open: OPEN or PENDING. Only an open claim goes overdue, and a hold takes it out of the totals. */
++export function isOpen(c: Claim): boolean {
++  return c.status === 'OPEN' || c.status === 'PENDING';
+ }
+ 
+ /** The refusal of a change to a claim dated inside a closed period. */
+@@ -68,7 +77,16 @@ const CLOSED = 'That date is inside a closed period.';
+ /** The refusal of a correction that names no SETTLED claim of its person. */
+ const UNCORRECTABLE = 'A negative amount must correct a SETTLED claim of this person, by its number.';
+ 
+-const PAST: Record<ClaimAction, string> = { open: 'opened', settle: 'settled', void: 'voided' };
++const PAST: Record<ClaimAction, string> = {
++  open: 'opened',
++  settle: 'settled',
++  approve: 'approved',
++  reject: 'rejected',
++  void: 'voided',
++};
++
++/** A reason for rejecting a claim: one word. */
++const REASON = /^\S{1,200}$/;
+ 
+ /** An amount: 0.00 or more, with up to two decimals. */
+ export const AMOUNT = /^\d{1,12}(\.\d{1,2})?$/;
+@@ -117,9 +135,9 @@ export function dueBy(c: Claim, terms: number): string {
+   return dateOf(dayNumber(c.date) + terms);
+ }
+ 
+-/** Whether a claim is overdue: OPEN, and due by a date before the sheet's today. */
++/** Whether a claim is overdue: open (OPEN or PENDING), and due by a date before the sheet's today. */
+ export function overdue(c: Claim, terms: number, today: string | null): boolean {
+-  return c.status === 'OPEN' && today !== null && dueBy(c, terms) < today;
++  return isOpen(c) && today !== null && dueBy(c, terms) < today;
+ }
+ 
+ /** The days a claim is overdue on the sheet's today: past its due-by; 0 when it is not overdue. */
+@@ -198,6 +216,15 @@ export function money(c: number): string {
+           <span>Stated <span data-testid="claim-stated">{{ c.stated ? 'yes' : 'no' }}</span></span>
+           <button type="button" data-testid="claim-open" (click)="act(c, 'open')">Open</button>
+           <button type="button" data-testid="claim-settle" (click)="act(c, 'settle')">Settle</button>
++          <button type="button" data-testid="claim-approve" (click)="act(c, 'approve')">Approve</button>
++          <label [for]="'claim-reject-reason-' + c.id">Reject reason</label>
++          <input
++            [id]="'claim-reject-reason-' + c.id"
++            data-testid="claim-reject-reason"
++            [value]="reasons().get(c.id) ?? ''"
++            (input)="setReason(c.id, $any($event.target).value)"
++          />
++          <button type="button" data-testid="claim-reject" (click)="act(c, 'reject')">Reject</button>
+           <button type="button" data-testid="claim-void" (click)="act(c, 'void')">Void</button>
+           <button
+             type="button"
+@@ -255,6 +282,8 @@ export class PersonClaims {
+   private submitting = false;
+   /** The error of each claim's last refused status change, by claim id. */
+   protected readonly actionErrors = signal<ReadonlyMap<number, string>>(new Map());
++  /** The reason typed for rejecting each claim, by claim id. */
++  protected readonly reasons = signal<ReadonlyMap<number, string>>(new Map());
+ 
+   /** A stated claim shows the figure bound by the last statement, a settled claim the due fixed
+    *  when it was settled; any other claim's due is live, at the rate for the person's grade in
+@@ -320,23 +349,35 @@ export class PersonClaims {
+     });
+   }
+ 
++  protected setReason(id: number, reason: string): void {
++    this.reasons.update((m) => new Map(m).set(id, reason));
++    this.clearActionError(id);
++  }
++
+   /** Move a claim to its next status; the server refuses a move its status does not allow. */
+   protected async act(c: Claim, action: ClaimAction): Promise<void> {
+     this.clearActionError(c.id);
+     const sheet = this.session.sheet();
++    const reason = (this.reasons().get(c.id) ?? '').trim();
++    if (action === 'reject' && !REASON.test(reason)) {
++      this.actionErrors.update((m) => new Map(m).set(c.id, 'Enter a one-word reason to reject this claim.'));
++      return;
++    }
++    const body = { sheet, user: this.session.user(), id: c.id, ...(action === 'reject' ? { reason } : {}) };
+     try {
+-      const claim = await firstValueFrom(
+-        this.http.post<Claim>(`/api/claims/${action}`, { sheet, user: this.session.user(), id: c.id }),
+-      );
++      const claim = await firstValueFrom(this.http.post<Claim>(`/api/claims/${action}`, body));
+       if (this.session.sheet() !== sheet) return;
++      if (action === 'reject') this.setReason(c.id, '');
+       this.saved.emit(claim);
+     } catch (e) {
+       if (this.session.sheet() !== sheet) return;
+       const err =
+         e instanceof HttpErrorResponse && e.status === 403
+-          ? c.openedBy === this.session.user()
+-            ? 'The user who opened a claim cannot settle it.'
+-            : 'A clerk cannot settle a claim whose due is above the clerk limit.'
++          ? action === 'approve' || action === 'reject'
++            ? c.openedBy === this.session.user() && action === 'approve'
++              ? 'The user who opened a claim cannot approve it.'
++              : 'Only a steward can approve or reject a PENDING claim.'
++            : 'The user who opened a claim cannot settle it.'
+           : e instanceof HttpErrorResponse && e.status === 423
+             ? CLOSED
+             : `A ${c.status} claim cannot be ${PAST[action]}.`;
+diff --git a/src/main/frontend/src/app/features/people/people.ts b/src/main/frontend/src/app/features/people/people.ts
+index 169f6a738..64de5910c 100644
+--- a/src/main/frontend/src/app/features/people/people.ts
++++ b/src/main/frontend/src/app/features/people/people.ts
+@@ -2,7 +2,7 @@ import { HttpClient, HttpErrorResponse } from '@angular/common/http';
+ import { Component, computed, effect, inject, signal } from '@angular/core';
+ import { firstValueFrom } from 'rxjs';
+ import { Session } from '../../core/session';
+-import { AMOUNT, Claim, PersonClaims, cents, counts, money, overdue, roundingDate } from '../claims/claims';
++import { AMOUNT, Claim, PersonClaims, cents, counts, isOpen, money, overdue, roundingDate } from '../claims/claims';
+ import { DatedDue, Period, Periods, periodDueTotal } from '../periods/periods';
+ import { DatedGrade, Lateness, Rate, Rates, chargedDueCents, dueText, gradeOn, pctOn } from '../rates/rates';
+ import { Roles } from '../roles/roles';
+@@ -18,7 +18,7 @@ import { GradeSummary, PeriodSummary, StatusSummary, Summary } from '../summary/
+ // The editor remembers the version of the person it opened; if someone else has saved the person
+ // since, the save is refused and the form is refilled with the values the store holds now.
+ // Each row shows what the person has claimed and lists their claims; the sheet's claimed-total
+-// adds everyone's up. Only OPEN and SETTLED claims count toward any of these totals. Each claim shows
++// adds everyone's up. Only OPEN, PENDING and SETTLED claims count toward any of these totals. Each claim shows
+ // what is due at the rate for the person's grade in force on the claim's date (a settled claim the
+ // figure fixed when settled), each person the sum of those figures over the claims that count, and
+ // the sheet's due-total adds up every person's due-total that has one. A live due is never below
+@@ -30,8 +30,8 @@ import { GradeSummary, PeriodSummary, StatusSummary, Summary } from '../summary/
+ // A person can be retired from a date (the sheet's today when left blank); with a date set they count
+ // as retired at once, whatever the date. No claim of theirs can be dated after it. Retired people are
+ // left out of the list unless "show retired" is on; their claims keep counting in every total.
+-// A person can be put on hold and taken off it again: while held, their OPEN claims count in no
+-// total (their own, the sheet's or a period's); their SETTLED claims still do.
++// A person can be put on hold and taken off it again: while held, their OPEN and PENDING claims count
++// in no total (their own, the sheet's or a period's); their SETTLED claims still do.
+ // The quick-add bar adds a DRAFT claim of an amount, dated the sheet's today with an empty note, for
+ // the person of a name, adding the person with grade A first when the name is not on the sheet.
+ // Each person, and the sheet, shows how many of the claims that count are overdue and the sum of
+@@ -55,9 +55,9 @@ interface Person {
+   held: boolean;
+ }
+ 
+-/** Whether a claim of the person counts toward the totals: a held person's OPEN claims do not. */
++/** Whether a claim of the person counts toward the totals: a held person's OPEN or PENDING claims do not. */
+ function countsFor(p: Person | undefined, c: Claim): boolean {
+-  return counts(c) && !(p?.held && c.status === 'OPEN');
++  return counts(c) && !(p?.held && isOpen(c));
+ }
+ 
+ /** One of a person's patrons. */
+diff --git a/src/main/frontend/src/app/features/rates/rates.ts b/src/main/frontend/src/app/features/rates/rates.ts
+index f70e1917e..d37762a19 100644
+--- a/src/main/frontend/src/app/features/rates/rates.ts
++++ b/src/main/frontend/src/app/features/rates/rates.ts
+@@ -2,7 +2,7 @@ import { HttpClient } from '@angular/common/http';
+ import { Component, computed, effect, inject, model, signal } from '@angular/core';
+ import { firstValueFrom } from 'rxjs';
+ import { Session } from '../../core/session';
+-import { Claim, cents, daysOverdue, isCorrection, money } from '../claims/claims';
++import { Claim, cents, daysOverdue, isCorrection, isOpen, money } from '../claims/claims';
+ 
+ // The sheet's rates for each grade (a percent with two decimals, each from an optional from-date)
+ // and the form that sets one. Each grade shows the rate in force on the sheet's today, or n/a when
+@@ -74,7 +74,7 @@ export function dueCents(amountCents: number, pct: string | undefined, halfUp =
+  * due fixed when it was settled. Null when it has none (its figure is live, or there was no rate).
+  */
+ export function fixedDueCents(c: Claim): number | null {
+-  const fixed = c.stated ? c.statedDue : c.settledDue;
++  const fixed = c.stated && c.status !== 'PENDING' ? c.statedDue : c.settledDue;
+   return fixed !== null ? cents(fixed) : null;
+ }
+ 
+@@ -89,14 +89,15 @@ export function roundsHalfUp(roundOn: string, policyDate: string, today: string
+ }
+ 
+ /**
+- * A claim's figure in whole cents: a stated claim's figure bound by the last statement, a settled
++ * A claim's figure in whole cents: a stated claim's figure bound by the last statement (not while
++ * PENDING: its figure is live), a settled
+  * claim's due fixed when it was settled, any other claim's live due at the rate for the grade in
+  * force on the claim's date, rounded half up when `halfUp` (else half to even), raised to the
+  * sheet's floor (in whole cents; a correction's is not). Null when it has none.
+  */
+ export function claimDueCents(c: Claim, rates: readonly Rate[], grade: string, floor: number, halfUp = false): number | null {
+   if (c.settledDue !== null) return cents(c.settledDue);
+-  if (c.stated) return fixedDueCents(c);
++  if (c.stated && c.status !== 'PENDING') return fixedDueCents(c);
+   const due = dueCents(cents(c.amount), pctOn(rates, grade, c.date), halfUp);
+   return due === null || isCorrection(c) ? due : Math.max(due, floor);
+ }
+@@ -127,7 +128,7 @@ export function chargedDueCents(
+ ): number | null {
+   const halfUp = roundsHalfUp(roundOn, late.policyDate, late.today);
+   const figure = claimDueCents(c, rates, grade, floor, halfUp);
+-  if (figure === null || c.status !== 'OPEN' || isCorrection(c)) return figure;
++  if (figure === null || !isOpen(c) || isCorrection(c)) return figure;
+   const periods = Math.floor(daysOverdue(c, late.terms, late.today) / 30);
+   if (periods <= 0) return figure;
+   return figure + (dueCents(figure * periods, late.latePct, halfUp) ?? 0);
+diff --git a/src/main/frontend/src/app/features/roles/roles.ts b/src/main/frontend/src/app/features/roles/roles.ts
+index df28a21bf..0cbf50aa5 100644
+--- a/src/main/frontend/src/app/features/roles/roles.ts
++++ b/src/main/frontend/src/app/features/roles/roles.ts
+@@ -4,7 +4,8 @@ import { firstValueFrom } from 'rxjs';
+ import { Session } from '../../core/session';
+ 
+ // The roles the sheet assigns to user names: clerk (the default for any name) or steward, and the
+-// form that assigns one. A steward settles any claim; a clerk only up to the clerk limit.
++// form that assigns one. A steward settles any claim, and approves or rejects a PENDING one; a
++// clerk settling a claim above the clerk limit makes it PENDING.
+ interface Role {
+   user: string;
+   role: string;
+diff --git a/src/main/java/net/officefloor/hq/app/claim/ClaimController.java b/src/main/java/net/officefloor/hq/app/claim/ClaimController.java
+index fbefe9905..cc75deed1 100644
+--- a/src/main/java/net/officefloor/hq/app/claim/ClaimController.java
++++ b/src/main/java/net/officefloor/hq/app/claim/ClaimController.java
+@@ -43,6 +43,11 @@ public class ClaimController {
+             @NotBlank @Size(max = 100) String user, @NotNull Long id) {
+     }
+ 
++    public record RejectClaimRequest(@NotBlank @Size(max = 100) String sheet,
++            @NotBlank @Size(max = 100) String user, @NotNull Long id,
++            @NotBlank @Size(max = 200) @Pattern(regexp = "\\s*\\S+\\s*") String reason) {
++    }
++
+     public record BulkOpenRequest(@NotBlank @Size(max = 100) String sheet, @NotBlank @Size(max = 100) String user,
+             @NotNull @Size(max = 1000) List<@NotNull Long> ids) {
+     }
+@@ -113,6 +118,16 @@ public class ClaimController {
+         return changeStatus(req, ClaimStatus.SETTLED);
+     }
+ 
++    @PostMapping("/approve")
++    public ClaimResponse approve(@Valid @RequestBody ClaimStatusRequest req) {
++        return response(service.approve(req.sheet().trim(), req.user().trim(), req.id()));
++    }
++
++    @PostMapping("/reject")
++    public ClaimResponse reject(@Valid @RequestBody RejectClaimRequest req) {
++        return response(service.reject(req.sheet().trim(), req.user().trim(), req.id(), req.reason().trim()));
++    }
++
+     @PostMapping("/void")
+     public ClaimResponse voidClaim(@Valid @RequestBody ClaimStatusRequest req) {
+         return changeStatus(req, ClaimStatus.VOID);
+diff --git a/src/main/java/net/officefloor/hq/app/claim/ClaimService.java b/src/main/java/net/officefloor/hq/app/claim/ClaimService.java
+index 8e63e65f1..ffe4c8c94 100644
+--- a/src/main/java/net/officefloor/hq/app/claim/ClaimService.java
++++ b/src/main/java/net/officefloor/hq/app/claim/ClaimService.java
+@@ -36,7 +36,10 @@ import org.springframework.web.server.ResponseStatusException;
+  * dated inside a closed period can be added, edited (to or from such a date) or change status. No
+  * claim can be added or edited to a date after its person's retirement date. A clerk settles a claim
+  * only when its figure is at or below the sheet's clerk limit (a claim with no figure is within any
+- * limit); a steward settles any claim. A claim's live due is never below the sheet's floor. An
++ * limit); a clerk settling one above it makes it PENDING instead. A steward settles any claim, and
++ * approves a PENDING claim (SETTLED, its due fixed then) or rejects it with a reason (back to OPEN);
++ * the user who opened a claim cannot approve it. A PENDING claim is not bound by a statement: it
++ * shows its live figure, and is bound again by the last statement once rejected. A claim's live due is never below the sheet's floor. An
+  * overdue claim's due gains a late charge on top of its figure (see {@link LateCharge}); a statement
+  * binds only the figure under it, and settling fixes the charge into the settled due. A claim with
+  * a negative amount is a correction: it is allowed only when it names, by number, a SETTLED claim
+@@ -68,13 +71,14 @@ public class ClaimService {
+ 
+     /**
+      * A claim's figure under any late charge: the due fixed when settled, else the one bound by a
+-     * statement, else the live due; null when it has none.
++     * statement (not while PENDING), else the live due; null when it has none.
+      */
+     public BigDecimal figure(String sheetId, Person person, Claim claim) {
+         if (claim.getStatus() == ClaimStatus.SETTLED) {
+             return claim.getSettledDue();
+         }
+-        return claim.isStated() ? claim.getStatedDue() : due(sheetId, person, claim);
++        return claim.isStated() && claim.getStatus() != ClaimStatus.PENDING ? claim.getStatedDue()
++                : due(sheetId, person, claim);
+     }
+ 
+     /** A claim's figure with its late charge on the sheet's today added on top; null when it has none. */
+@@ -129,11 +133,36 @@ public class ClaimService {
+ 
+     /**
+      * Move a claim to a new status, refused (409) when its current status does not allow it, and
+-     * refused (403) when the user who opened it tries to settle it, or a clerk tries to settle one
+-     * whose figure is above the sheet's clerk limit.
++     * refused (403) when the user who opened it tries to settle it. A clerk settling one whose
++     * figure is above the sheet's clerk limit makes it PENDING instead.
+      */
+     @Transactional
+     public Claim changeStatus(String sheetId, String user, long id, ClaimStatus next) {
++        return changeStatus(sheetId, user, id, next, null, false);
++    }
++
++    /**
++     * Approve a PENDING claim: it becomes SETTLED, its due fixed at its live figure with its late
++     * charge on the sheet's today. Refused (409) when not PENDING, and (403) for a clerk or the
++     * user who opened it.
++     */
++    @Transactional
++    public Claim approve(String sheetId, String user, long id) {
++        return changeStatus(sheetId, user, id, ClaimStatus.SETTLED, null, true);
++    }
++
++    /**
++     * Reject a PENDING claim with a reason: it is OPEN again, bound again by the last statement if
++     * that statement included it. Refused (409) when not PENDING, and (403) for a clerk.
++     */
++    @Transactional
++    public Claim reject(String sheetId, String user, long id, String reason) {
++        return changeStatus(sheetId, user, id, ClaimStatus.OPEN, reason, true);
++    }
++
++    /** Move a claim to a new status; {@code review} for a steward's approval or rejection of a PENDING claim. */
++    private Claim changeStatus(String sheetId, String user, long id, ClaimStatus next, String reason,
++            boolean review) {
+         // lock the sheet's numbering before reading the claim, so a claim is opened (and numbered) once
+         if (next == ClaimStatus.OPEN) {
+             sheets.lock(sheetId);
+@@ -141,23 +170,31 @@ public class ClaimService {
+         RollupService.Snapshot before = rollup.snapshot(sheetId);
+         Claim claim = claims.findByIdAndSheetId(id, sheetId)
+                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "No such claim on this sheet."));
+-        if (!claim.getStatus().canBecome(next)) {
++        ClaimStatus was = claim.getStatus();
++        // only a steward's review moves a PENDING claim on, other than voiding it
++        if (!was.canBecome(next) || (next != ClaimStatus.VOID && review != (was == ClaimStatus.PENDING))) {
+             throw new ResponseStatusException(HttpStatus.CONFLICT,
+                     "A " + claim.getStatus() + " claim cannot become " + next + ".");
+         }
+         periods.refuseIfClosed(sheetId, claim.getDate());
+         if (next == ClaimStatus.SETTLED && user.equals(claim.getOpenedBy())) {
+             throw new ResponseStatusException(HttpStatus.FORBIDDEN,
+-                    "The user who opened a claim cannot settle it.");
++                    "The user who opened a claim cannot " + (review ? "approve" : "settle") + " it.");
++        }
++        if (review && !isSteward(sheetId, user)) {
++            throw new ResponseStatusException(HttpStatus.FORBIDDEN,
++                    "Only a steward can approve or reject a PENDING claim.");
+         }
+         Person person = person(sheetId, claim.getPersonId());
+-        // settling fixes the figure with its late charge as it stands on the sheet's today
++        // settling fixes the figure with its late charge as it stands on the sheet's today (a
++        // PENDING claim's figure is live)
+         BigDecimal settling = next == ClaimStatus.SETTLED ? charged(sheetId, person, claim) : null;
+-        if (next == ClaimStatus.SETTLED) {
+-            refuseIfAboveClerkLimit(sheetId, user, settling);
++        if (next == ClaimStatus.SETTLED && !review && aboveClerkLimit(sheetId, user, settling)) {
++            next = ClaimStatus.PENDING;
++            settling = null;
+         }
+         claim.setStatus(next);
+-        if (next == ClaimStatus.OPEN) {
++        if (next == ClaimStatus.OPEN && !review) {
+             claim.setNumber(sheets.nextClaimNumber(sheetId, claim.getDate()));
+             claim.setOpenedBy(user);
+         } else if (next == ClaimStatus.SETTLED) {
+@@ -165,14 +202,16 @@ public class ClaimService {
+         }
+         Claim saved = claims.saveAndFlush(claim);
+         String event = switch (next) {
+-            case OPEN -> "CLAIM_OPENED";
+-            case SETTLED -> "CLAIM_SETTLED";
++            case OPEN -> review ? "CLAIM_REJECTED" : "CLAIM_OPENED";
++            case PENDING -> "CLAIM_PENDING";
++            case SETTLED -> review ? "CLAIM_APPROVED" : "CLAIM_SETTLED";
+             case VOID -> "CLAIM_VOIDED";
+             case DRAFT -> throw new IllegalStateException();
+         };
+         audit.recordOnCommit(record(event, sheetId, user, person, saved)
+                 + (saved.getNumber() != null ? " number=" + saved.getNumber() : "")
+-                + (next == ClaimStatus.SETTLED ? " due=" + dueText(saved.getSettledDue()) : ""));
++                + (next == ClaimStatus.SETTLED ? " due=" + dueText(saved.getSettledDue()) : "")
++                + (reason != null ? " reason=" + reason : ""));
+         rollup.recordChanges(sheetId, user, before);
+         return saved;
+     }
+@@ -201,7 +240,7 @@ public class ClaimService {
+         int refused = (int) ids.stream().distinct().count() - selected.size();
+         List<Claim> opened = new ArrayList<>();
+         for (Claim claim : selected) {
+-            if (!claim.getStatus().canBecome(ClaimStatus.OPEN) || periods.isClosed(sheetId, claim.getDate())) {
++            if (claim.getStatus() != ClaimStatus.DRAFT || periods.isClosed(sheetId, claim.getDate())) {
+                 refused++;
+                 continue;
+             }
+@@ -236,15 +275,14 @@ public class ClaimService {
+         return due == null ? "n/a" : due.setScale(2, RoundingMode.UNNECESSARY).toPlainString();
+     }
+ 
+-    /** Refuse (403) a clerk settling a claim whose figure is above the sheet's clerk limit. */
+-    private void refuseIfAboveClerkLimit(String sheetId, String user, BigDecimal figure) {
++    /** Whether the user is a clerk settling a claim whose figure is above the sheet's clerk limit. */
++    private boolean aboveClerkLimit(String sheetId, String user, BigDecimal figure) {
+         BigDecimal limit = sheets.clerkLimit(sheetId);
+-        if (figure == null || limit == null || figure.compareTo(limit) <= 0
+-                || Role.STEWARD.equals(roles.roleOf(sheetId, user))) {
+-            return;
+-        }
+-        throw new ResponseStatusException(HttpStatus.FORBIDDEN,
+-                "A clerk cannot settle a claim whose due is above the clerk limit of " + dueText(limit) + ".");
++        return figure != null && limit != null && figure.compareTo(limit) > 0 && !isSteward(sheetId, user);
++    }
++
++    private boolean isSteward(String sheetId, String user) {
++        return Role.STEWARD.equals(roles.roleOf(sheetId, user));
+     }
+ 
+     /**
+diff --git a/src/main/java/net/officefloor/hq/app/claim/ClaimStatus.java b/src/main/java/net/officefloor/hq/app/claim/ClaimStatus.java
+index bfd6f8423..8eb25c585 100644
+--- a/src/main/java/net/officefloor/hq/app/claim/ClaimStatus.java
++++ b/src/main/java/net/officefloor/hq/app/claim/ClaimStatus.java
+@@ -1,24 +1,32 @@
+ package net.officefloor.hq.app.claim;
+ 
+ /**
+- * A claim's status: DRAFT when added; opened (OPEN), then settled (SETTLED); a DRAFT or OPEN claim
+- * can be voided (VOID). A SETTLED or VOID claim cannot change status.
++ * A claim's status: DRAFT when added; opened (OPEN), then settled (SETTLED). A clerk settling a
++ * claim above the clerk limit makes it PENDING instead, until a steward approves it (SETTLED) or
++ * rejects it (back to OPEN). A DRAFT, OPEN or PENDING claim can be voided (VOID). A SETTLED or VOID
++ * claim cannot change status.
+  */
+ public enum ClaimStatus {
+-    DRAFT, OPEN, SETTLED, VOID;
++    DRAFT, OPEN, PENDING, SETTLED, VOID;
+ 
+     /** Whether a claim in this status may move to the given one. */
+     public boolean canBecome(ClaimStatus next) {
+         return switch (next) {
+-            case OPEN -> this == DRAFT;
+-            case SETTLED -> this == OPEN;
+-            case VOID -> this == DRAFT || this == OPEN;
++            case OPEN -> this == DRAFT || this == PENDING;
++            case PENDING -> this == OPEN;
++            case SETTLED -> this == OPEN || this == PENDING;
++            case VOID -> this == DRAFT || this == OPEN || this == PENDING;
+             case DRAFT -> false;
+         };
+     }
+ 
+-    /** Whether a claim in this status counts toward the totals: only OPEN and SETTLED do. */
++    /** Whether a claim in this status counts toward the totals: OPEN, PENDING and SETTLED do. */
+     public boolean counts() {
+-        return this == OPEN || this == SETTLED;
++        return this == OPEN || this == PENDING || this == SETTLED;
++    }
++
++    /** Whether a claim in this status is open: OPEN or PENDING (it goes overdue, and a hold takes it out of the totals). */
++    public boolean isOpen() {
++        return this == OPEN || this == PENDING;
+     }
+ }
+diff --git a/src/main/java/net/officefloor/hq/app/claim/LateCharge.java b/src/main/java/net/officefloor/hq/app/claim/LateCharge.java
+index e3f6aa99f..d910f76ca 100644
+--- a/src/main/java/net/officefloor/hq/app/claim/LateCharge.java
++++ b/src/main/java/net/officefloor/hq/app/claim/LateCharge.java
+@@ -7,7 +7,7 @@ import net.officefloor.hq.app.sheet.Sheet;
+ 
+ /**
+  * The late charge on an overdue claim: the sheet's late percent of the claim's figure for every
+- * full 30 days it is overdue (OPEN, and past its date plus the sheet's terms on the sheet's today),
++ * full 30 days it is overdue (OPEN or PENDING, and past its date plus the sheet's terms on the sheet's today),
+  * rounded to the cent as the claim rounds (see {@link Rounding}). A correction has none. Never bound by a statement; settling a claim fixes it into its due.
+  */
+ public final class LateCharge {
+@@ -26,7 +26,7 @@ public final class LateCharge {
+     /** The late charge on a claim's figure on the sheet's today; zero when it is not overdue. */
+     public static BigDecimal charge(Sheet sheet, Claim claim, BigDecimal figure) {
+         BigDecimal zero = BigDecimal.ZERO.setScale(2);
+-        if (figure == null || claim.getStatus() != ClaimStatus.OPEN || claim.isCorrection()) {
++        if (figure == null || !claim.getStatus().isOpen() || claim.isCorrection()) {
+             return zero;
+         }
+         LocalDate dueBy = claim.getDate().plusDays(sheet.getTerms());
+diff --git a/src/main/java/net/officefloor/hq/app/person/Person.java b/src/main/java/net/officefloor/hq/app/person/Person.java
+index 9bbea8de2..4f11411dd 100644
+--- a/src/main/java/net/officefloor/hq/app/person/Person.java
++++ b/src/main/java/net/officefloor/hq/app/person/Person.java
+@@ -121,7 +121,7 @@ public class Person {
+ 
+     /** Whether a claim of this person in the given status counts toward the live totals. */
+     public boolean counts(ClaimStatus status) {
+-        return status.counts() && !(held && status == ClaimStatus.OPEN);
++        return status.counts() && !(held && status.isOpen());
+     }
+ 
+     public long getVersion() {
+diff --git a/src/main/java/net/officefloor/hq/app/rollup/RollupService.java b/src/main/java/net/officefloor/hq/app/rollup/RollupService.java
+index 630a7ec03..11db65d74 100644
+--- a/src/main/java/net/officefloor/hq/app/rollup/RollupService.java
++++ b/src/main/java/net/officefloor/hq/app/rollup/RollupService.java
+@@ -28,7 +28,7 @@ import org.springframework.stereotype.Service;
+  * and calls {@link #recordChanges} after its own audit lines, which appends one ROLLUP line per
+  * person whose figures moved (people in the order they were added; a new person counts as moved),
+  * then a TOTALS line when the sheet's totals moved. A held person's OPEN claims count in none of
+- * these, nor in a period's due-total; their SETTLED claims still do. A live due is never below
++ * these (nor their PENDING ones), nor in a period's due-total; their SETTLED claims still do. A live due is never below
+  * the sheet's floor; an overdue claim's figure has its late charge added on top.
+  */
+ @Service
+@@ -146,7 +146,7 @@ public class RollupService {
+ 
+     /**
+      * A claim's figure as the screen shows it: the due fixed when settled, else the one bound by the
+-     * last statement, else its live due (rounded as the claim rounds, see {@link Rounding}) raised to the floor (a correction's is not), with its late charge added on top;
++     * last statement (not while PENDING), else its live due (rounded as the claim rounds, see {@link Rounding}) raised to the floor (a correction's is not), with its late charge added on top;
+      * null when none.
+      */
+     private static BigDecimal figure(Sheet sheet, List<Rate> sheetRates, List<Claim> sheetClaims, BigDecimal floor,
+@@ -154,7 +154,7 @@ public class RollupService {
+         if (claim.getStatus() == ClaimStatus.SETTLED && claim.getSettledDue() != null) {
+             return claim.getSettledDue();
+         }
+-        BigDecimal figure = claim.isStated() ? claim.getStatedDue()
++        BigDecimal figure = claim.isStated() && claim.getStatus() != ClaimStatus.PENDING ? claim.getStatedDue()
+                 : inForce(sheetRates, person.gradeOn(claim.getDate()), claim.getDate()).map(Rate::getPct)
+                         .map(pct -> claim.getAmount().multiply(pct).divide(BigDecimal.valueOf(100), 2,
+                                 Rounding.mode(sheet, Rounding.dateOf(claim, sheetClaims))))
+diff --git a/src/main/java/net/officefloor/hq/app/statement/StatementService.java b/src/main/java/net/officefloor/hq/app/statement/StatementService.java
+index 6a58a765e..45257d956 100644
+--- a/src/main/java/net/officefloor/hq/app/statement/StatementService.java
++++ b/src/main/java/net/officefloor/hq/app/statement/StatementService.java
+@@ -23,8 +23,8 @@ import org.springframework.web.server.ResponseStatusException;
+ 
+ /**
+  * Statements on a sheet. Taking a person's statement records their due-total at that moment, taken
+- * on the sheet's today, and binds every claim of theirs that counts (OPEN or SETTLED, but not a held
+- * person's OPEN claims) to the figure it has then; a claim of theirs that does not count is unbound,
++ * on the sheet's today, and binds every claim of theirs that counts (OPEN, PENDING or SETTLED, but not a held
++ * person's OPEN or PENDING claims) to the figure it has then; a claim of theirs that does not count is unbound,
+  * so its figure is live again. The late charge is never bound: the due-total includes each claim's charge on the day, but a claim is
+  * bound to the figure under it.
+  */
+diff --git a/src/main/resources/db/migration/V27__claim_pending.sql b/src/main/resources/db/migration/V27__claim_pending.sql
+new file mode 100644
+index 000000000..77f98b455
+--- /dev/null
++++ b/src/main/resources/db/migration/V27__claim_pending.sql
+@@ -0,0 +1,8 @@
++-- A claim a clerk settles above the clerk limit goes to PENDING until a steward approves it
++-- (SETTLED) or rejects it (back to OPEN). The status's allowed values gain PENDING, so the status
++-- moves to a column whose check allows it.
++ALTER TABLE claim ADD COLUMN status_pending VARCHAR(10) DEFAULT 'DRAFT' NOT NULL
++    CHECK (status_pending IN ('DRAFT', 'OPEN', 'PENDING', 'SETTLED', 'VOID'));
++UPDATE claim SET status_pending = status;
++ALTER TABLE claim DROP COLUMN status;
++ALTER TABLE claim ALTER COLUMN status_pending RENAME TO status;
