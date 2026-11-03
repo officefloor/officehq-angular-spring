@@ -23,6 +23,10 @@ export interface Claim {
   settledDue: string | null;
   /** The user who opened the claim; null while DRAFT, or if voided without being opened. */
   openedBy: string | null;
+  /** Whether the person's last statement bound the claim to the figure it had then. */
+  stated: boolean;
+  /** The figure bound by the last statement; null while unbound or if it had no rate then. */
+  statedDue: string | null;
 }
 
 /** A move from one status to the next, by the endpoint that makes it. */
@@ -93,6 +97,7 @@ export function money(c: number): string {
           <span>Due <span data-testid="claim-due">{{ dueOf(c) }}</span></span>
           <span data-testid="claim-status">{{ c.status }}</span>
           <span>Opened by <span data-testid="claim-opened-by">{{ c.openedBy ?? '' }}</span></span>
+          <span>Stated <span data-testid="claim-stated">{{ c.stated ? 'yes' : 'no' }}</span></span>
           <button type="button" data-testid="claim-open" (click)="act(c, 'open')">Open</button>
           <button type="button" data-testid="claim-settle" (click)="act(c, 'settle')">Settle</button>
           <button type="button" data-testid="claim-void" (click)="act(c, 'void')">Void</button>
@@ -138,8 +143,9 @@ export class PersonClaims {
   /** The error of each claim's last refused status change, by claim id. */
   protected readonly actionErrors = signal<ReadonlyMap<number, string>>(new Map());
 
-  /** A settled claim shows the due fixed when it was settled; any other claim's due is live, at
-   *  the rate for the person's grade in force on the claim's date. */
+  /** A stated claim shows the figure bound by the last statement, a settled claim the due fixed
+   *  when it was settled; any other claim's due is live, at the rate for the person's grade in
+   *  force on the claim's date. */
   protected dueOf(c: Claim): string {
     return dueText(claimDueCents(c, this.rates(), this.grade()));
   }

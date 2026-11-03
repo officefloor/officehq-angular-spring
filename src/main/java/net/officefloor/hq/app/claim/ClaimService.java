@@ -20,7 +20,8 @@ import org.springframework.web.server.ResponseStatusException;
  * takes the sheet's today. A claim starts as DRAFT and moves through its statuses (see
  * {@link ClaimStatus}); a change its status does not allow is refused. Settling a claim fixes its
  * due at the rate its person's grade has then for the claim's date; an open claim's due stays live.
- * A claim records who opened it, and that user cannot settle it (four eyes).
+ * A claim records who opened it, and that user cannot settle it (four eyes). A claim bound by its
+ * person's last statement keeps the figure it had then, and settling it fixes that figure.
  */
 @Service
 public class ClaimService {
@@ -38,6 +39,17 @@ public class ClaimService {
         this.rates = rates;
         this.sheets = sheets;
         this.audit = audit;
+    }
+
+    /**
+     * A claim's figure now: the one bound by a statement, else the due fixed when settled, else the
+     * live due; null when it has none.
+     */
+    public BigDecimal figure(String sheetId, Person person, Claim claim) {
+        if (claim.isStated()) {
+            return claim.getStatedDue();
+        }
+        return claim.getStatus() == ClaimStatus.SETTLED ? claim.getSettledDue() : due(sheetId, person, claim);
     }
 
     @Transactional(readOnly = true)
@@ -91,7 +103,7 @@ public class ClaimService {
             claim.setNumber(number);
             claim.setOpenedBy(user);
         } else if (next == ClaimStatus.SETTLED) {
-            claim.setSettledDue(due(sheetId, person, claim));
+            claim.setSettledDue(claim.isStated() ? claim.getStatedDue() : due(sheetId, person, claim));
         } else if (next == ClaimStatus.VOID) {
             claim.setNumber(null);
         }
@@ -112,7 +124,7 @@ public class ClaimService {
      * The due on a claim's amount at the rate for the person's grade in force on the claim's date,
      * half to even to the cent; null with no rate in force then.
      */
-    private BigDecimal due(String sheetId, Person person, Claim claim) {
+    public BigDecimal due(String sheetId, Person person, Claim claim) {
         return rates.findInForce(sheetId, person.getGrade(), claim.getDate()).map(Rate::getPct)
                 .map(pct -> claim.getAmount().multiply(pct).divide(BigDecimal.valueOf(100), 2, RoundingMode.HALF_EVEN))
                 .orElse(null);

@@ -14,7 +14,7 @@ import java.time.LocalDate;
 /**
  * A claim by a person on a sheet: an amount (0.00 or more, two decimals), a date, a note and a
  * status, once opened its number on the sheet and who opened it, and once settled the due fixed at
- * that moment.
+ * that moment, and while bound by its person's last statement the figure it had then.
  */
 @Entity
 @Table(name = "claim")
@@ -54,6 +54,14 @@ public class Claim {
     /** The user who opened the claim; none while DRAFT, or if voided without being opened. */
     @Column(name = "opened_by")
     private String openedBy;
+
+    /** Whether the person's last statement bound this claim to the figure it had then. */
+    @Column(name = "stated", nullable = false)
+    private boolean stated;
+
+    /** The figure bound by the last statement; none while unbound or if it had no rate then. */
+    @Column(name = "stated_due")
+    private BigDecimal statedDue;
 
     protected Claim() {
     }
@@ -132,5 +140,19 @@ public class Claim {
 
     public void setOpenedBy(String openedBy) {
         this.openedBy = openedBy;
+    }
+
+    public boolean isStated() {
+        return stated;
+    }
+
+    public BigDecimal getStatedDue() {
+        return statedDue;
+    }
+
+    /** Bind the claim to a figure (stated), or unbind it so its figure is live again. */
+    public void bind(boolean stated, BigDecimal statedDue) {
+        this.stated = stated;
+        this.statedDue = stated ? statedDue : null;
     }
 }

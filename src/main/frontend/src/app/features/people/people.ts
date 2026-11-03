@@ -3,7 +3,7 @@ import { Component, computed, effect, inject, signal } from '@angular/core';
 import { firstValueFrom } from 'rxjs';
 import { Session } from '../../core/session';
 import { Claim, PersonClaims, cents, counts, money } from '../claims/claims';
-import { Rate, Rates, claimDueCents, dueText, pctOn } from '../rates/rates';
+import { Rate, Rates, claimDueCents, dueText, fixedDueCents, pctOn } from '../rates/rates';
 
 // The people on the active sheet, in the order they were added, and the one form that both adds
 // a person and edits an existing one (opening a person's editor fills the form with their values).
@@ -14,6 +14,9 @@ import { Rate, Rates, claimDueCents, dueText, pctOn } from '../rates/rates';
 // what is due at the rate for the person's grade in force on the claim's date (a settled claim the
 // figure fixed when settled), each person the sum of those figures over the claims that count, and
 // the sheet's due-total adds up every person's due-total that has one.
+// Taking a person's statement binds each of their claims that counts to the figure it has then
+// (a stated claim shows and totals that figure); each row shows how many statements the person
+// has taken, and the last one's due-total and date.
 interface Person {
   id: number;
   name: string;
@@ -25,6 +28,20 @@ interface Person {
 /** A claim's amount in whole cents when it counts toward the totals, else nothing. */
 function countedCents(c: Claim): number {
   return counts(c) ? cents(c.amount) : 0;
+}
+
+/** A person's statements: how many, and the last one's due-total (n/a when it had none) and date. */
+interface StatementSummary {
+  personId: number;
+  count: number;
+  dueTotal: string;
+  date: string;
+}
+
+/** A statement just taken, with the person's claims as it left them. */
+interface StatementTaken {
+  summary: StatementSummary;
+  claims: Claim[];
 }
 
 const GRADES = ['A', 'B', 'C'] as const;
@@ -74,6 +91,7 @@ const GRADES = ['A', 'B', 'C'] as const;
             <th scope="col">Grade</th>
             <th scope="col">Claimed</th>
             <th scope="col">Due</th>
+            <th scope="col">Statements</th>
             <th scope="col">Claims</th>
             <th scope="col"><span class="visually-hidden">Actions</span></th>
           </tr>
@@ -85,6 +103,11 @@ const GRADES = ['A', 'B', 'C'] as const;
               <td data-testid="person-grade">{{ p.grade }}</td>
               <td data-testid="person-claimed">{{ claimedOf(p.id) }}</td>
               <td data-testid="person-due-total">{{ dueText(dueOf(p)) }}</td>
+              <td>
+                <span data-testid="person-statement-count">{{ statementOf(p.id)?.count ?? 0 }}</span>
+                <span>Last due <span data-testid="person-stated-total">{{ statementOf(p.id)?.dueTotal ?? '' }}</span></span>
+                <span>on <span data-testid="person-statement-date">{{ statementOf(p.id)?.date ?? '' }}</span></span>
+              </td>
               <td>
                 <app-person-claims
                   [personId]="p.id"
@@ -104,6 +127,17 @@ const GRADES = ['A', 'B', 'C'] as const;
                 >
                   Edit
                 </button>
+                <button
+                  type="button"
+                  data-testid="person-statement"
+                  [attr.aria-label]="'Take statement for ' + p.name"
+                  (click)="takeStatement(p)"
+                >
+                  Statement
+                </button>
+                @if (rowErrors().get(p.id); as err) {
+                  <p role="alert" data-testid="person-error">{{ err }}</p>
+                }
               </td>
             </tr>
           }
@@ -127,6 +161,10 @@ export class People {
   });
   protected readonly claimedTotal = computed(() => money(this.claims().reduce((sum, c) => sum + countedCents(c), 0)));
   protected readonly rates = signal<Rate[]>([]);
+  /** Each person's statements, by person id. */
+  protected readonly statements = signal<ReadonlyMap<number, StatementSummary>>(new Map());
+  /** The error of each person's last refused row action, by person id. */
+  protected readonly rowErrors = signal<ReadonlyMap<number, string>>(new Map());
   /** Each grade's rate in force on the sheet's today. */
   protected readonly pctOf = computed(() => {
     const today = this.session.today();
@@ -152,6 +190,8 @@ export class People {
       this.session.loads();
       this.people.set([]);
       this.claims.set([]);
+      this.statements.set(new Map());
+      this.rowErrors.set(new Map());
       this.reset();
       if (sheet) {
         void this.fetch(sheet);
@@ -161,12 +201,14 @@ export class People {
 
   private async fetch(sheet: string): Promise<void> {
     try {
-      const [list, claims] = await Promise.all([
+      const [list, claims, statements] = await Promise.all([
         firstValueFrom(this.http.post<Person[]>('/api/people/list', { sheet })),
         firstValueFrom(this.http.post<Claim[]>('/api/claims/list', { sheet })),
+        firstValueFrom(this.http.post<StatementSummary[]>('/api/statements/list', { sheet })),
       ]);
       if (this.session.sheet() === sheet) {
         this.claims.set(claims);
+        this.statements.set(new Map(statements.map((s) => [s.personId, s])));
         this.people.set(list);
       }
     } catch {
@@ -184,13 +226,40 @@ export class People {
 
   /**
    * What the person owes, in whole cents: the sum of the figures of the claims that count. Null
-   * when their grade has no rate in force on the sheet's today, unless a settled claim that counts
-   * keeps a figure.
+   * when their grade has no rate in force on the sheet's today, unless a stated or settled claim
+   * that counts keeps a figure.
    */
   protected dueOf(p: Person): number | null {
     const counted = this.claimsOf(p.id).filter(counts);
-    if (this.pctOf().get(p.grade) === undefined && !counted.some((c) => c.settledDue !== null)) return null;
+    if (this.pctOf().get(p.grade) === undefined && !counted.some((c) => fixedDueCents(c) !== null)) return null;
     return counted.reduce((sum, c) => sum + (claimDueCents(c, this.rates(), p.grade) ?? 0), 0);
+  }
+
+  protected statementOf(personId: number): StatementSummary | undefined {
+    return this.statements().get(personId);
+  }
+
+  /** Take the person's statement: their claims come back bound (or unbound) as it left them. */
+  protected async takeStatement(p: Person): Promise<void> {
+    this.rowErrors.update((m) => {
+      if (!m.has(p.id)) return m;
+      const next = new Map(m);
+      next.delete(p.id);
+      return next;
+    });
+    const sheet = this.session.sheet();
+    try {
+      const taken = await firstValueFrom(
+        this.http.post<StatementTaken>('/api/statements/take', { sheet, user: this.session.user(), personId: p.id }),
+      );
+      if (this.session.sheet() !== sheet) return;
+      const byId = new Map(taken.claims.map((c) => [c.id, c]));
+      this.claims.update((list) => list.map((c) => byId.get(c.id) ?? c));
+      this.statements.update((m) => new Map(m).set(p.id, taken.summary));
+    } catch {
+      if (this.session.sheet() !== sheet) return;
+      this.rowErrors.update((m) => new Map(m).set(p.id, 'Could not take a statement for ' + p.name + '.'));
+    }
   }
 
   /** A claim added (listed first, newest first) or edited (replaced where it is). */

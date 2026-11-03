@@ -49,10 +49,21 @@ export function dueCents(amountCents: number, pct: string | undefined): number |
 }
 
 /**
- * A claim's figure in whole cents: a settled claim's due fixed when it was settled, any other
- * claim's live due at the rate for the grade in force on the claim's date. Null when it has none.
+ * A claim's fixed figure in whole cents: the one bound by the person's last statement, else the
+ * due fixed when it was settled. Null when it has none (its figure is live, or there was no rate).
+ */
+export function fixedDueCents(c: Claim): number | null {
+  const fixed = c.stated ? c.statedDue : c.settledDue;
+  return fixed !== null ? cents(fixed) : null;
+}
+
+/**
+ * A claim's figure in whole cents: a stated claim's figure bound by the last statement, a settled
+ * claim's due fixed when it was settled, any other claim's live due at the rate for the grade in
+ * force on the claim's date. Null when it has none.
  */
 export function claimDueCents(c: Claim, rates: readonly Rate[], grade: string): number | null {
+  if (c.stated) return fixedDueCents(c);
   return c.settledDue !== null ? cents(c.settledDue) : dueCents(cents(c.amount), pctOn(rates, grade, c.date));
 }
 
