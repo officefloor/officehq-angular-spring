@@ -1,0 +1,175 @@
+diff --git a/src/main/frontend/src/app/features/people/paste-claims-box.ts b/src/main/frontend/src/app/features/people/paste-claims-box.ts
+index 7a11f91a6..9919318f9 100644
+--- a/src/main/frontend/src/app/features/people/paste-claims-box.ts
++++ b/src/main/frontend/src/app/features/people/paste-claims-box.ts
+@@ -8,11 +8,11 @@ function refusal(e: unknown): string {
+   if (e instanceof HttpErrorResponse && e.status === 423) return 'A line\'s due-by falls in a closed period.';
+   if (e instanceof HttpErrorResponse && e.status === 422) return 'A line is dated after the person\'s retirement.';
+   if (e instanceof HttpErrorResponse && typeof e.error?.message === 'string' && e.error.message) return e.error.message;
+-  return 'The claims could not be added.';
++  return 'The claims could not be added and opened.';
+ }
+ 
+-// The paste box: lines of name,amount,date,note each add a draft claim for the named person, all
+-// or none.
++// The paste box: lines of name,amount,date,note each add and open a claim for the named person (or
++// update and open a draft of theirs with the same date and note), all or none.
+ @Component({
+   selector: 'app-paste-claims-box',
+   imports: [ReactiveFormsModule],
+@@ -20,9 +20,9 @@ function refusal(e: unknown): string {
+     <form [formGroup]="form" (ngSubmit)="submit()" aria-label="Paste claims">
+       <label for="paste-claims">Paste claims (name,amount,date,note per line)</label>
+       <textarea id="paste-claims" data-testid="paste-claims" formControlName="text" rows="4"></textarea>
+-      <button type="submit" data-testid="paste-submit">Add claims</button>
++      <button type="submit" data-testid="paste-submit">Add and open claims</button>
+       @if (added() !== null) {
+-        <p role="status">Added <strong data-testid="paste-added">{{ added() }}</strong></p>
++        <p role="status">Lines through: <strong data-testid="paste-added">{{ added() }}</strong></p>
+       }
+       @if (error()) {
+         <p role="alert" data-testid="paste-error">{{ error() }}</p>
+diff --git a/src/main/frontend/src/app/features/people/people-list.ts b/src/main/frontend/src/app/features/people/people-list.ts
+index 84cd88247..ada951eb8 100644
+--- a/src/main/frontend/src/app/features/people/people-list.ts
++++ b/src/main/frontend/src/app/features/people/people-list.ts
+@@ -1400,7 +1400,7 @@ export class PeopleList {
+     }
+   };
+ 
+-  /** Read the sheet's claims again once a paste has added some. */
++  /** Read the sheet's claims again once a paste has added or opened some. */
+   protected async claimsPasted(): Promise<void> {
+     const sheetId = this.session.sheetId();
+     if (!sheetId) return;
+diff --git a/src/main/java/net/officefloor/hq/app/claim/ClaimPasteController.java b/src/main/java/net/officefloor/hq/app/claim/ClaimPasteController.java
+index 3a4bc1ad0..97986676a 100644
+--- a/src/main/java/net/officefloor/hq/app/claim/ClaimPasteController.java
++++ b/src/main/java/net/officefloor/hq/app/claim/ClaimPasteController.java
+@@ -21,7 +21,7 @@ public class ClaimPasteController {
+     public record PasteForm(@NotNull @Size(max = 200_000) String text) {
+     }
+ 
+-    /** How many claims a paste added. */
++    /** How many lines a paste put through (added or updated, then opened). */
+     public record Pasted(int added) {
+     }
+ 
+diff --git a/src/main/java/net/officefloor/hq/app/claim/ClaimPasteService.java b/src/main/java/net/officefloor/hq/app/claim/ClaimPasteService.java
+index 2a29e4016..b4989e1ea 100644
+--- a/src/main/java/net/officefloor/hq/app/claim/ClaimPasteService.java
++++ b/src/main/java/net/officefloor/hq/app/claim/ClaimPasteService.java
+@@ -7,18 +7,20 @@ import java.util.ArrayList;
+ import java.util.HashSet;
+ import java.util.List;
+ import java.util.Locale;
++import java.util.Objects;
+ import java.util.Set;
+ import java.util.regex.Pattern;
+ import net.officefloor.hq.app.person.Person;
+ import net.officefloor.hq.app.person.PersonRepository;
++import net.officefloor.hq.app.sheet.SheetService;
+ import org.springframework.http.HttpStatus;
+ import org.springframework.stereotype.Service;
+ import org.springframework.transaction.annotation.Transactional;
+ import org.springframework.web.server.ResponseStatusException;
+ 
+-/** The paste box: lines of name,amount,date,note, each adding a draft claim for the named person. A
+- *  note ending in " #reference" gives the claim that external reference, which is then no part of
+- *  the note. */
++/** The paste box: lines of name,amount,date,note, each adding a claim for the named person and
++ *  opening it, or updating and opening a draft of theirs with the same date and note. A note ending
++ *  in " #reference" gives the claim that external reference, which is then no part of the note. */
+ @Service
+ public class ClaimPasteService {
+ 
+@@ -38,19 +40,30 @@ public class ClaimPasteService {
+ 
+     private final PersonRepository people;
+     private final ClaimService claims;
++    private final SheetService sheets;
+ 
+-    public ClaimPasteService(PersonRepository people, ClaimService claims) {
++    public ClaimPasteService(PersonRepository people, ClaimService claims, SheetService sheets) {
+         this.people = people;
+         this.claims = claims;
++        this.sheets = sheets;
+     }
+ 
+-    /** Add a draft claim per line, in order, checking every line first; one change, so when any line
+-     *  is refused nothing is added and nothing is recorded. Blank lines are skipped; a paste with no
+-     *  lines is refused, and so is one with a reference already used on the sheet or by an earlier
+-     *  line, comparing without regard to case. Returns how many claims were added. */
++    /** Add and open a claim per line, in order (numbered in paste order), checking every line first;
++     *  one change, so when any line is refused, or any open is refused as the open button would
++     *  refuse it, nothing is changed and nothing is recorded. A line whose person, date and note
++     *  match a claim of theirs as it stood before the paste (not void or deleted) updates the newest
++     *  such draft to the line's amount and opens it instead; a line whose matches hold no draft is
++     *  refused. Blank lines are skipped; a paste with no lines is refused, and so is one with a
++     *  reference already used on the sheet or by an earlier line, comparing without regard to case.
++     *  Returns how many lines went through. */
+     @Transactional
+     public int paste(String sheetId, String user, String text) {
++        List<Claim> before = claims.list(sheetId);
++        LocalDate entryDay = sheets.entryDay(sheetId);
+         List<Line> lines = new ArrayList<>();
++        List<Integer> numbers = new ArrayList<>();
++        List<Claim> drafts = new ArrayList<>();
++        Set<Long> taken = new HashSet<>();
+         Set<String> refs = new HashSet<>();
+         int n = 0;
+         for (String raw : text.split("\\R")) {
+@@ -67,15 +80,50 @@ public class ClaimPasteService {
+                         throw refused(n, "the reference \"" + line.ref() + "\" is already used on this sheet");
+                     }
+                 }
++                LocalDate on = line.date() != null ? line.date() : entryDay;
++                List<Claim> matches = before.stream()
++                        .filter(c -> c.getPersonId().equals(line.person().getId()) && on.equals(c.getDate())
++                                && line.note().equals(Objects.requireNonNullElse(c.getNote(), "").trim())
++                                && c.getStatus() != ClaimStatus.VOID && c.getStatus() != ClaimStatus.DELETED)
++                        .toList();
++                Claim draft = null;
++                if (!matches.isEmpty()) {
++                    // the claims are listed newest first
++                    draft = matches.stream()
++                            .filter(c -> c.getStatus() == ClaimStatus.DRAFT && !taken.contains(c.getId()))
++                            .findFirst().orElse(null);
++                    if (draft == null) {
++                        throw refused(n, "the claim with this date and note is no longer a draft");
++                    }
++                    taken.add(draft.getId());
++                }
+                 lines.add(line);
++                numbers.add(n);
++                drafts.add(draft);
+             }
+         }
+         if (lines.isEmpty()) {
+             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Paste at least one line");
+         }
+-        for (Line line : lines) {
+-            claims.add(sheetId, user, line.person().getId(), line.amount(), line.date(), line.note(),
+-                    null, line.ref());
++        for (int i = 0; i < lines.size(); i++) {
++            Line line = lines.get(i);
++            Claim draft = drafts.get(i);
++            try {
++                long claimId;
++                if (draft == null) {
++                    claimId = claims.add(sheetId, user, line.person().getId(), line.amount(), line.date(),
++                            line.note(), null, line.ref()).getId();
++                } else {
++                    claimId = draft.getId();
++                    if (draft.getAmount().compareTo(line.amount()) != 0) {
++                        claims.editAmount(sheetId, user, claimId, line.amount());
++                    }
++                }
++                claims.changeStatus(sheetId, user, claimId, ClaimStatus.OPEN);
++            } catch (ResponseStatusException e) {
++                throw new ResponseStatusException(e.getStatusCode(),
++                        "Line " + numbers.get(i) + ": " + Objects.requireNonNullElse(e.getReason(), "refused"));
++            }
+         }
+         return lines.size();
+     }
