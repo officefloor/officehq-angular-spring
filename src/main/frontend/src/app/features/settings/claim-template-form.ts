@@ -3,12 +3,13 @@ import { Component, inject, signal } from '@angular/core';
 import { FormControl, FormGroup, ReactiveFormsModule } from '@angular/forms';
 import { ClaimTemplates } from '../../core/claim-templates';
 import { CLAIM_AMOUNT } from '../../core/claims';
+import { FigurePipe } from '../../core/figure';
 
 // The sheet's claim templates and the form a template is saved with; saving a name again replaces
 // that template.
 @Component({
   selector: 'app-claim-template-form',
-  imports: [ReactiveFormsModule],
+  imports: [ReactiveFormsModule, FigurePipe],
   template: `
     <section aria-labelledby="claim-templates-heading">
       <h3 id="claim-templates-heading">Claim templates</h3>
@@ -29,7 +30,7 @@ import { CLAIM_AMOUNT } from '../../core/claims';
         @for (t of templates.list(); track t.id) {
           <li [attr.data-testid]="'template-row-' + t.name">
             <span data-testid="template-name">{{ t.name }}</span>
-            <span data-testid="template-amount">{{ t.amount }}</span>
+            <span data-testid="template-amount">{{ t.amount | figure }}</span>
             <span data-testid="template-note">{{ t.note }}</span>
           </li>
         }

@@ -3,6 +3,7 @@ import { Component, computed, inject, input, signal } from '@angular/core';
 import { FormControl, FormGroup, ReactiveFormsModule } from '@angular/forms';
 import { Person } from '../../core/people';
 import { Pool, PoolMember, Pools, formatCents, shareCents } from '../../core/pools';
+import { FigurePipe } from '../../core/figure';
 
 // A pool's row: its members (people, and pools shown as pool:<name>) with their shares, the total
 // and whether it is balanced (exactly 100.00), each member's cut of the pool's pot (blank unless the
@@ -12,19 +13,19 @@ import { Pool, PoolMember, Pools, formatCents, shareCents } from '../../core/poo
 // whose dates do not include the sheet's today is left out of the total and has no cut.
 @Component({
   selector: 'app-pool-row',
-  imports: [ReactiveFormsModule],
+  imports: [ReactiveFormsModule, FigurePipe],
   host: { '[attr.data-testid]': "'pool-row-' + pool().name", role: 'listitem' },
   template: `
     <h4>{{ pool().name }}</h4>
     <p>
-      Total share <span data-testid="pool-total-share">{{ totalShare() }}</span>,
+      Total share <span data-testid="pool-total-share">{{ totalShare() | figure }}</span>,
       balanced <span data-testid="pool-balanced">{{ balanced() ? 'yes' : 'no' }}</span>
     </p>
     <ul>
       @for (m of pool().members; track memberKey(m)) {
         <li [attr.data-testid]="'pool-member-' + pool().name + '-' + memberKey(m)">
-          {{ nameOf(m) }}: <span data-testid="pool-share">{{ m.share }}</span>,
-          cut <span data-testid="pool-cut">{{ m.cut ?? '' }}</span>
+          {{ nameOf(m) }}: <span data-testid="pool-share">{{ m.share | figure }}</span>,
+          cut <span data-testid="pool-cut">{{ m.cut ?? '' | figure }}</span>
           @if (isRetired(m)) { (retired) }
           @if (m.from || m.to) { ({{ m.from ?? '' }} to {{ m.to ?? '' }}) }
           @if (!m.inForce) { (not in force) }

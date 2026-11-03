@@ -1,17 +1,18 @@
 import { Component, inject, input, output, signal } from '@angular/core';
 import { FormControl, FormGroup, ReactiveFormsModule } from '@angular/forms';
 import { Plan, Plans } from '../../core/plans';
+import { FigurePipe } from '../../core/figure';
 
 // A person's plans (every so many days or monthly on a day), in the order they were added, each with how many claims it has made so far and its next dates;
 // and the form that adds one.
 @Component({
   selector: 'app-person-plans',
-  imports: [ReactiveFormsModule],
+  imports: [ReactiveFormsModule, FigurePipe],
   template: `
     <ul aria-label="Plans">
       @for (pl of plans(); track pl.id) {
         <li [attr.data-testid]="'plan-row-' + pl.id">
-          <span data-testid="plan-amount-shown">{{ pl.amount }}</span>
+          <span data-testid="plan-amount-shown">{{ pl.amount | figure }}</span>
           from <span data-testid="plan-start">{{ pl.start }}</span>
           @if (pl.day !== null) {
             monthly on day <span data-testid="plan-day">{{ pl.day }}</span>

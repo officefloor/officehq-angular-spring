@@ -7,6 +7,8 @@ import net.officefloor.hq.app.Audit;
 import net.officefloor.hq.app.claim.ClaimService;
 import net.officefloor.hq.app.person.Person;
 import net.officefloor.hq.app.person.PersonRepository;
+import net.officefloor.hq.app.role.RoleService;
+import net.officefloor.hq.app.role.SheetRole;
 import net.officefloor.hq.app.sheet.SheetService;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
@@ -25,15 +27,17 @@ public class PlanService {
     private final SheetService sheets;
     private final TransactionTemplate transaction;
     private final Audit audit;
+    private final RoleService roles;
 
     public PlanService(PlanRepository plans, PersonRepository people, ClaimService claims, SheetService sheets,
-            PlatformTransactionManager transactions, Audit audit) {
+            PlatformTransactionManager transactions, Audit audit, RoleService roles) {
         this.plans = plans;
         this.people = people;
         this.claims = claims;
         this.sheets = sheets;
         this.transaction = new TransactionTemplate(transactions);
         this.audit = audit;
+        this.roles = roles;
     }
 
     /** The plans on the sheet in the order they were added. */
@@ -79,8 +83,11 @@ public class PlanService {
      *  with an empty note for each of its dates up to its end and the sheet's today that has none
      *  yet, oldest first. Each claim is added as the claim form adds it, in a transaction of its
      *  own: a date the form refuses is skipped, and tried again by the next generate. Returns how
-     *  many claims were made. */
+     *  many claims were made. A viewer's generate makes none. */
     public int generate(String sheetId, String user) {
+        if (SheetRole.VIEWER.equals(roles.roleOf(sheetId, user))) {
+            return 0;
+        }
         LocalDate today = sheets.today(sheetId);
         int made = 0;
         for (Plan plan : plans.findBySheetIdOrderByIdAsc(sheetId)) {

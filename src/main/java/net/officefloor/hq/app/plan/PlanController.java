@@ -9,6 +9,7 @@ import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.util.List;
 import net.officefloor.hq.app.sheet.SheetService;
+import net.officefloor.hq.app.role.ViewerAllowed;
 import org.springframework.http.HttpStatus;
 import org.springframework.validation.annotation.Validated;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -86,6 +87,7 @@ public class PlanController {
                 form.everyValue(), form.dayValue(), form.end()), sheets.today(sheet));
     }
 
+    @ViewerAllowed
     @PostMapping("/plans/generate")
     public Generated generate(@PathVariable @NotBlank @Size(max = 100) String sheetId,
             @RequestHeader("X-User") @NotBlank @Size(max = 100) String user) {

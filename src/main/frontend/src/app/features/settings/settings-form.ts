@@ -7,13 +7,14 @@ import {
   LATE_PCT, LIMIT, PERM_ACTIONS, PERM_ROLES, POLICY_DATE, PermAction, ROLES, ROUNDING, STANDING_PERMISSIONS, TERMS, FISCAL_MONTH, Role, RoleName,
   SheetSettings,
 } from '../../core/settings';
+import { FigurePipe } from '../../core/figure';
 
 // The sheet's settings (the clerk limit, the cap, the proof threshold, the proof threshold per grade, the note threshold, the floor, the rounding mode, the terms, the grace days per grade, the late percent, the policy date, period numbering from, the grace days, the entry date, the pot, the alert threshold, the parent sheet and the permission matrix) and the roles it gives user names: clerk, the default for
 // any name, steward, or viewer (who may change nothing). The settings that carry a figure are dated: each is saved from a from-date
 // (blank: the sheet's today), and what shows in force is the value on the sheet's today.
 @Component({
   selector: 'app-settings-form',
-  imports: [ReactiveFormsModule],
+  imports: [ReactiveFormsModule, FigurePipe],
   template: `
     <section aria-labelledby="settings-heading">
       <h2 id="settings-heading">Settings</h2>
@@ -125,16 +126,16 @@ import {
           <p role="alert" data-testid="settings-error">{{ settingsError() }}</p>
         }
       </form>
-      <p>Clerk limit in force: <span data-testid="setting-clerk-limit-current">{{ clerkLimit() ?? '' }}</span></p>
-      <p>Cap in force: <span data-testid="setting-cap-current">{{ cap() ?? '' }}</span></p>
-      <p>Proof threshold in force: <span data-testid="setting-proof-threshold-current">{{ proofThreshold() ?? '' }}</span></p>
+      <p>Clerk limit in force: <span data-testid="setting-clerk-limit-current">{{ clerkLimit() ?? '' | figure }}</span></p>
+      <p>Cap in force: <span data-testid="setting-cap-current">{{ cap() ?? '' | figure }}</span></p>
+      <p>Proof threshold in force: <span data-testid="setting-proof-threshold-current">{{ proofThreshold() ?? '' | figure }}</span></p>
       @for (g of grades; track g) {
         <p>Proof threshold in force for grade {{ g }}:
-          <span [attr.data-testid]="'setting-proof-threshold-' + g + '-current'">{{ gradeProofThresholds()[g] ?? '' }}</span></p>
+          <span [attr.data-testid]="'setting-proof-threshold-' + g + '-current'">{{ gradeProofThresholds()[g] ?? '' | figure }}</span></p>
       }
-      <p>Note threshold in force: <span data-testid="setting-note-threshold-current">{{ noteThreshold() ?? '' }}</span></p>
-      <p>Review threshold in force: <span data-testid="setting-review-threshold-current">{{ reviewThreshold() ?? '' }}</span></p>
-      <p>Floor in force: <span data-testid="setting-floor-current">{{ floor() ?? '' }}</span></p>
+      <p>Note threshold in force: <span data-testid="setting-note-threshold-current">{{ noteThreshold() ?? '' | figure }}</span></p>
+      <p>Review threshold in force: <span data-testid="setting-review-threshold-current">{{ reviewThreshold() ?? '' | figure }}</span></p>
+      <p>Floor in force: <span data-testid="setting-floor-current">{{ floor() ?? '' | figure }}</span></p>
       <p>Rounding mode in force: <span data-testid="setting-rounding-current">{{ rounding() ?? '' }}</span></p>
       <p>Terms in force: <span data-testid="setting-terms-current">{{ terms() ?? '' }}</span></p>
       @for (g of grades; track g) {
@@ -145,13 +146,13 @@ import {
         <p>Grace days in force for grade {{ g }}:
           <span [attr.data-testid]="'setting-grace-' + g + '-current'">{{ gradeGraces()[g] ?? '' }}</span></p>
       }
-      <p>Late percent in force: <span data-testid="setting-late-pct-current">{{ latePct() ?? '' }}</span></p>
+      <p>Late percent in force: <span data-testid="setting-late-pct-current">{{ latePct() ?? '' | figure }}</span></p>
       <p>Policy date in force: <span data-testid="setting-policy-date-current">{{ policyDate() ?? '' }}</span></p>
       <p>Period numbering from: <span data-testid="setting-period-numbering-from-current">{{ periodNumberingFrom() ?? '' }}</span></p>
       <p>Grace days: <span data-testid="setting-grace-days-current">{{ graceDays() ?? '' }}</span></p>
       <p>Entry date: <span data-testid="setting-entry-date-current">{{ entryDate() ?? '' }}</span></p>
-      <p>Pot: <span data-testid="setting-pot-current">{{ pot() ?? '' }}</span></p>
-      <p>Alert threshold: <span data-testid="setting-alert-threshold-current">{{ alertThreshold() ?? '' }}</span></p>
+      <p>Pot: <span data-testid="setting-pot-current">{{ pot() ?? '' | figure }}</span></p>
+      <p>Alert threshold: <span data-testid="setting-alert-threshold-current">{{ alertThreshold() ?? '' | figure }}</span></p>
       <p>Fiscal year start month: <span data-testid="setting-fiscal-start-month-current">{{ fiscalStartMonth() ?? '' }}</span></p>
       <p>Parent sheet: <span data-testid="setting-parent-current">{{ parent() ?? '' }}</span></p>
       @for (a of permActions; track a) {

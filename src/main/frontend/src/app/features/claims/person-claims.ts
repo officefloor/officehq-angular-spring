@@ -9,6 +9,7 @@ import { Rate } from '../../core/rates';
 import { Session } from '../../core/session';
 import { VoidReasons } from '../../core/void-reasons';
 import { DatedValue, Graces, RoundingMode, graceOn } from '../../core/settings';
+import { FigurePipe } from '../../core/figure';
 
 /** Why the server refused an action: the claim's status does not allow it. */
 const REFUSALS: Record<ClaimAction, string> = {
@@ -183,7 +184,7 @@ function splitRefusal(e: unknown): string {
 // editor is opened, edits it.
 @Component({
   selector: 'app-person-claims',
-  imports: [ReactiveFormsModule],
+  imports: [ReactiveFormsModule, FigurePipe],
   template: `
     <form data-testid="claim-form" [formGroup]="form" (ngSubmit)="submit()">
       <label [for]="'claim-form-amount-' + personId()">Amount</label>
@@ -222,13 +223,13 @@ function splitRefusal(e: unknown): string {
             (change)="selectedChange.emit({ id: c.id, selected: $any($event.target).checked })"
             [attr.aria-label]="'Select claim of ' + c.amount + ' on ' + c.date" />
           <span data-testid="claim-number">{{ c.number ?? '' }}</span>
-          <span data-testid="claim-amount">{{ c.amount }}</span>
+          <span data-testid="claim-amount">{{ c.amount | figure }}</span>
           <span data-testid="claim-date">{{ c.date }}</span>
           <span data-testid="claim-note">{{ c.note }}</span>
           <span data-testid="claim-corrects">{{ c.corrects ?? '' }}</span>
           <span data-testid="claim-ref">{{ c.ref ?? '' }}</span>
           <span data-testid="claim-tags">{{ c.tags }}</span>
-          <span data-testid="claim-due">{{ dueOf(c) }}</span>
+          <span data-testid="claim-due">{{ dueOf(c) | figure }}</span>
           <span data-testid="claim-status">{{ c.status }}</span>
           <span data-testid="claim-opened-by">{{ c.openedBy ?? '' }}</span>
           <span data-testid="claim-stated">{{ c.stated ? 'yes' : 'no' }}</span>

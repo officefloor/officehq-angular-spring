@@ -1,6 +1,6 @@
-import { Component, inject, signal } from '@angular/core';
+import { Component, effect, inject, signal } from '@angular/core';
 import { FormControl, FormGroup, ReactiveFormsModule } from '@angular/forms';
-import { Session } from '../../core/session';
+import { LOCALES, Locale, Session } from '../../core/session';
 
 // The signed-in name, and the form that loads a sheet by id.
 @Component({
@@ -8,6 +8,19 @@ import { Session } from '../../core/session';
   imports: [ReactiveFormsModule],
   template: `
     <p>Signed in as <strong data-testid="current-user">{{ session.user() }}</strong></p>
+    <form data-testid="user-locale-form" [formGroup]="localeForm" (ngSubmit)="saveLocale()">
+      <label for="user-locale">Your locale</label>
+      <select id="user-locale" data-testid="user-locale" formControlName="locale">
+        @for (l of locales; track l) {
+          <option [value]="l">{{ l }}</option>
+        }
+      </select>
+      <button type="submit" data-testid="user-locale-save">Save locale</button>
+      @if (localeError()) {
+        <p role="alert" data-testid="user-locale-error">{{ localeError() }}</p>
+      }
+    </form>
+    <p>Locale: <strong data-testid="user-locale-current">{{ session.locale() }}</strong></p>
     <form data-testid="sheet-form" [formGroup]="form" (ngSubmit)="load()">
       <label for="sheet-id-input">Sheet id</label>
       <input id="sheet-id-input" data-testid="sheet-id-input" formControlName="sheetId" />
@@ -60,12 +73,29 @@ export class SheetBar {
   protected readonly clonedTo = signal('');
   protected readonly asOfForm = new FormGroup({ day: new FormControl('', { nonNullable: true }) });
   protected readonly asOfError = signal('');
+  protected readonly locales = LOCALES;
+  protected readonly localeForm = new FormGroup({
+    locale: new FormControl<Locale>(this.session.locale(), { nonNullable: true }),
+  });
+  protected readonly localeError = signal('');
 
   constructor() {
     this.form.valueChanges.subscribe(() => this.error.set(''));
     this.todayForm.valueChanges.subscribe(() => this.sheetError.set(''));
     this.asOfForm.valueChanges.subscribe(() => this.asOfError.set(''));
     this.cloneForm.valueChanges.subscribe(() => this.sheetError.set(''));
+    this.localeForm.valueChanges.subscribe(() => this.localeError.set(''));
+    // The select shows the locale the store holds for this user, re-read on every sheet load.
+    effect(() => this.localeForm.controls.locale.setValue(this.session.locale(), { emitEvent: false }));
+  }
+
+  async saveLocale(): Promise<void> {
+    this.localeError.set('');
+    try {
+      await this.session.setLocale(this.localeForm.controls.locale.value);
+    } catch {
+      this.localeError.set('The locale could not be saved.');
+    }
   }
 
   /** Show the sheet, on this screen only, as it stood at the end of the day entered. */

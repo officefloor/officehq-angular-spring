@@ -27,6 +27,7 @@ import { TreeSearchBox } from './tree-search-box';
 import { PoolList } from '../pools/pool-list';
 import { PersonPlans } from '../plans/person-plans';
 import { PlanGenerateBox } from '../plans/plan-generate-box';
+import { FigurePipe } from '../../core/figure';
 
 /** What the people list can be sorted by on the screen. */
 type SortKey = 'added' | 'name' | 'grade' | 'due-total';
@@ -47,7 +48,7 @@ const NO_LEAVE: Leave = { holds: [], retiredFrom: null };
 // The signed-in user may watch a person: they are told when a claim of theirs is settled.
 @Component({
   selector: 'app-people-list',
-  imports: [ReactiveFormsModule, PersonClaims, RateForm, PeriodForm, QuickAddBar, PasteClaimsBox, ImportPeopleBox, SummaryPanel, ClassicSummaryPanel, HeaderCounters, PoolList, PersonPlans, PlanGenerateBox, TreeSearchBox],
+  imports: [ReactiveFormsModule, PersonClaims, RateForm, PeriodForm, QuickAddBar, PasteClaimsBox, ImportPeopleBox, SummaryPanel, ClassicSummaryPanel, HeaderCounters, PoolList, PersonPlans, PlanGenerateBox, TreeSearchBox, FigurePipe],
   template: `
     <app-header-counters [peopleCount]="people().length" [statuses]="statusSummary()"
       [dueTotal]="dueTotal()" [overdueTotal]="overdueTotal()"
@@ -86,32 +87,32 @@ const NO_LEAVE: Leave = { holds: [], retiredFrom: null };
       <app-plan-generate-box [refresh]="plansGenerated" />
       <app-import-people-box (imported)="peopleImported($event)" />
       <app-tree-search-box />
-      <p>Claimed in total: <strong data-testid="rollup-claimed-total">{{ claimedTotal() }}</strong></p>
-      <p>Due in total: <strong data-testid="rollup-due-total">{{ dueTotal() }}</strong></p>
-      <p>Settled due in total: <strong data-testid="rollup-settled-total">{{ settledTotal() }}</strong></p>
-      <p>Open due in total: <strong data-testid="rollup-open-total">{{ openTotal() }}</strong></p>
-      <p>Cuts in total: <strong data-testid="rollup-cut-total">{{ cutTotal() }}</strong></p>
+      <p>Claimed in total: <strong data-testid="rollup-claimed-total">{{ claimedTotal() | figure }}</strong></p>
+      <p>Due in total: <strong data-testid="rollup-due-total">{{ dueTotal() | figure }}</strong></p>
+      <p>Settled due in total: <strong data-testid="rollup-settled-total">{{ settledTotal() | figure }}</strong></p>
+      <p>Open due in total: <strong data-testid="rollup-open-total">{{ openTotal() | figure }}</strong></p>
+      <p>Cuts in total: <strong data-testid="rollup-cut-total">{{ cutTotal() | figure }}</strong></p>
       <p>Overdue claims: <strong data-testid="rollup-overdue-count">{{ overdueCount() }}</strong></p>
-      <p>Overdue in total: <strong data-testid="rollup-overdue-total">{{ overdueTotal() }}</strong></p>
+      <p>Overdue in total: <strong data-testid="rollup-overdue-total">{{ overdueTotal() | figure }}</strong></p>
       <dl aria-label="Consolidated with descendant sheets">
         <dt>People, consolidated</dt>
         <dd data-testid="consolidated-people-count">{{ consolidatedPeopleCount() }}</dd>
         <dt>Due, consolidated</dt>
-        <dd data-testid="consolidated-due-total">{{ consolidatedDueTotal() }}</dd>
+        <dd data-testid="consolidated-due-total">{{ consolidatedDueTotal() | figure }}</dd>
         <dt>Overdue, consolidated</dt>
-        <dd data-testid="consolidated-overdue-total">{{ consolidatedOverdueTotal() }}</dd>
+        <dd data-testid="consolidated-overdue-total">{{ consolidatedOverdueTotal() | figure }}</dd>
       </dl>
       @if (tagDueTotals().length > 0) {
         <ul aria-label="Due per tag">
           @for (t of tagDueTotals(); track t.tag) {
-            <li>Due tagged {{ t.tag }}: <strong [attr.data-testid]="'tag-' + t.tag + '-due-total'">{{ t.due }}</strong></li>
+            <li>Due tagged {{ t.tag }}: <strong [attr.data-testid]="'tag-' + t.tag + '-due-total'">{{ t.due | figure }}</strong></li>
           }
         </ul>
       }
       @if (monthDueTotals().length > 0) {
         <ul aria-label="Due per month">
           @for (m of monthDueTotals(); track m.month) {
-            <li>Due dated in {{ m.month }}: <strong [attr.data-testid]="'month-' + m.month + '-due-total'">{{ m.due }}</strong></li>
+            <li>Due dated in {{ m.month }}: <strong [attr.data-testid]="'month-' + m.month + '-due-total'">{{ m.due | figure }}</strong></li>
           }
         </ul>
       }
@@ -219,17 +220,17 @@ const NO_LEAVE: Leave = { holds: [], retiredFrom: null };
               <td data-testid="person-aliases">{{ p.aliases.join(', ') }}</td>
               <td data-testid="person-clashing">{{ p.clashing ? 'yes' : 'no' }}</td>
               <td data-testid="person-origin">{{ p.origin ?? '' }}</td>
-              <td data-testid="person-claimed">{{ claimed().get(p.id) ?? '0.00' }}</td>
-              <td data-testid="person-due-total">{{ dueOf(p) ?? 'n/a' }}</td>
-              <td data-testid="person-settled-total">{{ settledTotalOf(p) }}</td>
-              <td data-testid="person-open-total">{{ openTotalOf(p) }}</td>
+              <td data-testid="person-claimed">{{ claimed().get(p.id) ?? '0.00' | figure }}</td>
+              <td data-testid="person-due-total">{{ dueOf(p) ?? 'n/a' | figure }}</td>
+              <td data-testid="person-settled-total">{{ settledTotalOf(p) | figure }}</td>
+              <td data-testid="person-open-total">{{ openTotalOf(p) | figure }}</td>
               @for (pd of periods(); track pd.id) {
-                <td [attr.data-testid]="'person-period-' + pd.name + '-due-total'">{{ periodDueOf(p.id, pd) }}</td>
+                <td [attr.data-testid]="'person-period-' + pd.name + '-due-total'">{{ periodDueOf(p.id, pd) | figure }}</td>
               }
-              <td data-testid="person-excess">{{ excessOf(p) }}</td>
-              <td data-testid="person-cut-total">{{ cutTotals().get(p.id) ?? '0.00' }}</td>
+              <td data-testid="person-excess">{{ excessOf(p) | figure }}</td>
+              <td data-testid="person-cut-total">{{ cutTotals().get(p.id) ?? '0.00' | figure }}</td>
               <td data-testid="person-statement-count">{{ p.statementCount }}</td>
-              <td data-testid="person-stated-total">{{ p.statementCount > 0 ? (p.statedTotal ?? 'n/a') : '' }}</td>
+              <td data-testid="person-stated-total">{{ (p.statementCount > 0 ? (p.statedTotal ?? 'n/a') : '') | figure }}</td>
               <td data-testid="person-statement-date">{{ p.statementDate ?? '' }}</td>
               <td data-testid="person-retired">{{ p.retired ? 'yes' : 'no' }}</td>
               <td data-testid="person-retired-from">{{ p.retiredFrom ?? '' }}</td>
@@ -262,13 +263,13 @@ const NO_LEAVE: Leave = { holds: [], retiredFrom: null };
                 }
               </td>
               <td data-testid="person-overdue-count">{{ overdueOf(p).length }}</td>
-              <td data-testid="person-overdue-total">{{ overdueTotalOf(p) }}</td>
+              <td data-testid="person-overdue-total">{{ overdueTotalOf(p) | figure }}</td>
               @let aged = agedOf(p);
-              <td data-testid="person-aged-0-30">{{ aged[0] }}</td>
-              <td data-testid="person-aged-31-60">{{ aged[1] }}</td>
-              <td data-testid="person-aged-61">{{ aged[2] }}</td>
+              <td data-testid="person-aged-0-30">{{ aged[0] | figure }}</td>
+              <td data-testid="person-aged-31-60">{{ aged[1] | figure }}</td>
+              <td data-testid="person-aged-61">{{ aged[2] | figure }}</td>
               <td data-testid="person-patrons">{{ patronNames().get(p.id) ?? '' }}</td>
-              <td data-testid="person-backing">{{ backingOf(p) }}</td>
+              <td data-testid="person-backing">{{ backingOf(p) | figure }}</td>
               <td data-testid="person-watched">{{ watched().has(p.id) ? 'yes' : 'no' }}</td>
               <td>
                 <app-person-plans [personId]="p.id" [name]="p.name" [plans]="plansByPerson().get(p.id) ?? []"

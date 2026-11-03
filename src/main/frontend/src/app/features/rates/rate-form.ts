@@ -4,12 +4,13 @@ import { FormControl, FormGroup, ReactiveFormsModule } from '@angular/forms';
 import { Grade } from '../../core/people';
 import { PCT, Rate, RatePreview, Rates, pctOn } from '../../core/rates';
 import { Session } from '../../core/session';
+import { FigurePipe } from '../../core/figure';
 
 // The rates for each grade on the sheet, the one in force on the sheet's today, and the form that
 // sets one.
 @Component({
   selector: 'app-rate-form',
-  imports: [ReactiveFormsModule],
+  imports: [ReactiveFormsModule, FigurePipe],
   template: `
     <section aria-labelledby="rates-heading">
       <h2 id="rates-heading">Rates</h2>
@@ -58,7 +59,7 @@ import { Session } from '../../core/session';
         @if (previewResult(); as r) {
           <p aria-live="polite">
             Claims that would change: <span data-testid="rate-preview-count">{{ r.count }}</span>;
-            difference: <span data-testid="rate-preview-diff">{{ r.diff }}</span>
+            difference: <span data-testid="rate-preview-diff">{{ r.diff | figure }}</span>
           </p>
         }
       </form>
@@ -71,7 +72,7 @@ import { Session } from '../../core/session';
           @for (g of grades; track g) {
             <tr>
               <th scope="row">{{ g }}</th>
-              <td [attr.data-testid]="'rate-current-' + g">{{ current().get(g) ?? 'n/a' }}</td>
+              <td [attr.data-testid]="'rate-current-' + g">{{ current().get(g) ?? 'n/a' | figure }}</td>
             </tr>
           }
         </tbody>
@@ -87,7 +88,7 @@ import { Session } from '../../core/session';
               <th scope="row">{{ r.grade }}</th>
               <td data-testid="rate-from">{{ r.from ?? 'start' }}</td>
               <td data-testid="rate-to">{{ r.to ?? '…' }}</td>
-              <td data-testid="rate-pct">{{ r.pct }}</td>
+              <td data-testid="rate-pct">{{ r.pct | figure }}</td>
               <td data-testid="rate-version">{{ r.version }}</td>
             </tr>
           }

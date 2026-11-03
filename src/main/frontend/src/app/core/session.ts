@@ -4,6 +4,15 @@ import { firstValueFrom } from 'rxjs';
 
 interface SignedIn {
   name: string;
+  locale: string;
+}
+
+/** How the screen shows a user figures: en 1234.56, de 1.234,56. */
+export type Locale = 'en' | 'de';
+export const LOCALES: readonly Locale[] = ['en', 'de'];
+
+function toLocale(value: string | null | undefined): Locale {
+  return value === 'de' ? 'de' : 'en';
 }
 
 interface SheetView {
@@ -19,6 +28,8 @@ export class Session {
   private readonly http = inject(HttpClient);
 
   readonly user = signal<string | null>(null);
+  /** The signed-in user's locale, kept per user in the store; en unless chosen. */
+  readonly locale = signal<Locale>('en');
   readonly sheetId = signal<string | null>(null);
   /** The active sheet's today (yyyy-mm-dd) as the store holds it. */
   readonly sheetToday = signal<string | null>(null);
@@ -41,6 +52,7 @@ export class Session {
   async signIn(name: string): Promise<void> {
     const res = await firstValueFrom(this.http.post<SignedIn>('/api/signin', { name }));
     this.user.set(res.name);
+    this.locale.set(toLocale(res.locale));
     this.sheetId.set(null);
     this.shownId.set(null);
     this.sheetToday.set(null);
@@ -64,7 +76,26 @@ export class Session {
       }),
     );
     this.show(res);
+    await this.readLocale(user);
     this.bumpLoads();
+  }
+
+  /** Choose the signed-in user's locale; it is kept for them across every sheet. */
+  async setLocale(locale: Locale): Promise<void> {
+    const user = this.user();
+    if (!user) throw new Error('not signed in');
+    const res = await firstValueFrom(
+      this.http.put<{ locale: string }>('/api/me/locale', { locale }, { headers: { 'X-User': user } }),
+    );
+    this.locale.set(toLocale(res.locale));
+  }
+
+  /** Re-read the user's locale from the store, as another screen of theirs may have changed it. */
+  private async readLocale(user: string): Promise<void> {
+    const res = await firstValueFrom(
+      this.http.get<{ locale: string }>('/api/me/locale', { headers: { 'X-User': user } }),
+    );
+    this.locale.set(toLocale(res.locale));
   }
 
   /** Change the active sheet's today. */

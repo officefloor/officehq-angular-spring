@@ -2,13 +2,14 @@ import { HttpErrorResponse } from '@angular/common/http';
 import { Component, inject, input, output, signal } from '@angular/core';
 import { FormControl, FormGroup, ReactiveFormsModule } from '@angular/forms';
 import { Period, Periods } from '../../core/periods';
+import { FigurePipe } from '../../core/figure';
 
 const DAY = /^\d{4}-\d{2}-\d{2}$/;
 
 // The periods on the sheet with each one's due-total, and the form that adds a period.
 @Component({
   selector: 'app-period-form',
-  imports: [ReactiveFormsModule],
+  imports: [ReactiveFormsModule, FigurePipe],
   template: `
     <section aria-labelledby="periods-heading">
       <h2 id="periods-heading">Periods</h2>
@@ -53,10 +54,10 @@ const DAY = /^\d{4}-\d{2}-\d{2}$/;
               <th scope="row" data-testid="period-name">{{ p.name }}</th>
               <td data-testid="period-from">{{ p.from }}</td>
               <td data-testid="period-to">{{ p.to }}</td>
-              <td data-testid="period-due-total">{{ dueTotals().get(p.id) ?? '0.00' }}</td>
+              <td data-testid="period-due-total">{{ dueTotals().get(p.id) ?? '0.00' | figure }}</td>
               <td data-testid="period-closed">{{ p.closed ? 'yes' : p.softClosed ? 'soft' : 'no' }}</td>
               <td data-testid="period-fy">{{ p.fy }}</td>
-              <td data-testid="period-cap">{{ p.cap ?? '' }}</td>
+              <td data-testid="period-cap">{{ p.cap ?? '' | figure }}</td>
               <td>
                 @if (!p.closed) {
                   <button type="button" data-testid="period-close" (click)="close(p)"
