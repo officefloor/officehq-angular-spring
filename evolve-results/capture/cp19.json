@@ -1,0 +1,64 @@
+{
+  "checkpoint": 19,
+  "stack": {
+    "repo": "/home/daniel/officehq-angular-spring",
+    "origin": "git@github.com:officefloor/officehq-angular-spring.git",
+    "name": "officehq-angular-spring",
+    "base_ref": "base-empty",
+    "base_commit": "65cb8233ea38b2dfa6cfd18709e30cd18fdf3250"
+  },
+  "checkpoint_id": "cp19_quick-add",
+  "phase": "early",
+  "type": "additive",
+  "mutates": [],
+  "replaced_tests": [],
+  "request": {
+    "spec": "A quick-add bar on the people list takes a name and an amount and creates a DRAFT claim with that\namount, dated the sheet's today, with an empty note, for the named person. If the name is not on\nthe sheet the person is created first with grade A. Every rule that applies to the person and\nclaim forms applies here, and a refusal shows an error on the bar. The whole quick-add is one\nchange: a refused claim leaves no new person behind and writes nothing.\n",
+    "prompt": "You are implementing ONE change to this application.\n\nFIRST read AGENTS.md \u2014 it states the working rules and how the app is tested, and sends you to\nDESIGN.md for the app's stack and conventions. Follow both.\n\nTHE CHANGE REQUEST:\nA quick-add bar on the people list takes a name and an amount and creates a DRAFT claim with that\namount, dated the sheet's today, with an empty note, for the named person. If the name is not on\nthe sheet the person is created first with grade A. Every rule that applies to the person and\nclaim forms applies here, and a refusal shows an error on the bar. The whole quick-add is one\nchange: a refused claim leaves no new person behind and writes nothing.\n\nYour work is verified by an automated Playwright UI test already installed under e2e/specs/.\nRead that spec: it declares the exact data-testid anchors, values, test data and any audit\nrecords it expects \u2014 match them. Run `bin/e2e` to build the app, start it, and run the test as\nyou work; iterate until it passes. Change whatever the request needs across the app \u2014 its stored\ndata, its server and its front end. Do NOT edit bin/build, bin/start, bin/stop, bin/e2e,\nAGENTS.md, CLAUDE.md, DESIGN.md, e2e/support/ or the test spec.\n"
+  },
+  "commit_sha": "9f6211b6b66b45c2b4e97993a7ed39f531d3938c",
+  "reset_sha": "",
+  "preagent_sha": "a3f334b49c8bd0e7ebde81dfbacb8e37a6fed478",
+  "prev_sha": "a3f334b49c8bd0e7ebde81dfbacb8e37a6fed478",
+  "base_sha": "65cb8233ea38b2dfa6cfd18709e30cd18fdf3250",
+  "agent": {
+    "ok": true,
+    "cost_usd": 0.6083256,
+    "input_tokens": 26,
+    "output_tokens": 7178,
+    "cache_read_tokens": 437668,
+    "cache_creation_tokens": 47141,
+    "num_turns": 14,
+    "duration_ms": 190925,
+    "duration_api_ms": 77201,
+    "model": "claude-opus-5-5",
+    "session_id": "1edc50d2-1ff2-4f2d-95a7-f50587329f2d",
+    "stop_reason": "success",
+    "result_text": "The quick-add bar is in, and `bin/e2e` passes all 4 tests: the quick-add test and the three existing scenario tests.\n\n**How it works**\n- **Server:** a new `/api/quick/add` endpoint in `quick/QuickAddController.java` and `quick/QuickAddService.java`. It looks up the person by name, ignoring case, with spaces trimmed off, so \" dot \" lands on Dot. If no one has that name, it adds them with grade A through the existing person code. It then adds the claim through the existing claim code, with no date (so it takes the sheet's today) and an empty note.\n- **Same rules as the forms:** because it reuses the person and claim code, the same checks apply: the name must be non-blank and not already taken, the amount must be 0.00 or more with up to two decimals, and no claim can be dated in a closed period. The audit lines are the same ones those forms write.\n- **One change:** the person and the claim are saved together, so if the claim is refused (for example, today falls in a closed period), the new person is undone too and nothing is written to the audit file.\n- **Front end:** the bar sits on the people list in `features/people/people.ts`, with name, amount, a submit button and an error message on the bar. It checks the fields before sending, clears the error when you type, adds the new person and claim to the screen when it works, and empties the fields afterwards.\n\n**Small changes to existing code**\n- I added a lookup by name, ignoring case, to `PersonRepository`.\n- I made the amount pattern and its parsing in `ClaimController` public so the new endpoint uses the same ones.\n- I exported the amount check from `claims.ts` so the bar reuses it.\n\nThe test doesn't cover the closed-period refusal or the undo of a just-created person. That follows from the person and claim being saved together, but I didn't check it separately.",
+    "error": "",
+    "attempts": [
+      {
+        "ok": true,
+        "limit_reached": false,
+        "retryable": false,
+        "timed_out": false,
+        "cost_usd": 0.6083256,
+        "num_turns": 14,
+        "duration_ms": 190925,
+        "duration_api_ms": 77201,
+        "error": ""
+      }
+    ]
+  },
+  "agent_stream_file": "cp19.agent.jsonl",
+  "agent_diff_file": "cp19.agent.diff",
+  "build_log_file": null,
+  "tests": {
+    "gated": false,
+    "queued": true
+  },
+  "probe": null,
+  "pinned_touched": [],
+  "acceptance_touched": [],
+  "impact_gate": null
+}
