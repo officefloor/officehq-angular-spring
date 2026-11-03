@@ -52,7 +52,8 @@ public class SettingsController {
      *  from-date, earliest first (null: blank); and the review threshold in force as text with two
      *  decimals (null when there is none); and the escalation gap in days (null when blank: off); and
      *  the review SLA in days (null when blank: none); and the proof kinds, comma separated (empty when
-     *  blank: none); and the default grade (null when blank: A). */
+     *  blank: none); and the default grade (null when blank: A); and the clerk limit each grade has of
+     *  its own in force, as text with two decimals (a grade not in it takes the sheet's). */
     public record SettingsView(String clerkLimit, String floor, int terms, String latePct, LocalDate policyDate,
             LocalDate periodNumberingFrom, Map<String, Integer> gradeTerms, String cap, List<DatedValue> floors,
             List<DatedValue> latePcts, List<DatedValue> caps, String proofThreshold,
@@ -60,7 +61,8 @@ public class SettingsController {
             Map<String, Integer> gradeGraces, Map<String, List<DatedDays>> graces,
             Map<String, String> gradeProofThresholds, String pot, String parent, int fiscalStartMonth,
             String alertThreshold, String rounding, List<DatedText> roundings, String reviewThreshold,
-            Integer escalateAfter, Integer reviewSla, String proofKinds, String defaultGrade) {
+            Integer escalateAfter, Integer reviewSla, String proofKinds, String defaultGrade,
+            Map<String, String> gradeClerkLimits) {
         static SettingsView of(BigDecimal clerkLimit, BigDecimal floor, int terms, BigDecimal latePct,
                 LocalDate policyDate, LocalDate periodNumberingFrom, Map<String, Integer> gradeTerms,
                 BigDecimal cap, List<SettingValue> floors, List<SettingValue> latePcts,
@@ -69,7 +71,8 @@ public class SettingsController {
                 Map<String, List<SettingValue>> graces, Map<String, BigDecimal> gradeProofThresholds, BigDecimal pot,
                 String parent, int fiscalStartMonth, BigDecimal alertThreshold, Optional<Rounding> rounding,
                 List<SettingValue> roundings, BigDecimal reviewThreshold, Integer escalateAfter,
-                Integer reviewSla, List<String> proofKinds, String defaultGrade) {
+                Integer reviewSla, List<String> proofKinds, String defaultGrade,
+                Map<String, BigDecimal> gradeClerkLimits) {
             Map<String, List<DatedDays>> gracesView = new TreeMap<>();
             graces.forEach((grade, values) -> gracesView.put(grade, values.stream().map(DatedDays::of).toList()));
             Map<String, String> thresholdsView = new TreeMap<>();
@@ -85,8 +88,15 @@ public class SettingsController {
                     fiscalStartMonth, alertThreshold == null ? null : alertThreshold.setScale(2).toPlainString(),
                     rounding.map(Rounding::text).orElse(null), roundings.stream().map(DatedText::rounding).toList(),
                     reviewThreshold == null ? null : reviewThreshold.setScale(2).toPlainString(), escalateAfter,
-                    reviewSla, String.join(",", proofKinds), defaultGrade);
+                    reviewSla, String.join(",", proofKinds), defaultGrade, twoDecimals(gradeClerkLimits));
         }
+    }
+
+    /** Values by grade as text with two decimals. */
+    private static Map<String, String> twoDecimals(Map<String, BigDecimal> values) {
+        Map<String, String> view = new TreeMap<>();
+        values.forEach((grade, v) -> view.put(grade, v.setScale(2).toPlainString()));
+        return view;
     }
 
     /** A whole number of days a dated setting takes from a date; null when blank. */
@@ -383,6 +393,11 @@ public class SettingsController {
             then.setting("proof-threshold-" + grade, day).map(SettingValue::getValue)
                     .ifPresent(v -> gradeProofThresholds.put(grade, v));
         }
+        Map<String, BigDecimal> gradeClerkLimits = new TreeMap<>();
+        for (String grade : List.of("A", "B", "C")) {
+            then.setting("clerk-limit-" + grade, day).map(SettingValue::getValue)
+                    .ifPresent(v -> gradeClerkLimits.put(grade, v));
+        }
         return SettingsView.of(value.apply("clerk-limit"), then.basis().floor(day), terms, then.basis().latePct(day),
                 then.policyDate(), service.periodNumberingFrom(id), gradeTerms, then.basis().cap(),
                 then.recorded("floor"), then.recorded("late-pct"), then.recorded("cap"),
@@ -392,7 +407,7 @@ public class SettingsController {
                 service.alertThreshold(id),
                 then.setting(Rounding.KEY, day).map(SettingValue::getValue).flatMap(Rounding::ofCode),
                 then.recorded(Rounding.KEY), value.apply("review-threshold"), service.escalateAfter(id),
-                service.reviewSla(id), service.proofKinds(id), service.defaultGradeSet(id));
+                service.reviewSla(id), service.proofKinds(id), service.defaultGradeSet(id), gradeClerkLimits);
     }
 
     /** The settings view of a sheet as the store holds it now. */
@@ -405,7 +420,8 @@ public class SettingsController {
                 gracesOf(id), service.gradeProofThresholds(id), service.pot(id), service.parent(id),
                 service.fiscalStartMonth(id), service.alertThreshold(id), service.rounding(id),
                 service.recorded(id, Rounding.KEY), service.reviewThreshold(id), service.escalateAfter(id),
-                service.reviewSla(id), service.proofKinds(id), service.defaultGradeSet(id));
+                service.reviewSla(id), service.proofKinds(id), service.defaultGradeSet(id),
+                service.gradeClerkLimits(id));
     }
 
     /** The grace days recorded for each grade of a sheet, earliest from-date first. */
@@ -499,6 +515,15 @@ public class SettingsController {
             @RequestHeader("X-User") @NotBlank @Size(max = 100) String user,
             @Valid @RequestBody ProofThresholdForm form) {
         return view(service.setProofThreshold(sheetId.trim(), user.trim(), form.thresholdValue(), form.fromValue()));
+    }
+
+    @PutMapping("/clerk-limit/{grade}")
+    public SettingsView setGradeClerkLimit(@PathVariable @NotBlank @Size(max = 100) String sheetId,
+            @PathVariable @Pattern(regexp = "[ABC]") String grade,
+            @RequestHeader("X-User") @NotBlank @Size(max = 100) String user,
+            @Valid @RequestBody ClerkLimitForm form) {
+        return view(service.setGradeClerkLimit(sheetId.trim(), user.trim(), grade, form.limitValue(),
+                form.fromValue()));
     }
 
     @PutMapping("/proof-threshold/{grade}")

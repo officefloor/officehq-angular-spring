@@ -879,14 +879,16 @@ public class ClaimService {
         }
     }
 
-    /** Whether a clerk is settling a claim whose due is above the sheet's clerk limit in force on its today; a claim with
-     *  no due (n/a) is within any limit, and a steward settles anything. */
+    /** Whether a clerk is settling a claim whose due is above the clerk limit in force on the sheet's today (its person's
+     *  grade's when one is set, or else the sheet's); a claim with no due (n/a) is within any limit, and a steward settles
+     *  anything. */
     private boolean overClerkLimit(String sheetId, String user, Claim claim) {
-        BigDecimal limit = sheets.clerkLimit(sheetId);
+        Person person = person(sheetId, claim.getPersonId());
+        BigDecimal limit = sheets.clerkLimitFor(sheetId, person.gradeOn(sheets.today(sheetId)));
         if (limit == null || SheetRole.STEWARD.equals(roles.roleOf(sheetId, user))) {
             return false;
         }
-        BigDecimal due = dues.figure(sheetId, person(sheetId, claim.getPersonId()), claim);
+        BigDecimal due = dues.figure(sheetId, person, claim);
         return due != null && due.compareTo(limit) > 0;
     }
 

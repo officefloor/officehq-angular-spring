@@ -220,6 +220,36 @@ public class SheetService {
         return record(id, user, "clerk-limit", limit, limit == null ? "" : limit.setScale(2).toPlainString(), from);
     }
 
+    /** The clerk limits each grade on the sheet has of its own in force on its today, by grade; a
+     *  grade not in it takes the sheet's (blank, or never set). */
+    @Transactional(readOnly = true)
+    public Map<String, BigDecimal> gradeClerkLimits(String id) {
+        LocalDate today = today(id);
+        Map<String, BigDecimal> limits = new TreeMap<>();
+        for (String grade : GRADES) {
+            inForce(id, "clerk-limit-" + grade, today).map(SettingValue::getValue)
+                    .ifPresent(v -> limits.put(grade, v));
+        }
+        return limits;
+    }
+
+    /** The most due a clerk may settle on a claim of a person of the grade: the grade's own clerk
+     *  limit in force on the sheet's today when one is set, or else the sheet's; null when neither is. */
+    @Transactional(readOnly = true)
+    public BigDecimal clerkLimitFor(String id, String grade) {
+        return inForce(id, "clerk-limit-" + grade, today(id)).map(SettingValue::getValue)
+                .orElseGet(() -> clerkLimit(id));
+    }
+
+    /** Record a grade's own clerk limit (null: blank, the sheet's) from a date (null: the sheet's
+     *  today). It changes no figure. */
+    @Transactional
+    public synchronized Sheet setGradeClerkLimit(String id, String user, String grade, BigDecimal limit,
+            LocalDate from) {
+        return record(id, user, "clerk-limit-" + grade, limit,
+                limit == null ? "" : limit.setScale(2).toPlainString(), from);
+    }
+
     /** The least live due a claim on the sheet dated on the day has: the floor in force on it, or
      *  else the sheet's starting floor. */
     @Transactional(readOnly = true)

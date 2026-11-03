@@ -62,6 +62,9 @@ export interface Settings {
   /** The proof threshold each grade has of its own in force on the sheet's today, as text with two
    *  decimals, by grade; a grade not in it takes the sheet's. */
   gradeProofThresholds: Partial<Record<Grade, string>>;
+  /** The clerk limit each grade has of its own in force on the sheet's today, as text with two
+   *  decimals, by grade; a grade not in it takes the sheet's. */
+  gradeClerkLimits: Partial<Record<Grade, string>>;
   /** The pot a balanced pool's members cut by their shares, as text with two decimals; null when
    *  blank (none). Not dated. */
   pot: string | null;
@@ -209,6 +212,16 @@ export class SheetSettings {
   setClerkLimit(value: string | null, from: string | null): Promise<Settings> {
     const [sheetId, headers] = this.active();
     return firstValueFrom(this.http.put<Settings>(`${this.url(sheetId)}/settings/clerk-limit`, { value, from }, { headers }));
+  }
+
+  /** Record a grade's own clerk limit (null for blank, the sheet's) from a date (null for the
+   *  sheet's today). */
+  setGradeClerkLimit(grade: Grade, value: string | null, from: string | null): Promise<Settings> {
+    const [sheetId, headers] = this.active();
+    return firstValueFrom(
+      this.http.put<Settings>(`${this.url(sheetId)}/settings/clerk-limit/${encodeURIComponent(grade)}`,
+        { value, from }, { headers }),
+    );
   }
 
   /** Record the cap (null for no cap) from a date (null for the sheet's today). */

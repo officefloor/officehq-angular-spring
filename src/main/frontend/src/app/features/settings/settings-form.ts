@@ -24,6 +24,17 @@ import { FigurePipe } from '../../core/figure';
                inputmode="decimal" />
         <label for="setting-clerk-limit-from">Clerk limit from (blank: today)</label>
         <input id="setting-clerk-limit-from" data-testid="setting-clerk-limit-from" type="date" formControlName="clerkLimitFrom" />
+        <fieldset formGroupName="gradeClerkLimits">
+          <legend>Clerk limit per grade (blank: the sheet's clerk limit)</legend>
+          @for (g of grades; track g) {
+            <label [for]="'setting-clerk-limit-' + g">Grade {{ g }} clerk limit</label>
+            <input [id]="'setting-clerk-limit-' + g" [attr.data-testid]="'setting-clerk-limit-' + g"
+                   [formControlName]="g" inputmode="decimal" />
+            <label [for]="'setting-clerk-limit-' + g + '-from'">Grade {{ g }} clerk limit from (blank: today)</label>
+            <input [id]="'setting-clerk-limit-' + g + '-from'" [attr.data-testid]="'setting-clerk-limit-' + g + '-from'"
+                   type="date" [formControlName]="g + 'From'" />
+          }
+        </fieldset>
         <label for="setting-cap">Cap on a person's due-total (blank: none)</label>
         <input id="setting-cap" data-testid="setting-cap" formControlName="cap" inputmode="decimal" />
         <label for="setting-cap-from">Cap from (blank: today)</label>
@@ -135,6 +146,10 @@ import { FigurePipe } from '../../core/figure';
         }
       </form>
       <p>Clerk limit in force: <span data-testid="setting-clerk-limit-current">{{ clerkLimit() ?? '' | figure }}</span></p>
+      @for (g of grades; track g) {
+        <p>Clerk limit in force for grade {{ g }}:
+          <span [attr.data-testid]="'setting-clerk-limit-' + g + '-current'">{{ gradeClerkLimits()[g] ?? '' | figure }}</span></p>
+      }
       <p>Cap in force: <span data-testid="setting-cap-current">{{ cap() ?? '' | figure }}</span></p>
       <p>Proof threshold in force: <span data-testid="setting-proof-threshold-current">{{ proofThreshold() ?? '' | figure }}</span></p>
       @for (g of grades; track g) {
@@ -225,6 +240,8 @@ export class SettingsForm {
   protected readonly gradeGraces = signal<Partial<Record<Grade, number>>>({});
   /** The proof threshold each grade has of its own in force; a grade not in it takes the sheet's. */
   protected readonly gradeProofThresholds = signal<Partial<Record<Grade, string>>>({});
+  /** The clerk limit each grade has of its own in force; a grade not in it takes the sheet's. */
+  protected readonly gradeClerkLimits = signal<Partial<Record<Grade, string>>>({});
   protected readonly latePct = signal<string | null>(null);
   protected readonly policyDate = signal<string | null>(null);
   protected readonly periodNumberingFrom = signal<string | null>(null);
@@ -252,6 +269,14 @@ export class SettingsForm {
   protected readonly settingsForm = new FormGroup({
     clerkLimit: new FormControl('', { nonNullable: true }),
     clerkLimitFrom: new FormControl('', { nonNullable: true }),
+    gradeClerkLimits: new FormGroup({
+      A: new FormControl('', { nonNullable: true }),
+      AFrom: new FormControl('', { nonNullable: true }),
+      B: new FormControl('', { nonNullable: true }),
+      BFrom: new FormControl('', { nonNullable: true }),
+      C: new FormControl('', { nonNullable: true }),
+      CFrom: new FormControl('', { nonNullable: true }),
+    }),
     cap: new FormControl('', { nonNullable: true }),
     capFrom: new FormControl('', { nonNullable: true }),
     proofThreshold: new FormControl('', { nonNullable: true }),
@@ -336,6 +361,7 @@ export class SettingsForm {
       this.gradeTerms.set({});
       this.gradeGraces.set({});
       this.gradeProofThresholds.set({});
+      this.gradeClerkLimits.set({});
       this.latePct.set(null);
       this.policyDate.set(null);
       this.periodNumberingFrom.set(null);
@@ -360,10 +386,10 @@ export class SettingsForm {
   protected async saveSettings(): Promise<void> {
     if (this.submitting) return;
     this.settingsError.set('');
-    const { clerkLimit, clerkLimitFrom, cap, capFrom, proofThreshold, proofThresholdFrom, gradeProofThresholds, noteThreshold, noteThresholdFrom, reviewThreshold, reviewThresholdFrom, floor, floorFrom, rounding, roundingFrom, terms, termsFrom, gradeTerms, gradeGraces, latePct,
+    const { clerkLimit, clerkLimitFrom, gradeClerkLimits, cap, capFrom, proofThreshold, proofThresholdFrom, gradeProofThresholds, noteThreshold, noteThresholdFrom, reviewThreshold, reviewThresholdFrom, floor, floorFrom, rounding, roundingFrom, terms, termsFrom, gradeTerms, gradeGraces, latePct,
       latePctFrom, policyDate, periodNumberingFrom, graceDays, escalateAfter, reviewSla, entryDate, pot, alertThreshold, parent, proofKinds, defaultGrade, fiscalStartMonth, permissions } = this.settingsForm.controls;
     const changed = (...cs: AbstractControl[]) => cs.some((c) => c.dirty || c.touched);
-    const none = !changed(clerkLimit, clerkLimitFrom) && !changed(cap, capFrom)
+    const none = !changed(clerkLimit, clerkLimitFrom) && !changed(gradeClerkLimits) && !changed(cap, capFrom)
       && !changed(proofThreshold, proofThresholdFrom) && !changed(gradeProofThresholds) && !changed(noteThreshold, noteThresholdFrom)
       && !changed(reviewThreshold, reviewThresholdFrom)
       && !changed(floor, floorFrom) && !changed(rounding, roundingFrom)
@@ -373,6 +399,12 @@ export class SettingsForm {
     const from = (c: AbstractControl<string>) => c.value.trim() || null;
     const fromsToSave: AbstractControl<string>[] = [];
     const limitValue = clerkLimit.value.trim();
+    const gradeLimitsToSave = this.grades
+      .map((g) => ({
+        grade: g, control: gradeClerkLimits.controls[g], fromControl: gradeClerkLimits.controls[`${g}From`],
+        value: gradeClerkLimits.controls[g].value.trim(),
+      }))
+      .filter((t) => changed(t.control, t.fromControl) || (none && t.value !== ''));
     const capValue = cap.value.trim();
     const saveCap = changed(cap, capFrom) || (none && capValue !== '');
     const thresholdValue = proofThreshold.value.trim();
@@ -436,6 +468,7 @@ export class SettingsForm {
       .map((a) => ({ action: a, control: permissions.controls[a], value: permissions.controls[a].value.trim() }))
       .filter((p) => changed(p.control) || (none && p.value !== ''));
     if (saveLimit) fromsToSave.push(clerkLimitFrom);
+    gradeLimitsToSave.forEach((t) => fromsToSave.push(t.fromControl));
     if (saveCap) fromsToSave.push(capFrom);
     if (saveThreshold) fromsToSave.push(proofThresholdFrom);
     gradeThresholdsToSave.forEach((t) => fromsToSave.push(t.fromControl));
@@ -453,6 +486,10 @@ export class SettingsForm {
     }
     if (saveLimit && limitValue !== '' && !LIMIT.test(limitValue)) {
       this.settingsError.set('Enter a clerk limit of 0.00 or more with up to two decimals, or leave it blank for no limit.');
+      return;
+    }
+    if (gradeLimitsToSave.some((t) => t.value !== '' && !LIMIT.test(t.value))) {
+      this.settingsError.set('Enter a clerk limit for a grade of 0.00 or more with up to two decimals, or leave it blank for the sheet\'s.');
       return;
     }
     if (saveCap && capValue !== '' && !LIMIT.test(capValue)) {
@@ -557,6 +594,15 @@ export class SettingsForm {
         const saved = await this.api.setClerkLimit(limitValue === '' ? null : limitValue, from(clerkLimitFrom));
         this.clerkLimit.set(saved.clerkLimit);
         for (const c of [clerkLimit, clerkLimitFrom]) {
+          c.markAsPristine();
+          c.markAsUntouched();
+        }
+      }
+      for (const t of gradeLimitsToSave) {
+        const saved = await this.api.setGradeClerkLimit(t.grade, t.value === '' ? null : t.value,
+          from(t.fromControl));
+        this.gradeClerkLimits.set(saved.gradeClerkLimits);
+        for (const c of [t.control, t.fromControl]) {
           c.markAsPristine();
           c.markAsUntouched();
         }
@@ -790,6 +836,7 @@ export class SettingsForm {
         this.gradeTerms.set(settings.gradeTerms);
         this.gradeGraces.set(settings.gradeGraces);
         this.gradeProofThresholds.set(settings.gradeProofThresholds);
+        this.gradeClerkLimits.set(settings.gradeClerkLimits);
         this.latePct.set(settings.latePct);
         this.policyDate.set(settings.policyDate);
         this.periodNumberingFrom.set(settings.periodNumberingFrom);
