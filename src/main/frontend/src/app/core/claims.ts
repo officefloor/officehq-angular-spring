@@ -497,6 +497,15 @@ export class Claims {
     );
   }
 
+  /** Set a draft, open or pending claim's due-by directly; refused (403) when the user is not a
+   *  steward, (409) when it is of another status, and (423) when its period is closed. */
+  setDueBy(id: number, dueBy: string): Promise<Claim> {
+    const { sheetId, user } = this.active();
+    return firstValueFrom(
+      this.http.post<Claim>(`${this.url(sheetId)}/claims/${id}/due-by`, { dueBy }, { headers: { 'X-User': user } }),
+    );
+  }
+
   /** Waive an open or pending claim's late charge; refused (403) when the user is not a steward, and
    *  (409) when it is not open or pending or is waived already. */
   waive(id: number): Promise<Claim> {

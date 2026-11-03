@@ -105,6 +105,10 @@ public class Claim {
     @Column(name = "due_by", nullable = false)
     private LocalDate dueBy;
 
+    /** Whether a steward set the due-by directly (see {@link #setDueBy}): it then stays as set. */
+    @Column(name = "due_by_set", nullable = false)
+    private boolean dueBySet;
+
     /** The terms (in business days) the claim's due-by was fixed with; null for a detached revision. */
     @Column(name = "terms")
     private Integer terms;
@@ -284,6 +288,7 @@ public class Claim {
         copy.openedBy = openedBy;
         copy.editedBy = editedBy;
         copy.terms = terms;
+        copy.dueBySet = dueBySet;
         copy.deferredUntil = deferredUntil;
         copy.proofs = proofs;
         proofDays.forEach(p -> copy.proofDays.add(p.copy()));
@@ -447,6 +452,17 @@ public class Claim {
     /** Fix the claim's due-by again, by the terms it was fixed with (a holiday was added). */
     public void refixDueBy(LocalDate dueBy) {
         this.dueBy = dueBy;
+    }
+
+    /** Whether a steward set the claim's due-by directly: a holiday added later does not fix it again. */
+    public boolean isDueBySet() {
+        return dueBySet;
+    }
+
+    /** Set the claim's due-by directly (a steward did): it stays as set. */
+    public void setDueBy(LocalDate dueBy) {
+        this.dueBy = dueBy;
+        this.dueBySet = true;
     }
 
     public LocalDate getDeferredUntil() {

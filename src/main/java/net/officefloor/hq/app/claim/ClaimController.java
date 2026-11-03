@@ -449,6 +449,18 @@ public class ClaimController {
         return ClaimView.of(service.redate(sheetId.trim(), user.trim(), claimId, form.date()));
     }
 
+    /** The due-by a steward sets on a draft, open or pending claim. */
+    public record DueByForm(@NotNull LocalDate dueBy) {
+    }
+
+    @PostMapping("/claims/{claimId}/due-by")
+    public ClaimView setDueBy(@PathVariable @NotBlank @Size(max = 100) String sheetId,
+            @PathVariable long claimId,
+            @RequestHeader("X-User") @NotBlank @Size(max = 100) String user,
+            @Valid @RequestBody DueByForm form) {
+        return ClaimView.of(service.setDueBy(sheetId.trim(), user.trim(), claimId, form.dueBy()));
+    }
+
     @PostMapping("/claims/{claimId}/proof")
     public ClaimView addProof(@PathVariable @NotBlank @Size(max = 100) String sheetId,
             @PathVariable long claimId,

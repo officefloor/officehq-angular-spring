@@ -170,6 +170,18 @@ function redateRefusal(e: unknown): string {
 /** The message when a re-date's date is missing. */
 const REDATE_DATE = 'Enter the new date for the claim.';
 
+/** The message for a refused setting of a claim's due-by. */
+function dueByRefusal(e: unknown): string {
+  if (e instanceof HttpErrorResponse && e.status === 403) return 'Only a steward can set a claim\'s due-by.';
+  if (e instanceof HttpErrorResponse && e.status === 423) return 'That claim\'s period is closed.';
+  if (e instanceof HttpErrorResponse && e.status === 409) return 'Only a draft, open or pending claim\'s due-by can be set.';
+  if (e instanceof HttpErrorResponse && e.status === 400) return DUE_BY_DATE;
+  return 'The claim\'s due-by could not be set.';
+}
+
+/** The message when a due-by's date is missing. */
+const DUE_BY_DATE = 'Enter the new due-by for the claim.';
+
 /** The message when a defer's date is missing or not after the sheet's today. */
 const DEFER_DATE = 'Enter a date after the sheet\'s today to defer the claim to.';
 
@@ -421,6 +433,11 @@ function settlePartRefusal(e: unknown): string {
             (input)="clearError(c)" />
           <button type="button" data-testid="claim-redate" (click)="redate(c, redateDate.value)"
             [attr.aria-label]="'Re-date claim of ' + c.amount + ' on ' + c.date">Re-date</button>
+          <label [for]="'claim-due-by-new-' + c.id">New due-by</label>
+          <input [id]="'claim-due-by-new-' + c.id" type="date" data-testid="claim-due-by-new" #dueByDate
+            (input)="clearError(c)" />
+          <button type="button" data-testid="claim-set-due-by" (click)="setDueBy(c, dueByDate.value)"
+            [attr.aria-label]="'Set the due-by of claim of ' + c.amount + ' on ' + c.date">Set due-by</button>
           <label [for]="'claim-reassign-to-' + c.id">Reassign to</label>
           <select [id]="'claim-reassign-to-' + c.id" data-testid="claim-reassign-to" #reassignTo
             (change)="clearError(c)">
@@ -782,6 +799,19 @@ export class PersonClaims {
       this.saved.emit(await this.api.redate(c.id, date));
     } catch (e) {
       this.claimError.set({ id: c.id, message: redateRefusal(e) });
+    }
+  }
+
+  protected async setDueBy(c: Claim, dueBy: string): Promise<void> {
+    this.claimError.set(null);
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(dueBy)) {
+      this.claimError.set({ id: c.id, message: DUE_BY_DATE });
+      return;
+    }
+    try {
+      this.saved.emit(await this.api.setDueBy(c.id, dueBy));
+    } catch (e) {
+      this.claimError.set({ id: c.id, message: dueByRefusal(e) });
     }
   }
 
