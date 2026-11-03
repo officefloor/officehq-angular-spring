@@ -237,6 +237,15 @@ export class People {
     );
   }
 
+  /** Undo the last merge into the person, made today by this user; answers with the merged person,
+   *  back on the sheet. */
+  mergeUndo(id: number): Promise<Person> {
+    const { sheetId, user } = this.active();
+    return firstValueFrom(
+      this.http.post<Person>(`${this.url(sheetId)}/${id}/merge-undo`, {}, { headers: { 'X-User': user } }),
+    );
+  }
+
   /** Transfer the person to another sheet by its id; they leave this sheet. */
   transfer(id: number, toSheet: string): Promise<void> {
     const { sheetId, user } = this.active();

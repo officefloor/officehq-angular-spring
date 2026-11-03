@@ -495,6 +495,8 @@ const NO_LEAVE: Leave = { holds: [], retiredFrom: null };
                 </select>
                 <button type="button" data-testid="person-merge" (click)="merge(p, mergeInto.value)"
                   [attr.aria-label]="'Merge ' + p.name + ' into the person chosen'">Merge</button>
+                <button type="button" data-testid="person-merge-undo" (click)="mergeUndo(p)"
+                  [attr.aria-label]="'Undo the last merge into ' + p.name">Undo merge</button>
                 <label [for]="'person-transfer-to-' + p.id" class="visually-hidden">Transfer {{ p.name }} to sheet</label>
                 <input #transferTo [id]="'person-transfer-to-' + p.id" data-testid="person-transfer-to"
                   (input)="clearPersonError(p.id)" />
@@ -1442,6 +1444,25 @@ export class PeopleList {
       if (sheetId) await this.reload(sheetId);
     } catch {
       this.personError.set({ id: p.id, message: 'The person could not be merged.' });
+    } finally {
+      this.merging.delete(p.id);
+    }
+  }
+
+  /** Undo the last merge into the person, then read the sheet again: the merged person is back at
+   *  the end of the list with the claims that came from them. */
+  protected async mergeUndo(p: Person): Promise<void> {
+    if (this.merging.has(p.id)) return;
+    this.personError.set(null);
+    this.patronError.set(null);
+    this.merging.add(p.id);
+    try {
+      await this.api.mergeUndo(p.id);
+      const sheetId = this.session.sheetId();
+      void this.poolsApi.refresh();
+      if (sheetId) await this.reload(sheetId);
+    } catch {
+      this.personError.set({ id: p.id, message: 'The merge could not be undone.' });
     } finally {
       this.merging.delete(p.id);
     }

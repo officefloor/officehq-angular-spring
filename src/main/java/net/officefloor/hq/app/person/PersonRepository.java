@@ -1,5 +1,6 @@
 package net.officefloor.hq.app.person;
 
+import java.time.LocalDate;
 import java.util.Collection;
 import java.util.List;
 import java.util.Optional;
@@ -25,6 +26,15 @@ public interface PersonRepository extends JpaRepository<Person, Long> {
     void placeAt(Long id, long position);
 
     Optional<Person> findByIdAndSheetId(Long id, String sheetId);
+
+    /** Put a person who left the sheet back on it under the id they had, with no grade yet (see
+     *  {@link PersonMergeService#undo}). */
+    @Modifying(flushAutomatically = true)
+    @Query(value = "insert into person (id, sheet_id, name, position, version, terms, contact, tags, origin,"
+            + " arrived_on, flag_reason, flag_until, approver) values (:id, :sheetId, :name, :position, 0, :terms,"
+            + " :contact, :tags, :origin, :arrivedOn, :flagReason, :flagUntil, :approver)", nativeQuery = true)
+    void restore(Long id, String sheetId, String name, long position, Integer terms, String contact, String tags,
+            String origin, LocalDate arrivedOn, String flagReason, LocalDate flagUntil, String approver);
 
     /** A person on a sheet, locked for the rest of the transaction so two statements of them are
      *  taken one after the other. Locking does not raise their version. */

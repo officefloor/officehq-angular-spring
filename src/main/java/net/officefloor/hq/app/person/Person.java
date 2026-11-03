@@ -305,6 +305,16 @@ public class Person {
         this.flagUntil = until;
     }
 
+    /** The reason the person was last flagged with; null when they never were. */
+    public String getFlagReason() {
+        return flagReason;
+    }
+
+    /** The last day (included) the person's last flag was in force; null when they were never flagged. */
+    public LocalDate getFlagUntil() {
+        return flagUntil;
+    }
+
     /** The reason the person's flag gives while it is in force on a day; null when it is not. */
     public String flagOn(LocalDate day) {
         return flagUntil != null && !day.isAfter(flagUntil) ? flagReason : null;
@@ -405,6 +415,11 @@ public class Person {
     /** Add an alias, keeping the others. */
     public void addAlias(String alias) {
         aliases.add(alias);
+    }
+
+    /** Remove an alias, keeping the others. */
+    public void removeAlias(String alias) {
+        aliases.remove(alias);
     }
 
     public long getVersion() {

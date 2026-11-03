@@ -316,6 +316,17 @@ public class PersonController {
                 service.clashing(sheetId.trim(), saved));
     }
 
+    /** Undo the last merge into the person, made today by the user; answers with the merged person,
+     *  back on the sheet. */
+    @PostMapping("/{personId}/merge-undo")
+    public PersonView mergeUndo(@PathVariable @NotBlank @Size(max = 100) String sheetId,
+            @PathVariable long personId,
+            @RequestHeader("X-User") @NotBlank @Size(max = 100) String user) {
+        Person saved = merges.undo(sheetId.trim(), user.trim(), personId);
+        return PersonView.of(saved, statements.summary(sheetId.trim(), saved.getId()), sheets.today(sheetId.trim()),
+                service.clashing(sheetId.trim(), saved));
+    }
+
     /** Transfer the person to another sheet; they leave this one. */
     @PostMapping("/{personId}/transfer")
     public void transfer(@PathVariable @NotBlank @Size(max = 100) String sheetId,

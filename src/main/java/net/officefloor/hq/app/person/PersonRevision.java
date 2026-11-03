@@ -124,6 +124,18 @@ public class PersonRevision {
     /** The person as this revision has them, detached: for working out figures only, never saved. */
     public Person toPerson() {
         Person person = new Person(sheetId, personId, name);
+        fill(person, grades, holds, retirements, termsFrom, aliases);
+        person.setRetiredFrom(retiredFrom);
+        person.setTerms(terms);
+        person.setContact(contact);
+        person.setTags(tags);
+        return person;
+    }
+
+    /** Give the person the grades, holds, past retirements, dated terms and aliases kept as a
+     *  revision keeps them, adding to those they have. */
+    static void fill(Person person, String grades, String holds, String retirements, String termsFrom,
+            String aliases) {
         for (String grade : split(grades)) {
             int at = grade.lastIndexOf(':');
             person.setGradeFrom(grade.substring(at + 1), day(grade.substring(0, at)));
@@ -132,23 +144,18 @@ public class PersonRevision {
             int at = hold.indexOf("..");
             person.addHold(day(hold.substring(0, at)), day(hold.substring(at + 2)));
         }
-        person.setRetiredFrom(retiredFrom);
         for (String retirement : split(retirements)) {
             int at = retirement.indexOf("..");
             person.addRetirement(day(retirement.substring(0, at)), day(retirement.substring(at + 2)));
         }
-        person.setTerms(terms);
         for (String dated : split(termsFrom)) {
             int at = dated.indexOf(':');
             String days = dated.substring(at + 1);
             person.setTermsFrom(days.isEmpty() ? null : Integer.valueOf(days), day(dated.substring(0, at)));
         }
-        person.setContact(contact);
-        person.setTags(tags);
         for (String alias : split(aliases)) {
             person.addAlias(alias);
         }
-        return person;
     }
 
     public Long getPersonId() {
@@ -159,28 +166,28 @@ public class PersonRevision {
         return recordedOn;
     }
 
-    private static String grades(Person person) {
+    static String grades(Person person) {
         return person.getGrades().stream().map(g -> text(g.getFromDate()) + ":" + g.getGrade())
                 .collect(Collectors.joining(";"));
     }
 
-    private static String termsFrom(Person person) {
+    static String termsFrom(Person person) {
         return person.getDatedTerms().stream()
                 .map(t -> text(t.getFromDate()) + ":" + (t.getTerms() == null ? "" : t.getTerms()))
                 .collect(Collectors.joining(";"));
     }
 
-    private static String holds(Person person) {
+    static String holds(Person person) {
         return person.getHolds().stream().map(h -> text(h.getFromDate()) + ".." + text(h.getToDate()))
                 .collect(Collectors.joining(";"));
     }
 
-    private static String retirements(Person person) {
+    static String retirements(Person person) {
         return person.getRetirements().stream().map(r -> text(r.getFromDate()) + ".." + text(r.getToDate()))
                 .collect(Collectors.joining(";"));
     }
 
-    private static String aliases(Person person) {
+    static String aliases(Person person) {
         return String.join(";", person.getAliases());
     }
 
@@ -192,7 +199,7 @@ public class PersonRevision {
         return text.isEmpty() ? null : LocalDate.parse(text);
     }
 
-    private static String[] split(String list) {
+    static String[] split(String list) {
         return list.isEmpty() ? new String[0] : list.split(";");
     }
 }
