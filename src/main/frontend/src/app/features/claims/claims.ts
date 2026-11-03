@@ -139,6 +139,8 @@ export class PersonClaims {
   readonly grade = input.required<string>();
   /** The sheet's rates. */
   readonly rates = input.required<Rate[]>();
+  /** The sheet's floor in whole cents: the least a claim's live due can be. */
+  readonly floor = input.required<number>();
   /** The sheet's periods. */
   readonly periods = input.required<Period[]>();
   readonly saved = output<Claim>();
@@ -155,9 +157,9 @@ export class PersonClaims {
 
   /** A stated claim shows the figure bound by the last statement, a settled claim the due fixed
    *  when it was settled; any other claim's due is live, at the rate for the person's grade in
-   *  force on the claim's date. */
+   *  force on the claim's date, never below the sheet's floor. */
   protected dueOf(c: Claim): string {
-    return dueText(claimDueCents(c, this.rates(), this.grade()));
+    return dueText(claimDueCents(c, this.rates(), this.grade(), this.floor()));
   }
 
   /** The name of the period whose dates contain the claim's date; blank when none does. */

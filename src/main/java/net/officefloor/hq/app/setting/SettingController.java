@@ -4,8 +4,6 @@ import jakarta.validation.Valid;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.Pattern;
 import jakarta.validation.constraints.Size;
-import java.math.BigDecimal;
-import java.math.RoundingMode;
 import net.officefloor.hq.app.claim.ClaimController;
 import net.officefloor.hq.app.sheet.Sheet;
 import org.springframework.web.bind.annotation.PostMapping;
@@ -21,17 +19,21 @@ public class SettingController {
     public record GetSettingsRequest(@NotBlank @Size(max = 100) String sheet, @NotBlank @Size(max = 100) String user) {
     }
 
-    /** A clerk limit: an amount with up to two decimals, or blank (or null) for no limit. */
+    /**
+     * The settings to save; a setting left null is left as it is. A clerk limit: an amount with up
+     * to two decimals, or blank for no limit. A floor: an amount with up to two decimals.
+     */
     public record SetSettingsRequest(@NotBlank @Size(max = 100) String sheet, @NotBlank @Size(max = 100) String user,
-            @Pattern(regexp = "\\s*|" + ClaimController.AMOUNT) String clerkLimit) {
+            @Pattern(regexp = "\\s*|" + ClaimController.AMOUNT) String clerkLimit,
+            @Pattern(regexp = ClaimController.AMOUNT) String floor) {
     }
 
     /** The settings in force; the clerk limit blank for none. */
-    public record SettingsResponse(String clerkLimit) {
+    public record SettingsResponse(String clerkLimit, String floor) {
     }
 
     private static SettingsResponse response(Sheet sheet) {
-        return new SettingsResponse(SettingService.text(sheet.getClerkLimit()));
+        return new SettingsResponse(SettingService.text(sheet.getClerkLimit()), SettingService.text(sheet.getFloor()));
     }
 
     private final SettingService service;
@@ -48,7 +50,8 @@ public class SettingController {
     @PostMapping("/set")
     public SettingsResponse set(@Valid @RequestBody SetSettingsRequest req) {
         String limit = req.clerkLimit() == null ? "" : req.clerkLimit().trim();
-        return response(service.setClerkLimit(req.sheet().trim(), req.user().trim(),
-                limit.isEmpty() ? null : new BigDecimal(limit).setScale(2, RoundingMode.UNNECESSARY)));
+        return response(service.set(req.sheet().trim(), req.user().trim(), req.clerkLimit() != null,
+                limit.isEmpty() ? null : ClaimController.amount(limit),
+                req.floor() == null ? null : ClaimController.amount(req.floor())));
     }
 }

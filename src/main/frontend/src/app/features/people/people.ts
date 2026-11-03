@@ -16,7 +16,8 @@ import { Settings } from '../settings/settings';
 // adds everyone's up. Only OPEN and SETTLED claims count toward any of these totals. Each claim shows
 // what is due at the rate for the person's grade in force on the claim's date (a settled claim the
 // figure fixed when settled), each person the sum of those figures over the claims that count, and
-// the sheet's due-total adds up every person's due-total that has one.
+// the sheet's due-total adds up every person's due-total that has one. A live due is never below
+// the sheet's floor (a figure fixed when settled, bound by a statement or by closing a period keeps its own).
 // Taking a person's statement binds each of their claims that counts to the figure it has then
 // (a stated claim shows and totals that figure); each row shows how many statements the person
 // has taken, and the last one's due-total and date.
@@ -74,7 +75,7 @@ const GRADES = ['A', 'B', 'C'] as const;
   template: `
     <app-rates [(rates)]="rates" />
     <app-roles />
-    <app-settings />
+    <app-settings [(floor)]="floor" />
     <app-periods [(periods)]="periods" [dues]="dues()" />
     <section aria-labelledby="people-heading">
       <h2 id="people-heading">People</h2>
@@ -179,6 +180,7 @@ const GRADES = ['A', 'B', 'C'] as const;
                   [claims]="claimsOf(p.id)"
                   [grade]="p.grade"
                   [rates]="rates()"
+                  [floor]="floorCents()"
                   [periods]="periods()"
                   (saved)="claimSaved($event)"
                 />
@@ -260,13 +262,16 @@ export class People {
   );
   protected readonly rates = signal<Rate[]>([]);
   protected readonly periods = signal<Period[]>([]);
+  /** The sheet's floor: the least a claim's live due can be. */
+  protected readonly floor = signal('1.00');
+  protected readonly floorCents = computed(() => cents(this.floor()));
   /** The date and figure of each claim that counts and has a figure, for the periods' due-totals. */
   protected readonly dues = computed(() => {
     const out: DatedDue[] = [];
     for (const c of this.claims()) {
       const p = this.peopleById().get(c.personId);
       if (p === undefined || !countsFor(p, c)) continue;
-      const due = claimDueCents(c, this.rates(), p.grade);
+      const due = claimDueCents(c, this.rates(), p.grade, this.floorCents());
       if (due !== null) out.push({ date: c.date, cents: due });
     }
     return out;
@@ -357,7 +362,7 @@ export class People {
   protected dueOf(p: Person): number | null {
     const counted = this.claimsOf(p.id).filter((c) => countsFor(p, c));
     if (this.pctOf().get(p.grade) === undefined && !counted.some((c) => fixedDueCents(c) !== null)) return null;
-    return counted.reduce((sum, c) => sum + (claimDueCents(c, this.rates(), p.grade) ?? 0), 0);
+    return counted.reduce((sum, c) => sum + (claimDueCents(c, this.rates(), p.grade, this.floorCents()) ?? 0), 0);
   }
 
   protected statementOf(personId: number): StatementSummary | undefined {

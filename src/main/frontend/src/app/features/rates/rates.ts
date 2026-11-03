@@ -60,11 +60,13 @@ export function fixedDueCents(c: Claim): number | null {
 /**
  * A claim's figure in whole cents: a stated claim's figure bound by the last statement, a settled
  * claim's due fixed when it was settled, any other claim's live due at the rate for the grade in
- * force on the claim's date. Null when it has none.
+ * force on the claim's date, raised to the sheet's floor (in whole cents). Null when it has none.
  */
-export function claimDueCents(c: Claim, rates: readonly Rate[], grade: string): number | null {
+export function claimDueCents(c: Claim, rates: readonly Rate[], grade: string, floor: number): number | null {
   if (c.stated) return fixedDueCents(c);
-  return c.settledDue !== null ? cents(c.settledDue) : dueCents(cents(c.amount), pctOn(rates, grade, c.date));
+  if (c.settledDue !== null) return cents(c.settledDue);
+  const due = dueCents(cents(c.amount), pctOn(rates, grade, c.date));
+  return due === null ? null : Math.max(due, floor);
 }
 
 /** A due in whole cents with two decimals, or n/a when there is no rate. */

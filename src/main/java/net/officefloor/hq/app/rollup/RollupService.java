@@ -26,7 +26,8 @@ import org.springframework.stereotype.Service;
  * and calls {@link #recordChanges} after its own audit lines, which appends one ROLLUP line per
  * person whose figures moved (people in the order they were added; a new person counts as moved),
  * then a TOTALS line when the sheet's totals moved. A held person's OPEN claims count in none of
- * these, nor in a period's due-total; their SETTLED claims still do.
+ * these, nor in a period's due-total; their SETTLED claims still do. A live due is never below
+ * the sheet's floor.
  */
 @Service
 public class RollupService {
@@ -66,6 +67,7 @@ public class RollupService {
     /** The sheet's figures as the store holds them now. */
     public Snapshot snapshot(String sheetId) {
         LocalDate today = sheets.findById(sheetId).map(Sheet::getToday).orElseGet(LocalDate::now);
+        BigDecimal floor = floor(sheetId);
         List<Rate> sheetRates = rates.findBySheetIdOrderByGradeAscFromDateAsc(sheetId);
         List<Claim> sheetClaims = claims.findBySheetIdOrderByIdDesc(sheetId);
         Map<Long, Figures> figures = new LinkedHashMap<>();
@@ -81,7 +83,7 @@ public class RollupService {
                 if (fixed(claim) != null) {
                     anyFixed = true;
                 }
-                BigDecimal figure = figure(sheetRates, person, claim);
+                BigDecimal figure = figure(sheetRates, floor, person, claim);
                 if (figure != null) {
                     due = due.add(figure);
                 }
@@ -98,6 +100,7 @@ public class RollupService {
      * figure the screen shows for it now.
      */
     public BigDecimal dueBetween(String sheetId, LocalDate from, LocalDate to) {
+        BigDecimal floor = floor(sheetId);
         List<Rate> sheetRates = rates.findBySheetIdOrderByGradeAscFromDateAsc(sheetId);
         List<Claim> sheetClaims = claims.findBySheetIdOrderByIdDesc(sheetId);
         BigDecimal due = zero();
@@ -107,7 +110,7 @@ public class RollupService {
                         || claim.getDate().isBefore(from) || claim.getDate().isAfter(to)) {
                     continue;
                 }
-                BigDecimal figure = figure(sheetRates, person, claim);
+                BigDecimal figure = figure(sheetRates, floor, person, claim);
                 if (figure != null) {
                     due = due.add(figure);
                 }
@@ -143,8 +146,11 @@ public class RollupService {
         return claim.isStated() ? claim.getStatedDue() : claim.getSettledDue();
     }
 
-    /** A claim's figure as the screen shows it: its fixed figure, else its live due; null when none. */
-    private static BigDecimal figure(List<Rate> sheetRates, Person person, Claim claim) {
+    /**
+     * A claim's figure as the screen shows it: its fixed figure, else its live due raised to the
+     * floor; null when none.
+     */
+    private static BigDecimal figure(List<Rate> sheetRates, BigDecimal floor, Person person, Claim claim) {
         if (claim.isStated()) {
             return claim.getStatedDue();
         }
@@ -153,7 +159,12 @@ public class RollupService {
         }
         return inForce(sheetRates, person.getGrade(), claim.getDate()).map(Rate::getPct)
                 .map(pct -> claim.getAmount().multiply(pct).divide(BigDecimal.valueOf(100), 2, RoundingMode.HALF_EVEN))
+                .map(due -> due.max(floor))
                 .orElse(null);
+    }
+
+    private BigDecimal floor(String sheetId) {
+        return sheets.findById(sheetId).map(Sheet::getFloor).orElse(Sheet.DEFAULT_FLOOR);
     }
 
     /** The grade's rate in force on a date, as {@link RateRepository#findInForce} picks it. */

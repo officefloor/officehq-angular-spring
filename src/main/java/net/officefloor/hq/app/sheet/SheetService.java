@@ -46,6 +46,12 @@ public class SheetService {
         return sheets.findById(id).map(Sheet::getClerkLimit).orElse(null);
     }
 
+    /** The sheet's floor: the least a claim's live due can be. */
+    @Transactional(readOnly = true)
+    public BigDecimal floor(String id) {
+        return sheets.findById(id).map(Sheet::getFloor).orElse(Sheet.DEFAULT_FLOOR);
+    }
+
     /**
      * The next claim number on the sheet: 1, then 2, and so on, with no gaps and never reused. The
      * sheet stays locked until the caller's transaction ends, so two claims opened at the same

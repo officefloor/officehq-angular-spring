@@ -30,7 +30,7 @@ import org.springframework.web.server.ResponseStatusException;
  * dated inside a closed period can be added, edited (to or from such a date) or change status. No
  * claim can be added or edited to a date after its person's retirement date. A clerk settles a claim
  * only when its figure is at or below the sheet's clerk limit (a claim with no figure is within any
- * limit); a steward settles any claim.
+ * limit); a steward settles any claim. A claim's live due is never below the sheet's floor.
  */
 @Service
 public class ClaimService {
@@ -156,11 +156,13 @@ public class ClaimService {
 
     /**
      * The due on a claim's amount at the rate for the person's grade in force on the claim's date,
-     * half to even to the cent; null with no rate in force then.
+     * half to even to the cent and raised to the sheet's floor; null with no rate in force then.
      */
     public BigDecimal due(String sheetId, Person person, Claim claim) {
+        BigDecimal floor = sheets.floor(sheetId);
         return rates.findInForce(sheetId, person.getGrade(), claim.getDate()).map(Rate::getPct)
                 .map(pct -> claim.getAmount().multiply(pct).divide(BigDecimal.valueOf(100), 2, RoundingMode.HALF_EVEN))
+                .map(due -> due.max(floor))
                 .orElse(null);
     }
 
