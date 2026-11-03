@@ -1,0 +1,163 @@
+diff --git a/src/main/frontend/src/app/features/claims/claims.ts b/src/main/frontend/src/app/features/claims/claims.ts
+index 41aba1263..07a9e2d22 100644
+--- a/src/main/frontend/src/app/features/claims/claims.ts
++++ b/src/main/frontend/src/app/features/claims/claims.ts
+@@ -1,4 +1,4 @@
+-import { HttpClient } from '@angular/common/http';
++import { HttpClient, HttpErrorResponse } from '@angular/common/http';
+ import { Component, inject, input, output, signal } from '@angular/core';
+ import { firstValueFrom } from 'rxjs';
+ import { Session } from '../../core/session';
+@@ -7,7 +7,7 @@ import { Rate, claimDueCents, dueText } from '../rates/rates';
+ // A person's claims, newest first, and the one form under their row that both adds a claim and
+ // edits an existing one (opening a claim's editor fills the form with its values). Each claim
+ // shows its status and the buttons that move it on; a move its status does not allow is refused
+-// with an error on the claim.
++// with an error on the claim, as is the user who opened a claim settling it (four eyes).
+ export type ClaimStatus = 'DRAFT' | 'OPEN' | 'SETTLED' | 'VOID';
+ 
+ export interface Claim {
+@@ -21,6 +21,8 @@ export interface Claim {
+   number: number | null;
+   /** The due fixed when the claim was settled; null while not settled or if its grade then had no rate. */
+   settledDue: string | null;
++  /** The user who opened the claim; null while DRAFT, or if voided without being opened. */
++  openedBy: string | null;
+ }
+ 
+ /** A move from one status to the next, by the endpoint that makes it. */
+@@ -90,6 +92,7 @@ export function money(c: number): string {
+           <span data-testid="claim-note">{{ c.note }}</span>
+           <span>Due <span data-testid="claim-due">{{ dueOf(c) }}</span></span>
+           <span data-testid="claim-status">{{ c.status }}</span>
++          <span>Opened by <span data-testid="claim-opened-by">{{ c.openedBy ?? '' }}</span></span>
+           <button type="button" data-testid="claim-open" (click)="act(c, 'open')">Open</button>
+           <button type="button" data-testid="claim-settle" (click)="act(c, 'settle')">Settle</button>
+           <button type="button" data-testid="claim-void" (click)="act(c, 'void')">Void</button>
+@@ -175,9 +178,13 @@ export class PersonClaims {
+       );
+       if (this.session.sheet() !== sheet) return;
+       this.saved.emit(claim);
+-    } catch {
++    } catch (e) {
+       if (this.session.sheet() !== sheet) return;
+-      this.actionErrors.update((m) => new Map(m).set(c.id, `A ${c.status} claim cannot be ${PAST[action]}.`));
++      const err =
++        e instanceof HttpErrorResponse && e.status === 403
++          ? 'The user who opened a claim cannot settle it.'
++          : `A ${c.status} claim cannot be ${PAST[action]}.`;
++      this.actionErrors.update((m) => new Map(m).set(c.id, err));
+     }
+   }
+ 
+diff --git a/src/main/java/net/officefloor/hq/app/claim/Claim.java b/src/main/java/net/officefloor/hq/app/claim/Claim.java
+index c826058e9..f99a45e45 100644
+--- a/src/main/java/net/officefloor/hq/app/claim/Claim.java
++++ b/src/main/java/net/officefloor/hq/app/claim/Claim.java
+@@ -13,7 +13,8 @@ import java.time.LocalDate;
+ 
+ /**
+  * A claim by a person on a sheet: an amount (0.00 or more, two decimals), a date, a note and a
+- * status, once opened its number on the sheet, and once settled the due fixed at that moment.
++ * status, once opened its number on the sheet and who opened it, and once settled the due fixed at
++ * that moment.
+  */
+ @Entity
+ @Table(name = "claim")
+@@ -50,6 +51,10 @@ public class Claim {
+     @Column(name = "settled_due")
+     private BigDecimal settledDue;
+ 
++    /** The user who opened the claim; none while DRAFT, or if voided without being opened. */
++    @Column(name = "opened_by")
++    private String openedBy;
++
+     protected Claim() {
+     }
+ 
+@@ -120,4 +125,12 @@ public class Claim {
+     public void setSettledDue(BigDecimal settledDue) {
+         this.settledDue = settledDue;
+     }
++
++    public String getOpenedBy() {
++        return openedBy;
++    }
++
++    public void setOpenedBy(String openedBy) {
++        this.openedBy = openedBy;
++    }
+ }
+diff --git a/src/main/java/net/officefloor/hq/app/claim/ClaimController.java b/src/main/java/net/officefloor/hq/app/claim/ClaimController.java
+index 7062941cb..e58e0a3e6 100644
+--- a/src/main/java/net/officefloor/hq/app/claim/ClaimController.java
++++ b/src/main/java/net/officefloor/hq/app/claim/ClaimController.java
+@@ -40,14 +40,15 @@ public class ClaimController {
+     }
+ 
+     public record ClaimResponse(long id, long personId, String amount, LocalDate date, String note,
+-            ClaimStatus status, Integer number, String settledDue) {
++            ClaimStatus status, Integer number, String settledDue, String openedBy) {
+     }
+ 
+     private static ClaimResponse response(Claim claim) {
+         return new ClaimResponse(claim.getId(), claim.getPersonId(),
+                 claim.getAmount().setScale(2, RoundingMode.UNNECESSARY).toPlainString(), claim.getDate(),
+                 claim.getNote(), claim.getStatus(), claim.getNumber(),
+-                claim.getSettledDue() == null ? null : claim.getSettledDue().setScale(2, RoundingMode.UNNECESSARY).toPlainString());
++                claim.getSettledDue() == null ? null : claim.getSettledDue().setScale(2, RoundingMode.UNNECESSARY).toPlainString(),
++                claim.getOpenedBy());
+     }
+ 
+     private static BigDecimal amount(String amount) {
+diff --git a/src/main/java/net/officefloor/hq/app/claim/ClaimService.java b/src/main/java/net/officefloor/hq/app/claim/ClaimService.java
+index aa4ea44e6..0b9133f9e 100644
+--- a/src/main/java/net/officefloor/hq/app/claim/ClaimService.java
++++ b/src/main/java/net/officefloor/hq/app/claim/ClaimService.java
+@@ -20,6 +20,7 @@ import org.springframework.web.server.ResponseStatusException;
+  * takes the sheet's today. A claim starts as DRAFT and moves through its statuses (see
+  * {@link ClaimStatus}); a change its status does not allow is refused. Settling a claim fixes its
+  * due at the rate its person's grade has then for the claim's date; an open claim's due stays live.
++ * A claim records who opened it, and that user cannot settle it (four eyes).
+  */
+ @Service
+ public class ClaimService {
+@@ -64,7 +65,10 @@ public class ClaimService {
+         return saved;
+     }
+ 
+-    /** Move a claim to a new status, refused (409) when its current status does not allow it. */
++    /**
++     * Move a claim to a new status, refused (409) when its current status does not allow it, and
++     * refused (403) when the user who opened it tries to settle it.
++     */
+     @Transactional
+     public Claim changeStatus(String sheetId, String user, long id, ClaimStatus next) {
+         // lock the sheet's numbering before reading the claim, so a claim is opened (and numbered) once
+@@ -75,12 +79,17 @@ public class ClaimService {
+             throw new ResponseStatusException(HttpStatus.CONFLICT,
+                     "A " + claim.getStatus() + " claim cannot become " + next + ".");
+         }
++        if (next == ClaimStatus.SETTLED && user.equals(claim.getOpenedBy())) {
++            throw new ResponseStatusException(HttpStatus.FORBIDDEN,
++                    "The user who opened a claim cannot settle it.");
++        }
+         // the audit line carries the number the claim had, before voiding clears it
+         Integer recorded = next == ClaimStatus.OPEN ? number : claim.getNumber();
+         Person person = person(sheetId, claim.getPersonId());
+         claim.setStatus(next);
+         if (next == ClaimStatus.OPEN) {
+             claim.setNumber(number);
++            claim.setOpenedBy(user);
+         } else if (next == ClaimStatus.SETTLED) {
+             claim.setSettledDue(due(sheetId, person, claim));
+         } else if (next == ClaimStatus.VOID) {
+diff --git a/src/main/resources/db/migration/V11__claim_opened_by.sql b/src/main/resources/db/migration/V11__claim_opened_by.sql
+new file mode 100644
+index 000000000..bfdaf0b62
+--- /dev/null
++++ b/src/main/resources/db/migration/V11__claim_opened_by.sql
+@@ -0,0 +1,3 @@
++-- The user who opened a claim; none while it is DRAFT, or if it was voided without being opened.
++-- That user cannot settle it (four eyes).
++ALTER TABLE claim ADD COLUMN opened_by VARCHAR(100);
