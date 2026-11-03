@@ -1,4 +1,4 @@
-import { HttpClient } from '@angular/common/http';
+import { HttpClient, HttpErrorResponse } from '@angular/common/http';
 import { Component, effect, inject, signal } from '@angular/core';
 import { firstValueFrom } from 'rxjs';
 import { Session } from '../../core/session';
@@ -157,8 +157,12 @@ export class People {
         this.people.update((list) => list.map((p) => (p.id === saved.id ? saved : p)));
       }
       this.reset();
-    } catch {
-      this.error.set(id === null ? 'Could not add this person.' : 'Could not save this person.');
+    } catch (e) {
+      if (e instanceof HttpErrorResponse && e.status === 409) {
+        this.error.set('That name is already in use on this sheet.');
+      } else {
+        this.error.set(id === null ? 'Could not add this person.' : 'Could not save this person.');
+      }
     }
   }
 }
