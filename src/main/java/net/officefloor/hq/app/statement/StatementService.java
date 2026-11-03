@@ -13,6 +13,7 @@ import net.officefloor.hq.app.history.History;
 import net.officefloor.hq.app.rollup.Rollup;
 import net.officefloor.hq.app.person.Person;
 import net.officefloor.hq.app.person.PersonRepository;
+import net.officefloor.hq.app.pool.PoolService;
 import net.officefloor.hq.app.role.RoleService;
 import net.officefloor.hq.app.role.SheetRole;
 import net.officefloor.hq.app.sheet.SheetService;
@@ -39,9 +40,12 @@ public class StatementService {
     private final RoleService roles;
     private final History history;
     private final Audit audit;
+    private final PoolService pools;
 
     public StatementService(StatementRepository statements, PersonRepository people, ClaimRepository claims,
-            Dues dues, SheetService sheets, Rollup rollup, RoleService roles, History history, Audit audit) {
+            Dues dues, SheetService sheets, Rollup rollup, RoleService roles, History history, Audit audit,
+            PoolService pools) {
+        this.pools = pools;
         this.history = history;
         this.statements = statements;
         this.people = people;
@@ -112,7 +116,8 @@ public class StatementService {
             List<Claim> theirs = claims.findBySheetIdAndPersonIdOrderByListedDesc(sheetId, personId);
             Dues.Basis basis = then == null ? dues.now(sheetId) : then.basis();
             List<Claim> counted = Dues.live(was, then == null ? theirs : then.claimsOf(personId), basis.today());
-            BigDecimal dueTotal = dues.dueTotal(basis, was, counted);
+            BigDecimal dueTotal = dues.dueTotal(basis, was, counted,
+                    pools.cutTotals(sheetId, asOf).getOrDefault(personId, BigDecimal.ZERO.setScale(2)));
             Map<Long, Claim> countedById = counted.stream().collect(Collectors.toMap(Claim::getId, c -> c));
             for (Claim claim : theirs) {
                 Claim figured = countedById.get(claim.getId());

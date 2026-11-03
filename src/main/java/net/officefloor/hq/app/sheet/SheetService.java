@@ -502,16 +502,18 @@ public class SheetService {
         return sheets.findById(id).map(Sheet::getPot).orElse(null);
     }
 
-    /** Change the sheet's pot (null: blank, none); recorded even when unchanged. */
+    /** Change the sheet's pot (null: blank, none); recorded even when unchanged, then the figures
+     *  it moves (the pools' cuts count against the cap). */
     @Transactional
     public synchronized Sheet setPot(String id, String user, BigDecimal pot) {
         Sheet sheet = load(id, user);
-        sheet.setPot(pot);
-        Sheet saved = sheets.saveAndFlush(sheet);
-        history.record(id);
-        audit.recordOnCommit("SETTING_CHANGED sheet=" + id + " by=" + user + " key=pot value="
-                + (pot == null ? "" : pot.setScale(2).toPlainString()));
-        return saved;
+        return rollup.tracking(id, user, () -> {
+            sheet.setPot(pot);
+            Sheet saved = sheets.saveAndFlush(sheet);
+            audit.recordOnCommit("SETTING_CHANGED sheet=" + id + " by=" + user + " key=pot value="
+                    + (pot == null ? "" : pot.setScale(2).toPlainString()));
+            return saved;
+        });
     }
 
     /** The sheet's escalation gap in days; null when blank (off). */

@@ -1921,15 +1921,19 @@ export class PeopleList {
   /** Each person's due-total by id, as their row shows it; null when n/a. */
   protected readonly dueByPerson = computed(() => new Map(this.people().map((p) => [p.id, this.dueOf(p)])));
 
+  /** A person's due-total: the sum of their figures, held to the sheet's cap less their cut total
+   *  (not below 0.00); null when n/a. */
   protected dueOf(p: Person): string | null {
     const sum = this.figuresOf(p);
     const cap = this.cap();
     if (sum === null || cap === null) return sum;
-    return Number(sum) > Number(cap) ? cap : sum;
+    const room = sumAmounts([cap, '-' + (this.cutTotals().get(p.id) ?? '0.00')]);
+    const limit = Number(room) < 0 ? '0.00' : room;
+    return Number(sum) > Number(limit) ? limit : sum;
   }
 
-  /** A person's excess: how far the sum of their figures is above the sheet's cap; 0.00 when it is
-   *  not, or when it is n/a. */
+  /** A person's excess: how far the sum of their figures is above the sheet's cap less their cut
+   *  total (not below 0.00); 0.00 when it is not, or when it is n/a. */
   protected excessOf(p: Person): string {
     const sum = this.figuresOf(p);
     const due = this.dueOf(p);

@@ -21,7 +21,9 @@ import net.officefloor.hq.app.period.Period;
 import net.officefloor.hq.app.period.PeriodRepository;
 import net.officefloor.hq.app.person.Person;
 import net.officefloor.hq.app.person.PersonRepository;
+import net.officefloor.hq.app.rollup.Rollup;
 import net.officefloor.hq.app.sheet.SheetService;
+import org.springframework.context.annotation.Lazy;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
@@ -131,10 +133,13 @@ public class PoolService {
     private final History history;
     private final PeriodRepository periods;
     private final Audit audit;
+    private final Rollup rollup;
 
     public PoolService(PoolRepository pools, PoolMemberRepository members, PersonRepository people,
             CrewRepository crews, CrewMemberRepository crewMembers, SheetService sheets, History history,
-            PeriodRepository periods, Audit audit) {
+            PeriodRepository periods, Audit audit,
+            @Lazy Rollup rollup) {
+        this.rollup = rollup;
         this.history = history;
         this.periods = periods;
         this.crews = crews;
@@ -247,6 +252,24 @@ public class PoolService {
         Map<String, BigDecimal> out = new HashMap<>();
         for (Listed l : list(sheetId)) {
             cutsByMember(l).forEach((key, cut) -> out.put(l.pool().getId() + ":" + key, cut));
+        }
+        return out;
+    }
+
+    /** Each person's cut total, by person id: their cuts across every pool and crew they are a
+     *  member of added up, as the pools stand now or at the end of a day (null: now); a person with
+     *  no cut has no entry. */
+    @Transactional(readOnly = true)
+    public Map<Long, BigDecimal> cutTotals(String sheetId, LocalDate asOf) {
+        Map<Long, BigDecimal> out = new HashMap<>();
+        for (Listed l : list(sheetId, asOf)) {
+            List<BigDecimal> cuts = l.cuts();
+            for (int i = 0; i < cuts.size(); i++) {
+                Long personId = l.members().get(i).member().getPersonId();
+                if (personId != null && cuts.get(i) != null) {
+                    out.merge(personId, cuts.get(i), BigDecimal::add);
+                }
+            }
         }
         return out;
     }
@@ -374,43 +397,45 @@ public class PoolService {
     @Transactional
     public synchronized Listed addPoolMember(String sheetId, String user, long poolId, long memberPoolId,
             String share, LocalDate from, LocalDate to) {
-        Pool pool = pools.findByIdAndSheetId(poolId, sheetId)
-                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "No such pool"));
-        Pool member = pools.findByIdAndSheetId(memberPoolId, sheetId)
-                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "No such pool"));
-        refuseCrew(pool);
-        BigDecimal amount = share(share);
-        checkDates(from, to);
-        List<PoolMember> all = members.findByPoolIdInOrderByIdAsc(
-                pools.findBySheetIdOrderByIdAsc(sheetId).stream().map(Pool::getId).toList());
-        Map<Long, Long> above = all.stream().filter(m -> m.getMemberPoolId() != null)
-                .collect(Collectors.toMap(PoolMember::getMemberPoolId, PoolMember::getPoolId, (a, b) -> a));
-        if (above.containsKey(memberPoolId)) {
-            throw new ResponseStatusException(HttpStatus.CONFLICT, "That pool is already a member of a pool");
-        }
-        // The pool and the pools above it: the member may be none of them.
-        int levelsAbove = 0;
-        for (Long p = poolId; p != null && levelsAbove <= all.size(); p = above.get(p)) {
-            if (p == memberPoolId) {
-                throw new ResponseStatusException(HttpStatus.CONFLICT, "A pool cannot contain itself");
+        return rollup.tracking(sheetId, user, () -> {
+            Pool pool = pools.findByIdAndSheetId(poolId, sheetId)
+                    .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "No such pool"));
+            Pool member = pools.findByIdAndSheetId(memberPoolId, sheetId)
+                    .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "No such pool"));
+            refuseCrew(pool);
+            BigDecimal amount = share(share);
+            checkDates(from, to);
+            List<PoolMember> all = members.findByPoolIdInOrderByIdAsc(
+                    pools.findBySheetIdOrderByIdAsc(sheetId).stream().map(Pool::getId).toList());
+            Map<Long, Long> above = all.stream().filter(m -> m.getMemberPoolId() != null)
+                    .collect(Collectors.toMap(PoolMember::getMemberPoolId, PoolMember::getPoolId, (a, b) -> a));
+            if (above.containsKey(memberPoolId)) {
+                throw new ResponseStatusException(HttpStatus.CONFLICT, "That pool is already a member of a pool");
             }
-            levelsAbove++;
-        }
-        if (levelsAbove + height(memberPoolId, all, 0) > MAX_DEPTH) {
-            throw new ResponseStatusException(HttpStatus.CONFLICT,
-                    "A chain of pools is at most " + MAX_DEPTH + " deep");
-        }
-        try {
-            PoolMember m = PoolMember.ofPool(poolId, memberPoolId, amount);
-            m.setDates(from, to);
-            m.setAddedOn(sheets.today(sheetId));
-            members.saveAndFlush(m);
-        } catch (DataIntegrityViolationException e) {
-            throw new ResponseStatusException(HttpStatus.CONFLICT, "That pool is already a member of a pool");
-        }
-        audit.recordOnCommit("POOL_MEMBER_ADDED sheet=" + sheetId + " by=" + user + " pool=" + pool.getName()
-                + " name=" + member.getName() + " share=" + amount.toPlainString() + dates(from, to));
-        return list(sheetId).stream().filter(l -> l.pool().getId().equals(poolId)).findFirst().orElseThrow();
+            // The pool and the pools above it: the member may be none of them.
+            int levelsAbove = 0;
+            for (Long p = poolId; p != null && levelsAbove <= all.size(); p = above.get(p)) {
+                if (p == memberPoolId) {
+                    throw new ResponseStatusException(HttpStatus.CONFLICT, "A pool cannot contain itself");
+                }
+                levelsAbove++;
+            }
+            if (levelsAbove + height(memberPoolId, all, 0) > MAX_DEPTH) {
+                throw new ResponseStatusException(HttpStatus.CONFLICT,
+                        "A chain of pools is at most " + MAX_DEPTH + " deep");
+            }
+            try {
+                PoolMember m = PoolMember.ofPool(poolId, memberPoolId, amount);
+                m.setDates(from, to);
+                m.setAddedOn(sheets.today(sheetId));
+                members.saveAndFlush(m);
+            } catch (DataIntegrityViolationException e) {
+                throw new ResponseStatusException(HttpStatus.CONFLICT, "That pool is already a member of a pool");
+            }
+            audit.recordOnCommit("POOL_MEMBER_ADDED sheet=" + sheetId + " by=" + user + " pool=" + pool.getName()
+                    + " name=" + member.getName() + " share=" + amount.toPlainString() + dates(from, to));
+            return list(sheetId).stream().filter(l -> l.pool().getId().equals(poolId)).findFirst().orElseThrow();
+        });
     }
 
     /** The levels of pools from the pool down, itself counting as one. */
@@ -432,27 +457,29 @@ public class PoolService {
     @Transactional
     public synchronized Listed addMember(String sheetId, String user, long poolId, long personId, String share,
             LocalDate from, LocalDate to) {
-        Pool pool = pools.findByIdAndSheetId(poolId, sheetId)
-                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "No such pool"));
-        Person person = people.findByIdAndSheetId(personId, sheetId)
-                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "No such person"));
-        refuseCrew(pool);
-        BigDecimal amount = share(share);
-        checkDates(from, to);
-        if (members.existsByPoolIdAndPersonId(poolId, personId)) {
-            throw alreadyAMember();
-        }
-        try {
-            PoolMember m = new PoolMember(poolId, personId, amount);
-            m.setDates(from, to);
-            m.setAddedOn(sheets.today(sheetId));
-            members.saveAndFlush(m);
-        } catch (DataIntegrityViolationException e) {
-            throw alreadyAMember();
-        }
-        audit.recordOnCommit("POOL_MEMBER_ADDED sheet=" + sheetId + " by=" + user + " pool=" + pool.getName()
-                + " name=" + person.getName() + " share=" + amount.toPlainString() + dates(from, to));
-        return list(sheetId).stream().filter(l -> l.pool().getId().equals(poolId)).findFirst().orElseThrow();
+        return rollup.tracking(sheetId, user, () -> {
+            Pool pool = pools.findByIdAndSheetId(poolId, sheetId)
+                    .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "No such pool"));
+            Person person = people.findByIdAndSheetId(personId, sheetId)
+                    .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "No such person"));
+            refuseCrew(pool);
+            BigDecimal amount = share(share);
+            checkDates(from, to);
+            if (members.existsByPoolIdAndPersonId(poolId, personId)) {
+                throw alreadyAMember();
+            }
+            try {
+                PoolMember m = new PoolMember(poolId, personId, amount);
+                m.setDates(from, to);
+                m.setAddedOn(sheets.today(sheetId));
+                members.saveAndFlush(m);
+            } catch (DataIntegrityViolationException e) {
+                throw alreadyAMember();
+            }
+            audit.recordOnCommit("POOL_MEMBER_ADDED sheet=" + sheetId + " by=" + user + " pool=" + pool.getName()
+                    + " name=" + person.getName() + " share=" + amount.toPlainString() + dates(from, to));
+            return list(sheetId).stream().filter(l -> l.pool().getId().equals(poolId)).findFirst().orElseThrow();
+        });
     }
 
     /** Refused when the pool is a crew's: its members are the crew's people. */

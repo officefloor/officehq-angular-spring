@@ -338,22 +338,22 @@ public class Dues {
     }
 
     /** A person's due-total: the sum of the figures of their claims that count, at most the sheet's
-     *  cap in force on its today; null (n/a) when their grade on the sheet's today has no rate on it and no counting claim
+     *  cap in force on its today less their cut total (not below 0.00); null (n/a) when their grade on the sheet's today has no rate on it and no counting claim
      *  has a figure (one fixed, or a live due at the grade in force on its date). */
-    public BigDecimal dueTotal(String sheetId, Person person, List<Claim> theirs) {
-        return dueTotal(now(sheetId), person, theirs);
+    public BigDecimal dueTotal(String sheetId, Person person, List<Claim> theirs, BigDecimal cut) {
+        return dueTotal(now(sheetId), person, theirs, cut);
     }
 
-    /** A person's due-total on a basis (see {@link #dueTotal(String, Person, List)}). */
-    public BigDecimal dueTotal(Basis basis, Person person, List<Claim> theirs) {
-        return dueTotal(basis, person, theirs, Set.of(), List.of());
+    /** A person's due-total on a basis, with their cut total (see {@link #dueTotal(String, Person, List, BigDecimal)}). */
+    public BigDecimal dueTotal(Basis basis, Person person, List<Claim> theirs, BigDecimal cut) {
+        return dueTotal(basis, person, theirs, Set.of(), List.of(), cut);
     }
 
     /** A person's due-total on a basis when claims are shared (see {@link #dueTotal(String, Person,
-     *  List)}): each of their claims that counts figures less the parts of it held by the holders
+     *  List, BigDecimal)}): each of their claims that counts figures less the parts of it held by the holders
      *  given (see {@link #parts}), and the parts they hold of others' claims count as figures too. */
     public BigDecimal dueTotal(Basis basis, Person person, List<Claim> theirs, Set<Long> holders,
-            List<BigDecimal> held) {
+            List<BigDecimal> held, BigDecimal cut) {
         List<BigDecimal> figures = new ArrayList<>(theirs.stream().filter(c -> c.getStatus().counts())
                 .map(c -> kept(c, figure(basis, person, c), holders)).filter(d -> d != null).toList());
         figures.addAll(held);
@@ -364,7 +364,7 @@ public class Dues {
         }
         BigDecimal sum = figures.stream().reduce(BigDecimal.ZERO.setScale(2), BigDecimal::add);
         BigDecimal cap = basis.cap();
-        return cap == null ? sum : sum.min(cap);
+        return cap == null ? sum : sum.min(cap.subtract(cut).max(BigDecimal.ZERO.setScale(2)));
     }
 
     /** A holder's part of a claim's due figure: the figure times their share divided by 100,

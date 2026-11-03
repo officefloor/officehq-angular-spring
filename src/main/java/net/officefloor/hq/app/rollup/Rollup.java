@@ -22,8 +22,10 @@ import net.officefloor.hq.app.claim.Dues;
 import net.officefloor.hq.app.history.History;
 import net.officefloor.hq.app.person.Person;
 import net.officefloor.hq.app.person.PersonRepository;
+import net.officefloor.hq.app.pool.PoolService;
 import net.officefloor.hq.app.sheet.SheetRepository;
 import net.officefloor.hq.app.sheet.SheetService;
+import org.springframework.context.annotation.Lazy;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Propagation;
 import org.springframework.transaction.annotation.Transactional;
@@ -62,9 +64,11 @@ public class Rollup {
     private final SheetRepository sheetStore;
     private final History history;
     private final Audit audit;
+    private final PoolService pools;
 
     public Rollup(PersonRepository people, ClaimRepository claims, Dues dues, SheetService sheets,
-            SheetRepository sheetStore, History history, Audit audit) {
+            SheetRepository sheetStore, History history, Audit audit, @Lazy PoolService pools) {
+        this.pools = pools;
         this.people = people;
         this.claims = claims;
         this.dues = dues;
@@ -180,6 +184,7 @@ public class Rollup {
             Dues.Basis basis;
             List<Person> sheetPeople;
             List<Claim> sheetClaims;
+            Map<Long, BigDecimal> cuts = pools.cutTotals(id, asOf);
             if (asOf == null) {
                 basis = dues.now(id);
                 sheetPeople = people.findBySheetIdOrderByPositionAscIdAsc(id);
@@ -190,7 +195,7 @@ public class Rollup {
                 sheetPeople = List.copyOf(then.people().values());
                 sheetClaims = then.claims();
             }
-            Snapshot s = snapshot(basis, sheetPeople, sheetClaims);
+            Snapshot s = snapshot(basis, sheetPeople, sheetClaims, cuts);
             count += s.people().size();
             due = due.add(new BigDecimal(s.dueTotal()));
             overdue = overdue.add(new BigDecimal(s.overdueTotal()));
@@ -242,7 +247,8 @@ public class Rollup {
         }
         Dues.Basis basis = dues.now(otherId);
         List<Person> sheetPeople = people.findBySheetIdOrderByPositionAscIdAsc(otherId);
-        Snapshot s = snapshot(basis, sheetPeople, claims.findBySheetIdOrderByListedDesc(otherId));
+        Snapshot s = snapshot(basis, sheetPeople, claims.findBySheetIdOrderByListedDesc(otherId),
+                pools.cutTotals(otherId, null));
         Map<String, BigDecimal> gradeDue = new LinkedHashMap<>();
         addGradeDues(gradeDue, basis, sheetPeople, s);
         Map<String, String> gradeDueTotals = new LinkedHashMap<>();
@@ -281,16 +287,13 @@ public class Rollup {
 
     private Snapshot snapshot(String sheetId) {
         return snapshot(dues.now(sheetId), people.findBySheetIdOrderByPositionAscIdAsc(sheetId),
-                claims.findBySheetIdOrderByListedDesc(sheetId));
+                claims.findBySheetIdOrderByListedDesc(sheetId), pools.cutTotals(sheetId, null));
     }
 
-    /** The figures of a sheet as it stood at the end of a day, that day as its today. */
-    private Snapshot snapshot(History.SheetAsOf then) {
-        return snapshot(then.basis(), List.copyOf(then.people().values()), then.claims());
-    }
-
-    /** The figures of a sheet's people and claims, worked out on the basis. */
-    private Snapshot snapshot(Dues.Basis basis, List<Person> sheetPeople, List<Claim> sheetClaims) {
+    /** The figures of a sheet's people and claims, worked out on the basis, each person's due-total
+     *  capped with their cut total (by person id; none is 0.00). */
+    private Snapshot snapshot(Dues.Basis basis, List<Person> sheetPeople, List<Claim> sheetClaims,
+            Map<Long, BigDecimal> cuts) {
         Map<Long, List<Claim>> byPerson = sheetClaims.stream().collect(Collectors.groupingBy(Claim::getPersonId));
         Map<Long, Figures> figures = new LinkedHashMap<>();
         BigDecimal claimedTotal = BigDecimal.ZERO.setScale(2);
@@ -314,7 +317,8 @@ public class Rollup {
                     .filter(c -> c.getCorrects() == null && Dues.countsClaimed(person, c, today)).map(Claim::getAmount)
                     .reduce(BigDecimal.ZERO.setScale(2), BigDecimal::add);
             BigDecimal due = dues.dueTotal(basis, person, theirs, holders,
-                    held.getOrDefault(person.getId(), List.of()));
+                    held.getOrDefault(person.getId(), List.of()),
+                    cuts.getOrDefault(person.getId(), BigDecimal.ZERO.setScale(2)));
             BigDecimal overdue = theirs.stream().filter(c -> dues.overdue(basis, person, c))
                     .map(c -> dues.figure(basis, person, c)).filter(Objects::nonNull)
                     .reduce(BigDecimal.ZERO.setScale(2), BigDecimal::add);
