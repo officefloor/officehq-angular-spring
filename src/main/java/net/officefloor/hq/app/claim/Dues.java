@@ -49,13 +49,15 @@ public class Dues {
         int grace(String grade, LocalDate day);
 
         /** The rate of a grade in force on a day: the sheet's own, or else, when it has none in force
-         *  on it, its ancestors' (see {@link #inherited}); empty when none is. */
+         *  on it, its ancestors' or its clone source's (see {@link #inherited}); empty when none is. */
         default Optional<Rate> rateInForce(String grade, LocalDate day) {
             return RateRepository.inForce(rates(grade), day).or(() -> inherited(grade, day));
         }
 
         /** The rate of a grade in force on a day on the sheet's parent, or else its parent's, up to
-         *  three levels up; empty when none is (or the sheet has no parent). */
+         *  three levels up, or else, when the sheet was cloned, on the sheet it was cloned from and
+         *  so on up that sheet's parents and source (see SheetRepository#rateSources); empty when
+         *  none is. */
         default Optional<Rate> inherited(String grade, LocalDate day) {
             return Optional.empty();
         }
@@ -69,7 +71,8 @@ public class Dues {
         }
 
         /** The rate of a grade that applies to a claim on the sheet's parent, or else its parent's, up
-         *  to three levels up (see {@link #rateFor}); empty when none does. */
+         *  to three levels up, or else on the sheet it was cloned from and so on (see {@link #rateFor}
+         *  and {@link #inherited}); empty when none does. */
         default Optional<Rate> inheritedFor(String grade, Claim claim) {
             return Optional.empty();
         }
@@ -153,14 +156,14 @@ public class Dues {
 
             @Override
             public Optional<Rate> inherited(String grade, LocalDate day) {
-                return rates.findInForceUp(sheetStore.ancestors(sheetId), grade, day);
+                return rates.findInForceUp(sheetStore.rateSources(sheetId), grade, day);
             }
 
             @Override
             public Optional<Rate> inheritedFor(String grade, Claim claim) {
-                for (String ancestor : sheetStore.ancestors(sheetId)) {
+                for (String source : sheetStore.rateSources(sheetId)) {
                     Optional<Rate> rate = RateRepository.inForce(
-                            applying(rates.findLatestFirst(ancestor, grade), claim), claim.getDate());
+                            applying(rates.findLatestFirst(source, grade), claim), claim.getDate());
                     if (rate.isPresent()) {
                         return rate;
                     }

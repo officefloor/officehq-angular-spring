@@ -212,12 +212,12 @@ public class History {
                 PeriodRevision::getRecordedOn, PeriodRevision::getPeriodId, day).values().stream()
                 .map(PeriodRevision::toPeriod).sorted(Comparator.comparing(Period::getFromDate)).toList();
         List<Rate> ratesListed = listed(ratesThen);
-        // the parent is not dated: the ancestors are the sheet's now, each one's rates as they stood then
-        List<List<Rate>> inheritedThen = sheets.ancestors(sheetId).stream().map(id -> ratesThen(id, day)).toList();
+        // the parent is not dated: the rate sources are the sheet's now, each one's rates as they stood then
+        List<List<Rate>> inheritedThen = sheets.rateSources(sheetId).stream().map(id -> ratesThen(id, day)).toList();
         // each rate's revisions recorded by then, the oldest first: its older versions, for a claim a
         // forward-only rate does not apply to
         Map<String, List<Rate>> rateRevisionsThen = new HashMap<>();
-        Stream.concat(Stream.of(sheetId), sheets.ancestors(sheetId).stream()).forEach(id ->
+        Stream.concat(Stream.of(sheetId), sheets.rateSources(sheetId).stream()).forEach(id ->
                 rateRevisions.findBySheetIdOrderByIdAsc(id).stream().filter(r -> !r.getRecordedOn().isAfter(day))
                         .forEach(r -> rateRevisionsThen.computeIfAbsent(id + "|" + r.key(), k -> new ArrayList<>())
                                 .add(r.toRate())));

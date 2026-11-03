@@ -585,6 +585,13 @@ public class SheetService {
         return sheets.ancestors(id);
     }
 
+    /** The ids of the sheets the sheet's rates are taken from, nearest first: its ancestors, then
+     *  the sheet it was cloned from and its own (see {@link SheetRepository#rateSources}). */
+    @Transactional(readOnly = true)
+    public List<String> rateSources(String id) {
+        return sheets.rateSources(id);
+    }
+
     /** The ids of the other sheets of the sheet's tree, among the sheets that exist: its ancestors,
      *  however many levels up, and its descendants, however many levels down. */
     @Transactional(readOnly = true)

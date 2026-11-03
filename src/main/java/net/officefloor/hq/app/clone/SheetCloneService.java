@@ -126,6 +126,7 @@ public class SheetCloneService {
         to.setAlertThreshold(from.getAlertThreshold());
         to.setFiscalStartMonth(from.getFiscalStartMonth());
         to.setParentId(from.getParentId());
+        to.setSourceId(sheetId);
         to.setProofKinds(from.getProofKinds());
         sheets.saveAndFlush(to);
         rollup.tracking(toSheetId, user, () -> {

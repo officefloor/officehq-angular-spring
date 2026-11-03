@@ -148,11 +148,12 @@ public class RateService {
         return versions.findByRateIdOrderByVersionDesc(rate.getId()).stream().map(v -> v.toRate(rate)).toList();
     }
 
-    /** The rates set on each of the sheet's ancestors, nearest first (its parent's, then the
-     *  parent's parent's, up to three levels up), each by grade and then from-date. */
+    /** The rates set on each of the sheets the sheet's rates are taken from, nearest first (its
+     *  parent's, then the parent's parent's, up to three levels up, then those of the sheet it was
+     *  cloned from and its own, see SheetRepository#rateSources), each by grade and then from-date. */
     @Transactional(readOnly = true)
     public List<List<Rate>> inherited(String sheetId) {
-        return sheets.ancestors(sheetId).stream().map(rates::findBySheetIdOrdered).toList();
+        return sheets.rateSources(sheetId).stream().map(rates::findBySheetIdOrdered).toList();
     }
 
     /** Set the rate for a grade from a date (null: from the beginning of time) through a date

@@ -87,6 +87,12 @@ public class Sheet {
     @Column(name = "parent_id")
     private String parentId;
 
+    /** The id of the sheet this one was cloned from: a grade with no rate in force on a date on this
+     *  sheet nor on its parents takes that sheet's rate (see SheetRepository#rateSources); null when
+     *  it was not cloned. Not dated. */
+    @Column(name = "source_id")
+    private String sourceId;
+
     /** The sheet's proof kinds, comma separated: a claim above the proof threshold needs at least one
      *  proof of each before it is settled or approved; null (blank) is none. Not dated. */
     @Column(name = "proof_kinds")
@@ -199,6 +205,14 @@ public class Sheet {
 
     public void setParentId(String parentId) {
         this.parentId = parentId;
+    }
+
+    public String getSourceId() {
+        return sourceId;
+    }
+
+    public void setSourceId(String sourceId) {
+        this.sourceId = sourceId;
     }
 
     public String getProofKinds() {

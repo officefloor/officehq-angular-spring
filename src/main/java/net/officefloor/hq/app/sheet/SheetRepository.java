@@ -89,4 +89,26 @@ public interface SheetRepository extends JpaRepository<Sheet, String> {
         }
         return up;
     }
+
+    /** The ids of the sheets a sheet's rates are taken from when it has none in force, nearest first:
+     *  its {@link #ancestors}, then, when it was cloned, the sheet it was cloned from and that sheet's
+     *  own rate sources (its ancestors, then the sheet it was cloned from, and so on), each once and
+     *  never the sheet itself. */
+    default List<String> rateSources(String id) {
+        List<String> sources = new ArrayList<>();
+        Set<String> visited = new HashSet<>();
+        String at = id;
+        while (at != null && visited.add(at)) {
+            for (String ancestor : ancestors(at)) {
+                if (!ancestor.equals(id) && !sources.contains(ancestor)) {
+                    sources.add(ancestor);
+                }
+            }
+            at = findById(at).map(Sheet::getSourceId).orElse(null);
+            if (at != null && !at.equals(id) && !sources.contains(at)) {
+                sources.add(at);
+            }
+        }
+        return sources;
+    }
 }
