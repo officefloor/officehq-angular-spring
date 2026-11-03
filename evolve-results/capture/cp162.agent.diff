@@ -1,0 +1,210 @@
+diff --git a/src/main/frontend/src/app/core/audit-log.ts b/src/main/frontend/src/app/core/audit-log.ts
+index e8937ade6..01031ff51 100644
+--- a/src/main/frontend/src/app/core/audit-log.ts
++++ b/src/main/frontend/src/app/core/audit-log.ts
+@@ -13,4 +13,11 @@ export class AuditLog {
+     const params: Record<string, string> = name.trim() ? { name } : {};
+     return firstValueFrom(this.http.get<string[]>(`/api/sheets/${encodeURIComponent(sheetId)}/audit`, { params }));
+   }
++
++  /** A claim's timeline: the sheet's audit lines about the claim exactly as the file holds them,
++   *  newest first. */
++  timeline(sheetId: string, claimId: number): Promise<string[]> {
++    return firstValueFrom(
++      this.http.get<string[]>(`/api/sheets/${encodeURIComponent(sheetId)}/audit/claims/${claimId}`));
++  }
+ }
+diff --git a/src/main/frontend/src/app/core/session.ts b/src/main/frontend/src/app/core/session.ts
+index 43e98c601..9a7f5a2d6 100644
+--- a/src/main/frontend/src/app/core/session.ts
++++ b/src/main/frontend/src/app/core/session.ts
+@@ -73,23 +73,32 @@ export class Session {
+     this.parent.set(null);
+   }
+ 
++  /** Whether a sheet load is under way: its rows are read again once it is done, so a read
++   *  finished meanwhile does not show the sheet as loaded. */
++  private loading = false;
++
+   /** Record that the sheet's people and claims, as read for its latest load, are on screen. */
+   markShown(id: string): void {
+-    if (this.sheetId() === id) this.shownId.set(id);
++    if (!this.loading && this.sheetId() === id) this.shownId.set(id);
+   }
+ 
+   /** Load a sheet by id; one never loaded before starts empty. */
+   async loadSheet(id: string): Promise<void> {
+     const user = this.user();
+     if (!user) throw new Error('not signed in');
+-    const res = await firstValueFrom(
+-      this.http.post<SheetView>(`/api/sheets/${encodeURIComponent(id)}/load`, null, {
+-        headers: { 'X-User': user },
+-      }),
+-    );
+-    this.show(res);
+-    await this.readLocale(user);
+-    await this.readColumns(user);
++    this.loading = true;
++    try {
++      const res = await firstValueFrom(
++        this.http.post<SheetView>(`/api/sheets/${encodeURIComponent(id)}/load`, null, {
++          headers: { 'X-User': user },
++        }),
++      );
++      this.show(res);
++      await this.readLocale(user);
++      await this.readColumns(user);
++    } finally {
++      this.loading = false;
++    }
+     this.bumpLoads();
+   }
+ 
+diff --git a/src/main/frontend/src/app/features/claims/person-claims.ts b/src/main/frontend/src/app/features/claims/person-claims.ts
+index 1c7c5fe5d..14a8739b8 100644
+--- a/src/main/frontend/src/app/features/claims/person-claims.ts
++++ b/src/main/frontend/src/app/features/claims/person-claims.ts
+@@ -10,6 +10,7 @@ import { Session } from '../../core/session';
+ import { VoidReasons } from '../../core/void-reasons';
+ import { DatedValue, Graces, RoundingMode, graceOn } from '../../core/settings';
+ import { FigurePipe } from '../../core/figure';
++import { AuditLog } from '../../core/audit-log';
+ 
+ /** Why the server refused an action: the claim's status does not allow it. */
+ const REFUSALS: Record<ClaimAction, string> = {
+@@ -347,6 +348,16 @@ function splitRefusal(e: unknown): string {
+           @if (editing() === c.id) {
+             <button type="button" data-testid="claim-cancel" (click)="cancel()">Cancel</button>
+           }
++          <button type="button" data-testid="claim-timeline" (click)="showTimeline(c)"
++            [attr.aria-label]="'Timeline of claim of ' + c.amount + ' on ' + c.date">Timeline</button>
++          @if (timeline()?.id === c.id) {
++            <ol data-testid="claim-timeline-lines"
++              [attr.aria-label]="'Timeline of claim of ' + c.amount + ' on ' + c.date">
++              @for (line of timeline()?.lines; track $index) {
++                <li data-testid="claim-timeline-line">{{ line }}</li>
++              }
++            </ol>
++          }
+           @if (claimError()?.id === c.id) {
+             <p role="alert" data-testid="claim-error">{{ claimError()?.message }}</p>
+           }
+@@ -358,6 +369,7 @@ function splitRefusal(e: unknown): string {
+ export class PersonClaims {
+   private readonly api = inject(Claims);
+   private readonly session = inject(Session);
++  private readonly auditLog = inject(AuditLog);
+   protected readonly voidReasons = inject(VoidReasons);
+   protected readonly templates = inject(ClaimTemplates);
+ 
+@@ -401,6 +413,10 @@ export class PersonClaims {
+   private submitting = false;
+   /** The refusal of the last action taken on a claim's row, shown on that row. */
+   protected readonly claimError = signal<{ id: number; message: string } | null>(null);
++  /** The claim whose timeline is shown, with its audit lines newest first. */
++  protected readonly timeline = signal<{ id: number; lines: string[] } | null>(null);
++  /** Counts timeline reads, so only the latest one's answer is shown. */
++  private timelineReads = 0;
+   protected readonly form = new FormGroup({
+     amount: new FormControl('', { nonNullable: true }),
+     date: new FormControl('', { nonNullable: true }),
+@@ -536,6 +552,21 @@ export class PersonClaims {
+     }
+   }
+ 
++  /** Show the claim's timeline, read afresh from the audit file. */
++  protected async showTimeline(c: Claim): Promise<void> {
++    const sheetId = this.session.sheetId();
++    if (!sheetId) return;
++    const read = ++this.timelineReads;
++    this.claimError.set(null);
++    this.timeline.set(null);
++    try {
++      const lines = await this.auditLog.timeline(sheetId, c.id);
++      if (read === this.timelineReads) this.timeline.set({ id: c.id, lines });
++    } catch {
++      if (read === this.timelineReads) this.claimError.set({ id: c.id, message: 'The timeline could not be read.' });
++    }
++  }
++
+   protected async remind(c: Claim): Promise<void> {
+     this.claimError.set(null);
+     try {
+diff --git a/src/main/java/net/officefloor/hq/app/audit/AuditController.java b/src/main/java/net/officefloor/hq/app/audit/AuditController.java
+index a7d15b3ce..c3c23767e 100644
+--- a/src/main/java/net/officefloor/hq/app/audit/AuditController.java
++++ b/src/main/java/net/officefloor/hq/app/audit/AuditController.java
+@@ -9,15 +9,19 @@ import java.util.Locale;
+ import java.util.regex.Matcher;
+ import java.util.regex.Pattern;
+ import net.officefloor.hq.app.Audit;
++import net.officefloor.hq.app.claim.Claim;
++import net.officefloor.hq.app.claim.ClaimRepository;
+ import net.officefloor.hq.app.person.Person;
+ import net.officefloor.hq.app.person.PersonRepository;
+ import net.officefloor.hq.app.sheet.SheetRepository;
++import org.springframework.http.HttpStatus;
+ import org.springframework.validation.annotation.Validated;
+ import org.springframework.web.bind.annotation.GetMapping;
+ import org.springframework.web.bind.annotation.PathVariable;
+ import org.springframework.web.bind.annotation.RequestMapping;
+ import org.springframework.web.bind.annotation.RequestParam;
+ import org.springframework.web.bind.annotation.RestController;
++import org.springframework.web.server.ResponseStatusException;
+ 
+ /** The audit viewer: the sheet's lines exactly as the audit file holds them, newest first,
+  *  optionally only those about one person. For a person, this sheet's lines about them are
+@@ -35,11 +39,13 @@ public class AuditController {
+     private final Audit audit;
+     private final PersonRepository people;
+     private final SheetRepository sheets;
++    private final ClaimRepository claims;
+ 
+-    public AuditController(Audit audit, PersonRepository people, SheetRepository sheets) {
++    public AuditController(Audit audit, PersonRepository people, SheetRepository sheets, ClaimRepository claims) {
+         this.audit = audit;
+         this.people = people;
+         this.sheets = sheets;
++        this.claims = claims;
+     }
+ 
+     @GetMapping
+@@ -61,6 +67,38 @@ public class AuditController {
+         return shown;
+     }
+ 
++    /** A claim's timeline: the sheet's lines about the claim, newest first, exactly as the file holds
++     *  them. A numbered claim's lines are those carrying its number; a claim with no number's are
++     *  those carrying no number that name its person, amount and date together. */
++    @GetMapping("/claims/{claimId}")
++    public List<String> timeline(@PathVariable @NotBlank @Size(max = 100) String sheetId,
++            @PathVariable Long claimId) {
++        String sheet = sheetId.trim();
++        Claim claim = claims.findByIdAndSheetId(claimId, sheet)
++                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "No such claim"));
++        String number = claim.getNumber();
++        String person = people.findById(claim.getPersonId()).map(p -> key(p.getName())).orElse(null);
++        String amount = claim.getAmount().setScale(2).toPlainString();
++        String date = String.valueOf(claim.getDate());
++        List<String> shown = new ArrayList<>();
++        for (String line : audit.lines()) {
++            if (!sheet.equals(field(line, "sheet"))) {
++                continue;
++            }
++            String lineNumber = field(line, "number");
++            boolean about = number != null
++                    ? number.equals(lineNumber)
++                    : lineNumber == null && person != null && field(line, "person") != null
++                            && person.equals(key(field(line, "person")))
++                            && amount.equals(field(line, "amount")) && date.equals(field(line, "date"));
++            if (about) {
++                shown.add(line);
++            }
++        }
++        Collections.reverse(shown);
++        return shown;
++    }
++
+     /** The sheet's lines (about the person, when one is given), newest first. */
+     private static List<String> about(List<String> lines, String sheet, String person) {
+         List<String> shown = new ArrayList<>();

@@ -1,0 +1,64 @@
+{
+  "checkpoint": 162,
+  "stack": {
+    "repo": "/home/daniel/officehq-angular-spring",
+    "origin": "git@github.com:officefloor/officehq-angular-spring.git",
+    "name": "officehq-angular-spring",
+    "base_ref": "base-empty",
+    "base_commit": "65cb8233ea38b2dfa6cfd18709e30cd18fdf3250"
+  },
+  "checkpoint_id": "cp162_claim-timeline",
+  "phase": "mid",
+  "type": "additive",
+  "mutates": [],
+  "replaced_tests": [],
+  "request": {
+    "spec": "Each claim can show its timeline: a button on the claim lists the audit lines about it, newest\nfirst, each as the file holds it: the lines carrying its number (number=<its number>), and for a\nclaim with no number the lines naming its person, amount and date together.\n",
+    "prompt": "You are implementing ONE change to this application.\n\nFIRST read AGENTS.md \u2014 it states the working rules and how the app is tested, and sends you to\nDESIGN.md for the app's stack and conventions. Follow both.\n\nTHE CHANGE REQUEST:\nEach claim can show its timeline: a button on the claim lists the audit lines about it, newest\nfirst, each as the file holds it: the lines carrying its number (number=<its number>), and for a\nclaim with no number the lines naming its person, amount and date together.\n\nYour work is verified by an automated Playwright UI test already installed under e2e/specs/.\nRead that spec: it declares the exact data-testid anchors, values, test data and any audit\nrecords it expects \u2014 match them. Run `bin/e2e` to build the app, start it, and run the test as\nyou work; iterate until it passes. Change whatever the request needs across the app \u2014 its stored\ndata, its server and its front end. Do NOT edit bin/build, bin/start, bin/stop, bin/e2e,\nAGENTS.md, CLAUDE.md, DESIGN.md, e2e/support/ or the test spec.\n"
+  },
+  "commit_sha": "88d0617f1e8bc240bb284a5bcf42affce902ca0a",
+  "reset_sha": "",
+  "preagent_sha": "502a8f897e6a0838fdca50a632083a931e01a456",
+  "prev_sha": "502a8f897e6a0838fdca50a632083a931e01a456",
+  "base_sha": "65cb8233ea38b2dfa6cfd18709e30cd18fdf3250",
+  "agent": {
+    "ok": true,
+    "cost_usd": 1.4292600000000002,
+    "input_tokens": 86,
+    "output_tokens": 17654,
+    "cache_read_tokens": 2344460,
+    "cache_creation_tokens": 75868,
+    "num_turns": 45,
+    "duration_ms": 1181521,
+    "duration_api_ms": 184136,
+    "model": "claude-opus-5-5",
+    "session_id": "c86585d9-fa14-45b0-8116-97429eb03008",
+    "stop_reason": "success",
+    "result_text": "Each claim now has a Timeline button that lists the audit lines about that claim, newest first, exactly as the audit file holds them. `bin/e2e` passes all 4 tests on two runs in a row after the final changes.\n\n**Which lines count as a claim's**\n- **A claim with a number:** every line on its sheet that carries `number=<its number>`. Numbers must match exactly, so `FY2026-1` does not pick up `FY2026-10`.\n- **A claim without a number:** lines on its sheet that name its person, amount and date together and carry no number. That last part is how the test reads the request: two unnumbered drafts with the same person, amount and date share a timeline, but once one of them is opened and numbered, its numbered lines stop showing on the other.\n\n**Server:** a new `GET /api/sheets/{sheetId}/audit/claims/{claimId}` in `AuditController.java`. It only reads the audit file and writes nothing.\n\n**Front end:** a `claim-timeline` button on each claim row in `person-claims.ts`, with the lines shown as `claim-timeline-line` items. Each click reads the file again rather than toggling, because the test clicks the same claim more than once.\n\n**A separate bug I also fixed:** scenario 2 failed on both early runs on a step unrelated to timelines (user vic moving a person should have been refused). The cause was a timing problem in loading a sheet that was already in the code. Loading a sheet reads the people twice. If the first read finished early, the screen showed the sheet as loaded while its list was empty, so the test acted on an empty list. The fix is in `core/session.ts`: the sheet is not shown as loaded until the load has fully finished.\n\nMy first try at that fix broke `refresh()` in scenario 1, so I replaced it. Scenario 1 also failed once early on, on the same day as the race. Since that fix it has passed every time.",
+    "error": "",
+    "attempts": [
+      {
+        "ok": true,
+        "limit_reached": false,
+        "retryable": false,
+        "timed_out": false,
+        "cost_usd": 1.4292600000000002,
+        "num_turns": 45,
+        "duration_ms": 1181521,
+        "duration_api_ms": 184136,
+        "error": ""
+      }
+    ]
+  },
+  "agent_stream_file": "cp162.agent.jsonl",
+  "agent_diff_file": "cp162.agent.diff",
+  "build_log_file": null,
+  "tests": {
+    "gated": false,
+    "queued": true
+  },
+  "probe": null,
+  "pinned_touched": [],
+  "acceptance_touched": [],
+  "impact_gate": null
+}
