@@ -1,0 +1,901 @@
+diff --git a/src/main/frontend/src/app/core/figure.ts b/src/main/frontend/src/app/core/figure.ts
+new file mode 100644
+index 000000000..f89bf2be5
+--- /dev/null
++++ b/src/main/frontend/src/app/core/figure.ts
+@@ -0,0 +1,23 @@
++import { Pipe, PipeTransform, inject } from '@angular/core';
++import { Session } from './session';
++
++const FIGURE = /^(-?)(\d+)\.(\d{2})$/;
++
++/** A figure (a number with two decimals, as the store gives it) as the user's locale shows it:
++ *  en 1234.56, de 1.234,56. Anything else is shown as it is. */
++export function formatFigure(value: string, locale: string): string {
++  const m = locale === 'de' ? FIGURE.exec(value) : null;
++  if (!m) return value;
++  return `${m[1]}${m[2].replace(/\B(?=(\d{3})+(?!\d))/g, '.')},${m[3]}`;
++}
++
++/** Shows a figure in the signed-in user's locale; impure so a change of locale re-renders it. */
++@Pipe({ name: 'figure', pure: false })
++export class FigurePipe implements PipeTransform {
++  private readonly session = inject(Session);
++
++  transform(value: string | number | null | undefined): string {
++    if (value === null || value === undefined) return '';
++    return formatFigure(String(value), this.session.locale());
++  }
++}
+diff --git a/src/main/frontend/src/app/core/session.ts b/src/main/frontend/src/app/core/session.ts
+index e8210f4c6..4a746feff 100644
+--- a/src/main/frontend/src/app/core/session.ts
++++ b/src/main/frontend/src/app/core/session.ts
+@@ -4,6 +4,15 @@ import { firstValueFrom } from 'rxjs';
+ 
+ interface SignedIn {
+   name: string;
++  locale: string;
++}
++
++/** How the screen shows a user figures: en 1234.56, de 1.234,56. */
++export type Locale = 'en' | 'de';
++export const LOCALES: readonly Locale[] = ['en', 'de'];
++
++function toLocale(value: string | null | undefined): Locale {
++  return value === 'de' ? 'de' : 'en';
+ }
+ 
+ interface SheetView {
+@@ -19,6 +28,8 @@ export class Session {
+   private readonly http = inject(HttpClient);
+ 
+   readonly user = signal<string | null>(null);
++  /** The signed-in user's locale, kept per user in the store; en unless chosen. */
++  readonly locale = signal<Locale>('en');
+   readonly sheetId = signal<string | null>(null);
+   /** The active sheet's today (yyyy-mm-dd) as the store holds it. */
+   readonly sheetToday = signal<string | null>(null);
+@@ -41,6 +52,7 @@ export class Session {
+   async signIn(name: string): Promise<void> {
+     const res = await firstValueFrom(this.http.post<SignedIn>('/api/signin', { name }));
+     this.user.set(res.name);
++    this.locale.set(toLocale(res.locale));
+     this.sheetId.set(null);
+     this.shownId.set(null);
+     this.sheetToday.set(null);
+@@ -64,9 +76,28 @@ export class Session {
+       }),
+     );
+     this.show(res);
++    await this.readLocale(user);
+     this.bumpLoads();
+   }
+ 
++  /** Choose the signed-in user's locale; it is kept for them across every sheet. */
++  async setLocale(locale: Locale): Promise<void> {
++    const user = this.user();
++    if (!user) throw new Error('not signed in');
++    const res = await firstValueFrom(
++      this.http.put<{ locale: string }>('/api/me/locale', { locale }, { headers: { 'X-User': user } }),
++    );
++    this.locale.set(toLocale(res.locale));
++  }
++
++  /** Re-read the user's locale from the store, as another screen of theirs may have changed it. */
++  private async readLocale(user: string): Promise<void> {
++    const res = await firstValueFrom(
++      this.http.get<{ locale: string }>('/api/me/locale', { headers: { 'X-User': user } }),
++    );
++    this.locale.set(toLocale(res.locale));
++  }
++
+   /** Change the active sheet's today. */
+   async setToday(today: string): Promise<void> {
+     const user = this.user();
+diff --git a/src/main/frontend/src/app/features/claims/person-claims.ts b/src/main/frontend/src/app/features/claims/person-claims.ts
+index 530b950a7..1c7c5fe5d 100644
+--- a/src/main/frontend/src/app/features/claims/person-claims.ts
++++ b/src/main/frontend/src/app/features/claims/person-claims.ts
+@@ -9,6 +9,7 @@ import { Rate } from '../../core/rates';
+ import { Session } from '../../core/session';
+ import { VoidReasons } from '../../core/void-reasons';
+ import { DatedValue, Graces, RoundingMode, graceOn } from '../../core/settings';
++import { FigurePipe } from '../../core/figure';
+ 
+ /** Why the server refused an action: the claim's status does not allow it. */
+ const REFUSALS: Record<ClaimAction, string> = {
+@@ -183,7 +184,7 @@ function splitRefusal(e: unknown): string {
+ // editor is opened, edits it.
+ @Component({
+   selector: 'app-person-claims',
+-  imports: [ReactiveFormsModule],
++  imports: [ReactiveFormsModule, FigurePipe],
+   template: `
+     <form data-testid="claim-form" [formGroup]="form" (ngSubmit)="submit()">
+       <label [for]="'claim-form-amount-' + personId()">Amount</label>
+@@ -222,13 +223,13 @@ function splitRefusal(e: unknown): string {
+             (change)="selectedChange.emit({ id: c.id, selected: $any($event.target).checked })"
+             [attr.aria-label]="'Select claim of ' + c.amount + ' on ' + c.date" />
+           <span data-testid="claim-number">{{ c.number ?? '' }}</span>
+-          <span data-testid="claim-amount">{{ c.amount }}</span>
++          <span data-testid="claim-amount">{{ c.amount | figure }}</span>
+           <span data-testid="claim-date">{{ c.date }}</span>
+           <span data-testid="claim-note">{{ c.note }}</span>
+           <span data-testid="claim-corrects">{{ c.corrects ?? '' }}</span>
+           <span data-testid="claim-ref">{{ c.ref ?? '' }}</span>
+           <span data-testid="claim-tags">{{ c.tags }}</span>
+-          <span data-testid="claim-due">{{ dueOf(c) }}</span>
++          <span data-testid="claim-due">{{ dueOf(c) | figure }}</span>
+           <span data-testid="claim-status">{{ c.status }}</span>
+           <span data-testid="claim-opened-by">{{ c.openedBy ?? '' }}</span>
+           <span data-testid="claim-stated">{{ c.stated ? 'yes' : 'no' }}</span>
+diff --git a/src/main/frontend/src/app/features/people/people-list.ts b/src/main/frontend/src/app/features/people/people-list.ts
+index 264c0b4bd..a69ba0f92 100644
+--- a/src/main/frontend/src/app/features/people/people-list.ts
++++ b/src/main/frontend/src/app/features/people/people-list.ts
+@@ -27,6 +27,7 @@ import { TreeSearchBox } from './tree-search-box';
+ import { PoolList } from '../pools/pool-list';
+ import { PersonPlans } from '../plans/person-plans';
+ import { PlanGenerateBox } from '../plans/plan-generate-box';
++import { FigurePipe } from '../../core/figure';
+ 
+ /** What the people list can be sorted by on the screen. */
+ type SortKey = 'added' | 'name' | 'grade' | 'due-total';
+@@ -47,7 +48,7 @@ const NO_LEAVE: Leave = { holds: [], retiredFrom: null };
+ // The signed-in user may watch a person: they are told when a claim of theirs is settled.
+ @Component({
+   selector: 'app-people-list',
+-  imports: [ReactiveFormsModule, PersonClaims, RateForm, PeriodForm, QuickAddBar, PasteClaimsBox, ImportPeopleBox, SummaryPanel, ClassicSummaryPanel, HeaderCounters, PoolList, PersonPlans, PlanGenerateBox, TreeSearchBox],
++  imports: [ReactiveFormsModule, PersonClaims, RateForm, PeriodForm, QuickAddBar, PasteClaimsBox, ImportPeopleBox, SummaryPanel, ClassicSummaryPanel, HeaderCounters, PoolList, PersonPlans, PlanGenerateBox, TreeSearchBox, FigurePipe],
+   template: `
+     <app-header-counters [peopleCount]="people().length" [statuses]="statusSummary()"
+       [dueTotal]="dueTotal()" [overdueTotal]="overdueTotal()"
+@@ -86,32 +87,32 @@ const NO_LEAVE: Leave = { holds: [], retiredFrom: null };
+       <app-plan-generate-box [refresh]="plansGenerated" />
+       <app-import-people-box (imported)="peopleImported($event)" />
+       <app-tree-search-box />
+-      <p>Claimed in total: <strong data-testid="rollup-claimed-total">{{ claimedTotal() }}</strong></p>
+-      <p>Due in total: <strong data-testid="rollup-due-total">{{ dueTotal() }}</strong></p>
+-      <p>Settled due in total: <strong data-testid="rollup-settled-total">{{ settledTotal() }}</strong></p>
+-      <p>Open due in total: <strong data-testid="rollup-open-total">{{ openTotal() }}</strong></p>
+-      <p>Cuts in total: <strong data-testid="rollup-cut-total">{{ cutTotal() }}</strong></p>
++      <p>Claimed in total: <strong data-testid="rollup-claimed-total">{{ claimedTotal() | figure }}</strong></p>
++      <p>Due in total: <strong data-testid="rollup-due-total">{{ dueTotal() | figure }}</strong></p>
++      <p>Settled due in total: <strong data-testid="rollup-settled-total">{{ settledTotal() | figure }}</strong></p>
++      <p>Open due in total: <strong data-testid="rollup-open-total">{{ openTotal() | figure }}</strong></p>
++      <p>Cuts in total: <strong data-testid="rollup-cut-total">{{ cutTotal() | figure }}</strong></p>
+       <p>Overdue claims: <strong data-testid="rollup-overdue-count">{{ overdueCount() }}</strong></p>
+-      <p>Overdue in total: <strong data-testid="rollup-overdue-total">{{ overdueTotal() }}</strong></p>
++      <p>Overdue in total: <strong data-testid="rollup-overdue-total">{{ overdueTotal() | figure }}</strong></p>
+       <dl aria-label="Consolidated with descendant sheets">
+         <dt>People, consolidated</dt>
+         <dd data-testid="consolidated-people-count">{{ consolidatedPeopleCount() }}</dd>
+         <dt>Due, consolidated</dt>
+-        <dd data-testid="consolidated-due-total">{{ consolidatedDueTotal() }}</dd>
++        <dd data-testid="consolidated-due-total">{{ consolidatedDueTotal() | figure }}</dd>
+         <dt>Overdue, consolidated</dt>
+-        <dd data-testid="consolidated-overdue-total">{{ consolidatedOverdueTotal() }}</dd>
++        <dd data-testid="consolidated-overdue-total">{{ consolidatedOverdueTotal() | figure }}</dd>
+       </dl>
+       @if (tagDueTotals().length > 0) {
+         <ul aria-label="Due per tag">
+           @for (t of tagDueTotals(); track t.tag) {
+-            <li>Due tagged {{ t.tag }}: <strong [attr.data-testid]="'tag-' + t.tag + '-due-total'">{{ t.due }}</strong></li>
++            <li>Due tagged {{ t.tag }}: <strong [attr.data-testid]="'tag-' + t.tag + '-due-total'">{{ t.due | figure }}</strong></li>
+           }
+         </ul>
+       }
+       @if (monthDueTotals().length > 0) {
+         <ul aria-label="Due per month">
+           @for (m of monthDueTotals(); track m.month) {
+-            <li>Due dated in {{ m.month }}: <strong [attr.data-testid]="'month-' + m.month + '-due-total'">{{ m.due }}</strong></li>
++            <li>Due dated in {{ m.month }}: <strong [attr.data-testid]="'month-' + m.month + '-due-total'">{{ m.due | figure }}</strong></li>
+           }
+         </ul>
+       }
+@@ -219,17 +220,17 @@ const NO_LEAVE: Leave = { holds: [], retiredFrom: null };
+               <td data-testid="person-aliases">{{ p.aliases.join(', ') }}</td>
+               <td data-testid="person-clashing">{{ p.clashing ? 'yes' : 'no' }}</td>
+               <td data-testid="person-origin">{{ p.origin ?? '' }}</td>
+-              <td data-testid="person-claimed">{{ claimed().get(p.id) ?? '0.00' }}</td>
+-              <td data-testid="person-due-total">{{ dueOf(p) ?? 'n/a' }}</td>
+-              <td data-testid="person-settled-total">{{ settledTotalOf(p) }}</td>
+-              <td data-testid="person-open-total">{{ openTotalOf(p) }}</td>
++              <td data-testid="person-claimed">{{ claimed().get(p.id) ?? '0.00' | figure }}</td>
++              <td data-testid="person-due-total">{{ dueOf(p) ?? 'n/a' | figure }}</td>
++              <td data-testid="person-settled-total">{{ settledTotalOf(p) | figure }}</td>
++              <td data-testid="person-open-total">{{ openTotalOf(p) | figure }}</td>
+               @for (pd of periods(); track pd.id) {
+-                <td [attr.data-testid]="'person-period-' + pd.name + '-due-total'">{{ periodDueOf(p.id, pd) }}</td>
++                <td [attr.data-testid]="'person-period-' + pd.name + '-due-total'">{{ periodDueOf(p.id, pd) | figure }}</td>
+               }
+-              <td data-testid="person-excess">{{ excessOf(p) }}</td>
+-              <td data-testid="person-cut-total">{{ cutTotals().get(p.id) ?? '0.00' }}</td>
++              <td data-testid="person-excess">{{ excessOf(p) | figure }}</td>
++              <td data-testid="person-cut-total">{{ cutTotals().get(p.id) ?? '0.00' | figure }}</td>
+               <td data-testid="person-statement-count">{{ p.statementCount }}</td>
+-              <td data-testid="person-stated-total">{{ p.statementCount > 0 ? (p.statedTotal ?? 'n/a') : '' }}</td>
++              <td data-testid="person-stated-total">{{ (p.statementCount > 0 ? (p.statedTotal ?? 'n/a') : '') | figure }}</td>
+               <td data-testid="person-statement-date">{{ p.statementDate ?? '' }}</td>
+               <td data-testid="person-retired">{{ p.retired ? 'yes' : 'no' }}</td>
+               <td data-testid="person-retired-from">{{ p.retiredFrom ?? '' }}</td>
+@@ -262,13 +263,13 @@ const NO_LEAVE: Leave = { holds: [], retiredFrom: null };
+                 }
+               </td>
+               <td data-testid="person-overdue-count">{{ overdueOf(p).length }}</td>
+-              <td data-testid="person-overdue-total">{{ overdueTotalOf(p) }}</td>
++              <td data-testid="person-overdue-total">{{ overdueTotalOf(p) | figure }}</td>
+               @let aged = agedOf(p);
+-              <td data-testid="person-aged-0-30">{{ aged[0] }}</td>
+-              <td data-testid="person-aged-31-60">{{ aged[1] }}</td>
+-              <td data-testid="person-aged-61">{{ aged[2] }}</td>
++              <td data-testid="person-aged-0-30">{{ aged[0] | figure }}</td>
++              <td data-testid="person-aged-31-60">{{ aged[1] | figure }}</td>
++              <td data-testid="person-aged-61">{{ aged[2] | figure }}</td>
+               <td data-testid="person-patrons">{{ patronNames().get(p.id) ?? '' }}</td>
+-              <td data-testid="person-backing">{{ backingOf(p) }}</td>
++              <td data-testid="person-backing">{{ backingOf(p) | figure }}</td>
+               <td data-testid="person-watched">{{ watched().has(p.id) ? 'yes' : 'no' }}</td>
+               <td>
+                 <app-person-plans [personId]="p.id" [name]="p.name" [plans]="plansByPerson().get(p.id) ?? []"
+diff --git a/src/main/frontend/src/app/features/periods/period-form.ts b/src/main/frontend/src/app/features/periods/period-form.ts
+index 9a041e06d..2edf67744 100644
+--- a/src/main/frontend/src/app/features/periods/period-form.ts
++++ b/src/main/frontend/src/app/features/periods/period-form.ts
+@@ -2,13 +2,14 @@ import { HttpErrorResponse } from '@angular/common/http';
+ import { Component, inject, input, output, signal } from '@angular/core';
+ import { FormControl, FormGroup, ReactiveFormsModule } from '@angular/forms';
+ import { Period, Periods } from '../../core/periods';
++import { FigurePipe } from '../../core/figure';
+ 
+ const DAY = /^\d{4}-\d{2}-\d{2}$/;
+ 
+ // The periods on the sheet with each one's due-total, and the form that adds a period.
+ @Component({
+   selector: 'app-period-form',
+-  imports: [ReactiveFormsModule],
++  imports: [ReactiveFormsModule, FigurePipe],
+   template: `
+     <section aria-labelledby="periods-heading">
+       <h2 id="periods-heading">Periods</h2>
+@@ -53,10 +54,10 @@ const DAY = /^\d{4}-\d{2}-\d{2}$/;
+               <th scope="row" data-testid="period-name">{{ p.name }}</th>
+               <td data-testid="period-from">{{ p.from }}</td>
+               <td data-testid="period-to">{{ p.to }}</td>
+-              <td data-testid="period-due-total">{{ dueTotals().get(p.id) ?? '0.00' }}</td>
++              <td data-testid="period-due-total">{{ dueTotals().get(p.id) ?? '0.00' | figure }}</td>
+               <td data-testid="period-closed">{{ p.closed ? 'yes' : p.softClosed ? 'soft' : 'no' }}</td>
+               <td data-testid="period-fy">{{ p.fy }}</td>
+-              <td data-testid="period-cap">{{ p.cap ?? '' }}</td>
++              <td data-testid="period-cap">{{ p.cap ?? '' | figure }}</td>
+               <td>
+                 @if (!p.closed) {
+                   <button type="button" data-testid="period-close" (click)="close(p)"
+diff --git a/src/main/frontend/src/app/features/plans/person-plans.ts b/src/main/frontend/src/app/features/plans/person-plans.ts
+index 451e470f4..598838fd0 100644
+--- a/src/main/frontend/src/app/features/plans/person-plans.ts
++++ b/src/main/frontend/src/app/features/plans/person-plans.ts
+@@ -1,17 +1,18 @@
+ import { Component, inject, input, output, signal } from '@angular/core';
+ import { FormControl, FormGroup, ReactiveFormsModule } from '@angular/forms';
+ import { Plan, Plans } from '../../core/plans';
++import { FigurePipe } from '../../core/figure';
+ 
+ // A person's plans (every so many days or monthly on a day), in the order they were added, each with how many claims it has made so far and its next dates;
+ // and the form that adds one.
+ @Component({
+   selector: 'app-person-plans',
+-  imports: [ReactiveFormsModule],
++  imports: [ReactiveFormsModule, FigurePipe],
+   template: `
+     <ul aria-label="Plans">
+       @for (pl of plans(); track pl.id) {
+         <li [attr.data-testid]="'plan-row-' + pl.id">
+-          <span data-testid="plan-amount-shown">{{ pl.amount }}</span>
++          <span data-testid="plan-amount-shown">{{ pl.amount | figure }}</span>
+           from <span data-testid="plan-start">{{ pl.start }}</span>
+           @if (pl.day !== null) {
+             monthly on day <span data-testid="plan-day">{{ pl.day }}</span>
+diff --git a/src/main/frontend/src/app/features/pools/pool-row.ts b/src/main/frontend/src/app/features/pools/pool-row.ts
+index 762a7ce3b..2b639693d 100644
+--- a/src/main/frontend/src/app/features/pools/pool-row.ts
++++ b/src/main/frontend/src/app/features/pools/pool-row.ts
+@@ -3,6 +3,7 @@ import { Component, computed, inject, input, signal } from '@angular/core';
+ import { FormControl, FormGroup, ReactiveFormsModule } from '@angular/forms';
+ import { Person } from '../../core/people';
+ import { Pool, PoolMember, Pools, formatCents, shareCents } from '../../core/pools';
++import { FigurePipe } from '../../core/figure';
+ 
+ // A pool's row: its members (people, and pools shown as pool:<name>) with their shares, the total
+ // and whether it is balanced (exactly 100.00), each member's cut of the pool's pot (blank unless the
+@@ -12,19 +13,19 @@ import { Pool, PoolMember, Pools, formatCents, shareCents } from '../../core/poo
+ // whose dates do not include the sheet's today is left out of the total and has no cut.
+ @Component({
+   selector: 'app-pool-row',
+-  imports: [ReactiveFormsModule],
++  imports: [ReactiveFormsModule, FigurePipe],
+   host: { '[attr.data-testid]': "'pool-row-' + pool().name", role: 'listitem' },
+   template: `
+     <h4>{{ pool().name }}</h4>
+     <p>
+-      Total share <span data-testid="pool-total-share">{{ totalShare() }}</span>,
++      Total share <span data-testid="pool-total-share">{{ totalShare() | figure }}</span>,
+       balanced <span data-testid="pool-balanced">{{ balanced() ? 'yes' : 'no' }}</span>
+     </p>
+     <ul>
+       @for (m of pool().members; track memberKey(m)) {
+         <li [attr.data-testid]="'pool-member-' + pool().name + '-' + memberKey(m)">
+-          {{ nameOf(m) }}: <span data-testid="pool-share">{{ m.share }}</span>,
+-          cut <span data-testid="pool-cut">{{ m.cut ?? '' }}</span>
++          {{ nameOf(m) }}: <span data-testid="pool-share">{{ m.share | figure }}</span>,
++          cut <span data-testid="pool-cut">{{ m.cut ?? '' | figure }}</span>
+           @if (isRetired(m)) { (retired) }
+           @if (m.from || m.to) { ({{ m.from ?? '' }} to {{ m.to ?? '' }}) }
+           @if (!m.inForce) { (not in force) }
+diff --git a/src/main/frontend/src/app/features/rates/rate-form.ts b/src/main/frontend/src/app/features/rates/rate-form.ts
+index 33ea944ba..4c6f333e0 100644
+--- a/src/main/frontend/src/app/features/rates/rate-form.ts
++++ b/src/main/frontend/src/app/features/rates/rate-form.ts
+@@ -4,12 +4,13 @@ import { FormControl, FormGroup, ReactiveFormsModule } from '@angular/forms';
+ import { Grade } from '../../core/people';
+ import { PCT, Rate, RatePreview, Rates, pctOn } from '../../core/rates';
+ import { Session } from '../../core/session';
++import { FigurePipe } from '../../core/figure';
+ 
+ // The rates for each grade on the sheet, the one in force on the sheet's today, and the form that
+ // sets one.
+ @Component({
+   selector: 'app-rate-form',
+-  imports: [ReactiveFormsModule],
++  imports: [ReactiveFormsModule, FigurePipe],
+   template: `
+     <section aria-labelledby="rates-heading">
+       <h2 id="rates-heading">Rates</h2>
+@@ -58,7 +59,7 @@ import { Session } from '../../core/session';
+         @if (previewResult(); as r) {
+           <p aria-live="polite">
+             Claims that would change: <span data-testid="rate-preview-count">{{ r.count }}</span>;
+-            difference: <span data-testid="rate-preview-diff">{{ r.diff }}</span>
++            difference: <span data-testid="rate-preview-diff">{{ r.diff | figure }}</span>
+           </p>
+         }
+       </form>
+@@ -71,7 +72,7 @@ import { Session } from '../../core/session';
+           @for (g of grades; track g) {
+             <tr>
+               <th scope="row">{{ g }}</th>
+-              <td [attr.data-testid]="'rate-current-' + g">{{ current().get(g) ?? 'n/a' }}</td>
++              <td [attr.data-testid]="'rate-current-' + g">{{ current().get(g) ?? 'n/a' | figure }}</td>
+             </tr>
+           }
+         </tbody>
+@@ -87,7 +88,7 @@ import { Session } from '../../core/session';
+               <th scope="row">{{ r.grade }}</th>
+               <td data-testid="rate-from">{{ r.from ?? 'start' }}</td>
+               <td data-testid="rate-to">{{ r.to ?? '…' }}</td>
+-              <td data-testid="rate-pct">{{ r.pct }}</td>
++              <td data-testid="rate-pct">{{ r.pct | figure }}</td>
+               <td data-testid="rate-version">{{ r.version }}</td>
+             </tr>
+           }
+diff --git a/src/main/frontend/src/app/features/session/sheet-bar.ts b/src/main/frontend/src/app/features/session/sheet-bar.ts
+index 67ff95f15..46962804b 100644
+--- a/src/main/frontend/src/app/features/session/sheet-bar.ts
++++ b/src/main/frontend/src/app/features/session/sheet-bar.ts
+@@ -1,6 +1,6 @@
+-import { Component, inject, signal } from '@angular/core';
++import { Component, effect, inject, signal } from '@angular/core';
+ import { FormControl, FormGroup, ReactiveFormsModule } from '@angular/forms';
+-import { Session } from '../../core/session';
++import { LOCALES, Locale, Session } from '../../core/session';
+ 
+ // The signed-in name, and the form that loads a sheet by id.
+ @Component({
+@@ -8,6 +8,19 @@ import { Session } from '../../core/session';
+   imports: [ReactiveFormsModule],
+   template: `
+     <p>Signed in as <strong data-testid="current-user">{{ session.user() }}</strong></p>
++    <form data-testid="user-locale-form" [formGroup]="localeForm" (ngSubmit)="saveLocale()">
++      <label for="user-locale">Your locale</label>
++      <select id="user-locale" data-testid="user-locale" formControlName="locale">
++        @for (l of locales; track l) {
++          <option [value]="l">{{ l }}</option>
++        }
++      </select>
++      <button type="submit" data-testid="user-locale-save">Save locale</button>
++      @if (localeError()) {
++        <p role="alert" data-testid="user-locale-error">{{ localeError() }}</p>
++      }
++    </form>
++    <p>Locale: <strong data-testid="user-locale-current">{{ session.locale() }}</strong></p>
+     <form data-testid="sheet-form" [formGroup]="form" (ngSubmit)="load()">
+       <label for="sheet-id-input">Sheet id</label>
+       <input id="sheet-id-input" data-testid="sheet-id-input" formControlName="sheetId" />
+@@ -60,12 +73,29 @@ export class SheetBar {
+   protected readonly clonedTo = signal('');
+   protected readonly asOfForm = new FormGroup({ day: new FormControl('', { nonNullable: true }) });
+   protected readonly asOfError = signal('');
++  protected readonly locales = LOCALES;
++  protected readonly localeForm = new FormGroup({
++    locale: new FormControl<Locale>(this.session.locale(), { nonNullable: true }),
++  });
++  protected readonly localeError = signal('');
+ 
+   constructor() {
+     this.form.valueChanges.subscribe(() => this.error.set(''));
+     this.todayForm.valueChanges.subscribe(() => this.sheetError.set(''));
+     this.asOfForm.valueChanges.subscribe(() => this.asOfError.set(''));
+     this.cloneForm.valueChanges.subscribe(() => this.sheetError.set(''));
++    this.localeForm.valueChanges.subscribe(() => this.localeError.set(''));
++    // The select shows the locale the store holds for this user, re-read on every sheet load.
++    effect(() => this.localeForm.controls.locale.setValue(this.session.locale(), { emitEvent: false }));
++  }
++
++  async saveLocale(): Promise<void> {
++    this.localeError.set('');
++    try {
++      await this.session.setLocale(this.localeForm.controls.locale.value);
++    } catch {
++      this.localeError.set('The locale could not be saved.');
++    }
+   }
+ 
+   /** Show the sheet, on this screen only, as it stood at the end of the day entered. */
+diff --git a/src/main/frontend/src/app/features/settings/claim-template-form.ts b/src/main/frontend/src/app/features/settings/claim-template-form.ts
+index a7e2e7003..88b8dbd82 100644
+--- a/src/main/frontend/src/app/features/settings/claim-template-form.ts
++++ b/src/main/frontend/src/app/features/settings/claim-template-form.ts
+@@ -3,12 +3,13 @@ import { Component, inject, signal } from '@angular/core';
+ import { FormControl, FormGroup, ReactiveFormsModule } from '@angular/forms';
+ import { ClaimTemplates } from '../../core/claim-templates';
+ import { CLAIM_AMOUNT } from '../../core/claims';
++import { FigurePipe } from '../../core/figure';
+ 
+ // The sheet's claim templates and the form a template is saved with; saving a name again replaces
+ // that template.
+ @Component({
+   selector: 'app-claim-template-form',
+-  imports: [ReactiveFormsModule],
++  imports: [ReactiveFormsModule, FigurePipe],
+   template: `
+     <section aria-labelledby="claim-templates-heading">
+       <h3 id="claim-templates-heading">Claim templates</h3>
+@@ -29,7 +30,7 @@ import { CLAIM_AMOUNT } from '../../core/claims';
+         @for (t of templates.list(); track t.id) {
+           <li [attr.data-testid]="'template-row-' + t.name">
+             <span data-testid="template-name">{{ t.name }}</span>
+-            <span data-testid="template-amount">{{ t.amount }}</span>
++            <span data-testid="template-amount">{{ t.amount | figure }}</span>
+             <span data-testid="template-note">{{ t.note }}</span>
+           </li>
+         }
+diff --git a/src/main/frontend/src/app/features/settings/settings-form.ts b/src/main/frontend/src/app/features/settings/settings-form.ts
+index f4afcc99f..b4795e613 100644
+--- a/src/main/frontend/src/app/features/settings/settings-form.ts
++++ b/src/main/frontend/src/app/features/settings/settings-form.ts
+@@ -7,13 +7,14 @@ import {
+   LATE_PCT, LIMIT, PERM_ACTIONS, PERM_ROLES, POLICY_DATE, PermAction, ROLES, ROUNDING, STANDING_PERMISSIONS, TERMS, FISCAL_MONTH, Role, RoleName,
+   SheetSettings,
+ } from '../../core/settings';
++import { FigurePipe } from '../../core/figure';
+ 
+ // The sheet's settings (the clerk limit, the cap, the proof threshold, the proof threshold per grade, the note threshold, the floor, the rounding mode, the terms, the grace days per grade, the late percent, the policy date, period numbering from, the grace days, the entry date, the pot, the alert threshold, the parent sheet and the permission matrix) and the roles it gives user names: clerk, the default for
+ // any name, steward, or viewer (who may change nothing). The settings that carry a figure are dated: each is saved from a from-date
+ // (blank: the sheet's today), and what shows in force is the value on the sheet's today.
+ @Component({
+   selector: 'app-settings-form',
+-  imports: [ReactiveFormsModule],
++  imports: [ReactiveFormsModule, FigurePipe],
+   template: `
+     <section aria-labelledby="settings-heading">
+       <h2 id="settings-heading">Settings</h2>
+@@ -125,16 +126,16 @@ import {
+           <p role="alert" data-testid="settings-error">{{ settingsError() }}</p>
+         }
+       </form>
+-      <p>Clerk limit in force: <span data-testid="setting-clerk-limit-current">{{ clerkLimit() ?? '' }}</span></p>
+-      <p>Cap in force: <span data-testid="setting-cap-current">{{ cap() ?? '' }}</span></p>
+-      <p>Proof threshold in force: <span data-testid="setting-proof-threshold-current">{{ proofThreshold() ?? '' }}</span></p>
++      <p>Clerk limit in force: <span data-testid="setting-clerk-limit-current">{{ clerkLimit() ?? '' | figure }}</span></p>
++      <p>Cap in force: <span data-testid="setting-cap-current">{{ cap() ?? '' | figure }}</span></p>
++      <p>Proof threshold in force: <span data-testid="setting-proof-threshold-current">{{ proofThreshold() ?? '' | figure }}</span></p>
+       @for (g of grades; track g) {
+         <p>Proof threshold in force for grade {{ g }}:
+-          <span [attr.data-testid]="'setting-proof-threshold-' + g + '-current'">{{ gradeProofThresholds()[g] ?? '' }}</span></p>
++          <span [attr.data-testid]="'setting-proof-threshold-' + g + '-current'">{{ gradeProofThresholds()[g] ?? '' | figure }}</span></p>
+       }
+-      <p>Note threshold in force: <span data-testid="setting-note-threshold-current">{{ noteThreshold() ?? '' }}</span></p>
+-      <p>Review threshold in force: <span data-testid="setting-review-threshold-current">{{ reviewThreshold() ?? '' }}</span></p>
+-      <p>Floor in force: <span data-testid="setting-floor-current">{{ floor() ?? '' }}</span></p>
++      <p>Note threshold in force: <span data-testid="setting-note-threshold-current">{{ noteThreshold() ?? '' | figure }}</span></p>
++      <p>Review threshold in force: <span data-testid="setting-review-threshold-current">{{ reviewThreshold() ?? '' | figure }}</span></p>
++      <p>Floor in force: <span data-testid="setting-floor-current">{{ floor() ?? '' | figure }}</span></p>
+       <p>Rounding mode in force: <span data-testid="setting-rounding-current">{{ rounding() ?? '' }}</span></p>
+       <p>Terms in force: <span data-testid="setting-terms-current">{{ terms() ?? '' }}</span></p>
+       @for (g of grades; track g) {
+@@ -145,13 +146,13 @@ import {
+         <p>Grace days in force for grade {{ g }}:
+           <span [attr.data-testid]="'setting-grace-' + g + '-current'">{{ gradeGraces()[g] ?? '' }}</span></p>
+       }
+-      <p>Late percent in force: <span data-testid="setting-late-pct-current">{{ latePct() ?? '' }}</span></p>
++      <p>Late percent in force: <span data-testid="setting-late-pct-current">{{ latePct() ?? '' | figure }}</span></p>
+       <p>Policy date in force: <span data-testid="setting-policy-date-current">{{ policyDate() ?? '' }}</span></p>
+       <p>Period numbering from: <span data-testid="setting-period-numbering-from-current">{{ periodNumberingFrom() ?? '' }}</span></p>
+       <p>Grace days: <span data-testid="setting-grace-days-current">{{ graceDays() ?? '' }}</span></p>
+       <p>Entry date: <span data-testid="setting-entry-date-current">{{ entryDate() ?? '' }}</span></p>
+-      <p>Pot: <span data-testid="setting-pot-current">{{ pot() ?? '' }}</span></p>
+-      <p>Alert threshold: <span data-testid="setting-alert-threshold-current">{{ alertThreshold() ?? '' }}</span></p>
++      <p>Pot: <span data-testid="setting-pot-current">{{ pot() ?? '' | figure }}</span></p>
++      <p>Alert threshold: <span data-testid="setting-alert-threshold-current">{{ alertThreshold() ?? '' | figure }}</span></p>
+       <p>Fiscal year start month: <span data-testid="setting-fiscal-start-month-current">{{ fiscalStartMonth() ?? '' }}</span></p>
+       <p>Parent sheet: <span data-testid="setting-parent-current">{{ parent() ?? '' }}</span></p>
+       @for (a of permActions; track a) {
+diff --git a/src/main/frontend/src/app/features/summary/classic-summary-panel.ts b/src/main/frontend/src/app/features/summary/classic-summary-panel.ts
+index 56994b457..8d74d856c 100644
+--- a/src/main/frontend/src/app/features/summary/classic-summary-panel.ts
++++ b/src/main/frontend/src/app/features/summary/classic-summary-panel.ts
+@@ -1,4 +1,5 @@
+ import { Component, input } from '@angular/core';
++import { FigurePipe } from '../../core/figure';
+ 
+ /** A period's line of the classic summary: its due-total counting each claim by its status now. */
+ export interface ClassicPeriodSummary {
+@@ -9,6 +10,7 @@ export interface ClassicPeriodSummary {
+ // The sheet summed up the classic way: per period by each claim's status now, and the due-total untrimmed.
+ @Component({
+   selector: 'app-classic-summary-panel',
++  imports: [FigurePipe],
+   template: `
+     <section aria-labelledby="classic-summary-heading" data-testid="classic-summary">
+       <h2 id="classic-summary-heading">Classic summary</h2>
+@@ -21,14 +23,14 @@ export interface ClassicPeriodSummary {
+           @for (p of periods(); track p.name) {
+             <tr>
+               <th scope="row">{{ p.name }}</th>
+-              <td [attr.data-testid]="'classic-period-' + p.name + '-due-total'">{{ p.dueTotal }}</td>
++              <td [attr.data-testid]="'classic-period-' + p.name + '-due-total'">{{ p.dueTotal | figure }}</td>
+             </tr>
+           }
+         </tbody>
+       </table>
+       <dl>
+         <dt>Due, untrimmed</dt>
+-        <dd data-testid="classic-due-total">{{ dueTotal() }}</dd>
++        <dd data-testid="classic-due-total">{{ dueTotal() | figure }}</dd>
+       </dl>
+     </section>
+   `,
+diff --git a/src/main/frontend/src/app/features/summary/header-counters.ts b/src/main/frontend/src/app/features/summary/header-counters.ts
+index 42115aa5f..db8d71f98 100644
+--- a/src/main/frontend/src/app/features/summary/header-counters.ts
++++ b/src/main/frontend/src/app/features/summary/header-counters.ts
+@@ -1,11 +1,13 @@
+ import { Component, input } from '@angular/core';
+ import { StatusSummary } from './summary-panel';
++import { FigurePipe } from '../../core/figure';
+ 
+ // The sheet's counters, always on top: how many people it has (retired included), how many
+ // claims are in each status, and its due-total and overdue-total, each the figure it repeats;
+ // and the signed-in user's own due-total and overdue-total, when a person on the sheet is theirs.
+ @Component({
+   selector: 'app-header-counters',
++  imports: [FigurePipe],
+   template: `
+     <header aria-label="Sheet counters" data-testid="header">
+       <dl>
+@@ -16,13 +18,13 @@ import { StatusSummary } from './summary-panel';
+           <dd [attr.data-testid]="'header-claims-' + s.status + '-count'">{{ s.count }}</dd>
+         }
+         <dt>Due</dt>
+-        <dd data-testid="header-due-total">{{ dueTotal() }}</dd>
++        <dd data-testid="header-due-total">{{ dueTotal() | figure }}</dd>
+         <dt>Overdue</dt>
+-        <dd data-testid="header-overdue-total">{{ overdueTotal() }}</dd>
++        <dd data-testid="header-overdue-total">{{ overdueTotal() | figure }}</dd>
+         <dt>My due</dt>
+-        <dd data-testid="my-due-total">{{ myDueTotal() }}</dd>
++        <dd data-testid="my-due-total">{{ myDueTotal() | figure }}</dd>
+         <dt>My overdue</dt>
+-        <dd data-testid="my-overdue-total">{{ myOverdueTotal() }}</dd>
++        <dd data-testid="my-overdue-total">{{ myOverdueTotal() | figure }}</dd>
+       </dl>
+     </header>
+   `,
+diff --git a/src/main/frontend/src/app/features/summary/summary-panel.ts b/src/main/frontend/src/app/features/summary/summary-panel.ts
+index e2b7e7e02..3dc81971a 100644
+--- a/src/main/frontend/src/app/features/summary/summary-panel.ts
++++ b/src/main/frontend/src/app/features/summary/summary-panel.ts
+@@ -1,5 +1,6 @@
+ import { Component, input } from '@angular/core';
+ import { Grade } from '../../core/people';
++import { FigurePipe } from '../../core/figure';
+ 
+ /** A grade's line of the summary: how many people are on it, their due-totals added up, and how
+  *  many of them are active. */
+@@ -33,6 +34,7 @@ export interface VoidReasonSummary {
+ // The sheet summed up: per grade, per period, per claim status and per void reason, with the figures the list shows.
+ @Component({
+   selector: 'app-summary-panel',
++  imports: [FigurePipe],
+   template: `
+     <section aria-labelledby="summary-heading" data-testid="summary">
+       <h2 id="summary-heading">Summary</h2>
+@@ -46,7 +48,7 @@ export interface VoidReasonSummary {
+             <tr>
+               <th scope="row">{{ g.grade }}</th>
+               <td [attr.data-testid]="'summary-grade-' + g.grade + '-count'">{{ g.count }}</td>
+-              <td [attr.data-testid]="'summary-grade-' + g.grade + '-due-total'">{{ g.dueTotal }}</td>
++              <td [attr.data-testid]="'summary-grade-' + g.grade + '-due-total'">{{ g.dueTotal | figure }}</td>
+               <td [attr.data-testid]="'summary-grade-' + g.grade + '-active'">{{ g.active }}</td>
+             </tr>
+           }
+@@ -61,8 +63,8 @@ export interface VoidReasonSummary {
+           @for (p of periods(); track p.name) {
+             <tr>
+               <th scope="row">{{ p.name }}</th>
+-              <td [attr.data-testid]="'summary-period-' + p.name + '-due-total'">{{ p.dueTotal }}</td>
+-              <td [attr.data-testid]="'summary-period-' + p.name + '-change'">{{ p.change }}</td>
++              <td [attr.data-testid]="'summary-period-' + p.name + '-due-total'">{{ p.dueTotal | figure }}</td>
++              <td [attr.data-testid]="'summary-period-' + p.name + '-change'">{{ p.change | figure }}</td>
+             </tr>
+           }
+         </tbody>
+diff --git a/src/main/java/net/officefloor/hq/app/plan/PlanController.java b/src/main/java/net/officefloor/hq/app/plan/PlanController.java
+index 647841a1a..47c3ccb01 100644
+--- a/src/main/java/net/officefloor/hq/app/plan/PlanController.java
++++ b/src/main/java/net/officefloor/hq/app/plan/PlanController.java
+@@ -9,6 +9,7 @@ import java.math.BigDecimal;
+ import java.time.LocalDate;
+ import java.util.List;
+ import net.officefloor.hq.app.sheet.SheetService;
++import net.officefloor.hq.app.role.ViewerAllowed;
+ import org.springframework.http.HttpStatus;
+ import org.springframework.validation.annotation.Validated;
+ import org.springframework.web.bind.annotation.GetMapping;
+@@ -86,6 +87,7 @@ public class PlanController {
+                 form.everyValue(), form.dayValue(), form.end()), sheets.today(sheet));
+     }
+ 
++    @ViewerAllowed
+     @PostMapping("/plans/generate")
+     public Generated generate(@PathVariable @NotBlank @Size(max = 100) String sheetId,
+             @RequestHeader("X-User") @NotBlank @Size(max = 100) String user) {
+diff --git a/src/main/java/net/officefloor/hq/app/plan/PlanService.java b/src/main/java/net/officefloor/hq/app/plan/PlanService.java
+index fe2c075e5..26823235b 100644
+--- a/src/main/java/net/officefloor/hq/app/plan/PlanService.java
++++ b/src/main/java/net/officefloor/hq/app/plan/PlanService.java
+@@ -7,6 +7,8 @@ import net.officefloor.hq.app.Audit;
+ import net.officefloor.hq.app.claim.ClaimService;
+ import net.officefloor.hq.app.person.Person;
+ import net.officefloor.hq.app.person.PersonRepository;
++import net.officefloor.hq.app.role.RoleService;
++import net.officefloor.hq.app.role.SheetRole;
+ import net.officefloor.hq.app.sheet.SheetService;
+ import org.springframework.http.HttpStatus;
+ import org.springframework.stereotype.Service;
+@@ -25,15 +27,17 @@ public class PlanService {
+     private final SheetService sheets;
+     private final TransactionTemplate transaction;
+     private final Audit audit;
++    private final RoleService roles;
+ 
+     public PlanService(PlanRepository plans, PersonRepository people, ClaimService claims, SheetService sheets,
+-            PlatformTransactionManager transactions, Audit audit) {
++            PlatformTransactionManager transactions, Audit audit, RoleService roles) {
+         this.plans = plans;
+         this.people = people;
+         this.claims = claims;
+         this.sheets = sheets;
+         this.transaction = new TransactionTemplate(transactions);
+         this.audit = audit;
++        this.roles = roles;
+     }
+ 
+     /** The plans on the sheet in the order they were added. */
+@@ -79,8 +83,11 @@ public class PlanService {
+      *  with an empty note for each of its dates up to its end and the sheet's today that has none
+      *  yet, oldest first. Each claim is added as the claim form adds it, in a transaction of its
+      *  own: a date the form refuses is skipped, and tried again by the next generate. Returns how
+-     *  many claims were made. */
++     *  many claims were made. A viewer's generate makes none. */
+     public int generate(String sheetId, String user) {
++        if (SheetRole.VIEWER.equals(roles.roleOf(sheetId, user))) {
++            return 0;
++        }
+         LocalDate today = sheets.today(sheetId);
+         int made = 0;
+         for (Plan plan : plans.findBySheetIdOrderByIdAsc(sheetId)) {
+diff --git a/src/main/java/net/officefloor/hq/app/session/SessionController.java b/src/main/java/net/officefloor/hq/app/session/SessionController.java
+index ae53659c8..30e955cda 100644
+--- a/src/main/java/net/officefloor/hq/app/session/SessionController.java
++++ b/src/main/java/net/officefloor/hq/app/session/SessionController.java
+@@ -3,6 +3,7 @@ package net.officefloor.hq.app.session;
+ import jakarta.validation.Valid;
+ import jakarta.validation.constraints.NotBlank;
+ import jakarta.validation.constraints.Size;
++import net.officefloor.hq.app.user.UserPrefService;
+ import org.springframework.web.bind.annotation.PostMapping;
+ import org.springframework.web.bind.annotation.RequestBody;
+ import org.springframework.web.bind.annotation.RequestMapping;
+@@ -16,11 +17,19 @@ public class SessionController {
+     public record SignIn(@NotBlank @Size(max = 100) String name) {
+     }
+ 
+-    public record SignedIn(String name) {
++    /** The name signed in with, and the locale the screen shows them figures in. */
++    public record SignedIn(String name, String locale) {
++    }
++
++    private final UserPrefService prefs;
++
++    public SessionController(UserPrefService prefs) {
++        this.prefs = prefs;
+     }
+ 
+     @PostMapping
+     public SignedIn signIn(@Valid @RequestBody SignIn request) {
+-        return new SignedIn(request.name().trim());
++        String name = request.name().trim();
++        return new SignedIn(name, prefs.localeOf(name));
+     }
+ }
+diff --git a/src/main/java/net/officefloor/hq/app/user/UserPref.java b/src/main/java/net/officefloor/hq/app/user/UserPref.java
+new file mode 100644
+index 000000000..0ddd41e72
+--- /dev/null
++++ b/src/main/java/net/officefloor/hq/app/user/UserPref.java
+@@ -0,0 +1,40 @@
++package net.officefloor.hq.app.user;
++
++import jakarta.persistence.Column;
++import jakarta.persistence.Entity;
++import jakarta.persistence.Id;
++import jakarta.persistence.Table;
++
++/** A user's own preferences, kept across every sheet. */
++@Entity
++@Table(name = "user_pref")
++public class UserPref {
++
++    @Id
++    @Column(name = "user_name", nullable = false)
++    private String user;
++
++    /** How the screen shows this user figures: en (1234.56) or de (1.234,56). */
++    @Column(name = "locale", nullable = false)
++    private String locale;
++
++    protected UserPref() {
++    }
++
++    public UserPref(String user, String locale) {
++        this.user = user;
++        this.locale = locale;
++    }
++
++    public String getUser() {
++        return user;
++    }
++
++    public String getLocale() {
++        return locale;
++    }
++
++    public void setLocale(String locale) {
++        this.locale = locale;
++    }
++}
+diff --git a/src/main/java/net/officefloor/hq/app/user/UserPrefController.java b/src/main/java/net/officefloor/hq/app/user/UserPrefController.java
+new file mode 100644
+index 000000000..9d5f49d0c
+--- /dev/null
++++ b/src/main/java/net/officefloor/hq/app/user/UserPrefController.java
+@@ -0,0 +1,42 @@
++package net.officefloor.hq.app.user;
++
++import jakarta.validation.Valid;
++import jakarta.validation.constraints.NotBlank;
++import jakarta.validation.constraints.Size;
++import org.springframework.validation.annotation.Validated;
++import org.springframework.web.bind.annotation.GetMapping;
++import org.springframework.web.bind.annotation.PutMapping;
++import org.springframework.web.bind.annotation.RequestBody;
++import org.springframework.web.bind.annotation.RequestHeader;
++import org.springframework.web.bind.annotation.RequestMapping;
++import org.springframework.web.bind.annotation.RestController;
++
++/** The signed-in user's own locale, kept per user across every sheet. */
++@RestController
++@RequestMapping("/api/me/locale")
++@Validated
++public class UserPrefController {
++
++    public record LocaleChange(@NotBlank @Size(max = 10) String locale) {
++    }
++
++    public record LocaleView(String locale) {
++    }
++
++    private final UserPrefService service;
++
++    public UserPrefController(UserPrefService service) {
++        this.service = service;
++    }
++
++    @GetMapping
++    public LocaleView get(@RequestHeader("X-User") @NotBlank @Size(max = 100) String user) {
++        return new LocaleView(service.localeOf(user.trim()));
++    }
++
++    @PutMapping
++    public LocaleView set(@RequestHeader("X-User") @NotBlank @Size(max = 100) String user,
++            @Valid @RequestBody LocaleChange request) {
++        return new LocaleView(service.setLocale(user.trim(), request.locale().trim()));
++    }
++}
+diff --git a/src/main/java/net/officefloor/hq/app/user/UserPrefRepository.java b/src/main/java/net/officefloor/hq/app/user/UserPrefRepository.java
+new file mode 100644
+index 000000000..523c6d437
+--- /dev/null
++++ b/src/main/java/net/officefloor/hq/app/user/UserPrefRepository.java
+@@ -0,0 +1,6 @@
++package net.officefloor.hq.app.user;
++
++import org.springframework.data.jpa.repository.JpaRepository;
++
++public interface UserPrefRepository extends JpaRepository<UserPref, String> {
++}
+diff --git a/src/main/java/net/officefloor/hq/app/user/UserPrefService.java b/src/main/java/net/officefloor/hq/app/user/UserPrefService.java
+new file mode 100644
+index 000000000..432179a19
+--- /dev/null
++++ b/src/main/java/net/officefloor/hq/app/user/UserPrefService.java
+@@ -0,0 +1,36 @@
++package net.officefloor.hq.app.user;
++
++import java.util.Set;
++import org.springframework.http.HttpStatus;
++import org.springframework.stereotype.Service;
++import org.springframework.transaction.annotation.Transactional;
++import org.springframework.web.server.ResponseStatusException;
++
++/** A user's locale: en unless chosen. Choosing one writes no audit line. */
++@Service
++public class UserPrefService {
++
++    public static final String DEFAULT_LOCALE = "en";
++
++    public static final Set<String> LOCALES = Set.of("en", "de");
++
++    private final UserPrefRepository prefs;
++
++    public UserPrefService(UserPrefRepository prefs) {
++        this.prefs = prefs;
++    }
++
++    @Transactional(readOnly = true)
++    public String localeOf(String user) {
++        return prefs.findById(user).map(UserPref::getLocale).orElse(DEFAULT_LOCALE);
++    }
++
++    @Transactional
++    public String setLocale(String user, String locale) {
++        if (!LOCALES.contains(locale)) {
++            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Choose en or de");
++        }
++        prefs.findById(user).ifPresentOrElse(p -> p.setLocale(locale), () -> prefs.save(new UserPref(user, locale)));
++        return locale;
++    }
++}
+diff --git a/src/main/resources/db/migration/V92__user_locale.sql b/src/main/resources/db/migration/V92__user_locale.sql
+new file mode 100644
+index 000000000..933b8950d
+--- /dev/null
++++ b/src/main/resources/db/migration/V92__user_locale.sql
+@@ -0,0 +1,5 @@
++-- Each user's chosen locale, kept per user across sheets; a user with no row shows figures as en.
++CREATE TABLE user_pref (
++    user_name VARCHAR(100) PRIMARY KEY,
++    locale VARCHAR(10) NOT NULL
++);
