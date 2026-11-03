@@ -1,0 +1,58 @@
+diff --git a/src/main/frontend/src/app/features/people/people-list.ts b/src/main/frontend/src/app/features/people/people-list.ts
+index 80fc0cf41..8734a642c 100644
+--- a/src/main/frontend/src/app/features/people/people-list.ts
++++ b/src/main/frontend/src/app/features/people/people-list.ts
+@@ -1121,6 +1121,8 @@ export class PeopleList {
+   });
+   /** Only the newest read of the sheet may show: a load overtaken by another is dropped. */
+   private reads = 0;
++  /** The newest read of the sheet: an export waits for it, so it carries what the screen will show. */
++  private loading: Promise<void> = Promise.resolve();
+ 
+   constructor() {
+     this.form.valueChanges.subscribe(() => this.error.set(''));
+@@ -1153,7 +1155,7 @@ export class PeopleList {
+       this.personError.set(null);
+       this.patronError.set(null);
+       this.reset();
+-      if (sheetId) void this.reload(sheetId);
++      if (sheetId) this.loading = this.reload(sheetId);
+     });
+     effect(() => {
+       const saved = this.settingsApi.saved();
+@@ -2034,7 +2036,8 @@ export class PeopleList {
+   /** The grade a person shows: the one in force on the sheet's today. */
+   /** Downloads everyone, retired included, in list order as CSV: name, grade in force today,
+    *  retired-from and due-total as shown. */
+-  protected exportCsv(): void {
++  protected async exportCsv(): Promise<void> {
++    await this.loaded();
+     const lines = [['name', 'grade', 'retired-from', 'due-total']].concat(
+       this.people().map((p) => [p.name, this.gradeOf(p), p.retiredFrom ?? '', this.dueOf(p) ?? 'n/a']),
+     );
+@@ -2044,7 +2047,8 @@ export class PeopleList {
+   /** Downloads every claim as CSV, people (retired included) in list order and each person's
+    *  claims oldest first: person, number, date, amount, due, status and period as the claim's row
+    *  shows them. */
+-  protected exportClaimsCsv(): void {
++  protected async exportClaimsCsv(): Promise<void> {
++    await this.loaded();
+     const lines = [['person', 'number', 'date', 'amount', 'due', 'status', 'period']].concat(
+       this.people().flatMap((p) => [...(this.claimsByPerson().get(p.id) ?? [])].reverse().map((c) => [
+         p.name,
+@@ -2128,6 +2132,15 @@ export class PeopleList {
+     this.error.set('');
+   }
+ 
++  /** Resolves once the newest read of the sheet is done, however many overtook it meanwhile. */
++  private async loaded(): Promise<void> {
++    let read: Promise<void>;
++    do {
++      read = this.loading;
++      await read;
++    } while (read !== this.loading);
++  }
++
+   private async reload(sheetId: string): Promise<void> {
+     const read = ++this.reads;
+     try {
