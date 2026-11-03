@@ -1,0 +1,104 @@
+diff --git a/src/main/frontend/src/app/core/claims.ts b/src/main/frontend/src/app/core/claims.ts
+index b6a58365c..8a10d7329 100644
+--- a/src/main/frontend/src/app/core/claims.ts
++++ b/src/main/frontend/src/app/core/claims.ts
+@@ -47,6 +47,13 @@ export function countsLive(c: Claim, leave: Leave, today: string | null): boolea
+   return counts(c) && !deferred(c, today) && !leftOut(c, leave, today);
+ }
+ 
++/** Whether a claim counts toward what its person has claimed on the sheet's today: it counts, it is
++ *  not deferred, and it is not an open (or pending) claim, unbound by a statement, of a person
++ *  retired on that day. A hold does not take it out of claimed. */
++export function countsClaimed(c: Claim, leave: Leave, today: string | null): boolean {
++  return counts(c) && !deferred(c, today) && !(isOpen(c) && !c.stated && retiredOn(leave.retiredFrom, today));
++}
++
+ /** Whether the live rules leave a claim out: it is open (or pending), unbound by a statement, and
+  *  held, or dated within one of its person's holds, or its person is retired on the sheet's today. */
+ function leftOut(c: Claim, leave: Leave, today: string | null): boolean {
+diff --git a/src/main/frontend/src/app/features/people/people-list.ts b/src/main/frontend/src/app/features/people/people-list.ts
+index 81bc5a1a2..f094087bb 100644
+--- a/src/main/frontend/src/app/features/people/people-list.ts
++++ b/src/main/frontend/src/app/features/people/people-list.ts
+@@ -1,7 +1,7 @@
+ import { HttpErrorResponse } from '@angular/common/http';
+ import { Component, computed, effect, inject, signal, untracked } from '@angular/core';
+ import { FormControl, FormGroup, ReactiveFormsModule } from '@angular/forms';
+-import { Claim, Claims, QuickAdded, addDays, backingFigure, claimDue, countsAsOf, countsLive, isOpen, keepsActive, overdue, reviewLate, statusOn, sumAmounts, trimmedSum } from '../../core/claims';
++import { Claim, Claims, QuickAdded, addDays, backingFigure, claimDue, countsAsOf, countsClaimed, countsLive, isOpen, keepsActive, overdue, reviewLate, statusOn, sumAmounts, trimmedSum } from '../../core/claims';
+ import { Patron, Patrons, patronShares } from '../../core/patrons';
+ import { Pools, formatCents } from '../../core/pools';
+ import { Grade, Leave, People, Person, Taken, gradeOn } from '../../core/people';
+@@ -547,18 +547,17 @@ export class PeopleList {
+   protected readonly watched = computed(() => new Set(this.watches().map((w) => w.personId)));
+   /** Each person, by id: their holds and retirement leave claims out of the live totals. */
+   private readonly byId = computed(() => new Map(this.people().map((p) => [p.id, p])));
+-  /** The claims that count in the live totals, newest first. */
+-  private readonly live = computed(() => this.claims().filter((c) => countsLive(c, this.byId().get(c.personId) ?? NO_LEAVE, this.session.today())));
++  /** The claims that count toward claimed: a hold does not take a claim out of it. */
++  private readonly claimedClaims = computed(() =>
++    this.claims().filter((c) => !c.corrects && countsClaimed(c, this.byId().get(c.personId) ?? NO_LEAVE, this.session.today())));
+   /** What each person has claimed: the sum of their open and settled claims' amounts, leaving out
+-   *  the open ones dated within one of their holds and unbound by a statement, and the corrections. */
++   *  the deferred ones, the open ones of a retired person unbound by a statement, and the corrections. */
+   protected readonly claimed = computed(() => {
+-    const by = new Map<number, string>();
+-    for (const [id, cs] of this.claimsByPerson()) {
+-      by.set(id, sumAmounts(cs.filter((c) => !c.corrects && countsLive(c, this.byId().get(id) ?? NO_LEAVE, this.session.today())).map((c) => c.amount)));
+-    }
+-    return by;
++    const by = new Map<number, string[]>();
++    for (const c of this.claimedClaims()) by.set(c.personId, [...(by.get(c.personId) ?? []), c.amount]);
++    return new Map([...by].map(([id, amounts]) => [id, sumAmounts(amounts)]));
+   });
+-  protected readonly claimedTotal = computed(() => sumAmounts(this.live().filter((c) => !c.corrects).map((c) => c.amount)));
++  protected readonly claimedTotal = computed(() => sumAmounts(this.claimedClaims().map((c) => c.amount)));
+   /** The rates set on the sheet. */
+   protected readonly rates = signal<Rate[]>([]);
+   /** The sheet's floors recorded: the least live due a claim has is the one in force on its date. */
+diff --git a/src/main/java/net/officefloor/hq/app/claim/Dues.java b/src/main/java/net/officefloor/hq/app/claim/Dues.java
+index 3d9feceec..f03f27605 100644
+--- a/src/main/java/net/officefloor/hq/app/claim/Dues.java
++++ b/src/main/java/net/officefloor/hq/app/claim/Dues.java
+@@ -319,6 +319,14 @@ public class Dues {
+                 && (claim.isHeld() || person.isHeldOn(claim.getDate()) || person.isRetiredOn(today));
+     }
+ 
++    /** Whether a claim of the person counts toward what they have claimed on the sheet's today: it
++     *  counts, it is not deferred on that day, and it is not an open (or pending) claim, unbound by a
++     *  statement, of a person retired on that day. A hold does not take it out of claimed. */
++    public static boolean countsClaimed(Person person, Claim claim, LocalDate today) {
++        return claim.getStatus().counts() && !claim.isDeferredOn(today)
++                && !(claim.getStatus().isOpen() && !claim.isStated() && person.isRetiredOn(today));
++    }
++
+     /** The claims of a person that count in the live totals on the sheet's today. */
+     public static List<Claim> live(Person person, List<Claim> theirs, LocalDate today) {
+         return theirs.stream().filter(c -> countsLive(person, c, today)).toList();
+diff --git a/src/main/java/net/officefloor/hq/app/rollup/Rollup.java b/src/main/java/net/officefloor/hq/app/rollup/Rollup.java
+index cd13d7651..c7267e356 100644
+--- a/src/main/java/net/officefloor/hq/app/rollup/Rollup.java
++++ b/src/main/java/net/officefloor/hq/app/rollup/Rollup.java
+@@ -25,7 +25,8 @@ import org.springframework.transaction.annotation.Propagation;
+ import org.springframework.transaction.annotation.Transactional;
+ 
+ /**
+- * The figures a sheet rolls up to: what each person has claimed, their due-total and their
++ * The figures a sheet rolls up to: what each person has claimed (a hold does not take a claim out
++ * of it), their due-total and their
+  * overdue-total, and the sheet's totals of all three. The sheet's due-total and overdue-total leave
+  * out the single highest and the single lowest person's figure when three or more people have one
+  * (a due-total of n/a is no figure). A change made through {@link #tracking} is followed in the audit by one
+@@ -189,8 +190,10 @@ public class Rollup {
+         List<BigDecimal> overdueFigures = new ArrayList<>();
+         LocalDate today = basis.today();
+         for (Person person : sheetPeople) {
+-            List<Claim> theirs = Dues.live(person, byPerson.getOrDefault(person.getId(), List.of()), today);
+-            BigDecimal claimed = theirs.stream().filter(c -> c.getCorrects() == null).map(Claim::getAmount)
++            List<Claim> all = byPerson.getOrDefault(person.getId(), List.of());
++            List<Claim> theirs = Dues.live(person, all, today);
++            BigDecimal claimed = all.stream()
++                    .filter(c -> c.getCorrects() == null && Dues.countsClaimed(person, c, today)).map(Claim::getAmount)
+                     .reduce(BigDecimal.ZERO.setScale(2), BigDecimal::add);
+             BigDecimal due = dues.dueTotal(basis, person, theirs);
+             BigDecimal overdue = theirs.stream().filter(c -> dues.overdue(basis, person, c))
