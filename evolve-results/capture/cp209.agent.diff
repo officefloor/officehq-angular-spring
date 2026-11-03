@@ -1,0 +1,87 @@
+diff --git a/src/main/frontend/src/app/features/people/people-list.ts b/src/main/frontend/src/app/features/people/people-list.ts
+index 41ebb2260..7030686c8 100644
+--- a/src/main/frontend/src/app/features/people/people-list.ts
++++ b/src/main/frontend/src/app/features/people/people-list.ts
+@@ -270,7 +270,7 @@ const NO_LEAVE: Leave = { holds: [], retiredFrom: null };
+       <button type="button" data-testid="export-claims" (click)="exportClaimsCsv()">Export claims (CSV)</button>
+       <table data-testid="people">
+         <thead>
+-          <tr><th scope="col"><span class="visually-hidden">Select</span></th><th scope="col">Name</th><th scope="col">Grade</th><th scope="col">Active</th>@if (shows('terms')) {<th scope="col">Terms</th>}@if (shows('contact')) {<th scope="col">Contact</th>}<th scope="col">Tags</th>@if (shows('aliases')) {<th scope="col">Aliases</th>}<th scope="col">Clashing</th><th scope="col">Came from</th>@if (shows('claimed')) {<th scope="col">Claimed</th>}@if (shows('due-total')) {<th scope="col">Due</th>}<th scope="col">Settled due</th><th scope="col">Open due</th>@for (pd of periods(); track pd.id) {<th scope="col">Due in {{ pd.name }}</th><th scope="col">Carried into {{ pd.name }}</th>}@if (shows('excess')) {<th scope="col">Excess</th>}<th scope="col">Cut total</th>@if (shows('statement-count')) {<th scope="col">Statements</th>}@if (shows('stated-total')) {<th scope="col">Last stated</th>}@if (shows('statement-date')) {<th scope="col">Stated on</th>}@if (shows('retired')) {<th scope="col">Retired</th>}<th scope="col">Retired from</th><th scope="col">Past retirements</th><th scope="col">Snapshots</th><th scope="col">Statements taken</th>@if (shows('hold')) {<th scope="col">On hold</th>}@if (shows('overdue-count')) {<th scope="col">Overdue</th>}@if (shows('overdue-total')) {<th scope="col">Overdue due</th>}<th scope="col">Due aged 0–30 days</th><th scope="col">Due aged 31–60 days</th><th scope="col">Due aged 61+ days</th>@if (shows('patrons')) {<th scope="col">Patrons</th>}@if (shows('backing')) {<th scope="col">Backing</th>}<th scope="col">Watched</th><th scope="col">Flag</th><th scope="col">Approver</th><th scope="col">Plans</th><th scope="col">Claims</th><th scope="col"><span class="visually-hidden">Actions</span></th></tr>
++          <tr><th scope="col"><span class="visually-hidden">Select</span></th><th scope="col">Name</th><th scope="col">Grade</th><th scope="col">Active</th>@if (shows('terms')) {<th scope="col">Terms</th>}@if (shows('contact')) {<th scope="col">Contact</th>}<th scope="col">Tags</th>@if (shows('aliases')) {<th scope="col">Aliases</th>}<th scope="col">Clashing</th><th scope="col">Came from</th>@if (shows('claimed')) {<th scope="col">Claimed</th>}@if (shows('due-total')) {<th scope="col">Due</th>}<th scope="col">Settled due</th><th scope="col">Score</th><th scope="col">Open due</th>@for (pd of periods(); track pd.id) {<th scope="col">Due in {{ pd.name }}</th><th scope="col">Carried into {{ pd.name }}</th>}@if (shows('excess')) {<th scope="col">Excess</th>}<th scope="col">Cut total</th>@if (shows('statement-count')) {<th scope="col">Statements</th>}@if (shows('stated-total')) {<th scope="col">Last stated</th>}@if (shows('statement-date')) {<th scope="col">Stated on</th>}@if (shows('retired')) {<th scope="col">Retired</th>}<th scope="col">Retired from</th><th scope="col">Past retirements</th><th scope="col">Snapshots</th><th scope="col">Statements taken</th>@if (shows('hold')) {<th scope="col">On hold</th>}@if (shows('overdue-count')) {<th scope="col">Overdue</th>}@if (shows('overdue-total')) {<th scope="col">Overdue due</th>}<th scope="col">Due aged 0–30 days</th><th scope="col">Due aged 31–60 days</th><th scope="col">Due aged 61+ days</th>@if (shows('patrons')) {<th scope="col">Patrons</th>}@if (shows('backing')) {<th scope="col">Backing</th>}<th scope="col">Watched</th><th scope="col">Flag</th><th scope="col">Approver</th><th scope="col">Plans</th><th scope="col">Claims</th><th scope="col"><span class="visually-hidden">Actions</span></th></tr>
+         </thead>
+         <tbody>
+           @for (p of sorted(); track p.id) {
+@@ -302,6 +302,7 @@ const NO_LEAVE: Leave = { holds: [], retiredFrom: null };
+                 <td data-testid="person-due-total">{{ dueOf(p) ?? 'n/a' | figure }}</td>
+               }
+               <td data-testid="person-settled-total">{{ settledTotalOf(p) | figure }}</td>
++              <td data-testid="person-score">{{ scoreOf(p) }}</td>
+               <td data-testid="person-open-total">{{ openTotalOf(p) | figure }}</td>
+               @for (pd of periods(); track pd.id) {
+                 <td [attr.data-testid]="'person-period-' + pd.name + '-due-total'">{{ periodDueOf(p.id, pd) | figure }}</td>
+@@ -522,14 +523,17 @@ export class PeopleList {
+     const visible = this.restrictedTo();
+     return visible ? listed.filter((p) => visible.has(p.id)) : listed;
+   });
+-  /** For a restricted user, the ids of the people they may see listed: their own person and the
+-   *  leads and members of the crews it leads or belongs to (none when no person is theirs); null for
+-   *  every other role, who sees everyone. */
++  /** The ids of the people added on this screen since the sheet was last read. */
++  private readonly addedHere = signal<ReadonlySet<number>>(new Set());
++  /** For a restricted user, the ids of the people they may see listed: their own person, the
++   *  leads and members of the crews it leads or belongs to, and the people they added on this
++   *  screen until the sheet is read again; null for every other role, who sees everyone. */
+   private readonly restrictedTo = computed<Set<number> | null>(() => {
+     if (this.myRole() !== 'restricted') return null;
++    const ids = new Set(this.addedHere());
+     const me = this.me();
+-    if (!me) return new Set();
+-    const ids = new Set([me.id]);
++    if (!me) return ids;
++    ids.add(me.id);
+     for (const c of this.crewsApi.list()) {
+       const crewIds = [...(c.lead ? [c.lead.personId] : []), ...c.members.map((m) => m.personId)];
+       if (crewIds.includes(me.id)) crewIds.forEach((id) => ids.add(id));
+@@ -1100,6 +1104,7 @@ export class PeopleList {
+       const sheetId = this.session.sheetId();
+       this.session.loads();
+       this.people.set([]);
++      this.addedHere.set(new Set());
+       this.claims.set([]);
+       this.myRole.set(null);
+       this.storedTags.set([]);
+@@ -1535,6 +1540,7 @@ export class PeopleList {
+       if (id === null) {
+         const added = await this.api.add({ name, grade, terms, contact, tags });
+         this.people.update((ps) => [...ps, added]);
++        this.addedHere.update((ids) => new Set(ids).add(added.id));
+       } else {
+         const saved = await this.api.edit(id, this.version, { name, grade, gradeFrom: gradeFrom.trim() || null, terms,
+           termsFrom: termsFrom.trim() || null, contact, tags });
+@@ -1784,7 +1790,8 @@ export class PeopleList {
+     );
+   }
+ 
+-  protected quickAdded({ person, claim }: QuickAdded): void {
++  protected quickAdded({ person, personAdded, claim }: QuickAdded): void {
++    if (personAdded) this.addedHere.update((ids) => new Set(ids).add(person.id));
+     this.people.update((ps) =>
+       ps.some((p) => p.id === person.id) ? ps.map((p) => (p.id === person.id ? person : p)) : [...ps, person],
+     );
+@@ -1909,6 +1916,16 @@ export class PeopleList {
+     return this.statusTotalOf(p, (c) => c.status === 'SETTLED');
+   }
+ 
++  /** A person's score: their settled-total divided by 100, minus 5 for each of their overdue
++   *  claims that count, rounded half to even to a whole number. Worked in whole cents. */
++  protected scoreOf(p: Person): string {
++    const cents = Math.round(Number(this.settledTotalOf(p)) * 100) - 50000 * this.overdueOf(p).length;
++    const whole = Math.floor(cents / 10000);
++    const rest = cents - whole * 10000;
++    const score = rest > 5000 || (rest === 5000 && whole % 2 !== 0) ? whole + 1 : whole;
++    return String(score);
++  }
++
+   /** A person's open-total: the due figures of their open and pending claims that count (held,
+    *  deferred and retired-and-excluded ones are left out), skipping those with no due. With the
+    *  settled-total it adds up to their due-total before the cap. */
