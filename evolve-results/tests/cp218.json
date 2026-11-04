@@ -1,0 +1,66 @@
+{
+  "checkpoint": 218,
+  "checkpoint_id": "cp218_review-assignment",
+  "kind": "checkpoint",
+  "run_id": "202610271-as",
+  "condition": "just-solve",
+  "chain": 4,
+  "branch": "evolve/202610271-as/just-solve/chain4",
+  "commit_sha": "a8c0f3ba3f87fc70e578ecba6a53fb1f70771f5a",
+  "harness_sha": "8b39da3c7afa3e0f848a31d0db987618db86a6b6",
+  "harness_dirty": [],
+  "workers": 3,
+  "port": 3002,
+  "started_at": "2026-11-04T00:33:22",
+  "seconds": 184,
+  "build_log_file": "cp218.test.log",
+  "replaced_tests": [],
+  "tests": {
+    "gated": true,
+    "scope": "checkpoint",
+    "build_ok": true,
+    "build_output": "",
+    "total_selected": 4,
+    "results": {
+      "cp218_review-assignment.spec.ts::review assignment": true,
+      "cp218_review-assignment.spec.ts::review assignment scenario 1": false,
+      "cp218_review-assignment.spec.ts::review assignment scenario 2": true,
+      "cp218_review-assignment.spec.ts::review assignment scenario 3": true
+    },
+    "detail": [
+      {
+        "test_id": "cp218_review-assignment.spec.ts::review assignment",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 27788,
+        "failure": ""
+      },
+      {
+        "test_id": "cp218_review-assignment.spec.ts::review assignment scenario 1",
+        "category": "functionality",
+        "passed": false,
+        "duration_ms": 41218,
+        "failure": "Error: \u001b[31mTimed out 5000ms waiting for \u001b[39m\u001b[2mexpect(\u001b[22m\u001b[31mlocator\u001b[39m\u001b[2m).\u001b[22mtoHaveText\u001b[2m(\u001b[22m\u001b[32mexpected\u001b[39m\u001b[2m)\u001b[22m\n\nLocator: getByTestId('rate-current-B')\nExpected string: \u001b[32m\"7.50\"\u001b[39m\nReceived string: \u001b[31m\"n/a\"\u001b[39m\nCall log:\n  \u001b[2m- expect.toHaveText with timeout 5000ms\u001b[22m\n\u001b[2m  - waiting for getByTestId('rate-current-B')\u001b[22m\n\u001b[2m  -   locator resolved to <td data-testid=\"rate-current-B\">n/a</td>\u001b[22m\n\u001b[2m  -   unexpected value \"n/a\"\u001b[22m\n\u001b[2m  -   locator resolved to <td data-testid=\"rate-current-B\">n/a</td>\u001b[22m\n\u001b[2m  -   unexpected value \"n/a\"\u001b[22m\n\u001b[2m  -   locator resolved to <td data-testid=\"rate-current-B\">n/a</td>\u001b[22m\n\u001b[2m  -   unexpected value \"n/a\"\u001b[22m\n\u001b[2m  -   locator resolved to <td data-testid=\"rate-current-B\">n/a</td>\u001b[22m\n\u001b[2m  -   unexpected value \"n/a\"\u001b[22m\n\u001b[2m  -   locator resolved to <td data-testid=\"rate-current-B\">n/a</td>\u001b[22m\n\u001b[2m  -   unexpected value \"n/a\"\u001b[22m\n\u001b[2m  -   locator resolved to <td data-testid=\"rate-current-B\">n/a</td>\u001b[22m\n\u001b[2m  -   unexpected value \"n/a\"\u001b[22m\n\u001b[2m  -   locator resolved to <td data-testid=\"rate-current-B\">n/a</td>\u001b[22m\n\u001b[2m  -   unexpected value \"n/a\"\u001b[22m\n\u001b[2m  -   locator resolved to <td data-testid=\"rate-current-B\">n/a</td>\u001b[22m\n\u001b[2m  -   unexpected value \"n/a\"\u001b[22m\n\u001b[2m  -   locator resolved to <td data-testid=\"rate-current-B\">n/a</td>\u001b[22m\n\u001b[2m  -   unexpected value \"n/a\"\u001b[22m\n\n\n  373 |     await expect(pg_vic.getByTestId(\"period-row-2026-04\").getByTestId(\"period-locked\")).toHaveText(\"no\");\n  374 |     await expect(pg_vic.getByTestId(\"rate-current-A\")).toHaveText(\"33.33\");\n> 375 |     await expect(pg_vic.getByTestId(\"rate-current-B\")).toHaveText(\"7.50\");\n      |                                                        ^\n  376 |     await expect(pg_vic.getByTestId(\"rate-current-C\")).toHaveText(\"33.33\");\n  377 |     await expect(pg_vic.getByTestId(\"summary-grade-A-count\")).toHaveText(\"0\");\n  378 |     await expect(pg_vic.getByTestId(\"summary-grade-A-due-total\")).toHaveText(\"0.00\");\n\n    at /home/daniel/ui-work/runs/202610271-as/testing/e2e/specs/cp218_review-assignment.spec.ts:375:56 | Error: \u001b[31mTimed out 5000ms waiting for \u001b[39m\u001b[2mexpect(\u001b[22m\u001b[31mlocator\u001b[39m\u001b[2m).\u001b[22mtoHaveText\u001b[2m(\u001b[22m\u001b[32mexpected\u001b[39m\u001b[2m)\u001b[22m\n\nLocator: getByTestId('rate-current-B')\nExpected string: \u001b[32m\"7.50\"\u001b[39m\nReceived string: \u001b[31m\"n/a\"\u001b[39m\nCall log:\n  \u001b[2m- expect.toHaveText with timeout 5000ms\u001b[22m\n\u001b[2m  - waiting for getByTestId('rate-current-B')\u001b[22m\n\u001b[2m  -   locator resolved to <td data-testid=\"rate-current-B\">n/a</td>\u001b[22m\n\u001b[2m  -   unexpected value \"n/a\"\u001b[22m\n\u001b[2m  -   locator resolved to <td data-testid=\"rate-current-B\">n/a</td>\u001b[22m\n\u001b[2m  -   unexpected value \"n/a\"\u001b[22m\n\u001b[2m  -   locator resolved to <td data-testid=\"rate-current-B\">n/a</td>\u001b[22m\n\u001b[2m  -   unexpected value \"n/a\"\u001b[22m\n\u001b[2m  -   locator resolved to <td data-testid=\"rate-current-B\">n/a</td>\u001b[22m\n\u001b[2m  -   unexpected value \"n/a\"\u001b[22m\n\u001b[2m  -   locator resolved to <td data-testid=\"rate-current-B\">n/a</td>\u001b[22m\n\u001b[2m  -   unexpected value \"n/a\"\u001b[22m\n\u001b[2m  -   locator resolved to <td data-testid=\"rate-current-B\">n/a</td>\u001b[22m\n\u001b[2m  -   unexpected value \"n/a\"\u001b[22m\n\u001b[2m  -   locator resolved to <td data-testid=\"rate-current-B\">n/a</td>\u001b[22m\n\u001b[2m  -   unexpected value \"n/a\"\u001b[22m\n\u001b[2m  -   locator resolved to <td data-testid=\"rate-current-B\">n/a</td>\u001b[22m\n\u001b[2m  -   unexpected value \"n/a\"\u001b[22m\n\u001b[2m  -   locator resolved to <td data-testid=\"rate-current-B\">n/a</td>\u001b[22m\n\u001b[2m  -   unexpected value \"n/a\"\u001b[22m\n"
+      },
+      {
+        "test_id": "cp218_review-assignment.spec.ts::review assignment scenario 2",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 30930,
+        "failure": ""
+      },
+      {
+        "test_id": "cp218_review-assignment.spec.ts::review assignment scenario 3",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 25790,
+        "failure": ""
+      }
+    ],
+    "error": "",
+    "gate_invalid": false,
+    "app_broken": false,
+    "gate_attempts": 1,
+    "seed_contract": null
+  }
+}

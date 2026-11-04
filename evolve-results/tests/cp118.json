@@ -1,0 +1,66 @@
+{
+  "checkpoint": 118,
+  "checkpoint_id": "cp118_import-rates",
+  "kind": "checkpoint",
+  "run_id": "202610271-as",
+  "condition": "just-solve",
+  "chain": 4,
+  "branch": "evolve/202610271-as/just-solve/chain4",
+  "commit_sha": "feb0fe66ce7c7cb3d882de1f1ec3984c1a8ec072",
+  "harness_sha": "8b39da3c7afa3e0f848a31d0db987618db86a6b6",
+  "harness_dirty": [],
+  "workers": 3,
+  "port": 3002,
+  "started_at": "2026-11-03T05:43:25",
+  "seconds": 151,
+  "build_log_file": "cp118.test.log",
+  "replaced_tests": [],
+  "tests": {
+    "gated": true,
+    "scope": "checkpoint",
+    "build_ok": true,
+    "build_output": "",
+    "total_selected": 4,
+    "results": {
+      "cp118_import-rates.spec.ts::import rates": true,
+      "cp118_import-rates.spec.ts::import rates scenario 1": true,
+      "cp118_import-rates.spec.ts::import rates scenario 2": true,
+      "cp118_import-rates.spec.ts::import rates scenario 3": true
+    },
+    "detail": [
+      {
+        "test_id": "cp118_import-rates.spec.ts::import rates",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 18553,
+        "failure": ""
+      },
+      {
+        "test_id": "cp118_import-rates.spec.ts::import rates scenario 1",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 23899,
+        "failure": ""
+      },
+      {
+        "test_id": "cp118_import-rates.spec.ts::import rates scenario 2",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 26360,
+        "failure": ""
+      },
+      {
+        "test_id": "cp118_import-rates.spec.ts::import rates scenario 3",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 14864,
+        "failure": ""
+      }
+    ],
+    "error": "",
+    "gate_invalid": false,
+    "app_broken": false,
+    "gate_attempts": 1,
+    "seed_contract": null
+  }
+}

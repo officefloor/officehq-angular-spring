@@ -1,0 +1,37 @@
+$ bin/build  (attempt 1)
+Picked up JAVA_TOOL_OPTIONS: -Djava.io.tmpdir=/tmp/202610271-as-testing-cp101-f4bo241n
+
+$ npm ci --silent (cwd e2e)
+
+$ npx playwright install chromium (cwd e2e)
+
+$ npx playwright test --reporter=json,list --workers=3 --output=/home/daniel/ui-work/runs/202610271-as/testing/.run/pw-artifacts  (attempt 1, exit 1)
+
+Running 4 tests using 1 worker
+
+  ✓  1 [chromium] › cp101_audit-viewer.spec.ts:6:7 › audit viewer › audit viewer (10.8s)
+  ✘  2 [chromium] › cp101_audit-viewer.spec.ts:109:7 › audit viewer › audit viewer scenario 1 (9.1s)
+  ✓  3 [chromium] › cp101_audit-viewer.spec.ts:527:7 › audit viewer › audit viewer scenario 2 (26.7s)
+  ✓  4 [chromium] › cp101_audit-viewer.spec.ts:858:7 › audit viewer › audit viewer scenario 3 (38.2s)
+
+
+  1) [chromium] › cp101_audit-viewer.spec.ts:109:7 › audit viewer › audit viewer scenario 1 ────────
+
+    Error: [2mexpect([22m[31mreceived[39m[2m).[22mtoBe[2m([22m[32mexpected[39m[2m) // Object.is equality[22m
+
+    Expected: [32mfalse[39m
+    Received: [31mtrue[39m
+
+      132 |     expect(await ui.claimEditOpen(pg_uma, c_ada_0)).toBe(true);
+      133 |     const pg_wes = await ui.userPage(browser, "wes", sheet);
+    > 134 |     expect(await ui.claimEditOpen(pg_wes, c_ada_0)).toBe(false);
+          |                                                     ^
+      135 |     await ui.refresh(pg_uma);
+      136 |     await ui.claimEditCancel(pg_uma, c_ada_0);
+      137 |     const c_dot_0 = ui.must(await ui.quickAdd(pg_uma, {"name": "Dot", "amount": "25.00"}));
+
+        at /home/daniel/ui-work/runs/202610271-as/testing/e2e/specs/cp101_audit-viewer.spec.ts:134:53
+
+  1 failed
+    [chromium] › cp101_audit-viewer.spec.ts:109:7 › audit viewer › audit viewer scenario 1 ─────────
+  3 passed (1.5m)

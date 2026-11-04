@@ -1,0 +1,66 @@
+{
+  "checkpoint": 105,
+  "checkpoint_id": "cp105_pools",
+  "kind": "checkpoint",
+  "run_id": "202610271-as",
+  "condition": "just-solve",
+  "chain": 4,
+  "branch": "evolve/202610271-as/just-solve/chain4",
+  "commit_sha": "e8893224205e5a62d6dce3d489f5f3fa3644eab2",
+  "harness_sha": "8b39da3c7afa3e0f848a31d0db987618db86a6b6",
+  "harness_dirty": [],
+  "workers": 3,
+  "port": 3002,
+  "started_at": "2026-11-03T04:30:45",
+  "seconds": 185,
+  "build_log_file": "cp105.test.log",
+  "replaced_tests": [],
+  "tests": {
+    "gated": true,
+    "scope": "checkpoint",
+    "build_ok": true,
+    "build_output": "",
+    "total_selected": 4,
+    "results": {
+      "cp105_pools.spec.ts::pools": true,
+      "cp105_pools.spec.ts::pools scenario 1": true,
+      "cp105_pools.spec.ts::pools scenario 2": true,
+      "cp105_pools.spec.ts::pools scenario 3": true
+    },
+    "detail": [
+      {
+        "test_id": "cp105_pools.spec.ts::pools",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 20456,
+        "failure": ""
+      },
+      {
+        "test_id": "cp105_pools.spec.ts::pools scenario 1",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 22681,
+        "failure": ""
+      },
+      {
+        "test_id": "cp105_pools.spec.ts::pools scenario 2",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 43109,
+        "failure": ""
+      },
+      {
+        "test_id": "cp105_pools.spec.ts::pools scenario 3",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 14154,
+        "failure": ""
+      }
+    ],
+    "error": "",
+    "gate_invalid": false,
+    "app_broken": false,
+    "gate_attempts": 1,
+    "seed_contract": null
+  }
+}

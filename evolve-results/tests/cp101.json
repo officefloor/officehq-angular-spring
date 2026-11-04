@@ -1,0 +1,66 @@
+{
+  "checkpoint": 101,
+  "checkpoint_id": "cp101_audit-viewer",
+  "kind": "checkpoint",
+  "run_id": "202610271-as",
+  "condition": "just-solve",
+  "chain": 4,
+  "branch": "evolve/202610271-as/just-solve/chain4",
+  "commit_sha": "4766a9d142e036d22ff1a3c4d8f4ec2f71ec2afb",
+  "harness_sha": "8b39da3c7afa3e0f848a31d0db987618db86a6b6",
+  "harness_dirty": [],
+  "workers": 3,
+  "port": 3002,
+  "started_at": "2026-11-03T04:21:27",
+  "seconds": 151,
+  "build_log_file": "cp101.test.log",
+  "replaced_tests": [],
+  "tests": {
+    "gated": true,
+    "scope": "checkpoint",
+    "build_ok": true,
+    "build_output": "",
+    "total_selected": 4,
+    "results": {
+      "cp101_audit-viewer.spec.ts::audit viewer": true,
+      "cp101_audit-viewer.spec.ts::audit viewer scenario 1": false,
+      "cp101_audit-viewer.spec.ts::audit viewer scenario 2": true,
+      "cp101_audit-viewer.spec.ts::audit viewer scenario 3": true
+    },
+    "detail": [
+      {
+        "test_id": "cp101_audit-viewer.spec.ts::audit viewer",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 10781,
+        "failure": ""
+      },
+      {
+        "test_id": "cp101_audit-viewer.spec.ts::audit viewer scenario 1",
+        "category": "functionality",
+        "passed": false,
+        "duration_ms": 9113,
+        "failure": "Error: \u001b[2mexpect(\u001b[22m\u001b[31mreceived\u001b[39m\u001b[2m).\u001b[22mtoBe\u001b[2m(\u001b[22m\u001b[32mexpected\u001b[39m\u001b[2m) // Object.is equality\u001b[22m\n\nExpected: \u001b[32mfalse\u001b[39m\nReceived: \u001b[31mtrue\u001b[39m\n\n  132 |     expect(await ui.claimEditOpen(pg_uma, c_ada_0)).toBe(true);\n  133 |     const pg_wes = await ui.userPage(browser, \"wes\", sheet);\n> 134 |     expect(await ui.claimEditOpen(pg_wes, c_ada_0)).toBe(false);\n      |                                                     ^\n  135 |     await ui.refresh(pg_uma);\n  136 |     await ui.claimEditCancel(pg_uma, c_ada_0);\n  137 |     const c_dot_0 = ui.must(await ui.quickAdd(pg_uma, {\"name\": \"Dot\", \"amount\": \"25.00\"}));\n\n    at /home/daniel/ui-work/runs/202610271-as/testing/e2e/specs/cp101_audit-viewer.spec.ts:134:53 | Error: \u001b[2mexpect(\u001b[22m\u001b[31mreceived\u001b[39m\u001b[2m).\u001b[22mtoBe\u001b[2m(\u001b[22m\u001b[32mexpected\u001b[39m\u001b[2m) // Object.is equality\u001b[22m\n\nExpected: \u001b[32mfalse\u001b[39m\nReceived: \u001b[31mtrue\u001b[39m"
+      },
+      {
+        "test_id": "cp101_audit-viewer.spec.ts::audit viewer scenario 2",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 26683,
+        "failure": ""
+      },
+      {
+        "test_id": "cp101_audit-viewer.spec.ts::audit viewer scenario 3",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 38231,
+        "failure": ""
+      }
+    ],
+    "error": "",
+    "gate_invalid": false,
+    "app_broken": false,
+    "gate_attempts": 1,
+    "seed_contract": null
+  }
+}

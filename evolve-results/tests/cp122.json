@@ -1,0 +1,66 @@
+{
+  "checkpoint": 122,
+  "checkpoint_id": "cp122_pool-membership-dated",
+  "kind": "checkpoint",
+  "run_id": "202610271-as",
+  "condition": "just-solve",
+  "chain": 4,
+  "branch": "evolve/202610271-as/just-solve/chain4",
+  "commit_sha": "e381a1ce97e4a99cb9c03e2710b3ca61aee7406c",
+  "harness_sha": "8b39da3c7afa3e0f848a31d0db987618db86a6b6",
+  "harness_dirty": [],
+  "workers": 3,
+  "port": 3002,
+  "started_at": "2026-11-03T06:43:18",
+  "seconds": 160,
+  "build_log_file": "cp122.test.log",
+  "replaced_tests": [],
+  "tests": {
+    "gated": true,
+    "scope": "checkpoint",
+    "build_ok": true,
+    "build_output": "",
+    "total_selected": 4,
+    "results": {
+      "cp122_pool-membership-dated.spec.ts::pool membership dated": true,
+      "cp122_pool-membership-dated.spec.ts::pool membership dated scenario 1": true,
+      "cp122_pool-membership-dated.spec.ts::pool membership dated scenario 2": true,
+      "cp122_pool-membership-dated.spec.ts::pool membership dated scenario 3": true
+    },
+    "detail": [
+      {
+        "test_id": "cp122_pool-membership-dated.spec.ts::pool membership dated",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 11472,
+        "failure": ""
+      },
+      {
+        "test_id": "cp122_pool-membership-dated.spec.ts::pool membership dated scenario 1",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 32871,
+        "failure": ""
+      },
+      {
+        "test_id": "cp122_pool-membership-dated.spec.ts::pool membership dated scenario 2",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 23123,
+        "failure": ""
+      },
+      {
+        "test_id": "cp122_pool-membership-dated.spec.ts::pool membership dated scenario 3",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 31816,
+        "failure": ""
+      }
+    ],
+    "error": "",
+    "gate_invalid": false,
+    "app_broken": false,
+    "gate_attempts": 1,
+    "seed_contract": null
+  }
+}

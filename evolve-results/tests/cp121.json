@@ -1,0 +1,66 @@
+{
+  "checkpoint": 121,
+  "checkpoint_id": "cp121_history-follows",
+  "kind": "checkpoint",
+  "run_id": "202610271-as",
+  "condition": "just-solve",
+  "chain": 4,
+  "branch": "evolve/202610271-as/just-solve/chain4",
+  "commit_sha": "eefbb47940719668356f3fb6b40c01c51d879128",
+  "harness_sha": "8b39da3c7afa3e0f848a31d0db987618db86a6b6",
+  "harness_dirty": [],
+  "workers": 3,
+  "port": 3002,
+  "started_at": "2026-11-03T06:40:44",
+  "seconds": 154,
+  "build_log_file": "cp121.test.log",
+  "replaced_tests": [],
+  "tests": {
+    "gated": true,
+    "scope": "checkpoint",
+    "build_ok": true,
+    "build_output": "",
+    "total_selected": 4,
+    "results": {
+      "cp121_history-follows.spec.ts::history follows": true,
+      "cp121_history-follows.spec.ts::history follows scenario 1": true,
+      "cp121_history-follows.spec.ts::history follows scenario 2": true,
+      "cp121_history-follows.spec.ts::history follows scenario 3": true
+    },
+    "detail": [
+      {
+        "test_id": "cp121_history-follows.spec.ts::history follows",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 9802,
+        "failure": ""
+      },
+      {
+        "test_id": "cp121_history-follows.spec.ts::history follows scenario 1",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 29008,
+        "failure": ""
+      },
+      {
+        "test_id": "cp121_history-follows.spec.ts::history follows scenario 2",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 48864,
+        "failure": ""
+      },
+      {
+        "test_id": "cp121_history-follows.spec.ts::history follows scenario 3",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 18271,
+        "failure": ""
+      }
+    ],
+    "error": "",
+    "gate_invalid": false,
+    "app_broken": false,
+    "gate_attempts": 1,
+    "seed_contract": null
+  }
+}

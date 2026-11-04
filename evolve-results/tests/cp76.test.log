@@ -1,0 +1,40 @@
+$ bin/build  (attempt 1)
+Picked up JAVA_TOOL_OPTIONS: -Djava.io.tmpdir=/tmp/202610271-as-testing-cp76-kau4b8ye
+
+$ npm ci --silent (cwd e2e)
+
+$ npx playwright install chromium (cwd e2e)
+
+$ npx playwright test --reporter=json,list --workers=3 --output=/home/daniel/ui-work/runs/202610271-as/testing/.run/pw-artifacts  (attempt 1, exit 1)
+
+Running 4 tests using 1 worker
+
+  ✓  1 [chromium] › cp76_snapshots.spec.ts:6:7 › snapshots › snapshots (5.5s)
+  ✓  2 [chromium] › cp76_snapshots.spec.ts:87:7 › snapshots › snapshots scenario 1 (12.4s)
+  ✓  3 [chromium] › cp76_snapshots.spec.ts:433:7 › snapshots › snapshots scenario 2 (18.6s)
+  ✘  4 [chromium] › cp76_snapshots.spec.ts:823:7 › snapshots › snapshots scenario 3 (26.6s)
+
+
+  1) [chromium] › cp76_snapshots.spec.ts:823:7 › snapshots › snapshots scenario 3 ──────────────────
+
+    Error: edit claim: neither a result nor an error appeared within 8000ms
+
+       at ../support/ui.ts:136
+
+      134 |   if (await done()) return true;
+      135 |   if (await error.isVisible().catch(() => false)) return false;
+    > 136 |   throw new Error(`${what}: neither a result nor an error appeared within ${WAIT}ms`);
+          |         ^
+      137 | }
+      138 |
+      139 | async function sleep(ms: number): Promise<void> {
+
+        at until (/home/daniel/ui-work/runs/202610271-as/testing/e2e/support/ui.ts:136:9)
+        at Object.editClaim (/home/daniel/ui-work/runs/202610271-as/testing/e2e/support/ui.ts:803:14)
+        at /home/daniel/ui-work/runs/202610271-as/testing/e2e/specs/cp76_snapshots.spec.ts:917:12
+
+  Slow test file: [chromium] › cp76_snapshots.spec.ts (1.1m)
+  Consider splitting slow test files to speed up parallel execution
+  1 failed
+    [chromium] › cp76_snapshots.spec.ts:823:7 › snapshots › snapshots scenario 3 ───────────────────
+  3 passed (1.1m)

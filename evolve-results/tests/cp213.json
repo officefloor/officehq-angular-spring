@@ -1,0 +1,66 @@
+{
+  "checkpoint": 213,
+  "checkpoint_id": "cp213_parent-plans",
+  "kind": "checkpoint",
+  "run_id": "202610271-as",
+  "condition": "just-solve",
+  "chain": 4,
+  "branch": "evolve/202610271-as/just-solve/chain4",
+  "commit_sha": "ab24474a6d90d0e1225a20eaed7a4504b6df633c",
+  "harness_sha": "8b39da3c7afa3e0f848a31d0db987618db86a6b6",
+  "harness_dirty": [],
+  "workers": 3,
+  "port": 3002,
+  "started_at": "2026-11-04T00:20:49",
+  "seconds": 136,
+  "build_log_file": "cp213.test.log",
+  "replaced_tests": [],
+  "tests": {
+    "gated": true,
+    "scope": "checkpoint",
+    "build_ok": true,
+    "build_output": "",
+    "total_selected": 4,
+    "results": {
+      "cp213_parent-plans.spec.ts::parent plans": true,
+      "cp213_parent-plans.spec.ts::parent plans scenario 1": true,
+      "cp213_parent-plans.spec.ts::parent plans scenario 2": true,
+      "cp213_parent-plans.spec.ts::parent plans scenario 3": true
+    },
+    "detail": [
+      {
+        "test_id": "cp213_parent-plans.spec.ts::parent plans",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 6890,
+        "failure": ""
+      },
+      {
+        "test_id": "cp213_parent-plans.spec.ts::parent plans scenario 1",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 24324,
+        "failure": ""
+      },
+      {
+        "test_id": "cp213_parent-plans.spec.ts::parent plans scenario 2",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 25605,
+        "failure": ""
+      },
+      {
+        "test_id": "cp213_parent-plans.spec.ts::parent plans scenario 3",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 26359,
+        "failure": ""
+      }
+    ],
+    "error": "",
+    "gate_invalid": false,
+    "app_broken": false,
+    "gate_attempts": 1,
+    "seed_contract": null
+  }
+}

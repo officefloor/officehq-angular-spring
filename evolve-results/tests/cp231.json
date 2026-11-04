@@ -1,0 +1,66 @@
+{
+  "checkpoint": 231,
+  "checkpoint_id": "cp231_period-export",
+  "kind": "checkpoint",
+  "run_id": "202610271-as",
+  "condition": "just-solve",
+  "chain": 4,
+  "branch": "evolve/202610271-as/just-solve/chain4",
+  "commit_sha": "39f6d8fba298fced648e4191a9a27316c5c28e28",
+  "harness_sha": "8b39da3c7afa3e0f848a31d0db987618db86a6b6",
+  "harness_dirty": [],
+  "workers": 3,
+  "port": 3002,
+  "started_at": "2026-11-04T04:35:29",
+  "seconds": 137,
+  "build_log_file": "cp231.test.log",
+  "replaced_tests": [],
+  "tests": {
+    "gated": true,
+    "scope": "checkpoint",
+    "build_ok": true,
+    "build_output": "",
+    "total_selected": 4,
+    "results": {
+      "cp231_period-export.spec.ts::period export": true,
+      "cp231_period-export.spec.ts::period export scenario 1": true,
+      "cp231_period-export.spec.ts::period export scenario 2": true,
+      "cp231_period-export.spec.ts::period export scenario 3": true
+    },
+    "detail": [
+      {
+        "test_id": "cp231_period-export.spec.ts::period export",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 5420,
+        "failure": ""
+      },
+      {
+        "test_id": "cp231_period-export.spec.ts::period export scenario 1",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 23957,
+        "failure": ""
+      },
+      {
+        "test_id": "cp231_period-export.spec.ts::period export scenario 2",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 26324,
+        "failure": ""
+      },
+      {
+        "test_id": "cp231_period-export.spec.ts::period export scenario 3",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 21921,
+        "failure": ""
+      }
+    ],
+    "error": "",
+    "gate_invalid": false,
+    "app_broken": false,
+    "gate_attempts": 1,
+    "seed_contract": null
+  }
+}
