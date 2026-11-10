@@ -1,0 +1,80 @@
+diff --git a/src/main/frontend/src/app/features/claims/claims.ts b/src/main/frontend/src/app/features/claims/claims.ts
+index 70f50e603..cda7f2767 100644
+--- a/src/main/frontend/src/app/features/claims/claims.ts
++++ b/src/main/frontend/src/app/features/claims/claims.ts
+@@ -180,7 +180,7 @@ export function cents(amount: string): number {
+ }
+ 
+ /** Days since 1970-01-01 of a yyyy-mm-dd date (proleptic Gregorian). */
+-function dayNumber(date: string): number {
++export function dayNumber(date: string): number {
+   const [y0, m, d] = date.split('-').map(Number);
+   const y = m <= 2 ? y0 - 1 : y0;
+   const era = Math.floor(y / 400);
+diff --git a/src/main/frontend/src/app/features/people/people.ts b/src/main/frontend/src/app/features/people/people.ts
+index 59f5bd2d9..3220e41fb 100644
+--- a/src/main/frontend/src/app/features/people/people.ts
++++ b/src/main/frontend/src/app/features/people/people.ts
+@@ -2,7 +2,7 @@ import { HttpClient, HttpErrorResponse } from '@angular/common/http';
+ import { Component, computed, effect, inject, signal } from '@angular/core';
+ import { firstValueFrom } from 'rxjs';
+ import { Session } from '../../core/session';
+-import { AMOUNT, Claim, PersonClaims, cents, counts, deferred, isOpen, money, overdue, plusDays, roundingDate, statusAt } from '../claims/claims';
++import { AMOUNT, Claim, PersonClaims, cents, counts, dayNumber, deferred, isOpen, money, overdue, plusDays, roundingDate, statusAt } from '../claims/claims';
+ import { DatedDue, Period, Periods, periodDueTotal, personPeriodDueTotal } from '../periods/periods';
+ import { DatedGrade, DatedValue, Lateness, Rate, Rates, chargedDueCents, dueText, gradeOn, pctOn, valueOn } from '../rates/rates';
+ import { Roles } from '../roles/roles';
+@@ -66,6 +66,9 @@ import { GradeSummary, PeriodSummary, StatusSummary, Summary } from '../summary/
+ // each, in list order, is edited as the person form would, all or none; the count shows how many.
+ // A person is active when they have an OPEN or PENDING claim that counts dated within the 30 days up
+ // to and including the sheet's today; the summary counts the active people per grade, retired excluded.
++// Each person shows the figures of their OPEN and PENDING claims that count split by age on the
++// sheet's today (the days from the claim's date): 0 to 30, 31 to 60 and 61 or more; a claim dated
++// after today is 0 to 30.
+ interface Person {
+   id: number;
+   name: string;
+@@ -321,6 +324,9 @@ const SUMMARY_STATUSES = ['DRAFT', 'OPEN', 'PENDING', 'SETTLED', 'VOID'] as cons
+             @for (pd of periods(); track pd.id) {
+               <th scope="col">Due in {{ pd.name }}</th>
+             }
++            <th scope="col">Aged 0–30</th>
++            <th scope="col">Aged 31–60</th>
++            <th scope="col">Aged 61+</th>
+             <th scope="col">Overdue</th>
+             <th scope="col">Active</th>
+             <th scope="col">Statements</th>
+@@ -352,6 +358,9 @@ const SUMMARY_STATUSES = ['DRAFT', 'OPEN', 'PENDING', 'SETTLED', 'VOID'] as cons
+               @for (pd of periods(); track pd.id) {
+                 <td [attr.data-testid]="'person-period-' + pd.name + '-due-total'">{{ periodDueOf(pd, p.id) }}</td>
+               }
++              <td data-testid="person-aged-0-30">{{ money(agedOf(p)[0]) }}</td>
++              <td data-testid="person-aged-31-60">{{ money(agedOf(p)[1]) }}</td>
++              <td data-testid="person-aged-61">{{ money(agedOf(p)[2]) }}</td>
+               <td>
+                 <span data-testid="person-overdue-count">{{ overdueOf(p).count }}</span>
+                 <span>totalling <span data-testid="person-overdue-total">{{ money(overdueOf(p).cents) }}</span></span>
+@@ -814,6 +823,23 @@ export class People {
+     );
+   }
+ 
++  /**
++   * The figures of the person's OPEN and PENDING claims that count, in whole cents, by age on the
++   * sheet's today: 0 to 30 days (a claim dated after today included), 31 to 60, and 61 or more.
++   */
++  protected agedOf(p: Person): [number, number, number] {
++    const today = this.session.today();
++    const aged: [number, number, number] = [0, 0, 0];
++    if (!today) return aged;
++    for (const c of this.claimsOf(p.id)) {
++      if (!isOpen(c) || !countsFor(p, c, today)) continue;
++      const age = dayNumber(today) - dayNumber(c.date);
++      const figure = chargedDueCents(c, this.rates(), gradeOn(p.grades, c.date), this.floors(), this.lateness(), this.roundOn(c)) ?? 0;
++      aged[age <= 30 ? 0 : age <= 60 ? 1 : 2] += figure;
++    }
++    return aged;
++  }
++
+   /** The person's overdue claims that count: how many, and the sum of their figures in whole cents. */
+   protected overdueOf(p: Person): { count: number; cents: number } {
+     const today = this.session.today();

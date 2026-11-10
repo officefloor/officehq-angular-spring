@@ -1,0 +1,64 @@
+{
+  "checkpoint": 78,
+  "stack": {
+    "repo": "/home/daniel/officehq-angular-spring",
+    "origin": "git@github.com:officefloor/officehq-angular-spring.git",
+    "name": "officehq-angular-spring",
+    "base_ref": "base-empty",
+    "base_commit": "65cb8233ea38b2dfa6cfd18709e30cd18fdf3250"
+  },
+  "checkpoint_id": "cp78_age-buckets",
+  "phase": "early",
+  "type": "additive",
+  "mutates": [],
+  "replaced_tests": [],
+  "request": {
+    "spec": "Show on each person the due of their OPEN and PENDING claims that count, split by the age of\nthe claim on the sheet's today (the days from the claim's date): aged 0 to 30 days, 31 to 60, and\n61 or more. A claim dated after today counts as 0 to 30.\n",
+    "prompt": "You are implementing ONE change to this application.\n\nFIRST read AGENTS.md \u2014 it states the working rules and how the app is tested, and sends you to\nDESIGN.md for the app's stack and conventions. Follow both.\n\nTHE CHANGE REQUEST:\nShow on each person the due of their OPEN and PENDING claims that count, split by the age of\nthe claim on the sheet's today (the days from the claim's date): aged 0 to 30 days, 31 to 60, and\n61 or more. A claim dated after today counts as 0 to 30.\n\nYour work is verified by an automated Playwright UI test already installed under e2e/specs/.\nRead that spec: it declares the exact data-testid anchors, values, test data and any audit\nrecords it expects \u2014 match them. Run `bin/e2e` to build the app, start it, and run the test as\nyou work; iterate until it passes. Change whatever the request needs across the app \u2014 its stored\ndata, its server and its front end. Do NOT edit bin/build, bin/start, bin/stop, bin/e2e,\nAGENTS.md, CLAUDE.md, DESIGN.md, e2e/support/ or the test spec.\n"
+  },
+  "commit_sha": "6d48e894c40350699f6a2389894a3ce6af53f311",
+  "reset_sha": "",
+  "preagent_sha": "6d94f7b904673af4f76ee7db7f3d566fa90b2ed6",
+  "prev_sha": "6d94f7b904673af4f76ee7db7f3d566fa90b2ed6",
+  "base_sha": "65cb8233ea38b2dfa6cfd18709e30cd18fdf3250",
+  "agent": {
+    "ok": true,
+    "cost_usd": 0.46770860000000003,
+    "input_tokens": 24,
+    "output_tokens": 4224,
+    "cache_read_tokens": 382423,
+    "cache_creation_tokens": 38331,
+    "num_turns": 13,
+    "duration_ms": 242360,
+    "duration_api_ms": 44352,
+    "model": "claude-opus-5-5",
+    "session_id": "797b2e36-e604-4601-bf83-addd0c6dc1e3",
+    "stop_reason": "success",
+    "result_text": "Each person's row now shows how much is due on their open and pending claims, split by how old each claim is on the sheet's today: 0\u201330 days, 31\u201360 days, and 61 or more. All 4 tests in `bin/e2e` pass.\n\nThe change is only in the front end, which already works out every other due figure itself. Nothing changed on the server, in stored data, or in the audit file, since the request didn't ask for anything there.\n\n- **Which claims are included:** only OPEN and PENDING claims that already count toward the person's due. Claims that are held, deferred, or fall after a retirement date are left out, the same way the existing due-total leaves them out. A claim dated after today goes in 0\u201330.\n- **The amount used:** each claim's figure as the row already shows it, with any late charge and floor applied. The sheet's cap is not applied to the buckets, because the request didn't mention it.\n- **Where it is:** `agedOf` in `src/main/frontend/src/app/features/people/people.ts` does the sum. It shows in three new columns with test ids `person-aged-0-30`, `person-aged-31-60` and `person-aged-61`. To count each claim's age in days I made the existing `dayNumber` helper in `claims/claims.ts` usable from other files.\n\nThe three buckets won't always add up to the person's due-total, because the due-total also includes SETTLED claims. In the first test, after one claim is settled the buckets total 16.00 while the due-total stays 21.00, and that is what the test expects.",
+    "error": "",
+    "attempts": [
+      {
+        "ok": true,
+        "limit_reached": false,
+        "retryable": false,
+        "timed_out": false,
+        "cost_usd": 0.46770860000000003,
+        "num_turns": 13,
+        "duration_ms": 242360,
+        "duration_api_ms": 44352,
+        "error": ""
+      }
+    ]
+  },
+  "agent_stream_file": "cp78.agent.jsonl",
+  "agent_diff_file": "cp78.agent.diff",
+  "build_log_file": null,
+  "tests": {
+    "gated": false,
+    "queued": true
+  },
+  "probe": null,
+  "pinned_touched": [],
+  "acceptance_touched": [],
+  "impact_gate": null
+}
