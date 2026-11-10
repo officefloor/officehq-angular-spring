@@ -107,7 +107,7 @@ export function dueCents(amountCents: number, pct: string | undefined, halfUp = 
  * due fixed when it was settled. Null when it has none (its figure is live, or there was no rate).
  */
 export function fixedDueCents(c: Claim): number | null {
-  const fixed = c.stated && c.status !== 'PENDING' ? c.statedDue : c.settledDue;
+  const fixed = c.stated ? c.statedDue : c.settledDue;
   return fixed !== null ? cents(fixed) : null;
 }
 
@@ -130,15 +130,14 @@ export function roundsHalfUp(
 }
 
 /**
- * A claim's figure in whole cents: a stated claim's figure bound by the last statement (not while
- * PENDING: its figure is live), a settled
+ * A claim's figure in whole cents: a stated claim's figure bound by the last statement, a settled
  * claim's due fixed when it was settled, any other claim's live due at the rate for the grade in
  * force on the claim's date, rounded half up when `halfUp` (else half to even). The floor is not
  * applied here (see {@link chargedDueCents}). Null when it has none.
  */
 export function claimDueCents(c: Claim, rates: readonly Rate[], grade: string, halfUp = false): number | null {
   if (c.settledDue !== null) return cents(c.settledDue);
-  if (c.stated && c.status !== 'PENDING') return fixedDueCents(c);
+  if (c.stated) return fixedDueCents(c);
   return dueCents(cents(c.amount), pctOn(rates, grade, c.date, c), halfUp);
 }
 

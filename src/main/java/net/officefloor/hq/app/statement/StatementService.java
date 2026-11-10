@@ -185,7 +185,7 @@ public class StatementService {
                 figure = claim.settledDueAt(day);
                 charged = figure;
             } else {
-                figure = stated && status != ClaimStatus.PENDING ? claim.getStatedDue()
+                figure = stated ? claim.getStatedDue()
                         : RateChain.inForce(ratesThen, person.gradeOn(claim.getDate(), day), claim)
                                 .map(Rate::getPct)
                                 .map(pct -> claim.getAmount().multiply(pct).divide(BigDecimal.valueOf(100), 2,

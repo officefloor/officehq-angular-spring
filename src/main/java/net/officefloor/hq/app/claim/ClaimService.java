@@ -47,8 +47,8 @@ import org.springframework.web.server.ResponseStatusException;
  * limit); a clerk settling one above it makes it PENDING instead. A steward settles any claim, and
  * approves a PENDING claim (SETTLED, its due fixed then) or rejects it with a reason (back to OPEN);
  * the user who opened a claim cannot approve it. The user who last edited a claim (through its form or
- * its row's amount) can neither settle nor approve it, as its opener cannot. A PENDING claim is not bound by a statement: it
- * shows its live figure, and is bound again by the last statement once rejected. An overdue claim's due gains a late charge on its
+ * its row's amount) can neither settle nor approve it, as its opener cannot. A PENDING claim is bound by a statement
+ * like any other claim that counts: while a statement binds it, it shows the bound figure. An overdue claim's due gains a late charge on its
  * figure (see {@link LateCharge}), and the floor is applied last: a claim's live due is never below
  * the sheet's floor. A statement binds only the rate figure, not the charge nor the floor, and settling fixes the charge into the settled due. A claim with
  * a negative amount is a correction: it is allowed only when it names, by number, a SETTLED claim
@@ -115,13 +115,13 @@ public class ClaimService {
 
     /**
      * A claim's figure under any late charge: the due fixed when settled, else the one bound by a
-     * statement (not while PENDING), else the live due; null when it has none.
+     * statement, else the live due; null when it has none.
      */
     public BigDecimal figure(String sheetId, Person person, Claim claim) {
         if (isFrozen(claim)) {
             return claim.getSettledDue();
         }
-        return claim.isStated() && claim.getStatus() != ClaimStatus.PENDING ? claim.getStatedDue()
+        return claim.isStated() ? claim.getStatedDue()
                 : due(sheetId, person, claim);
     }
 
@@ -323,7 +323,7 @@ public class ClaimService {
     }
 
     /**
-     * Approve a PENDING claim: it becomes SETTLED, its due fixed at its live figure with its late
+     * Approve a PENDING claim: it becomes SETTLED, its due fixed at its figure (the one a statement bound, else its live one) with its late
      * charge on the sheet's today. Refused (409) when not PENDING, and (403) for a clerk or the
      * user who opened it.
      */
@@ -333,7 +333,7 @@ public class ClaimService {
     }
 
     /**
-     * Reject a PENDING claim with a reason: it is OPEN again, bound again by the last statement if
+     * Reject a PENDING claim with a reason: it is OPEN again, still bound by the last statement if
      * that statement included it. Refused (409) when not PENDING, and (403) for a clerk.
      */
     @Transactional
@@ -403,7 +403,7 @@ public class ClaimService {
             next = ClaimStatus.REVIEW;
         }
         // settling fixes the figure with its late charge as it stands on the sheet's today (a
-        // PENDING claim's figure is live)
+        // PENDING claim keeps any figure a statement bound)
         BigDecimal settling = next == ClaimStatus.SETTLED ? charged(sheetId, person, claim) : null;
         if (next == ClaimStatus.SETTLED && needsProof(sheetId, person, claim, settling)) {
             throw new ResponseStatusException(HttpStatus.UNPROCESSABLE_ENTITY,
@@ -1078,7 +1078,7 @@ public class ClaimService {
             if (person == null || !claim.getStatus().isOpen() || !grade.equals(person.gradeOn(claim.getDate()))) {
                 continue;
             }
-            if (claim.isStated() && claim.getStatus() != ClaimStatus.PENDING) {
+            if (claim.isStated()) {
                 continue;
             }
             BigDecimal current = charged(sheetId, person, claim);

@@ -39,8 +39,8 @@ import { FigurePipe } from '../../core/figure';
 // A claim may carry tags, typed comma separated: each trimmed and lower-cased, repeats dropped,
 // shown sorted. A claim split off another carries the original's tags.
 // A clerk settling a claim whose due is above the clerk limit makes it PENDING. A PENDING claim
-// counts like an OPEN one but is not bound by a statement: it shows its live figure. A steward
-// approves it (SETTLED, its due fixed then) or rejects it with a reason (back to OPEN, bound again
+// counts like an OPEN one, and a statement binds it like any other claim that counts. A steward
+// approves it (SETTLED, its due fixed then) or rejects it with a reason (back to OPEN, still bound
 // by the last statement); the user who opened or last edited it cannot approve it.
 // Who may open, settle, void or move a claim is the sheet's permission matrix (see the settings).
 // By default a steward can move a DRAFT, OPEN or PENDING claim to another person: it keeps its date, takes
