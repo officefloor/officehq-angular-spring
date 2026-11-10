@@ -1,0 +1,64 @@
+{
+  "checkpoint": 86,
+  "stack": {
+    "repo": "/home/daniel/officehq-angular-spring",
+    "origin": "git@github.com:officefloor/officehq-angular-spring.git",
+    "name": "officehq-angular-spring",
+    "base_ref": "base-empty",
+    "base_commit": "65cb8233ea38b2dfa6cfd18709e30cd18fdf3250"
+  },
+  "checkpoint_id": "cp86_inline-amount",
+  "phase": "mid",
+  "type": "additive",
+  "mutates": [],
+  "replaced_tests": [],
+  "request": {
+    "spec": "A DRAFT claim's amount can be changed in the row itself: an amount entry and a save button on\nthe claim, beside the edit button. It follows exactly the claim form's rules (the amount's form,\na claim that cannot be edited, a locked claim, a closed period, the viewer) and writes CLAIM_EDITED\nas the form does; a refusal shows the claim's error.\n",
+    "prompt": "You are implementing ONE change to this application.\n\nFIRST read AGENTS.md \u2014 it states the working rules and how the app is tested, and sends you to\nDESIGN.md for the app's stack and conventions. Follow both.\n\nTHE CHANGE REQUEST:\nA DRAFT claim's amount can be changed in the row itself: an amount entry and a save button on\nthe claim, beside the edit button. It follows exactly the claim form's rules (the amount's form,\na claim that cannot be edited, a locked claim, a closed period, the viewer) and writes CLAIM_EDITED\nas the form does; a refusal shows the claim's error.\n\nYour work is verified by an automated Playwright UI test already installed under e2e/specs/.\nRead that spec: it declares the exact data-testid anchors, values, test data and any audit\nrecords it expects \u2014 match them. Run `bin/e2e` to build the app, start it, and run the test as\nyou work; iterate until it passes. Change whatever the request needs across the app \u2014 its stored\ndata, its server and its front end. Do NOT edit bin/build, bin/start, bin/stop, bin/e2e,\nAGENTS.md, CLAUDE.md, DESIGN.md, e2e/support/ or the test spec.\n"
+  },
+  "commit_sha": "f007117f42ea50e273fb13b9b0f5d2a0dded586c",
+  "reset_sha": "",
+  "preagent_sha": "76c6d15df91ca27832b2933b3ace71a0b682b992",
+  "prev_sha": "76c6d15df91ca27832b2933b3ace71a0b682b992",
+  "base_sha": "65cb8233ea38b2dfa6cfd18709e30cd18fdf3250",
+  "agent": {
+    "ok": true,
+    "cost_usd": 0.5873354,
+    "input_tokens": 30,
+    "output_tokens": 5884,
+    "cache_read_tokens": 523837,
+    "cache_creation_tokens": 45596,
+    "num_turns": 15,
+    "duration_ms": 263396,
+    "duration_api_ms": 58171,
+    "model": "claude-opus-5-5",
+    "session_id": "eeb55e29-4eb5-44e5-bc1e-5ec51bad0d88",
+    "stop_reason": "success",
+    "result_text": "Each claim row now has an amount entry and a \"Save amount\" button beside Edit, and the four tests in the e2e suite pass (`bin/e2e`).\n\n**Server**\n- New endpoint `POST /api/claims/amount` in `ClaimController.java`.\n- It calls a new `ClaimService.updateAmount`, which reuses the claim form's own update. That means the same refusals apply:\n  - an amount in the wrong form, or a negative amount without a settled claim to correct\n  - a claim that isn't DRAFT, or one another user is editing\n  - a claim in a closed period\n  - a viewer\n- It keeps the claim's date, note and correction, and writes the same `CLAIM_EDITED` audit line as the form. A refused save writes nothing.\n\n**Front end** (`claims.ts`)\n- The entry is `claim-inline-amount` and the button is `claim-inline-save`.\n- The amount format and negative-amount checks run in the browser first; anything else the server refuses shows in the claim's error (`claim-error`).\n- That error clears when you type in the entry or take the next action on the row.\n\nTwo choices I made that aren't in the request:\n- **The entry shows on every claim, not just drafts.** The test types into it on an OPEN claim and expects a refusal, so it has to be there. The server is what limits the change to drafts.\n- **An editor you already have open stays open.** If you have a claim's editor open and save its amount in the row, your lock on it is kept. Saving the form itself still releases the lock, as before.",
+    "error": "",
+    "attempts": [
+      {
+        "ok": true,
+        "limit_reached": false,
+        "retryable": false,
+        "timed_out": false,
+        "cost_usd": 0.5873354,
+        "num_turns": 15,
+        "duration_ms": 263396,
+        "duration_api_ms": 58171,
+        "error": ""
+      }
+    ]
+  },
+  "agent_stream_file": "cp86.agent.jsonl",
+  "agent_diff_file": "cp86.agent.diff",
+  "build_log_file": null,
+  "tests": {
+    "gated": false,
+    "queued": true
+  },
+  "probe": null,
+  "pinned_touched": [],
+  "acceptance_touched": [],
+  "impact_gate": null
+}

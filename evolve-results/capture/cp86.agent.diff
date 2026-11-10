@@ -1,0 +1,149 @@
+diff --git a/src/main/frontend/src/app/features/claims/claims.ts b/src/main/frontend/src/app/features/claims/claims.ts
+index e541c62eb..540401057 100644
+--- a/src/main/frontend/src/app/features/claims/claims.ts
++++ b/src/main/frontend/src/app/features/claims/claims.ts
+@@ -371,6 +371,22 @@ export function money(c: number): string {
+           >
+             Edit
+           </button>
++          <label [for]="'claim-inline-amount-' + c.id">New amount</label>
++          <input
++            [id]="'claim-inline-amount-' + c.id"
++            data-testid="claim-inline-amount"
++            inputmode="decimal"
++            [value]="inlineAmounts().get(c.id) ?? ''"
++            (input)="setInlineAmount(c.id, $any($event.target).value)"
++          />
++          <button
++            type="button"
++            data-testid="claim-inline-save"
++            [attr.aria-label]="'Save amount of claim of ' + c.amount + ' on ' + c.date"
++            (click)="saveInline(c)"
++          >
++            Save amount
++          </button>
+           @if (editingId() === c.id) {
+             <button type="button" data-testid="claim-cancel" (click)="cancel(c)">Cancel</button>
+           }
+@@ -440,6 +456,8 @@ export class PersonClaims {
+   protected readonly redates = signal<ReadonlyMap<number, string>>(new Map());
+   /** The amount typed to split off each claim, by claim id. */
+   protected readonly splitAmounts = signal<ReadonlyMap<number, string>>(new Map());
++  /** The amount typed to change each DRAFT claim's amount to in its row, by claim id. */
++  protected readonly inlineAmounts = signal<ReadonlyMap<number, string>>(new Map());
+   /** The person id chosen to move each claim to, by claim id. */
+   protected readonly targets = signal<ReadonlyMap<number, string>>(new Map());
+   /** The people a claim of this person can be moved to. */
+@@ -681,6 +699,58 @@ export class PersonClaims {
+     }
+   }
+ 
++  protected setInlineAmount(id: number, amount: string): void {
++    this.inlineAmounts.update((m) => new Map(m).set(id, amount));
++    this.clearActionError(id);
++  }
++
++  /** Change a DRAFT claim's amount in its row, keeping its date, note and correction: refused as
++   *  the claim form's save is (the amount's form, a claim that cannot be edited, a locked claim, a
++   *  closed period, the viewer), with the refusal shown on the claim. */
++  protected async saveInline(c: Claim): Promise<void> {
++    this.clearActionError(c.id);
++    const sheet = this.session.sheet();
++    const amount = (this.inlineAmounts().get(c.id) ?? '').trim();
++    if (!SIGNED_AMOUNT.test(amount)) {
++      this.actionErrors.update((m) =>
++        new Map(m).set(c.id, 'Enter an amount with up to two decimals (below zero only for a correction).'));
++      return;
++    }
++    const correction = cents(amount) < 0;
++    if (correction && !this.correctable(c.corrects ?? '')) {
++      this.actionErrors.update((m) => new Map(m).set(c.id, UNCORRECTABLE));
++      return;
++    }
++    try {
++      const claim = await firstValueFrom(
++        this.http.post<Claim>('/api/claims/amount', { sheet, user: this.session.user(), id: c.id, amount }),
++      );
++      if (this.session.sheet() !== sheet) return;
++      this.inlineAmounts.update((m) => {
++        const next = new Map(m);
++        next.delete(c.id);
++        return next;
++      });
++      this.saved.emit(claim);
++    } catch (e) {
++      if (this.session.sheet() !== sheet) return;
++      const status = e instanceof HttpErrorResponse ? e.status : 0;
++      const err =
++        status === 403
++          ? 'Your role may not edit a claim on this sheet.'
++          : status === 423
++            ? CLOSED
++            : status === 422
++              ? 'A claim cannot be dated after its person\'s retirement date.'
++              : status === 400 && correction
++                ? UNCORRECTABLE
++                : status === 409
++                  ? 'Only a DRAFT claim can be edited, and not while another user is editing it.'
++                  : 'Could not save this claim\'s amount.';
++      this.actionErrors.update((m) => new Map(m).set(c.id, err));
++    }
++  }
++
+   protected setSplitAmount(id: number, amount: string): void {
+     this.splitAmounts.update((m) => new Map(m).set(id, amount));
+     this.clearActionError(id);
+diff --git a/src/main/java/net/officefloor/hq/app/claim/ClaimController.java b/src/main/java/net/officefloor/hq/app/claim/ClaimController.java
+index 4c8bc881a..10e8589a7 100644
+--- a/src/main/java/net/officefloor/hq/app/claim/ClaimController.java
++++ b/src/main/java/net/officefloor/hq/app/claim/ClaimController.java
+@@ -39,6 +39,11 @@ public class ClaimController {
+             @Size(max = 120) String corrects) {
+     }
+ 
++    public record UpdateClaimAmountRequest(@NotBlank @Size(max = 100) String sheet,
++            @NotBlank @Size(max = 100) String user, @NotNull Long id,
++            @NotNull @Pattern(regexp = SIGNED_AMOUNT) String amount) {
++    }
++
+     public record PasteClaimsRequest(@NotBlank @Size(max = 100) String sheet,
+             @NotBlank @Size(max = 100) String user, @NotNull @Size(max = 200000) String text) {
+     }
+@@ -159,6 +164,11 @@ public class ClaimController {
+                 note(req.note()), corrects(req.corrects())));
+     }
+ 
++    @PostMapping("/amount")
++    public ClaimResponse updateAmount(@Valid @RequestBody UpdateClaimAmountRequest req) {
++        return response(service.updateAmount(req.sheet().trim(), req.user().trim(), req.id(), amount(req.amount())));
++    }
++
+     @PostMapping("/lock")
+     public ClaimResponse lock(@Valid @RequestBody ClaimStatusRequest req) {
+         return response(service.lock(req.sheet().trim(), req.user().trim(), req.id()));
+diff --git a/src/main/java/net/officefloor/hq/app/claim/ClaimService.java b/src/main/java/net/officefloor/hq/app/claim/ClaimService.java
+index 3865ff924..be3e49de0 100644
+--- a/src/main/java/net/officefloor/hq/app/claim/ClaimService.java
++++ b/src/main/java/net/officefloor/hq/app/claim/ClaimService.java
+@@ -189,6 +189,21 @@ public class ClaimService {
+         return saved;
+     }
+ 
++    /**
++     * Change a DRAFT claim's amount in its row, keeping its date, note and correction: refused
++     * exactly as the claim form's save is, and recorded as CLAIM_EDITED as it is. An editor the
++     * user has open on the claim stays open.
++     */
++    @Transactional
++    public Claim updateAmount(String sheetId, String user, long id, BigDecimal amount) {
++        Claim claim = claims.findByIdAndSheetId(id, sheetId)
++                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "No such claim on this sheet."));
++        String lockedBy = claim.getLockedBy();
++        Claim saved = update(sheetId, user, id, amount, claim.getDate(), claim.getNote(), claim.getCorrects());
++        saved.setLockedBy(lockedBy);
++        return claims.saveAndFlush(saved);
++    }
++
+     /**
+      * Open a claim's editor: the claim is locked for every other user until the editor is saved or
+      * cancelled, or the sheet's today changes. Refused (403) for a viewer, (409) for a claim that is
