@@ -42,6 +42,9 @@ import { FigurePipe } from '../../core/figure';
 // may do it, comma separated (blank: the standing rule, open, settle, void and close by clerk and
 // steward, reassign and reopen by steward). Each saves, like the clerk limit, once its field has
 // been entered; it is not dated.
+// The escalation gap (a whole number of days; blank: off): reminding a claim whose previous reminder
+// was at least that many days before the sheet's today escalates it, once ever. It saves, like the
+// alert threshold, once its field has been entered; it is not dated.
 // Grace days (whole days; blank: off): when the sheet's today changes, every open period whose
 // to-date plus the grace days is before the new today is closed. It saves, like the clerk limit,
 // once its field has been entered; it is not dated.
@@ -109,6 +112,8 @@ interface SettingsResponse {
   alertThreshold: string;
   /** The rounding mode in force on the sheet's today, blank for none. */
   rounding: string;
+  /** The escalation gap in days, blank for off. */
+  escalateAfter: string;
 }
 
 /** The actions the permission matrix covers. */
@@ -428,6 +433,15 @@ const DATE = /^\d{4}-\d{2}-\d{2}$/;
           (focus)="enterAlert($any($event.target))"
           (input)="alertInput.set($any($event.target).value); error.set(null)"
         />
+        <label for="setting-escalate-after">Escalate a reminder this many days after the previous one (blank: off)</label>
+        <input
+          id="setting-escalate-after"
+          data-testid="setting-escalate-after"
+          inputmode="numeric"
+          [value]="escalateInput() ?? ''"
+          (focus)="enterEscalate($any($event.target))"
+          (input)="escalateInput.set($any($event.target).value); error.set(null)"
+        />
         <label for="setting-parent">Parent sheet whose rates stand in for missing ones (blank: none)</label>
         <input
           id="setting-parent"
@@ -573,6 +587,13 @@ const DATE = /^\d{4}-\d{2}-\d{2}$/;
         }
       </p>
       <p>
+        Escalation gap:
+        <strong data-testid="setting-escalate-after-current">{{ escalateAfter() }}</strong>
+        @if (escalateAfter() === '') {
+          <span>(off)</span>
+        }
+      </p>
+      <p>
         Fiscal year starts in month:
         <strong data-testid="setting-fiscal-start-month-current">{{ fiscalStartMonth() }}</strong>
       </p>
@@ -687,6 +708,10 @@ export class Settings {
   protected readonly alertThreshold = signal('');
   /** The alert threshold typed; null while its field has not been entered (left as it is). */
   protected readonly alertInput = signal<string | null>(null);
+  /** The escalation gap in days, blank for off. */
+  protected readonly escalateAfter = signal('');
+  /** The escalation gap typed; null while its field has not been entered (left as it is). */
+  protected readonly escalateInput = signal<string | null>(null);
   /** The month the sheet's fiscal year starts in (1 to 12). */
   protected readonly fiscalStartMonth = signal('1');
   /** The fiscal start month typed; null while its field has not been typed in (left as it is). */
@@ -728,6 +753,7 @@ export class Settings {
       this.entryInput.set(null);
       this.potInput.set(null);
       this.alertInput.set(null);
+      this.escalateInput.set(null);
       this.fiscalInput.set(null);
       this.parentInput.set(null);
       this.error.set(null);
@@ -844,6 +870,15 @@ export class Settings {
     this.alertInput.set(this.alertThreshold());
   }
 
+  /** Entering the escalation gap's field fills it with the gap in force, selected, so it saves as
+   *  it is unless typed over. */
+  protected enterEscalate(input: HTMLInputElement): void {
+    if (this.escalateInput() !== null) return;
+    input.value = this.escalateAfter();
+    input.select();
+    this.escalateInput.set(this.escalateAfter());
+  }
+
   /** Entering the parent's field fills it with the parent in force, selected, so it saves as it is
    *  unless typed over. */
   protected enterParent(input: HTMLInputElement): void {
@@ -941,7 +976,7 @@ export class Settings {
 
   private show(
     res: Pick<SettingsResponse, 'dated' | 'policyDate' | 'periodNumberingFrom' | 'permissions' | 'graceDays' | 'entryDate' | 'pot'>
-      & Partial<Pick<SettingsResponse, 'parent' | 'fiscalStartMonth' | 'alertThreshold'>>,
+      & Partial<Pick<SettingsResponse, 'parent' | 'fiscalStartMonth' | 'alertThreshold' | 'escalateAfter'>>,
   ): void {
     this.dated.set(res.dated);
     this.permissions.set(res.permissions);
@@ -957,6 +992,7 @@ export class Settings {
     this.pot.set(res.pot);
     this.fiscalStartMonth.set(String(res.fiscalStartMonth ?? 1));
     this.alertThreshold.set(res.alertThreshold ?? '');
+    this.escalateAfter.set(res.escalateAfter ?? '');
     if (res.parent !== undefined) this.session.parent.set(res.parent);
   }
 
@@ -982,6 +1018,7 @@ export class Settings {
     const parent = this.parentInput()?.trim() ?? null;
     const fiscalStartMonth = this.fiscalInput()?.trim() || null;
     const alertThreshold = this.alertInput()?.trim() ?? null;
+    const escalateAfter = this.escalateInput()?.trim() ?? null;
     if (clerkLimit !== null && clerkLimit !== '' && !LIMIT.test(clerkLimit)) {
       this.error.set('Enter a clerk limit of 0.00 or more, with up to two decimals, or leave it blank.');
       return;
@@ -1072,6 +1109,10 @@ export class Settings {
       this.error.set('Enter an alert threshold of 0.00 or more, with up to two decimals, or leave it blank for off.');
       return;
     }
+    if (escalateAfter !== null && escalateAfter !== '' && !TERMS.test(escalateAfter)) {
+      this.error.set('Enter an escalation gap of 0 or more whole days, or leave it blank for off.');
+      return;
+    }
     if (fiscalStartMonth !== null && !/^(0?[1-9]|1[0-2])$/.test(fiscalStartMonth)) {
       this.error.set('Enter the fiscal start month as a month number, 1 to 12.');
       return;
@@ -1160,6 +1201,7 @@ export class Settings {
           alertThreshold,
           rounding,
           roundingFrom: from.rounding ?? null,
+          escalateAfter,
         }),
       );
       if (this.session.sheet() !== sheet) return;
@@ -1183,6 +1225,7 @@ export class Settings {
       this.entryInput.set(null);
       this.potInput.set(null);
       this.alertInput.set(null);
+      this.escalateInput.set(null);
       this.fiscalInput.set(null);
       this.parentInput.set(null);
       this.fromInput.set({});

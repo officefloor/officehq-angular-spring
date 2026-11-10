@@ -666,7 +666,9 @@ public class ClaimService {
     }
 
     /**
-     * Remind an OPEN or PENDING claim: write REMIND and mark it reminded on the sheet's today.
+     * Remind an OPEN or PENDING claim: write REMIND and mark it reminded on the sheet's today. With an
+     * escalation gap set, a claim never escalated whose previous reminder was at least that many days
+     * before the sheet's today is escalated too: ESCALATE is written after REMIND.
      * Refused (409) for a claim in any other status or already reminded on the sheet's today.
      */
     @Transactional
@@ -683,10 +685,19 @@ public class ClaimService {
             throw new ResponseStatusException(HttpStatus.CONFLICT, "This claim was already reminded today.");
         }
         Person person = person(sheetId, claim.getPersonId());
+        Integer gap = sheets.load(sheetId, user).getEscalateAfter();
+        boolean escalate = gap != null && !claim.isEscalated() && claim.getRemindedOn() != null
+                && !claim.getRemindedOn().plusDays(gap).isAfter(today);
         claim.setRemindedOn(today);
+        if (escalate) {
+            claim.setEscalated(true);
+        }
         Claim saved = claims.saveAndFlush(claim);
-        audit.recordOnCommit(record("REMIND", sheetId, user, person, saved)
-                + (saved.getNumber() != null ? " number=" + saved.getNumber() : ""));
+        String number = saved.getNumber() != null ? " number=" + saved.getNumber() : "";
+        audit.recordOnCommit(record("REMIND", sheetId, user, person, saved) + number);
+        if (escalate) {
+            audit.recordOnCommit(record("ESCALATE", sheetId, user, person, saved) + number);
+        }
         return saved;
     }
 

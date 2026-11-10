@@ -80,6 +80,7 @@ public class SettingService {
     public static final String PARENT = "parent";
     public static final String FISCAL_START_MONTH = "fiscal-start-month";
     public static final String ALERT_THRESHOLD = "alert-threshold";
+    public static final String ESCALATE_AFTER = "escalate-after";
     /** The key of a permission matrix entry: {@code perm-<action>}. */
     public static final String PERMISSION = "perm-";
 
@@ -127,7 +128,8 @@ public class SettingService {
      * this sheet as an ancestor, before anything is saved), and the fiscal start month when {@code fiscalStartMonth}
      * is not null (1 to 12; anything else refused (400) before anything is saved), and the alert threshold when
      * {@code changeAlert} (null for off), and the rounding mode when {@code rounding} is not null (half-up or
-     * half-even, null for none; anything else refused (400) before anything is saved). Each figure is recorded from its from-date, keeping the values
+     * half-even, null for none; anything else refused (400) before anything is saved), and the escalation gap when
+     * {@code changeEscalate} (null for off). Each figure is recorded from its from-date, keeping the values
      * already recorded (one already recorded from that date is replaced). Each one saved is
      * recorded, in that order.
      */
@@ -140,7 +142,8 @@ public class SettingService {
             Dated<BigDecimal> noteThreshold, Dated<BigDecimal> reviewThreshold, Map<String, String> permissions,
             boolean changeGrace, Integer graceDays, boolean changeEntry, LocalDate entryDate,
             boolean changePot, BigDecimal pot, boolean changeParent, String parent,
-            Integer fiscalStartMonth, boolean changeAlert, BigDecimal alertThreshold, Dated<String> rounding) {
+            Integer fiscalStartMonth, boolean changeAlert, BigDecimal alertThreshold, Dated<String> rounding,
+            boolean changeEscalate, Integer escalateAfter) {
         roles.refuseViewer(sheetId, user);
         Sheet sheet = sheets.load(sheetId, user);
         if (changeParent && parent != null) {
@@ -255,6 +258,11 @@ public class SettingService {
             sheet.setAlertThreshold(alertThreshold == null ? null : alertThreshold.setScale(2));
             sheet = sheetStore.saveAndFlush(sheet);
             audit.recordOnCommit(changed(sheetId, user, ALERT_THRESHOLD, text(sheet.getAlertThreshold())));
+        }
+        if (changeEscalate) {
+            sheet.setEscalateAfter(escalateAfter);
+            sheet = sheetStore.saveAndFlush(sheet);
+            audit.recordOnCommit(changed(sheetId, user, ESCALATE_AFTER, escalateAfter == null ? "" : escalateAfter.toString()));
         }
         return sheet;
     }

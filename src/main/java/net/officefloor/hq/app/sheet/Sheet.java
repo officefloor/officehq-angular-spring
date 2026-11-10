@@ -118,6 +118,10 @@ public class Sheet {
     @Column(name = "pot")
     private BigDecimal pot;
 
+    /** The days since a claim's previous reminder at which reminding it escalates it; null for off. Not dated. */
+    @Column(name = "escalate_after")
+    private Integer escalateAfter;
+
     /** The due-total above which a person is alerted; null for off. Not dated. */
     @Column(name = "alert_threshold")
     private BigDecimal alertThreshold;
@@ -209,6 +213,7 @@ public class Sheet {
         then.periodNumberingFrom = periodNumberingFrom;
         then.entryDate = entryDate;
         then.graceDays = graceDays;
+        then.escalateAfter = escalateAfter;
         then.pot = pot;
         then.alertThreshold = alertThreshold;
         then.fiscalStartMonth = fiscalStartMonth;
@@ -444,6 +449,14 @@ public class Sheet {
     }
 
     /** The due-total above which a person is alerted (see {@link net.officefloor.hq.app.rollup.RollupService}); null for off. Not dated. */
+    public Integer getEscalateAfter() {
+        return escalateAfter;
+    }
+
+    public void setEscalateAfter(Integer escalateAfter) {
+        this.escalateAfter = escalateAfter;
+    }
+
     public BigDecimal getAlertThreshold() {
         return alertThreshold;
     }

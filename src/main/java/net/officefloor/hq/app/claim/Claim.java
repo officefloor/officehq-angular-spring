@@ -145,6 +145,10 @@ public class Claim {
     @Column(name = "reminded_on")
     private LocalDate remindedOn;
 
+    /** Whether the claim has been escalated by a reminder; once ever. */
+    @Column(name = "escalated", nullable = false)
+    private boolean escalated;
+
     /** The reason the claim was voided with; none when voided without one, or not voided. */
     @Column(name = "void_reason")
     private String voidReason;
@@ -229,6 +233,7 @@ public class Claim {
         copy.deferredUntil = deferredUntil;
         copy.deferredOn = deferredOn;
         copy.remindedOn = remindedOn;
+        copy.escalated = escalated;
         copy.voidReason = voidReason;
         copy.proofs = proofs;
         copy.log.addAll(log);
@@ -483,6 +488,14 @@ public class Claim {
 
     public void setRemindedOn(LocalDate remindedOn) {
         this.remindedOn = remindedOn;
+    }
+
+    public boolean isEscalated() {
+        return escalated;
+    }
+
+    public void setEscalated(boolean escalated) {
+        this.escalated = escalated;
     }
 
     /** Raise the claim's proofs count by one. */
