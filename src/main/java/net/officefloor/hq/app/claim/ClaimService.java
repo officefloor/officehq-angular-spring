@@ -51,7 +51,8 @@ import org.springframework.web.server.ResponseStatusException;
  * a date after the sheet's today: until the sheet's today reaches it the claim counts in no total,
  * is not overdue, cannot be settled and is left unbound by a statement; from then on it is an OPEN
  * claim like any other. A claim has a proofs count, raised by one at a time while it is not SETTLED
- * or VOID. A claim whose figure is above the proof threshold in force on its date cannot be settled
+ * or VOID. An OPEN claim can be split: an amount split off it becomes a new OPEN claim (see
+ * {@link #split}). A claim whose figure is above the proof threshold in force on its date cannot be settled
  * or approved while it has no proofs: that is refused before the clerk limit is considered.
  * Who may open, settle, void or move a claim is the sheet's permission matrix (see
  * {@link Sheet#permits}): an action the user's role may not take is refused (403).
@@ -374,6 +375,60 @@ public class ClaimService {
                 + " from=" + from.getName() + " to=" + to.getName());
         rollup.recordChanges(sheetId, user, before);
         return saved;
+    }
+
+    /** What a split did: the original claim, keeping the rest of its amount, and the new claim split off it. */
+    public record Split(Claim original, Claim split) {
+    }
+
+    /**
+     * Split an amount off an OPEN claim: the claim keeps the rest of its amount and is unbound from
+     * any statement; a new OPEN claim with the amount split off, the same date and note, the next
+     * number, opened by the user and due by its date plus the terms in force on it, is listed first
+     * under the person and shows the original's number as split-from. Refused (403) for a role that
+     * may not open a claim, (409) for a claim that is not OPEN or is deferred, (400) for an amount
+     * not above 0.00 and below the claim's, and (423) when dated inside a closed period.
+     */
+    @Transactional
+    public Split split(String sheetId, String user, long id, BigDecimal amount) {
+        roles.refuseViewer(sheetId, user);
+        roles.refuseUnlessPermitted(sheetId, user, "open");
+        // lock the sheet's numbering before reading the claim, as opening one does
+        sheets.lock(sheetId);
+        RollupService.Snapshot before = rollup.snapshot(sheetId);
+        Claim claim = claims.findByIdAndSheetId(id, sheetId)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "No such claim on this sheet."));
+        if (claim.getStatus() != ClaimStatus.OPEN) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT,
+                    "A " + claim.getStatus() + " claim cannot be split.");
+        }
+        if (claim.isDeferredOn(sheets.today(sheetId))) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT,
+                    "A claim deferred until " + claim.getDeferredUntil() + " cannot be split before then.");
+        }
+        if (amount.signum() <= 0 || amount.compareTo(claim.getAmount()) >= 0) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
+                    "A split must be more than 0.00 and less than the claim's amount.");
+        }
+        periods.refuseIfClosed(sheetId, claim.getDate());
+        Person person = person(sheetId, claim.getPersonId());
+        claim.setAmount(claim.getAmount().subtract(amount));
+        claim.bind(false, null);
+        Claim original = claims.saveAndFlush(claim);
+        LocalDate dated = claim.getDate();
+        Claim split = new Claim(sheetId, person.getId(), amount, dated,
+                dated.plusDays(sheets.sheet(sheetId).termsFor(person.gradeOn(dated), dated)), claim.getNote(), null);
+        split.setStatus(ClaimStatus.OPEN);
+        split.setNumber(sheets.nextClaimNumber(sheetId, dated));
+        split.setOpenedBy(user);
+        split.setSplitFrom(original.getNumber());
+        logStatus(sheetId, user, person, split);
+        Claim added = claims.saveAndFlush(split);
+        audit.recordOnCommit(record("CLAIM_SPLIT", sheetId, user, person, original)
+                + " number=" + original.getNumber() + " into=" + added.getNumber());
+        audit.recordOnCommit(record("CLAIM_OPENED", sheetId, user, person, added) + " number=" + added.getNumber());
+        rollup.recordChanges(sheetId, user, before);
+        return new Split(original, added);
     }
 
     /** What a bulk open did: how many claims were opened and how many refused, and the claims opened. */

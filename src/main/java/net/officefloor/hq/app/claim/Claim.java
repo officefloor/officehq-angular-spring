@@ -87,6 +87,10 @@ public class Claim {
     @Column(name = "corrects")
     private String corrects;
 
+    /** The number of the claim this claim was split off from; none for a claim not made by a split. */
+    @Column(name = "split_from")
+    private String splitFrom;
+
     /**
      * The date an OPEN claim is deferred until: while the sheet's today is before it the claim
      * counts in no total, is not overdue and cannot be settled; none when never deferred.
@@ -181,6 +185,14 @@ public class Claim {
 
     public void setCorrects(String corrects) {
         this.corrects = corrects;
+    }
+
+    public String getSplitFrom() {
+        return splitFrom;
+    }
+
+    public void setSplitFrom(String splitFrom) {
+        this.splitFrom = splitFrom;
     }
 
     /** Whether the claim is a correction: its amount is below zero. Its due has no floor and no late charge. */

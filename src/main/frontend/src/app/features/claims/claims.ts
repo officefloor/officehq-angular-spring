@@ -32,6 +32,11 @@ import { DatedGrade, DatedValue, Lateness, Rate, chargedDueCents, dueText, grade
 // Each claim shows its proofs count, raised by one with its proof button (refused for a SETTLED or
 // VOID claim, or one in a closed period). A claim whose due is above the proof threshold in force on
 // its date cannot be settled or approved while it has no proofs: refused with an error on the claim.
+// An OPEN claim can be split: an amount more than 0.00 and less than its own is split off into a new
+// OPEN claim (same date and note, the next number, opened by the user), listed first and showing the
+// original's number as split-from; the original keeps the rest and loses any figure a statement bound
+// it to. Refused for a claim that is not OPEN, one deferred or in a closed period, and a role that may
+// not open a claim.
 export type ClaimStatus = 'DRAFT' | 'OPEN' | 'PENDING' | 'SETTLED' | 'VOID';
 
 export interface Claim {
@@ -63,6 +68,8 @@ export interface Claim {
   deferredUntil: string | null;
   /** How many proofs the claim has. */
   proofs: number;
+  /** The number of the claim this claim was split off from; null for a claim not made by a split. */
+  splitFrom: string | null;
 }
 
 /** One line of a claim's status log. */
@@ -264,6 +271,7 @@ export function money(c: number): string {
           <span>Deferred <span data-testid="claim-deferred">{{ deferredOf(c) ? 'yes' : 'no' }}</span></span>
           <span>Until <span data-testid="claim-deferred-until">{{ c.deferredUntil ?? '' }}</span></span>
           <span>Proofs <span data-testid="claim-proofs">{{ c.proofs }}</span></span>
+          <span>Split from <span data-testid="claim-split-from">{{ c.splitFrom ?? '' }}</span></span>
           <ol [attr.aria-label]="'Status log of claim of ' + c.amount + ' on ' + c.date">
             @for (l of c.log; track $index) {
               <li data-testid="claim-log-line">{{ l.status }} by {{ l.by }} on {{ l.date }} due={{ l.due }}</li>
@@ -292,6 +300,15 @@ export function money(c: number): string {
             (input)="setDeferDate(c.id, $any($event.target).value)"
           />
           <button type="button" data-testid="claim-defer" (click)="defer(c)">Defer</button>
+          <label [for]="'claim-split-amount-' + c.id">Split off</label>
+          <input
+            [id]="'claim-split-amount-' + c.id"
+            data-testid="claim-split-amount"
+            inputmode="decimal"
+            [value]="splitAmounts().get(c.id) ?? ''"
+            (input)="setSplitAmount(c.id, $any($event.target).value)"
+          />
+          <button type="button" data-testid="claim-split" (click)="split(c)">Split</button>
           <label [for]="'claim-reassign-to-' + c.id">Move to</label>
           <select
             [id]="'claim-reassign-to-' + c.id"
@@ -367,6 +384,8 @@ export class PersonClaims {
   protected readonly reasons = signal<ReadonlyMap<number, string>>(new Map());
   /** The date typed to defer each claim until, by claim id. */
   protected readonly deferDates = signal<ReadonlyMap<number, string>>(new Map());
+  /** The amount typed to split off each claim, by claim id. */
+  protected readonly splitAmounts = signal<ReadonlyMap<number, string>>(new Map());
   /** The person id chosen to move each claim to, by claim id. */
   protected readonly targets = signal<ReadonlyMap<number, string>>(new Map());
   /** The people a claim of this person can be moved to. */
@@ -481,6 +500,55 @@ export class PersonClaims {
             : status === 409
               ? `A ${c.status} claim cannot be deferred.`
               : 'Could not defer this claim.';
+      this.actionErrors.update((m) => new Map(m).set(c.id, err));
+    }
+  }
+
+  protected setSplitAmount(id: number, amount: string): void {
+    this.splitAmounts.update((m) => new Map(m).set(id, amount));
+    this.clearActionError(id);
+  }
+
+  /** Split the amount typed off an OPEN claim into a new OPEN claim; the server refuses any other
+   *  claim, a deferred one, one dated inside a closed period, an amount not above 0.00 and below the
+   *  claim's, and a role that may not open a claim. */
+  protected async split(c: Claim): Promise<void> {
+    this.clearActionError(c.id);
+    const sheet = this.session.sheet();
+    const amount = (this.splitAmounts().get(c.id) ?? '').trim();
+    if (!AMOUNT.test(amount) || cents(amount) <= 0 || cents(amount) >= cents(c.amount)) {
+      this.actionErrors.update((m) =>
+        new Map(m).set(c.id, 'Enter an amount more than 0.00 and less than this claim\'s amount.'));
+      return;
+    }
+    try {
+      const done = await firstValueFrom(
+        this.http.post<{ original: Claim; split: Claim }>('/api/claims/split',
+          { sheet, user: this.session.user(), id: c.id, amount }),
+      );
+      if (this.session.sheet() !== sheet) return;
+      this.splitAmounts.update((m) => {
+        const next = new Map(m);
+        next.delete(c.id);
+        return next;
+      });
+      this.saved.emit(done.original);
+      this.saved.emit(done.split);
+    } catch (e) {
+      if (this.session.sheet() !== sheet) return;
+      const status = e instanceof HttpErrorResponse ? e.status : 0;
+      const err =
+        status === 403
+          ? 'Your role may not open a claim, so it may not split one on this sheet.'
+          : status === 423
+            ? CLOSED
+            : status === 400
+              ? 'Enter an amount more than 0.00 and less than this claim\'s amount.'
+              : status === 409
+                ? deferred(c, this.session.today())
+                  ? `This claim is deferred until ${c.deferredUntil} and cannot be split before then.`
+                  : `A ${c.status} claim cannot be split.`
+                : 'Could not split this claim.';
       this.actionErrors.update((m) => new Map(m).set(c.id, err));
     }
   }

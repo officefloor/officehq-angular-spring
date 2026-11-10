@@ -64,6 +64,15 @@ public class ClaimController {
             @NotBlank @Size(max = 100) String user, @NotNull Long id, @NotNull Long personId) {
     }
 
+    public record SplitClaimRequest(@NotBlank @Size(max = 100) String sheet,
+            @NotBlank @Size(max = 100) String user, @NotNull Long id,
+            @NotNull @Pattern(regexp = AMOUNT) String amount) {
+    }
+
+    /** What a split did: the original claim with the rest of its amount, and the new claim split off it. */
+    public record SplitClaimResponse(ClaimResponse original, ClaimResponse split) {
+    }
+
     public record BulkOpenRequest(@NotBlank @Size(max = 100) String sheet, @NotBlank @Size(max = 100) String user,
             @NotNull @Size(max = 1000) List<@NotNull Long> ids) {
     }
@@ -77,7 +86,7 @@ public class ClaimController {
     public record ClaimResponse(long id, long personId, String amount, LocalDate date, String note,
             ClaimStatus status, String number, String settledDue, String openedBy,
             boolean stated, String statedDue, String corrects, LocalDate dueBy, List<ClaimLogLine> log,
-            LocalDate deferredUntil, int proofs) {
+            LocalDate deferredUntil, int proofs, String splitFrom) {
     }
 
     /** One line of a claim's status log, oldest first. */
@@ -96,7 +105,7 @@ public class ClaimController {
                 claim.getCorrects(), claim.getDueBy(),
                 claim.getLog().stream().map(l -> new ClaimLogLine(l.getStatus(), l.getBy(), l.getDate(), l.getDue()))
                         .toList(),
-                claim.getDeferredUntil(), claim.getProofs());
+                claim.getDeferredUntil(), claim.getProofs(), claim.getSplitFrom());
     }
 
     public static BigDecimal amount(String amount) {
@@ -187,6 +196,12 @@ public class ClaimController {
     @PostMapping("/reassign")
     public ClaimResponse reassign(@Valid @RequestBody ReassignClaimRequest req) {
         return response(service.reassign(req.sheet().trim(), req.user().trim(), req.id(), req.personId()));
+    }
+
+    @PostMapping("/split")
+    public SplitClaimResponse split(@Valid @RequestBody SplitClaimRequest req) {
+        ClaimService.Split done = service.split(req.sheet().trim(), req.user().trim(), req.id(), amount(req.amount()));
+        return new SplitClaimResponse(response(done.original()), response(done.split()));
     }
 
     @PostMapping("/bulk-open")
