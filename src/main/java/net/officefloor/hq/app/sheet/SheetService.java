@@ -108,6 +108,18 @@ public class SheetService {
     }
 
     /**
+     * Take the next settle batch number on the sheet (1, 2, ...). The sheet stays locked until the
+     * caller's transaction ends, so two batches at the same moment take different numbers.
+     */
+    @Transactional
+    public int nextBatch(String id) {
+        Sheet sheet = lock(id);
+        int batch = sheet.nextBatch();
+        sheets.saveAndFlush(sheet);
+        return batch;
+    }
+
+    /**
      * The next number for a claim due by {@code date} opened on the sheet, with no gaps and never
      * reused. Sheet-wide (1, 2, ...) unless the sheet numbers by period on its today: then within
      * the period the date falls in ({@code <period name>-<n>}), or in no period its X sequence

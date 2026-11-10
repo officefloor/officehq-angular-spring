@@ -109,6 +109,10 @@ public class Claim {
     @Column(name = "split_from")
     private String splitFrom;
 
+    /** The number of the bulk settle batch that settled the claim (or made it PENDING); none when not settled by one. */
+    @Column(name = "batch")
+    private Integer batch;
+
     /** Whether the claim was added while the period its due-by falls in was soft-closed. */
     @Column(name = "late_entry", nullable = false)
     private boolean lateEntry;
@@ -261,6 +265,14 @@ public class Claim {
     /** Give the claim tags, already trimmed, lower-cased, without repeats and sorted. */
     public void setTags(List<String> tags) {
         this.tags = tags.isEmpty() ? null : String.join(",", tags);
+    }
+
+    public Integer getBatch() {
+        return batch;
+    }
+
+    public void setBatch(Integer batch) {
+        this.batch = batch;
     }
 
     public boolean isLateEntry() {

@@ -9,6 +9,7 @@ interface SheetResponse {
   id: string;
   today: string;
   archived: boolean;
+  lastBatch: number | null;
 }
 
 @Injectable({ providedIn: 'root' })
@@ -20,6 +21,8 @@ export class Session {
   readonly today = signal<string | null>(null);
   /** Whether the sheet is archived: it stays visible and every change to it is refused. */
   readonly archived = signal(false);
+  /** The number of the sheet's last settle batch (a bulk settle that settled a claim); none when there has been none. */
+  readonly lastBatch = signal<number | null>(null);
   /** Whether retired people are listed: off when the screen opens, and left as it is by loading a sheet. */
   readonly showRetired = signal(false);
   /**
@@ -37,6 +40,7 @@ export class Session {
     this.sheet.set(null);
     this.today.set(null);
     this.archived.set(false);
+    this.lastBatch.set(null);
     this.asOf.set(null);
   }
 
@@ -81,5 +85,6 @@ export class Session {
     this.sheet.set(res.id);
     this.today.set(res.today);
     this.archived.set(res.archived);
+    this.lastBatch.set(res.lastBatch);
   }
 }

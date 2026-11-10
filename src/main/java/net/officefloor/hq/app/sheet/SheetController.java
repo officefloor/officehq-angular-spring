@@ -32,11 +32,13 @@ public class SheetController {
     public record ArchiveSheetRequest(@NotBlank @Size(max = 100) String id, @NotBlank @Size(max = 100) String user) {
     }
 
-    public record SheetResponse(String id, LocalDate today, boolean archived) {
+    /** {@code lastBatch}: the number of the sheet's last settle batch; none when there has been none. */
+    public record SheetResponse(String id, LocalDate today, boolean archived, Integer lastBatch) {
     }
 
     private static SheetResponse response(Sheet sheet) {
-        return new SheetResponse(sheet.getId(), sheet.getToday(), sheet.isArchived());
+        return new SheetResponse(sheet.getId(), sheet.getToday(), sheet.isArchived(),
+                sheet.getLastBatch() == 0 ? null : sheet.getLastBatch());
     }
 
     private final SheetService service;

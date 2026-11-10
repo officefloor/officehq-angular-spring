@@ -108,7 +108,8 @@ public class ClaimController {
     public record BulkReassignResponse(int reassigned, int refused, List<ClaimResponse> claims) {
     }
 
-    public record BulkSettleResponse(int settled, int refused, List<ClaimResponse> claims) {
+    /** {@code lastBatch}: the sheet's last settle batch number after the bulk settle; none when there has been none. */
+    public record BulkSettleResponse(int settled, int refused, List<ClaimResponse> claims, Integer lastBatch) {
     }
 
     public record ClaimResponse(long id, long personId, String amount, LocalDate date, String note,
@@ -117,7 +118,7 @@ public class ClaimController {
             boolean stated, String statedDue, String corrects, LocalDate dueBy, List<ClaimLogLine> log,
             LocalDate deferredUntil, int proofs, String splitFrom, String lockedBy,
             boolean lateEntry, LocalDate remindedOn, String ref, List<String> tags, String voidReason,
-            List<ClaimCommentLine> comments) {
+            List<ClaimCommentLine> comments, Integer batch) {
     }
 
     /** One comment on a claim, oldest first. */
@@ -144,7 +145,8 @@ public class ClaimController {
                 claim.isLateEntry(), claim.getRemindedOn(), claim.getRef(), claim.getTags(),
                 claim.getVoidReason(),
                 claim.getComments().stream().map(c -> new ClaimCommentLine(c.getBy(), c.getDate(), c.getText()))
-                        .toList());
+                        .toList(),
+                claim.getBatch());
     }
 
     public static BigDecimal amount(String amount) {
@@ -302,7 +304,8 @@ public class ClaimController {
     public BulkSettleResponse bulkSettle(@Valid @RequestBody BulkOpenRequest req) {
         ClaimService.BulkSettled done = service.bulkSettle(req.sheet().trim(), req.user().trim(), req.ids());
         return new BulkSettleResponse(done.settled(), done.refused(),
-                done.claims().stream().map(ClaimController::response).toList());
+                done.claims().stream().map(ClaimController::response).toList(),
+                done.lastBatch() == 0 ? null : done.lastBatch());
     }
 
     @PostMapping("/bulk-reassign")

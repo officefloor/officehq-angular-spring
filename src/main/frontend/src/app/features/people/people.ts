@@ -281,6 +281,7 @@ const SUMMARY_STATUSES = ['DRAFT', 'OPEN', 'PENDING', 'SETTLED', 'VOID'] as cons
         <p role="alert" data-testid="bulk-open-error">{{ err }}</p>
       }
       <button type="button" data-testid="bulk-settle" (click)="bulkSettle()">Settle selected claims</button>
+      <span>Last batch <strong data-testid="bulk-settle-batch">{{ session.lastBatch() ?? '' }}</strong></span>
       @if (bulkSettleResult(); as r) {
         <p>
           Settled <strong data-testid="bulk-settled">{{ r.settled }}</strong>,
@@ -1303,7 +1304,8 @@ export class People {
     const ids = [...this.selectedClaims()];
     try {
       const done = await firstValueFrom(
-        this.http.post<{ settled: number; refused: number; claims: Claim[] }>('/api/claims/bulk-settle', {
+        this.http.post<{ settled: number; refused: number; claims: Claim[]; lastBatch: number | null }>(
+          '/api/claims/bulk-settle', {
           sheet,
           user: this.session.user(),
           ids,
@@ -1313,6 +1315,7 @@ export class People {
       const byId = new Map(done.claims.map((c) => [c.id, c]));
       this.claims.update((list) => list.map((c) => byId.get(c.id) ?? c));
       this.selectedClaims.set(new Set());
+      this.session.lastBatch.set(done.lastBatch);
       this.bulkSettleResult.set({ settled: done.settled, refused: done.refused });
     } catch {
       if (this.session.sheet() !== sheet) return;

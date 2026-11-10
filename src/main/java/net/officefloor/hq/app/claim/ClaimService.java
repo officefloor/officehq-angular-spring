@@ -731,15 +731,19 @@ public class ClaimService {
         return new BulkOpened(opened.size(), refused, opened);
     }
 
-    /** What a bulk settle did: how many claims were settled (or made PENDING) and how many refused, and the claims changed. */
-    public record BulkSettled(int settled, int refused, List<Claim> claims) {
+    /**
+     * What a bulk settle did: how many claims were settled (or made PENDING) and how many refused,
+     * the claims changed, and the sheet's last batch number after it (0 when there has been none).
+     */
+    public record BulkSettled(int settled, int refused, List<Claim> claims, int lastBatch) {
     }
 
     /**
      * Settle the given claims together, in list order (the order people were added, newest claim
      * first within a person), each by exactly the rules of settling one claim. A claim a clerk's
      * settle makes PENDING counts as settled; a claim that cannot be settled is refused and left
-     * as it is.
+     * as it is. A bulk settle that settles at least one claim is a batch: it takes the sheet's next
+     * batch number, and each claim it settled is marked with it.
      */
     @Transactional
     public BulkSettled bulkSettle(String sheetId, String user, Collection<Long> ids) {
@@ -754,7 +758,16 @@ public class ClaimService {
                 refused++;
             }
         }
-        return new BulkSettled(settled.size(), refused, settled);
+        if (settled.isEmpty()) {
+            return new BulkSettled(0, refused, settled, sheets.sheet(sheetId).getLastBatch());
+        }
+        int batch = sheets.nextBatch(sheetId);
+        List<Claim> batched = new ArrayList<>();
+        for (Claim claim : settled) {
+            claim.setBatch(batch);
+            batched.add(claims.saveAndFlush(claim));
+        }
+        return new BulkSettled(batched.size(), refused, batched, batch);
     }
 
     /** What a bulk move did: how many claims were moved and how many refused, and the claims moved. */

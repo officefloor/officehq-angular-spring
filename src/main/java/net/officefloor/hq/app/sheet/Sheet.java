@@ -77,6 +77,10 @@ public class Sheet {
     @Column(name = "last_claim_number", nullable = false)
     private int lastClaimNumber;
 
+    /** The number of the sheet's last settle batch; 0 when there has been none. */
+    @Column(name = "last_batch", nullable = false)
+    private int lastBatch;
+
     /**
      * The values recorded for the settings that carry a figure (the floor, the late percent, the
      * terms, a grade's own terms, a grade's grace days, the clerk limit, the cap, the proof threshold and the note threshold), each from a from-date.
@@ -378,6 +382,16 @@ public class Sheet {
     /** Give out the next claim number on the sheet. */
     public int nextClaimNumber() {
         return ++lastClaimNumber;
+    }
+
+    /** The number of the sheet's last settle batch; 0 when there has been none. */
+    public int getLastBatch() {
+        return lastBatch;
+    }
+
+    /** Take the next settle batch number. */
+    public int nextBatch() {
+        return ++lastBatch;
     }
 
     /** The permission matrix entry for each action: the roles as entered, blank for the standing rule. */

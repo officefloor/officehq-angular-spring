@@ -114,6 +114,8 @@ export interface Claim {
   voidReason: string | null;
   /** The claim's comments, oldest first. */
   comments: ClaimCommentLine[];
+  /** The number of the bulk settle batch that settled the claim (or made it PENDING); null when not settled by one. */
+  batch: number | null;
 }
 
 /** One comment on a claim: who wrote it, on the sheet's today then. */
@@ -343,6 +345,7 @@ export function money(c: number): string {
           <span>Until <span data-testid="claim-deferred-until">{{ c.deferredUntil ?? '' }}</span></span>
           <span>Proofs <span data-testid="claim-proofs">{{ c.proofs }}</span></span>
           <span>Split from <span data-testid="claim-split-from">{{ c.splitFrom ?? '' }}</span></span>
+          <span>Batch <span data-testid="claim-batch">{{ c.batch ?? '' }}</span></span>
           <span>Late entry <span data-testid="claim-late-entry">{{ c.lateEntry ? 'yes' : 'no' }}</span></span>
           <span>Reminded <span data-testid="claim-reminded">{{ c.remindedOn ?? '' }}</span></span>
           <ol [attr.aria-label]="'Status log of claim of ' + c.amount + ' on ' + c.date">
