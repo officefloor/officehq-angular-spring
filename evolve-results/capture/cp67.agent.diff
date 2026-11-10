@@ -1,0 +1,112 @@
+diff --git a/src/main/frontend/src/app/features/people/people.ts b/src/main/frontend/src/app/features/people/people.ts
+index e1b53b483..0d5a9d9dd 100644
+--- a/src/main/frontend/src/app/features/people/people.ts
++++ b/src/main/frontend/src/app/features/people/people.ts
+@@ -2,7 +2,7 @@ import { HttpClient, HttpErrorResponse } from '@angular/common/http';
+ import { Component, computed, effect, inject, signal } from '@angular/core';
+ import { firstValueFrom } from 'rxjs';
+ import { Session } from '../../core/session';
+-import { AMOUNT, Claim, PersonClaims, cents, counts, deferred, isOpen, money, overdue, roundingDate, statusAt } from '../claims/claims';
++import { AMOUNT, Claim, PersonClaims, cents, counts, deferred, isOpen, money, overdue, plusDays, roundingDate, statusAt } from '../claims/claims';
+ import { DatedDue, Period, Periods, periodDueTotal, personPeriodDueTotal } from '../periods/periods';
+ import { DatedGrade, DatedValue, Lateness, Rate, Rates, chargedDueCents, dueText, gradeOn, pctOn, valueOn } from '../rates/rates';
+ import { Roles } from '../roles/roles';
+@@ -57,6 +57,8 @@ import { GradeSummary, PeriodSummary, StatusSummary, Summary } from '../summary/
+ // The sheet may have a cap (the one in force on its today): a person's due-total is at most it, and their excess is how far the
+ // sum of their figures is above it (0.00 otherwise; a due-total of n/a is not capped). Every total
+ // of due-totals (the sheet's, a grade's, backing, the export) adds up the capped figures.
++// A person is active when they have an OPEN or PENDING claim that counts dated within the 30 days up
++// to and including the sheet's today; the summary counts the active people per grade, retired excluded.
+ interface Person {
+   id: number;
+   name: string;
+@@ -277,6 +279,7 @@ const SUMMARY_STATUSES = ['DRAFT', 'OPEN', 'PENDING', 'SETTLED', 'VOID'] as cons
+               <th scope="col">Due in {{ pd.name }}</th>
+             }
+             <th scope="col">Overdue</th>
++            <th scope="col">Active</th>
+             <th scope="col">Statements</th>
+             <th scope="col">Retired</th>
+             <th scope="col">On hold</th>
+@@ -301,6 +304,7 @@ const SUMMARY_STATUSES = ['DRAFT', 'OPEN', 'PENDING', 'SETTLED', 'VOID'] as cons
+                 <span data-testid="person-overdue-count">{{ overdueOf(p).count }}</span>
+                 <span>totalling <span data-testid="person-overdue-total">{{ money(overdueOf(p).cents) }}</span></span>
+               </td>
++              <td data-testid="person-active">{{ isActive(p) ? 'yes' : 'no' }}</td>
+               <td>
+                 <span data-testid="person-statement-count">{{ statementOf(p.id)?.count ?? 0 }}</span>
+                 <span>Last due <span data-testid="person-stated-total">{{ statementOf(p.id)?.dueTotal ?? '' }}</span></span>
+@@ -557,10 +561,15 @@ export class People {
+   });
+   /** Per grade: the people not retired on it today, and their due-totals added up (skipping n/a). */
+   protected readonly gradeSummary = computed<GradeSummary[]>(() => {
+-    const active = this.people().filter((p) => !p.retired);
++    const current = this.people().filter((p) => !p.retired);
+     return GRADES.map((grade) => {
+-      const on = active.filter((p) => this.gradeToday(p) === grade);
+-      return { grade, count: on.length, dueTotal: money(on.reduce((sum, p) => sum + (this.dueOf(p) ?? 0), 0)) };
++      const on = current.filter((p) => this.gradeToday(p) === grade);
++      return {
++        grade,
++        count: on.length,
++        dueTotal: money(on.reduce((sum, p) => sum + (this.dueOf(p) ?? 0), 0)),
++        active: on.filter((p) => this.isActive(p)).length,
++      };
+     });
+   });
+   /** Per period: its due-total, as the periods list shows it. */
+@@ -708,6 +717,19 @@ export class People {
+     return figures.reduce<number>((sum, f) => sum + (f ?? 0), 0);
+   }
+ 
++  /**
++   * Whether the person is active: they have an OPEN or PENDING claim that counts dated within the
++   * 30 days up to and including the sheet's today.
++   */
++  protected isActive(p: Person): boolean {
++    const today = this.session.today();
++    if (!today) return false;
++    const since = plusDays(today, -29);
++    return this.claimsOf(p.id).some(
++      (c) => isOpen(c) && countsFor(p, c, today) && c.date >= since && c.date <= today,
++    );
++  }
++
+   /** The person's overdue claims that count: how many, and the sum of their figures in whole cents. */
+   protected overdueOf(p: Person): { count: number; cents: number } {
+     const today = this.session.today();
+diff --git a/src/main/frontend/src/app/features/summary/summary.ts b/src/main/frontend/src/app/features/summary/summary.ts
+index 48317739c..8de1e764c 100644
+--- a/src/main/frontend/src/app/features/summary/summary.ts
++++ b/src/main/frontend/src/app/features/summary/summary.ts
+@@ -1,12 +1,13 @@
+ import { Component, input } from '@angular/core';
+ 
+ // The sheet at a glance, drawn from the same figures the lists show: per grade, how many people
+-// not retired are on it today and their due-totals added up; per period, its due-total; per
++// not retired are on it today, their due-totals added up and how many of them are active; per period, its due-total; per
+ // status, how many claims on the sheet have it.
+ export interface GradeSummary {
+   grade: string;
+   count: number;
+   dueTotal: string;
++  active: number;
+ }
+ 
+ export interface PeriodSummary {
+@@ -30,6 +31,7 @@ export interface StatusSummary {
+             <th scope="col">Grade</th>
+             <th scope="col">People</th>
+             <th scope="col">Due</th>
++            <th scope="col">Active</th>
+           </tr>
+         </thead>
+         <tbody>
+@@ -38,6 +40,7 @@ export interface StatusSummary {
+               <th scope="row">{{ g.grade }}</th>
+               <td [attr.data-testid]="'summary-grade-' + g.grade + '-count'">{{ g.count }}</td>
+               <td [attr.data-testid]="'summary-grade-' + g.grade + '-due-total'">{{ g.dueTotal }}</td>
++              <td [attr.data-testid]="'summary-grade-' + g.grade + '-active'">{{ g.active }}</td>
+             </tr>
+           }
+         </tbody>
