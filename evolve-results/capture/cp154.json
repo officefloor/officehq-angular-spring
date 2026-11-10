@@ -1,0 +1,64 @@
+{
+  "checkpoint": 154,
+  "stack": {
+    "repo": "/home/daniel/officehq-angular-spring",
+    "origin": "git@github.com:officefloor/officehq-angular-spring.git",
+    "name": "officehq-angular-spring",
+    "base_ref": "base-empty",
+    "base_commit": "65cb8233ea38b2dfa6cfd18709e30cd18fdf3250"
+  },
+  "checkpoint_id": "cp154_classic-summary",
+  "phase": "mid",
+  "type": "additive",
+  "mutates": [],
+  "replaced_tests": [],
+  "request": {
+    "spec": "Add a classic summary beside the summary: per period, the due-total counting each claim by its\nstatus now (OPEN, SETTLED and PENDING count; a closed period shows the figure fixed when it closed),\nand the sheet's due-total with no trimming (everyone's due-total added up). Both summaries show at\nonce and both must be right.\n",
+    "prompt": "You are implementing ONE change to this application.\n\nFIRST read AGENTS.md \u2014 it states the working rules and how the app is tested, and sends you to\nDESIGN.md for the app's stack and conventions. Follow both.\n\nTHE CHANGE REQUEST:\nAdd a classic summary beside the summary: per period, the due-total counting each claim by its\nstatus now (OPEN, SETTLED and PENDING count; a closed period shows the figure fixed when it closed),\nand the sheet's due-total with no trimming (everyone's due-total added up). Both summaries show at\nonce and both must be right.\n\nYour work is verified by an automated Playwright UI test already installed under e2e/specs/.\nRead that spec: it declares the exact data-testid anchors, values, test data and any audit\nrecords it expects \u2014 match them. Run `bin/e2e` to build the app, start it, and run the test as\nyou work; iterate until it passes. Change whatever the request needs across the app \u2014 its stored\ndata, its server and its front end. Do NOT edit bin/build, bin/start, bin/stop, bin/e2e,\nAGENTS.md, CLAUDE.md, DESIGN.md, e2e/support/ or the test spec.\n"
+  },
+  "commit_sha": "c341515ac05f4c908c668db987c0e5af679bdfae",
+  "reset_sha": "",
+  "preagent_sha": "8fc43d6bd812248393f6117999174f53a707bdcd",
+  "prev_sha": "8fc43d6bd812248393f6117999174f53a707bdcd",
+  "base_sha": "65cb8233ea38b2dfa6cfd18709e30cd18fdf3250",
+  "agent": {
+    "ok": true,
+    "cost_usd": 0.48535799999999996,
+    "input_tokens": 26,
+    "output_tokens": 4634,
+    "cache_read_tokens": 387030,
+    "cache_creation_tokens": 39396,
+    "num_turns": 13,
+    "duration_ms": 313840,
+    "duration_api_ms": 46607,
+    "model": "claude-opus-5-5",
+    "session_id": "1aa32f18-f56b-41d2-a051-f88291b69006",
+    "stop_reason": "success",
+    "result_text": "The classic summary now shows beside the existing summary, and `bin/e2e` passes all 4 tests in the spec.\n\n**What it shows:**\n- **Per period (`classic-period-<name>-due-total`):** the due of the claims that fall in the period, each counted by its status now. OPEN, SETTLED and PENDING claims count, and holds, deferrals and retirement still take claims out the way they do elsewhere. A closed or soft-closed period shows the figure fixed when it closed. The existing summary instead counts a claim by the status it had at the end of the period.\n- **Sheet total (`classic-due-total`):** everyone's due-total added up with no trimming. Each person's figure is still capped as on their row, and people whose due-total is \"n/a\" are skipped. The existing total drops the highest and lowest figure once there are three or more people.\n\n**Changes (front end only):**\n- **`periods.ts`:** each claim's due entry now records whether it counts by its status now. A new `classicPeriodDueTotal` function works out a period's classic total.\n- **`people.ts`:** two new computed values (`classicPeriodSummary`, `classicDueTotal`) feed the new component.\n- **`summary.ts`:** a new `ClassicSummary` component with its own heading.\n\nThe server and stored data didn't need changing: everything it needs was already sent to the screen, and the new figures don't write any audit records.",
+    "error": "",
+    "attempts": [
+      {
+        "ok": true,
+        "limit_reached": false,
+        "retryable": false,
+        "timed_out": false,
+        "cost_usd": 0.48535799999999996,
+        "num_turns": 13,
+        "duration_ms": 313840,
+        "duration_api_ms": 46607,
+        "error": ""
+      }
+    ]
+  },
+  "agent_stream_file": "cp154.agent.jsonl",
+  "agent_diff_file": "cp154.agent.diff",
+  "build_log_file": null,
+  "tests": {
+    "gated": false,
+    "queued": true
+  },
+  "probe": null,
+  "pinned_touched": [],
+  "acceptance_touched": [],
+  "impact_gate": null
+}
