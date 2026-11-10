@@ -39,6 +39,11 @@ public class ClaimController {
             @Size(max = 120) String corrects) {
     }
 
+    public record UpdateClaimAmountRequest(@NotBlank @Size(max = 100) String sheet,
+            @NotBlank @Size(max = 100) String user, @NotNull Long id,
+            @NotNull @Pattern(regexp = SIGNED_AMOUNT) String amount) {
+    }
+
     public record PasteClaimsRequest(@NotBlank @Size(max = 100) String sheet,
             @NotBlank @Size(max = 100) String user, @NotNull @Size(max = 200000) String text) {
     }
@@ -157,6 +162,11 @@ public class ClaimController {
     public ClaimResponse update(@Valid @RequestBody UpdateClaimRequest req) {
         return response(service.update(req.sheet().trim(), req.user().trim(), req.id(), amount(req.amount()), req.date(),
                 note(req.note()), corrects(req.corrects())));
+    }
+
+    @PostMapping("/amount")
+    public ClaimResponse updateAmount(@Valid @RequestBody UpdateClaimAmountRequest req) {
+        return response(service.updateAmount(req.sheet().trim(), req.user().trim(), req.id(), amount(req.amount())));
     }
 
     @PostMapping("/lock")

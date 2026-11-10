@@ -190,6 +190,21 @@ public class ClaimService {
     }
 
     /**
+     * Change a DRAFT claim's amount in its row, keeping its date, note and correction: refused
+     * exactly as the claim form's save is, and recorded as CLAIM_EDITED as it is. An editor the
+     * user has open on the claim stays open.
+     */
+    @Transactional
+    public Claim updateAmount(String sheetId, String user, long id, BigDecimal amount) {
+        Claim claim = claims.findByIdAndSheetId(id, sheetId)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "No such claim on this sheet."));
+        String lockedBy = claim.getLockedBy();
+        Claim saved = update(sheetId, user, id, amount, claim.getDate(), claim.getNote(), claim.getCorrects());
+        saved.setLockedBy(lockedBy);
+        return claims.saveAndFlush(saved);
+    }
+
+    /**
      * Open a claim's editor: the claim is locked for every other user until the editor is saved or
      * cancelled, or the sheet's today changes. Refused (403) for a viewer, (409) for a claim that is
      * not DRAFT or is locked by another user, and (423) when dated inside a closed period; a refused

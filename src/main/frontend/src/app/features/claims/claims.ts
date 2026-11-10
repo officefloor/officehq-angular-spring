@@ -371,6 +371,22 @@ export function money(c: number): string {
           >
             Edit
           </button>
+          <label [for]="'claim-inline-amount-' + c.id">New amount</label>
+          <input
+            [id]="'claim-inline-amount-' + c.id"
+            data-testid="claim-inline-amount"
+            inputmode="decimal"
+            [value]="inlineAmounts().get(c.id) ?? ''"
+            (input)="setInlineAmount(c.id, $any($event.target).value)"
+          />
+          <button
+            type="button"
+            data-testid="claim-inline-save"
+            [attr.aria-label]="'Save amount of claim of ' + c.amount + ' on ' + c.date"
+            (click)="saveInline(c)"
+          >
+            Save amount
+          </button>
           @if (editingId() === c.id) {
             <button type="button" data-testid="claim-cancel" (click)="cancel(c)">Cancel</button>
           }
@@ -440,6 +456,8 @@ export class PersonClaims {
   protected readonly redates = signal<ReadonlyMap<number, string>>(new Map());
   /** The amount typed to split off each claim, by claim id. */
   protected readonly splitAmounts = signal<ReadonlyMap<number, string>>(new Map());
+  /** The amount typed to change each DRAFT claim's amount to in its row, by claim id. */
+  protected readonly inlineAmounts = signal<ReadonlyMap<number, string>>(new Map());
   /** The person id chosen to move each claim to, by claim id. */
   protected readonly targets = signal<ReadonlyMap<number, string>>(new Map());
   /** The people a claim of this person can be moved to. */
@@ -677,6 +695,58 @@ export class PersonClaims {
               : status === 409
                 ? `A ${c.status} claim cannot be re-dated.`
                 : 'Could not re-date this claim.';
+      this.actionErrors.update((m) => new Map(m).set(c.id, err));
+    }
+  }
+
+  protected setInlineAmount(id: number, amount: string): void {
+    this.inlineAmounts.update((m) => new Map(m).set(id, amount));
+    this.clearActionError(id);
+  }
+
+  /** Change a DRAFT claim's amount in its row, keeping its date, note and correction: refused as
+   *  the claim form's save is (the amount's form, a claim that cannot be edited, a locked claim, a
+   *  closed period, the viewer), with the refusal shown on the claim. */
+  protected async saveInline(c: Claim): Promise<void> {
+    this.clearActionError(c.id);
+    const sheet = this.session.sheet();
+    const amount = (this.inlineAmounts().get(c.id) ?? '').trim();
+    if (!SIGNED_AMOUNT.test(amount)) {
+      this.actionErrors.update((m) =>
+        new Map(m).set(c.id, 'Enter an amount with up to two decimals (below zero only for a correction).'));
+      return;
+    }
+    const correction = cents(amount) < 0;
+    if (correction && !this.correctable(c.corrects ?? '')) {
+      this.actionErrors.update((m) => new Map(m).set(c.id, UNCORRECTABLE));
+      return;
+    }
+    try {
+      const claim = await firstValueFrom(
+        this.http.post<Claim>('/api/claims/amount', { sheet, user: this.session.user(), id: c.id, amount }),
+      );
+      if (this.session.sheet() !== sheet) return;
+      this.inlineAmounts.update((m) => {
+        const next = new Map(m);
+        next.delete(c.id);
+        return next;
+      });
+      this.saved.emit(claim);
+    } catch (e) {
+      if (this.session.sheet() !== sheet) return;
+      const status = e instanceof HttpErrorResponse ? e.status : 0;
+      const err =
+        status === 403
+          ? 'Your role may not edit a claim on this sheet.'
+          : status === 423
+            ? CLOSED
+            : status === 422
+              ? 'A claim cannot be dated after its person\'s retirement date.'
+              : status === 400 && correction
+                ? UNCORRECTABLE
+                : status === 409
+                  ? 'Only a DRAFT claim can be edited, and not while another user is editing it.'
+                  : 'Could not save this claim\'s amount.';
       this.actionErrors.update((m) => new Map(m).set(c.id, err));
     }
   }
