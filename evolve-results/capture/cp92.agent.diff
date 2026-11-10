@@ -1,0 +1,142 @@
+diff --git a/src/main/frontend/src/app/features/claims/claims.ts b/src/main/frontend/src/app/features/claims/claims.ts
+index 64ecadd7e..bad3a9edd 100644
+--- a/src/main/frontend/src/app/features/claims/claims.ts
++++ b/src/main/frontend/src/app/features/claims/claims.ts
+@@ -9,7 +9,7 @@ import { DatedGrade, DatedValue, Lateness, Rate, chargedDueCents, dueText, grace
+ // A person's claims, newest first, and the one form under their row that both adds a claim and
+ // edits an existing one (opening a claim's editor fills the form with its values). Each claim
+ // shows its status and the buttons that move it on; a move its status does not allow is refused
+-// with an error on the claim, as is the user who opened a claim settling it (four eyes). A claim
++// with an error on the claim, as is the user who opened or last edited a claim settling it (four eyes). A claim
+ // belongs to the period its due-by falls in (as fixed when added; for one being added, its date
+ // plus the terms it would get). A claim whose due-by is inside a closed period cannot be added,
+ // edited or moved on: each is refused with an error; one dated in a closed period but due outside
+@@ -39,7 +39,7 @@ import { DatedGrade, DatedValue, Lateness, Rate, chargedDueCents, dueText, grace
+ // A clerk settling a claim whose due is above the clerk limit makes it PENDING. A PENDING claim
+ // counts like an OPEN one but is not bound by a statement: it shows its live figure. A steward
+ // approves it (SETTLED, its due fixed then) or rejects it with a reason (back to OPEN, bound again
+-// by the last statement); the user who opened it cannot approve it.
++// by the last statement); the user who opened or last edited it cannot approve it.
+ // Who may open, settle, void or move a claim is the sheet's permission matrix (see the settings).
+ // By default a steward can move a DRAFT, OPEN or PENDING claim to another person: it keeps its number and
+ // date, loses any figure a statement bound it to, and is listed first under its new person.
+@@ -81,6 +81,8 @@ export interface Claim {
+   settledDue: string | null;
+   /** The user who opened the claim; null while DRAFT, or if voided without being opened. */
+   openedBy: string | null;
++  /** The user who last edited the claim through its form or its row's amount; null while never edited. */
++  editedBy: string | null;
+   /** Whether the person's last statement bound the claim to the figure it had then. */
+   stated: boolean;
+   /** The figure bound by the last statement; null while unbound or if it had no rate then. */
+@@ -1054,6 +1056,8 @@ export class PersonClaims {
+           ? action === 'approve' || action === 'reject'
+             ? c.openedBy === this.session.user() && action === 'approve'
+               ? 'The user who opened a claim cannot approve it.'
++              : c.editedBy === this.session.user() && action === 'approve'
++                ? 'The user who last edited a claim cannot approve it.'
+               : 'Only a steward can approve or reject a PENDING claim.'
+             : action === 'resettle'
+               ? 'Only a steward can re-settle a claim.'
+@@ -1061,6 +1065,8 @@ export class PersonClaims {
+                 ? 'Only a steward can void a SETTLED claim.'
+               : action === 'settle' && c.openedBy === this.session.user()
+                 ? 'The user who opened a claim cannot settle it.'
++              : action === 'settle' && c.editedBy === this.session.user()
++                ? 'The user who last edited a claim cannot settle it.'
+                 : `Your role may not ${action} a claim on this sheet.`
+           : e instanceof HttpErrorResponse && e.status === 423
+             ? CLOSED
+diff --git a/src/main/java/net/officefloor/hq/app/claim/Claim.java b/src/main/java/net/officefloor/hq/app/claim/Claim.java
+index 50ab89208..cc1544c70 100644
+--- a/src/main/java/net/officefloor/hq/app/claim/Claim.java
++++ b/src/main/java/net/officefloor/hq/app/claim/Claim.java
+@@ -68,6 +68,10 @@ public class Claim {
+     @Column(name = "opened_by")
+     private String openedBy;
+ 
++    /** The user who last edited the claim through its form or its row's amount; none while never edited. */
++    @Column(name = "edited_by")
++    private String editedBy;
++
+     /** Whether the person's last statement bound this claim to the figure it had then. */
+     @Column(name = "stated", nullable = false)
+     private boolean stated;
+@@ -318,6 +322,14 @@ public class Claim {
+         this.openedBy = openedBy;
+     }
+ 
++    public String getEditedBy() {
++        return editedBy;
++    }
++
++    public void setEditedBy(String editedBy) {
++        this.editedBy = editedBy;
++    }
++
+     public boolean isStated() {
+         return stated;
+     }
+diff --git a/src/main/java/net/officefloor/hq/app/claim/ClaimController.java b/src/main/java/net/officefloor/hq/app/claim/ClaimController.java
+index 60d454317..f681d9886 100644
+--- a/src/main/java/net/officefloor/hq/app/claim/ClaimController.java
++++ b/src/main/java/net/officefloor/hq/app/claim/ClaimController.java
+@@ -106,6 +106,7 @@ public class ClaimController {
+ 
+     public record ClaimResponse(long id, long personId, String amount, LocalDate date, String note,
+             ClaimStatus status, String number, String settledDue, String openedBy,
++            String editedBy,
+             boolean stated, String statedDue, String corrects, LocalDate dueBy, List<ClaimLogLine> log,
+             LocalDate deferredUntil, int proofs, String splitFrom, String lockedBy,
+             boolean lateEntry, LocalDate remindedOn, String ref, List<String> tags, String voidReason,
+@@ -128,7 +129,7 @@ public class ClaimController {
+         return new ClaimResponse(claim.getId(), claim.getPersonId(),
+                 claim.getAmount().setScale(2, RoundingMode.UNNECESSARY).toPlainString(), claim.getDate(),
+                 claim.getNote(), claim.getStatus(), claim.getNumber(),
+-                money(claim.getSettledDue()), claim.getOpenedBy(), claim.isStated(), money(claim.getStatedDue()),
++                money(claim.getSettledDue()), claim.getOpenedBy(), claim.getEditedBy(), claim.isStated(), money(claim.getStatedDue()),
+                 claim.getCorrects(), claim.getDueBy(),
+                 claim.getLog().stream().map(l -> new ClaimLogLine(l.getStatus(), l.getBy(), l.getDate(), l.getDue()))
+                         .toList(),
+diff --git a/src/main/java/net/officefloor/hq/app/claim/ClaimService.java b/src/main/java/net/officefloor/hq/app/claim/ClaimService.java
+index 55b4fae53..bd543bd44 100644
+--- a/src/main/java/net/officefloor/hq/app/claim/ClaimService.java
++++ b/src/main/java/net/officefloor/hq/app/claim/ClaimService.java
+@@ -44,7 +44,8 @@ import org.springframework.web.server.ResponseStatusException;
+  * only when its figure is at or below the sheet's clerk limit (a claim with no figure is within any
+  * limit); a clerk settling one above it makes it PENDING instead. A steward settles any claim, and
+  * approves a PENDING claim (SETTLED, its due fixed then) or rejects it with a reason (back to OPEN);
+- * the user who opened a claim cannot approve it. A PENDING claim is not bound by a statement: it
++ * the user who opened a claim cannot approve it. The user who last edited a claim (through its form or
++ * its row's amount) can neither settle nor approve it, as its opener cannot. A PENDING claim is not bound by a statement: it
+  * shows its live figure, and is bound again by the last statement once rejected. An overdue claim's due gains a late charge on its
+  * figure (see {@link LateCharge}), and the floor is applied last: a claim's live due is never below
+  * the sheet's floor. A statement binds only the rate figure, not the charge nor the floor, and settling fixes the charge into the settled due. A claim with
+@@ -198,6 +199,7 @@ public class ClaimService {
+         claim.setNote(note);
+         claim.setCorrects(corrected);
+         claim.setLockedBy(null);
++        claim.setEditedBy(user);
+         Claim saved = claims.saveAndFlush(claim);
+         useTags(sheetId, saved);
+         audit.recordOnCommit(record("CLAIM_EDITED", sheetId, user, person(sheetId, saved.getPersonId()), saved));
+@@ -347,6 +349,10 @@ public class ClaimService {
+             throw new ResponseStatusException(HttpStatus.FORBIDDEN,
+                     "The user who opened a claim cannot " + (review ? "approve" : "settle") + " it.");
+         }
++        if (next == ClaimStatus.SETTLED && user.equals(claim.getEditedBy())) {
++            throw new ResponseStatusException(HttpStatus.FORBIDDEN,
++                    "The user who last edited a claim cannot " + (review ? "approve" : "settle") + " it.");
++        }
+         if (review && !isSteward(sheetId, user)) {
+             throw new ResponseStatusException(HttpStatus.FORBIDDEN,
+                     "Only a steward can approve or reject a PENDING claim.");
+diff --git a/src/main/resources/db/migration/V58__claim_edited_by.sql b/src/main/resources/db/migration/V58__claim_edited_by.sql
+new file mode 100644
+index 000000000..f127dcba9
+--- /dev/null
++++ b/src/main/resources/db/migration/V58__claim_edited_by.sql
+@@ -0,0 +1,3 @@
++-- The user who last edited a claim (through its form or its row's amount); none while never edited.
++-- That user, like its opener, cannot settle or approve it (four eyes).
++ALTER TABLE claim ADD COLUMN edited_by VARCHAR(100);
