@@ -5,6 +5,7 @@ import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.NotNull;
 import jakarta.validation.constraints.Size;
 import java.time.LocalDate;
+import java.util.Comparator;
 import java.util.List;
 import net.officefloor.hq.app.claim.ClaimController;
 import net.officefloor.hq.app.claim.ClaimController.ClaimResponse;
@@ -30,22 +31,30 @@ public class StatementController {
             @NotBlank @Size(max = 100) String user, @NotNull Long personId) {
     }
 
+    /** One of a person's statements still standing: its date and due-total ("n/a" when it had none). */
+    public record StatementLine(LocalDate date, String dueTotal) {
+    }
+
     /**
      * A person's statement count, and the last statement's due-total ("n/a" when it had none) and
-     * date; both none when no statement is left.
+     * date, both none when no statement is left; and a line for each statement still standing,
+     * oldest first by date (in the order taken on the same date).
      */
-    public record SummaryResponse(long personId, int count, String dueTotal, LocalDate date) {
+    public record SummaryResponse(long personId, int count, String dueTotal, LocalDate date,
+            List<StatementLine> lines) {
     }
 
     public record TakenResponse(SummaryResponse summary, List<ClaimResponse> claims) {
     }
 
     private static SummaryResponse response(StatementService.Summary s) {
+        List<StatementLine> lines = s.standing().stream().sorted(Comparator.comparing(Statement::getTakenOn))
+                .map(t -> new StatementLine(t.getTakenOn(), StatementService.money(t.getDueTotal()))).toList();
         if (s.last() == null) {
-            return new SummaryResponse(s.personId(), s.count(), null, null);
+            return new SummaryResponse(s.personId(), s.count(), null, null, lines);
         }
         return new SummaryResponse(s.personId(), s.count(), StatementService.money(s.last().getDueTotal()),
-                s.last().getTakenOn());
+                s.last().getTakenOn(), lines);
     }
 
     private final StatementService service;

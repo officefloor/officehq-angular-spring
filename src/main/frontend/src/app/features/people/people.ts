@@ -196,12 +196,22 @@ interface PatronLink {
   patronId: number;
 }
 
-/** A person's statements: how many, and the last one's due-total (n/a when it had none) and date. */
+/**
+ * A person's statements: how many, the last one's due-total (n/a when it had none) and date, and a
+ * line for each one still standing, oldest first.
+ */
 interface StatementSummary {
   personId: number;
   count: number;
   dueTotal: string;
   date: string;
+  lines: StatementLine[];
+}
+
+/** One of a person's statements still standing: its date and due-total ('n/a' when it had none). */
+interface StatementLine {
+  date: string;
+  dueTotal: string;
 }
 
 /** A statement just taken, with the person's claims as it left them. */
@@ -656,6 +666,11 @@ const SUMMARY_STATUSES = ['DRAFT', 'OPEN', 'PENDING', 'SETTLED', 'VOID', 'REVIEW
                 @if (shown('statement-date')) {
                   <span>on <span data-testid="person-statement-date">{{ statementOf(p.id)?.date ?? '' }}</span></span>
                 }
+                <ul aria-label="Statements">
+                  @for (l of statementOf(p.id)?.lines ?? []; track $index) {
+                    <li data-testid="person-statement-line-line">{{ l.date }} {{ l.dueTotal }}</li>
+                  }
+                </ul>
               </td>
               <td>
                 @if (shown('retired')) {

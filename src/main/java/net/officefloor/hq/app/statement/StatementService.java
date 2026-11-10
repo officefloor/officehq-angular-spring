@@ -3,6 +3,7 @@ package net.officefloor.hq.app.statement;
 import java.math.BigDecimal;
 import java.math.RoundingMode;
 import java.time.LocalDate;
+import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -39,8 +40,16 @@ import org.springframework.web.server.ResponseStatusException;
 @Service
 public class StatementService {
 
-    /** A person's statements: how many, and the last one (none before the first). */
-    public record Summary(long personId, int count, Statement last) {
+    /**
+     * A person's statements: how many, the last one (none before the first), and every one still
+     * standing, in the order taken (a merge's or transfer's brought over before their own).
+     */
+    public record Summary(long personId, int count, Statement last, List<Statement> standing) {
+
+        static Summary of(long personId, List<Statement> standing) {
+            return new Summary(personId, standing.size(), standing.isEmpty() ? null : standing.get(standing.size() - 1),
+                    List.copyOf(standing));
+        }
     }
 
     /** A statement just taken, with the person's claims as it left them. */
@@ -78,12 +87,11 @@ public class StatementService {
     /** Each person's statements on the sheet who has taken any. */
     @Transactional(readOnly = true)
     public List<Summary> list(String sheetId) {
-        Map<Long, Summary> by = new LinkedHashMap<>();
+        Map<Long, List<Statement>> by = new LinkedHashMap<>();
         for (Statement s : statements.findBySheetIdOrderByIdAsc(sheetId)) {
-            Summary was = by.get(s.getPersonId());
-            by.put(s.getPersonId(), new Summary(s.getPersonId(), was == null ? 1 : was.count() + 1, s));
+            by.computeIfAbsent(s.getPersonId(), id -> new ArrayList<>()).add(s);
         }
-        return List.copyOf(by.values());
+        return by.entrySet().stream().map(e -> Summary.of(e.getKey(), e.getValue())).toList();
     }
 
     /**
@@ -108,15 +116,14 @@ public class StatementService {
         List<Claim> theirs = claims.findBySheetIdAndPersonIdOrderByIdDesc(sheetId, personId);
         Tally tally = asOf == null ? takeNow(sheetId, person, theirs, today) : takeAsOf(sheetId, person, theirs, asOf);
         claims.saveAllAndFlush(theirs);
-        Statement taken = statements.saveAndFlush(new Statement(sheetId, personId, asOf != null ? asOf : today,
+        statements.saveAndFlush(new Statement(sheetId, personId, asOf != null ? asOf : today,
                 tally.dueTotal(), tally.counted(), today));
-        int count = (int) statements.findBySheetIdOrderByIdAsc(sheetId).stream()
-                .filter(s -> Objects.equals(s.getPersonId(), personId)).count();
+        List<Statement> standing = statements.findBySheetIdAndPerson(sheetId, personId);
         audit.recordOnCommit("STATEMENT sheet=" + sheetId + " by=" + user + " name=" + person.getName()
                 + " due-total=" + money(tally.dueTotal()) + " claims=" + tally.counted()
                 + (asOf != null ? " asof=" + asOf : ""));
         rollup.recordChanges(sheetId, user, before);
-        return new Taken(new Summary(personId, count, taken), theirs);
+        return new Taken(Summary.of(personId, standing), theirs);
     }
 
     /** What a statement found: the person's due-total (none for n/a) and how many claims counted. */
@@ -228,8 +235,7 @@ public class StatementService {
         audit.recordOnCommit("STATEMENT_CANCELLED sheet=" + sheetId + " by=" + user + " name=" + person.getName()
                 + " due-total=" + money(last.getDueTotal()));
         rollup.recordChanges(sheetId, user, before);
-        int count = theirStatements.size() - 1;
-        return new Cancelled(new Summary(personId, count, count == 0 ? null : theirStatements.get(count - 1)), theirs);
+        return new Cancelled(Summary.of(personId, theirStatements.subList(0, theirStatements.size() - 1)), theirs);
     }
 
     public static String money(BigDecimal value) {
