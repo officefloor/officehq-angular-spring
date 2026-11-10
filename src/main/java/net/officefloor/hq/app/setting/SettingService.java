@@ -7,13 +7,16 @@ import java.util.Map;
 import java.util.TreeMap;
 import net.officefloor.hq.app.Audit;
 import net.officefloor.hq.app.claim.Rounding;
+import net.officefloor.hq.app.rate.RateChain;
 import net.officefloor.hq.app.role.RoleService;
 import net.officefloor.hq.app.rollup.RollupService;
 import net.officefloor.hq.app.sheet.Sheet;
 import net.officefloor.hq.app.sheet.SheetRepository;
 import net.officefloor.hq.app.sheet.SheetService;
+import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.web.server.ResponseStatusException;
 
 /**
  * The sheet's settings: its clerk limit (none: no limit) and its floor, the least a claim's live due
@@ -42,7 +45,10 @@ import org.springframework.transaction.annotation.Transactional;
  * the grace days is before the new today is closed (see {@link SheetService#setToday}). Nor is the
  * entry date (none: off): while set, it is the default date of a new claim in place of the sheet's today.
  * Nor is the pot (none: no pot), shared out over each balanced pool's members as their cuts (see
- * {@link net.officefloor.hq.app.pool.PoolService}).
+ * {@link net.officefloor.hq.app.pool.PoolService}). Nor is the parent (none: no parent), a sheet that has
+ * been loaded, never the sheet itself nor one that has it as an ancestor: a grade with no rate in force on a date
+ * here takes its parent's, then the parent's parent's, up to three levels up (see {@link RateChain}), so changing it
+ * records the figures that move too.
  */
 @Service
 public class SettingService {
@@ -65,6 +71,7 @@ public class SettingService {
     public static final String GRACE_DAYS = "grace-days";
     public static final String ENTRY_DATE = "entry-date";
     public static final String POT = "pot";
+    public static final String PARENT = "parent";
     /** The key of a permission matrix entry: {@code perm-<action>}. */
     public static final String PERMISSION = "perm-";
 
@@ -73,9 +80,11 @@ public class SettingService {
     private final RollupService rollup;
     private final Audit audit;
     private final RoleService roles;
+    private final RateChain rateChain;
 
     public SettingService(SheetService sheets, SheetRepository sheetStore, RollupService rollup, Audit audit,
-            RoleService roles) {
+            RoleService roles, RateChain rateChain) {
+        this.rateChain = rateChain;
         this.roles = roles;
         this.sheets = sheets;
         this.sheetStore = sheetStore;
@@ -105,7 +114,9 @@ public class SettingService {
      * threshold given in {@code gradeProofThresholds} (by grade, in grade order; null for none), and a note threshold when
      * {@code noteThreshold} is not null, and each permission matrix entry
      * given in {@code permissions} (by action, in the order given; blank for the standing rule), and the grace days when
-     * {@code changeGrace} (null for off), and the entry date when {@code changeEntry} (null for off), and the pot when {@code changePot} (null for none). Each figure is recorded from its from-date, keeping the values
+     * {@code changeGrace} (null for off), and the entry date when {@code changeEntry} (null for off), and the pot when {@code changePot} (null for none), and the parent when
+     * {@code changeParent} (null for none; refused (400) for the sheet itself, a sheet never loaded, or one that has
+     * this sheet as an ancestor, before anything is saved). Each figure is recorded from its from-date, keeping the values
      * already recorded (one already recorded from that date is replaced). Each one saved is
      * recorded, in that order.
      */
@@ -117,9 +128,20 @@ public class SettingService {
             Dated<BigDecimal> proofThreshold, Map<String, Dated<BigDecimal>> gradeProofThresholds,
             Dated<BigDecimal> noteThreshold, Map<String, String> permissions,
             boolean changeGrace, Integer graceDays, boolean changeEntry, LocalDate entryDate,
-            boolean changePot, BigDecimal pot) {
+            boolean changePot, BigDecimal pot, boolean changeParent, String parent) {
         roles.refuseViewer(sheetId, user);
         Sheet sheet = sheets.load(sheetId, user);
+        if (changeParent && parent != null) {
+            if (parent.equals(sheetId)) {
+                throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "A sheet cannot be its own parent.");
+            }
+            if (!sheetStore.existsById(parent)) {
+                throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "No sheet " + parent + " has been loaded.");
+            }
+            if (rateChain.wouldLoop(sheetId, parent)) {
+                throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Sheet " + parent + " has this sheet as an ancestor.");
+            }
+        }
         if (limit != null) {
             sheet = record(sheet, user, CLERK_LIMIT, limit.value(), limit.from(), text(limit.value()), false);
         }
@@ -190,6 +212,13 @@ public class SettingService {
             sheet.setPot(pot == null ? null : pot.setScale(2));
             sheet = sheetStore.saveAndFlush(sheet);
             audit.recordOnCommit(changed(sheetId, user, POT, text(sheet.getPot())));
+        }
+        if (changeParent) {
+            RollupService.Snapshot before = rollup.snapshot(sheetId);
+            sheet.setParentId(parent);
+            sheet = sheetStore.saveAndFlush(sheet);
+            audit.recordOnCommit(changed(sheetId, user, PARENT, parent == null ? "" : parent));
+            rollup.recordChanges(sheetId, user, before);
         }
         return sheet;
     }

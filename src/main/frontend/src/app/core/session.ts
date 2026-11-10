@@ -23,6 +23,9 @@ export class Session {
   readonly archived = signal(false);
   /** The number of the sheet's last settle batch (a bulk settle that settled a claim); none when there has been none. */
   readonly lastBatch = signal<number | null>(null);
+  /** The id of the sheet's parent, whose rates stand in for a grade with none in force here; blank for none.
+   *  Set from the sheet's settings as they are read and saved. */
+  readonly parent = signal('');
   /** Whether retired people are listed: off when the screen opens, and left as it is by loading a sheet. */
   readonly showRetired = signal(false);
   /**
@@ -82,6 +85,7 @@ export class Session {
   }
 
   private show(res: SheetResponse): void {
+    if (res.id !== this.sheet()) this.parent.set('');
     this.sheet.set(res.id);
     this.today.set(res.today);
     this.archived.set(res.archived);

@@ -37,6 +37,9 @@ public class SheetHistory {
     /** Tables never kept: the sheet row itself is kept apart, and the snapshots are the history. */
     private static final Set<String> SKIPPED = Set.of("SHEET", "SHEET_SNAPSHOT", "flyway_schema_history");
 
+    /** The sheet's columns not kept: they are not dated, so a sheet shown as of a date shows them as they are now. */
+    private static final Set<String> UNKEPT_SHEET_COLUMNS = Set.of("PARENT_ID");
+
     /** The tables others refer to, deleted last and put back first (in this order of putting back). */
     private static final List<String> PARENTS = List.of("PERSON", "PERIOD", "CLAIM");
 
@@ -158,10 +161,14 @@ public class SheetHistory {
         }, sheetId);
     }
 
-    /** The sheet's columns that can be set (all but its id and generated ones). */
+    /**
+     * The sheet's columns that can be set (all but its id and generated ones), less those that have no
+     * history: its parent is shown as of a date as it is now.
+     */
     private List<String> sheetColumns() {
         if (sheetColumns == null) {
-            sheetColumns = columns("SHEET").stream().filter(c -> !c.equals("ID")).toList();
+            sheetColumns = columns("SHEET").stream().filter(c -> !c.equals("ID") && !UNKEPT_SHEET_COLUMNS.contains(c))
+                    .toList();
         }
         return sheetColumns;
     }

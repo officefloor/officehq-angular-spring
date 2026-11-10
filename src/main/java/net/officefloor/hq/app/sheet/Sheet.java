@@ -114,6 +114,10 @@ public class Sheet {
     @Column(name = "pot")
     private BigDecimal pot;
 
+    /** The id of the sheet whose rates stand in for a grade with no rate of its own in force; null for none. */
+    @Column(name = "parent_id")
+    private String parentId;
+
     /** The last number given in the sheet's X sequence, to claims opened under numbering per period in no period. */
     @Column(name = "last_unperiod_claim_number", nullable = false)
     private int lastUnperiodClaimNumber;
@@ -194,6 +198,7 @@ public class Sheet {
         then.entryDate = entryDate;
         then.graceDays = graceDays;
         then.pot = pot;
+        then.parentId = parentId;
         then.permissions.putAll(permissions);
         then.archived = archived;
         return then;
@@ -371,6 +376,15 @@ public class Sheet {
 
     public void setGraceDays(Integer graceDays) {
         this.graceDays = graceDays;
+    }
+
+    /** The id of the parent sheet, whose rates stand in for a grade with no rate in force here; null for none. Not dated. */
+    public String getParentId() {
+        return parentId;
+    }
+
+    public void setParentId(String parentId) {
+        this.parentId = parentId;
     }
 
     /** The pot shared out over each balanced pool's members; null for none. Not dated. */

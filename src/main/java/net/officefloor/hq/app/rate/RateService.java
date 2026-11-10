@@ -28,9 +28,11 @@ public class RateService {
     private final Audit audit;
     private final RollupService rollup;
     private final RoleService roles;
+    private final RateChain chain;
 
     public RateService(RateRepository rates, RateLogRepository rateLog, SheetService sheets, Audit audit,
-            RollupService rollup, RoleService roles) {
+            RollupService rollup, RoleService roles, RateChain chain) {
+        this.chain = chain;
         this.rateLog = rateLog;
         this.roles = roles;
         this.rollup = rollup;
@@ -39,9 +41,10 @@ public class RateService {
         this.audit = audit;
     }
 
+    /** The sheet's own rates, then those of each of its ancestors, nearest first (see {@link RateChain}). */
     @Transactional(readOnly = true)
-    public List<Rate> list(String sheetId) {
-        return rates.findBySheetIdOrderByGradeAscFromDateAsc(sheetId);
+    public List<List<Rate>> list(String sheetId) {
+        return chain.current(sheetId);
     }
 
     @Transactional

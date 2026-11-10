@@ -17,7 +17,7 @@ import net.officefloor.hq.app.person.PersonRepository;
 import net.officefloor.hq.app.person.Watch;
 import net.officefloor.hq.app.person.WatchRepository;
 import net.officefloor.hq.app.rate.Rate;
-import net.officefloor.hq.app.rate.RateRepository;
+import net.officefloor.hq.app.rate.RateChain;
 import net.officefloor.hq.app.role.Role;
 import net.officefloor.hq.app.role.RoleService;
 import net.officefloor.hq.app.rollup.RollupService;
@@ -79,7 +79,7 @@ public class ClaimService {
 
     private final ClaimRepository claims;
     private final PersonRepository people;
-    private final RateRepository rates;
+    private final RateChain rates;
     private final SheetService sheets;
     private final Audit audit;
     private final RollupService rollup;
@@ -90,7 +90,7 @@ public class ClaimService {
     private final UsedTagRepository usedTags;
     private final VoidReasonService voidReasons;
 
-    public ClaimService(ClaimRepository claims, PersonRepository people, RateRepository rates, SheetService sheets,
+    public ClaimService(ClaimRepository claims, PersonRepository people, RateChain rates, SheetService sheets,
             Audit audit, RollupService rollup, PeriodService periods, RoleService roles, WatchRepository watches,
             HolidayService holidays, UsedTagRepository usedTags, VoidReasonService voidReasons) {
         this.voidReasons = voidReasons;
@@ -833,7 +833,8 @@ public class ClaimService {
     }
 
     /**
-     * The due on a claim's amount at the rate for the person's grade in force on the claim's date,
+     * The due on a claim's amount at the rate for the person's grade in force on the claim's date
+     * (the sheet's own, else its nearest ancestor's: see {@link RateChain}),
      * rounded to the cent as the claim rounds (see {@link Rounding}), not raised to the floor (see {@link LateCharge});
      * null with no rate in force then.
      */

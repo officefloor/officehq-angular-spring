@@ -1,5 +1,5 @@
 import { HttpClient } from '@angular/common/http';
-import { Component, computed, effect, inject, model, signal } from '@angular/core';
+import { Component, computed, effect, inject, model, signal, untracked } from '@angular/core';
 import { firstValueFrom } from 'rxjs';
 import { Session } from '../../core/session';
 import { Claim, cents, daysOverdue, dueBy, isCorrection, isOpen, money, plusDays } from '../claims/claims';
@@ -15,6 +15,8 @@ export interface Rate {
   /** The last date the rate is in force; null for a rate in force until the grade's next one. */
   to: string | null;
   pct: string;
+  /** Whose rate it is: 0 (or missing) for the sheet's own, 1 for its parent's, 2 for the parent's parent, and so on. */
+  level?: number;
 }
 
 const GRADES = ['A', 'B', 'C'] as const;
@@ -45,11 +47,22 @@ export function gradeOn(grades: readonly DatedGrade[], date: string | null): str
 }
 
 /**
- * The grade's rate in force on a date (yyyy-mm-dd): the one with the latest from-date on or before
- * it, an undated rate counting as from the beginning of time. Undefined when none applies yet, or
- * when that one's to-date has passed by the date.
+ * The grade's rate in force on a date (yyyy-mm-dd) on the sheet: the one with the latest from-date
+ * on or before it, an undated rate counting as from the beginning of time; none when none applies yet,
+ * or when that one's to-date has passed by the date. With none on the sheet, its parent's rate in
+ * force then, then the parent's parent's, and so on. Undefined when no level has one.
  */
 export function pctOn(rates: readonly Rate[], grade: string, date: string | null): string | undefined {
+  const levels = [...new Set(rates.map((r) => r.level ?? 0))].sort((a, b) => a - b);
+  for (const level of levels) {
+    const pct = levelPctOn(rates.filter((r) => (r.level ?? 0) === level), grade, date);
+    if (pct !== undefined) return pct;
+  }
+  return undefined;
+}
+
+/** The grade's rate in force on a date among one sheet's rates, as {@link pctOn} picks it. */
+function levelPctOn(rates: readonly Rate[], grade: string, date: string | null): string | undefined {
   let best: Rate | undefined;
   for (const r of rates) {
     if (r.grade !== grade || (r.from !== null && (date === null || r.from > date))) continue;
@@ -311,9 +324,9 @@ export class Rates {
   readonly rates = model<Rate[]>([]);
 
   protected readonly grades = GRADES;
-  /** Each grade's rates, the undated one first and then by from-date. */
+  /** Each grade's own rates (not its ancestors'), the undated one first and then by from-date. */
   protected readonly sorted = computed(() =>
-    [...this.rates()].sort(
+    this.rates().filter((r) => (r.level ?? 0) === 0).sort(
       (a, b) => a.grade.localeCompare(b.grade) || (a.from ?? '').localeCompare(b.from ?? ''),
     ),
   );
@@ -354,6 +367,14 @@ export class Rates {
       if (sheet) {
         void this.fetch(sheet);
       }
+    });
+    // Re-read them when the sheet's parent changes: its ancestors' rates stand in for missing ones.
+    let parentSeen: string | null = null;
+    effect(() => {
+      const parent = this.session.parent();
+      const sheet = untracked(() => this.session.sheet());
+      if (parentSeen !== null && parent !== parentSeen && sheet) void this.fetch(sheet);
+      parentSeen = parent;
     });
   }
 
@@ -434,7 +455,7 @@ export class Rates {
       );
       if (this.session.sheet() !== sheet) return;
       this.rates.update((list) => [
-        ...list.filter((r) => r.grade !== saved.grade || r.from !== saved.from),
+        ...list.filter((r) => (r.level ?? 0) !== 0 || r.grade !== saved.grade || r.from !== saved.from),
         saved,
       ]);
       this.pctInput.set('');

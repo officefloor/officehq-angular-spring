@@ -17,7 +17,7 @@ import net.officefloor.hq.app.claim.Rounding;
 import net.officefloor.hq.app.person.Person;
 import net.officefloor.hq.app.person.PersonRepository;
 import net.officefloor.hq.app.rate.Rate;
-import net.officefloor.hq.app.rate.RateRepository;
+import net.officefloor.hq.app.rate.RateChain;
 import net.officefloor.hq.app.sheet.Sheet;
 import net.officefloor.hq.app.sheet.SheetRepository;
 import org.springframework.stereotype.Service;
@@ -70,11 +70,11 @@ public class RollupService {
 
     private final PersonRepository people;
     private final ClaimRepository claims;
-    private final RateRepository rates;
+    private final RateChain rates;
     private final SheetRepository sheets;
     private final Audit audit;
 
-    public RollupService(PersonRepository people, ClaimRepository claims, RateRepository rates, SheetRepository sheets,
+    public RollupService(PersonRepository people, ClaimRepository claims, RateChain rates, SheetRepository sheets,
             Audit audit) {
         this.people = people;
         this.claims = claims;
@@ -87,7 +87,7 @@ public class RollupService {
     public Snapshot snapshot(String sheetId) {
         Sheet sheet = sheet(sheetId);
         LocalDate today = sheet.getToday();
-        List<Rate> sheetRates = rates.findBySheetIdOrderByGradeAscFromDateAsc(sheetId);
+        List<List<Rate>> sheetRates = rates.current(sheetId);
         List<Claim> sheetClaims = claims.findBySheetIdOrderByIdDesc(sheetId);
         Map<Long, Figures> figures = new LinkedHashMap<>();
         for (Person person : people.findBySheetIdOrderByIdAsc(sheetId)) {
@@ -126,7 +126,7 @@ public class RollupService {
      */
     public Map<Long, BigDecimal> dueBetweenByPerson(String sheetId, LocalDate from, LocalDate to) {
         Sheet sheet = sheet(sheetId);
-        List<Rate> sheetRates = rates.findBySheetIdOrderByGradeAscFromDateAsc(sheetId);
+        List<List<Rate>> sheetRates = rates.current(sheetId);
         List<Claim> sheetClaims = claims.findBySheetIdOrderByIdDesc(sheetId);
         Map<Long, BigDecimal> dues = new LinkedHashMap<>();
         for (Person person : people.findBySheetIdOrderByIdAsc(sheetId)) {
@@ -175,7 +175,7 @@ public class RollupService {
      * last statement (not while PENDING), else its live due (rounded as the claim rounds, see {@link Rounding}), with its late charge added on top, then raised to the floor (a correction's is not);
      * null when none.
      */
-    private static BigDecimal figure(Sheet sheet, List<Rate> sheetRates, List<Claim> sheetClaims, Person person,
+    private static BigDecimal figure(Sheet sheet, List<List<Rate>> sheetRates, List<Claim> sheetClaims, Person person,
             Claim claim) {
         if (claim.getStatus() == ClaimStatus.SETTLED && claim.getSettledDue() != null) {
             return claim.getSettledDue();
@@ -202,13 +202,9 @@ public class RollupService {
         return sheets.findById(sheetId).orElseGet(() -> new Sheet(sheetId, null, null, LocalDate.now()));
     }
 
-    /** The grade's rate in force on a date, as {@link RateRepository#findInForce} picks it. */
-    private static Optional<Rate> inForce(List<Rate> sheetRates, String grade, LocalDate date) {
-        return sheetRates.stream().filter(r -> r.getGrade().equals(grade))
-                .filter(r -> r.getFromDate() == null || !r.getFromDate().isAfter(date))
-                .max((a, b) -> a.getFromDate() == null ? -1 : b.getFromDate() == null ? 1
-                        : a.getFromDate().compareTo(b.getFromDate()))
-                .filter(r -> r.runsThrough(date));
+    /** The grade's rate in force on a date, on the sheet or failing that its nearest ancestor (see {@link RateChain}). */
+    private static Optional<Rate> inForce(List<List<Rate>> sheetRates, String grade, LocalDate date) {
+        return RateChain.inForce(sheetRates, grade, date);
     }
 
     private static boolean same(BigDecimal a, BigDecimal b) {

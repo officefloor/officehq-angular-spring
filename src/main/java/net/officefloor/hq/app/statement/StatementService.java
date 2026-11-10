@@ -17,8 +17,7 @@ import net.officefloor.hq.app.claim.Rounding;
 import net.officefloor.hq.app.person.Person;
 import net.officefloor.hq.app.person.PersonRepository;
 import net.officefloor.hq.app.rate.Rate;
-import net.officefloor.hq.app.rate.RateLogRepository;
-import net.officefloor.hq.app.rate.RateRepository;
+import net.officefloor.hq.app.rate.RateChain;
 import net.officefloor.hq.app.role.RoleService;
 import net.officefloor.hq.app.rollup.RollupService;
 import net.officefloor.hq.app.sheet.Sheet;
@@ -56,15 +55,14 @@ public class StatementService {
     private final PersonRepository people;
     private final ClaimRepository claims;
     private final ClaimService claimService;
-    private final RateRepository rates;
-    private final RateLogRepository rateLog;
+    private final RateChain rates;
     private final SheetService sheets;
     private final Audit audit;
     private final RollupService rollup;
     private final RoleService roles;
 
     public StatementService(StatementRepository statements, PersonRepository people, ClaimRepository claims,
-            ClaimService claimService, RateRepository rates, RateLogRepository rateLog, SheetService sheets, Audit audit, RollupService rollup,
+            ClaimService claimService, RateChain rates, SheetService sheets, Audit audit, RollupService rollup,
             RoleService roles) {
         this.roles = roles;
         this.rollup = rollup;
@@ -73,7 +71,6 @@ public class StatementService {
         this.claims = claims;
         this.claimService = claimService;
         this.rates = rates;
-        this.rateLog = rateLog;
         this.sheets = sheets;
         this.audit = audit;
     }
@@ -161,7 +158,7 @@ public class StatementService {
      */
     private Tally takeAsOf(String sheetId, Person person, List<Claim> theirs, LocalDate day) {
         Sheet then = sheets.sheet(sheetId).asOf(day);
-        List<Rate> ratesThen = rateLog.asOf(sheetId, day);
+        List<List<Rate>> ratesThen = rates.asOf(sheetId, day);
         boolean boundThen = statements.findBySheetIdOrderByIdAsc(sheetId).stream()
                 .filter(s -> Objects.equals(s.getPersonId(), person.getId())).reduce((first, last) -> last)
                 .map(last -> last.madeBy(day)).orElse(false);
@@ -182,7 +179,7 @@ public class StatementService {
                 charged = figure;
             } else {
                 figure = stated && status != ClaimStatus.PENDING ? claim.getStatedDue()
-                        : RateRepository.inForce(ratesThen, person.gradeOn(claim.getDate(), day), claim.getDate())
+                        : RateChain.inForce(ratesThen, person.gradeOn(claim.getDate(), day), claim.getDate())
                                 .map(Rate::getPct)
                                 .map(pct -> claim.getAmount().multiply(pct).divide(BigDecimal.valueOf(100), 2,
                                         Rounding.mode(then, Rounding.dateOf(claim, theirs))))
@@ -198,7 +195,7 @@ public class StatementService {
             counted++;
         }
         // as on screen: n/a when the grade then has no rate then and no claim that counted has a figure
-        boolean none = !anyFigure && RateRepository.inForce(ratesThen, person.gradeOn(day, day), day).isEmpty();
+        boolean none = !anyFigure && RateChain.inForce(ratesThen, person.gradeOn(day, day), day).isEmpty();
         return new Tally(none ? null : then.capped(total), counted);
     }
 

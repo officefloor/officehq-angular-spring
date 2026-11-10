@@ -42,6 +42,7 @@ import { People } from '../people/people';
             Archived <strong data-testid="sheet-archived">{{ session.archived() ? 'yes' : 'no' }}</strong>
             <button type="button" data-testid="sheet-archive" (click)="archive()">Archive sheet</button>
           </p>
+          <p>Parent sheet <strong data-testid="sheet-parent">{{ session.parent() }}</strong></p>
           <form aria-label="As of" (submit)="setAsOf($event)">
             <p>As of <strong data-testid="sheet-asof">{{ session.asOf() ?? '' }}</strong></p>
             <label for="asof-date">Show as of</label>

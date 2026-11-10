@@ -50,6 +50,10 @@ import { DatedValue, START_FLOOR, START_LATE_PCT, valueOn } from '../rates/rates
 // The pot (an amount with up to two decimals; blank: none): shared out over each balanced pool's
 // members as their cuts. It saves, like the clerk limit, once its field has been entered; it is not
 // dated.
+// The parent (a sheet id; blank: none): a sheet already loaded, never this sheet nor one that has it
+// as an ancestor. A grade with no rate in force on a date here takes the parent's rate for it then,
+// then the parent's parent's, up to three levels up. It saves, like the clerk limit, once its field
+// has been entered; it is not dated.
 /** A value saved for a dated setting, by key: blank from for the beginning of time, blank value for none. */
 interface DatedSetting extends DatedValue {
   key: string;
@@ -83,6 +87,8 @@ interface SettingsResponse {
   entryDate: string;
   /** The pot, blank for none. */
   pot: string;
+  /** The parent sheet's id, blank for none. */
+  parent: string;
 }
 
 /** The actions the permission matrix covers. */
@@ -312,7 +318,14 @@ const DATE = /^\d{4}-\d{2}-\d{2}$/;
           [value]="fromInput()['note-threshold'] ?? ''"
           (input)="typeFrom('note-threshold', $any($event.target).value)"
         />
-        @for (a of permActions; track a) {
+        <p>
+        Parent sheet:
+        <strong data-testid="setting-parent-current">{{ session.parent() }}</strong>
+        @if (session.parent() === '') {
+          <span>(none)</span>
+        }
+      </p>
+      @for (a of permActions; track a) {
           <label [for]="'setting-perm-' + a">Roles that may {{ a }}, comma separated (blank: the standing rule)</label>
           <input
             [id]="'setting-perm-' + a"
@@ -348,6 +361,14 @@ const DATE = /^\d{4}-\d{2}-\d{2}$/;
           [value]="potInput() ?? ''"
           (focus)="enterPot($any($event.target))"
           (input)="potInput.set($any($event.target).value); error.set(null)"
+        />
+        <label for="setting-parent">Parent sheet whose rates stand in for missing ones (blank: none)</label>
+        <input
+          id="setting-parent"
+          data-testid="setting-parent"
+          [value]="parentInput() ?? ''"
+          (focus)="enterParent($any($event.target))"
+          (input)="parentInput.set($any($event.target).value); error.set(null)"
         />
         <button type="submit" data-testid="settings-save">Save settings</button>
         @if (error(); as err) {
@@ -470,7 +491,7 @@ const DATE = /^\d{4}-\d{2}-\d{2}$/;
 })
 export class Settings {
   private readonly http = inject(HttpClient);
-  private readonly session = inject(Session);
+  protected readonly session = inject(Session);
 
   /** Every value saved for the dated settings. */
   private readonly dated = signal<DatedSetting[]>([]);
@@ -553,6 +574,8 @@ export class Settings {
   readonly pot = model('');
   /** The pot typed; null while its field has not been entered (left as it is). */
   protected readonly potInput = signal<string | null>(null);
+  /** The parent typed; null while its field has not been entered (left as it is). */
+  protected readonly parentInput = signal<string | null>(null);
   protected readonly permActions = PERM_ACTIONS;
   /** The permission matrix in force: for each action, its roles, blank for the standing rule. */
   protected readonly permissions = signal<Partial<Record<PermAction, string>>>({});
@@ -585,6 +608,7 @@ export class Settings {
       this.graceInput.set(null);
       this.entryInput.set(null);
       this.potInput.set(null);
+      this.parentInput.set(null);
       this.error.set(null);
       if (sheet) {
         void this.fetch(sheet);
@@ -670,6 +694,15 @@ export class Settings {
     input.value = this.pot();
     input.select();
     this.potInput.set(this.pot());
+  }
+
+  /** Entering the parent's field fills it with the parent in force, selected, so it saves as it is
+   *  unless typed over. */
+  protected enterParent(input: HTMLInputElement): void {
+    if (this.parentInput() !== null) return;
+    input.value = this.session.parent();
+    input.select();
+    this.parentInput.set(this.session.parent());
   }
 
   /** Entering the grace days' field fills it with the days in force, selected, so they save as
@@ -759,7 +792,8 @@ export class Settings {
   }
 
   private show(
-    res: Pick<SettingsResponse, 'dated' | 'policyDate' | 'periodNumberingFrom' | 'permissions' | 'graceDays' | 'entryDate' | 'pot'>,
+    res: Pick<SettingsResponse, 'dated' | 'policyDate' | 'periodNumberingFrom' | 'permissions' | 'graceDays' | 'entryDate' | 'pot'>
+      & Partial<Pick<SettingsResponse, 'parent'>>,
   ): void {
     this.dated.set(res.dated);
     this.permissions.set(res.permissions);
@@ -772,6 +806,7 @@ export class Settings {
     this.graceDays.set(res.graceDays);
     this.entryDate.set(res.entryDate);
     this.pot.set(res.pot);
+    if (res.parent !== undefined) this.session.parent.set(res.parent);
   }
 
   protected async save(event: Event): Promise<void> {
@@ -791,6 +826,7 @@ export class Settings {
     const graceDays = this.graceInput()?.trim() ?? null;
     const entryDate = this.entryInput()?.trim() ?? null;
     const pot = this.potInput()?.trim() ?? null;
+    const parent = this.parentInput()?.trim() ?? null;
     if (clerkLimit !== null && clerkLimit !== '' && !LIMIT.test(clerkLimit)) {
       this.error.set('Enter a clerk limit of 0.00 or more, with up to two decimals, or leave it blank.');
       return;
@@ -869,6 +905,14 @@ export class Settings {
       this.error.set('Enter a pot of 0.00 or more, with up to two decimals, or leave it blank.');
       return;
     }
+    if (parent !== null && parent.length > 100) {
+      this.error.set('Enter a parent sheet id of up to 100 characters, or leave it blank for none.');
+      return;
+    }
+    if (parent !== null && parent === sheet) {
+      this.error.set('A sheet cannot be its own parent.');
+      return;
+    }
     const perms: Partial<Record<PermAction, string>> = {};
     for (const a of PERM_ACTIONS) {
       const roles = this.permInput()[a]?.trim();
@@ -938,6 +982,7 @@ export class Settings {
           proofThresholdBFrom: from['proof-threshold-B'] ?? null,
           proofThresholdCFrom: from['proof-threshold-C'] ?? null,
           pot,
+          parent,
         }),
       );
       if (this.session.sheet() !== sheet) return;
@@ -958,9 +1003,14 @@ export class Settings {
       this.graceInput.set(null);
       this.entryInput.set(null);
       this.potInput.set(null);
+      this.parentInput.set(null);
       this.fromInput.set({});
     } catch {
-      this.error.set('Could not save the settings.');
+      this.error.set(
+        parent !== null && parent !== ''
+          ? 'Could not save the settings. The parent must be a sheet already loaded, not this sheet nor one that has it as a parent.'
+          : 'Could not save the settings.',
+      );
     } finally {
       this.submitting = false;
     }

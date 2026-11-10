@@ -14,11 +14,14 @@ import java.io.InputStreamReader;
 import java.nio.charset.StandardCharsets;
 import java.time.LocalDate;
 import java.time.format.DateTimeParseException;
+import java.util.Optional;
 import java.util.Set;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Component;
 import org.springframework.transaction.PlatformTransactionManager;
 import org.springframework.transaction.support.TransactionTemplate;
+import org.springframework.web.context.request.RequestContextHolder;
+import org.springframework.web.context.request.ServletRequestAttributes;
 import org.springframework.web.filter.OncePerRequestFilter;
 import tools.jackson.databind.JsonNode;
 import tools.jackson.databind.json.JsonMapper;
@@ -35,6 +38,9 @@ import tools.jackson.databind.json.JsonMapper;
 public class AsOfFilter extends OncePerRequestFilter {
 
     public static final String HEADER = "X-As-Of";
+
+    /** The request attribute holding the date a request is answered as of; absent when it is answered as it is now. */
+    public static final String AS_OF = AsOfFilter.class.getName() + ".asOf";
 
     private static final String LOAD = "/api/sheets/load";
 
@@ -104,6 +110,7 @@ public class AsOfFilter extends OncePerRequestFilter {
             history.captureFirst(sheet);
         }
         LocalDate date = asOf;
+        body.setAttribute(AS_OF, date);
         try {
             rolledBack.executeWithoutResult(status -> {
                 status.setRollbackOnly();
@@ -123,6 +130,16 @@ public class AsOfFilter extends OncePerRequestFilter {
             }
             throw e;
         }
+    }
+
+    /**
+     * The date the current request is answered as of; empty when it is answered as it is now. Only the
+     * sheet the request is about is restored as it stood then: what another sheet held then must be
+     * read from its own history with this date.
+     */
+    public static Optional<LocalDate> current() {
+        return RequestContextHolder.getRequestAttributes() instanceof ServletRequestAttributes attrs
+                && attrs.getRequest().getAttribute(AS_OF) instanceof LocalDate date ? Optional.of(date) : Optional.empty();
     }
 
     /** The request with its body read once, so both this filter and the handler can read it. */
