@@ -172,7 +172,7 @@ public class ClaimService {
         LocalDate dueBy = dueBy(sheetId, dated, terms);
         periods.refuseIfClosed(sheetId, dueBy);
         refuseIfRetired(person, dated);
-        String corrected = corrected(sheetId, personId, amount, corrects);
+        String corrected = corrected(sheetId, personId, null, amount, corrects);
         refuseIfRefUsed(sheetId, ref, null);
         RollupService.Snapshot before = rollup.snapshot(sheetId);
         Claim claim = new Claim(sheetId, personId, amount, dated, dueBy, terms, note, corrected);
@@ -217,7 +217,7 @@ public class ClaimService {
             throw new ResponseStatusException(HttpStatus.UNPROCESSABLE_ENTITY,
                     "A claim with lines takes its amount from them.");
         }
-        String corrected = corrected(sheetId, claim.getPersonId(), amount, corrects);
+        String corrected = corrected(sheetId, claim.getPersonId(), claim.getId(), amount, corrects);
         refuseIfRefUsed(sheetId, ref, claim.getId());
         RollupService.Snapshot before = rollup.snapshot(sheetId);
         claim.setAmount(amount);
@@ -1134,17 +1134,31 @@ public class ClaimService {
 
     /**
      * The number a claim corrects: none unless its amount is negative, when it must name the number
-     * of a SETTLED claim of the same person, else it is refused (400).
+     * of a SETTLED claim of the same person, else it is refused (400). It may not exceed what remains
+     * of that claim: its amount less the corrections already made against it (VOID and DELETED ones,
+     * and the claim being edited, left out), else it is refused (422).
      */
-    private String corrected(String sheetId, long personId, BigDecimal amount, String corrects) {
+    private String corrected(String sheetId, long personId, Long editedId, BigDecimal amount, String corrects) {
         if (amount.signum() >= 0) {
             return null;
         }
-        boolean settled = corrects != null && claims.findBySheetIdAndPersonIdOrderByIdDesc(sheetId, personId).stream()
-                .anyMatch(c -> corrects.equals(c.getNumber()) && c.getStatus() == ClaimStatus.SETTLED);
-        if (!settled) {
+        List<Claim> personClaims = corrects == null ? List.of()
+                : claims.findBySheetIdAndPersonIdOrderByIdDesc(sheetId, personId);
+        Claim target = personClaims.stream()
+                .filter(c -> corrects.equals(c.getNumber()) && c.getStatus() == ClaimStatus.SETTLED)
+                .findFirst().orElse(null);
+        if (target == null) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
                     "A negative amount must correct a SETTLED claim of the same person, by its number.");
+        }
+        BigDecimal remaining = personClaims.stream()
+                .filter(c -> corrects.equals(c.getCorrects()) && c.isCorrection()
+                        && c.getStatus() != ClaimStatus.VOID && c.getStatus() != ClaimStatus.DELETED
+                        && !c.getId().equals(editedId))
+                .map(Claim::getAmount).reduce(target.getAmount(), BigDecimal::add);
+        if (amount.negate().compareTo(remaining) > 0) {
+            throw new ResponseStatusException(HttpStatus.UNPROCESSABLE_ENTITY,
+                    "A correction may not exceed what remains of the claim it corrects (" + remaining + ").");
         }
         return corrects;
     }
