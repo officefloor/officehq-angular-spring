@@ -182,10 +182,11 @@ public class SheetHistory {
                 continue;
             }
             List<String> columns = columns(name);
+            // a period's rows go by the period they refer to, also those naming a person since merged away
             String where = columns.contains("SHEET_ID") ? "sheet_id = ?"
+                    : columns.contains("PERIOD_ID") ? "period_id IN (SELECT id FROM period WHERE sheet_id = ?)"
                     : columns.contains("PERSON_ID") ? "person_id IN (SELECT id FROM person WHERE sheet_id = ?)"
                     : columns.contains("CLAIM_ID") ? "claim_id IN (SELECT id FROM claim WHERE sheet_id = ?)"
-                    : columns.contains("PERIOD_ID") ? "period_id IN (SELECT id FROM period WHERE sheet_id = ?)"
                     : null;
             if (where != null) {
                 found.add(new Table(name, where, columns));

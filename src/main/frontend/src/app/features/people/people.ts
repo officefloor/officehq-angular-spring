@@ -6,7 +6,7 @@ import { AMOUNT, Claim, PersonClaims, cents, counts, dayNumber, deferred, isOpen
 import { AuditView } from '../audit/audit-view';
 import { Holidays } from '../holidays/holidays';
 import { DatedDue, Period, Periods, periodDueTotal, personPeriodDueTotal } from '../periods/periods';
-import { DatedGrade, DatedValue, Lateness, Rate, Rates, chargedDueCents, dueText, graceOn, gradeOn, pctOn, valueOn } from '../rates/rates';
+import { DatedGrade, DatedValue, Lateness, Rate, Rates, chargedDueCents, dueCents, dueText, graceOn, gradeOn, pctOn, valueOn } from '../rates/rates';
 import { Roles } from '../roles/roles';
 import { Settings } from '../settings/settings';
 import { Header } from '../header/header';
@@ -66,9 +66,12 @@ import { VoidReasons as VoidReasonList } from '../../core/void-reasons';
 // their figures (the overdue-total). An overdue claim's figure has its late charge (the sheet's late
 // percent of it for every full 30 days overdue) added on top, in every figure and total.
 // A person can name other people on the sheet as their patrons, one at a time from their row (not
-// themselves, and not the same person twice). Each row shows the person's patrons by name, sorted,
-// and their backing: the sum of their patrons' settled figures over their SETTLED claims dated within
-// the 90 days up to and including the sheet's today (each at its frozen figure), 0.00 with none.
+// themselves, and not the same person twice). The patrons carry shares: 100.00 split equally among
+// them in the order they were named, each rounded half to even to two decimals, the remainder going
+// to the first-named. Each row shows the person's patrons as "<name> <share>", sorted by name, and
+// their backing: the sum over the patrons of the patron's figure (their settled figures over their
+// SETTLED claims dated within the 90 days up to and including the sheet's today, each at its frozen
+// figure) times their share divided by 100, rounded half to even; 0.00 with none.
 // A user can watch a person, and stop watching them, from their row; "Watched" shows whether the
 // signed-in user watches them.
 // The export button downloads everyone, retired people included, in list order, as a CSV file
@@ -1088,26 +1091,45 @@ export class People {
     return this.statements().get(personId);
   }
 
-  /** The person's patrons, by name, sorted, comma and space separated. */
+  /** The person's patrons as "<name> <share>", sorted by name, comma and space separated. */
   protected patronNamesOf(personId: number): string {
-    return this.patronsOf(personId)
-      .map((p) => p.name)
-      .sort((a, b) => (a < b ? -1 : a > b ? 1 : 0))
+    return this.sharesOf(personId)
+      .map(({ patron, share }) => ({ name: patron.name, share }))
+      .sort((a, b) => (a.name < b.name ? -1 : a.name > b.name ? 1 : 0))
+      .map(({ name, share }) => name + ' ' + money(share))
       .join(', ');
   }
 
   /**
-   * The person's backing in whole cents: their patrons' frozen figures over their SETTLED claims
-   * dated within the 90 days up to and including the sheet's today.
+   * The person's backing in whole cents: over their patrons, the patron's frozen figures over their
+   * SETTLED claims dated within the 90 days up to and including the sheet's today, times the patron's
+   * share divided by 100, rounded half to even, added up.
    */
   protected backingOf(personId: number): number {
     const today = this.session.today();
     if (!today) return 0;
     const since = plusDays(today, -89);
-    return this.patronsOf(personId)
-      .flatMap((p) => this.claimsOf(p.id))
-      .filter((c) => c.status === 'SETTLED' && c.date >= since && c.date <= today)
-      .reduce((sum, c) => sum + (c.settledDue === null ? 0 : cents(c.settledDue)), 0);
+    return this.sharesOf(personId).reduce((sum, { patron, share }) => {
+      const figure = this.claimsOf(patron.id)
+        .filter((c) => c.status === 'SETTLED' && c.date >= since && c.date <= today)
+        .reduce((total, c) => total + (c.settledDue === null ? 0 : cents(c.settledDue)), 0);
+      return sum + (dueCents(figure, money(share)) ?? 0);
+    }, 0);
+  }
+
+  /**
+   * The person's patrons with their shares in whole hundredths: 100.00 split equally in the order
+   * they were named, each rounded half to even, the remainder to the first-named.
+   */
+  private sharesOf(personId: number): { patron: Person; share: number }[] {
+    const patrons = this.patronsOf(personId);
+    if (patrons.length === 0) return [];
+    const n = patrons.length;
+    const whole = Math.floor(10000 / n);
+    const rest = 10000 - whole * n;
+    const each = 2 * rest > n || (2 * rest === n && whole % 2 === 1) ? whole + 1 : whole;
+    const remainder = 10000 - each * n;
+    return patrons.map((patron, i) => ({ patron, share: i === 0 ? each + remainder : each }));
   }
 
   private patronsOf(personId: number): Person[] {
