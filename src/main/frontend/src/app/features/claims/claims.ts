@@ -411,6 +411,8 @@ export class PersonClaims {
   protected readonly error = signal<string | null>(null);
   /** Whether a submit is waiting for its answer: a second submit meanwhile is ignored. */
   private submitting = false;
+  /** The lock an opened editor is taking, while it is being taken. */
+  private locking: Promise<boolean> | null = null;
   /** The error of each claim's last refused status change, by claim id. */
   protected readonly actionErrors = signal<ReadonlyMap<number, string>>(new Map());
   /** The reason typed for rejecting each claim, by claim id. */
@@ -479,28 +481,55 @@ export class PersonClaims {
       this.actionErrors.update((m) => new Map(m).set(c.id, LOCKED));
       return;
     }
-    if (this.submitting) return;
+    if (this.submitting || this.locking !== null) return;
     const sheet = this.session.sheet();
     const was = this.editingId();
-    // a submit meanwhile is ignored, so the form cannot add a claim while the lock is being taken
-    this.submitting = true;
+    const typed = [this.amountInput(), this.dateInput(), this.noteInput(), this.correctsInput()] as const;
+    // the editor opens with the claim's values at once, so what is typed next is not overwritten
+    // when the lock comes back; a submit meanwhile waits for the lock
+    this.editingId.set(c.id);
+    this.amountInput.set(c.amount);
+    this.dateInput.set(c.date);
+    this.noteInput.set(c.note);
+    this.correctsInput.set(c.corrects ?? '');
+    this.error.set(null);
+    const locking = this.takeLock(c, sheet, was, typed);
+    this.locking = locking;
+    try {
+      await locking;
+    } finally {
+      if (this.locking === locking) this.locking = null;
+    }
+  }
+
+  /** Take a claim's lock for its opened editor: true when taken; when refused, the editor is put
+   *  back as it was and the claim shows the error. */
+  private async takeLock(c: Claim, sheet: string | null, was: number | null,
+    typed: readonly [string, string, string, string]): Promise<boolean> {
     try {
       const claim = await firstValueFrom(
         this.http.post<Claim>('/api/claims/lock', { sheet, user: this.session.user(), id: c.id }),
       );
-      if (this.session.sheet() !== sheet) return;
+      if (this.session.sheet() !== sheet) return false;
       // taking this lock released the one this user held on another claim of the person
       const released = this.claims().find((x) => x.id === was && x.id !== claim.id);
+      // the editor's fields follow the claim this user locks: keep what was typed while the lock was taken
+      const now = [this.amountInput(), this.dateInput(), this.noteInput(), this.correctsInput()] as const;
       if (released !== undefined) this.saved.emit({ ...released, lockedBy: null });
       this.saved.emit(claim);
       this.editingId.set(claim.id);
-      this.amountInput.set(claim.amount);
-      this.dateInput.set(claim.date);
-      this.noteInput.set(claim.note);
-      this.correctsInput.set(claim.corrects ?? '');
-      this.error.set(null);
+      this.amountInput.set(now[0]);
+      this.dateInput.set(now[1]);
+      this.noteInput.set(now[2]);
+      this.correctsInput.set(now[3]);
+      return true;
     } catch (e) {
-      if (this.session.sheet() !== sheet) return;
+      if (this.session.sheet() !== sheet) return false;
+      this.editingId.set(was);
+      this.amountInput.set(typed[0]);
+      this.dateInput.set(typed[1]);
+      this.noteInput.set(typed[2]);
+      this.correctsInput.set(typed[3]);
       const status = e instanceof HttpErrorResponse ? e.status : 0;
       const err =
         status === 423
@@ -511,8 +540,7 @@ export class PersonClaims {
               ? LOCKED
               : 'Could not open this claim\'s editor.';
       this.actionErrors.update((m) => new Map(m).set(c.id, err));
-    } finally {
-      this.submitting = false;
+      return false;
     }
   }
 
@@ -797,6 +825,8 @@ export class PersonClaims {
 
   protected async save(event: Event): Promise<void> {
     event.preventDefault();
+    if (this.submitting) return;
+    if (this.locking !== null && !(await this.locking)) return;
     if (this.submitting) return;
     this.error.set(null);
     const sheet = this.session.sheet();

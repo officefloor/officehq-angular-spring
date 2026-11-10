@@ -154,7 +154,8 @@ public class SheetService {
     /**
      * Change the sheet's today. With grace days set, every open (not soft-closed) period whose to-date
      * plus the grace days is before the new today is then closed, in order of their to-dates. A new today releases
-     * every claim editor's lock.
+     * every claim editor's lock. A new today first records each person's due-total on the day being left (SNAPSHOT),
+     * in list order.
      */
     @Transactional
     public Sheet setToday(String id, String user, LocalDate today) {
@@ -164,6 +165,14 @@ public class SheetService {
         Sheet sheet = lock(id);
         RollupService.Snapshot before = rollup.snapshot(id);
         boolean moved = !today.equals(sheet.getToday());
+        if (moved) {
+            // each person's due-total as it stood on the day being left, before anything else the change records
+            for (RollupService.Figures figures : before.people().values()) {
+                audit.recordOnCommit("SNAPSHOT sheet=" + id + " by=" + user + " name=" + figures.name()
+                        + " due-total=" + (figures.dueTotal() == null ? "n/a"
+                                : figures.dueTotal().setScale(2, RoundingMode.UNNECESSARY).toPlainString()));
+            }
+        }
         sheet.setToday(today);
         Sheet saved = sheets.saveAndFlush(sheet);
         Integer grace = saved.getGraceDays();
