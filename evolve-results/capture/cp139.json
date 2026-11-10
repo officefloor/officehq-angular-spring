@@ -1,0 +1,64 @@
+{
+  "checkpoint": 139,
+  "stack": {
+    "repo": "/home/daniel/officehq-angular-spring",
+    "origin": "git@github.com:officefloor/officehq-angular-spring.git",
+    "name": "officehq-angular-spring",
+    "base_ref": "base-empty",
+    "base_commit": "65cb8233ea38b2dfa6cfd18709e30cd18fdf3250"
+  },
+  "checkpoint_id": "cp139_tree-audit",
+  "phase": "mid",
+  "type": "additive",
+  "mutates": [],
+  "replaced_tests": [],
+  "request": {
+    "spec": "The audit viewer, filtered by a name, now also lists the matching lines of the sheet's descendants\n(each sheet's lines newest first, sheets by id, after this sheet's own lines and before the lines\nfrom the sheet a person came from).\n",
+    "prompt": "You are implementing ONE change to this application.\n\nFIRST read AGENTS.md \u2014 it states the working rules and how the app is tested, and sends you to\nDESIGN.md for the app's stack and conventions. Follow both.\n\nTHE CHANGE REQUEST:\nThe audit viewer, filtered by a name, now also lists the matching lines of the sheet's descendants\n(each sheet's lines newest first, sheets by id, after this sheet's own lines and before the lines\nfrom the sheet a person came from).\n\nYour work is verified by an automated Playwright UI test already installed under e2e/specs/.\nRead that spec: it declares the exact data-testid anchors, values, test data and any audit\nrecords it expects \u2014 match them. Run `bin/e2e` to build the app, start it, and run the test as\nyou work; iterate until it passes. Change whatever the request needs across the app \u2014 its stored\ndata, its server and its front end. Do NOT edit bin/build, bin/start, bin/stop, bin/e2e,\nAGENTS.md, CLAUDE.md, DESIGN.md, e2e/support/ or the test spec.\n"
+  },
+  "commit_sha": "f82ca7d7a3bc4cc318933b1a07c86464c8572eb6",
+  "reset_sha": "",
+  "preagent_sha": "e8c370955f9b9d2dd77dd9e631f61d7946a29d5c",
+  "prev_sha": "e8c370955f9b9d2dd77dd9e631f61d7946a29d5c",
+  "base_sha": "65cb8233ea38b2dfa6cfd18709e30cd18fdf3250",
+  "agent": {
+    "ok": true,
+    "cost_usd": 0.4646776,
+    "input_tokens": 20,
+    "output_tokens": 3471,
+    "cache_read_tokens": 318288,
+    "cache_creation_tokens": 41440,
+    "num_turns": 11,
+    "duration_ms": 232848,
+    "duration_api_ms": 37253,
+    "model": "claude-opus-5-5",
+    "session_id": "b51be317-a31a-48f2-8319-c7dcf07d5ee2",
+    "stop_reason": "success",
+    "result_text": "I made the change and `bin/e2e` passes: all 4 acceptance tests.\n\nWhen you filter the audit viewer by a name, it now shows matching lines in this order:\n1. This sheet's own lines, newest first.\n2. Matching lines from every descendant sheet (children, their children, and so on). Each sheet's lines are newest first, and the sheets are in order of id.\n3. Lines from the sheet the person came from, as before.\n\nWith no name in the filter, the viewer still shows only this sheet's lines.\n\n**Where:** the change is in `src/main/java/net/officefloor/hq/app/audit/AuditViewService.java`. It finds descendants with the existing `SheetRepository.findByParentIdOrderByIdAsc`. If a sheet appears twice in the tree, its lines are only shown once. No schema or API changes were needed. On the front end, I only updated the comment in `audit-view.ts` to describe the new order.\n\nOne thing to know: \"sheets by id\" sorts every descendant together by id, so grandchildren are mixed in with children rather than shown after them. The tests here can't tell the two orders apart, so if you meant children first, then grandchildren, that's a small change.",
+    "error": "",
+    "attempts": [
+      {
+        "ok": true,
+        "limit_reached": false,
+        "retryable": false,
+        "timed_out": false,
+        "cost_usd": 0.4646776,
+        "num_turns": 11,
+        "duration_ms": 232848,
+        "duration_api_ms": 37253,
+        "error": ""
+      }
+    ]
+  },
+  "agent_stream_file": "cp139.agent.jsonl",
+  "agent_diff_file": "cp139.agent.diff",
+  "build_log_file": null,
+  "tests": {
+    "gated": false,
+    "queued": true
+  },
+  "probe": null,
+  "pinned_touched": [],
+  "acceptance_touched": [],
+  "impact_gate": null
+}

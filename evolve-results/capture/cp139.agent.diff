@@ -1,0 +1,91 @@
+diff --git a/src/main/frontend/src/app/features/audit/audit-view.ts b/src/main/frontend/src/app/features/audit/audit-view.ts
+index 652c4f782..aec554fb9 100644
+--- a/src/main/frontend/src/app/features/audit/audit-view.ts
++++ b/src/main/frontend/src/app/features/audit/audit-view.ts
+@@ -5,7 +5,8 @@ import { Session } from '../../core/session';
+ 
+ // The audit viewer: the sheet's audit lines exactly as the audit file holds them, newest first.
+ // With a name in the filter, only the lines about that person (name= or person= that name,
+-// compared ignoring case and surrounding spaces). It reads the file; it records nothing itself.
++// compared ignoring case and surrounding spaces), then those on the sheet's descendants and on the
++// sheet the person came from. It reads the file; it records nothing itself.
+ @Component({
+   selector: 'app-audit-view',
+   template: `
+diff --git a/src/main/java/net/officefloor/hq/app/audit/AuditViewService.java b/src/main/java/net/officefloor/hq/app/audit/AuditViewService.java
+index 9d3e1f117..d71dcf5ca 100644
+--- a/src/main/java/net/officefloor/hq/app/audit/AuditViewService.java
++++ b/src/main/java/net/officefloor/hq/app/audit/AuditViewService.java
+@@ -3,11 +3,15 @@ package net.officefloor.hq.app.audit;
+ import java.util.ArrayList;
+ import java.util.Collections;
+ import java.util.List;
++import java.util.LinkedHashSet;
+ import java.util.Locale;
++import java.util.Set;
+ import java.util.regex.Pattern;
+ import net.officefloor.hq.app.Audit;
+ import net.officefloor.hq.app.person.Person;
+ import net.officefloor.hq.app.person.PersonRepository;
++import net.officefloor.hq.app.sheet.Sheet;
++import net.officefloor.hq.app.sheet.SheetRepository;
+ import org.springframework.stereotype.Service;
+ 
+ /**
+@@ -22,29 +26,53 @@ public class AuditViewService {
+ 
+     private final Audit audit;
+     private final PersonRepository people;
++    private final SheetRepository sheets;
+ 
+-    public AuditViewService(Audit audit, PersonRepository people) {
++    public AuditViewService(Audit audit, PersonRepository people, SheetRepository sheets) {
+         this.audit = audit;
+         this.people = people;
++        this.sheets = sheets;
+     }
+ 
+     /**
+      * The sheet's records, newest first; with a name (blank for none), only those carrying
+      * {@code name=<name>} or {@code person=<name>}, the name compared ignoring case and surrounding
+-     * spaces. When the name is a person transferred in, the lines about them from the sheet they
+-     * came from follow, newest first, as that sheet's lines are.
++     * spaces. With a name, the lines about them on the sheet's descendants (its children, their
++     * children, and so on) follow, each sheet's newest first, the sheets in order of id. When the
++     * name is a person transferred in, the lines about them from the sheet they came from follow
++     * last, newest first, as that sheet's lines are.
+      */
+     public List<String> lines(String sheet, String name) {
+         String person = name == null ? "" : name.trim().toLowerCase(Locale.ROOT);
+         List<String> all = audit.lines();
+         List<String> found = linesOf(all, sheet, person);
+         if (!person.isEmpty()) {
++            for (String descendant : descendants(sheet)) {
++                found.addAll(linesOf(all, descendant, person));
++            }
+             people.findBySheetIdAndNameIgnoreCase(sheet, name.trim()).map(Person::getOriginSheet)
+                     .ifPresent(origin -> found.addAll(linesOf(all, origin, person)));
+         }
+         return found;
+     }
+ 
++    /** The ids of the sheet's descendants, at every level, in order of id; the sheet itself never. */
++    private List<String> descendants(String sheet) {
++        Set<String> seen = new LinkedHashSet<>();
++        List<String> todo = new ArrayList<>(List.of(sheet));
++        while (!todo.isEmpty()) {
++            String at = todo.remove(todo.size() - 1);
++            for (Sheet child : sheets.findByParentIdOrderByIdAsc(at)) {
++                if (!child.getId().equals(sheet) && seen.add(child.getId())) {
++                    todo.add(child.getId());
++                }
++            }
++        }
++        List<String> ids = new ArrayList<>(seen);
++        Collections.sort(ids);
++        return ids;
++    }
++
+     /** The sheet's lines, newest first, only those about the (lower-cased) person when one is given. */
+     private static List<String> linesOf(List<String> all, String sheet, String person) {
+         List<String> found = new ArrayList<>();
