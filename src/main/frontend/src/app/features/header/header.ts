@@ -6,6 +6,8 @@ import { StatusSummary } from '../summary/summary';
 // and the sheet's due- and overdue-totals (as the people list's totals show them). Then the same
 // figures consolidated over the sheet and all its descendants (the sheets naming it as parent, and
 // theirs): each sheet's as that sheet shows it, added up; a sheet with no children shows its own.
+// Last, the signed-in user's own figures: the due- and overdue-totals of the person on the sheet
+// with the user's name (by name or alias); blank when there is no such person.
 @Component({
   selector: 'app-header',
   template: `
@@ -30,6 +32,12 @@ import { StatusSummary } from '../summary/summary';
         <dt>Overdue, with sub-sheets</dt>
         <dd data-testid="consolidated-overdue-total">{{ consolidatedOverdueTotal() }}</dd>
       </dl>
+      <dl aria-label="My figures">
+        <dt>My due</dt>
+        <dd data-testid="my-due-total">{{ myDueTotal() }}</dd>
+        <dt>My overdue</dt>
+        <dd data-testid="my-overdue-total">{{ myOverdueTotal() }}</dd>
+      </dl>
     </header>
   `,
 })
@@ -41,4 +49,6 @@ export class Header {
   readonly consolidatedPeopleCount = input.required<number>();
   readonly consolidatedDueTotal = input.required<string>();
   readonly consolidatedOverdueTotal = input.required<string>();
+  readonly myDueTotal = input.required<string>();
+  readonly myOverdueTotal = input.required<string>();
 }

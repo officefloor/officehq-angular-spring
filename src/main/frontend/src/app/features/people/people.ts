@@ -216,6 +216,8 @@ const SUMMARY_STATUSES = ['DRAFT', 'OPEN', 'PENDING', 'SETTLED', 'VOID'] as cons
       [consolidatedPeopleCount]="consolidated().peopleCount"
       [consolidatedDueTotal]="consolidated().dueTotal"
       [consolidatedOverdueTotal]="consolidated().overdueTotal"
+      [myDueTotal]="myFigures()?.dueTotal ?? ''"
+      [myOverdueTotal]="myFigures()?.overdueTotal ?? ''"
     />
     <app-rates [(rates)]="rates" />
     <app-roles />
@@ -971,6 +973,18 @@ export class People {
       dueTotal: money(own.due + cents(d.dueTotal)),
       overdueTotal: money(own.overdue + cents(d.overdueTotal)),
     };
+  });
+  /**
+   * The signed-in user's own figures: the due- and overdue-totals of the person on the sheet with
+   * the user's name, by name or alias (compared without regard to case); none when there is no such person.
+   */
+  protected readonly myFigures = computed(() => {
+    const user = this.session.user()?.toLowerCase();
+    if (!user) return null;
+    const me = this.people().find(
+      (p) => p.name.toLowerCase() === user || p.aliases.some((a) => a.toLowerCase() === user),
+    );
+    return me ? { dueTotal: dueText(this.dueOf(me)), overdueTotal: money(this.overdueOf(me).cents) } : null;
   });
   /** The sheet's overdue claims that count: how many, and the sum of people's figures in whole cents, trimmed. */
   protected readonly overdueTotals = computed(() => {
