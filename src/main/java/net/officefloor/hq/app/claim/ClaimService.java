@@ -319,7 +319,7 @@ public class ClaimService {
      */
     @Transactional
     public Claim changeStatus(String sheetId, String user, long id, ClaimStatus next) {
-        return changeStatus(sheetId, user, id, next, null, false, null);
+        return changeStatus(sheetId, user, id, next, null, false, null, false);
     }
 
     /**
@@ -328,7 +328,7 @@ public class ClaimService {
      */
     @Transactional
     public Claim voidClaim(String sheetId, String user, long id, String voidReason) {
-        return changeStatus(sheetId, user, id, ClaimStatus.VOID, null, false, voidReason);
+        return changeStatus(sheetId, user, id, ClaimStatus.VOID, null, false, voidReason, false);
     }
 
     /**
@@ -338,7 +338,7 @@ public class ClaimService {
      */
     @Transactional
     public Claim approve(String sheetId, String user, long id) {
-        return changeStatus(sheetId, user, id, ClaimStatus.SETTLED, null, true, null);
+        return changeStatus(sheetId, user, id, ClaimStatus.SETTLED, null, true, null, false);
     }
 
     /**
@@ -347,12 +347,16 @@ public class ClaimService {
      */
     @Transactional
     public Claim reject(String sheetId, String user, long id, String reason) {
-        return changeStatus(sheetId, user, id, ClaimStatus.OPEN, reason, true, null);
+        return changeStatus(sheetId, user, id, ClaimStatus.OPEN, reason, true, null, false);
     }
 
-    /** Move a claim to a new status; {@code review} for a steward's approval or rejection of a PENDING claim. */
+    /**
+     * Move a claim to a new status; {@code review} for a steward's approval or rejection of a PENDING
+     * claim, {@code judged} when the four-eyes and proof rules were already judged on the claim it was
+     * split off (see {@link #partSettle}).
+     */
     private Claim changeStatus(String sheetId, String user, long id, ClaimStatus next, String reason,
-            boolean review, String voidReason) {
+            boolean review, String voidReason, boolean judged) {
         roles.refuseViewer(sheetId, user);
         if (!review) {
             roles.refuseUnlessPermitted(sheetId, user, switch (next) {
@@ -386,11 +390,11 @@ public class ClaimService {
             throw new ResponseStatusException(HttpStatus.CONFLICT,
                     "A claim deferred until " + claim.getDeferredUntil() + " cannot be settled before then.");
         }
-        if (next == ClaimStatus.SETTLED && user.equals(claim.getOpenedBy())) {
+        if (next == ClaimStatus.SETTLED && !judged && user.equals(claim.getOpenedBy())) {
             throw new ResponseStatusException(HttpStatus.FORBIDDEN,
                     "The user who opened a claim cannot " + (review ? "approve" : "settle") + " it.");
         }
-        if (next == ClaimStatus.SETTLED && user.equals(claim.getEditedBy())) {
+        if (next == ClaimStatus.SETTLED && !judged && user.equals(claim.getEditedBy())) {
             throw new ResponseStatusException(HttpStatus.FORBIDDEN,
                     "The user who last edited a claim cannot " + (review ? "approve" : "settle") + " it.");
         }
@@ -418,7 +422,7 @@ public class ClaimService {
         // settling fixes the figure with its late charge as it stands on the sheet's today (a
         // PENDING claim keeps any figure a statement bound)
         BigDecimal settling = next == ClaimStatus.SETTLED ? charged(sheetId, person, claim) : null;
-        if (next == ClaimStatus.SETTLED && needsProof(sheetId, person, claim, settling)) {
+        if (next == ClaimStatus.SETTLED && !judged && needsProof(sheetId, person, claim, settling)) {
             throw new ResponseStatusException(HttpStatus.UNPROCESSABLE_ENTITY,
                     "A claim due above the proof threshold cannot be " + (review ? "approved" : "settled")
                             + " without a proof of each kind the sheet needs.");
@@ -955,6 +959,39 @@ public class ClaimService {
         audit.recordOnCommit(record("CLAIM_OPENED", sheetId, user, person, added) + " number=" + added.getNumber());
         rollup.recordChanges(sheetId, user, before);
         return new Split(original, added);
+    }
+
+    /**
+     * Part-settle an OPEN claim: the amount is split off it as {@link #split} does, and the new claim
+     * is settled at once by the user as {@link #changeStatus(String, String, long, ClaimStatus)} does
+     * (PENDING when above a clerk's limit). The four-eyes and proof rules are judged on the original
+     * claim as it was, not on the new one (whose opener is the user). Whatever either step would
+     * refuse refuses the whole, and nothing is changed.
+     */
+    @Transactional
+    public Split partSettle(String sheetId, String user, long id, BigDecimal amount) {
+        roles.refuseViewer(sheetId, user);
+        roles.refuseUnlessPermitted(sheetId, user, "settle");
+        Claim claim = claims.findByIdAndSheetId(id, sheetId)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "No such claim on this sheet."));
+        if (claim.getStatus() == ClaimStatus.OPEN) {
+            if (user.equals(claim.getOpenedBy())) {
+                throw new ResponseStatusException(HttpStatus.FORBIDDEN,
+                        "The user who opened a claim cannot settle it.");
+            }
+            if (user.equals(claim.getEditedBy())) {
+                throw new ResponseStatusException(HttpStatus.FORBIDDEN,
+                        "The user who last edited a claim cannot settle it.");
+            }
+            Person person = person(sheetId, claim.getPersonId());
+            if (needsProof(sheetId, person, claim, charged(sheetId, person, claim))) {
+                throw new ResponseStatusException(HttpStatus.UNPROCESSABLE_ENTITY,
+                        "A claim due above the proof threshold cannot be settled without a proof of each kind the sheet needs.");
+            }
+        }
+        Split done = split(sheetId, user, id, amount);
+        Claim settled = changeStatus(sheetId, user, done.split().getId(), ClaimStatus.SETTLED, null, false, null, true);
+        return new Split(done.original(), settled);
     }
 
     /**

@@ -356,6 +356,14 @@ public class ClaimController {
         return new SplitClaimResponse(response(done.original()), response(done.split()));
     }
 
+    /** Split the amount off an OPEN claim and settle the new claim at once; refused whole when either step is. */
+    @PostMapping("/settle-part")
+    public SplitClaimResponse settlePart(@Valid @RequestBody SplitClaimRequest req) {
+        ClaimService.Split done = service.partSettle(req.sheet().trim(), req.user().trim(), req.id(),
+                amount(req.amount()));
+        return new SplitClaimResponse(response(done.original()), response(done.split()));
+    }
+
     @PostMapping("/bulk-open")
     public BulkOpenResponse bulkOpen(@Valid @RequestBody BulkOpenRequest req) {
         ClaimService.BulkOpened done = service.bulkOpen(req.sheet().trim(), req.user().trim(), req.ids());

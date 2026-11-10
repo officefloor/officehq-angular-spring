@@ -73,6 +73,10 @@ import { FigurePipe } from '../../core/figure';
 // original's number as split-from; the original keeps the rest and loses any figure a statement bound
 // it to. Refused for a claim that is not OPEN, one deferred or in a closed period, and a role that may
 // not open a claim.
+// An OPEN claim can be part-settled with its part-settle amount and button: the amount is split off as
+// the split button does and the new claim is settled at once by the user as the settle button does
+// (PENDING above a clerk's limit). The four-eyes and proof rules are judged on the original claim.
+// Whatever the split or the settle would refuse refuses the whole, with an error on the claim.
 // A steward can re-date an OPEN or PENDING claim: its due-by, and so its period and number, and any
 // statement-bound figure stay. Refused for anyone else, a claim in a closed period, and a date after
 // its person's retirement.
@@ -557,6 +561,15 @@ export function money(c: number): string {
             (input)="setSplitAmount(c.id, $any($event.target).value)"
           />
           <button type="button" data-testid="claim-split" (click)="split(c)">Split</button>
+          <label [for]="'claim-settle-part-amount-' + c.id">Settle part</label>
+          <input
+            [id]="'claim-settle-part-amount-' + c.id"
+            data-testid="claim-settle-part-amount"
+            inputmode="decimal"
+            [value]="settlePartAmounts().get(c.id) ?? ''"
+            (input)="setSettlePartAmount(c.id, $any($event.target).value)"
+          />
+          <button type="button" data-testid="claim-settle-part" (click)="settlePart(c)">Settle part</button>
           <label [for]="'claim-reassign-to-' + c.id">Move to</label>
           <select
             [id]="'claim-reassign-to-' + c.id"
@@ -685,6 +698,8 @@ export class PersonClaims {
   protected readonly redates = signal<ReadonlyMap<number, string>>(new Map());
   /** The amount typed to split off each claim, by claim id. */
   protected readonly splitAmounts = signal<ReadonlyMap<number, string>>(new Map());
+  /** The amount typed to part-settle each claim, by claim id. */
+  protected readonly settlePartAmounts = signal<ReadonlyMap<number, string>>(new Map());
   /** The amount typed to change each DRAFT claim's amount to in its row, by claim id. */
   protected readonly inlineAmounts = signal<ReadonlyMap<number, string>>(new Map());
   /** The audit lines shown as each claim's timeline, newest first, by claim id. */
@@ -1077,6 +1092,58 @@ export class PersonClaims {
                   ? `This claim is deferred until ${c.deferredUntil} and cannot be split before then.`
                   : `A ${c.status} claim cannot be split.`
                 : 'Could not split this claim.';
+      this.actionErrors.update((m) => new Map(m).set(c.id, err));
+    }
+  }
+
+  protected setSettlePartAmount(id: number, amount: string): void {
+    this.settlePartAmounts.update((m) => new Map(m).set(id, amount));
+    this.clearActionError(id);
+  }
+
+  /** Split the amount typed off an OPEN claim and settle the new claim at once; the server refuses
+   *  the whole when the split or the settle would be refused. */
+  protected async settlePart(c: Claim): Promise<void> {
+    this.clearActionError(c.id);
+    const sheet = this.session.sheet();
+    const amount = (this.settlePartAmounts().get(c.id) ?? '').trim();
+    if (!AMOUNT.test(amount) || cents(amount) <= 0 || cents(amount) >= cents(c.amount)) {
+      this.actionErrors.update((m) =>
+        new Map(m).set(c.id, 'Enter an amount more than 0.00 and less than this claim\'s amount.'));
+      return;
+    }
+    try {
+      const done = await firstValueFrom(
+        this.http.post<{ original: Claim; split: Claim }>('/api/claims/settle-part',
+          { sheet, user: this.session.user(), id: c.id, amount }),
+      );
+      if (this.session.sheet() !== sheet) return;
+      this.settlePartAmounts.update((m) => {
+        const next = new Map(m);
+        next.delete(c.id);
+        return next;
+      });
+      this.saved.emit(done.original);
+      this.saved.emit(done.split);
+    } catch (e) {
+      if (this.session.sheet() !== sheet) return;
+      const status = e instanceof HttpErrorResponse ? e.status : 0;
+      const err =
+        status === 403
+          ? c.openedBy === this.session.user()
+            ? 'You opened this claim, so you cannot settle any part of it.'
+            : 'You may not split and settle this claim.'
+          : status === 423
+            ? CLOSED
+            : status === 422
+              ? 'This claim needs its proofs before any part of it can be settled.'
+              : status === 400
+                ? 'Enter an amount more than 0.00 and less than this claim\'s amount.'
+                : status === 409
+                  ? deferred(c, this.session.today())
+                    ? `This claim is deferred until ${c.deferredUntil} and cannot be settled before then.`
+                    : `A ${c.status} claim cannot be part-settled.`
+                  : 'Could not settle part of this claim.';
       this.actionErrors.update((m) => new Map(m).set(c.id, err));
     }
   }
