@@ -32,7 +32,10 @@ import org.springframework.web.server.ResponseStatusException;
  * person can be put on hold over a span of dates, and may have several holds over time. A person can name other people on the sheet as
  * their patrons, one at a time: not themselves, and not the same person twice. A user can watch a
  * person, and stop watching them; each user's watching is their own. A person may have their own
- * terms, in days; a claim's due-by takes them before the terms of the person's grade and the sheet's.
+ * terms, in days; a claim's due-by takes those in force on its date before the terms of the person's
+ * grade and the sheet's. Terms saved with a from-date are recorded from that date, keeping those already
+ * recorded (replacing any from that same date); saved without one, they are recorded from the beginning
+ * of time, unless they leave the terms in force on the sheet's today as they are.
  * A person may have a contact (arriving trimmed and lower-cased, null for none), unique on the sheet.
  * A person may have tags (arriving trimmed, lower-cased, without repeats and sorted), each kept as used on the sheet.
  * A person may have aliases (arriving trimmed), sharing the names' uniqueness: an alias equals no name
@@ -66,6 +69,12 @@ public class PersonService {
         this.rollup = rollup;
     }
 
+    /** The sheet's today: the day a person's terms shown are those in force on. */
+    @Transactional(readOnly = true)
+    public LocalDate today(String sheetId) {
+        return sheets.today(sheetId);
+    }
+
     @Transactional(readOnly = true)
     public List<Person> list(String sheetId) {
         return people.findBySheetIdOrderByPositionAscIdAsc(sheetId);
@@ -84,6 +93,13 @@ public class PersonService {
     @Transactional
     public Person add(String sheetId, String user, String name, String grade, Integer terms, String contact,
             List<String> tags) {
+        return add(sheetId, user, name, grade, terms, null, contact, tags);
+    }
+
+    /** Add the person; their terms are recorded from {@code termsFrom}, or from the beginning of time when null. */
+    @Transactional
+    public Person add(String sheetId, String user, String name, String grade, Integer terms, LocalDate termsFrom,
+            String contact, List<String> tags) {
         roles.refuseViewer(sheetId, user);
         sheets.load(sheetId, user);
         RollupService.Snapshot before = rollup.snapshot(sheetId);
@@ -94,15 +110,21 @@ public class PersonService {
         if (contact != null && people.existsBySheetIdAndContact(sheetId, contact)) {
             throw contactInUse();
         }
-        Person person = new Person(sheetId, name, grade, sheets.today(sheetId));
-        person.setTerms(terms);
+        LocalDate today = sheets.today(sheetId);
+        Person person = new Person(sheetId, name, grade, today);
+        if (termsFrom != null) {
+            person.setTermsFrom(termsFrom, terms);
+        } else {
+            person.setTerms(terms);
+        }
         person.setContact(contact);
         person.setTags(tags);
         person.setPosition(people.maxPosition(sheetId) + 1);
         Person added = save(person);
         useTags(sheetId, added);
-        audit.recordOnCommit(record("PERSON_ADDED", sheetId, user, added, sheets.today(sheetId))
-                + (terms != null ? " terms=" + terms : "") + (contact != null ? " contact=" + contact : ""));
+        Integer termsNow = added.termsOn(today);
+        audit.recordOnCommit(record("PERSON_ADDED", sheetId, user, added, today)
+                + (termsNow != null ? " terms=" + termsNow : "") + (contact != null ? " contact=" + contact : ""));
         rollup.recordChanges(sheetId, user, before);
         return added;
     }
@@ -118,6 +140,17 @@ public class PersonService {
     @Transactional
     public Person update(String sheetId, String user, long id, long version, String name, String grade,
             LocalDate gradeFrom, Integer terms, String contact, List<String> tags) {
+        return update(sheetId, user, id, version, name, grade, gradeFrom, terms, null, contact, tags);
+    }
+
+    /**
+     * Edit the person; {@code tags} null keeps the ones they have. The terms are recorded from
+     * {@code termsFrom}; with none, from the beginning of time unless the terms in force on the
+     * sheet's today are left as they are.
+     */
+    @Transactional
+    public Person update(String sheetId, String user, long id, long version, String name, String grade,
+            LocalDate gradeFrom, Integer terms, LocalDate termsFrom, String contact, List<String> tags) {
         roles.refuseViewer(sheetId, user);
         RollupService.Snapshot before = rollup.snapshot(sheetId);
         Person person = people.findByIdAndSheetId(id, sheetId)
@@ -139,10 +172,14 @@ public class PersonService {
             throw contactInUse();
         }
         LocalDate today = sheets.today(sheetId);
-        Integer termsBefore = person.getTerms();
+        boolean termsChanged = termsFrom != null || !Objects.equals(terms, person.termsOn(today));
         String contactBefore = person.getContact();
         person.setName(name);
-        person.setTerms(terms);
+        if (termsFrom != null) {
+            person.setTermsFrom(termsFrom, terms);
+        } else if (termsChanged) {
+            person.setTerms(terms);
+        }
         person.setContact(contact);
         if (tags != null) {
             person.setTags(tags);
@@ -153,7 +190,7 @@ public class PersonService {
         Person saved = save(person);
         useTags(sheetId, saved);
         audit.recordOnCommit(record("PERSON_EDITED", sheetId, user, saved, today)
-                + (Objects.equals(termsBefore, terms) ? "" : " terms=" + (terms != null ? terms : ""))
+                + (termsChanged ? " terms=" + Objects.toString(saved.termsOn(today), "") : "")
                 + (Objects.equals(contactBefore, contact) ? "" : " contact=" + (contact != null ? contact : "")));
         rollup.recordChanges(sheetId, user, before);
         return saved;
@@ -243,7 +280,7 @@ public class PersonService {
             throw new ResponseStatusException(HttpStatus.NOT_FOUND, "No such person on this sheet.");
         }
         return chosen.stream().map(p -> update(sheetId, user, p.getId(), p.getVersion(), p.getName(), grade,
-                gradeFrom, p.getTerms(), p.getContact())).toList();
+                gradeFrom, p.termsOn(sheets.today(sheetId)), p.getContact())).toList();
     }
 
     /**

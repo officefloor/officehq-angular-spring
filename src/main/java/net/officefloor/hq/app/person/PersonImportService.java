@@ -77,7 +77,7 @@ public class PersonImportService {
                 throw refused("The name " + line.name() + " matches " + person.getName() + ", already in this import.");
             } else {
                 updated.add(people.update(sheetId, user, person.getId(), person.getVersion(), person.getName(),
-                        line.grade(), null, line.terms() != null ? line.terms() : person.getTerms(),
+                        line.grade(), null, line.terms() != null ? line.terms() : person.termsOn(people.today(sheetId)),
                         line.contact() != null ? line.contact() : person.getContact()));
             }
         }

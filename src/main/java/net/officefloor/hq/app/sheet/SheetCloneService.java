@@ -52,7 +52,7 @@ public class SheetCloneService {
             "CLAIM_TEMPLATE", "CLAIM_TAG_USED");
 
     /** A person's own tables, copied onto their clone. */
-    private static final List<String> PERSON_TABLES = List.of("PERSON_GRADE", "PERSON_HOLD", "PERSON_ALIAS",
+    private static final List<String> PERSON_TABLES = List.of("PERSON_GRADE", "PERSON_TERMS", "PERSON_HOLD", "PERSON_ALIAS",
             "PERSON_RETIREMENT", "PERSON_SNAPSHOT");
 
     /** A claim's own tables, copied onto its clone. */

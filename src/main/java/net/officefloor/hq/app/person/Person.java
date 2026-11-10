@@ -43,9 +43,14 @@ public class Person {
     @CollectionTable(name = "person_grade", joinColumns = @JoinColumn(name = "person_id"))
     private List<DatedGrade> grades = new ArrayList<>();
 
-    /** The person's own terms in days, or null when they have none. */
+    /** The person's own terms in days from the beginning of time, or null when they have none. */
     @Column(name = "terms")
     private Integer terms;
+
+    /** The person's own terms recorded from a from-date, each in force until their next. */
+    @ElementCollection(fetch = FetchType.EAGER)
+    @CollectionTable(name = "person_terms", joinColumns = @JoinColumn(name = "person_id"))
+    private List<DatedTerms> datedTerms = new ArrayList<>();
 
     /** The person's contact, trimmed and lower-cased, or null when they have none. */
     @Column(name = "contact")
@@ -132,6 +137,7 @@ public class Person {
         copy.addedOn = addedOn;
         grades.forEach(g -> copy.grades.add(new DatedGrade(g.getFromDate(), g.getGrade(), g.getMadeOn())));
         copy.terms = terms;
+        datedTerms.forEach(t -> copy.datedTerms.add(new DatedTerms(t.getFromDate(), t.getTerms())));
         copy.contact = contact;
         copy.tags = tags;
         copy.aliases.addAll(aliases);
@@ -199,12 +205,39 @@ public class Person {
         grades.add(new DatedGrade(fromDate, grade, madeOn));
     }
 
+    /** The person's own terms from the beginning of time, or null when they have none. */
     public Integer getTerms() {
         return terms;
     }
 
+    /** Record the person's own terms (null: none) from the beginning of time. */
     public void setTerms(Integer terms) {
         this.terms = terms;
+    }
+
+    /** The terms recorded from a from-date, by from-date. */
+    public List<DatedTerms> getDatedTerms() {
+        return datedTerms.stream().sorted(Comparator.comparing(DatedTerms::getFromDate)).toList();
+    }
+
+    /** Record the person's own terms (null: none) from a date, replacing any recorded from that same date. */
+    public void setTermsFrom(LocalDate fromDate, Integer terms) {
+        datedTerms.removeIf(t -> fromDate.equals(t.getFromDate()));
+        datedTerms.add(new DatedTerms(fromDate, terms));
+    }
+
+    /**
+     * The person's own terms in force on a date: those with the latest from-date on or before it,
+     * else those from the beginning of time; null when none are in force.
+     */
+    public Integer termsOn(LocalDate date) {
+        Integer found = terms;
+        for (DatedTerms t : getDatedTerms()) {
+            if (!t.getFromDate().isAfter(date)) {
+                found = t.getTerms();
+            }
+        }
+        return found;
     }
 
     public String getContact() {

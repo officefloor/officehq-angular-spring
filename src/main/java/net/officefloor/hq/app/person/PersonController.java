@@ -29,13 +29,13 @@ public class PersonController {
 
     public record AddPersonRequest(@NotBlank @Size(max = 100) String sheet, @NotBlank @Size(max = 100) String user,
             @NotBlank @Size(max = 200) String name, @NotNull @Pattern(regexp = "[ABC]") String grade, @Min(0) Integer terms,
-            @Size(max = 200) String contact, @Size(max = 500) String tags) {
+            @Size(max = 200) String contact, @Size(max = 500) String tags, LocalDate termsFrom) {
     }
 
     public record UpdatePersonRequest(@NotBlank @Size(max = 100) String sheet,
             @NotBlank @Size(max = 100) String user, @NotNull Long id, @NotBlank @Size(max = 200) String name,
             @NotNull @Pattern(regexp = "[ABC]") String grade, LocalDate gradeFrom, @NotNull Long version,
-            @Min(0) Integer terms, @Size(max = 200) String contact, @Size(max = 500) String tags) {
+            @Min(0) Integer terms, @Size(max = 200) String contact, @Size(max = 500) String tags, LocalDate termsFrom) {
     }
 
     public record AddAliasRequest(@NotBlank @Size(max = 100) String sheet,
@@ -126,20 +126,20 @@ public class PersonController {
     public record SnapshotResponse(LocalDate day, String dueTotal) {
     }
 
-    /** A person, with every grade recorded for them, the one from the beginning of time first, their own terms or null, their contact or null, their aliases sorted as names are compared, their tags sorted, and whether they clash: their name or an alias is used on another sheet of the sheet's tree, and the sheet they were transferred from or null. */
+    /** A person, with every grade recorded for them, the one from the beginning of time first, their own terms in force on the sheet's today or null, their contact or null, their aliases sorted as names are compared, their tags sorted, and whether they clash: their name or an alias is used on another sheet of the sheet's tree, and the sheet they were transferred from or null. */
     public record PersonResponse(long id, String name, List<GradeResponse> grades, long version, boolean retired,
             LocalDate retiredFrom, boolean held, List<HoldResponse> holds, Integer terms, String contact,
             List<String> aliases, boolean clashing, String origin, List<RetirementResponse> retirements, List<String> tags,
             List<SnapshotResponse> snapshots) {
     }
 
-    public static PersonResponse response(Person person, boolean clashing) {
+    public static PersonResponse response(Person person, boolean clashing, LocalDate today) {
         List<GradeResponse> grades = person.getGrades().stream()
                 .map(g -> new GradeResponse(g.getFromDate(), g.getGrade())).toList();
         return new PersonResponse(person.getId(), person.getName(), grades, person.getVersion(),
                 person.isRetired(), person.getRetiredFrom(), person.isHeld(),
                 person.getHolds().stream().map(h -> new HoldResponse(h.getFromDate(), h.getToDate())).toList(),
-                person.getTerms(), person.getContact(), person.getAliases(), clashing, person.getOriginSheet(),
+                person.termsOn(today), person.getContact(), person.getAliases(), clashing, person.getOriginSheet(),
                 person.getPastRetirements().stream().map(r -> new RetirementResponse(r.getFromDate(), r.getToDate())).toList(),
                 person.getTags(),
                 person.getSnapshots().stream().map(n -> new SnapshotResponse(n.getDay(), n.getDueTotal() == null ? "n/a"
@@ -148,7 +148,7 @@ public class PersonController {
 
     /** The person, with whether they clash on the sheet's tree. */
     private PersonResponse response(String sheetId, Person person) {
-        return response(person, service.clashing(sheetId, List.of(person)).contains(person.getId()));
+        return response(person, service.clashing(sheetId, List.of(person)).contains(person.getId()), service.today(sheetId));
     }
 
     /** A contact as stored: trimmed and lower-cased; null when blank. */
@@ -175,13 +175,14 @@ public class PersonController {
         String sheet = req.sheet().trim();
         List<Person> people = service.list(sheet);
         Set<Long> clashing = service.clashing(sheet, people);
-        return people.stream().map(p -> response(p, clashing.contains(p.getId()))).toList();
+        LocalDate today = service.today(sheet);
+        return people.stream().map(p -> response(p, clashing.contains(p.getId()), today)).toList();
     }
 
     @PostMapping("/add")
     public PersonResponse add(@Valid @RequestBody AddPersonRequest req) {
         return response(req.sheet().trim(), service.add(req.sheet().trim(), req.user().trim(), req.name().trim(), req.grade(),
-                req.terms(), contact(req.contact()), ClaimController.tags(req.tags())));
+                req.terms(), req.termsFrom(), contact(req.contact()), ClaimController.tags(req.tags())));
     }
 
     @PostMapping("/import")
@@ -190,14 +191,16 @@ public class PersonController {
         PersonImportService.Result done = imports.importPeople(sheet, req.user().trim(), req.text());
         List<Person> touched = Stream.concat(done.added().stream(), done.updated().stream()).toList();
         Set<Long> clashing = service.clashing(sheet, touched);
+        LocalDate today = service.today(sheet);
         return new ImportPeopleResponse(done.added().size(), done.updated().size(),
-                touched.stream().map(p -> response(p, clashing.contains(p.getId()))).toList());
+                touched.stream().map(p -> response(p, clashing.contains(p.getId()), today)).toList());
     }
 
     @PostMapping("/update")
     public PersonResponse update(@Valid @RequestBody UpdatePersonRequest req) {
         return response(req.sheet().trim(), service.update(req.sheet().trim(), req.user().trim(), req.id(), req.version(), req.name().trim(),
-                req.grade(), req.gradeFrom(), req.terms(), contact(req.contact()), ClaimController.tags(req.tags())));
+                req.grade(), req.gradeFrom(), req.terms(), req.termsFrom(), contact(req.contact()),
+                ClaimController.tags(req.tags())));
     }
 
     @PostMapping("/aliases/add")

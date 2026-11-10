@@ -151,9 +151,9 @@ public class ClaimService {
         return holidays.businessDaysAfter(sheetId, dated, terms);
     }
 
-    /** The terms a claim of the person dated so is due by: their own, else those of their grade or the sheet. */
+    /** The terms a claim of the person dated so is due by: their own in force on its date, else those of their grade or the sheet. */
     private int terms(String sheetId, Person person, LocalDate dated) {
-        Integer own = person.getTerms();
+        Integer own = person.termsOn(dated);
         return own != null ? own : sheets.sheet(sheetId).termsFor(person.gradeOn(dated), dated);
     }
 

@@ -27,8 +27,10 @@ import { FigurePipe } from '../../core/figure';
 // the form's grade from its from-date (the sheet's today when blank), keeping those recorded before;
 // a save leaving the grade as the row shows it, with the from-date blank, records none. The row
 // shows the grade in force on the sheet's today; each claim uses the one in force on its date.
-// A person may have their own terms, a whole number of days (blank for none), shown on the row; a
-// claim's due-by is fixed by the server when it is created, from these before the grade's or sheet's.
+// A person may have their own terms, a whole number of days (blank for none). A save with a terms
+// from-date records them from that date, keeping those recorded before; with it blank, from the
+// beginning of time. The row shows the terms in force on the sheet's today; a claim's due-by is fixed
+// by the server when it is created, from those in force on its date before the grade's or sheet's.
 // A person may have a contact (blank for none), stored trimmed and lower-cased and shown on the row;
 // a contact another person on the sheet already has is refused.
 // A person may carry tags, typed comma separated: each trimmed and lower-cased, repeats dropped,
@@ -301,6 +303,14 @@ const SUMMARY_STATUSES = ['DRAFT', 'OPEN', 'PENDING', 'SETTLED', 'VOID', 'REVIEW
           inputmode="numeric"
           [value]="termsInput()"
           (input)="termsInput.set($any($event.target).value); error.set(null)"
+        />
+        <label for="person-form-terms-from">Terms from</label>
+        <input
+          type="date"
+          id="person-form-terms-from"
+          data-testid="person-form-terms-from"
+          [value]="termsFromInput()"
+          (input)="termsFromInput.set($any($event.target).value); error.set(null)"
         />
         <label for="person-form-contact">Contact</label>
         <input
@@ -1326,6 +1336,8 @@ export class People {
   protected readonly gradeFromInput = signal('');
   /** The person's own terms in days; blank for none. */
   protected readonly termsInput = signal('');
+  /** The date the form's terms are recorded from; blank for the beginning of time. */
+  protected readonly termsFromInput = signal('');
   /** The person's contact; blank for none. */
   protected readonly contactInput = signal('');
   /** The person's tags, comma separated; blank for none. */
@@ -2435,6 +2447,7 @@ export class People {
     this.gradeInput.set(this.gradeToday(p));
     this.gradeFromInput.set('');
     this.termsInput.set(p.terms === null ? '' : String(p.terms));
+    this.termsFromInput.set('');
     this.contactInput.set(p.contact ?? '');
     this.tagsInput.set(p.tags.join(', '));
     this.error.set(null);
@@ -2450,6 +2463,7 @@ export class People {
     this.gradeInput.set('A');
     this.gradeFromInput.set('');
     this.termsInput.set('');
+    this.termsFromInput.set('');
     this.contactInput.set('');
     this.tagsInput.set('');
     this.error.set(null);
@@ -2464,6 +2478,7 @@ export class People {
     const grade = this.gradeInput();
     const gradeFrom = this.gradeFromInput().trim();
     const terms = this.termsInput().trim();
+    const termsFrom = this.termsFromInput().trim();
     const contact = this.contactInput().trim().toLowerCase();
     if (!name) {
       this.error.set('Enter a name.');
@@ -2481,6 +2496,10 @@ export class People {
       this.refuse('Enter the terms as a whole number of days, or leave them blank for none.');
       return;
     }
+    if (termsFrom !== '' && !/^\d{4}-\d{2}-\d{2}$/.test(termsFrom)) {
+      this.refuse('Enter a date the terms are from, or leave it blank for the beginning of time.');
+      return;
+    }
     const id = this.editingId();
     const body = {
       sheet,
@@ -2488,6 +2507,7 @@ export class People {
       name,
       grade,
       terms: terms === '' ? null : Number(terms),
+      termsFrom: termsFrom || null,
       contact: contact === '' ? null : contact,
       tags: this.tagsInput(),
     };

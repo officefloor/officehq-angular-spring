@@ -41,7 +41,8 @@ public class QuickAddController {
         QuickAddService.Added added = service.add(req.sheet().trim(), req.user().trim(), req.name().trim(),
                 ClaimController.amount(req.amount()));
         boolean clashing = people.clashing(req.sheet().trim(), List.of(added.person())).contains(added.person().getId());
-        return new QuickAddResponse(PersonController.response(added.person(), clashing), added.created(),
+        return new QuickAddResponse(PersonController.response(added.person(), clashing,
+                people.today(req.sheet().trim())), added.created(),
                 ClaimController.response(added.claim()));
     }
 }
