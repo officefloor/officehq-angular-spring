@@ -21,6 +21,7 @@ import { FigurePipe } from '../../core/figure';
 // A period can instead be soft-closed (by whoever may close it): its due-total and each person's
 // are fixed as for a closed period, but claims due inside it can still change; a claim added then
 // with its due-by inside it is a late entry. A soft-closed period can be closed (fixing its figures afresh) or reopened.
+// A steward can lock a period and unlock it again; a locked period cannot be reopened.
 // Opening balances can be pasted as lines of name,period,amount (a person by name or alias, a period
 // on the sheet, an amount of 0.00 or more with two decimals); each adds to the person's opening
 // balance for the period, which is added to their carried figure into it. Any refused line refuses the paste.
@@ -46,6 +47,8 @@ export interface Period {
   fy: string;
   /** At most this many OPEN or PENDING claims per person in it; null for no cap. */
   cap: number | null;
+  /** Whether a steward locked the period: a locked period cannot be reopened. */
+  locked: boolean;
 }
 
 /** A claim's person, due-by (the date that places it in a period) and its figure in whole cents, for a claim that has one. */
@@ -224,6 +227,7 @@ export function inClosedPeriod(periods: readonly Period[], date: string): boolea
             <th scope="col">Closed</th>
             <th scope="col">Fiscal year</th>
             <th scope="col">Cap</th>
+            <th scope="col">Locked</th>
             <th scope="col"><span class="visually-hidden">Actions</span></th>
           </tr>
         </thead>
@@ -237,6 +241,7 @@ export function inClosedPeriod(periods: readonly Period[], date: string): boolea
               <td data-testid="period-closed">{{ p.closed ? 'yes' : p.softClosed ? 'soft' : 'no' }}</td>
               <td data-testid="period-fy">{{ p.fy }}</td>
               <td data-testid="period-cap">{{ (p.cap ?? '') | figure }}</td>
+              <td data-testid="period-locked">{{ p.locked ? 'yes' : 'no' }}</td>
               <td>
                 <button
                   type="button"
@@ -261,6 +266,22 @@ export function inClosedPeriod(periods: readonly Period[], date: string): boolea
                   (click)="reopen(p)"
                 >
                   Reopen
+                </button>
+                <button
+                  type="button"
+                  data-testid="period-lock"
+                  [attr.aria-label]="'Lock period ' + p.name"
+                  (click)="lock(p)"
+                >
+                  Lock
+                </button>
+                <button
+                  type="button"
+                  data-testid="period-unlock"
+                  [attr.aria-label]="'Unlock period ' + p.name"
+                  (click)="unlock(p)"
+                >
+                  Unlock
                 </button>
                 @if (rowErrors().get(p.id); as err) {
                   <p role="alert" data-testid="period-error">{{ err }}</p>
@@ -364,8 +385,30 @@ export class Periods {
       status === 403
         ? 'Your role may not reopen period ' + p.name + '.'
         : status === 409
-          ? 'Period ' + p.name + ' is not closed.'
+          ? (p.locked ? 'Period ' + p.name + ' is locked.' : 'Period ' + p.name + ' is not closed.')
           : 'Could not reopen period ' + p.name + '.',
+    );
+  }
+
+  /** Lock a period so it cannot be reopened; the server refuses anyone but a steward, and a period already locked. */
+  protected lock(p: Period): Promise<void> {
+    return this.act(p, 'lock', (status) =>
+      status === 403
+        ? 'Only a steward may lock period ' + p.name + '.'
+        : status === 409
+          ? 'Period ' + p.name + ' is already locked.'
+          : 'Could not lock period ' + p.name + '.',
+    );
+  }
+
+  /** Unlock a locked period; the server refuses anyone but a steward, and a period that is not locked. */
+  protected unlock(p: Period): Promise<void> {
+    return this.act(p, 'unlock', (status) =>
+      status === 403
+        ? 'Only a steward may unlock period ' + p.name + '.'
+        : status === 409
+          ? 'Period ' + p.name + ' is not locked.'
+          : 'Could not unlock period ' + p.name + '.',
     );
   }
 

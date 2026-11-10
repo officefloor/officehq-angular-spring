@@ -17,7 +17,7 @@ import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 
-/** Listing, adding, generating, closing, soft-closing and reopening the periods on a sheet. */
+/** Listing, adding, generating, closing, soft-closing, reopening, locking and unlocking the periods on a sheet. */
 @RestController
 @RequestMapping("/api/periods")
 public class PeriodController {
@@ -58,11 +58,11 @@ public class PeriodController {
      * person id); null while it is open. fy is the fiscal year its from-date falls in; cap its
      * claim cap per person, null for none. closedCarried is each person's carried figure fixed when it
      * was closed (by person id); null while it is open. openings is each person's opening balance for
-     * it (by person id), added to their carried figure into it.
+     * it (by person id), added to their carried figure into it. locked is whether a steward locked it.
      */
     public record PeriodResponse(long id, String name, LocalDate from, LocalDate to, boolean closed,
             boolean softClosed, String closedDue, Map<String, String> closedDues, String fy, Integer cap,
-            Map<String, String> closedCarried, Map<String, String> openings) {
+            Map<String, String> closedCarried, Map<String, String> openings, boolean locked) {
     }
 
     private PeriodResponse response(String sheetId, Period period) {
@@ -77,7 +77,7 @@ public class PeriodController {
                         : period.getClosedDue().setScale(2, RoundingMode.UNNECESSARY).toPlainString(),
                 period.isClosed() || period.isSoftClosed() ? closedDues(period) : null, years.get(period.getId()),
                 period.getClaimCap(), period.isClosed() || period.isSoftClosed() ? figures(period.getClosedCarried()) : null,
-                figures(period.getOpenings())))
+                figures(period.getOpenings()), period.isLocked()))
                 .toList();
     }
 
@@ -133,6 +133,16 @@ public class PeriodController {
     @PostMapping("/reopen")
     public PeriodResponse reopen(@Valid @RequestBody ClosePeriodRequest req) {
         return response(req.sheet().trim(), service.reopen(req.sheet().trim(), req.user().trim(), req.id()));
+    }
+
+    @PostMapping("/lock")
+    public PeriodResponse lock(@Valid @RequestBody ClosePeriodRequest req) {
+        return response(req.sheet().trim(), service.setLocked(req.sheet().trim(), req.user().trim(), req.id(), true));
+    }
+
+    @PostMapping("/unlock")
+    public PeriodResponse unlock(@Valid @RequestBody ClosePeriodRequest req) {
+        return response(req.sheet().trim(), service.setLocked(req.sheet().trim(), req.user().trim(), req.id(), false));
     }
 
     @PostMapping("/soft-close")

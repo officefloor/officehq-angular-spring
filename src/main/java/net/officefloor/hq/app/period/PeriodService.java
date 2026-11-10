@@ -25,7 +25,8 @@ import org.springframework.web.server.ResponseStatusException;
  * closed period can be added, edited, opened, settled or voided. A steward can reopen a closed period, which
  * makes its due-total live again. A period can instead be soft-closed: its figures are fixed in the
  * same way but its claims can still change; it can then be closed (fixing them afresh) or reopened. With grace days set, a change of the sheet's today closes the
- * periods past them (see {@link SheetService#setToday}).
+ * periods past them (see {@link SheetService#setToday}). A steward can lock a period and unlock it again; a
+ * locked period cannot be reopened.
  */
 @Service
 public class PeriodService {
@@ -177,12 +178,38 @@ public class PeriodService {
         Period period = periods.findByIdAndSheetId(id, sheetId)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "No such period on this sheet."));
         roles.refuseUnlessPermitted(sheetId, user, "reopen");
+        if (period.isLocked()) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT, "That period is locked.");
+        }
         if (!period.isClosed() && !period.isSoftClosed()) {
             throw new ResponseStatusException(HttpStatus.CONFLICT, "That period is not closed.");
         }
         period.reopen();
         Period saved = periods.saveAndFlush(period);
         audit.recordOnCommit("PERIOD_REOPENED sheet=" + sheetId + " by=" + user + " period=" + saved.getName());
+        return saved;
+    }
+
+    /**
+     * Lock or unlock a period; refused (403) to anyone but a steward and (409) when it is already
+     * locked (or, to unlock, not locked).
+     */
+    @Transactional
+    public Period setLocked(String sheetId, String user, long id, boolean locked) {
+        roles.refuseViewer(sheetId, user);
+        roles.refuseUnlessSteward(sheetId, user);
+        sheetRows.findLockedById(sheetId)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "No such sheet."));
+        Period period = periods.findByIdAndSheetId(id, sheetId)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "No such period on this sheet."));
+        if (period.isLocked() == locked) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT,
+                    locked ? "That period is already locked." : "That period is not locked.");
+        }
+        period.setLocked(locked);
+        Period saved = periods.saveAndFlush(period);
+        audit.recordOnCommit((locked ? "PERIOD_LOCKED" : "PERIOD_UNLOCKED") + " sheet=" + sheetId + " by=" + user
+                + " period=" + saved.getName());
         return saved;
     }
 

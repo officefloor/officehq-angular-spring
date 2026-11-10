@@ -48,6 +48,10 @@ public class Period {
     @Column(name = "soft_closed", nullable = false)
     private boolean softClosed;
 
+    /** Locked by a steward: a locked period cannot be reopened. */
+    @Column(name = "locked", nullable = false)
+    private boolean locked;
+
     @Column(name = "closed_due")
     private BigDecimal closedDue;
 
@@ -125,6 +129,14 @@ public class Period {
 
     public boolean isSoftClosed() {
         return softClosed;
+    }
+
+    public boolean isLocked() {
+        return locked;
+    }
+
+    public void setLocked(boolean locked) {
+        this.locked = locked;
     }
 
     public BigDecimal getClosedDue() {
