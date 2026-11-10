@@ -1,0 +1,64 @@
+{
+  "checkpoint": 95,
+  "stack": {
+    "repo": "/home/daniel/officehq-angular-spring",
+    "origin": "git@github.com:officefloor/officehq-angular-spring.git",
+    "name": "officehq-angular-spring",
+    "base_ref": "base-empty",
+    "base_commit": "65cb8233ea38b2dfa6cfd18709e30cd18fdf3250"
+  },
+  "checkpoint_id": "cp95_rate-preview",
+  "phase": "mid",
+  "type": "additive",
+  "mutates": [],
+  "replaced_tests": [],
+  "request": {
+    "spec": "The rates panel gains a preview: a grade, a candidate rate and a preview button show how many\nOPEN and PENDING claims of people on that grade (the grade in force on the claim's date) would show\na different due if that rate applied to the grade on every date, and the sum of the differences\n(new due minus current due, two decimals, negative when lower). A claim bound by a statement does\nnot change; a settled claim is not counted. Nothing is saved and nothing is written to the audit.\n",
+    "prompt": "You are implementing ONE change to this application.\n\nFIRST read AGENTS.md \u2014 it states the working rules and how the app is tested, and sends you to\nDESIGN.md for the app's stack and conventions. Follow both.\n\nTHE CHANGE REQUEST:\nThe rates panel gains a preview: a grade, a candidate rate and a preview button show how many\nOPEN and PENDING claims of people on that grade (the grade in force on the claim's date) would show\na different due if that rate applied to the grade on every date, and the sum of the differences\n(new due minus current due, two decimals, negative when lower). A claim bound by a statement does\nnot change; a settled claim is not counted. Nothing is saved and nothing is written to the audit.\n\nYour work is verified by an automated Playwright UI test already installed under e2e/specs/.\nRead that spec: it declares the exact data-testid anchors, values, test data and any audit\nrecords it expects \u2014 match them. Run `bin/e2e` to build the app, start it, and run the test as\nyou work; iterate until it passes. Change whatever the request needs across the app \u2014 its stored\ndata, its server and its front end. Do NOT edit bin/build, bin/start, bin/stop, bin/e2e,\nAGENTS.md, CLAUDE.md, DESIGN.md, e2e/support/ or the test spec.\n"
+  },
+  "commit_sha": "715319f55fde00e16e6287ae9754de8858041cef",
+  "reset_sha": "",
+  "preagent_sha": "015395edd33e54b827b831e8820c99f3619dda4e",
+  "prev_sha": "015395edd33e54b827b831e8820c99f3619dda4e",
+  "base_sha": "65cb8233ea38b2dfa6cfd18709e30cd18fdf3250",
+  "agent": {
+    "ok": true,
+    "cost_usd": 0.743925,
+    "input_tokens": 6,
+    "output_tokens": 732,
+    "cache_read_tokens": 127278,
+    "cache_creation_tokens": 2762,
+    "num_turns": 2,
+    "duration_ms": 8507,
+    "duration_api_ms": 83430,
+    "model": "claude-opus-5-5",
+    "session_id": "409fcbce-cd8c-4be4-93ed-1203a89fb08b",
+    "stop_reason": "success",
+    "result_text": "The rates panel now has a working preview, and all 4 tests in `bin/e2e` pass.\n\n**What it does:** you pick a grade, type a candidate rate and press Preview. The panel shows how many OPEN and PENDING claims would show a different due, and the sum of new due minus current due (two decimals, negative when lower).\n- **Which claims count:** a claim counts if its person had that grade on the claim's date.\n- **How the new due is worked out:** the same way as the current one, with the same rounding, late charge and floor.\n- **What is left out:** claims bound by a statement don't change. A PENDING claim isn't bound, so it is counted. Settled claims are skipped.\n- **Nothing is saved:** the server endpoint is read-only and writes nothing to the store or the audit file.\n\n**Server:**\n- `ClaimService.previewRate` (in `claim/ClaimService.java`) does the calculation.\n- It is reached through a new endpoint, `POST /api/rates/preview`, added to `rate/RateController.java`.\n\n**Front end** (`features/rates/rates.ts`):\n- A new form has the test's ids: `rate-preview-grade`, `rate-preview-pct`, `rate-preview`, `rate-preview-count`, `rate-preview-diff`, `rate-preview-error`.\n- An invalid rate shows the error instead of a result.\n- The old result is cleared when you change the grade or rate, press Preview again, or re-load the sheet. That way two presses with the same answer can still be told apart.\n\n**One behaviour to check:** a claim that currently has no due (no rate in force on its date) is treated as 0.00. A candidate rate would then always count it as changed, with its full new due added to the sum. No test covers this case.",
+    "error": "",
+    "attempts": [
+      {
+        "ok": true,
+        "limit_reached": false,
+        "retryable": false,
+        "timed_out": false,
+        "cost_usd": 0.743925,
+        "num_turns": 2,
+        "duration_ms": 8507,
+        "duration_api_ms": 83430,
+        "error": ""
+      }
+    ]
+  },
+  "agent_stream_file": "cp95.agent.jsonl",
+  "agent_diff_file": "cp95.agent.diff",
+  "build_log_file": null,
+  "tests": {
+    "gated": false,
+    "queued": true
+  },
+  "probe": null,
+  "pinned_touched": [],
+  "acceptance_touched": [],
+  "impact_gate": null
+}

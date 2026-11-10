@@ -1,0 +1,210 @@
+diff --git a/src/main/frontend/src/app/features/rates/rates.ts b/src/main/frontend/src/app/features/rates/rates.ts
+index 95f5cfd4c..24283d933 100644
+--- a/src/main/frontend/src/app/features/rates/rates.ts
++++ b/src/main/frontend/src/app/features/rates/rates.ts
+@@ -233,6 +233,37 @@ export function dueText(c: number | null): string {
+           <p role="alert" data-testid="rate-form-error">{{ err }}</p>
+         }
+       </form>
++      <form aria-label="Rate preview" (submit)="preview($event)">
++        <label for="rate-preview-grade">Preview grade</label>
++        <select
++          id="rate-preview-grade"
++          data-testid="rate-preview-grade"
++          [value]="previewGrade()"
++          (change)="previewGrade.set($any($event.target).value); clearPreview()"
++        >
++          @for (g of grades; track g) {
++            <option [value]="g" [selected]="g === previewGrade()">{{ g }}</option>
++          }
++        </select>
++        <label for="rate-preview-pct">Candidate rate (%)</label>
++        <input
++          id="rate-preview-pct"
++          data-testid="rate-preview-pct"
++          inputmode="decimal"
++          [value]="previewPct()"
++          (input)="previewPct.set($any($event.target).value); clearPreview()"
++        />
++        <button type="submit" data-testid="rate-preview">Preview</button>
++        @if (previewResult(); as res) {
++          <p>
++            Claims that would change: <span data-testid="rate-preview-count">{{ res.count }}</span>;
++            difference: <span data-testid="rate-preview-diff">{{ res.diff }}</span>
++          </p>
++        }
++        @if (previewError(); as err) {
++          <p role="alert" data-testid="rate-preview-error">{{ err }}</p>
++        }
++      </form>
+       <table aria-label="Rates in force today">
+         <thead>
+           <tr>
+@@ -296,6 +327,13 @@ export class Rates {
+   protected readonly fromInput = signal('');
+   protected readonly toInput = signal('');
+   protected readonly error = signal<string | null>(null);
++  protected readonly previewGrade = signal<string>('A');
++  protected readonly previewPct = signal('');
++  /** The last preview's answer: how many claims would change and the sum of the differences. */
++  protected readonly previewResult = signal<{ count: number; diff: string } | null>(null);
++  protected readonly previewError = signal<string | null>(null);
++  /** Counts each preview pressed, so only the latest one's answer is shown. */
++  private previewRun = 0;
+   /** Whether a submit is waiting for its answer: a second submit meanwhile is ignored. */
+   private submitting = false;
+ 
+@@ -310,6 +348,9 @@ export class Rates {
+       this.fromInput.set('');
+       this.toInput.set('');
+       this.error.set(null);
++      this.previewGrade.set('A');
++      this.previewPct.set('');
++      this.clearPreview();
+       if (sheet) {
+         void this.fetch(sheet);
+       }
+@@ -325,6 +366,38 @@ export class Rates {
+     }
+   }
+ 
++  protected clearPreview(): void {
++    this.previewRun++;
++    this.previewResult.set(null);
++    this.previewError.set(null);
++  }
++
++  /** Ask how many claims the candidate rate would change for the grade; nothing is saved. */
++  protected async preview(event: Event): Promise<void> {
++    event.preventDefault();
++    this.clearPreview();
++    const run = this.previewRun;
++    const sheet = this.session.sheet();
++    const grade = this.previewGrade();
++    const pct = this.previewPct().trim();
++    if (!GRADES.includes(grade as (typeof GRADES)[number])) {
++      this.previewError.set('Choose a grade of A, B or C.');
++      return;
++    }
++    if (!PCT.test(pct)) {
++      this.previewError.set('Enter a rate from 0.00 to 999.99, with up to two decimals.');
++      return;
++    }
++    try {
++      const res = await firstValueFrom(
++        this.http.post<{ count: number; diff: string }>('/api/rates/preview', { sheet, grade, pct }),
++      );
++      if (run === this.previewRun && this.session.sheet() === sheet) this.previewResult.set(res);
++    } catch {
++      if (run === this.previewRun) this.previewError.set('Could not preview this rate.');
++    }
++  }
++
+   protected async save(event: Event): Promise<void> {
+     event.preventDefault();
+     if (this.submitting) return;
+diff --git a/src/main/java/net/officefloor/hq/app/claim/ClaimService.java b/src/main/java/net/officefloor/hq/app/claim/ClaimService.java
+index b363a48ac..72b2a3cec 100644
+--- a/src/main/java/net/officefloor/hq/app/claim/ClaimService.java
++++ b/src/main/java/net/officefloor/hq/app/claim/ClaimService.java
+@@ -804,6 +804,46 @@ public class ClaimService {
+                 .orElse(null);
+     }
+ 
++    /** What a candidate rate would change: how many claims would show a different due, and the sum of new minus current. */
++    public record RatePreview(int count, BigDecimal diff) {
++    }
++
++    /**
++     * Preview a candidate rate for a grade, as if it applied to that grade on every date: of the
++     * OPEN and PENDING claims whose person has the grade on the claim's date, how many would show a
++     * different due and the sum of the differences (new due minus current due). A claim bound by a
++     * statement keeps its figure; a claim with no due counts as 0.00. Nothing is saved.
++     */
++    @Transactional(readOnly = true)
++    public RatePreview previewRate(String sheetId, String grade, BigDecimal pct) {
++        Sheet sheet = sheets.sheet(sheetId);
++        Map<Long, Person> byId = new HashMap<>();
++        for (Person p : people.findBySheetIdOrderByIdAsc(sheetId)) {
++            byId.put(p.getId(), p);
++        }
++        int count = 0;
++        BigDecimal diff = BigDecimal.ZERO.setScale(2);
++        for (Claim claim : claims.findBySheetIdOrderByIdDesc(sheetId)) {
++            Person person = byId.get(claim.getPersonId());
++            if (person == null || !claim.getStatus().isOpen() || !grade.equals(person.gradeOn(claim.getDate()))) {
++                continue;
++            }
++            if (claim.isStated() && claim.getStatus() != ClaimStatus.PENDING) {
++                continue;
++            }
++            BigDecimal current = charged(sheetId, person, claim);
++            RoundingMode rounding = Rounding.mode(sheet, roundingDate(sheetId, claim));
++            BigDecimal figure = claim.getAmount().multiply(pct).divide(BigDecimal.valueOf(100), 2, rounding);
++            BigDecimal next = LateCharge.withCharge(sheet, claim, grade, figure);
++            BigDecimal was = current == null ? BigDecimal.ZERO : current;
++            if (current == null || was.compareTo(next) != 0) {
++                count++;
++                diff = diff.add(next.subtract(was));
++            }
++        }
++        return new RatePreview(count, diff.setScale(2, RoundingMode.UNNECESSARY));
++    }
++
+     /** The date a claim rounds by: its own, or for a correction that of the claim it corrects. */
+     private LocalDate roundingDate(String sheetId, Claim claim) {
+         if (!claim.isCorrection() || claim.getCorrects() == null) {
+diff --git a/src/main/java/net/officefloor/hq/app/rate/RateController.java b/src/main/java/net/officefloor/hq/app/rate/RateController.java
+index c209bacad..dae99c043 100644
+--- a/src/main/java/net/officefloor/hq/app/rate/RateController.java
++++ b/src/main/java/net/officefloor/hq/app/rate/RateController.java
+@@ -9,6 +9,7 @@ import java.math.BigDecimal;
+ import java.math.RoundingMode;
+ import java.time.LocalDate;
+ import java.util.List;
++import net.officefloor.hq.app.claim.ClaimService;
+ import org.springframework.web.bind.annotation.PostMapping;
+ import org.springframework.web.bind.annotation.RequestBody;
+ import org.springframework.web.bind.annotation.RequestMapping;
+@@ -33,6 +34,13 @@ public class RateController {
+             LocalDate from, LocalDate to) {
+     }
+ 
++    public record PreviewRateRequest(@NotBlank @Size(max = 100) String sheet,
++            @NotNull @Pattern(regexp = "[ABC]") String grade, @NotNull @Pattern(regexp = PCT) String pct) {
++    }
++
++    public record PreviewRateResponse(int count, String diff) {
++    }
++
+     public record RateResponse(String grade, LocalDate from, LocalDate to, String pct) {
+     }
+ 
+@@ -42,9 +50,11 @@ public class RateController {
+     }
+ 
+     private final RateService service;
++    private final ClaimService claims;
+ 
+-    public RateController(RateService service) {
++    public RateController(RateService service, ClaimService claims) {
+         this.service = service;
++        this.claims = claims;
+     }
+ 
+     @PostMapping("/list")
+@@ -52,6 +62,14 @@ public class RateController {
+         return service.list(req.sheet().trim()).stream().map(RateController::response).toList();
+     }
+ 
++    /** How many OPEN and PENDING claims a candidate rate for a grade would change, and by how much in all. Saves nothing. */
++    @PostMapping("/preview")
++    public PreviewRateResponse preview(@Valid @RequestBody PreviewRateRequest req) {
++        ClaimService.RatePreview preview = claims.previewRate(req.sheet().trim(), req.grade(),
++                new BigDecimal(req.pct()).setScale(2, RoundingMode.UNNECESSARY));
++        return new PreviewRateResponse(preview.count(), preview.diff().toPlainString());
++    }
++
+     @PostMapping("/set")
+     public RateResponse set(@Valid @RequestBody SetRateRequest req) {
+         return response(service.set(req.sheet().trim(), req.user().trim(), req.grade(), req.from(), req.to(),
