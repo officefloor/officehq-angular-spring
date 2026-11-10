@@ -1,0 +1,74 @@
+{
+  "checkpoint": 132,
+  "stack": {
+    "repo": "/home/daniel/officehq-angular-spring",
+    "origin": "git@github.com:officefloor/officehq-angular-spring.git",
+    "name": "officehq-angular-spring",
+    "base_ref": "base-empty",
+    "base_commit": "65cb8233ea38b2dfa6cfd18709e30cd18fdf3250"
+  },
+  "checkpoint_id": "cp132_tree-numbering",
+  "phase": "mid",
+  "type": "mutative",
+  "mutates": [
+    112,
+    123,
+    128,
+    130
+  ],
+  "replaced_tests": [
+    "cp112_uniqueness-across-tree.spec.ts::uniqueness across tree scenario 1",
+    "cp123_bulk-retire.spec.ts::bulk retire scenario 1",
+    "cp128_transfer-merges.spec.ts::transfer merges scenario 2",
+    "cp130_period-comparison.spec.ts::period comparison scenario 2"
+  ],
+  "request": {
+    "spec": "The sheets of a tree now share one sheet-wide number sequence: a claim opened on any sheet of the\ntree receives the next number after the last number given anywhere in the tree (numbers given before\nthis stay as they are). Per-period numbering stays per sheet.\n",
+    "prompt": "You are implementing ONE change to this application.\n\nFIRST read AGENTS.md \u2014 it states the working rules and how the app is tested, and sends you to\nDESIGN.md for the app's stack and conventions. Follow both.\n\nTHE CHANGE REQUEST:\nThe sheets of a tree now share one sheet-wide number sequence: a claim opened on any sheet of the\ntree receives the next number after the last number given anywhere in the tree (numbers given before\nthis stay as they are). Per-period numbering stays per sheet.\n\nYour work is verified by an automated Playwright UI test already installed under e2e/specs/.\nRead that spec: it declares the exact data-testid anchors, values, test data and any audit\nrecords it expects \u2014 match them. Run `bin/e2e` to build the app, start it, and run the test as\nyou work; iterate until it passes. Change whatever the request needs across the app \u2014 its stored\ndata, its server and its front end. Do NOT edit bin/build, bin/start, bin/stop, bin/e2e,\nAGENTS.md, CLAUDE.md, DESIGN.md, e2e/support/ or the test spec.\n"
+  },
+  "commit_sha": "8b916a71ea29f6c73425e57857faa9c812820146",
+  "reset_sha": "",
+  "preagent_sha": "02ced24af31ec1b474a5fbb3e773b596365c8ef2",
+  "prev_sha": "02ced24af31ec1b474a5fbb3e773b596365c8ef2",
+  "base_sha": "65cb8233ea38b2dfa6cfd18709e30cd18fdf3250",
+  "agent": {
+    "ok": true,
+    "cost_usd": 0.5725308,
+    "input_tokens": 34,
+    "output_tokens": 7112,
+    "cache_read_tokens": 593694,
+    "cache_creation_tokens": 38927,
+    "num_turns": 18,
+    "duration_ms": 313742,
+    "duration_api_ms": 72168,
+    "model": "claude-opus-5-5",
+    "session_id": "9569170e-222e-4ad3-bc05-c07e1a8210c8",
+    "stop_reason": "success",
+    "result_text": "Sheets in a tree now share one claim number sequence. A claim opened on any sheet in the tree gets the number after the last one given anywhere in that tree. Numbers given before this keep their values, and per-period numbering (`P1-1`, `X-n`) is still per sheet. `bin/e2e` passes all 4 tests. After that run I only reworded a doc comment, which I didn't re-run since it can't change behaviour.\n\nAll the changes are on the server; the database and front end didn't need anything:\n\n- **`SheetService.nextClaimNumber`**: when a sheet isn't numbering by period, it walks up the parent links to the top sheet of the tree. It locks that top sheet too, so two sheets in the same tree can't hand out the same number at the same moment. Then it gives out the highest last-number across the whole tree, plus one.\n- **`SheetRepository.maxLastClaimNumber`**: a new query that reads the highest last-number given across a set of sheets straight from the database.\n- **`Sheet.nextClaimNumber(int lastInTree)`**: the sheet's next number is now one more than the larger of its own last number and the tree's.\n\nEach sheet still stores its own last number. The tree-wide value is worked out each time a claim is opened, so linking two sheets that already have numbers just carries on from the higher of the two.\n\n**Decision for you:** I counted \"the tree\" as the top sheet and every sheet below it, including side branches. The app's existing `SheetService.tree()` (used to check people's names across sheets) covers only a sheet's ancestors and descendants, leaving out sibling sheets. I chose the wider set because otherwise two sibling sheets could each give out the same number. The test doesn't tell the two readings apart, so if you meant the narrower one, it's a small change to switch.\n\nOne thing I didn't change: moving a person to another sheet renumbers their numbered claims there, and those numbers now also come from the destination sheet's tree sequence.",
+    "error": "",
+    "attempts": [
+      {
+        "ok": true,
+        "limit_reached": false,
+        "retryable": false,
+        "timed_out": false,
+        "cost_usd": 0.5725308,
+        "num_turns": 18,
+        "duration_ms": 313742,
+        "duration_api_ms": 72168,
+        "error": ""
+      }
+    ]
+  },
+  "agent_stream_file": "cp132.agent.jsonl",
+  "agent_diff_file": "cp132.agent.diff",
+  "build_log_file": null,
+  "tests": {
+    "gated": false,
+    "queued": true
+  },
+  "probe": null,
+  "pinned_touched": [],
+  "acceptance_touched": [],
+  "impact_gate": null
+}

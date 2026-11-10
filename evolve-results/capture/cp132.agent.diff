@@ -1,0 +1,99 @@
+diff --git a/src/main/java/net/officefloor/hq/app/sheet/Sheet.java b/src/main/java/net/officefloor/hq/app/sheet/Sheet.java
+index c75af00cd..85cde3f7f 100644
+--- a/src/main/java/net/officefloor/hq/app/sheet/Sheet.java
++++ b/src/main/java/net/officefloor/hq/app/sheet/Sheet.java
+@@ -406,9 +406,13 @@ public class Sheet {
+         return ++lastUnperiodClaimNumber;
+     }
+ 
+-    /** Give out the next claim number on the sheet. */
+-    public int nextClaimNumber() {
+-        return ++lastClaimNumber;
++    /**
++     * Give out the next claim number on the sheet: the one after {@code lastInTree}, the last number
++     * given anywhere in the sheet's tree (this sheet's own included).
++     */
++    public int nextClaimNumber(int lastInTree) {
++        lastClaimNumber = Math.max(lastClaimNumber, lastInTree) + 1;
++        return lastClaimNumber;
+     }
+ 
+     /** The number of the sheet's last settle batch; 0 when there has been none. */
+diff --git a/src/main/java/net/officefloor/hq/app/sheet/SheetRepository.java b/src/main/java/net/officefloor/hq/app/sheet/SheetRepository.java
+index 770bc10ee..3f3f87791 100644
+--- a/src/main/java/net/officefloor/hq/app/sheet/SheetRepository.java
++++ b/src/main/java/net/officefloor/hq/app/sheet/SheetRepository.java
+@@ -16,4 +16,8 @@ public interface SheetRepository extends JpaRepository<Sheet, String> {
+ 
+     /** The sheet's children: the sheets naming it as their parent. */
+     List<Sheet> findByParentIdOrderByIdAsc(String parentId);
++
++    /** The last claim number given on any of the sheets, as the store holds it now; 0 when none. */
++    @Query("SELECT COALESCE(MAX(s.lastClaimNumber), 0) FROM Sheet s WHERE s.id IN :ids")
++    int maxLastClaimNumber(java.util.Collection<String> ids);
+ }
+diff --git a/src/main/java/net/officefloor/hq/app/sheet/SheetService.java b/src/main/java/net/officefloor/hq/app/sheet/SheetService.java
+index d8556d467..9bb4061de 100644
+--- a/src/main/java/net/officefloor/hq/app/sheet/SheetService.java
++++ b/src/main/java/net/officefloor/hq/app/sheet/SheetService.java
+@@ -6,6 +6,7 @@ import java.time.Instant;
+ import java.time.LocalDate;
+ import java.util.ArrayDeque;
+ import java.util.Deque;
++import java.util.HashSet;
+ import java.util.LinkedHashSet;
+ import java.util.List;
+ import java.util.Optional;
+@@ -147,9 +148,10 @@ public class SheetService {
+     }
+ 
+     /**
+-     * The next number for a claim due by {@code date} opened on the sheet, with no gaps and never
+-     * reused. Sheet-wide (1, 2, ...) unless the sheet numbers by period on its today: then within
+-     * the period the date falls in ({@code <period name>-<n>}), or in no period its X sequence
++     * The next number for a claim due by {@code date} opened on the sheet, never reused. Tree-wide
++     * (1, 2, ...): the sheets of a tree (a root and every sheet below it) share one sequence, each
++     * number the next after the last given anywhere in the tree; unless the sheet numbers by period
++     * on its today: then within the period the date falls in ({@code <period name>-<n>}), or in no period its X sequence
+      * ({@code X-<n>}), each counting from 1. The sheet stays locked until the caller's transaction
+      * ends, so two claims opened at the same moment take different numbers.
+      */
+@@ -157,7 +159,16 @@ public class SheetService {
+     public String nextClaimNumber(String id, LocalDate date) {
+         Sheet sheet = lock(id);
+         if (!sheet.numbersByPeriod()) {
+-            int number = sheet.nextClaimNumber();
++            // the sheets of a tree share one sequence; holding the tree's root keeps two sheets of it
++            // from giving out the same number at once
++            String root = treeRoot(id);
++            if (!root.equals(id)) {
++                lock(root);
++            }
++            // the whole tree: the root and every sheet below it, side branches included
++            Set<String> whole = new HashSet<>(tree(root));
++            whole.add(root);
++            int number = sheet.nextClaimNumber(sheets.maxLastClaimNumber(whole));
+             sheets.saveAndFlush(sheet);
+             return String.valueOf(number);
+         }
+@@ -173,6 +184,20 @@ public class SheetService {
+         return "X-" + number;
+     }
+ 
++    /** The root of the sheet's tree: its topmost ancestor, or the sheet itself when it has no parent. */
++    private String treeRoot(String id) {
++        Set<String> seen = new HashSet<>();
++        String at = id;
++        while (seen.add(at)) {
++            String parent = sheets.findById(at).map(Sheet::getParentId).orElse(null);
++            if (parent == null) {
++                break;
++            }
++            at = parent;
++        }
++        return at;
++    }
++
+     /**
+      * Close an open period, fixing its due-total now, and record it ({@code auto=yes} when closed by
+      * a change of the sheet's today). The caller holds the sheet.
