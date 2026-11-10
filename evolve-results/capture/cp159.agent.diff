@@ -1,0 +1,85 @@
+diff --git a/src/main/frontend/src/app/features/people/people.ts b/src/main/frontend/src/app/features/people/people.ts
+index 019dcb4ba..19af8a38d 100644
+--- a/src/main/frontend/src/app/features/people/people.ts
++++ b/src/main/frontend/src/app/features/people/people.ts
+@@ -6,7 +6,7 @@ import { AMOUNT, Claim, PersonClaims, cents, counts, dayNumber, deferred, isCorr
+ import { AuditView } from '../audit/audit-view';
+ import { TreeSearch } from '../search/tree-search';
+ import { Holidays } from '../holidays/holidays';
+-import { DatedDue, Period, Periods, classicPeriodDueTotal, periodDueTotal, periodOn, personPeriodDueTotal } from '../periods/periods';
++import { DatedDue, Period, Periods, classicPeriodDueTotal, periodDueTotal, periodOn, personPeriodCarried, personPeriodDueTotal } from '../periods/periods';
+ import { DatedGrade, DatedValue, Lateness, Rate, Rates, chargedDueCents, dueCents, dueText, graceOn, gradeOn, pctOn, valueOn } from '../rates/rates';
+ import { Roles } from '../roles/roles';
+ import { Settings } from '../settings/settings';
+@@ -579,6 +579,7 @@ const SUMMARY_STATUSES = ['DRAFT', 'OPEN', 'PENDING', 'SETTLED', 'VOID', 'REVIEW
+             <th scope="col">Open</th>
+             @for (pd of periods(); track pd.id) {
+               <th scope="col">Due in {{ pd.name }}</th>
++              <th scope="col">Carried into {{ pd.name }}</th>
+             }
+             <th scope="col">Aged 0–30</th>
+             <th scope="col">Aged 31–60</th>
+@@ -629,6 +630,7 @@ const SUMMARY_STATUSES = ['DRAFT', 'OPEN', 'PENDING', 'SETTLED', 'VOID', 'REVIEW
+               <td data-testid="person-open-total">{{ money(settledOpenOf(p).open) | figure }}</td>
+               @for (pd of periods(); track pd.id) {
+                 <td [attr.data-testid]="'person-period-' + pd.name + '-due-total'">{{ periodDueOf(pd, p.id) | figure }}</td>
++                <td [attr.data-testid]="'person-period-' + pd.name + '-carried'">{{ periodCarriedOf(pd, p.id) | figure }}</td>
+               }
+               <td data-testid="person-aged-0-30">{{ money(agedOf(p)[0]) | figure }}</td>
+               <td data-testid="person-aged-31-60">{{ money(agedOf(p)[1]) | figure }}</td>
+@@ -1100,7 +1102,11 @@ export class People {
+         return status !== null && (isOpen(c) ? countsFor(p, { ...c, status }, today)
+           : countsFor(undefined, { ...c, status }, today));
+       };
+-      out.push({ personId: c.personId, date: c.dueBy, cents: due, countsAt, countsNow: countsFor(p, c, today) });
++      const openAt = (day: string): boolean => {
++        const status = statusAt(c, day);
++        return (status === 'OPEN' || status === 'PENDING') && countsAt(day);
++      };
++      out.push({ personId: c.personId, date: c.dueBy, cents: due, countsAt, countsNow: countsFor(p, c, today), openAt });
+     }
+     return out;
+   });
+@@ -1257,6 +1263,10 @@ export class People {
+   protected periodDueOf(period: Period, personId: number): string {
+     return personPeriodDueTotal(period, personId, this.dues());
+   }
++  /** A person's carried figure for a period, as their row shows it. */
++  protected periodCarriedOf(period: Period, personId: number): string {
++    return personPeriodCarried(period, this.periods(), personId, this.dues());
++  }
+   /** Per status: how many of the sheet's claims have it, retired people's included. */
+   protected readonly statusSummary = computed<StatusSummary[]>(() =>
+     SUMMARY_STATUSES.map((status) => ({
+diff --git a/src/main/frontend/src/app/features/periods/periods.ts b/src/main/frontend/src/app/features/periods/periods.ts
+index c252e1012..75f4f290c 100644
+--- a/src/main/frontend/src/app/features/periods/periods.ts
++++ b/src/main/frontend/src/app/features/periods/periods.ts
+@@ -49,6 +49,8 @@ export interface DatedDue {
+   countsAt: (day: string) => boolean;
+   /** Whether the claim counts by its status now (OPEN, SETTLED or PENDING), for the classic summary. */
+   countsNow: boolean;
++  /** Whether the claim counts and was still OPEN or PENDING at the end of a day (yyyy-mm-dd), for the carried figures. */
++  openAt: (day: string) => boolean;
+ }
+ 
+ /** Whether a claim's due falls in an open period: due by a day inside it, counting at the end of its to-date. */
+@@ -87,6 +89,18 @@ export function personPeriodDueTotal(p: Period, personId: number, dues: readonly
+   );
+ }
+ 
++/** A person's carried figure for a period: the due of their claims that count which belong to a
++ *  period ending before this one starts and were still OPEN or PENDING at the end of its to-date. */
++export function personPeriodCarried(
++  p: Period, periods: readonly Period[], personId: number, dues: readonly DatedDue[],
++): string {
++  const earlier = periods.filter((q) => q.to < p.from);
++  return money(
++    dues.reduce((sum, d) => sum + (d.personId === personId && earlier.some((q) => q.from <= d.date && d.date <= q.to)
++      && d.openAt(p.to) ? d.cents : 0), 0),
++  );
++}
++
+ /** Whether a date (yyyy-mm-dd) falls inside a closed period. */
+ export function inClosedPeriod(periods: readonly Period[], date: string): boolean {
+   return periodOn(periods, date)?.closed ?? false;
