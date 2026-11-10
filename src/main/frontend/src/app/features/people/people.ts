@@ -31,7 +31,7 @@ import { FigurePipe } from '../../core/figure';
 // A person may have their own terms, a whole number of days (blank for none). A save with a terms
 // from-date records them from that date, keeping those recorded before; with it blank, from the
 // beginning of time. The row shows the terms in force on the sheet's today; a claim's due-by is fixed
-// by the server when it is created, from those in force on its date before the grade's or sheet's.
+// by the server when it is created, from those in force on the sheet's today then before the grade's or sheet's.
 // A person may have a contact (blank for none), stored trimmed and lower-cased and shown on the row;
 // a contact another person on the sheet already has is refused.
 // A person may carry tags, typed comma separated: each trimmed and lower-cased, repeats dropped,

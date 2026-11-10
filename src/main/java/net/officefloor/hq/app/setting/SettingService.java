@@ -36,8 +36,8 @@ import org.springframework.web.server.ResponseStatusException;
  * <p>
  * The settings that carry a figure (the floor, the late percent, the terms, a grade's own terms,
  * a grade's grace days, the clerk limit, the cap, the proof threshold, a grade's own proof threshold and the note threshold) are dated: each value is recorded from a from-date (the sheet's
- * today when none is given). A claim's floor, late percent and terms are those in force on its
- * date, as is its proof threshold (its person's grade's own in force then when it has one, else the sheet's; see {@link Sheet#proofThresholdFor}) and its note threshold (see {@link Sheet#noteThresholdOn}) and its review threshold (see {@link Sheet#reviewThresholdOn}); the clerk limit and the cap are those in force on the sheet's today (see {@link Sheet}).
+ * today when none is given). A claim's floor and late percent are those in force on its
+ * date (its terms are those in force on the day it was created: the sheet's today then), as is its proof threshold (its person's grade's own in force then when it has one, else the sheet's; see {@link Sheet#proofThresholdFor}) and its note threshold (see {@link Sheet#noteThresholdOn}) and its review threshold (see {@link Sheet#reviewThresholdOn}); the clerk limit and the cap are those in force on the sheet's today (see {@link Sheet}).
  * The policy date and the period-numbering-from date are not dated. Nor is the permission matrix:
  * for each of open, settle, void, reassign, close and reopen, the roles that may take it (blank: the
  * standing rule, see {@link Sheet#permits}), recorded under the key {@code perm-<action>}. Nor are

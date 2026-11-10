@@ -148,17 +148,22 @@ public class ClaimService {
 
     /**
      * A claim's due-by, fixed at creation: its date plus the first of the person's own terms, the
-     * terms of their grade and the sheet's terms, each as in force on its date, counted in business
-     * days: skipping every Saturday, Sunday and holiday on the sheet.
+     * terms of the grade they have that day and the sheet's terms, each as in force on the day it is
+     * created (the sheet's today then), counted in business days: skipping every Saturday, Sunday and
+     * holiday on the sheet.
      */
     private LocalDate dueBy(String sheetId, LocalDate dated, int terms) {
         return holidays.businessDaysAfter(sheetId, dated, terms);
     }
 
-    /** The terms a claim of the person dated so is due by: their own in force on its date, else those of their grade or the sheet. */
-    private int terms(String sheetId, Person person, LocalDate dated) {
-        Integer own = person.termsOn(dated);
-        return own != null ? own : sheets.sheet(sheetId).termsFor(person.gradeOn(dated), dated);
+    /**
+     * The terms a claim of the person created now is due by: their own in force on the sheet's today,
+     * else those of the grade they have that day or the sheet's, as in force that day.
+     */
+    private int terms(String sheetId, Person person) {
+        LocalDate today = sheets.today(sheetId);
+        Integer own = person.termsOn(today);
+        return own != null ? own : sheets.sheet(sheetId).termsFor(person.gradeOn(today), today);
     }
 
     @Transactional(readOnly = true)
@@ -172,7 +177,7 @@ public class ClaimService {
         roles.refuseViewer(sheetId, user);
         Person person = person(sheetId, personId);
         LocalDate dated = dateOrToday(sheetId, date);
-        int terms = terms(sheetId, person, dated);
+        int terms = terms(sheetId, person);
         LocalDate dueBy = dueBy(sheetId, dated, terms);
         periods.refuseIfClosed(sheetId, dueBy);
         refuseIfRetired(person, dated);
@@ -205,7 +210,7 @@ public class ClaimService {
     @Transactional(readOnly = true)
     public boolean takesDate(String sheetId, long personId, LocalDate date) {
         Person person = person(sheetId, personId);
-        LocalDate dueBy = dueBy(sheetId, date, terms(sheetId, person, date));
+        LocalDate dueBy = dueBy(sheetId, date, terms(sheetId, person));
         return !periods.isClosed(sheetId, dueBy) && !person.refusesClaimOn(date);
     }
 
@@ -907,7 +912,7 @@ public class ClaimService {
         claim.bind(false, null);
         Claim original = claims.saveAndFlush(claim);
         LocalDate dated = claim.getDate();
-        int terms = terms(sheetId, person, dated);
+        int terms = terms(sheetId, person);
         Claim split = new Claim(sheetId, person.getId(), amount, dated, dueBy(sheetId, dated, terms), terms,
                 claim.getNote(), null);
         split.setStatus(ClaimStatus.OPEN);
