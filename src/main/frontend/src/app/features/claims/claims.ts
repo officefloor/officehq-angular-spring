@@ -180,7 +180,7 @@ export function cents(amount: string): number {
 }
 
 /** Days since 1970-01-01 of a yyyy-mm-dd date (proleptic Gregorian). */
-function dayNumber(date: string): number {
+export function dayNumber(date: string): number {
   const [y0, m, d] = date.split('-').map(Number);
   const y = m <= 2 ? y0 - 1 : y0;
   const era = Math.floor(y / 400);
