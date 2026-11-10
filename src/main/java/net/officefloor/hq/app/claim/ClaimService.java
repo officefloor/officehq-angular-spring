@@ -83,11 +83,13 @@ public class ClaimService {
     private final RoleService roles;
     private final WatchRepository watches;
     private final HolidayService holidays;
+    private final UsedTagRepository usedTags;
 
     public ClaimService(ClaimRepository claims, PersonRepository people, RateRepository rates, SheetService sheets,
             Audit audit, RollupService rollup, PeriodService periods, RoleService roles, WatchRepository watches,
-            HolidayService holidays) {
+            HolidayService holidays, UsedTagRepository usedTags) {
         this.holidays = holidays;
+        this.usedTags = usedTags;
         this.roles = roles;
         this.watches = watches;
         this.rollup = rollup;
@@ -146,7 +148,7 @@ public class ClaimService {
 
     @Transactional
     public Claim add(String sheetId, String user, long personId, BigDecimal amount, LocalDate date, String note,
-            String corrects, String ref) {
+            String corrects, String ref, List<String> tags) {
         roles.refuseViewer(sheetId, user);
         Person person = person(sheetId, personId);
         LocalDate dated = dateOrToday(sheetId, date);
@@ -158,11 +160,14 @@ public class ClaimService {
         RollupService.Snapshot before = rollup.snapshot(sheetId);
         Claim claim = new Claim(sheetId, personId, amount, dated, dueBy, note, corrected);
         claim.setRef(ref);
+        claim.setTags(tags);
         claim.setLateEntry(periods.isSoftClosed(sheetId, dueBy));
         logStatus(sheetId, user, person, claim);
         Claim added = claims.saveAndFlush(claim);
         audit.recordOnCommit(record("CLAIM_ADDED", sheetId, user, person, added)
-                + (added.getRef() != null ? " ref=" + added.getRef() : ""));
+                + (added.getRef() != null ? " ref=" + added.getRef() : "")
+                + (added.getTags().isEmpty() ? "" : " tags=" + String.join(",", added.getTags())));
+        useTags(sheetId, added);
         if (added.isLateEntry()) {
             audit.recordOnCommit(record("LATE_ENTRY", sheetId, user, person, added));
         }
@@ -172,7 +177,7 @@ public class ClaimService {
 
     @Transactional
     public Claim update(String sheetId, String user, long id, BigDecimal amount, LocalDate date, String note,
-            String corrects, String ref) {
+            String corrects, String ref, List<String> tags) {
         roles.refuseViewer(sheetId, user);
         Claim claim = claims.findByIdAndSheetId(id, sheetId)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "No such claim on this sheet."));
@@ -185,11 +190,13 @@ public class ClaimService {
         RollupService.Snapshot before = rollup.snapshot(sheetId);
         claim.setAmount(amount);
         claim.setRef(ref);
+        claim.setTags(tags);
         claim.setDate(dated);
         claim.setNote(note);
         claim.setCorrects(corrected);
         claim.setLockedBy(null);
         Claim saved = claims.saveAndFlush(claim);
+        useTags(sheetId, saved);
         audit.recordOnCommit(record("CLAIM_EDITED", sheetId, user, person(sheetId, saved.getPersonId()), saved));
         rollup.recordChanges(sheetId, user, before);
         return saved;
@@ -206,7 +213,7 @@ public class ClaimService {
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "No such claim on this sheet."));
         String lockedBy = claim.getLockedBy();
         Claim saved = update(sheetId, user, id, amount, claim.getDate(), claim.getNote(), claim.getCorrects(),
-                claim.getRef());
+                claim.getRef(), claim.getTags());
         saved.setLockedBy(lockedBy);
         return claims.saveAndFlush(saved);
     }
@@ -634,6 +641,7 @@ public class ClaimService {
         split.setLateEntry(periods.isSoftClosed(sheetId, split.getDueBy()));
         split.setOpenedBy(user);
         split.setSplitFrom(original.getNumber());
+        split.setTags(original.getTags());
         logStatus(sheetId, user, person, split);
         Claim added = claims.saveAndFlush(split);
         audit.recordOnCommit(record("CLAIM_SPLIT", sheetId, user, person, original)
@@ -803,6 +811,21 @@ public class ClaimService {
                 : claims.existsBySheetIdAndRefIgnoreCaseAndIdNot(sheetId, ref, exceptId))) {
             throw new ResponseStatusException(HttpStatus.CONFLICT,
                     "The reference " + ref + " is already used on this sheet.");
+        }
+    }
+
+    /** Every tag ever used on the sheet, sorted. */
+    @Transactional(readOnly = true)
+    public List<String> usedTags(String sheetId) {
+        return usedTags.findBySheetIdOrderByTagAsc(sheetId).stream().map(UsedTag::getTag).toList();
+    }
+
+    /** Keep each of the claim's tags as used on the sheet. */
+    private void useTags(String sheetId, Claim claim) {
+        for (String tag : claim.getTags()) {
+            if (!usedTags.existsBySheetIdAndTag(sheetId, tag)) {
+                usedTags.saveAndFlush(new UsedTag(sheetId, tag));
+            }
         }
     }
 

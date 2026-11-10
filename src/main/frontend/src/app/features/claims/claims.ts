@@ -33,6 +33,8 @@ import { DatedGrade, DatedValue, Lateness, Rate, chargedDueCents, dueText, grace
 // it shows the number it corrects.
 // A claim may carry an external reference (trimmed; blank is none), shown on the claim: one already
 // used on the sheet, compared without regard to case, is refused with an error on the form.
+// A claim may carry tags, typed comma separated: each trimmed and lower-cased, repeats dropped,
+// shown sorted. A claim split off another carries the original's tags.
 // A clerk settling a claim whose due is above the clerk limit makes it PENDING. A PENDING claim
 // counts like an OPEN one but is not bound by a statement: it shows its live figure. A steward
 // approves it (SETTLED, its due fixed then) or rejects it with a reason (back to OPEN, bound again
@@ -83,6 +85,8 @@ export interface Claim {
   corrects: string | null;
   /** The claim's external reference, unique on the sheet without regard to case; null when none. */
   ref: string | null;
+  /** The claim's tags: trimmed, lower-cased, without repeats and sorted; empty when it has none. */
+  tags: string[];
   /** The date the claim is due by, fixed when it was added. */
   dueBy: string;
   /** The claim's status log, oldest first: who moved it to each status, on the sheet's today then,
@@ -280,6 +284,13 @@ export function money(c: number): string {
         [value]="refInput()"
         (input)="refInput.set($any($event.target).value); error.set(null)"
       />
+      <label [for]="'claim-tags-' + personId()">Tags (comma separated)</label>
+      <input
+        [id]="'claim-tags-' + personId()"
+        data-testid="claim-form-tags"
+        [value]="tagsInput()"
+        (input)="tagsInput.set($any($event.target).value); error.set(null)"
+      />
       <button type="submit" data-testid="claim-form-submit">
         {{ editingId() === null ? 'Add claim' : 'Save claim' }}
       </button>
@@ -302,6 +313,7 @@ export function money(c: number): string {
           <span data-testid="claim-date">{{ c.date }}</span>
           <span data-testid="claim-note">{{ c.note }}</span>
           <span>Ref <span data-testid="claim-ref">{{ c.ref ?? '' }}</span></span>
+          <span>Tags <span data-testid="claim-tags">{{ c.tags.join(', ') }}</span></span>
           <span>Corrects <span data-testid="claim-corrects">{{ c.corrects ?? '' }}</span></span>
           <span>Period <span data-testid="claim-period">{{ periodOf(c) }}</span></span>
           <span>Due <span data-testid="claim-due">{{ dueOf(c) }}</span></span>
@@ -456,6 +468,7 @@ export class PersonClaims {
   protected readonly noteInput = this.editorField((c) => c.note);
   protected readonly correctsInput = this.editorField((c) => c.corrects ?? '');
   protected readonly refInput = this.editorField((c) => c.ref ?? '');
+  protected readonly tagsInput = this.editorField((c) => c.tags.join(', '));
   protected readonly editingId = linkedSignal(() => this.lockedId());
   protected readonly error = signal<string | null>(null);
   /** Whether a submit is waiting for its answer: a second submit meanwhile is ignored. */
@@ -542,7 +555,7 @@ export class PersonClaims {
     if (this.submitting || this.locking !== null) return;
     const sheet = this.session.sheet();
     const was = this.editingId();
-    const typed = [this.amountInput(), this.dateInput(), this.noteInput(), this.correctsInput(), this.refInput()] as const;
+    const typed = [this.amountInput(), this.dateInput(), this.noteInput(), this.correctsInput(), this.refInput(), this.tagsInput()] as const;
     // the editor opens with the claim's values at once, so what is typed next is not overwritten
     // when the lock comes back; a submit meanwhile waits for the lock
     this.editingId.set(c.id);
@@ -552,6 +565,7 @@ export class PersonClaims {
     this.noteInput.set(c.note);
     this.correctsInput.set(c.corrects ?? '');
     this.refInput.set(c.ref ?? '');
+    this.tagsInput.set(c.tags.join(', '));
     this.error.set(null);
     const locking = this.takeLock(c, sheet, was, typed);
     this.locking = locking;
@@ -565,7 +579,7 @@ export class PersonClaims {
   /** Take a claim's lock for its opened editor: true when taken; when refused, the editor is put
    *  back as it was and the claim shows the error. */
   private async takeLock(c: Claim, sheet: string | null, was: number | null,
-    typed: readonly [string, string, string, string, string]): Promise<boolean> {
+    typed: readonly [string, string, string, string, string, string]): Promise<boolean> {
     try {
       const claim = await firstValueFrom(
         this.http.post<Claim>('/api/claims/lock', { sheet, user: this.session.user(), id: c.id }),
@@ -574,7 +588,7 @@ export class PersonClaims {
       // taking this lock released the one this user held on another claim of the person
       const released = this.claims().find((x) => x.id === was && x.id !== claim.id);
       // the editor's fields follow the claim this user locks: keep what was typed while the lock was taken
-      const now = [this.amountInput(), this.dateInput(), this.noteInput(), this.correctsInput(), this.refInput()] as const;
+      const now = [this.amountInput(), this.dateInput(), this.noteInput(), this.correctsInput(), this.refInput(), this.tagsInput()] as const;
       if (released !== undefined) this.saved.emit({ ...released, lockedBy: null });
       this.saved.emit(claim);
       this.editingId.set(claim.id);
@@ -583,6 +597,7 @@ export class PersonClaims {
       this.noteInput.set(now[2]);
       this.correctsInput.set(now[3]);
       this.refInput.set(now[4]);
+      this.tagsInput.set(now[5]);
       return true;
     } catch (e) {
       if (this.session.sheet() !== sheet) return false;
@@ -593,6 +608,7 @@ export class PersonClaims {
       this.noteInput.set(typed[2]);
       this.correctsInput.set(typed[3]);
       this.refInput.set(typed[4]);
+      this.tagsInput.set(typed[5]);
       const status = e instanceof HttpErrorResponse ? e.status : 0;
       const err =
         status === 423
@@ -631,6 +647,7 @@ export class PersonClaims {
     this.noteInput.set('');
     this.correctsInput.set('');
     this.refInput.set('');
+    this.tagsInput.set('');
     this.error.set(null);
   }
 
@@ -993,7 +1010,8 @@ export class PersonClaims {
     }
     const id = this.editingId();
     const body = { sheet, user: this.session.user(), amount, date: date || null, note: this.noteInput().trim(),
-      corrects: correction ? corrects : null, ref: this.refInput().trim() || null };
+      corrects: correction ? corrects : null, ref: this.refInput().trim() || null,
+      tags: this.tagsInput() };
     this.submitting = true;
     try {
       const claim =

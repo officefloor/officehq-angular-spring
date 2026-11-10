@@ -1,6 +1,7 @@
 package net.officefloor.hq.app.quick;
 
 import java.math.BigDecimal;
+import java.util.List;
 import net.officefloor.hq.app.claim.Claim;
 import net.officefloor.hq.app.claim.ClaimService;
 import net.officefloor.hq.app.person.Person;
@@ -42,7 +43,7 @@ public class QuickAddService {
         roles.refuseViewer(sheetId, user);
         Person existing = people.findBySheetIdAndNameIgnoreCase(sheetId, name).orElse(null);
         Person person = existing != null ? existing : personService.add(sheetId, user, name, GRADE, null);
-        Claim claim = claimService.add(sheetId, user, person.getId(), amount, null, "", null, null);
+        Claim claim = claimService.add(sheetId, user, person.getId(), amount, null, "", null, null, List.of());
         return new Added(person, existing == null, claim);
     }
 }

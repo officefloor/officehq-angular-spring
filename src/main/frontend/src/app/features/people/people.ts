@@ -321,6 +321,24 @@ const SUMMARY_STATUSES = ['DRAFT', 'OPEN', 'PENDING', 'SETTLED', 'VOID'] as cons
       <p>Open in total <strong data-testid="rollup-open-total">{{ money(settledOpenTotals().open) }}</strong></p>
       <p>Overdue claims <strong data-testid="rollup-overdue-count">{{ overdueTotals().count }}</strong></p>
       <p>Overdue in total <strong data-testid="rollup-overdue-total">{{ money(overdueTotals().cents) }}</strong></p>
+      @if (tagTotals().length > 0) {
+        <table aria-label="Due by tag">
+          <thead>
+            <tr>
+              <th scope="col">Tag</th>
+              <th scope="col">Due</th>
+            </tr>
+          </thead>
+          <tbody>
+            @for (t of tagTotals(); track t.tag) {
+              <tr>
+                <th scope="row">{{ t.tag }}</th>
+                <td [attr.data-testid]="'tag-' + t.tag + '-due-total'">{{ money(t.cents) }}</td>
+              </tr>
+            }
+          </tbody>
+        </table>
+      }
       <app-summary [grades]="gradeSummary()" [periods]="periodSummary()" [statuses]="statusSummary()" />
       <table data-testid="people-list">
         <thead>
@@ -673,6 +691,25 @@ export class People {
       cents: trimmedSum(each.map((o) => o.cents)),
     };
   });
+  /** Every tag ever used on the sheet, as the store held them when the sheet was loaded. */
+  protected readonly usedTags = signal<string[]>([]);
+  /**
+   * Per tag ever used on the sheet (sorted): the figures of the claims that count which carry it,
+   * in whole cents, untrimmed and without the cap; a claim with two tags counts in both.
+   */
+  protected readonly tagTotals = computed(() => {
+    const totals = new Map<string, number>(this.usedTags().map((t) => [t, 0]));
+    for (const c of this.claims()) for (const t of c.tags) if (!totals.has(t)) totals.set(t, 0);
+    const today = this.session.today();
+    for (const p of this.people()) {
+      for (const c of this.claimsOf(p.id)) {
+        if (c.tags.length === 0 || !countsFor(p, c, today)) continue;
+        const figure = chargedDueCents(c, this.rates(), gradeOn(p.grades, c.date), this.floors(), this.lateness(), this.roundOn(c)) ?? 0;
+        for (const t of c.tags) totals.set(t, (totals.get(t) ?? 0) + figure);
+      }
+    }
+    return [...totals].sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0)).map(([tag, cents]) => ({ tag, cents }));
+  });
   /** Per grade: the people not retired on it today, and their due-totals added up (skipping n/a). */
   protected readonly gradeSummary = computed<GradeSummary[]>(() => {
     const current = this.people().filter((p) => !p.retired);
@@ -732,6 +769,7 @@ export class People {
       this.session.loads();
       this.people.set([]);
       this.claims.set([]);
+      this.usedTags.set([]);
       this.selectedClaims.set(new Set());
       this.bulkOpenResult.set(null);
       this.bulkOpenError.set(null);
@@ -767,15 +805,17 @@ export class People {
 
   private async fetch(sheet: string): Promise<void> {
     try {
-      const [list, claims, statements, patrons, watched] = await Promise.all([
+      const [list, claims, statements, patrons, watched, tags] = await Promise.all([
         firstValueFrom(this.http.post<Person[]>('/api/people/list', { sheet })),
         firstValueFrom(this.http.post<Claim[]>('/api/claims/list', { sheet })),
         firstValueFrom(this.http.post<StatementSummary[]>('/api/statements/list', { sheet })),
         firstValueFrom(this.http.post<PatronLink[]>('/api/people/patrons/list', { sheet })),
         firstValueFrom(this.http.post<number[]>('/api/people/watched', { sheet, user: this.session.user() })),
+        firstValueFrom(this.http.post<string[]>('/api/claims/tags', { sheet })),
       ]);
       if (this.session.sheet() === sheet) {
         this.claims.set(claims);
+        this.usedTags.set(tags);
         this.statements.set(new Map(statements.map((s) => [s.personId, s])));
         this.patrons.set(patrons);
         this.watched.set(new Set(watched));

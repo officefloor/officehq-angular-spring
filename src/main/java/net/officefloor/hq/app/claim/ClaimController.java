@@ -8,7 +8,9 @@ import jakarta.validation.constraints.Size;
 import java.math.BigDecimal;
 import java.math.RoundingMode;
 import java.time.LocalDate;
+import java.util.Arrays;
 import java.util.List;
+import java.util.Locale;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
@@ -30,13 +32,15 @@ public class ClaimController {
 
     public record AddClaimRequest(@NotBlank @Size(max = 100) String sheet, @NotBlank @Size(max = 100) String user,
             @NotNull Long personId, @NotNull @Pattern(regexp = SIGNED_AMOUNT) String amount, LocalDate date,
-            @Size(max = 1000) String note, @Size(max = 120) String corrects, @Size(max = 120) String ref) {
+            @Size(max = 1000) String note, @Size(max = 120) String corrects, @Size(max = 120) String ref,
+            @Size(max = 500) String tags) {
     }
 
     public record UpdateClaimRequest(@NotBlank @Size(max = 100) String sheet,
             @NotBlank @Size(max = 100) String user, @NotNull Long id,
             @NotNull @Pattern(regexp = SIGNED_AMOUNT) String amount, LocalDate date, @Size(max = 1000) String note,
-            @Size(max = 120) String corrects, @Size(max = 120) String ref) {
+            @Size(max = 120) String corrects, @Size(max = 120) String ref,
+            @Size(max = 500) String tags) {
     }
 
     public record UpdateClaimAmountRequest(@NotBlank @Size(max = 100) String sheet,
@@ -96,7 +100,7 @@ public class ClaimController {
             ClaimStatus status, String number, String settledDue, String openedBy,
             boolean stated, String statedDue, String corrects, LocalDate dueBy, List<ClaimLogLine> log,
             LocalDate deferredUntil, int proofs, String splitFrom, String lockedBy,
-            boolean lateEntry, LocalDate remindedOn, String ref) {
+            boolean lateEntry, LocalDate remindedOn, String ref, List<String> tags) {
     }
 
     /** One line of a claim's status log, oldest first. */
@@ -116,7 +120,7 @@ public class ClaimController {
                 claim.getLog().stream().map(l -> new ClaimLogLine(l.getStatus(), l.getBy(), l.getDate(), l.getDue()))
                         .toList(),
                 claim.getDeferredUntil(), claim.getProofs(), claim.getSplitFrom(), claim.getLockedBy(),
-                claim.isLateEntry(), claim.getRemindedOn(), claim.getRef());
+                claim.isLateEntry(), claim.getRemindedOn(), claim.getRef(), claim.getTags());
     }
 
     public static BigDecimal amount(String amount) {
@@ -131,6 +135,13 @@ public class ClaimController {
     /** An external reference, trimmed; null when blank. */
     public static String ref(String ref) {
         return ref == null || ref.isBlank() ? null : ref.trim();
+    }
+
+    /** Comma separated tags: each trimmed and lower-cased, blanks and repeats dropped, sorted. */
+    public static List<String> tags(String tags) {
+        return tags == null ? List.of()
+                : Arrays.stream(tags.split(",")).map(t -> t.trim().toLowerCase(Locale.ROOT)).filter(t -> !t.isEmpty())
+                        .distinct().sorted().toList();
     }
 
     private static String note(String note) {
@@ -153,7 +164,13 @@ public class ClaimController {
     @PostMapping("/add")
     public ClaimResponse add(@Valid @RequestBody AddClaimRequest req) {
         return response(service.add(req.sheet().trim(), req.user().trim(), req.personId(), amount(req.amount()), req.date(),
-                note(req.note()), corrects(req.corrects()), ref(req.ref())));
+                note(req.note()), corrects(req.corrects()), ref(req.ref()), tags(req.tags())));
+    }
+
+    /** Every tag ever used on the sheet, sorted. */
+    @PostMapping("/tags")
+    public List<String> tags(@Valid @RequestBody ListClaimsRequest req) {
+        return service.usedTags(req.sheet().trim());
     }
 
     @PostMapping("/paste")
@@ -166,7 +183,7 @@ public class ClaimController {
     @PostMapping("/update")
     public ClaimResponse update(@Valid @RequestBody UpdateClaimRequest req) {
         return response(service.update(req.sheet().trim(), req.user().trim(), req.id(), amount(req.amount()), req.date(),
-                note(req.note()), corrects(req.corrects()), ref(req.ref())));
+                note(req.note()), corrects(req.corrects()), ref(req.ref()), tags(req.tags())));
     }
 
     @PostMapping("/amount")

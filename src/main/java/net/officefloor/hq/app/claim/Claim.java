@@ -92,6 +92,10 @@ public class Claim {
     @Column(name = "ext_ref")
     private String ref;
 
+    /** The claim's tags: trimmed, lower-cased, without repeats, sorted and comma separated; none when it has none. */
+    @Column(name = "tags")
+    private String tags;
+
     /** The number of the claim this claim was split off from; none for a claim not made by a split. */
     @Column(name = "split_from")
     private String splitFrom;
@@ -217,6 +221,16 @@ public class Claim {
 
     public void setRef(String ref) {
         this.ref = ref;
+    }
+
+    /** The claim's tags, sorted; empty when it has none. */
+    public List<String> getTags() {
+        return tags == null ? List.of() : List.of(tags.split(","));
+    }
+
+    /** Give the claim tags, already trimmed, lower-cased, without repeats and sorted. */
+    public void setTags(List<String> tags) {
+        this.tags = tags.isEmpty() ? null : String.join(",", tags);
     }
 
     public boolean isLateEntry() {
