@@ -50,7 +50,9 @@ import org.springframework.web.server.ResponseStatusException;
  * here takes its parent's, then the parent's parent's, up to three levels up (see {@link RateChain}), so changing it
  * records the figures that move too. Nor is the alert threshold (none: off): a change whose figures
  * lift a person's due-total above it records an ALERT (see {@link RollupService#recordChanges}); changing
- * it moves no figures.
+ * it moves no figures. The rounding mode (none: off) is dated like the floor: a claim whose date has
+ * one in force rounds its live figures by it in place of the policy date (see {@link Rounding}), so
+ * changing it records the figures that move too.
  */
 @Service
 public class SettingService {
@@ -68,6 +70,7 @@ public class SettingService {
     public static final String NOTE_THRESHOLD = Sheet.NOTE_THRESHOLD;
     /** The key of a grade's own proof threshold: {@code proof-threshold-<grade>}. */
     public static final String GRADE_PROOF_THRESHOLD = Sheet.GRADE_PROOF_THRESHOLD;
+    public static final String ROUNDING = Sheet.ROUNDING;
     public static final String POLICY_DATE = "policy-date";
     public static final String PERIOD_NUMBERING_FROM = "period-numbering-from";
     public static final String GRACE_DAYS = "grace-days";
@@ -122,7 +125,8 @@ public class SettingService {
      * {@code changeParent} (null for none; refused (400) for the sheet itself, a sheet never loaded, or one that has
      * this sheet as an ancestor, before anything is saved), and the fiscal start month when {@code fiscalStartMonth}
      * is not null (1 to 12; anything else refused (400) before anything is saved), and the alert threshold when
-     * {@code changeAlert} (null for off). Each figure is recorded from its from-date, keeping the values
+     * {@code changeAlert} (null for off), and the rounding mode when {@code rounding} is not null (half-up or
+     * half-even, null for none; anything else refused (400) before anything is saved). Each figure is recorded from its from-date, keeping the values
      * already recorded (one already recorded from that date is replaced). Each one saved is
      * recorded, in that order.
      */
@@ -135,7 +139,7 @@ public class SettingService {
             Dated<BigDecimal> noteThreshold, Map<String, String> permissions,
             boolean changeGrace, Integer graceDays, boolean changeEntry, LocalDate entryDate,
             boolean changePot, BigDecimal pot, boolean changeParent, String parent,
-            Integer fiscalStartMonth, boolean changeAlert, BigDecimal alertThreshold) {
+            Integer fiscalStartMonth, boolean changeAlert, BigDecimal alertThreshold, Dated<String> rounding) {
         roles.refuseViewer(sheetId, user);
         Sheet sheet = sheets.load(sheetId, user);
         if (changeParent && parent != null) {
@@ -148,6 +152,9 @@ public class SettingService {
             if (rateChain.wouldLoop(sheetId, parent)) {
                 throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Sheet " + parent + " has this sheet as an ancestor.");
             }
+        }
+        if (rounding != null && rounding.value() != null && !Sheet.ROUNDING_MODES.contains(rounding.value())) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "The rounding mode is half-up or half-even.");
         }
         if (fiscalStartMonth != null && (fiscalStartMonth < 1 || fiscalStartMonth > 12)) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "The fiscal start month is 1 to 12.");
@@ -171,6 +178,10 @@ public class SettingService {
             sheet = sheetStore.saveAndFlush(sheet);
             audit.recordOnCommit(changed(sheetId, user, POLICY_DATE, policyDate == null ? "" : policyDate.toString()));
             rollup.recordChanges(sheetId, user, before);
+        }
+        if (rounding != null) {
+            sheet = record(sheet, user, ROUNDING, Sheet.roundingCode(rounding.value()), rounding.from(),
+                    rounding.value() == null ? "" : rounding.value(), true);
         }
         if (changeNumbering) {
             sheet.setPeriodNumberingFrom(numberingFrom);

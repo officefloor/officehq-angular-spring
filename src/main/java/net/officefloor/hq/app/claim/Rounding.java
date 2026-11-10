@@ -6,9 +6,10 @@ import java.util.Collection;
 import net.officefloor.hq.app.sheet.Sheet;
 
 /**
- * How a claim's live figures are rounded to the cent: half up when the claim is dated before the
- * sheet's policy date (its today when it has none), half to even when dated on or after it. A
- * correction rounds by the date of the claim it corrects, not its own.
+ * How a claim's live figures are rounded to the cent: by the sheet's rounding mode in force on the
+ * claim's date when it has one then; else half up when the claim is dated before the sheet's policy
+ * date (its today when it has none), half to even when dated on or after it. A correction rounds by
+ * the date of the claim it corrects, not its own.
  */
 public final class Rounding {
 
@@ -17,6 +18,10 @@ public final class Rounding {
 
     /** The rounding for a claim dated on the given date. */
     public static RoundingMode mode(Sheet sheet, LocalDate date) {
+        String mode = sheet.roundingOn(date);
+        if (mode != null) {
+            return mode.equals("half-up") ? RoundingMode.HALF_UP : RoundingMode.HALF_EVEN;
+        }
         LocalDate policy = sheet.getPolicyDate() != null ? sheet.getPolicyDate() : sheet.getToday();
         return date.isBefore(policy) ? RoundingMode.HALF_UP : RoundingMode.HALF_EVEN;
     }

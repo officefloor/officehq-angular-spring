@@ -561,6 +561,8 @@ export class PersonClaims {
   readonly graces = input.required<Record<string, DatedValue[]>>();
   /** The sheet's policy date (blank: its today): a claim dated before it rounds half up, else half to even. */
   readonly policyDate = input.required<string>();
+  /** The sheet's rounding modes, dated (blank: none): the one in force on a claim's date, when there is one, is how it rounds. */
+  readonly roundings = input.required<DatedValue[]>();
   /** The sheet's periods. */
   readonly periods = input.required<Period[]>();
   /** The ids of the claims selected for a bulk action, across the sheet. */
@@ -632,6 +634,7 @@ export class PersonClaims {
       graces: this.graces(),
       today: this.session.today(),
       policyDate: this.policyDate(),
+      roundings: this.roundings(),
     };
     const roundOn = roundingDate(c, this.claims());
     return dueText(chargedDueCents(c, this.rates(), gradeOn(this.grades(), c.date), this.floors(), late, roundOn));

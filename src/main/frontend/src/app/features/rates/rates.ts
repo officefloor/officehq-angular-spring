@@ -97,11 +97,19 @@ export function fixedDueCents(c: Claim): number | null {
 }
 
 /**
- * Whether a claim's live figures round half up: it rounds by a date (see `roundingDate`) before
- * the sheet's policy date, the sheet's today when the policy date is blank. On or after it, they
- * round half to even.
+ * Whether a claim's live figures round half up: it rounds by a date (see `roundingDate`); when the
+ * sheet has a rounding mode in force on that date (`roundings`, blank: none), by that mode. Else half
+ * up before the sheet's policy date, the sheet's today when the policy date is blank; on or after
+ * it, half to even.
  */
-export function roundsHalfUp(roundOn: string, policyDate: string, today: string | null): boolean {
+export function roundsHalfUp(
+  roundOn: string,
+  policyDate: string,
+  today: string | null,
+  roundings: readonly DatedValue[] = [],
+): boolean {
+  const mode = valueOn(roundings, roundOn, '');
+  if (mode !== '') return mode === 'half-up';
   const policy = policyDate !== '' ? policyDate : today;
   return policy !== null && roundOn < policy;
 }
@@ -155,12 +163,14 @@ export function graceOn(graces: Readonly<Record<string, readonly DatedValue[]>>,
 
 /** What works out an overdue claim's late charge and rounding: the sheet's late percents (each
  *  claim's is the one in force on its date), each grade's grace days (a claim's are those of its
- *  person's grade on its date, in force on its date), today and policy date (blank: the sheet's today). */
+ *  person's grade on its date, in force on its date), today, policy date (blank: the sheet's today)
+ *  and rounding modes, dated (blank: none). */
 export interface Lateness {
   latePcts: readonly DatedValue[];
   graces: Readonly<Record<string, readonly DatedValue[]>>;
   today: string | null;
   policyDate: string;
+  roundings: readonly DatedValue[];
 }
 
 /**
@@ -180,7 +190,7 @@ export function chargedDueCents(
   late: Lateness,
   roundOn: string,
 ): number | null {
-  const halfUp = roundsHalfUp(roundOn, late.policyDate, late.today);
+  const halfUp = roundsHalfUp(roundOn, late.policyDate, late.today, late.roundings);
   const figure = claimDueCents(c, rates, grade, halfUp);
   if (figure === null || c.settledDue !== null || isCorrection(c)) return figure;
   const floor = cents(valueOn(floors, c.date, START_FLOOR));

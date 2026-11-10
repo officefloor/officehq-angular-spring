@@ -50,6 +50,9 @@ public class Sheet {
     public static final String NOTE_THRESHOLD = "note-threshold";
     /** The key of a grade's own proof threshold: {@code proof-threshold-<grade>}. */
     public static final String GRADE_PROOF_THRESHOLD = "proof-threshold-";
+    public static final String ROUNDING = "rounding";
+    /** The rounding modes, by the code each is stored under in its dated setting's figure (1, 2, ...). */
+    public static final List<String> ROUNDING_MODES = List.of("half-up", "half-even");
 
     /** The actions the permission matrix covers. */
     public static final List<String> PERMISSION_ACTIONS = List.of("open", "settle", "void", "reassign", "close", "reopen");
@@ -244,6 +247,26 @@ public class Sheet {
     /** The floor in force on a date: the least the live due of a claim of that date can be. */
     public BigDecimal floorOn(LocalDate date) {
         return inForce(FLOOR, date).map(DatedSetting::getValue).orElse(DEFAULT_FLOOR);
+    }
+
+    /** The rounding mode in force on the sheet's today ({@code half-up} or {@code half-even}); null for none. */
+    public String getRounding() {
+        return roundingOn(today);
+    }
+
+    /** The rounding mode in force on a date ({@code half-up} or {@code half-even}); null for none. */
+    public String roundingOn(LocalDate date) {
+        return inForce(ROUNDING, date).map(DatedSetting::getValue).map(Sheet::roundingName).orElse(null);
+    }
+
+    /** A rounding mode's name from the code it is stored under; null for none. */
+    public static String roundingName(BigDecimal code) {
+        return code == null ? null : ROUNDING_MODES.get(code.intValue() - 1);
+    }
+
+    /** The code a rounding mode is stored under; null for none. */
+    public static BigDecimal roundingCode(String name) {
+        return name == null ? null : BigDecimal.valueOf(ROUNDING_MODES.indexOf(name) + 1).setScale(2);
     }
 
     /** The cap in force on the sheet's today: the most a person's due-total can be; null for no cap. */

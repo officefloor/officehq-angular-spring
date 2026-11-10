@@ -40,6 +40,9 @@ public class SettingController {
     /** A permission matrix entry: roles (clerk, steward) comma separated, or blank for the standing rule. */
     private static final String ROLES = "\\s*|\\s*(?i:clerk|steward)(\\s*,\\s*(?i:clerk|steward))*\\s*";
 
+    /** A rounding mode: half-up or half-even, or blank for none. */
+    private static final String ROUNDING = "\\s*|\\s*(half-up|half-even)\\s*";
+
     /** A fiscal start month: a whole month number, 1 to 12. */
     private static final String FISCAL_MONTH = "\\s*(0?[1-9]|1[0-2])\\s*";
 
@@ -54,7 +57,7 @@ public class SettingController {
      * or blank for off. A grade's own terms (A, B or C): a whole number of days. A cap: an amount with
      * up to two decimals, or blank for none. A proof threshold: an amount with up to two decimals, or blank
      * for none. A note threshold: an amount with up to two decimals, or blank for none. A permission matrix entry for open, settle, void, reassign, close or reopen: roles
-     * comma separated, or blank for the standing rule. Grace days: a whole number of days, or blank for off. A grade's grace days (A, B or C): a whole number of days, or blank for none. A grade's own proof threshold (A, B or C): an amount with up to two decimals, or blank for none (the sheet's). An entry date: yyyy-mm-dd, or blank for off. A pot: an amount with up to two decimals, or blank for none. A parent: a sheet id, or blank for none. A fiscal start month: 1 to 12. An alert threshold: an amount with up to two decimals, or blank for off. Each setting that carries a figure may name the date it
+     * comma separated, or blank for the standing rule. Grace days: a whole number of days, or blank for off. A grade's grace days (A, B or C): a whole number of days, or blank for none. A grade's own proof threshold (A, B or C): an amount with up to two decimals, or blank for none (the sheet's). An entry date: yyyy-mm-dd, or blank for off. A pot: an amount with up to two decimals, or blank for none. A parent: a sheet id, or blank for none. A fiscal start month: 1 to 12. An alert threshold: an amount with up to two decimals, or blank for off. A rounding mode: half-up or half-even, or blank for none. Each setting that carries a figure may name the date it
      * is in force from (its {@code ...From}: yyyy-mm-dd, or blank or null for the sheet's today).
      */
     public record SetSettingsRequest(@NotBlank @Size(max = 100) String sheet, @NotBlank @Size(max = 100) String user,
@@ -88,7 +91,8 @@ public class SettingController {
             @Pattern(regexp = "\\s*|" + ClaimController.AMOUNT) String pot,
             @Size(max = 100) String parent,
             @Pattern(regexp = FISCAL_MONTH) String fiscalStartMonth,
-            @Pattern(regexp = "\\s*|" + ClaimController.AMOUNT) String alertThreshold) {
+            @Pattern(regexp = "\\s*|" + ClaimController.AMOUNT) String alertThreshold,
+            @Pattern(regexp = ROUNDING) String rounding, @Pattern(regexp = DATE) String roundingFrom) {
     }
 
     /** A value recorded for a setting that carries a figure: blank from for the beginning of time, blank value for none. */
@@ -102,13 +106,13 @@ public class SettingController {
      * a figure, by key and from-date. And the permission matrix: for each action, its roles as
      * entered, blank for the standing rule. And the grace days, blank for off. And the entry date, blank for off.
      * And the pot, blank for none. And the parent sheet's id, blank for none. And the fiscal start month.
-     * And the alert threshold, blank for off.
+     * And the alert threshold, blank for off. And the rounding mode, blank for none.
      */
     public record SettingsResponse(String clerkLimit, String floor, int terms, String latePct, String policyDate,
             String periodNumberingFrom, Map<String, Integer> gradeTerms, String cap, String proofThreshold,
             String noteThreshold,
             List<DatedValue> dated, Map<String, String> permissions, String graceDays, String entryDate, String pot,
-            String parent, int fiscalStartMonth, String alertThreshold) {
+            String parent, int fiscalStartMonth, String alertThreshold, String rounding) {
     }
 
     private static SettingsResponse response(Sheet sheet) {
@@ -122,11 +126,13 @@ public class SettingController {
                 sheet.getGraceDays() == null ? "" : String.valueOf(sheet.getGraceDays()),
                 sheet.getEntryDate() == null ? "" : sheet.getEntryDate().toString(), SettingService.text(sheet.getPot()),
                 sheet.getParentId() == null ? "" : sheet.getParentId(), sheet.getFiscalStartMonth(),
-                SettingService.text(sheet.getAlertThreshold()));
+                SettingService.text(sheet.getAlertThreshold()),
+                sheet.getRounding() == null ? "" : sheet.getRounding());
     }
 
     private static DatedValue dated(DatedSetting s) {
         String value = s.getValue() == null ? ""
+                : s.getKey().equals(SettingService.ROUNDING) ? Sheet.roundingName(s.getValue())
                 : s.getKey().startsWith(SettingService.TERMS) || s.getKey().startsWith(SettingService.GRADE_GRACE) ? String.valueOf(s.getValue().intValue())
                 : SettingService.text(s.getValue());
         return new DatedValue(s.getKey(), s.getFromDate() == null ? "" : s.getFromDate().toString(), value);
@@ -186,7 +192,8 @@ public class SettingController {
                 req.pot() != null, pot.isEmpty() ? null : ClaimController.amount(pot),
                 req.parent() != null, parent.isEmpty() ? null : parent,
                 req.fiscalStartMonth() == null ? null : Integer.valueOf(req.fiscalStartMonth().trim()),
-                req.alertThreshold() != null, alert.isEmpty() ? null : ClaimController.amount(alert)));
+                req.alertThreshold() != null, alert.isEmpty() ? null : ClaimController.amount(alert),
+                req.rounding() == null ? null : rounding(req.rounding(), req.roundingFrom())));
     }
 
     /** A permission matrix entry given: its roles, lower case, comma separated without spaces. */
@@ -201,6 +208,12 @@ public class SettingController {
     private static SettingService.Dated<BigDecimal> amount(String value, String from) {
         String text = value.trim();
         return new SettingService.Dated<>(text.isEmpty() ? null : ClaimController.amount(text), from(from));
+    }
+
+    /** A rounding mode (blank: none) from a from-date (blank or null: the sheet's today). */
+    private static SettingService.Dated<String> rounding(String value, String from) {
+        String text = value.trim();
+        return new SettingService.Dated<>(text.isEmpty() ? null : text, from(from));
     }
 
     /** Terms from a from-date (blank or null: the sheet's today). */

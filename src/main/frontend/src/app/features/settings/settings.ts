@@ -59,6 +59,9 @@ import { DatedValue, START_FLOOR, START_LATE_PCT, valueOn } from '../rates/rates
 // as an ancestor. A grade with no rate in force on a date here takes the parent's rate for it then,
 // then the parent's parent's, up to three levels up. It saves, like the clerk limit, once its field
 // has been entered; it is not dated.
+// The rounding mode (half-up or half-even; blank: none) is dated like the floor: a claim whose date
+// has one in force rounds its live figures by it in place of the policy date. It saves, like the cap,
+// once its field has been entered (blank: none).
 /** A value saved for a dated setting, by key: blank from for the beginning of time, blank value for none. */
 interface DatedSetting extends DatedValue {
   key: string;
@@ -98,6 +101,8 @@ interface SettingsResponse {
   fiscalStartMonth: number;
   /** The alert threshold, blank for off. */
   alertThreshold: string;
+  /** The rounding mode in force on the sheet's today, blank for none. */
+  rounding: string;
 }
 
 /** The actions the permission matrix covers. */
@@ -125,8 +130,11 @@ const PCT = /^\d{1,3}(\.\d{1,2})?$/;
 
 
 /** The keys of the dated settings, each with its own from field. */
-const DATED_KEYS = ['clerk-limit', 'floor', 'terms', 'terms-A', 'terms-B', 'terms-C', 'grace-A', 'grace-B', 'grace-C', 'late-pct', 'cap', 'proof-threshold', 'proof-threshold-A', 'proof-threshold-B', 'proof-threshold-C', 'note-threshold'] as const;
+const DATED_KEYS = ['clerk-limit', 'floor', 'terms', 'terms-A', 'terms-B', 'terms-C', 'grace-A', 'grace-B', 'grace-C', 'late-pct', 'cap', 'proof-threshold', 'proof-threshold-A', 'proof-threshold-B', 'proof-threshold-C', 'note-threshold', 'rounding'] as const;
 type DatedKey = (typeof DATED_KEYS)[number];
+
+/** A rounding mode. */
+const ROUNDING = /^(half-up|half-even)$/;
 
 /** A policy date: yyyy-mm-dd. */
 const DATE = /^\d{4}-\d{2}-\d{2}$/;
@@ -273,6 +281,22 @@ const DATE = /^\d{4}-\d{2}-\d{2}$/;
           type="date"
           [value]="fromInput()['cap'] ?? ''"
           (input)="typeFrom('cap', $any($event.target).value)"
+        />
+        <label for="setting-rounding">Rounding mode, half-up or half-even (blank: none, by the policy date)</label>
+        <input
+          id="setting-rounding"
+          data-testid="setting-rounding"
+          [value]="roundingInput() ?? ''"
+          (focus)="enterRounding($any($event.target))"
+          (input)="roundingInput.set($any($event.target).value); error.set(null)"
+        />
+        <label for="setting-rounding-from">Rounding mode in force from (blank: the sheet's today)</label>
+        <input
+          id="setting-rounding-from"
+          data-testid="setting-rounding-from"
+          type="date"
+          [value]="fromInput()['rounding'] ?? ''"
+          (input)="typeFrom('rounding', $any($event.target).value)"
         />
         <label for="setting-proof-threshold">Proof threshold (blank: none)</label>
         <input
@@ -460,6 +484,13 @@ const DATE = /^\d{4}-\d{2}-\d{2}$/;
         }
       </p>
       <p>
+        Rounding mode in force:
+        <strong data-testid="setting-rounding-current">{{ rounding() }}</strong>
+        @if (rounding() === '') {
+          <span>(none: by the policy date)</span>
+        }
+      </p>
+      <p>
         Proof threshold in force:
         <strong data-testid="setting-proof-threshold-current">{{ threshold() }}</strong>
         @if (threshold() === '') {
@@ -565,6 +596,12 @@ export class Settings {
   protected readonly cap = computed(() => valueOn(this.caps(), this.session.today(), ''));
   /** The cap typed; null while its field has not been entered (left as it is). */
   protected readonly capInput = signal<string | null>(null);
+  /** The sheet's rounding modes, dated (blank: none), shared with whoever works out how a claim rounds. */
+  readonly roundings = model<DatedValue[]>([]);
+  /** The rounding mode in force on the sheet's today; blank for none. */
+  protected readonly rounding = computed(() => valueOn(this.roundings(), this.session.today(), ''));
+  /** The rounding mode typed; null while its field has not been entered (left as it is). */
+  protected readonly roundingInput = signal<string | null>(null);
 
   /** The proof threshold in force on the sheet's today; blank for none. */
   protected readonly threshold = computed(() => this.inForce('proof-threshold', ''));
@@ -642,6 +679,7 @@ export class Settings {
       this.gradeThresholdInput.set({});
       this.fromInput.set({});
       this.capInput.set(null);
+      this.roundingInput.set(null);
       this.thresholdInput.set(null);
       this.noteThresholdInput.set(null);
       this.limitInput.set(null);
@@ -690,6 +728,15 @@ export class Settings {
     input.value = this.cap();
     input.select();
     this.capInput.set(this.cap());
+  }
+
+  /** Entering the rounding mode's field fills it with the mode in force, selected, so it saves as
+   *  it is unless typed over. */
+  protected enterRounding(input: HTMLInputElement): void {
+    if (this.roundingInput() !== null) return;
+    input.value = this.rounding();
+    input.select();
+    this.roundingInput.set(this.rounding());
   }
 
   /** Entering the proof threshold's field fills it with the threshold in force, selected, so it
@@ -857,6 +904,7 @@ export class Settings {
     this.latePcts.set(this.datedOf('late-pct'));
     this.graces.set(Object.fromEntries(GRADES.map((g) => [g, this.datedOf(this.graceKey(g))])));
     this.caps.set(this.datedOf('cap'));
+    this.roundings.set(this.datedOf('rounding'));
     this.policyDate.set(res.policyDate);
     this.numberingFrom.set(res.periodNumberingFrom);
     this.graceDays.set(res.graceDays);
@@ -879,6 +927,7 @@ export class Settings {
     const policyDate = this.policyInput()?.trim() ?? null;
     const periodNumberingFrom = this.numberingInput()?.trim() ?? null;
     const cap = this.capInput()?.trim() ?? null;
+    const rounding = this.roundingInput()?.trim() ?? null;
     const proofThreshold = this.thresholdInput()?.trim() ?? null;
     const noteThreshold = this.noteThresholdInput()?.trim() ?? null;
     const graceDays = this.graceInput()?.trim() ?? null;
@@ -933,6 +982,10 @@ export class Settings {
     }
     if (cap !== null && cap !== '' && !LIMIT.test(cap)) {
       this.error.set('Enter a cap of 0.00 or more, with up to two decimals, or leave it blank.');
+      return;
+    }
+    if (rounding !== null && rounding !== '' && !ROUNDING.test(rounding)) {
+      this.error.set('Enter a rounding mode of half-up or half-even, or leave it blank for none.');
       return;
     }
     if (proofThreshold !== null && proofThreshold !== '' && !LIMIT.test(proofThreshold)) {
@@ -1053,6 +1106,8 @@ export class Settings {
           parent,
           fiscalStartMonth,
           alertThreshold,
+          rounding,
+          roundingFrom: from.rounding ?? null,
         }),
       );
       if (this.session.sheet() !== sheet) return;
@@ -1067,6 +1122,7 @@ export class Settings {
       this.policyInput.set(null);
       this.numberingInput.set(null);
       this.capInput.set(null);
+      this.roundingInput.set(null);
       this.thresholdInput.set(null);
       this.noteThresholdInput.set(null);
       this.permInput.set({});

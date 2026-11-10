@@ -238,7 +238,7 @@ const SUMMARY_STATUSES = ['DRAFT', 'OPEN', 'PENDING', 'SETTLED', 'VOID'] as cons
     />
     <app-rates [(rates)]="rates" />
     <app-roles />
-    <app-settings [(floors)]="floors" [(latePcts)]="latePcts" [(graces)]="graces" [(policyDate)]="policyDate" [(caps)]="caps" [(pot)]="pot" />
+    <app-settings [(floors)]="floors" [(latePcts)]="latePcts" [(graces)]="graces" [(policyDate)]="policyDate" [(roundings)]="roundings" [(caps)]="caps" [(pot)]="pot" />
     <app-periods [(periods)]="periods" [dues]="dues()" />
     <app-holidays />
     <app-void-reasons />
@@ -713,6 +713,7 @@ const SUMMARY_STATUSES = ['DRAFT', 'OPEN', 'PENDING', 'SETTLED', 'VOID'] as cons
                   [latePcts]="latePcts()"
                   [graces]="graces()"
                   [policyDate]="policyDate()"
+                  [roundings]="roundings()"
                   [periods]="periods()"
                   [selected]="selectedClaims()"
                   [people]="people()"
@@ -1001,6 +1002,8 @@ export class People {
   protected readonly graces = signal<Record<string, DatedValue[]>>({});
   /** The sheet's policy date (blank: its today): a claim dated before it rounds half up, else half to even. */
   protected readonly policyDate = signal('');
+  /** The sheet's rounding modes, dated (blank: none): the one in force on a claim's date, when there is one, is how it rounds. */
+  protected readonly roundings = signal<DatedValue[]>([]);
   /** The sheet's pot, blank for none: what the pools cut. */
   protected readonly pot = signal('');
   /** The sheet's pools, as the pools list last read them. */
@@ -1025,6 +1028,7 @@ export class People {
     graces: this.graces(),
     today: this.session.today(),
     policyDate: this.policyDate(),
+    roundings: this.roundings(),
   }));
   /** The due-by (which places it in a period) and figure of each claim that has a figure, and whether it counts by its status at
    *  the end of a day, for the periods' due-totals. */
