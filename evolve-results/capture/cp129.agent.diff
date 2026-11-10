@@ -1,0 +1,61 @@
+diff --git a/src/main/frontend/src/app/features/people/people.ts b/src/main/frontend/src/app/features/people/people.ts
+index 560a41bcd..c15710a84 100644
+--- a/src/main/frontend/src/app/features/people/people.ts
++++ b/src/main/frontend/src/app/features/people/people.ts
+@@ -5,7 +5,7 @@ import { Session } from '../../core/session';
+ import { AMOUNT, Claim, PersonClaims, cents, counts, dayNumber, deferred, isOpen, money, overdue, plusDays, roundingDate, statusAt } from '../claims/claims';
+ import { AuditView } from '../audit/audit-view';
+ import { Holidays } from '../holidays/holidays';
+-import { DatedDue, Period, Periods, periodDueTotal, personPeriodDueTotal } from '../periods/periods';
++import { DatedDue, Period, Periods, periodDueTotal, periodOn, personPeriodDueTotal } from '../periods/periods';
+ import { DatedGrade, DatedValue, Lateness, Rate, Rates, chargedDueCents, dueCents, dueText, graceOn, gradeOn, pctOn, valueOn } from '../rates/rates';
+ import { Roles } from '../roles/roles';
+ import { Settings } from '../settings/settings';
+@@ -82,6 +82,9 @@ import { VoidReasons as VoidReasonList } from '../../core/void-reasons';
+ // signed-in user watches them.
+ // The export button downloads everyone, retired people included, in list order, as a CSV file
+ // (name, grade in force today, retired-from date or nothing, due-total as shown).
++// The export-claims button downloads every claim as a CSV file the same way: people in list order,
++// retired included, each person's claims oldest first, with person, number, date, amount, due,
++// status and period as the claim's row shows them (an empty number or period, or n/a, as it is).
+ // The sheet may have a cap (the one in force on its today): a person's due-total is at most it, and their excess is how far the
+ // sum of their figures is above it (0.00 otherwise; a due-total of n/a is not capped). Every total
+ // of due-totals (the sheet's, a grade's, the export) adds up the capped figures.
+@@ -350,6 +353,7 @@ const SUMMARY_STATUSES = ['DRAFT', 'OPEN', 'PENDING', 'SETTLED', 'VOID'] as cons
+         Show retired
+       </label>
+       <button type="button" data-testid="export-people" (click)="exportCsv()">Export people (CSV)</button>
++      <button type="button" data-testid="export-claims" (click)="exportClaims()">Export claims (CSV)</button>
+       <button type="button" data-testid="bulk-open" (click)="bulkOpen()">Open selected claims</button>
+       @if (bulkOpenResult(); as r) {
+         <p>
+@@ -2018,10 +2022,28 @@ export class People {
+     for (const p of this.people()) {
+       lines.push([p.name, this.gradeToday(p), p.retiredFrom ?? '', dueText(this.dueOf(p))].map(csvField).join(','));
+     }
++    this.download('people', lines);
++  }
++
++  /** Download every claim, people in list order (retired included) and each one's oldest first, as a CSV file. */
++  protected exportClaims(): void {
++    const lines = ['person,number,date,amount,due,status,period'];
++    for (const p of this.people()) {
++      for (const c of [...this.claimsOf(p.id)].reverse()) {
++        const due = dueText(chargedDueCents(c, this.rates(), gradeOn(p.grades, c.date), this.floors(), this.lateness(), this.roundOn(c)));
++        const period = periodOn(this.periods(), c.dueBy)?.name ?? '';
++        lines.push([p.name, c.number ?? '', c.date, c.amount, due, c.status, period].map(csvField).join(','));
++      }
++    }
++    this.download('claims', lines);
++  }
++
++  /** Download CSV lines, each ended by a line feed, as <what>-<sheet>.csv. */
++  private download(what: string, lines: string[]): void {
+     const url = URL.createObjectURL(new Blob([lines.map((l) => l + '\n').join('')], { type: 'text/csv' }));
+     const a = document.createElement('a');
+     a.href = url;
+-    a.download = 'people-' + (this.session.sheet() ?? 'sheet') + '.csv';
++    a.download = what + '-' + (this.session.sheet() ?? 'sheet') + '.csv';
+     a.click();
+     setTimeout(() => URL.revokeObjectURL(url));
+   }
