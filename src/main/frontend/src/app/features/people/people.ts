@@ -3,6 +3,7 @@ import { Component, computed, effect, inject, signal } from '@angular/core';
 import { firstValueFrom } from 'rxjs';
 import { Session } from '../../core/session';
 import { AMOUNT, Claim, PersonClaims, cents, counts, dayNumber, deferred, isOpen, money, overdue, plusDays, roundingDate, statusAt } from '../claims/claims';
+import { AuditView } from '../audit/audit-view';
 import { Holidays } from '../holidays/holidays';
 import { DatedDue, Period, Periods, periodDueTotal, personPeriodDueTotal } from '../periods/periods';
 import { DatedGrade, DatedValue, Lateness, Rate, Rates, chargedDueCents, dueText, graceOn, gradeOn, pctOn, valueOn } from '../rates/rates';
@@ -165,7 +166,7 @@ const SUMMARY_STATUSES = ['DRAFT', 'OPEN', 'PENDING', 'SETTLED', 'VOID'] as cons
 
 @Component({
   selector: 'app-people',
-  imports: [Header, Holidays, PersonClaims, Periods, Rates, Roles, Settings, Summary, VoidReasons],
+  imports: [AuditView, Header, Holidays, PersonClaims, Periods, Rates, Roles, Settings, Summary, VoidReasons],
   template: `
     <app-header
       [peopleCount]="people().length"
@@ -179,6 +180,7 @@ const SUMMARY_STATUSES = ['DRAFT', 'OPEN', 'PENDING', 'SETTLED', 'VOID'] as cons
     <app-periods [(periods)]="periods" [dues]="dues()" />
     <app-holidays />
     <app-void-reasons />
+    <app-audit-view />
     <section aria-labelledby="people-heading">
       <h2 id="people-heading">People</h2>
       <form aria-label="Person" (submit)="save($event)">
