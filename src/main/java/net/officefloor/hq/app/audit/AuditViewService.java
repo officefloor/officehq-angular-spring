@@ -7,12 +7,17 @@ import java.util.LinkedHashSet;
 import java.util.Locale;
 import java.util.Set;
 import java.util.regex.Pattern;
+import java.math.RoundingMode;
 import net.officefloor.hq.app.Audit;
+import net.officefloor.hq.app.claim.Claim;
+import net.officefloor.hq.app.claim.ClaimRepository;
 import net.officefloor.hq.app.person.Person;
 import net.officefloor.hq.app.person.PersonRepository;
 import net.officefloor.hq.app.sheet.Sheet;
 import net.officefloor.hq.app.sheet.SheetRepository;
+import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
+import org.springframework.web.server.ResponseStatusException;
 
 /**
  * Reads a sheet's records back from the audit file, newest first, exactly as the file holds them.
@@ -27,11 +32,45 @@ public class AuditViewService {
     private final Audit audit;
     private final PersonRepository people;
     private final SheetRepository sheets;
+    private final ClaimRepository claims;
 
-    public AuditViewService(Audit audit, PersonRepository people, SheetRepository sheets) {
+    public AuditViewService(Audit audit, PersonRepository people, SheetRepository sheets, ClaimRepository claims) {
         this.audit = audit;
         this.people = people;
         this.sheets = sheets;
+        this.claims = claims;
+    }
+
+    /**
+     * A claim's timeline: the sheet's lines about the claim, newest first, exactly as the file holds
+     * them. A numbered claim's lines are those carrying {@code number=<its number>}; a claim with no
+     * number's are those carrying {@code person=<its person's name>}, {@code amount=<its amount>} and
+     * {@code date=<its date>} together and no number (a line with a number is about the numbered
+     * claim it names). Not found (404) when the sheet has no such claim.
+     */
+    public List<String> claimLines(String sheet, Long id) {
+        Claim claim = claims.findByIdAndSheetId(id, sheet)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND));
+        List<String> fields;
+        boolean numbered = claim.getNumber() != null;
+        if (claim.getNumber() != null) {
+            fields = List.of(" number=" + claim.getNumber());
+        } else {
+            String name = people.findByIdAndSheetId(claim.getPersonId(), sheet).map(Person::getName)
+                    .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND));
+            fields = List.of(" person=" + name,
+                    " amount=" + claim.getAmount().setScale(2, RoundingMode.UNNECESSARY).toPlainString(),
+                    " date=" + claim.getDate());
+        }
+        List<String> found = new ArrayList<>();
+        for (String line : audit.lines()) {
+            if (ofSheet(line, sheet) && fields.stream().allMatch(field -> carries(line, line, field))
+                    && (numbered || !line.contains(" number="))) {
+                found.add(line);
+            }
+        }
+        Collections.reverse(found);
+        return found;
     }
 
     /**

@@ -413,6 +413,12 @@ export function money(c: number): string {
               <li data-testid="claim-lines-line">{{ l.label }} {{ l.qty }} x {{ l.unit }}</li>
             }
           </ol>
+          <button type="button" data-testid="claim-timeline" (click)="showTimeline(c)">Timeline</button>
+          <ol [attr.aria-label]="'Timeline of claim of ' + c.amount + ' on ' + c.date">
+            @for (line of timelines().get(c.id) ?? []; track $index) {
+              <li data-testid="claim-timeline-line">{{ line }}</li>
+            }
+          </ol>
           <label [for]="'claim-line-label-' + c.id">Line label</label>
           <input
             [id]="'claim-line-label-' + c.id"
@@ -629,6 +635,10 @@ export class PersonClaims {
   protected readonly splitAmounts = signal<ReadonlyMap<number, string>>(new Map());
   /** The amount typed to change each DRAFT claim's amount to in its row, by claim id. */
   protected readonly inlineAmounts = signal<ReadonlyMap<number, string>>(new Map());
+  /** The audit lines shown as each claim's timeline, newest first, by claim id. */
+  protected readonly timelines = signal<ReadonlyMap<number, readonly string[]>>(new Map());
+  /** Counts presses of each claim's timeline button, so only the answer to the latest one is shown. */
+  private readonly timelinePresses = new Map<number, number>();
   /** The person id chosen to move each claim to, by claim id. */
   protected readonly targets = signal<ReadonlyMap<number, string>>(new Map());
   /** The people a claim of this person can be moved to. */
@@ -1146,6 +1156,28 @@ export class PersonClaims {
             ? 'This sheet may not be changed.'
             : 'Could not comment on this claim.';
       this.actionErrors.update((m) => new Map(m).set(c.id, err));
+    }
+  }
+
+  /** Show a claim's timeline: the audit lines about it, newest first, exactly as the file holds them. */
+  protected async showTimeline(c: Claim): Promise<void> {
+    this.clearActionError(c.id);
+    const press = (this.timelinePresses.get(c.id) ?? 0) + 1;
+    this.timelinePresses.set(c.id, press);
+    this.timelines.update((m) => {
+      const next = new Map(m);
+      next.delete(c.id);
+      return next;
+    });
+    const sheet = this.session.sheet();
+    if (!sheet) return;
+    try {
+      const res = await firstValueFrom(this.http.post<{ lines: string[] }>('/api/audit/claim', { sheet, id: c.id }));
+      if (this.session.sheet() !== sheet || this.timelinePresses.get(c.id) !== press) return;
+      this.timelines.update((m) => new Map(m).set(c.id, res.lines));
+    } catch {
+      if (this.session.sheet() !== sheet || this.timelinePresses.get(c.id) !== press) return;
+      this.actionErrors.update((m) => new Map(m).set(c.id, 'Could not read the timeline of this claim.'));
     }
   }
 
