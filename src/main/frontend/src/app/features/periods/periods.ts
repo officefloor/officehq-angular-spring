@@ -49,6 +49,8 @@ export interface DatedDue {
   countsAt: (day: string) => boolean;
   /** Whether the claim counts by its status now (OPEN, SETTLED or PENDING), for the classic summary. */
   countsNow: boolean;
+  /** Whether the claim counts and was still OPEN or PENDING at the end of a day (yyyy-mm-dd), for the carried figures. */
+  openAt: (day: string) => boolean;
 }
 
 /** Whether a claim's due falls in an open period: due by a day inside it, counting at the end of its to-date. */
@@ -84,6 +86,18 @@ export function personPeriodDueTotal(p: Period, personId: number, dues: readonly
   if ((p.closed || p.softClosed) && p.closedDues !== null) return p.closedDues[String(personId)] ?? '0.00';
   return money(
     dues.reduce((sum, d) => sum + (d.personId === personId && inPeriod(p, d) ? d.cents : 0), 0),
+  );
+}
+
+/** A person's carried figure for a period: the due of their claims that count which belong to a
+ *  period ending before this one starts and were still OPEN or PENDING at the end of its to-date. */
+export function personPeriodCarried(
+  p: Period, periods: readonly Period[], personId: number, dues: readonly DatedDue[],
+): string {
+  const earlier = periods.filter((q) => q.to < p.from);
+  return money(
+    dues.reduce((sum, d) => sum + (d.personId === personId && earlier.some((q) => q.from <= d.date && d.date <= q.to)
+      && d.openAt(p.to) ? d.cents : 0), 0),
   );
 }
 

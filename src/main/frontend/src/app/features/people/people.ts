@@ -6,7 +6,7 @@ import { AMOUNT, Claim, PersonClaims, cents, counts, dayNumber, deferred, isCorr
 import { AuditView } from '../audit/audit-view';
 import { TreeSearch } from '../search/tree-search';
 import { Holidays } from '../holidays/holidays';
-import { DatedDue, Period, Periods, classicPeriodDueTotal, periodDueTotal, periodOn, personPeriodDueTotal } from '../periods/periods';
+import { DatedDue, Period, Periods, classicPeriodDueTotal, periodDueTotal, periodOn, personPeriodCarried, personPeriodDueTotal } from '../periods/periods';
 import { DatedGrade, DatedValue, Lateness, Rate, Rates, chargedDueCents, dueCents, dueText, graceOn, gradeOn, pctOn, valueOn } from '../rates/rates';
 import { Roles } from '../roles/roles';
 import { Settings } from '../settings/settings';
@@ -579,6 +579,7 @@ const SUMMARY_STATUSES = ['DRAFT', 'OPEN', 'PENDING', 'SETTLED', 'VOID', 'REVIEW
             <th scope="col">Open</th>
             @for (pd of periods(); track pd.id) {
               <th scope="col">Due in {{ pd.name }}</th>
+              <th scope="col">Carried into {{ pd.name }}</th>
             }
             <th scope="col">Aged 0–30</th>
             <th scope="col">Aged 31–60</th>
@@ -629,6 +630,7 @@ const SUMMARY_STATUSES = ['DRAFT', 'OPEN', 'PENDING', 'SETTLED', 'VOID', 'REVIEW
               <td data-testid="person-open-total">{{ money(settledOpenOf(p).open) | figure }}</td>
               @for (pd of periods(); track pd.id) {
                 <td [attr.data-testid]="'person-period-' + pd.name + '-due-total'">{{ periodDueOf(pd, p.id) | figure }}</td>
+                <td [attr.data-testid]="'person-period-' + pd.name + '-carried'">{{ periodCarriedOf(pd, p.id) | figure }}</td>
               }
               <td data-testid="person-aged-0-30">{{ money(agedOf(p)[0]) | figure }}</td>
               <td data-testid="person-aged-31-60">{{ money(agedOf(p)[1]) | figure }}</td>
@@ -1100,7 +1102,11 @@ export class People {
         return status !== null && (isOpen(c) ? countsFor(p, { ...c, status }, today)
           : countsFor(undefined, { ...c, status }, today));
       };
-      out.push({ personId: c.personId, date: c.dueBy, cents: due, countsAt, countsNow: countsFor(p, c, today) });
+      const openAt = (day: string): boolean => {
+        const status = statusAt(c, day);
+        return (status === 'OPEN' || status === 'PENDING') && countsAt(day);
+      };
+      out.push({ personId: c.personId, date: c.dueBy, cents: due, countsAt, countsNow: countsFor(p, c, today), openAt });
     }
     return out;
   });
@@ -1256,6 +1262,10 @@ export class People {
   /** A person's due-total for a period, as their row shows it. */
   protected periodDueOf(period: Period, personId: number): string {
     return personPeriodDueTotal(period, personId, this.dues());
+  }
+  /** A person's carried figure for a period, as their row shows it. */
+  protected periodCarriedOf(period: Period, personId: number): string {
+    return personPeriodCarried(period, this.periods(), personId, this.dues());
   }
   /** Per status: how many of the sheet's claims have it, retired people's included. */
   protected readonly statusSummary = computed<StatusSummary[]>(() =>
