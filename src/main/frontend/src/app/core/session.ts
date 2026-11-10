@@ -22,6 +22,12 @@ export class Session {
   readonly archived = signal(false);
   /** Whether retired people are listed: off when the screen opens, and left as it is by loading a sheet. */
   readonly showRetired = signal(false);
+  /**
+   * The date this screen shows the sheet as of (none: as it is now). Sent with every request
+   * (see asOfInterceptor): the store answers as the sheet stood at the end of that date, its today
+   * the date, and refuses every change. Kept when another sheet is loaded.
+   */
+  readonly asOf = signal<string | null>(null);
   /** Counts sheet loads, so features re-read the store each time a sheet is (re-)loaded. */
   readonly loads = signal(0);
 
@@ -31,6 +37,7 @@ export class Session {
     this.sheet.set(null);
     this.today.set(null);
     this.archived.set(false);
+    this.asOf.set(null);
   }
 
   async loadSheet(id: string): Promise<void> {
@@ -39,6 +46,20 @@ export class Session {
     );
     this.show(res);
     this.loads.update((n) => n + 1);
+  }
+
+  /** Show the active sheet as of a date, re-read from the store. */
+  async setAsOf(date: string): Promise<void> {
+    this.asOf.set(date);
+    const id = this.sheet();
+    if (id) await this.loadSheet(id);
+  }
+
+  /** Show the active sheet as it is now, re-read from the store. */
+  async clearAsOf(): Promise<void> {
+    this.asOf.set(null);
+    const id = this.sheet();
+    if (id) await this.loadSheet(id);
   }
 
   async setToday(today: string): Promise<void> {

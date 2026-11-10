@@ -952,7 +952,8 @@ export class People {
 
   /**
    * Take the person's statement, now or as of the date on their row: their claims come back bound
-   * (or unbound) as it left them, and the date is cleared.
+   * (or unbound) as it left them. The date is cleared whether it is taken or refused, so a date typed
+   * for a refused statement never carries into the next one.
    */
   protected async takeStatement(p: Person): Promise<void> {
     this.clearRowError(p.id);
@@ -978,6 +979,7 @@ export class People {
       this.statements.update((m) => new Map(m).set(p.id, taken.summary));
     } catch {
       if (this.session.sheet() !== sheet) return;
+      this.statementAsOfs.update((m) => new Map(m).set(p.id, ''));
       this.rowErrors.update((m) => new Map(m).set(p.id, 'Could not take a statement for ' + p.name + '.'));
     }
   }

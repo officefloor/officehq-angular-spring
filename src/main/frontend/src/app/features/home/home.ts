@@ -42,6 +42,22 @@ import { People } from '../people/people';
             Archived <strong data-testid="sheet-archived">{{ session.archived() ? 'yes' : 'no' }}</strong>
             <button type="button" data-testid="sheet-archive" (click)="archive()">Archive sheet</button>
           </p>
+          <form aria-label="As of" (submit)="setAsOf($event)">
+            <p>As of <strong data-testid="sheet-asof">{{ session.asOf() ?? '' }}</strong></p>
+            <label for="asof-date">Show as of</label>
+            <input
+              id="asof-date"
+              type="date"
+              data-testid="asof-date"
+              [value]="asOfInput()"
+              (input)="asOfInput.set($any($event.target).value); asOfError.set(null)"
+            />
+            <button type="submit" data-testid="asof-set">Set as of</button>
+            <button type="button" data-testid="asof-clear" (click)="clearAsOf()">Clear as of</button>
+            @if (asOfError(); as err) {
+              <p role="alert" data-testid="asof-error">{{ err }}</p>
+            }
+          </form>
           <app-people />
         } @else {
           <p data-testid="sheet-none">No sheet loaded.</p>
@@ -71,6 +87,8 @@ export class Home {
   protected readonly signinError = signal<string | null>(null);
   protected readonly sheetError = signal<string | null>(null);
   protected readonly todayInput = signal('');
+  protected readonly asOfInput = signal('');
+  protected readonly asOfError = signal<string | null>(null);
 
   protected async signIn(event: Event): Promise<void> {
     event.preventDefault();
@@ -114,6 +132,30 @@ export class Home {
       await this.session.setToday(today);
     } catch {
       this.sheetError.set('Could not change the sheet\'s today.');
+    }
+  }
+
+  protected async setAsOf(event: Event): Promise<void> {
+    event.preventDefault();
+    this.asOfError.set(null);
+    const date = this.asOfInput().trim();
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) {
+      this.asOfError.set('Enter a date to show the sheet as of.');
+      return;
+    }
+    try {
+      await this.session.setAsOf(date);
+    } catch {
+      this.asOfError.set('Could not show the sheet as of that date.');
+    }
+  }
+
+  protected async clearAsOf(): Promise<void> {
+    this.asOfError.set(null);
+    try {
+      await this.session.clearAsOf();
+    } catch {
+      this.asOfError.set('Could not show the sheet as it is now.');
     }
   }
 
