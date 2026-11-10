@@ -2,6 +2,7 @@ import { HttpClient } from '@angular/common/http';
 import { Component, effect, inject, signal } from '@angular/core';
 import { firstValueFrom } from 'rxjs';
 import { Session } from '../../core/session';
+import { Delegations } from './delegations';
 
 // The roles the sheet assigns to user names: clerk (the default for any name), steward or viewer,
 // and the form that assigns one. A steward settles any claim, and approves or rejects a PENDING
@@ -16,6 +17,7 @@ const ROLES = ['clerk', 'steward', 'viewer'];
 
 @Component({
   selector: 'app-roles',
+  imports: [Delegations],
   template: `
     <section aria-labelledby="roles-heading">
       <h2 id="roles-heading">Roles</h2>
@@ -62,6 +64,7 @@ const ROLES = ['clerk', 'steward', 'viewer'];
           }
         </tbody>
       </table>
+      <app-delegations />
     </section>
   `,
 })

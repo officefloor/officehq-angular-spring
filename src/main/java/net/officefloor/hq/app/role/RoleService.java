@@ -1,6 +1,8 @@
 package net.officefloor.hq.app.role;
 
+import java.time.LocalDate;
 import java.util.List;
+import java.util.Optional;
 import net.officefloor.hq.app.Audit;
 import net.officefloor.hq.app.sheet.SheetService;
 import org.springframework.dao.DataIntegrityViolationException;
@@ -9,16 +11,22 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.server.ResponseStatusException;
 
-/** The roles a sheet assigns to user names: clerk (the default for any name), steward or viewer. */
+/**
+ * The roles a sheet assigns to user names: clerk (the default for any name), steward or viewer. A
+ * steward can delegate the steward role to a user for a from-date to a to-date, inclusive: while
+ * the sheet's today is inside it the user acts as a steward on the steward's behalf.
+ */
 @Service
 public class RoleService {
 
     private final RoleRepository roles;
+    private final DelegationRepository delegations;
     private final SheetService sheets;
     private final Audit audit;
 
-    public RoleService(RoleRepository roles, SheetService sheets, Audit audit) {
+    public RoleService(RoleRepository roles, DelegationRepository delegations, SheetService sheets, Audit audit) {
         this.roles = roles;
+        this.delegations = delegations;
         this.sheets = sheets;
         this.audit = audit;
     }
@@ -28,10 +36,59 @@ public class RoleService {
         return roles.findBySheetIdOrderByUserNameAsc(sheetId);
     }
 
-    /** The user's role on the sheet: clerk unless assigned otherwise. */
+    /** The user's role on the sheet: clerk unless assigned otherwise; steward while a delegation to them is in force. */
     @Transactional(readOnly = true)
     public String roleOf(String sheetId, String user) {
+        String assigned = assignedRoleOf(sheetId, user);
+        return delegatorOf(sheetId, user).isPresent() ? Role.STEWARD : assigned;
+    }
+
+    /** The role the sheet assigns the user, leaving aside any delegation. */
+    private String assignedRoleOf(String sheetId, String user) {
         return roles.findBySheetIdAndUserName(sheetId, user).map(Role::getRole).orElse(Role.CLERK);
+    }
+
+    /**
+     * The steward the user acts for on the sheet's today: who made the latest delegation to them in
+     * force then; none for a user who is a steward in their own right.
+     */
+    @Transactional(readOnly = true)
+    public Optional<String> delegatorOf(String sheetId, String user) {
+        if (Role.STEWARD.equals(assignedRoleOf(sheetId, user))) {
+            return Optional.empty();
+        }
+        List<Delegation> theirs = delegations.findBySheetIdAndUserNameOrderByIdDesc(sheetId, user);
+        if (theirs.isEmpty()) {
+            return Optional.empty();
+        }
+        LocalDate today = sheets.today(sheetId);
+        return theirs.stream().filter(d -> d.covers(today)).findFirst().map(Delegation::getSteward);
+    }
+
+    @Transactional(readOnly = true)
+    public List<Delegation> delegations(String sheetId) {
+        return delegations.findBySheetIdOrderByIdAsc(sheetId);
+    }
+
+    /**
+     * Delegate the steward role to a user from a from-date (none: the sheet's today) to a to-date,
+     * inclusive. Refused (403) to anyone but a steward in their own right, and (400) for a to-date
+     * before the from-date.
+     */
+    @Transactional
+    public Delegation delegate(String sheetId, String user, String name, LocalDate from, LocalDate to) {
+        sheets.load(sheetId, user);
+        if (!Role.STEWARD.equals(assignedRoleOf(sheetId, user))) {
+            throw new ResponseStatusException(HttpStatus.FORBIDDEN, "Only a steward can delegate the steward role.");
+        }
+        LocalDate fromDate = from != null ? from : sheets.today(sheetId);
+        if (to.isBefore(fromDate)) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "The to-date is before the from-date.");
+        }
+        Delegation saved = delegations.saveAndFlush(new Delegation(sheetId, name, fromDate, to, user));
+        audit.recordOnCommit("DELEGATED sheet=" + sheetId + " by=" + user + " user=" + name + " from=" + fromDate
+                + " to=" + to);
+        return saved;
     }
 
     /**

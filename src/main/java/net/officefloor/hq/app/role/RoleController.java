@@ -5,6 +5,7 @@ import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.NotNull;
 import jakarta.validation.constraints.Pattern;
 import jakarta.validation.constraints.Size;
+import java.time.LocalDate;
 import java.util.List;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
@@ -27,6 +28,18 @@ public class RoleController {
     public record RoleResponse(String user, String role) {
     }
 
+    public record DelegateRequest(@NotBlank @Size(max = 100) String sheet, @NotBlank @Size(max = 100) String user,
+            @NotBlank @Size(max = 100) String name, LocalDate from, @NotNull LocalDate to) {
+    }
+
+    public record DelegationResponse(Long id, String user, String from, String to, String steward) {
+    }
+
+    private static DelegationResponse response(Delegation d) {
+        return new DelegationResponse(d.getId(), d.getUserName(), d.getFromDate().toString(),
+                d.getToDate().toString(), d.getSteward());
+    }
+
     private static RoleResponse response(Role role) {
         return new RoleResponse(role.getUserName(), role.getRole());
     }
@@ -40,6 +53,17 @@ public class RoleController {
     @PostMapping("/list")
     public List<RoleResponse> list(@Valid @RequestBody ListRolesRequest req) {
         return service.list(req.sheet().trim()).stream().map(RoleController::response).toList();
+    }
+
+    @PostMapping("/delegations")
+    public List<DelegationResponse> delegations(@Valid @RequestBody ListRolesRequest req) {
+        return service.delegations(req.sheet().trim()).stream().map(RoleController::response).toList();
+    }
+
+    @PostMapping("/delegate")
+    public DelegationResponse delegate(@Valid @RequestBody DelegateRequest req) {
+        return response(service.delegate(req.sheet().trim(), req.user().trim(), req.name().trim(), req.from(),
+                req.to()));
     }
 
     @PostMapping("/set")

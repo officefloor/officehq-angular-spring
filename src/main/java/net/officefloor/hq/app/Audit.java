@@ -6,6 +6,9 @@ import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.StandardOpenOption;
+import java.util.Set;
+import net.officefloor.hq.app.role.RoleService;
+import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.support.TransactionSynchronization;
@@ -23,10 +26,16 @@ import org.springframework.transaction.support.TransactionSynchronizationManager
 @Service
 public class Audit {
 
-    private final Path file;
+    /** The records that only report figures: never marked as made for a delegating steward. */
+    private static final Set<String> FIGURES = Set.of("ROLLUP", "TOTALS", "ALERT");
 
-    public Audit(@Value("${app.audit.file:.run/audit.log}") String path) {
+    private final Path file;
+    // looked up when used: the role service records its own changes here
+    private final ObjectProvider<RoleService> roles;
+
+    public Audit(@Value("${app.audit.file:.run/audit.log}") String path, ObjectProvider<RoleService> roles) {
         this.file = Path.of(path);
+        this.roles = roles;
     }
 
     /** Append one audit record. Tests assert the exact line(s) in the file. */
@@ -47,7 +56,8 @@ public class Audit {
      * Append one audit record once the current transaction commits, so a change that is refused or
      * rolled back writes nothing. Outside a transaction the record is appended at once.
      */
-    public void recordOnCommit(String entry) {
+    public void recordOnCommit(String change) {
+        String entry = change + delegated(change);
         if (!TransactionSynchronizationManager.isSynchronizationActive()) {
             record(entry);
             return;
@@ -58,6 +68,32 @@ public class Audit {
                 record(entry);
             }
         });
+    }
+
+    /**
+     * The ending of a change's record made by a user acting as a steward under a delegation in force
+     * on the sheet's today: {@code for=<the steward who delegated>}; otherwise nothing.
+     */
+    private String delegated(String entry) {
+        String[] fields = entry.split(" ");
+        if (FIGURES.contains(fields[0])) {
+            return "";
+        }
+        String sheet = field(fields, "sheet=");
+        String by = field(fields, "by=");
+        if (sheet == null || by == null) {
+            return "";
+        }
+        return roles.getObject().delegatorOf(sheet, by).map(steward -> " for=" + steward).orElse("");
+    }
+
+    private static String field(String[] fields, String name) {
+        for (String f : fields) {
+            if (f.startsWith(name)) {
+                return f.substring(name.length());
+            }
+        }
+        return null;
     }
 
     /** Truncate the audit file. */
