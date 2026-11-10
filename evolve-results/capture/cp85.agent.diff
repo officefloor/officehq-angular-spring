@@ -1,0 +1,669 @@
+diff --git a/src/main/frontend/src/app/features/claims/claims.ts b/src/main/frontend/src/app/features/claims/claims.ts
+index 85aab3ee2..e541c62eb 100644
+--- a/src/main/frontend/src/app/features/claims/claims.ts
++++ b/src/main/frontend/src/app/features/claims/claims.ts
+@@ -3,7 +3,7 @@ import { Component, computed, inject, input, linkedSignal, output, signal, untra
+ import { firstValueFrom } from 'rxjs';
+ import { Session } from '../../core/session';
+ import { Period, inClosedPeriod, periodOn } from '../periods/periods';
+-import { DatedGrade, DatedValue, Lateness, Rate, chargedDueCents, dueText, gradeOn } from '../rates/rates';
++import { DatedGrade, DatedValue, Lateness, Rate, chargedDueCents, dueText, graceOn, gradeOn } from '../rates/rates';
+ 
+ // A person's claims, newest first, and the one form under their row that both adds a claim and
+ // edits an existing one (opening a claim's editor fills the form with its values). Each claim
+@@ -24,8 +24,10 @@ import { DatedGrade, DatedValue, Lateness, Rate, chargedDueCents, dueText, grade
+ // refused with an error on the claim.
+ // Each claim shows its due-by, fixed when it was added (its date plus the terms of its person's grade
+ // in force on its date, or the sheet's terms when that grade has none), and whether it is overdue:
+-// OPEN with its due-by before the sheet's today. An overdue claim's due gains the sheet's late
+-// percent of its figure for every full 30 days it is overdue.
++// OPEN with its due-by before the sheet's today. A grade may have grace days: a claim whose person's
++// grade on its date has some on its date is overdue only once its due-by plus them is before the
++// sheet's today (its due-by shown is unchanged). An overdue claim's due gains the sheet's late
++// percent of its figure for every full 30 days it is overdue, counted from its due-by plus its grace.
+ // A claim with a negative amount is a correction: it must name, by number, a SETTLED claim of the
+ // same person that it corrects, else it is refused. Its due has no floor and no late charge, and
+ // it shows the number it corrects.
+@@ -216,14 +218,15 @@ export function dueBy(c: Claim): string {
+   return c.dueBy;
+ }
+ 
+-/** Whether a claim is overdue: open (OPEN or PENDING), not deferred, and due by a date before the sheet's today. */
+-export function overdue(c: Claim, today: string | null): boolean {
+-  return isOpen(c) && !deferred(c, today) && today !== null && dueBy(c) < today;
++/** Whether a claim is overdue: open (OPEN or PENDING), not deferred, and due by a date that, with
++ *  the grace days of its person's grade added, is before the sheet's today. */
++export function overdue(c: Claim, today: string | null, grace = 0): boolean {
++  return isOpen(c) && !deferred(c, today) && today !== null && plusDays(dueBy(c), grace) < today;
+ }
+ 
+-/** The days a claim is overdue on the sheet's today: past its due-by; 0 when it is not overdue. */
+-export function daysOverdue(c: Claim, today: string | null): number {
+-  return overdue(c, today) && today !== null ? dayNumber(today) - dayNumber(dueBy(c)) : 0;
++/** The days a claim is overdue on the sheet's today: past its due-by plus its grace days; 0 when it is not overdue. */
++export function daysOverdue(c: Claim, today: string | null, grace = 0): number {
++  return overdue(c, today, grace) && today !== null ? dayNumber(today) - dayNumber(dueBy(c)) - grace : 0;
+ }
+ 
+ /** Whole cents shown with two decimals, with a minus sign below zero. */
+@@ -395,6 +398,9 @@ export class PersonClaims {
+   /** The sheet's late percents, dated: for each full 30 days a claim is overdue, the one in force on
+    *  that boundary date (its due-by plus 30, 60, 90 ... days) is what it gains of its figure. */
+   readonly latePcts = input.required<DatedValue[]>();
++  /** Each grade's grace days, dated: those of the person's grade on a claim's date, in force on its
++   *  date, put off its going overdue and its 30-day boundaries. */
++  readonly graces = input.required<Record<string, DatedValue[]>>();
+   /** The sheet's policy date (blank: its today): a claim dated before it rounds half up, else half to even. */
+   readonly policyDate = input.required<string>();
+   /** The sheet's periods. */
+@@ -446,6 +452,7 @@ export class PersonClaims {
+   protected dueOf(c: Claim): string {
+     const late: Lateness = {
+       latePcts: this.latePcts(),
++      graces: this.graces(),
+       today: this.session.today(),
+       policyDate: this.policyDate(),
+     };
+@@ -458,7 +465,7 @@ export class PersonClaims {
+   }
+ 
+   protected overdueOf(c: Claim): boolean {
+-    return overdue(c, this.session.today());
++    return overdue(c, this.session.today(), graceOn(this.graces(), gradeOn(this.grades(), c.date), c.date));
+   }
+ 
+   protected deferredOf(c: Claim): boolean {
+diff --git a/src/main/frontend/src/app/features/people/people.ts b/src/main/frontend/src/app/features/people/people.ts
+index 7ff70badc..ac1ac5fb0 100644
+--- a/src/main/frontend/src/app/features/people/people.ts
++++ b/src/main/frontend/src/app/features/people/people.ts
+@@ -5,7 +5,7 @@ import { Session } from '../../core/session';
+ import { AMOUNT, Claim, PersonClaims, cents, counts, dayNumber, deferred, isOpen, money, overdue, plusDays, roundingDate, statusAt } from '../claims/claims';
+ import { Holidays } from '../holidays/holidays';
+ import { DatedDue, Period, Periods, periodDueTotal, personPeriodDueTotal } from '../periods/periods';
+-import { DatedGrade, DatedValue, Lateness, Rate, Rates, chargedDueCents, dueText, gradeOn, pctOn, valueOn } from '../rates/rates';
++import { DatedGrade, DatedValue, Lateness, Rate, Rates, chargedDueCents, dueText, graceOn, gradeOn, pctOn, valueOn } from '../rates/rates';
+ import { Roles } from '../roles/roles';
+ import { Settings } from '../settings/settings';
+ import { Header } from '../header/header';
+@@ -167,7 +167,7 @@ const SUMMARY_STATUSES = ['DRAFT', 'OPEN', 'PENDING', 'SETTLED', 'VOID'] as cons
+     />
+     <app-rates [(rates)]="rates" />
+     <app-roles />
+-    <app-settings [(floors)]="floors" [(latePcts)]="latePcts" [(policyDate)]="policyDate" [(caps)]="caps" />
++    <app-settings [(floors)]="floors" [(latePcts)]="latePcts" [(graces)]="graces" [(policyDate)]="policyDate" [(caps)]="caps" />
+     <app-periods [(periods)]="periods" [dues]="dues()" />
+     <app-holidays />
+     <section aria-labelledby="people-heading">
+@@ -444,6 +444,7 @@ const SUMMARY_STATUSES = ['DRAFT', 'OPEN', 'PENDING', 'SETTLED', 'VOID'] as cons
+                   [rates]="rates()"
+                   [floors]="floors()"
+                   [latePcts]="latePcts()"
++                  [graces]="graces()"
+                   [policyDate]="policyDate()"
+                   [periods]="periods()"
+                   [selected]="selectedClaims()"
+@@ -594,11 +595,15 @@ export class People {
+   /** The sheet's late percents, dated: for each full 30 days a claim is overdue, the one in force on
+    *  that boundary date (its due-by plus 30, 60, 90 ... days) is what it gains of its figure. */
+   protected readonly latePcts = signal<DatedValue[]>([]);
++  /** Each grade's grace days, dated (blank: none): a claim whose person's grade on its date has some
++   *  on its date is overdue only once its due-by plus them is before the sheet's today. */
++  protected readonly graces = signal<Record<string, DatedValue[]>>({});
+   /** The sheet's policy date (blank: its today): a claim dated before it rounds half up, else half to even. */
+   protected readonly policyDate = signal('');
+   /** What works out an overdue claim's late charge on the sheet's today. */
+   private readonly lateness = computed<Lateness>(() => ({
+     latePcts: this.latePcts(),
++    graces: this.graces(),
+     today: this.session.today(),
+     policyDate: this.policyDate(),
+   }));
+@@ -878,7 +883,8 @@ export class People {
+   /** The person's overdue claims that count: how many, and the sum of their figures in whole cents. */
+   protected overdueOf(p: Person): { count: number; cents: number } {
+     const today = this.session.today();
+-    const late = this.claimsOf(p.id).filter((c) => countsFor(p, c, this.session.today()) && overdue(c, today));
++    const late = this.claimsOf(p.id).filter((c) => countsFor(p, c, this.session.today())
++      && overdue(c, today, graceOn(this.graces(), gradeOn(p.grades, c.date), c.date)));
+     return {
+       count: late.length,
+       cents: late.reduce((sum, c) => sum + (chargedDueCents(c, this.rates(), gradeOn(p.grades, c.date), this.floors(), this.lateness(), this.roundOn(c)) ?? 0), 0),
+diff --git a/src/main/frontend/src/app/features/rates/rates.ts b/src/main/frontend/src/app/features/rates/rates.ts
+index b818f03d6..314c831f2 100644
+--- a/src/main/frontend/src/app/features/rates/rates.ts
++++ b/src/main/frontend/src/app/features/rates/rates.ts
+@@ -133,10 +133,19 @@ export const START_FLOOR = '1.00';
+ /** The late percent a sheet starts with: in force before its first recorded late percent. */
+ export const START_LATE_PCT = '0.00';
+ 
++/** The grace days of a grade in force on a date (yyyy-mm-dd), from each grade's dated grace days
++ *  (a blank value: none); 0 when it has none then. */
++export function graceOn(graces: Readonly<Record<string, readonly DatedValue[]>>, grade: string, date: string | null): number {
++  const days = valueOn(graces[grade] ?? [], date, '');
++  return days === '' ? 0 : Number(days);
++}
++
+ /** What works out an overdue claim's late charge and rounding: the sheet's late percents (each
+- *  claim's is the one in force on its date), today and policy date (blank: the sheet's today). */
++ *  claim's is the one in force on its date), each grade's grace days (a claim's are those of its
++ *  person's grade on its date, in force on its date), today and policy date (blank: the sheet's today). */
+ export interface Lateness {
+   latePcts: readonly DatedValue[];
++  graces: Readonly<Record<string, readonly DatedValue[]>>;
+   today: string | null;
+   policyDate: string;
+ }
+@@ -144,7 +153,7 @@ export interface Lateness {
+ /**
+  * A claim's due in whole cents as shown: its figure (see {@link claimDueCents}) with, when it is
+  * overdue, a late charge added on top: for each full 30 days overdue, the late percent in force on
+- * that boundary date (its due-by plus 30, 60, 90 ... days) of that figure, rounded to whole cents,
++ * that boundary date (its due-by plus its grace days, plus 30, 60, 90 ... days) of that figure, rounded to whole cents,
+  * the charges added up. Both round as the claim rounds by `roundOn` (see {@link roundsHalfUp}).
+  * The floor is applied last: the due is the greater of the floor in force on the claim's date and
+  * the figure plus its charge. The charge is never bound by a statement; a settled claim's due is
+@@ -163,10 +172,11 @@ export function chargedDueCents(
+   if (figure === null || c.settledDue !== null || isCorrection(c)) return figure;
+   const floor = cents(valueOn(floors, c.date, START_FLOOR));
+   if (!isOpen(c)) return Math.max(figure, floor);
+-  const periods = Math.floor(daysOverdue(c, late.today) / 30);
++  const grace = graceOn(late.graces, grade, c.date);
++  const periods = Math.floor(daysOverdue(c, late.today, grace) / 30);
+   let charge = 0;
+   for (let k = 1; k <= periods; k++) {
+-    const boundary = plusDays(dueBy(c), 30 * k);
++    const boundary = plusDays(dueBy(c), grace + 30 * k);
+     charge += dueCents(figure, valueOn(late.latePcts, boundary, START_LATE_PCT), halfUp) ?? 0;
+   }
+   return Math.max(figure + charge, floor);
+diff --git a/src/main/frontend/src/app/features/settings/settings.ts b/src/main/frontend/src/app/features/settings/settings.ts
+index f11a240cd..baa0d2ab2 100644
+--- a/src/main/frontend/src/app/features/settings/settings.ts
++++ b/src/main/frontend/src/app/features/settings/settings.ts
+@@ -38,6 +38,10 @@ import { DatedValue, START_FLOOR, START_LATE_PCT, valueOn } from '../rates/rates
+ // Grace days (whole days; blank: off): when the sheet's today changes, every open period whose
+ // to-date plus the grace days is before the new today is closed. It saves, like the clerk limit,
+ // once its field has been entered; it is not dated.
++// Each grade may have grace days (whole days; blank: none), dated like the floor: a claim whose
++// person's grade on its date has grace days in force on that date is overdue only once its due-by
++// plus them is before the sheet's today, and its late charge's 30-day boundaries count from there;
++// its due-by is unchanged. Each saves, like the clerk limit, once its field has been entered.
+ // The entry date (blank: off): while set, it is the default date of a new claim in place of the
+ // sheet's today. It saves like the policy date; it is not dated.
+ /** A value saved for a dated setting, by key: blank from for the beginning of time, blank value for none. */
+@@ -98,7 +102,7 @@ const PCT = /^\d{1,3}(\.\d{1,2})?$/;
+ 
+ 
+ /** The keys of the dated settings, each with its own from field. */
+-const DATED_KEYS = ['clerk-limit', 'floor', 'terms', 'terms-A', 'terms-B', 'terms-C', 'late-pct', 'cap', 'proof-threshold', 'note-threshold'] as const;
++const DATED_KEYS = ['clerk-limit', 'floor', 'terms', 'terms-A', 'terms-B', 'terms-C', 'grace-A', 'grace-B', 'grace-C', 'late-pct', 'cap', 'proof-threshold', 'note-threshold'] as const;
+ type DatedKey = (typeof DATED_KEYS)[number];
+ 
+ /** A policy date: yyyy-mm-dd. */
+@@ -177,6 +181,25 @@ const DATE = /^\d{4}-\d{2}-\d{2}$/;
+             (input)="typeFrom(gradeKey(g), $any($event.target).value)"
+           />
+         }
++        @for (g of grades; track g) {
++          <label [for]="'setting-grace-' + g">Grace days for grade {{ g }} before a claim is overdue (blank: none)</label>
++          <input
++            [id]="'setting-grace-' + g"
++            [attr.data-testid]="'setting-grace-' + g"
++            inputmode="numeric"
++            [value]="gradeGraceInput()[g] ?? ''"
++            (focus)="enterGradeGrace(g, $any($event.target))"
++            (input)="typeGradeGrace(g, $any($event.target).value)"
++          />
++          <label [for]="'setting-grace-' + g + '-from'">Grace days for grade {{ g }} in force from (blank: the sheet's today)</label>
++          <input
++            [id]="'setting-grace-' + g + '-from'"
++            [attr.data-testid]="'setting-grace-' + g + '-from'"
++            type="date"
++            [value]="fromInput()[graceKey(g)] ?? ''"
++            (input)="typeFrom(graceKey(g), $any($event.target).value)"
++          />
++        }
+         <label for="setting-late-pct">Late percent per 30 days overdue (blank: leave as it is)</label>
+         <input
+           id="setting-late-pct"
+@@ -319,6 +342,15 @@ const DATE = /^\d{4}-\d{2}-\d{2}$/;
+           }
+         </p>
+       }
++      @for (g of grades; track g) {
++        <p>
++          Grace days in force for grade {{ g }}:
++          <strong [attr.data-testid]="'setting-grace-' + g + '-current'">{{ gradeGraces()[g] }}</strong>
++          @if (gradeGraces()[g] === '') {
++            <span>(none)</span>
++          }
++        </p>
++      }
+       <p>
+         Late percent in force:
+         <strong data-testid="setting-late-pct-current">{{ latePct() }}</strong>
+@@ -403,6 +435,14 @@ export class Settings {
+   );
+   /** The terms typed for each grade; blank (or missing) leaves them as they are. */
+   protected readonly gradeTermsInput = signal<Partial<Record<Grade, string>>>({});
++  /** Each grade's grace days, dated (blank: none), shared with whoever works out whether a claim is overdue. */
++  readonly graces = model<Record<string, DatedValue[]>>({});
++  /** The grace days in force on the sheet's today for each grade; blank for none. */
++  protected readonly gradeGraces = computed(
++    () => Object.fromEntries(GRADES.map((g) => [g, this.inForce(this.graceKey(g), '')])) as Record<Grade, string>,
++  );
++  /** The grace days typed for each grade; missing while its field has not been entered (left as they are). */
++  protected readonly gradeGraceInput = signal<Partial<Record<Grade, string>>>({});
+   /** The sheet's late percents, dated, shared with whoever works out an overdue claim's late charge. */
+   readonly latePcts = model<DatedValue[]>([]);
+   /** The late percent in force on the sheet's today. */
+@@ -468,6 +508,7 @@ export class Settings {
+       untracked(() => this.show({ dated: [], policyDate: '', periodNumberingFrom: '', permissions: {}, graceDays: '', entryDate: '' }));
+       this.permInput.set({});
+       this.gradeTermsInput.set({});
++      this.gradeGraceInput.set({});
+       this.fromInput.set({});
+       this.capInput.set(null);
+       this.thresholdInput.set(null);
+@@ -586,6 +627,25 @@ export class Settings {
+     return `terms-${grade}`;
+   }
+ 
++  protected graceKey(grade: Grade): DatedKey {
++    return `grace-${grade}`;
++  }
++
++  /** Entering a grade's grace days' field fills it with the days in force, selected, so they save
++   *  as they are unless typed over. */
++  protected enterGradeGrace(grade: Grade, input: HTMLInputElement): void {
++    if (this.gradeGraceInput()[grade] !== undefined) return;
++    const days = this.gradeGraces()[grade];
++    input.value = days;
++    input.select();
++    this.gradeGraceInput.update((m) => ({ ...m, [grade]: days }));
++  }
++
++  protected typeGradeGrace(grade: Grade, value: string): void {
++    this.gradeGraceInput.update((m) => ({ ...m, [grade]: value }));
++    this.error.set(null);
++  }
++
+   protected typeFrom(key: DatedKey, value: string): void {
+     this.fromInput.update((m) => ({ ...m, [key]: value }));
+     this.error.set(null);
+@@ -613,6 +673,7 @@ export class Settings {
+     this.permissions.set(res.permissions);
+     this.floors.set(this.datedOf('floor'));
+     this.latePcts.set(this.datedOf('late-pct'));
++    this.graces.set(Object.fromEntries(GRADES.map((g) => [g, this.datedOf(this.graceKey(g))])));
+     this.caps.set(this.datedOf('cap'));
+     this.policyDate.set(res.policyDate);
+     this.numberingFrom.set(res.periodNumberingFrom);
+@@ -658,6 +719,16 @@ export class Settings {
+       }
+       gradeTerms[g] = t;
+     }
++    const gradeGraces: Partial<Record<Grade, string>> = {};
++    for (const g of GRADES) {
++      const t = this.gradeGraceInput()[g]?.trim();
++      if (t === undefined) continue;
++      if (t !== '' && !TERMS.test(t)) {
++        this.error.set(`Enter grace days for grade ${g} of 0 or more whole days, or leave it blank for none.`);
++        return;
++      }
++      gradeGraces[g] = t;
++    }
+     if (latePct !== null && !PCT.test(latePct)) {
+       this.error.set('Enter a late percent of 0.00 to 999.99, with up to two decimals.');
+       return;
+@@ -746,6 +817,12 @@ export class Settings {
+           permReopen: perms.reopen ?? null,
+           graceDays,
+           entryDate,
++          graceA: gradeGraces.A ?? null,
++          graceB: gradeGraces.B ?? null,
++          graceC: gradeGraces.C ?? null,
++          graceAFrom: from['grace-A'] ?? null,
++          graceBFrom: from['grace-B'] ?? null,
++          graceCFrom: from['grace-C'] ?? null,
+         }),
+       );
+       if (this.session.sheet() !== sheet) return;
+@@ -754,6 +831,7 @@ export class Settings {
+       this.floorInput.set(null);
+       this.termsInput.set(null);
+       this.gradeTermsInput.set({});
++      this.gradeGraceInput.set({});
+       this.latePctInput.set(null);
+       this.policyInput.set(null);
+       this.numberingInput.set(null);
+diff --git a/src/main/java/net/officefloor/hq/app/claim/ClaimService.java b/src/main/java/net/officefloor/hq/app/claim/ClaimService.java
+index 84d393465..3865ff924 100644
+--- a/src/main/java/net/officefloor/hq/app/claim/ClaimService.java
++++ b/src/main/java/net/officefloor/hq/app/claim/ClaimService.java
+@@ -124,7 +124,7 @@ public class ClaimService {
+         if (isFrozen(claim)) {
+             return claim.getSettledDue();
+         }
+-        return LateCharge.withCharge(sheets.sheet(sheetId), claim, figure(sheetId, person, claim));
++        return LateCharge.withCharge(sheets.sheet(sheetId), claim, person.gradeOn(claim.getDate()), figure(sheetId, person, claim));
+     }
+ 
+     /**
+@@ -478,7 +478,7 @@ public class ClaimService {
+         periods.refuseIfClosed(sheetId, claim.getDueBy());
+         Person person = person(sheetId, claim.getPersonId());
+         BigDecimal old = claim.getSettledDue();
+-        BigDecimal settling = LateCharge.withChargeAsOpen(sheets.sheet(sheetId), claim, due(sheetId, person, claim));
++        BigDecimal settling = LateCharge.withChargeAsOpen(sheets.sheet(sheetId), claim, person.gradeOn(claim.getDate()), due(sheetId, person, claim));
+         claim.setSettledDue(settling);
+         logStatus(sheetId, user, person, claim);
+         Claim saved = claims.saveAndFlush(claim);
+diff --git a/src/main/java/net/officefloor/hq/app/claim/LateCharge.java b/src/main/java/net/officefloor/hq/app/claim/LateCharge.java
+index 87edcd7ae..6942dc05c 100644
+--- a/src/main/java/net/officefloor/hq/app/claim/LateCharge.java
++++ b/src/main/java/net/officefloor/hq/app/claim/LateCharge.java
+@@ -7,8 +7,9 @@ import java.time.temporal.ChronoUnit;
+ import net.officefloor.hq.app.sheet.Sheet;
+ 
+ /**
+- * The late charge on an overdue claim (OPEN or PENDING, and past its due-by on the sheet's today): for each full
+- * 30 days it is overdue, the late percent in force on that boundary date (its due-by plus 30, 60, 90 ... days) of
++ * The late charge on an overdue claim (OPEN or PENDING, and past its due-by plus the grace days of its person's grade
++ * on its date, see {@link Sheet#lateFrom}, on the sheet's today): for each full 30 days it is overdue, the late
++ * percent in force on that boundary date (its due-by plus the grace, plus 30, 60, 90 ... days) of
+  * its figure, rounded to the cent as the claim rounds (see {@link Rounding}), the charges added up. A correction has none. Never bound by a statement; settling a claim fixes it into its due.
+  * The charge is worked out on the rate figure alone (or the figure a statement bound); the floor is applied last: a
+  * claim's live due is the greater of the floor in force on its date and its figure plus its charge (a correction has
+@@ -23,24 +24,24 @@ public final class LateCharge {
+     }
+ 
+     /** The figure with its late charge added on top, then raised to the floor; null when the figure is null. */
+-    public static BigDecimal withCharge(Sheet sheet, Claim claim, BigDecimal figure) {
+-        return figure == null ? null : floored(sheet, claim, figure.add(charge(sheet, claim, figure)));
++    public static BigDecimal withCharge(Sheet sheet, Claim claim, String grade, BigDecimal figure) {
++        return figure == null ? null : floored(sheet, claim, figure.add(charge(sheet, claim, grade, figure)));
+     }
+ 
+     /**
+      * The figure with its late charge on the sheet's today added on top, then raised to the floor,
+      * the claim open ({@code open}: OPEN or PENDING and not deferred) or not; null when the figure is null.
+      */
+-    public static BigDecimal withCharge(Sheet sheet, Claim claim, BigDecimal figure, boolean open) {
+-        return figure == null ? null : floored(sheet, claim, figure.add(charge(sheet, claim, figure, open)));
++    public static BigDecimal withCharge(Sheet sheet, Claim claim, String grade, BigDecimal figure, boolean open) {
++        return figure == null ? null : floored(sheet, claim, figure.add(charge(sheet, claim, grade, figure, open)));
+     }
+ 
+     /**
+      * The figure with the late charge it would have on the sheet's today were the claim open,
+      * whatever its status; null when the figure is null.
+      */
+-    public static BigDecimal withChargeAsOpen(Sheet sheet, Claim claim, BigDecimal figure) {
+-        return figure == null ? null : floored(sheet, claim, figure.add(charge(sheet, claim, figure, true)));
++    public static BigDecimal withChargeAsOpen(Sheet sheet, Claim claim, String grade, BigDecimal figure) {
++        return figure == null ? null : floored(sheet, claim, figure.add(charge(sheet, claim, grade, figure, true)));
+     }
+ 
+     /** A due raised to the floor in force on the claim's date; a correction's is not. */
+@@ -49,23 +50,24 @@ public final class LateCharge {
+     }
+ 
+     /** The late charge on a claim's figure on the sheet's today; zero when it is not overdue. */
+-    public static BigDecimal charge(Sheet sheet, Claim claim, BigDecimal figure) {
+-        return charge(sheet, claim, figure, claim.getStatus().isOpen() && !claim.isDeferredOn(sheet.getToday()));
++    public static BigDecimal charge(Sheet sheet, Claim claim, String grade, BigDecimal figure) {
++        return charge(sheet, claim, grade, figure, claim.getStatus().isOpen() && !claim.isDeferredOn(sheet.getToday()));
+     }
+ 
+-    private static BigDecimal charge(Sheet sheet, Claim claim, BigDecimal figure, boolean open) {
++    private static BigDecimal charge(Sheet sheet, Claim claim, String grade, BigDecimal figure, boolean open) {
+         BigDecimal zero = BigDecimal.ZERO.setScale(2);
+         if (figure == null || !open || claim.isCorrection()) {
+             return zero;
+         }
+-        long periods = ChronoUnit.DAYS.between(claim.getDueBy(), sheet.getToday()) / PERIOD_DAYS;
++        LocalDate lateFrom = sheet.lateFrom(claim.getDueBy(), claim.getDate(), grade);
++        long periods = ChronoUnit.DAYS.between(lateFrom, sheet.getToday()) / PERIOD_DAYS;
+         if (periods <= 0) {
+             return zero;
+         }
+         RoundingMode mode = Rounding.mode(sheet, claim.getDate());
+         BigDecimal total = zero;
+         for (long k = 1; k <= periods; k++) {
+-            LocalDate boundary = claim.getDueBy().plusDays(k * PERIOD_DAYS);
++            LocalDate boundary = lateFrom.plusDays(k * PERIOD_DAYS);
+             total = total.add(figure.multiply(sheet.latePctOn(boundary)).divide(BigDecimal.valueOf(100), 2, mode));
+         }
+         return total;
+diff --git a/src/main/java/net/officefloor/hq/app/rollup/RollupService.java b/src/main/java/net/officefloor/hq/app/rollup/RollupService.java
+index 9b18cacbc..b71fa7021 100644
+--- a/src/main/java/net/officefloor/hq/app/rollup/RollupService.java
++++ b/src/main/java/net/officefloor/hq/app/rollup/RollupService.java
+@@ -104,7 +104,7 @@ public class RollupService {
+                 if (figure != null) {
+                     anyFigure = true;
+                     due = due.add(figure);
+-                    if (overdue(claim, today)) {
++                    if (overdue(sheet, person, claim)) {
+                         overdue = overdue.add(figure);
+                     }
+                 }
+@@ -185,13 +185,17 @@ public class RollupService {
+                         .map(pct -> claim.getAmount().multiply(pct).divide(BigDecimal.valueOf(100), 2,
+                                 Rounding.mode(sheet, Rounding.dateOf(claim, sheetClaims))))
+                         .orElse(null);
+-        return LateCharge.withCharge(sheet, claim, figure);
++        return LateCharge.withCharge(sheet, claim, person.gradeOn(claim.getDate()), figure);
+     }
+ 
+-    /** Whether a claim is overdue on the sheet's today: OPEN or PENDING, not deferred, and past its due-by. */
+-    private static boolean overdue(Claim claim, LocalDate today) {
++    /**
++     * Whether a claim is overdue on the sheet's today: OPEN or PENDING, not deferred, and past its due-by plus the
++     * grace days of its person's grade on its date (see {@link Sheet#lateFrom}).
++     */
++    private static boolean overdue(Sheet sheet, Person person, Claim claim) {
++        LocalDate today = sheet.getToday();
+         return claim.getStatus().isOpen() && !claim.isDeferredOn(today) && today != null && claim.getDueBy() != null
+-                && claim.getDueBy().isBefore(today);
++                && sheet.lateFrom(claim.getDueBy(), claim.getDate(), person.gradeOn(claim.getDate())).isBefore(today);
+     }
+ 
+     private Sheet sheet(String sheetId) {
+diff --git a/src/main/java/net/officefloor/hq/app/setting/SettingController.java b/src/main/java/net/officefloor/hq/app/setting/SettingController.java
+index 7d0d04789..37a560407 100644
+--- a/src/main/java/net/officefloor/hq/app/setting/SettingController.java
++++ b/src/main/java/net/officefloor/hq/app/setting/SettingController.java
+@@ -51,7 +51,7 @@ public class SettingController {
+      * or blank for off. A grade's own terms (A, B or C): a whole number of days. A cap: an amount with
+      * up to two decimals, or blank for none. A proof threshold: an amount with up to two decimals, or blank
+      * for none. A note threshold: an amount with up to two decimals, or blank for none. A permission matrix entry for open, settle, void, reassign, close or reopen: roles
+-     * comma separated, or blank for the standing rule. Grace days: a whole number of days, or blank for off. An entry date: yyyy-mm-dd, or blank for off. Each setting that carries a figure may name the date it
++     * comma separated, or blank for the standing rule. Grace days: a whole number of days, or blank for off. A grade's grace days (A, B or C): a whole number of days, or blank for none. An entry date: yyyy-mm-dd, or blank for off. Each setting that carries a figure may name the date it
+      * is in force from (its {@code ...From}: yyyy-mm-dd, or blank or null for the sheet's today).
+      */
+     public record SetSettingsRequest(@NotBlank @Size(max = 100) String sheet, @NotBlank @Size(max = 100) String user,
+@@ -73,7 +73,10 @@ public class SettingController {
+             @Pattern(regexp = ROLES) String permOpen, @Pattern(regexp = ROLES) String permSettle,
+             @Pattern(regexp = ROLES) String permVoid, @Pattern(regexp = ROLES) String permReassign,
+             @Pattern(regexp = ROLES) String permClose, @Pattern(regexp = ROLES) String permReopen,
+-            @Pattern(regexp = "\\s*|" + TERMS) String graceDays, @Pattern(regexp = DATE) String entryDate) {
++            @Pattern(regexp = "\\s*|" + TERMS) String graceDays, @Pattern(regexp = DATE) String entryDate,
++            @Pattern(regexp = "\\s*|" + TERMS) String graceA, @Pattern(regexp = "\\s*|" + TERMS) String graceB,
++            @Pattern(regexp = "\\s*|" + TERMS) String graceC, @Pattern(regexp = DATE) String graceAFrom,
++            @Pattern(regexp = DATE) String graceBFrom, @Pattern(regexp = DATE) String graceCFrom) {
+     }
+ 
+     /** A value recorded for a setting that carries a figure: blank from for the beginning of time, blank value for none. */
+@@ -107,7 +110,7 @@ public class SettingController {
+ 
+     private static DatedValue dated(DatedSetting s) {
+         String value = s.getValue() == null ? ""
+-                : s.getKey().startsWith(SettingService.TERMS) ? String.valueOf(s.getValue().intValue())
++                : s.getKey().startsWith(SettingService.TERMS) || s.getKey().startsWith(SettingService.GRADE_GRACE) ? String.valueOf(s.getValue().intValue())
+                 : SettingService.text(s.getValue());
+         return new DatedValue(s.getKey(), s.getFromDate() == null ? "" : s.getFromDate().toString(), value);
+     }
+@@ -131,6 +134,10 @@ public class SettingController {
+         if (req.termsA() != null) gradeTerms.put("A", terms(req.termsA(), req.termsAFrom()));
+         if (req.termsB() != null) gradeTerms.put("B", terms(req.termsB(), req.termsBFrom()));
+         if (req.termsC() != null) gradeTerms.put("C", terms(req.termsC(), req.termsCFrom()));
++        Map<String, SettingService.Dated<Integer>> gradeGraces = new TreeMap<>();
++        if (req.graceA() != null) gradeGraces.put("A", grace(req.graceA(), req.graceAFrom()));
++        if (req.graceB() != null) gradeGraces.put("B", grace(req.graceB(), req.graceBFrom()));
++        if (req.graceC() != null) gradeGraces.put("C", grace(req.graceC(), req.graceCFrom()));
+         Map<String, String> permissions = new LinkedHashMap<>();
+         permission(permissions, "open", req.permOpen());
+         permission(permissions, "settle", req.permSettle());
+@@ -147,7 +154,7 @@ public class SettingController {
+                 req.latePct() == null ? null : amount(req.latePct(), req.latePctFrom()), req.policyDate() != null,
+                 policy.isEmpty() ? null : date(policy), req.periodNumberingFrom() != null,
+                 numberingFrom.isEmpty() ? null : date(numberingFrom),
+-                req.cap() == null ? null : amount(req.cap(), req.capFrom()), gradeTerms,
++                req.cap() == null ? null : amount(req.cap(), req.capFrom()), gradeTerms, gradeGraces,
+                 req.proofThreshold() == null ? null : amount(req.proofThreshold(), req.proofThresholdFrom()),
+                 req.noteThreshold() == null ? null : amount(req.noteThreshold(), req.noteThresholdFrom()), permissions,
+                 req.graceDays() != null, grace.isEmpty() ? null : Integer.valueOf(grace),
+@@ -173,6 +180,12 @@ public class SettingController {
+         return new SettingService.Dated<>(Integer.valueOf(value.trim()), from(from));
+     }
+ 
++    /** Grace days (blank: none) from a from-date (blank or null: the sheet's today). */
++    private static SettingService.Dated<Integer> grace(String value, String from) {
++        String text = value.trim();
++        return new SettingService.Dated<>(text.isEmpty() ? null : Integer.valueOf(text), from(from));
++    }
++
+     private static LocalDate from(String text) {
+         return text == null || text.isBlank() ? null : date(text.trim());
+     }
+diff --git a/src/main/java/net/officefloor/hq/app/setting/SettingService.java b/src/main/java/net/officefloor/hq/app/setting/SettingService.java
+index ee0c1406d..310f9cabb 100644
+--- a/src/main/java/net/officefloor/hq/app/setting/SettingService.java
++++ b/src/main/java/net/officefloor/hq/app/setting/SettingService.java
+@@ -25,10 +25,14 @@ import org.springframework.transaction.annotation.Transactional;
+  * opened is numbered: on or after it, within its period (see {@link SheetService#nextClaimNumber}).
+  * Its cap (none: no cap) is the most a person's due-total can be, so changing it records the
+  * figures that move too. A grade may have its own terms; a grade without uses the sheet's terms. A claim's due-by is fixed
+- * when it is created, so changing any terms moves no claim's due-by.
++ * when it is created, so changing any terms moves no claim's due-by. A grade may have grace days (none: no grace): a
++ * claim whose person's grade on its date has grace days on that date is overdue only once its due-by plus them is
++ * before the sheet's today, and its late charge counts its 30-day boundaries from there (see
++ * {@link Sheet#lateFrom}); its due-by is unchanged. Changing a grade's grace days moves the figures, so the figures
++ * that move are recorded.
+  * <p>
+  * The settings that carry a figure (the floor, the late percent, the terms, a grade's own terms,
+- * the clerk limit, the cap, the proof threshold and the note threshold) are dated: each value is recorded from a from-date (the sheet's
++ * a grade's grace days, the clerk limit, the cap, the proof threshold and the note threshold) are dated: each value is recorded from a from-date (the sheet's
+  * today when none is given). A claim's floor, late percent and terms are those in force on its
+  * date, as are its proof threshold (see {@link Sheet#proofThresholdOn}) and its note threshold (see {@link Sheet#noteThresholdOn}); the clerk limit and the cap are those in force on the sheet's today (see {@link Sheet}).
+  * The policy date and the period-numbering-from date are not dated. Nor is the permission matrix:
+@@ -47,6 +51,8 @@ public class SettingService {
+     public static final String TERMS = Sheet.TERMS;
+     /** The key of a grade's own terms: {@code terms-<grade>}. */
+     public static final String GRADE_TERMS = Sheet.GRADE_TERMS;
++    /** The key of a grade's grace days: {@code grace-<grade>}. */
++    public static final String GRADE_GRACE = Sheet.GRADE_GRACE;
+     public static final String LATE_PCT = Sheet.LATE_PCT;
+     public static final String PROOF_THRESHOLD = Sheet.PROOF_THRESHOLD;
+     public static final String NOTE_THRESHOLD = Sheet.NOTE_THRESHOLD;
+@@ -89,7 +95,8 @@ public class SettingService {
+      * terms and the late percent when they are not null, and a policy date when {@code changePolicy}
+      * (null for none), and a period-numbering-from date when {@code changeNumbering} (null for off),
+      * and a cap when {@code cap} is not null, and each grade's own terms given in {@code gradeTerms}
+-     * (by grade, in grade order), and a proof threshold when {@code proofThreshold} is not null, and a note threshold when
++     * (by grade, in grade order), and each grade's grace days given in {@code gradeGraces} (by grade, in grade
++     * order; null for none), and a proof threshold when {@code proofThreshold} is not null, and a note threshold when
+      * {@code noteThreshold} is not null, and each permission matrix entry
+      * given in {@code permissions} (by action, in the order given; blank for the standing rule), and the grace days when
+      * {@code changeGrace} (null for off), and the entry date when {@code changeEntry} (null for off). Each figure is recorded from its from-date, keeping the values
+@@ -100,7 +107,8 @@ public class SettingService {
+     public Sheet set(String sheetId, String user, Dated<BigDecimal> limit, Dated<BigDecimal> floor,
+             Dated<Integer> terms, Dated<BigDecimal> latePct, boolean changePolicy, LocalDate policyDate,
+             boolean changeNumbering, LocalDate numberingFrom, Dated<BigDecimal> cap,
+-            Map<String, Dated<Integer>> gradeTerms, Dated<BigDecimal> proofThreshold, Dated<BigDecimal> noteThreshold,
++            Map<String, Dated<Integer>> gradeTerms, Map<String, Dated<Integer>> gradeGraces,
++            Dated<BigDecimal> proofThreshold, Dated<BigDecimal> noteThreshold,
+             Map<String, String> permissions,
+             boolean changeGrace, Integer graceDays, boolean changeEntry, LocalDate entryDate) {
+         roles.refuseViewer(sheetId, user);
+@@ -139,6 +147,11 @@ public class SettingService {
+             sheet = record(sheet, user, GRADE_TERMS + e.getKey(), BigDecimal.valueOf(t.value()), t.from(),
+                     String.valueOf(t.value()), false);
+         }
++        for (Map.Entry<String, Dated<Integer>> e : new TreeMap<>(gradeGraces).entrySet()) {
++            Dated<Integer> g = e.getValue();
++            sheet = record(sheet, user, GRADE_GRACE + e.getKey(), g.value() == null ? null : BigDecimal.valueOf(g.value()),
++                    g.from(), g.value() == null ? "" : String.valueOf(g.value()), true);
++        }
+         if (proofThreshold != null) {
+             sheet = record(sheet, user, PROOF_THRESHOLD, proofThreshold.value(), proofThreshold.from(),
+                     text(proofThreshold.value()), false);
+diff --git a/src/main/java/net/officefloor/hq/app/sheet/Sheet.java b/src/main/java/net/officefloor/hq/app/sheet/Sheet.java
+index 8113e14ef..8d9df88a4 100644
+--- a/src/main/java/net/officefloor/hq/app/sheet/Sheet.java
++++ b/src/main/java/net/officefloor/hq/app/sheet/Sheet.java
+@@ -43,6 +43,8 @@ public class Sheet {
+     public static final String TERMS = "terms";
+     /** The key of a grade's own terms: {@code terms-<grade>}. */
+     public static final String GRADE_TERMS = "terms-";
++    /** The key of a grade's grace days: {@code grace-<grade>}. */
++    public static final String GRADE_GRACE = "grace-";
+     public static final String LATE_PCT = "late-pct";
+     public static final String PROOF_THRESHOLD = "proof-threshold";
+     public static final String NOTE_THRESHOLD = "note-threshold";
+@@ -75,7 +77,7 @@ public class Sheet {
+ 
+     /**
+      * The values recorded for the settings that carry a figure (the floor, the late percent, the
+-     * terms, a grade's own terms, the clerk limit, the cap, the proof threshold and the note threshold), each from a from-date.
++     * terms, a grade's own terms, a grade's grace days, the clerk limit, the cap, the proof threshold and the note threshold), each from a from-date.
+      */
+     @ElementCollection(fetch = FetchType.EAGER)
+     @CollectionTable(name = "sheet_setting", joinColumns = @JoinColumn(name = "sheet_id"))
+@@ -281,6 +283,30 @@ public class Sheet {
+                 .map(s -> s.getValue().intValue()).orElseGet(() -> termsOn(date));
+     }
+ 
++    /** The grace days in force on the sheet's today for each grade that has some then, by grade. */
++    public Map<String, Integer> getGradeGraces() {
++        Map<String, Integer> graces = new TreeMap<>();
++        settings.stream().map(DatedSetting::getKey).filter(k -> k.startsWith(GRADE_GRACE)).distinct()
++                .forEach(k -> inForce(k, today).filter(s -> s.getValue() != null).ifPresent(
++                        s -> graces.put(k.substring(GRADE_GRACE.length()), s.getValue().intValue())));
++        return graces;
++    }
++
++    /** The grace days for a grade in force on a date; 0 when it has none then. */
++    public int graceFor(String grade, LocalDate date) {
++        return (grade == null ? Optional.<DatedSetting>empty() : inForce(GRADE_GRACE + grade, date))
++                .map(DatedSetting::getValue).map(BigDecimal::intValue).orElse(0);
++    }
++
++    /**
++     * The date a claim's lateness counts from: its due-by plus the grace days of its person's grade
++     * in force on its date (the grade given), as in force on its date. A claim is overdue once this
++     * is before the sheet's today, and its late charge's 30-day boundaries are counted from it.
++     */
++    public LocalDate lateFrom(LocalDate dueBy, LocalDate dated, String grade) {
++        return dueBy.plusDays(graceFor(grade, dated));
++    }
++
+     /** The late percent in force on the sheet's today. */
+     public BigDecimal getLatePct() {
+         return latePctOn(today);
+diff --git a/src/main/java/net/officefloor/hq/app/statement/StatementService.java b/src/main/java/net/officefloor/hq/app/statement/StatementService.java
+index 5eb51255c..ceff4b8d9 100644
+--- a/src/main/java/net/officefloor/hq/app/statement/StatementService.java
++++ b/src/main/java/net/officefloor/hq/app/statement/StatementService.java
+@@ -187,7 +187,7 @@ public class StatementService {
+                                 .map(pct -> claim.getAmount().multiply(pct).divide(BigDecimal.valueOf(100), 2,
+                                         Rounding.mode(then, Rounding.dateOf(claim, theirs))))
+                                 .orElse(null);
+-                charged = LateCharge.withCharge(then, claim, figure,
++                charged = LateCharge.withCharge(then, claim, person.gradeOn(claim.getDate(), day), figure,
+                         status.isOpen() && !claim.isDeferredAsOf(status, day));
+             }
+             claim.bind(true, figure);
