@@ -1,0 +1,64 @@
+{
+  "checkpoint": 110,
+  "stack": {
+    "repo": "/home/daniel/officehq-angular-spring",
+    "origin": "git@github.com:officefloor/officehq-angular-spring.git",
+    "name": "officehq-angular-spring",
+    "base_ref": "base-empty",
+    "base_commit": "65cb8233ea38b2dfa6cfd18709e30cd18fdf3250"
+  },
+  "checkpoint_id": "cp110_consolidated-figures",
+  "phase": "mid",
+  "type": "additive",
+  "mutates": [],
+  "replaced_tests": [],
+  "request": {
+    "spec": "A sheet's children are the sheets naming it as their parent. The screen gains consolidated figures\nover the sheet and all its descendants: the number of people, the due-total (each sheet's due-total\nas that sheet shows it, added up) and the overdue-total (likewise). A sheet with no children shows\nits own figures there.\n",
+    "prompt": "You are implementing ONE change to this application.\n\nFIRST read AGENTS.md \u2014 it states the working rules and how the app is tested, and sends you to\nDESIGN.md for the app's stack and conventions. Follow both.\n\nTHE CHANGE REQUEST:\nA sheet's children are the sheets naming it as their parent. The screen gains consolidated figures\nover the sheet and all its descendants: the number of people, the due-total (each sheet's due-total\nas that sheet shows it, added up) and the overdue-total (likewise). A sheet with no children shows\nits own figures there.\n\nYour work is verified by an automated Playwright UI test already installed under e2e/specs/.\nRead that spec: it declares the exact data-testid anchors, values, test data and any audit\nrecords it expects \u2014 match them. Run `bin/e2e` to build the app, start it, and run the test as\nyou work; iterate until it passes. Change whatever the request needs across the app \u2014 its stored\ndata, its server and its front end. Do NOT edit bin/build, bin/start, bin/stop, bin/e2e,\nAGENTS.md, CLAUDE.md, DESIGN.md, e2e/support/ or the test spec.\n"
+  },
+  "commit_sha": "4cb3f58e32e1ce35af965b906ba6528d30f47ad4",
+  "reset_sha": "",
+  "preagent_sha": "49fa02dfb7baa09ed40808ae1b2bed5cdabb735f",
+  "prev_sha": "49fa02dfb7baa09ed40808ae1b2bed5cdabb735f",
+  "base_sha": "65cb8233ea38b2dfa6cfd18709e30cd18fdf3250",
+  "agent": {
+    "ok": true,
+    "cost_usd": 0.7020566,
+    "input_tokens": 34,
+    "output_tokens": 8077,
+    "cache_read_tokens": 669423,
+    "cache_creation_tokens": 50812,
+    "num_turns": 17,
+    "duration_ms": 270315,
+    "duration_api_ms": 95027,
+    "model": "claude-opus-5-5",
+    "session_id": "bbba4e02-495d-454b-9f64-413347b208bd",
+    "stop_reason": "success",
+    "result_text": "The screen now shows consolidated figures \u2014 people, due-total and overdue-total \u2014 across the sheet and every sheet below it, and all 4 acceptance tests pass in `bin/e2e`.\n\n**How it works:**\n- **Server:** a new read-only endpoint, `POST /api/rollup/descendants/list` in `rollup/RollupController.java`, goes through the sheet's children, their children and so on. It works out each one's figures with the existing `RollupService.snapshot`, so every sub-sheet's due- and overdue-total is calculated as that sheet would show it, using its own today, rates and settings. It then adds them up. It never visits the same sheet twice, so a bad parent link can't send it round in a loop. To find a sheet's children I added `findByParentIdOrderByIdAsc` to `SheetRepository`. No database change was needed, because the `parent_id` column already exists.\n- **Screen:** the header (`header/header.ts`) has a second row of figures under the test IDs `consolidated-people-count`, `consolidated-due-total` and `consolidated-overdue-total`. The people component fetches the sub-sheets' figures each time a sheet loads and adds them to the sheet's own figures. A sheet with no children therefore shows exactly its own figures.\n\n**Behaviours to know about:**\n- **Sub-sheet figures don't update live.** The sheet's own share changes straight away after an edit, but the sub-sheets' figures are only re-read when the sheet is loaded again. That fits the app's \"re-load to see other changes\" model.\n- **The people count includes retired people,** the same as the existing header count.\n- **\"As of\" view not tested:** the endpoint path ends in `/list` so that this view will answer it. No test covers consolidated figures in that view, so I haven't checked them there.",
+    "error": "",
+    "attempts": [
+      {
+        "ok": true,
+        "limit_reached": false,
+        "retryable": false,
+        "timed_out": false,
+        "cost_usd": 0.7020566,
+        "num_turns": 17,
+        "duration_ms": 270315,
+        "duration_api_ms": 95027,
+        "error": ""
+      }
+    ]
+  },
+  "agent_stream_file": "cp110.agent.jsonl",
+  "agent_diff_file": "cp110.agent.diff",
+  "build_log_file": null,
+  "tests": {
+    "gated": false,
+    "queued": true
+  },
+  "probe": null,
+  "pinned_touched": [],
+  "acceptance_touched": [],
+  "impact_gate": null
+}

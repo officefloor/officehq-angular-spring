@@ -1,0 +1,232 @@
+diff --git a/src/main/frontend/src/app/features/header/header.ts b/src/main/frontend/src/app/features/header/header.ts
+index c0f628dbb..b7c6af134 100644
+--- a/src/main/frontend/src/app/features/header/header.ts
++++ b/src/main/frontend/src/app/features/header/header.ts
+@@ -3,7 +3,9 @@ import { StatusSummary } from '../summary/summary';
+ 
+ // The sheet's counters, shown at all times above everything else on it: how many people are on the
+ // sheet (retired people included), how many claims are in each status (as the summary counts them)
+-// and the sheet's due- and overdue-totals (as the people list's totals show them).
++// and the sheet's due- and overdue-totals (as the people list's totals show them). Then the same
++// figures consolidated over the sheet and all its descendants (the sheets naming it as parent, and
++// theirs): each sheet's as that sheet shows it, added up; a sheet with no children shows its own.
+ @Component({
+   selector: 'app-header',
+   template: `
+@@ -20,6 +22,14 @@ import { StatusSummary } from '../summary/summary';
+         <dt>Overdue</dt>
+         <dd data-testid="header-overdue-total">{{ overdueTotal() }}</dd>
+       </dl>
++      <dl aria-label="Consolidated over the sheet and its descendants">
++        <dt>People, with sub-sheets</dt>
++        <dd data-testid="consolidated-people-count">{{ consolidatedPeopleCount() }}</dd>
++        <dt>Due, with sub-sheets</dt>
++        <dd data-testid="consolidated-due-total">{{ consolidatedDueTotal() }}</dd>
++        <dt>Overdue, with sub-sheets</dt>
++        <dd data-testid="consolidated-overdue-total">{{ consolidatedOverdueTotal() }}</dd>
++      </dl>
+     </header>
+   `,
+ })
+@@ -28,4 +38,7 @@ export class Header {
+   readonly statuses = input.required<StatusSummary[]>();
+   readonly dueTotal = input.required<string>();
+   readonly overdueTotal = input.required<string>();
++  readonly consolidatedPeopleCount = input.required<number>();
++  readonly consolidatedDueTotal = input.required<string>();
++  readonly consolidatedOverdueTotal = input.required<string>();
+ }
+diff --git a/src/main/frontend/src/app/features/people/people.ts b/src/main/frontend/src/app/features/people/people.ts
+index 606f0684d..993c2c4c1 100644
+--- a/src/main/frontend/src/app/features/people/people.ts
++++ b/src/main/frontend/src/app/features/people/people.ts
+@@ -113,6 +113,15 @@ interface Person {
+ }
+ 
+ /** One of a person's holds: from its from-date to its to-date (null: open-ended), both inclusive. */
++/** The figures of a sheet's descendants added up: each sheet's as that sheet shows it. */
++interface Descendants {
++  peopleCount: number;
++  dueTotal: string;
++  overdueTotal: string;
++}
++
++const NO_DESCENDANTS: Descendants = { peopleCount: 0, dueTotal: '0.00', overdueTotal: '0.00' };
++
+ interface DatedHold {
+   from: string;
+   to: string | null;
+@@ -184,6 +193,9 @@ const SUMMARY_STATUSES = ['DRAFT', 'OPEN', 'PENDING', 'SETTLED', 'VOID'] as cons
+       [statuses]="statusSummary()"
+       [dueTotal]="dueTotal()"
+       [overdueTotal]="money(overdueTotals().cents)"
++      [consolidatedPeopleCount]="people().length + descendants().peopleCount"
++      [consolidatedDueTotal]="money(cents(dueTotal()) + cents(descendants().dueTotal))"
++      [consolidatedOverdueTotal]="money(overdueTotals().cents + cents(descendants().overdueTotal))"
+     />
+     <app-rates [(rates)]="rates" />
+     <app-roles />
+@@ -804,6 +816,9 @@ export class People {
+   });
+   protected readonly dueText = dueText;
+   protected readonly money = money;
++  protected readonly cents = cents;
++  /** The figures of the sheet's descendants as the store holds them, added to its own for the consolidated figures. */
++  protected readonly descendants = signal<Descendants>(NO_DESCENDANTS);
+   /** The sheet's overdue claims that count: how many, and the sum of people's figures in whole cents, trimmed. */
+   protected readonly overdueTotals = computed(() => {
+     const each = this.people().map((p) => this.overdueOf(p));
+@@ -918,6 +933,7 @@ export class People {
+       this.session.loads();
+       this.people.set([]);
+       this.claims.set([]);
++      this.descendants.set(NO_DESCENDANTS);
+       this.usedTags.set([]);
+       this.selectedClaims.set(new Set());
+       this.bulkOpenResult.set(null);
+@@ -959,16 +975,18 @@ export class People {
+ 
+   private async fetch(sheet: string): Promise<void> {
+     try {
+-      const [list, claims, statements, patrons, watched, tags] = await Promise.all([
++      const [list, claims, statements, patrons, watched, tags, descendants] = await Promise.all([
+         firstValueFrom(this.http.post<Person[]>('/api/people/list', { sheet })),
+         firstValueFrom(this.http.post<Claim[]>('/api/claims/list', { sheet })),
+         firstValueFrom(this.http.post<StatementSummary[]>('/api/statements/list', { sheet })),
+         firstValueFrom(this.http.post<PatronLink[]>('/api/people/patrons/list', { sheet })),
+         firstValueFrom(this.http.post<number[]>('/api/people/watched', { sheet, user: this.session.user() })),
+         firstValueFrom(this.http.post<string[]>('/api/claims/tags', { sheet })),
++        firstValueFrom(this.http.post<Descendants>('/api/rollup/descendants/list', { sheet })),
+       ]);
+       if (this.session.sheet() === sheet) {
+         this.claims.set(claims);
++        this.descendants.set(descendants);
+         this.usedTags.set(tags);
+         this.statements.set(new Map(statements.map((s) => [s.personId, s])));
+         this.patrons.set(patrons);
+diff --git a/src/main/java/net/officefloor/hq/app/rollup/RollupController.java b/src/main/java/net/officefloor/hq/app/rollup/RollupController.java
+new file mode 100644
+index 000000000..57aca7f53
+--- /dev/null
++++ b/src/main/java/net/officefloor/hq/app/rollup/RollupController.java
+@@ -0,0 +1,37 @@
++package net.officefloor.hq.app.rollup;
++
++import jakarta.validation.Valid;
++import jakarta.validation.constraints.NotBlank;
++import jakarta.validation.constraints.Size;
++import java.math.RoundingMode;
++import org.springframework.web.bind.annotation.PostMapping;
++import org.springframework.web.bind.annotation.RequestBody;
++import org.springframework.web.bind.annotation.RequestMapping;
++import org.springframework.web.bind.annotation.RestController;
++
++/** The figures of a sheet's descendants, which the screen adds to its own for the consolidated figures. */
++@RestController
++@RequestMapping("/api/rollup")
++public class RollupController {
++
++    public record DescendantsRequest(@NotBlank @Size(max = 100) String sheet) {
++    }
++
++    public record DescendantsResponse(int peopleCount, String dueTotal, String overdueTotal) {
++    }
++
++    private final RollupService service;
++
++    public RollupController(RollupService service) {
++        this.service = service;
++    }
++
++    // ends in /list: it only reads, so the as-of view answers it
++    @PostMapping("/descendants/list")
++    public DescendantsResponse descendants(@Valid @RequestBody DescendantsRequest req) {
++        RollupService.Consolidated figures = service.descendants(req.sheet().trim());
++        return new DescendantsResponse(figures.peopleCount(),
++                figures.dueTotal().setScale(2, RoundingMode.UNNECESSARY).toPlainString(),
++                figures.overdueTotal().setScale(2, RoundingMode.UNNECESSARY).toPlainString());
++    }
++}
+diff --git a/src/main/java/net/officefloor/hq/app/rollup/RollupService.java b/src/main/java/net/officefloor/hq/app/rollup/RollupService.java
+index f24551495..72d6fc092 100644
+--- a/src/main/java/net/officefloor/hq/app/rollup/RollupService.java
++++ b/src/main/java/net/officefloor/hq/app/rollup/RollupService.java
+@@ -3,11 +3,15 @@ package net.officefloor.hq.app.rollup;
+ import java.math.BigDecimal;
+ import java.math.RoundingMode;
+ import java.time.LocalDate;
++import java.util.ArrayDeque;
++import java.util.Deque;
++import java.util.HashSet;
+ import java.util.LinkedHashMap;
+ import java.util.List;
+ import java.util.Map;
+ import java.util.Objects;
+ import java.util.Optional;
++import java.util.Set;
+ import net.officefloor.hq.app.Audit;
+ import net.officefloor.hq.app.claim.Claim;
+ import net.officefloor.hq.app.claim.ClaimRepository;
+@@ -68,6 +72,10 @@ public class RollupService {
+         }
+     }
+ 
++    /** Figures added up over sheets: their people (retired included), due-totals and overdue-totals. */
++    public record Consolidated(int peopleCount, BigDecimal dueTotal, BigDecimal overdueTotal) {
++    }
++
+     private final PersonRepository people;
+     private final ClaimRepository claims;
+     private final RateChain rates;
+@@ -118,6 +126,31 @@ public class RollupService {
+         return new Snapshot(figures);
+     }
+ 
++    /**
++     * The figures of the sheet's descendants (its children, their children and so on; not the sheet
++     * itself), each sheet's due- and overdue-total as that sheet shows it, added up.
++     */
++    public Consolidated descendants(String sheetId) {
++        Set<String> seen = new HashSet<>(Set.of(sheetId));
++        Deque<String> pending = new ArrayDeque<>(List.of(sheetId));
++        int count = 0;
++        BigDecimal due = zero();
++        BigDecimal overdue = zero();
++        while (!pending.isEmpty()) {
++            for (Sheet child : sheets.findByParentIdOrderByIdAsc(pending.pop())) {
++                if (!seen.add(child.getId())) {
++                    continue;
++                }
++                Snapshot figures = snapshot(child.getId());
++                count += figures.people().size();
++                due = due.add(figures.dueTotal());
++                overdue = overdue.add(figures.overdueTotal());
++                pending.add(child.getId());
++            }
++        }
++        return new Consolidated(count, due, overdue);
++    }
++
+     /**
+      * Each person's due of their claims whose due-by falls in from..to (both inclusive) and that
+      * counted by the status they had at the end of the to-day (as their status log records it; a
+diff --git a/src/main/java/net/officefloor/hq/app/sheet/SheetRepository.java b/src/main/java/net/officefloor/hq/app/sheet/SheetRepository.java
+index c7d98ad22..770bc10ee 100644
+--- a/src/main/java/net/officefloor/hq/app/sheet/SheetRepository.java
++++ b/src/main/java/net/officefloor/hq/app/sheet/SheetRepository.java
+@@ -1,6 +1,7 @@
+ package net.officefloor.hq.app.sheet;
+ 
+ import jakarta.persistence.LockModeType;
++import java.util.List;
+ import java.util.Optional;
+ import org.springframework.data.jpa.repository.JpaRepository;
+ import org.springframework.data.jpa.repository.Lock;
+@@ -12,4 +13,7 @@ public interface SheetRepository extends JpaRepository<Sheet, String> {
+     @Lock(LockModeType.PESSIMISTIC_WRITE)
+     @Query("SELECT s FROM Sheet s WHERE s.id = :id")
+     Optional<Sheet> findLockedById(String id);
++
++    /** The sheet's children: the sheets naming it as their parent. */
++    List<Sheet> findByParentIdOrderByIdAsc(String parentId);
+ }
