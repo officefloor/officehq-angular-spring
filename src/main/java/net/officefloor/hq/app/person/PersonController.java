@@ -38,6 +38,10 @@ public class PersonController {
             @NotBlank @Size(max = 100) String user, @NotNull Long id, @NotBlank @Size(max = 200) String alias) {
     }
 
+    public record MergePersonRequest(@NotBlank @Size(max = 100) String sheet,
+            @NotBlank @Size(max = 100) String user, @NotNull Long id, @NotNull Long intoId) {
+    }
+
     public record BulkGradeRequest(@NotBlank @Size(max = 100) String sheet,
             @NotBlank @Size(max = 100) String user, @NotEmpty List<@NotNull Long> ids,
             @NotNull @Pattern(regexp = "[ABC]") String grade, LocalDate from) {
@@ -100,9 +104,11 @@ public class PersonController {
     }
 
     private final PersonService service;
+    private final PersonMergeService merges;
 
-    public PersonController(PersonService service) {
+    public PersonController(PersonService service, PersonMergeService merges) {
         this.service = service;
+        this.merges = merges;
     }
 
     @PostMapping("/list")
@@ -125,6 +131,12 @@ public class PersonController {
     @PostMapping("/aliases/add")
     public PersonResponse addAlias(@Valid @RequestBody AddAliasRequest req) {
         return response(service.addAlias(req.sheet().trim(), req.user().trim(), req.id(), req.alias().trim()));
+    }
+
+    /** Merge the person into another; answers the other as the store now holds them. */
+    @PostMapping("/merge")
+    public PersonResponse merge(@Valid @RequestBody MergePersonRequest req) {
+        return response(merges.merge(req.sheet().trim(), req.user().trim(), req.id(), req.intoId()));
     }
 
     @PostMapping("/bulk-grade")

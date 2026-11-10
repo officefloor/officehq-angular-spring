@@ -23,6 +23,9 @@ public interface ClaimRepository extends JpaRepository<Claim, Long> {
     /** A person's claims, newest first. */
     List<Claim> findBySheetIdAndPersonIdOrderByIdDesc(String sheetId, Long personId);
 
+    /** A person's claims in the order they are listed, oldest (first added or moved) first. */
+    List<Claim> findBySheetIdAndPersonIdOrderByListedAsc(String sheetId, Long personId);
+
     /** Release every claim editor's lock on a sheet. */
     @Modifying(flushAutomatically = true)
     @Query("UPDATE Claim c SET c.lockedBy = NULL WHERE c.sheetId = :sheetId AND c.lockedBy IS NOT NULL")

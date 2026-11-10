@@ -635,6 +635,26 @@ const SUMMARY_STATUSES = ['DRAFT', 'OPEN', 'PENDING', 'SETTLED', 'VOID'] as cons
                 >
                   Hold
                 </button>
+                <label [for]="'person-merge-into-' + p.id">Merge into</label>
+                <select
+                  [id]="'person-merge-into-' + p.id"
+                  data-testid="person-merge-into"
+                  [value]="mergeChoices().get(p.id) ?? ''"
+                  (change)="setMergeChoice(p.id, $any($event.target).value)"
+                >
+                  <option value="" [selected]="!mergeChoices().get(p.id)">Choose a person</option>
+                  @for (o of people(); track o.id) {
+                    <option [value]="'' + o.id" [selected]="mergeChoices().get(p.id) === '' + o.id">{{ o.name }}</option>
+                  }
+                </select>
+                <button
+                  type="button"
+                  data-testid="person-merge"
+                  [attr.aria-label]="'Merge ' + p.name + ' into the chosen person'"
+                  (click)="merge(p)"
+                >
+                  Merge
+                </button>
                 @if (rowErrors().get(p.id); as err) {
                   <p role="alert" data-testid="person-error">{{ err }}</p>
                 }
@@ -756,6 +776,8 @@ export class People {
   protected readonly patronChoices = signal<ReadonlyMap<number, string>>(new Map());
   /** The error of each person's last refused patron add, by person id. */
   protected readonly patronErrors = signal<ReadonlyMap<number, string>>(new Map());
+  /** The person chosen on each person's row to merge them into, by person id (the other's id as text). */
+  protected readonly mergeChoices = signal<ReadonlyMap<number, string>>(new Map());
   /** The ids of the people the signed-in user watches. */
   protected readonly watched = signal<ReadonlySet<number>>(new Set());
   /** The error of each person's last refused row action, by person id. */
@@ -912,6 +934,7 @@ export class People {
       this.patrons.set([]);
       this.patronChoices.set(new Map());
       this.patronErrors.set(new Map());
+      this.mergeChoices.set(new Map());
       this.watched.set(new Set());
       this.retireDates.set(new Map());
       this.holdFroms.set(new Map());
@@ -1146,6 +1169,52 @@ export class People {
       next.delete(id);
       return next;
     });
+  }
+
+  protected setMergeChoice(id: number, value: string): void {
+    this.mergeChoices.update((m) => new Map(m).set(id, value));
+    this.clearRowError(id);
+  }
+
+  /**
+   * Merge the person into the one chosen on their row (a steward only): their claims, aliases,
+   * patrons and pool memberships go to the other and they leave the list, so the sheet is re-read.
+   */
+  protected async merge(p: Person): Promise<void> {
+    this.clearRowError(p.id);
+    const sheet = this.session.sheet();
+    const intoId = Number(this.mergeChoices().get(p.id) ?? '');
+    const fail = (err: string) => this.rowErrors.update((m) => new Map(m).set(p.id, err));
+    if (!intoId) {
+      fail('Choose a person to merge ' + p.name + ' into.');
+      return;
+    }
+    if (intoId === p.id) {
+      fail('A person cannot be merged into themselves.');
+      return;
+    }
+    try {
+      await firstValueFrom(
+        this.http.post<Person>('/api/people/merge', { sheet, user: this.session.user(), id: p.id, intoId }),
+      );
+    } catch (e) {
+      if (this.session.sheet() !== sheet) return;
+      fail(
+        e instanceof HttpErrorResponse && e.status === 403
+          ? 'Only a steward can merge people.'
+          : e instanceof HttpErrorResponse && e.status === 409
+            ? 'Neither person may be retired to merge ' + p.name + '.'
+            : 'Could not merge ' + p.name + '.',
+      );
+      return;
+    }
+    if (this.session.sheet() !== sheet) return;
+    this.mergeChoices.update((m) => {
+      const next = new Map(m);
+      next.delete(p.id);
+      return next;
+    });
+    if (sheet) await this.fetch(sheet);
   }
 
   protected setRetireDate(id: number, date: string): void {
