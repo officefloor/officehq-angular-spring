@@ -1,0 +1,54 @@
+diff --git a/src/main/frontend/src/app/features/people/people.ts b/src/main/frontend/src/app/features/people/people.ts
+index 5fd438d75..056dc8fa4 100644
+--- a/src/main/frontend/src/app/features/people/people.ts
++++ b/src/main/frontend/src/app/features/people/people.ts
+@@ -363,6 +363,24 @@ const SUMMARY_STATUSES = ['DRAFT', 'OPEN', 'PENDING', 'SETTLED', 'VOID'] as cons
+           </tbody>
+         </table>
+       }
++      @if (monthTotals().length > 0) {
++        <table aria-label="Due by month">
++          <thead>
++            <tr>
++              <th scope="col">Month</th>
++              <th scope="col">Due</th>
++            </tr>
++          </thead>
++          <tbody>
++            @for (m of monthTotals(); track m.month) {
++              <tr>
++                <th scope="row">{{ m.month }}</th>
++                <td [attr.data-testid]="'month-' + m.month + '-due-total'">{{ money(m.cents) }}</td>
++              </tr>
++            }
++          </tbody>
++        </table>
++      }
+       <app-summary [grades]="gradeSummary()" [periods]="periodSummary()" [statuses]="statusSummary()" [voidReasons]="voidReasonSummary()" />
+       <table data-testid="people-list">
+         <thead>
+@@ -738,6 +756,24 @@ export class People {
+     }
+     return [...totals].sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0)).map(([tag, cents]) => ({ tag, cents }));
+   });
++  /**
++   * Per calendar month (yyyy-mm, sorted) that any claim on the sheet is dated in: the figures of the
++   * claims dated in it that count, in whole cents, untrimmed and without the cap.
++   */
++  protected readonly monthTotals = computed(() => {
++    const totals = new Map<string, number>();
++    for (const c of this.claims()) totals.set(c.date.slice(0, 7), 0);
++    const today = this.session.today();
++    for (const p of this.people()) {
++      for (const c of this.claimsOf(p.id)) {
++        if (!countsFor(p, c, today)) continue;
++        const figure = chargedDueCents(c, this.rates(), gradeOn(p.grades, c.date), this.floors(), this.lateness(), this.roundOn(c)) ?? 0;
++        const month = c.date.slice(0, 7);
++        totals.set(month, (totals.get(month) ?? 0) + figure);
++      }
++    }
++    return [...totals].sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0)).map(([month, cents]) => ({ month, cents }));
++  });
+   /** Per grade: the people not retired on it today, and their due-totals added up (skipping n/a). */
+   protected readonly gradeSummary = computed<GradeSummary[]>(() => {
+     const current = this.people().filter((p) => !p.retired);
