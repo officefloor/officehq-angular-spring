@@ -130,6 +130,14 @@ interface Person {
   origin: string | null;
   /** The person's past retirements, each from its from-date to the day they were unretired. */
   retirements: PastRetirement[];
+  /** The person's snapshot lines, oldest first: the day being left when today moved, and their due-total then. */
+  snapshots: SnapshotLine[];
+}
+
+/** One of a person's snapshot lines: the day being left and their due-total then ('n/a' when none). */
+interface SnapshotLine {
+  day: string;
+  dueTotal: string;
 }
 
 /** One of a person's past retirements: from its from-date to the day they were unretired. */
@@ -612,6 +620,11 @@ const SUMMARY_STATUSES = ['DRAFT', 'OPEN', 'PENDING', 'SETTLED', 'VOID'] as cons
                 <ul>
                   @for (r of p.retirements; track $index) {
                     <li data-testid="person-retirement-line">{{ r.from }} to {{ r.to }}</li>
+                  }
+                </ul>
+                <ul aria-label="Snapshots">
+                  @for (n of p.snapshots; track $index) {
+                    <li data-testid="person-snapshot-line">{{ n.day }} {{ n.dueTotal }}</li>
                   }
                 </ul>
               </td>

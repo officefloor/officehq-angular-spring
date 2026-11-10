@@ -1,6 +1,7 @@
 package net.officefloor.hq.app.person;
 
 import jakarta.validation.Valid;
+import java.math.RoundingMode;
 import jakarta.validation.constraints.Min;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.NotEmpty;
@@ -121,10 +122,15 @@ public class PersonController {
     public record RetirementResponse(LocalDate from, LocalDate to) {
     }
 
+    /** One of a person's snapshot lines: the day being left and their due-total then, to the cent, or n/a. */
+    public record SnapshotResponse(LocalDate day, String dueTotal) {
+    }
+
     /** A person, with every grade recorded for them, the one from the beginning of time first, their own terms or null, their contact or null, their aliases sorted as names are compared, their tags sorted, and whether they clash: their name or an alias is used on another sheet of the sheet's tree, and the sheet they were transferred from or null. */
     public record PersonResponse(long id, String name, List<GradeResponse> grades, long version, boolean retired,
             LocalDate retiredFrom, boolean held, List<HoldResponse> holds, Integer terms, String contact,
-            List<String> aliases, boolean clashing, String origin, List<RetirementResponse> retirements, List<String> tags) {
+            List<String> aliases, boolean clashing, String origin, List<RetirementResponse> retirements, List<String> tags,
+            List<SnapshotResponse> snapshots) {
     }
 
     public static PersonResponse response(Person person, boolean clashing) {
@@ -135,7 +141,9 @@ public class PersonController {
                 person.getHolds().stream().map(h -> new HoldResponse(h.getFromDate(), h.getToDate())).toList(),
                 person.getTerms(), person.getContact(), person.getAliases(), clashing, person.getOriginSheet(),
                 person.getPastRetirements().stream().map(r -> new RetirementResponse(r.getFromDate(), r.getToDate())).toList(),
-                person.getTags());
+                person.getTags(),
+                person.getSnapshots().stream().map(n -> new SnapshotResponse(n.getDay(), n.getDueTotal() == null ? "n/a"
+                        : n.getDueTotal().setScale(2, RoundingMode.HALF_UP).toPlainString())).toList());
     }
 
     /** The person, with whether they clash on the sheet's tree. */

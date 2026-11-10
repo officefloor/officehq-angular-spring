@@ -53,7 +53,7 @@ public class SheetCloneService {
 
     /** A person's own tables, copied onto their clone. */
     private static final List<String> PERSON_TABLES = List.of("PERSON_GRADE", "PERSON_HOLD", "PERSON_ALIAS",
-            "PERSON_RETIREMENT");
+            "PERSON_RETIREMENT", "PERSON_SNAPSHOT");
 
     /** A claim's own tables, copied onto its clone. */
     private static final List<String> CLAIM_TABLES = List.of("CLAIM_LOG", "CLAIM_COMMENT", "CLAIM_LINE");

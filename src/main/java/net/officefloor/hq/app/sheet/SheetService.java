@@ -9,6 +9,7 @@ import java.util.Deque;
 import java.util.HashSet;
 import java.util.LinkedHashSet;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
 import net.officefloor.hq.app.Audit;
@@ -18,6 +19,7 @@ import net.officefloor.hq.app.period.PeriodRepository;
 import net.officefloor.hq.app.rollup.RollupService;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.http.HttpStatus;
+import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.server.ResponseStatusException;
@@ -32,9 +34,11 @@ public class SheetService {
     private final Audit audit;
     private final ClaimRepository claims;
     private final FiscalClaimNumberRepository fiscalNumbers;
+    private final JdbcTemplate jdbc;
 
     public SheetService(SheetRepository sheets, RollupService rollup, PeriodRepository periods, Audit audit,
-            ClaimRepository claims, FiscalClaimNumberRepository fiscalNumbers) {
+            ClaimRepository claims, FiscalClaimNumberRepository fiscalNumbers, JdbcTemplate jdbc) {
+        this.jdbc = jdbc;
         this.fiscalNumbers = fiscalNumbers;
         this.audit = audit;
         this.claims = claims;
@@ -243,8 +247,13 @@ public class SheetService {
         RollupService.Snapshot before = rollup.snapshot(id);
         boolean moved = !today.equals(sheet.getToday());
         if (moved) {
-            // each person's due-total as it stood on the day being left, before anything else the change records
-            for (RollupService.Figures figures : before.people().values()) {
+            // each person's due-total as it stood on the day being left, before anything else the change records,
+            // kept as their snapshot line
+            for (Map.Entry<Long, RollupService.Figures> entry : before.people().entrySet()) {
+                RollupService.Figures figures = entry.getValue();
+                jdbc.update("INSERT INTO person_snapshot (person_id, pos, left_on, due_total) SELECT ?,"
+                        + " COALESCE(MAX(pos), 0) + 1, ?, ? FROM person_snapshot WHERE person_id = ?",
+                        entry.getKey(), sheet.getToday(), figures.dueTotal(), entry.getKey());
                 audit.recordOnCommit("SNAPSHOT sheet=" + id + " by=" + user + " name=" + figures.name()
                         + " due-total=" + (figures.dueTotal() == null ? "n/a"
                                 : figures.dueTotal().setScale(2, RoundingMode.UNNECESSARY).toPlainString()));

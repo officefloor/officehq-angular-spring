@@ -9,6 +9,7 @@ import jakarta.persistence.GenerationType;
 import jakarta.persistence.FetchType;
 import jakarta.persistence.Id;
 import jakarta.persistence.JoinColumn;
+import jakarta.persistence.OrderBy;
 import jakarta.persistence.Table;
 import jakarta.persistence.Version;
 import java.time.LocalDate;
@@ -66,6 +67,12 @@ public class Person {
     @ElementCollection(fetch = FetchType.EAGER)
     @CollectionTable(name = "person_retirement", joinColumns = @JoinColumn(name = "person_id"))
     private List<PastRetirement> pastRetirements = new ArrayList<>();
+
+    /** The person's snapshot lines, oldest first; written by the sheet when its today moves. */
+    @ElementCollection(fetch = FetchType.EAGER)
+    @CollectionTable(name = "person_snapshot", joinColumns = @JoinColumn(name = "person_id"))
+    @OrderBy("pos")
+    private List<PersonSnapshot> snapshots = new ArrayList<>();
 
     /** The sheet's today when the person was added; none for one added before it was recorded. */
     @Column(name = "added_on")
@@ -236,6 +243,11 @@ public class Person {
         pastRetirements.add(new PastRetirement(retiredFrom, on, retiredOn));
         this.retiredFrom = null;
         this.retiredOn = null;
+    }
+
+    /** The snapshot lines, oldest first. */
+    public List<PersonSnapshot> getSnapshots() {
+        return List.copyOf(snapshots);
     }
 
     /** The past retirements, by from-date and then to-date. */
