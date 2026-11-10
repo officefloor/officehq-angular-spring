@@ -13,6 +13,7 @@ import jakarta.persistence.Table;
 import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.time.YearMonth;
+import java.time.temporal.ChronoUnit;
 import java.util.ArrayList;
 import java.util.HashSet;
 import java.util.List;
@@ -114,6 +115,30 @@ public class Plan {
         for (YearMonth month = YearMonth.from(start); !month.atDay(1).isAfter(last); month = month.plusMonths(1)) {
             LocalDate d = month.atDay(Math.min(day, month.lengthOfMonth()));
             if (!d.isBefore(start) && !d.isAfter(last)) {
+                dates.add(d);
+            }
+        }
+        return dates;
+    }
+
+    /** The plan's first dates after the given day, up to and including its end: at most count, in order. */
+    public List<LocalDate> datesAfter(LocalDate after, int count) {
+        List<LocalDate> dates = new ArrayList<>();
+        if (day == null) {
+            LocalDate d = start;
+            if (!start.isAfter(after)) {
+                long steps = ChronoUnit.DAYS.between(start, after) / every + 1;
+                d = start.plusDays(steps * every);
+            }
+            for (; dates.size() < count && !d.isAfter(end); d = d.plusDays(every)) {
+                dates.add(d);
+            }
+            return dates;
+        }
+        YearMonth month = YearMonth.from(after.isAfter(start) ? after : start);
+        for (; dates.size() < count && !month.atDay(1).isAfter(end); month = month.plusMonths(1)) {
+            LocalDate d = month.atDay(Math.min(day, month.lengthOfMonth()));
+            if (!d.isBefore(start) && d.isAfter(after) && !d.isAfter(end)) {
                 dates.add(d);
             }
         }

@@ -10,6 +10,7 @@ import java.time.LocalDate;
 import java.util.List;
 import net.officefloor.hq.app.claim.ClaimController;
 import net.officefloor.hq.app.claim.ClaimController.ClaimResponse;
+import net.officefloor.hq.app.sheet.SheetService;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
@@ -37,17 +38,21 @@ public class PlanController {
     }
 
     public record PlanResponse(long id, long personId, String amount, LocalDate start, Integer every, Integer day,
-            LocalDate end, int generated) {
+            LocalDate end, int generated, String nextDates) {
     }
 
     /** What a generate did: how many claims were made, those claims in order, and the plans after it. */
     public record GenerateResponse(int made, List<ClaimResponse> claims, List<PlanResponse> plans) {
     }
 
-    private static PlanResponse response(Plan plan) {
+    /** How many of a plan's next dates it shows. */
+    private static final int NEXT_DATES = 5;
+
+    private static PlanResponse response(Plan plan, LocalDate today) {
         return new PlanResponse(plan.getId(), plan.getPersonId(),
                 plan.getAmount().setScale(2, RoundingMode.UNNECESSARY).toPlainString(), plan.getStart(),
-                plan.getEvery(), plan.getDay(), plan.getEnd(), plan.getGenerated());
+                plan.getEvery(), plan.getDay(), plan.getEnd(), plan.getGenerated(),
+                String.join(", ", plan.datesAfter(today, NEXT_DATES).stream().map(LocalDate::toString).toList()));
     }
 
     private static Integer number(String digits) {
@@ -55,21 +60,26 @@ public class PlanController {
     }
 
     private final PlanService service;
+    private final SheetService sheets;
 
-    public PlanController(PlanService service) {
+    public PlanController(PlanService service, SheetService sheets) {
         this.service = service;
+        this.sheets = sheets;
     }
 
     @PostMapping("/list")
     public List<PlanResponse> list(@Valid @RequestBody ListPlansRequest req) {
-        return service.list(req.sheet().trim()).stream().map(PlanController::response).toList();
+        String sheet = req.sheet().trim();
+        LocalDate today = sheets.today(sheet);
+        return service.list(sheet).stream().map(plan -> response(plan, today)).toList();
     }
 
     @PostMapping("/add")
     public PlanResponse add(@Valid @RequestBody AddPlanRequest req) {
-        return response(service.add(req.sheet().trim(), req.user().trim(), req.personId(),
-                ClaimController.amount(req.amount()), req.start(), number(req.every()), number(req.day()),
-                req.end()));
+        String sheet = req.sheet().trim();
+        Plan plan = service.add(sheet, req.user().trim(), req.personId(), ClaimController.amount(req.amount()),
+                req.start(), number(req.every()), number(req.day()), req.end());
+        return response(plan, sheets.today(sheet));
     }
 
     @PostMapping("/generate")
@@ -77,7 +87,8 @@ public class PlanController {
         String sheet = req.sheet().trim();
         List<ClaimResponse> made = service.generate(sheet, req.user().trim()).stream()
                 .map(ClaimController::response).toList();
+        LocalDate today = sheets.today(sheet);
         return new GenerateResponse(made.size(), made,
-                service.list(sheet).stream().map(PlanController::response).toList());
+                service.list(sheet).stream().map(plan -> response(plan, today)).toList());
     }
 }

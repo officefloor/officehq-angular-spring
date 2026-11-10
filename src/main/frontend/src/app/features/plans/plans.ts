@@ -15,12 +15,15 @@ export interface Plan {
   day: number | null;
   end: string;
   generated: number;
+  /** The first five plan dates after the sheet's today and on or before the end, comma separated. */
+  nextDates: string;
 }
 
 // A person's plans and the form on their row that adds one: an amount, a start date, either every N
 // days (a whole number, at least 1) or monthly on a day of the month (1 to 31), and an end date not
 // before the start. The sheet's generate button
-// (on the people screen) makes each plan's DRAFT claims; each plan shows how many it has made.
+// (on the people screen) makes each plan's DRAFT claims; each plan shows how many it has made,
+// and its next five dates after the sheet's today.
 @Component({
   selector: 'app-person-plans',
   template: `
@@ -30,6 +33,7 @@ export interface Plan {
           <th scope="col">Amount</th><th scope="col">Start</th><th scope="col">Every (days)</th>
           <th scope="col">Day of month</th>
           <th scope="col">End</th><th scope="col">Made</th>
+          <th scope="col">Next dates</th>
         </tr>
       </thead>
       <tbody>
@@ -41,6 +45,7 @@ export interface Plan {
             <td data-testid="plan-day">{{ pl.day }}</td>
             <td data-testid="plan-end">{{ pl.end }}</td>
             <td data-testid="plan-generated">{{ pl.generated }}</td>
+            <td data-testid="plan-next-dates">{{ pl.nextDates }}</td>
           </tr>
         }
       </tbody>
