@@ -267,6 +267,23 @@ const SUMMARY_STATUSES = ['DRAFT', 'OPEN', 'PENDING', 'SETTLED', 'VOID'] as cons
           <p role="alert" data-testid="person-form-error">{{ err }}</p>
         }
       </form>
+      <form aria-label="Import people" (submit)="importPeople($event)">
+        <label for="import-people">Import people, one name,grade,terms,contact per line</label>
+        <textarea
+          id="import-people"
+          data-testid="import-people"
+          rows="4"
+          [value]="importText()"
+          (input)="importText.set($any($event.target).value); importError.set(null)"
+        ></textarea>
+        <button type="submit" data-testid="import-submit">Import</button>
+        @if (importAdded() !== null) {
+          <p>Added <strong data-testid="import-added">{{ importAdded() }}</strong></p>
+        }
+        @if (importError(); as err) {
+          <p role="alert" data-testid="import-error">{{ err }}</p>
+        }
+      </form>
       <form aria-label="Quick add" (submit)="quickAdd($event)">
         <label for="quick-name">Name</label>
         <input
@@ -750,6 +767,10 @@ export class People {
   /** How many people the last bulk grade changed; cleared while the next one runs. */
   protected readonly bulkGraded = signal<number | null>(null);
   protected readonly bulkGradeError = signal<string | null>(null);
+  protected readonly importText = signal('');
+  /** How many people the last import added; cleared while the next one runs. */
+  protected readonly importAdded = signal<number | null>(null);
+  protected readonly importError = signal<string | null>(null);
   private readonly claimsByPerson = computed(() => {
     const by = new Map<number, Claim[]>();
     for (const c of this.claims()) by.set(c.personId, [...(by.get(c.personId) ?? []), c]);
@@ -992,6 +1013,9 @@ export class People {
       this.bulkGradeFrom.set('');
       this.bulkGraded.set(null);
       this.bulkGradeError.set(null);
+      this.importText.set('');
+      this.importAdded.set(null);
+      this.importError.set(null);
       this.statements.set(new Map());
       this.rowErrors.set(new Map());
       this.patrons.set([]);
@@ -1691,6 +1715,30 @@ export class People {
     } catch {
       if (this.session.sheet() !== sheet) return;
       this.bulkGradeError.set('Could not grade the selected people.');
+    }
+  }
+
+  /** Import the pasted people: the server checks every line first, then adds each as the person form would; all or none. */
+  protected async importPeople(event: Event): Promise<void> {
+    event.preventDefault();
+    this.importAdded.set(null);
+    this.importError.set(null);
+    const sheet = this.session.sheet();
+    try {
+      const done = await firstValueFrom(
+        this.http.post<{ added: number; people: Person[] }>('/api/people/import', {
+          sheet,
+          user: this.session.user(),
+          text: this.importText(),
+        }),
+      );
+      if (this.session.sheet() !== sheet) return;
+      this.people.update((list) => [...list, ...done.people]);
+      this.importAdded.set(done.added);
+    } catch (e) {
+      if (this.session.sheet() !== sheet) return;
+      const reason = e instanceof HttpErrorResponse && typeof e.error?.message === 'string' ? e.error.message : '';
+      this.importError.set(reason || 'Could not import these people; nothing was added.');
     }
   }
 

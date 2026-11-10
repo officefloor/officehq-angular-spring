@@ -43,6 +43,14 @@ public class PersonController {
             @NotBlank @Size(max = 100) String user, @NotNull Long id, @NotNull Long intoId) {
     }
 
+    public record ImportPeopleRequest(@NotBlank @Size(max = 100) String sheet,
+            @NotBlank @Size(max = 100) String user, @NotNull @Size(max = 100000) String text) {
+    }
+
+    /** What an import added: how many people, and each in the order they were added. */
+    public record ImportPeopleResponse(int added, List<PersonResponse> people) {
+    }
+
     public record TransferPersonRequest(@NotBlank @Size(max = 100) String sheet,
             @NotBlank @Size(max = 100) String user, @NotNull Long id, @NotBlank @Size(max = 100) String to) {
     }
@@ -116,8 +124,11 @@ public class PersonController {
     private final PersonService service;
     private final PersonMergeService merges;
     private final PersonTransferService transfers;
+    private final PersonImportService imports;
 
-    public PersonController(PersonService service, PersonMergeService merges, PersonTransferService transfers) {
+    public PersonController(PersonService service, PersonMergeService merges, PersonTransferService transfers,
+            PersonImportService imports) {
+        this.imports = imports;
         this.service = service;
         this.merges = merges;
         this.transfers = transfers;
@@ -135,6 +146,15 @@ public class PersonController {
     public PersonResponse add(@Valid @RequestBody AddPersonRequest req) {
         return response(req.sheet().trim(), service.add(req.sheet().trim(), req.user().trim(), req.name().trim(), req.grade(),
                 req.terms(), contact(req.contact())));
+    }
+
+    @PostMapping("/import")
+    public ImportPeopleResponse importPeople(@Valid @RequestBody ImportPeopleRequest req) {
+        String sheet = req.sheet().trim();
+        List<Person> added = imports.importPeople(sheet, req.user().trim(), req.text());
+        Set<Long> clashing = service.clashing(sheet, added);
+        return new ImportPeopleResponse(added.size(),
+                added.stream().map(p -> response(p, clashing.contains(p.getId()))).toList());
     }
 
     @PostMapping("/update")
