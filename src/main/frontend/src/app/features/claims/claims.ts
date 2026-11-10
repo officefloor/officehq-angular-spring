@@ -163,6 +163,20 @@ function dayNumber(date: string): number {
   return era * 146097 + doe - 719468;
 }
 
+/** The yyyy-mm-dd date a number of days after a yyyy-mm-dd date (proleptic Gregorian). */
+export function plusDays(date: string, days: number): string {
+  const z = dayNumber(date) + days + 719468;
+  const era = Math.floor(z / 146097);
+  const doe = z - era * 146097;
+  const yoe = Math.floor((doe - Math.floor(doe / 1460) + Math.floor(doe / 36524) - Math.floor(doe / 146096)) / 365);
+  const doy = doe - (365 * yoe + Math.floor(yoe / 4) - Math.floor(yoe / 100));
+  const mp = Math.floor((5 * doy + 2) / 153);
+  const d = doy - Math.floor((153 * mp + 2) / 5) + 1;
+  const m = mp < 10 ? mp + 3 : mp - 9;
+  const y = yoe + era * 400 + (m <= 2 ? 1 : 0);
+  return `${String(y).padStart(4, '0')}-${String(m).padStart(2, '0')}-${String(d).padStart(2, '0')}`;
+}
+
 /** The date a claim is due by: fixed when it was added. */
 export function dueBy(c: Claim): string {
   return c.dueBy;
@@ -322,8 +336,8 @@ export class PersonClaims {
   readonly rates = input.required<Rate[]>();
   /** The sheet's floors, dated: the one in force on a claim's date is the least its live due can be. */
   readonly floors = input.required<DatedValue[]>();
-  /** The sheet's late percents, dated: the one in force on a claim's date is what it gains of its
-   *  figure for every full 30 days overdue. */
+  /** The sheet's late percents, dated: for each full 30 days a claim is overdue, the one in force on
+   *  that boundary date (its due-by plus 30, 60, 90 ... days) is what it gains of its figure. */
   readonly latePcts = input.required<DatedValue[]>();
   /** The sheet's policy date (blank: its today): a claim dated before it rounds half up, else half to even. */
   readonly policyDate = input.required<string>();

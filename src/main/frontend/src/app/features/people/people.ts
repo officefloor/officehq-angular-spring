@@ -459,8 +459,8 @@ export class People {
     const cap = valueOn(this.caps(), this.session.today(), '');
     return cap === '' ? null : cents(cap);
   });
-  /** The sheet's late percents, dated: the one in force on a claim's date is what it gains of its
-   *  figure for every full 30 days overdue. */
+  /** The sheet's late percents, dated: for each full 30 days a claim is overdue, the one in force on
+   *  that boundary date (its due-by plus 30, 60, 90 ... days) is what it gains of its figure. */
   protected readonly latePcts = signal<DatedValue[]>([]);
   /** The sheet's policy date (blank: its today): a claim dated before it rounds half up, else half to even. */
   protected readonly policyDate = signal('');

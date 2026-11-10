@@ -7,7 +7,7 @@ import { DatedValue, START_FLOOR, START_LATE_PCT, valueOn } from '../rates/rates
 // The sheet's settings: its clerk limit (two decimals; blank for no limit), and its floor (two
 // decimals; 1.00 on a new sheet), its terms (whole days; 14 on a new sheet) and its late percent (two decimals; 0.00 on a new sheet). A
 // clerk settles a claim only when its due is at or below the limit; a claim's live due is never below the floor; a claim is due by its date
-// plus the terms of its person's grade (fixed when the claim is added); an overdue claim's due gains the late percent of its figure for every full 30 days overdue. Saving saves the clerk limit
+// plus the terms of its person's grade (fixed when the claim is added); an overdue claim's due gains, for each full 30 days overdue, the late percent in force on that boundary date of its figure. Saving saves the clerk limit
 // once its field has been entered (blank: no limit), and the floor, terms and late percent when typed (blank: left as they are).
 // The policy date (blank: the sheet's today) decides how a claim's live figures round: half up when dated before it, half to even
 // on or after it; it saves, like the clerk limit, once its field has been entered (blank: none).
@@ -20,7 +20,7 @@ import { DatedValue, START_FLOOR, START_LATE_PCT, valueOn } from '../rates/rates
 // The settings that carry a figure (the clerk limit, the floor, the terms, each grade's terms, the
 // late percent and the cap) are dated: each saves its value from the date in its from field (blank:
 // the sheet's today), keeping the values saved before (a value saved from the same date is
-// replaced). A claim's floor, late percent and terms are the ones in force on its date; the clerk
+// replaced). A claim's floor and terms are the ones in force on its date, its late percents the ones in force on its 30-day boundaries; the clerk
 // limit and the cap are the ones in force on the sheet's today. Each shows the value in force on
 // the sheet's today: before its first from-date the floor is 1.00, the late percent 0.00 and the
 // terms 14; a grade's terms, the clerk limit and the cap show nothing. The policy date and period

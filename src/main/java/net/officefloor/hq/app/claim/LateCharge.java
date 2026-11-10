@@ -1,17 +1,19 @@
 package net.officefloor.hq.app.claim;
 
 import java.math.BigDecimal;
+import java.math.RoundingMode;
+import java.time.LocalDate;
 import java.time.temporal.ChronoUnit;
 import net.officefloor.hq.app.sheet.Sheet;
 
 /**
- * The late charge on an overdue claim: the late percent in force on the claim's date of its figure for every
- * full 30 days it is overdue (OPEN or PENDING, and past its due-by on the sheet's today),
- * rounded to the cent as the claim rounds (see {@link Rounding}). A correction has none. Never bound by a statement; settling a claim fixes it into its due.
+ * The late charge on an overdue claim (OPEN or PENDING, and past its due-by on the sheet's today): for each full
+ * 30 days it is overdue, the late percent in force on that boundary date (its due-by plus 30, 60, 90 ... days) of
+ * its figure, rounded to the cent as the claim rounds (see {@link Rounding}), the charges added up. A correction has none. Never bound by a statement; settling a claim fixes it into its due.
  */
 public final class LateCharge {
 
-    /** The days overdue that each add one late percent. */
+    /** The days overdue between boundaries that each add a late charge. */
     private static final int PERIOD_DAYS = 30;
 
     private LateCharge() {
@@ -44,7 +46,12 @@ public final class LateCharge {
         if (periods <= 0) {
             return zero;
         }
-        return figure.multiply(sheet.latePctOn(claim.getDate())).multiply(BigDecimal.valueOf(periods))
-                .divide(BigDecimal.valueOf(100), 2, Rounding.mode(sheet, claim.getDate()));
+        RoundingMode mode = Rounding.mode(sheet, claim.getDate());
+        BigDecimal total = zero;
+        for (long k = 1; k <= periods; k++) {
+            LocalDate boundary = claim.getDueBy().plusDays(k * PERIOD_DAYS);
+            total = total.add(figure.multiply(sheet.latePctOn(boundary)).divide(BigDecimal.valueOf(100), 2, mode));
+        }
+        return total;
     }
 }
