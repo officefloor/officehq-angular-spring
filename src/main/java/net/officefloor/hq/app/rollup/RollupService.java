@@ -28,8 +28,8 @@ import org.springframework.stereotype.Service;
  * and calls {@link #recordChanges} after its own audit lines, which appends one ROLLUP line per
  * person whose figures moved (people in the order they were added; a new person counts as moved),
  * then a TOTALS line when any of the sheet's totals moved. A held person's OPEN claims count in none of
- * these (nor their PENDING ones), nor in a period's due-total; their SETTLED claims still do. A live due is never below
- * the floor in force on its claim's date; an overdue claim's figure has its late charge added on top. A person's
+ * these (nor their PENDING ones), nor in a period's due-total; their SETTLED claims still do. An overdue claim's figure has
+ * its late charge added on top, and a live due is then never below the floor in force on its claim's date. A person's
  * due-total is at most the cap in force on the sheet's today, when there is one.
  */
 @Service
@@ -171,7 +171,7 @@ public class RollupService {
 
     /**
      * A claim's figure as the screen shows it: the due fixed when settled, else the one bound by the
-     * last statement (not while PENDING), else its live due (rounded as the claim rounds, see {@link Rounding}) raised to the floor (a correction's is not), with its late charge added on top;
+     * last statement (not while PENDING), else its live due (rounded as the claim rounds, see {@link Rounding}), with its late charge added on top, then raised to the floor (a correction's is not);
      * null when none.
      */
     private static BigDecimal figure(Sheet sheet, List<Rate> sheetRates, List<Claim> sheetClaims, Person person,
@@ -183,7 +183,6 @@ public class RollupService {
                 : inForce(sheetRates, person.gradeOn(claim.getDate()), claim.getDate()).map(Rate::getPct)
                         .map(pct -> claim.getAmount().multiply(pct).divide(BigDecimal.valueOf(100), 2,
                                 Rounding.mode(sheet, Rounding.dateOf(claim, sheetClaims))))
-                        .map(due -> claim.isCorrection() ? due : due.max(sheet.floorOn(claim.getDate())))
                         .orElse(null);
         return LateCharge.withCharge(sheet, claim, figure);
     }

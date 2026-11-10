@@ -41,9 +41,9 @@ import org.springframework.web.server.ResponseStatusException;
  * limit); a clerk settling one above it makes it PENDING instead. A steward settles any claim, and
  * approves a PENDING claim (SETTLED, its due fixed then) or rejects it with a reason (back to OPEN);
  * the user who opened a claim cannot approve it. A PENDING claim is not bound by a statement: it
- * shows its live figure, and is bound again by the last statement once rejected. A claim's live due is never below the sheet's floor. An
- * overdue claim's due gains a late charge on top of its figure (see {@link LateCharge}); a statement
- * binds only the figure under it, and settling fixes the charge into the settled due. A claim with
+ * shows its live figure, and is bound again by the last statement once rejected. An overdue claim's due gains a late charge on its
+ * figure (see {@link LateCharge}), and the floor is applied last: a claim's live due is never below
+ * the sheet's floor. A statement binds only the rate figure, not the charge nor the floor, and settling fixes the charge into the settled due. A claim with
  * a negative amount is a correction: it is allowed only when it names, by number, a SETTLED claim
  * of the same person that it corrects. Its due has no floor and no late charge. A steward can move
  * a DRAFT, OPEN or PENDING claim to another person: it keeps its number and date, loses any figure
@@ -99,8 +99,14 @@ public class ClaimService {
                 : due(sheetId, person, claim);
     }
 
-    /** A claim's figure with its late charge on the sheet's today added on top; null when it has none. */
+    /**
+     * A claim's due on the sheet's today: the due fixed when settled, else its figure with its late
+     * charge added on top, raised to the floor (see {@link LateCharge}); null when it has none.
+     */
     public BigDecimal charged(String sheetId, Person person, Claim claim) {
+        if (claim.getStatus() == ClaimStatus.SETTLED) {
+            return claim.getSettledDue();
+        }
         return LateCharge.withCharge(sheets.sheet(sheetId), claim, figure(sheetId, person, claim));
     }
 
@@ -525,15 +531,14 @@ public class ClaimService {
 
     /**
      * The due on a claim's amount at the rate for the person's grade in force on the claim's date,
-     * rounded to the cent as the claim rounds (see {@link Rounding}) and raised to the floor in force on the claim's date (a correction's is not); null with no
-     * rate in force then.
+     * rounded to the cent as the claim rounds (see {@link Rounding}), not raised to the floor (see {@link LateCharge});
+     * null with no rate in force then.
      */
     public BigDecimal due(String sheetId, Person person, Claim claim) {
         Sheet sheet = sheets.sheet(sheetId);
         RoundingMode rounding = Rounding.mode(sheet, roundingDate(sheetId, claim));
         return rates.findInForce(sheetId, person.gradeOn(claim.getDate()), claim.getDate()).map(Rate::getPct)
                 .map(pct -> claim.getAmount().multiply(pct).divide(BigDecimal.valueOf(100), 2, rounding))
-                .map(due -> claim.isCorrection() ? due : due.max(sheet.floorOn(claim.getDate())))
                 .orElse(null);
     }
 

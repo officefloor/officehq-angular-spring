@@ -27,7 +27,7 @@ import org.springframework.web.server.ResponseStatusException;
  * on the sheet's today (held to the sheet's cap), and binds every claim of theirs that counts (OPEN, PENDING or SETTLED, but not a held
  * person's OPEN or PENDING claims) to the figure it has then; a claim of theirs that does not count is unbound,
  * so its figure is live again. The late charge is never bound: the due-total includes each claim's charge on the day, but a claim is
- * bound to the figure under it.
+ * bound to the rate figure under it, not the floored one (the floor is applied last, see {@link net.officefloor.hq.app.claim.LateCharge}).
  */
 @Service
 public class StatementService {
