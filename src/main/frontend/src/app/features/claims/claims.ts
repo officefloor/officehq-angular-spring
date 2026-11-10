@@ -106,6 +106,8 @@ export interface Claim {
   stated: boolean;
   /** The figure bound by the last statement; null while unbound or if it had no rate then. */
   statedDue: string | null;
+  /** The due as shown when the last statement bound the claim, late charge included; null while unbound or if it had no rate then. */
+  statedCharged: string | null;
   /** The number of the claim this correction corrects; null for a claim that is not a correction. */
   corrects: string | null;
   /** The claim's external reference, unique on the sheet without regard to case; null when none. */

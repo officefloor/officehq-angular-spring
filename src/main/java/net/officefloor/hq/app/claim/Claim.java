@@ -87,6 +87,13 @@ public class Claim {
     private BigDecimal statedDue;
 
     /**
+     * The due as shown when the last statement bound the claim, late charge included (and raised to
+     * the floor); none while unbound or if it had no rate then.
+     */
+    @Column(name = "stated_charged")
+    private BigDecimal statedCharged;
+
+    /**
      * The date the claim is due by: fixed when it is created, the terms-th business day after its
      * date (skipping Saturdays, Sundays and the sheet's holidays), with the terms of its person's
      * grade in force on its date; later changes to the terms or its date leave it as it is. A holiday
@@ -232,6 +239,7 @@ public class Claim {
         copy.settledDue = settledDue;
         copy.stated = stated;
         copy.statedDue = statedDue;
+        copy.statedCharged = statedCharged;
         copy.openedBy = openedBy;
         copy.editedBy = editedBy;
         copy.tags = tags;
@@ -426,10 +434,31 @@ public class Claim {
         return statedDue;
     }
 
+    public BigDecimal getStatedCharged() {
+        return statedCharged;
+    }
+
+    /**
+     * The due a statement bound, late charge included, while the claim is bound and OPEN or PENDING;
+     * none otherwise (its due is worked out from its figure).
+     */
+    public BigDecimal boundCharged() {
+        return stated && status.isOpen() ? statedCharged : null;
+    }
+
     /** Bind the claim to a figure (stated), or unbind it so its figure is live again. */
     public void bind(boolean stated, BigDecimal statedDue) {
+        bind(stated, statedDue, null);
+    }
+
+    /**
+     * Bind the claim to a figure and its due as shown, late charge included (stated), or unbind it
+     * so its figure and late charge are live again.
+     */
+    public void bind(boolean stated, BigDecimal statedDue, BigDecimal statedCharged) {
         this.stated = stated;
         this.statedDue = stated ? statedDue : null;
+        this.statedCharged = stated ? statedCharged : null;
     }
 
     public LocalDate getDeferredUntil() {

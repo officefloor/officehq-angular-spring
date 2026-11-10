@@ -31,9 +31,11 @@ import org.springframework.web.server.ResponseStatusException;
 /**
  * Statements on a sheet. Taking a person's statement records their due-total at that moment, taken
  * on the sheet's today (held to the sheet's cap), or as of a date on or before it, and binds every claim of theirs that counts (OPEN, PENDING or SETTLED, but not a held
- * person's OPEN or PENDING claims) to the figure it has then; a claim of theirs that does not count is unbound,
- * so its figure is live again. The late charge is never bound: the due-total includes each claim's charge on the day, but a claim is
- * bound to the rate figure under it, not the floored one (the floor is applied last, see {@link net.officefloor.hq.app.claim.LateCharge}).
+ * person's OPEN or PENDING claims) to the figure it has then and to its due as shown then, late charge included: while bound, the
+ * claim shows and totals that due, its late charge no longer following the sheet's today, and the
+ * next statement binds it as it stands (a SETTLED claim's frozen due is unaffected). A claim of
+ * theirs that does not count is unbound, so its figure and late charge are live again. The rate
+ * figure under the charge is kept too (the floor is applied last, see {@link net.officefloor.hq.app.claim.LateCharge}).
  * A steward can cancel a person's last statement: the claims it bound are live again (a figure bound
  * by a statement before it is not restored), and the statement before it is the last one again.
  */
@@ -139,7 +141,7 @@ public class StatementService {
             if (person.counts(claim, today)) {
                 BigDecimal figure = claimService.figure(sheetId, person, claim);
                 BigDecimal charged = claimService.charged(sheetId, person, claim);
-                claim.bind(true, figure);
+                claim.bind(true, figure, charged);
                 if (charged != null) {
                     total = total.add(charged);
                     anyFigure = true;
@@ -191,10 +193,11 @@ public class StatementService {
                                 .map(pct -> claim.getAmount().multiply(pct).divide(BigDecimal.valueOf(100), 2,
                                         Rounding.mode(then, Rounding.dateOf(claim, theirs))))
                                 .orElse(null);
-                charged = LateCharge.withCharge(then, claim, person.gradeOn(claim.getDate(), day), figure,
-                        status.isOpen() && !claim.isDeferredAsOf(status, day));
+                charged = stated && claim.getStatedCharged() != null ? claim.getStatedCharged()
+                        : LateCharge.withCharge(then, claim, person.gradeOn(claim.getDate(), day), figure,
+                                status.isOpen() && !claim.isDeferredAsOf(status, day));
             }
-            claim.bind(true, figure);
+            claim.bind(true, figure, status.isOpen() ? charged : null);
             if (charged != null) {
                 total = total.add(charged);
                 anyFigure = true;

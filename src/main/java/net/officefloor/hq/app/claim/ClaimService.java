@@ -132,12 +132,16 @@ public class ClaimService {
     }
 
     /**
-     * A claim's due on the sheet's today: the due fixed when settled, else its figure with its late
+     * A claim's due on the sheet's today: the due fixed when settled, else the due as shown that a
+     * statement bound (late charge included), else its figure with its late
      * charge added on top, raised to the floor (see {@link LateCharge}); null when it has none.
      */
     public BigDecimal charged(String sheetId, Person person, Claim claim) {
         if (isFrozen(claim)) {
             return claim.getSettledDue();
+        }
+        if (claim.boundCharged() != null) {
+            return claim.boundCharged();
         }
         return LateCharge.withCharge(sheets.sheet(sheetId), claim, person.gradeOn(claim.getDate()), figure(sheetId, person, claim));
     }

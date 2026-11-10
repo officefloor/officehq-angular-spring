@@ -315,14 +315,17 @@ public class RollupService {
     }
 
     /**
-     * A claim's figure as the screen shows it: the due fixed when settled, else the one bound by the
-     * last statement, else its live due (rounded as the claim rounds, see {@link Rounding}), with its late charge added on top, then raised to the floor (a correction's is not);
+     * A claim's figure as the screen shows it: the due fixed when settled, else the due as shown bound by the
+     * last statement (late charge included), else its live due (rounded as the claim rounds, see {@link Rounding}), with its late charge added on top, then raised to the floor (a correction's is not);
      * null when none.
      */
     private static BigDecimal figure(Sheet sheet, List<List<Rate>> sheetRates, List<Claim> sheetClaims, Person person,
             Claim claim) {
         if (claim.getStatus() == ClaimStatus.SETTLED && claim.getSettledDue() != null) {
             return claim.getSettledDue();
+        }
+        if (claim.boundCharged() != null) {
+            return claim.boundCharged();
         }
         BigDecimal figure = claim.isStated() ? claim.getStatedDue()
                 : RateChain.inForce(sheetRates, person.gradeOn(claim.getDate()), claim).map(Rate::getPct)
