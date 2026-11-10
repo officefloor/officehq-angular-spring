@@ -3,7 +3,7 @@ import { Component, computed, inject, input, output, signal } from '@angular/cor
 import { firstValueFrom } from 'rxjs';
 import { Session } from '../../core/session';
 import { Period, inClosedPeriod, periodOn } from '../periods/periods';
-import { DatedGrade, Lateness, Rate, chargedDueCents, dueText, gradeOn } from '../rates/rates';
+import { DatedGrade, DatedValue, Lateness, Rate, chargedDueCents, dueText, gradeOn } from '../rates/rates';
 
 // A person's claims, newest first, and the one form under their row that both adds a claim and
 // edits an existing one (opening a claim's editor fills the form with its values). Each claim
@@ -283,10 +283,11 @@ export class PersonClaims {
   readonly grades = input.required<DatedGrade[]>();
   /** The sheet's rates. */
   readonly rates = input.required<Rate[]>();
-  /** The sheet's floor in whole cents: the least a claim's live due can be. */
-  readonly floor = input.required<number>();
-  /** The sheet's late percent: what an overdue claim gains of its figure for every full 30 days. */
-  readonly latePct = input.required<string>();
+  /** The sheet's floors, dated: the one in force on a claim's date is the least its live due can be. */
+  readonly floors = input.required<DatedValue[]>();
+  /** The sheet's late percents, dated: the one in force on a claim's date is what it gains of its
+   *  figure for every full 30 days overdue. */
+  readonly latePcts = input.required<DatedValue[]>();
   /** The sheet's policy date (blank: its today): a claim dated before it rounds half up, else half to even. */
   readonly policyDate = input.required<string>();
   /** The sheet's periods. */
@@ -320,16 +321,16 @@ export class PersonClaims {
 
   /** A stated claim shows the figure bound by the last statement, a settled claim the due fixed
    *  when it was settled; any other claim's due is live, at the rate for the person's grade in
-   *  force on the claim's date (the grade in force then), never below the sheet's floor. An overdue claim's late charge is
+   *  force on the claim's date (the grade in force then), never below the floor in force on its date. An overdue claim's late charge is
    *  added on top. */
   protected dueOf(c: Claim): string {
     const late: Lateness = {
-      latePct: this.latePct(),
+      latePcts: this.latePcts(),
       today: this.session.today(),
       policyDate: this.policyDate(),
     };
     const roundOn = roundingDate(c, this.claims());
-    return dueText(chargedDueCents(c, this.rates(), gradeOn(this.grades(), c.date), this.floor(), late, roundOn));
+    return dueText(chargedDueCents(c, this.rates(), gradeOn(this.grades(), c.date), this.floors(), late, roundOn));
   }
 
   protected dueByOf(c: Claim): string {

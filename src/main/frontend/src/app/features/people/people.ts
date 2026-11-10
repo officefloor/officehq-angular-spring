@@ -4,7 +4,7 @@ import { firstValueFrom } from 'rxjs';
 import { Session } from '../../core/session';
 import { AMOUNT, Claim, PersonClaims, cents, counts, isOpen, money, overdue, roundingDate } from '../claims/claims';
 import { DatedDue, Period, Periods, periodDueTotal, personPeriodDueTotal } from '../periods/periods';
-import { DatedGrade, Lateness, Rate, Rates, chargedDueCents, dueText, gradeOn, pctOn } from '../rates/rates';
+import { DatedGrade, DatedValue, Lateness, Rate, Rates, chargedDueCents, dueText, gradeOn, pctOn, valueOn } from '../rates/rates';
 import { Roles } from '../roles/roles';
 import { Settings } from '../settings/settings';
 import { Header } from '../header/header';
@@ -23,7 +23,7 @@ import { GradeSummary, PeriodSummary, StatusSummary, Summary } from '../summary/
 // what is due at the rate for the person's grade in force on the claim's date (a settled claim the
 // figure fixed when settled), each person the sum of those figures over the claims that count, and
 // the sheet's due-total adds up every person's due-total that has one. A live due is never below
-// the sheet's floor (a figure fixed when settled, bound by a statement or by closing a period keeps its own).
+// the floor in force on the claim's date (a figure fixed when settled, bound by a statement or by closing a period keeps its own).
 // Taking a person's statement binds each of their claims that counts to the figure it has then
 // (a stated claim shows and totals that figure); each row shows how many statements the person
 // has taken, and the last one's due-total and date.
@@ -45,7 +45,7 @@ import { GradeSummary, PeriodSummary, StatusSummary, Summary } from '../summary/
 // and their backing: their patrons' due-totals added up, skipping those that are n/a.
 // The export button downloads everyone, retired people included, in list order, as a CSV file
 // (name, grade in force today, retired-from date or nothing, due-total as shown).
-// The sheet may have a cap: a person's due-total is at most it, and their excess is how far the
+// The sheet may have a cap (the one in force on its today): a person's due-total is at most it, and their excess is how far the
 // sum of their figures is above it (0.00 otherwise; a due-total of n/a is not capped). Every total
 // of due-totals (the sheet's, a grade's, backing, the export) adds up the capped figures.
 interface Person {
@@ -132,7 +132,7 @@ const SUMMARY_STATUSES = ['DRAFT', 'OPEN', 'PENDING', 'SETTLED', 'VOID'] as cons
     />
     <app-rates [(rates)]="rates" />
     <app-roles />
-    <app-settings [(floor)]="floor" [(latePct)]="latePct" [(policyDate)]="policyDate" [(cap)]="cap" />
+    <app-settings [(floors)]="floors" [(latePcts)]="latePcts" [(policyDate)]="policyDate" [(caps)]="caps" />
     <app-periods [(periods)]="periods" [dues]="dues()" />
     <section aria-labelledby="people-heading">
       <h2 id="people-heading">People</h2>
@@ -314,8 +314,8 @@ const SUMMARY_STATUSES = ['DRAFT', 'OPEN', 'PENDING', 'SETTLED', 'VOID'] as cons
                   [claims]="claimsOf(p.id)"
                   [grades]="p.grades"
                   [rates]="rates()"
-                  [floor]="floorCents()"
-                  [latePct]="latePct()"
+                  [floors]="floors()"
+                  [latePcts]="latePcts()"
                   [policyDate]="policyDate()"
                   [periods]="periods()"
                   [selected]="selectedClaims()"
@@ -428,19 +428,23 @@ export class People {
   );
   protected readonly rates = signal<Rate[]>([]);
   protected readonly periods = signal<Period[]>([]);
-  /** The sheet's floor: the least a claim's live due can be. */
-  protected readonly floor = signal('1.00');
-  protected readonly floorCents = computed(() => cents(this.floor()));
-  /** The sheet's cap (blank: none): the most a person's due-total can be. */
-  protected readonly cap = signal('');
-  private readonly capCents = computed(() => (this.cap() === '' ? null : cents(this.cap())));
-  /** The sheet's late percent: what an overdue claim gains of its figure for every full 30 days. */
-  protected readonly latePct = signal('0.00');
+  /** The sheet's floors, dated: the one in force on a claim's date is the least its live due can be. */
+  protected readonly floors = signal<DatedValue[]>([]);
+  /** The sheet's caps, dated (blank: none): the one in force on the sheet's today is the most a
+   *  person's due-total can be. */
+  protected readonly caps = signal<DatedValue[]>([]);
+  private readonly capCents = computed(() => {
+    const cap = valueOn(this.caps(), this.session.today(), '');
+    return cap === '' ? null : cents(cap);
+  });
+  /** The sheet's late percents, dated: the one in force on a claim's date is what it gains of its
+   *  figure for every full 30 days overdue. */
+  protected readonly latePcts = signal<DatedValue[]>([]);
   /** The sheet's policy date (blank: its today): a claim dated before it rounds half up, else half to even. */
   protected readonly policyDate = signal('');
   /** What works out an overdue claim's late charge on the sheet's today. */
   private readonly lateness = computed<Lateness>(() => ({
-    latePct: this.latePct(),
+    latePcts: this.latePcts(),
     today: this.session.today(),
     policyDate: this.policyDate(),
   }));
@@ -450,7 +454,7 @@ export class People {
     for (const c of this.claims()) {
       const p = this.peopleById().get(c.personId);
       if (p === undefined || !countsFor(p, c)) continue;
-      const due = chargedDueCents(c, this.rates(), gradeOn(p.grades, c.date), this.floorCents(), this.lateness(), this.roundOn(c));
+      const due = chargedDueCents(c, this.rates(), gradeOn(p.grades, c.date), this.floors(), this.lateness(), this.roundOn(c));
       if (due !== null) out.push({ personId: c.personId, date: c.date, cents: due });
     }
     return out;
@@ -624,7 +628,7 @@ export class People {
   private figuresOf(p: Person): number | null {
     const figures = this.claimsOf(p.id)
       .filter((c) => countsFor(p, c))
-      .map((c) => chargedDueCents(c, this.rates(), gradeOn(p.grades, c.date), this.floorCents(), this.lateness(), this.roundOn(c)));
+      .map((c) => chargedDueCents(c, this.rates(), gradeOn(p.grades, c.date), this.floors(), this.lateness(), this.roundOn(c)));
     if (this.pctOf().get(this.gradeToday(p)) === undefined && figures.every((f) => f === null)) return null;
     return figures.reduce<number>((sum, f) => sum + (f ?? 0), 0);
   }
@@ -635,7 +639,7 @@ export class People {
     const late = this.claimsOf(p.id).filter((c) => countsFor(p, c) && overdue(c, today));
     return {
       count: late.length,
-      cents: late.reduce((sum, c) => sum + (chargedDueCents(c, this.rates(), gradeOn(p.grades, c.date), this.floorCents(), this.lateness(), this.roundOn(c)) ?? 0), 0),
+      cents: late.reduce((sum, c) => sum + (chargedDueCents(c, this.rates(), gradeOn(p.grades, c.date), this.floors(), this.lateness(), this.roundOn(c)) ?? 0), 0),
     };
   }
 

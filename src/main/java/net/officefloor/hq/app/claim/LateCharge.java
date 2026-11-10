@@ -5,7 +5,7 @@ import java.time.temporal.ChronoUnit;
 import net.officefloor.hq.app.sheet.Sheet;
 
 /**
- * The late charge on an overdue claim: the sheet's late percent of the claim's figure for every
+ * The late charge on an overdue claim: the late percent in force on the claim's date of its figure for every
  * full 30 days it is overdue (OPEN or PENDING, and past its due-by on the sheet's today),
  * rounded to the cent as the claim rounds (see {@link Rounding}). A correction has none. Never bound by a statement; settling a claim fixes it into its due.
  */
@@ -44,7 +44,7 @@ public final class LateCharge {
         if (periods <= 0) {
             return zero;
         }
-        return figure.multiply(sheet.getLatePct()).multiply(BigDecimal.valueOf(periods))
+        return figure.multiply(sheet.latePctOn(claim.getDate())).multiply(BigDecimal.valueOf(periods))
                 .divide(BigDecimal.valueOf(100), 2, Rounding.mode(sheet, claim.getDate()));
     }
 }

@@ -1,7 +1,8 @@
 import { HttpClient } from '@angular/common/http';
-import { Component, effect, inject, model, signal } from '@angular/core';
+import { Component, computed, effect, inject, model, signal, untracked } from '@angular/core';
 import { firstValueFrom } from 'rxjs';
 import { Session } from '../../core/session';
+import { DatedValue, START_FLOOR, START_LATE_PCT, valueOn } from '../rates/rates';
 
 // The sheet's settings: its clerk limit (two decimals; blank for no limit), and its floor (two
 // decimals; 1.00 on a new sheet), its terms (whole days; 14 on a new sheet) and its late percent (two decimals; 0.00 on a new sheet). A
@@ -16,6 +17,19 @@ import { Session } from '../../core/session';
 // uses the sheet's terms. A claim's due-by is fixed when it is added, so changing terms moves none.
 // The cap (two decimals; blank for none) is the most a person's due-total can be; it saves, like
 // the clerk limit, once its field has been entered (blank: none).
+// The settings that carry a figure (the clerk limit, the floor, the terms, each grade's terms, the
+// late percent and the cap) are dated: each saves its value from the date in its from field (blank:
+// the sheet's today), keeping the values saved before (a value saved from the same date is
+// replaced). A claim's floor, late percent and terms are the ones in force on its date; the clerk
+// limit and the cap are the ones in force on the sheet's today. Each shows the value in force on
+// the sheet's today: before its first from-date the floor is 1.00, the late percent 0.00 and the
+// terms 14; a grade's terms, the clerk limit and the cap show nothing. The policy date and period
+// numbering from are not dated.
+/** A value saved for a dated setting, by key: blank from for the beginning of time, blank value for none. */
+interface DatedSetting extends DatedValue {
+  key: string;
+}
+
 interface SettingsResponse {
   /** The clerk limit, blank for none. */
   clerkLimit: string;
@@ -30,6 +44,8 @@ interface SettingsResponse {
   gradeTerms: Record<string, number>;
   /** The cap, blank for none. */
   cap: string;
+  /** Every value saved for the dated settings, by key and from-date. */
+  dated: DatedSetting[];
 }
 
 /** The grades that may have their own terms. */
@@ -39,17 +55,19 @@ type Grade = (typeof GRADES)[number];
 /** A limit or floor: 0.00 or more, with up to two decimals. */
 const LIMIT = /^\d{1,12}(\.\d{1,2})?$/;
 
-const DEFAULT_FLOOR = '1.00';
 
 /** Terms: a whole number of days. */
 const TERMS = /^\d{1,4}$/;
 
-const DEFAULT_TERMS = 14;
+const START_TERMS = '14';
 
 /** A late percent: 0.00 to 999.99, with up to two decimals. */
 const PCT = /^\d{1,3}(\.\d{1,2})?$/;
 
-const DEFAULT_LATE_PCT = '0.00';
+
+/** The keys of the dated settings, each with its own from field. */
+const DATED_KEYS = ['clerk-limit', 'floor', 'terms', 'terms-A', 'terms-B', 'terms-C', 'late-pct', 'cap'] as const;
+type DatedKey = (typeof DATED_KEYS)[number];
 
 /** A policy date: yyyy-mm-dd. */
 const DATE = /^\d{4}-\d{2}-\d{2}$/;
@@ -69,6 +87,14 @@ const DATE = /^\d{4}-\d{2}-\d{2}$/;
           (focus)="enterLimit($any($event.target))"
           (input)="limitInput.set($any($event.target).value); error.set(null)"
         />
+        <label for="setting-clerk-limit-from">Clerk limit in force from (blank: the sheet's today)</label>
+        <input
+          id="setting-clerk-limit-from"
+          data-testid="setting-clerk-limit-from"
+          type="date"
+          [value]="fromInput()['clerk-limit'] ?? ''"
+          (input)="typeFrom('clerk-limit', $any($event.target).value)"
+        />
         <label for="setting-floor">Floor (blank: leave as it is)</label>
         <input
           id="setting-floor"
@@ -77,6 +103,14 @@ const DATE = /^\d{4}-\d{2}-\d{2}$/;
           [value]="floorInput() ?? ''"
           (input)="floorInput.set($any($event.target).value); error.set(null)"
         />
+        <label for="setting-floor-from">Floor in force from (blank: the sheet's today)</label>
+        <input
+          id="setting-floor-from"
+          data-testid="setting-floor-from"
+          type="date"
+          [value]="fromInput()['floor'] ?? ''"
+          (input)="typeFrom('floor', $any($event.target).value)"
+        />
         <label for="setting-terms">Terms in days (blank: leave as they are)</label>
         <input
           id="setting-terms"
@@ -84,6 +118,14 @@ const DATE = /^\d{4}-\d{2}-\d{2}$/;
           inputmode="numeric"
           [value]="termsInput() ?? ''"
           (input)="termsInput.set($any($event.target).value); error.set(null)"
+        />
+        <label for="setting-terms-from">Terms in force from (blank: the sheet's today)</label>
+        <input
+          id="setting-terms-from"
+          data-testid="setting-terms-from"
+          type="date"
+          [value]="fromInput()['terms'] ?? ''"
+          (input)="typeFrom('terms', $any($event.target).value)"
         />
         @for (g of grades; track g) {
           <label [for]="'setting-terms-' + g">Terms in days for grade {{ g }} (blank: leave as they are)</label>
@@ -94,6 +136,14 @@ const DATE = /^\d{4}-\d{2}-\d{2}$/;
             [value]="gradeTermsInput()[g] ?? ''"
             (input)="typeGradeTerms(g, $any($event.target).value)"
           />
+          <label [for]="'setting-terms-' + g + '-from'">Terms for grade {{ g }} in force from (blank: the sheet's today)</label>
+          <input
+            [id]="'setting-terms-' + g + '-from'"
+            [attr.data-testid]="'setting-terms-' + g + '-from'"
+            type="date"
+            [value]="fromInput()[gradeKey(g)] ?? ''"
+            (input)="typeFrom(gradeKey(g), $any($event.target).value)"
+          />
         }
         <label for="setting-late-pct">Late percent per 30 days overdue (blank: leave as it is)</label>
         <input
@@ -102,6 +152,14 @@ const DATE = /^\d{4}-\d{2}-\d{2}$/;
           inputmode="decimal"
           [value]="latePctInput() ?? ''"
           (input)="latePctInput.set($any($event.target).value); error.set(null)"
+        />
+        <label for="setting-late-pct-from">Late percent in force from (blank: the sheet's today)</label>
+        <input
+          id="setting-late-pct-from"
+          data-testid="setting-late-pct-from"
+          type="date"
+          [value]="fromInput()['late-pct'] ?? ''"
+          (input)="typeFrom('late-pct', $any($event.target).value)"
         />
         <label for="setting-policy-date">Policy date (blank: the sheet's today)</label>
         <input
@@ -130,6 +188,14 @@ const DATE = /^\d{4}-\d{2}-\d{2}$/;
           (focus)="enterCap($any($event.target))"
           (input)="capInput.set($any($event.target).value); error.set(null)"
         />
+        <label for="setting-cap-from">Cap in force from (blank: the sheet's today)</label>
+        <input
+          id="setting-cap-from"
+          data-testid="setting-cap-from"
+          type="date"
+          [value]="fromInput()['cap'] ?? ''"
+          (input)="typeFrom('cap', $any($event.target).value)"
+        />
         <button type="submit" data-testid="settings-save">Save settings</button>
         @if (error(); as err) {
           <p role="alert" data-testid="settings-error">{{ err }}</p>
@@ -153,8 +219,8 @@ const DATE = /^\d{4}-\d{2}-\d{2}$/;
       @for (g of grades; track g) {
         <p>
           Terms in force for grade {{ g }} (days):
-          <strong [attr.data-testid]="'setting-terms-' + g + '-current'">{{ gradeTerms()[g] ?? '' }}</strong>
-          @if (gradeTerms()[g] === undefined) {
+          <strong [attr.data-testid]="'setting-terms-' + g + '-current'">{{ gradeTerms()[g] }}</strong>
+          @if (gradeTerms()[g] === '') {
             <span>(the sheet's terms)</span>
           }
         </p>
@@ -191,25 +257,38 @@ export class Settings {
   private readonly http = inject(HttpClient);
   private readonly session = inject(Session);
 
-  /** The sheet's floor, shared with whoever works out what is due. */
-  readonly floor = model(DEFAULT_FLOOR);
-  /** The sheet's terms in days: what a grade without its own terms uses. */
-  protected readonly terms = signal(DEFAULT_TERMS);
+  /** Every value saved for the dated settings. */
+  private readonly dated = signal<DatedSetting[]>([]);
+  /** The sheet's floors, dated, shared with whoever works out what is due. */
+  readonly floors = model<DatedValue[]>([]);
+  /** The floor in force on the sheet's today. */
+  protected readonly floor = computed(() => valueOn(this.floors(), this.session.today(), START_FLOOR));
+  /** The sheet's terms in days in force on its today: what a grade without its own terms uses. */
+  protected readonly terms = computed(() => this.inForce('terms', START_TERMS));
   protected readonly grades = GRADES;
-  /** The terms set for each grade that has its own. */
-  protected readonly gradeTerms = signal<Partial<Record<Grade, number>>>({});
+  /** The terms in force on the sheet's today for each grade; blank for one without its own then. */
+  protected readonly gradeTerms = computed(
+    () => Object.fromEntries(GRADES.map((g) => [g, this.inForce(this.gradeKey(g), '')])) as Record<Grade, string>,
+  );
   /** The terms typed for each grade; blank (or missing) leaves them as they are. */
   protected readonly gradeTermsInput = signal<Partial<Record<Grade, string>>>({});
-  /** The sheet's late percent, shared with whoever works out an overdue claim's late charge. */
-  readonly latePct = model(DEFAULT_LATE_PCT);
+  /** The sheet's late percents, dated, shared with whoever works out an overdue claim's late charge. */
+  readonly latePcts = model<DatedValue[]>([]);
+  /** The late percent in force on the sheet's today. */
+  protected readonly latePct = computed(() => valueOn(this.latePcts(), this.session.today(), START_LATE_PCT));
   /** The sheet's policy date (blank: its today), shared with whoever works out how a claim rounds. */
   readonly policyDate = model('');
-  /** The sheet's cap (blank: none), shared with whoever works out a person's due-total. */
-  readonly cap = model('');
+  /** The sheet's caps, dated (blank: none), shared with whoever works out a person's due-total. */
+  readonly caps = model<DatedValue[]>([]);
+  /** The cap in force on the sheet's today; blank for none. */
+  protected readonly cap = computed(() => valueOn(this.caps(), this.session.today(), ''));
   /** The cap typed; null while its field has not been entered (left as it is). */
   protected readonly capInput = signal<string | null>(null);
 
-  protected readonly limit = signal('');
+  /** The clerk limit in force on the sheet's today; blank for none. */
+  protected readonly limit = computed(() => this.inForce('clerk-limit', ''));
+  /** The from-date typed for each dated setting; blank (or missing) for the sheet's today. */
+  protected readonly fromInput = signal<Partial<Record<DatedKey, string>>>({});
   /** The period-numbering-from date in force; blank for off. */
   protected readonly numberingFrom = signal('');
   /** The clerk limit typed; null while its field has not been entered (left as it is). */
@@ -233,15 +312,9 @@ export class Settings {
     effect(() => {
       const sheet = this.session.sheet();
       this.session.loads();
-      this.limit.set('');
-      this.floor.set(DEFAULT_FLOOR);
-      this.terms.set(DEFAULT_TERMS);
-      this.gradeTerms.set({});
+      untracked(() => this.show({ dated: [], policyDate: '', periodNumberingFrom: '' }));
       this.gradeTermsInput.set({});
-      this.latePct.set(DEFAULT_LATE_PCT);
-      this.policyDate.set('');
-      this.numberingFrom.set('');
-      this.cap.set('');
+      this.fromInput.set({});
       this.capInput.set(null);
       this.limitInput.set(null);
       this.floorInput.set(null);
@@ -301,20 +374,37 @@ export class Settings {
     this.numberingInput.set(this.numberingFrom());
   }
 
+  protected gradeKey(grade: Grade): DatedKey {
+    return `terms-${grade}`;
+  }
+
+  protected typeFrom(key: DatedKey, value: string): void {
+    this.fromInput.update((m) => ({ ...m, [key]: value }));
+    this.error.set(null);
+  }
+
+  /** The values saved for one dated setting. */
+  private datedOf(key: string): DatedValue[] {
+    return this.dated().filter((d) => d.key === key);
+  }
+
+  /** A dated setting's value in force on the sheet's today; `start` before its first from-date. */
+  private inForce(key: string, start: string): string {
+    return valueOn(this.datedOf(key), this.session.today(), start);
+  }
+
   protected typeGradeTerms(grade: Grade, value: string): void {
     this.gradeTermsInput.update((m) => ({ ...m, [grade]: value }));
     this.error.set(null);
   }
 
-  private show(res: SettingsResponse): void {
-    this.limit.set(res.clerkLimit);
-    this.floor.set(res.floor);
-    this.terms.set(res.terms);
-    this.gradeTerms.set(res.gradeTerms ?? {});
-    this.latePct.set(res.latePct);
+  private show(res: Pick<SettingsResponse, 'dated' | 'policyDate' | 'periodNumberingFrom'>): void {
+    this.dated.set(res.dated);
+    this.floors.set(this.datedOf('floor'));
+    this.latePcts.set(this.datedOf('late-pct'));
+    this.caps.set(this.datedOf('cap'));
     this.policyDate.set(res.policyDate);
     this.numberingFrom.set(res.periodNumberingFrom);
-    this.cap.set(res.cap);
   }
 
   protected async save(event: Event): Promise<void> {
@@ -367,6 +457,16 @@ export class Settings {
       this.error.set('Enter a cap of 0.00 or more, with up to two decimals, or leave it blank.');
       return;
     }
+    const from: Partial<Record<DatedKey, string>> = {};
+    for (const k of DATED_KEYS) {
+      const f = this.fromInput()[k]?.trim();
+      if (!f) continue;
+      if (!DATE.test(f)) {
+        this.error.set('Enter a from-date as a date, or leave it blank for the sheet\'s today.');
+        return;
+      }
+      from[k] = f;
+    }
     this.submitting = true;
     try {
       const res = await firstValueFrom(
@@ -383,6 +483,14 @@ export class Settings {
           termsB: gradeTerms.B ?? null,
           termsC: gradeTerms.C ?? null,
           cap,
+          clerkLimitFrom: from['clerk-limit'] ?? null,
+          floorFrom: from.floor ?? null,
+          termsFrom: from.terms ?? null,
+          latePctFrom: from['late-pct'] ?? null,
+          termsAFrom: from['terms-A'] ?? null,
+          termsBFrom: from['terms-B'] ?? null,
+          termsCFrom: from['terms-C'] ?? null,
+          capFrom: from.cap ?? null,
         }),
       );
       if (this.session.sheet() !== sheet) return;
@@ -395,6 +503,7 @@ export class Settings {
       this.policyInput.set(null);
       this.numberingInput.set(null);
       this.capInput.set(null);
+      this.fromInput.set({});
     } catch {
       this.error.set('Could not save the settings.');
     } finally {

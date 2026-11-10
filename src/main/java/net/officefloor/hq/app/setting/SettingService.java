@@ -25,17 +25,23 @@ import org.springframework.transaction.annotation.Transactional;
  * Its cap (none: no cap) is the most a person's due-total can be, so changing it records the
  * figures that move too. A grade may have its own terms; a grade without uses the sheet's terms. A claim's due-by is fixed
  * when it is created, so changing any terms moves no claim's due-by.
+ * <p>
+ * The settings that carry a figure (the floor, the late percent, the terms, a grade's own terms,
+ * the clerk limit and the cap) are dated: each value is recorded from a from-date (the sheet's
+ * today when none is given). A claim's floor, late percent and terms are those in force on its
+ * date; the clerk limit and the cap are those in force on the sheet's today (see {@link Sheet}).
+ * The policy date and the period-numbering-from date are not dated.
  */
 @Service
 public class SettingService {
 
-    public static final String CLERK_LIMIT = "clerk-limit";
-    public static final String FLOOR = "floor";
-    public static final String CAP = "cap";
-    public static final String TERMS = "terms";
+    public static final String CLERK_LIMIT = Sheet.CLERK_LIMIT;
+    public static final String FLOOR = Sheet.FLOOR;
+    public static final String CAP = Sheet.CAP;
+    public static final String TERMS = Sheet.TERMS;
     /** The key of a grade's own terms: {@code terms-<grade>}. */
-    public static final String GRADE_TERMS = "terms-";
-    public static final String LATE_PCT = "late-pct";
+    public static final String GRADE_TERMS = Sheet.GRADE_TERMS;
+    public static final String LATE_PCT = Sheet.LATE_PCT;
     public static final String POLICY_DATE = "policy-date";
     public static final String PERIOD_NUMBERING_FROM = "period-numbering-from";
 
@@ -57,41 +63,39 @@ public class SettingService {
     }
 
     /**
-     * Save the settings given: a clerk limit when {@code changeLimit} (null for no limit), and the
-     * floor, the terms and the late percent when they are not null, and a policy date when
-     * {@code changePolicy} (null for none), and a period-numbering-from date when
-     * {@code changeNumbering} (null for off), and a cap when {@code changeCap} (null for none), and each grade's own terms given in {@code gradeTerms}
-     * (by grade, in grade order). Each one saved is recorded, in that order.
+     * A value to record for a setting that carries a figure (null for none: no limit, no cap) from
+     * a from-date (null: from the sheet's today, and the record names no from-date).
+     */
+    public record Dated<T>(T value, LocalDate from) {
+    }
+
+    /**
+     * Save the settings given: a clerk limit when {@code limit} is not null, and the floor, the
+     * terms and the late percent when they are not null, and a policy date when {@code changePolicy}
+     * (null for none), and a period-numbering-from date when {@code changeNumbering} (null for off),
+     * and a cap when {@code cap} is not null, and each grade's own terms given in {@code gradeTerms}
+     * (by grade, in grade order). Each figure is recorded from its from-date, keeping the values
+     * already recorded (one already recorded from that date is replaced). Each one saved is
+     * recorded, in that order.
      */
     @Transactional
-    public Sheet set(String sheetId, String user, boolean changeLimit, BigDecimal limit, BigDecimal floor,
-            Integer terms, BigDecimal latePct, boolean changePolicy, LocalDate policyDate,
-            boolean changeNumbering, LocalDate numberingFrom, boolean changeCap, BigDecimal cap,
-            Map<String, Integer> gradeTerms) {
+    public Sheet set(String sheetId, String user, Dated<BigDecimal> limit, Dated<BigDecimal> floor,
+            Dated<Integer> terms, Dated<BigDecimal> latePct, boolean changePolicy, LocalDate policyDate,
+            boolean changeNumbering, LocalDate numberingFrom, Dated<BigDecimal> cap,
+            Map<String, Dated<Integer>> gradeTerms) {
         Sheet sheet = sheets.load(sheetId, user);
-        if (changeLimit) {
-            sheet.setClerkLimit(limit);
-            sheet = sheetStore.saveAndFlush(sheet);
-            audit.recordOnCommit(changed(sheetId, user, CLERK_LIMIT, text(limit)));
+        if (limit != null) {
+            sheet = record(sheet, user, CLERK_LIMIT, limit.value(), limit.from(), text(limit.value()), false);
         }
         if (floor != null) {
-            RollupService.Snapshot before = rollup.snapshot(sheetId);
-            sheet.setFloor(floor);
-            sheet = sheetStore.saveAndFlush(sheet);
-            audit.recordOnCommit(changed(sheetId, user, FLOOR, text(floor)));
-            rollup.recordChanges(sheetId, user, before);
+            sheet = record(sheet, user, FLOOR, floor.value(), floor.from(), text(floor.value()), true);
         }
         if (terms != null) {
-            sheet.setTerms(terms);
-            sheet = sheetStore.saveAndFlush(sheet);
-            audit.recordOnCommit(changed(sheetId, user, TERMS, String.valueOf(terms)));
+            sheet = record(sheet, user, TERMS, BigDecimal.valueOf(terms.value()), terms.from(),
+                    String.valueOf(terms.value()), false);
         }
         if (latePct != null) {
-            RollupService.Snapshot before = rollup.snapshot(sheetId);
-            sheet.setLatePct(latePct);
-            sheet = sheetStore.saveAndFlush(sheet);
-            audit.recordOnCommit(changed(sheetId, user, LATE_PCT, text(latePct)));
-            rollup.recordChanges(sheetId, user, before);
+            sheet = record(sheet, user, LATE_PCT, latePct.value(), latePct.from(), text(latePct.value()), true);
         }
         if (changePolicy) {
             RollupService.Snapshot before = rollup.snapshot(sheetId);
@@ -106,19 +110,32 @@ public class SettingService {
             audit.recordOnCommit(changed(sheetId, user, PERIOD_NUMBERING_FROM,
                     numberingFrom == null ? "" : numberingFrom.toString()));
         }
-        if (changeCap) {
-            RollupService.Snapshot before = rollup.snapshot(sheetId);
-            sheet.setCap(cap);
-            sheet = sheetStore.saveAndFlush(sheet);
-            audit.recordOnCommit(changed(sheetId, user, CAP, text(cap)));
-            rollup.recordChanges(sheetId, user, before);
+        if (cap != null) {
+            sheet = record(sheet, user, CAP, cap.value(), cap.from(), text(cap.value()), true);
         }
-        for (Map.Entry<String, Integer> e : new TreeMap<>(gradeTerms).entrySet()) {
-            sheet.setGradeTerms(e.getKey(), e.getValue());
-            sheet = sheetStore.saveAndFlush(sheet);
-            audit.recordOnCommit(changed(sheetId, user, GRADE_TERMS + e.getKey(), String.valueOf(e.getValue())));
+        for (Map.Entry<String, Dated<Integer>> e : new TreeMap<>(gradeTerms).entrySet()) {
+            Dated<Integer> t = e.getValue();
+            sheet = record(sheet, user, GRADE_TERMS + e.getKey(), BigDecimal.valueOf(t.value()), t.from(),
+                    String.valueOf(t.value()), false);
         }
         return sheet;
+    }
+
+    /**
+     * Record a setting's value from a from-date (null: the sheet's today) and audit it; when it
+     * {@code moves} the figures, the figures that move are recorded too.
+     */
+    private Sheet record(Sheet sheet, String user, String key, BigDecimal value, LocalDate from, String text,
+            boolean moves) {
+        String sheetId = sheet.getId();
+        RollupService.Snapshot before = moves ? rollup.snapshot(sheetId) : null;
+        sheet.record(key, from != null ? from : sheet.getToday(), value);
+        Sheet saved = sheetStore.saveAndFlush(sheet);
+        audit.recordOnCommit(changed(sheetId, user, key, text) + (from != null ? " from=" + from : ""));
+        if (moves) {
+            rollup.recordChanges(sheetId, user, before);
+        }
+        return saved;
     }
 
     private static String changed(String sheetId, String user, String key, String value) {

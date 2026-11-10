@@ -105,7 +105,7 @@ public class ClaimService {
         String corrected = corrected(sheetId, personId, amount, corrects);
         RollupService.Snapshot before = rollup.snapshot(sheetId);
         Claim claim = new Claim(sheetId, personId, amount, dated,
-                dated.plusDays(sheets.sheet(sheetId).termsFor(person.gradeOn(dated))), note, corrected);
+                dated.plusDays(sheets.sheet(sheetId).termsFor(person.gradeOn(dated), dated)), note, corrected);
         logStatus(sheetId, user, person, claim);
         Claim added = claims.saveAndFlush(claim);
         audit.recordOnCommit(record("CLAIM_ADDED", sheetId, user, person, added));
@@ -363,7 +363,7 @@ public class ClaimService {
 
     /**
      * The due on a claim's amount at the rate for the person's grade in force on the claim's date,
-     * rounded to the cent as the claim rounds (see {@link Rounding}) and raised to the sheet's floor (a correction's is not); null with no
+     * rounded to the cent as the claim rounds (see {@link Rounding}) and raised to the floor in force on the claim's date (a correction's is not); null with no
      * rate in force then.
      */
     public BigDecimal due(String sheetId, Person person, Claim claim) {
@@ -371,7 +371,7 @@ public class ClaimService {
         RoundingMode rounding = Rounding.mode(sheet, roundingDate(sheetId, claim));
         return rates.findInForce(sheetId, person.gradeOn(claim.getDate()), claim.getDate()).map(Rate::getPct)
                 .map(pct -> claim.getAmount().multiply(pct).divide(BigDecimal.valueOf(100), 2, rounding))
-                .map(due -> claim.isCorrection() ? due : due.max(sheet.getFloor()))
+                .map(due -> claim.isCorrection() ? due : due.max(sheet.floorOn(claim.getDate())))
                 .orElse(null);
     }
 

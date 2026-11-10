@@ -51,19 +51,13 @@ public class SheetService {
         return sheets.findById(id).orElseGet(() -> new Sheet(id, null, null, LocalDate.now()));
     }
 
-    /** The sheet's clerk limit: the most a clerk may settle a claim's due at; null for no limit. */
+    /** The sheet's clerk limit in force on its today: the most a clerk may settle a claim's due at; null for no limit. */
     @Transactional(readOnly = true)
     public BigDecimal clerkLimit(String id) {
         return sheets.findById(id).map(Sheet::getClerkLimit).orElse(null);
     }
 
-    /** The sheet's floor: the least a claim's live due can be. */
-    @Transactional(readOnly = true)
-    public BigDecimal floor(String id) {
-        return sheets.findById(id).map(Sheet::getFloor).orElse(Sheet.DEFAULT_FLOOR);
-    }
-
-    /** A person's due-total held to the sheet's cap (none: as it is; n/a stays n/a). */
+    /** A person's due-total held to the sheet's cap in force on its today (none: as it is; n/a stays n/a). */
     @Transactional(readOnly = true)
     public BigDecimal capped(String id, BigDecimal dueTotal) {
         return sheets.findById(id).map(s -> s.capped(dueTotal)).orElse(dueTotal);

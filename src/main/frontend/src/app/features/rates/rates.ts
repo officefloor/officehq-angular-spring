@@ -107,17 +107,45 @@ export function claimDueCents(c: Claim, rates: readonly Rate[], grade: string, f
   return due === null || isCorrection(c) ? due : Math.max(due, floor);
 }
 
-/** What works out an overdue claim's late charge and rounding: the sheet's late percent,
- *  today and policy date (blank: the sheet's today). */
+/** One value recorded for a dated setting: in force from its from-date (blank: from the
+ *  beginning of time) until the next. A blank value is none (no limit, no cap). */
+export interface DatedValue {
+  from: string;
+  value: string;
+}
+
+/**
+ * The value of a dated setting in force on a date (yyyy-mm-dd): the one with the latest from-date
+ * on or before it, one from the beginning of time counting as the earliest. `start` before every
+ * from-date.
+ */
+export function valueOn(values: readonly DatedValue[], date: string | null, start: string): string {
+  let best: DatedValue | undefined;
+  for (const v of values) {
+    if (v.from !== '' && (date === null || v.from > date)) continue;
+    if (best === undefined || best.from < v.from) best = v;
+  }
+  return best?.value ?? start;
+}
+
+/** The floor a sheet starts with: in force before its first recorded floor. */
+export const START_FLOOR = '1.00';
+
+/** The late percent a sheet starts with: in force before its first recorded late percent. */
+export const START_LATE_PCT = '0.00';
+
+/** What works out an overdue claim's late charge and rounding: the sheet's late percents (each
+ *  claim's is the one in force on its date), today and policy date (blank: the sheet's today). */
 export interface Lateness {
-  latePct: string;
+  latePcts: readonly DatedValue[];
   today: string | null;
   policyDate: string;
 }
 
 /**
- * A claim's due in whole cents as shown: its figure (see {@link claimDueCents}) with, when it is
- * overdue, the late percent of that figure for every full 30 days overdue added on top, rounded
+ * A claim's due in whole cents as shown: its figure (see {@link claimDueCents}, raised to the floor
+ * in force on the claim's date) with, when it is overdue, the late percent in force on the claim's
+ * date of that figure for every full 30 days overdue added on top, rounded
  * to whole cents. Both round as the claim rounds by `roundOn` (see {@link roundsHalfUp}). The
  * charge is never bound by a statement; a settled claim's due already holds the charge it was
  * settled with. Null when it has no figure.
@@ -126,16 +154,16 @@ export function chargedDueCents(
   c: Claim,
   rates: readonly Rate[],
   grade: string,
-  floor: number,
+  floors: readonly DatedValue[],
   late: Lateness,
   roundOn: string,
 ): number | null {
   const halfUp = roundsHalfUp(roundOn, late.policyDate, late.today);
-  const figure = claimDueCents(c, rates, grade, floor, halfUp);
+  const figure = claimDueCents(c, rates, grade, cents(valueOn(floors, c.date, START_FLOOR)), halfUp);
   if (figure === null || !isOpen(c) || isCorrection(c)) return figure;
   const periods = Math.floor(daysOverdue(c, late.today) / 30);
   if (periods <= 0) return figure;
-  return figure + (dueCents(figure * periods, late.latePct, halfUp) ?? 0);
+  return figure + (dueCents(figure * periods, valueOn(late.latePcts, c.date, START_LATE_PCT), halfUp) ?? 0);
 }
 
 /** A due in whole cents with two decimals, or n/a when there is no rate. */
