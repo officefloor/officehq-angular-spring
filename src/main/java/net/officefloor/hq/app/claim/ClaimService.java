@@ -427,6 +427,31 @@ public class ClaimService {
     }
 
     /**
+     * Remind an OPEN or PENDING claim: write REMIND and mark it reminded on the sheet's today.
+     * Refused (409) for a claim in any other status or already reminded on the sheet's today.
+     */
+    @Transactional
+    public Claim remind(String sheetId, String user, long id) {
+        roles.refuseViewer(sheetId, user);
+        Claim claim = claims.findByIdAndSheetId(id, sheetId)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "No such claim on this sheet."));
+        if (claim.getStatus() != ClaimStatus.OPEN && claim.getStatus() != ClaimStatus.PENDING) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT,
+                    "A " + claim.getStatus() + " claim cannot be reminded.");
+        }
+        LocalDate today = sheets.today(sheetId);
+        if (today.equals(claim.getRemindedOn())) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT, "This claim was already reminded today.");
+        }
+        Person person = person(sheetId, claim.getPersonId());
+        claim.setRemindedOn(today);
+        Claim saved = claims.saveAndFlush(claim);
+        audit.recordOnCommit(record("REMIND", sheetId, user, person, saved)
+                + (saved.getNumber() != null ? " number=" + saved.getNumber() : ""));
+        return saved;
+    }
+
+    /**
      * Re-settle a SETTLED claim: fix its due again at the figure it would have on the sheet's today
      * as an open claim bound by no statement, with its late charge. Refused (403) for anyone but a
      * steward, (409) for a claim that is not SETTLED and (423) when dated inside a closed period.

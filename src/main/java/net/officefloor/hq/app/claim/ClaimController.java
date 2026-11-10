@@ -91,7 +91,7 @@ public class ClaimController {
             ClaimStatus status, String number, String settledDue, String openedBy,
             boolean stated, String statedDue, String corrects, LocalDate dueBy, List<ClaimLogLine> log,
             LocalDate deferredUntil, int proofs, String splitFrom, String lockedBy,
-            boolean lateEntry) {
+            boolean lateEntry, LocalDate remindedOn) {
     }
 
     /** One line of a claim's status log, oldest first. */
@@ -111,7 +111,7 @@ public class ClaimController {
                 claim.getLog().stream().map(l -> new ClaimLogLine(l.getStatus(), l.getBy(), l.getDate(), l.getDue()))
                         .toList(),
                 claim.getDeferredUntil(), claim.getProofs(), claim.getSplitFrom(), claim.getLockedBy(),
-                claim.isLateEntry());
+                claim.isLateEntry(), claim.getRemindedOn());
     }
 
     public static BigDecimal amount(String amount) {
@@ -212,6 +212,11 @@ public class ClaimController {
     @PostMapping("/proof")
     public ClaimResponse proof(@Valid @RequestBody ClaimStatusRequest req) {
         return response(service.addProof(req.sheet().trim(), req.user().trim(), req.id()));
+    }
+
+    @PostMapping("/remind")
+    public ClaimResponse remind(@Valid @RequestBody ClaimStatusRequest req) {
+        return response(service.remind(req.sheet().trim(), req.user().trim(), req.id()));
     }
 
     @PostMapping("/reassign")

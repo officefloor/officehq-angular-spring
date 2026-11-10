@@ -42,6 +42,9 @@ import { DatedGrade, DatedValue, Lateness, Rate, chargedDueCents, dueText, grade
 // Each claim shows its proofs count, raised by one with its proof button (refused for a SETTLED or
 // VOID claim, or one in a closed period). A claim whose due is above the proof threshold in force on
 // its date cannot be settled or approved while it has no proofs: refused with an error on the claim.
+// An OPEN or PENDING claim can be reminded with its remind button, once per sheet-today: it shows
+// the last day a reminder was written (refused for a claim in any other status or already reminded
+// on the sheet's today).
 // A claim whose due is above the note threshold in force on its date cannot be opened while its
 // note is empty: refused with an error on the claim (by the bulk button, counted as refused).
 // An OPEN claim can be split: an amount more than 0.00 and less than its own is split off into a new
@@ -89,6 +92,8 @@ export interface Claim {
   lockedBy: string | null;
   /** Whether the claim was added while the period its due-by falls in was soft-closed. */
   lateEntry: boolean;
+  /** The last sheet-today a reminder was written for the claim; null when never reminded. */
+  remindedOn: string | null;
 }
 
 /** One line of a claim's status log. */
@@ -295,6 +300,7 @@ export function money(c: number): string {
           <span>Proofs <span data-testid="claim-proofs">{{ c.proofs }}</span></span>
           <span>Split from <span data-testid="claim-split-from">{{ c.splitFrom ?? '' }}</span></span>
           <span>Late entry <span data-testid="claim-late-entry">{{ c.lateEntry ? 'yes' : 'no' }}</span></span>
+          <span>Reminded <span data-testid="claim-reminded">{{ c.remindedOn ?? '' }}</span></span>
           <ol [attr.aria-label]="'Status log of claim of ' + c.amount + ' on ' + c.date">
             @for (l of c.log; track $index) {
               <li data-testid="claim-log-line">{{ l.status }} by {{ l.by }} on {{ l.date }} due={{ l.due }}</li>
@@ -313,6 +319,7 @@ export function money(c: number): string {
           />
           <button type="button" data-testid="claim-reject" (click)="act(c, 'reject')">Reject</button>
           <button type="button" data-testid="claim-proof" (click)="addProof(c)">Add proof</button>
+          <button type="button" data-testid="claim-remind" (click)="remind(c)">Remind</button>
           <button type="button" data-testid="claim-void" (click)="act(c, 'void')">Void</button>
           <label [for]="'claim-defer-date-' + c.id">Defer until</label>
           <input
@@ -775,6 +782,32 @@ export class PersonClaims {
           : status === 409
             ? `A ${c.status} claim cannot have a proof added.`
             : 'Could not add a proof to this claim.';
+      this.actionErrors.update((m) => new Map(m).set(c.id, err));
+    }
+  }
+
+  /** Remind an OPEN or PENDING claim; the server refuses any other status, and a second reminder
+   *  on the same sheet-today. */
+  protected async remind(c: Claim): Promise<void> {
+    this.clearActionError(c.id);
+    const sheet = this.session.sheet();
+    try {
+      const claim = await firstValueFrom(
+        this.http.post<Claim>('/api/claims/remind', { sheet, user: this.session.user(), id: c.id }),
+      );
+      if (this.session.sheet() !== sheet) return;
+      this.saved.emit(claim);
+    } catch (e) {
+      if (this.session.sheet() !== sheet) return;
+      const status = e instanceof HttpErrorResponse ? e.status : 0;
+      const err =
+        status === 409
+          ? c.status === 'OPEN' || c.status === 'PENDING'
+            ? 'This claim was already reminded today.'
+            : `A ${c.status} claim cannot be reminded.`
+          : status === 403
+            ? 'You may not remind this claim.'
+            : 'Could not remind this claim.';
       this.actionErrors.update((m) => new Map(m).set(c.id, err));
     }
   }

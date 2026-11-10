@@ -113,6 +113,10 @@ public class Claim {
     @Column(name = "deferred_on")
     private LocalDate deferredOn;
 
+    /** The last sheet-today a reminder was written for the claim; none when never reminded. */
+    @Column(name = "reminded_on")
+    private LocalDate remindedOn;
+
     /** How many proofs the claim has: raised by one at a time, never while SETTLED or VOID. */
     @Column(name = "proofs", nullable = false)
     private int proofs;
@@ -340,6 +344,14 @@ public class Claim {
 
     public int getProofs() {
         return proofs;
+    }
+
+    public LocalDate getRemindedOn() {
+        return remindedOn;
+    }
+
+    public void setRemindedOn(LocalDate remindedOn) {
+        this.remindedOn = remindedOn;
     }
 
     /** Raise the claim's proofs count by one. */
