@@ -1,0 +1,173 @@
+diff --git a/src/main/frontend/src/app/features/crews/crews.ts b/src/main/frontend/src/app/features/crews/crews.ts
+index aadaea79b..0c7fcd60f 100644
+--- a/src/main/frontend/src/app/features/crews/crews.ts
++++ b/src/main/frontend/src/app/features/crews/crews.ts
+@@ -18,7 +18,8 @@ export interface CrewMember {
+ export interface Crew {
+   id: number;
+   name: string;
+-  leadId: number;
++  /** Null once the lead has left the sheet. */
++  leadId: number | null;
+   lead: string;
+   members: CrewMember[];
+ }
+@@ -33,7 +34,7 @@ export interface CrewPerson {
+ /** A crew's due-total in whole cents: its lead's and members' due-totals added up, n/a skipped. */
+ export function crewDueCents(crew: Crew, people: CrewPerson[]): number {
+   const dues = new Map(people.map((p) => [p.id, p.due]));
+-  return [crew.leadId, ...crew.members.map((m) => m.personId)].reduce((sum, id) => sum + (dues.get(id) ?? 0), 0);
++  return [crew.leadId ?? 0, ...crew.members.map((m) => m.personId)].reduce((sum, id) => sum + (dues.get(id) ?? 0), 0);
+ }
+ 
+ function refusal(e: unknown, what: string): string {
+diff --git a/src/main/frontend/src/app/features/rates/rates.ts b/src/main/frontend/src/app/features/rates/rates.ts
+index 261e705ed..813534d2d 100644
+--- a/src/main/frontend/src/app/features/rates/rates.ts
++++ b/src/main/frontend/src/app/features/rates/rates.ts
+@@ -336,6 +336,26 @@ export function dueText(c: number | null): string {
+           }
+         </tbody>
+       </table>
++      <table aria-label="Rate calendar">
++        <thead>
++          <tr>
++            <th scope="col">Grade</th>
++            @for (m of calendarMonths(); track m) {
++              <th scope="col">{{ m }}</th>
++            }
++          </tr>
++        </thead>
++        <tbody>
++          @for (g of grades; track g) {
++            <tr>
++              <th scope="row">{{ g }}</th>
++              @for (m of calendarMonths(); track m) {
++                <td [attr.data-testid]="'rate-month-' + g + '-' + m">{{ (calendar().get(g + '-' + m) ?? 'n/a') | figure }}</td>
++              }
++            </tr>
++          }
++        </tbody>
++      </table>
+       <table data-testid="rates-list" aria-label="All rates">
+         <thead>
+           <tr>
+@@ -380,6 +400,21 @@ export class Rates {
+     const today = this.session.today();
+     return new Map(GRADES.map((g) => [g, pctOn(this.rates(), g, today)]));
+   });
++  /** Each month (yyyy-mm) of the sheet's today's calendar year; none without a today. */
++  protected readonly calendarMonths = computed(() => {
++    const year = this.session.today()?.slice(0, 4);
++    if (!year) return [];
++    return Array.from({ length: 12 }, (_, i) => `${year}-${String(i + 1).padStart(2, '0')}`);
++  });
++  /** Each grade's rate in force on the first day of each calendar month, keyed grade-yyyy-mm. */
++  protected readonly calendar = computed(() => {
++    const rates = this.rates();
++    const out = new Map<string, string | undefined>();
++    for (const g of GRADES) {
++      for (const m of this.calendarMonths()) out.set(`${g}-${m}`, pctOn(rates, g, `${m}-01`));
++    }
++    return out;
++  });
+   protected readonly gradeInput = signal<string>('A');
+   protected readonly pctInput = signal('');
+   protected readonly fromInput = signal('');
+diff --git a/src/main/java/net/officefloor/hq/app/crew/Crew.java b/src/main/java/net/officefloor/hq/app/crew/Crew.java
+index 146f67c01..11413106a 100644
+--- a/src/main/java/net/officefloor/hq/app/crew/Crew.java
++++ b/src/main/java/net/officefloor/hq/app/crew/Crew.java
+@@ -7,7 +7,7 @@ import jakarta.persistence.GenerationType;
+ import jakarta.persistence.Id;
+ import jakarta.persistence.Table;
+ 
+-/** A crew on the sheet: a name, at most once on the sheet, and its lead, a person on the sheet. */
++/** A crew on the sheet: a name, at most once on the sheet, and its lead, a person on the sheet (none once the lead has left it). */
+ @Entity
+ @Table(name = "crew")
+ public class Crew {
+@@ -22,7 +22,7 @@ public class Crew {
+     @Column(name = "name", nullable = false)
+     private String name;
+ 
+-    @Column(name = "lead_id", nullable = false)
++    @Column(name = "lead_id")
+     private Long leadId;
+ 
+     protected Crew() {
+diff --git a/src/main/java/net/officefloor/hq/app/crew/CrewService.java b/src/main/java/net/officefloor/hq/app/crew/CrewService.java
+index dae4258d1..a1e4e5f98 100644
+--- a/src/main/java/net/officefloor/hq/app/crew/CrewService.java
++++ b/src/main/java/net/officefloor/hq/app/crew/CrewService.java
+@@ -33,7 +33,7 @@ public class CrewService {
+     }
+ 
+     /** A crew as listed: its lead (id and current name) and its members in the order they were added. */
+-    public record CrewView(long id, String name, long leadId, String lead, List<MemberView> members) {
++    public record CrewView(long id, String name, Long leadId, String lead, List<MemberView> members) {
+     }
+ 
+     private final CrewRepository crews;
+@@ -131,7 +131,7 @@ public class CrewService {
+                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "No such crew."));
+         Person person = people.findByIdAndSheetId(personId, sheetId)
+                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.UNPROCESSABLE_ENTITY, "Choose a person."));
+-        if (crew.getLeadId().equals(person.getId())) {
++        if (person.getId().equals(crew.getLeadId())) {
+             throw new ResponseStatusException(HttpStatus.CONFLICT, "That person leads the crew.");
+         }
+         if (members.existsByCrewIdAndPersonId(crew.getId(), person.getId())) {
+@@ -162,7 +162,7 @@ public class CrewService {
+         members.flush();
+         for (CrewMember member : members.findByPersonIdOrderByIdAsc(fromId)) {
+             Crew crew = crews.findById(member.getCrewId()).orElse(null);
+-            if (crew == null || crew.getLeadId().equals(intoId)
++            if (crew == null || Long.valueOf(intoId).equals(crew.getLeadId())
+                     || members.existsByCrewIdAndPersonId(member.getCrewId(), intoId)) {
+                 members.delete(member);
+             } else {
+@@ -173,17 +173,15 @@ public class CrewService {
+         members.flush();
+     }
+ 
+-    /** A person leaving the sheet: their memberships go, and so do the crews they lead with their members. */
++    /** A person leaving the sheet: their memberships go, and the crews they lead are left without a lead. */
+     @Transactional
+     public void drop(long personId) {
+         members.deleteAll(members.findByPersonIdOrderByIdAsc(personId));
+         members.flush();
+-        List<Crew> led = crews.findByLeadIdOrderByIdAsc(personId);
+-        if (!led.isEmpty()) {
+-            members.deleteAll(members.findByCrewIdInOrderByIdAsc(led.stream().map(Crew::getId).toList()));
+-            members.flush();
+-            crews.deleteAll(led);
+-            crews.flush();
++        for (Crew crew : crews.findByLeadIdOrderByIdAsc(personId)) {
++            crew.setLeadId(null);
++            crews.save(crew);
+         }
++        crews.flush();
+     }
+ }
+diff --git a/src/main/java/net/officefloor/hq/app/person/PersonTransferService.java b/src/main/java/net/officefloor/hq/app/person/PersonTransferService.java
+index f9c5e65f4..6d0b9630c 100644
+--- a/src/main/java/net/officefloor/hq/app/person/PersonTransferService.java
++++ b/src/main/java/net/officefloor/hq/app/person/PersonTransferService.java
+@@ -35,7 +35,7 @@ import org.springframework.web.server.ResponseStatusException;
+  * then by the order they were added). Figures a statement bound are kept, their statements go with
+  * them (listed before those of a person they merge into, whose last statement stays theirs, or, having
+  * none, becomes the transferred person's), and references are not carried. They leave this sheet entirely: patron links, pool
+- * memberships, crew memberships (and the crews they lead), holds and watches are dropped. They and their claims arrive as new rows, so
++ * memberships, crew memberships (the crews they lead are left without a lead), holds and watches are dropped. They and their claims arrive as new rows, so
+  * this sheet's history (its as-of view) keeps its own. When the other sheet already has a person
+  * with their name or an alias, they are merged into that person instead, as a merge does: their
+  * claims are listed after that person's, their name and aliases become that person's aliases, and
+diff --git a/src/main/resources/db/migration/V92__crew_lead_optional.sql b/src/main/resources/db/migration/V92__crew_lead_optional.sql
+new file mode 100644
+index 000000000..bdd5e19eb
+--- /dev/null
++++ b/src/main/resources/db/migration/V92__crew_lead_optional.sql
+@@ -0,0 +1,2 @@
++-- A crew keeps going when its lead leaves the sheet: it is then without a lead.
++ALTER TABLE crew ALTER COLUMN lead_id DROP NOT NULL;
