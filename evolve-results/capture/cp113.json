@@ -1,0 +1,64 @@
+{
+  "checkpoint": 113,
+  "stack": {
+    "repo": "/home/daniel/officehq-angular-spring",
+    "origin": "git@github.com:officefloor/officehq-angular-spring.git",
+    "name": "officehq-angular-spring",
+    "base_ref": "base-empty",
+    "base_commit": "65cb8233ea38b2dfa6cfd18709e30cd18fdf3250"
+  },
+  "checkpoint_id": "cp113_import-people",
+  "phase": "mid",
+  "type": "additive",
+  "mutates": [],
+  "replaced_tests": [],
+  "request": {
+    "spec": "People can be pasted in as lines of name,grade,terms,contact into an import box (the last two may\nbe absent or blank). Every line is checked first with exactly the person form's rules (names, aliases,\ncontacts, grades, terms; a name or contact repeated within the paste is an error): if any line\nfails, an error shows on the box and nothing is imported; otherwise every person is added in order,\neach as the form would add them (PERSON_ADDED with the same fields). Show how many were added.\n",
+    "prompt": "You are implementing ONE change to this application.\n\nFIRST read AGENTS.md \u2014 it states the working rules and how the app is tested, and sends you to\nDESIGN.md for the app's stack and conventions. Follow both.\n\nTHE CHANGE REQUEST:\nPeople can be pasted in as lines of name,grade,terms,contact into an import box (the last two may\nbe absent or blank). Every line is checked first with exactly the person form's rules (names, aliases,\ncontacts, grades, terms; a name or contact repeated within the paste is an error): if any line\nfails, an error shows on the box and nothing is imported; otherwise every person is added in order,\neach as the form would add them (PERSON_ADDED with the same fields). Show how many were added.\n\nYour work is verified by an automated Playwright UI test already installed under e2e/specs/.\nRead that spec: it declares the exact data-testid anchors, values, test data and any audit\nrecords it expects \u2014 match them. Run `bin/e2e` to build the app, start it, and run the test as\nyou work; iterate until it passes. Change whatever the request needs across the app \u2014 its stored\ndata, its server and its front end. Do NOT edit bin/build, bin/start, bin/stop, bin/e2e,\nAGENTS.md, CLAUDE.md, DESIGN.md, e2e/support/ or the test spec.\n"
+  },
+  "commit_sha": "7675b58229616c5d8ce04c4d2ea3d7daa3c9ebbb",
+  "reset_sha": "",
+  "preagent_sha": "d1b9151bf15fb9e9303f43d257fa696841bceb55",
+  "prev_sha": "d1b9151bf15fb9e9303f43d257fa696841bceb55",
+  "base_sha": "65cb8233ea38b2dfa6cfd18709e30cd18fdf3250",
+  "agent": {
+    "ok": true,
+    "cost_usd": 0.7745740000000001,
+    "input_tokens": 32,
+    "output_tokens": 7683,
+    "cache_read_tokens": 734010,
+    "cache_creation_tokens": 59248,
+    "num_turns": 19,
+    "duration_ms": 279377,
+    "duration_api_ms": 74421,
+    "model": "claude-opus-5-5",
+    "session_id": "74effd93-58ea-4ea4-a100-c16bc9b78006",
+    "stop_reason": "success",
+    "result_text": "The import box for pasting in people is in place, and all 4 tests in `bin/e2e` pass.\n\n**Server**\n- **New `PersonImportService`:** it reads each non-blank line as `name,grade,terms,contact`, where terms and contact may be missing or blank. Every line is checked first, using the person form's rules:\n  - a name is required;\n  - the grade must be A, B or C;\n  - terms must be a whole number of up to 6 digits, if given;\n  - a contact is trimmed and lower-cased.\n- **Repeats within the paste:** a name (ignoring case) or a contact that appears twice in the paste refuses the whole import. A paste with no lines is also refused, and a viewer can't import at all.\n- **Adding:** once every line passes, each person goes through the existing `PersonService.add`, in order. So the name, alias and contact checks against the sheet and its tree are the same as the form's, and each person writes the same `PERSON_ADDED` record and rollup records.\n- **All or nothing:** the import runs as one transaction. If any person is refused, everything rolls back and no audit lines are written.\n- **New endpoint:** `POST /api/people/import` (in `PersonController`) returns `{ added, people }`.\n\n**Front end** (`people.ts`)\n- Below the person form there's now an \"Import people\" textarea (`import-people`), an Import button (`import-submit`), the count added (`import-added`) and an error (`import-error`).\n- The count is cleared when Import is pressed again. The error is cleared when the text changes or the form is submitted again. Both reset when another sheet is loaded.\n\nI didn't check whether Spring sends the server's error text back to the browser by default. If it doesn't, the error shows a general message (\"Could not import these people; nothing was added.\") rather than which line failed.",
+    "error": "",
+    "attempts": [
+      {
+        "ok": true,
+        "limit_reached": false,
+        "retryable": false,
+        "timed_out": false,
+        "cost_usd": 0.7745740000000001,
+        "num_turns": 19,
+        "duration_ms": 279377,
+        "duration_api_ms": 74421,
+        "error": ""
+      }
+    ]
+  },
+  "agent_stream_file": "cp113.agent.jsonl",
+  "agent_diff_file": "cp113.agent.diff",
+  "build_log_file": null,
+  "tests": {
+    "gated": false,
+    "queued": true
+  },
+  "probe": null,
+  "pinned_touched": [],
+  "acceptance_touched": [],
+  "impact_gate": null
+}
