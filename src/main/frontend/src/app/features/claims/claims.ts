@@ -2,6 +2,7 @@ import { HttpClient, HttpErrorResponse } from '@angular/common/http';
 import { Component, computed, inject, input, linkedSignal, output, signal, untracked } from '@angular/core';
 import { firstValueFrom } from 'rxjs';
 import { Session } from '../../core/session';
+import { VoidReasons } from '../../core/void-reasons';
 import { Period, inClosedPeriod, periodOn } from '../periods/periods';
 import { DatedGrade, DatedValue, Lateness, Rate, chargedDueCents, dueText, graceOn, gradeOn } from '../rates/rates';
 
@@ -104,6 +105,8 @@ export interface Claim {
   lateEntry: boolean;
   /** The last sheet-today a reminder was written for the claim; null when never reminded. */
   remindedOn: string | null;
+  /** The reason the claim was voided with, from the sheet's void reasons; null when none. */
+  voidReason: string | null;
 }
 
 /** One line of a claim's status log. */
@@ -347,6 +350,19 @@ export function money(c: number): string {
           <button type="button" data-testid="claim-reject" (click)="act(c, 'reject')">Reject</button>
           <button type="button" data-testid="claim-proof" (click)="addProof(c)">Add proof</button>
           <button type="button" data-testid="claim-remind" (click)="remind(c)">Remind</button>
+          @if (voidReasons.list().length > 0) {
+            <label [for]="'claim-void-reason-' + c.id">Void reason</label>
+            <select
+              [id]="'claim-void-reason-' + c.id"
+              data-testid="claim-void-reason"
+              (change)="setVoidReason(c.id, $any($event.target).value)"
+            >
+              <option value="" [selected]="!voidReasonsChosen().get(c.id)">(choose)</option>
+              @for (r of voidReasons.list(); track r.id) {
+                <option [value]="r.reason" [selected]="voidReasonsChosen().get(c.id) === r.reason">{{ r.reason }}</option>
+              }
+            </select>
+          }
           <button type="button" data-testid="claim-void" (click)="act(c, 'void')">Void</button>
           <label [for]="'claim-defer-date-' + c.id">Defer until</label>
           <input
@@ -479,6 +495,10 @@ export class PersonClaims {
   protected readonly actionErrors = signal<ReadonlyMap<number, string>>(new Map());
   /** The reason typed for rejecting each claim, by claim id. */
   protected readonly reasons = signal<ReadonlyMap<number, string>>(new Map());
+  /** The sheet's void reasons, one of which a void needs while there are any. */
+  protected readonly voidReasons = inject(VoidReasons);
+  /** The void reason chosen for each claim, by claim id. */
+  protected readonly voidReasonsChosen = signal<ReadonlyMap<number, string>>(new Map());
   /** The date typed to defer each claim until, by claim id. */
   protected readonly deferDates = signal<ReadonlyMap<number, string>>(new Map());
   /** The new date typed for each claim, by claim id. */
@@ -662,6 +682,11 @@ export class PersonClaims {
 
   protected setReason(id: number, reason: string): void {
     this.reasons.update((m) => new Map(m).set(id, reason));
+    this.clearActionError(id);
+  }
+
+  protected setVoidReason(id: number, reason: string): void {
+    this.voidReasonsChosen.update((m) => new Map(m).set(id, reason));
     this.clearActionError(id);
   }
 
@@ -944,11 +969,22 @@ export class PersonClaims {
       this.actionErrors.update((m) => new Map(m).set(c.id, 'Enter a one-word reason to reject this claim.'));
       return;
     }
-    const body = { sheet, user: this.session.user(), id: c.id, ...(action === 'reject' ? { reason } : {}) };
+    const voidReason = this.voidReasonsChosen().get(c.id) ?? '';
+    if (action === 'void' && this.voidReasons.list().length > 0 && !voidReason) {
+      this.actionErrors.update((m) => new Map(m).set(c.id, 'Choose a reason to void this claim.'));
+      return;
+    }
+    const body = {
+      sheet,
+      user: this.session.user(),
+      id: c.id,
+      ...(action === 'reject' ? { reason } : action === 'void' && voidReason ? { reason: voidReason } : {}),
+    };
     try {
       const claim = await firstValueFrom(this.http.post<Claim>(`/api/claims/${action}`, body));
       if (this.session.sheet() !== sheet) return;
       if (action === 'reject') this.setReason(c.id, '');
+      if (action === 'void') this.setVoidReason(c.id, '');
       this.saved.emit(claim);
     } catch (e) {
       if (this.session.sheet() !== sheet) return;
@@ -967,6 +1003,8 @@ export class PersonClaims {
                 : `Your role may not ${action} a claim on this sheet.`
           : e instanceof HttpErrorResponse && e.status === 423
             ? CLOSED
+            : e instanceof HttpErrorResponse && e.status === 422 && action === 'void'
+              ? 'Choose a reason from the void reasons to void this claim.'
             : e instanceof HttpErrorResponse && e.status === 422 && action === 'open'
               ? 'This claim is due above the note threshold and cannot be opened with an empty note.'
             : e instanceof HttpErrorResponse && e.status === 422

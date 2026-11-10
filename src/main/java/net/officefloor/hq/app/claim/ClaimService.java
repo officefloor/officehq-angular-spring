@@ -23,6 +23,7 @@ import net.officefloor.hq.app.role.RoleService;
 import net.officefloor.hq.app.rollup.RollupService;
 import net.officefloor.hq.app.sheet.Sheet;
 import net.officefloor.hq.app.sheet.SheetService;
+import net.officefloor.hq.app.voidreason.VoidReasonService;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -84,10 +85,12 @@ public class ClaimService {
     private final WatchRepository watches;
     private final HolidayService holidays;
     private final UsedTagRepository usedTags;
+    private final VoidReasonService voidReasons;
 
     public ClaimService(ClaimRepository claims, PersonRepository people, RateRepository rates, SheetService sheets,
             Audit audit, RollupService rollup, PeriodService periods, RoleService roles, WatchRepository watches,
-            HolidayService holidays, UsedTagRepository usedTags) {
+            HolidayService holidays, UsedTagRepository usedTags, VoidReasonService voidReasons) {
+        this.voidReasons = voidReasons;
         this.holidays = holidays;
         this.usedTags = usedTags;
         this.roles = roles;
@@ -275,7 +278,16 @@ public class ClaimService {
      */
     @Transactional
     public Claim changeStatus(String sheetId, String user, long id, ClaimStatus next) {
-        return changeStatus(sheetId, user, id, next, null, false);
+        return changeStatus(sheetId, user, id, next, null, false, null);
+    }
+
+    /**
+     * Void a claim, as {@link #changeStatus(String, String, long, ClaimStatus)}, with a reason from
+     * the sheet's void reasons: while the sheet has any, a void without one of them is refused (422).
+     */
+    @Transactional
+    public Claim voidClaim(String sheetId, String user, long id, String voidReason) {
+        return changeStatus(sheetId, user, id, ClaimStatus.VOID, null, false, voidReason);
     }
 
     /**
@@ -285,7 +297,7 @@ public class ClaimService {
      */
     @Transactional
     public Claim approve(String sheetId, String user, long id) {
-        return changeStatus(sheetId, user, id, ClaimStatus.SETTLED, null, true);
+        return changeStatus(sheetId, user, id, ClaimStatus.SETTLED, null, true, null);
     }
 
     /**
@@ -294,12 +306,12 @@ public class ClaimService {
      */
     @Transactional
     public Claim reject(String sheetId, String user, long id, String reason) {
-        return changeStatus(sheetId, user, id, ClaimStatus.OPEN, reason, true);
+        return changeStatus(sheetId, user, id, ClaimStatus.OPEN, reason, true, null);
     }
 
     /** Move a claim to a new status; {@code review} for a steward's approval or rejection of a PENDING claim. */
     private Claim changeStatus(String sheetId, String user, long id, ClaimStatus next, String reason,
-            boolean review) {
+            boolean review, String voidReason) {
         roles.refuseViewer(sheetId, user);
         if (!review) {
             roles.refuseUnlessPermitted(sheetId, user, switch (next) {
@@ -339,6 +351,7 @@ public class ClaimService {
             throw new ResponseStatusException(HttpStatus.FORBIDDEN,
                     "Only a steward can approve or reject a PENDING claim.");
         }
+        String voidedWith = next == ClaimStatus.VOID ? voidReasons.refuseUnlessListed(sheetId, voidReason) : null;
         Person person = person(sheetId, claim.getPersonId());
         if (next == ClaimStatus.OPEN && !review && needsNote(sheetId, person, claim)) {
             throw new ResponseStatusException(HttpStatus.UNPROCESSABLE_ENTITY,
@@ -362,6 +375,8 @@ public class ClaimService {
             claim.setOpenedBy(user);
         } else if (next == ClaimStatus.SETTLED) {
             claim.setSettledDue(settling);
+        } else if (next == ClaimStatus.VOID) {
+            claim.setVoidReason(voidedWith);
         }
         logStatus(sheetId, user, person, claim);
         Claim saved = claims.saveAndFlush(claim);
@@ -376,7 +391,8 @@ public class ClaimService {
                 + (saved.getNumber() != null ? " number=" + saved.getNumber() : "")
                 + (next == ClaimStatus.SETTLED ? " due=" + dueText(saved.getSettledDue()) : "")
                 + (reason != null ? " reason=" + reason : "")
-                + (reversing ? " reversed=" + dueText(saved.getSettledDue()) : ""));
+                + (reversing ? " reversed=" + dueText(saved.getSettledDue()) : "")
+                + (voidedWith != null ? " reason=" + voidedWith : ""));
         if (next == ClaimStatus.SETTLED) {
             notifyWatchers(sheetId, user, person, saved);
         }

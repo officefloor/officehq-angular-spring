@@ -60,6 +60,10 @@ public class ClaimController {
             @NotBlank @Size(max = 100) String user, @NotNull Long id) {
     }
 
+    public record VoidClaimRequest(@NotBlank @Size(max = 100) String sheet,
+            @NotBlank @Size(max = 100) String user, @NotNull Long id, @Size(max = 200) String reason) {
+    }
+
     public record RejectClaimRequest(@NotBlank @Size(max = 100) String sheet,
             @NotBlank @Size(max = 100) String user, @NotNull Long id,
             @NotBlank @Size(max = 200) @Pattern(regexp = "\\s*\\S+\\s*") String reason) {
@@ -100,7 +104,7 @@ public class ClaimController {
             ClaimStatus status, String number, String settledDue, String openedBy,
             boolean stated, String statedDue, String corrects, LocalDate dueBy, List<ClaimLogLine> log,
             LocalDate deferredUntil, int proofs, String splitFrom, String lockedBy,
-            boolean lateEntry, LocalDate remindedOn, String ref, List<String> tags) {
+            boolean lateEntry, LocalDate remindedOn, String ref, List<String> tags, String voidReason) {
     }
 
     /** One line of a claim's status log, oldest first. */
@@ -120,7 +124,8 @@ public class ClaimController {
                 claim.getLog().stream().map(l -> new ClaimLogLine(l.getStatus(), l.getBy(), l.getDate(), l.getDue()))
                         .toList(),
                 claim.getDeferredUntil(), claim.getProofs(), claim.getSplitFrom(), claim.getLockedBy(),
-                claim.isLateEntry(), claim.getRemindedOn(), claim.getRef(), claim.getTags());
+                claim.isLateEntry(), claim.getRemindedOn(), claim.getRef(), claim.getTags(),
+                claim.getVoidReason());
     }
 
     public static BigDecimal amount(String amount) {
@@ -222,8 +227,8 @@ public class ClaimController {
     }
 
     @PostMapping("/void")
-    public ClaimResponse voidClaim(@Valid @RequestBody ClaimStatusRequest req) {
-        return changeStatus(req, ClaimStatus.VOID);
+    public ClaimResponse voidClaim(@Valid @RequestBody VoidClaimRequest req) {
+        return response(service.voidClaim(req.sheet().trim(), req.user().trim(), req.id(), req.reason()));
     }
 
     @PostMapping("/resettle")

@@ -126,6 +126,10 @@ public class Claim {
     @Column(name = "reminded_on")
     private LocalDate remindedOn;
 
+    /** The reason the claim was voided with; none when voided without one, or not voided. */
+    @Column(name = "void_reason")
+    private String voidReason;
+
     /** How many proofs the claim has: raised by one at a time, never while SETTLED or VOID. */
     @Column(name = "proofs", nullable = false)
     private int proofs;
@@ -273,6 +277,14 @@ public class Claim {
 
     public void setStatus(ClaimStatus status) {
         this.status = status;
+    }
+
+    public String getVoidReason() {
+        return voidReason;
+    }
+
+    public void setVoidReason(String voidReason) {
+        this.voidReason = voidReason;
     }
 
     public String getNumber() {

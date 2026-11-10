@@ -2,7 +2,8 @@ import { Component, input } from '@angular/core';
 
 // The sheet at a glance, drawn from the same figures the lists show: per grade, how many people
 // not retired are on it today, their due-totals added up and how many of them are active; per period, its due-total; per
-// status, how many claims on the sheet have it.
+// status, how many claims on the sheet have it; per void reason on the sheet's list, how many VOID
+// claims were voided with it.
 export interface GradeSummary {
   grade: string;
   count: number;
@@ -13,6 +14,11 @@ export interface GradeSummary {
 export interface PeriodSummary {
   name: string;
   dueTotal: string;
+}
+
+export interface VoidReasonSummary {
+  reason: string;
+  count: number;
 }
 
 export interface StatusSummary {
@@ -77,6 +83,22 @@ export interface StatusSummary {
           }
         </tbody>
       </table>
+      <table aria-label="By void reason">
+        <thead>
+          <tr>
+            <th scope="col">Void reason</th>
+            <th scope="col">Claims</th>
+          </tr>
+        </thead>
+        <tbody>
+          @for (v of voidReasons(); track v.reason) {
+            <tr>
+              <th scope="row">{{ v.reason }}</th>
+              <td [attr.data-testid]="'summary-void-' + v.reason + '-count'">{{ v.count }}</td>
+            </tr>
+          }
+        </tbody>
+      </table>
     </section>
   `,
 })
@@ -84,4 +106,5 @@ export class Summary {
   readonly grades = input.required<GradeSummary[]>();
   readonly periods = input.required<PeriodSummary[]>();
   readonly statuses = input.required<StatusSummary[]>();
+  readonly voidReasons = input.required<VoidReasonSummary[]>();
 }

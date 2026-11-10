@@ -9,7 +9,9 @@ import { DatedGrade, DatedValue, Lateness, Rate, Rates, chargedDueCents, dueText
 import { Roles } from '../roles/roles';
 import { Settings } from '../settings/settings';
 import { Header } from '../header/header';
-import { GradeSummary, PeriodSummary, StatusSummary, Summary } from '../summary/summary';
+import { GradeSummary, PeriodSummary, StatusSummary, Summary, VoidReasonSummary } from '../summary/summary';
+import { VoidReasons } from '../void-reasons/void-reasons';
+import { VoidReasons as VoidReasonList } from '../../core/void-reasons';
 
 // The people on the active sheet, in the order they were added, and the one form that both adds
 // a person and edits an existing one (opening a person's editor fills the form with their values).
@@ -159,7 +161,7 @@ const SUMMARY_STATUSES = ['DRAFT', 'OPEN', 'PENDING', 'SETTLED', 'VOID'] as cons
 
 @Component({
   selector: 'app-people',
-  imports: [Header, Holidays, PersonClaims, Periods, Rates, Roles, Settings, Summary],
+  imports: [Header, Holidays, PersonClaims, Periods, Rates, Roles, Settings, Summary, VoidReasons],
   template: `
     <app-header
       [peopleCount]="people().length"
@@ -172,6 +174,7 @@ const SUMMARY_STATUSES = ['DRAFT', 'OPEN', 'PENDING', 'SETTLED', 'VOID'] as cons
     <app-settings [(floors)]="floors" [(latePcts)]="latePcts" [(graces)]="graces" [(policyDate)]="policyDate" [(caps)]="caps" />
     <app-periods [(periods)]="periods" [dues]="dues()" />
     <app-holidays />
+    <app-void-reasons />
     <section aria-labelledby="people-heading">
       <h2 id="people-heading">People</h2>
       <form aria-label="Person" (submit)="save($event)">
@@ -339,7 +342,7 @@ const SUMMARY_STATUSES = ['DRAFT', 'OPEN', 'PENDING', 'SETTLED', 'VOID'] as cons
           </tbody>
         </table>
       }
-      <app-summary [grades]="gradeSummary()" [periods]="periodSummary()" [statuses]="statusSummary()" />
+      <app-summary [grades]="gradeSummary()" [periods]="periodSummary()" [statuses]="statusSummary()" [voidReasons]="voidReasonSummary()" />
       <table data-testid="people-list">
         <thead>
           <tr>
@@ -736,6 +739,14 @@ export class People {
     SUMMARY_STATUSES.map((status) => ({
       status,
       count: this.claims().filter((c) => c.status === status).length,
+    })),
+  );
+  private readonly voidReasons = inject(VoidReasonList);
+  /** Per reason on the sheet's void reasons: how many VOID claims were voided with it. */
+  protected readonly voidReasonSummary = computed<VoidReasonSummary[]>(() =>
+    this.voidReasons.list().map((r) => ({
+      reason: r.reason,
+      count: this.claims().filter((c) => c.status === 'VOID' && c.voidReason === r.reason).length,
     })),
   );
   protected readonly nameInput = signal('');
