@@ -1,0 +1,65 @@
+diff --git a/src/main/frontend/src/app/features/header/header.ts b/src/main/frontend/src/app/features/header/header.ts
+new file mode 100644
+index 000000000..c0f628dbb
+--- /dev/null
++++ b/src/main/frontend/src/app/features/header/header.ts
+@@ -0,0 +1,31 @@
++import { Component, input } from '@angular/core';
++import { StatusSummary } from '../summary/summary';
++
++// The sheet's counters, shown at all times above everything else on it: how many people are on the
++// sheet (retired people included), how many claims are in each status (as the summary counts them)
++// and the sheet's due- and overdue-totals (as the people list's totals show them).
++@Component({
++  selector: 'app-header',
++  template: `
++    <header aria-label="Sheet counters">
++      <dl>
++        <dt>People</dt>
++        <dd data-testid="header-people-count">{{ peopleCount() }}</dd>
++        @for (s of statuses(); track s.status) {
++          <dt>{{ s.status }}</dt>
++          <dd [attr.data-testid]="'header-claims-' + s.status + '-count'">{{ s.count }}</dd>
++        }
++        <dt>Due</dt>
++        <dd data-testid="header-due-total">{{ dueTotal() }}</dd>
++        <dt>Overdue</dt>
++        <dd data-testid="header-overdue-total">{{ overdueTotal() }}</dd>
++      </dl>
++    </header>
++  `,
++})
++export class Header {
++  readonly peopleCount = input.required<number>();
++  readonly statuses = input.required<StatusSummary[]>();
++  readonly dueTotal = input.required<string>();
++  readonly overdueTotal = input.required<string>();
++}
+diff --git a/src/main/frontend/src/app/features/people/people.ts b/src/main/frontend/src/app/features/people/people.ts
+index 032bad3ad..fcf890821 100644
+--- a/src/main/frontend/src/app/features/people/people.ts
++++ b/src/main/frontend/src/app/features/people/people.ts
+@@ -7,6 +7,7 @@ import { DatedDue, Period, Periods, periodDueTotal } from '../periods/periods';
+ import { DatedGrade, Lateness, Rate, Rates, chargedDueCents, dueText, gradeOn, pctOn } from '../rates/rates';
+ import { Roles } from '../roles/roles';
+ import { Settings } from '../settings/settings';
++import { Header } from '../header/header';
+ import { GradeSummary, PeriodSummary, StatusSummary, Summary } from '../summary/summary';
+ 
+ // The people on the active sheet, in the order they were added, and the one form that both adds
+@@ -118,8 +119,14 @@ const SUMMARY_STATUSES = ['DRAFT', 'OPEN', 'PENDING', 'SETTLED', 'VOID'] as cons
+ 
+ @Component({
+   selector: 'app-people',
+-  imports: [PersonClaims, Periods, Rates, Roles, Settings, Summary],
++  imports: [Header, PersonClaims, Periods, Rates, Roles, Settings, Summary],
+   template: `
++    <app-header
++      [peopleCount]="people().length"
++      [statuses]="statusSummary()"
++      [dueTotal]="dueTotal()"
++      [overdueTotal]="money(overdueTotals().cents)"
++    />
+     <app-rates [(rates)]="rates" />
+     <app-roles />
+     <app-settings [(floor)]="floor" [(latePct)]="latePct" [(policyDate)]="policyDate" />

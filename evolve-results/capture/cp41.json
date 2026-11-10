@@ -1,0 +1,64 @@
+{
+  "checkpoint": 41,
+  "stack": {
+    "repo": "/home/daniel/officehq-angular-spring",
+    "origin": "git@github.com:officefloor/officehq-angular-spring.git",
+    "name": "officehq-angular-spring",
+    "base_ref": "base-empty",
+    "base_commit": "65cb8233ea38b2dfa6cfd18709e30cd18fdf3250"
+  },
+  "checkpoint_id": "cp41_header-counters",
+  "phase": "early",
+  "type": "additive",
+  "mutates": [],
+  "replaced_tests": [],
+  "request": {
+    "spec": "The screen gains a header with counters, shown at all times: the number of people on the sheet\n(retired people included), the number of claims in each status (DRAFT, OPEN, PENDING, SETTLED,\nVOID), the sheet's due-total and the sheet's overdue-total. Each counter always equals the figure\nit repeats: the status counts those of the summary, the two totals the sheet's totals.\n",
+    "prompt": "You are implementing ONE change to this application.\n\nFIRST read AGENTS.md \u2014 it states the working rules and how the app is tested, and sends you to\nDESIGN.md for the app's stack and conventions. Follow both.\n\nTHE CHANGE REQUEST:\nThe screen gains a header with counters, shown at all times: the number of people on the sheet\n(retired people included), the number of claims in each status (DRAFT, OPEN, PENDING, SETTLED,\nVOID), the sheet's due-total and the sheet's overdue-total. Each counter always equals the figure\nit repeats: the status counts those of the summary, the two totals the sheet's totals.\n\nYour work is verified by an automated Playwright UI test already installed under e2e/specs/.\nRead that spec: it declares the exact data-testid anchors, values, test data and any audit\nrecords it expects \u2014 match them. Run `bin/e2e` to build the app, start it, and run the test as\nyou work; iterate until it passes. Change whatever the request needs across the app \u2014 its stored\ndata, its server and its front end. Do NOT edit bin/build, bin/start, bin/stop, bin/e2e,\nAGENTS.md, CLAUDE.md, DESIGN.md, e2e/support/ or the test spec.\n"
+  },
+  "commit_sha": "512ef5e9efd9b64f0b264ed018208efa362d4841",
+  "reset_sha": "",
+  "preagent_sha": "9579f32e5fc4e2ba73067c84402a36cd7894e4ae",
+  "prev_sha": "9579f32e5fc4e2ba73067c84402a36cd7894e4ae",
+  "base_sha": "65cb8233ea38b2dfa6cfd18709e30cd18fdf3250",
+  "agent": {
+    "ok": true,
+    "cost_usd": 0.30617459999999996,
+    "input_tokens": 20,
+    "output_tokens": 2592,
+    "cache_read_tokens": 243753,
+    "cache_creation_tokens": 25688,
+    "num_turns": 10,
+    "duration_ms": 110042,
+    "duration_api_ms": 32670,
+    "model": "claude-opus-5-5",
+    "session_id": "469d8c48-f77c-4203-8666-ec6cd0ef0b4e",
+    "stop_reason": "success",
+    "result_text": "The screen now has a header with the counters, and all 4 tests in `bin/e2e` pass.\n\n- **New component:** `src/main/frontend/src/app/features/header/header.ts` shows the people count (retired people included), one count per claim status (DRAFT, OPEN, PENDING, SETTLED, VOID), and the sheet's due-total and overdue-total. It uses the `data-testid` values the test expects.\n- **Where it shows:** it's the first thing on the sheet's screen, above the rates, settings and people list, whenever a sheet is loaded.\n- **Why the figures match:** the header doesn't calculate anything itself. It is passed the same values the summary's status table and the existing totals (\"Due in total\" and \"Overdue in total\") already display. So each counter always equals the figure it repeats and updates with it.\n\nI didn't need to change the server or the stored data, because the front end already loads everything the counters need.",
+    "error": "",
+    "attempts": [
+      {
+        "ok": true,
+        "limit_reached": false,
+        "retryable": false,
+        "timed_out": false,
+        "cost_usd": 0.30617459999999996,
+        "num_turns": 10,
+        "duration_ms": 110042,
+        "duration_api_ms": 32670,
+        "error": ""
+      }
+    ]
+  },
+  "agent_stream_file": "cp41.agent.jsonl",
+  "agent_diff_file": "cp41.agent.diff",
+  "build_log_file": null,
+  "tests": {
+    "gated": false,
+    "queued": true
+  },
+  "probe": null,
+  "pinned_touched": [],
+  "acceptance_touched": [],
+  "impact_gate": null
+}
