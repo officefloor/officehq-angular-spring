@@ -1,0 +1,65 @@
+diff --git a/src/main/frontend/src/app/features/people/people.ts b/src/main/frontend/src/app/features/people/people.ts
+index c15710a84..a1d7f84e7 100644
+--- a/src/main/frontend/src/app/features/people/people.ts
++++ b/src/main/frontend/src/app/features/people/people.ts
+@@ -1048,10 +1048,18 @@ export class People {
+       };
+     });
+   });
+-  /** Per period: its due-total, as the periods list shows it. */
+-  protected readonly periodSummary = computed<PeriodSummary[]>(() =>
+-    this.periods().map((p) => ({ name: p.name, dueTotal: periodDueTotal(p, this.dues()) })),
+-  );
++  /** Per period: its due-total, as the periods list shows it, and its change from the period
++   *  before it by start date (none for the earliest). */
++  protected readonly periodSummary = computed<PeriodSummary[]>(() => {
++    const totals = new Map(this.periods().map((p) => [p.id, periodDueTotal(p, this.dues())]));
++    const byStart = [...this.periods()].sort((a, b) => (a.from < b.from ? -1 : a.from > b.from ? 1 : 0));
++    const change = new Map<number, string>();
++    byStart.forEach((p, i) => {
++      const before = byStart[i - 1];
++      change.set(p.id, before ? money(cents(totals.get(p.id)!) - cents(totals.get(before.id)!)) : '');
++    });
++    return this.periods().map((p) => ({ name: p.name, dueTotal: totals.get(p.id)!, change: change.get(p.id)! }));
++  });
+   /** A person's due-total for a period, as their row shows it. */
+   protected periodDueOf(period: Period, personId: number): string {
+     return personPeriodDueTotal(period, personId, this.dues());
+diff --git a/src/main/frontend/src/app/features/summary/summary.ts b/src/main/frontend/src/app/features/summary/summary.ts
+index 1aa47c6db..72171e1f5 100644
+--- a/src/main/frontend/src/app/features/summary/summary.ts
++++ b/src/main/frontend/src/app/features/summary/summary.ts
+@@ -1,7 +1,7 @@
+ import { Component, input } from '@angular/core';
+ 
+ // The sheet at a glance, drawn from the same figures the lists show: per grade, how many people
+-// not retired are on it today, their due-totals added up and how many of them are active; per period, its due-total; per
++// not retired are on it today, their due-totals added up and how many of them are active; per period, its due-total and its change from the period before it by start date; per
+ // status, how many claims on the sheet have it; per void reason on the sheet's list, how many VOID
+ // claims were voided with it.
+ export interface GradeSummary {
+@@ -14,6 +14,8 @@ export interface GradeSummary {
+ export interface PeriodSummary {
+   name: string;
+   dueTotal: string;
++  /** This period's due-total minus the one before it by start date; empty for the earliest. */
++  change: string;
+ }
+ 
+ export interface VoidReasonSummary {
+@@ -56,6 +58,7 @@ export interface StatusSummary {
+           <tr>
+             <th scope="col">Period</th>
+             <th scope="col">Due</th>
++            <th scope="col">Change</th>
+           </tr>
+         </thead>
+         <tbody>
+@@ -63,6 +66,7 @@ export interface StatusSummary {
+             <tr>
+               <th scope="row">{{ p.name }}</th>
+               <td [attr.data-testid]="'summary-period-' + p.name + '-due-total'">{{ p.dueTotal }}</td>
++              <td [attr.data-testid]="'summary-period-' + p.name + '-change'">{{ p.change }}</td>
+             </tr>
+           }
+         </tbody>
