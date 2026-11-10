@@ -59,10 +59,15 @@ import org.springframework.web.server.ResponseStatusException;
  * Who may open, settle, void or move a claim is the sheet's permission matrix (see
  * {@link Sheet#permits}): an action the user's role may not take is refused (403). When a claim is
  * settled, approved or re-settled, each user watching its person is notified, in the order they
- * started watching.
+ * started watching. A steward may void a SETTLED claim within {@value #VOID_SETTLED_DAYS} days of its
+ * settlement (the date its status log records it SETTLED) by the sheet's today: it keeps its number and
+ * its frozen figure, which leaves every total.
  */
 @Service
 public class ClaimService {
+
+    /** How many days after its settlement a steward may still void a SETTLED claim. */
+    static final int VOID_SETTLED_DAYS = 7;
 
     private final ClaimRepository claims;
     private final PersonRepository people;
@@ -92,11 +97,17 @@ public class ClaimService {
      * statement (not while PENDING), else the live due; null when it has none.
      */
     public BigDecimal figure(String sheetId, Person person, Claim claim) {
-        if (claim.getStatus() == ClaimStatus.SETTLED) {
+        if (isFrozen(claim)) {
             return claim.getSettledDue();
         }
         return claim.isStated() && claim.getStatus() != ClaimStatus.PENDING ? claim.getStatedDue()
                 : due(sheetId, person, claim);
+    }
+
+    /** Whether the claim's figure is the due fixed when settled: SETTLED, or VOID once settled. */
+    private static boolean isFrozen(Claim claim) {
+        return claim.getStatus() == ClaimStatus.SETTLED
+                || (claim.getStatus() == ClaimStatus.VOID && claim.getSettledDue() != null);
     }
 
     /**
@@ -104,7 +115,7 @@ public class ClaimService {
      * charge added on top, raised to the floor (see {@link LateCharge}); null when it has none.
      */
     public BigDecimal charged(String sheetId, Person person, Claim claim) {
-        if (claim.getStatus() == ClaimStatus.SETTLED) {
+        if (isFrozen(claim)) {
             return claim.getSettledDue();
         }
         return LateCharge.withCharge(sheets.sheet(sheetId), claim, figure(sheetId, person, claim));
@@ -225,6 +236,10 @@ public class ClaimService {
                     "A " + claim.getStatus() + " claim cannot become " + next + ".");
         }
         periods.refuseIfClosed(sheetId, claim.getDate());
+        boolean reversing = was == ClaimStatus.SETTLED;
+        if (reversing) {
+            refuseVoidSettled(sheetId, user, claim);
+        }
         if (next == ClaimStatus.SETTLED && claim.isDeferredOn(sheets.today(sheetId))) {
             throw new ResponseStatusException(HttpStatus.CONFLICT,
                     "A claim deferred until " + claim.getDeferredUntil() + " cannot be settled before then.");
@@ -269,12 +284,30 @@ public class ClaimService {
         audit.recordOnCommit(record(event, sheetId, user, person, saved)
                 + (saved.getNumber() != null ? " number=" + saved.getNumber() : "")
                 + (next == ClaimStatus.SETTLED ? " due=" + dueText(saved.getSettledDue()) : "")
-                + (reason != null ? " reason=" + reason : ""));
+                + (reason != null ? " reason=" + reason : "")
+                + (reversing ? " reversed=" + dueText(saved.getSettledDue()) : ""));
         if (next == ClaimStatus.SETTLED) {
             notifyWatchers(sheetId, user, person, saved);
         }
         rollup.recordChanges(sheetId, user, before);
         return saved;
+    }
+
+    /**
+     * Refuse voiding a SETTLED claim: (403) for anyone but a steward, and (409) once the sheet's
+     * today is more than {@value #VOID_SETTLED_DAYS} days after its settlement (or before it).
+     */
+    private void refuseVoidSettled(String sheetId, String user, Claim claim) {
+        if (!isSteward(sheetId, user)) {
+            throw new ResponseStatusException(HttpStatus.FORBIDDEN, "Only a steward can void a SETTLED claim.");
+        }
+        LocalDate settled = claim.getLog().stream().filter(entry -> entry.getStatus() == ClaimStatus.SETTLED)
+                .map(ClaimLogEntry::getDate).reduce((first, last) -> last).orElse(null);
+        LocalDate today = sheets.today(sheetId);
+        if (settled == null || today.isBefore(settled) || today.isAfter(settled.plusDays(VOID_SETTLED_DAYS))) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT, "A SETTLED claim can be voided only within "
+                    + VOID_SETTLED_DAYS + " days of its settlement.");
+        }
     }
 
     /** Record a notice of the claim for each user watching its person, in the order they started watching. */

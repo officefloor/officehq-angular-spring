@@ -12,6 +12,9 @@ import { DatedGrade, DatedValue, Lateness, Rate, chargedDueCents, dueText, grade
 // dated inside a closed period cannot be added, edited or moved on: each is refused with an error.
 // Only a DRAFT can be edited; editing any other claim is refused with an error on the claim (to
 // change an open claim, void it and add a new one).
+// A steward may void a SETTLED claim within 7 days of its settlement by the sheet's today: it keeps
+// its number and shows its frozen due, which leaves every total. Anyone else, or a later day, is
+// refused with an error on the claim.
 // Each claim shows its due-by, fixed when it was added (its date plus the terms of its person's grade
 // in force on its date, or the sheet's terms when that grade has none), and whether it is overdue:
 // OPEN with its due-by before the sheet's today. An overdue claim's due gains the sheet's late
@@ -641,6 +644,8 @@ export class PersonClaims {
               : 'Only a steward can approve or reject a PENDING claim.'
             : action === 'resettle'
               ? 'Only a steward can re-settle a claim.'
+              : action === 'void' && c.status === 'SETTLED'
+                ? 'Only a steward can void a SETTLED claim.'
               : action === 'settle' && c.openedBy === this.session.user()
                 ? 'The user who opened a claim cannot settle it.'
                 : `Your role may not ${action} a claim on this sheet.`
@@ -650,7 +655,9 @@ export class PersonClaims {
               ? `This claim is due above the proof threshold and cannot be ${PAST[action]} without a proof.`
             : action === 'settle' && deferred(c, this.session.today())
               ? `This claim is deferred until ${c.deferredUntil} and cannot be settled before then.`
-              : `A ${c.status} claim cannot be ${PAST[action]}.`;
+              : action === 'void' && c.status === 'SETTLED'
+                ? 'A SETTLED claim can be voided only within 7 days of its settlement.'
+                : `A ${c.status} claim cannot be ${PAST[action]}.`;
       this.actionErrors.update((m) => new Map(m).set(c.id, err));
     }
   }
