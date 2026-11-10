@@ -282,7 +282,7 @@ const SUMMARY_STATUSES = ['DRAFT', 'OPEN', 'PENDING', 'SETTLED', 'VOID', 'REVIEW
     <app-void-reasons />
     <app-templates />
     <app-notes />
-    <app-pools [people]="people()" [pot]="pot()" [crews]="crews()" [(pools)]="pools" />
+    <app-pools [people]="people()" [pot]="pot()" [crews]="crews()" [periods]="periods()" [(pools)]="pools" />
     <app-crews [people]="crewPeople()" [(crews)]="crews" />
     <app-audit-view />
     <app-tree-search />

@@ -28,6 +28,10 @@ import { FigurePipe } from '../../core/figure';
 // Each crew is also listed as a pool, after the pools, under the crew's name: its lead and members at
 // equal shares (worked out by the store). It takes no members here and is not offered as a member; a
 // pool may not take a crew's name. Re-read whenever the crews change.
+// For every period whose to-date is on or before the sheet's today, each member's line also shows
+// their cut as it stood at the end of that period (the pools, their members, the pot and the holds
+// as they were then, that day as the sheet's today; blank when there was none) — worked out by the
+// store. Re-read whenever the periods change.
 export interface PoolMember {
   /** The person's id; 0 for a pool. */
   personId: number;
@@ -37,6 +41,14 @@ export interface PoolMember {
   share: string;
   retired: boolean;
   /** Their cut of the pot, two decimals; blank when the pool is unbalanced, there is no pot or their dates leave out today. */
+  cut: string;
+  /** Their cut at the end of each period ended by the sheet's today, in the periods' order. */
+  cuts: PeriodCut[];
+}
+
+/** A member's cut as it stood at the end of a period; blank when there was none. */
+export interface PeriodCut {
+  period: string;
   cut: string;
 }
 
@@ -87,6 +99,9 @@ function refusal(e: unknown, what: string): string {
             {{ m.name }}@if (m.retired) { (retired)}:
             <span data-testid="pool-share">{{ m.share | figure }}</span>
             cut <span data-testid="pool-cut">{{ m.cut | figure }}</span>
+            @for (c of m.cuts; track c.period) {
+              · {{ c.period }} <span [attr.data-testid]="'pool-cut-' + c.period">{{ c.cut | figure }}</span>
+            }
           </li>
         }
       </ul>
@@ -260,6 +275,8 @@ export class Pools {
   readonly pot = input('');
   /** The sheet's crews: a change re-reads the crews listed as pools. */
   readonly crews = input<unknown[]>([]);
+  /** The sheet's periods: a change re-reads the cuts of the periods ended. */
+  readonly periods = input<unknown[]>([]);
 
   /** The sheet's pools as last read from the store: the people's cut totals add up their cuts. */
   readonly pools = model<Pool[]>([]);
@@ -284,6 +301,7 @@ export class Pools {
       this.people(); // a person retired, renamed or added: re-read the totals and names
       this.pot(); // the pot changed: re-read the cuts
       this.crews(); // a crew added or changed: re-read the crews listed as pools
+      this.periods(); // a period added or changed: re-read the cuts at the periods' ends
       if (sheet) void this.fetch(sheet);
     });
   }
