@@ -1,0 +1,122 @@
+diff --git a/src/main/java/net/officefloor/hq/app/rate/RateChain.java b/src/main/java/net/officefloor/hq/app/rate/RateChain.java
+index 36e98e8f2..9c9ad16a1 100644
+--- a/src/main/java/net/officefloor/hq/app/rate/RateChain.java
++++ b/src/main/java/net/officefloor/hq/app/rate/RateChain.java
+@@ -12,7 +12,8 @@ import org.springframework.stereotype.Service;
+ 
+ /**
+  * The rates a sheet works out what is due from: its own, then its parent's, then the parent's parent,
+- * up to {@link #LEVELS} levels up. A grade with no rate in force on a date on a sheet takes the
++ * up to {@link #LEVELS} levels up, then (for a sheet that was cloned) those of the sheet it was cloned from
++ * and so on up that sheet's parents and source. A grade with no rate in force on a date on a sheet takes the
+  * rate in force for it on that date on the nearest ancestor that has one.
+  */
+ @Service
+@@ -31,18 +32,27 @@ public class RateChain {
+         this.rateLog = rateLog;
+     }
+ 
+-    /** The sheet's id, then its parent's, and so on, up to {@link #LEVELS} levels up. */
++    /**
++     * The sheet's id, then its parent's, and so on, up to {@link #LEVELS} levels up; then, for a sheet that was
++     * cloned, the lineage of the sheet it was cloned from (its parents, then its own source, and so on). A sheet
++     * already in the lineage is not taken again.
++     */
+     public List<String> lineage(String sheetId) {
+         List<String> ids = new ArrayList<>();
+-        ids.add(sheetId);
+-        String at = sheetId;
+-        while (ids.size() <= LEVELS) {
+-            String parent = sheets.findById(at).map(Sheet::getParentId).orElse(null);
+-            if (parent == null || ids.contains(parent)) {
+-                break;
++        String from = sheetId;
++        while (from != null && !ids.contains(from)) {
++            ids.add(from);
++            int start = ids.size();
++            String at = from;
++            while (ids.size() - start < LEVELS) {
++                String parent = sheets.findById(at).map(Sheet::getParentId).orElse(null);
++                if (parent == null || ids.contains(parent)) {
++                    break;
++                }
++                ids.add(parent);
++                at = parent;
+             }
+-            ids.add(parent);
+-            at = parent;
++            from = sheets.findById(from).map(Sheet::getSourceId).orElse(null);
+         }
+         return ids;
+     }
+diff --git a/src/main/java/net/officefloor/hq/app/sheet/Sheet.java b/src/main/java/net/officefloor/hq/app/sheet/Sheet.java
+index b4b183747..b97cfb48d 100644
+--- a/src/main/java/net/officefloor/hq/app/sheet/Sheet.java
++++ b/src/main/java/net/officefloor/hq/app/sheet/Sheet.java
+@@ -142,6 +142,10 @@ public class Sheet {
+     @Column(name = "parent_id")
+     private String parentId;
+ 
++    /** The id of the sheet this one was cloned from; null when it was not cloned. Not dated. */
++    @Column(name = "source_id")
++    private String sourceId;
++
+     /** The last number given in the sheet's X sequence, to claims opened under numbering per period in no period. */
+     @Column(name = "last_unperiod_claim_number", nullable = false)
+     private int lastUnperiodClaimNumber;
+@@ -228,6 +232,7 @@ public class Sheet {
+         then.alertThreshold = alertThreshold;
+         then.fiscalStartMonth = fiscalStartMonth;
+         then.parentId = parentId;
++        then.sourceId = sourceId;
+         then.permissions.putAll(permissions);
+         then.archived = archived;
+         return then;
+@@ -449,6 +454,14 @@ public class Sheet {
+         this.parentId = parentId;
+     }
+ 
++    /**
++     * The id of the sheet this one was cloned from, whose rates (then those of its parents and source) stand in
++     * for a grade with no rate in force here nor on this sheet's parents; null when it was not cloned. Not dated.
++     */
++    public String getSourceId() {
++        return sourceId;
++    }
++
+     /** The pot cut by each balanced pool that is a member of none; null for none. Not dated. */
+     public BigDecimal getPot() {
+         return pot;
+diff --git a/src/main/java/net/officefloor/hq/app/sheet/SheetCloneService.java b/src/main/java/net/officefloor/hq/app/sheet/SheetCloneService.java
+index b45dcf550..ce7bee232 100644
+--- a/src/main/java/net/officefloor/hq/app/sheet/SheetCloneService.java
++++ b/src/main/java/net/officefloor/hq/app/sheet/SheetCloneService.java
+@@ -35,7 +35,9 @@ import org.springframework.web.server.ResponseStatusException;
+  * the clone's own numbering, in the order the claims were opened (by the sheet's today when each was
+  * opened, then by the order they were added to the clone: by person in list order, each person's in
+  * the order they were listed). Statements are not copied, so no figure is bound by one; nor are
+- * watches, delegations or the sheet's history.
++ * watches, delegations or the sheet's history. The clone keeps the id of the sheet it was cloned from, whose
++ * rates stand in for a grade with none in force on the clone nor its parents (see
++ * {@link net.officefloor.hq.app.rate.RateChain}).
+  *
+  * <p>Rows are copied column by column as the schema has them, so a column added later is carried
+  * without change here; only the columns that need another value are named.
+@@ -92,7 +94,7 @@ public class SheetCloneService {
+ 
+         copy("SHEET", "id = ?", sheetId, "", Map.of("ID", v -> toSheetId, "CREATED_BY", v -> user,
+                 "CREATED_AT", v -> Timestamp.from(Instant.now()), "LAST_CLAIM_NUMBER", v -> 0,
+-                "LAST_UNPERIOD_CLAIM_NUMBER", v -> 0, "ARCHIVED", v -> false));
++                "LAST_UNPERIOD_CLAIM_NUMBER", v -> 0, "ARCHIVED", v -> false, "SOURCE_ID", v -> sheetId));
+         UnaryOperator<Object> onClone = v -> toSheetId;
+         for (String table : SHEET_TABLES) {
+             copy(table, "sheet_id = ?", sheetId, order(table), Map.of("SHEET_ID", onClone));
+diff --git a/src/main/resources/db/migration/V103__sheet_source.sql b/src/main/resources/db/migration/V103__sheet_source.sql
+new file mode 100644
+index 000000000..abde6a838
+--- /dev/null
++++ b/src/main/resources/db/migration/V103__sheet_source.sql
+@@ -0,0 +1,3 @@
++-- The sheet a sheet was cloned from (none: not a clone): its rates, and those of its parents and source, stand in
++-- for a grade with no rate in force on the sheet nor on its parents.
++ALTER TABLE sheet ADD COLUMN source_id VARCHAR(100);
