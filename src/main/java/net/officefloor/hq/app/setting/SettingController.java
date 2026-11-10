@@ -51,7 +51,7 @@ public class SettingController {
      * or blank for off. A grade's own terms (A, B or C): a whole number of days. A cap: an amount with
      * up to two decimals, or blank for none. A proof threshold: an amount with up to two decimals, or blank
      * for none. A note threshold: an amount with up to two decimals, or blank for none. A permission matrix entry for open, settle, void, reassign, close or reopen: roles
-     * comma separated, or blank for the standing rule. Grace days: a whole number of days, or blank for off. A grade's grace days (A, B or C): a whole number of days, or blank for none. A grade's own proof threshold (A, B or C): an amount with up to two decimals, or blank for none (the sheet's). An entry date: yyyy-mm-dd, or blank for off. Each setting that carries a figure may name the date it
+     * comma separated, or blank for the standing rule. Grace days: a whole number of days, or blank for off. A grade's grace days (A, B or C): a whole number of days, or blank for none. A grade's own proof threshold (A, B or C): an amount with up to two decimals, or blank for none (the sheet's). An entry date: yyyy-mm-dd, or blank for off. A pot: an amount with up to two decimals, or blank for none. Each setting that carries a figure may name the date it
      * is in force from (its {@code ...From}: yyyy-mm-dd, or blank or null for the sheet's today).
      */
     public record SetSettingsRequest(@NotBlank @Size(max = 100) String sheet, @NotBlank @Size(max = 100) String user,
@@ -81,7 +81,8 @@ public class SettingController {
             @Pattern(regexp = "\\s*|" + ClaimController.AMOUNT) String proofThresholdB,
             @Pattern(regexp = "\\s*|" + ClaimController.AMOUNT) String proofThresholdC,
             @Pattern(regexp = DATE) String proofThresholdAFrom, @Pattern(regexp = DATE) String proofThresholdBFrom,
-            @Pattern(regexp = DATE) String proofThresholdCFrom) {
+            @Pattern(regexp = DATE) String proofThresholdCFrom,
+            @Pattern(regexp = "\\s*|" + ClaimController.AMOUNT) String pot) {
     }
 
     /** A value recorded for a setting that carries a figure: blank from for the beginning of time, blank value for none. */
@@ -94,11 +95,12 @@ public class SettingController {
      * in force for each grade that has its own. And every value recorded for the settings that carry
      * a figure, by key and from-date. And the permission matrix: for each action, its roles as
      * entered, blank for the standing rule. And the grace days, blank for off. And the entry date, blank for off.
+     * And the pot, blank for none.
      */
     public record SettingsResponse(String clerkLimit, String floor, int terms, String latePct, String policyDate,
             String periodNumberingFrom, Map<String, Integer> gradeTerms, String cap, String proofThreshold,
             String noteThreshold,
-            List<DatedValue> dated, Map<String, String> permissions, String graceDays, String entryDate) {
+            List<DatedValue> dated, Map<String, String> permissions, String graceDays, String entryDate, String pot) {
     }
 
     private static SettingsResponse response(Sheet sheet) {
@@ -110,7 +112,7 @@ public class SettingController {
                 SettingService.text(sheet.getNoteThreshold()),
                 sheet.getSettings().stream().map(SettingController::dated).toList(), sheet.getPermissions(),
                 sheet.getGraceDays() == null ? "" : String.valueOf(sheet.getGraceDays()),
-                sheet.getEntryDate() == null ? "" : sheet.getEntryDate().toString());
+                sheet.getEntryDate() == null ? "" : sheet.getEntryDate().toString(), SettingService.text(sheet.getPot()));
     }
 
     private static DatedValue dated(DatedSetting s) {
@@ -156,6 +158,7 @@ public class SettingController {
         permission(permissions, "reopen", req.permReopen());
         String grace = req.graceDays() == null ? "" : req.graceDays().trim();
         String entry = req.entryDate() == null ? "" : req.entryDate().trim();
+        String pot = req.pot() == null ? "" : req.pot().trim();
         return response(service.set(req.sheet().trim(), req.user().trim(),
                 req.clerkLimit() == null ? null : amount(req.clerkLimit(), req.clerkLimitFrom()),
                 req.floor() == null ? null : amount(req.floor(), req.floorFrom()),
@@ -167,7 +170,8 @@ public class SettingController {
                 req.proofThreshold() == null ? null : amount(req.proofThreshold(), req.proofThresholdFrom()), gradeProofThresholds,
                 req.noteThreshold() == null ? null : amount(req.noteThreshold(), req.noteThresholdFrom()), permissions,
                 req.graceDays() != null, grace.isEmpty() ? null : Integer.valueOf(grace),
-                req.entryDate() != null, entry.isEmpty() ? null : date(entry)));
+                req.entryDate() != null, entry.isEmpty() ? null : date(entry),
+                req.pot() != null, pot.isEmpty() ? null : ClaimController.amount(pot)));
     }
 
     /** A permission matrix entry given: its roles, lower case, comma separated without spaces. */

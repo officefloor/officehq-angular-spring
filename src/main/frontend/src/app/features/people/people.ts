@@ -184,12 +184,12 @@ const SUMMARY_STATUSES = ['DRAFT', 'OPEN', 'PENDING', 'SETTLED', 'VOID'] as cons
     />
     <app-rates [(rates)]="rates" />
     <app-roles />
-    <app-settings [(floors)]="floors" [(latePcts)]="latePcts" [(graces)]="graces" [(policyDate)]="policyDate" [(caps)]="caps" />
+    <app-settings [(floors)]="floors" [(latePcts)]="latePcts" [(graces)]="graces" [(policyDate)]="policyDate" [(caps)]="caps" [(pot)]="pot" />
     <app-periods [(periods)]="periods" [dues]="dues()" />
     <app-holidays />
     <app-void-reasons />
     <app-templates />
-    <app-pools [people]="people()" />
+    <app-pools [people]="people()" [pot]="pot()" />
     <app-audit-view />
     <section aria-labelledby="people-heading">
       <h2 id="people-heading">People</h2>
@@ -714,6 +714,8 @@ export class People {
   protected readonly graces = signal<Record<string, DatedValue[]>>({});
   /** The sheet's policy date (blank: its today): a claim dated before it rounds half up, else half to even. */
   protected readonly policyDate = signal('');
+  /** The sheet's pot, blank for none: what the pools cut. */
+  protected readonly pot = signal('');
   /** What works out an overdue claim's late charge on the sheet's today. */
   private readonly lateness = computed<Lateness>(() => ({
     latePcts: this.latePcts(),

@@ -1,6 +1,7 @@
 package net.officefloor.hq.app.pool;
 
 import java.math.BigDecimal;
+import java.math.RoundingMode;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
@@ -23,14 +24,22 @@ import org.springframework.web.server.ResponseStatusException;
  * sheet at most once per pool with a share percent (two decimals, above 0.00 and at most 100.00).
  * A pool's total adds up its members' shares, a retired member's (one with a retirement date set,
  * whatever the date) counting as 0.00; the pool is balanced when the total is exactly 100.00.
+ * <p>
+ * With a pot set on the sheet, each member of a balanced pool has a cut: the pot times their share
+ * divided by 100, rounded half to even to two decimals, a retired member's 0.00. The remainder, the
+ * pot less the cuts added up, goes to the member with the largest share (the earliest added on a
+ * tie), so the cuts total exactly the pot. An unbalanced pool, or no pot, has no cuts.
  */
 @Service
 public class PoolService {
 
     private static final BigDecimal HUNDRED = new BigDecimal("100.00");
 
-    /** A member as listed: the person's id and current name, their share, and whether they are retired. */
-    public record MemberView(long personId, String name, String share, boolean retired) {
+    /**
+     * A member as listed: the person's id and current name, their share, whether they are retired, and
+     * their cut of the pot (two decimals; blank when the pool is unbalanced or there is no pot).
+     */
+    public record MemberView(long personId, String name, String share, boolean retired, String cut) {
     }
 
     /** A pool as listed: its members in the order they were added, their total share (two decimals) and balance. */
@@ -67,15 +76,17 @@ public class PoolService {
         Map<Long, List<PoolMember>> byPool = members
                 .findByPoolIdInOrderByIdAsc(all.stream().map(Pool::getId).toList()).stream()
                 .collect(Collectors.groupingBy(PoolMember::getPoolId));
+        BigDecimal pot = sheetRows.findById(sheetId).map(s -> s.getPot()).orElse(null);
         List<PoolView> out = new ArrayList<>();
         for (Pool pool : all) {
-            out.add(view(pool, byPool.getOrDefault(pool.getId(), List.of()), byId));
+            out.add(view(pool, byPool.getOrDefault(pool.getId(), List.of()), byId, pot));
         }
         return out;
     }
 
-    private static PoolView view(Pool pool, List<PoolMember> poolMembers, Map<Long, Person> byId) {
-        List<MemberView> views = new ArrayList<>();
+    private static PoolView view(Pool pool, List<PoolMember> poolMembers, Map<Long, Person> byId, BigDecimal pot) {
+        List<Person> listed = new ArrayList<>();
+        List<BigDecimal> shares = new ArrayList<>();
         BigDecimal total = BigDecimal.ZERO.setScale(2);
         for (PoolMember m : poolMembers) {
             Person p = byId.get(m.getPersonId());
@@ -83,12 +94,47 @@ public class PoolService {
                 continue;
             }
             BigDecimal share = m.getShare().setScale(2);
-            views.add(new MemberView(p.getId(), p.getName(), share.toPlainString(), p.isRetired()));
+            listed.add(p);
+            shares.add(share);
             if (!p.isRetired()) {
                 total = total.add(share);
             }
         }
-        return new PoolView(pool.getId(), pool.getName(), views, total.toPlainString(), total.compareTo(HUNDRED) == 0);
+        boolean balanced = total.compareTo(HUNDRED) == 0;
+        List<BigDecimal> cuts = balanced && pot != null ? cuts(pot, listed, shares) : null;
+        List<MemberView> views = new ArrayList<>();
+        for (int i = 0; i < listed.size(); i++) {
+            Person p = listed.get(i);
+            views.add(new MemberView(p.getId(), p.getName(), shares.get(i).toPlainString(), p.isRetired(),
+                    cuts == null ? "" : cuts.get(i).toPlainString()));
+        }
+        return new PoolView(pool.getId(), pool.getName(), views, total.toPlainString(), balanced);
+    }
+
+    /**
+     * Each member's cut of the pot, in the members' order: the pot times their share over 100, half to
+     * even, a retired member's 0.00; the remainder to the live member with the largest share, the
+     * earliest on a tie.
+     */
+    private static List<BigDecimal> cuts(BigDecimal pot, List<Person> listed, List<BigDecimal> shares) {
+        List<BigDecimal> cuts = new ArrayList<>();
+        BigDecimal sum = BigDecimal.ZERO.setScale(2);
+        int largest = -1;
+        for (int i = 0; i < listed.size(); i++) {
+            BigDecimal cut = BigDecimal.ZERO.setScale(2);
+            if (!listed.get(i).isRetired()) {
+                cut = pot.multiply(shares.get(i)).divide(HUNDRED, 2, RoundingMode.HALF_EVEN);
+                if (largest < 0 || shares.get(i).compareTo(shares.get(largest)) > 0) {
+                    largest = i;
+                }
+            }
+            cuts.add(cut);
+            sum = sum.add(cut);
+        }
+        if (largest >= 0) {
+            cuts.set(largest, cuts.get(largest).add(pot.subtract(sum)));
+        }
+        return cuts;
     }
 
     /** Add a pool (trimmed); a blank name is refused (422), one already on the sheet (409). */

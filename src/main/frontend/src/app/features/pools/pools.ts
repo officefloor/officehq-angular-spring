@@ -7,13 +7,16 @@ import { Session } from '../../core/session';
 // person chosen from the sheet at most once per pool, with a share percent (two decimals, above
 // 0.00 and at most 100.00). A person may be in several pools. Each pool shows its total share,
 // a retired member's (one with a retirement date set, whatever the date) counting as 0.00, and
-// whether it is balanced: the total exactly 100.00. Re-read from the store on every sheet load
-// and whenever the people change.
+// whether it is balanced: the total exactly 100.00. With a pot set, each member of a balanced pool
+// shows their cut of it (worked out by the store; blank when unbalanced or no pot). Re-read from
+// the store on every sheet load and whenever the people or the pot change.
 export interface PoolMember {
   personId: number;
   name: string;
   share: string;
   retired: boolean;
+  /** Their cut of the pot, two decimals; blank when the pool is unbalanced or there is no pot. */
+  cut: string;
 }
 
 export interface Pool {
@@ -53,6 +56,7 @@ function refusal(e: unknown, what: string): string {
           <li [attr.data-testid]="'pool-member-' + pool().name + '-' + m.personId">
             {{ m.name }}@if (m.retired) { (retired)}:
             <span data-testid="pool-share">{{ m.share }}</span>
+            cut <span data-testid="pool-cut">{{ m.cut }}</span>
           </li>
         }
       </ul>
@@ -177,6 +181,8 @@ export class Pools {
 
   /** Everyone on the sheet, retired or not: the people a member is chosen from. */
   readonly people = input.required<PoolPerson[]>();
+  /** The sheet's pot, blank for none: a change re-reads the cuts. */
+  readonly pot = input('');
 
   protected readonly pools = signal<Pool[]>([]);
   protected readonly nameInput = signal('');
@@ -198,6 +204,7 @@ export class Pools {
       const sheet = this.session.sheet();
       this.session.loads();
       this.people(); // a person retired, renamed or added: re-read the totals and names
+      this.pot(); // the pot changed: re-read the cuts
       if (sheet) void this.fetch(sheet);
     });
   }

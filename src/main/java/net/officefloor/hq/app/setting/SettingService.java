@@ -41,6 +41,8 @@ import org.springframework.transaction.annotation.Transactional;
  * the grace days (none: off): when the sheet's today changes, every open period whose to-date plus
  * the grace days is before the new today is closed (see {@link SheetService#setToday}). Nor is the
  * entry date (none: off): while set, it is the default date of a new claim in place of the sheet's today.
+ * Nor is the pot (none: no pot), shared out over each balanced pool's members as their cuts (see
+ * {@link net.officefloor.hq.app.pool.PoolService}).
  */
 @Service
 public class SettingService {
@@ -62,6 +64,7 @@ public class SettingService {
     public static final String PERIOD_NUMBERING_FROM = "period-numbering-from";
     public static final String GRACE_DAYS = "grace-days";
     public static final String ENTRY_DATE = "entry-date";
+    public static final String POT = "pot";
     /** The key of a permission matrix entry: {@code perm-<action>}. */
     public static final String PERMISSION = "perm-";
 
@@ -102,7 +105,7 @@ public class SettingService {
      * threshold given in {@code gradeProofThresholds} (by grade, in grade order; null for none), and a note threshold when
      * {@code noteThreshold} is not null, and each permission matrix entry
      * given in {@code permissions} (by action, in the order given; blank for the standing rule), and the grace days when
-     * {@code changeGrace} (null for off), and the entry date when {@code changeEntry} (null for off). Each figure is recorded from its from-date, keeping the values
+     * {@code changeGrace} (null for off), and the entry date when {@code changeEntry} (null for off), and the pot when {@code changePot} (null for none). Each figure is recorded from its from-date, keeping the values
      * already recorded (one already recorded from that date is replaced). Each one saved is
      * recorded, in that order.
      */
@@ -113,7 +116,8 @@ public class SettingService {
             Map<String, Dated<Integer>> gradeTerms, Map<String, Dated<Integer>> gradeGraces,
             Dated<BigDecimal> proofThreshold, Map<String, Dated<BigDecimal>> gradeProofThresholds,
             Dated<BigDecimal> noteThreshold, Map<String, String> permissions,
-            boolean changeGrace, Integer graceDays, boolean changeEntry, LocalDate entryDate) {
+            boolean changeGrace, Integer graceDays, boolean changeEntry, LocalDate entryDate,
+            boolean changePot, BigDecimal pot) {
         roles.refuseViewer(sheetId, user);
         Sheet sheet = sheets.load(sheetId, user);
         if (limit != null) {
@@ -181,6 +185,11 @@ public class SettingService {
             sheet.setEntryDate(entryDate);
             sheet = sheetStore.saveAndFlush(sheet);
             audit.recordOnCommit(changed(sheetId, user, ENTRY_DATE, entryDate == null ? "" : entryDate.toString()));
+        }
+        if (changePot) {
+            sheet.setPot(pot == null ? null : pot.setScale(2));
+            sheet = sheetStore.saveAndFlush(sheet);
+            audit.recordOnCommit(changed(sheetId, user, POT, text(sheet.getPot())));
         }
         return sheet;
     }

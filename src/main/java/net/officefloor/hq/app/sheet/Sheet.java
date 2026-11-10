@@ -111,6 +111,9 @@ public class Sheet {
     @Column(name = "grace_days")
     private Integer graceDays;
 
+    @Column(name = "pot")
+    private BigDecimal pot;
+
     /** The last number given in the sheet's X sequence, to claims opened under numbering per period in no period. */
     @Column(name = "last_unperiod_claim_number", nullable = false)
     private int lastUnperiodClaimNumber;
@@ -190,6 +193,7 @@ public class Sheet {
         then.periodNumberingFrom = periodNumberingFrom;
         then.entryDate = entryDate;
         then.graceDays = graceDays;
+        then.pot = pot;
         then.permissions.putAll(permissions);
         then.archived = archived;
         return then;
@@ -367,6 +371,15 @@ public class Sheet {
 
     public void setGraceDays(Integer graceDays) {
         this.graceDays = graceDays;
+    }
+
+    /** The pot shared out over each balanced pool's members; null for none. Not dated. */
+    public BigDecimal getPot() {
+        return pot;
+    }
+
+    public void setPot(BigDecimal pot) {
+        this.pot = pot;
     }
 
     /** Whether a claim opened on the sheet's today is numbered within its period. */

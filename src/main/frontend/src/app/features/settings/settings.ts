@@ -47,6 +47,9 @@ import { DatedValue, START_FLOOR, START_LATE_PCT, valueOn } from '../rates/rates
 // its due-by is unchanged. Each saves, like the clerk limit, once its field has been entered.
 // The entry date (blank: off): while set, it is the default date of a new claim in place of the
 // sheet's today. It saves like the policy date; it is not dated.
+// The pot (an amount with up to two decimals; blank: none): shared out over each balanced pool's
+// members as their cuts. It saves, like the clerk limit, once its field has been entered; it is not
+// dated.
 /** A value saved for a dated setting, by key: blank from for the beginning of time, blank value for none. */
 interface DatedSetting extends DatedValue {
   key: string;
@@ -78,6 +81,8 @@ interface SettingsResponse {
   graceDays: string;
   /** The entry date, blank for off. */
   entryDate: string;
+  /** The pot, blank for none. */
+  pot: string;
 }
 
 /** The actions the permission matrix covers. */
@@ -335,6 +340,15 @@ const DATE = /^\d{4}-\d{2}-\d{2}$/;
           (focus)="enterEntry($any($event.target))"
           (input)="entryInput.set($any($event.target).value); error.set(null)"
         />
+        <label for="setting-pot">Pot shared out over the pools (blank: none)</label>
+        <input
+          id="setting-pot"
+          data-testid="setting-pot"
+          inputmode="decimal"
+          [value]="potInput() ?? ''"
+          (focus)="enterPot($any($event.target))"
+          (input)="potInput.set($any($event.target).value); error.set(null)"
+        />
         <button type="submit" data-testid="settings-save">Save settings</button>
         @if (error(); as err) {
           <p role="alert" data-testid="settings-error">{{ err }}</p>
@@ -435,6 +449,13 @@ const DATE = /^\d{4}-\d{2}-\d{2}$/;
           <span>(off: the sheet's today)</span>
         }
       </p>
+      <p>
+        Pot:
+        <strong data-testid="setting-pot-current">{{ pot() }}</strong>
+        @if (pot() === '') {
+          <span>(none)</span>
+        }
+      </p>
       @for (a of permActions; track a) {
         <p>
           Roles that may {{ a }}:
@@ -528,6 +549,10 @@ export class Settings {
   protected readonly entryDate = signal('');
   /** The entry date typed; null while its field has not been entered (left as it is). */
   protected readonly entryInput = signal<string | null>(null);
+  /** The sheet's pot, blank for none, shared with the pools that cut it. */
+  readonly pot = model('');
+  /** The pot typed; null while its field has not been entered (left as it is). */
+  protected readonly potInput = signal<string | null>(null);
   protected readonly permActions = PERM_ACTIONS;
   /** The permission matrix in force: for each action, its roles, blank for the standing rule. */
   protected readonly permissions = signal<Partial<Record<PermAction, string>>>({});
@@ -542,7 +567,7 @@ export class Settings {
     effect(() => {
       const sheet = this.session.sheet();
       this.session.loads();
-      untracked(() => this.show({ dated: [], policyDate: '', periodNumberingFrom: '', permissions: {}, graceDays: '', entryDate: '' }));
+      untracked(() => this.show({ dated: [], policyDate: '', periodNumberingFrom: '', permissions: {}, graceDays: '', entryDate: '', pot: '' }));
       this.permInput.set({});
       this.gradeTermsInput.set({});
       this.gradeGraceInput.set({});
@@ -559,6 +584,7 @@ export class Settings {
       this.numberingInput.set(null);
       this.graceInput.set(null);
       this.entryInput.set(null);
+      this.potInput.set(null);
       this.error.set(null);
       if (sheet) {
         void this.fetch(sheet);
@@ -635,6 +661,15 @@ export class Settings {
     if (this.entryInput() !== null) return;
     input.value = this.entryDate();
     this.entryInput.set(this.entryDate());
+  }
+
+  /** Entering the pot's field fills it with the pot in force, selected, so it saves as it is
+   *  unless typed over. */
+  protected enterPot(input: HTMLInputElement): void {
+    if (this.potInput() !== null) return;
+    input.value = this.pot();
+    input.select();
+    this.potInput.set(this.pot());
   }
 
   /** Entering the grace days' field fills it with the days in force, selected, so they save as
@@ -724,7 +759,7 @@ export class Settings {
   }
 
   private show(
-    res: Pick<SettingsResponse, 'dated' | 'policyDate' | 'periodNumberingFrom' | 'permissions' | 'graceDays' | 'entryDate'>,
+    res: Pick<SettingsResponse, 'dated' | 'policyDate' | 'periodNumberingFrom' | 'permissions' | 'graceDays' | 'entryDate' | 'pot'>,
   ): void {
     this.dated.set(res.dated);
     this.permissions.set(res.permissions);
@@ -736,6 +771,7 @@ export class Settings {
     this.numberingFrom.set(res.periodNumberingFrom);
     this.graceDays.set(res.graceDays);
     this.entryDate.set(res.entryDate);
+    this.pot.set(res.pot);
   }
 
   protected async save(event: Event): Promise<void> {
@@ -754,6 +790,7 @@ export class Settings {
     const noteThreshold = this.noteThresholdInput()?.trim() ?? null;
     const graceDays = this.graceInput()?.trim() ?? null;
     const entryDate = this.entryInput()?.trim() ?? null;
+    const pot = this.potInput()?.trim() ?? null;
     if (clerkLimit !== null && clerkLimit !== '' && !LIMIT.test(clerkLimit)) {
       this.error.set('Enter a clerk limit of 0.00 or more, with up to two decimals, or leave it blank.');
       return;
@@ -828,6 +865,10 @@ export class Settings {
       this.error.set('Enter an entry date as a date, or leave it blank for off.');
       return;
     }
+    if (pot !== null && pot !== '' && !LIMIT.test(pot)) {
+      this.error.set('Enter a pot of 0.00 or more, with up to two decimals, or leave it blank.');
+      return;
+    }
     const perms: Partial<Record<PermAction, string>> = {};
     for (const a of PERM_ACTIONS) {
       const roles = this.permInput()[a]?.trim();
@@ -896,6 +937,7 @@ export class Settings {
           proofThresholdAFrom: from['proof-threshold-A'] ?? null,
           proofThresholdBFrom: from['proof-threshold-B'] ?? null,
           proofThresholdCFrom: from['proof-threshold-C'] ?? null,
+          pot,
         }),
       );
       if (this.session.sheet() !== sheet) return;
@@ -915,6 +957,7 @@ export class Settings {
       this.permInput.set({});
       this.graceInput.set(null);
       this.entryInput.set(null);
+      this.potInput.set(null);
       this.fromInput.set({});
     } catch {
       this.error.set('Could not save the settings.');
