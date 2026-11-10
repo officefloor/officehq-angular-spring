@@ -28,6 +28,7 @@ import org.springframework.web.server.ResponseStatusException;
  * their patrons, one at a time: not themselves, and not the same person twice. A user can watch a
  * person, and stop watching them; each user's watching is their own. A person may have their own
  * terms, in days; a claim's due-by takes them before the terms of the person's grade and the sheet's.
+ * A person may have a contact (arriving trimmed and lower-cased, null for none), unique on the sheet.
  */
 @Service
 public class PersonService {
@@ -58,24 +59,33 @@ public class PersonService {
 
     @Transactional
     public Person add(String sheetId, String user, String name, String grade, Integer terms) {
+        return add(sheetId, user, name, grade, terms, null);
+    }
+
+    @Transactional
+    public Person add(String sheetId, String user, String name, String grade, Integer terms, String contact) {
         roles.refuseViewer(sheetId, user);
         sheets.load(sheetId, user);
         RollupService.Snapshot before = rollup.snapshot(sheetId);
         if (people.existsBySheetIdAndNameIgnoreCase(sheetId, name)) {
             throw nameInUse();
         }
+        if (contact != null && people.existsBySheetIdAndContact(sheetId, contact)) {
+            throw contactInUse();
+        }
         Person person = new Person(sheetId, name, grade, sheets.today(sheetId));
         person.setTerms(terms);
+        person.setContact(contact);
         Person added = save(person);
         audit.recordOnCommit(record("PERSON_ADDED", sheetId, user, added, sheets.today(sheetId))
-                + (terms != null ? " terms=" + terms : ""));
+                + (terms != null ? " terms=" + terms : "") + (contact != null ? " contact=" + contact : ""));
         rollup.recordChanges(sheetId, user, before);
         return added;
     }
 
     @Transactional
     public Person update(String sheetId, String user, long id, long version, String name, String grade,
-            LocalDate gradeFrom, Integer terms) {
+            LocalDate gradeFrom, Integer terms, String contact) {
         roles.refuseViewer(sheetId, user);
         RollupService.Snapshot before = rollup.snapshot(sheetId);
         Person person = people.findByIdAndSheetId(id, sheetId)
@@ -86,23 +96,29 @@ public class PersonService {
         if (people.existsBySheetIdAndNameIgnoreCaseAndIdNot(sheetId, name, id)) {
             throw nameInUse();
         }
+        if (contact != null && people.existsBySheetIdAndContactAndIdNot(sheetId, contact, id)) {
+            throw contactInUse();
+        }
         LocalDate today = sheets.today(sheetId);
         Integer termsBefore = person.getTerms();
+        String contactBefore = person.getContact();
         person.setName(name);
         person.setTerms(terms);
+        person.setContact(contact);
         if (gradeFrom != null || !grade.equals(person.gradeOn(today))) {
             person.setGradeFrom(gradeFrom != null ? gradeFrom : today, grade, today);
         }
         Person saved = save(person);
         audit.recordOnCommit(record("PERSON_EDITED", sheetId, user, saved, today)
-                + (Objects.equals(termsBefore, terms) ? "" : " terms=" + (terms != null ? terms : "")));
+                + (Objects.equals(termsBefore, terms) ? "" : " terms=" + (terms != null ? terms : ""))
+                + (Objects.equals(contactBefore, contact) ? "" : " contact=" + (contact != null ? contact : "")));
         rollup.recordChanges(sheetId, user, before);
         return saved;
     }
 
     /**
      * Give each of the people a grade from a from-date (the sheet's today when none is given), in list
-     * order, exactly as editing each with the person form would (name and terms kept). All or none: a
+     * order, exactly as editing each with the person form would (name, terms and contact kept). All or none: a
      * person not on the sheet refuses the lot. A viewer may grade no one: each person is refused and
      * none is graded.
      */
@@ -123,7 +139,7 @@ public class PersonService {
             throw new ResponseStatusException(HttpStatus.NOT_FOUND, "No such person on this sheet.");
         }
         return chosen.stream().map(p -> update(sheetId, user, p.getId(), p.getVersion(), p.getName(), grade,
-                gradeFrom, p.getTerms())).toList();
+                gradeFrom, p.getTerms(), p.getContact())).toList();
     }
 
     /**
@@ -249,7 +265,8 @@ public class PersonService {
         try {
             return people.saveAndFlush(person);
         } catch (DataIntegrityViolationException e) {
-            throw nameInUse();
+            throw person.getContact() != null && String.valueOf(e.getMostSpecificCause().getMessage())
+                    .toUpperCase().contains("PERSON_SHEET_CONTACT") ? contactInUse() : nameInUse();
         } catch (ObjectOptimisticLockingFailureException e) {
             throw stale();
         }
@@ -259,6 +276,10 @@ public class PersonService {
     private static ResponseStatusException stale() {
         return new ResponseStatusException(HttpStatus.PRECONDITION_FAILED,
                 "Someone else has saved this person since it was opened.");
+    }
+
+    private static ResponseStatusException contactInUse() {
+        return new ResponseStatusException(HttpStatus.CONFLICT, "That contact is already in use on this sheet.");
     }
 
     private static ResponseStatusException nameInUse() {

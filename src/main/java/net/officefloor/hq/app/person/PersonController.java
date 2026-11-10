@@ -9,6 +9,7 @@ import jakarta.validation.constraints.Pattern;
 import jakarta.validation.constraints.Size;
 import java.time.LocalDate;
 import java.util.List;
+import java.util.Locale;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
@@ -23,13 +24,14 @@ public class PersonController {
     }
 
     public record AddPersonRequest(@NotBlank @Size(max = 100) String sheet, @NotBlank @Size(max = 100) String user,
-            @NotBlank @Size(max = 200) String name, @NotNull @Pattern(regexp = "[ABC]") String grade, @Min(0) Integer terms) {
+            @NotBlank @Size(max = 200) String name, @NotNull @Pattern(regexp = "[ABC]") String grade, @Min(0) Integer terms,
+            @Size(max = 200) String contact) {
     }
 
     public record UpdatePersonRequest(@NotBlank @Size(max = 100) String sheet,
             @NotBlank @Size(max = 100) String user, @NotNull Long id, @NotBlank @Size(max = 200) String name,
             @NotNull @Pattern(regexp = "[ABC]") String grade, LocalDate gradeFrom, @NotNull Long version,
-            @Min(0) Integer terms) {
+            @Min(0) Integer terms, @Size(max = 200) String contact) {
     }
 
     public record BulkGradeRequest(@NotBlank @Size(max = 100) String sheet,
@@ -72,9 +74,9 @@ public class PersonController {
     public record HoldResponse(LocalDate from, LocalDate to) {
     }
 
-    /** A person, with every grade recorded for them, the one from the beginning of time first, and their own terms or null. */
+    /** A person, with every grade recorded for them, the one from the beginning of time first, their own terms or null, and their contact or null. */
     public record PersonResponse(long id, String name, List<GradeResponse> grades, long version, boolean retired,
-            LocalDate retiredFrom, boolean held, List<HoldResponse> holds, Integer terms) {
+            LocalDate retiredFrom, boolean held, List<HoldResponse> holds, Integer terms, String contact) {
     }
 
     public static PersonResponse response(Person person) {
@@ -83,7 +85,13 @@ public class PersonController {
         return new PersonResponse(person.getId(), person.getName(), grades, person.getVersion(),
                 person.isRetired(), person.getRetiredFrom(), person.isHeld(),
                 person.getHolds().stream().map(h -> new HoldResponse(h.getFromDate(), h.getToDate())).toList(),
-                person.getTerms());
+                person.getTerms(), person.getContact());
+    }
+
+    /** A contact as stored: trimmed and lower-cased; null when blank. */
+    private static String contact(String contact) {
+        String c = contact == null ? "" : contact.trim().toLowerCase(Locale.ROOT);
+        return c.isEmpty() ? null : c;
     }
 
     private final PersonService service;
@@ -100,13 +108,13 @@ public class PersonController {
     @PostMapping("/add")
     public PersonResponse add(@Valid @RequestBody AddPersonRequest req) {
         return response(service.add(req.sheet().trim(), req.user().trim(), req.name().trim(), req.grade(),
-                req.terms()));
+                req.terms(), contact(req.contact())));
     }
 
     @PostMapping("/update")
     public PersonResponse update(@Valid @RequestBody UpdatePersonRequest req) {
         return response(service.update(req.sheet().trim(), req.user().trim(), req.id(), req.version(), req.name().trim(),
-                req.grade(), req.gradeFrom(), req.terms()));
+                req.grade(), req.gradeFrom(), req.terms(), contact(req.contact())));
     }
 
     @PostMapping("/bulk-grade")

@@ -21,6 +21,8 @@ import { VoidReasons as VoidReasonList } from '../../core/void-reasons';
 // shows the grade in force on the sheet's today; each claim uses the one in force on its date.
 // A person may have their own terms, a whole number of days (blank for none), shown on the row; a
 // claim's due-by is fixed by the server when it is created, from these before the grade's or sheet's.
+// A person may have a contact (blank for none), stored trimmed and lower-cased and shown on the row;
+// a contact another person on the sheet already has is refused.
 // The editor remembers the version of the person it opened; if someone else has saved the person
 // since, the save is refused and the form is refilled with the values the store holds now.
 // Each row shows what the person has claimed and lists their claims; the sheet's claimed-total
@@ -94,6 +96,8 @@ interface Person {
   holds: DatedHold[];
   /** The person's own terms in days, or null when they have none. */
   terms: number | null;
+  /** The person's contact, trimmed and lower-cased, or null when they have none. */
+  contact: string | null;
 }
 
 /** One of a person's holds: from its from-date to its to-date (null: open-ended), both inclusive. */
@@ -211,6 +215,13 @@ const SUMMARY_STATUSES = ['DRAFT', 'OPEN', 'PENDING', 'SETTLED', 'VOID'] as cons
           inputmode="numeric"
           [value]="termsInput()"
           (input)="termsInput.set($any($event.target).value); error.set(null)"
+        />
+        <label for="person-form-contact">Contact</label>
+        <input
+          id="person-form-contact"
+          data-testid="person-form-contact"
+          [value]="contactInput()"
+          (input)="contactInput.set($any($event.target).value); error.set(null)"
         />
         <button type="submit" data-testid="person-form-submit">
           {{ editingId() === null ? 'Add person' : 'Save person' }}
@@ -390,6 +401,7 @@ const SUMMARY_STATUSES = ['DRAFT', 'OPEN', 'PENDING', 'SETTLED', 'VOID'] as cons
             <th scope="col">Name</th>
             <th scope="col">Grade</th>
             <th scope="col">Terms</th>
+            <th scope="col">Contact</th>
             <th scope="col">Claimed</th>
             <th scope="col">Due</th>
             <th scope="col">Settled</th>
@@ -426,6 +438,7 @@ const SUMMARY_STATUSES = ['DRAFT', 'OPEN', 'PENDING', 'SETTLED', 'VOID'] as cons
               <td data-testid="person-name">{{ p.name }}</td>
               <td data-testid="person-grade">{{ gradeToday(p) }}</td>
               <td data-testid="person-terms">{{ p.terms ?? '' }}</td>
+              <td data-testid="person-contact">{{ p.contact ?? '' }}</td>
               <td data-testid="person-claimed">{{ claimedOf(p.id) }}</td>
               <td data-testid="person-due-total">{{ dueText(dueOf(p)) }}</td>
               <td data-testid="person-settled-total">{{ money(settledOpenOf(p).settled) }}</td>
@@ -817,6 +830,8 @@ export class People {
   protected readonly gradeFromInput = signal('');
   /** The person's own terms in days; blank for none. */
   protected readonly termsInput = signal('');
+  /** The person's contact; blank for none. */
+  protected readonly contactInput = signal('');
   protected readonly editingId = signal<number | null>(null);
   /** The version of the person the editor was filled from. */
   private editingVersion = 0;
@@ -1494,6 +1509,7 @@ export class People {
     this.gradeInput.set(this.gradeToday(p));
     this.gradeFromInput.set('');
     this.termsInput.set(p.terms === null ? '' : String(p.terms));
+    this.contactInput.set(p.contact ?? '');
     this.error.set(null);
   }
 
@@ -1507,6 +1523,7 @@ export class People {
     this.gradeInput.set('A');
     this.gradeFromInput.set('');
     this.termsInput.set('');
+    this.contactInput.set('');
     this.error.set(null);
   }
 
@@ -1519,6 +1536,7 @@ export class People {
     const grade = this.gradeInput();
     const gradeFrom = this.gradeFromInput().trim();
     const terms = this.termsInput().trim();
+    const contact = this.contactInput().trim().toLowerCase();
     if (!name) {
       this.error.set('Enter a name.');
       return;
@@ -1536,7 +1554,14 @@ export class People {
       return;
     }
     const id = this.editingId();
-    const body = { sheet, user: this.session.user(), name, grade, terms: terms === '' ? null : Number(terms) };
+    const body = {
+      sheet,
+      user: this.session.user(),
+      name,
+      grade,
+      terms: terms === '' ? null : Number(terms),
+      contact: contact === '' ? null : contact,
+    };
     this.submitting = true;
     try {
       if (id === null) {
@@ -1556,7 +1581,7 @@ export class People {
         await this.showCurrent(sheet, id);
         this.error.set('Someone else has saved this person since you opened it; the form now shows their values.');
       } else if (e instanceof HttpErrorResponse && e.status === 409) {
-        this.refuse('That name is already in use on this sheet.');
+        this.refuse('That name or contact is already in use on this sheet.');
       } else {
         this.refuse(id === null ? 'Could not add this person.' : 'Could not save this person.');
       }
@@ -1586,6 +1611,7 @@ export class People {
         this.nameInput.set(current.name);
         this.gradeInput.set(this.gradeToday(current));
         this.termsInput.set(current.terms === null ? '' : String(current.terms));
+        this.contactInput.set(current.contact ?? '');
       }
     } catch {
       // the refusal is shown either way
