@@ -6,6 +6,7 @@ import java.time.Instant;
 import java.time.LocalDate;
 import java.util.ArrayDeque;
 import java.util.Deque;
+import java.util.HashSet;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Optional;
@@ -147,9 +148,10 @@ public class SheetService {
     }
 
     /**
-     * The next number for a claim due by {@code date} opened on the sheet, with no gaps and never
-     * reused. Sheet-wide (1, 2, ...) unless the sheet numbers by period on its today: then within
-     * the period the date falls in ({@code <period name>-<n>}), or in no period its X sequence
+     * The next number for a claim due by {@code date} opened on the sheet, never reused. Tree-wide
+     * (1, 2, ...): the sheets of a tree (a root and every sheet below it) share one sequence, each
+     * number the next after the last given anywhere in the tree; unless the sheet numbers by period
+     * on its today: then within the period the date falls in ({@code <period name>-<n>}), or in no period its X sequence
      * ({@code X-<n>}), each counting from 1. The sheet stays locked until the caller's transaction
      * ends, so two claims opened at the same moment take different numbers.
      */
@@ -157,7 +159,16 @@ public class SheetService {
     public String nextClaimNumber(String id, LocalDate date) {
         Sheet sheet = lock(id);
         if (!sheet.numbersByPeriod()) {
-            int number = sheet.nextClaimNumber();
+            // the sheets of a tree share one sequence; holding the tree's root keeps two sheets of it
+            // from giving out the same number at once
+            String root = treeRoot(id);
+            if (!root.equals(id)) {
+                lock(root);
+            }
+            // the whole tree: the root and every sheet below it, side branches included
+            Set<String> whole = new HashSet<>(tree(root));
+            whole.add(root);
+            int number = sheet.nextClaimNumber(sheets.maxLastClaimNumber(whole));
             sheets.saveAndFlush(sheet);
             return String.valueOf(number);
         }
@@ -171,6 +182,20 @@ public class SheetService {
         int number = sheet.nextUnperiodClaimNumber();
         sheets.saveAndFlush(sheet);
         return "X-" + number;
+    }
+
+    /** The root of the sheet's tree: its topmost ancestor, or the sheet itself when it has no parent. */
+    private String treeRoot(String id) {
+        Set<String> seen = new HashSet<>();
+        String at = id;
+        while (seen.add(at)) {
+            String parent = sheets.findById(at).map(Sheet::getParentId).orElse(null);
+            if (parent == null) {
+                break;
+            }
+            at = parent;
+        }
+        return at;
     }
 
     /**

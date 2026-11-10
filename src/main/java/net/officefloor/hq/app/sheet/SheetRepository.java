@@ -16,4 +16,8 @@ public interface SheetRepository extends JpaRepository<Sheet, String> {
 
     /** The sheet's children: the sheets naming it as their parent. */
     List<Sheet> findByParentIdOrderByIdAsc(String parentId);
+
+    /** The last claim number given on any of the sheets, as the store holds it now; 0 when none. */
+    @Query("SELECT COALESCE(MAX(s.lastClaimNumber), 0) FROM Sheet s WHERE s.id IN :ids")
+    int maxLastClaimNumber(java.util.Collection<String> ids);
 }

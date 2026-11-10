@@ -406,9 +406,13 @@ public class Sheet {
         return ++lastUnperiodClaimNumber;
     }
 
-    /** Give out the next claim number on the sheet. */
-    public int nextClaimNumber() {
-        return ++lastClaimNumber;
+    /**
+     * Give out the next claim number on the sheet: the one after {@code lastInTree}, the last number
+     * given anywhere in the sheet's tree (this sheet's own included).
+     */
+    public int nextClaimNumber(int lastInTree) {
+        lastClaimNumber = Math.max(lastClaimNumber, lastInTree) + 1;
+        return lastClaimNumber;
     }
 
     /** The number of the sheet's last settle batch; 0 when there has been none. */
