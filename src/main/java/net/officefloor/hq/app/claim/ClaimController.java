@@ -90,7 +90,7 @@ public class ClaimController {
     public record ClaimResponse(long id, long personId, String amount, LocalDate date, String note,
             ClaimStatus status, String number, String settledDue, String openedBy,
             boolean stated, String statedDue, String corrects, LocalDate dueBy, List<ClaimLogLine> log,
-            LocalDate deferredUntil, int proofs, String splitFrom) {
+            LocalDate deferredUntil, int proofs, String splitFrom, String lockedBy) {
     }
 
     /** One line of a claim's status log, oldest first. */
@@ -109,7 +109,7 @@ public class ClaimController {
                 claim.getCorrects(), claim.getDueBy(),
                 claim.getLog().stream().map(l -> new ClaimLogLine(l.getStatus(), l.getBy(), l.getDate(), l.getDue()))
                         .toList(),
-                claim.getDeferredUntil(), claim.getProofs(), claim.getSplitFrom());
+                claim.getDeferredUntil(), claim.getProofs(), claim.getSplitFrom(), claim.getLockedBy());
     }
 
     public static BigDecimal amount(String amount) {
@@ -155,6 +155,16 @@ public class ClaimController {
     public ClaimResponse update(@Valid @RequestBody UpdateClaimRequest req) {
         return response(service.update(req.sheet().trim(), req.user().trim(), req.id(), amount(req.amount()), req.date(),
                 note(req.note()), corrects(req.corrects())));
+    }
+
+    @PostMapping("/lock")
+    public ClaimResponse lock(@Valid @RequestBody ClaimStatusRequest req) {
+        return response(service.lock(req.sheet().trim(), req.user().trim(), req.id()));
+    }
+
+    @PostMapping("/unlock")
+    public ClaimResponse unlock(@Valid @RequestBody ClaimStatusRequest req) {
+        return response(service.unlock(req.sheet().trim(), req.user().trim(), req.id()));
     }
 
     @PostMapping("/open")

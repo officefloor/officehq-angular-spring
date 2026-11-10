@@ -6,6 +6,7 @@ import java.time.Instant;
 import java.time.LocalDate;
 import java.util.Optional;
 import net.officefloor.hq.app.Audit;
+import net.officefloor.hq.app.claim.ClaimRepository;
 import net.officefloor.hq.app.period.Period;
 import net.officefloor.hq.app.period.PeriodRepository;
 import net.officefloor.hq.app.rollup.RollupService;
@@ -23,9 +24,12 @@ public class SheetService {
     private final RollupService rollup;
     private final PeriodRepository periods;
     private final Audit audit;
+    private final ClaimRepository claims;
 
-    public SheetService(SheetRepository sheets, RollupService rollup, PeriodRepository periods, Audit audit) {
+    public SheetService(SheetRepository sheets, RollupService rollup, PeriodRepository periods, Audit audit,
+            ClaimRepository claims) {
         this.audit = audit;
+        this.claims = claims;
         this.sheets = sheets;
         this.rollup = rollup;
         this.periods = periods;
@@ -139,7 +143,8 @@ public class SheetService {
 
     /**
      * Change the sheet's today. With grace days set, every open period whose to-date plus the grace
-     * days is before the new today is then closed, in order of their to-dates.
+     * days is before the new today is then closed, in order of their to-dates. A new today releases
+     * every claim editor's lock.
      */
     @Transactional
     public Sheet setToday(String id, String user, LocalDate today) {
@@ -148,6 +153,7 @@ public class SheetService {
         // hold the sheet so no claim changes while periods close
         Sheet sheet = lock(id);
         RollupService.Snapshot before = rollup.snapshot(id);
+        boolean moved = !today.equals(sheet.getToday());
         sheet.setToday(today);
         Sheet saved = sheets.saveAndFlush(sheet);
         Integer grace = saved.getGraceDays();
@@ -160,6 +166,9 @@ public class SheetService {
         }
         // changing today has no audit line of its own, only the periods it closes and the figures it moves
         rollup.recordChanges(id, user, before);
+        if (moved) {
+            claims.unlockAll(id);
+        }
         return saved;
     }
 }

@@ -1,5 +1,5 @@
 import { HttpClient, HttpErrorResponse } from '@angular/common/http';
-import { Component, computed, inject, input, output, signal } from '@angular/core';
+import { Component, computed, inject, input, linkedSignal, output, signal, untracked } from '@angular/core';
 import { firstValueFrom } from 'rxjs';
 import { Session } from '../../core/session';
 import { Period, inClosedPeriod, periodOn } from '../periods/periods';
@@ -12,6 +12,10 @@ import { DatedGrade, DatedValue, Lateness, Rate, chargedDueCents, dueText, grade
 // dated inside a closed period cannot be added, edited or moved on: each is refused with an error.
 // Only a DRAFT can be edited; editing any other claim is refused with an error on the claim (to
 // change an open claim, void it and add a new one).
+// Opening a claim's editor locks the claim for every other user until the editor is saved or
+// cancelled (the cancel button on the claim) or the sheet's today changes: another user's edit
+// button on it is refused with an error on the claim. A refused edit button takes no lock. The lock
+// is kept in the store, so the editor is open again when its user re-loads the sheet.
 // A steward may void a SETTLED claim within 7 days of its settlement by the sheet's today: it keeps
 // its number and shows its frozen due, which leaves every total. Anyone else, or a later day, is
 // refused with an error on the claim.
@@ -77,6 +81,8 @@ export interface Claim {
   proofs: number;
   /** The number of the claim this claim was split off from; null for a claim not made by a split. */
   splitFrom: string | null;
+  /** The user whose open editor locks the claim for everyone else; null when unlocked. */
+  lockedBy: string | null;
 }
 
 /** One line of a claim's status log. */
@@ -133,6 +139,9 @@ export function deferred(c: Claim, today: string | null): boolean {
 
 /** The refusal of a change to a claim dated inside a closed period. */
 const CLOSED = 'That date is inside a closed period.';
+
+/** The refusal of editing a claim another user's open editor locks (or no longer a DRAFT). */
+const LOCKED = 'Another user is editing this claim, or it is no longer a DRAFT.';
 
 /** The refusal of a correction that names no SETTLED claim of its person. */
 const UNCORRECTABLE = 'A negative amount must correct a SETTLED claim of this person, by its number.';
@@ -346,7 +355,7 @@ export function money(c: number): string {
             Edit
           </button>
           @if (editingId() === c.id) {
-            <button type="button" data-testid="claim-cancel" (click)="reset()">Cancel</button>
+            <button type="button" data-testid="claim-cancel" (click)="cancel(c)">Cancel</button>
           }
           @if (actionErrors().get(c.id); as err) {
             <p role="alert" data-testid="claim-error">{{ err }}</p>
@@ -386,11 +395,16 @@ export class PersonClaims {
   /** A claim's checkbox ticked (on) or cleared. */
   readonly selectedChange = output<{ id: number; on: boolean }>();
 
-  protected readonly amountInput = signal('');
-  protected readonly dateInput = signal('');
-  protected readonly noteInput = signal('');
-  protected readonly correctsInput = signal('');
-  protected readonly editingId = signal<number | null>(null);
+  /** The DRAFT claim of this person whose editor this user holds the lock of: its editor is open,
+   *  with the claim's values, when the sheet is loaded. */
+  private readonly lockedId = computed(
+    () => this.claims().find((c) => c.lockedBy === this.session.user() && c.status === 'DRAFT')?.id ?? null,
+  );
+  protected readonly amountInput = linkedSignal(() => this.lockedValue((c) => c.amount));
+  protected readonly dateInput = linkedSignal(() => this.lockedValue((c) => c.date));
+  protected readonly noteInput = linkedSignal(() => this.lockedValue((c) => c.note));
+  protected readonly correctsInput = linkedSignal(() => this.lockedValue((c) => c.corrects ?? ''));
+  protected readonly editingId = linkedSignal(() => this.lockedId());
   protected readonly error = signal<string | null>(null);
   /** Whether a submit is waiting for its answer: a second submit meanwhile is ignored. */
   private submitting = false;
@@ -440,7 +454,15 @@ export class PersonClaims {
     return periodOn(this.periods(), c.date)?.name ?? '';
   }
 
-  protected edit(c: Claim): void {
+  /** A value of the claim whose lock this user holds; blank when none. */
+  private lockedValue(of: (c: Claim) => string): string {
+    const id = this.lockedId();
+    const c = id === null ? undefined : untracked(this.claims).find((x) => x.id === id);
+    return c === undefined ? '' : of(c);
+  }
+
+  /** Open a claim's editor, taking its lock; refused when it cannot be edited or another user holds it. */
+  protected async edit(c: Claim): Promise<void> {
     this.clearActionError(c.id);
     if (inClosedPeriod(this.periods(), c.date)) {
       this.actionErrors.update((m) => new Map(m).set(c.id, CLOSED));
@@ -450,12 +472,61 @@ export class PersonClaims {
       this.actionErrors.update((m) => new Map(m).set(c.id, `A ${c.status} claim cannot be edited.`));
       return;
     }
-    this.editingId.set(c.id);
-    this.amountInput.set(c.amount);
-    this.dateInput.set(c.date);
-    this.noteInput.set(c.note);
-    this.correctsInput.set(c.corrects ?? '');
-    this.error.set(null);
+    if (c.lockedBy !== null && c.lockedBy !== this.session.user()) {
+      this.actionErrors.update((m) => new Map(m).set(c.id, LOCKED));
+      return;
+    }
+    if (this.submitting) return;
+    const sheet = this.session.sheet();
+    const was = this.editingId();
+    // a submit meanwhile is ignored, so the form cannot add a claim while the lock is being taken
+    this.submitting = true;
+    try {
+      const claim = await firstValueFrom(
+        this.http.post<Claim>('/api/claims/lock', { sheet, user: this.session.user(), id: c.id }),
+      );
+      if (this.session.sheet() !== sheet) return;
+      // taking this lock released the one this user held on another claim of the person
+      const released = this.claims().find((x) => x.id === was && x.id !== claim.id);
+      if (released !== undefined) this.saved.emit({ ...released, lockedBy: null });
+      this.saved.emit(claim);
+      this.editingId.set(claim.id);
+      this.amountInput.set(claim.amount);
+      this.dateInput.set(claim.date);
+      this.noteInput.set(claim.note);
+      this.correctsInput.set(claim.corrects ?? '');
+      this.error.set(null);
+    } catch (e) {
+      if (this.session.sheet() !== sheet) return;
+      const status = e instanceof HttpErrorResponse ? e.status : 0;
+      const err =
+        status === 423
+          ? CLOSED
+          : status === 403
+            ? 'Your role may not edit a claim on this sheet.'
+            : status === 409
+              ? LOCKED
+              : 'Could not open this claim\'s editor.';
+      this.actionErrors.update((m) => new Map(m).set(c.id, err));
+    } finally {
+      this.submitting = false;
+    }
+  }
+
+  /** Close the claim's editor unsaved, releasing its lock. */
+  protected async cancel(c: Claim): Promise<void> {
+    this.clearActionError(c.id);
+    const sheet = this.session.sheet();
+    this.reset();
+    try {
+      const claim = await firstValueFrom(
+        this.http.post<Claim>('/api/claims/unlock', { sheet, user: this.session.user(), id: c.id }),
+      );
+      if (this.session.sheet() !== sheet) return;
+      this.saved.emit(claim);
+    } catch {
+      // the editor is closed; a lock left behind is released when the sheet's today changes
+    }
   }
 
   protected reset(): void {
@@ -763,7 +834,7 @@ export class PersonClaims {
           : e instanceof HttpErrorResponse && e.status === 400 && correction
             ? UNCORRECTABLE
           : e instanceof HttpErrorResponse && e.status === 409
-            ? 'Only a DRAFT claim can be edited.'
+            ? 'Only a DRAFT claim can be edited, and not while another user is editing it.'
             : id === null
               ? 'Could not add this claim.'
               : 'Could not save this claim.',

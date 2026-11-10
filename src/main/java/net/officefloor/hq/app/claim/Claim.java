@@ -92,6 +92,13 @@ public class Claim {
     private String splitFrom;
 
     /**
+     * The user whose open editor locks the claim for everyone else; none when unlocked. Released
+     * when the editor is saved or cancelled, or the sheet's today changes.
+     */
+    @Column(name = "locked_by")
+    private String lockedBy;
+
+    /**
      * The date an OPEN claim is deferred until: while the sheet's today is before it the claim
      * counts in no total, is not overdue and cannot be settled; none when never deferred.
      */
@@ -193,6 +200,19 @@ public class Claim {
 
     public void setSplitFrom(String splitFrom) {
         this.splitFrom = splitFrom;
+    }
+
+    public String getLockedBy() {
+        return lockedBy;
+    }
+
+    public void setLockedBy(String lockedBy) {
+        this.lockedBy = lockedBy;
+    }
+
+    /** Whether another user's open editor locks the claim against the user. */
+    public boolean isLockedAgainst(String user) {
+        return lockedBy != null && !lockedBy.equals(user);
     }
 
     /** Whether the claim is a correction: its amount is below zero. Its due has no floor and no late charge. */
