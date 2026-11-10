@@ -10,6 +10,7 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import net.officefloor.hq.app.Audit;
+import net.officefloor.hq.app.holiday.HolidayService;
 import net.officefloor.hq.app.period.PeriodService;
 import net.officefloor.hq.app.person.Person;
 import net.officefloor.hq.app.person.PersonRepository;
@@ -80,9 +81,12 @@ public class ClaimService {
     private final PeriodService periods;
     private final RoleService roles;
     private final WatchRepository watches;
+    private final HolidayService holidays;
 
     public ClaimService(ClaimRepository claims, PersonRepository people, RateRepository rates, SheetService sheets,
-            Audit audit, RollupService rollup, PeriodService periods, RoleService roles, WatchRepository watches) {
+            Audit audit, RollupService rollup, PeriodService periods, RoleService roles, WatchRepository watches,
+            HolidayService holidays) {
+        this.holidays = holidays;
         this.roles = roles;
         this.watches = watches;
         this.rollup = rollup;
@@ -125,11 +129,13 @@ public class ClaimService {
 
     /**
      * A claim's due-by, fixed at creation: its date plus the first of the person's own terms, the
-     * terms of their grade and the sheet's terms, each as in force on its date.
+     * terms of their grade and the sheet's terms, each as in force on its date; when that falls on
+     * one of the sheet's holidays, the next day that is not.
      */
     private LocalDate dueBy(String sheetId, Person person, LocalDate dated) {
         Integer own = person.getTerms();
-        return dated.plusDays(own != null ? own : sheets.sheet(sheetId).termsFor(person.gradeOn(dated), dated));
+        return holidays.pastHolidays(sheetId,
+                dated.plusDays(own != null ? own : sheets.sheet(sheetId).termsFor(person.gradeOn(dated), dated)));
     }
 
     @Transactional(readOnly = true)
