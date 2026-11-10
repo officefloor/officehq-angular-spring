@@ -36,7 +36,10 @@ import org.springframework.web.server.ResponseStatusException;
  * then by the order they were added). Figures a statement bound are lost, their statements are
  * dropped, and references are not carried. They leave this sheet entirely: patron links, pool
  * memberships, holds and watches are dropped. They and their claims arrive as new rows, so
- * this sheet's history (its as-of view) keeps its own.
+ * this sheet's history (its as-of view) keeps its own. When the other sheet already has a person
+ * with their name or an alias, they are merged into that person instead, as a merge does: their
+ * claims are listed after that person's, their name and aliases become that person's aliases, and
+ * their grades, terms and contact are dropped.
  */
 @Service
 public class PersonTransferService {
@@ -73,8 +76,10 @@ public class PersonTransferService {
 
     /**
      * Transfer the person to the other sheet. Refused (403) to anyone but a steward, (409) for a
-     * transfer to this same sheet, of a retired person, or when the person's name, an alias or their
-     * contact is already on the other sheet; (423) when either sheet is archived.
+     * transfer to this same sheet, of a retired person, when their name or aliases are on more than one
+     * person of the other sheet, or on a retired one, or on another sheet of its tree, or when their
+     * contact is already on the other sheet (but not on the person they merge into); (423) when either
+     * sheet is archived. Answers the person who arrived, or the one they merged into.
      */
     @Transactional
     public Person transfer(String sheetId, String user, long id, String toSheetId) {
@@ -103,14 +108,28 @@ public class PersonTransferService {
         toTree.remove(toSheetId);
         List<String> names = new ArrayList<>(List.of(person.getName()));
         names.addAll(person.getAliases());
+        // whoever on the other sheet already has their name or an alias is the one they merge into
+        Person into = null;
         for (String name : names) {
-            if (people.existsBySheetIdAndNameIgnoreCase(toSheetId, name) || people.existsAliasOnSheet(toSheetId, name)
-                    || !toTree.isEmpty() && people.existsNameOrAliasOnSheets(toTree, name, person.getId())) {
+            Person match = people.findBySheetIdAndNameOrAlias(toSheetId, name).orElse(null);
+            if (match != null && into != null && !match.getId().equals(into.getId())) {
+                throw new ResponseStatusException(HttpStatus.CONFLICT,
+                        "The names are in use by more than one person on sheet " + toSheetId + ".");
+            }
+            if (match != null) {
+                into = match;
+            }
+            if (!toTree.isEmpty() && people.existsNameOrAliasOnSheets(toTree, name, person.getId())) {
                 throw new ResponseStatusException(HttpStatus.CONFLICT,
                         "The name " + name + " is already in use on sheet " + toSheetId + ".");
             }
         }
-        if (person.getContact() != null && people.existsBySheetIdAndContact(toSheetId, person.getContact())) {
+        if (into != null && into.isRetired()) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT, "A retired person cannot be merged.");
+        }
+        if (person.getContact() != null && (into == null
+                ? people.existsBySheetIdAndContact(toSheetId, person.getContact())
+                : people.existsBySheetIdAndContactAndIdNot(toSheetId, person.getContact(), into.getId()))) {
             throw new ResponseStatusException(HttpStatus.CONFLICT,
                     "That contact is already in use on sheet " + toSheetId + ".");
         }
@@ -132,11 +151,18 @@ public class PersonTransferService {
         statements.deleteAll(theirStatements);
         statements.flush();
 
-        // the person and their claims arrive on the other sheet as new rows, listed in the order they
-        // were, the numbered ones numbered afresh there in the order they were opened; this sheet's go
-        Person arriving = person.transferredTo(toSheetId);
-        arriving.setPosition(people.maxPosition(toSheetId) + 1);
-        Person arrived = people.saveAndFlush(arriving);
+        // the person and their claims arrive on the other sheet as new rows, or their claims go to the
+        // one they merge into, listed after theirs; in the order they were, the numbered ones numbered
+        // afresh there in the order they were opened; this sheet's go
+        String name = person.getName();
+        Person arrived;
+        if (into == null) {
+            Person arriving = person.transferredTo(toSheetId);
+            arriving.setPosition(people.maxPosition(toSheetId) + 1);
+            arrived = people.saveAndFlush(arriving);
+        } else {
+            arrived = into;
+        }
         List<Claim> theirs = claims.findBySheetIdAndPersonIdOrderByListedAsc(sheetId, person.getId());
         Map<Long, String> numbers = new HashMap<>();
         theirs.stream().filter(c -> c.getNumber() != null)
@@ -157,13 +183,24 @@ public class PersonTransferService {
         claims.flush();
         people.delete(person);
         people.flush();
+
+        if (into != null) {
+            // their name and aliases join the aliases of the one they merged into
+            arrived = people.lockByIdAndSheetId(into.getId(), toSheetId).orElseThrow();
+            names.forEach(arrived::addAlias);
+            arrived = people.saveAndFlush(arrived);
+        }
         history.capture(toSheetId);
 
-        audit.recordOnCommit("PERSON_TRANSFERRED sheet=" + sheetId + " by=" + user + " name=" + arrived.getName()
+        audit.recordOnCommit("PERSON_TRANSFERRED sheet=" + sheetId + " by=" + user + " name=" + name
                 + " to=" + toSheetId);
         rollup.recordChanges(sheetId, user, before, true);
-        audit.recordOnCommit("PERSON_TRANSFERRED sheet=" + toSheetId + " by=" + user + " name=" + arrived.getName()
+        audit.recordOnCommit("PERSON_TRANSFERRED sheet=" + toSheetId + " by=" + user + " name=" + name
                 + " from=" + sheetId);
+        if (into != null) {
+            audit.recordOnCommit("PERSON_MERGED sheet=" + toSheetId + " by=" + user + " from=" + name + " into="
+                    + arrived.getName());
+        }
         rollup.recordChanges(toSheetId, user, beforeTo);
         return arrived;
     }
