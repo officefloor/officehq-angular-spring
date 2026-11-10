@@ -22,10 +22,22 @@ public final class LateCharge {
         return figure == null ? null : figure.add(charge(sheet, claim, figure));
     }
 
+    /**
+     * The figure with the late charge it would have on the sheet's today were the claim open,
+     * whatever its status; null when the figure is null.
+     */
+    public static BigDecimal withChargeAsOpen(Sheet sheet, Claim claim, BigDecimal figure) {
+        return figure == null ? null : figure.add(charge(sheet, claim, figure, true));
+    }
+
     /** The late charge on a claim's figure on the sheet's today; zero when it is not overdue. */
     public static BigDecimal charge(Sheet sheet, Claim claim, BigDecimal figure) {
+        return charge(sheet, claim, figure, claim.getStatus().isOpen());
+    }
+
+    private static BigDecimal charge(Sheet sheet, Claim claim, BigDecimal figure, boolean open) {
         BigDecimal zero = BigDecimal.ZERO.setScale(2);
-        if (figure == null || !claim.getStatus().isOpen() || claim.isCorrection()) {
+        if (figure == null || !open || claim.isCorrection()) {
             return zero;
         }
         long periods = ChronoUnit.DAYS.between(claim.getDueBy(), sheet.getToday()) / PERIOD_DAYS;

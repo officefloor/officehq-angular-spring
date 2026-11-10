@@ -81,7 +81,7 @@ export interface ClaimTarget {
 }
 
 /** A move from one status to the next, by the endpoint that makes it. */
-type ClaimAction = 'open' | 'settle' | 'approve' | 'reject' | 'void';
+type ClaimAction = 'open' | 'settle' | 'resettle' | 'approve' | 'reject' | 'void';
 
 /** Whether a claim counts toward claimed, due-total and every total: only OPEN, PENDING and SETTLED do. */
 export function counts(c: Claim): boolean {
@@ -102,6 +102,7 @@ const UNCORRECTABLE = 'A negative amount must correct a SETTLED claim of this pe
 const PAST: Record<ClaimAction, string> = {
   open: 'opened',
   settle: 'settled',
+  resettle: 're-settled',
   approve: 'approved',
   reject: 'rejected',
   void: 'voided',
@@ -229,6 +230,7 @@ export function money(c: number): string {
           </ol>
           <button type="button" data-testid="claim-open" (click)="act(c, 'open')">Open</button>
           <button type="button" data-testid="claim-settle" (click)="act(c, 'settle')">Settle</button>
+          <button type="button" data-testid="claim-resettle" (click)="act(c, 'resettle')">Re-settle</button>
           <button type="button" data-testid="claim-approve" (click)="act(c, 'approve')">Approve</button>
           <label [for]="'claim-reject-reason-' + c.id">Reject reason</label>
           <input
@@ -451,7 +453,9 @@ export class PersonClaims {
             ? c.openedBy === this.session.user() && action === 'approve'
               ? 'The user who opened a claim cannot approve it.'
               : 'Only a steward can approve or reject a PENDING claim.'
-            : 'The user who opened a claim cannot settle it.'
+            : action === 'resettle'
+              ? 'Only a steward can re-settle a claim.'
+              : 'The user who opened a claim cannot settle it.'
           : e instanceof HttpErrorResponse && e.status === 423
             ? CLOSED
             : `A ${c.status} claim cannot be ${PAST[action]}.`;

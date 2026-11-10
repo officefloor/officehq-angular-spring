@@ -45,7 +45,9 @@ import org.springframework.web.server.ResponseStatusException;
  * a negative amount is a correction: it is allowed only when it names, by number, a SETTLED claim
  * of the same person that it corrects. Its due has no floor and no late charge. A steward can move
  * a DRAFT, OPEN or PENDING claim to another person: it keeps its number and date, loses any figure
- * a statement bound it to, and is listed as its new person's newest claim.
+ * a statement bound it to, and is listed as its new person's newest claim. A steward can re-settle
+ * a SETTLED claim: its due is fixed again at the figure it would have today as an open claim bound
+ * by no statement (today's rates, grades, floor and late charge).
  */
 @Service
 public class ClaimService {
@@ -218,6 +220,37 @@ public class ClaimService {
                 + (saved.getNumber() != null ? " number=" + saved.getNumber() : "")
                 + (next == ClaimStatus.SETTLED ? " due=" + dueText(saved.getSettledDue()) : "")
                 + (reason != null ? " reason=" + reason : ""));
+        rollup.recordChanges(sheetId, user, before);
+        return saved;
+    }
+
+    /**
+     * Re-settle a SETTLED claim: fix its due again at the figure it would have on the sheet's today
+     * as an open claim bound by no statement, with its late charge. Refused (403) for anyone but a
+     * steward, (409) for a claim that is not SETTLED and (423) when dated inside a closed period.
+     */
+    @Transactional
+    public Claim resettle(String sheetId, String user, long id) {
+        if (!isSteward(sheetId, user)) {
+            throw new ResponseStatusException(HttpStatus.FORBIDDEN, "Only a steward can re-settle a claim.");
+        }
+        RollupService.Snapshot before = rollup.snapshot(sheetId);
+        Claim claim = claims.findByIdAndSheetId(id, sheetId)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "No such claim on this sheet."));
+        if (claim.getStatus() != ClaimStatus.SETTLED) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT,
+                    "A " + claim.getStatus() + " claim cannot be re-settled.");
+        }
+        periods.refuseIfClosed(sheetId, claim.getDate());
+        Person person = person(sheetId, claim.getPersonId());
+        BigDecimal old = claim.getSettledDue();
+        BigDecimal settling = LateCharge.withChargeAsOpen(sheets.sheet(sheetId), claim, due(sheetId, person, claim));
+        claim.setSettledDue(settling);
+        logStatus(sheetId, user, person, claim);
+        Claim saved = claims.saveAndFlush(claim);
+        audit.recordOnCommit(record("CLAIM_RESETTLED", sheetId, user, person, saved)
+                + (saved.getNumber() != null ? " number=" + saved.getNumber() : "")
+                + " old=" + dueText(old) + " new=" + dueText(settling));
         rollup.recordChanges(sheetId, user, before);
         return saved;
     }

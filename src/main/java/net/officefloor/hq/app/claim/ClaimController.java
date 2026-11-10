@@ -146,6 +146,11 @@ public class ClaimController {
         return changeStatus(req, ClaimStatus.VOID);
     }
 
+    @PostMapping("/resettle")
+    public ClaimResponse resettle(@Valid @RequestBody ClaimStatusRequest req) {
+        return response(service.resettle(req.sheet().trim(), req.user().trim(), req.id()));
+    }
+
     @PostMapping("/reassign")
     public ClaimResponse reassign(@Valid @RequestBody ReassignClaimRequest req) {
         return response(service.reassign(req.sheet().trim(), req.user().trim(), req.id(), req.personId()));
