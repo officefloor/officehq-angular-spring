@@ -1,0 +1,119 @@
+diff --git a/src/main/frontend/src/app/features/people/people.ts b/src/main/frontend/src/app/features/people/people.ts
+index 07e3f149a..646960167 100644
+--- a/src/main/frontend/src/app/features/people/people.ts
++++ b/src/main/frontend/src/app/features/people/people.ts
+@@ -34,7 +34,8 @@ import { GradeSummary, PeriodSummary, StatusSummary, Summary } from '../summary/
+ // at its end (by the status each had then, as its log records it).
+ // A person can be retired from a date (the sheet's today when left blank); with a date set they count
+ // as retired at once, whatever the date. No claim of theirs can be dated after it. Retired people are
+-// left out of the list unless "show retired" is on; their claims keep counting in every total.
++// left out of the list unless "show retired" is on. Once the sheet's today reaches their retirement
++// date their OPEN and PENDING claims leave every live total, as a hold's would (unless a statement binds them).
+ // A person can be put on hold from a date (the sheet's today when left blank) to an optional to-date,
+ // and may have several holds over time; a hold ends on its to-date. Their OPEN and PENDING claims dated
+ // within a hold count in no total (their own, the sheet's or a period's); their other claims still do,
+@@ -90,12 +91,19 @@ function heldOn(p: Person, date: string): boolean {
+   return p.holds.some((h) => h.from <= date && (h.to === null || date <= h.to));
+ }
+ 
++/** Whether the person's retirement date is reached on a day (the day on or after it). */
++function retiredOn(p: Person, date: string | null): boolean {
++  return p.retiredFrom !== null && date !== null && date >= p.retiredFrom;
++}
++
+ /**
+  * Whether a claim of the person counts toward the totals: an OPEN or PENDING claim dated within one
+- * of their holds does not, unless a statement binds it; nor does a claim deferred on the sheet's today.
++ * of their holds does not, nor does one once the sheet's today reaches their retirement date, unless
++ * a statement binds it; nor does a claim deferred on the sheet's today.
+  */
+ function countsFor(p: Person | undefined, c: Claim, today: string | null): boolean {
+-  return counts(c) && !deferred(c, today) && (c.stated || !(p !== undefined && isOpen(c) && heldOn(p, c.date)));
++  return counts(c) && !deferred(c, today)
++    && (c.stated || !(p !== undefined && isOpen(c) && (heldOn(p, c.date) || retiredOn(p, today))));
+ }
+ 
+ /** One of a person's patrons. */
+diff --git a/src/main/java/net/officefloor/hq/app/person/Person.java b/src/main/java/net/officefloor/hq/app/person/Person.java
+index f2f090ac2..054ab10a0 100644
+--- a/src/main/java/net/officefloor/hq/app/person/Person.java
++++ b/src/main/java/net/officefloor/hq/app/person/Person.java
+@@ -125,6 +125,11 @@ public class Person {
+         return retiredFrom != null;
+     }
+ 
++    /** Whether the retirement date is reached on a day (the day on or after it). */
++    public boolean retiredOn(LocalDate date) {
++        return retiredFrom != null && date != null && !date.isBefore(retiredFrom);
++    }
++
+     /** The holds recorded, by from-date. */
+     public List<DatedHold> getHolds() {
+         return holds.stream().sorted(Comparator.comparing(DatedHold::getFromDate)
+@@ -147,19 +152,20 @@ public class Person {
+ 
+     /**
+      * Whether a claim of this person counts toward the live totals: an open claim dated within a
+-     * hold does not, unless a statement binds it; nor does a claim deferred on the sheet's today.
++     * hold does not, nor does one of a person whose retirement date the sheet's today has reached,
++     * unless a statement binds it; nor does a claim deferred on the sheet's today.
+      */
+     public boolean counts(Claim claim, LocalDate today) {
+         return counts(claim, claim.getStatus(), today);
+     }
+ 
+     /**
+-     * Whether a claim of this person counts by the same rules, had it the given status; a hold takes
+-     * out only a claim that is open now as well (one since settled or voided is out of the hold).
++     * Whether a claim of this person counts by the same rules, had it the given status; a hold or a
++     * reached retirement takes out only a claim that is open now as well (one since settled or voided is not).
+      */
+     public boolean counts(Claim claim, ClaimStatus status, LocalDate today) {
+         return status.counts() && !claim.isDeferredOn(status, today) && (claim.isStated()
+-                || !(status.isOpen() && claim.getStatus().isOpen() && heldOn(claim.getDate())));
++                || !(status.isOpen() && claim.getStatus().isOpen() && (heldOn(claim.getDate()) || retiredOn(today))));
+     }
+ 
+     public long getVersion() {
+diff --git a/src/main/java/net/officefloor/hq/app/person/PersonService.java b/src/main/java/net/officefloor/hq/app/person/PersonService.java
+index bca9b25dc..48889e4fe 100644
+--- a/src/main/java/net/officefloor/hq/app/person/PersonService.java
++++ b/src/main/java/net/officefloor/hq/app/person/PersonService.java
+@@ -98,17 +98,22 @@ public class PersonService {
+         return saved;
+     }
+ 
+-    /** Retire the person from a date, or from the sheet's today when none is given. */
++    /**
++     * Retire the person from a date, or from the sheet's today when none is given. Once the sheet's
++     * today reaches that date their OPEN claims leave every live total, so the figures that move are recorded.
++     */
+     @Transactional
+     public Person retire(String sheetId, String user, long id, LocalDate date) {
+         roles.refuseViewer(sheetId, user);
+         Person person = people.findByIdAndSheetId(id, sheetId)
+                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "No such person on this sheet."));
++        RollupService.Snapshot before = rollup.snapshot(sheetId);
+         LocalDate from = date != null ? date : sheets.today(sheetId);
+         person.setRetiredFrom(from);
+         Person saved = save(person);
+         audit.recordOnCommit("PERSON_RETIRED sheet=" + sheetId + " by=" + user + " name=" + saved.getName() + " from="
+                 + from);
++        rollup.recordChanges(sheetId, user, before);
+         return saved;
+     }
+ 
+diff --git a/src/main/java/net/officefloor/hq/app/rollup/RollupService.java b/src/main/java/net/officefloor/hq/app/rollup/RollupService.java
+index 6932e2bc8..7bcc6af53 100644
+--- a/src/main/java/net/officefloor/hq/app/rollup/RollupService.java
++++ b/src/main/java/net/officefloor/hq/app/rollup/RollupService.java
+@@ -28,7 +28,8 @@ import org.springframework.stereotype.Service;
+  * and calls {@link #recordChanges} after its own audit lines, which appends one ROLLUP line per
+  * person whose figures moved (people in the order they were added; a new person counts as moved),
+  * then a TOTALS line when any of the sheet's totals moved. A held person's OPEN claims count in none of
+- * these (nor their PENDING ones), nor in a period's due-total; their SETTLED claims still do. An overdue claim's figure has
++ * these (nor their PENDING ones), nor in a period's due-total; their SETTLED claims still do. So too a person whose
++ * retirement date the sheet's today has reached. An overdue claim's figure has
+  * its late charge added on top, and a live due is then never below the floor in force on its claim's date. A person's
+  * due-total is at most the cap in force on the sheet's today, when there is one.
+  */
