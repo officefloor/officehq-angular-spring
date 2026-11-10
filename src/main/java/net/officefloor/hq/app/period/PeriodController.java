@@ -4,6 +4,7 @@ import jakarta.validation.Valid;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.NotNull;
 import jakarta.validation.constraints.Pattern;
+import jakarta.validation.constraints.Positive;
 import jakarta.validation.constraints.Size;
 import java.math.RoundingMode;
 import java.time.LocalDate;
@@ -26,7 +27,7 @@ public class PeriodController {
     /** A period's name has no spaces: it is written into the audit record as one field. */
     public record AddPeriodRequest(@NotBlank @Size(max = 100) String sheet, @NotBlank @Size(max = 100) String user,
             @NotBlank @Size(max = 100) @Pattern(regexp = "\\s*\\S+\\s*") String name, @NotNull LocalDate from,
-            @NotNull LocalDate to) {
+            @NotNull LocalDate to, @Positive Integer cap) {
     }
 
     public record GeneratePeriodsRequest(@NotBlank @Size(max = 100) String sheet,
@@ -44,10 +45,11 @@ public class PeriodController {
 
     /**
      * closedDue is the due-total fixed when the period was closed, closedDues each person's (by
-     * person id); null while it is open. fy is the fiscal year its from-date falls in.
+     * person id); null while it is open. fy is the fiscal year its from-date falls in; cap its
+     * claim cap per person, null for none.
      */
     public record PeriodResponse(long id, String name, LocalDate from, LocalDate to, boolean closed,
-            boolean softClosed, String closedDue, Map<String, String> closedDues, String fy) {
+            boolean softClosed, String closedDue, Map<String, String> closedDues, String fy, Integer cap) {
     }
 
     private PeriodResponse response(String sheetId, Period period) {
@@ -60,7 +62,8 @@ public class PeriodController {
                 period.getToDate(), period.isClosed(), period.isSoftClosed(),
                 period.getClosedDue() == null ? null
                         : period.getClosedDue().setScale(2, RoundingMode.UNNECESSARY).toPlainString(),
-                period.isClosed() || period.isSoftClosed() ? closedDues(period) : null, years.get(period.getId())))
+                period.isClosed() || period.isSoftClosed() ? closedDues(period) : null, years.get(period.getId()),
+                period.getClaimCap()))
                 .toList();
     }
 
@@ -84,7 +87,7 @@ public class PeriodController {
 
     @PostMapping("/add")
     public PeriodResponse add(@Valid @RequestBody AddPeriodRequest req) {
-        return response(req.sheet().trim(), service.add(req.sheet().trim(), req.user().trim(), req.name().trim(), req.from(), req.to()));
+        return response(req.sheet().trim(), service.add(req.sheet().trim(), req.user().trim(), req.name().trim(), req.from(), req.to(), req.cap()));
     }
 
     /** The periods made, by from-date. */

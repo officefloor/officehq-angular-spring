@@ -35,6 +35,8 @@ export interface Period {
   closedDues: Record<string, string> | null;
   /** The fiscal year its from-date falls in: FY<yyyy>. */
   fy: string;
+  /** At most this many OPEN or PENDING claims per person in it; null for no cap. */
+  cap: number | null;
 }
 
 /** A claim's person, due-by (the date that places it in a period) and its figure in whole cents, for a claim that has one. */
@@ -109,6 +111,14 @@ export function inClosedPeriod(periods: readonly Period[], date: string): boolea
           [value]="toInput()"
           (input)="toInput.set($any($event.target).value); error.set(null)"
         />
+        <label for="period-form-cap">Open claims per person (blank: no cap)</label>
+        <input
+          id="period-form-cap"
+          data-testid="period-form-cap"
+          inputmode="numeric"
+          [value]="capInput()"
+          (input)="capInput.set($any($event.target).value); error.set(null)"
+        />
         <button type="submit" data-testid="period-form-submit">Add period</button>
         @if (error(); as err) {
           <p role="alert" data-testid="period-form-error">{{ err }}</p>
@@ -159,6 +169,7 @@ export function inClosedPeriod(periods: readonly Period[], date: string): boolea
             <th scope="col">Due</th>
             <th scope="col">Closed</th>
             <th scope="col">Fiscal year</th>
+            <th scope="col">Cap</th>
             <th scope="col"><span class="visually-hidden">Actions</span></th>
           </tr>
         </thead>
@@ -171,6 +182,7 @@ export function inClosedPeriod(periods: readonly Period[], date: string): boolea
               <td data-testid="period-due-total">{{ dueTotalOf(p) }}</td>
               <td data-testid="period-closed">{{ p.closed ? 'yes' : p.softClosed ? 'soft' : 'no' }}</td>
               <td data-testid="period-fy">{{ p.fy }}</td>
+              <td data-testid="period-cap">{{ p.cap ?? '' }}</td>
               <td>
                 <button
                   type="button"
@@ -219,6 +231,7 @@ export class Periods {
   protected readonly nameInput = signal('');
   protected readonly fromInput = signal('');
   protected readonly toInput = signal('');
+  protected readonly capInput = signal('');
   protected readonly error = signal<string | null>(null);
   protected readonly generateFrom = signal('');
   protected readonly generateTo = signal('');
@@ -349,6 +362,12 @@ export class Periods {
       this.error.set('The to-date cannot be before the from-date.');
       return;
     }
+    const capText = this.capInput().trim();
+    if (capText !== '' && !/^[1-9]\d{0,8}$/.test(capText)) {
+      this.error.set('Enter the cap as a whole number above 0, or leave it blank.');
+      return;
+    }
+    const cap = capText === '' ? null : Number(capText);
     if (this.periods().some((p) => p.from <= to && from <= p.to)) {
       this.error.set('That period overlaps another period.');
       return;
@@ -356,13 +375,14 @@ export class Periods {
     this.submitting = true;
     try {
       const added = await firstValueFrom(
-        this.http.post<Period>('/api/periods/add', { sheet, user: this.session.user(), name, from, to }),
+        this.http.post<Period>('/api/periods/add', { sheet, user: this.session.user(), name, from, to, cap }),
       );
       if (this.session.sheet() !== sheet) return;
       this.periods.update((list) => [...list, added].sort((a, b) => a.from.localeCompare(b.from)));
       this.nameInput.set('');
       this.fromInput.set('');
       this.toInput.set('');
+      this.capInput.set('');
     } catch (e) {
       this.error.set(
         e instanceof HttpErrorResponse && e.status === 409

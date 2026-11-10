@@ -6,6 +6,7 @@ import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import net.officefloor.hq.app.Audit;
 import net.officefloor.hq.app.role.RoleService;
 import net.officefloor.hq.app.sheet.Sheet;
@@ -50,8 +51,11 @@ public class PeriodService {
     }
 
     @Transactional
-    public Period add(String sheetId, String user, String name, LocalDate from, LocalDate to) {
+    public Period add(String sheetId, String user, String name, LocalDate from, LocalDate to, Integer cap) {
         roles.refuseViewer(sheetId, user);
+        if (cap != null && cap < 1) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "A period's cap must be a whole number above 0.");
+        }
         if (to.isBefore(from)) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "A period's to-date cannot be before its from-date.");
         }
@@ -66,12 +70,13 @@ public class PeriodService {
         }
         Period added;
         try {
-            added = periods.saveAndFlush(new Period(sheetId, name, from, to));
+            added = periods.saveAndFlush(new Period(sheetId, name, from, to, cap));
         } catch (DataIntegrityViolationException e) {
             throw new ResponseStatusException(HttpStatus.CONFLICT, "That period name is already in use on this sheet.");
         }
         audit.recordOnCommit("PERIOD_ADDED sheet=" + sheetId + " by=" + user + " period=" + added.getName() + " from="
-                + added.getFromDate() + " to=" + added.getToDate());
+                + added.getFromDate() + " to=" + added.getToDate()
+                + (added.getClaimCap() != null ? " cap=" + added.getClaimCap() : ""));
         return added;
     }
 
@@ -199,6 +204,11 @@ public class PeriodService {
         sheetRows.findLockedById(sheetId);
         return periods.existsBySheetIdAndClosedTrueAndFromDateLessThanEqualAndToDateGreaterThanEqual(sheetId, date,
                 date);
+    }
+
+    /** The period on the sheet a claim due by this day belongs to, if any. */
+    public Optional<Period> on(String sheetId, LocalDate date) {
+        return periods.findBySheetIdAndFromDateLessThanEqualAndToDateGreaterThanEqual(sheetId, date, date);
     }
 
     /** Whether a claim due by this day lies inside a soft-closed period. */

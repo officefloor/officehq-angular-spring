@@ -383,6 +383,10 @@ public class ClaimService {
         }
         String voidedWith = next == ClaimStatus.VOID ? voidReasons.refuseUnlessListed(sheetId, voidReason) : null;
         Person person = person(sheetId, claim.getPersonId());
+        if (next == ClaimStatus.OPEN && !review && atPeriodCap(sheetId, claim)) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT,
+                    "This person already has as many open claims in that period as it allows.");
+        }
         if (next == ClaimStatus.OPEN && !review && needsNote(sheetId, person, claim)) {
             throw new ResponseStatusException(HttpStatus.UNPROCESSABLE_ENTITY,
                     "A claim due above the note threshold cannot be opened with an empty note.");
@@ -819,6 +823,18 @@ public class ClaimService {
         return new Split(original, added);
     }
 
+    /**
+     * Whether the claim's period (the one its due-by falls in) caps open claims per person and its
+     * person already has that many OPEN or PENDING claims in it.
+     */
+    private boolean atPeriodCap(String sheetId, Claim claim) {
+        return periods.on(sheetId, claim.getDueBy()).filter(p -> p.getClaimCap() != null)
+                .map(p -> claims.countBySheetIdAndPersonIdAndStatusInAndDueByBetween(sheetId, claim.getPersonId(),
+                        List.of(ClaimStatus.OPEN, ClaimStatus.PENDING), p.getFromDate(), p.getToDate()) >= p
+                                .getClaimCap())
+                .orElse(false);
+    }
+
     /** What a bulk open did: how many claims were opened and how many refused, and the claims opened. */
     public record BulkOpened(int opened, int refused, List<Claim> claims) {
     }
@@ -826,7 +842,7 @@ public class ClaimService {
     /**
      * Open the given claims together, in list order (the order people were added, newest claim
      * first within a person), so they are numbered in that order. A claim that cannot be opened
-     * (not on the sheet, not DRAFT, dated inside a closed period, or due above the note threshold
+     * (not on the sheet, not DRAFT, dated inside a closed period, its person at its period's cap, or due above the note threshold
      * with an empty note) is refused and left as it is.
      */
     @Transactional
@@ -837,7 +853,7 @@ public class ClaimService {
         boolean permitted = sheets.sheet(sheetId).permits("open", roles.roleOf(sheetId, user));
         for (Claim claim : selected) {
             if (!permitted || claim.getStatus() != ClaimStatus.DRAFT || periods.isClosed(sheetId, claim.getDueBy())
-                    || needsNote(sheetId, person(sheetId, claim.getPersonId()), claim)) {
+                    || atPeriodCap(sheetId, claim) || needsNote(sheetId, person(sheetId, claim.getPersonId()), claim)) {
                 refused++;
                 continue;
             }

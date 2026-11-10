@@ -62,6 +62,10 @@ public class Period {
     @Column(name = "last_claim_number", nullable = false)
     private int lastClaimNumber;
 
+    /** At most this many OPEN or PENDING claims per person may be in the period; null for no cap. */
+    @Column(name = "claim_cap")
+    private Integer claimCap;
+
     protected Period() {
     }
 
@@ -70,6 +74,11 @@ public class Period {
         this.name = name;
         this.fromDate = fromDate;
         this.toDate = toDate;
+    }
+
+    public Period(String sheetId, String name, LocalDate fromDate, LocalDate toDate, Integer claimCap) {
+        this(sheetId, name, fromDate, toDate);
+        this.claimCap = claimCap;
     }
 
     public Long getId() {
@@ -90,6 +99,10 @@ public class Period {
 
     public LocalDate getToDate() {
         return toDate;
+    }
+
+    public Integer getClaimCap() {
+        return claimCap;
     }
 
     public boolean isClosed() {

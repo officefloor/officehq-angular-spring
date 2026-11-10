@@ -1,5 +1,7 @@
 package net.officefloor.hq.app.claim;
 
+import java.time.LocalDate;
+import java.util.Collection;
 import java.util.List;
 import java.util.Optional;
 import org.springframework.data.jpa.repository.JpaRepository;
@@ -36,6 +38,10 @@ public interface ClaimRepository extends JpaRepository<Claim, Long> {
 
     /** Whether a claim on the sheet other than the one of {@code id} has the reference, without regard to case. */
     boolean existsBySheetIdAndRefIgnoreCaseAndIdNot(String sheetId, String ref, Long id);
+
+    /** How many of a person's claims in the statuses are due by a day from..to (both inclusive). */
+    long countBySheetIdAndPersonIdAndStatusInAndDueByBetween(String sheetId, Long personId,
+            Collection<ClaimStatus> statuses, LocalDate from, LocalDate to);
 
     Optional<Claim> findByIdAndSheetId(Long id, String sheetId);
 }
