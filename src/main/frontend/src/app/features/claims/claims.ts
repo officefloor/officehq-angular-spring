@@ -3,7 +3,7 @@ import { Component, computed, inject, input, linkedSignal, output, signal, untra
 import { firstValueFrom } from 'rxjs';
 import { Session } from '../../core/session';
 import { Period, inClosedPeriod, periodOn } from '../periods/periods';
-import { DatedGrade, DatedValue, Lateness, Rate, chargedDueCents, dueText, gradeOn } from '../rates/rates';
+import { DatedGrade, DatedValue, Lateness, Rate, chargedDueCents, dueText, graceOn, gradeOn } from '../rates/rates';
 
 // A person's claims, newest first, and the one form under their row that both adds a claim and
 // edits an existing one (opening a claim's editor fills the form with its values). Each claim
@@ -24,8 +24,10 @@ import { DatedGrade, DatedValue, Lateness, Rate, chargedDueCents, dueText, grade
 // refused with an error on the claim.
 // Each claim shows its due-by, fixed when it was added (its date plus the terms of its person's grade
 // in force on its date, or the sheet's terms when that grade has none), and whether it is overdue:
-// OPEN with its due-by before the sheet's today. An overdue claim's due gains the sheet's late
-// percent of its figure for every full 30 days it is overdue.
+// OPEN with its due-by before the sheet's today. A grade may have grace days: a claim whose person's
+// grade on its date has some on its date is overdue only once its due-by plus them is before the
+// sheet's today (its due-by shown is unchanged). An overdue claim's due gains the sheet's late
+// percent of its figure for every full 30 days it is overdue, counted from its due-by plus its grace.
 // A claim with a negative amount is a correction: it must name, by number, a SETTLED claim of the
 // same person that it corrects, else it is refused. Its due has no floor and no late charge, and
 // it shows the number it corrects.
@@ -216,14 +218,15 @@ export function dueBy(c: Claim): string {
   return c.dueBy;
 }
 
-/** Whether a claim is overdue: open (OPEN or PENDING), not deferred, and due by a date before the sheet's today. */
-export function overdue(c: Claim, today: string | null): boolean {
-  return isOpen(c) && !deferred(c, today) && today !== null && dueBy(c) < today;
+/** Whether a claim is overdue: open (OPEN or PENDING), not deferred, and due by a date that, with
+ *  the grace days of its person's grade added, is before the sheet's today. */
+export function overdue(c: Claim, today: string | null, grace = 0): boolean {
+  return isOpen(c) && !deferred(c, today) && today !== null && plusDays(dueBy(c), grace) < today;
 }
 
-/** The days a claim is overdue on the sheet's today: past its due-by; 0 when it is not overdue. */
-export function daysOverdue(c: Claim, today: string | null): number {
-  return overdue(c, today) && today !== null ? dayNumber(today) - dayNumber(dueBy(c)) : 0;
+/** The days a claim is overdue on the sheet's today: past its due-by plus its grace days; 0 when it is not overdue. */
+export function daysOverdue(c: Claim, today: string | null, grace = 0): number {
+  return overdue(c, today, grace) && today !== null ? dayNumber(today) - dayNumber(dueBy(c)) - grace : 0;
 }
 
 /** Whole cents shown with two decimals, with a minus sign below zero. */
@@ -395,6 +398,9 @@ export class PersonClaims {
   /** The sheet's late percents, dated: for each full 30 days a claim is overdue, the one in force on
    *  that boundary date (its due-by plus 30, 60, 90 ... days) is what it gains of its figure. */
   readonly latePcts = input.required<DatedValue[]>();
+  /** Each grade's grace days, dated: those of the person's grade on a claim's date, in force on its
+   *  date, put off its going overdue and its 30-day boundaries. */
+  readonly graces = input.required<Record<string, DatedValue[]>>();
   /** The sheet's policy date (blank: its today): a claim dated before it rounds half up, else half to even. */
   readonly policyDate = input.required<string>();
   /** The sheet's periods. */
@@ -446,6 +452,7 @@ export class PersonClaims {
   protected dueOf(c: Claim): string {
     const late: Lateness = {
       latePcts: this.latePcts(),
+      graces: this.graces(),
       today: this.session.today(),
       policyDate: this.policyDate(),
     };
@@ -458,7 +465,7 @@ export class PersonClaims {
   }
 
   protected overdueOf(c: Claim): boolean {
-    return overdue(c, this.session.today());
+    return overdue(c, this.session.today(), graceOn(this.graces(), gradeOn(this.grades(), c.date), c.date));
   }
 
   protected deferredOf(c: Claim): boolean {

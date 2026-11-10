@@ -124,7 +124,7 @@ public class ClaimService {
         if (isFrozen(claim)) {
             return claim.getSettledDue();
         }
-        return LateCharge.withCharge(sheets.sheet(sheetId), claim, figure(sheetId, person, claim));
+        return LateCharge.withCharge(sheets.sheet(sheetId), claim, person.gradeOn(claim.getDate()), figure(sheetId, person, claim));
     }
 
     /**
@@ -478,7 +478,7 @@ public class ClaimService {
         periods.refuseIfClosed(sheetId, claim.getDueBy());
         Person person = person(sheetId, claim.getPersonId());
         BigDecimal old = claim.getSettledDue();
-        BigDecimal settling = LateCharge.withChargeAsOpen(sheets.sheet(sheetId), claim, due(sheetId, person, claim));
+        BigDecimal settling = LateCharge.withChargeAsOpen(sheets.sheet(sheetId), claim, person.gradeOn(claim.getDate()), due(sheetId, person, claim));
         claim.setSettledDue(settling);
         logStatus(sheetId, user, person, claim);
         Claim saved = claims.saveAndFlush(claim);

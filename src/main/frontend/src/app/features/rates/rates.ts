@@ -133,10 +133,19 @@ export const START_FLOOR = '1.00';
 /** The late percent a sheet starts with: in force before its first recorded late percent. */
 export const START_LATE_PCT = '0.00';
 
+/** The grace days of a grade in force on a date (yyyy-mm-dd), from each grade's dated grace days
+ *  (a blank value: none); 0 when it has none then. */
+export function graceOn(graces: Readonly<Record<string, readonly DatedValue[]>>, grade: string, date: string | null): number {
+  const days = valueOn(graces[grade] ?? [], date, '');
+  return days === '' ? 0 : Number(days);
+}
+
 /** What works out an overdue claim's late charge and rounding: the sheet's late percents (each
- *  claim's is the one in force on its date), today and policy date (blank: the sheet's today). */
+ *  claim's is the one in force on its date), each grade's grace days (a claim's are those of its
+ *  person's grade on its date, in force on its date), today and policy date (blank: the sheet's today). */
 export interface Lateness {
   latePcts: readonly DatedValue[];
+  graces: Readonly<Record<string, readonly DatedValue[]>>;
   today: string | null;
   policyDate: string;
 }
@@ -144,7 +153,7 @@ export interface Lateness {
 /**
  * A claim's due in whole cents as shown: its figure (see {@link claimDueCents}) with, when it is
  * overdue, a late charge added on top: for each full 30 days overdue, the late percent in force on
- * that boundary date (its due-by plus 30, 60, 90 ... days) of that figure, rounded to whole cents,
+ * that boundary date (its due-by plus its grace days, plus 30, 60, 90 ... days) of that figure, rounded to whole cents,
  * the charges added up. Both round as the claim rounds by `roundOn` (see {@link roundsHalfUp}).
  * The floor is applied last: the due is the greater of the floor in force on the claim's date and
  * the figure plus its charge. The charge is never bound by a statement; a settled claim's due is
@@ -163,10 +172,11 @@ export function chargedDueCents(
   if (figure === null || c.settledDue !== null || isCorrection(c)) return figure;
   const floor = cents(valueOn(floors, c.date, START_FLOOR));
   if (!isOpen(c)) return Math.max(figure, floor);
-  const periods = Math.floor(daysOverdue(c, late.today) / 30);
+  const grace = graceOn(late.graces, grade, c.date);
+  const periods = Math.floor(daysOverdue(c, late.today, grace) / 30);
   let charge = 0;
   for (let k = 1; k <= periods; k++) {
-    const boundary = plusDays(dueBy(c), 30 * k);
+    const boundary = plusDays(dueBy(c), grace + 30 * k);
     charge += dueCents(figure, valueOn(late.latePcts, boundary, START_LATE_PCT), halfUp) ?? 0;
   }
   return Math.max(figure + charge, floor);

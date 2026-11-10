@@ -25,10 +25,14 @@ import org.springframework.transaction.annotation.Transactional;
  * opened is numbered: on or after it, within its period (see {@link SheetService#nextClaimNumber}).
  * Its cap (none: no cap) is the most a person's due-total can be, so changing it records the
  * figures that move too. A grade may have its own terms; a grade without uses the sheet's terms. A claim's due-by is fixed
- * when it is created, so changing any terms moves no claim's due-by.
+ * when it is created, so changing any terms moves no claim's due-by. A grade may have grace days (none: no grace): a
+ * claim whose person's grade on its date has grace days on that date is overdue only once its due-by plus them is
+ * before the sheet's today, and its late charge counts its 30-day boundaries from there (see
+ * {@link Sheet#lateFrom}); its due-by is unchanged. Changing a grade's grace days moves the figures, so the figures
+ * that move are recorded.
  * <p>
  * The settings that carry a figure (the floor, the late percent, the terms, a grade's own terms,
- * the clerk limit, the cap, the proof threshold and the note threshold) are dated: each value is recorded from a from-date (the sheet's
+ * a grade's grace days, the clerk limit, the cap, the proof threshold and the note threshold) are dated: each value is recorded from a from-date (the sheet's
  * today when none is given). A claim's floor, late percent and terms are those in force on its
  * date, as are its proof threshold (see {@link Sheet#proofThresholdOn}) and its note threshold (see {@link Sheet#noteThresholdOn}); the clerk limit and the cap are those in force on the sheet's today (see {@link Sheet}).
  * The policy date and the period-numbering-from date are not dated. Nor is the permission matrix:
@@ -47,6 +51,8 @@ public class SettingService {
     public static final String TERMS = Sheet.TERMS;
     /** The key of a grade's own terms: {@code terms-<grade>}. */
     public static final String GRADE_TERMS = Sheet.GRADE_TERMS;
+    /** The key of a grade's grace days: {@code grace-<grade>}. */
+    public static final String GRADE_GRACE = Sheet.GRADE_GRACE;
     public static final String LATE_PCT = Sheet.LATE_PCT;
     public static final String PROOF_THRESHOLD = Sheet.PROOF_THRESHOLD;
     public static final String NOTE_THRESHOLD = Sheet.NOTE_THRESHOLD;
@@ -89,7 +95,8 @@ public class SettingService {
      * terms and the late percent when they are not null, and a policy date when {@code changePolicy}
      * (null for none), and a period-numbering-from date when {@code changeNumbering} (null for off),
      * and a cap when {@code cap} is not null, and each grade's own terms given in {@code gradeTerms}
-     * (by grade, in grade order), and a proof threshold when {@code proofThreshold} is not null, and a note threshold when
+     * (by grade, in grade order), and each grade's grace days given in {@code gradeGraces} (by grade, in grade
+     * order; null for none), and a proof threshold when {@code proofThreshold} is not null, and a note threshold when
      * {@code noteThreshold} is not null, and each permission matrix entry
      * given in {@code permissions} (by action, in the order given; blank for the standing rule), and the grace days when
      * {@code changeGrace} (null for off), and the entry date when {@code changeEntry} (null for off). Each figure is recorded from its from-date, keeping the values
@@ -100,7 +107,8 @@ public class SettingService {
     public Sheet set(String sheetId, String user, Dated<BigDecimal> limit, Dated<BigDecimal> floor,
             Dated<Integer> terms, Dated<BigDecimal> latePct, boolean changePolicy, LocalDate policyDate,
             boolean changeNumbering, LocalDate numberingFrom, Dated<BigDecimal> cap,
-            Map<String, Dated<Integer>> gradeTerms, Dated<BigDecimal> proofThreshold, Dated<BigDecimal> noteThreshold,
+            Map<String, Dated<Integer>> gradeTerms, Map<String, Dated<Integer>> gradeGraces,
+            Dated<BigDecimal> proofThreshold, Dated<BigDecimal> noteThreshold,
             Map<String, String> permissions,
             boolean changeGrace, Integer graceDays, boolean changeEntry, LocalDate entryDate) {
         roles.refuseViewer(sheetId, user);
@@ -138,6 +146,11 @@ public class SettingService {
             Dated<Integer> t = e.getValue();
             sheet = record(sheet, user, GRADE_TERMS + e.getKey(), BigDecimal.valueOf(t.value()), t.from(),
                     String.valueOf(t.value()), false);
+        }
+        for (Map.Entry<String, Dated<Integer>> e : new TreeMap<>(gradeGraces).entrySet()) {
+            Dated<Integer> g = e.getValue();
+            sheet = record(sheet, user, GRADE_GRACE + e.getKey(), g.value() == null ? null : BigDecimal.valueOf(g.value()),
+                    g.from(), g.value() == null ? "" : String.valueOf(g.value()), true);
         }
         if (proofThreshold != null) {
             sheet = record(sheet, user, PROOF_THRESHOLD, proofThreshold.value(), proofThreshold.from(),

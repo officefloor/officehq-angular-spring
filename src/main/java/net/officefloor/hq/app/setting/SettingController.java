@@ -51,7 +51,7 @@ public class SettingController {
      * or blank for off. A grade's own terms (A, B or C): a whole number of days. A cap: an amount with
      * up to two decimals, or blank for none. A proof threshold: an amount with up to two decimals, or blank
      * for none. A note threshold: an amount with up to two decimals, or blank for none. A permission matrix entry for open, settle, void, reassign, close or reopen: roles
-     * comma separated, or blank for the standing rule. Grace days: a whole number of days, or blank for off. An entry date: yyyy-mm-dd, or blank for off. Each setting that carries a figure may name the date it
+     * comma separated, or blank for the standing rule. Grace days: a whole number of days, or blank for off. A grade's grace days (A, B or C): a whole number of days, or blank for none. An entry date: yyyy-mm-dd, or blank for off. Each setting that carries a figure may name the date it
      * is in force from (its {@code ...From}: yyyy-mm-dd, or blank or null for the sheet's today).
      */
     public record SetSettingsRequest(@NotBlank @Size(max = 100) String sheet, @NotBlank @Size(max = 100) String user,
@@ -73,7 +73,10 @@ public class SettingController {
             @Pattern(regexp = ROLES) String permOpen, @Pattern(regexp = ROLES) String permSettle,
             @Pattern(regexp = ROLES) String permVoid, @Pattern(regexp = ROLES) String permReassign,
             @Pattern(regexp = ROLES) String permClose, @Pattern(regexp = ROLES) String permReopen,
-            @Pattern(regexp = "\\s*|" + TERMS) String graceDays, @Pattern(regexp = DATE) String entryDate) {
+            @Pattern(regexp = "\\s*|" + TERMS) String graceDays, @Pattern(regexp = DATE) String entryDate,
+            @Pattern(regexp = "\\s*|" + TERMS) String graceA, @Pattern(regexp = "\\s*|" + TERMS) String graceB,
+            @Pattern(regexp = "\\s*|" + TERMS) String graceC, @Pattern(regexp = DATE) String graceAFrom,
+            @Pattern(regexp = DATE) String graceBFrom, @Pattern(regexp = DATE) String graceCFrom) {
     }
 
     /** A value recorded for a setting that carries a figure: blank from for the beginning of time, blank value for none. */
@@ -107,7 +110,7 @@ public class SettingController {
 
     private static DatedValue dated(DatedSetting s) {
         String value = s.getValue() == null ? ""
-                : s.getKey().startsWith(SettingService.TERMS) ? String.valueOf(s.getValue().intValue())
+                : s.getKey().startsWith(SettingService.TERMS) || s.getKey().startsWith(SettingService.GRADE_GRACE) ? String.valueOf(s.getValue().intValue())
                 : SettingService.text(s.getValue());
         return new DatedValue(s.getKey(), s.getFromDate() == null ? "" : s.getFromDate().toString(), value);
     }
@@ -131,6 +134,10 @@ public class SettingController {
         if (req.termsA() != null) gradeTerms.put("A", terms(req.termsA(), req.termsAFrom()));
         if (req.termsB() != null) gradeTerms.put("B", terms(req.termsB(), req.termsBFrom()));
         if (req.termsC() != null) gradeTerms.put("C", terms(req.termsC(), req.termsCFrom()));
+        Map<String, SettingService.Dated<Integer>> gradeGraces = new TreeMap<>();
+        if (req.graceA() != null) gradeGraces.put("A", grace(req.graceA(), req.graceAFrom()));
+        if (req.graceB() != null) gradeGraces.put("B", grace(req.graceB(), req.graceBFrom()));
+        if (req.graceC() != null) gradeGraces.put("C", grace(req.graceC(), req.graceCFrom()));
         Map<String, String> permissions = new LinkedHashMap<>();
         permission(permissions, "open", req.permOpen());
         permission(permissions, "settle", req.permSettle());
@@ -147,7 +154,7 @@ public class SettingController {
                 req.latePct() == null ? null : amount(req.latePct(), req.latePctFrom()), req.policyDate() != null,
                 policy.isEmpty() ? null : date(policy), req.periodNumberingFrom() != null,
                 numberingFrom.isEmpty() ? null : date(numberingFrom),
-                req.cap() == null ? null : amount(req.cap(), req.capFrom()), gradeTerms,
+                req.cap() == null ? null : amount(req.cap(), req.capFrom()), gradeTerms, gradeGraces,
                 req.proofThreshold() == null ? null : amount(req.proofThreshold(), req.proofThresholdFrom()),
                 req.noteThreshold() == null ? null : amount(req.noteThreshold(), req.noteThresholdFrom()), permissions,
                 req.graceDays() != null, grace.isEmpty() ? null : Integer.valueOf(grace),
@@ -171,6 +178,12 @@ public class SettingController {
     /** Terms from a from-date (blank or null: the sheet's today). */
     private static SettingService.Dated<Integer> terms(String value, String from) {
         return new SettingService.Dated<>(Integer.valueOf(value.trim()), from(from));
+    }
+
+    /** Grace days (blank: none) from a from-date (blank or null: the sheet's today). */
+    private static SettingService.Dated<Integer> grace(String value, String from) {
+        String text = value.trim();
+        return new SettingService.Dated<>(text.isEmpty() ? null : Integer.valueOf(text), from(from));
     }
 
     private static LocalDate from(String text) {

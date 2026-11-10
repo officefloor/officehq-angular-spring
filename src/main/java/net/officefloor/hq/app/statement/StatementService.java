@@ -187,7 +187,7 @@ public class StatementService {
                                 .map(pct -> claim.getAmount().multiply(pct).divide(BigDecimal.valueOf(100), 2,
                                         Rounding.mode(then, Rounding.dateOf(claim, theirs))))
                                 .orElse(null);
-                charged = LateCharge.withCharge(then, claim, figure,
+                charged = LateCharge.withCharge(then, claim, person.gradeOn(claim.getDate(), day), figure,
                         status.isOpen() && !claim.isDeferredAsOf(status, day));
             }
             claim.bind(true, figure);

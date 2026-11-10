@@ -38,6 +38,10 @@ import { DatedValue, START_FLOOR, START_LATE_PCT, valueOn } from '../rates/rates
 // Grace days (whole days; blank: off): when the sheet's today changes, every open period whose
 // to-date plus the grace days is before the new today is closed. It saves, like the clerk limit,
 // once its field has been entered; it is not dated.
+// Each grade may have grace days (whole days; blank: none), dated like the floor: a claim whose
+// person's grade on its date has grace days in force on that date is overdue only once its due-by
+// plus them is before the sheet's today, and its late charge's 30-day boundaries count from there;
+// its due-by is unchanged. Each saves, like the clerk limit, once its field has been entered.
 // The entry date (blank: off): while set, it is the default date of a new claim in place of the
 // sheet's today. It saves like the policy date; it is not dated.
 /** A value saved for a dated setting, by key: blank from for the beginning of time, blank value for none. */
@@ -98,7 +102,7 @@ const PCT = /^\d{1,3}(\.\d{1,2})?$/;
 
 
 /** The keys of the dated settings, each with its own from field. */
-const DATED_KEYS = ['clerk-limit', 'floor', 'terms', 'terms-A', 'terms-B', 'terms-C', 'late-pct', 'cap', 'proof-threshold', 'note-threshold'] as const;
+const DATED_KEYS = ['clerk-limit', 'floor', 'terms', 'terms-A', 'terms-B', 'terms-C', 'grace-A', 'grace-B', 'grace-C', 'late-pct', 'cap', 'proof-threshold', 'note-threshold'] as const;
 type DatedKey = (typeof DATED_KEYS)[number];
 
 /** A policy date: yyyy-mm-dd. */
@@ -175,6 +179,25 @@ const DATE = /^\d{4}-\d{2}-\d{2}$/;
             type="date"
             [value]="fromInput()[gradeKey(g)] ?? ''"
             (input)="typeFrom(gradeKey(g), $any($event.target).value)"
+          />
+        }
+        @for (g of grades; track g) {
+          <label [for]="'setting-grace-' + g">Grace days for grade {{ g }} before a claim is overdue (blank: none)</label>
+          <input
+            [id]="'setting-grace-' + g"
+            [attr.data-testid]="'setting-grace-' + g"
+            inputmode="numeric"
+            [value]="gradeGraceInput()[g] ?? ''"
+            (focus)="enterGradeGrace(g, $any($event.target))"
+            (input)="typeGradeGrace(g, $any($event.target).value)"
+          />
+          <label [for]="'setting-grace-' + g + '-from'">Grace days for grade {{ g }} in force from (blank: the sheet's today)</label>
+          <input
+            [id]="'setting-grace-' + g + '-from'"
+            [attr.data-testid]="'setting-grace-' + g + '-from'"
+            type="date"
+            [value]="fromInput()[graceKey(g)] ?? ''"
+            (input)="typeFrom(graceKey(g), $any($event.target).value)"
           />
         }
         <label for="setting-late-pct">Late percent per 30 days overdue (blank: leave as it is)</label>
@@ -319,6 +342,15 @@ const DATE = /^\d{4}-\d{2}-\d{2}$/;
           }
         </p>
       }
+      @for (g of grades; track g) {
+        <p>
+          Grace days in force for grade {{ g }}:
+          <strong [attr.data-testid]="'setting-grace-' + g + '-current'">{{ gradeGraces()[g] }}</strong>
+          @if (gradeGraces()[g] === '') {
+            <span>(none)</span>
+          }
+        </p>
+      }
       <p>
         Late percent in force:
         <strong data-testid="setting-late-pct-current">{{ latePct() }}</strong>
@@ -403,6 +435,14 @@ export class Settings {
   );
   /** The terms typed for each grade; blank (or missing) leaves them as they are. */
   protected readonly gradeTermsInput = signal<Partial<Record<Grade, string>>>({});
+  /** Each grade's grace days, dated (blank: none), shared with whoever works out whether a claim is overdue. */
+  readonly graces = model<Record<string, DatedValue[]>>({});
+  /** The grace days in force on the sheet's today for each grade; blank for none. */
+  protected readonly gradeGraces = computed(
+    () => Object.fromEntries(GRADES.map((g) => [g, this.inForce(this.graceKey(g), '')])) as Record<Grade, string>,
+  );
+  /** The grace days typed for each grade; missing while its field has not been entered (left as they are). */
+  protected readonly gradeGraceInput = signal<Partial<Record<Grade, string>>>({});
   /** The sheet's late percents, dated, shared with whoever works out an overdue claim's late charge. */
   readonly latePcts = model<DatedValue[]>([]);
   /** The late percent in force on the sheet's today. */
@@ -468,6 +508,7 @@ export class Settings {
       untracked(() => this.show({ dated: [], policyDate: '', periodNumberingFrom: '', permissions: {}, graceDays: '', entryDate: '' }));
       this.permInput.set({});
       this.gradeTermsInput.set({});
+      this.gradeGraceInput.set({});
       this.fromInput.set({});
       this.capInput.set(null);
       this.thresholdInput.set(null);
@@ -586,6 +627,25 @@ export class Settings {
     return `terms-${grade}`;
   }
 
+  protected graceKey(grade: Grade): DatedKey {
+    return `grace-${grade}`;
+  }
+
+  /** Entering a grade's grace days' field fills it with the days in force, selected, so they save
+   *  as they are unless typed over. */
+  protected enterGradeGrace(grade: Grade, input: HTMLInputElement): void {
+    if (this.gradeGraceInput()[grade] !== undefined) return;
+    const days = this.gradeGraces()[grade];
+    input.value = days;
+    input.select();
+    this.gradeGraceInput.update((m) => ({ ...m, [grade]: days }));
+  }
+
+  protected typeGradeGrace(grade: Grade, value: string): void {
+    this.gradeGraceInput.update((m) => ({ ...m, [grade]: value }));
+    this.error.set(null);
+  }
+
   protected typeFrom(key: DatedKey, value: string): void {
     this.fromInput.update((m) => ({ ...m, [key]: value }));
     this.error.set(null);
@@ -613,6 +673,7 @@ export class Settings {
     this.permissions.set(res.permissions);
     this.floors.set(this.datedOf('floor'));
     this.latePcts.set(this.datedOf('late-pct'));
+    this.graces.set(Object.fromEntries(GRADES.map((g) => [g, this.datedOf(this.graceKey(g))])));
     this.caps.set(this.datedOf('cap'));
     this.policyDate.set(res.policyDate);
     this.numberingFrom.set(res.periodNumberingFrom);
@@ -657,6 +718,16 @@ export class Settings {
         return;
       }
       gradeTerms[g] = t;
+    }
+    const gradeGraces: Partial<Record<Grade, string>> = {};
+    for (const g of GRADES) {
+      const t = this.gradeGraceInput()[g]?.trim();
+      if (t === undefined) continue;
+      if (t !== '' && !TERMS.test(t)) {
+        this.error.set(`Enter grace days for grade ${g} of 0 or more whole days, or leave it blank for none.`);
+        return;
+      }
+      gradeGraces[g] = t;
     }
     if (latePct !== null && !PCT.test(latePct)) {
       this.error.set('Enter a late percent of 0.00 to 999.99, with up to two decimals.');
@@ -746,6 +817,12 @@ export class Settings {
           permReopen: perms.reopen ?? null,
           graceDays,
           entryDate,
+          graceA: gradeGraces.A ?? null,
+          graceB: gradeGraces.B ?? null,
+          graceC: gradeGraces.C ?? null,
+          graceAFrom: from['grace-A'] ?? null,
+          graceBFrom: from['grace-B'] ?? null,
+          graceCFrom: from['grace-C'] ?? null,
         }),
       );
       if (this.session.sheet() !== sheet) return;
@@ -754,6 +831,7 @@ export class Settings {
       this.floorInput.set(null);
       this.termsInput.set(null);
       this.gradeTermsInput.set({});
+      this.gradeGraceInput.set({});
       this.latePctInput.set(null);
       this.policyInput.set(null);
       this.numberingInput.set(null);

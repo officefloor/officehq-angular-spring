@@ -104,7 +104,7 @@ public class RollupService {
                 if (figure != null) {
                     anyFigure = true;
                     due = due.add(figure);
-                    if (overdue(claim, today)) {
+                    if (overdue(sheet, person, claim)) {
                         overdue = overdue.add(figure);
                     }
                 }
@@ -185,13 +185,17 @@ public class RollupService {
                         .map(pct -> claim.getAmount().multiply(pct).divide(BigDecimal.valueOf(100), 2,
                                 Rounding.mode(sheet, Rounding.dateOf(claim, sheetClaims))))
                         .orElse(null);
-        return LateCharge.withCharge(sheet, claim, figure);
+        return LateCharge.withCharge(sheet, claim, person.gradeOn(claim.getDate()), figure);
     }
 
-    /** Whether a claim is overdue on the sheet's today: OPEN or PENDING, not deferred, and past its due-by. */
-    private static boolean overdue(Claim claim, LocalDate today) {
+    /**
+     * Whether a claim is overdue on the sheet's today: OPEN or PENDING, not deferred, and past its due-by plus the
+     * grace days of its person's grade on its date (see {@link Sheet#lateFrom}).
+     */
+    private static boolean overdue(Sheet sheet, Person person, Claim claim) {
+        LocalDate today = sheet.getToday();
         return claim.getStatus().isOpen() && !claim.isDeferredOn(today) && today != null && claim.getDueBy() != null
-                && claim.getDueBy().isBefore(today);
+                && sheet.lateFrom(claim.getDueBy(), claim.getDate(), person.gradeOn(claim.getDate())).isBefore(today);
     }
 
     private Sheet sheet(String sheetId) {

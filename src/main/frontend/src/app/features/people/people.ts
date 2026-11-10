@@ -5,7 +5,7 @@ import { Session } from '../../core/session';
 import { AMOUNT, Claim, PersonClaims, cents, counts, dayNumber, deferred, isOpen, money, overdue, plusDays, roundingDate, statusAt } from '../claims/claims';
 import { Holidays } from '../holidays/holidays';
 import { DatedDue, Period, Periods, periodDueTotal, personPeriodDueTotal } from '../periods/periods';
-import { DatedGrade, DatedValue, Lateness, Rate, Rates, chargedDueCents, dueText, gradeOn, pctOn, valueOn } from '../rates/rates';
+import { DatedGrade, DatedValue, Lateness, Rate, Rates, chargedDueCents, dueText, graceOn, gradeOn, pctOn, valueOn } from '../rates/rates';
 import { Roles } from '../roles/roles';
 import { Settings } from '../settings/settings';
 import { Header } from '../header/header';
@@ -167,7 +167,7 @@ const SUMMARY_STATUSES = ['DRAFT', 'OPEN', 'PENDING', 'SETTLED', 'VOID'] as cons
     />
     <app-rates [(rates)]="rates" />
     <app-roles />
-    <app-settings [(floors)]="floors" [(latePcts)]="latePcts" [(policyDate)]="policyDate" [(caps)]="caps" />
+    <app-settings [(floors)]="floors" [(latePcts)]="latePcts" [(graces)]="graces" [(policyDate)]="policyDate" [(caps)]="caps" />
     <app-periods [(periods)]="periods" [dues]="dues()" />
     <app-holidays />
     <section aria-labelledby="people-heading">
@@ -444,6 +444,7 @@ const SUMMARY_STATUSES = ['DRAFT', 'OPEN', 'PENDING', 'SETTLED', 'VOID'] as cons
                   [rates]="rates()"
                   [floors]="floors()"
                   [latePcts]="latePcts()"
+                  [graces]="graces()"
                   [policyDate]="policyDate()"
                   [periods]="periods()"
                   [selected]="selectedClaims()"
@@ -594,11 +595,15 @@ export class People {
   /** The sheet's late percents, dated: for each full 30 days a claim is overdue, the one in force on
    *  that boundary date (its due-by plus 30, 60, 90 ... days) is what it gains of its figure. */
   protected readonly latePcts = signal<DatedValue[]>([]);
+  /** Each grade's grace days, dated (blank: none): a claim whose person's grade on its date has some
+   *  on its date is overdue only once its due-by plus them is before the sheet's today. */
+  protected readonly graces = signal<Record<string, DatedValue[]>>({});
   /** The sheet's policy date (blank: its today): a claim dated before it rounds half up, else half to even. */
   protected readonly policyDate = signal('');
   /** What works out an overdue claim's late charge on the sheet's today. */
   private readonly lateness = computed<Lateness>(() => ({
     latePcts: this.latePcts(),
+    graces: this.graces(),
     today: this.session.today(),
     policyDate: this.policyDate(),
   }));
@@ -878,7 +883,8 @@ export class People {
   /** The person's overdue claims that count: how many, and the sum of their figures in whole cents. */
   protected overdueOf(p: Person): { count: number; cents: number } {
     const today = this.session.today();
-    const late = this.claimsOf(p.id).filter((c) => countsFor(p, c, this.session.today()) && overdue(c, today));
+    const late = this.claimsOf(p.id).filter((c) => countsFor(p, c, this.session.today())
+      && overdue(c, today, graceOn(this.graces(), gradeOn(p.grades, c.date), c.date)));
     return {
       count: late.length,
       cents: late.reduce((sum, c) => sum + (chargedDueCents(c, this.rates(), gradeOn(p.grades, c.date), this.floors(), this.lateness(), this.roundOn(c)) ?? 0), 0),

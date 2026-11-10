@@ -43,6 +43,8 @@ public class Sheet {
     public static final String TERMS = "terms";
     /** The key of a grade's own terms: {@code terms-<grade>}. */
     public static final String GRADE_TERMS = "terms-";
+    /** The key of a grade's grace days: {@code grace-<grade>}. */
+    public static final String GRADE_GRACE = "grace-";
     public static final String LATE_PCT = "late-pct";
     public static final String PROOF_THRESHOLD = "proof-threshold";
     public static final String NOTE_THRESHOLD = "note-threshold";
@@ -75,7 +77,7 @@ public class Sheet {
 
     /**
      * The values recorded for the settings that carry a figure (the floor, the late percent, the
-     * terms, a grade's own terms, the clerk limit, the cap, the proof threshold and the note threshold), each from a from-date.
+     * terms, a grade's own terms, a grade's grace days, the clerk limit, the cap, the proof threshold and the note threshold), each from a from-date.
      */
     @ElementCollection(fetch = FetchType.EAGER)
     @CollectionTable(name = "sheet_setting", joinColumns = @JoinColumn(name = "sheet_id"))
@@ -279,6 +281,30 @@ public class Sheet {
     public int termsFor(String grade, LocalDate date) {
         return (grade == null ? Optional.<DatedSetting>empty() : inForce(GRADE_TERMS + grade, date))
                 .map(s -> s.getValue().intValue()).orElseGet(() -> termsOn(date));
+    }
+
+    /** The grace days in force on the sheet's today for each grade that has some then, by grade. */
+    public Map<String, Integer> getGradeGraces() {
+        Map<String, Integer> graces = new TreeMap<>();
+        settings.stream().map(DatedSetting::getKey).filter(k -> k.startsWith(GRADE_GRACE)).distinct()
+                .forEach(k -> inForce(k, today).filter(s -> s.getValue() != null).ifPresent(
+                        s -> graces.put(k.substring(GRADE_GRACE.length()), s.getValue().intValue())));
+        return graces;
+    }
+
+    /** The grace days for a grade in force on a date; 0 when it has none then. */
+    public int graceFor(String grade, LocalDate date) {
+        return (grade == null ? Optional.<DatedSetting>empty() : inForce(GRADE_GRACE + grade, date))
+                .map(DatedSetting::getValue).map(BigDecimal::intValue).orElse(0);
+    }
+
+    /**
+     * The date a claim's lateness counts from: its due-by plus the grace days of its person's grade
+     * in force on its date (the grade given), as in force on its date. A claim is overdue once this
+     * is before the sheet's today, and its late charge's 30-day boundaries are counted from it.
+     */
+    public LocalDate lateFrom(LocalDate dueBy, LocalDate dated, String grade) {
+        return dueBy.plusDays(graceFor(grade, dated));
     }
 
     /** The late percent in force on the sheet's today. */
