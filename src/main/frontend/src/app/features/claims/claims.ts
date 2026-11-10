@@ -28,6 +28,9 @@ import { DatedGrade, DatedValue, Lateness, Rate, chargedDueCents, dueText, grade
 // An OPEN claim can be deferred to a date after the sheet's today (refused for a claim that is not
 // OPEN, a date not after today, or a claim in a closed period). Until the sheet's today reaches that
 // date it counts in no total, is not overdue, cannot be settled and is left unbound by a statement.
+// Each claim shows its proofs count, raised by one with its proof button (refused for a SETTLED or
+// VOID claim, or one in a closed period). A claim whose due is above the proof threshold in force on
+// its date cannot be settled or approved while it has no proofs: refused with an error on the claim.
 export type ClaimStatus = 'DRAFT' | 'OPEN' | 'PENDING' | 'SETTLED' | 'VOID';
 
 export interface Claim {
@@ -57,6 +60,8 @@ export interface Claim {
   log: ClaimLogLine[];
   /** The date the claim is deferred until; null when it was never deferred. */
   deferredUntil: string | null;
+  /** How many proofs the claim has. */
+  proofs: number;
 }
 
 /** One line of a claim's status log. */
@@ -234,7 +239,8 @@ export function money(c: number): string {
           <span>Opened by <span data-testid="claim-opened-by">{{ c.openedBy ?? '' }}</span></span>
           <span>Stated <span data-testid="claim-stated">{{ c.stated ? 'yes' : 'no' }}</span></span>
           <span>Deferred <span data-testid="claim-deferred">{{ deferredOf(c) ? 'yes' : 'no' }}</span></span>
-          <span>Until <span data-testid="claim-deferred-until">{{ deferredOf(c) ? c.deferredUntil : '' }}</span></span>
+          <span>Until <span data-testid="claim-deferred-until">{{ c.deferredUntil ?? '' }}</span></span>
+          <span>Proofs <span data-testid="claim-proofs">{{ c.proofs }}</span></span>
           <ol [attr.aria-label]="'Status log of claim of ' + c.amount + ' on ' + c.date">
             @for (l of c.log; track $index) {
               <li data-testid="claim-log-line">{{ l.status }} by {{ l.by }} on {{ l.date }} due={{ l.due }}</li>
@@ -252,6 +258,7 @@ export function money(c: number): string {
             (input)="setReason(c.id, $any($event.target).value)"
           />
           <button type="button" data-testid="claim-reject" (click)="act(c, 'reject')">Reject</button>
+          <button type="button" data-testid="claim-proof" (click)="addProof(c)">Add proof</button>
           <button type="button" data-testid="claim-void" (click)="act(c, 'void')">Void</button>
           <label [for]="'claim-defer-date-' + c.id">Defer until</label>
           <input
@@ -494,6 +501,30 @@ export class PersonClaims {
     }
   }
 
+  /** Raise a claim's proofs count by one; the server refuses a SETTLED or VOID claim, and one dated
+   *  inside a closed period. */
+  protected async addProof(c: Claim): Promise<void> {
+    this.clearActionError(c.id);
+    const sheet = this.session.sheet();
+    try {
+      const claim = await firstValueFrom(
+        this.http.post<Claim>('/api/claims/proof', { sheet, user: this.session.user(), id: c.id }),
+      );
+      if (this.session.sheet() !== sheet) return;
+      this.saved.emit(claim);
+    } catch (e) {
+      if (this.session.sheet() !== sheet) return;
+      const status = e instanceof HttpErrorResponse ? e.status : 0;
+      const err =
+        status === 423
+          ? CLOSED
+          : status === 409
+            ? `A ${c.status} claim cannot have a proof added.`
+            : 'Could not add a proof to this claim.';
+      this.actionErrors.update((m) => new Map(m).set(c.id, err));
+    }
+  }
+
   /** Move a claim to its next status; the server refuses a move its status does not allow. */
   protected async act(c: Claim, action: ClaimAction): Promise<void> {
     this.clearActionError(c.id);
@@ -522,6 +553,8 @@ export class PersonClaims {
               : 'The user who opened a claim cannot settle it.'
           : e instanceof HttpErrorResponse && e.status === 423
             ? CLOSED
+            : e instanceof HttpErrorResponse && e.status === 422
+              ? `This claim is due above the proof threshold and cannot be ${PAST[action]} without a proof.`
             : action === 'settle' && deferred(c, this.session.today())
               ? `This claim is deferred until ${c.deferredUntil} and cannot be settled before then.`
               : `A ${c.status} claim cannot be ${PAST[action]}.`;

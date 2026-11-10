@@ -25,6 +25,9 @@ import { DatedValue, START_FLOOR, START_LATE_PCT, valueOn } from '../rates/rates
 // the sheet's today: before its first from-date the floor is 1.00, the late percent 0.00 and the
 // terms 14; a grade's terms, the clerk limit and the cap show nothing. The policy date and period
 // numbering from are not dated.
+// The proof threshold (two decimals; blank for none) is dated like the floor: a claim whose due is
+// above the one in force on its date cannot be settled or approved while it has no proofs. It
+// saves, like the clerk limit, once its field has been entered (blank: none).
 /** A value saved for a dated setting, by key: blank from for the beginning of time, blank value for none. */
 interface DatedSetting extends DatedValue {
   key: string;
@@ -44,6 +47,8 @@ interface SettingsResponse {
   gradeTerms: Record<string, number>;
   /** The cap, blank for none. */
   cap: string;
+  /** The proof threshold, blank for none. */
+  proofThreshold: string;
   /** Every value saved for the dated settings, by key and from-date. */
   dated: DatedSetting[];
 }
@@ -66,7 +71,7 @@ const PCT = /^\d{1,3}(\.\d{1,2})?$/;
 
 
 /** The keys of the dated settings, each with its own from field. */
-const DATED_KEYS = ['clerk-limit', 'floor', 'terms', 'terms-A', 'terms-B', 'terms-C', 'late-pct', 'cap'] as const;
+const DATED_KEYS = ['clerk-limit', 'floor', 'terms', 'terms-A', 'terms-B', 'terms-C', 'late-pct', 'cap', 'proof-threshold'] as const;
 type DatedKey = (typeof DATED_KEYS)[number];
 
 /** A policy date: yyyy-mm-dd. */
@@ -196,6 +201,23 @@ const DATE = /^\d{4}-\d{2}-\d{2}$/;
           [value]="fromInput()['cap'] ?? ''"
           (input)="typeFrom('cap', $any($event.target).value)"
         />
+        <label for="setting-proof-threshold">Proof threshold (blank: none)</label>
+        <input
+          id="setting-proof-threshold"
+          data-testid="setting-proof-threshold"
+          inputmode="decimal"
+          [value]="thresholdInput() ?? ''"
+          (focus)="enterThreshold($any($event.target))"
+          (input)="thresholdInput.set($any($event.target).value); error.set(null)"
+        />
+        <label for="setting-proof-threshold-from">Proof threshold in force from (blank: the sheet's today)</label>
+        <input
+          id="setting-proof-threshold-from"
+          data-testid="setting-proof-threshold-from"
+          type="date"
+          [value]="fromInput()['proof-threshold'] ?? ''"
+          (input)="typeFrom('proof-threshold', $any($event.target).value)"
+        />
         <button type="submit" data-testid="settings-save">Save settings</button>
         @if (error(); as err) {
           <p role="alert" data-testid="settings-error">{{ err }}</p>
@@ -250,6 +272,13 @@ const DATE = /^\d{4}-\d{2}-\d{2}$/;
           <span>(no cap)</span>
         }
       </p>
+      <p>
+        Proof threshold in force:
+        <strong data-testid="setting-proof-threshold-current">{{ threshold() }}</strong>
+        @if (threshold() === '') {
+          <span>(none)</span>
+        }
+      </p>
     </section>
   `,
 })
@@ -285,6 +314,11 @@ export class Settings {
   /** The cap typed; null while its field has not been entered (left as it is). */
   protected readonly capInput = signal<string | null>(null);
 
+  /** The proof threshold in force on the sheet's today; blank for none. */
+  protected readonly threshold = computed(() => this.inForce('proof-threshold', ''));
+  /** The proof threshold typed; null while its field has not been entered (left as it is). */
+  protected readonly thresholdInput = signal<string | null>(null);
+
   /** The clerk limit in force on the sheet's today; blank for none. */
   protected readonly limit = computed(() => this.inForce('clerk-limit', ''));
   /** The from-date typed for each dated setting; blank (or missing) for the sheet's today. */
@@ -316,6 +350,7 @@ export class Settings {
       this.gradeTermsInput.set({});
       this.fromInput.set({});
       this.capInput.set(null);
+      this.thresholdInput.set(null);
       this.limitInput.set(null);
       this.floorInput.set(null);
       this.termsInput.set(null);
@@ -356,6 +391,15 @@ export class Settings {
     input.value = this.cap();
     input.select();
     this.capInput.set(this.cap());
+  }
+
+  /** Entering the proof threshold's field fills it with the threshold in force, selected, so it
+   *  saves as it is unless typed over. */
+  protected enterThreshold(input: HTMLInputElement): void {
+    if (this.thresholdInput() !== null) return;
+    input.value = this.threshold();
+    input.select();
+    this.thresholdInput.set(this.threshold());
   }
 
   /** Entering the policy date's field fills it with the date in force, so it saves as it is unless
@@ -419,6 +463,7 @@ export class Settings {
     const policyDate = this.policyInput()?.trim() ?? null;
     const periodNumberingFrom = this.numberingInput()?.trim() ?? null;
     const cap = this.capInput()?.trim() ?? null;
+    const proofThreshold = this.thresholdInput()?.trim() ?? null;
     if (clerkLimit !== null && clerkLimit !== '' && !LIMIT.test(clerkLimit)) {
       this.error.set('Enter a clerk limit of 0.00 or more, with up to two decimals, or leave it blank.');
       return;
@@ -457,6 +502,10 @@ export class Settings {
       this.error.set('Enter a cap of 0.00 or more, with up to two decimals, or leave it blank.');
       return;
     }
+    if (proofThreshold !== null && proofThreshold !== '' && !LIMIT.test(proofThreshold)) {
+      this.error.set('Enter a proof threshold of 0.00 or more, with up to two decimals, or leave it blank.');
+      return;
+    }
     const from: Partial<Record<DatedKey, string>> = {};
     for (const k of DATED_KEYS) {
       const f = this.fromInput()[k]?.trim();
@@ -491,6 +540,8 @@ export class Settings {
           termsBFrom: from['terms-B'] ?? null,
           termsCFrom: from['terms-C'] ?? null,
           capFrom: from.cap ?? null,
+          proofThreshold,
+          proofThresholdFrom: from['proof-threshold'] ?? null,
         }),
       );
       if (this.session.sheet() !== sheet) return;
@@ -503,6 +554,7 @@ export class Settings {
       this.policyInput.set(null);
       this.numberingInput.set(null);
       this.capInput.set(null);
+      this.thresholdInput.set(null);
       this.fromInput.set({});
     } catch {
       this.error.set('Could not save the settings.');

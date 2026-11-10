@@ -50,7 +50,9 @@ import org.springframework.web.server.ResponseStatusException;
  * by no statement (today's rates, grades, floor and late charge). An OPEN claim can be deferred to
  * a date after the sheet's today: until the sheet's today reaches it the claim counts in no total,
  * is not overdue, cannot be settled and is left unbound by a statement; from then on it is an OPEN
- * claim like any other.
+ * claim like any other. A claim has a proofs count, raised by one at a time while it is not SETTLED
+ * or VOID. A claim whose figure is above the proof threshold in force on its date cannot be settled
+ * or approved while it has no proofs: that is refused before the clerk limit is considered.
  */
 @Service
 public class ClaimService {
@@ -142,8 +144,9 @@ public class ClaimService {
     }
 
     /**
-     * Move a claim to a new status, refused (409) when its current status does not allow it, and
-     * refused (403) when the user who opened it tries to settle it. A clerk settling one whose
+     * Move a claim to a new status, refused (409) when its current status does not allow it,
+     * refused (403) when the user who opened it tries to settle it, and refused (422) settling a
+     * claim above the proof threshold with no proofs. A clerk settling one whose
      * figure is above the sheet's clerk limit makes it PENDING instead.
      */
     @Transactional
@@ -203,6 +206,11 @@ public class ClaimService {
         // settling fixes the figure with its late charge as it stands on the sheet's today (a
         // PENDING claim's figure is live)
         BigDecimal settling = next == ClaimStatus.SETTLED ? charged(sheetId, person, claim) : null;
+        if (next == ClaimStatus.SETTLED && needsProof(sheetId, claim, settling)) {
+            throw new ResponseStatusException(HttpStatus.UNPROCESSABLE_ENTITY,
+                    "A claim due above the proof threshold cannot be " + (review ? "approved" : "settled")
+                            + " without a proof.");
+        }
         if (next == ClaimStatus.SETTLED && !review && aboveClerkLimit(sheetId, user, settling)) {
             next = ClaimStatus.PENDING;
             settling = null;
@@ -258,6 +266,27 @@ public class ClaimService {
         audit.recordOnCommit(record("CLAIM_DEFERRED", sheetId, user, person, saved)
                 + (saved.getNumber() != null ? " number=" + saved.getNumber() : "") + " until=" + until);
         rollup.recordChanges(sheetId, user, before);
+        return saved;
+    }
+
+    /**
+     * Raise a claim's proofs count by one. Refused (409) for a SETTLED or VOID claim and (423) when
+     * dated inside a closed period.
+     */
+    @Transactional
+    public Claim addProof(String sheetId, String user, long id) {
+        Claim claim = claims.findByIdAndSheetId(id, sheetId)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "No such claim on this sheet."));
+        if (claim.getStatus() == ClaimStatus.SETTLED || claim.getStatus() == ClaimStatus.VOID) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT,
+                    "A " + claim.getStatus() + " claim cannot have a proof added.");
+        }
+        periods.refuseIfClosed(sheetId, claim.getDate());
+        Person person = person(sheetId, claim.getPersonId());
+        claim.addProof();
+        Claim saved = claims.saveAndFlush(claim);
+        audit.recordOnCommit(record("CLAIM_PROOF_ADDED", sheetId, user, person, saved)
+                + (saved.getNumber() != null ? " number=" + saved.getNumber() : "") + " proofs=" + saved.getProofs());
         return saved;
     }
 
@@ -428,6 +457,12 @@ public class ClaimService {
 
     private static String dueText(BigDecimal due) {
         return due == null ? "n/a" : due.setScale(2, RoundingMode.UNNECESSARY).toPlainString();
+    }
+
+    /** Whether a claim settling at the figure is above the proof threshold in force on its date and has no proofs. */
+    private boolean needsProof(String sheetId, Claim claim, BigDecimal figure) {
+        BigDecimal threshold = sheets.sheet(sheetId).proofThresholdOn(claim.getDate());
+        return claim.getProofs() == 0 && figure != null && threshold != null && figure.compareTo(threshold) > 0;
     }
 
     /** Whether the user is a clerk settling a claim whose figure is above the sheet's clerk limit. */

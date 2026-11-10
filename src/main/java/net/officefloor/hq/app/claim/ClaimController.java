@@ -77,7 +77,7 @@ public class ClaimController {
     public record ClaimResponse(long id, long personId, String amount, LocalDate date, String note,
             ClaimStatus status, String number, String settledDue, String openedBy,
             boolean stated, String statedDue, String corrects, LocalDate dueBy, List<ClaimLogLine> log,
-            LocalDate deferredUntil) {
+            LocalDate deferredUntil, int proofs) {
     }
 
     /** One line of a claim's status log, oldest first. */
@@ -96,7 +96,7 @@ public class ClaimController {
                 claim.getCorrects(), claim.getDueBy(),
                 claim.getLog().stream().map(l -> new ClaimLogLine(l.getStatus(), l.getBy(), l.getDate(), l.getDue()))
                         .toList(),
-                claim.getDeferredUntil());
+                claim.getDeferredUntil(), claim.getProofs());
     }
 
     public static BigDecimal amount(String amount) {
@@ -177,6 +177,11 @@ public class ClaimController {
     @PostMapping("/defer")
     public ClaimResponse defer(@Valid @RequestBody DeferClaimRequest req) {
         return response(service.defer(req.sheet().trim(), req.user().trim(), req.id(), req.until()));
+    }
+
+    @PostMapping("/proof")
+    public ClaimResponse proof(@Valid @RequestBody ClaimStatusRequest req) {
+        return response(service.addProof(req.sheet().trim(), req.user().trim(), req.id()));
     }
 
     @PostMapping("/reassign")

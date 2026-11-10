@@ -93,6 +93,10 @@ public class Claim {
     @Column(name = "deferred_until")
     private LocalDate deferredUntil;
 
+    /** How many proofs the claim has: raised by one at a time, never while SETTLED or VOID. */
+    @Column(name = "proofs", nullable = false)
+    private int proofs;
+
     /**
      * The claim's place in the list, newest (highest) first: taken from the store's sequence when
      * the claim is added and again when it is moved to another person.
@@ -240,6 +244,15 @@ public class Claim {
     /** Whether the claim is open and deferred on the given day: its deferral date not yet reached. */
     public boolean isDeferredOn(LocalDate today) {
         return status.isOpen() && deferredUntil != null && today != null && today.isBefore(deferredUntil);
+    }
+
+    public int getProofs() {
+        return proofs;
+    }
+
+    /** Raise the claim's proofs count by one. */
+    public void addProof() {
+        proofs++;
     }
 
     public List<ClaimLogEntry> getLog() {

@@ -40,6 +40,7 @@ public class Sheet {
     /** The key of a grade's own terms: {@code terms-<grade>}. */
     public static final String GRADE_TERMS = "terms-";
     public static final String LATE_PCT = "late-pct";
+    public static final String PROOF_THRESHOLD = "proof-threshold";
 
     @Id
     private String id;
@@ -60,7 +61,7 @@ public class Sheet {
 
     /**
      * The values recorded for the settings that carry a figure (the floor, the late percent, the
-     * terms, a grade's own terms, the clerk limit and the cap), each from a from-date.
+     * terms, a grade's own terms, the clerk limit, the cap and the proof threshold), each from a from-date.
      */
     @ElementCollection(fetch = FetchType.EAGER)
     @CollectionTable(name = "sheet_setting", joinColumns = @JoinColumn(name = "sheet_id"))
@@ -158,6 +159,19 @@ public class Sheet {
     public BigDecimal capped(BigDecimal dueTotal) {
         BigDecimal cap = getCap();
         return dueTotal == null || cap == null ? dueTotal : dueTotal.min(cap);
+    }
+
+    /** The proof threshold in force on the sheet's today; null for none. */
+    public BigDecimal getProofThreshold() {
+        return proofThresholdOn(today);
+    }
+
+    /**
+     * The proof threshold in force on a date: a claim of that date whose due is above it cannot be
+     * settled or approved while it has no proofs; null for none.
+     */
+    public BigDecimal proofThresholdOn(LocalDate date) {
+        return inForce(PROOF_THRESHOLD, date).map(DatedSetting::getValue).orElse(null);
     }
 
     /** The sheet's terms in force on the sheet's today. */

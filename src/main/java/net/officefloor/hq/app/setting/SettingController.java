@@ -43,7 +43,8 @@ public class SettingController {
      * whole number of days. A late percent: 0.00 to 999.99, with up to two decimals. A policy date:
      * yyyy-mm-dd, or blank for none (the sheet's today). A period-numbering-from date: yyyy-mm-dd,
      * or blank for off. A grade's own terms (A, B or C): a whole number of days. A cap: an amount with
-     * up to two decimals, or blank for none. Each setting that carries a figure may name the date it
+     * up to two decimals, or blank for none. A proof threshold: an amount with up to two decimals, or blank
+     * for none. Each setting that carries a figure may name the date it
      * is in force from (its {@code ...From}: yyyy-mm-dd, or blank or null for the sheet's today).
      */
     public record SetSettingsRequest(@NotBlank @Size(max = 100) String sheet, @NotBlank @Size(max = 100) String user,
@@ -57,7 +58,9 @@ public class SettingController {
             @Pattern(regexp = DATE) String clerkLimitFrom, @Pattern(regexp = DATE) String floorFrom,
             @Pattern(regexp = DATE) String termsFrom, @Pattern(regexp = DATE) String latePctFrom,
             @Pattern(regexp = DATE) String termsAFrom, @Pattern(regexp = DATE) String termsBFrom,
-            @Pattern(regexp = DATE) String termsCFrom, @Pattern(regexp = DATE) String capFrom) {
+            @Pattern(regexp = DATE) String termsCFrom, @Pattern(regexp = DATE) String capFrom,
+            @Pattern(regexp = "\\s*|" + ClaimController.AMOUNT) String proofThreshold,
+            @Pattern(regexp = DATE) String proofThresholdFrom) {
     }
 
     /** A value recorded for a setting that carries a figure: blank from for the beginning of time, blank value for none. */
@@ -66,12 +69,13 @@ public class SettingController {
 
     /**
      * The settings in force on the sheet's today; the clerk limit blank for none, the policy date
-     * blank for none, the period-numbering-from date blank for off, the cap blank for none; the terms
+     * blank for none, the period-numbering-from date blank for off, the cap blank for none, the proof threshold blank for none; the terms
      * in force for each grade that has its own. And every value recorded for the settings that carry
      * a figure, by key and from-date.
      */
     public record SettingsResponse(String clerkLimit, String floor, int terms, String latePct, String policyDate,
-            String periodNumberingFrom, Map<String, Integer> gradeTerms, String cap, List<DatedValue> dated) {
+            String periodNumberingFrom, Map<String, Integer> gradeTerms, String cap, String proofThreshold,
+            List<DatedValue> dated) {
     }
 
     private static SettingsResponse response(Sheet sheet) {
@@ -79,7 +83,7 @@ public class SettingController {
                 sheet.getTerms(), SettingService.text(sheet.getLatePct()),
                 sheet.getPolicyDate() == null ? "" : sheet.getPolicyDate().toString(),
                 sheet.getPeriodNumberingFrom() == null ? "" : sheet.getPeriodNumberingFrom().toString(),
-                sheet.getGradeTerms(), SettingService.text(sheet.getCap()),
+                sheet.getGradeTerms(), SettingService.text(sheet.getCap()), SettingService.text(sheet.getProofThreshold()),
                 sheet.getSettings().stream().map(SettingController::dated).toList());
     }
 
@@ -116,7 +120,8 @@ public class SettingController {
                 req.latePct() == null ? null : amount(req.latePct(), req.latePctFrom()), req.policyDate() != null,
                 policy.isEmpty() ? null : date(policy), req.periodNumberingFrom() != null,
                 numberingFrom.isEmpty() ? null : date(numberingFrom),
-                req.cap() == null ? null : amount(req.cap(), req.capFrom()), gradeTerms));
+                req.cap() == null ? null : amount(req.cap(), req.capFrom()), gradeTerms,
+                req.proofThreshold() == null ? null : amount(req.proofThreshold(), req.proofThresholdFrom())));
     }
 
     /** An amount (blank: none) from a from-date (blank or null: the sheet's today). */
