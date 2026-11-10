@@ -924,6 +924,31 @@ public class ClaimService {
         return new BulkReassigned(moved.size(), refused, moved);
     }
 
+    /** What a bulk re-date did: how many claims were re-dated and how many refused, and the claims re-dated. */
+    public record BulkRedated(int redated, int refused, List<Claim> claims) {
+    }
+
+    /**
+     * Re-date the given claims to one date together, in list order (the order people were added,
+     * newest claim first within a person), each by exactly the rules of re-dating one claim. A claim
+     * that cannot be re-dated is refused and left as it is.
+     */
+    @Transactional
+    public BulkRedated bulkRedate(String sheetId, String user, Collection<Long> ids, LocalDate date) {
+        List<Claim> selected = inListOrder(sheetId, ids);
+        int refused = (int) ids.stream().distinct().count() - selected.size();
+        List<Claim> redated = new ArrayList<>();
+        for (Claim claim : selected) {
+            try {
+                redated.add(redate(sheetId, user, claim.getId(), date));
+            } catch (ResponseStatusException refusedOne) {
+                // every refusal is checked before the claim is changed, so it is left as it is
+                refused++;
+            }
+        }
+        return new BulkRedated(redated.size(), refused, redated);
+    }
+
     /** The given claims on the sheet in list order: people by position, newest claim first within a person. */
     private List<Claim> inListOrder(String sheetId, Collection<Long> ids) {
         Map<Long, Integer> personOrder = new HashMap<>();

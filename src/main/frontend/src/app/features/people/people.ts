@@ -428,6 +428,24 @@ const SUMMARY_STATUSES = ['DRAFT', 'OPEN', 'PENDING', 'SETTLED', 'VOID'] as cons
       @if (bulkReassignError(); as err) {
         <p role="alert" data-testid="bulk-reassign-error">{{ err }}</p>
       }
+      <label for="bulk-redate-date">Re-date selected claims to</label>
+      <input
+        type="date"
+        id="bulk-redate-date"
+        data-testid="bulk-redate-date"
+        [value]="bulkRedateDate()"
+        (input)="bulkRedateDate.set($any($event.target).value); bulkRedateError.set(null)"
+      />
+      <button type="button" data-testid="bulk-redate" (click)="bulkRedate()">Re-date selected claims</button>
+      @if (bulkRedateResult(); as r) {
+        <p>
+          Re-dated <strong data-testid="bulk-redated">{{ r.redated }}</strong>,
+          refused <strong data-testid="bulk-redate-refused">{{ r.refused }}</strong>
+        </p>
+      }
+      @if (bulkRedateError(); as err) {
+        <p role="alert" data-testid="bulk-redate-error">{{ err }}</p>
+      }
       <form aria-label="Grade selected people" (submit)="bulkGrade($event)">
         <label for="bulk-grade">Grade selected people</label>
         <select
@@ -918,6 +936,10 @@ export class People {
   protected readonly bulkReassignTo = signal('');
   protected readonly bulkReassignResult = signal<{ reassigned: number; refused: number } | null>(null);
   protected readonly bulkReassignError = signal<string | null>(null);
+  /** The date the selected claims are re-dated to; blank until one is typed. */
+  protected readonly bulkRedateDate = signal('');
+  protected readonly bulkRedateResult = signal<{ redated: number; refused: number } | null>(null);
+  protected readonly bulkRedateError = signal<string | null>(null);
   /** The ids of the people ticked for a bulk action. */
   protected readonly selectedPeople = signal<ReadonlySet<number>>(new Set());
   protected readonly bulkGradeInput = signal<string>('A');
@@ -1219,6 +1241,9 @@ export class People {
       this.bulkReassignTo.set('');
       this.bulkReassignResult.set(null);
       this.bulkReassignError.set(null);
+      this.bulkRedateDate.set('');
+      this.bulkRedateResult.set(null);
+      this.bulkRedateError.set(null);
       this.selectedPeople.set(new Set());
       this.bulkGradeInput.set('A');
       this.bulkGradeFrom.set('');
@@ -2011,6 +2036,37 @@ export class People {
     } catch {
       if (this.session.sheet() !== sheet) return;
       this.bulkReassignError.set('Could not move the selected claims.');
+    }
+  }
+
+  /** Re-date the selected claims to the date typed together: the server re-dates each it can, in
+   *  list order, by the rules of re-dating one, and refuses the rest, leaving them as they are. */
+  protected async bulkRedate(): Promise<void> {
+    this.bulkRedateResult.set(null);
+    this.bulkRedateError.set(null);
+    const sheet = this.session.sheet();
+    const date = this.bulkRedateDate().trim();
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) {
+      this.bulkRedateError.set('Enter the date to re-date the selected claims to.');
+      return;
+    }
+    const ids = [...this.selectedClaims()];
+    try {
+      const done = await firstValueFrom(
+        this.http.post<{ redated: number; refused: number; claims: Claim[] }>('/api/claims/bulk-redate', {
+          sheet,
+          user: this.session.user(),
+          ids,
+          date,
+        }),
+      );
+      if (this.session.sheet() !== sheet) return;
+      for (const c of done.claims) this.claimSaved(c);
+      this.selectedClaims.set(new Set());
+      this.bulkRedateResult.set({ redated: done.redated, refused: done.refused });
+    } catch {
+      if (this.session.sheet() !== sheet) return;
+      this.bulkRedateError.set('Could not re-date the selected claims.');
     }
   }
 

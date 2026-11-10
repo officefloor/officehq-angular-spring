@@ -116,6 +116,13 @@ public class ClaimController {
     public record BulkReassignResponse(int reassigned, int refused, List<ClaimResponse> claims) {
     }
 
+    public record BulkRedateRequest(@NotBlank @Size(max = 100) String sheet, @NotBlank @Size(max = 100) String user,
+            @NotNull @Size(max = 1000) List<@NotNull Long> ids, @NotNull LocalDate date) {
+    }
+
+    public record BulkRedateResponse(int redated, int refused, List<ClaimResponse> claims) {
+    }
+
     /** {@code lastBatch}: the sheet's last settle batch number after the bulk settle; none when there has been none. */
     public record BulkSettleResponse(int settled, int refused, List<ClaimResponse> claims, Integer lastBatch) {
     }
@@ -343,6 +350,14 @@ public class ClaimController {
         ClaimService.BulkReassigned done = service.bulkReassign(req.sheet().trim(), req.user().trim(), req.ids(),
                 req.personId());
         return new BulkReassignResponse(done.reassigned(), done.refused(),
+                done.claims().stream().map(ClaimController::response).toList());
+    }
+
+    @PostMapping("/bulk-redate")
+    public BulkRedateResponse bulkRedate(@Valid @RequestBody BulkRedateRequest req) {
+        ClaimService.BulkRedated done = service.bulkRedate(req.sheet().trim(), req.user().trim(), req.ids(),
+                req.date());
+        return new BulkRedateResponse(done.redated(), done.refused(),
                 done.claims().stream().map(ClaimController::response).toList());
     }
 
