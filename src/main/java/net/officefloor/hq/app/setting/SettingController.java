@@ -39,7 +39,8 @@ public class SettingController {
      * to two decimals, or blank for no limit. A floor: an amount with up to two decimals. Terms: a
      * whole number of days. A late percent: 0.00 to 999.99, with up to two decimals. A policy date:
      * yyyy-mm-dd, or blank for none (the sheet's today). A period-numbering-from date: yyyy-mm-dd,
-     * or blank for off. A grade's own terms (A, B or C): a whole number of days.
+     * or blank for off. A grade's own terms (A, B or C): a whole number of days. A cap: an amount with
+     * up to two decimals, or blank for none.
      */
     public record SetSettingsRequest(@NotBlank @Size(max = 100) String sheet, @NotBlank @Size(max = 100) String user,
             @Pattern(regexp = "\\s*|" + ClaimController.AMOUNT) String clerkLimit,
@@ -48,15 +49,15 @@ public class SettingController {
             @Pattern(regexp = LATE_PCT) String latePct,
             @Pattern(regexp = DATE) String policyDate, @Pattern(regexp = DATE) String periodNumberingFrom,
             @Pattern(regexp = TERMS) String termsA, @Pattern(regexp = TERMS) String termsB,
-            @Pattern(regexp = TERMS) String termsC) {
+            @Pattern(regexp = TERMS) String termsC, @Pattern(regexp = "\\s*|" + ClaimController.AMOUNT) String cap) {
     }
 
     /**
      * The settings in force; the clerk limit blank for none, the policy date blank for none, the
-     * period-numbering-from date blank for off; the terms set for each grade that has its own.
+     * period-numbering-from date blank for off, the cap blank for none; the terms set for each grade that has its own.
      */
     public record SettingsResponse(String clerkLimit, String floor, int terms, String latePct, String policyDate,
-            String periodNumberingFrom, Map<String, Integer> gradeTerms) {
+            String periodNumberingFrom, Map<String, Integer> gradeTerms, String cap) {
     }
 
     private static SettingsResponse response(Sheet sheet) {
@@ -64,7 +65,7 @@ public class SettingController {
                 sheet.getTerms(), SettingService.text(sheet.getLatePct()),
                 sheet.getPolicyDate() == null ? "" : sheet.getPolicyDate().toString(),
                 sheet.getPeriodNumberingFrom() == null ? "" : sheet.getPeriodNumberingFrom().toString(),
-                sheet.getGradeTerms());
+                sheet.getGradeTerms(), SettingService.text(sheet.getCap()));
     }
 
     private final SettingService service;
@@ -83,6 +84,7 @@ public class SettingController {
         String limit = req.clerkLimit() == null ? "" : req.clerkLimit().trim();
         String policy = req.policyDate() == null ? "" : req.policyDate().trim();
         String numberingFrom = req.periodNumberingFrom() == null ? "" : req.periodNumberingFrom().trim();
+        String cap = req.cap() == null ? "" : req.cap().trim();
         Map<String, Integer> gradeTerms = new TreeMap<>();
         if (req.termsA() != null) gradeTerms.put("A", Integer.valueOf(req.termsA().trim()));
         if (req.termsB() != null) gradeTerms.put("B", Integer.valueOf(req.termsB().trim()));
@@ -93,7 +95,8 @@ public class SettingController {
                 req.terms() == null ? null : Integer.valueOf(req.terms().trim()),
                 req.latePct() == null ? null : ClaimController.amount(req.latePct()), req.policyDate() != null,
                 policy.isEmpty() ? null : date(policy), req.periodNumberingFrom() != null,
-                numberingFrom.isEmpty() ? null : date(numberingFrom), gradeTerms));
+                numberingFrom.isEmpty() ? null : date(numberingFrom), req.cap() != null,
+                cap.isEmpty() ? null : ClaimController.amount(cap), gradeTerms));
     }
 
     private static LocalDate date(String text) {

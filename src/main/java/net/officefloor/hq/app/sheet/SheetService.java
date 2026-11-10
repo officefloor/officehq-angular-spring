@@ -63,6 +63,12 @@ public class SheetService {
         return sheets.findById(id).map(Sheet::getFloor).orElse(Sheet.DEFAULT_FLOOR);
     }
 
+    /** A person's due-total held to the sheet's cap (none: as it is; n/a stays n/a). */
+    @Transactional(readOnly = true)
+    public BigDecimal capped(String id, BigDecimal dueTotal) {
+        return sheets.findById(id).map(s -> s.capped(dueTotal)).orElse(dueTotal);
+    }
+
     /** Lock the sheet until the caller's transaction ends; refused (404) when there is no such sheet. */
     @Transactional
     public Sheet lock(String id) {

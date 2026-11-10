@@ -55,6 +55,10 @@ public class Sheet {
     @Column(name = "due_floor", nullable = false, precision = 14, scale = 2)
     private BigDecimal floor = DEFAULT_FLOOR;
 
+    /** The most a person's due-total can be; null for no cap. */
+    @Column(name = "due_cap", precision = 14, scale = 2)
+    private BigDecimal cap;
+
     /** The days after its date a claim is due by; 14 on a new sheet. */
     @Column(name = "terms", nullable = false)
     private int terms = DEFAULT_TERMS;
@@ -126,6 +130,19 @@ public class Sheet {
 
     public void setFloor(BigDecimal floor) {
         this.floor = floor;
+    }
+
+    public BigDecimal getCap() {
+        return cap;
+    }
+
+    public void setCap(BigDecimal cap) {
+        this.cap = cap;
+    }
+
+    /** A person's due-total held to the cap (n/a stays n/a). */
+    public BigDecimal capped(BigDecimal dueTotal) {
+        return dueTotal == null || cap == null ? dueTotal : dueTotal.min(cap);
     }
 
     public int getTerms() {

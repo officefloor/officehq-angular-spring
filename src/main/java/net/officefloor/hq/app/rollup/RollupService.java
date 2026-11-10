@@ -29,7 +29,8 @@ import org.springframework.stereotype.Service;
  * person whose figures moved (people in the order they were added; a new person counts as moved),
  * then a TOTALS line when the sheet's totals moved. A held person's OPEN claims count in none of
  * these (nor their PENDING ones), nor in a period's due-total; their SETTLED claims still do. A live due is never below
- * the sheet's floor; an overdue claim's figure has its late charge added on top.
+ * the sheet's floor; an overdue claim's figure has its late charge added on top. A person's
+ * due-total is at most the sheet's cap, when it has one.
  */
 @Service
 public class RollupService {
@@ -92,7 +93,7 @@ public class RollupService {
             // as on screen: n/a when the grade in force today has no rate today and no claim that
             // counts has a figure
             boolean none = inForce(sheetRates, person.gradeOn(today), today).isEmpty() && !anyFigure;
-            figures.put(person.getId(), new Figures(person.getName(), claimed, none ? null : due));
+            figures.put(person.getId(), new Figures(person.getName(), claimed, none ? null : sheet.capped(due)));
         }
         return new Snapshot(figures);
     }

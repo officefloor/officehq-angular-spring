@@ -22,7 +22,8 @@ import org.springframework.transaction.annotation.Transactional;
  * the sheet's today) decides how a claim's live figures round (see {@link Rounding}), so changing it
  * records the figures that move too. Its period-numbering-from date (none: off) decides how a claim
  * opened is numbered: on or after it, within its period (see {@link SheetService#nextClaimNumber}).
- * A grade may have its own terms; a grade without uses the sheet's terms. A claim's due-by is fixed
+ * Its cap (none: no cap) is the most a person's due-total can be, so changing it records the
+ * figures that move too. A grade may have its own terms; a grade without uses the sheet's terms. A claim's due-by is fixed
  * when it is created, so changing any terms moves no claim's due-by.
  */
 @Service
@@ -30,6 +31,7 @@ public class SettingService {
 
     public static final String CLERK_LIMIT = "clerk-limit";
     public static final String FLOOR = "floor";
+    public static final String CAP = "cap";
     public static final String TERMS = "terms";
     /** The key of a grade's own terms: {@code terms-<grade>}. */
     public static final String GRADE_TERMS = "terms-";
@@ -58,13 +60,14 @@ public class SettingService {
      * Save the settings given: a clerk limit when {@code changeLimit} (null for no limit), and the
      * floor, the terms and the late percent when they are not null, and a policy date when
      * {@code changePolicy} (null for none), and a period-numbering-from date when
-     * {@code changeNumbering} (null for off), and each grade's own terms given in {@code gradeTerms}
+     * {@code changeNumbering} (null for off), and a cap when {@code changeCap} (null for none), and each grade's own terms given in {@code gradeTerms}
      * (by grade, in grade order). Each one saved is recorded, in that order.
      */
     @Transactional
     public Sheet set(String sheetId, String user, boolean changeLimit, BigDecimal limit, BigDecimal floor,
             Integer terms, BigDecimal latePct, boolean changePolicy, LocalDate policyDate,
-            boolean changeNumbering, LocalDate numberingFrom, Map<String, Integer> gradeTerms) {
+            boolean changeNumbering, LocalDate numberingFrom, boolean changeCap, BigDecimal cap,
+            Map<String, Integer> gradeTerms) {
         Sheet sheet = sheets.load(sheetId, user);
         if (changeLimit) {
             sheet.setClerkLimit(limit);
@@ -102,6 +105,13 @@ public class SettingService {
             sheet = sheetStore.saveAndFlush(sheet);
             audit.recordOnCommit(changed(sheetId, user, PERIOD_NUMBERING_FROM,
                     numberingFrom == null ? "" : numberingFrom.toString()));
+        }
+        if (changeCap) {
+            RollupService.Snapshot before = rollup.snapshot(sheetId);
+            sheet.setCap(cap);
+            sheet = sheetStore.saveAndFlush(sheet);
+            audit.recordOnCommit(changed(sheetId, user, CAP, text(cap)));
+            rollup.recordChanges(sheetId, user, before);
         }
         for (Map.Entry<String, Integer> e : new TreeMap<>(gradeTerms).entrySet()) {
             sheet.setGradeTerms(e.getKey(), e.getValue());

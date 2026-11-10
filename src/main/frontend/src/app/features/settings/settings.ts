@@ -14,6 +14,8 @@ import { Session } from '../../core/session';
 // numbered within its period (<period name>-<n>, or X-<n> in no period); it saves like the policy date.
 // Each grade may have its own terms (whole days; blank: left as they are); a grade without its own
 // uses the sheet's terms. A claim's due-by is fixed when it is added, so changing terms moves none.
+// The cap (two decimals; blank for none) is the most a person's due-total can be; it saves, like
+// the clerk limit, once its field has been entered (blank: none).
 interface SettingsResponse {
   /** The clerk limit, blank for none. */
   clerkLimit: string;
@@ -26,6 +28,8 @@ interface SettingsResponse {
   periodNumberingFrom: string;
   /** The terms set for each grade that has its own, by grade. */
   gradeTerms: Record<string, number>;
+  /** The cap, blank for none. */
+  cap: string;
 }
 
 /** The grades that may have their own terms. */
@@ -117,6 +121,15 @@ const DATE = /^\d{4}-\d{2}-\d{2}$/;
           (focus)="enterNumbering($any($event.target))"
           (input)="numberingInput.set($any($event.target).value); error.set(null)"
         />
+        <label for="setting-cap">Cap on a person's due-total (blank: no cap)</label>
+        <input
+          id="setting-cap"
+          data-testid="setting-cap"
+          inputmode="decimal"
+          [value]="capInput() ?? ''"
+          (focus)="enterCap($any($event.target))"
+          (input)="capInput.set($any($event.target).value); error.set(null)"
+        />
         <button type="submit" data-testid="settings-save">Save settings</button>
         @if (error(); as err) {
           <p role="alert" data-testid="settings-error">{{ err }}</p>
@@ -164,6 +177,13 @@ const DATE = /^\d{4}-\d{2}-\d{2}$/;
           <span>(off)</span>
         }
       </p>
+      <p>
+        Cap in force:
+        <strong data-testid="setting-cap-current">{{ cap() }}</strong>
+        @if (cap() === '') {
+          <span>(no cap)</span>
+        }
+      </p>
     </section>
   `,
 })
@@ -184,6 +204,10 @@ export class Settings {
   readonly latePct = model(DEFAULT_LATE_PCT);
   /** The sheet's policy date (blank: its today), shared with whoever works out how a claim rounds. */
   readonly policyDate = model('');
+  /** The sheet's cap (blank: none), shared with whoever works out a person's due-total. */
+  readonly cap = model('');
+  /** The cap typed; null while its field has not been entered (left as it is). */
+  protected readonly capInput = signal<string | null>(null);
 
   protected readonly limit = signal('');
   /** The period-numbering-from date in force; blank for off. */
@@ -217,6 +241,8 @@ export class Settings {
       this.latePct.set(DEFAULT_LATE_PCT);
       this.policyDate.set('');
       this.numberingFrom.set('');
+      this.cap.set('');
+      this.capInput.set(null);
       this.limitInput.set(null);
       this.floorInput.set(null);
       this.termsInput.set(null);
@@ -250,6 +276,15 @@ export class Settings {
     this.limitInput.set(this.limit());
   }
 
+  /** Entering the cap's field fills it with the cap in force, selected, so it saves as it is
+   *  unless typed over. */
+  protected enterCap(input: HTMLInputElement): void {
+    if (this.capInput() !== null) return;
+    input.value = this.cap();
+    input.select();
+    this.capInput.set(this.cap());
+  }
+
   /** Entering the policy date's field fills it with the date in force, so it saves as it is unless
    *  changed. */
   protected enterPolicy(input: HTMLInputElement): void {
@@ -279,6 +314,7 @@ export class Settings {
     this.latePct.set(res.latePct);
     this.policyDate.set(res.policyDate);
     this.numberingFrom.set(res.periodNumberingFrom);
+    this.cap.set(res.cap);
   }
 
   protected async save(event: Event): Promise<void> {
@@ -292,6 +328,7 @@ export class Settings {
     const latePct = this.latePctInput()?.trim() || null;
     const policyDate = this.policyInput()?.trim() ?? null;
     const periodNumberingFrom = this.numberingInput()?.trim() ?? null;
+    const cap = this.capInput()?.trim() ?? null;
     if (clerkLimit !== null && clerkLimit !== '' && !LIMIT.test(clerkLimit)) {
       this.error.set('Enter a clerk limit of 0.00 or more, with up to two decimals, or leave it blank.');
       return;
@@ -326,6 +363,10 @@ export class Settings {
       this.error.set('Enter a period-numbering-from date as a date, or leave it blank for off.');
       return;
     }
+    if (cap !== null && cap !== '' && !LIMIT.test(cap)) {
+      this.error.set('Enter a cap of 0.00 or more, with up to two decimals, or leave it blank.');
+      return;
+    }
     this.submitting = true;
     try {
       const res = await firstValueFrom(
@@ -341,6 +382,7 @@ export class Settings {
           termsA: gradeTerms.A ?? null,
           termsB: gradeTerms.B ?? null,
           termsC: gradeTerms.C ?? null,
+          cap,
         }),
       );
       if (this.session.sheet() !== sheet) return;
@@ -352,6 +394,7 @@ export class Settings {
       this.latePctInput.set(null);
       this.policyInput.set(null);
       this.numberingInput.set(null);
+      this.capInput.set(null);
     } catch {
       this.error.set('Could not save the settings.');
     } finally {

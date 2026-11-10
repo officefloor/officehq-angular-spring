@@ -45,6 +45,9 @@ import { GradeSummary, PeriodSummary, StatusSummary, Summary } from '../summary/
 // and their backing: their patrons' due-totals added up, skipping those that are n/a.
 // The export button downloads everyone, retired people included, in list order, as a CSV file
 // (name, grade in force today, retired-from date or nothing, due-total as shown).
+// The sheet may have a cap: a person's due-total is at most it, and their excess is how far the
+// sum of their figures is above it (0.00 otherwise; a due-total of n/a is not capped). Every total
+// of due-totals (the sheet's, a grade's, backing, the export) adds up the capped figures.
 interface Person {
   id: number;
   name: string;
@@ -129,7 +132,7 @@ const SUMMARY_STATUSES = ['DRAFT', 'OPEN', 'PENDING', 'SETTLED', 'VOID'] as cons
     />
     <app-rates [(rates)]="rates" />
     <app-roles />
-    <app-settings [(floor)]="floor" [(latePct)]="latePct" [(policyDate)]="policyDate" />
+    <app-settings [(floor)]="floor" [(latePct)]="latePct" [(policyDate)]="policyDate" [(cap)]="cap" />
     <app-periods [(periods)]="periods" [dues]="dues()" />
     <section aria-labelledby="people-heading">
       <h2 id="people-heading">People</h2>
@@ -263,6 +266,7 @@ const SUMMARY_STATUSES = ['DRAFT', 'OPEN', 'PENDING', 'SETTLED', 'VOID'] as cons
               <td>
                 <span data-testid="person-patrons">{{ patronNamesOf(p.id) }}</span>
                 <span>backing <span data-testid="person-backing">{{ money(backingOf(p.id)) }}</span></span>
+                <span>excess <span data-testid="person-excess">{{ money(excessOf(p)) }}</span></span>
                 <label [for]="'person-patron-select-' + p.id">Patron</label>
                 <select
                   [id]="'person-patron-select-' + p.id"
@@ -409,6 +413,9 @@ export class People {
   /** The sheet's floor: the least a claim's live due can be. */
   protected readonly floor = signal('1.00');
   protected readonly floorCents = computed(() => cents(this.floor()));
+  /** The sheet's cap (blank: none): the most a person's due-total can be. */
+  protected readonly cap = signal('');
+  private readonly capCents = computed(() => (this.cap() === '' ? null : cents(this.cap())));
   /** The sheet's late percent: what an overdue claim gains of its figure for every full 30 days. */
   protected readonly latePct = signal('0.00');
   /** The sheet's policy date (blank: its today): a claim dated before it rounds half up, else half to even. */
@@ -571,12 +578,26 @@ export class People {
     return countsFor(p, c) ? cents(c.amount) : 0;
   }
 
-  /**
-   * What the person owes, in whole cents: the sum of the figures of the claims that count. Null
-   * when their grade in force on the sheet's today has no rate in force then, unless a claim that
-   * counts has a figure.
-   */
+  /** What the person owes, in whole cents: the sum of their figures held to the sheet's cap. */
   protected dueOf(p: Person): number | null {
+    const sum = this.figuresOf(p);
+    const cap = this.capCents();
+    return sum === null || cap === null ? sum : Math.min(sum, cap);
+  }
+
+  /** How far the sum of the person's figures is above the cap, in whole cents; 0 otherwise. */
+  protected excessOf(p: Person): number {
+    const sum = this.figuresOf(p);
+    const cap = this.capCents();
+    return sum === null || cap === null ? 0 : Math.max(sum - cap, 0);
+  }
+
+  /**
+   * The sum of the figures of the person's claims that count, in whole cents. Null when their
+   * grade in force on the sheet's today has no rate in force then, unless a claim that counts has
+   * a figure.
+   */
+  private figuresOf(p: Person): number | null {
     const figures = this.claimsOf(p.id)
       .filter((c) => countsFor(p, c))
       .map((c) => chargedDueCents(c, this.rates(), gradeOn(p.grades, c.date), this.floorCents(), this.lateness(), this.roundOn(c)));
