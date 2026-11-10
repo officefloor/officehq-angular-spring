@@ -1,0 +1,140 @@
+diff --git a/src/main/frontend/src/app/features/periods/periods.ts b/src/main/frontend/src/app/features/periods/periods.ts
+index 426bc7b90..123e0b2d2 100644
+--- a/src/main/frontend/src/app/features/periods/periods.ts
++++ b/src/main/frontend/src/app/features/periods/periods.ts
+@@ -9,7 +9,8 @@ import { FigurePipe } from '../../core/figure';
+ // from and to date, both inclusive, no two periods overlapping. A second form generates a period
+ // per calendar month (named yyyy-mm) between two dates, leaving out months in use or overlapping; a third
+ // generates them, the same way, for the twelve months of a fiscal year (FY<yyyy>, named by the calendar
+-// year its first day falls in; it starts in the sheet's fiscal start month). Each period shows the fiscal
++// year its first day falls in; it starts in the sheet's fiscal start month); a fourth makes the four calendar
++// quarters of a year (named yyyy-Q1 to yyyy-Q4), the same way. Each period shows the fiscal
+ // year its from-date falls in. A claim belongs to the period whose
+ // dates contain its due-by (as fixed when it was added), or to none; each period shows the due of the claims that count in it.
+ // A period can be closed: its due-total is then the one fixed when it was closed, and no claim
+@@ -194,6 +195,17 @@ export function inClosedPeriod(periods: readonly Period[], date: string): boolea
+         />
+         <button type="submit" data-testid="period-generate-fy">Generate fiscal year</button>
+       </form>
++      <form aria-label="Generate a year's quarterly periods" (submit)="generateQuarters($event)">
++        <label for="period-generate-quarters-year">Quarters of year (yyyy)</label>
++        <input
++          id="period-generate-quarters-year"
++          data-testid="period-generate-quarters-year"
++          inputmode="numeric"
++          [value]="quartersYear()"
++          (input)="quartersYear.set($any($event.target).value); generateError.set(null)"
++        />
++        <button type="submit" data-testid="period-generate-quarters">Generate quarters</button>
++      </form>
+       @if (generated() !== null) {
+         <p role="status">Made <span data-testid="period-generated">{{ generated() }}</span></p>
+       }
+@@ -312,6 +324,8 @@ export class Periods {
+   protected readonly generateTo = signal('');
+   /** The fiscal year typed to generate, by the calendar year its first day falls in. */
+   protected readonly fyYear = signal('');
++  /** The calendar year typed to generate the quarters of. */
++  protected readonly quartersYear = signal('');
+   /** How many periods the last generate made; null before one, and while one runs. */
+   protected readonly generated = signal<number | null>(null);
+   protected readonly generateError = signal<string | null>(null);
+@@ -338,6 +352,7 @@ export class Periods {
+       this.generateFrom.set('');
+       this.generateTo.set('');
+       this.fyYear.set('');
++      this.quartersYear.set('');
+       this.generated.set(null);
+       this.generateError.set(null);
+       this.openingText.set('');
+@@ -535,6 +550,21 @@ export class Periods {
+     await this.made(sheet, this.http.post<Period[]>('/api/periods/generate-fy', { sheet, user: this.session.user(), year }));
+   }
+ 
++  /** Make the four calendar quarters of a year, as the period form adds them; shows how many were made. */
++  protected async generateQuarters(event: Event): Promise<void> {
++    event.preventDefault();
++    if (this.submitting) return;
++    this.generateError.set(null);
++    this.generated.set(null);
++    const sheet = this.session.sheet();
++    const year = this.quartersYear().trim();
++    if (!/^\d{4}$/.test(year)) {
++      this.generateError.set('Enter the year as yyyy.');
++      return;
++    }
++    await this.made(sheet, this.http.post<Period[]>('/api/periods/generate-quarters', { sheet, user: this.session.user(), year }));
++  }
++
+   /** Paste opening balances: every line is checked by the server before any is set; shows how many
+    *  lines went through, or why the paste was refused. */
+   protected async importOpenings(event: Event): Promise<void> {
+diff --git a/src/main/java/net/officefloor/hq/app/period/PeriodController.java b/src/main/java/net/officefloor/hq/app/period/PeriodController.java
+index 42f6246fe..044ab1dc7 100644
+--- a/src/main/java/net/officefloor/hq/app/period/PeriodController.java
++++ b/src/main/java/net/officefloor/hq/app/period/PeriodController.java
+@@ -40,6 +40,11 @@ public class PeriodController {
+             @NotBlank @Size(max = 100) String user, @NotBlank @Pattern(regexp = "\\s*\\d{4}\\s*") String year) {
+     }
+ 
++    /** The calendar year whose quarters to generate. */
++    public record GenerateQuartersRequest(@NotBlank @Size(max = 100) String sheet,
++            @NotBlank @Size(max = 100) String user, @NotBlank @Pattern(regexp = "\\s*\\d{4}\\s*") String year) {
++    }
++
+     public record ClosePeriodRequest(@NotBlank @Size(max = 100) String sheet, @NotBlank @Size(max = 100) String user,
+             @NotNull Long id) {
+     }
+@@ -123,6 +128,13 @@ public class PeriodController {
+                 Integer.parseInt(req.year().trim())));
+     }
+ 
++    /** The quarterly periods made for the year, by from-date. */
++    @PostMapping("/generate-quarters")
++    public List<PeriodResponse> generateQuarters(@Valid @RequestBody GenerateQuartersRequest req) {
++        return responses(req.sheet().trim(), service.generateQuarters(req.sheet().trim(), req.user().trim(),
++                Integer.parseInt(req.year().trim())));
++    }
++
+     @PostMapping("/openings")
+     public ImportOpeningsResponse importOpenings(@Valid @RequestBody ImportOpeningsRequest req) {
+         String sheet = req.sheet().trim();
+diff --git a/src/main/java/net/officefloor/hq/app/period/PeriodService.java b/src/main/java/net/officefloor/hq/app/period/PeriodService.java
+index ed697f697..7d75812cb 100644
+--- a/src/main/java/net/officefloor/hq/app/period/PeriodService.java
++++ b/src/main/java/net/officefloor/hq/app/period/PeriodService.java
+@@ -124,6 +124,34 @@ public class PeriodService {
+         return generate(sheetId, user, first, first.plusMonths(11));
+     }
+ 
++    /**
++     * Generate the four calendar quarters of the year, named &lt;yyyy&gt;-Q1 to &lt;yyyy&gt;-Q4, each
++     * as the period form adds it; a quarter whose name is already a period, or whose days overlap a
++     * period on the sheet, is left out and the others are still made.
++     */
++    @Transactional
++    public List<Period> generateQuarters(String sheetId, String user, int year) {
++        roles.refuseViewer(sheetId, user);
++        sheets.load(sheetId, user);
++        // hold the sheet so periods added at the same moment are checked one after the other
++        sheetRows.findLockedById(sheetId);
++        List<Period> made = new ArrayList<>();
++        for (int quarter = 1; quarter <= 4; quarter++) {
++            String name = year + "-Q" + quarter;
++            LocalDate first = LocalDate.of(year, quarter * 3 - 2, 1);
++            LocalDate last = YearMonth.of(year, quarter * 3).atEndOfMonth();
++            if (periods.existsBySheetIdAndNameIgnoreCase(sheetId, name)
++                    || periods.existsBySheetIdAndFromDateLessThanEqualAndToDateGreaterThanEqual(sheetId, last, first)) {
++                continue;
++            }
++            Period added = periods.saveAndFlush(new Period(sheetId, name, first, last));
++            audit.recordOnCommit("PERIOD_ADDED sheet=" + sheetId + " by=" + user + " period=" + added.getName()
++                    + " from=" + added.getFromDate() + " to=" + added.getToDate());
++            made.add(added);
++        }
++        return made;
++    }
++
+     /** The fiscal year each of the sheet's periods falls in (by its from-date), by period id. */
+     @Transactional(readOnly = true)
+     public Map<Long, String> fiscalYears(String sheetId, List<Period> list) {
