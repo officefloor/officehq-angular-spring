@@ -21,6 +21,9 @@ import { Session } from '../../core/session';
 // A membership may carry a from-date and a to-date (both optional; a to-date before the from-date is
 // refused). A member whose dates leave out the sheet's today is left out entirely: not in the total
 // share, not in the balance, and no cut (blank) — worked out by the store.
+// The export button downloads the pools as a CSV file (pool, member, share, cut): one line per member,
+// pools and their members in the order added, a pool member as pool:<name>, the cut as shown (empty
+// when none), read afresh from the store.
 export interface PoolMember {
   /** The person's id; 0 for a pool. */
   personId: number;
@@ -49,6 +52,11 @@ export interface PoolPerson {
 
 const SHARE = /^\d{1,3}(\.\d{1,2})?$/;
 const DATE = /^\d{4}-\d{2}-\d{2}$/;
+
+/** A CSV field: wrapped in double quotes, with inner quotes doubled, when it holds a comma, quote or line break. */
+function csvField(value: string): string {
+  return /[",\r\n]/.test(value) ? '"' + value.replace(/"/g, '""') + '"' : value;
+}
 
 function refusal(e: unknown, what: string): string {
   if (e instanceof HttpErrorResponse && typeof e.error?.message === 'string' && e.status !== 403 && e.status < 500) {
@@ -224,6 +232,7 @@ export class PoolRow {
           <p role="alert" data-testid="pool-form-error">{{ err }}</p>
         }
       </form>
+      <button type="button" data-testid="export-pools" (click)="exportCsv()">Export pools (CSV)</button>
       @for (p of pools(); track p.id) {
         <app-pool-row [pool]="p" [people]="people()" [pools]="pools()" (changed)="changed($event)" />
       }
@@ -276,6 +285,32 @@ export class Pools {
     } catch {
       if (read === this.reads) this.loadError.set('Could not read the pools on this sheet.');
     }
+  }
+
+  /** Download every pool's members, pools and members in the order added, as a CSV file. */
+  protected async exportCsv(): Promise<void> {
+    const sheet = this.session.sheet();
+    if (!sheet) return;
+    let pools: Pool[];
+    try {
+      pools = await firstValueFrom(this.http.post<Pool[]>('/api/pools/list', { sheet }));
+    } catch {
+      this.loadError.set('Could not read the pools on this sheet.');
+      return;
+    }
+    if (this.session.sheet() !== sheet) return;
+    const lines = ['pool,member,share,cut'];
+    for (const p of pools) {
+      for (const m of p.members) {
+        lines.push([p.name, m.pool === null ? m.name : 'pool:' + m.pool, m.share, m.cut].map(csvField).join(','));
+      }
+    }
+    const url = URL.createObjectURL(new Blob([lines.map((l) => l + '\n').join('')], { type: 'text/csv' }));
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = 'pools-' + sheet + '.csv';
+    a.click();
+    setTimeout(() => URL.revokeObjectURL(url));
   }
 
   protected changed(pools: Pool[]): void {

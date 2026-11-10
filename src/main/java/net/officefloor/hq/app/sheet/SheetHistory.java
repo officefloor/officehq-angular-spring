@@ -28,7 +28,7 @@ import org.springframework.transaction.annotation.Transactional;
  * its today the date, for the caller's transaction to read and then roll back.
  *
  * <p>The sheet's rows are found from the schema: every table with a {@code sheet_id}, and every
- * table without one that hangs off a person, claim or period of the sheet. A table added later is
+ * table without one that hangs off a person, claim, period or plan of the sheet. A table added later is
  * so kept without change here.
  */
 @Service
@@ -194,6 +194,7 @@ public class SheetHistory {
                     : columns.contains("PERIOD_ID") ? "period_id IN (SELECT id FROM period WHERE sheet_id = ?)"
                     : columns.contains("PERSON_ID") ? "person_id IN (SELECT id FROM person WHERE sheet_id = ?)"
                     : columns.contains("CLAIM_ID") ? "claim_id IN (SELECT id FROM claim WHERE sheet_id = ?)"
+                    : columns.contains("PLAN_ID") ? "plan_id IN (SELECT id FROM plan WHERE sheet_id = ?)"
                     : null;
             if (where != null) {
                 found.add(new Table(name, where, columns));
