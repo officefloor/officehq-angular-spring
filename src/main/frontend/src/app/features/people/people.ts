@@ -963,6 +963,14 @@ const SUMMARY_STATUSES = ['DRAFT', 'OPEN', 'PENDING', 'SETTLED', 'VOID', 'REVIEW
                 >
                   Transfer
                 </button>
+                <button
+                  type="button"
+                  data-testid="person-transfer-undo"
+                  [attr.aria-label]="'Undo the transfer that brought ' + p.name + ' here'"
+                  (click)="undoTransfer(p)"
+                >
+                  Undo transfer
+                </button>
                 @if (rowErrors().get(p.id); as err) {
                   <p role="alert" data-testid="person-error">{{ err }}</p>
                 }
@@ -1766,6 +1774,35 @@ export class People {
       next.delete(p.id);
       return next;
     });
+    if (sheet) await this.fetch(sheet);
+  }
+
+  /**
+   * Undo the transfer that brought the person to this sheet (a steward, on the sheet's today they
+   * arrived): they go back to the sheet they came from, so the sheet is re-read.
+   */
+  protected async undoTransfer(p: Person): Promise<void> {
+    this.clearRowError(p.id);
+    const sheet = this.session.sheet();
+    try {
+      await firstValueFrom(
+        this.http.post<Person>('/api/people/transfer/undo', { sheet, user: this.session.user(), id: p.id }),
+      );
+    } catch (e) {
+      if (this.session.sheet() !== sheet) return;
+      this.rowErrors.update((m) =>
+        new Map(m).set(
+          p.id,
+          e instanceof HttpErrorResponse && e.status === 403
+            ? 'Only a steward can undo a transfer.'
+            : e instanceof HttpErrorResponse && e.status === 409
+              ? 'Could not undo the transfer of ' + p.name + ': they did not arrive by transfer today, or cannot go back.'
+              : 'Could not undo the transfer of ' + p.name + '.',
+        ),
+      );
+      return;
+    }
+    if (this.session.sheet() !== sheet) return;
     if (sheet) await this.fetch(sheet);
   }
 

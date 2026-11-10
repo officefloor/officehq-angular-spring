@@ -156,7 +156,7 @@ public class PersonTransferService {
         String name = person.getName();
         Person arrived;
         if (into == null) {
-            Person arriving = person.transferredTo(toSheetId);
+            Person arriving = person.transferredTo(toSheetId, sheets.today(toSheetId));
             arriving.setPosition(people.maxPosition(toSheetId) + 1);
             arrived = people.saveAndFlush(arriving);
             for (String tag : arrived.getTags()) {
@@ -208,6 +208,35 @@ public class PersonTransferService {
         }
         rollup.recordChanges(toSheetId, user, beforeTo);
         return arrived;
+    }
+
+    /**
+     * Undo the transfer that brought the person to this sheet: they are transferred back to the sheet
+     * they came from, by the rules of a transfer. Refused (403) to anyone but a steward, and (409) for
+     * a person who did not arrive by transfer or arrived on a day other than the sheet's today.
+     * Answers the person as the sheet they came from now holds them.
+     */
+    @Transactional
+    public Person undo(String sheetId, String user, long id) {
+        roles.refuseViewer(sheetId, user);
+        roles.refuseUnlessSteward(sheetId, user);
+        Person person = people.findByIdAndSheetId(id, sheetId)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "No such person on this sheet."));
+        String fromSheetId = person.getOriginSheet();
+        if (fromSheetId == null || person.getArrivedOn() == null) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT, "This person did not arrive by transfer.");
+        }
+        if (!person.getArrivedOn().equals(sheets.today(sheetId))) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT,
+                    "A transfer can only be undone on the day the person arrived.");
+        }
+        String name = person.getName();
+        RollupService.Snapshot before = rollup.snapshot(sheetId);
+        Person back = transfer(sheetId, user, id, fromSheetId);
+        audit.recordOnCommit("PERSON_TRANSFER_UNDONE sheet=" + sheetId + " by=" + user + " name=" + name
+                + " to=" + fromSheetId);
+        rollup.recordChanges(sheetId, user, before, true);
+        return back;
     }
 
     /** The sheet's today when the claim was first opened, as its status log records it; none when not recorded. */

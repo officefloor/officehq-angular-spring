@@ -61,6 +61,10 @@ public class PersonController {
             @NotBlank @Size(max = 100) String user, @NotNull Long id, @NotBlank @Size(max = 100) String to) {
     }
 
+    public record UndoTransferRequest(@NotBlank @Size(max = 100) String sheet,
+            @NotBlank @Size(max = 100) String user, @NotNull Long id) {
+    }
+
     public record BulkGradeRequest(@NotBlank @Size(max = 100) String sheet,
             @NotBlank @Size(max = 100) String user, @NotEmpty List<@NotNull Long> ids,
             @NotNull @Pattern(regexp = "[ABC]") String grade, LocalDate from) {
@@ -218,6 +222,13 @@ public class PersonController {
     @PostMapping("/transfer")
     public PersonResponse transfer(@Valid @RequestBody TransferPersonRequest req) {
         return response(req.to().trim(), transfers.transfer(req.sheet().trim(), req.user().trim(), req.id(), req.to().trim()));
+    }
+
+    /** Undo the transfer that brought the person here; answers them as the sheet they came from now holds them. */
+    @PostMapping("/transfer/undo")
+    public PersonResponse undoTransfer(@Valid @RequestBody UndoTransferRequest req) {
+        Person back = transfers.undo(req.sheet().trim(), req.user().trim(), req.id());
+        return response(back.getSheetId(), back);
     }
 
     @PostMapping("/bulk-grade")

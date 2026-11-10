@@ -102,6 +102,10 @@ public class Person {
     @Column(name = "origin_sheet")
     private String originSheet;
 
+    /** The sheet's today when the person was transferred in; null when they were not transferred in. */
+    @Column(name = "arrived_on")
+    private LocalDate arrivedOn;
+
     /** Bumped on every save; an edit must carry the version it was made from. */
     @Version
     @Column(name = "version", nullable = false)
@@ -128,9 +132,9 @@ public class Person {
     /**
      * The person as they arrive on another sheet: their name, every grade they were given (each with
      * its from-date), their terms, contact, tags and aliases; not their holds or retirement. They carry
-     * this sheet as the one they came from.
+     * this sheet as the one they came from, and the other sheet's today as the day they arrived.
      */
-    public Person transferredTo(String toSheetId) {
+    public Person transferredTo(String toSheetId, LocalDate arrivedOn) {
         Person copy = new Person();
         copy.sheetId = toSheetId;
         copy.name = name;
@@ -142,11 +146,16 @@ public class Person {
         copy.tags = tags;
         copy.aliases.addAll(aliases);
         copy.originSheet = sheetId;
+        copy.arrivedOn = arrivedOn;
         return copy;
     }
 
     public String getOriginSheet() {
         return originSheet;
+    }
+
+    public LocalDate getArrivedOn() {
+        return arrivedOn;
     }
 
     public long getPosition() {
