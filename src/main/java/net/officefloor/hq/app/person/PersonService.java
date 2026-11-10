@@ -1,8 +1,10 @@
 package net.officefloor.hq.app.person;
 
 import java.time.LocalDate;
+import java.util.Collection;
 import java.util.HashSet;
 import java.util.List;
+import java.util.Locale;
 import java.util.Objects;
 import java.util.Set;
 import net.officefloor.hq.app.Audit;
@@ -31,6 +33,10 @@ import org.springframework.web.server.ResponseStatusException;
  * A person may have a contact (arriving trimmed and lower-cased, null for none), unique on the sheet.
  * A person may have aliases (arriving trimmed), sharing the names' uniqueness: an alias equals no name
  * or alias on the sheet, and no name equals an alias.
+ * Nor may a name or alias be used on a sheet when another sheet of its tree (see
+ * {@link SheetService#tree}) already uses it as a name or alias. People who already clash so are not
+ * changed: they show as clashing, and every edit of them is refused until it renames them to a name
+ * that does not clash and leaves them no clashing alias.
  */
 @Service
 public class PersonService {
@@ -69,7 +75,8 @@ public class PersonService {
         roles.refuseViewer(sheetId, user);
         sheets.load(sheetId, user);
         RollupService.Snapshot before = rollup.snapshot(sheetId);
-        if (people.existsBySheetIdAndNameIgnoreCase(sheetId, name) || people.existsAliasOnSheet(sheetId, name)) {
+        if (people.existsBySheetIdAndNameIgnoreCase(sheetId, name) || people.existsAliasOnSheet(sheetId, name)
+                || usedInTree(sheetId, name, null)) {
             throw nameInUse();
         }
         if (contact != null && people.existsBySheetIdAndContact(sheetId, contact)) {
@@ -95,8 +102,15 @@ public class PersonService {
         if (person.getVersion() != version) {
             throw stale();
         }
-        if (people.existsBySheetIdAndNameIgnoreCaseAndIdNot(sheetId, name, id) || people.existsAliasOnSheet(sheetId, name)) {
+        if (people.existsBySheetIdAndNameIgnoreCaseAndIdNot(sheetId, name, id) || people.existsAliasOnSheet(sheetId, name)
+                || usedInTree(sheetId, name, null)) {
             throw nameInUse();
+        }
+        for (String alias : person.getAliases()) {
+            if (usedInTree(sheetId, alias, null)) {
+                throw new ResponseStatusException(HttpStatus.CONFLICT,
+                        "The alias " + alias + " is already in use on a sheet of this sheet's tree.");
+            }
         }
         if (contact != null && people.existsBySheetIdAndContactAndIdNot(sheetId, contact, id)) {
             throw contactInUse();
@@ -118,13 +132,49 @@ public class PersonService {
         return saved;
     }
 
-    /** Give the person an alias; refused (409) when it equals any name or alias on the sheet. */
+    /**
+     * Whether another sheet of the sheet's tree has a person, other than the one of {@code exceptId}
+     * (null for none), with this name or alias, compared without regard to case.
+     */
+    @Transactional(readOnly = true)
+    public boolean usedInTree(String sheetId, String name, Long exceptId) {
+        Set<String> tree = sheets.tree(sheetId);
+        return !tree.isEmpty() && people.existsNameOrAliasOnSheets(tree, name, exceptId != null ? exceptId : -1L);
+    }
+
+    /**
+     * The ids of those of the people on the sheet who clash: whose name or an alias another sheet of
+     * its tree uses as a name or alias.
+     */
+    @Transactional(readOnly = true)
+    public Set<Long> clashing(String sheetId, Collection<Person> those) {
+        Set<String> tree = sheets.tree(sheetId);
+        if (tree.isEmpty()) {
+            return Set.of();
+        }
+        Set<String> used = new HashSet<>();
+        for (Person other : people.findBySheetIdIn(tree)) {
+            used.add(other.getName().toLowerCase(Locale.ROOT));
+            other.getAliases().forEach(a -> used.add(a.toLowerCase(Locale.ROOT)));
+        }
+        Set<Long> clashing = new HashSet<>();
+        for (Person person : those) {
+            if (used.contains(person.getName().toLowerCase(Locale.ROOT))
+                    || person.getAliases().stream().anyMatch(a -> used.contains(a.toLowerCase(Locale.ROOT)))) {
+                clashing.add(person.getId());
+            }
+        }
+        return clashing;
+    }
+
+    /** Give the person an alias; refused (409) when it equals any name or alias on the sheet or its tree. */
     @Transactional
     public Person addAlias(String sheetId, String user, long id, String alias) {
         roles.refuseViewer(sheetId, user);
         Person person = people.lockByIdAndSheetId(id, sheetId)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "No such person on this sheet."));
-        if (people.existsBySheetIdAndNameIgnoreCase(sheetId, alias) || people.existsAliasOnSheet(sheetId, alias)) {
+        if (people.existsBySheetIdAndNameIgnoreCase(sheetId, alias) || people.existsAliasOnSheet(sheetId, alias)
+                || usedInTree(sheetId, alias, null)) {
             throw nameInUse();
         }
         person.addAlias(alias);
@@ -301,6 +351,6 @@ public class PersonService {
     }
 
     private static ResponseStatusException nameInUse() {
-        return new ResponseStatusException(HttpStatus.CONFLICT, "That name is already in use on this sheet.");
+        return new ResponseStatusException(HttpStatus.CONFLICT, "That name is already in use on this sheet or its tree.");
     }
 }

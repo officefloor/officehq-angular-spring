@@ -5,9 +5,11 @@ import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.NotNull;
 import jakarta.validation.constraints.Pattern;
 import jakarta.validation.constraints.Size;
+import java.util.List;
 import net.officefloor.hq.app.claim.ClaimController;
 import net.officefloor.hq.app.claim.ClaimController.ClaimResponse;
 import net.officefloor.hq.app.person.PersonController;
+import net.officefloor.hq.app.person.PersonService;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
@@ -27,16 +29,19 @@ public class QuickAddController {
     }
 
     private final QuickAddService service;
+    private final PersonService people;
 
-    public QuickAddController(QuickAddService service) {
+    public QuickAddController(QuickAddService service, PersonService people) {
         this.service = service;
+        this.people = people;
     }
 
     @PostMapping("/add")
     public QuickAddResponse add(@Valid @RequestBody QuickAddRequest req) {
         QuickAddService.Added added = service.add(req.sheet().trim(), req.user().trim(), req.name().trim(),
                 ClaimController.amount(req.amount()));
-        return new QuickAddResponse(PersonController.response(added.person()), added.created(),
+        boolean clashing = people.clashing(req.sheet().trim(), List.of(added.person())).contains(added.person().getId());
+        return new QuickAddResponse(PersonController.response(added.person(), clashing), added.created(),
                 ClaimController.response(added.claim()));
     }
 }

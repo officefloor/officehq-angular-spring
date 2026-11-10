@@ -30,6 +30,9 @@ import { VoidReasons as VoidReasonList } from '../../core/void-reasons';
 // (without regard to case), comma and space separated. An alias shares the names' uniqueness: one equal
 // to any name or alias on the sheet is refused, as is a name equal to an alias. The quick-add bar and
 // the paste box find a person by an alias as well as by the name.
+// Nor may a name or alias be used when another sheet of the sheet's tree (its ancestors, and its
+// descendants and theirs) uses it as a name or alias. A person who already clashes so shows clashing
+// yes, and every edit of them is refused until it renames them to a name that does not clash.
 // The editor remembers the version of the person it opened; if someone else has saved the person
 // since, the save is refused and the form is refilled with the values the store holds now.
 // Each row shows what the person has claimed and lists their claims; the sheet's claimed-total
@@ -110,6 +113,8 @@ interface Person {
   contact: string | null;
   /** The person's aliases, sorted as names are compared. */
   aliases: string[];
+  /** Whether the person's name or an alias is used on another sheet of the sheet's tree. */
+  clashing: boolean;
 }
 
 /** One of a person's holds: from its from-date to its to-date (null: open-ended), both inclusive. */
@@ -447,6 +452,7 @@ const SUMMARY_STATUSES = ['DRAFT', 'OPEN', 'PENDING', 'SETTLED', 'VOID'] as cons
             <th scope="col">Retired</th>
             <th scope="col">On hold</th>
             <th scope="col">Aliases</th>
+            <th scope="col">Clashing</th>
             <th scope="col">Patrons</th>
             <th scope="col">Watched</th>
             <th scope="col">Claims</th>
@@ -519,6 +525,9 @@ const SUMMARY_STATUSES = ['DRAFT', 'OPEN', 'PENDING', 'SETTLED', 'VOID'] as cons
                 >
                   Add alias
                 </button>
+              </td>
+              <td>
+                <span data-testid="person-clashing">{{ p.clashing ? 'yes' : 'no' }}</span>
               </td>
               <td>
                 <span data-testid="person-patrons">{{ patronNamesOf(p.id) }}</span>

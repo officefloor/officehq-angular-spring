@@ -4,9 +4,11 @@ import java.time.LocalDate;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
+import java.util.Set;
 import net.officefloor.hq.app.Audit;
 import net.officefloor.hq.app.claim.Claim;
 import net.officefloor.hq.app.claim.ClaimLogEntry;
@@ -97,10 +99,13 @@ public class PersonTransferService {
         if (person.isRetired()) {
             throw new ResponseStatusException(HttpStatus.CONFLICT, "A retired person cannot be transferred.");
         }
+        Set<String> toTree = new HashSet<>(sheets.tree(toSheetId));
+        toTree.remove(toSheetId);
         List<String> names = new ArrayList<>(List.of(person.getName()));
         names.addAll(person.getAliases());
         for (String name : names) {
-            if (people.existsBySheetIdAndNameIgnoreCase(toSheetId, name) || people.existsAliasOnSheet(toSheetId, name)) {
+            if (people.existsBySheetIdAndNameIgnoreCase(toSheetId, name) || people.existsAliasOnSheet(toSheetId, name)
+                    || !toTree.isEmpty() && people.existsNameOrAliasOnSheets(toTree, name, person.getId())) {
                 throw new ResponseStatusException(HttpStatus.CONFLICT,
                         "The name " + name + " is already in use on sheet " + toSheetId + ".");
             }

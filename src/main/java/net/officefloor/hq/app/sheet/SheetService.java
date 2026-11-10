@@ -4,7 +4,12 @@ import java.math.BigDecimal;
 import java.math.RoundingMode;
 import java.time.Instant;
 import java.time.LocalDate;
+import java.util.ArrayDeque;
+import java.util.Deque;
+import java.util.LinkedHashSet;
+import java.util.List;
 import java.util.Optional;
+import java.util.Set;
 import net.officefloor.hq.app.Audit;
 import net.officefloor.hq.app.claim.ClaimRepository;
 import net.officefloor.hq.app.period.Period;
@@ -45,6 +50,28 @@ public class SheetService {
                 return sheets.findById(id).orElseThrow(() -> e);
             }
         });
+    }
+
+    /**
+     * The other sheets of the sheet's tree, among the sheets that exist: its ancestors, and its
+     * descendants and their descendants.
+     */
+    @Transactional(readOnly = true)
+    public Set<String> tree(String id) {
+        Set<String> tree = new LinkedHashSet<>();
+        String at = sheets.findById(id).map(Sheet::getParentId).orElse(null);
+        while (at != null && !at.equals(id) && sheets.existsById(at) && tree.add(at)) {
+            at = sheets.findById(at).map(Sheet::getParentId).orElse(null);
+        }
+        Deque<String> below = new ArrayDeque<>(List.of(id));
+        while (!below.isEmpty()) {
+            for (Sheet child : sheets.findByParentIdOrderByIdAsc(below.pop())) {
+                if (!child.getId().equals(id) && tree.add(child.getId())) {
+                    below.push(child.getId());
+                }
+            }
+        }
+        return tree;
     }
 
     /** The sheet's today, for any date-dependent decision or default date on it. */

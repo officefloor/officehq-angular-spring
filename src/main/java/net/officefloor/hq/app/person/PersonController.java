@@ -10,6 +10,7 @@ import jakarta.validation.constraints.Size;
 import java.time.LocalDate;
 import java.util.List;
 import java.util.Locale;
+import java.util.Set;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
@@ -86,19 +87,24 @@ public class PersonController {
     public record HoldResponse(LocalDate from, LocalDate to) {
     }
 
-    /** A person, with every grade recorded for them, the one from the beginning of time first, their own terms or null, their contact or null, and their aliases sorted as names are compared. */
+    /** A person, with every grade recorded for them, the one from the beginning of time first, their own terms or null, their contact or null, their aliases sorted as names are compared, and whether they clash: their name or an alias is used on another sheet of the sheet's tree. */
     public record PersonResponse(long id, String name, List<GradeResponse> grades, long version, boolean retired,
             LocalDate retiredFrom, boolean held, List<HoldResponse> holds, Integer terms, String contact,
-            List<String> aliases) {
+            List<String> aliases, boolean clashing) {
     }
 
-    public static PersonResponse response(Person person) {
+    public static PersonResponse response(Person person, boolean clashing) {
         List<GradeResponse> grades = person.getGrades().stream()
                 .map(g -> new GradeResponse(g.getFromDate(), g.getGrade())).toList();
         return new PersonResponse(person.getId(), person.getName(), grades, person.getVersion(),
                 person.isRetired(), person.getRetiredFrom(), person.isHeld(),
                 person.getHolds().stream().map(h -> new HoldResponse(h.getFromDate(), h.getToDate())).toList(),
-                person.getTerms(), person.getContact(), person.getAliases());
+                person.getTerms(), person.getContact(), person.getAliases(), clashing);
+    }
+
+    /** The person, with whether they clash on the sheet's tree. */
+    private PersonResponse response(String sheetId, Person person) {
+        return response(person, service.clashing(sheetId, List.of(person)).contains(person.getId()));
     }
 
     /** A contact as stored: trimmed and lower-cased; null when blank. */
@@ -119,53 +125,56 @@ public class PersonController {
 
     @PostMapping("/list")
     public List<PersonResponse> list(@Valid @RequestBody ListPeopleRequest req) {
-        return service.list(req.sheet().trim()).stream().map(PersonController::response).toList();
+        String sheet = req.sheet().trim();
+        List<Person> people = service.list(sheet);
+        Set<Long> clashing = service.clashing(sheet, people);
+        return people.stream().map(p -> response(p, clashing.contains(p.getId()))).toList();
     }
 
     @PostMapping("/add")
     public PersonResponse add(@Valid @RequestBody AddPersonRequest req) {
-        return response(service.add(req.sheet().trim(), req.user().trim(), req.name().trim(), req.grade(),
+        return response(req.sheet().trim(), service.add(req.sheet().trim(), req.user().trim(), req.name().trim(), req.grade(),
                 req.terms(), contact(req.contact())));
     }
 
     @PostMapping("/update")
     public PersonResponse update(@Valid @RequestBody UpdatePersonRequest req) {
-        return response(service.update(req.sheet().trim(), req.user().trim(), req.id(), req.version(), req.name().trim(),
+        return response(req.sheet().trim(), service.update(req.sheet().trim(), req.user().trim(), req.id(), req.version(), req.name().trim(),
                 req.grade(), req.gradeFrom(), req.terms(), contact(req.contact())));
     }
 
     @PostMapping("/aliases/add")
     public PersonResponse addAlias(@Valid @RequestBody AddAliasRequest req) {
-        return response(service.addAlias(req.sheet().trim(), req.user().trim(), req.id(), req.alias().trim()));
+        return response(req.sheet().trim(), service.addAlias(req.sheet().trim(), req.user().trim(), req.id(), req.alias().trim()));
     }
 
     /** Merge the person into another; answers the other as the store now holds them. */
     @PostMapping("/merge")
     public PersonResponse merge(@Valid @RequestBody MergePersonRequest req) {
-        return response(merges.merge(req.sheet().trim(), req.user().trim(), req.id(), req.intoId()));
+        return response(req.sheet().trim(), merges.merge(req.sheet().trim(), req.user().trim(), req.id(), req.intoId()));
     }
 
     /** Transfer the person to another sheet by id; answers them as the other sheet now holds them. */
     @PostMapping("/transfer")
     public PersonResponse transfer(@Valid @RequestBody TransferPersonRequest req) {
-        return response(transfers.transfer(req.sheet().trim(), req.user().trim(), req.id(), req.to().trim()));
+        return response(req.to().trim(), transfers.transfer(req.sheet().trim(), req.user().trim(), req.id(), req.to().trim()));
     }
 
     @PostMapping("/bulk-grade")
     public BulkGradeResponse bulkGrade(@Valid @RequestBody BulkGradeRequest req) {
         List<PersonResponse> graded = service.bulkGrade(req.sheet().trim(), req.user().trim(), req.ids(), req.grade(),
-                req.from()).stream().map(PersonController::response).toList();
+                req.from()).stream().map(p -> response(req.sheet().trim(), p)).toList();
         return new BulkGradeResponse(graded.size(), graded);
     }
 
     @PostMapping("/retire")
     public PersonResponse retire(@Valid @RequestBody RetirePersonRequest req) {
-        return response(service.retire(req.sheet().trim(), req.user().trim(), req.id(), req.date()));
+        return response(req.sheet().trim(), service.retire(req.sheet().trim(), req.user().trim(), req.id(), req.date()));
     }
 
     @PostMapping("/hold")
     public PersonResponse hold(@Valid @RequestBody HoldPersonRequest req) {
-        return response(service.hold(req.sheet().trim(), req.user().trim(), req.id(), req.from(), req.to()));
+        return response(req.sheet().trim(), service.hold(req.sheet().trim(), req.user().trim(), req.id(), req.from(), req.to()));
     }
 
     @PostMapping("/patrons/list")
