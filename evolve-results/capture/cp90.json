@@ -1,0 +1,64 @@
+{
+  "checkpoint": 90,
+  "stack": {
+    "repo": "/home/daniel/officehq-angular-spring",
+    "origin": "git@github.com:officefloor/officehq-angular-spring.git",
+    "name": "officehq-angular-spring",
+    "base_ref": "base-empty",
+    "base_commit": "65cb8233ea38b2dfa6cfd18709e30cd18fdf3250"
+  },
+  "checkpoint_id": "cp90_void-reasons",
+  "phase": "mid",
+  "type": "additive",
+  "mutates": [],
+  "replaced_tests": [],
+  "request": {
+    "spec": "The sheet has a list of void reasons (a text entry and an add button; VOID_REASON_ADDED\nreason=<text>; blank or repeated is refused with an error beside the entry). While the list is not\nempty, voiding a claim needs a reason chosen from it (a select on the claim): a void without one is\nrefused with an error on the claim. CLAIM_VOIDED gains reason=<reason> at its end when one was\ngiven. The summary shows, per reason on the list, the count of VOID claims voided with it.\n",
+    "prompt": "You are implementing ONE change to this application.\n\nFIRST read AGENTS.md \u2014 it states the working rules and how the app is tested, and sends you to\nDESIGN.md for the app's stack and conventions. Follow both.\n\nTHE CHANGE REQUEST:\nThe sheet has a list of void reasons (a text entry and an add button; VOID_REASON_ADDED\nreason=<text>; blank or repeated is refused with an error beside the entry). While the list is not\nempty, voiding a claim needs a reason chosen from it (a select on the claim): a void without one is\nrefused with an error on the claim. CLAIM_VOIDED gains reason=<reason> at its end when one was\ngiven. The summary shows, per reason on the list, the count of VOID claims voided with it.\n\nYour work is verified by an automated Playwright UI test already installed under e2e/specs/.\nRead that spec: it declares the exact data-testid anchors, values, test data and any audit\nrecords it expects \u2014 match them. Run `bin/e2e` to build the app, start it, and run the test as\nyou work; iterate until it passes. Change whatever the request needs across the app \u2014 its stored\ndata, its server and its front end. Do NOT edit bin/build, bin/start, bin/stop, bin/e2e,\nAGENTS.md, CLAUDE.md, DESIGN.md, e2e/support/ or the test spec.\n"
+  },
+  "commit_sha": "d231658eec91dd0d5ea541034f5e36aae023ee06",
+  "reset_sha": "",
+  "preagent_sha": "10ae1a22d67a1ea1925ef0730e1c8bae28443cc9",
+  "prev_sha": "10ae1a22d67a1ea1925ef0730e1c8bae28443cc9",
+  "base_sha": "65cb8233ea38b2dfa6cfd18709e30cd18fdf3250",
+  "agent": {
+    "ok": true,
+    "cost_usd": 1.2613864,
+    "input_tokens": 50,
+    "output_tokens": 16054,
+    "cache_read_tokens": 1420972,
+    "cache_creation_tokens": 81989,
+    "num_turns": 26,
+    "duration_ms": 322163,
+    "duration_api_ms": 142740,
+    "model": "claude-opus-5-5",
+    "session_id": "c1642270-7b7f-4c53-9123-8cfd661ef206",
+    "stop_reason": "success",
+    "result_text": "Void reasons are in, and `bin/e2e` passes all 4 tests in the spec.\n\n**Stored data:** a new migration, `V56__void_reason.sql`, adds a `void_reason` table (one row per sheet and reason, with no repeats) and a `void_reason` column on `claim`.\n\n**Server:**\n- **New endpoints:** `POST /api/void-reasons/list` and `/add`, in a new `voidreason` package built the same way as the holidays feature.\n- **Adding a reason:** the text is trimmed. A blank reason is refused (422) and one already on the list is refused (409). Each added reason writes `VOID_REASON_ADDED sheet=\u2026 by=\u2026 reason=<text>`.\n- **Voiding:** `/api/claims/void` now accepts an optional `reason`. While the sheet's list isn't empty, a void with no reason, or with one not on the list, is refused (422) and nothing is written. The reason is saved on the claim and returned with it.\n- **Audit:** `CLAIM_VOIDED` adds ` reason=<reason>` as its last field when a reason was given, so it comes after `reversed=` when a settled claim is voided.\n\n**Front end:**\n- **Shared list:** the reason list is kept in one shared service (`core/void-reasons.ts`) and re-read every time a sheet is loaded. The entry form, the claim select and the summary all use it.\n- **Entry form:** a new \"Void reasons\" section has `void-reason-text`, `void-reason-add`, `void-reason-error` and one `void-reason-row-<reason>` per reason.\n- **On each claim:** while the list isn't empty, a `claim-void-reason` select appears next to Void, with a blank \"(choose)\" option first. Voiding without a choice shows the error in `claim-error`, and changing the select clears it.\n- **Summary:** a new \"By void reason\" table shows `summary-void-<reason>-count`, the number of VOID claims voided with each reason on the list.\n\nA reason containing a space produces a `data-testid` with a space in it, such as `void-reason-row-wrong person`. The test only uses one-word reasons, so I didn't restrict this.",
+    "error": "",
+    "attempts": [
+      {
+        "ok": true,
+        "limit_reached": false,
+        "retryable": false,
+        "timed_out": false,
+        "cost_usd": 1.2613864,
+        "num_turns": 26,
+        "duration_ms": 322163,
+        "duration_api_ms": 142740,
+        "error": ""
+      }
+    ]
+  },
+  "agent_stream_file": "cp90.agent.jsonl",
+  "agent_diff_file": "cp90.agent.diff",
+  "build_log_file": null,
+  "tests": {
+    "gated": false,
+    "queued": true
+  },
+  "probe": null,
+  "pinned_touched": [],
+  "acceptance_touched": [],
+  "impact_gate": null
+}
