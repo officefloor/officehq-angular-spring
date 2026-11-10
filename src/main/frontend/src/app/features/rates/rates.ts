@@ -153,7 +153,7 @@ export interface Lateness {
 /**
  * A claim's due in whole cents as shown: its figure (see {@link claimDueCents}) with, when it is
  * overdue, a late charge added on top: for each full 30 days overdue, the late percent in force on
- * that boundary date (its due-by plus its grace days, plus 30, 60, 90 ... days) of that figure, rounded to whole cents,
+ * that boundary date (its due-by plus its grace days, plus 30, 60, 90 ... days) of that figure plus the charges of the boundaries before it, rounded to whole cents,
  * the charges added up. Both round as the claim rounds by `roundOn` (see {@link roundsHalfUp}).
  * The floor is applied last: the due is the greater of the floor in force on the claim's date and
  * the figure plus its charge. The charge is never bound by a statement; a settled claim's due is
@@ -177,7 +177,7 @@ export function chargedDueCents(
   let charge = 0;
   for (let k = 1; k <= periods; k++) {
     const boundary = plusDays(dueBy(c), grace + 30 * k);
-    charge += dueCents(figure, valueOn(late.latePcts, boundary, START_LATE_PCT), halfUp) ?? 0;
+    charge += dueCents(figure + charge, valueOn(late.latePcts, boundary, START_LATE_PCT), halfUp) ?? 0;
   }
   return Math.max(figure + charge, floor);
 }
