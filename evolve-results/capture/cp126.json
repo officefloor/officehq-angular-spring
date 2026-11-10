@@ -1,0 +1,64 @@
+{
+  "checkpoint": 126,
+  "stack": {
+    "repo": "/home/daniel/officehq-angular-spring",
+    "origin": "git@github.com:officefloor/officehq-angular-spring.git",
+    "name": "officehq-angular-spring",
+    "base_ref": "base-empty",
+    "base_commit": "65cb8233ea38b2dfa6cfd18709e30cd18fdf3250"
+  },
+  "checkpoint_id": "cp126_clone-sheet",
+  "phase": "mid",
+  "type": "additive",
+  "mutates": [],
+  "replaced_tests": [],
+  "request": {
+    "spec": "A steward can clone the sheet to another id (an entry and a button; SHEET_CLONE_MADE to=<id> on this\nsheet). The other sheet must be empty (never used); otherwise, or for anyone but a steward, the\nclone is refused with an error on the sheet. The clone gets this sheet's today, settings, roles,\nrates, holidays, void reasons, templates, people (grades, terms, contacts, aliases, tags, holds,\nretirements, patrons), pools, periods (all open) and claims (status, frozen figures, dates, notes,\nlogs; numbers given afresh in the order the originals were opened (by the sheet's today when each\nwas opened, then by the order they were added), by the clone's own numbering); statements are not\ncopied. The clone's first audit line is SHEET_CLONED from=<this sheet's id>, followed by its rollup\nlines for every person and its totals.\n",
+    "prompt": "You are implementing ONE change to this application.\n\nFIRST read AGENTS.md \u2014 it states the working rules and how the app is tested, and sends you to\nDESIGN.md for the app's stack and conventions. Follow both.\n\nTHE CHANGE REQUEST:\nA steward can clone the sheet to another id (an entry and a button; SHEET_CLONE_MADE to=<id> on this\nsheet). The other sheet must be empty (never used); otherwise, or for anyone but a steward, the\nclone is refused with an error on the sheet. The clone gets this sheet's today, settings, roles,\nrates, holidays, void reasons, templates, people (grades, terms, contacts, aliases, tags, holds,\nretirements, patrons), pools, periods (all open) and claims (status, frozen figures, dates, notes,\nlogs; numbers given afresh in the order the originals were opened (by the sheet's today when each\nwas opened, then by the order they were added), by the clone's own numbering); statements are not\ncopied. The clone's first audit line is SHEET_CLONED from=<this sheet's id>, followed by its rollup\nlines for every person and its totals.\n\nYour work is verified by an automated Playwright UI test already installed under e2e/specs/.\nRead that spec: it declares the exact data-testid anchors, values, test data and any audit\nrecords it expects \u2014 match them. Run `bin/e2e` to build the app, start it, and run the test as\nyou work; iterate until it passes. Change whatever the request needs across the app \u2014 its stored\ndata, its server and its front end. Do NOT edit bin/build, bin/start, bin/stop, bin/e2e,\nAGENTS.md, CLAUDE.md, DESIGN.md, e2e/support/ or the test spec.\n"
+  },
+  "commit_sha": "3c6cf61a0d4b5a5ed0d34f0269a9bef388209933",
+  "reset_sha": "",
+  "preagent_sha": "31d8e1efb66cf8b3bcd88dfd0e0134ce89291597",
+  "prev_sha": "31d8e1efb66cf8b3bcd88dfd0e0134ce89291597",
+  "base_sha": "65cb8233ea38b2dfa6cfd18709e30cd18fdf3250",
+  "agent": {
+    "ok": true,
+    "cost_usd": 2.2152192000000004,
+    "input_tokens": 60,
+    "output_tokens": 26088,
+    "cache_read_tokens": 2926376,
+    "cache_creation_tokens": 138493,
+    "num_turns": 31,
+    "duration_ms": 498554,
+    "duration_api_ms": 259681,
+    "model": "claude-opus-5-5",
+    "session_id": "590661d3-4280-4c50-8e23-c8e9a2f6fbfb",
+    "stop_reason": "success",
+    "result_text": "A steward can now clone the sheet to another id, and `bin/e2e` passes all 4 tests in the spec on the first run.\n\n**Server**\n- **New `sheet/SheetCloneService.java`** does the copy. It refuses with 403 for anyone but a steward, and with 409 if the target id was ever used (meaning a row for it exists in the `sheet` table). It holds a lock on the source sheet while copying.\n- **How rows are copied:** it reads each table's columns from the database schema, the same way `SheetHistory` does, so a column added later gets copied without changes here. Only the columns that need a new value are named, such as sheet id, person id and claim id.\n- **What's copied:** the sheet row (today and settings; claim counters reset, not archived), plus its dated settings and their log, permissions, roles, rates and their log, holidays, void reasons, templates and the list of tags used. People come over with their grades, holds, aliases, past retirements and patrons, and keep their list order. Periods and pools (with members) come over too, then claims with their logs and comments.\n- **Periods** are all reset to open, with no frozen totals.\n- **Statements are not copied.** Copied claims are therefore not bound by a statement, so their dues are worked out live in the clone.\n- **Claim numbers** are given by the clone's own numbering. The order is the sheet's today when each claim was first opened, then the order claims were added to the clone: person by person in list order, then each person's claims in listing order. The test needs this order \u2014 the original claims' ids would give a different result. Corrections and splits are updated to point at the new numbers.\n- **Audit:** `SHEET_CLONE_MADE \u2026 to=` goes on this sheet. The clone gets `SHEET_CLONED \u2026 from=`, then a `ROLLUP` line for every person and a `TOTALS` line. These come from a new `RollupService.recordAll`; the existing method only writes figures that changed.\n- **Endpoint:** `POST /api/sheets/clone` in `SheetController`.\n\n**Front end** (`home.ts`, `session.ts`): a clone form with `sheet-clone-to`, `sheet-clone` and `sheet-cloned-to`. A refusal shows in `sheet-error`, which clears when you type or submit again. The last-clone id clears when you load a different sheet.\n\n**Choices the request didn't settle:**\n- Watches and delegations are not copied, since the request doesn't list them.\n- Claim references, tags, proofs and settle-batch numbers are kept.\n- An archived sheet can still be cloned, and the clone is not archived.\n- The clone's as-of history starts with one snapshot that counts from the beginning of time.",
+    "error": "",
+    "attempts": [
+      {
+        "ok": true,
+        "limit_reached": false,
+        "retryable": false,
+        "timed_out": false,
+        "cost_usd": 2.2152192000000004,
+        "num_turns": 31,
+        "duration_ms": 498554,
+        "duration_api_ms": 259681,
+        "error": ""
+      }
+    ]
+  },
+  "agent_stream_file": "cp126.agent.jsonl",
+  "agent_diff_file": "cp126.agent.diff",
+  "build_log_file": null,
+  "tests": {
+    "gated": false,
+    "queued": true
+  },
+  "probe": null,
+  "pinned_touched": [],
+  "acceptance_touched": [],
+  "impact_gate": null
+}
