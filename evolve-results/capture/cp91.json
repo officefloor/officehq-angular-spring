@@ -1,0 +1,64 @@
+{
+  "checkpoint": 91,
+  "stack": {
+    "repo": "/home/daniel/officehq-angular-spring",
+    "origin": "git@github.com:officefloor/officehq-angular-spring.git",
+    "name": "officehq-angular-spring",
+    "base_ref": "base-empty",
+    "base_commit": "65cb8233ea38b2dfa6cfd18709e30cd18fdf3250"
+  },
+  "checkpoint_id": "cp91_claim-comments",
+  "phase": "mid",
+  "type": "additive",
+  "mutates": [],
+  "replaced_tests": [],
+  "request": {
+    "spec": "A claim can be commented (a text entry and a button on the claim; an empty comment is refused\nwith an error on the claim). Each comment is kept with the user who wrote it and the sheet's today\nwhen it was written, shown on the claim in order as <user> on <date>: <text>, and written as\nCOMMENT_ADDED, naming the claim like every claim line and ending text=<text>. A viewer, an archived\nsheet and the as-of view refuse it like any change.\n",
+    "prompt": "You are implementing ONE change to this application.\n\nFIRST read AGENTS.md \u2014 it states the working rules and how the app is tested, and sends you to\nDESIGN.md for the app's stack and conventions. Follow both.\n\nTHE CHANGE REQUEST:\nA claim can be commented (a text entry and a button on the claim; an empty comment is refused\nwith an error on the claim). Each comment is kept with the user who wrote it and the sheet's today\nwhen it was written, shown on the claim in order as <user> on <date>: <text>, and written as\nCOMMENT_ADDED, naming the claim like every claim line and ending text=<text>. A viewer, an archived\nsheet and the as-of view refuse it like any change.\n\nYour work is verified by an automated Playwright UI test already installed under e2e/specs/.\nRead that spec: it declares the exact data-testid anchors, values, test data and any audit\nrecords it expects \u2014 match them. Run `bin/e2e` to build the app, start it, and run the test as\nyou work; iterate until it passes. Change whatever the request needs across the app \u2014 its stored\ndata, its server and its front end. Do NOT edit bin/build, bin/start, bin/stop, bin/e2e,\nAGENTS.md, CLAUDE.md, DESIGN.md, e2e/support/ or the test spec.\n"
+  },
+  "commit_sha": "cab0f75fb62582085f34f1d5b4adb2995439e2ae",
+  "reset_sha": "",
+  "preagent_sha": "bed018c02c0096602dc045f0203050ffa0084f2e",
+  "prev_sha": "bed018c02c0096602dc045f0203050ffa0084f2e",
+  "base_sha": "65cb8233ea38b2dfa6cfd18709e30cd18fdf3250",
+  "agent": {
+    "ok": true,
+    "cost_usd": 1.5243347999999999,
+    "input_tokens": 40,
+    "output_tokens": 6403,
+    "cache_read_tokens": 1687252,
+    "cache_creation_tokens": 25525,
+    "num_turns": 19,
+    "duration_ms": 354344,
+    "duration_api_ms": 150392,
+    "model": "claude-opus-5-5",
+    "session_id": "1355e0ad-61f5-4cdc-bb2e-1b03b771ceff",
+    "stop_reason": "success",
+    "result_text": "Claims can now be commented on, and `bin/e2e` passes all 4 acceptance tests.\n\n**What changed**\n- **Stored data:** a new migration, `V57__claim_comment.sql`, adds a `claim_comment` table. Each comment keeps who wrote it, the sheet's today when it was written, and its text, oldest first. The as-of view's history picks up the new table without any change.\n- **Server:**\n  - `Claim` holds the list of comments (`ClaimComment.java` is the new class for one comment).\n  - The new `ClaimService.comment` method trims the text and refuses an empty comment. A viewer or an archived sheet is refused the same way as any other change.\n  - Each comment writes a `COMMENT_ADDED` audit line: the usual claim fields, then `number=` when the claim has one, ending with `text=<text>`.\n  - There is a new `POST /api/claims/comment` endpoint, and comments are now included when claims are returned.\n  - The as-of view already refuses anything that isn't a read, so commenting there is refused too.\n- **Front end (`claims.ts`):** each claim lists its comments as `<user> on <date>: <text>` (`claim-comments-line`), with a text box (`claim-comment-text`) and a button (`claim-comment-add`). An empty comment or a refused one shows `claim-error`, and typing in the box clears the error.\n\n**One fix outside the request:** the as-of view was rejecting the request that lists a sheet's tags (`/api/claims/tags`), because it wasn't on its list of read-only requests. That broke loading the sheet in the as-of view, so scenario 2 couldn't see the people it expected. I added it to the read-only list in `AsOfFilter.java`. This was already wrong before my change, but the new test needs it fixed.",
+    "error": "",
+    "attempts": [
+      {
+        "ok": true,
+        "limit_reached": false,
+        "retryable": false,
+        "timed_out": false,
+        "cost_usd": 1.5243347999999999,
+        "num_turns": 19,
+        "duration_ms": 354344,
+        "duration_api_ms": 150392,
+        "error": ""
+      }
+    ]
+  },
+  "agent_stream_file": "cp91.agent.jsonl",
+  "agent_diff_file": "cp91.agent.diff",
+  "build_log_file": null,
+  "tests": {
+    "gated": false,
+    "queued": true
+  },
+  "probe": null,
+  "pinned_touched": [],
+  "acceptance_touched": [],
+  "impact_gate": null
+}

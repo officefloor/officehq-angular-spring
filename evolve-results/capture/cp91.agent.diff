@@ -1,0 +1,298 @@
+diff --git a/src/main/frontend/src/app/features/claims/claims.ts b/src/main/frontend/src/app/features/claims/claims.ts
+index 0bf140898..64ecadd7e 100644
+--- a/src/main/frontend/src/app/features/claims/claims.ts
++++ b/src/main/frontend/src/app/features/claims/claims.ts
+@@ -52,6 +52,9 @@ import { DatedGrade, DatedValue, Lateness, Rate, chargedDueCents, dueText, grace
+ // An OPEN or PENDING claim can be reminded with its remind button, once per sheet-today: it shows
+ // the last day a reminder was written (refused for a claim in any other status or already reminded
+ // on the sheet's today).
++// Any claim can be commented with its comment text and button (an empty comment is refused with an
++// error on the claim): its comments show oldest first as <user> on <date>: <text>, each kept with
++// the user who wrote it and the sheet's today then.
+ // A claim whose due is above the note threshold in force on its date cannot be opened while its
+ // note is empty: refused with an error on the claim (by the bulk button, counted as refused).
+ // An OPEN claim can be split: an amount more than 0.00 and less than its own is split off into a new
+@@ -107,6 +110,15 @@ export interface Claim {
+   remindedOn: string | null;
+   /** The reason the claim was voided with, from the sheet's void reasons; null when none. */
+   voidReason: string | null;
++  /** The claim's comments, oldest first. */
++  comments: ClaimCommentLine[];
++}
++
++/** One comment on a claim: who wrote it, on the sheet's today then. */
++export interface ClaimCommentLine {
++  by: string;
++  date: string;
++  text: string;
+ }
+ 
+ /** One line of a claim's status log. */
+@@ -336,6 +348,19 @@ export function money(c: number): string {
+               <li data-testid="claim-log-line">{{ l.status }} by {{ l.by }} on {{ l.date }} due={{ l.due }}</li>
+             }
+           </ol>
++          <ol [attr.aria-label]="'Comments on claim of ' + c.amount + ' on ' + c.date">
++            @for (m of c.comments; track $index) {
++              <li data-testid="claim-comments-line">{{ m.by }} on {{ m.date }}: {{ m.text }}</li>
++            }
++          </ol>
++          <label [for]="'claim-comment-text-' + c.id">Comment</label>
++          <input
++            [id]="'claim-comment-text-' + c.id"
++            data-testid="claim-comment-text"
++            [value]="commentTexts().get(c.id) ?? ''"
++            (input)="setCommentText(c.id, $any($event.target).value)"
++          />
++          <button type="button" data-testid="claim-comment-add" (click)="comment(c)">Add comment</button>
+           <button type="button" data-testid="claim-open" (click)="act(c, 'open')">Open</button>
+           <button type="button" data-testid="claim-settle" (click)="act(c, 'settle')">Settle</button>
+           <button type="button" data-testid="claim-resettle" (click)="act(c, 'resettle')">Re-settle</button>
+@@ -495,6 +520,8 @@ export class PersonClaims {
+   protected readonly actionErrors = signal<ReadonlyMap<number, string>>(new Map());
+   /** The reason typed for rejecting each claim, by claim id. */
+   protected readonly reasons = signal<ReadonlyMap<number, string>>(new Map());
++  /** The comment typed on each claim, by claim id. */
++  protected readonly commentTexts = signal<ReadonlyMap<number, string>>(new Map());
+   /** The sheet's void reasons, one of which a void needs while there are any. */
+   protected readonly voidReasons = inject(VoidReasons);
+   /** The void reason chosen for each claim, by claim id. */
+@@ -685,6 +712,11 @@ export class PersonClaims {
+     this.clearActionError(id);
+   }
+ 
++  protected setCommentText(id: number, text: string): void {
++    this.commentTexts.update((m) => new Map(m).set(id, text));
++    this.clearActionError(id);
++  }
++
+   protected setVoidReason(id: number, reason: string): void {
+     this.voidReasonsChosen.update((m) => new Map(m).set(id, reason));
+     this.clearActionError(id);
+@@ -934,6 +966,35 @@ export class PersonClaims {
+     }
+   }
+ 
++  /** Comment on a claim; an empty comment is refused. */
++  protected async comment(c: Claim): Promise<void> {
++    this.clearActionError(c.id);
++    const sheet = this.session.sheet();
++    const text = (this.commentTexts().get(c.id) ?? '').trim();
++    if (!text) {
++      this.actionErrors.update((m) => new Map(m).set(c.id, 'Enter a comment.'));
++      return;
++    }
++    try {
++      const claim = await firstValueFrom(
++        this.http.post<Claim>('/api/claims/comment', { sheet, user: this.session.user(), id: c.id, text }),
++      );
++      if (this.session.sheet() !== sheet) return;
++      this.setCommentText(c.id, '');
++      this.saved.emit(claim);
++    } catch (e) {
++      if (this.session.sheet() !== sheet) return;
++      const status = e instanceof HttpErrorResponse ? e.status : 0;
++      const err =
++        status === 403
++          ? 'You may not comment on this claim.'
++          : status === 423
++            ? 'This sheet may not be changed.'
++            : 'Could not comment on this claim.';
++      this.actionErrors.update((m) => new Map(m).set(c.id, err));
++    }
++  }
++
+   /** Remind an OPEN or PENDING claim; the server refuses any other status, and a second reminder
+    *  on the same sheet-today. */
+   protected async remind(c: Claim): Promise<void> {
+diff --git a/src/main/java/net/officefloor/hq/app/claim/Claim.java b/src/main/java/net/officefloor/hq/app/claim/Claim.java
+index 26f005edb..50ab89208 100644
+--- a/src/main/java/net/officefloor/hq/app/claim/Claim.java
++++ b/src/main/java/net/officefloor/hq/app/claim/Claim.java
+@@ -148,6 +148,13 @@ public class Claim {
+     @BatchSize(size = 100)
+     private List<ClaimLogEntry> log = new ArrayList<>();
+ 
++    /** The claim's comments, oldest first. */
++    @ElementCollection(fetch = FetchType.EAGER)
++    @CollectionTable(name = "claim_comment", joinColumns = @JoinColumn(name = "claim_id"))
++    @OrderColumn(name = "seq")
++    @BatchSize(size = 100)
++    private List<ClaimComment> comments = new ArrayList<>();
++
+     protected Claim() {
+     }
+ 
+@@ -406,4 +413,14 @@ public class Claim {
+     public void log(ClaimLogEntry entry) {
+         log.add(entry);
+     }
++
++    /** The claim's comments, oldest first. */
++    public List<ClaimComment> getComments() {
++        return List.copyOf(comments);
++    }
++
++    /** Add a comment to the claim. */
++    public void comment(ClaimComment comment) {
++        comments.add(comment);
++    }
+ }
+diff --git a/src/main/java/net/officefloor/hq/app/claim/ClaimComment.java b/src/main/java/net/officefloor/hq/app/claim/ClaimComment.java
+new file mode 100644
+index 000000000..5cb0d8498
+--- /dev/null
++++ b/src/main/java/net/officefloor/hq/app/claim/ClaimComment.java
+@@ -0,0 +1,40 @@
++package net.officefloor.hq.app.claim;
++
++import jakarta.persistence.Column;
++import jakarta.persistence.Embeddable;
++import java.time.LocalDate;
++
++/** One comment on a claim: the user who wrote it, the sheet's today then and its (trimmed) text. */
++@Embeddable
++public class ClaimComment {
++
++    @Column(name = "by_user", nullable = false)
++    private String by;
++
++    @Column(name = "comment_date", nullable = false)
++    private LocalDate date;
++
++    @Column(name = "text", nullable = false)
++    private String text;
++
++    protected ClaimComment() {
++    }
++
++    public ClaimComment(String by, LocalDate date, String text) {
++        this.by = by;
++        this.date = date;
++        this.text = text;
++    }
++
++    public String getBy() {
++        return by;
++    }
++
++    public LocalDate getDate() {
++        return date;
++    }
++
++    public String getText() {
++        return text;
++    }
++}
+diff --git a/src/main/java/net/officefloor/hq/app/claim/ClaimController.java b/src/main/java/net/officefloor/hq/app/claim/ClaimController.java
+index 5b234b629..60d454317 100644
+--- a/src/main/java/net/officefloor/hq/app/claim/ClaimController.java
++++ b/src/main/java/net/officefloor/hq/app/claim/ClaimController.java
+@@ -69,6 +69,10 @@ public class ClaimController {
+             @NotBlank @Size(max = 200) @Pattern(regexp = "\\s*\\S+\\s*") String reason) {
+     }
+ 
++    public record CommentClaimRequest(@NotBlank @Size(max = 100) String sheet,
++            @NotBlank @Size(max = 100) String user, @NotNull Long id, @NotNull @Size(max = 1000) String text) {
++    }
++
+     public record RedateClaimRequest(@NotBlank @Size(max = 100) String sheet,
+             @NotBlank @Size(max = 100) String user, @NotNull Long id, @NotNull LocalDate date) {
+     }
+@@ -104,7 +108,12 @@ public class ClaimController {
+             ClaimStatus status, String number, String settledDue, String openedBy,
+             boolean stated, String statedDue, String corrects, LocalDate dueBy, List<ClaimLogLine> log,
+             LocalDate deferredUntil, int proofs, String splitFrom, String lockedBy,
+-            boolean lateEntry, LocalDate remindedOn, String ref, List<String> tags, String voidReason) {
++            boolean lateEntry, LocalDate remindedOn, String ref, List<String> tags, String voidReason,
++            List<ClaimCommentLine> comments) {
++    }
++
++    /** One comment on a claim, oldest first. */
++    public record ClaimCommentLine(String by, LocalDate date, String text) {
+     }
+ 
+     /** One line of a claim's status log, oldest first. */
+@@ -125,7 +134,9 @@ public class ClaimController {
+                         .toList(),
+                 claim.getDeferredUntil(), claim.getProofs(), claim.getSplitFrom(), claim.getLockedBy(),
+                 claim.isLateEntry(), claim.getRemindedOn(), claim.getRef(), claim.getTags(),
+-                claim.getVoidReason());
++                claim.getVoidReason(),
++                claim.getComments().stream().map(c -> new ClaimCommentLine(c.getBy(), c.getDate(), c.getText()))
++                        .toList());
+     }
+ 
+     public static BigDecimal amount(String amount) {
+@@ -251,6 +262,11 @@ public class ClaimController {
+         return response(service.addProof(req.sheet().trim(), req.user().trim(), req.id()));
+     }
+ 
++    @PostMapping("/comment")
++    public ClaimResponse comment(@Valid @RequestBody CommentClaimRequest req) {
++        return response(service.comment(req.sheet().trim(), req.user().trim(), req.id(), req.text().trim()));
++    }
++
+     @PostMapping("/remind")
+     public ClaimResponse remind(@Valid @RequestBody ClaimStatusRequest req) {
+         return response(service.remind(req.sheet().trim(), req.user().trim(), req.id()));
+diff --git a/src/main/java/net/officefloor/hq/app/claim/ClaimService.java b/src/main/java/net/officefloor/hq/app/claim/ClaimService.java
+index 2432d2c6a..55b4fae53 100644
+--- a/src/main/java/net/officefloor/hq/app/claim/ClaimService.java
++++ b/src/main/java/net/officefloor/hq/app/claim/ClaimService.java
+@@ -477,6 +477,27 @@ public class ClaimService {
+         return saved;
+     }
+ 
++    /**
++     * Comment on a claim in any status: kept with the user and the sheet's today, and written as
++     * COMMENT_ADDED. Refused (422) for an empty comment, and as any change for a viewer or an
++     * archived sheet.
++     */
++    @Transactional
++    public Claim comment(String sheetId, String user, long id, String text) {
++        roles.refuseViewer(sheetId, user);
++        Claim claim = claims.findByIdAndSheetId(id, sheetId)
++                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "No such claim on this sheet."));
++        if (text.isEmpty()) {
++            throw new ResponseStatusException(HttpStatus.UNPROCESSABLE_ENTITY, "A comment cannot be empty.");
++        }
++        Person person = person(sheetId, claim.getPersonId());
++        claim.comment(new ClaimComment(user, sheets.today(sheetId), text));
++        Claim saved = claims.saveAndFlush(claim);
++        audit.recordOnCommit(record("COMMENT_ADDED", sheetId, user, person, saved)
++                + (saved.getNumber() != null ? " number=" + saved.getNumber() : "") + " text=" + text);
++        return saved;
++    }
++
+     /**
+      * Remind an OPEN or PENDING claim: write REMIND and mark it reminded on the sheet's today.
+      * Refused (409) for a claim in any other status or already reminded on the sheet's today.
+diff --git a/src/main/java/net/officefloor/hq/app/sheet/AsOfFilter.java b/src/main/java/net/officefloor/hq/app/sheet/AsOfFilter.java
+index 60f84e0cb..e13cbdade 100644
+--- a/src/main/java/net/officefloor/hq/app/sheet/AsOfFilter.java
++++ b/src/main/java/net/officefloor/hq/app/sheet/AsOfFilter.java
+@@ -40,7 +40,7 @@ public class AsOfFilter extends OncePerRequestFilter {
+ 
+     /** The requests that only read the sheet (with every path ending in {@code /list}). */
+     private static final Set<String> READS = Set.of("/api/signin", LOAD, "/api/settings/get",
+-            "/api/people/watched", "/api/roles/delegations");
++            "/api/people/watched", "/api/roles/delegations", "/api/claims/tags");
+ 
+     /** The changes that only take or release a claim editor's lock: not part of the sheet's history. */
+     private static final Set<String> LOCKS = Set.of("/api/claims/lock", "/api/claims/unlock");
+diff --git a/src/main/resources/db/migration/V57__claim_comment.sql b/src/main/resources/db/migration/V57__claim_comment.sql
+new file mode 100644
+index 000000000..6a631973c
+--- /dev/null
++++ b/src/main/resources/db/migration/V57__claim_comment.sql
+@@ -0,0 +1,9 @@
++-- A claim's comments, oldest first: each with the user who wrote it and the sheet's today then.
++CREATE TABLE claim_comment (
++    claim_id     BIGINT        NOT NULL REFERENCES claim (id),
++    seq          INTEGER       NOT NULL,
++    by_user      VARCHAR(100)  NOT NULL,
++    comment_date DATE          NOT NULL,
++    text         VARCHAR(1000) NOT NULL,
++    PRIMARY KEY (claim_id, seq)
++);
