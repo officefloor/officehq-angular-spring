@@ -721,6 +721,25 @@ const SUMMARY_STATUSES = ['DRAFT', 'OPEN', 'PENDING', 'SETTLED', 'VOID'] as cons
                 >
                   Edit
                 </button>
+                <label [for]="'person-inline-grade-' + p.id">Grade from today</label>
+                <select
+                  [id]="'person-inline-grade-' + p.id"
+                  data-testid="person-inline-grade"
+                  [value]="inlineGrades().get(p.id) ?? gradeToday(p)"
+                  (change)="setInlineGrade(p.id, $any($event.target).value)"
+                >
+                  @for (g of grades; track g) {
+                    <option [value]="g" [selected]="g === (inlineGrades().get(p.id) ?? gradeToday(p))">{{ g }}</option>
+                  }
+                </select>
+                <button
+                  type="button"
+                  data-testid="person-inline-grade-save"
+                  [attr.aria-label]="'Save the grade of ' + p.name"
+                  (click)="saveInlineGrade(p)"
+                >
+                  Save grade
+                </button>
                 <label [for]="'person-statement-asof-' + p.id">Statement as of</label>
                 <input
                   type="date"
@@ -870,6 +889,8 @@ export class People {
   });
   /** The sheet id typed on each person's row to transfer them to, by person id. */
   protected readonly transferTos = signal<ReadonlyMap<number, string>>(new Map());
+  /** The grade chosen on each person's row, by person id; none chosen shows the grade in force today. */
+  protected readonly inlineGrades = signal<ReadonlyMap<number, string>>(new Map());
   /** The retire-from date typed on each person's row, by person id. */
   protected readonly retireDates = signal<ReadonlyMap<number, string>>(new Map());
   /** The alias typed on each person's row, by person id. */
@@ -1219,6 +1240,7 @@ export class People {
       this.transferTos.set(new Map());
       this.watched.set(new Set());
       this.retireDates.set(new Map());
+      this.inlineGrades.set(new Map());
       this.holdFroms.set(new Map());
       this.aliasInputs.set(new Map());
       this.statementAsOfs.set(new Map());
@@ -1597,6 +1619,48 @@ export class People {
       this.rowErrors.update((m) =>
         new Map(m).set(p.id, 'Could not move ' + p.name + ' ' + direction + ': they are already at the ' + (direction === 'up' ? 'top.' : 'bottom.')),
       );
+    }
+  }
+
+  protected setInlineGrade(id: number, grade: string): void {
+    this.inlineGrades.update((m) => new Map(m).set(id, grade));
+    this.clearRowError(id);
+  }
+
+  /**
+   * Record the grade chosen on the person's row from the sheet's today, saving the person exactly as
+   * the person form would with their other details as the row holds them.
+   */
+  protected async saveInlineGrade(p: Person): Promise<void> {
+    this.clearRowError(p.id);
+    const sheet = this.session.sheet();
+    const grade = this.inlineGrades().get(p.id) ?? this.gradeToday(p);
+    try {
+      const saved = await firstValueFrom(
+        this.http.post<Person>('/api/people/update', {
+          sheet,
+          user: this.session.user(),
+          id: p.id,
+          version: p.version,
+          name: p.name,
+          grade,
+          gradeFrom: null,
+          terms: p.terms,
+          contact: p.contact,
+          tags: p.tags.join(', '),
+        }),
+      );
+      if (this.session.sheet() !== sheet) return;
+      this.people.update((list) => list.map((x) => (x.id === saved.id ? saved : x)));
+      this.inlineGrades.update((m) => {
+        const next = new Map(m);
+        next.delete(p.id);
+        return next;
+      });
+      if (this.editingId() === saved.id && this.editingVersion === p.version) this.editingVersion = saved.version;
+    } catch {
+      if (this.session.sheet() !== sheet) return;
+      this.rowErrors.update((m) => new Map(m).set(p.id, 'Could not save the grade of ' + p.name + '.'));
     }
   }
 
