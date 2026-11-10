@@ -222,7 +222,7 @@ function csvField(value: string): string {
 }
 
 /** The statuses the summary counts claims in, each shown even when no claim has it. */
-const SUMMARY_STATUSES = ['DRAFT', 'OPEN', 'PENDING', 'SETTLED', 'VOID'] as const;
+const SUMMARY_STATUSES = ['DRAFT', 'OPEN', 'PENDING', 'SETTLED', 'VOID', 'REVIEW'] as const;
 
 @Component({
   selector: 'app-people',

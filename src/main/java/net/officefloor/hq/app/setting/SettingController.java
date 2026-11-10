@@ -56,7 +56,7 @@ public class SettingController {
      * yyyy-mm-dd, or blank for none (the sheet's today). A period-numbering-from date: yyyy-mm-dd,
      * or blank for off. A grade's own terms (A, B or C): a whole number of days. A cap: an amount with
      * up to two decimals, or blank for none. A proof threshold: an amount with up to two decimals, or blank
-     * for none. A note threshold: an amount with up to two decimals, or blank for none. A permission matrix entry for open, settle, void, reassign, close or reopen: roles
+     * for none. A note threshold: an amount with up to two decimals, or blank for none. A review threshold: an amount with up to two decimals, or blank for none. A permission matrix entry for open, settle, void, reassign, close or reopen: roles
      * comma separated, or blank for the standing rule. Grace days: a whole number of days, or blank for off. A grade's grace days (A, B or C): a whole number of days, or blank for none. A grade's own proof threshold (A, B or C): an amount with up to two decimals, or blank for none (the sheet's). An entry date: yyyy-mm-dd, or blank for off. A pot: an amount with up to two decimals, or blank for none. A parent: a sheet id, or blank for none. A fiscal start month: 1 to 12. An alert threshold: an amount with up to two decimals, or blank for off. A rounding mode: half-up or half-even, or blank for none. Each setting that carries a figure may name the date it
      * is in force from (its {@code ...From}: yyyy-mm-dd, or blank or null for the sheet's today).
      */
@@ -76,6 +76,8 @@ public class SettingController {
             @Pattern(regexp = DATE) String proofThresholdFrom,
             @Pattern(regexp = "\\s*|" + ClaimController.AMOUNT) String noteThreshold,
             @Pattern(regexp = DATE) String noteThresholdFrom,
+            @Pattern(regexp = "\\s*|" + ClaimController.AMOUNT) String reviewThreshold,
+            @Pattern(regexp = DATE) String reviewThresholdFrom,
             @Pattern(regexp = ROLES) String permOpen, @Pattern(regexp = ROLES) String permSettle,
             @Pattern(regexp = ROLES) String permVoid, @Pattern(regexp = ROLES) String permReassign,
             @Pattern(regexp = ROLES) String permClose, @Pattern(regexp = ROLES) String permReopen,
@@ -101,7 +103,7 @@ public class SettingController {
 
     /**
      * The settings in force on the sheet's today; the clerk limit blank for none, the policy date
-     * blank for none, the period-numbering-from date blank for off, the cap blank for none, the proof threshold blank for none, the note threshold blank for none; the terms
+     * blank for none, the period-numbering-from date blank for off, the cap blank for none, the proof threshold blank for none, the note threshold blank for none, the review threshold blank for none; the terms
      * in force for each grade that has its own. And every value recorded for the settings that carry
      * a figure, by key and from-date. And the permission matrix: for each action, its roles as
      * entered, blank for the standing rule. And the grace days, blank for off. And the entry date, blank for off.
@@ -110,7 +112,7 @@ public class SettingController {
      */
     public record SettingsResponse(String clerkLimit, String floor, int terms, String latePct, String policyDate,
             String periodNumberingFrom, Map<String, Integer> gradeTerms, String cap, String proofThreshold,
-            String noteThreshold,
+            String noteThreshold, String reviewThreshold,
             List<DatedValue> dated, Map<String, String> permissions, String graceDays, String entryDate, String pot,
             String parent, int fiscalStartMonth, String alertThreshold, String rounding) {
     }
@@ -121,7 +123,7 @@ public class SettingController {
                 sheet.getPolicyDate() == null ? "" : sheet.getPolicyDate().toString(),
                 sheet.getPeriodNumberingFrom() == null ? "" : sheet.getPeriodNumberingFrom().toString(),
                 sheet.getGradeTerms(), SettingService.text(sheet.getCap()), SettingService.text(sheet.getProofThreshold()),
-                SettingService.text(sheet.getNoteThreshold()),
+                SettingService.text(sheet.getNoteThreshold()), SettingService.text(sheet.getReviewThreshold()),
                 sheet.getSettings().stream().map(SettingController::dated).toList(), sheet.getPermissions(),
                 sheet.getGraceDays() == null ? "" : String.valueOf(sheet.getGraceDays()),
                 sheet.getEntryDate() == null ? "" : sheet.getEntryDate().toString(), SettingService.text(sheet.getPot()),
@@ -186,7 +188,8 @@ public class SettingController {
                 numberingFrom.isEmpty() ? null : date(numberingFrom),
                 req.cap() == null ? null : amount(req.cap(), req.capFrom()), gradeTerms, gradeGraces,
                 req.proofThreshold() == null ? null : amount(req.proofThreshold(), req.proofThresholdFrom()), gradeProofThresholds,
-                req.noteThreshold() == null ? null : amount(req.noteThreshold(), req.noteThresholdFrom()), permissions,
+                req.noteThreshold() == null ? null : amount(req.noteThreshold(), req.noteThresholdFrom()),
+                req.reviewThreshold() == null ? null : amount(req.reviewThreshold(), req.reviewThresholdFrom()), permissions,
                 req.graceDays() != null, grace.isEmpty() ? null : Integer.valueOf(grace),
                 req.entryDate() != null, entry.isEmpty() ? null : date(entry),
                 req.pot() != null, pot.isEmpty() ? null : ClaimController.amount(pot),

@@ -48,6 +48,7 @@ public class Sheet {
     public static final String LATE_PCT = "late-pct";
     public static final String PROOF_THRESHOLD = "proof-threshold";
     public static final String NOTE_THRESHOLD = "note-threshold";
+    public static final String REVIEW_THRESHOLD = "review-threshold";
     /** The key of a grade's own proof threshold: {@code proof-threshold-<grade>}. */
     public static final String GRADE_PROOF_THRESHOLD = "proof-threshold-";
     public static final String ROUNDING = "rounding";
@@ -313,6 +314,19 @@ public class Sheet {
      */
     public BigDecimal noteThresholdOn(LocalDate date) {
         return inForce(NOTE_THRESHOLD, date).map(DatedSetting::getValue).orElse(null);
+    }
+
+    /** The review threshold in force on the sheet's today; null for none. */
+    public BigDecimal getReviewThreshold() {
+        return reviewThresholdOn(today);
+    }
+
+    /**
+     * The review threshold in force on a date: a claim of that date whose due is above it goes to
+     * REVIEW when opened, instead of OPEN; null for none.
+     */
+    public BigDecimal reviewThresholdOn(LocalDate date) {
+        return inForce(REVIEW_THRESHOLD, date).map(DatedSetting::getValue).orElse(null);
     }
 
     /** The sheet's terms in force on the sheet's today. */

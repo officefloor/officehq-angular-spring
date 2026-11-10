@@ -74,7 +74,11 @@ import { DatedGrade, DatedValue, Lateness, Rate, chargedDueCents, dueText, grace
 // A DRAFT claim can be deleted with its delete button (refused for any other status or a claim in a
 // closed period): it is DELETED, counts nowhere and cannot be edited, opened or voided. Its restore
 // button makes it a DRAFT again on the sheet-today it was deleted; on a later day that is refused.
-export type ClaimStatus = 'DRAFT' | 'OPEN' | 'PENDING' | 'SETTLED' | 'VOID' | 'DELETED';
+// A claim whose due is above the review threshold in force on its date goes to REVIEW when opened
+// (by the bulk button too, counted as opened), instead of OPEN: it shows who opened it but no
+// number, counts in no total, and cannot be edited, settled or split; it can be voided. A steward's
+// review button makes it OPEN, numbered then; anyone else's is refused with an error on the claim.
+export type ClaimStatus = 'DRAFT' | 'OPEN' | 'PENDING' | 'SETTLED' | 'VOID' | 'DELETED' | 'REVIEW';
 
 export interface Claim {
   id: number;
@@ -177,7 +181,7 @@ export interface ClaimTarget {
 }
 
 /** A move from one status to the next, by the endpoint that makes it. */
-type ClaimAction = 'open' | 'settle' | 'resettle' | 'approve' | 'reject' | 'void' | 'delete' | 'restore';
+type ClaimAction = 'open' | 'review' | 'settle' | 'resettle' | 'approve' | 'reject' | 'void' | 'delete' | 'restore';
 
 /** Whether a claim counts toward claimed, due-total and every total: only OPEN, PENDING and SETTLED do (a correction never toward claimed). */
 export function counts(c: Claim): boolean {
@@ -213,6 +217,7 @@ const UNCORRECTABLE = 'A negative amount must correct a SETTLED claim of this pe
 
 const PAST: Record<ClaimAction, string> = {
   open: 'opened',
+  review: 'reviewed',
   settle: 'settled',
   resettle: 're-settled',
   approve: 'approved',
@@ -437,6 +442,7 @@ export function money(c: number): string {
           />
           <button type="button" data-testid="claim-comment-add" (click)="comment(c)">Add comment</button>
           <button type="button" data-testid="claim-open" (click)="act(c, 'open')">Open</button>
+          <button type="button" data-testid="claim-review" (click)="act(c, 'review')">Review</button>
           <button type="button" data-testid="claim-settle" (click)="act(c, 'settle')">Settle</button>
           <button type="button" data-testid="claim-resettle" (click)="act(c, 'resettle')">Re-settle</button>
           <button type="button" data-testid="claim-approve" (click)="act(c, 'approve')">Approve</button>
@@ -1203,6 +1209,8 @@ export class PersonClaims {
               : 'Only a steward can approve or reject a PENDING claim.'
             : action === 'resettle'
               ? 'Only a steward can re-settle a claim.'
+            : action === 'review'
+              ? 'Only a steward can review a claim.'
               : action === 'void' && c.status === 'SETTLED'
                 ? 'Only a steward can void a SETTLED claim.'
               : action === 'settle' && c.openedBy === this.session.user()

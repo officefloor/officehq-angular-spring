@@ -37,7 +37,7 @@ import org.springframework.web.server.ResponseStatusException;
  * The settings that carry a figure (the floor, the late percent, the terms, a grade's own terms,
  * a grade's grace days, the clerk limit, the cap, the proof threshold, a grade's own proof threshold and the note threshold) are dated: each value is recorded from a from-date (the sheet's
  * today when none is given). A claim's floor, late percent and terms are those in force on its
- * date, as is its proof threshold (its person's grade's own in force then when it has one, else the sheet's; see {@link Sheet#proofThresholdFor}) and its note threshold (see {@link Sheet#noteThresholdOn}); the clerk limit and the cap are those in force on the sheet's today (see {@link Sheet}).
+ * date, as is its proof threshold (its person's grade's own in force then when it has one, else the sheet's; see {@link Sheet#proofThresholdFor}) and its note threshold (see {@link Sheet#noteThresholdOn}) and its review threshold (see {@link Sheet#reviewThresholdOn}); the clerk limit and the cap are those in force on the sheet's today (see {@link Sheet}).
  * The policy date and the period-numbering-from date are not dated. Nor is the permission matrix:
  * for each of open, settle, void, reassign, close and reopen, the roles that may take it (blank: the
  * standing rule, see {@link Sheet#permits}), recorded under the key {@code perm-<action>}. Nor are
@@ -68,6 +68,7 @@ public class SettingService {
     public static final String LATE_PCT = Sheet.LATE_PCT;
     public static final String PROOF_THRESHOLD = Sheet.PROOF_THRESHOLD;
     public static final String NOTE_THRESHOLD = Sheet.NOTE_THRESHOLD;
+    public static final String REVIEW_THRESHOLD = Sheet.REVIEW_THRESHOLD;
     /** The key of a grade's own proof threshold: {@code proof-threshold-<grade>}. */
     public static final String GRADE_PROOF_THRESHOLD = Sheet.GRADE_PROOF_THRESHOLD;
     public static final String ROUNDING = Sheet.ROUNDING;
@@ -119,7 +120,7 @@ public class SettingService {
      * (by grade, in grade order), and each grade's grace days given in {@code gradeGraces} (by grade, in grade
      * order; null for none), and a proof threshold when {@code proofThreshold} is not null, and each grade's own proof
      * threshold given in {@code gradeProofThresholds} (by grade, in grade order; null for none), and a note threshold when
-     * {@code noteThreshold} is not null, and each permission matrix entry
+     * {@code noteThreshold} is not null, and a review threshold when {@code reviewThreshold} is not null, and each permission matrix entry
      * given in {@code permissions} (by action, in the order given; blank for the standing rule), and the grace days when
      * {@code changeGrace} (null for off), and the entry date when {@code changeEntry} (null for off), and the pot when {@code changePot} (null for none), and the parent when
      * {@code changeParent} (null for none; refused (400) for the sheet itself, a sheet never loaded, or one that has
@@ -136,7 +137,7 @@ public class SettingService {
             boolean changeNumbering, LocalDate numberingFrom, Dated<BigDecimal> cap,
             Map<String, Dated<Integer>> gradeTerms, Map<String, Dated<Integer>> gradeGraces,
             Dated<BigDecimal> proofThreshold, Map<String, Dated<BigDecimal>> gradeProofThresholds,
-            Dated<BigDecimal> noteThreshold, Map<String, String> permissions,
+            Dated<BigDecimal> noteThreshold, Dated<BigDecimal> reviewThreshold, Map<String, String> permissions,
             boolean changeGrace, Integer graceDays, boolean changeEntry, LocalDate entryDate,
             boolean changePot, BigDecimal pot, boolean changeParent, String parent,
             Integer fiscalStartMonth, boolean changeAlert, BigDecimal alertThreshold, Dated<String> rounding) {
@@ -213,6 +214,10 @@ public class SettingService {
         if (noteThreshold != null) {
             sheet = record(sheet, user, NOTE_THRESHOLD, noteThreshold.value(), noteThreshold.from(),
                     text(noteThreshold.value()), false);
+        }
+        if (reviewThreshold != null) {
+            sheet = record(sheet, user, REVIEW_THRESHOLD, reviewThreshold.value(), reviewThreshold.from(),
+                    text(reviewThreshold.value()), false);
         }
         for (Map.Entry<String, String> e : permissions.entrySet()) {
             sheet.setPermission(e.getKey(), e.getValue());

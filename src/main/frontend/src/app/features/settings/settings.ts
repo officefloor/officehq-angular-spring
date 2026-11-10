@@ -34,6 +34,9 @@ import { DatedValue, START_FLOOR, START_LATE_PCT, valueOn } from '../rates/rates
 // The note threshold (two decimals; blank for none) is dated like the floor: a claim whose due is
 // above the one in force on its date cannot be opened while its note is empty. It saves, like the
 // clerk limit, once its field has been entered (blank: none).
+// The review threshold (two decimals; blank for none) is dated like the floor: a claim whose due is
+// above the one in force on its date goes to REVIEW when opened, instead of OPEN, until a steward
+// reviews it. It saves, like the clerk limit, once its field has been entered (blank: none).
 // The permission matrix: for each of open, settle, void, reassign, close and reopen, the roles that
 // may do it, comma separated (blank: the standing rule, open, settle, void and close by clerk and
 // steward, reassign and reopen by steward). Each saves, like the clerk limit, once its field has
@@ -85,6 +88,8 @@ interface SettingsResponse {
   proofThreshold: string;
   /** The note threshold, blank for none. */
   noteThreshold: string;
+  /** The review threshold, blank for none. */
+  reviewThreshold: string;
   /** Every value saved for the dated settings, by key and from-date. */
   dated: DatedSetting[];
   /** The permission matrix: for each action, its roles comma separated, blank for the standing rule. */
@@ -130,7 +135,7 @@ const PCT = /^\d{1,3}(\.\d{1,2})?$/;
 
 
 /** The keys of the dated settings, each with its own from field. */
-const DATED_KEYS = ['clerk-limit', 'floor', 'terms', 'terms-A', 'terms-B', 'terms-C', 'grace-A', 'grace-B', 'grace-C', 'late-pct', 'cap', 'proof-threshold', 'proof-threshold-A', 'proof-threshold-B', 'proof-threshold-C', 'note-threshold', 'rounding'] as const;
+const DATED_KEYS = ['clerk-limit', 'floor', 'terms', 'terms-A', 'terms-B', 'terms-C', 'grace-A', 'grace-B', 'grace-C', 'late-pct', 'cap', 'proof-threshold', 'proof-threshold-A', 'proof-threshold-B', 'proof-threshold-C', 'note-threshold', 'review-threshold', 'rounding'] as const;
 type DatedKey = (typeof DATED_KEYS)[number];
 
 /** A rounding mode. */
@@ -351,6 +356,23 @@ const DATE = /^\d{4}-\d{2}-\d{2}$/;
           [value]="fromInput()['note-threshold'] ?? ''"
           (input)="typeFrom('note-threshold', $any($event.target).value)"
         />
+        <label for="setting-review-threshold">Review threshold (blank: none)</label>
+        <input
+          id="setting-review-threshold"
+          data-testid="setting-review-threshold"
+          inputmode="decimal"
+          [value]="reviewThresholdInput() ?? ''"
+          (focus)="enterReviewThreshold($any($event.target))"
+          (input)="reviewThresholdInput.set($any($event.target).value); error.set(null)"
+        />
+        <label for="setting-review-threshold-from">Review threshold in force from (blank: the sheet's today)</label>
+        <input
+          id="setting-review-threshold-from"
+          data-testid="setting-review-threshold-from"
+          type="date"
+          [value]="fromInput()['review-threshold'] ?? ''"
+          (input)="typeFrom('review-threshold', $any($event.target).value)"
+        />
         <p>
         Parent sheet:
         <strong data-testid="setting-parent-current">{{ session.parent() }}</strong>
@@ -514,6 +536,13 @@ const DATE = /^\d{4}-\d{2}-\d{2}$/;
         }
       </p>
       <p>
+        Review threshold in force:
+        <strong data-testid="setting-review-threshold-current">{{ reviewThreshold() }}</strong>
+        @if (reviewThreshold() === '') {
+          <span>(none)</span>
+        }
+      </p>
+      <p>
         Grace days:
         <strong data-testid="setting-grace-days-current">{{ graceDays() }}</strong>
         @if (graceDays() === '') {
@@ -617,6 +646,10 @@ export class Settings {
   protected readonly noteThreshold = computed(() => this.inForce('note-threshold', ''));
   /** The note threshold typed; null while its field has not been entered (left as it is). */
   protected readonly noteThresholdInput = signal<string | null>(null);
+  /** The review threshold in force on the sheet's today; blank for none. */
+  protected readonly reviewThreshold = computed(() => this.inForce('review-threshold', ''));
+  /** The review threshold typed; null while its field has not been entered (left as it is). */
+  protected readonly reviewThresholdInput = signal<string | null>(null);
 
   /** The clerk limit in force on the sheet's today; blank for none. */
   protected readonly limit = computed(() => this.inForce('clerk-limit', ''));
@@ -682,6 +715,7 @@ export class Settings {
       this.roundingInput.set(null);
       this.thresholdInput.set(null);
       this.noteThresholdInput.set(null);
+      this.reviewThresholdInput.set(null);
       this.limitInput.set(null);
       this.floorInput.set(null);
       this.termsInput.set(null);
@@ -755,6 +789,15 @@ export class Settings {
     input.value = this.noteThreshold();
     input.select();
     this.noteThresholdInput.set(this.noteThreshold());
+  }
+
+  /** Entering the review threshold's field fills it with the threshold in force, selected, so it
+   *  saves as it is unless typed over. */
+  protected enterReviewThreshold(input: HTMLInputElement): void {
+    if (this.reviewThresholdInput() !== null) return;
+    input.value = this.reviewThreshold();
+    input.select();
+    this.reviewThresholdInput.set(this.reviewThreshold());
   }
 
   /** Entering the policy date's field fills it with the date in force, so it saves as it is unless
@@ -930,6 +973,7 @@ export class Settings {
     const rounding = this.roundingInput()?.trim() ?? null;
     const proofThreshold = this.thresholdInput()?.trim() ?? null;
     const noteThreshold = this.noteThresholdInput()?.trim() ?? null;
+    const reviewThreshold = this.reviewThresholdInput()?.trim() ?? null;
     const graceDays = this.graceInput()?.trim() ?? null;
     const entryDate = this.entryInput()?.trim() ?? null;
     const pot = this.potInput()?.trim() ?? null;
@@ -1004,6 +1048,10 @@ export class Settings {
     }
     if (noteThreshold !== null && noteThreshold !== '' && !LIMIT.test(noteThreshold)) {
       this.error.set('Enter a note threshold of 0.00 or more, with up to two decimals, or leave it blank.');
+      return;
+    }
+    if (reviewThreshold !== null && reviewThreshold !== '' && !LIMIT.test(reviewThreshold)) {
+      this.error.set('Enter a review threshold of 0.00 or more, with up to two decimals, or leave it blank.');
       return;
     }
     if (graceDays !== null && graceDays !== '' && !TERMS.test(graceDays)) {
@@ -1082,6 +1130,8 @@ export class Settings {
           proofThresholdFrom: from['proof-threshold'] ?? null,
           noteThreshold,
           noteThresholdFrom: from['note-threshold'] ?? null,
+          reviewThreshold,
+          reviewThresholdFrom: from['review-threshold'] ?? null,
           permOpen: perms.open ?? null,
           permSettle: perms.settle ?? null,
           permVoid: perms.void ?? null,
@@ -1125,6 +1175,7 @@ export class Settings {
       this.roundingInput.set(null);
       this.thresholdInput.set(null);
       this.noteThresholdInput.set(null);
+      this.reviewThresholdInput.set(null);
       this.permInput.set({});
       this.graceInput.set(null);
       this.entryInput.set(null);

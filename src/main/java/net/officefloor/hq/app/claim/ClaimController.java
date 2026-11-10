@@ -268,6 +268,11 @@ public class ClaimController {
         return response(service.reject(req.sheet().trim(), req.user().trim(), req.id(), req.reason().trim()));
     }
 
+    @PostMapping("/review")
+    public ClaimResponse review(@Valid @RequestBody ClaimStatusRequest req) {
+        return response(service.review(req.sheet().trim(), req.user().trim(), req.id()));
+    }
+
     @PostMapping("/void")
     public ClaimResponse voidClaim(@Valid @RequestBody VoidClaimRequest req) {
         return response(service.voidClaim(req.sheet().trim(), req.user().trim(), req.id(), req.reason()));
