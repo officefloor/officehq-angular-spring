@@ -22,12 +22,14 @@ public interface RateRepository extends JpaRepository<Rate, Long> {
 
     /**
      * The grade's rate in force on a date: the one with the latest from-date on or before it, an
-     * undated rate counting as from the beginning of time; empty when none applies yet.
+     * undated rate counting as from the beginning of time; empty when none applies yet, or when that
+     * one's to-date has passed by the date.
      */
     default Optional<Rate> findInForce(String sheetId, String grade, LocalDate date) {
         return findBySheetIdAndGrade(sheetId, grade).stream()
                 .filter(r -> r.getFromDate() == null || !r.getFromDate().isAfter(date))
                 .max((a, b) -> a.getFromDate() == null ? -1 : b.getFromDate() == null ? 1
-                        : a.getFromDate().compareTo(b.getFromDate()));
+                        : a.getFromDate().compareTo(b.getFromDate()))
+                .filter(r -> r.runsThrough(date));
     }
 }

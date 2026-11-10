@@ -4,13 +4,16 @@ import { firstValueFrom } from 'rxjs';
 import { Session } from '../../core/session';
 import { Claim, cents, daysOverdue, isCorrection, isOpen, money } from '../claims/claims';
 
-// The sheet's rates for each grade (a percent with two decimals, each from an optional from-date)
+// The sheet's rates for each grade (a percent with two decimals, each from an optional from-date
+// and through an optional to-date)
 // and the form that sets one. Each grade shows the rate in force on the sheet's today, or n/a when
 // none is. What is due on an amount is worked out here from those rates.
 export interface Rate {
   grade: string;
   /** The date the rate is in force from; null for a rate in force from the beginning of time. */
   from: string | null;
+  /** The last date the rate is in force; null for a rate in force until the grade's next one. */
+  to: string | null;
   pct: string;
 }
 
@@ -43,7 +46,8 @@ export function gradeOn(grades: readonly DatedGrade[], date: string | null): str
 
 /**
  * The grade's rate in force on a date (yyyy-mm-dd): the one with the latest from-date on or before
- * it, an undated rate counting as from the beginning of time. Undefined when none applies yet.
+ * it, an undated rate counting as from the beginning of time. Undefined when none applies yet, or
+ * when that one's to-date has passed by the date.
  */
 export function pctOn(rates: readonly Rate[], grade: string, date: string | null): string | undefined {
   let best: Rate | undefined;
@@ -51,6 +55,7 @@ export function pctOn(rates: readonly Rate[], grade: string, date: string | null
     if (r.grade !== grade || (r.from !== null && (date === null || r.from > date))) continue;
     if (best === undefined || (best.from ?? '') < (r.from ?? '')) best = r;
   }
+  if (best?.to != null && (date === null || best.to < date)) return undefined;
   return best?.pct;
 }
 
@@ -171,6 +176,14 @@ export function dueText(c: number | null): string {
           [value]="fromInput()"
           (input)="fromInput.set($any($event.target).value); error.set(null)"
         />
+        <label for="rate-form-to">To (blank: until the next rate)</label>
+        <input
+          id="rate-form-to"
+          type="date"
+          data-testid="rate-form-to"
+          [value]="toInput()"
+          (input)="toInput.set($any($event.target).value); error.set(null)"
+        />
         <button type="submit" data-testid="rate-form-submit">Set rate</button>
         @if (error(); as err) {
           <p role="alert" data-testid="rate-form-error">{{ err }}</p>
@@ -197,6 +210,7 @@ export function dueText(c: number | null): string {
           <tr>
             <th scope="col">Grade</th>
             <th scope="col">From</th>
+            <th scope="col">To</th>
             <th scope="col">Rate (%)</th>
           </tr>
         </thead>
@@ -205,6 +219,7 @@ export function dueText(c: number | null): string {
             <tr [attr.data-testid]="'rate-row-' + r.grade + '-' + (r.from ?? 'start')">
               <th scope="row">{{ r.grade }}</th>
               <td data-testid="rate-from">{{ r.from ?? 'always' }}</td>
+              <td data-testid="rate-to">{{ r.to ?? 'open' }}</td>
               <td data-testid="rate-pct">{{ r.pct }}</td>
             </tr>
           }
@@ -235,6 +250,7 @@ export class Rates {
   protected readonly gradeInput = signal<string>('A');
   protected readonly pctInput = signal('');
   protected readonly fromInput = signal('');
+  protected readonly toInput = signal('');
   protected readonly error = signal<string | null>(null);
   /** Whether a submit is waiting for its answer: a second submit meanwhile is ignored. */
   private submitting = false;
@@ -248,6 +264,7 @@ export class Rates {
       this.gradeInput.set('A');
       this.pctInput.set('');
       this.fromInput.set('');
+      this.toInput.set('');
       this.error.set(null);
       if (sheet) {
         void this.fetch(sheet);
@@ -272,6 +289,7 @@ export class Rates {
     const grade = this.gradeInput();
     const pct = this.pctInput().trim();
     const from = this.fromInput().trim() || null;
+    const to = this.toInput().trim() || null;
     if (!GRADES.includes(grade as (typeof GRADES)[number])) {
       this.error.set('Choose a grade of A, B or C.');
       return;
@@ -284,10 +302,18 @@ export class Rates {
       this.error.set('Enter a from-date as yyyy-mm-dd, or leave it blank for always.');
       return;
     }
+    if (to !== null && (!DATE.test(to) || Number.isNaN(Date.parse(to)))) {
+      this.error.set('Enter a to-date as yyyy-mm-dd, or leave it blank for until the next rate.');
+      return;
+    }
+    if (to !== null && from !== null && to < from) {
+      this.error.set('The to-date cannot be before the from-date.');
+      return;
+    }
     this.submitting = true;
     try {
       const saved = await firstValueFrom(
-        this.http.post<Rate>('/api/rates/set', { sheet, user: this.session.user(), grade, pct, from }),
+        this.http.post<Rate>('/api/rates/set', { sheet, user: this.session.user(), grade, pct, from, to }),
       );
       if (this.session.sheet() !== sheet) return;
       this.rates.update((list) => [
@@ -296,6 +322,7 @@ export class Rates {
       ]);
       this.pctInput.set('');
       this.fromInput.set('');
+      this.toInput.set('');
     } catch {
       this.error.set('Could not set this rate.');
     } finally {

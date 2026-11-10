@@ -172,7 +172,8 @@ public class RollupService {
         return sheetRates.stream().filter(r -> r.getGrade().equals(grade))
                 .filter(r -> r.getFromDate() == null || !r.getFromDate().isAfter(date))
                 .max((a, b) -> a.getFromDate() == null ? -1 : b.getFromDate() == null ? 1
-                        : a.getFromDate().compareTo(b.getFromDate()));
+                        : a.getFromDate().compareTo(b.getFromDate()))
+                .filter(r -> r.runsThrough(date));
     }
 
     private static boolean same(BigDecimal a, BigDecimal b) {

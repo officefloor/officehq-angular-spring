@@ -14,7 +14,10 @@ import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 
-/** Listing and setting the sheet's rates for each grade, each from an optional from-date. */
+/**
+ * Listing and setting the sheet's rates for each grade, each from an optional from-date and through
+ * an optional to-date.
+ */
 @RestController
 @RequestMapping("/api/rates")
 public class RateController {
@@ -27,14 +30,14 @@ public class RateController {
 
     public record SetRateRequest(@NotBlank @Size(max = 100) String sheet, @NotBlank @Size(max = 100) String user,
             @NotNull @Pattern(regexp = "[ABC]") String grade, @NotNull @Pattern(regexp = PCT) String pct,
-            LocalDate from) {
+            LocalDate from, LocalDate to) {
     }
 
-    public record RateResponse(String grade, LocalDate from, String pct) {
+    public record RateResponse(String grade, LocalDate from, LocalDate to, String pct) {
     }
 
     private static RateResponse response(Rate rate) {
-        return new RateResponse(rate.getGrade(), rate.getFromDate(),
+        return new RateResponse(rate.getGrade(), rate.getFromDate(), rate.getToDate(),
                 rate.getPct().setScale(2, RoundingMode.UNNECESSARY).toPlainString());
     }
 
@@ -51,7 +54,7 @@ public class RateController {
 
     @PostMapping("/set")
     public RateResponse set(@Valid @RequestBody SetRateRequest req) {
-        return response(service.set(req.sheet().trim(), req.user().trim(), req.grade(), req.from(),
+        return response(service.set(req.sheet().trim(), req.user().trim(), req.grade(), req.from(), req.to(),
                 new BigDecimal(req.pct()).setScale(2, RoundingMode.UNNECESSARY)));
     }
 }

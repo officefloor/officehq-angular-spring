@@ -15,7 +15,8 @@ import org.springframework.web.server.ResponseStatusException;
 
 /**
  * The sheet's rates for each grade: set (or set again) on the screen, one per grade and from-date;
- * setting a grade's rate for a from-date it already has replaces that rate.
+ * setting a grade's rate for a from-date it already has replaces that rate (and its to-date). A
+ * to-date before the from-date is refused.
  */
 @Service
 public class RateService {
@@ -38,12 +39,17 @@ public class RateService {
     }
 
     @Transactional
-    public Rate set(String sheetId, String user, String grade, LocalDate fromDate, BigDecimal pct) {
+    public Rate set(String sheetId, String user, String grade, LocalDate fromDate, LocalDate toDate,
+            BigDecimal pct) {
+        if (toDate != null && fromDate != null && toDate.isBefore(fromDate)) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "A rate's to-date cannot be before its from-date.");
+        }
         sheets.load(sheetId, user);
         RollupService.Snapshot before = rollup.snapshot(sheetId);
         Rate rate = rates.findBySheetIdAndGradeAndFrom(sheetId, grade, fromDate)
                 .orElseGet(() -> new Rate(sheetId, grade, fromDate, pct));
         rate.setPct(pct);
+        rate.setToDate(toDate);
         Rate saved;
         try {
             saved = rates.saveAndFlush(rate);
@@ -53,7 +59,7 @@ public class RateService {
         }
         audit.recordOnCommit("RATE_SET sheet=" + sheetId + " by=" + user + " grade=" + grade + " rate="
                 + saved.getPct().setScale(2, RoundingMode.UNNECESSARY).toPlainString()
-                + (fromDate != null ? " from=" + fromDate : ""));
+                + (fromDate != null ? " from=" + fromDate : "") + (toDate != null ? " to=" + toDate : ""));
         rollup.recordChanges(sheetId, user, before);
         return saved;
     }

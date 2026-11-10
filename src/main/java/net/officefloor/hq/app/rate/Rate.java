@@ -11,7 +11,7 @@ import java.time.LocalDate;
 
 /**
  * A sheet's rate for a grade: a percent with two decimals, in force from its from-date (none: from
- * the beginning of time) until the grade's next rate.
+ * the beginning of time) until the grade's next rate, or through its to-date when it has one.
  */
 @Entity
 @Table(name = "rate")
@@ -32,6 +32,9 @@ public class Rate {
 
     @Column(name = "from_date")
     private LocalDate fromDate;
+
+    @Column(name = "to_date")
+    private LocalDate toDate;
 
     protected Rate() {
     }
@@ -57,6 +60,19 @@ public class Rate {
 
     public LocalDate getFromDate() {
         return fromDate;
+    }
+
+    public LocalDate getToDate() {
+        return toDate;
+    }
+
+    public void setToDate(LocalDate toDate) {
+        this.toDate = toDate;
+    }
+
+    /** Whether the rate is still in force on a date: it has no to-date, or the date is on or before it. */
+    public boolean runsThrough(LocalDate date) {
+        return toDate == null || !date.isAfter(toDate);
     }
 
     public BigDecimal getPct() {
