@@ -101,6 +101,13 @@ public class ClaimController {
     public record BulkOpenResponse(int opened, int refused, List<ClaimResponse> claims) {
     }
 
+    public record BulkReassignRequest(@NotBlank @Size(max = 100) String sheet, @NotBlank @Size(max = 100) String user,
+            @NotNull @Size(max = 1000) List<@NotNull Long> ids, @NotNull Long personId) {
+    }
+
+    public record BulkReassignResponse(int reassigned, int refused, List<ClaimResponse> claims) {
+    }
+
     public record BulkSettleResponse(int settled, int refused, List<ClaimResponse> claims) {
     }
 
@@ -295,6 +302,14 @@ public class ClaimController {
     public BulkSettleResponse bulkSettle(@Valid @RequestBody BulkOpenRequest req) {
         ClaimService.BulkSettled done = service.bulkSettle(req.sheet().trim(), req.user().trim(), req.ids());
         return new BulkSettleResponse(done.settled(), done.refused(),
+                done.claims().stream().map(ClaimController::response).toList());
+    }
+
+    @PostMapping("/bulk-reassign")
+    public BulkReassignResponse bulkReassign(@Valid @RequestBody BulkReassignRequest req) {
+        ClaimService.BulkReassigned done = service.bulkReassign(req.sheet().trim(), req.user().trim(), req.ids(),
+                req.personId());
+        return new BulkReassignResponse(done.reassigned(), done.refused(),
                 done.claims().stream().map(ClaimController::response).toList());
     }
 

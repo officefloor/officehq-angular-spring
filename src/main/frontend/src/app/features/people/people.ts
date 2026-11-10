@@ -290,6 +290,27 @@ const SUMMARY_STATUSES = ['DRAFT', 'OPEN', 'PENDING', 'SETTLED', 'VOID'] as cons
       @if (bulkSettleError(); as err) {
         <p role="alert" data-testid="bulk-settle-error">{{ err }}</p>
       }
+      <label for="bulk-reassign-to">Move selected claims to</label>
+      <select
+        id="bulk-reassign-to"
+        data-testid="bulk-reassign-to"
+        (change)="bulkReassignTo.set($any($event.target).value); bulkReassignError.set(null)"
+      >
+        <option value="" [selected]="bulkReassignTo() === ''">Choose a person</option>
+        @for (p of people(); track p.id) {
+          <option [value]="p.id" [selected]="bulkReassignTo() === '' + p.id">{{ p.name }}</option>
+        }
+      </select>
+      <button type="button" data-testid="bulk-reassign" (click)="bulkReassign()">Move selected claims</button>
+      @if (bulkReassignResult(); as r) {
+        <p>
+          Moved <strong data-testid="bulk-reassigned">{{ r.reassigned }}</strong>,
+          refused <strong data-testid="bulk-reassign-refused">{{ r.refused }}</strong>
+        </p>
+      }
+      @if (bulkReassignError(); as err) {
+        <p role="alert" data-testid="bulk-reassign-error">{{ err }}</p>
+      }
       <form aria-label="Grade selected people" (submit)="bulkGrade($event)">
         <label for="bulk-grade">Grade selected people</label>
         <select
@@ -587,6 +608,10 @@ export class People {
   protected readonly bulkOpenError = signal<string | null>(null);
   protected readonly bulkSettleResult = signal<{ settled: number; refused: number } | null>(null);
   protected readonly bulkSettleError = signal<string | null>(null);
+  /** The id of the person the selected claims are moved to; blank until one is chosen. */
+  protected readonly bulkReassignTo = signal('');
+  protected readonly bulkReassignResult = signal<{ reassigned: number; refused: number } | null>(null);
+  protected readonly bulkReassignError = signal<string | null>(null);
   /** The ids of the people ticked for a bulk action. */
   protected readonly selectedPeople = signal<ReadonlySet<number>>(new Set());
   protected readonly bulkGradeInput = signal<string>('A');
@@ -786,6 +811,9 @@ export class People {
       this.bulkOpenError.set(null);
       this.bulkSettleResult.set(null);
       this.bulkSettleError.set(null);
+      this.bulkReassignTo.set('');
+      this.bulkReassignResult.set(null);
+      this.bulkReassignError.set(null);
       this.selectedPeople.set(new Set());
       this.bulkGradeInput.set('A');
       this.bulkGradeFrom.set('');
@@ -1253,6 +1281,37 @@ export class People {
     } catch {
       if (this.session.sheet() !== sheet) return;
       this.bulkSettleError.set('Could not settle the selected claims.');
+    }
+  }
+
+  /** Move the selected claims to the chosen person together: the server moves each it can, in list
+   *  order, by the rules of moving one, and refuses the rest, leaving them as they are. */
+  protected async bulkReassign(): Promise<void> {
+    this.bulkReassignResult.set(null);
+    this.bulkReassignError.set(null);
+    const sheet = this.session.sheet();
+    const personId = Number(this.bulkReassignTo());
+    if (!personId) {
+      this.bulkReassignError.set('Choose the person to move the selected claims to.');
+      return;
+    }
+    const ids = [...this.selectedClaims()];
+    try {
+      const done = await firstValueFrom(
+        this.http.post<{ reassigned: number; refused: number; claims: Claim[] }>('/api/claims/bulk-reassign', {
+          sheet,
+          user: this.session.user(),
+          ids,
+          personId,
+        }),
+      );
+      if (this.session.sheet() !== sheet) return;
+      for (const c of done.claims) this.claimMoved(c);
+      this.selectedClaims.set(new Set());
+      this.bulkReassignResult.set({ reassigned: done.reassigned, refused: done.refused });
+    } catch {
+      if (this.session.sheet() !== sheet) return;
+      this.bulkReassignError.set('Could not move the selected claims.');
     }
   }
 

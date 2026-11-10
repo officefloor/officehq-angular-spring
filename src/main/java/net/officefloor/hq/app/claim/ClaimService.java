@@ -606,6 +606,10 @@ public class ClaimService {
      */
     @Transactional
     public Claim reassign(String sheetId, String user, long id, long toPersonId) {
+        return reassign(sheetId, user, id, toPersonId, false);
+    }
+
+    private Claim reassign(String sheetId, String user, long id, long toPersonId, boolean allowSamePerson) {
         roles.refuseUnlessPermitted(sheetId, user, "reassign");
         RollupService.Snapshot before = rollup.snapshot(sheetId);
         Claim claim = claims.findByIdAndSheetId(id, sheetId)
@@ -616,7 +620,7 @@ public class ClaimService {
         }
         Person from = person(sheetId, claim.getPersonId());
         Person to = person(sheetId, toPersonId);
-        if (from.getId().equals(to.getId())) {
+        if (!allowSamePerson && from.getId().equals(to.getId())) {
             throw new ResponseStatusException(HttpStatus.CONFLICT, "That claim is already on that person.");
         }
         if (claim.isCorrection()) {
@@ -745,6 +749,32 @@ public class ClaimService {
             }
         }
         return new BulkSettled(settled.size(), refused, settled);
+    }
+
+    /** What a bulk move did: how many claims were moved and how many refused, and the claims moved. */
+    public record BulkReassigned(int reassigned, int refused, List<Claim> claims) {
+    }
+
+    /**
+     * Move the given claims to one person together, in list order (the order people were added,
+     * newest claim first within a person), each by exactly the rules of moving one claim. A claim
+     * already on that person is moved in place (listed first, unbound). A claim that cannot be
+     * moved is refused and left as it is.
+     */
+    @Transactional
+    public BulkReassigned bulkReassign(String sheetId, String user, Collection<Long> ids, long toPersonId) {
+        List<Claim> selected = inListOrder(sheetId, ids);
+        int refused = (int) ids.stream().distinct().count() - selected.size();
+        List<Claim> moved = new ArrayList<>();
+        for (Claim claim : selected) {
+            try {
+                moved.add(reassign(sheetId, user, claim.getId(), toPersonId, true));
+            } catch (ResponseStatusException refusedOne) {
+                // every refusal is checked before the claim is changed, so it is left as it is
+                refused++;
+            }
+        }
+        return new BulkReassigned(moved.size(), refused, moved);
     }
 
     /** The given claims on the sheet in list order: people as added, newest claim first within a person. */
