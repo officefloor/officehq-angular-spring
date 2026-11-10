@@ -68,8 +68,11 @@ import { VoidReasons as VoidReasonList } from '../../core/void-reasons';
 // The quick-add bar adds a DRAFT claim of an amount, dated the sheet's today with an empty note, for
 // the person of a name, adding the person with grade A first when the name is not on the sheet.
 // The paste box takes lines of name,amount,date,note (the date blank for the sheet's today, the note
-// optional and free to hold commas) and adds a DRAFT claim per line, in order, for the person of that
-// name. Every line is held to the claim form's rules; if any is refused, nothing is added. A note
+// optional and free to hold commas) and adds a claim per line, in order, for the person of that
+// name, each then opened as the open button would (so it arrives OPEN). A line matching one of the
+// person's claims by date and note updates the newest matching DRAFT to its amount and opens it
+// instead. Every line is held to the claim form's and the open button's rules; if any is refused,
+// nothing changes. The count shows how many lines went through. A note
 // ending in " #<reference>" gives the claim that reference (not part of the note); a reference
 // repeated within the paste or already used on the sheet refuses the whole paste.
 // Each person, and the sheet, shows how many of the claims that count are overdue and the sum of
@@ -2247,7 +2250,7 @@ export class People {
     }
   }
 
-  /** Add a DRAFT claim per pasted line, in order; the server refuses the whole paste if any line fails. */
+  /** Add (or update a matching DRAFT) and open a claim per pasted line, in order; the server refuses the whole paste if any line fails. */
   protected async pasteClaims(event: Event): Promise<void> {
     event.preventDefault();
     if (this.pasteSubmitting) return;
