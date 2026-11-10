@@ -26,6 +26,7 @@ import org.springframework.web.server.ResponseStatusException;
  * A
  * name is unique on the sheet, compared without regard to case (names arrive trimmed). A person can
  * be retired from a date (the sheet's today when none is given); they count as retired at once. A
+ * retired person can be unretired on the sheet's today; the retirement is kept as a past one. A
  * person can be put on hold over a span of dates, and may have several holds over time. A person can name other people on the sheet as
  * their patrons, one at a time: not themselves, and not the same person twice. A user can watch a
  * person, and stop watching them; each user's watching is their own. A person may have their own
@@ -289,6 +290,29 @@ public class PersonService {
         Person saved = save(person);
         audit.recordOnCommit("PERSON_RETIRED sheet=" + sheetId + " by=" + user + " name=" + saved.getName() + " from="
                 + from);
+        rollup.recordChanges(sheetId, user, before);
+        return saved;
+    }
+
+    /**
+     * Unretire the person on the sheet's today: they are no longer retired, and the retirement is
+     * kept as a past one from its from-date to the sheet's today. Refused (409) when they are not
+     * retired. Their OPEN claims return to the live totals, so the figures that move are recorded.
+     */
+    @Transactional
+    public Person unretire(String sheetId, String user, long id) {
+        roles.refuseViewer(sheetId, user);
+        Person person = people.findByIdAndSheetId(id, sheetId)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "No such person on this sheet."));
+        if (!person.isRetired()) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT, "That person is not retired.");
+        }
+        RollupService.Snapshot before = rollup.snapshot(sheetId);
+        LocalDate on = sheets.today(sheetId);
+        person.unretire(on);
+        Person saved = save(person);
+        audit.recordOnCommit("PERSON_UNRETIRED sheet=" + sheetId + " by=" + user + " name=" + saved.getName() + " on="
+                + on);
         rollup.recordChanges(sheetId, user, before);
         return saved;
     }

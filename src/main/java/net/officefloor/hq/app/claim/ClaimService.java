@@ -41,7 +41,8 @@ import org.springframework.web.server.ResponseStatusException;
  * person's last statement keeps the figure it had then, and settling it fixes that figure. A claim
  * belongs to the period its due-by falls in (fixed at creation: an edit, re-date or move leaves it).
  * No claim due inside a closed period can be added, edited or change status. No
- * claim can be added or edited to a date after its person's retirement date. A clerk settles a claim
+ * claim can be added or edited to a date after its person's retirement date, nor after the from-date
+ * and before the to-date of one of their past retirements. A clerk settles a claim
  * only when its figure is at or below the sheet's clerk limit (a claim with no figure is within any
  * limit); a clerk settling one above it makes it PENDING instead. A steward settles any claim, and
  * approves a PENDING claim (SETTLED, its due fixed then) or rejects it with a reason (back to OPEN);
@@ -1016,9 +1017,12 @@ public class ClaimService {
         return corrects;
     }
 
-    /** Refuse (422) a claim dated after its person's retirement date. */
+    /**
+     * Refuse (422) a claim dated after its person's retirement date, or after the from-date and
+     * before the to-date of one of their past retirements.
+     */
     private static void refuseIfRetired(Person person, LocalDate date) {
-        if (person.isRetired() && date.isAfter(person.getRetiredFrom())) {
+        if (person.refusesClaimOn(date)) {
             throw new ResponseStatusException(HttpStatus.UNPROCESSABLE_ENTITY,
                     "That claim's date is after its person's retirement date.");
         }

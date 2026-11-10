@@ -58,6 +58,11 @@ public class Person {
     @Column(name = "retired_on")
     private LocalDate retiredOn;
 
+    /** The person's past retirements, each ended by unretiring them. */
+    @ElementCollection(fetch = FetchType.EAGER)
+    @CollectionTable(name = "person_retirement", joinColumns = @JoinColumn(name = "person_id"))
+    private List<PastRetirement> pastRetirements = new ArrayList<>();
+
     /** The sheet's today when the person was added; none for one added before it was recorded. */
     @Column(name = "added_on")
     private LocalDate addedOn;
@@ -208,6 +213,31 @@ public class Person {
         this.retiredOn = madeOn;
     }
 
+    /**
+     * Unretire the person on a day (the sheet's today): they are no longer retired, and the
+     * retirement is kept as a past one from its from-date to that day.
+     */
+    public void unretire(LocalDate on) {
+        pastRetirements.add(new PastRetirement(retiredFrom, on, retiredOn));
+        this.retiredFrom = null;
+        this.retiredOn = null;
+    }
+
+    /** The past retirements, by from-date and then to-date. */
+    public List<PastRetirement> getPastRetirements() {
+        return pastRetirements.stream().sorted(Comparator.comparing(PastRetirement::getFromDate)
+                .thenComparing(PastRetirement::getToDate)).toList();
+    }
+
+    /**
+     * Whether a claim can be dated on a day: not after the retirement date while retired, nor after
+     * the from-date and before the to-date of a past retirement.
+     */
+    public boolean refusesClaimOn(LocalDate date) {
+        return (retiredFrom != null && date.isAfter(retiredFrom))
+                || pastRetirements.stream().anyMatch(r -> r.excludes(date));
+    }
+
     /** Whether the person had been added by the end of a day: the sheet's today then on or before it. */
     public boolean addedBy(LocalDate day) {
         return addedOn == null || !addedOn.isAfter(day);
@@ -279,8 +309,8 @@ public class Person {
      */
     public boolean countedAsOf(Claim claim, ClaimStatus status, LocalDate day, boolean stated) {
         boolean held = holds.stream().anyMatch(h -> h.madeBy(day) && h.covers(claim.getDate()));
-        boolean retired = retiredFrom != null && (retiredOn == null || !retiredOn.isAfter(day))
-                && !day.isBefore(retiredFrom);
+        boolean retired = (retiredFrom != null && (retiredOn == null || !retiredOn.isAfter(day))
+                && !day.isBefore(retiredFrom)) || pastRetirements.stream().anyMatch(r -> r.retiredAsOf(day));
         return status.counts() && !claim.isDeferredAsOf(status, day)
                 && (stated || !(status.isOpen() && (held || retired)));
     }

@@ -54,6 +54,8 @@ import { VoidReasons as VoidReasonList } from '../../core/void-reasons';
 // as retired at once, whatever the date. No claim of theirs can be dated after it. Retired people are
 // left out of the list unless "show retired" is on. Once the sheet's today reaches their retirement
 // date their OPEN and PENDING claims leave every live total, as a hold's would (unless a statement binds them).
+// A retired person can be unretired (on the sheet's today; anyone not retired is refused). Each past
+// retirement stays on the row as from-date to the day unretired; no claim can be dated after the one and before the other.
 // A person can be put on hold from a date (the sheet's today when left blank) to an optional to-date,
 // and may have several holds over time; a hold ends on its to-date. Their OPEN and PENDING claims dated
 // within a hold count in no total (their own, the sheet's or a period's); their other claims still do,
@@ -118,6 +120,14 @@ interface Person {
   clashing: boolean;
   /** The sheet the person was transferred from, or null when they were not transferred in. */
   origin: string | null;
+  /** The person's past retirements, each from its from-date to the day they were unretired. */
+  retirements: PastRetirement[];
+}
+
+/** One of a person's past retirements: from its from-date to the day they were unretired. */
+interface PastRetirement {
+  from: string;
+  to: string;
 }
 
 /** One of a person's holds: from its from-date to its to-date (null: open-ended), both inclusive. */
@@ -540,6 +550,11 @@ const SUMMARY_STATUSES = ['DRAFT', 'OPEN', 'PENDING', 'SETTLED', 'VOID'] as cons
               <td>
                 <span data-testid="person-retired">{{ p.retired ? 'yes' : 'no' }}</span>
                 <span>from <span data-testid="person-retired-from">{{ p.retiredFrom ?? '' }}</span></span>
+                <ul>
+                  @for (r of p.retirements; track $index) {
+                    <li data-testid="person-retirement-line">{{ r.from }} to {{ r.to }}</li>
+                  }
+                </ul>
               </td>
               <td>
                 <span data-testid="person-hold">{{ p.held ? 'yes' : 'no' }}</span>
@@ -696,6 +711,14 @@ const SUMMARY_STATUSES = ['DRAFT', 'OPEN', 'PENDING', 'SETTLED', 'VOID'] as cons
                   (click)="retire(p)"
                 >
                   Retire
+                </button>
+                <button
+                  type="button"
+                  data-testid="person-unretire"
+                  [attr.aria-label]="'Unretire ' + p.name"
+                  (click)="unretire(p)"
+                >
+                  Unretire
                 </button>
                 <label [for]="'person-hold-from-' + p.id">Hold from</label>
                 <input
@@ -1497,6 +1520,23 @@ export class People {
     } catch {
       if (this.session.sheet() !== sheet) return;
       this.rowErrors.update((m) => new Map(m).set(p.id, 'Could not retire ' + p.name + '.'));
+    }
+  }
+
+  /** Unretire the person on the sheet's today; the retirement stays on the row as a past one. */
+  protected async unretire(p: Person): Promise<void> {
+    this.clearRowError(p.id);
+    const sheet = this.session.sheet();
+    try {
+      const saved = await firstValueFrom(
+        this.http.post<Person>('/api/people/unretire', { sheet, user: this.session.user(), id: p.id }),
+      );
+      if (this.session.sheet() !== sheet) return;
+      this.people.update((list) => list.map((x) => (x.id === saved.id ? saved : x)));
+      if (this.editingId() === saved.id && this.editingVersion === p.version) this.editingVersion = saved.version;
+    } catch {
+      if (this.session.sheet() !== sheet) return;
+      this.rowErrors.update((m) => new Map(m).set(p.id, 'Could not unretire ' + p.name + '.'));
     }
   }
 

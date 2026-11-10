@@ -80,6 +80,10 @@ public class PersonController {
             @NotBlank @Size(max = 100) String user, @NotNull Long id, LocalDate date) {
     }
 
+    public record UnretirePersonRequest(@NotBlank @Size(max = 100) String sheet,
+            @NotBlank @Size(max = 100) String user, @NotNull Long id) {
+    }
+
     public record MovePersonRequest(@NotBlank @Size(max = 100) String sheet,
             @NotBlank @Size(max = 100) String user, @NotNull Long id,
             @NotNull @Pattern(regexp = "up|down") String direction) {
@@ -112,10 +116,14 @@ public class PersonController {
     public record HoldResponse(LocalDate from, LocalDate to) {
     }
 
+    /** One of a person's past retirements, from its from-date to the day they were unretired. */
+    public record RetirementResponse(LocalDate from, LocalDate to) {
+    }
+
     /** A person, with every grade recorded for them, the one from the beginning of time first, their own terms or null, their contact or null, their aliases sorted as names are compared, and whether they clash: their name or an alias is used on another sheet of the sheet's tree, and the sheet they were transferred from or null. */
     public record PersonResponse(long id, String name, List<GradeResponse> grades, long version, boolean retired,
             LocalDate retiredFrom, boolean held, List<HoldResponse> holds, Integer terms, String contact,
-            List<String> aliases, boolean clashing, String origin) {
+            List<String> aliases, boolean clashing, String origin, List<RetirementResponse> retirements) {
     }
 
     public static PersonResponse response(Person person, boolean clashing) {
@@ -124,7 +132,8 @@ public class PersonController {
         return new PersonResponse(person.getId(), person.getName(), grades, person.getVersion(),
                 person.isRetired(), person.getRetiredFrom(), person.isHeld(),
                 person.getHolds().stream().map(h -> new HoldResponse(h.getFromDate(), h.getToDate())).toList(),
-                person.getTerms(), person.getContact(), person.getAliases(), clashing, person.getOriginSheet());
+                person.getTerms(), person.getContact(), person.getAliases(), clashing, person.getOriginSheet(),
+                person.getPastRetirements().stream().map(r -> new RetirementResponse(r.getFromDate(), r.getToDate())).toList());
     }
 
     /** The person, with whether they clash on the sheet's tree. */
@@ -215,6 +224,11 @@ public class PersonController {
     @PostMapping("/retire")
     public PersonResponse retire(@Valid @RequestBody RetirePersonRequest req) {
         return response(req.sheet().trim(), service.retire(req.sheet().trim(), req.user().trim(), req.id(), req.date()));
+    }
+
+    @PostMapping("/unretire")
+    public PersonResponse unretire(@Valid @RequestBody UnretirePersonRequest req) {
+        return response(req.sheet().trim(), service.unretire(req.sheet().trim(), req.user().trim(), req.id()));
     }
 
     /** Swap the person with the one above or below them in the list. */
