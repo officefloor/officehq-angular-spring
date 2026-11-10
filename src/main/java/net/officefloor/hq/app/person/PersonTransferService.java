@@ -168,7 +168,7 @@ public class PersonTransferService {
 
     /** The sheet's today when the claim was first opened, as its status log records it; none when not recorded. */
     private static LocalDate openedOn(Claim claim) {
-        return claim.getLog().stream().filter(e -> e.getStatus() != ClaimStatus.DRAFT).map(ClaimLogEntry::getDate)
+        return claim.getLog().stream().filter(e -> e.getStatus() != ClaimStatus.DRAFT && e.getStatus() != ClaimStatus.DELETED).map(ClaimLogEntry::getDate)
                 .findFirst().orElse(null);
     }
 }

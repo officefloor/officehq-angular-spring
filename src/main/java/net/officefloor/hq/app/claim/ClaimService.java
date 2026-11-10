@@ -69,7 +69,8 @@ import org.springframework.web.server.ResponseStatusException;
  * settled, approved or re-settled, each user watching its person is notified, in the order they
  * started watching. A steward may void a SETTLED claim within {@value #VOID_SETTLED_DAYS} days of its
  * settlement (the date its status log records it SETTLED) by the sheet's today: it keeps its number and
- * its frozen figure, which leaves every total.
+ * its frozen figure, which leaves every total. A DRAFT claim can be deleted (DELETED: it counts nowhere
+ * and cannot be edited, opened or voided), and restored to DRAFT on the sheet-today it was deleted.
  */
 @Service
 public class ClaimService {
@@ -398,7 +399,7 @@ public class ClaimService {
             case PENDING -> "CLAIM_PENDING";
             case SETTLED -> review ? "CLAIM_APPROVED" : "CLAIM_SETTLED";
             case VOID -> "CLAIM_VOIDED";
-            case DRAFT -> throw new IllegalStateException();
+            case DRAFT, DELETED -> throw new IllegalStateException();
         };
         audit.recordOnCommit(record(event, sheetId, user, person, saved)
                 + (saved.getNumber() != null ? " number=" + saved.getNumber() : "")
@@ -409,6 +410,69 @@ public class ClaimService {
         if (next == ClaimStatus.SETTLED) {
             notifyWatchers(sheetId, user, person, saved);
         }
+        rollup.recordChanges(sheetId, user, before);
+        return saved;
+    }
+
+    /**
+     * Delete a DRAFT claim: it becomes DELETED, counts nowhere and makes no other move but a restore;
+     * its status log gains a DELETED line and CLAIM_DELETED is written. Any editor's lock on it is
+     * released. Refused (403) for a viewer, (409) for a claim that is not DRAFT or that another
+     * user's open editor locks, and (423) when due inside a closed period.
+     */
+    @Transactional
+    public Claim delete(String sheetId, String user, long id) {
+        roles.refuseViewer(sheetId, user);
+        RollupService.Snapshot before = rollup.snapshot(sheetId);
+        Claim claim = claims.findByIdAndSheetId(id, sheetId)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "No such claim on this sheet."));
+        if (!claim.getStatus().canBecome(ClaimStatus.DELETED)) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT,
+                    "A " + claim.getStatus() + " claim cannot be deleted.");
+        }
+        if (claim.isLockedAgainst(user)) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT,
+                    "This claim is being edited by " + claim.getLockedBy() + ".");
+        }
+        periods.refuseIfClosed(sheetId, claim.getDueBy());
+        Person person = person(sheetId, claim.getPersonId());
+        claim.setStatus(ClaimStatus.DELETED);
+        claim.setLockedBy(null);
+        logStatus(sheetId, user, person, claim);
+        Claim saved = claims.saveAndFlush(claim);
+        audit.recordOnCommit(record("CLAIM_DELETED", sheetId, user, person, saved));
+        rollup.recordChanges(sheetId, user, before);
+        return saved;
+    }
+
+    /**
+     * Restore a DELETED claim to DRAFT, on the sheet-today it was deleted (the date its status log
+     * records it DELETED): its log gains a DRAFT line and CLAIM_RESTORED is written. Refused (403)
+     * for a viewer, (409) for a claim that is not DELETED or on a later (or earlier) sheet-today, and
+     * (423) when due inside a closed period.
+     */
+    @Transactional
+    public Claim restore(String sheetId, String user, long id) {
+        roles.refuseViewer(sheetId, user);
+        RollupService.Snapshot before = rollup.snapshot(sheetId);
+        Claim claim = claims.findByIdAndSheetId(id, sheetId)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "No such claim on this sheet."));
+        if (!claim.getStatus().canBecome(ClaimStatus.DRAFT)) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT,
+                    "A " + claim.getStatus() + " claim cannot be restored.");
+        }
+        LocalDate deleted = claim.getLog().stream().filter(entry -> entry.getStatus() == ClaimStatus.DELETED)
+                .map(ClaimLogEntry::getDate).reduce((first, last) -> last).orElse(null);
+        if (deleted == null || !deleted.equals(sheets.today(sheetId))) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT,
+                    "A DELETED claim can be restored only on the day it was deleted.");
+        }
+        periods.refuseIfClosed(sheetId, claim.getDueBy());
+        Person person = person(sheetId, claim.getPersonId());
+        claim.setStatus(ClaimStatus.DRAFT);
+        logStatus(sheetId, user, person, claim);
+        Claim saved = claims.saveAndFlush(claim);
+        audit.recordOnCommit(record("CLAIM_RESTORED", sheetId, user, person, saved));
         rollup.recordChanges(sheetId, user, before);
         return saved;
     }
@@ -477,7 +541,8 @@ public class ClaimService {
         roles.refuseViewer(sheetId, user);
         Claim claim = claims.findByIdAndSheetId(id, sheetId)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "No such claim on this sheet."));
-        if (claim.getStatus() == ClaimStatus.SETTLED || claim.getStatus() == ClaimStatus.VOID) {
+        if (claim.getStatus() == ClaimStatus.SETTLED || claim.getStatus() == ClaimStatus.VOID
+                || claim.getStatus() == ClaimStatus.DELETED) {
             throw new ResponseStatusException(HttpStatus.CONFLICT,
                     "A " + claim.getStatus() + " claim cannot have a proof added.");
         }
@@ -624,7 +689,8 @@ public class ClaimService {
         RollupService.Snapshot before = rollup.snapshot(sheetId);
         Claim claim = claims.findByIdAndSheetId(id, sheetId)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "No such claim on this sheet."));
-        if (claim.getStatus() == ClaimStatus.SETTLED || claim.getStatus() == ClaimStatus.VOID) {
+        if (claim.getStatus() == ClaimStatus.SETTLED || claim.getStatus() == ClaimStatus.VOID
+                || claim.getStatus() == ClaimStatus.DELETED) {
             throw new ResponseStatusException(HttpStatus.CONFLICT,
                     "A " + claim.getStatus() + " claim cannot be moved.");
         }

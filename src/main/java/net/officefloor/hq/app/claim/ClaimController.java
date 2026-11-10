@@ -252,6 +252,16 @@ public class ClaimController {
         return response(service.voidClaim(req.sheet().trim(), req.user().trim(), req.id(), req.reason()));
     }
 
+    @PostMapping("/delete")
+    public ClaimResponse delete(@Valid @RequestBody ClaimStatusRequest req) {
+        return response(service.delete(req.sheet().trim(), req.user().trim(), req.id()));
+    }
+
+    @PostMapping("/restore")
+    public ClaimResponse restore(@Valid @RequestBody ClaimStatusRequest req) {
+        return response(service.restore(req.sheet().trim(), req.user().trim(), req.id()));
+    }
+
     @PostMapping("/resettle")
     public ClaimResponse resettle(@Valid @RequestBody ClaimStatusRequest req) {
         return response(service.resettle(req.sheet().trim(), req.user().trim(), req.id()));

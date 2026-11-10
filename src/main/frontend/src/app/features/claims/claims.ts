@@ -66,7 +66,10 @@ import { DatedGrade, DatedValue, Lateness, Rate, chargedDueCents, dueText, grace
 // A steward can re-date an OPEN or PENDING claim: its due-by, and so its period and number, and any
 // statement-bound figure stay. Refused for anyone else, a claim in a closed period, and a date after
 // its person's retirement.
-export type ClaimStatus = 'DRAFT' | 'OPEN' | 'PENDING' | 'SETTLED' | 'VOID';
+// A DRAFT claim can be deleted with its delete button (refused for any other status or a claim in a
+// closed period): it is DELETED, counts nowhere and cannot be edited, opened or voided. Its restore
+// button makes it a DRAFT again on the sheet-today it was deleted; on a later day that is refused.
+export type ClaimStatus = 'DRAFT' | 'OPEN' | 'PENDING' | 'SETTLED' | 'VOID' | 'DELETED';
 
 export interface Claim {
   id: number;
@@ -153,7 +156,7 @@ export interface ClaimTarget {
 }
 
 /** A move from one status to the next, by the endpoint that makes it. */
-type ClaimAction = 'open' | 'settle' | 'resettle' | 'approve' | 'reject' | 'void';
+type ClaimAction = 'open' | 'settle' | 'resettle' | 'approve' | 'reject' | 'void' | 'delete' | 'restore';
 
 /** Whether a claim counts toward claimed, due-total and every total: only OPEN, PENDING and SETTLED do. */
 export function counts(c: Claim): boolean {
@@ -194,6 +197,8 @@ const PAST: Record<ClaimAction, string> = {
   approve: 'approved',
   reject: 'rejected',
   void: 'voided',
+  delete: 'deleted',
+  restore: 'restored',
 };
 
 /** A reason for rejecting a claim: one word. */
@@ -409,6 +414,8 @@ export function money(c: number): string {
             </select>
           }
           <button type="button" data-testid="claim-void" (click)="act(c, 'void')">Void</button>
+          <button type="button" data-testid="claim-delete" (click)="act(c, 'delete')">Delete</button>
+          <button type="button" data-testid="claim-restore" (click)="act(c, 'restore')">Restore</button>
           <label [for]="'claim-defer-date-' + c.id">Defer until</label>
           <input
             [id]="'claim-defer-date-' + c.id"
@@ -1104,6 +1111,10 @@ export class PersonClaims {
               ? `This claim is deferred until ${c.deferredUntil} and cannot be settled before then.`
               : action === 'void' && c.status === 'SETTLED'
                 ? 'A SETTLED claim can be voided only within 7 days of its settlement.'
+              : action === 'restore' && c.status === 'DELETED'
+                ? 'A DELETED claim can be restored only on the day it was deleted.'
+              : action === 'delete' && c.status === 'DRAFT'
+                ? LOCKED
                 : `A ${c.status} claim cannot be ${PAST[action]}.`;
       this.actionErrors.update((m) => new Map(m).set(c.id, err));
     }
