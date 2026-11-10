@@ -18,7 +18,7 @@ import org.springframework.web.server.ResponseStatusException;
 
 /**
  * The paste box: lines of {@code name,amount,date,note}, each a DRAFT claim for the person of that
- * name (compared without regard to case), added in order. The date may be blank (the sheet's today)
+ * name or alias (compared without regard to case), added in order. The date may be blank (the sheet's today)
  * and the note may be absent or hold commas. A note ending in {@code " #<reference>"} gives the claim
  * that external reference, which is not part of the note; a reference repeated within the paste, or
  * already used on the sheet, refuses the whole paste. Every line is held to exactly the claim form's rules;
@@ -79,7 +79,7 @@ public class ClaimPasteService {
             throw refused("Line " + number + " needs at least a name and an amount.");
         }
         String name = fields[0].trim();
-        Person person = name.isEmpty() ? null : people.findBySheetIdAndNameIgnoreCase(sheetId, name).orElse(null);
+        Person person = name.isEmpty() ? null : people.findBySheetIdAndNameOrAlias(sheetId, name).orElse(null);
         if (person == null) {
             throw refused("Line " + number + ": no one named \"" + name + "\" is on this sheet.");
         }

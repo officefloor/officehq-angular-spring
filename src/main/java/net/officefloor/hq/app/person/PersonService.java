@@ -29,6 +29,8 @@ import org.springframework.web.server.ResponseStatusException;
  * person, and stop watching them; each user's watching is their own. A person may have their own
  * terms, in days; a claim's due-by takes them before the terms of the person's grade and the sheet's.
  * A person may have a contact (arriving trimmed and lower-cased, null for none), unique on the sheet.
+ * A person may have aliases (arriving trimmed), sharing the names' uniqueness: an alias equals no name
+ * or alias on the sheet, and no name equals an alias.
  */
 @Service
 public class PersonService {
@@ -67,7 +69,7 @@ public class PersonService {
         roles.refuseViewer(sheetId, user);
         sheets.load(sheetId, user);
         RollupService.Snapshot before = rollup.snapshot(sheetId);
-        if (people.existsBySheetIdAndNameIgnoreCase(sheetId, name)) {
+        if (people.existsBySheetIdAndNameIgnoreCase(sheetId, name) || people.existsAliasOnSheet(sheetId, name)) {
             throw nameInUse();
         }
         if (contact != null && people.existsBySheetIdAndContact(sheetId, contact)) {
@@ -93,7 +95,7 @@ public class PersonService {
         if (person.getVersion() != version) {
             throw stale();
         }
-        if (people.existsBySheetIdAndNameIgnoreCaseAndIdNot(sheetId, name, id)) {
+        if (people.existsBySheetIdAndNameIgnoreCaseAndIdNot(sheetId, name, id) || people.existsAliasOnSheet(sheetId, name)) {
             throw nameInUse();
         }
         if (contact != null && people.existsBySheetIdAndContactAndIdNot(sheetId, contact, id)) {
@@ -113,6 +115,22 @@ public class PersonService {
                 + (Objects.equals(termsBefore, terms) ? "" : " terms=" + (terms != null ? terms : ""))
                 + (Objects.equals(contactBefore, contact) ? "" : " contact=" + (contact != null ? contact : "")));
         rollup.recordChanges(sheetId, user, before);
+        return saved;
+    }
+
+    /** Give the person an alias; refused (409) when it equals any name or alias on the sheet. */
+    @Transactional
+    public Person addAlias(String sheetId, String user, long id, String alias) {
+        roles.refuseViewer(sheetId, user);
+        Person person = people.lockByIdAndSheetId(id, sheetId)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "No such person on this sheet."));
+        if (people.existsBySheetIdAndNameIgnoreCase(sheetId, alias) || people.existsAliasOnSheet(sheetId, alias)) {
+            throw nameInUse();
+        }
+        person.addAlias(alias);
+        Person saved = save(person);
+        audit.recordOnCommit("PERSON_ALIAS_ADDED sheet=" + sheetId + " by=" + user + " name=" + saved.getName()
+                + " alias=" + alias);
         return saved;
     }
 

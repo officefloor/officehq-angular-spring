@@ -34,6 +34,10 @@ public class PersonController {
             @Min(0) Integer terms, @Size(max = 200) String contact) {
     }
 
+    public record AddAliasRequest(@NotBlank @Size(max = 100) String sheet,
+            @NotBlank @Size(max = 100) String user, @NotNull Long id, @NotBlank @Size(max = 200) String alias) {
+    }
+
     public record BulkGradeRequest(@NotBlank @Size(max = 100) String sheet,
             @NotBlank @Size(max = 100) String user, @NotEmpty List<@NotNull Long> ids,
             @NotNull @Pattern(regexp = "[ABC]") String grade, LocalDate from) {
@@ -74,9 +78,10 @@ public class PersonController {
     public record HoldResponse(LocalDate from, LocalDate to) {
     }
 
-    /** A person, with every grade recorded for them, the one from the beginning of time first, their own terms or null, and their contact or null. */
+    /** A person, with every grade recorded for them, the one from the beginning of time first, their own terms or null, their contact or null, and their aliases sorted as names are compared. */
     public record PersonResponse(long id, String name, List<GradeResponse> grades, long version, boolean retired,
-            LocalDate retiredFrom, boolean held, List<HoldResponse> holds, Integer terms, String contact) {
+            LocalDate retiredFrom, boolean held, List<HoldResponse> holds, Integer terms, String contact,
+            List<String> aliases) {
     }
 
     public static PersonResponse response(Person person) {
@@ -85,7 +90,7 @@ public class PersonController {
         return new PersonResponse(person.getId(), person.getName(), grades, person.getVersion(),
                 person.isRetired(), person.getRetiredFrom(), person.isHeld(),
                 person.getHolds().stream().map(h -> new HoldResponse(h.getFromDate(), h.getToDate())).toList(),
-                person.getTerms(), person.getContact());
+                person.getTerms(), person.getContact(), person.getAliases());
     }
 
     /** A contact as stored: trimmed and lower-cased; null when blank. */
@@ -115,6 +120,11 @@ public class PersonController {
     public PersonResponse update(@Valid @RequestBody UpdatePersonRequest req) {
         return response(service.update(req.sheet().trim(), req.user().trim(), req.id(), req.version(), req.name().trim(),
                 req.grade(), req.gradeFrom(), req.terms(), contact(req.contact())));
+    }
+
+    @PostMapping("/aliases/add")
+    public PersonResponse addAlias(@Valid @RequestBody AddAliasRequest req) {
+        return response(service.addAlias(req.sheet().trim(), req.user().trim(), req.id(), req.alias().trim()));
     }
 
     @PostMapping("/bulk-grade")

@@ -567,8 +567,10 @@ export class PersonClaims {
     return overdue(c, this.session.today(), graceOn(this.graces(), gradeOn(this.grades(), c.date), c.date));
   }
 
+  /** Whether the claim shows as deferred: its deferral date not yet reached, a voided claim keeping its deferral. */
   protected deferredOf(c: Claim): boolean {
-    return deferred(c, this.session.today());
+    const today = this.session.today();
+    return c.status === 'VOID' ? c.deferredUntil !== null && today !== null && today < c.deferredUntil : deferred(c, today);
   }
 
   /** The name of the period whose dates contain the claim's due-by; blank when none does. */

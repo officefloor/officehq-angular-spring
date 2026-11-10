@@ -24,6 +24,10 @@ import { VoidReasons as VoidReasonList } from '../../core/void-reasons';
 // claim's due-by is fixed by the server when it is created, from these before the grade's or sheet's.
 // A person may have a contact (blank for none), stored trimmed and lower-cased and shown on the row;
 // a contact another person on the sheet already has is refused.
+// A person may have aliases, added one at a time from their row and shown sorted as names are compared
+// (without regard to case), comma and space separated. An alias shares the names' uniqueness: one equal
+// to any name or alias on the sheet is refused, as is a name equal to an alias. The quick-add bar and
+// the paste box find a person by an alias as well as by the name.
 // The editor remembers the version of the person it opened; if someone else has saved the person
 // since, the save is refused and the form is refilled with the values the store holds now.
 // Each row shows what the person has claimed and lists their claims; the sheet's claimed-total
@@ -99,6 +103,8 @@ interface Person {
   terms: number | null;
   /** The person's contact, trimmed and lower-cased, or null when they have none. */
   contact: string | null;
+  /** The person's aliases, sorted as names are compared. */
+  aliases: string[];
 }
 
 /** One of a person's holds: from its from-date to its to-date (null: open-ended), both inclusive. */
@@ -419,6 +425,7 @@ const SUMMARY_STATUSES = ['DRAFT', 'OPEN', 'PENDING', 'SETTLED', 'VOID'] as cons
             <th scope="col">Statements</th>
             <th scope="col">Retired</th>
             <th scope="col">On hold</th>
+            <th scope="col">Aliases</th>
             <th scope="col">Patrons</th>
             <th scope="col">Watched</th>
             <th scope="col">Claims</th>
@@ -472,6 +479,25 @@ const SUMMARY_STATUSES = ['DRAFT', 'OPEN', 'PENDING', 'SETTLED', 'VOID'] as cons
                     <li data-testid="person-hold-line">{{ h.from }} to {{ h.to ?? 'open' }}</li>
                   }
                 </ul>
+              </td>
+              <td>
+                <span data-testid="person-aliases">{{ p.aliases.join(', ') }}</span>
+                <label [for]="'person-alias-input-' + p.id" class="visually-hidden">Alias for {{ p.name }}</label>
+                <input
+                  type="text"
+                  [id]="'person-alias-input-' + p.id"
+                  data-testid="person-alias-input"
+                  [value]="aliasInputs().get(p.id) ?? ''"
+                  (input)="setAliasInput(p.id, $any($event.target).value)"
+                />
+                <button
+                  type="button"
+                  data-testid="person-alias-add"
+                  [attr.aria-label]="'Add alias for ' + p.name"
+                  (click)="addAlias(p)"
+                >
+                  Add alias
+                </button>
               </td>
               <td>
                 <span data-testid="person-patrons">{{ patronNamesOf(p.id) }}</span>
@@ -628,6 +654,8 @@ export class People {
   );
   /** The retire-from date typed on each person's row, by person id. */
   protected readonly retireDates = signal<ReadonlyMap<number, string>>(new Map());
+  /** The alias typed on each person's row, by person id. */
+  protected readonly aliasInputs = signal<ReadonlyMap<number, string>>(new Map());
   /** The hold from- and to-dates typed on each person's row, by person id. */
   protected readonly holdFroms = signal<ReadonlyMap<number, string>>(new Map());
   /** The date each person's next statement is taken as of, by person id; blank for now. */
@@ -881,6 +909,7 @@ export class People {
       this.watched.set(new Set());
       this.retireDates.set(new Map());
       this.holdFroms.set(new Map());
+      this.aliasInputs.set(new Map());
       this.statementAsOfs.set(new Map());
       this.holdTos.set(new Map());
       this.reset();
@@ -1137,6 +1166,41 @@ export class People {
     } catch {
       if (this.session.sheet() !== sheet) return;
       this.rowErrors.update((m) => new Map(m).set(p.id, 'Could not retire ' + p.name + '.'));
+    }
+  }
+
+  protected setAliasInput(id: number, alias: string): void {
+    this.aliasInputs.update((m) => new Map(m).set(id, alias));
+    this.clearRowError(id);
+  }
+
+  /** Give the person the alias typed on their row. */
+  protected async addAlias(p: Person): Promise<void> {
+    this.clearRowError(p.id);
+    const sheet = this.session.sheet();
+    const alias = (this.aliasInputs().get(p.id) ?? '').trim();
+    if (alias === '') {
+      this.rowErrors.update((m) => new Map(m).set(p.id, 'Enter an alias for ' + p.name + '.'));
+      return;
+    }
+    try {
+      const saved = await firstValueFrom(
+        this.http.post<Person>('/api/people/aliases/add', { sheet, user: this.session.user(), id: p.id, alias }),
+      );
+      if (this.session.sheet() !== sheet) return;
+      this.people.update((list) => list.map((x) => (x.id === saved.id ? saved : x)));
+      this.aliasInputs.update((m) => new Map(m).set(p.id, ''));
+      if (this.editingId() === saved.id && this.editingVersion === p.version) this.editingVersion = saved.version;
+    } catch (e) {
+      if (this.session.sheet() !== sheet) return;
+      this.rowErrors.update((m) =>
+        new Map(m).set(
+          p.id,
+          e instanceof HttpErrorResponse && e.status === 409
+            ? 'That alias is already a name or alias on this sheet.'
+            : 'Could not add an alias for ' + p.name + '.',
+        ),
+      );
     }
   }
 

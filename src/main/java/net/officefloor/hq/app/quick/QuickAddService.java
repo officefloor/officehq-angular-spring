@@ -13,7 +13,7 @@ import org.springframework.transaction.annotation.Transactional;
 
 /**
  * Quick-add: a DRAFT claim of an amount, dated the sheet's today with an empty note, for the person
- * of a name (compared without regard to case), adding the person with grade A first when the name is
+ * of a name or alias (compared without regard to case), adding the person with grade A first when the name is
  * not on the sheet. It is one change: a refused claim leaves no new person behind and writes nothing.
  */
 @Service
@@ -41,7 +41,7 @@ public class QuickAddService {
     @Transactional
     public Added add(String sheetId, String user, String name, BigDecimal amount) {
         roles.refuseViewer(sheetId, user);
-        Person existing = people.findBySheetIdAndNameIgnoreCase(sheetId, name).orElse(null);
+        Person existing = people.findBySheetIdAndNameOrAlias(sheetId, name).orElse(null);
         Person person = existing != null ? existing : personService.add(sheetId, user, name, GRADE, null);
         Claim claim = claimService.add(sheetId, user, person.getId(), amount, null, "", null, null, List.of());
         return new Added(person, existing == null, claim);

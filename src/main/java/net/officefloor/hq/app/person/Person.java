@@ -14,7 +14,10 @@ import jakarta.persistence.Version;
 import java.time.LocalDate;
 import java.util.ArrayList;
 import java.util.Comparator;
+import java.util.HashSet;
 import java.util.List;
+import java.util.Locale;
+import java.util.Set;
 import net.officefloor.hq.app.claim.Claim;
 import net.officefloor.hq.app.claim.ClaimStatus;
 
@@ -63,6 +66,12 @@ public class Person {
     @ElementCollection(fetch = FetchType.EAGER)
     @CollectionTable(name = "person_hold", joinColumns = @JoinColumn(name = "person_id"))
     private List<DatedHold> holds = new ArrayList<>();
+
+    /** The person's aliases, trimmed; each shares the names' uniqueness on the sheet. */
+    @ElementCollection(fetch = FetchType.EAGER)
+    @CollectionTable(name = "person_alias", joinColumns = @JoinColumn(name = "person_id"))
+    @Column(name = "alias", nullable = false)
+    private Set<String> aliases = new HashSet<>();
 
     /** Bumped on every save; an edit must carry the version it was made from. */
     @Version
@@ -176,6 +185,16 @@ public class Person {
     }
 
     /** The holds recorded, by from-date. */
+    /** The person's aliases, sorted as names are compared: without regard to case. */
+    public List<String> getAliases() {
+        return aliases.stream().sorted(Comparator.comparing((String a) -> a.toLowerCase(Locale.ROOT))
+                .thenComparing(Comparator.naturalOrder())).toList();
+    }
+
+    public void addAlias(String alias) {
+        aliases.add(alias);
+    }
+
     public List<DatedHold> getHolds() {
         return holds.stream().sorted(Comparator.comparing(DatedHold::getFromDate)
                 .thenComparing(DatedHold::getToDate, Comparator.nullsLast(Comparator.naturalOrder()))).toList();

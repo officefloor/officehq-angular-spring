@@ -32,4 +32,13 @@ public interface PersonRepository extends JpaRepository<Person, Long> {
 
     /** The person on the sheet with this name, compared without regard to case. */
     Optional<Person> findBySheetIdAndNameIgnoreCase(String sheetId, String name);
+
+    /** Whether a person on the sheet has this alias, compared without regard to case. */
+    @Query("select count(p) > 0 from Person p join p.aliases a where p.sheetId = :sheetId and lower(a) = lower(:alias)")
+    boolean existsAliasOnSheet(String sheetId, String alias);
+
+    /** The person on the sheet with this name or alias, compared without regard to case. */
+    @Query("select distinct p from Person p left join p.aliases a where p.sheetId = :sheetId"
+            + " and (lower(p.name) = lower(:name) or lower(a) = lower(:name))")
+    Optional<Person> findBySheetIdAndNameOrAlias(String sheetId, String name);
 }
