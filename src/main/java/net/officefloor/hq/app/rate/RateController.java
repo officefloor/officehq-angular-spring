@@ -35,6 +35,14 @@ public class RateController {
             LocalDate from, LocalDate to) {
     }
 
+    public record ImportRatesRequest(@NotBlank @Size(max = 100) String sheet, @NotBlank @Size(max = 100) String user,
+            @NotNull @Size(max = 100000) String text) {
+    }
+
+    /** What an import set: how many rates, and each one set, in line order. */
+    public record ImportRatesResponse(int set, List<RateResponse> rates) {
+    }
+
     public record PreviewRateRequest(@NotBlank @Size(max = 100) String sheet,
             @NotNull @Pattern(regexp = "[ABC]") String grade, @NotNull @Pattern(regexp = PCT) String pct) {
     }
@@ -52,10 +60,12 @@ public class RateController {
     }
 
     private final RateService service;
+    private final RateImportService imports;
     private final ClaimService claims;
 
-    public RateController(RateService service, ClaimService claims) {
+    public RateController(RateService service, RateImportService imports, ClaimService claims) {
         this.service = service;
+        this.imports = imports;
         this.claims = claims;
     }
 
@@ -79,5 +89,11 @@ public class RateController {
     public RateResponse set(@Valid @RequestBody SetRateRequest req) {
         return response(service.set(req.sheet().trim(), req.user().trim(), req.grade(), req.from(), req.to(),
                 new BigDecimal(req.pct()).setScale(2, RoundingMode.UNNECESSARY)), 0);
+    }
+
+    @PostMapping("/import")
+    public ImportRatesResponse importRates(@Valid @RequestBody ImportRatesRequest req) {
+        List<Rate> set = imports.importRates(req.sheet().trim(), req.user().trim(), req.text());
+        return new ImportRatesResponse(set.size(), set.stream().map(rate -> response(rate, 0)).toList());
     }
 }

@@ -1,4 +1,4 @@
-import { HttpClient } from '@angular/common/http';
+import { HttpClient, HttpErrorResponse } from '@angular/common/http';
 import { Component, computed, effect, inject, model, signal, untracked } from '@angular/core';
 import { firstValueFrom } from 'rxjs';
 import { Session } from '../../core/session';
@@ -246,6 +246,23 @@ export function dueText(c: number | null): string {
           <p role="alert" data-testid="rate-form-error">{{ err }}</p>
         }
       </form>
+      <form aria-label="Import rates" (submit)="importRates($event)">
+        <label for="import-rates">Import rates, one grade,rate,from,to per line</label>
+        <textarea
+          id="import-rates"
+          data-testid="import-rates"
+          rows="4"
+          [value]="importText()"
+          (input)="importText.set($any($event.target).value); importError.set(null)"
+        ></textarea>
+        <button type="submit" data-testid="import-rates-submit">Import rates</button>
+        @if (importSet() !== null) {
+          <p>Set <strong data-testid="import-rates-set">{{ importSet() }}</strong></p>
+        }
+        @if (importError(); as err) {
+          <p role="alert" data-testid="import-rates-error">{{ err }}</p>
+        }
+      </form>
       <form aria-label="Rate preview" (submit)="preview($event)">
         <label for="rate-preview-grade">Preview grade</label>
         <select
@@ -340,6 +357,12 @@ export class Rates {
   protected readonly fromInput = signal('');
   protected readonly toInput = signal('');
   protected readonly error = signal<string | null>(null);
+  protected readonly importText = signal('');
+  /** How many rates the last import set; cleared while the next one runs. */
+  protected readonly importSet = signal<number | null>(null);
+  protected readonly importError = signal<string | null>(null);
+  /** Whether an import is waiting for its answer: a second one meanwhile is ignored. */
+  private importing = false;
   protected readonly previewGrade = signal<string>('A');
   protected readonly previewPct = signal('');
   /** The last preview's answer: how many claims would change and the sum of the differences. */
@@ -361,6 +384,9 @@ export class Rates {
       this.fromInput.set('');
       this.toInput.set('');
       this.error.set(null);
+      this.importText.set('');
+      this.importSet.set(null);
+      this.importError.set(null);
       this.previewGrade.set('A');
       this.previewPct.set('');
       this.clearPreview();
@@ -384,6 +410,33 @@ export class Rates {
       if (this.session.sheet() === sheet) this.rates.set(list);
     } catch {
       this.error.set('Could not read the rates on this sheet.');
+    }
+  }
+
+  /** Set every pasted line's rate, or none when any line breaks the rate form's rules. */
+  protected async importRates(event: Event): Promise<void> {
+    event.preventDefault();
+    if (this.importing) return;
+    this.importSet.set(null);
+    this.importError.set(null);
+    const sheet = this.session.sheet();
+    this.importing = true;
+    try {
+      const res = await firstValueFrom(
+        this.http.post<{ set: number; rates: Rate[] }>('/api/rates/import', {
+          sheet,
+          user: this.session.user(),
+          text: this.importText(),
+        }),
+      );
+      if (!sheet || this.session.sheet() !== sheet) return;
+      await this.fetch(sheet);
+      this.importSet.set(res.set);
+    } catch (e) {
+      const reason = e instanceof HttpErrorResponse && typeof e.error?.message === 'string' ? e.error.message : '';
+      this.importError.set(reason || 'Could not import these rates.');
+    } finally {
+      this.importing = false;
     }
   }
 
