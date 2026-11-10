@@ -83,6 +83,8 @@ export interface Claim {
   splitFrom: string | null;
   /** The user whose open editor locks the claim for everyone else; null when unlocked. */
   lockedBy: string | null;
+  /** Whether the claim was added while the period its date falls in was soft-closed. */
+  lateEntry: boolean;
 }
 
 /** One line of a claim's status log. */
@@ -288,6 +290,7 @@ export function money(c: number): string {
           <span>Until <span data-testid="claim-deferred-until">{{ c.deferredUntil ?? '' }}</span></span>
           <span>Proofs <span data-testid="claim-proofs">{{ c.proofs }}</span></span>
           <span>Split from <span data-testid="claim-split-from">{{ c.splitFrom ?? '' }}</span></span>
+          <span>Late entry <span data-testid="claim-late-entry">{{ c.lateEntry ? 'yes' : 'no' }}</span></span>
           <ol [attr.aria-label]="'Status log of claim of ' + c.amount + ' on ' + c.date">
             @for (l of c.log; track $index) {
               <li data-testid="claim-log-line">{{ l.status }} by {{ l.by }} on {{ l.date }} due={{ l.due }}</li>

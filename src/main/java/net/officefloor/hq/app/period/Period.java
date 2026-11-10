@@ -18,7 +18,8 @@ import java.util.Map;
 
 /**
  * A period on a sheet: a name and a from and to date, both inclusive. A closed period keeps the
- * due-total it had when it was closed, and each person's due-total for it at that moment.
+ * due-total it had when it was closed, and each person's due-total for it at that moment; so does a
+ * soft-closed one, whose claims can still change.
  */
 @Entity
 @Table(name = "period")
@@ -42,6 +43,10 @@ public class Period {
 
     @Column(name = "closed", nullable = false)
     private boolean closed;
+
+    /** Soft-closed: the figures are fixed as for a closed period, but its claims can still change. */
+    @Column(name = "soft_closed", nullable = false)
+    private boolean softClosed;
 
     @Column(name = "closed_due")
     private BigDecimal closedDue;
@@ -91,6 +96,10 @@ public class Period {
         return closed;
     }
 
+    public boolean isSoftClosed() {
+        return softClosed;
+    }
+
     public BigDecimal getClosedDue() {
         return closedDue;
     }
@@ -109,7 +118,21 @@ public class Period {
      * their sum.
      */
     public void close(Map<Long, BigDecimal> dues) {
+        fix(dues);
         this.closed = true;
+        this.softClosed = false;
+    }
+
+    /**
+     * Soft-close the period, fixing its figures as {@link #close} does while its claims can still
+     * change.
+     */
+    public void softClose(Map<Long, BigDecimal> dues) {
+        fix(dues);
+        this.softClosed = true;
+    }
+
+    private void fix(Map<Long, BigDecimal> dues) {
         this.closedDues.clear();
         this.closedDues.putAll(dues);
         this.closedDue = dues.values().stream().reduce(BigDecimal.ZERO.setScale(2), BigDecimal::add);
@@ -118,6 +141,7 @@ public class Period {
     /** Reopen the period: its due-total is live again. */
     public void reopen() {
         this.closed = false;
+        this.softClosed = false;
         this.closedDue = null;
         this.closedDues.clear();
     }

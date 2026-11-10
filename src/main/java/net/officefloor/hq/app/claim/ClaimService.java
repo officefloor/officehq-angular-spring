@@ -147,9 +147,13 @@ public class ClaimService {
         RollupService.Snapshot before = rollup.snapshot(sheetId);
         Claim claim = new Claim(sheetId, personId, amount, dated,
                 dueBy(sheetId, person, dated), note, corrected);
+        claim.setLateEntry(periods.isSoftClosed(sheetId, dated));
         logStatus(sheetId, user, person, claim);
         Claim added = claims.saveAndFlush(claim);
         audit.recordOnCommit(record("CLAIM_ADDED", sheetId, user, person, added));
+        if (added.isLateEntry()) {
+            audit.recordOnCommit(record("LATE_ENTRY", sheetId, user, person, added));
+        }
         rollup.recordChanges(sheetId, user, before);
         return added;
     }

@@ -90,7 +90,8 @@ public class ClaimController {
     public record ClaimResponse(long id, long personId, String amount, LocalDate date, String note,
             ClaimStatus status, String number, String settledDue, String openedBy,
             boolean stated, String statedDue, String corrects, LocalDate dueBy, List<ClaimLogLine> log,
-            LocalDate deferredUntil, int proofs, String splitFrom, String lockedBy) {
+            LocalDate deferredUntil, int proofs, String splitFrom, String lockedBy,
+            boolean lateEntry) {
     }
 
     /** One line of a claim's status log, oldest first. */
@@ -109,7 +110,8 @@ public class ClaimController {
                 claim.getCorrects(), claim.getDueBy(),
                 claim.getLog().stream().map(l -> new ClaimLogLine(l.getStatus(), l.getBy(), l.getDate(), l.getDue()))
                         .toList(),
-                claim.getDeferredUntil(), claim.getProofs(), claim.getSplitFrom(), claim.getLockedBy());
+                claim.getDeferredUntil(), claim.getProofs(), claim.getSplitFrom(), claim.getLockedBy(),
+                claim.isLateEntry());
     }
 
     public static BigDecimal amount(String amount) {

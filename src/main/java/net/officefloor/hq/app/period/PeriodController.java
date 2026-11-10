@@ -15,7 +15,7 @@ import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 
-/** Listing, adding, generating, closing and reopening the periods on a sheet. */
+/** Listing, adding, generating, closing, soft-closing and reopening the periods on a sheet. */
 @RestController
 @RequestMapping("/api/periods")
 public class PeriodController {
@@ -42,15 +42,15 @@ public class PeriodController {
      * person id); null while it is open.
      */
     public record PeriodResponse(long id, String name, LocalDate from, LocalDate to, boolean closed,
-            String closedDue, Map<String, String> closedDues) {
+            boolean softClosed, String closedDue, Map<String, String> closedDues) {
     }
 
     private static PeriodResponse response(Period period) {
         return new PeriodResponse(period.getId(), period.getName(), period.getFromDate(), period.getToDate(),
-                period.isClosed(),
+                period.isClosed(), period.isSoftClosed(),
                 period.getClosedDue() == null ? null
                         : period.getClosedDue().setScale(2, RoundingMode.UNNECESSARY).toPlainString(),
-                period.isClosed() ? closedDues(period) : null);
+                period.isClosed() || period.isSoftClosed() ? closedDues(period) : null);
     }
 
     private static Map<String, String> closedDues(Period period) {
@@ -86,6 +86,11 @@ public class PeriodController {
     @PostMapping("/reopen")
     public PeriodResponse reopen(@Valid @RequestBody ClosePeriodRequest req) {
         return response(service.reopen(req.sheet().trim(), req.user().trim(), req.id()));
+    }
+
+    @PostMapping("/soft-close")
+    public PeriodResponse softClose(@Valid @RequestBody ClosePeriodRequest req) {
+        return response(service.softClose(req.sheet().trim(), req.user().trim(), req.id()));
     }
 
     @PostMapping("/close")

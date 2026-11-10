@@ -141,6 +141,16 @@ public class SheetService {
         return saved;
     }
 
+    /** Soft-close an open period, fixing its due-total now, and record it. The caller holds the sheet. */
+    @Transactional
+    public Period softClosePeriod(String id, String user, Period period) {
+        period.softClose(rollup.dueBetweenByPerson(id, period.getFromDate(), period.getToDate()));
+        Period saved = periods.saveAndFlush(period);
+        audit.recordOnCommit("PERIOD_SOFT_CLOSED sheet=" + id + " by=" + user + " period=" + saved.getName()
+                + " total=" + saved.getClosedDue().setScale(2, RoundingMode.UNNECESSARY).toPlainString());
+        return saved;
+    }
+
     /**
      * Change the sheet's today. With grace days set, every open period whose to-date plus the grace
      * days is before the new today is then closed, in order of their to-dates. A new today releases

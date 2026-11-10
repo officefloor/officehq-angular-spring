@@ -13,6 +13,9 @@ import { money } from '../claims/claims';
 // is the sheet's permission matrix (see the settings); by default a steward can reopen a closed
 // period, making its due-total live again. Each person's row shows their own due-total for every
 // period, fixed the same way while it is closed; a period's due-total is the sum of these.
+// A period can instead be soft-closed (by whoever may close it): its due-total and each person's
+// are fixed as for a closed period, but claims dated inside it can still change; a claim added then
+// is a late entry. A soft-closed period can be closed (fixing its figures afresh) or reopened.
 // An open period counts a claim by the status it had at the end of its to-date, as the claim's status
 // log records it (a claim with no status by then does not count), at its figure as shown now.
 export interface Period {
@@ -21,7 +24,9 @@ export interface Period {
   from: string;
   to: string;
   closed: boolean;
-  /** The due-total fixed when the period was closed; null while it is open. */
+  /** Whether the period is soft-closed: its figures fixed, its claims still open to change. */
+  softClosed: boolean;
+  /** The due-total fixed when the period was closed or soft-closed; null while it is open. */
   closedDue: string | null;
   /** Each person's due-total for the period fixed when it was closed, by person id; null while open. */
   closedDues: Record<string, string> | null;
@@ -52,14 +57,14 @@ export function periodOn(periods: readonly Period[], date: string): Period | und
 /** A closed period's due-total fixed when it was closed; an open period's, the due of the claims
  *  whose date falls in it that counted at the end of its to-date. */
 export function periodDueTotal(p: Period, dues: readonly DatedDue[]): string {
-  if (p.closed && p.closedDue !== null) return p.closedDue;
+  if ((p.closed || p.softClosed) && p.closedDue !== null) return p.closedDue;
   return money(dues.reduce((sum, d) => sum + (inPeriod(p, d) ? d.cents : 0), 0));
 }
 
 /** A person's due-total for a period: for a closed period, the one fixed when it was closed (0.00
  *  for a person added since); for an open one, the due of their claims that counted in it at its end. */
 export function personPeriodDueTotal(p: Period, personId: number, dues: readonly DatedDue[]): string {
-  if (p.closed && p.closedDues !== null) return p.closedDues[String(personId)] ?? '0.00';
+  if ((p.closed || p.softClosed) && p.closedDues !== null) return p.closedDues[String(personId)] ?? '0.00';
   return money(
     dues.reduce((sum, d) => sum + (d.personId === personId && inPeriod(p, d) ? d.cents : 0), 0),
   );
@@ -147,7 +152,7 @@ export function inClosedPeriod(periods: readonly Period[], date: string): boolea
               <td data-testid="period-from">{{ p.from }}</td>
               <td data-testid="period-to">{{ p.to }}</td>
               <td data-testid="period-due-total">{{ dueTotalOf(p) }}</td>
-              <td data-testid="period-closed">{{ p.closed ? 'yes' : 'no' }}</td>
+              <td data-testid="period-closed">{{ p.closed ? 'yes' : p.softClosed ? 'soft' : 'no' }}</td>
               <td>
                 <button
                   type="button"
@@ -156,6 +161,14 @@ export function inClosedPeriod(periods: readonly Period[], date: string): boolea
                   (click)="close(p)"
                 >
                   Close
+                </button>
+                <button
+                  type="button"
+                  data-testid="period-soft-close"
+                  [attr.aria-label]="'Soft-close period ' + p.name"
+                  (click)="softClose(p)"
+                >
+                  Soft-close
                 </button>
                 <button
                   type="button"
@@ -236,7 +249,19 @@ export class Periods {
     );
   }
 
-  /** Reopen a closed period, making its due-total live again; the server refuses a role the
+  /** Soft-close a period, fixing its figures while its claims can still change; the server refuses
+   *  a role the permission matrix does not allow to close, and a period already closed or soft-closed. */
+  protected softClose(p: Period): Promise<void> {
+    return this.act(p, 'soft-close', (status) =>
+      status === 403
+        ? 'Your role may not close period ' + p.name + '.'
+        : status === 409
+          ? 'Period ' + p.name + ' is already closed.'
+          : 'Could not soft-close period ' + p.name + '.',
+    );
+  }
+
+  /** Reopen a closed or soft-closed period, making its due-total live again; the server refuses a role the
    *  permission matrix does not allow, and a period that is not closed. */
   protected reopen(p: Period): Promise<void> {
     return this.act(p, 'reopen', (status) =>

@@ -19,7 +19,8 @@ import org.springframework.web.server.ResponseStatusException;
  * case) and a from and to date, both inclusive; no two periods on a sheet overlap. A period can be
  * closed once: closing fixes its due-total at that moment, and no claim dated inside a closed
  * period can be added, edited, opened, settled or voided. A steward can reopen a closed period, which
- * makes its due-total live again. With grace days set, a change of the sheet's today closes the
+ * makes its due-total live again. A period can instead be soft-closed: its figures are fixed in the
+ * same way but its claims can still change; it can then be closed (fixing them afresh) or reopened. With grace days set, a change of the sheet's today closes the
  * periods past them (see {@link SheetService#setToday}).
  */
 @Service
@@ -119,7 +120,26 @@ public class PeriodService {
     }
 
     /**
-     * Reopen a closed period, making its due-total live again; refused (403) for a role the
+     * Soft-close a period, fixing its due-total and each person's now while claims dated inside it
+     * can still change; refused (403) for a role the permission matrix does not allow to close and
+     * (409) when it is already closed or soft-closed.
+     */
+    @Transactional
+    public Period softClose(String sheetId, String user, long id) {
+        roles.refuseUnlessPermitted(sheetId, user, "close");
+        // hold the sheet so no claim changes while the period's due-total is fixed
+        sheetRows.findLockedById(sheetId)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "No such sheet."));
+        Period period = periods.findByIdAndSheetId(id, sheetId)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "No such period on this sheet."));
+        if (period.isClosed() || period.isSoftClosed()) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT, "That period is already closed.");
+        }
+        return sheets.softClosePeriod(sheetId, user, period);
+    }
+
+    /**
+     * Reopen a closed or soft-closed period, making its due-total live again; refused (403) for a role the
      * permission matrix does not allow and (409) when the period is not closed.
      */
     @Transactional
@@ -129,7 +149,7 @@ public class PeriodService {
         Period period = periods.findByIdAndSheetId(id, sheetId)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "No such period on this sheet."));
         roles.refuseUnlessPermitted(sheetId, user, "reopen");
-        if (!period.isClosed()) {
+        if (!period.isClosed() && !period.isSoftClosed()) {
             throw new ResponseStatusException(HttpStatus.CONFLICT, "That period is not closed.");
         }
         period.reopen();
@@ -156,6 +176,12 @@ public class PeriodService {
         sheetRows.findLockedById(sheetId);
         return periods.existsBySheetIdAndClosedTrueAndFromDateLessThanEqualAndToDateGreaterThanEqual(sheetId, date,
                 date);
+    }
+
+    /** Whether a claim dated on this day lies inside a soft-closed period. */
+    public boolean isSoftClosed(String sheetId, LocalDate date) {
+        return periods.existsBySheetIdAndSoftClosedTrueAndFromDateLessThanEqualAndToDateGreaterThanEqual(sheetId,
+                date, date);
     }
 
     /** The name of the period the day falls in; blank when it falls in none. */
