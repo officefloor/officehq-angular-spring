@@ -142,6 +142,10 @@ public class Sheet {
     @Column(name = "parent_id")
     private String parentId;
 
+    /** The id of the sheet this one was cloned from; null when it was not cloned. Not dated. */
+    @Column(name = "source_id")
+    private String sourceId;
+
     /** The last number given in the sheet's X sequence, to claims opened under numbering per period in no period. */
     @Column(name = "last_unperiod_claim_number", nullable = false)
     private int lastUnperiodClaimNumber;
@@ -228,6 +232,7 @@ public class Sheet {
         then.alertThreshold = alertThreshold;
         then.fiscalStartMonth = fiscalStartMonth;
         then.parentId = parentId;
+        then.sourceId = sourceId;
         then.permissions.putAll(permissions);
         then.archived = archived;
         return then;
@@ -447,6 +452,14 @@ public class Sheet {
 
     public void setParentId(String parentId) {
         this.parentId = parentId;
+    }
+
+    /**
+     * The id of the sheet this one was cloned from, whose rates (then those of its parents and source) stand in
+     * for a grade with no rate in force here nor on this sheet's parents; null when it was not cloned. Not dated.
+     */
+    public String getSourceId() {
+        return sourceId;
     }
 
     /** The pot cut by each balanced pool that is a member of none; null for none. Not dated. */

@@ -35,7 +35,9 @@ import org.springframework.web.server.ResponseStatusException;
  * the clone's own numbering, in the order the claims were opened (by the sheet's today when each was
  * opened, then by the order they were added to the clone: by person in list order, each person's in
  * the order they were listed). Statements are not copied, so no figure is bound by one; nor are
- * watches, delegations or the sheet's history.
+ * watches, delegations or the sheet's history. The clone keeps the id of the sheet it was cloned from, whose
+ * rates stand in for a grade with none in force on the clone nor its parents (see
+ * {@link net.officefloor.hq.app.rate.RateChain}).
  *
  * <p>Rows are copied column by column as the schema has them, so a column added later is carried
  * without change here; only the columns that need another value are named.
@@ -92,7 +94,7 @@ public class SheetCloneService {
 
         copy("SHEET", "id = ?", sheetId, "", Map.of("ID", v -> toSheetId, "CREATED_BY", v -> user,
                 "CREATED_AT", v -> Timestamp.from(Instant.now()), "LAST_CLAIM_NUMBER", v -> 0,
-                "LAST_UNPERIOD_CLAIM_NUMBER", v -> 0, "ARCHIVED", v -> false));
+                "LAST_UNPERIOD_CLAIM_NUMBER", v -> 0, "ARCHIVED", v -> false, "SOURCE_ID", v -> sheetId));
         UnaryOperator<Object> onClone = v -> toSheetId;
         for (String table : SHEET_TABLES) {
             copy(table, "sheet_id = ?", sheetId, order(table), Map.of("SHEET_ID", onClone));

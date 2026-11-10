@@ -12,7 +12,8 @@ import org.springframework.stereotype.Service;
 
 /**
  * The rates a sheet works out what is due from: its own, then its parent's, then the parent's parent,
- * up to {@link #LEVELS} levels up. A grade with no rate in force on a date on a sheet takes the
+ * up to {@link #LEVELS} levels up, then (for a sheet that was cloned) those of the sheet it was cloned from
+ * and so on up that sheet's parents and source. A grade with no rate in force on a date on a sheet takes the
  * rate in force for it on that date on the nearest ancestor that has one.
  */
 @Service
@@ -31,18 +32,27 @@ public class RateChain {
         this.rateLog = rateLog;
     }
 
-    /** The sheet's id, then its parent's, and so on, up to {@link #LEVELS} levels up. */
+    /**
+     * The sheet's id, then its parent's, and so on, up to {@link #LEVELS} levels up; then, for a sheet that was
+     * cloned, the lineage of the sheet it was cloned from (its parents, then its own source, and so on). A sheet
+     * already in the lineage is not taken again.
+     */
     public List<String> lineage(String sheetId) {
         List<String> ids = new ArrayList<>();
-        ids.add(sheetId);
-        String at = sheetId;
-        while (ids.size() <= LEVELS) {
-            String parent = sheets.findById(at).map(Sheet::getParentId).orElse(null);
-            if (parent == null || ids.contains(parent)) {
-                break;
+        String from = sheetId;
+        while (from != null && !ids.contains(from)) {
+            ids.add(from);
+            int start = ids.size();
+            String at = from;
+            while (ids.size() - start < LEVELS) {
+                String parent = sheets.findById(at).map(Sheet::getParentId).orElse(null);
+                if (parent == null || ids.contains(parent)) {
+                    break;
+                }
+                ids.add(parent);
+                at = parent;
             }
-            ids.add(parent);
-            at = parent;
+            from = sheets.findById(from).map(Sheet::getSourceId).orElse(null);
         }
         return ids;
     }
