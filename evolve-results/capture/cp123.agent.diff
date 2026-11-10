@@ -1,0 +1,170 @@
+diff --git a/src/main/frontend/src/app/features/people/people.ts b/src/main/frontend/src/app/features/people/people.ts
+index 8e227f87b..da51deacf 100644
+--- a/src/main/frontend/src/app/features/people/people.ts
++++ b/src/main/frontend/src/app/features/people/people.ts
+@@ -408,6 +408,23 @@ const SUMMARY_STATUSES = ['DRAFT', 'OPEN', 'PENDING', 'SETTLED', 'VOID'] as cons
+           <p role="alert" data-testid="person-error">{{ err }}</p>
+         }
+       </form>
++      <form aria-label="Retire selected people" (submit)="bulkRetire($event)">
++        <label for="bulk-retire-date">Retire selected people from</label>
++        <input
++          type="date"
++          id="bulk-retire-date"
++          data-testid="bulk-retire-date"
++          [value]="bulkRetireDate()"
++          (input)="bulkRetireDate.set($any($event.target).value); bulkRetireError.set(null)"
++        />
++        <button type="submit" data-testid="bulk-retire">Retire selected</button>
++        @if (bulkRetired() !== null) {
++          <p>Retired <strong data-testid="bulk-retired">{{ bulkRetired() }}</strong></p>
++        }
++        @if (bulkRetireError(); as err) {
++          <p role="alert" data-testid="person-error">{{ err }}</p>
++        }
++      </form>
+       <p>Claimed in total <strong data-testid="rollup-claimed-total">{{ claimedTotal() }}</strong></p>
+       <p>Due in total <strong data-testid="rollup-due-total">{{ dueTotal() }}</strong></p>
+       <p>Settled in total <strong data-testid="rollup-settled-total">{{ money(settledOpenTotals().settled) }}</strong></p>
+@@ -793,6 +810,11 @@ export class People {
+   /** How many people the last bulk grade changed; cleared while the next one runs. */
+   protected readonly bulkGraded = signal<number | null>(null);
+   protected readonly bulkGradeError = signal<string | null>(null);
++  /** The from-date of the bulk retire; blank for the sheet's today. */
++  protected readonly bulkRetireDate = signal('');
++  /** How many people the last bulk retire retired; cleared while the next one runs. */
++  protected readonly bulkRetired = signal<number | null>(null);
++  protected readonly bulkRetireError = signal<string | null>(null);
+   protected readonly importText = signal('');
+   /** How many people the last import added; cleared while the next one runs. */
+   protected readonly importAdded = signal<number | null>(null);
+@@ -1056,6 +1078,9 @@ export class People {
+       this.bulkGradeFrom.set('');
+       this.bulkGraded.set(null);
+       this.bulkGradeError.set(null);
++      this.bulkRetireDate.set('');
++      this.bulkRetired.set(null);
++      this.bulkRetireError.set(null);
+       this.importText.set('');
+       this.importAdded.set(null);
+       this.importUpdated.set(null);
+@@ -1750,6 +1775,7 @@ export class People {
+       return next;
+     });
+     this.bulkGradeError.set(null);
++    this.bulkRetireError.set(null);
+     this.clearRowError(id);
+   }
+ 
+@@ -1791,6 +1817,43 @@ export class People {
+     }
+   }
+ 
++  /** Retire the selected people from the date (the sheet's today when blank): the server retires
++   *  each, in list order, as the row's retire would; all or none. */
++  protected async bulkRetire(event: Event): Promise<void> {
++    event.preventDefault();
++    this.bulkRetired.set(null);
++    this.bulkRetireError.set(null);
++    const sheet = this.session.sheet();
++    const date = this.bulkRetireDate().trim();
++    const ids = this.people().filter((p) => this.selectedPeople().has(p.id)).map((p) => p.id);
++    if (ids.length === 0) {
++      this.bulkRetireError.set('Select at least one person.');
++      return;
++    }
++    if (date !== '' && !/^\d{4}-\d{2}-\d{2}$/.test(date)) {
++      this.bulkRetireError.set('Enter a date, or leave it blank for the sheet\'s today.');
++      return;
++    }
++    try {
++      const done = await firstValueFrom(
++        this.http.post<{ retired: number; people: Person[] }>('/api/people/bulk-retire', {
++          sheet,
++          user: this.session.user(),
++          ids,
++          date: date || null,
++        }),
++      );
++      if (this.session.sheet() !== sheet) return;
++      const byId = new Map(done.people.map((p) => [p.id, p]));
++      this.people.update((list) => list.map((p) => byId.get(p.id) ?? p));
++      this.selectedPeople.set(new Set());
++      this.bulkRetired.set(done.retired);
++    } catch {
++      if (this.session.sheet() !== sheet) return;
++      this.bulkRetireError.set('Could not retire the selected people.');
++    }
++  }
++
+   /**
+    * Import the pasted people: the server checks every line first, then updates each person a line
+    * names as the person form would edit them, and adds each other as the person form would; all or none.
+diff --git a/src/main/java/net/officefloor/hq/app/person/PersonController.java b/src/main/java/net/officefloor/hq/app/person/PersonController.java
+index 0b0b2e131..1566b2231 100644
+--- a/src/main/java/net/officefloor/hq/app/person/PersonController.java
++++ b/src/main/java/net/officefloor/hq/app/person/PersonController.java
+@@ -68,6 +68,14 @@ public class PersonController {
+     public record BulkGradeResponse(int graded, List<PersonResponse> people) {
+     }
+ 
++    public record BulkRetireRequest(@NotBlank @Size(max = 100) String sheet,
++            @NotBlank @Size(max = 100) String user, @NotEmpty List<@NotNull Long> ids, LocalDate date) {
++    }
++
++    /** How many people were retired, and each as the store now holds them. */
++    public record BulkRetireResponse(int retired, List<PersonResponse> people) {
++    }
++
+     public record RetirePersonRequest(@NotBlank @Size(max = 100) String sheet,
+             @NotBlank @Size(max = 100) String user, @NotNull Long id, LocalDate date) {
+     }
+@@ -197,6 +205,13 @@ public class PersonController {
+         return new BulkGradeResponse(graded.size(), graded);
+     }
+ 
++    @PostMapping("/bulk-retire")
++    public BulkRetireResponse bulkRetire(@Valid @RequestBody BulkRetireRequest req) {
++        List<PersonResponse> retired = service.bulkRetire(req.sheet().trim(), req.user().trim(), req.ids(),
++                req.date()).stream().map(p -> response(req.sheet().trim(), p)).toList();
++        return new BulkRetireResponse(retired.size(), retired);
++    }
++
+     @PostMapping("/retire")
+     public PersonResponse retire(@Valid @RequestBody RetirePersonRequest req) {
+         return response(req.sheet().trim(), service.retire(req.sheet().trim(), req.user().trim(), req.id(), req.date()));
+diff --git a/src/main/java/net/officefloor/hq/app/person/PersonService.java b/src/main/java/net/officefloor/hq/app/person/PersonService.java
+index 1d01cb42e..86f1c921c 100644
+--- a/src/main/java/net/officefloor/hq/app/person/PersonService.java
++++ b/src/main/java/net/officefloor/hq/app/person/PersonService.java
+@@ -211,6 +211,30 @@ public class PersonService {
+                 gradeFrom, p.getTerms(), p.getContact())).toList();
+     }
+ 
++    /**
++     * Retire each of the people from a date (the sheet's today when none is given), in list order,
++     * exactly as retiring each from their row would. All or none: a person not on the sheet refuses
++     * the lot. A viewer may retire no one: each person is refused and none is retired.
++     */
++    @Transactional
++    public List<Person> bulkRetire(String sheetId, String user, List<Long> ids, LocalDate date) {
++        try {
++            roles.refuseViewer(sheetId, user);
++        } catch (ResponseStatusException e) {
++            if (e.getStatusCode() == HttpStatus.FORBIDDEN) {
++                return List.of();
++            }
++            throw e;
++        }
++        Set<Long> wanted = new HashSet<>(ids);
++        List<Person> chosen = people.findBySheetIdOrderByPositionAscIdAsc(sheetId).stream()
++                .filter(p -> wanted.contains(p.getId())).toList();
++        if (chosen.size() != wanted.size()) {
++            throw new ResponseStatusException(HttpStatus.NOT_FOUND, "No such person on this sheet.");
++        }
++        return chosen.stream().map(p -> retire(sheetId, user, p.getId(), date)).toList();
++    }
++
+     /**
+      * Swap the person with the one above ({@code up}) or below them in the list; the top person
+      * cannot move up nor the bottom one down (409).

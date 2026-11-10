@@ -1,0 +1,64 @@
+{
+  "checkpoint": 123,
+  "stack": {
+    "repo": "/home/daniel/officehq-angular-spring",
+    "origin": "git@github.com:officefloor/officehq-angular-spring.git",
+    "name": "officehq-angular-spring",
+    "base_ref": "base-empty",
+    "base_commit": "65cb8233ea38b2dfa6cfd18709e30cd18fdf3250"
+  },
+  "checkpoint_id": "cp123_bulk-retire",
+  "phase": "mid",
+  "type": "additive",
+  "mutates": [],
+  "replaced_tests": [],
+  "request": {
+    "spec": "Selected people can be retired together from a date: a date entry and a button beside the bulk\nbuttons. Each selected person is retired in list order exactly as the row's retire does (with its\nPERSON_RETIRED and rollup lines); show how many were retired.\n",
+    "prompt": "You are implementing ONE change to this application.\n\nFIRST read AGENTS.md \u2014 it states the working rules and how the app is tested, and sends you to\nDESIGN.md for the app's stack and conventions. Follow both.\n\nTHE CHANGE REQUEST:\nSelected people can be retired together from a date: a date entry and a button beside the bulk\nbuttons. Each selected person is retired in list order exactly as the row's retire does (with its\nPERSON_RETIRED and rollup lines); show how many were retired.\n\nYour work is verified by an automated Playwright UI test already installed under e2e/specs/.\nRead that spec: it declares the exact data-testid anchors, values, test data and any audit\nrecords it expects \u2014 match them. Run `bin/e2e` to build the app, start it, and run the test as\nyou work; iterate until it passes. Change whatever the request needs across the app \u2014 its stored\ndata, its server and its front end. Do NOT edit bin/build, bin/start, bin/stop, bin/e2e,\nAGENTS.md, CLAUDE.md, DESIGN.md, e2e/support/ or the test spec.\n"
+  },
+  "commit_sha": "8f2eb41b6c5f651a90bfc48e99eddce1923773a9",
+  "reset_sha": "",
+  "preagent_sha": "3caad62b109a6fae08ea1845a4e111e70262915a",
+  "prev_sha": "3caad62b109a6fae08ea1845a4e111e70262915a",
+  "base_sha": "65cb8233ea38b2dfa6cfd18709e30cd18fdf3250",
+  "agent": {
+    "ok": true,
+    "cost_usd": 0.5757878000000001,
+    "input_tokens": 26,
+    "output_tokens": 6152,
+    "cache_read_tokens": 445499,
+    "cache_creation_tokens": 45443,
+    "num_turns": 14,
+    "duration_ms": 294745,
+    "duration_api_ms": 57379,
+    "model": "claude-opus-5-5",
+    "session_id": "bde73631-ab0c-4ca1-b179-9e2bc508f726",
+    "stop_reason": "success",
+    "result_text": "Bulk retire is in, and `bin/e2e` passes all 4 tests in the spec.\n\n**What it does:** next to the other bulk buttons there's now a \"Retire selected people from\" date box and a \"Retire selected\" button. Each ticked person is retired in list order through the same code the row's retire button uses, so each gets its `PERSON_RETIRED` line and the usual rollup lines. A blank date means the sheet's today. Afterwards the screen shows how many were retired, and the ticks are cleared.\n\n**Rules that differ from the row's retire:**\n- **Viewers:** if a viewer presses it, nothing is retired and the count shows 0 rather than an error. The test expects this.\n- **All or none:** if any selected person is no longer on the sheet, the whole action is refused and nobody is retired.\n- **Errors:** pressing it with nobody selected, or with a malformed date, shows an error.\n\n**Changes:**\n- **Server:** a new `bulkRetire` in `PersonService.java`, built the same way as the existing bulk grade. It's exposed as `POST /api/people/bulk-retire` in `PersonController.java`.\n- **Front end:** a new form in `people/people.ts` with test ids `bulk-retire-date`, `bulk-retire` and `bulk-retired`. Its error uses `person-error`, the id the test looks for.\n\nRetiring is just a value on the person, so there was no database change.",
+    "error": "",
+    "attempts": [
+      {
+        "ok": true,
+        "limit_reached": false,
+        "retryable": false,
+        "timed_out": false,
+        "cost_usd": 0.5757878000000001,
+        "num_turns": 14,
+        "duration_ms": 294745,
+        "duration_api_ms": 57379,
+        "error": ""
+      }
+    ]
+  },
+  "agent_stream_file": "cp123.agent.jsonl",
+  "agent_diff_file": "cp123.agent.diff",
+  "build_log_file": null,
+  "tests": {
+    "gated": false,
+    "queued": true
+  },
+  "probe": null,
+  "pinned_touched": [],
+  "acceptance_touched": [],
+  "impact_gate": null
+}
