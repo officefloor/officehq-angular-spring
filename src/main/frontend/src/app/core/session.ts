@@ -12,6 +12,10 @@ interface SheetResponse {
   lastBatch: number | null;
 }
 
+/** The locales a user may choose: how the screen shows them figures (see FigurePipe). */
+export const LOCALES = ['en', 'de'] as const;
+export type Locale = (typeof LOCALES)[number];
+
 /** The keys the people list can be sorted by on the screen. */
 export type PeopleSort = 'added' | 'name' | 'grade' | 'due-total';
 
@@ -20,6 +24,8 @@ export class Session {
   private readonly http = inject(HttpClient);
 
   readonly user = signal<string | null>(null);
+  /** The signed-in user's locale, saved per user: read at sign-in, en unless they chose otherwise. */
+  readonly locale = signal<Locale>('en');
   readonly sheet = signal<string | null>(null);
   readonly today = signal<string | null>(null);
   /** Whether the sheet is archived: it stays visible and every change to it is refused. */
@@ -43,13 +49,22 @@ export class Session {
   readonly loads = signal(0);
 
   async signIn(name: string): Promise<void> {
-    const res = await firstValueFrom(this.http.post<{ name: string }>('/api/signin', { name }));
+    const res = await firstValueFrom(this.http.post<{ name: string; locale: Locale }>('/api/signin', { name }));
     this.user.set(res.name);
+    this.locale.set(res.locale);
     this.sheet.set(null);
     this.today.set(null);
     this.archived.set(false);
     this.lastBatch.set(null);
     this.asOf.set(null);
+  }
+
+  /** Save the signed-in user's locale. */
+  async saveLocale(locale: Locale): Promise<void> {
+    const res = await firstValueFrom(
+      this.http.post<{ locale: Locale }>('/api/users/locale', { user: this.user(), locale }),
+    );
+    this.locale.set(res.locale);
   }
 
   async loadSheet(id: string): Promise<void> {

@@ -31,7 +31,7 @@ public class Rate {
     @Column(name = "grade", nullable = false)
     private String grade;
 
-    @Column(name = "pct", nullable = false, precision = 5, scale = 2)
+    @Column(name = "pct", nullable = false, precision = 7, scale = 2)
     private BigDecimal pct;
 
     @Column(name = "from_date")

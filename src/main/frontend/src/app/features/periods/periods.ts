@@ -3,6 +3,7 @@ import { Component, effect, inject, input, model, signal } from '@angular/core';
 import { Observable, firstValueFrom } from 'rxjs';
 import { Session } from '../../core/session';
 import { money } from '../claims/claims';
+import { FigurePipe } from '../../core/figure';
 
 // The sheet's periods, by from-date, and the form that adds one: a name unique on the sheet and a
 // from and to date, both inclusive, no two periods overlapping. A second form generates a period
@@ -93,6 +94,7 @@ export function inClosedPeriod(periods: readonly Period[], date: string): boolea
 
 @Component({
   selector: 'app-periods',
+  imports: [FigurePipe],
   template: `
     <section aria-labelledby="periods-heading">
       <h2 id="periods-heading">Periods</h2>
@@ -188,10 +190,10 @@ export function inClosedPeriod(periods: readonly Period[], date: string): boolea
               <th scope="row" data-testid="period-name">{{ p.name }}</th>
               <td data-testid="period-from">{{ p.from }}</td>
               <td data-testid="period-to">{{ p.to }}</td>
-              <td data-testid="period-due-total">{{ dueTotalOf(p) }}</td>
+              <td data-testid="period-due-total">{{ dueTotalOf(p) | figure }}</td>
               <td data-testid="period-closed">{{ p.closed ? 'yes' : p.softClosed ? 'soft' : 'no' }}</td>
               <td data-testid="period-fy">{{ p.fy }}</td>
-              <td data-testid="period-cap">{{ p.cap ?? '' }}</td>
+              <td data-testid="period-cap">{{ (p.cap ?? '') | figure }}</td>
               <td>
                 <button
                   type="button"

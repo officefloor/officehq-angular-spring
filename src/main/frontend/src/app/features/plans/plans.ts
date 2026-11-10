@@ -2,6 +2,7 @@ import { HttpClient, HttpErrorResponse } from '@angular/common/http';
 import { Component, effect, inject, input, output, signal } from '@angular/core';
 import { firstValueFrom } from 'rxjs';
 import { Session } from '../../core/session';
+import { FigurePipe } from '../../core/figure';
 
 /** A person's plan, with how many claims it has made so far. */
 export interface Plan {
@@ -26,6 +27,7 @@ export interface Plan {
 // and its next five dates after the sheet's today.
 @Component({
   selector: 'app-person-plans',
+  imports: [FigurePipe],
   template: `
     <table [attr.aria-label]="'Plans of ' + personName()">
       <thead>
@@ -39,7 +41,7 @@ export interface Plan {
       <tbody>
         @for (pl of plans(); track pl.id) {
           <tr [attr.data-testid]="'plan-row-' + pl.id">
-            <td data-testid="plan-amount">{{ pl.amount }}</td>
+            <td data-testid="plan-amount">{{ pl.amount | figure }}</td>
             <td data-testid="plan-start">{{ pl.start }}</td>
             <td data-testid="plan-every">{{ pl.every }}</td>
             <td data-testid="plan-day">{{ pl.day }}</td>

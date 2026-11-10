@@ -17,6 +17,7 @@ import { Templates } from '../templates/templates';
 import { Pool, Pools } from '../pools/pools';
 import { PersonPlans, Plan } from '../plans/plans';
 import { VoidReasons as VoidReasonList } from '../../core/void-reasons';
+import { FigurePipe } from '../../core/figure';
 
 // The people on the active sheet, in list order (each person's position: new people go to the end,
 // and a row's up and down buttons swap them with the person above or below), and the one form that both adds
@@ -226,7 +227,7 @@ const SUMMARY_STATUSES = ['DRAFT', 'OPEN', 'PENDING', 'SETTLED', 'VOID', 'REVIEW
 
 @Component({
   selector: 'app-people',
-  imports: [AuditView, Header, Holidays, PersonClaims, PersonPlans, Periods, Rates, Roles, Pools, Settings, Summary, ClassicSummary, Templates, TreeSearch, VoidReasons],
+  imports: [FigurePipe, AuditView, Header, Holidays, PersonClaims, PersonPlans, Periods, Rates, Roles, Pools, Settings, Summary, ClassicSummary, Templates, TreeSearch, VoidReasons],
   template: `
     <app-header
       [peopleCount]="people().length"
@@ -504,13 +505,13 @@ const SUMMARY_STATUSES = ['DRAFT', 'OPEN', 'PENDING', 'SETTLED', 'VOID', 'REVIEW
           <p role="alert" data-testid="person-error">{{ err }}</p>
         }
       </form>
-      <p>Claimed in total <strong data-testid="rollup-claimed-total">{{ claimedTotal() }}</strong></p>
-      <p>Due in total <strong data-testid="rollup-due-total">{{ dueTotal() }}</strong></p>
-      <p>Settled in total <strong data-testid="rollup-settled-total">{{ money(settledOpenTotals().settled) }}</strong></p>
-      <p>Open in total <strong data-testid="rollup-open-total">{{ money(settledOpenTotals().open) }}</strong></p>
+      <p>Claimed in total <strong data-testid="rollup-claimed-total">{{ claimedTotal() | figure }}</strong></p>
+      <p>Due in total <strong data-testid="rollup-due-total">{{ dueTotal() | figure }}</strong></p>
+      <p>Settled in total <strong data-testid="rollup-settled-total">{{ money(settledOpenTotals().settled) | figure }}</strong></p>
+      <p>Open in total <strong data-testid="rollup-open-total">{{ money(settledOpenTotals().open) | figure }}</strong></p>
       <p>Overdue claims <strong data-testid="rollup-overdue-count">{{ overdueTotals().count }}</strong></p>
-      <p>Overdue in total <strong data-testid="rollup-overdue-total">{{ money(overdueTotals().cents) }}</strong></p>
-      <p>Cut in total <strong data-testid="rollup-cut-total">{{ money(cutTotal()) }}</strong></p>
+      <p>Overdue in total <strong data-testid="rollup-overdue-total">{{ money(overdueTotals().cents) | figure }}</strong></p>
+      <p>Cut in total <strong data-testid="rollup-cut-total">{{ money(cutTotal()) | figure }}</strong></p>
       @if (tagTotals().length > 0) {
         <table aria-label="Due by tag">
           <thead>
@@ -523,7 +524,7 @@ const SUMMARY_STATUSES = ['DRAFT', 'OPEN', 'PENDING', 'SETTLED', 'VOID', 'REVIEW
             @for (t of tagTotals(); track t.tag) {
               <tr>
                 <th scope="row">{{ t.tag }}</th>
-                <td [attr.data-testid]="'tag-' + t.tag + '-due-total'">{{ money(t.cents) }}</td>
+                <td [attr.data-testid]="'tag-' + t.tag + '-due-total'">{{ money(t.cents) | figure }}</td>
               </tr>
             }
           </tbody>
@@ -541,7 +542,7 @@ const SUMMARY_STATUSES = ['DRAFT', 'OPEN', 'PENDING', 'SETTLED', 'VOID', 'REVIEW
             @for (m of monthTotals(); track m.month) {
               <tr>
                 <th scope="row">{{ m.month }}</th>
-                <td [attr.data-testid]="'month-' + m.month + '-due-total'">{{ money(m.cents) }}</td>
+                <td [attr.data-testid]="'month-' + m.month + '-due-total'">{{ money(m.cents) | figure }}</td>
               </tr>
             }
           </tbody>
@@ -600,24 +601,24 @@ const SUMMARY_STATUSES = ['DRAFT', 'OPEN', 'PENDING', 'SETTLED', 'VOID', 'REVIEW
               <td data-testid="person-terms">{{ p.terms ?? '' }}</td>
               <td data-testid="person-contact">{{ p.contact ?? '' }}</td>
               <td data-testid="person-tags">{{ p.tags.join(', ') }}</td>
-              <td data-testid="person-claimed">{{ claimedOf(p.id) }}</td>
-              <td data-testid="person-due-total">{{ dueText(dueOf(p)) }}</td>
-              <td data-testid="person-settled-total">{{ money(settledOpenOf(p).settled) }}</td>
-              <td data-testid="person-open-total">{{ money(settledOpenOf(p).open) }}</td>
+              <td data-testid="person-claimed">{{ claimedOf(p.id) | figure }}</td>
+              <td data-testid="person-due-total">{{ dueText(dueOf(p)) | figure }}</td>
+              <td data-testid="person-settled-total">{{ money(settledOpenOf(p).settled) | figure }}</td>
+              <td data-testid="person-open-total">{{ money(settledOpenOf(p).open) | figure }}</td>
               @for (pd of periods(); track pd.id) {
-                <td [attr.data-testid]="'person-period-' + pd.name + '-due-total'">{{ periodDueOf(pd, p.id) }}</td>
+                <td [attr.data-testid]="'person-period-' + pd.name + '-due-total'">{{ periodDueOf(pd, p.id) | figure }}</td>
               }
-              <td data-testid="person-aged-0-30">{{ money(agedOf(p)[0]) }}</td>
-              <td data-testid="person-aged-31-60">{{ money(agedOf(p)[1]) }}</td>
-              <td data-testid="person-aged-61">{{ money(agedOf(p)[2]) }}</td>
+              <td data-testid="person-aged-0-30">{{ money(agedOf(p)[0]) | figure }}</td>
+              <td data-testid="person-aged-31-60">{{ money(agedOf(p)[1]) | figure }}</td>
+              <td data-testid="person-aged-61">{{ money(agedOf(p)[2]) | figure }}</td>
               <td>
                 <span data-testid="person-overdue-count">{{ overdueOf(p).count }}</span>
-                <span>totalling <span data-testid="person-overdue-total">{{ money(overdueOf(p).cents) }}</span></span>
+                <span>totalling <span data-testid="person-overdue-total">{{ money(overdueOf(p).cents) | figure }}</span></span>
               </td>
               <td data-testid="person-active">{{ isActive(p) ? 'yes' : 'no' }}</td>
               <td>
                 <span data-testid="person-statement-count">{{ statementOf(p.id)?.count ?? 0 }}</span>
-                <span>Last due <span data-testid="person-stated-total">{{ statementOf(p.id)?.dueTotal ?? '' }}</span></span>
+                <span>Last due <span data-testid="person-stated-total">{{ (statementOf(p.id)?.dueTotal ?? '') | figure }}</span></span>
                 <span>on <span data-testid="person-statement-date">{{ statementOf(p.id)?.date ?? '' }}</span></span>
               </td>
               <td>
@@ -667,9 +668,9 @@ const SUMMARY_STATUSES = ['DRAFT', 'OPEN', 'PENDING', 'SETTLED', 'VOID', 'REVIEW
               <td data-testid="person-origin">{{ p.origin ?? '' }}</td>
               <td>
                 <span data-testid="person-patrons">{{ patronNamesOf(p.id) }}</span>
-                <span>backing <span data-testid="person-backing">{{ money(backingOf(p.id)) }}</span></span>
-                <span>excess <span data-testid="person-excess">{{ money(excessOf(p)) }}</span></span>
-                <span>cut <span data-testid="person-cut-total">{{ money(cutTotalOf(p.id)) }}</span></span>
+                <span>backing <span data-testid="person-backing">{{ money(backingOf(p.id)) | figure }}</span></span>
+                <span>excess <span data-testid="person-excess">{{ money(excessOf(p)) | figure }}</span></span>
+                <span>cut <span data-testid="person-cut-total">{{ money(cutTotalOf(p.id)) | figure }}</span></span>
                 <label [for]="'person-patron-select-' + p.id">Patron</label>
                 <select
                   [id]="'person-patron-select-' + p.id"

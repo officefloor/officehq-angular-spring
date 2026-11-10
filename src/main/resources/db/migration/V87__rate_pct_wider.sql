@@ -1,0 +1,4 @@
+-- A grade's rate may be up to 99999.99 percent (was 999.99).
+ALTER TABLE rate ALTER COLUMN pct SET DATA TYPE DECIMAL(7, 2);
+ALTER TABLE rate_log ALTER COLUMN pct SET DATA TYPE DECIMAL(7, 2);
+ALTER TABLE rate_version ALTER COLUMN pct SET DATA TYPE DECIMAL(7, 2);

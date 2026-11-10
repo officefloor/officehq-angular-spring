@@ -1,5 +1,5 @@
-import { Component, inject, signal } from '@angular/core';
-import { Session } from '../../core/session';
+import { Component, inject, linkedSignal, signal } from '@angular/core';
+import { LOCALES, Locale, Session } from '../../core/session';
 import { People } from '../people/people';
 
 // The one screen: sign in by name, then load a sheet by id. Everything else hangs off the
@@ -11,6 +11,23 @@ import { People } from '../people/people';
     @if (session.user(); as user) {
       <section aria-label="Session">
         <p>Signed in as <strong data-testid="current-user">{{ user }}</strong></p>
+        <form aria-label="Locale" (submit)="saveLocale($event)">
+          <p>Locale <strong data-testid="user-locale-current">{{ session.locale() }}</strong></p>
+          <label for="user-locale">Show figures as</label>
+          <select
+            id="user-locale"
+            data-testid="user-locale"
+            (change)="localeInput.set($any($event.target).value); localeError.set(null)"
+          >
+            @for (l of locales; track l) {
+              <option [value]="l" [selected]="l === localeInput()">{{ l }}</option>
+            }
+          </select>
+          <button type="submit" data-testid="user-locale-save">Save locale</button>
+          @if (localeError(); as err) {
+            <p role="alert" data-testid="user-locale-error">{{ err }}</p>
+          }
+        </form>
         <form (submit)="load($event)">
           <label for="sheet-id-input">Sheet id</label>
           <input
@@ -94,7 +111,10 @@ import { People } from '../people/people';
 })
 export class Home {
   protected readonly session = inject(Session);
+  protected readonly locales = LOCALES;
   protected readonly nameInput = signal('');
+  protected readonly localeInput = linkedSignal<Locale>(() => this.session.locale());
+  protected readonly localeError = signal<string | null>(null);
   protected readonly sheetInput = signal('');
   protected readonly signinError = signal<string | null>(null);
   protected readonly sheetError = signal<string | null>(null);
@@ -117,6 +137,16 @@ export class Home {
       await this.session.signIn(name);
     } catch {
       this.signinError.set('Could not sign in.');
+    }
+  }
+
+  protected async saveLocale(event: Event): Promise<void> {
+    event.preventDefault();
+    this.localeError.set(null);
+    try {
+      await this.session.saveLocale(this.localeInput());
+    } catch {
+      this.localeError.set('Could not save the locale.');
     }
   }
 

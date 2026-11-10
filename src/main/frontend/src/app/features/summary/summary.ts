@@ -1,4 +1,5 @@
 import { Component, input } from '@angular/core';
+import { FigurePipe } from '../../core/figure';
 
 // The sheet at a glance, drawn from the same figures the lists show: per grade, how many people
 // not retired are on it today, their due-totals added up and how many of them are active; per period, its due-total and its change from the period before it by start date; per
@@ -30,6 +31,7 @@ export interface StatusSummary {
 
 @Component({
   selector: 'app-summary',
+  imports: [FigurePipe],
   template: `
     <section aria-labelledby="summary-heading">
       <h2 id="summary-heading">Summary</h2>
@@ -47,7 +49,7 @@ export interface StatusSummary {
             <tr>
               <th scope="row">{{ g.grade }}</th>
               <td [attr.data-testid]="'summary-grade-' + g.grade + '-count'">{{ g.count }}</td>
-              <td [attr.data-testid]="'summary-grade-' + g.grade + '-due-total'">{{ g.dueTotal }}</td>
+              <td [attr.data-testid]="'summary-grade-' + g.grade + '-due-total'">{{ g.dueTotal | figure }}</td>
               <td [attr.data-testid]="'summary-grade-' + g.grade + '-active'">{{ g.active }}</td>
             </tr>
           }
@@ -65,8 +67,8 @@ export interface StatusSummary {
           @for (p of periods(); track p.name) {
             <tr>
               <th scope="row">{{ p.name }}</th>
-              <td [attr.data-testid]="'summary-period-' + p.name + '-due-total'">{{ p.dueTotal }}</td>
-              <td [attr.data-testid]="'summary-period-' + p.name + '-change'">{{ p.change }}</td>
+              <td [attr.data-testid]="'summary-period-' + p.name + '-due-total'">{{ p.dueTotal | figure }}</td>
+              <td [attr.data-testid]="'summary-period-' + p.name + '-change'">{{ p.change | figure }}</td>
             </tr>
           }
         </tbody>
@@ -123,10 +125,11 @@ export interface ClassicPeriodSummary {
 
 @Component({
   selector: 'app-classic-summary',
+  imports: [FigurePipe],
   template: `
     <section aria-labelledby="classic-summary-heading">
       <h2 id="classic-summary-heading">Classic summary</h2>
-      <p>Due in total <strong data-testid="classic-due-total">{{ dueTotal() }}</strong></p>
+      <p>Due in total <strong data-testid="classic-due-total">{{ dueTotal() | figure }}</strong></p>
       <table aria-label="Classic by period">
         <thead>
           <tr>
@@ -138,7 +141,7 @@ export interface ClassicPeriodSummary {
           @for (p of periods(); track p.name) {
             <tr>
               <th scope="row">{{ p.name }}</th>
-              <td [attr.data-testid]="'classic-period-' + p.name + '-due-total'">{{ p.dueTotal }}</td>
+              <td [attr.data-testid]="'classic-period-' + p.name + '-due-total'">{{ p.dueTotal | figure }}</td>
             </tr>
           }
         </tbody>

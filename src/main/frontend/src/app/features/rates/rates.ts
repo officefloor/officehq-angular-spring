@@ -3,6 +3,7 @@ import { Component, computed, effect, inject, model, signal, untracked } from '@
 import { firstValueFrom } from 'rxjs';
 import { Session } from '../../core/session';
 import { Claim, cents, daysOverdue, dueBy, isCorrection, isOpen, money, plusDays } from '../claims/claims';
+import { FigurePipe } from '../../core/figure';
 
 // The sheet's rates for each grade (a percent with two decimals, each from an optional from-date
 // and through an optional to-date)
@@ -33,8 +34,8 @@ function appliesTo(r: Rate, c: Claim): boolean {
 
 const GRADES = ['A', 'B', 'C'] as const;
 
-/** A percent: 0.00 to 999.99, with up to two decimals. */
-const PCT = /^\d{1,3}(\.\d{1,2})?$/;
+/** A percent: 0.00 to 99999.99, with up to two decimals. */
+const PCT = /^\d{1,5}(\.\d{1,2})?$/;
 
 /** A date as the date input gives it: yyyy-mm-dd. */
 const DATE = /^\d{4}-\d{2}-\d{2}$/;
@@ -226,6 +227,7 @@ export function dueText(c: number | null): string {
 
 @Component({
   selector: 'app-rates',
+  imports: [FigurePipe],
   template: `
     <section aria-labelledby="rates-heading">
       <h2 id="rates-heading">Rates</h2>
@@ -311,7 +313,7 @@ export function dueText(c: number | null): string {
         @if (previewResult(); as res) {
           <p>
             Claims that would change: <span data-testid="rate-preview-count">{{ res.count }}</span>;
-            difference: <span data-testid="rate-preview-diff">{{ res.diff }}</span>
+            difference: <span data-testid="rate-preview-diff">{{ res.diff | figure }}</span>
           </p>
         }
         @if (previewError(); as err) {
@@ -329,7 +331,7 @@ export function dueText(c: number | null): string {
           @for (g of grades; track g) {
             <tr>
               <th scope="row">{{ g }}</th>
-              <td [attr.data-testid]="'rate-current-' + g">{{ current().get(g) ?? 'n/a' }}</td>
+              <td [attr.data-testid]="'rate-current-' + g">{{ (current().get(g) ?? 'n/a') | figure }}</td>
             </tr>
           }
         </tbody>
@@ -350,7 +352,7 @@ export function dueText(c: number | null): string {
               <th scope="row">{{ r.grade }}</th>
               <td data-testid="rate-from">{{ r.from ?? 'always' }}</td>
               <td data-testid="rate-to">{{ r.to ?? 'open' }}</td>
-              <td data-testid="rate-pct">{{ r.pct }}</td>
+              <td data-testid="rate-pct">{{ r.pct | figure }}</td>
               <td data-testid="rate-version">{{ r.version ?? 1 }}</td>
             </tr>
           }
@@ -485,7 +487,7 @@ export class Rates {
       return;
     }
     if (!PCT.test(pct)) {
-      this.previewError.set('Enter a rate from 0.00 to 999.99, with up to two decimals.');
+      this.previewError.set('Enter a rate from 0.00 to 99999.99, with up to two decimals.');
       return;
     }
     try {
@@ -512,7 +514,7 @@ export class Rates {
       return;
     }
     if (!PCT.test(pct)) {
-      this.error.set('Enter a rate from 0.00 to 999.99, with up to two decimals.');
+      this.error.set('Enter a rate from 0.00 to 99999.99, with up to two decimals.');
       return;
     }
     if (from !== null && (!DATE.test(from) || Number.isNaN(Date.parse(from)))) {

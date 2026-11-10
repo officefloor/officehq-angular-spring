@@ -2,12 +2,14 @@ import { HttpErrorResponse } from '@angular/common/http';
 import { Component, effect, inject, signal } from '@angular/core';
 import { Session } from '../../core/session';
 import { ClaimTemplates } from '../../core/claim-templates';
+import { FigurePipe } from '../../core/figure';
 
 // The sheet's claim templates and the form that saves one: a name, an amount and a note. A blank
 // name, or an amount the claim form would refuse, is refused; saving a name again replaces that
 // template. Each person's row adds a DRAFT claim from a chosen template.
 @Component({
   selector: 'app-templates',
+  imports: [FigurePipe],
   template: `
     <section aria-labelledby="templates-heading">
       <h2 id="templates-heading">Claim templates</h2>
@@ -47,7 +49,7 @@ import { ClaimTemplates } from '../../core/claim-templates';
           @for (t of templates.list(); track t.id) {
             <tr [attr.data-testid]="'template-row-' + t.name">
               <td data-testid="template-name">{{ t.name }}</td>
-              <td data-testid="template-amount">{{ t.amount }}</td>
+              <td data-testid="template-amount">{{ t.amount | figure }}</td>
               <td data-testid="template-note">{{ t.note }}</td>
             </tr>
           }

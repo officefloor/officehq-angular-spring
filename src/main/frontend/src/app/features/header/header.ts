@@ -1,5 +1,6 @@
 import { Component, input } from '@angular/core';
 import { StatusSummary } from '../summary/summary';
+import { FigurePipe } from '../../core/figure';
 
 // The sheet's counters, shown at all times above everything else on it: how many people are on the
 // sheet (retired people included), how many claims are in each status (as the summary counts them)
@@ -10,6 +11,7 @@ import { StatusSummary } from '../summary/summary';
 // with the user's name (by name or alias); blank when there is no such person.
 @Component({
   selector: 'app-header',
+  imports: [FigurePipe],
   template: `
     <header aria-label="Sheet counters">
       <dl>
@@ -20,23 +22,23 @@ import { StatusSummary } from '../summary/summary';
           <dd [attr.data-testid]="'header-claims-' + s.status + '-count'">{{ s.count }}</dd>
         }
         <dt>Due</dt>
-        <dd data-testid="header-due-total">{{ dueTotal() }}</dd>
+        <dd data-testid="header-due-total">{{ dueTotal() | figure }}</dd>
         <dt>Overdue</dt>
-        <dd data-testid="header-overdue-total">{{ overdueTotal() }}</dd>
+        <dd data-testid="header-overdue-total">{{ overdueTotal() | figure }}</dd>
       </dl>
       <dl aria-label="Consolidated over the sheet and its descendants">
         <dt>People, with sub-sheets</dt>
         <dd data-testid="consolidated-people-count">{{ consolidatedPeopleCount() }}</dd>
         <dt>Due, with sub-sheets</dt>
-        <dd data-testid="consolidated-due-total">{{ consolidatedDueTotal() }}</dd>
+        <dd data-testid="consolidated-due-total">{{ consolidatedDueTotal() | figure }}</dd>
         <dt>Overdue, with sub-sheets</dt>
-        <dd data-testid="consolidated-overdue-total">{{ consolidatedOverdueTotal() }}</dd>
+        <dd data-testid="consolidated-overdue-total">{{ consolidatedOverdueTotal() | figure }}</dd>
       </dl>
       <dl aria-label="My figures">
         <dt>My due</dt>
-        <dd data-testid="my-due-total">{{ myDueTotal() }}</dd>
+        <dd data-testid="my-due-total">{{ myDueTotal() | figure }}</dd>
         <dt>My overdue</dt>
-        <dd data-testid="my-overdue-total">{{ myOverdueTotal() }}</dd>
+        <dd data-testid="my-overdue-total">{{ myOverdueTotal() | figure }}</dd>
       </dl>
     </header>
   `,

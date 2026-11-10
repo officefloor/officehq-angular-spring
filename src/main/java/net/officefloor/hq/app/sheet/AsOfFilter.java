@@ -44,8 +44,11 @@ public class AsOfFilter extends OncePerRequestFilter {
 
     private static final String LOAD = "/api/sheets/load";
 
-    /** The requests that only read the sheet (with every path ending in {@code /list}). */
-    private static final Set<String> READS = Set.of("/api/signin", LOAD, "/api/settings/get",
+    /**
+     * The requests that only read the sheet (with every path ending in {@code /list}); saving the
+     * user's locale is no change to any sheet, so it goes through as-of too.
+     */
+    private static final Set<String> READS = Set.of("/api/signin", LOAD, "/api/settings/get", "/api/users/locale",
             "/api/people/watched", "/api/roles/delegations", "/api/claims/tags");
 
     /**

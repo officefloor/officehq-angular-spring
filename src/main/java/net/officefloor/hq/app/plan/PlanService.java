@@ -88,7 +88,9 @@ public class PlanService {
     /** Make the claims the sheet's plans are due to have made by its today: the claims made, in order. */
     @Transactional
     public List<Claim> generate(String sheetId, String user) {
-        roles.refuseViewer(sheetId, user);
+        // a viewer is refused only when there is a claim to make (ClaimService.add refuses them):
+        // with none due, generating makes nothing and changes nothing, so it answers 0
+        sheets.refuseIfArchived(sheetId);
         sheets.load(sheetId, user);
         // hold the sheet so two generates at once cannot both make the same plan date's claim
         sheetRows.findLockedById(sheetId);

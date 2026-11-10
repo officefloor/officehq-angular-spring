@@ -3,6 +3,7 @@ import { Component, computed, effect, inject, model, signal, untracked } from '@
 import { firstValueFrom } from 'rxjs';
 import { Session } from '../../core/session';
 import { DatedValue, START_FLOOR, START_LATE_PCT, valueOn } from '../rates/rates';
+import { FigurePipe } from '../../core/figure';
 
 // The sheet's settings: its clerk limit (two decimals; blank for no limit), and its floor (two
 // decimals; 1.00 on a new sheet), its terms (whole days; 14 on a new sheet) and its late percent (two decimals; 0.00 on a new sheet). A
@@ -146,6 +147,7 @@ const DATE = /^\d{4}-\d{2}-\d{2}$/;
 
 @Component({
   selector: 'app-settings',
+  imports: [FigurePipe],
   template: `
     <section aria-labelledby="settings-heading">
       <h2 id="settings-heading">Settings</h2>
@@ -449,14 +451,14 @@ const DATE = /^\d{4}-\d{2}-\d{2}$/;
       </form>
       <p>
         Clerk limit in force:
-        <strong data-testid="setting-clerk-limit-current">{{ limit() }}</strong>
+        <strong data-testid="setting-clerk-limit-current">{{ limit() | figure }}</strong>
         @if (limit() === '') {
           <span>(no limit)</span>
         }
       </p>
       <p>
         Floor in force:
-        <strong data-testid="setting-floor-current">{{ floor() }}</strong>
+        <strong data-testid="setting-floor-current">{{ floor() | figure }}</strong>
       </p>
       <p>
         Terms in force (days):
@@ -482,7 +484,7 @@ const DATE = /^\d{4}-\d{2}-\d{2}$/;
       }
       <p>
         Late percent in force:
-        <strong data-testid="setting-late-pct-current">{{ latePct() }}</strong>
+        <strong data-testid="setting-late-pct-current">{{ latePct() | figure }}</strong>
       </p>
       <p>
         Policy date in force:
@@ -500,7 +502,7 @@ const DATE = /^\d{4}-\d{2}-\d{2}$/;
       </p>
       <p>
         Cap in force:
-        <strong data-testid="setting-cap-current">{{ cap() }}</strong>
+        <strong data-testid="setting-cap-current">{{ cap() | figure }}</strong>
         @if (cap() === '') {
           <span>(no cap)</span>
         }
@@ -514,7 +516,7 @@ const DATE = /^\d{4}-\d{2}-\d{2}$/;
       </p>
       <p>
         Proof threshold in force:
-        <strong data-testid="setting-proof-threshold-current">{{ threshold() }}</strong>
+        <strong data-testid="setting-proof-threshold-current">{{ threshold() | figure }}</strong>
         @if (threshold() === '') {
           <span>(none)</span>
         }
@@ -522,7 +524,7 @@ const DATE = /^\d{4}-\d{2}-\d{2}$/;
       @for (g of grades; track g) {
         <p>
           Proof threshold in force for grade {{ g }}:
-          <strong [attr.data-testid]="'setting-proof-threshold-' + g + '-current'">{{ gradeThresholds()[g] }}</strong>
+          <strong [attr.data-testid]="'setting-proof-threshold-' + g + '-current'">{{ gradeThresholds()[g] | figure }}</strong>
           @if (gradeThresholds()[g] === '') {
             <span>(the sheet's)</span>
           }
@@ -530,14 +532,14 @@ const DATE = /^\d{4}-\d{2}-\d{2}$/;
       }
       <p>
         Note threshold in force:
-        <strong data-testid="setting-note-threshold-current">{{ noteThreshold() }}</strong>
+        <strong data-testid="setting-note-threshold-current">{{ noteThreshold() | figure }}</strong>
         @if (noteThreshold() === '') {
           <span>(none)</span>
         }
       </p>
       <p>
         Review threshold in force:
-        <strong data-testid="setting-review-threshold-current">{{ reviewThreshold() }}</strong>
+        <strong data-testid="setting-review-threshold-current">{{ reviewThreshold() | figure }}</strong>
         @if (reviewThreshold() === '') {
           <span>(none)</span>
         }
@@ -558,14 +560,14 @@ const DATE = /^\d{4}-\d{2}-\d{2}$/;
       </p>
       <p>
         Pot:
-        <strong data-testid="setting-pot-current">{{ pot() }}</strong>
+        <strong data-testid="setting-pot-current">{{ pot() | figure }}</strong>
         @if (pot() === '') {
           <span>(none)</span>
         }
       </p>
       <p>
         Alert threshold:
-        <strong data-testid="setting-alert-threshold-current">{{ alertThreshold() }}</strong>
+        <strong data-testid="setting-alert-threshold-current">{{ alertThreshold() | figure }}</strong>
         @if (alertThreshold() === '') {
           <span>(off)</span>
         }

@@ -22,8 +22,8 @@ import org.springframework.web.server.ResponseStatusException;
 @Service
 public class RateImportService {
 
-    /** A percent: 0.00 to 999.99, with up to two decimals. */
-    private static final String PCT = "\\d{1,3}(\\.\\d{1,2})?";
+    /** A percent: 0.00 to 99999.99, with up to two decimals. */
+    private static final String PCT = "\\d{1,5}(\\.\\d{1,2})?";
 
     private record Line(String grade, BigDecimal pct, LocalDate from, LocalDate to) {
     }
@@ -68,7 +68,7 @@ public class RateImportService {
         }
         String pct = fields[1].trim();
         if (!pct.matches(PCT)) {
-            throw refused("Line " + number + ": enter a rate from 0.00 to 999.99, with up to two decimals.");
+            throw refused("Line " + number + ": enter a rate from 0.00 to 99999.99, with up to two decimals.");
         }
         LocalDate from = date(number, fields.length > 2 ? fields[2] : "", "from-date");
         LocalDate to = date(number, fields.length > 3 ? fields[3] : "", "to-date");

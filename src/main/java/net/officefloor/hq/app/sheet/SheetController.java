@@ -6,6 +6,7 @@ import jakarta.validation.constraints.NotNull;
 import jakarta.validation.constraints.Size;
 import java.time.LocalDate;
 import net.officefloor.hq.app.role.RoleService;
+import net.officefloor.hq.app.user.UserLocaleService;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
@@ -19,7 +20,8 @@ public class SheetController {
     public record SignInRequest(@NotBlank @Size(max = 100) String name) {
     }
 
-    public record SignInResponse(String name) {
+    /** {@code locale}: how the screen shows the user figures (see {@link UserLocaleService}). */
+    public record SignInResponse(String name, String locale) {
     }
 
     public record LoadSheetRequest(@NotBlank @Size(max = 100) String id, @NotBlank @Size(max = 100) String user) {
@@ -48,16 +50,20 @@ public class SheetController {
     private final SheetService service;
     private final RoleService roles;
     private final SheetCloneService clones;
+    private final UserLocaleService locales;
 
-    public SheetController(SheetService service, RoleService roles, SheetCloneService clones) {
+    public SheetController(SheetService service, RoleService roles, SheetCloneService clones,
+            UserLocaleService locales) {
         this.service = service;
         this.roles = roles;
         this.clones = clones;
+        this.locales = locales;
     }
 
     @PostMapping("/signin")
     public SignInResponse signIn(@Valid @RequestBody SignInRequest req) {
-        return new SignInResponse(req.name().trim());
+        String name = req.name().trim();
+        return new SignInResponse(name, locales.localeOf(name));
     }
 
     @PostMapping("/sheets/load")

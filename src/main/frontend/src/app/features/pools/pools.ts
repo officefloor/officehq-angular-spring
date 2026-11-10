@@ -2,6 +2,7 @@ import { HttpClient, HttpErrorResponse } from '@angular/common/http';
 import { Component, effect, inject, input, model, output, signal } from '@angular/core';
 import { firstValueFrom } from 'rxjs';
 import { Session } from '../../core/session';
+import { FigurePipe } from '../../core/figure';
 
 // The sheet's pools: each a name (trimmed, at most once on the sheet) and its members, each a
 // person chosen from the sheet at most once per pool, with a share percent (two decimals, above
@@ -67,19 +68,20 @@ function refusal(e: unknown, what: string): string {
 
 @Component({
   selector: 'app-pool-row',
+  imports: [FigurePipe],
   template: `
     <article [attr.data-testid]="'pool-row-' + pool().name">
       <h3>{{ pool().name }}</h3>
       <p>
-        Total share <strong data-testid="pool-total-share">{{ pool().totalShare }}</strong>
+        Total share <strong data-testid="pool-total-share">{{ pool().totalShare | figure }}</strong>
         Balanced <strong data-testid="pool-balanced">{{ pool().balanced ? 'yes' : 'no' }}</strong>
       </p>
       <ul [attr.aria-label]="'Members of ' + pool().name">
         @for (m of pool().members; track m.pool === null ? m.personId : 'pool:' + m.pool) {
           <li [attr.data-testid]="'pool-member-' + pool().name + '-' + (m.pool === null ? m.personId : 'pool-' + m.pool)">
             {{ m.name }}@if (m.retired) { (retired)}:
-            <span data-testid="pool-share">{{ m.share }}</span>
-            cut <span data-testid="pool-cut">{{ m.cut }}</span>
+            <span data-testid="pool-share">{{ m.share | figure }}</span>
+            cut <span data-testid="pool-cut">{{ m.cut | figure }}</span>
           </li>
         }
       </ul>

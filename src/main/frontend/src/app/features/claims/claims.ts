@@ -6,6 +6,7 @@ import { ClaimTemplates } from '../../core/claim-templates';
 import { VoidReasons } from '../../core/void-reasons';
 import { Period, inClosedPeriod, periodOn } from '../periods/periods';
 import { DatedGrade, DatedValue, Lateness, Rate, chargedDueCents, dueText, graceOn, gradeOn } from '../rates/rates';
+import { FigurePipe } from '../../core/figure';
 
 // A person's claims, newest first, and the one form under their row that both adds a claim and
 // edits an existing one (opening a claim's editor fills the form with its values). Each claim
@@ -298,6 +299,7 @@ export function money(c: number): string {
 
 @Component({
   selector: 'app-person-claims',
+  imports: [FigurePipe],
   template: `
     <form [attr.aria-label]="'Claim for ' + personName()" (submit)="save($event)">
       <label [for]="'claim-amount-' + personId()">Amount</label>
@@ -376,14 +378,14 @@ export function money(c: number): string {
             (change)="selectedChange.emit({ id: c.id, on: $any($event.target).checked })"
           />
           <span>No. <span data-testid="claim-number">{{ c.number ?? '' }}</span></span>
-          <span data-testid="claim-amount">{{ c.amount }}</span>
+          <span data-testid="claim-amount">{{ c.amount | figure }}</span>
           <span data-testid="claim-date">{{ c.date }}</span>
           <span data-testid="claim-note">{{ c.note }}</span>
           <span>Ref <span data-testid="claim-ref">{{ c.ref ?? '' }}</span></span>
           <span>Tags <span data-testid="claim-tags">{{ c.tags.join(', ') }}</span></span>
           <span>Corrects <span data-testid="claim-corrects">{{ c.corrects ?? '' }}</span></span>
           <span>Period <span data-testid="claim-period">{{ periodOf(c) }}</span></span>
-          <span>Due <span data-testid="claim-due">{{ dueOf(c) }}</span></span>
+          <span>Due <span data-testid="claim-due">{{ dueOf(c) | figure }}</span></span>
           <span>Due by <span data-testid="claim-due-by">{{ dueByOf(c) }}</span></span>
           <span>Overdue <span data-testid="claim-overdue">{{ overdueOf(c) ? 'yes' : 'no' }}</span></span>
           <span data-testid="claim-status">{{ c.status }}</span>

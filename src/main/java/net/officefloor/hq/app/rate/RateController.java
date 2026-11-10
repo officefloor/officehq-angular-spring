@@ -24,8 +24,8 @@ import org.springframework.web.bind.annotation.RestController;
 @RequestMapping("/api/rates")
 public class RateController {
 
-    /** A percent: 0.00 to 999.99, with up to two decimals. */
-    private static final String PCT = "\\d{1,3}(\\.\\d{1,2})?";
+    /** A percent: 0.00 to 99999.99, with up to two decimals. */
+    private static final String PCT = "\\d{1,5}(\\.\\d{1,2})?";
 
     public record ListRatesRequest(@NotBlank @Size(max = 100) String sheet) {
     }
