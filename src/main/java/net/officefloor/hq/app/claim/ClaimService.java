@@ -705,6 +705,36 @@ public class ClaimService {
     }
 
     /**
+     * A steward's waiver of an OPEN or PENDING claim's late charge: from then on it bears none,
+     * whatever its overdue state; CLAIM_WAIVED is written. Refused (403) for anyone but a steward and
+     * (409) for a claim in any other status or already waived.
+     */
+    @Transactional
+    public Claim waive(String sheetId, String user, long id) {
+        roles.refuseViewer(sheetId, user);
+        if (!isSteward(sheetId, user)) {
+            throw new ResponseStatusException(HttpStatus.FORBIDDEN, "Only a steward can waive a late charge.");
+        }
+        RollupService.Snapshot before = rollup.snapshot(sheetId);
+        Claim claim = claims.findByIdAndSheetId(id, sheetId)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "No such claim on this sheet."));
+        if (claim.getStatus() != ClaimStatus.OPEN && claim.getStatus() != ClaimStatus.PENDING) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT,
+                    "A " + claim.getStatus() + " claim's late charge cannot be waived.");
+        }
+        if (claim.isWaived()) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT, "This claim's late charge is already waived.");
+        }
+        Person person = person(sheetId, claim.getPersonId());
+        claim.waive();
+        Claim saved = claims.saveAndFlush(claim);
+        audit.recordOnCommit(record("CLAIM_WAIVED", sheetId, user, person, saved)
+                + (saved.getNumber() != null ? " number=" + saved.getNumber() : ""));
+        rollup.recordChanges(sheetId, user, before);
+        return saved;
+    }
+
+    /**
      * Re-settle a SETTLED claim: fix its due again at the figure it would have on the sheet's today
      * as an open claim bound by no statement, with its late charge. Refused (403) for anyone but a
      * steward, (409) for a claim that is not SETTLED and (423) when dated inside a closed period.

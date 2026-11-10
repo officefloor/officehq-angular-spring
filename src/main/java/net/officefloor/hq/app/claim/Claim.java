@@ -149,6 +149,10 @@ public class Claim {
     @Column(name = "escalated", nullable = false)
     private boolean escalated;
 
+    /** Whether a steward waived the claim's late charge: from then on it bears none; once ever. */
+    @Column(name = "waived", nullable = false)
+    private boolean waived;
+
     /** The sheet's today when the claim last went to REVIEW; none when it never has. */
     @Column(name = "review_on")
     private LocalDate reviewOn;
@@ -239,6 +243,7 @@ public class Claim {
         copy.remindedOn = remindedOn;
         copy.escalated = escalated;
         copy.reviewOn = reviewOn;
+        copy.waived = waived;
         copy.voidReason = voidReason;
         copy.proofs = proofs;
         copy.log.addAll(log);
@@ -501,6 +506,15 @@ public class Claim {
 
     public void setEscalated(boolean escalated) {
         this.escalated = escalated;
+    }
+
+    public boolean isWaived() {
+        return waived;
+    }
+
+    /** Waive the claim's late charge. */
+    public void waive() {
+        this.waived = true;
     }
 
     public LocalDate getReviewOn() {

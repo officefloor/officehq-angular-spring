@@ -194,7 +194,7 @@ export interface Lateness {
  * the charges added up. Both round as the claim rounds by `roundOn` (see {@link roundsHalfUp}).
  * The floor is applied last: the due is the greater of the floor in force on the claim's date and
  * the figure plus its charge. The charge is never bound by a statement; a settled claim's due is
- * frozen as it was settled, and a correction has no floor and no charge. Null when it has no figure.
+ * frozen as it was settled, a correction has no floor and no charge, and a waived claim no charge. Null when it has no figure.
  */
 export function chargedDueCents(
   c: Claim,
@@ -210,7 +210,7 @@ export function chargedDueCents(
   const floor = cents(valueOn(floors, c.date, START_FLOOR));
   if (!isOpen(c)) return Math.max(figure, floor);
   const grace = graceOn(late.graces, grade, c.date);
-  const periods = Math.floor(daysOverdue(c, late.today, grace) / 30);
+  const periods = c.waived ? 0 : Math.floor(daysOverdue(c, late.today, grace) / 30);
   let charge = 0;
   for (let k = 1; k <= periods; k++) {
     const boundary = plusDays(dueBy(c), grace + 30 * k);
