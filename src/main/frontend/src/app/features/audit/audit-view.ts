@@ -5,7 +5,8 @@ import { Session } from '../../core/session';
 
 // The audit viewer: the sheet's audit lines exactly as the audit file holds them, newest first.
 // With a name in the filter, only the lines about that person (name= or person= that name,
-// compared ignoring case and surrounding spaces). It reads the file; it records nothing itself.
+// compared ignoring case and surrounding spaces), then those on the sheet's descendants and on the
+// sheet the person came from. It reads the file; it records nothing itself.
 @Component({
   selector: 'app-audit-view',
   template: `

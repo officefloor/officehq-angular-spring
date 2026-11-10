@@ -3,11 +3,15 @@ package net.officefloor.hq.app.audit;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
+import java.util.LinkedHashSet;
 import java.util.Locale;
+import java.util.Set;
 import java.util.regex.Pattern;
 import net.officefloor.hq.app.Audit;
 import net.officefloor.hq.app.person.Person;
 import net.officefloor.hq.app.person.PersonRepository;
+import net.officefloor.hq.app.sheet.Sheet;
+import net.officefloor.hq.app.sheet.SheetRepository;
 import org.springframework.stereotype.Service;
 
 /**
@@ -22,27 +26,51 @@ public class AuditViewService {
 
     private final Audit audit;
     private final PersonRepository people;
+    private final SheetRepository sheets;
 
-    public AuditViewService(Audit audit, PersonRepository people) {
+    public AuditViewService(Audit audit, PersonRepository people, SheetRepository sheets) {
         this.audit = audit;
         this.people = people;
+        this.sheets = sheets;
     }
 
     /**
      * The sheet's records, newest first; with a name (blank for none), only those carrying
      * {@code name=<name>} or {@code person=<name>}, the name compared ignoring case and surrounding
-     * spaces. When the name is a person transferred in, the lines about them from the sheet they
-     * came from follow, newest first, as that sheet's lines are.
+     * spaces. With a name, the lines about them on the sheet's descendants (its children, their
+     * children, and so on) follow, each sheet's newest first, the sheets in order of id. When the
+     * name is a person transferred in, the lines about them from the sheet they came from follow
+     * last, newest first, as that sheet's lines are.
      */
     public List<String> lines(String sheet, String name) {
         String person = name == null ? "" : name.trim().toLowerCase(Locale.ROOT);
         List<String> all = audit.lines();
         List<String> found = linesOf(all, sheet, person);
         if (!person.isEmpty()) {
+            for (String descendant : descendants(sheet)) {
+                found.addAll(linesOf(all, descendant, person));
+            }
             people.findBySheetIdAndNameIgnoreCase(sheet, name.trim()).map(Person::getOriginSheet)
                     .ifPresent(origin -> found.addAll(linesOf(all, origin, person)));
         }
         return found;
+    }
+
+    /** The ids of the sheet's descendants, at every level, in order of id; the sheet itself never. */
+    private List<String> descendants(String sheet) {
+        Set<String> seen = new LinkedHashSet<>();
+        List<String> todo = new ArrayList<>(List.of(sheet));
+        while (!todo.isEmpty()) {
+            String at = todo.remove(todo.size() - 1);
+            for (Sheet child : sheets.findByParentIdOrderByIdAsc(at)) {
+                if (!child.getId().equals(sheet) && seen.add(child.getId())) {
+                    todo.add(child.getId());
+                }
+            }
+        }
+        List<String> ids = new ArrayList<>(seen);
+        Collections.sort(ids);
+        return ids;
     }
 
     /** The sheet's lines, newest first, only those about the (lower-cased) person when one is given. */
