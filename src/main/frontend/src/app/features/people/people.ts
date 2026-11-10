@@ -15,7 +15,7 @@ import { ClassicPeriodSummary, ClassicSummary, GradeSummary, PeriodSummary, Stat
 import { VoidReasons } from '../void-reasons/void-reasons';
 import { Templates } from '../templates/templates';
 import { Pool, Pools } from '../pools/pools';
-import { CrewPerson, Crews } from '../crews/crews';
+import { Crew, CrewPerson, Crews, crewDueCents } from '../crews/crews';
 import { PersonPlans, Plan } from '../plans/plans';
 import { VoidReasons as VoidReasonList } from '../../core/void-reasons';
 import { FigurePipe } from '../../core/figure';
@@ -252,6 +252,7 @@ const SUMMARY_STATUSES = ['DRAFT', 'OPEN', 'PENDING', 'SETTLED', 'VOID', 'REVIEW
       [consolidatedOverdueTotal]="consolidated().overdueTotal"
       [myDueTotal]="myFigures()?.dueTotal ?? ''"
       [myOverdueTotal]="myFigures()?.overdueTotal ?? ''"
+      [myCrewDueTotal]="myCrewDueTotal()"
     />
     <app-rates [(rates)]="rates" />
     <app-roles />
@@ -261,7 +262,7 @@ const SUMMARY_STATUSES = ['DRAFT', 'OPEN', 'PENDING', 'SETTLED', 'VOID', 'REVIEW
     <app-void-reasons />
     <app-templates />
     <app-pools [people]="people()" [pot]="pot()" [(pools)]="pools" />
-    <app-crews [people]="crewPeople()" />
+    <app-crews [people]="crewPeople()" [(crews)]="crews" />
     <app-audit-view />
     <app-tree-search />
     <section aria-labelledby="people-heading">
@@ -1083,6 +1084,8 @@ export class People {
   protected readonly pot = signal('');
   /** The sheet's pools, as the pools list last read them. */
   protected readonly pools = signal<Pool[]>([]);
+  /** The sheet's crews, as the crews list last read them. */
+  protected readonly crews = signal<Crew[]>([]);
   /** Everyone with their due-total as shown, for the crews' due-totals. */
   protected readonly crewPeople = computed<CrewPerson[]>(() =>
     this.people().map((p) => ({ id: p.id, name: p.name, due: this.dueOf(p) })),
@@ -1189,16 +1192,28 @@ export class People {
       overdueTotal: money(own.overdue + cents(d.overdueTotal)),
     };
   });
+  /** The person on the sheet with the user's name, by name or alias (compared without regard to case). */
+  private readonly me = computed(() => {
+    const user = this.session.user()?.toLowerCase();
+    if (!user) return undefined;
+    return this.people().find(
+      (p) => p.name.toLowerCase() === user || p.aliases.some((a) => a.toLowerCase() === user),
+    );
+  });
+  /** The due-totals of the crews the user's person leads, added up; blank when they lead none. */
+  protected readonly myCrewDueTotal = computed(() => {
+    const me = this.me();
+    const led = me ? this.crews().filter((c) => c.leadId === me.id) : [];
+    if (led.length === 0) return '';
+    const people = this.crewPeople();
+    return money(led.reduce((sum, c) => sum + crewDueCents(c, people), 0));
+  });
   /**
    * The signed-in user's own figures: the due- and overdue-totals of the person on the sheet with
    * the user's name, by name or alias (compared without regard to case); none when there is no such person.
    */
   protected readonly myFigures = computed(() => {
-    const user = this.session.user()?.toLowerCase();
-    if (!user) return null;
-    const me = this.people().find(
-      (p) => p.name.toLowerCase() === user || p.aliases.some((a) => a.toLowerCase() === user),
-    );
+    const me = this.me();
     return me ? { dueTotal: dueText(this.dueOf(me)), overdueTotal: money(this.overdueOf(me).cents) } : null;
   });
   /** The sheet's overdue claims that count: how many, and the sum of people's figures in whole cents, trimmed. */

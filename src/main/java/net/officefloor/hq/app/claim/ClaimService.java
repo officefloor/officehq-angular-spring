@@ -179,8 +179,10 @@ public class ClaimService {
         claim.setRef(ref);
         claim.setTags(tags);
         claim.setLateEntry(periods.isSoftClosed(sheetId, dueBy));
-        logStatus(sheetId, user, person, claim);
+        // logged once saved: its due needs the point it was added at (see Rate#appliesTo)
         Claim added = claims.saveAndFlush(claim);
+        logStatus(sheetId, user, person, added);
+        added = claims.saveAndFlush(added);
         audit.recordOnCommit(record("CLAIM_ADDED", sheetId, user, person, added)
                 + (added.getRef() != null ? " ref=" + added.getRef() : "")
                 + (added.getTags().isEmpty() ? "" : " tags=" + String.join(",", added.getTags())));
@@ -870,8 +872,10 @@ public class ClaimService {
         split.setOpenedBy(user);
         split.setSplitFrom(original.getNumber());
         split.setTags(original.getTags());
-        logStatus(sheetId, user, person, split);
+        // logged once saved: its due needs the point it was added at (see Rate#appliesTo)
         Claim added = claims.saveAndFlush(split);
+        logStatus(sheetId, user, person, added);
+        added = claims.saveAndFlush(added);
         audit.recordOnCommit(record("CLAIM_SPLIT", sheetId, user, person, original)
                 + " number=" + original.getNumber() + " into=" + added.getNumber());
         audit.recordOnCommit(record("CLAIM_OPENED", sheetId, user, person, added) + " number=" + added.getNumber());
@@ -932,7 +936,7 @@ public class ClaimService {
      * (or is not on the sheet), none is: every one counts as refused and nothing is written. Else the
      * settle is a batch: it takes the sheet's next batch number, each claim is marked with it, and
      * after the claims' own records one BATCH_SETTLED record gives the batch, its count and the
-     * frozen dues of those SETTLED added up.
+     * frozen dues of those SETTLED added up, n/a skipped.
      */
     @Transactional
     public BulkSettled bulkSettle(String sheetId, String user, Collection<Long> ids) {
@@ -961,7 +965,7 @@ public class ClaimService {
         for (Claim claim : settled) {
             claim.setBatch(batch);
             batched.add(claims.saveAndFlush(claim));
-            if (claim.getStatus() == ClaimStatus.SETTLED) {
+            if (claim.getStatus() == ClaimStatus.SETTLED && claim.getSettledDue() != null) { // n/a skipped
                 total = total.add(claim.getSettledDue());
             }
         }

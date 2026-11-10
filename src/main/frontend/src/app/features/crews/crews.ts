@@ -1,5 +1,5 @@
 import { HttpClient, HttpErrorResponse } from '@angular/common/http';
-import { Component, computed, effect, inject, input, output, signal } from '@angular/core';
+import { Component, computed, effect, inject, input, model, output, signal } from '@angular/core';
 import { firstValueFrom } from 'rxjs';
 import { Session } from '../../core/session';
 import { FigurePipe } from '../../core/figure';
@@ -28,6 +28,12 @@ export interface CrewPerson {
   id: number;
   name: string;
   due: number | null;
+}
+
+/** A crew's due-total in whole cents: its lead's and members' due-totals added up, n/a skipped. */
+export function crewDueCents(crew: Crew, people: CrewPerson[]): number {
+  const dues = new Map(people.map((p) => [p.id, p.due]));
+  return [crew.leadId, ...crew.members.map((m) => m.personId)].reduce((sum, id) => sum + (dues.get(id) ?? 0), 0);
 }
 
 function refusal(e: unknown, what: string): string {
@@ -87,11 +93,7 @@ export class CrewRow {
   private submitting = false;
 
   /** The lead's and the members' due-totals added up, n/a skipped. */
-  protected readonly dueTotal = computed(() => {
-    const ids = [this.crew().leadId, ...this.crew().members.map((m) => m.personId)];
-    const dues = new Map(this.people().map((p) => [p.id, p.due]));
-    return money(ids.reduce((sum, id) => sum + (dues.get(id) ?? 0), 0));
-  });
+  protected readonly dueTotal = computed(() => money(crewDueCents(this.crew(), this.people())));
 
   protected async add(event: Event): Promise<void> {
     event.preventDefault();
@@ -176,7 +178,8 @@ export class Crews {
   /** Everyone on the sheet with their due-total: the people a lead or member is chosen from. */
   readonly people = input.required<CrewPerson[]>();
 
-  protected readonly crews = signal<Crew[]>([]);
+  /** The sheet's crews, as the store last gave them. */
+  readonly crews = model<Crew[]>([]);
   protected readonly nameInput = signal('');
   protected readonly leadInput = signal('');
   protected readonly error = signal<string | null>(null);
