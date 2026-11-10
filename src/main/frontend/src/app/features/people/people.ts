@@ -13,6 +13,7 @@ import { Header } from '../header/header';
 import { GradeSummary, PeriodSummary, StatusSummary, Summary, VoidReasonSummary } from '../summary/summary';
 import { VoidReasons } from '../void-reasons/void-reasons';
 import { Templates } from '../templates/templates';
+import { Pools } from '../pools/pools';
 import { VoidReasons as VoidReasonList } from '../../core/void-reasons';
 
 // The people on the active sheet, in the order they were added, and the one form that both adds
@@ -173,7 +174,7 @@ const SUMMARY_STATUSES = ['DRAFT', 'OPEN', 'PENDING', 'SETTLED', 'VOID'] as cons
 
 @Component({
   selector: 'app-people',
-  imports: [AuditView, Header, Holidays, PersonClaims, Periods, Rates, Roles, Settings, Summary, Templates, VoidReasons],
+  imports: [AuditView, Header, Holidays, PersonClaims, Periods, Rates, Roles, Pools, Settings, Summary, Templates, VoidReasons],
   template: `
     <app-header
       [peopleCount]="people().length"
@@ -188,6 +189,7 @@ const SUMMARY_STATUSES = ['DRAFT', 'OPEN', 'PENDING', 'SETTLED', 'VOID'] as cons
     <app-holidays />
     <app-void-reasons />
     <app-templates />
+    <app-pools [people]="people()" />
     <app-audit-view />
     <section aria-labelledby="people-heading">
       <h2 id="people-heading">People</h2>
