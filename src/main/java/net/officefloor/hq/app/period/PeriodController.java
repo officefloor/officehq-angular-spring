@@ -15,7 +15,7 @@ import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 
-/** Listing, adding, closing and reopening the periods on a sheet. */
+/** Listing, adding, generating, closing and reopening the periods on a sheet. */
 @RestController
 @RequestMapping("/api/periods")
 public class PeriodController {
@@ -27,6 +27,10 @@ public class PeriodController {
     public record AddPeriodRequest(@NotBlank @Size(max = 100) String sheet, @NotBlank @Size(max = 100) String user,
             @NotBlank @Size(max = 100) @Pattern(regexp = "\\s*\\S+\\s*") String name, @NotNull LocalDate from,
             @NotNull LocalDate to) {
+    }
+
+    public record GeneratePeriodsRequest(@NotBlank @Size(max = 100) String sheet,
+            @NotBlank @Size(max = 100) String user, @NotNull LocalDate from, @NotNull LocalDate to) {
     }
 
     public record ClosePeriodRequest(@NotBlank @Size(max = 100) String sheet, @NotBlank @Size(max = 100) String user,
@@ -70,6 +74,13 @@ public class PeriodController {
     @PostMapping("/add")
     public PeriodResponse add(@Valid @RequestBody AddPeriodRequest req) {
         return response(service.add(req.sheet().trim(), req.user().trim(), req.name().trim(), req.from(), req.to()));
+    }
+
+    /** The periods made, by from-date. */
+    @PostMapping("/generate")
+    public List<PeriodResponse> generate(@Valid @RequestBody GeneratePeriodsRequest req) {
+        return service.generate(req.sheet().trim(), req.user().trim(), req.from(), req.to()).stream()
+                .map(PeriodController::response).toList();
     }
 
     @PostMapping("/reopen")

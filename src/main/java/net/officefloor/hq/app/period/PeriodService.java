@@ -1,6 +1,8 @@
 package net.officefloor.hq.app.period;
 
 import java.time.LocalDate;
+import java.time.YearMonth;
+import java.util.ArrayList;
 import java.util.List;
 import net.officefloor.hq.app.Audit;
 import net.officefloor.hq.app.role.RoleService;
@@ -67,6 +69,38 @@ public class PeriodService {
         audit.recordOnCommit("PERIOD_ADDED sheet=" + sheetId + " by=" + user + " period=" + added.getName() + " from="
                 + added.getFromDate() + " to=" + added.getToDate());
         return added;
+    }
+
+    /**
+     * Generate one period per calendar month from the from-date's month to the to-date's month, each
+     * running from the first to the last day of its month and named yyyy-mm. A month whose name is
+     * already a period, or whose days overlap a period on the sheet, is left out; the others are
+     * still made. Refused (400) when the to-date is before the from-date.
+     */
+    @Transactional
+    public List<Period> generate(String sheetId, String user, LocalDate from, LocalDate to) {
+        roles.refuseViewer(sheetId, user);
+        if (to.isBefore(from)) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "The to-date cannot be before the from-date.");
+        }
+        sheets.load(sheetId, user);
+        // hold the sheet so periods added at the same moment are checked one after the other
+        sheetRows.findLockedById(sheetId);
+        List<Period> made = new ArrayList<>();
+        for (YearMonth month = YearMonth.from(from); !month.isAfter(YearMonth.from(to)); month = month.plusMonths(1)) {
+            String name = month.toString();
+            LocalDate first = month.atDay(1);
+            LocalDate last = month.atEndOfMonth();
+            if (periods.existsBySheetIdAndNameIgnoreCase(sheetId, name)
+                    || periods.existsBySheetIdAndFromDateLessThanEqualAndToDateGreaterThanEqual(sheetId, last, first)) {
+                continue;
+            }
+            Period added = periods.saveAndFlush(new Period(sheetId, name, first, last));
+            audit.recordOnCommit("PERIOD_ADDED sheet=" + sheetId + " by=" + user + " period=" + added.getName()
+                    + " from=" + added.getFromDate() + " to=" + added.getToDate());
+            made.add(added);
+        }
+        return made;
     }
 
     /** Close a period, fixing its due-total now; refused (403) for a role the permission matrix does not allow and (409) when it is already closed. */

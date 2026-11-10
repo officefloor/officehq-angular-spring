@@ -5,7 +5,8 @@ import { Session } from '../../core/session';
 import { money } from '../claims/claims';
 
 // The sheet's periods, by from-date, and the form that adds one: a name unique on the sheet and a
-// from and to date, both inclusive, no two periods overlapping. A claim belongs to the period whose
+// from and to date, both inclusive, no two periods overlapping. A second form generates a period
+// per calendar month (named yyyy-mm) between two dates, leaving out months in use or overlapping. A claim belongs to the period whose
 // dates contain its date, or to none; each period shows the due of the claims that count in it.
 // A period can be closed: its due-total is then the one fixed when it was closed, and no claim
 // dated inside it can be added, edited, opened, settled or voided. Who may close or reopen a period
@@ -103,6 +104,31 @@ export function inClosedPeriod(periods: readonly Period[], date: string): boolea
           <p role="alert" data-testid="period-form-error">{{ err }}</p>
         }
       </form>
+      <form aria-label="Generate monthly periods" (submit)="generate($event)">
+        <label for="period-generate-from">Generate from (blank: today)</label>
+        <input
+          id="period-generate-from"
+          type="date"
+          data-testid="period-generate-from"
+          [value]="generateFrom()"
+          (input)="generateFrom.set($any($event.target).value); generateError.set(null)"
+        />
+        <label for="period-generate-to">To</label>
+        <input
+          id="period-generate-to"
+          type="date"
+          data-testid="period-generate-to"
+          [value]="generateTo()"
+          (input)="generateTo.set($any($event.target).value); generateError.set(null)"
+        />
+        <button type="submit" data-testid="period-generate">Generate monthly periods</button>
+        @if (generated() !== null) {
+          <p role="status">Made <span data-testid="period-generated">{{ generated() }}</span></p>
+        }
+        @if (generateError(); as err) {
+          <p role="alert" data-testid="period-generate-error">{{ err }}</p>
+        }
+      </form>
       <table data-testid="periods-list" aria-label="Periods">
         <thead>
           <tr>
@@ -163,6 +189,11 @@ export class Periods {
   protected readonly fromInput = signal('');
   protected readonly toInput = signal('');
   protected readonly error = signal<string | null>(null);
+  protected readonly generateFrom = signal('');
+  protected readonly generateTo = signal('');
+  /** How many periods the last generate made; null before one, and while one runs. */
+  protected readonly generated = signal<number | null>(null);
+  protected readonly generateError = signal<string | null>(null);
   /** The error of each period's last refused action, by period id. */
   protected readonly rowErrors = signal<ReadonlyMap<number, string>>(new Map());
   /** Whether a submit is waiting for its answer: a second submit meanwhile is ignored. */
@@ -178,6 +209,10 @@ export class Periods {
       this.fromInput.set('');
       this.toInput.set('');
       this.error.set(null);
+      this.generateFrom.set('');
+      this.generateTo.set('');
+      this.generated.set(null);
+      this.generateError.set(null);
       this.rowErrors.set(new Map());
       if (sheet) {
         void this.fetch(sheet);
@@ -287,6 +322,44 @@ export class Periods {
         e instanceof HttpErrorResponse && e.status === 409
           ? 'That period name is in use, or the period overlaps another.'
           : 'Could not add this period.',
+      );
+    } finally {
+      this.submitting = false;
+    }
+  }
+
+  /** Make one period per calendar month from the from-date's month to the to-date's month, leaving
+   *  out a month whose name is in use or whose days overlap a period; shows how many were made. */
+  protected async generate(event: Event): Promise<void> {
+    event.preventDefault();
+    if (this.submitting) return;
+    this.generateError.set(null);
+    this.generated.set(null);
+    const sheet = this.session.sheet();
+    const from = this.generateFrom().trim() || this.session.today() || '';
+    const to = this.generateTo().trim();
+    if (!DATE.test(from) || Number.isNaN(Date.parse(from)) || !DATE.test(to) || Number.isNaN(Date.parse(to))) {
+      this.generateError.set('Enter the from and to dates as yyyy-mm-dd.');
+      return;
+    }
+    if (to < from) {
+      this.generateError.set('The to-date cannot be before the from-date.');
+      return;
+    }
+    this.submitting = true;
+    try {
+      const made = await firstValueFrom(
+        this.http.post<Period[]>('/api/periods/generate', { sheet, user: this.session.user(), from, to }),
+      );
+      if (this.session.sheet() !== sheet) return;
+      this.periods.update((list) => [...list, ...made].sort((a, b) => a.from.localeCompare(b.from)));
+      this.generated.set(made.length);
+    } catch (e) {
+      if (this.session.sheet() !== sheet) return;
+      this.generateError.set(
+        e instanceof HttpErrorResponse && e.status === 403
+          ? 'Your role may not add periods.'
+          : 'Could not generate the periods.',
       );
     } finally {
       this.submitting = false;
