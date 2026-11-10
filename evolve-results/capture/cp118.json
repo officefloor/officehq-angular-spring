@@ -1,0 +1,64 @@
+{
+  "checkpoint": 118,
+  "stack": {
+    "repo": "/home/daniel/officehq-angular-spring",
+    "origin": "git@github.com:officefloor/officehq-angular-spring.git",
+    "name": "officehq-angular-spring",
+    "base_ref": "base-empty",
+    "base_commit": "65cb8233ea38b2dfa6cfd18709e30cd18fdf3250"
+  },
+  "checkpoint_id": "cp118_import-rates",
+  "phase": "mid",
+  "type": "additive",
+  "mutates": [],
+  "replaced_tests": [],
+  "request": {
+    "spec": "Rates can be pasted as lines of grade,rate,from,to (the last two may be absent or blank) into a\nrate import box. Every line is checked first with the rate form's rules; if any fails, an error\nshows and nothing is set; otherwise every line is set in order exactly as the form would set it\n(replacing a rate for the same grade and from-date, writing RATE_SET). Show how many were set.\n",
+    "prompt": "You are implementing ONE change to this application.\n\nFIRST read AGENTS.md \u2014 it states the working rules and how the app is tested, and sends you to\nDESIGN.md for the app's stack and conventions. Follow both.\n\nTHE CHANGE REQUEST:\nRates can be pasted as lines of grade,rate,from,to (the last two may be absent or blank) into a\nrate import box. Every line is checked first with the rate form's rules; if any fails, an error\nshows and nothing is set; otherwise every line is set in order exactly as the form would set it\n(replacing a rate for the same grade and from-date, writing RATE_SET). Show how many were set.\n\nYour work is verified by an automated Playwright UI test already installed under e2e/specs/.\nRead that spec: it declares the exact data-testid anchors, values, test data and any audit\nrecords it expects \u2014 match them. Run `bin/e2e` to build the app, start it, and run the test as\nyou work; iterate until it passes. Change whatever the request needs across the app \u2014 its stored\ndata, its server and its front end. Do NOT edit bin/build, bin/start, bin/stop, bin/e2e,\nAGENTS.md, CLAUDE.md, DESIGN.md, e2e/support/ or the test spec.\n"
+  },
+  "commit_sha": "016a325be19e63b65e110a3857f0211efc2fd6c9",
+  "reset_sha": "",
+  "preagent_sha": "0ba9b6300dce53eba0ed0ed6a52365ddb3cc9607",
+  "prev_sha": "0ba9b6300dce53eba0ed0ed6a52365ddb3cc9607",
+  "base_sha": "65cb8233ea38b2dfa6cfd18709e30cd18fdf3250",
+  "agent": {
+    "ok": true,
+    "cost_usd": 0.6282736,
+    "input_tokens": 34,
+    "output_tokens": 6973,
+    "cache_read_tokens": 674108,
+    "cache_creation_tokens": 44232,
+    "num_turns": 17,
+    "duration_ms": 368624,
+    "duration_api_ms": 69485,
+    "model": "claude-opus-5-5",
+    "session_id": "5db5940b-c055-4306-bce7-f765c24c3be3",
+    "stop_reason": "success",
+    "result_text": "The rate import box is in place, and all 4 tests in `bin/e2e` pass.\n\n**What it does**\n- You paste lines of `grade,rate,from,to` into the box; the from and to dates can be left out or blank.\n- Every line is checked against the rate form's rules before anything is saved: the grade must be A, B or C, the rate must be 0.00\u2013999.99 with at most two decimals, dates must be yyyy-mm-dd, and the to-date can't be before the from-date. A line with the wrong number of fields is also refused.\n- If any line fails, or the box has no lines at all, an error shows and nothing is saved or written to the audit file. Blank lines in between are skipped.\n- Otherwise each line is set in order through the same code the rate form uses. So it replaces any rate with the same grade and from-date and writes the same `RATE_SET` (and rollup) audit lines.\n- The whole import runs as one transaction, and the box shows how many rates were set.\n\n**Changes**\n- **Server:** a new `RateImportService.java` holds the checks and the import, and `RateController.java` gets a new `POST /api/rates/import` endpoint. No database change was needed.\n- **Front end** (`rates.ts`): the import box, its button, the count and the error message. After an import the rates are re-read from the server, so the \"rate today\" values and what's due update straight away.\n\nThe on-screen error is always the generic \"Could not import these rates.\" It doesn't say which line failed, because the server's reason doesn't reach the browser with the app's current settings.",
+    "error": "",
+    "attempts": [
+      {
+        "ok": true,
+        "limit_reached": false,
+        "retryable": false,
+        "timed_out": false,
+        "cost_usd": 0.6282736,
+        "num_turns": 17,
+        "duration_ms": 368624,
+        "duration_api_ms": 69485,
+        "error": ""
+      }
+    ]
+  },
+  "agent_stream_file": "cp118.agent.jsonl",
+  "agent_diff_file": "cp118.agent.diff",
+  "build_log_file": null,
+  "tests": {
+    "gated": false,
+    "queued": true
+  },
+  "probe": null,
+  "pinned_touched": [],
+  "acceptance_touched": [],
+  "impact_gate": null
+}
