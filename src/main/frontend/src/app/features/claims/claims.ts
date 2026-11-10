@@ -98,6 +98,14 @@ export function counts(c: Claim): boolean {
   return isOpen(c) || c.status === 'SETTLED';
 }
 
+/** The status a claim had at the end of a day (yyyy-mm-dd), as its status log records it (the last
+ *  line logged on or before it); null when it had none yet. */
+export function statusAt(c: Claim, day: string): ClaimStatus | null {
+  let at: ClaimStatus | null = null;
+  for (const l of c.log) if (l.date <= day) at = l.status;
+  return at;
+}
+
 /** Whether a claim is open: OPEN or PENDING. Only an open claim goes overdue, and a hold takes it out of the totals. */
 export function isOpen(c: Claim): boolean {
   return c.status === 'OPEN' || c.status === 'PENDING';

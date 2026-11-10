@@ -2,7 +2,7 @@ import { HttpClient, HttpErrorResponse } from '@angular/common/http';
 import { Component, computed, effect, inject, signal } from '@angular/core';
 import { firstValueFrom } from 'rxjs';
 import { Session } from '../../core/session';
-import { AMOUNT, Claim, PersonClaims, cents, counts, deferred, isOpen, money, overdue, roundingDate } from '../claims/claims';
+import { AMOUNT, Claim, PersonClaims, cents, counts, deferred, isOpen, money, overdue, roundingDate, statusAt } from '../claims/claims';
 import { DatedDue, Period, Periods, periodDueTotal, personPeriodDueTotal } from '../periods/periods';
 import { DatedGrade, DatedValue, Lateness, Rate, Rates, chargedDueCents, dueText, gradeOn, pctOn, valueOn } from '../rates/rates';
 import { Roles } from '../roles/roles';
@@ -27,7 +27,8 @@ import { GradeSummary, PeriodSummary, StatusSummary, Summary } from '../summary/
 // Taking a person's statement binds each of their claims that counts to the figure it has then
 // (a stated claim shows and totals that figure); each row shows how many statements the person
 // has taken, and the last one's due-total and date.
-// Each claim shows the period its date falls in, and each period the due of the claims that count in it.
+// Each claim shows the period its date falls in, and each period the due of the claims that counted in it
+// at its end (by the status each had then, as its log records it).
 // A person can be retired from a date (the sheet's today when left blank); with a date set they count
 // as retired at once, whatever the date. No claim of theirs can be dated after it. Retired people are
 // left out of the list unless "show retired" is on; their claims keep counting in every total.
@@ -468,14 +469,21 @@ export class People {
     today: this.session.today(),
     policyDate: this.policyDate(),
   }));
-  /** The date and figure of each claim that counts and has a figure, for the periods' due-totals. */
+  /** The date and figure of each claim that has a figure, and whether it counts by its status at
+   *  the end of a day, for the periods' due-totals. */
   protected readonly dues = computed(() => {
     const out: DatedDue[] = [];
+    const today = this.session.today();
     for (const c of this.claims()) {
       const p = this.peopleById().get(c.personId);
-      if (p === undefined || !countsFor(p, c, this.session.today())) continue;
+      if (p === undefined) continue;
       const due = chargedDueCents(c, this.rates(), gradeOn(p.grades, c.date), this.floors(), this.lateness(), this.roundOn(c));
-      if (due !== null) out.push({ personId: c.personId, date: c.date, cents: due });
+      if (due === null) continue;
+      const countsAt = (day: string): boolean => {
+        const status = statusAt(c, day);
+        return status !== null && countsFor(p, { ...c, status }, today);
+      };
+      out.push({ personId: c.personId, date: c.date, cents: due, countsAt });
     }
     return out;
   });

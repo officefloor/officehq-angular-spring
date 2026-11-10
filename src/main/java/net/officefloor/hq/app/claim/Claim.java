@@ -17,6 +17,7 @@ import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Optional;
 import org.hibernate.annotations.BatchSize;
 
 /**
@@ -243,7 +244,26 @@ public class Claim {
 
     /** Whether the claim is open and deferred on the given day: its deferral date not yet reached. */
     public boolean isDeferredOn(LocalDate today) {
+        return isDeferredOn(status, today);
+    }
+
+    /** Whether the claim would be deferred on the given day, had it the given status. */
+    public boolean isDeferredOn(ClaimStatus status, LocalDate today) {
         return status.isOpen() && deferredUntil != null && today != null && today.isBefore(deferredUntil);
+    }
+
+    /**
+     * The status the claim had at the end of a day, as its status log records it (the last line
+     * logged on or before it); empty when it had none yet.
+     */
+    public Optional<ClaimStatus> statusAt(LocalDate day) {
+        ClaimStatus at = null;
+        for (ClaimLogEntry entry : log) {
+            if (!entry.getDate().isAfter(day)) {
+                at = entry.getStatus();
+            }
+        }
+        return Optional.ofNullable(at);
     }
 
     public int getProofs() {

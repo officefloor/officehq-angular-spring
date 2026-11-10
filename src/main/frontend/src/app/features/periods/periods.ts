@@ -11,6 +11,8 @@ import { money } from '../claims/claims';
 // dated inside it can be added, edited, opened, settled or voided. A steward can reopen a closed
 // period, making its due-total live again. Each person's row shows their own due-total for every
 // period, fixed the same way while it is closed; a period's due-total is the sum of these.
+// An open period counts a claim by the status it had at the end of its to-date, as the claim's status
+// log records it (a claim with no status by then does not count), at its figure as shown now.
 export interface Period {
   id: number;
   name: string;
@@ -23,11 +25,18 @@ export interface Period {
   closedDues: Record<string, string> | null;
 }
 
-/** A claim's person, date and its figure in whole cents, for a claim that counts. */
+/** A claim's person, date and its figure in whole cents, for a claim that has one. */
 export interface DatedDue {
   personId: number;
   date: string;
   cents: number;
+  /** Whether the claim counts by the status it had at the end of a day (yyyy-mm-dd). */
+  countsAt: (day: string) => boolean;
+}
+
+/** Whether a claim's due falls in an open period: dated inside it, counting at the end of its to-date. */
+function inPeriod(p: Period, d: DatedDue): boolean {
+  return p.from <= d.date && d.date <= p.to && d.countsAt(p.to);
 }
 
 /** A date as the date input gives it: yyyy-mm-dd. */
@@ -39,18 +48,18 @@ export function periodOn(periods: readonly Period[], date: string): Period | und
 }
 
 /** A closed period's due-total fixed when it was closed; an open period's, the due of the claims
- *  that count whose date falls in it. */
+ *  whose date falls in it that counted at the end of its to-date. */
 export function periodDueTotal(p: Period, dues: readonly DatedDue[]): string {
   if (p.closed && p.closedDue !== null) return p.closedDue;
-  return money(dues.reduce((sum, d) => sum + (p.from <= d.date && d.date <= p.to ? d.cents : 0), 0));
+  return money(dues.reduce((sum, d) => sum + (inPeriod(p, d) ? d.cents : 0), 0));
 }
 
 /** A person's due-total for a period: for a closed period, the one fixed when it was closed (0.00
- *  for a person added since); for an open one, the due of their claims that count in it. */
+ *  for a person added since); for an open one, the due of their claims that counted in it at its end. */
 export function personPeriodDueTotal(p: Period, personId: number, dues: readonly DatedDue[]): string {
   if (p.closed && p.closedDues !== null) return p.closedDues[String(personId)] ?? '0.00';
   return money(
-    dues.reduce((sum, d) => sum + (d.personId === personId && p.from <= d.date && d.date <= p.to ? d.cents : 0), 0),
+    dues.reduce((sum, d) => sum + (d.personId === personId && inPeriod(p, d) ? d.cents : 0), 0),
   );
 }
 

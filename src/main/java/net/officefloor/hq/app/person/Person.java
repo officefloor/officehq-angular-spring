@@ -138,8 +138,12 @@ public class Person {
      * hold does not, unless a statement binds it; nor does a claim deferred on the sheet's today.
      */
     public boolean counts(Claim claim, LocalDate today) {
-        ClaimStatus status = claim.getStatus();
-        return status.counts() && !claim.isDeferredOn(today)
+        return counts(claim, claim.getStatus(), today);
+    }
+
+    /** Whether a claim of this person counts by the same rules, had it the given status. */
+    public boolean counts(Claim claim, ClaimStatus status, LocalDate today) {
+        return status.counts() && !claim.isDeferredOn(status, today)
                 && (claim.isStated() || !(status.isOpen() && heldOn(claim.getDate())));
     }
 
