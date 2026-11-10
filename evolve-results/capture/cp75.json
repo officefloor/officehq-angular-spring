@@ -1,0 +1,64 @@
+{
+  "checkpoint": 75,
+  "stack": {
+    "repo": "/home/daniel/officehq-angular-spring",
+    "origin": "git@github.com:officefloor/officehq-angular-spring.git",
+    "name": "officehq-angular-spring",
+    "base_ref": "base-empty",
+    "base_commit": "65cb8233ea38b2dfa6cfd18709e30cd18fdf3250"
+  },
+  "checkpoint_id": "cp75_bulk-grade",
+  "phase": "early",
+  "type": "additive",
+  "mutates": [],
+  "replaced_tests": [],
+  "request": {
+    "spec": "People can be selected (a checkbox on each row) and given a grade together: a grade, a from-date\n(default the sheet's today) and a button. Each selected person, in list order, gets that grade\nfrom that date exactly as the person form would, with the same PERSON_EDITED and rollup lines.\nShow how many were changed.\n",
+    "prompt": "You are implementing ONE change to this application.\n\nFIRST read AGENTS.md \u2014 it states the working rules and how the app is tested, and sends you to\nDESIGN.md for the app's stack and conventions. Follow both.\n\nTHE CHANGE REQUEST:\nPeople can be selected (a checkbox on each row) and given a grade together: a grade, a from-date\n(default the sheet's today) and a button. Each selected person, in list order, gets that grade\nfrom that date exactly as the person form would, with the same PERSON_EDITED and rollup lines.\nShow how many were changed.\n\nYour work is verified by an automated Playwright UI test already installed under e2e/specs/.\nRead that spec: it declares the exact data-testid anchors, values, test data and any audit\nrecords it expects \u2014 match them. Run `bin/e2e` to build the app, start it, and run the test as\nyou work; iterate until it passes. Change whatever the request needs across the app \u2014 its stored\ndata, its server and its front end. Do NOT edit bin/build, bin/start, bin/stop, bin/e2e,\nAGENTS.md, CLAUDE.md, DESIGN.md, e2e/support/ or the test spec.\n"
+  },
+  "commit_sha": "4eabe6ac31fabdab1452a0c94f8ecfca0af8a109",
+  "reset_sha": "",
+  "preagent_sha": "1db2f2878867122cb3c0f867405004cdb8a6a901",
+  "prev_sha": "1db2f2878867122cb3c0f867405004cdb8a6a901",
+  "base_sha": "65cb8233ea38b2dfa6cfd18709e30cd18fdf3250",
+  "agent": {
+    "ok": true,
+    "cost_usd": 0.817306,
+    "input_tokens": 32,
+    "output_tokens": 8319,
+    "cache_read_tokens": 758510,
+    "cache_creation_tokens": 62387,
+    "num_turns": 17,
+    "duration_ms": 325120,
+    "duration_api_ms": 84641,
+    "model": "claude-opus-5-5",
+    "session_id": "d75cd062-42dd-452b-8913-c3d9fec5060c",
+    "stop_reason": "success",
+    "result_text": "Bulk grading is in: people can be ticked on their rows and given a grade together. `bin/e2e` passes all 4 tests in the spec. The last edit after that run was a comment, so nothing that runs has changed since.\n\n**Server**\n- New endpoint `POST /api/people/bulk-grade`, in `PersonController.java`, takes the sheet, user, ids, grade and an optional from-date.\n- `PersonService.bulkGrade` takes the selected people in list order and runs each through the same `update` the person form uses. Name and terms stay as they are, so the `PERSON_EDITED` and rollup audit lines are the same as a form save would write.\n- It all runs in one transaction, so either everyone is graded or no one is. A viewer is refused, and so is a request with an id that isn't on the sheet. A refused request writes nothing to the store or the audit file.\n\n**Front end** (`people.ts`)\n- Each person row has a `person-select` checkbox.\n- The bulk form has a grade (`bulk-grade`), a from-date (`bulk-grade-from`, blank means the sheet's today) and a button (`bulk-grade-apply`).\n- After the button is pressed, `bulk-graded` shows how many people were changed. The old count is cleared while the action runs.\n- A refusal shows a `person-error` message. Pressing with nobody selected, or with a badly formed date, is refused before anything reaches the server. The message goes away when the form or the selection changes.\n- After a successful run the selection is cleared, so the next bulk action starts with nobody ticked.\n\nIf someone has a person's editor open while that person is bulk-graded, saving the editor is refused as out of date and the form refills with the new grade. I did this on purpose so the old grade in the form can't quietly overwrite the new one.",
+    "error": "",
+    "attempts": [
+      {
+        "ok": true,
+        "limit_reached": false,
+        "retryable": false,
+        "timed_out": false,
+        "cost_usd": 0.817306,
+        "num_turns": 17,
+        "duration_ms": 325120,
+        "duration_api_ms": 84641,
+        "error": ""
+      }
+    ]
+  },
+  "agent_stream_file": "cp75.agent.jsonl",
+  "agent_diff_file": "cp75.agent.diff",
+  "build_log_file": null,
+  "tests": {
+    "gated": false,
+    "queued": true
+  },
+  "probe": null,
+  "pinned_touched": [],
+  "acceptance_touched": [],
+  "impact_gate": null
+}
