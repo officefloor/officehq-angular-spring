@@ -1,0 +1,64 @@
+{
+  "checkpoint": 185,
+  "stack": {
+    "repo": "/home/daniel/officehq-angular-spring",
+    "origin": "git@github.com:officefloor/officehq-angular-spring.git",
+    "name": "officehq-angular-spring",
+    "base_ref": "base-empty",
+    "base_commit": "65cb8233ea38b2dfa6cfd18709e30cd18fdf3250"
+  },
+  "checkpoint_id": "cp185_partial-settle",
+  "phase": "late",
+  "type": "additive",
+  "mutates": [],
+  "replaced_tests": [],
+  "request": {
+    "spec": "An OPEN claim can be part-settled: an amount and a button on the claim. The amount is split off\nexactly as the split button does, and the new claim is settled at once by the signed-in user exactly\nas the settle button does (going to PENDING when the clerk limit says so); a split or a settle that\nwould be refused refuses the whole action with an error on the claim and changes nothing; the\nfour-eyes rules and the proof rule are judged on the original claim (the new claim's opener is the\nsigned-in user, as with the split button, who may still part-settle).\n",
+    "prompt": "You are implementing ONE change to this application.\n\nFIRST read AGENTS.md \u2014 it states the working rules and how the app is tested, and sends you to\nDESIGN.md for the app's stack and conventions. Follow both.\n\nTHE CHANGE REQUEST:\nAn OPEN claim can be part-settled: an amount and a button on the claim. The amount is split off\nexactly as the split button does, and the new claim is settled at once by the signed-in user exactly\nas the settle button does (going to PENDING when the clerk limit says so); a split or a settle that\nwould be refused refuses the whole action with an error on the claim and changes nothing; the\nfour-eyes rules and the proof rule are judged on the original claim (the new claim's opener is the\nsigned-in user, as with the split button, who may still part-settle).\n\nYour work is verified by an automated Playwright UI test already installed under e2e/specs/.\nRead that spec: it declares the exact data-testid anchors, values, test data and any audit\nrecords it expects \u2014 match them. Run `bin/e2e` to build the app, start it, and run the test as\nyou work; iterate until it passes. Change whatever the request needs across the app \u2014 its stored\ndata, its server and its front end. Do NOT edit bin/build, bin/start, bin/stop, bin/e2e,\nAGENTS.md, CLAUDE.md, DESIGN.md, e2e/support/ or the test spec.\n"
+  },
+  "commit_sha": "141249ede16261e5edb1ad9b70d0f38e226e0a2c",
+  "reset_sha": "",
+  "preagent_sha": "25c85dd58cf07a79c134ba01325e06ac94d95e4b",
+  "prev_sha": "25c85dd58cf07a79c134ba01325e06ac94d95e4b",
+  "base_sha": "65cb8233ea38b2dfa6cfd18709e30cd18fdf3250",
+  "agent": {
+    "ok": true,
+    "cost_usd": 0.7763807999999999,
+    "input_tokens": 4,
+    "output_tokens": 102,
+    "cache_read_tokens": 66349,
+    "cache_creation_tokens": 1237,
+    "num_turns": 1,
+    "duration_ms": 1907,
+    "duration_api_ms": 88058,
+    "model": "claude-opus-5-5",
+    "session_id": "03c18a79-358a-4cc6-9067-9a5b7e77ccbe",
+    "stop_reason": "success",
+    "result_text": "That failure notice is from a background wait loop I stopped myself once the test run had finished, so it can be ignored. The `bin/e2e` run itself exited with code 0 and all 4 tests passed, so the part-settle change is still finished.",
+    "error": "",
+    "attempts": [
+      {
+        "ok": true,
+        "limit_reached": false,
+        "retryable": false,
+        "timed_out": false,
+        "cost_usd": 0.7763807999999999,
+        "num_turns": 1,
+        "duration_ms": 1907,
+        "duration_api_ms": 88058,
+        "error": ""
+      }
+    ]
+  },
+  "agent_stream_file": "cp185.agent.jsonl",
+  "agent_diff_file": "cp185.agent.diff",
+  "build_log_file": null,
+  "tests": {
+    "gated": false,
+    "queued": true
+  },
+  "probe": null,
+  "pinned_touched": [],
+  "acceptance_touched": [],
+  "impact_gate": null
+}
