@@ -1,0 +1,64 @@
+{
+  "checkpoint": 174,
+  "stack": {
+    "repo": "/home/daniel/officehq-angular-spring",
+    "origin": "git@github.com:officefloor/officehq-angular-spring.git",
+    "name": "officehq-angular-spring",
+    "base_ref": "base-empty",
+    "base_commit": "65cb8233ea38b2dfa6cfd18709e30cd18fdf3250"
+  },
+  "checkpoint_id": "cp174_late-charge-waiver",
+  "phase": "late",
+  "type": "additive",
+  "mutates": [],
+  "replaced_tests": [],
+  "request": {
+    "spec": "A steward can waive a claim's late charge (a button on an OPEN or PENDING claim; CLAIM_WAIVED\nnaming the claim; anyone else, any other status, or a claim already waived is refused with an error\non the claim). A waived claim bears no late charge from then on, whatever its overdue state; show\nwaived yes/no on the claim.\n",
+    "prompt": "You are implementing ONE change to this application.\n\nFIRST read AGENTS.md \u2014 it states the working rules and how the app is tested, and sends you to\nDESIGN.md for the app's stack and conventions. Follow both.\n\nTHE CHANGE REQUEST:\nA steward can waive a claim's late charge (a button on an OPEN or PENDING claim; CLAIM_WAIVED\nnaming the claim; anyone else, any other status, or a claim already waived is refused with an error\non the claim). A waived claim bears no late charge from then on, whatever its overdue state; show\nwaived yes/no on the claim.\n\nYour work is verified by an automated Playwright UI test already installed under e2e/specs/.\nRead that spec: it declares the exact data-testid anchors, values, test data and any audit\nrecords it expects \u2014 match them. Run `bin/e2e` to build the app, start it, and run the test as\nyou work; iterate until it passes. Change whatever the request needs across the app \u2014 its stored\ndata, its server and its front end. Do NOT edit bin/build, bin/start, bin/stop, bin/e2e,\nAGENTS.md, CLAUDE.md, DESIGN.md, e2e/support/ or the test spec.\n"
+  },
+  "commit_sha": "2ce22ca2b15c1cbb55648a8ba0bc4448f3e7260b",
+  "reset_sha": "",
+  "preagent_sha": "cc49752eeab2d2b74c52af28d3173d2fe6f20082",
+  "prev_sha": "cc49752eeab2d2b74c52af28d3173d2fe6f20082",
+  "base_sha": "65cb8233ea38b2dfa6cfd18709e30cd18fdf3250",
+  "agent": {
+    "ok": true,
+    "cost_usd": 0.751074,
+    "input_tokens": 36,
+    "output_tokens": 7940,
+    "cache_read_tokens": 728090,
+    "cache_creation_tokens": 55814,
+    "num_turns": 19,
+    "duration_ms": 354486,
+    "duration_api_ms": 80605,
+    "model": "claude-opus-5-5",
+    "session_id": "1848f4cb-3783-41c3-92ee-b36f6b755ab5",
+    "stop_reason": "success",
+    "result_text": "The late-charge waiver is in. `bin/e2e` passes all 4 tests in the spec: the main waiver test and three other scenarios.\n\n**What it does**\n- Every claim now has a \"Waive late charge\" button (`claim-waive`) and shows waived yes/no (`claim-waived`).\n- A steward can waive the charge on an OPEN or PENDING claim. Anyone else is refused with a 403, and a claim in any other status or already waived gets a 409. Each refusal shows on the claim's existing `claim-error`.\n- A successful waive writes `CLAIM_WAIVED sheet=\u2026 by=\u2026 person=\u2026 amount=\u2026 date=\u2026 number=\u2026`.\n- A waived claim never gets a late charge, whether or not it is overdue. Its due can still be lifted to the floor, and it still counts as overdue.\n\n**Where the changes are**\n- **Stored data:** new migration `V95__claim_waived.sql` adds a `waived` column to claims. A claim keeps the flag when its person moves to another sheet.\n- **Server:** `LateCharge` gives no charge to a waived claim. Every server path that works out a charge goes through it, including statements, rollups, settling and re-settling. There is a new `POST /api/claims/waive` (`ClaimService.waive`), and claim responses now include `waived`.\n- **Front end:** the screen works out the late charge itself, in `chargedDueCents` in `rates.ts`, so I made the same change there. The claim row in `claims.ts` has the new button, the yes/no and the error messages.\n\n**Two things the request didn't cover:**\n- **Past statements:** a waiver applies to every day, including days before it was made. If a statement for an earlier date is produced after the waiver, it shows that claim with no late charge. The spec doesn't test this.\n- **Split claims:** a claim split off a waived claim starts out not waived.",
+    "error": "",
+    "attempts": [
+      {
+        "ok": true,
+        "limit_reached": false,
+        "retryable": false,
+        "timed_out": false,
+        "cost_usd": 0.751074,
+        "num_turns": 19,
+        "duration_ms": 354486,
+        "duration_api_ms": 80605,
+        "error": ""
+      }
+    ]
+  },
+  "agent_stream_file": "cp174.agent.jsonl",
+  "agent_diff_file": "cp174.agent.diff",
+  "build_log_file": null,
+  "tests": {
+    "gated": false,
+    "queued": true
+  },
+  "probe": null,
+  "pinned_touched": [],
+  "acceptance_touched": [],
+  "impact_gate": null
+}

@@ -1,0 +1,238 @@
+diff --git a/src/main/frontend/src/app/features/claims/claims.ts b/src/main/frontend/src/app/features/claims/claims.ts
+index d1a1fc36b..494e5fa56 100644
+--- a/src/main/frontend/src/app/features/claims/claims.ts
++++ b/src/main/frontend/src/app/features/claims/claims.ts
+@@ -54,6 +54,9 @@ import { FigurePipe } from '../../core/figure';
+ // An OPEN or PENDING claim can be reminded with its remind button, once per sheet-today: it shows
+ // the last day a reminder was written (refused for a claim in any other status or already reminded
+ // on the sheet's today).
++// A steward can waive an OPEN or PENDING claim's late charge with its waive button: from then on it
++// bears none, whatever its overdue state, and shows waived yes (refused for anyone else, a claim in
++// any other status, or one already waived).
+ // Any claim can be commented with its comment text and button (an empty comment is refused with an
+ // error on the claim): its comments show oldest first as <user> on <date>: <text>, each kept with
+ // the user who wrote it and the sheet's today then.
+@@ -136,6 +139,8 @@ export interface Claim {
+   lines: ClaimLineItem[];
+   /** The sheet's today when the claim last went to REVIEW; null when it never has. */
+   reviewOn: string | null;
++  /** Whether a steward waived the claim's late charge: from then on it bears none. */
++  waived: boolean;
+ }
+ 
+ /** One line of a claim: a label, a quantity and a unit amount. */
+@@ -407,6 +412,7 @@ export function money(c: number): string {
+           <span>Batch <span data-testid="claim-batch">{{ c.batch ?? '' }}</span></span>
+           <span>Late entry <span data-testid="claim-late-entry">{{ c.lateEntry ? 'yes' : 'no' }}</span></span>
+           <span>Review late <span data-testid="claim-review-late">{{ reviewLateOf(c) ? 'yes' : 'no' }}</span></span>
++          <span>Waived <span data-testid="claim-waived">{{ c.waived ? 'yes' : 'no' }}</span></span>
+           <span>Reminded <span data-testid="claim-reminded">{{ c.remindedOn ?? '' }}</span></span>
+           <ol [attr.aria-label]="'Status log of claim of ' + c.amount + ' on ' + c.date">
+             @for (l of c.log; track $index) {
+@@ -476,6 +482,7 @@ export function money(c: number): string {
+           <button type="button" data-testid="claim-reject" (click)="act(c, 'reject')">Reject</button>
+           <button type="button" data-testid="claim-proof" (click)="addProof(c)">Add proof</button>
+           <button type="button" data-testid="claim-remind" (click)="remind(c)">Remind</button>
++          <button type="button" data-testid="claim-waive" (click)="waive(c)">Waive late charge</button>
+           @if (voidReasons.list().length > 0) {
+             <label [for]="'claim-void-reason-' + c.id">Void reason</label>
+             <select
+@@ -1222,6 +1229,32 @@ export class PersonClaims {
+     }
+   }
+ 
++  /** Waive an OPEN or PENDING claim's late charge; the server refuses anyone but a steward, any
++   *  other status, and a claim already waived. */
++  protected async waive(c: Claim): Promise<void> {
++    this.clearActionError(c.id);
++    const sheet = this.session.sheet();
++    try {
++      const claim = await firstValueFrom(
++        this.http.post<Claim>('/api/claims/waive', { sheet, user: this.session.user(), id: c.id }),
++      );
++      if (this.session.sheet() !== sheet) return;
++      this.saved.emit(claim);
++    } catch (e) {
++      if (this.session.sheet() !== sheet) return;
++      const status = e instanceof HttpErrorResponse ? e.status : 0;
++      const err =
++        status === 409
++          ? c.waived
++            ? "This claim's late charge is already waived."
++            : `A ${c.status} claim's late charge cannot be waived.`
++          : status === 403
++            ? 'Only a steward can waive a late charge.'
++            : "Could not waive this claim's late charge.";
++      this.actionErrors.update((m) => new Map(m).set(c.id, err));
++    }
++  }
++
+   /** Move a claim to its next status; the server refuses a move its status does not allow. */
+   protected async act(c: Claim, action: ClaimAction): Promise<void> {
+     this.clearActionError(c.id);
+diff --git a/src/main/frontend/src/app/features/rates/rates.ts b/src/main/frontend/src/app/features/rates/rates.ts
+index d07eeaf1e..15ceb323f 100644
+--- a/src/main/frontend/src/app/features/rates/rates.ts
++++ b/src/main/frontend/src/app/features/rates/rates.ts
+@@ -194,7 +194,7 @@ export interface Lateness {
+  * the charges added up. Both round as the claim rounds by `roundOn` (see {@link roundsHalfUp}).
+  * The floor is applied last: the due is the greater of the floor in force on the claim's date and
+  * the figure plus its charge. The charge is never bound by a statement; a settled claim's due is
+- * frozen as it was settled, and a correction has no floor and no charge. Null when it has no figure.
++ * frozen as it was settled, a correction has no floor and no charge, and a waived claim no charge. Null when it has no figure.
+  */
+ export function chargedDueCents(
+   c: Claim,
+@@ -210,7 +210,7 @@ export function chargedDueCents(
+   const floor = cents(valueOn(floors, c.date, START_FLOOR));
+   if (!isOpen(c)) return Math.max(figure, floor);
+   const grace = graceOn(late.graces, grade, c.date);
+-  const periods = Math.floor(daysOverdue(c, late.today, grace) / 30);
++  const periods = c.waived ? 0 : Math.floor(daysOverdue(c, late.today, grace) / 30);
+   let charge = 0;
+   for (let k = 1; k <= periods; k++) {
+     const boundary = plusDays(dueBy(c), grace + 30 * k);
+diff --git a/src/main/java/net/officefloor/hq/app/claim/Claim.java b/src/main/java/net/officefloor/hq/app/claim/Claim.java
+index 983e20994..e18ac9808 100644
+--- a/src/main/java/net/officefloor/hq/app/claim/Claim.java
++++ b/src/main/java/net/officefloor/hq/app/claim/Claim.java
+@@ -149,6 +149,10 @@ public class Claim {
+     @Column(name = "escalated", nullable = false)
+     private boolean escalated;
+ 
++    /** Whether a steward waived the claim's late charge: from then on it bears none; once ever. */
++    @Column(name = "waived", nullable = false)
++    private boolean waived;
++
+     /** The sheet's today when the claim last went to REVIEW; none when it never has. */
+     @Column(name = "review_on")
+     private LocalDate reviewOn;
+@@ -239,6 +243,7 @@ public class Claim {
+         copy.remindedOn = remindedOn;
+         copy.escalated = escalated;
+         copy.reviewOn = reviewOn;
++        copy.waived = waived;
+         copy.voidReason = voidReason;
+         copy.proofs = proofs;
+         copy.log.addAll(log);
+@@ -503,6 +508,15 @@ public class Claim {
+         this.escalated = escalated;
+     }
+ 
++    public boolean isWaived() {
++        return waived;
++    }
++
++    /** Waive the claim's late charge. */
++    public void waive() {
++        this.waived = true;
++    }
++
+     public LocalDate getReviewOn() {
+         return reviewOn;
+     }
+diff --git a/src/main/java/net/officefloor/hq/app/claim/ClaimController.java b/src/main/java/net/officefloor/hq/app/claim/ClaimController.java
+index c5c8910b6..175fcc531 100644
+--- a/src/main/java/net/officefloor/hq/app/claim/ClaimController.java
++++ b/src/main/java/net/officefloor/hq/app/claim/ClaimController.java
+@@ -134,7 +134,7 @@ public class ClaimController {
+             LocalDate deferredUntil, int proofs, String splitFrom, String lockedBy,
+             boolean lateEntry, LocalDate remindedOn, String ref, List<String> tags, String voidReason,
+             List<ClaimCommentLine> comments, Integer batch, List<ClaimLineLine> lines, Long addedSeq,
+-            LocalDate reviewOn) {
++            LocalDate reviewOn, boolean waived) {
+     }
+ 
+     /** One line of a claim, in the order added: its label, quantity and unit amount. */
+@@ -169,7 +169,7 @@ public class ClaimController {
+                 claim.getBatch(),
+                 claim.getLines().stream().map(l -> new ClaimLineLine(l.getLabel(), l.getQty(), money(l.getUnit())))
+                         .toList(),
+-                claim.getAddedSeq(), claim.getReviewOn());
++                claim.getAddedSeq(), claim.getReviewOn(), claim.isWaived());
+     }
+ 
+     public static BigDecimal amount(String amount) {
+@@ -326,6 +326,11 @@ public class ClaimController {
+         return response(service.remind(req.sheet().trim(), req.user().trim(), req.id()));
+     }
+ 
++    @PostMapping("/waive")
++    public ClaimResponse waive(@Valid @RequestBody ClaimStatusRequest req) {
++        return response(service.waive(req.sheet().trim(), req.user().trim(), req.id()));
++    }
++
+     @PostMapping("/reassign")
+     public ClaimResponse reassign(@Valid @RequestBody ReassignClaimRequest req) {
+         return response(service.reassign(req.sheet().trim(), req.user().trim(), req.id(), req.personId()));
+diff --git a/src/main/java/net/officefloor/hq/app/claim/ClaimService.java b/src/main/java/net/officefloor/hq/app/claim/ClaimService.java
+index e747d69a2..b5d9330d5 100644
+--- a/src/main/java/net/officefloor/hq/app/claim/ClaimService.java
++++ b/src/main/java/net/officefloor/hq/app/claim/ClaimService.java
+@@ -704,6 +704,36 @@ public class ClaimService {
+         return saved;
+     }
+ 
++    /**
++     * A steward's waiver of an OPEN or PENDING claim's late charge: from then on it bears none,
++     * whatever its overdue state; CLAIM_WAIVED is written. Refused (403) for anyone but a steward and
++     * (409) for a claim in any other status or already waived.
++     */
++    @Transactional
++    public Claim waive(String sheetId, String user, long id) {
++        roles.refuseViewer(sheetId, user);
++        if (!isSteward(sheetId, user)) {
++            throw new ResponseStatusException(HttpStatus.FORBIDDEN, "Only a steward can waive a late charge.");
++        }
++        RollupService.Snapshot before = rollup.snapshot(sheetId);
++        Claim claim = claims.findByIdAndSheetId(id, sheetId)
++                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "No such claim on this sheet."));
++        if (claim.getStatus() != ClaimStatus.OPEN && claim.getStatus() != ClaimStatus.PENDING) {
++            throw new ResponseStatusException(HttpStatus.CONFLICT,
++                    "A " + claim.getStatus() + " claim's late charge cannot be waived.");
++        }
++        if (claim.isWaived()) {
++            throw new ResponseStatusException(HttpStatus.CONFLICT, "This claim's late charge is already waived.");
++        }
++        Person person = person(sheetId, claim.getPersonId());
++        claim.waive();
++        Claim saved = claims.saveAndFlush(claim);
++        audit.recordOnCommit(record("CLAIM_WAIVED", sheetId, user, person, saved)
++                + (saved.getNumber() != null ? " number=" + saved.getNumber() : ""));
++        rollup.recordChanges(sheetId, user, before);
++        return saved;
++    }
++
+     /**
+      * Re-settle a SETTLED claim: fix its due again at the figure it would have on the sheet's today
+      * as an open claim bound by no statement, with its late charge. Refused (403) for anyone but a
+diff --git a/src/main/java/net/officefloor/hq/app/claim/LateCharge.java b/src/main/java/net/officefloor/hq/app/claim/LateCharge.java
+index dc487287e..2b2824399 100644
+--- a/src/main/java/net/officefloor/hq/app/claim/LateCharge.java
++++ b/src/main/java/net/officefloor/hq/app/claim/LateCharge.java
+@@ -10,7 +10,7 @@ import net.officefloor.hq.app.sheet.Sheet;
+  * The late charge on an overdue claim (OPEN or PENDING, and past its due-by plus the grace days of its person's grade
+  * on its date, see {@link Sheet#lateFrom}, on the sheet's today): for each full 30 days it is overdue, the late
+  * percent in force on that boundary date (its due-by plus the grace, plus 30, 60, 90 ... days) of
+- * its figure plus the charges of the boundaries before it (the charge compounds), rounded to the cent as the claim rounds (see {@link Rounding}), the charges added up. A correction has none. Never bound by a statement; settling a claim fixes it into its due.
++ * its figure plus the charges of the boundaries before it (the charge compounds), rounded to the cent as the claim rounds (see {@link Rounding}), the charges added up. A correction has none, nor has a claim whose charge was waived. Never bound by a statement; settling a claim fixes it into its due.
+  * The charge is worked out on the rate figure alone (or the figure a statement bound); the floor is applied last: a
+  * claim's live due is the greater of the floor in force on its date and its figure plus its charge (a correction has
+  * no floor).
+@@ -56,7 +56,7 @@ public final class LateCharge {
+ 
+     private static BigDecimal charge(Sheet sheet, Claim claim, String grade, BigDecimal figure, boolean open) {
+         BigDecimal zero = BigDecimal.ZERO.setScale(2);
+-        if (figure == null || !open || claim.isCorrection()) {
++        if (figure == null || !open || claim.isCorrection() || claim.isWaived()) {
+             return zero;
+         }
+         LocalDate lateFrom = sheet.lateFrom(claim.getDueBy(), claim.getDate(), grade);
+diff --git a/src/main/resources/db/migration/V95__claim_waived.sql b/src/main/resources/db/migration/V95__claim_waived.sql
+new file mode 100644
+index 000000000..6d80e4796
+--- /dev/null
++++ b/src/main/resources/db/migration/V95__claim_waived.sql
+@@ -0,0 +1,2 @@
++-- A steward can waive an OPEN or PENDING claim's late charge: from then on it bears none.
++ALTER TABLE claim ADD COLUMN waived BOOLEAN DEFAULT FALSE NOT NULL;
