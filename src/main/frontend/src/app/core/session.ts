@@ -1,5 +1,5 @@
 import { HttpClient } from '@angular/common/http';
-import { Injectable, inject, signal } from '@angular/core';
+import { Injectable, computed, inject, signal } from '@angular/core';
 import { firstValueFrom } from 'rxjs';
 
 // The session: who is signed in (a name, no password) and which sheet is active. Everything else
@@ -18,6 +18,13 @@ export type Locale = (typeof LOCALES)[number];
 
 /** The keys the people list can be sorted by on the screen. */
 export type PeopleSort = 'added' | 'name' | 'grade' | 'due-total';
+
+/** The columns of the people list a user may switch off on their screen. */
+export const PEOPLE_COLUMNS = [
+  'claimed', 'due-total', 'statement-count', 'stated-total', 'statement-date', 'overdue-count', 'overdue-total',
+  'patrons', 'backing', 'excess', 'hold', 'retired', 'terms', 'contact', 'aliases',
+] as const;
+export type PeopleColumn = (typeof PEOPLE_COLUMNS)[number];
 
 @Injectable({ providedIn: 'root' })
 export class Session {
@@ -39,6 +46,21 @@ export class Session {
   readonly showRetired = signal(false);
   /** What this screen sorts the people list by: off (added) when the screen opens, and left as it is by loading a sheet. */
   readonly sortBy = signal<PeopleSort>('added');
+  /** The people-list columns each user has switched off on this screen: all shown until they choose, and left as they are by loading a sheet. */
+  private readonly hiddenColumns = signal<ReadonlyMap<string, ReadonlySet<PeopleColumn>>>(new Map());
+  /** The columns the signed-in user has switched off on this screen. */
+  readonly hidden = computed(() => this.hiddenColumns().get(this.user() ?? '') ?? new Set<PeopleColumn>());
+
+  /** Show or hide one column of the people list for the signed-in user on this screen. */
+  showColumn(column: PeopleColumn, shown: boolean): void {
+    const user = this.user() ?? '';
+    this.hiddenColumns.update((all) => {
+      const off = new Set(all.get(user));
+      if (shown) off.delete(column);
+      else off.add(column);
+      return new Map(all).set(user, off);
+    });
+  }
   /**
    * The date this screen shows the sheet as of (none: as it is now). Sent with every request
    * (see asOfInterceptor): the store answers as the sheet stood at the end of that date, its today
