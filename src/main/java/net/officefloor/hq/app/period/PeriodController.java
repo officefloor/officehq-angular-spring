@@ -40,6 +40,11 @@ public class PeriodController {
             @NotBlank @Size(max = 100) String user, @NotBlank @Pattern(regexp = "\\s*\\d{4}\\s*") String year) {
     }
 
+    /** The calendar year whose quarters to generate. */
+    public record GenerateQuartersRequest(@NotBlank @Size(max = 100) String sheet,
+            @NotBlank @Size(max = 100) String user, @NotBlank @Pattern(regexp = "\\s*\\d{4}\\s*") String year) {
+    }
+
     public record ClosePeriodRequest(@NotBlank @Size(max = 100) String sheet, @NotBlank @Size(max = 100) String user,
             @NotNull Long id) {
     }
@@ -120,6 +125,13 @@ public class PeriodController {
     @PostMapping("/generate-fy")
     public List<PeriodResponse> generateFiscalYear(@Valid @RequestBody GenerateFiscalYearRequest req) {
         return responses(req.sheet().trim(), service.generateFiscalYear(req.sheet().trim(), req.user().trim(),
+                Integer.parseInt(req.year().trim())));
+    }
+
+    /** The quarterly periods made for the year, by from-date. */
+    @PostMapping("/generate-quarters")
+    public List<PeriodResponse> generateQuarters(@Valid @RequestBody GenerateQuartersRequest req) {
+        return responses(req.sheet().trim(), service.generateQuarters(req.sheet().trim(), req.user().trim(),
                 Integer.parseInt(req.year().trim())));
     }
 

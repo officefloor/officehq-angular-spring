@@ -9,7 +9,8 @@ import { FigurePipe } from '../../core/figure';
 // from and to date, both inclusive, no two periods overlapping. A second form generates a period
 // per calendar month (named yyyy-mm) between two dates, leaving out months in use or overlapping; a third
 // generates them, the same way, for the twelve months of a fiscal year (FY<yyyy>, named by the calendar
-// year its first day falls in; it starts in the sheet's fiscal start month). Each period shows the fiscal
+// year its first day falls in; it starts in the sheet's fiscal start month); a fourth makes the four calendar
+// quarters of a year (named yyyy-Q1 to yyyy-Q4), the same way. Each period shows the fiscal
 // year its from-date falls in. A claim belongs to the period whose
 // dates contain its due-by (as fixed when it was added), or to none; each period shows the due of the claims that count in it.
 // A period can be closed: its due-total is then the one fixed when it was closed, and no claim
@@ -194,6 +195,17 @@ export function inClosedPeriod(periods: readonly Period[], date: string): boolea
         />
         <button type="submit" data-testid="period-generate-fy">Generate fiscal year</button>
       </form>
+      <form aria-label="Generate a year's quarterly periods" (submit)="generateQuarters($event)">
+        <label for="period-generate-quarters-year">Quarters of year (yyyy)</label>
+        <input
+          id="period-generate-quarters-year"
+          data-testid="period-generate-quarters-year"
+          inputmode="numeric"
+          [value]="quartersYear()"
+          (input)="quartersYear.set($any($event.target).value); generateError.set(null)"
+        />
+        <button type="submit" data-testid="period-generate-quarters">Generate quarters</button>
+      </form>
       @if (generated() !== null) {
         <p role="status">Made <span data-testid="period-generated">{{ generated() }}</span></p>
       }
@@ -312,6 +324,8 @@ export class Periods {
   protected readonly generateTo = signal('');
   /** The fiscal year typed to generate, by the calendar year its first day falls in. */
   protected readonly fyYear = signal('');
+  /** The calendar year typed to generate the quarters of. */
+  protected readonly quartersYear = signal('');
   /** How many periods the last generate made; null before one, and while one runs. */
   protected readonly generated = signal<number | null>(null);
   protected readonly generateError = signal<string | null>(null);
@@ -338,6 +352,7 @@ export class Periods {
       this.generateFrom.set('');
       this.generateTo.set('');
       this.fyYear.set('');
+      this.quartersYear.set('');
       this.generated.set(null);
       this.generateError.set(null);
       this.openingText.set('');
@@ -533,6 +548,21 @@ export class Periods {
       return;
     }
     await this.made(sheet, this.http.post<Period[]>('/api/periods/generate-fy', { sheet, user: this.session.user(), year }));
+  }
+
+  /** Make the four calendar quarters of a year, as the period form adds them; shows how many were made. */
+  protected async generateQuarters(event: Event): Promise<void> {
+    event.preventDefault();
+    if (this.submitting) return;
+    this.generateError.set(null);
+    this.generated.set(null);
+    const sheet = this.session.sheet();
+    const year = this.quartersYear().trim();
+    if (!/^\d{4}$/.test(year)) {
+      this.generateError.set('Enter the year as yyyy.');
+      return;
+    }
+    await this.made(sheet, this.http.post<Period[]>('/api/periods/generate-quarters', { sheet, user: this.session.user(), year }));
   }
 
   /** Paste opening balances: every line is checked by the server before any is set; shows how many

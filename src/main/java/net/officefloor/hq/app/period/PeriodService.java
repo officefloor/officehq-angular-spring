@@ -124,6 +124,34 @@ public class PeriodService {
         return generate(sheetId, user, first, first.plusMonths(11));
     }
 
+    /**
+     * Generate the four calendar quarters of the year, named &lt;yyyy&gt;-Q1 to &lt;yyyy&gt;-Q4, each
+     * as the period form adds it; a quarter whose name is already a period, or whose days overlap a
+     * period on the sheet, is left out and the others are still made.
+     */
+    @Transactional
+    public List<Period> generateQuarters(String sheetId, String user, int year) {
+        roles.refuseViewer(sheetId, user);
+        sheets.load(sheetId, user);
+        // hold the sheet so periods added at the same moment are checked one after the other
+        sheetRows.findLockedById(sheetId);
+        List<Period> made = new ArrayList<>();
+        for (int quarter = 1; quarter <= 4; quarter++) {
+            String name = year + "-Q" + quarter;
+            LocalDate first = LocalDate.of(year, quarter * 3 - 2, 1);
+            LocalDate last = YearMonth.of(year, quarter * 3).atEndOfMonth();
+            if (periods.existsBySheetIdAndNameIgnoreCase(sheetId, name)
+                    || periods.existsBySheetIdAndFromDateLessThanEqualAndToDateGreaterThanEqual(sheetId, last, first)) {
+                continue;
+            }
+            Period added = periods.saveAndFlush(new Period(sheetId, name, first, last));
+            audit.recordOnCommit("PERIOD_ADDED sheet=" + sheetId + " by=" + user + " period=" + added.getName()
+                    + " from=" + added.getFromDate() + " to=" + added.getToDate());
+            made.add(added);
+        }
+        return made;
+    }
+
     /** The fiscal year each of the sheet's periods falls in (by its from-date), by period id. */
     @Transactional(readOnly = true)
     public Map<Long, String> fiscalYears(String sheetId, List<Period> list) {
