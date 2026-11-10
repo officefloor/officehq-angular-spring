@@ -1,0 +1,64 @@
+{
+  "checkpoint": 165,
+  "stack": {
+    "repo": "/home/daniel/officehq-angular-spring",
+    "origin": "git@github.com:officefloor/officehq-angular-spring.git",
+    "name": "officehq-angular-spring",
+    "base_ref": "base-empty",
+    "base_commit": "65cb8233ea38b2dfa6cfd18709e30cd18fdf3250"
+  },
+  "checkpoint_id": "cp165_escalate",
+  "phase": "mid",
+  "type": "additive",
+  "mutates": [],
+  "replaced_tests": [],
+  "request": {
+    "spec": "The sheet gains an escalation gap (settings, a number of days, blank means off, not dated;\nSETTING_CHANGED key=escalate-after value=<days>). Reminding a claim whose previous reminder was at\nleast that many days before the sheet's today escalates it: ESCALATE naming the claim is written\nafter the REMIND line, once per claim ever.\n",
+    "prompt": "You are implementing ONE change to this application.\n\nFIRST read AGENTS.md \u2014 it states the working rules and how the app is tested, and sends you to\nDESIGN.md for the app's stack and conventions. Follow both.\n\nTHE CHANGE REQUEST:\nThe sheet gains an escalation gap (settings, a number of days, blank means off, not dated;\nSETTING_CHANGED key=escalate-after value=<days>). Reminding a claim whose previous reminder was at\nleast that many days before the sheet's today escalates it: ESCALATE naming the claim is written\nafter the REMIND line, once per claim ever.\n\nYour work is verified by an automated Playwright UI test already installed under e2e/specs/.\nRead that spec: it declares the exact data-testid anchors, values, test data and any audit\nrecords it expects \u2014 match them. Run `bin/e2e` to build the app, start it, and run the test as\nyou work; iterate until it passes. Change whatever the request needs across the app \u2014 its stored\ndata, its server and its front end. Do NOT edit bin/build, bin/start, bin/stop, bin/e2e,\nAGENTS.md, CLAUDE.md, DESIGN.md, e2e/support/ or the test spec.\n"
+  },
+  "commit_sha": "b8837cc043c87944b966196d3c42305ad4de91ea",
+  "reset_sha": "",
+  "preagent_sha": "c0593aca2baa852e2d97dab44489c4dcd524890e",
+  "prev_sha": "c0593aca2baa852e2d97dab44489c4dcd524890e",
+  "base_sha": "65cb8233ea38b2dfa6cfd18709e30cd18fdf3250",
+  "agent": {
+    "ok": true,
+    "cost_usd": 0.7272792,
+    "input_tokens": 36,
+    "output_tokens": 7757,
+    "cache_read_tokens": 700816,
+    "cache_creation_tokens": 53979,
+    "num_turns": 18,
+    "duration_ms": 307747,
+    "duration_api_ms": 70506,
+    "model": "claude-opus-5-5",
+    "session_id": "80765d7d-ef1c-4d4f-b860-adcb9eae6f7b",
+    "stop_reason": "success",
+    "result_text": "I've added the escalation gap, and all 4 tests in `bin/e2e` pass: the new `escalate` test and the 3 regression scenarios.\n\n**How it works:**\n- **The setting:** a new \"escalate-after\" field on the settings screen. It takes a whole number of days, blank means off, and it isn't dated. Saving it writes `SETTING_CHANGED key=escalate-after value=<days>`.\n- **When a claim escalates:** reminding a claim escalates it if all three hold:\n  - the gap is set;\n  - the claim has a previous reminder at least that many days before the sheet's today;\n  - the claim has never been escalated.\n- **What gets written:** `ESCALATE` is written right after the `REMIND` line, with the same fields (person, amount, date, number). A claim can only escalate once, ever.\n- **Edge cases:** a claim's first reminder can't escalate, because there's no previous reminder to measure from. A gap of 0 escalates on any later-day reminder, since a second reminder on the same day is already refused.\n\n**Changes:**\n- **Database:** migration `V89__escalate_after.sql` adds an `escalate_after` column to `sheet` and an `escalated` flag to `claim`, which is what enforces \"once per claim\".\n- **Server:**\n  - `Sheet.java` and `Claim.java` get the new fields.\n  - `SettingService` / `SettingController` save the setting, return it to the screen and write the audit line.\n  - `ClaimService.remind` applies the escalation rule.\n- **Front end:** `settings.ts` has the `setting-escalate-after` input and a `setting-escalate-after-current` display, both built the same way as the alert-threshold setting.",
+    "error": "",
+    "attempts": [
+      {
+        "ok": true,
+        "limit_reached": false,
+        "retryable": false,
+        "timed_out": false,
+        "cost_usd": 0.7272792,
+        "num_turns": 18,
+        "duration_ms": 307747,
+        "duration_api_ms": 70506,
+        "error": ""
+      }
+    ]
+  },
+  "agent_stream_file": "cp165.agent.jsonl",
+  "agent_diff_file": "cp165.agent.diff",
+  "build_log_file": null,
+  "tests": {
+    "gated": false,
+    "queued": true
+  },
+  "probe": null,
+  "pinned_touched": [],
+  "acceptance_touched": [],
+  "impact_gate": null
+}
