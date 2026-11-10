@@ -30,7 +30,7 @@ import org.springframework.web.server.ResponseStatusException;
 /**
  * Cloning a sheet to another id that was never used (a steward only). The clone gets the sheet's
  * today, settings, roles, rates, holidays, void reasons, templates, people (grades, terms, contacts,
- * aliases, tags, holds, retirements, patrons), pools, periods (all open) and claims with their
+ * aliases, tags, holds, retirements, patrons), pools, crews, periods (all open) and claims with their
  * status, frozen figures, dates, notes and logs. Each claim that had a number is numbered afresh by
  * the clone's own numbering, in the order the claims were opened (by the sheet's today when each was
  * opened, then by the order they were added to the clone: by person in list order, each person's in
@@ -115,6 +115,11 @@ public class SheetCloneService {
         UnaryOperator<Object> pool = v -> v == null ? null : pools.get(((Number) v).longValue());
         copy("POOL_MEMBER", "sheet_id = ?", sheetId, "ORDER BY id",
                 Map.of("SHEET_ID", onClone, "POOL_ID", pool, "PERSON_ID", person, "MEMBER_POOL_ID", pool));
+        Map<Long, Long> crews = copy("CREW", "sheet_id = ?", sheetId, "ORDER BY id",
+                Map.of("SHEET_ID", onClone, "LEAD_ID", person));
+        UnaryOperator<Object> crew = v -> v == null ? null : crews.get(((Number) v).longValue());
+        copy("CREW_MEMBER", "sheet_id = ?", sheetId, "ORDER BY id",
+                Map.of("SHEET_ID", onClone, "CREW_ID", crew, "PERSON_ID", person));
 
         // the claims arrive person by person in list order, each person's in the order they were listed
         Map<Long, Long> claims = copy("CLAIM", "sheet_id = ?", sheetId,

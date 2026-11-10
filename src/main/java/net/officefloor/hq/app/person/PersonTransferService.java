@@ -15,6 +15,7 @@ import net.officefloor.hq.app.claim.ClaimRepository;
 import net.officefloor.hq.app.claim.ClaimStatus;
 import net.officefloor.hq.app.claim.UsedTag;
 import net.officefloor.hq.app.claim.UsedTagRepository;
+import net.officefloor.hq.app.crew.CrewService;
 import net.officefloor.hq.app.pool.PoolMemberRepository;
 import net.officefloor.hq.app.role.RoleService;
 import net.officefloor.hq.app.rollup.RollupService;
@@ -34,7 +35,7 @@ import org.springframework.web.server.ResponseStatusException;
  * then by the order they were added). Figures a statement bound are kept, their statements go with
  * them (listed before those of a person they merge into, whose last statement stays theirs, or, having
  * none, becomes the transferred person's), and references are not carried. They leave this sheet entirely: patron links, pool
- * memberships, holds and watches are dropped. They and their claims arrive as new rows, so
+ * memberships, crew memberships (and the crews they lead), holds and watches are dropped. They and their claims arrive as new rows, so
  * this sheet's history (its as-of view) keeps its own. When the other sheet already has a person
  * with their name or an alias, they are merged into that person instead, as a merge does: their
  * claims are listed after that person's, their name and aliases become that person's aliases, and
@@ -49,6 +50,7 @@ public class PersonTransferService {
     private final ClaimRepository claims;
     private final StatementRepository statements;
     private final PoolMemberRepository poolMembers;
+    private final CrewService crews;
     private final UsedTagRepository usedTags;
     private final SheetService sheets;
     private final SheetHistory history;
@@ -58,13 +60,14 @@ public class PersonTransferService {
 
     public PersonTransferService(PersonRepository people, PatronRepository patrons, WatchRepository watches,
             ClaimRepository claims, StatementRepository statements, PoolMemberRepository poolMembers,
-            UsedTagRepository usedTags, SheetService sheets, SheetHistory history, RoleService roles, RollupService rollup, Audit audit) {
+            CrewService crews, UsedTagRepository usedTags, SheetService sheets, SheetHistory history, RoleService roles, RollupService rollup, Audit audit) {
         this.people = people;
         this.patrons = patrons;
         this.watches = watches;
         this.claims = claims;
         this.statements = statements;
         this.poolMembers = poolMembers;
+        this.crews = crews;
         this.usedTags = usedTags;
         this.sheets = sheets;
         this.history = history;
@@ -143,6 +146,7 @@ public class PersonTransferService {
         patrons.flush();
         poolMembers.deleteAll(poolMembers.findByPersonIdOrderByIdAsc(person.getId()));
         poolMembers.flush();
+        crews.drop(person.getId());
         watches.deleteAll(watches.findByPersonIdOrderByIdAsc(person.getId()));
         watches.flush();
 

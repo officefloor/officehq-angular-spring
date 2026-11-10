@@ -15,6 +15,7 @@ import { ClassicPeriodSummary, ClassicSummary, GradeSummary, PeriodSummary, Stat
 import { VoidReasons } from '../void-reasons/void-reasons';
 import { Templates } from '../templates/templates';
 import { Pool, Pools } from '../pools/pools';
+import { CrewPerson, Crews } from '../crews/crews';
 import { PersonPlans, Plan } from '../plans/plans';
 import { VoidReasons as VoidReasonList } from '../../core/void-reasons';
 import { FigurePipe } from '../../core/figure';
@@ -239,7 +240,7 @@ const SUMMARY_STATUSES = ['DRAFT', 'OPEN', 'PENDING', 'SETTLED', 'VOID', 'REVIEW
 
 @Component({
   selector: 'app-people',
-  imports: [FigurePipe, AuditView, Header, Holidays, PersonClaims, PersonPlans, Periods, Rates, Roles, Pools, Settings, Summary, ClassicSummary, Templates, TreeSearch, VoidReasons],
+  imports: [FigurePipe, AuditView, Header, Holidays, PersonClaims, PersonPlans, Periods, Rates, Roles, Pools, Crews, Settings, Summary, ClassicSummary, Templates, TreeSearch, VoidReasons],
   template: `
     <app-header
       [peopleCount]="people().length"
@@ -260,6 +261,7 @@ const SUMMARY_STATUSES = ['DRAFT', 'OPEN', 'PENDING', 'SETTLED', 'VOID', 'REVIEW
     <app-void-reasons />
     <app-templates />
     <app-pools [people]="people()" [pot]="pot()" [(pools)]="pools" />
+    <app-crews [people]="crewPeople()" />
     <app-audit-view />
     <app-tree-search />
     <section aria-labelledby="people-heading">
@@ -1081,6 +1083,10 @@ export class People {
   protected readonly pot = signal('');
   /** The sheet's pools, as the pools list last read them. */
   protected readonly pools = signal<Pool[]>([]);
+  /** Everyone with their due-total as shown, for the crews' due-totals. */
+  protected readonly crewPeople = computed<CrewPerson[]>(() =>
+    this.people().map((p) => ({ id: p.id, name: p.name, due: this.dueOf(p) })),
+  );
   /** Per person id: their cuts across every pool they are a member of, in whole cents. */
   private readonly cutTotals = computed(() => {
     const totals = new Map<number, number>();
