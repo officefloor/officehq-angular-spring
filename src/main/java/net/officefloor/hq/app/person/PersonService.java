@@ -2,6 +2,7 @@ package net.officefloor.hq.app.person;
 
 import java.time.LocalDate;
 import java.util.List;
+import java.util.Objects;
 import net.officefloor.hq.app.Audit;
 import net.officefloor.hq.app.role.RoleService;
 import net.officefloor.hq.app.rollup.RollupService;
@@ -23,7 +24,8 @@ import org.springframework.web.server.ResponseStatusException;
  * be retired from a date (the sheet's today when none is given); they count as retired at once. A
  * person can be put on hold over a span of dates, and may have several holds over time. A person can name other people on the sheet as
  * their patrons, one at a time: not themselves, and not the same person twice. A user can watch a
- * person, and stop watching them; each user's watching is their own.
+ * person, and stop watching them; each user's watching is their own. A person may have their own
+ * terms, in days; a claim's due-by takes them before the terms of the person's grade and the sheet's.
  */
 @Service
 public class PersonService {
@@ -53,22 +55,25 @@ public class PersonService {
     }
 
     @Transactional
-    public Person add(String sheetId, String user, String name, String grade) {
+    public Person add(String sheetId, String user, String name, String grade, Integer terms) {
         roles.refuseViewer(sheetId, user);
         sheets.load(sheetId, user);
         RollupService.Snapshot before = rollup.snapshot(sheetId);
         if (people.existsBySheetIdAndNameIgnoreCase(sheetId, name)) {
             throw nameInUse();
         }
-        Person added = save(new Person(sheetId, name, grade));
-        audit.recordOnCommit(record("PERSON_ADDED", sheetId, user, added, sheets.today(sheetId)));
+        Person person = new Person(sheetId, name, grade);
+        person.setTerms(terms);
+        Person added = save(person);
+        audit.recordOnCommit(record("PERSON_ADDED", sheetId, user, added, sheets.today(sheetId))
+                + (terms != null ? " terms=" + terms : ""));
         rollup.recordChanges(sheetId, user, before);
         return added;
     }
 
     @Transactional
     public Person update(String sheetId, String user, long id, long version, String name, String grade,
-            LocalDate gradeFrom) {
+            LocalDate gradeFrom, Integer terms) {
         roles.refuseViewer(sheetId, user);
         RollupService.Snapshot before = rollup.snapshot(sheetId);
         Person person = people.findByIdAndSheetId(id, sheetId)
@@ -80,12 +85,15 @@ public class PersonService {
             throw nameInUse();
         }
         LocalDate today = sheets.today(sheetId);
+        Integer termsBefore = person.getTerms();
         person.setName(name);
+        person.setTerms(terms);
         if (gradeFrom != null || !grade.equals(person.gradeOn(today))) {
             person.setGradeFrom(gradeFrom != null ? gradeFrom : today, grade);
         }
         Person saved = save(person);
-        audit.recordOnCommit(record("PERSON_EDITED", sheetId, user, saved, today));
+        audit.recordOnCommit(record("PERSON_EDITED", sheetId, user, saved, today)
+                + (Objects.equals(termsBefore, terms) ? "" : " terms=" + (terms != null ? terms : "")));
         rollup.recordChanges(sheetId, user, before);
         return saved;
     }

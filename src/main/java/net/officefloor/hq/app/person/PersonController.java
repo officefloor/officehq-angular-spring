@@ -1,6 +1,7 @@
 package net.officefloor.hq.app.person;
 
 import jakarta.validation.Valid;
+import jakarta.validation.constraints.Min;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.NotNull;
 import jakarta.validation.constraints.Pattern;
@@ -21,12 +22,13 @@ public class PersonController {
     }
 
     public record AddPersonRequest(@NotBlank @Size(max = 100) String sheet, @NotBlank @Size(max = 100) String user,
-            @NotBlank @Size(max = 200) String name, @NotNull @Pattern(regexp = "[ABC]") String grade) {
+            @NotBlank @Size(max = 200) String name, @NotNull @Pattern(regexp = "[ABC]") String grade, @Min(0) Integer terms) {
     }
 
     public record UpdatePersonRequest(@NotBlank @Size(max = 100) String sheet,
             @NotBlank @Size(max = 100) String user, @NotNull Long id, @NotBlank @Size(max = 200) String name,
-            @NotNull @Pattern(regexp = "[ABC]") String grade, LocalDate gradeFrom, @NotNull Long version) {
+            @NotNull @Pattern(regexp = "[ABC]") String grade, LocalDate gradeFrom, @NotNull Long version,
+            @Min(0) Integer terms) {
     }
 
     public record RetirePersonRequest(@NotBlank @Size(max = 100) String sheet,
@@ -60,9 +62,9 @@ public class PersonController {
     public record HoldResponse(LocalDate from, LocalDate to) {
     }
 
-    /** A person, with every grade recorded for them, the one from the beginning of time first. */
+    /** A person, with every grade recorded for them, the one from the beginning of time first, and their own terms or null. */
     public record PersonResponse(long id, String name, List<GradeResponse> grades, long version, boolean retired,
-            LocalDate retiredFrom, boolean held, List<HoldResponse> holds) {
+            LocalDate retiredFrom, boolean held, List<HoldResponse> holds, Integer terms) {
     }
 
     public static PersonResponse response(Person person) {
@@ -70,7 +72,8 @@ public class PersonController {
                 .map(g -> new GradeResponse(g.getFromDate(), g.getGrade())).toList();
         return new PersonResponse(person.getId(), person.getName(), grades, person.getVersion(),
                 person.isRetired(), person.getRetiredFrom(), person.isHeld(),
-                person.getHolds().stream().map(h -> new HoldResponse(h.getFromDate(), h.getToDate())).toList());
+                person.getHolds().stream().map(h -> new HoldResponse(h.getFromDate(), h.getToDate())).toList(),
+                person.getTerms());
     }
 
     private final PersonService service;
@@ -86,13 +89,14 @@ public class PersonController {
 
     @PostMapping("/add")
     public PersonResponse add(@Valid @RequestBody AddPersonRequest req) {
-        return response(service.add(req.sheet().trim(), req.user().trim(), req.name().trim(), req.grade()));
+        return response(service.add(req.sheet().trim(), req.user().trim(), req.name().trim(), req.grade(),
+                req.terms()));
     }
 
     @PostMapping("/update")
     public PersonResponse update(@Valid @RequestBody UpdatePersonRequest req) {
         return response(service.update(req.sheet().trim(), req.user().trim(), req.id(), req.version(), req.name().trim(),
-                req.grade(), req.gradeFrom()));
+                req.grade(), req.gradeFrom(), req.terms()));
     }
 
     @PostMapping("/retire")

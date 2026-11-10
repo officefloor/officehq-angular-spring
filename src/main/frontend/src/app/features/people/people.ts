@@ -16,6 +16,8 @@ import { GradeSummary, PeriodSummary, StatusSummary, Summary } from '../summary/
 // the form's grade from its from-date (the sheet's today when blank), keeping those recorded before;
 // a save leaving the grade as the row shows it, with the from-date blank, records none. The row
 // shows the grade in force on the sheet's today; each claim uses the one in force on its date.
+// A person may have their own terms, a whole number of days (blank for none), shown on the row; a
+// claim's due-by is fixed by the server when it is created, from these before the grade's or sheet's.
 // The editor remembers the version of the person it opened; if someone else has saved the person
 // since, the save is refused and the form is refilled with the values the store holds now.
 // Each row shows what the person has claimed and lists their claims; the sheet's claimed-total
@@ -69,6 +71,8 @@ interface Person {
   held: boolean;
   /** The person's holds, by from-date. */
   holds: DatedHold[];
+  /** The person's own terms in days, or null when they have none. */
+  terms: number | null;
 }
 
 /** One of a person's holds: from its from-date to its to-date (null: open-ended), both inclusive. */
@@ -170,6 +174,14 @@ const SUMMARY_STATUSES = ['DRAFT', 'OPEN', 'PENDING', 'SETTLED', 'VOID'] as cons
           [value]="gradeFromInput()"
           (input)="gradeFromInput.set($any($event.target).value); error.set(null)"
         />
+        <label for="person-form-terms">Terms (days)</label>
+        <input
+          id="person-form-terms"
+          data-testid="person-form-terms"
+          inputmode="numeric"
+          [value]="termsInput()"
+          (input)="termsInput.set($any($event.target).value); error.set(null)"
+        />
         <button type="submit" data-testid="person-form-submit">
           {{ editingId() === null ? 'Add person' : 'Save person' }}
         </button>
@@ -258,6 +270,7 @@ const SUMMARY_STATUSES = ['DRAFT', 'OPEN', 'PENDING', 'SETTLED', 'VOID'] as cons
           <tr>
             <th scope="col">Name</th>
             <th scope="col">Grade</th>
+            <th scope="col">Terms</th>
             <th scope="col">Claimed</th>
             <th scope="col">Due</th>
             @for (pd of periods(); track pd.id) {
@@ -278,6 +291,7 @@ const SUMMARY_STATUSES = ['DRAFT', 'OPEN', 'PENDING', 'SETTLED', 'VOID'] as cons
             <tr [attr.data-testid]="'person-row-' + p.id">
               <td data-testid="person-name">{{ p.name }}</td>
               <td data-testid="person-grade">{{ gradeToday(p) }}</td>
+              <td data-testid="person-terms">{{ p.terms ?? '' }}</td>
               <td data-testid="person-claimed">{{ claimedOf(p.id) }}</td>
               <td data-testid="person-due-total">{{ dueText(dueOf(p)) }}</td>
               @for (pd of periods(); track pd.id) {
@@ -568,6 +582,8 @@ export class People {
   protected readonly gradeInput = signal<string>('A');
   /** The date the form's grade is recorded from; blank for the sheet's today. */
   protected readonly gradeFromInput = signal('');
+  /** The person's own terms in days; blank for none. */
+  protected readonly termsInput = signal('');
   protected readonly editingId = signal<number | null>(null);
   /** The version of the person the editor was filled from. */
   private editingVersion = 0;
@@ -1049,6 +1065,7 @@ export class People {
     this.nameInput.set(p.name);
     this.gradeInput.set(this.gradeToday(p));
     this.gradeFromInput.set('');
+    this.termsInput.set(p.terms === null ? '' : String(p.terms));
     this.error.set(null);
   }
 
@@ -1061,6 +1078,7 @@ export class People {
     this.nameInput.set('');
     this.gradeInput.set('A');
     this.gradeFromInput.set('');
+    this.termsInput.set('');
     this.error.set(null);
   }
 
@@ -1072,6 +1090,7 @@ export class People {
     const name = this.nameInput().trim();
     const grade = this.gradeInput();
     const gradeFrom = this.gradeFromInput().trim();
+    const terms = this.termsInput().trim();
     if (!name) {
       this.error.set('Enter a name.');
       return;
@@ -1084,8 +1103,12 @@ export class People {
       this.error.set('Enter a date the grade is from, or leave it blank for the sheet\'s today.');
       return;
     }
+    if (terms !== '' && !/^\d{1,6}$/.test(terms)) {
+      this.refuse('Enter the terms as a whole number of days, or leave them blank for none.');
+      return;
+    }
     const id = this.editingId();
-    const body = { sheet, user: this.session.user(), name, grade };
+    const body = { sheet, user: this.session.user(), name, grade, terms: terms === '' ? null : Number(terms) };
     this.submitting = true;
     try {
       if (id === null) {
@@ -1105,13 +1128,22 @@ export class People {
         await this.showCurrent(sheet, id);
         this.error.set('Someone else has saved this person since you opened it; the form now shows their values.');
       } else if (e instanceof HttpErrorResponse && e.status === 409) {
-        this.error.set('That name is already in use on this sheet.');
+        this.refuse('That name is already in use on this sheet.');
       } else {
-        this.error.set(id === null ? 'Could not add this person.' : 'Could not save this person.');
+        this.refuse(id === null ? 'Could not add this person.' : 'Could not save this person.');
       }
     } finally {
       this.submitting = false;
     }
+  }
+
+  /**
+   * Show why a save was refused. A refused edit saves nothing and closes the editor, so the form is
+   * ready to add a person again; a refused add keeps what was typed.
+   */
+  private refuse(message: string): void {
+    if (this.editingId() !== null) this.reset();
+    this.error.set(message);
   }
 
   /** Re-read the sheet's people and refill the open editor with the person as the store holds them now. */
@@ -1125,6 +1157,7 @@ export class People {
         this.editingVersion = current.version;
         this.nameInput.set(current.name);
         this.gradeInput.set(this.gradeToday(current));
+        this.termsInput.set(current.terms === null ? '' : String(current.terms));
       }
     } catch {
       // the refusal is shown either way

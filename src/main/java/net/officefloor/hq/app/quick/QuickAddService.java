@@ -41,7 +41,7 @@ public class QuickAddService {
     public Added add(String sheetId, String user, String name, BigDecimal amount) {
         roles.refuseViewer(sheetId, user);
         Person existing = people.findBySheetIdAndNameIgnoreCase(sheetId, name).orElse(null);
-        Person person = existing != null ? existing : personService.add(sheetId, user, name, GRADE);
+        Person person = existing != null ? existing : personService.add(sheetId, user, name, GRADE, null);
         Claim claim = claimService.add(sheetId, user, person.getId(), amount, null, "", null);
         return new Added(person, existing == null, claim);
     }

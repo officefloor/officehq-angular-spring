@@ -39,6 +39,10 @@ public class Person {
     @CollectionTable(name = "person_grade", joinColumns = @JoinColumn(name = "person_id"))
     private List<DatedGrade> grades = new ArrayList<>();
 
+    /** The person's own terms in days, or null when they have none. */
+    @Column(name = "terms")
+    private Integer terms;
+
     /** Set once retired: the person counts as retired at once, whatever the date. */
     @Column(name = "retired_from")
     private LocalDate retiredFrom;
@@ -99,6 +103,14 @@ public class Person {
     public void setGradeFrom(LocalDate fromDate, String grade) {
         grades.removeIf(g -> fromDate.equals(g.getFromDate()));
         grades.add(new DatedGrade(fromDate, grade));
+    }
+
+    public Integer getTerms() {
+        return terms;
+    }
+
+    public void setTerms(Integer terms) {
+        this.terms = terms;
     }
 
     public LocalDate getRetiredFrom() {

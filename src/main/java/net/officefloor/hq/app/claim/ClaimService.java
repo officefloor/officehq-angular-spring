@@ -104,6 +104,15 @@ public class ClaimService {
         return LateCharge.withCharge(sheets.sheet(sheetId), claim, figure(sheetId, person, claim));
     }
 
+    /**
+     * A claim's due-by, fixed at creation: its date plus the first of the person's own terms, the
+     * terms of their grade and the sheet's terms, each as in force on its date.
+     */
+    private LocalDate dueBy(String sheetId, Person person, LocalDate dated) {
+        Integer own = person.getTerms();
+        return dated.plusDays(own != null ? own : sheets.sheet(sheetId).termsFor(person.gradeOn(dated), dated));
+    }
+
     @Transactional(readOnly = true)
     public List<Claim> list(String sheetId) {
         return claims.findBySheetIdOrderByListedDesc(sheetId);
@@ -120,7 +129,7 @@ public class ClaimService {
         String corrected = corrected(sheetId, personId, amount, corrects);
         RollupService.Snapshot before = rollup.snapshot(sheetId);
         Claim claim = new Claim(sheetId, personId, amount, dated,
-                dated.plusDays(sheets.sheet(sheetId).termsFor(person.gradeOn(dated), dated)), note, corrected);
+                dueBy(sheetId, person, dated), note, corrected);
         logStatus(sheetId, user, person, claim);
         Claim added = claims.saveAndFlush(claim);
         audit.recordOnCommit(record("CLAIM_ADDED", sheetId, user, person, added));
@@ -435,7 +444,7 @@ public class ClaimService {
         Claim original = claims.saveAndFlush(claim);
         LocalDate dated = claim.getDate();
         Claim split = new Claim(sheetId, person.getId(), amount, dated,
-                dated.plusDays(sheets.sheet(sheetId).termsFor(person.gradeOn(dated), dated)), claim.getNote(), null);
+                dueBy(sheetId, person, dated), claim.getNote(), null);
         split.setStatus(ClaimStatus.OPEN);
         split.setNumber(sheets.nextClaimNumber(sheetId, dated));
         split.setOpenedBy(user);
