@@ -52,7 +52,8 @@ import org.springframework.web.server.ResponseStatusException;
  * the sheet's floor. A statement binds only the rate figure, not the charge nor the floor, and settling fixes the charge into the settled due. A claim with
  * a negative amount is a correction: it is allowed only when it names, by number, a SETTLED claim
  * of the same person that it corrects. Its due has no floor and no late charge. A steward can move
- * a DRAFT, OPEN or PENDING claim to another person: it keeps its number and date, loses any figure
+ * a DRAFT, OPEN or PENDING claim to another person: it keeps its date, takes the next number (a
+ * DRAFT, having none, gets none), loses any figure
  * a statement bound it to, and is listed as its new person's newest claim. A steward can re-settle
  * a SETTLED claim: its due is fixed again at the figure it would have today as an open claim bound
  * by no statement (today's rates, grades, floor and late charge). An OPEN claim can be deferred to
@@ -603,8 +604,9 @@ public class ClaimService {
     }
 
     /**
-     * Move a DRAFT, OPEN or PENDING claim to another person on the sheet. It keeps its number and
-     * date, is unbound from any statement (live again until its new person's next statement), and
+     * Move a DRAFT, OPEN or PENDING claim to another person on the sheet. It keeps its date and,
+     * unless a DRAFT (which has no number), takes the next number in the sequence it is numbered in
+     * (its old number is never used again), is unbound from any statement (live again until its new person's next statement), and
      * is listed first under its new person. Refused (403) for a role the permission matrix does not allow, (409) for a SETTLED or VOID
      * claim or a move to the person it is already on, (400) for a correction (it must stay with
      * the claim it corrects), (423) when dated inside a closed period and (422) when dated after
@@ -617,6 +619,8 @@ public class ClaimService {
 
     private Claim reassign(String sheetId, String user, long id, long toPersonId, boolean allowSamePerson) {
         roles.refuseUnlessPermitted(sheetId, user, "reassign");
+        // lock the sheet's numbering before reading the claim, as opening one does
+        sheets.lock(sheetId);
         RollupService.Snapshot before = rollup.snapshot(sheetId);
         Claim claim = claims.findByIdAndSheetId(id, sheetId)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "No such claim on this sheet."));
@@ -634,6 +638,10 @@ public class ClaimService {
         }
         periods.refuseIfClosed(sheetId, claim.getDueBy());
         refuseIfRetired(to, claim.getDate());
+        // a numbered claim moved to another person takes the next number; its old one is not reused
+        if (claim.getNumber() != null && !from.getId().equals(to.getId())) {
+            claim.setNumber(sheets.nextClaimNumber(sheetId, claim.getDueBy()));
+        }
         claim.setPersonId(to.getId());
         claim.bind(false, null);
         claims.saveAndFlush(claim);

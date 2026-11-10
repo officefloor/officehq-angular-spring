@@ -42,8 +42,8 @@ import { DatedGrade, DatedValue, Lateness, Rate, chargedDueCents, dueText, grace
 // approves it (SETTLED, its due fixed then) or rejects it with a reason (back to OPEN, bound again
 // by the last statement); the user who opened or last edited it cannot approve it.
 // Who may open, settle, void or move a claim is the sheet's permission matrix (see the settings).
-// By default a steward can move a DRAFT, OPEN or PENDING claim to another person: it keeps its number and
-// date, loses any figure a statement bound it to, and is listed first under its new person.
+// By default a steward can move a DRAFT, OPEN or PENDING claim to another person: it keeps its date, takes
+// the next number (a DRAFT, having none, gets none), loses any figure a statement bound it to, and is listed first under its new person.
 // An OPEN claim can be deferred to a date after the sheet's today (refused for a claim that is not
 // OPEN, a date not after today, or a claim in a closed period). Until the sheet's today reaches that
 // date it counts in no total, is not overdue, cannot be settled and is left unbound by a statement.
