@@ -98,17 +98,22 @@ public class PersonService {
         return saved;
     }
 
-    /** Retire the person from a date, or from the sheet's today when none is given. */
+    /**
+     * Retire the person from a date, or from the sheet's today when none is given. Once the sheet's
+     * today reaches that date their OPEN claims leave every live total, so the figures that move are recorded.
+     */
     @Transactional
     public Person retire(String sheetId, String user, long id, LocalDate date) {
         roles.refuseViewer(sheetId, user);
         Person person = people.findByIdAndSheetId(id, sheetId)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "No such person on this sheet."));
+        RollupService.Snapshot before = rollup.snapshot(sheetId);
         LocalDate from = date != null ? date : sheets.today(sheetId);
         person.setRetiredFrom(from);
         Person saved = save(person);
         audit.recordOnCommit("PERSON_RETIRED sheet=" + sheetId + " by=" + user + " name=" + saved.getName() + " from="
                 + from);
+        rollup.recordChanges(sheetId, user, before);
         return saved;
     }
 

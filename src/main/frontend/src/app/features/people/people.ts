@@ -34,7 +34,8 @@ import { GradeSummary, PeriodSummary, StatusSummary, Summary } from '../summary/
 // at its end (by the status each had then, as its log records it).
 // A person can be retired from a date (the sheet's today when left blank); with a date set they count
 // as retired at once, whatever the date. No claim of theirs can be dated after it. Retired people are
-// left out of the list unless "show retired" is on; their claims keep counting in every total.
+// left out of the list unless "show retired" is on. Once the sheet's today reaches their retirement
+// date their OPEN and PENDING claims leave every live total, as a hold's would (unless a statement binds them).
 // A person can be put on hold from a date (the sheet's today when left blank) to an optional to-date,
 // and may have several holds over time; a hold ends on its to-date. Their OPEN and PENDING claims dated
 // within a hold count in no total (their own, the sheet's or a period's); their other claims still do,
@@ -90,12 +91,19 @@ function heldOn(p: Person, date: string): boolean {
   return p.holds.some((h) => h.from <= date && (h.to === null || date <= h.to));
 }
 
+/** Whether the person's retirement date is reached on a day (the day on or after it). */
+function retiredOn(p: Person, date: string | null): boolean {
+  return p.retiredFrom !== null && date !== null && date >= p.retiredFrom;
+}
+
 /**
  * Whether a claim of the person counts toward the totals: an OPEN or PENDING claim dated within one
- * of their holds does not, unless a statement binds it; nor does a claim deferred on the sheet's today.
+ * of their holds does not, nor does one once the sheet's today reaches their retirement date, unless
+ * a statement binds it; nor does a claim deferred on the sheet's today.
  */
 function countsFor(p: Person | undefined, c: Claim, today: string | null): boolean {
-  return counts(c) && !deferred(c, today) && (c.stated || !(p !== undefined && isOpen(c) && heldOn(p, c.date)));
+  return counts(c) && !deferred(c, today)
+    && (c.stated || !(p !== undefined && isOpen(c) && (heldOn(p, c.date) || retiredOn(p, today))));
 }
 
 /** One of a person's patrons. */

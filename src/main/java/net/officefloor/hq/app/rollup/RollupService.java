@@ -28,7 +28,8 @@ import org.springframework.stereotype.Service;
  * and calls {@link #recordChanges} after its own audit lines, which appends one ROLLUP line per
  * person whose figures moved (people in the order they were added; a new person counts as moved),
  * then a TOTALS line when any of the sheet's totals moved. A held person's OPEN claims count in none of
- * these (nor their PENDING ones), nor in a period's due-total; their SETTLED claims still do. An overdue claim's figure has
+ * these (nor their PENDING ones), nor in a period's due-total; their SETTLED claims still do. So too a person whose
+ * retirement date the sheet's today has reached. An overdue claim's figure has
  * its late charge added on top, and a live due is then never below the floor in force on its claim's date. A person's
  * due-total is at most the cap in force on the sheet's today, when there is one.
  */
