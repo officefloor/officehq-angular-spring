@@ -32,8 +32,9 @@ import org.springframework.web.server.ResponseStatusException;
  * <p>
  * With a pot set on the sheet, each member of a balanced pool has a cut: the pot times their share
  * divided by 100, rounded half to even to two decimals. The remainder, the
- * pot less the cuts added up, goes to the member with the largest share (the earliest added on a
- * tie), so the cuts total exactly the pot. An unbalanced pool, or no pot, has no cuts.
+ * pot less the cuts added up, goes to the member with the smallest non-zero cut (the latest added
+ * on a tie; a member with no cut gets none, and a pool with no non-zero cut gives it to the last
+ * member with a share), so the cuts total exactly the pot. An unbalanced pool, or no pot, has no cuts.
  * <p>
  * A retired person, and a person with a hold in force on the sheet's today (one whose dates include
  * today), has a cut of 0.00 in every pool, and their share is spread over the members left with a
@@ -211,7 +212,8 @@ public class PoolService {
     /**
      * Each member's cut of the pot, in the members' order: the pot times their share over the shares of
      * the members with a cut added up, half to even, a retired or held member's 0.00; the remainder to
-     * the member with a cut with the largest share, the earliest on a tie. A member whose dates leave
+     * the member with the smallest non-zero cut, the latest added on a tie (the last member with a cut
+     * when no cut is non-zero). A member whose dates leave
      * out today has none (null).
      */
     private static List<BigDecimal> cuts(BigDecimal pot, List<Listed> listed, List<BigDecimal> shares) {
@@ -223,7 +225,8 @@ public class PoolService {
         }
         List<BigDecimal> cuts = new ArrayList<>();
         BigDecimal sum = BigDecimal.ZERO.setScale(2);
-        int largest = -1;
+        int smallest = -1;
+        int last = -1;
         for (int i = 0; i < listed.size(); i++) {
             if (!listed.get(i).current()) {
                 cuts.add(null);
@@ -232,15 +235,17 @@ public class PoolService {
             BigDecimal cut = BigDecimal.ZERO.setScale(2);
             if (hasCut(listed.get(i))) {
                 cut = pot.multiply(shares.get(i)).divide(cutShares, 2, RoundingMode.HALF_EVEN);
-                if (largest < 0 || shares.get(i).compareTo(shares.get(largest)) > 0) {
-                    largest = i;
+                last = i;
+                if (cut.signum() != 0 && (smallest < 0 || cut.compareTo(cuts.get(smallest)) <= 0)) {
+                    smallest = i;
                 }
             }
             cuts.add(cut);
             sum = sum.add(cut);
         }
-        if (largest >= 0) {
-            cuts.set(largest, cuts.get(largest).add(pot.subtract(sum)));
+        int to = smallest >= 0 ? smallest : last;
+        if (to >= 0) {
+            cuts.set(to, cuts.get(to).add(pot.subtract(sum)));
         }
         return cuts;
     }

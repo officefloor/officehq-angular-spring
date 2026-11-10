@@ -744,8 +744,8 @@ public class ClaimService {
         }
         periods.refuseIfClosed(sheetId, claim.getDueBy());
         refuseIfRetired(to, claim.getDate());
-        // a numbered claim moved to another person takes the next number; its old one is not reused
-        if (claim.getNumber() != null && !from.getId().equals(to.getId())) {
+        // a numbered claim moved (in place too) takes the next number; its old one is not reused
+        if (claim.getNumber() != null) {
             claim.setNumber(sheets.nextClaimNumber(sheetId, claim.getDueBy()));
         }
         claim.setPersonId(to.getId());
@@ -905,7 +905,7 @@ public class ClaimService {
     /**
      * Move the given claims to one person together, in list order (the order people were added,
      * newest claim first within a person), each by exactly the rules of moving one claim. A claim
-     * already on that person is moved in place (listed first, unbound). A claim that cannot be
+     * already on that person is moved in place (listed first, unbound, the next number). A claim that cannot be
      * moved is refused and left as it is.
      */
     @Transactional
