@@ -30,13 +30,13 @@ public class ClaimController {
 
     public record AddClaimRequest(@NotBlank @Size(max = 100) String sheet, @NotBlank @Size(max = 100) String user,
             @NotNull Long personId, @NotNull @Pattern(regexp = SIGNED_AMOUNT) String amount, LocalDate date,
-            @Size(max = 1000) String note, @Size(max = 120) String corrects) {
+            @Size(max = 1000) String note, @Size(max = 120) String corrects, @Size(max = 120) String ref) {
     }
 
     public record UpdateClaimRequest(@NotBlank @Size(max = 100) String sheet,
             @NotBlank @Size(max = 100) String user, @NotNull Long id,
             @NotNull @Pattern(regexp = SIGNED_AMOUNT) String amount, LocalDate date, @Size(max = 1000) String note,
-            @Size(max = 120) String corrects) {
+            @Size(max = 120) String corrects, @Size(max = 120) String ref) {
     }
 
     public record UpdateClaimAmountRequest(@NotBlank @Size(max = 100) String sheet,
@@ -96,7 +96,7 @@ public class ClaimController {
             ClaimStatus status, String number, String settledDue, String openedBy,
             boolean stated, String statedDue, String corrects, LocalDate dueBy, List<ClaimLogLine> log,
             LocalDate deferredUntil, int proofs, String splitFrom, String lockedBy,
-            boolean lateEntry, LocalDate remindedOn) {
+            boolean lateEntry, LocalDate remindedOn, String ref) {
     }
 
     /** One line of a claim's status log, oldest first. */
@@ -116,7 +116,7 @@ public class ClaimController {
                 claim.getLog().stream().map(l -> new ClaimLogLine(l.getStatus(), l.getBy(), l.getDate(), l.getDue()))
                         .toList(),
                 claim.getDeferredUntil(), claim.getProofs(), claim.getSplitFrom(), claim.getLockedBy(),
-                claim.isLateEntry(), claim.getRemindedOn());
+                claim.isLateEntry(), claim.getRemindedOn(), claim.getRef());
     }
 
     public static BigDecimal amount(String amount) {
@@ -126,6 +126,11 @@ public class ClaimController {
     /** The number a correction names, trimmed; null when none is named. */
     private static String corrects(String corrects) {
         return corrects == null || corrects.isBlank() ? null : corrects.trim();
+    }
+
+    /** An external reference, trimmed; null when blank. */
+    public static String ref(String ref) {
+        return ref == null || ref.isBlank() ? null : ref.trim();
     }
 
     private static String note(String note) {
@@ -148,7 +153,7 @@ public class ClaimController {
     @PostMapping("/add")
     public ClaimResponse add(@Valid @RequestBody AddClaimRequest req) {
         return response(service.add(req.sheet().trim(), req.user().trim(), req.personId(), amount(req.amount()), req.date(),
-                note(req.note()), corrects(req.corrects())));
+                note(req.note()), corrects(req.corrects()), ref(req.ref())));
     }
 
     @PostMapping("/paste")
@@ -161,7 +166,7 @@ public class ClaimController {
     @PostMapping("/update")
     public ClaimResponse update(@Valid @RequestBody UpdateClaimRequest req) {
         return response(service.update(req.sheet().trim(), req.user().trim(), req.id(), amount(req.amount()), req.date(),
-                note(req.note()), corrects(req.corrects())));
+                note(req.note()), corrects(req.corrects()), ref(req.ref())));
     }
 
     @PostMapping("/amount")

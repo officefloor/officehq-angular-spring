@@ -48,7 +48,9 @@ import { GradeSummary, PeriodSummary, StatusSummary, Summary } from '../summary/
 // the person of a name, adding the person with grade A first when the name is not on the sheet.
 // The paste box takes lines of name,amount,date,note (the date blank for the sheet's today, the note
 // optional and free to hold commas) and adds a DRAFT claim per line, in order, for the person of that
-// name. Every line is held to the claim form's rules; if any is refused, nothing is added.
+// name. Every line is held to the claim form's rules; if any is refused, nothing is added. A note
+// ending in " #<reference>" gives the claim that reference (not part of the note); a reference
+// repeated within the paste or already used on the sheet refuses the whole paste.
 // Each person, and the sheet, shows how many of the claims that count are overdue and the sum of
 // their figures (the overdue-total). An overdue claim's figure has its late charge (the sheet's late
 // percent of it for every full 30 days overdue) added on top, in every figure and total.

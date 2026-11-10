@@ -88,6 +88,10 @@ public class Claim {
     @Column(name = "corrects")
     private String corrects;
 
+    /** The claim's external reference, unique on its sheet without regard to case; none when not given. */
+    @Column(name = "ext_ref")
+    private String ref;
+
     /** The number of the claim this claim was split off from; none for a claim not made by a split. */
     @Column(name = "split_from")
     private String splitFrom;
@@ -205,6 +209,14 @@ public class Claim {
 
     public void setCorrects(String corrects) {
         this.corrects = corrects;
+    }
+
+    public String getRef() {
+        return ref;
+    }
+
+    public void setRef(String ref) {
+        this.ref = ref;
     }
 
     public boolean isLateEntry() {

@@ -28,5 +28,11 @@ public interface ClaimRepository extends JpaRepository<Claim, Long> {
     @Query("UPDATE Claim c SET c.lockedBy = NULL WHERE c.sheetId = :sheetId AND c.lockedBy IS NOT NULL")
     void unlockAll(@Param("sheetId") String sheetId);
 
+    /** Whether a claim on the sheet has the reference, without regard to case. */
+    boolean existsBySheetIdAndRefIgnoreCase(String sheetId, String ref);
+
+    /** Whether a claim on the sheet other than the one of {@code id} has the reference, without regard to case. */
+    boolean existsBySheetIdAndRefIgnoreCaseAndIdNot(String sheetId, String ref, Long id);
+
     Optional<Claim> findByIdAndSheetId(Long id, String sheetId);
 }

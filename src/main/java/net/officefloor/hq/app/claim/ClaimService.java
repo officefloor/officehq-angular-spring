@@ -29,7 +29,8 @@ import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.server.ResponseStatusException;
 
 /**
- * The claims on a sheet: added to a person and edited (amount, date, note). A claim given no date
+ * The claims on a sheet: added to a person and edited (amount, date, note, external reference). A
+ * claim's reference, when it has one, is unique on its sheet without regard to case. A claim given no date
  * takes the sheet's today. A claim starts as DRAFT and moves through its statuses (see
  * {@link ClaimStatus}); a change its status does not allow is refused. Only a DRAFT can be edited:
  * to change an open claim, void it and add a new one. Settling a claim fixes its
@@ -145,7 +146,7 @@ public class ClaimService {
 
     @Transactional
     public Claim add(String sheetId, String user, long personId, BigDecimal amount, LocalDate date, String note,
-            String corrects) {
+            String corrects, String ref) {
         roles.refuseViewer(sheetId, user);
         Person person = person(sheetId, personId);
         LocalDate dated = dateOrToday(sheetId, date);
@@ -153,12 +154,15 @@ public class ClaimService {
         periods.refuseIfClosed(sheetId, dueBy);
         refuseIfRetired(person, dated);
         String corrected = corrected(sheetId, personId, amount, corrects);
+        refuseIfRefUsed(sheetId, ref, null);
         RollupService.Snapshot before = rollup.snapshot(sheetId);
         Claim claim = new Claim(sheetId, personId, amount, dated, dueBy, note, corrected);
+        claim.setRef(ref);
         claim.setLateEntry(periods.isSoftClosed(sheetId, dueBy));
         logStatus(sheetId, user, person, claim);
         Claim added = claims.saveAndFlush(claim);
-        audit.recordOnCommit(record("CLAIM_ADDED", sheetId, user, person, added));
+        audit.recordOnCommit(record("CLAIM_ADDED", sheetId, user, person, added)
+                + (added.getRef() != null ? " ref=" + added.getRef() : ""));
         if (added.isLateEntry()) {
             audit.recordOnCommit(record("LATE_ENTRY", sheetId, user, person, added));
         }
@@ -168,7 +172,7 @@ public class ClaimService {
 
     @Transactional
     public Claim update(String sheetId, String user, long id, BigDecimal amount, LocalDate date, String note,
-            String corrects) {
+            String corrects, String ref) {
         roles.refuseViewer(sheetId, user);
         Claim claim = claims.findByIdAndSheetId(id, sheetId)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "No such claim on this sheet."));
@@ -177,8 +181,10 @@ public class ClaimService {
         periods.refuseIfClosed(sheetId, claim.getDueBy());
         refuseIfRetired(person(sheetId, claim.getPersonId()), dated);
         String corrected = corrected(sheetId, claim.getPersonId(), amount, corrects);
+        refuseIfRefUsed(sheetId, ref, claim.getId());
         RollupService.Snapshot before = rollup.snapshot(sheetId);
         claim.setAmount(amount);
+        claim.setRef(ref);
         claim.setDate(dated);
         claim.setNote(note);
         claim.setCorrects(corrected);
@@ -199,7 +205,8 @@ public class ClaimService {
         Claim claim = claims.findByIdAndSheetId(id, sheetId)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "No such claim on this sheet."));
         String lockedBy = claim.getLockedBy();
-        Claim saved = update(sheetId, user, id, amount, claim.getDate(), claim.getNote(), claim.getCorrects());
+        Claim saved = update(sheetId, user, id, amount, claim.getDate(), claim.getNote(), claim.getCorrects(),
+                claim.getRef());
         saved.setLockedBy(lockedBy);
         return claims.saveAndFlush(saved);
     }
@@ -788,6 +795,15 @@ public class ClaimService {
     private Person person(String sheetId, long personId) {
         return people.findByIdAndSheetId(personId, sheetId)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "No such person on this sheet."));
+    }
+
+    /** Refuse a reference (none when null) another claim on the sheet already has, without regard to case. */
+    void refuseIfRefUsed(String sheetId, String ref, Long exceptId) {
+        if (ref != null && (exceptId == null ? claims.existsBySheetIdAndRefIgnoreCase(sheetId, ref)
+                : claims.existsBySheetIdAndRefIgnoreCaseAndIdNot(sheetId, ref, exceptId))) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT,
+                    "The reference " + ref + " is already used on this sheet.");
+        }
     }
 
     private static String record(String event, String sheetId, String user, Person person, Claim claim) {

@@ -31,6 +31,8 @@ import { DatedGrade, DatedValue, Lateness, Rate, chargedDueCents, dueText, grace
 // A claim with a negative amount is a correction: it must name, by number, a SETTLED claim of the
 // same person that it corrects, else it is refused. Its due has no floor and no late charge, and
 // it shows the number it corrects.
+// A claim may carry an external reference (trimmed; blank is none), shown on the claim: one already
+// used on the sheet, compared without regard to case, is refused with an error on the form.
 // A clerk settling a claim whose due is above the clerk limit makes it PENDING. A PENDING claim
 // counts like an OPEN one but is not bound by a statement: it shows its live figure. A steward
 // approves it (SETTLED, its due fixed then) or rejects it with a reason (back to OPEN, bound again
@@ -79,6 +81,8 @@ export interface Claim {
   statedDue: string | null;
   /** The number of the claim this correction corrects; null for a claim that is not a correction. */
   corrects: string | null;
+  /** The claim's external reference, unique on the sheet without regard to case; null when none. */
+  ref: string | null;
   /** The date the claim is due by, fixed when it was added. */
   dueBy: string;
   /** The claim's status log, oldest first: who moved it to each status, on the sheet's today then,
@@ -269,6 +273,13 @@ export function money(c: number): string {
         [value]="correctsInput()"
         (input)="correctsInput.set($any($event.target).value); error.set(null)"
       />
+      <label [for]="'claim-ref-' + personId()">Reference</label>
+      <input
+        [id]="'claim-ref-' + personId()"
+        data-testid="claim-form-ref"
+        [value]="refInput()"
+        (input)="refInput.set($any($event.target).value); error.set(null)"
+      />
       <button type="submit" data-testid="claim-form-submit">
         {{ editingId() === null ? 'Add claim' : 'Save claim' }}
       </button>
@@ -290,6 +301,7 @@ export function money(c: number): string {
           <span data-testid="claim-amount">{{ c.amount }}</span>
           <span data-testid="claim-date">{{ c.date }}</span>
           <span data-testid="claim-note">{{ c.note }}</span>
+          <span>Ref <span data-testid="claim-ref">{{ c.ref ?? '' }}</span></span>
           <span>Corrects <span data-testid="claim-corrects">{{ c.corrects ?? '' }}</span></span>
           <span>Period <span data-testid="claim-period">{{ periodOf(c) }}</span></span>
           <span>Due <span data-testid="claim-due">{{ dueOf(c) }}</span></span>
@@ -436,10 +448,14 @@ export class PersonClaims {
   private readonly lockedId = computed(
     () => this.claims().find((c) => c.lockedBy === this.session.user() && c.status === 'DRAFT')?.id ?? null,
   );
-  protected readonly amountInput = linkedSignal(() => this.lockedValue((c) => c.amount));
-  protected readonly dateInput = linkedSignal(() => this.lockedValue((c) => c.date));
-  protected readonly noteInput = linkedSignal(() => this.lockedValue((c) => c.note));
-  protected readonly correctsInput = linkedSignal(() => this.lockedValue((c) => c.corrects ?? ''));
+  /** The claim whose editor this component opened (edit), until it is closed: when its lock shows
+   *  up on the claim, what was typed into the editor meanwhile is kept. */
+  private opened: number | null = null;
+  protected readonly amountInput = this.editorField((c) => c.amount);
+  protected readonly dateInput = this.editorField((c) => c.date);
+  protected readonly noteInput = this.editorField((c) => c.note);
+  protected readonly correctsInput = this.editorField((c) => c.corrects ?? '');
+  protected readonly refInput = this.editorField((c) => c.ref ?? '');
   protected readonly editingId = linkedSignal(() => this.lockedId());
   protected readonly error = signal<string | null>(null);
   /** Whether a submit is waiting for its answer: a second submit meanwhile is ignored. */
@@ -495,11 +511,17 @@ export class PersonClaims {
     return periodOn(this.periods(), c.dueBy)?.name ?? '';
   }
 
-  /** A value of the claim whose lock this user holds; blank when none. */
-  private lockedValue(of: (c: Claim) => string): string {
-    const id = this.lockedId();
-    const c = id === null ? undefined : untracked(this.claims).find((x) => x.id === id);
-    return c === undefined ? '' : of(c);
+  /** An editor field: the value of the claim whose lock this user holds (blank when none), except
+   *  that the editor this component opened keeps what was typed when that claim's lock arrives. */
+  private editorField(of: (c: Claim) => string) {
+    return linkedSignal<number | null, string>({
+      source: () => this.lockedId(),
+      computation: (id, prev) => {
+        if (prev !== undefined && id !== null && id === this.opened) return prev.value;
+        const c = id === null ? undefined : untracked(this.claims).find((x) => x.id === id);
+        return c === undefined ? '' : of(c);
+      },
+    });
   }
 
   /** Open a claim's editor, taking its lock; refused when it cannot be edited or another user holds it. */
@@ -520,14 +542,16 @@ export class PersonClaims {
     if (this.submitting || this.locking !== null) return;
     const sheet = this.session.sheet();
     const was = this.editingId();
-    const typed = [this.amountInput(), this.dateInput(), this.noteInput(), this.correctsInput()] as const;
+    const typed = [this.amountInput(), this.dateInput(), this.noteInput(), this.correctsInput(), this.refInput()] as const;
     // the editor opens with the claim's values at once, so what is typed next is not overwritten
     // when the lock comes back; a submit meanwhile waits for the lock
     this.editingId.set(c.id);
+    this.opened = c.id;
     this.amountInput.set(c.amount);
     this.dateInput.set(c.date);
     this.noteInput.set(c.note);
     this.correctsInput.set(c.corrects ?? '');
+    this.refInput.set(c.ref ?? '');
     this.error.set(null);
     const locking = this.takeLock(c, sheet, was, typed);
     this.locking = locking;
@@ -541,7 +565,7 @@ export class PersonClaims {
   /** Take a claim's lock for its opened editor: true when taken; when refused, the editor is put
    *  back as it was and the claim shows the error. */
   private async takeLock(c: Claim, sheet: string | null, was: number | null,
-    typed: readonly [string, string, string, string]): Promise<boolean> {
+    typed: readonly [string, string, string, string, string]): Promise<boolean> {
     try {
       const claim = await firstValueFrom(
         this.http.post<Claim>('/api/claims/lock', { sheet, user: this.session.user(), id: c.id }),
@@ -550,7 +574,7 @@ export class PersonClaims {
       // taking this lock released the one this user held on another claim of the person
       const released = this.claims().find((x) => x.id === was && x.id !== claim.id);
       // the editor's fields follow the claim this user locks: keep what was typed while the lock was taken
-      const now = [this.amountInput(), this.dateInput(), this.noteInput(), this.correctsInput()] as const;
+      const now = [this.amountInput(), this.dateInput(), this.noteInput(), this.correctsInput(), this.refInput()] as const;
       if (released !== undefined) this.saved.emit({ ...released, lockedBy: null });
       this.saved.emit(claim);
       this.editingId.set(claim.id);
@@ -558,14 +582,17 @@ export class PersonClaims {
       this.dateInput.set(now[1]);
       this.noteInput.set(now[2]);
       this.correctsInput.set(now[3]);
+      this.refInput.set(now[4]);
       return true;
     } catch (e) {
       if (this.session.sheet() !== sheet) return false;
       this.editingId.set(was);
+      this.opened = was;
       this.amountInput.set(typed[0]);
       this.dateInput.set(typed[1]);
       this.noteInput.set(typed[2]);
       this.correctsInput.set(typed[3]);
+      this.refInput.set(typed[4]);
       const status = e instanceof HttpErrorResponse ? e.status : 0;
       const err =
         status === 423
@@ -597,11 +624,13 @@ export class PersonClaims {
   }
 
   protected reset(): void {
+    this.opened = null;
     this.editingId.set(null);
     this.amountInput.set('');
     this.dateInput.set('');
     this.noteInput.set('');
     this.correctsInput.set('');
+    this.refInput.set('');
     this.error.set(null);
   }
 
@@ -964,7 +993,7 @@ export class PersonClaims {
     }
     const id = this.editingId();
     const body = { sheet, user: this.session.user(), amount, date: date || null, note: this.noteInput().trim(),
-      corrects: correction ? corrects : null };
+      corrects: correction ? corrects : null, ref: this.refInput().trim() || null };
     this.submitting = true;
     try {
       const claim =
@@ -982,6 +1011,10 @@ export class PersonClaims {
             ? 'A claim cannot be dated after its person\'s retirement date.'
           : e instanceof HttpErrorResponse && e.status === 400 && correction
             ? UNCORRECTABLE
+          : e instanceof HttpErrorResponse && e.status === 409 && id === null
+            ? 'That reference is already used on this sheet.'
+          : e instanceof HttpErrorResponse && e.status === 409 && this.refInput().trim() !== ''
+            ? 'That reference may already be used on this sheet; only a DRAFT claim can be edited, and not while another user is editing it.'
           : e instanceof HttpErrorResponse && e.status === 409
             ? 'Only a DRAFT claim can be edited, and not while another user is editing it.'
             : id === null
