@@ -7,6 +7,7 @@ import jakarta.validation.constraints.NotEmpty;
 import jakarta.validation.constraints.NotNull;
 import jakarta.validation.constraints.Pattern;
 import jakarta.validation.constraints.Size;
+import net.officefloor.hq.app.claim.ClaimController;
 import java.time.LocalDate;
 import java.util.List;
 import java.util.Locale;
@@ -27,13 +28,13 @@ public class PersonController {
 
     public record AddPersonRequest(@NotBlank @Size(max = 100) String sheet, @NotBlank @Size(max = 100) String user,
             @NotBlank @Size(max = 200) String name, @NotNull @Pattern(regexp = "[ABC]") String grade, @Min(0) Integer terms,
-            @Size(max = 200) String contact) {
+            @Size(max = 200) String contact, @Size(max = 500) String tags) {
     }
 
     public record UpdatePersonRequest(@NotBlank @Size(max = 100) String sheet,
             @NotBlank @Size(max = 100) String user, @NotNull Long id, @NotBlank @Size(max = 200) String name,
             @NotNull @Pattern(regexp = "[ABC]") String grade, LocalDate gradeFrom, @NotNull Long version,
-            @Min(0) Integer terms, @Size(max = 200) String contact) {
+            @Min(0) Integer terms, @Size(max = 200) String contact, @Size(max = 500) String tags) {
     }
 
     public record AddAliasRequest(@NotBlank @Size(max = 100) String sheet,
@@ -120,10 +121,10 @@ public class PersonController {
     public record RetirementResponse(LocalDate from, LocalDate to) {
     }
 
-    /** A person, with every grade recorded for them, the one from the beginning of time first, their own terms or null, their contact or null, their aliases sorted as names are compared, and whether they clash: their name or an alias is used on another sheet of the sheet's tree, and the sheet they were transferred from or null. */
+    /** A person, with every grade recorded for them, the one from the beginning of time first, their own terms or null, their contact or null, their aliases sorted as names are compared, their tags sorted, and whether they clash: their name or an alias is used on another sheet of the sheet's tree, and the sheet they were transferred from or null. */
     public record PersonResponse(long id, String name, List<GradeResponse> grades, long version, boolean retired,
             LocalDate retiredFrom, boolean held, List<HoldResponse> holds, Integer terms, String contact,
-            List<String> aliases, boolean clashing, String origin, List<RetirementResponse> retirements) {
+            List<String> aliases, boolean clashing, String origin, List<RetirementResponse> retirements, List<String> tags) {
     }
 
     public static PersonResponse response(Person person, boolean clashing) {
@@ -133,7 +134,8 @@ public class PersonController {
                 person.isRetired(), person.getRetiredFrom(), person.isHeld(),
                 person.getHolds().stream().map(h -> new HoldResponse(h.getFromDate(), h.getToDate())).toList(),
                 person.getTerms(), person.getContact(), person.getAliases(), clashing, person.getOriginSheet(),
-                person.getPastRetirements().stream().map(r -> new RetirementResponse(r.getFromDate(), r.getToDate())).toList());
+                person.getPastRetirements().stream().map(r -> new RetirementResponse(r.getFromDate(), r.getToDate())).toList(),
+                person.getTags());
     }
 
     /** The person, with whether they clash on the sheet's tree. */
@@ -171,7 +173,7 @@ public class PersonController {
     @PostMapping("/add")
     public PersonResponse add(@Valid @RequestBody AddPersonRequest req) {
         return response(req.sheet().trim(), service.add(req.sheet().trim(), req.user().trim(), req.name().trim(), req.grade(),
-                req.terms(), contact(req.contact())));
+                req.terms(), contact(req.contact()), ClaimController.tags(req.tags())));
     }
 
     @PostMapping("/import")
@@ -187,7 +189,7 @@ public class PersonController {
     @PostMapping("/update")
     public PersonResponse update(@Valid @RequestBody UpdatePersonRequest req) {
         return response(req.sheet().trim(), service.update(req.sheet().trim(), req.user().trim(), req.id(), req.version(), req.name().trim(),
-                req.grade(), req.gradeFrom(), req.terms(), contact(req.contact())));
+                req.grade(), req.gradeFrom(), req.terms(), contact(req.contact()), ClaimController.tags(req.tags())));
     }
 
     @PostMapping("/aliases/add")

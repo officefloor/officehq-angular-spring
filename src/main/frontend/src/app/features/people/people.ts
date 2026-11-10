@@ -28,6 +28,8 @@ import { VoidReasons as VoidReasonList } from '../../core/void-reasons';
 // claim's due-by is fixed by the server when it is created, from these before the grade's or sheet's.
 // A person may have a contact (blank for none), stored trimmed and lower-cased and shown on the row;
 // a contact another person on the sheet already has is refused.
+// A person may carry tags, typed comma separated: each trimmed and lower-cased, repeats dropped,
+// shown sorted. A claim counts in a tag's total when the claim or its person carries the tag, once.
 // A person may have aliases, added one at a time from their row and shown sorted as names are compared
 // (without regard to case), comma and space separated. An alias shares the names' uniqueness: one equal
 // to any name or alias on the sheet is refused, as is a name equal to an alias. The quick-add bar and
@@ -118,6 +120,8 @@ interface Person {
   terms: number | null;
   /** The person's contact, trimmed and lower-cased, or null when they have none. */
   contact: string | null;
+  /** The person's tags: trimmed, lower-cased, without repeats and sorted; empty when they have none. */
+  tags: string[];
   /** The person's aliases, sorted as names are compared. */
   aliases: string[];
   /** Whether the person's name or an alias is used on another sheet of the sheet's tree. */
@@ -275,6 +279,13 @@ const SUMMARY_STATUSES = ['DRAFT', 'OPEN', 'PENDING', 'SETTLED', 'VOID'] as cons
           data-testid="person-form-contact"
           [value]="contactInput()"
           (input)="contactInput.set($any($event.target).value); error.set(null)"
+        />
+        <label for="person-form-tags">Tags (comma separated)</label>
+        <input
+          id="person-form-tags"
+          data-testid="person-form-tags"
+          [value]="tagsInput()"
+          (input)="tagsInput.set($any($event.target).value); error.set(null)"
         />
         <button type="submit" data-testid="person-form-submit">
           {{ editingId() === null ? 'Add person' : 'Save person' }}
@@ -501,6 +512,7 @@ const SUMMARY_STATUSES = ['DRAFT', 'OPEN', 'PENDING', 'SETTLED', 'VOID'] as cons
             <th scope="col">Grade</th>
             <th scope="col">Terms</th>
             <th scope="col">Contact</th>
+            <th scope="col">Tags</th>
             <th scope="col">Claimed</th>
             <th scope="col">Due</th>
             <th scope="col">Settled</th>
@@ -542,6 +554,7 @@ const SUMMARY_STATUSES = ['DRAFT', 'OPEN', 'PENDING', 'SETTLED', 'VOID'] as cons
               <td data-testid="person-grade">{{ gradeToday(p) }}</td>
               <td data-testid="person-terms">{{ p.terms ?? '' }}</td>
               <td data-testid="person-contact">{{ p.contact ?? '' }}</td>
+              <td data-testid="person-tags">{{ p.tags.join(', ') }}</td>
               <td data-testid="person-claimed">{{ claimedOf(p.id) }}</td>
               <td data-testid="person-due-total">{{ dueText(dueOf(p)) }}</td>
               <td data-testid="person-settled-total">{{ money(settledOpenOf(p).settled) }}</td>
@@ -1023,18 +1036,21 @@ export class People {
   /** Every tag ever used on the sheet, as the store held them when the sheet was loaded. */
   protected readonly usedTags = signal<string[]>([]);
   /**
-   * Per tag ever used on the sheet (sorted): the figures of the claims that count which carry it,
-   * in whole cents, untrimmed and without the cap; a claim with two tags counts in both.
+   * Per tag ever used on the sheet (sorted): the figures of the claims that count which carry it, or
+   * whose person carries it, in whole cents, untrimmed and without the cap; a claim with two tags
+   * counts in both, and once in a tag both it and its person carry.
    */
   protected readonly tagTotals = computed(() => {
     const totals = new Map<string, number>(this.usedTags().map((t) => [t, 0]));
     for (const c of this.claims()) for (const t of c.tags) if (!totals.has(t)) totals.set(t, 0);
+    for (const p of this.people()) for (const t of p.tags) if (!totals.has(t)) totals.set(t, 0);
     const today = this.session.today();
     for (const p of this.people()) {
       for (const c of this.claimsOf(p.id)) {
-        if (c.tags.length === 0 || !countsFor(p, c, today)) continue;
+        const tags = new Set([...c.tags, ...p.tags]);
+        if (tags.size === 0 || !countsFor(p, c, today)) continue;
         const figure = chargedDueCents(c, this.rates(), gradeOn(p.grades, c.date), this.floors(), this.lateness(), this.roundOn(c)) ?? 0;
-        for (const t of c.tags) totals.set(t, (totals.get(t) ?? 0) + figure);
+        for (const t of tags) totals.set(t, (totals.get(t) ?? 0) + figure);
       }
     }
     return [...totals].sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0)).map(([tag, cents]) => ({ tag, cents }));
@@ -1109,6 +1125,8 @@ export class People {
   protected readonly termsInput = signal('');
   /** The person's contact; blank for none. */
   protected readonly contactInput = signal('');
+  /** The person's tags, comma separated; blank for none. */
+  protected readonly tagsInput = signal('');
   protected readonly editingId = signal<number | null>(null);
   /** The version of the person the editor was filled from. */
   private editingVersion = 0;
@@ -2132,6 +2150,7 @@ export class People {
     this.gradeFromInput.set('');
     this.termsInput.set(p.terms === null ? '' : String(p.terms));
     this.contactInput.set(p.contact ?? '');
+    this.tagsInput.set(p.tags.join(', '));
     this.error.set(null);
   }
 
@@ -2146,6 +2165,7 @@ export class People {
     this.gradeFromInput.set('');
     this.termsInput.set('');
     this.contactInput.set('');
+    this.tagsInput.set('');
     this.error.set(null);
   }
 
@@ -2183,6 +2203,7 @@ export class People {
       grade,
       terms: terms === '' ? null : Number(terms),
       contact: contact === '' ? null : contact,
+      tags: this.tagsInput(),
     };
     this.submitting = true;
     try {
@@ -2234,6 +2255,7 @@ export class People {
         this.gradeInput.set(this.gradeToday(current));
         this.termsInput.set(current.terms === null ? '' : String(current.terms));
         this.contactInput.set(current.contact ?? '');
+        this.tagsInput.set(current.tags.join(', '));
       }
     } catch {
       // the refusal is shown either way

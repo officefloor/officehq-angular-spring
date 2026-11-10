@@ -50,6 +50,10 @@ public class Person {
     @Column(name = "contact")
     private String contact;
 
+    /** The person's tags: trimmed, lower-cased, without repeats, sorted and comma separated; none when they have none. */
+    @Column(name = "tags")
+    private String tags;
+
     /** Set once retired: the person counts as retired at once, whatever the date. */
     @Column(name = "retired_from")
     private LocalDate retiredFrom;
@@ -111,7 +115,7 @@ public class Person {
 
     /**
      * The person as they arrive on another sheet: their name, every grade they were given (each with
-     * its from-date), their terms, contact and aliases; not their holds or retirement. They carry
+     * its from-date), their terms, contact, tags and aliases; not their holds or retirement. They carry
      * this sheet as the one they came from.
      */
     public Person transferredTo(String toSheetId) {
@@ -122,6 +126,7 @@ public class Person {
         grades.forEach(g -> copy.grades.add(new DatedGrade(g.getFromDate(), g.getGrade(), g.getMadeOn())));
         copy.terms = terms;
         copy.contact = contact;
+        copy.tags = tags;
         copy.aliases.addAll(aliases);
         copy.originSheet = sheetId;
         return copy;
@@ -201,6 +206,16 @@ public class Person {
 
     public void setContact(String contact) {
         this.contact = contact;
+    }
+
+    /** The person's tags, sorted; empty when they have none. */
+    public List<String> getTags() {
+        return tags == null ? List.of() : List.of(tags.split(","));
+    }
+
+    /** Give the person tags, already trimmed, lower-cased, without repeats and sorted. */
+    public void setTags(List<String> tags) {
+        this.tags = tags.isEmpty() ? null : String.join(",", tags);
     }
 
     public LocalDate getRetiredFrom() {

@@ -8,6 +8,8 @@ import java.util.Locale;
 import java.util.Objects;
 import java.util.Set;
 import net.officefloor.hq.app.Audit;
+import net.officefloor.hq.app.claim.UsedTag;
+import net.officefloor.hq.app.claim.UsedTagRepository;
 import net.officefloor.hq.app.role.RoleService;
 import net.officefloor.hq.app.rollup.RollupService;
 import net.officefloor.hq.app.sheet.SheetService;
@@ -32,6 +34,7 @@ import org.springframework.web.server.ResponseStatusException;
  * person, and stop watching them; each user's watching is their own. A person may have their own
  * terms, in days; a claim's due-by takes them before the terms of the person's grade and the sheet's.
  * A person may have a contact (arriving trimmed and lower-cased, null for none), unique on the sheet.
+ * A person may have tags (arriving trimmed, lower-cased, without repeats and sorted), each kept as used on the sheet.
  * A person may have aliases (arriving trimmed), sharing the names' uniqueness: an alias equals no name
  * or alias on the sheet, and no name equals an alias.
  * Nor may a name or alias be used on a sheet when another sheet of its tree (see
@@ -49,9 +52,11 @@ public class PersonService {
     private final PatronRepository patrons;
     private final RoleService roles;
     private final WatchRepository watches;
+    private final UsedTagRepository usedTags;
 
     public PersonService(PersonRepository people, SheetService sheets, Audit audit, RollupService rollup,
-            PatronRepository patrons, RoleService roles, WatchRepository watches) {
+            PatronRepository patrons, RoleService roles, WatchRepository watches, UsedTagRepository usedTags) {
+        this.usedTags = usedTags;
         this.roles = roles;
         this.watches = watches;
         this.people = people;
@@ -73,6 +78,12 @@ public class PersonService {
 
     @Transactional
     public Person add(String sheetId, String user, String name, String grade, Integer terms, String contact) {
+        return add(sheetId, user, name, grade, terms, contact, List.of());
+    }
+
+    @Transactional
+    public Person add(String sheetId, String user, String name, String grade, Integer terms, String contact,
+            List<String> tags) {
         roles.refuseViewer(sheetId, user);
         sheets.load(sheetId, user);
         RollupService.Snapshot before = rollup.snapshot(sheetId);
@@ -86,17 +97,27 @@ public class PersonService {
         Person person = new Person(sheetId, name, grade, sheets.today(sheetId));
         person.setTerms(terms);
         person.setContact(contact);
+        person.setTags(tags);
         person.setPosition(people.maxPosition(sheetId) + 1);
         Person added = save(person);
+        useTags(sheetId, added);
         audit.recordOnCommit(record("PERSON_ADDED", sheetId, user, added, sheets.today(sheetId))
                 + (terms != null ? " terms=" + terms : "") + (contact != null ? " contact=" + contact : ""));
         rollup.recordChanges(sheetId, user, before);
         return added;
     }
 
+    /** Edit the person, keeping their tags. */
     @Transactional
     public Person update(String sheetId, String user, long id, long version, String name, String grade,
             LocalDate gradeFrom, Integer terms, String contact) {
+        return update(sheetId, user, id, version, name, grade, gradeFrom, terms, contact, null);
+    }
+
+    /** Edit the person; {@code tags} null keeps the ones they have. */
+    @Transactional
+    public Person update(String sheetId, String user, long id, long version, String name, String grade,
+            LocalDate gradeFrom, Integer terms, String contact, List<String> tags) {
         roles.refuseViewer(sheetId, user);
         RollupService.Snapshot before = rollup.snapshot(sheetId);
         Person person = people.findByIdAndSheetId(id, sheetId)
@@ -123,15 +144,28 @@ public class PersonService {
         person.setName(name);
         person.setTerms(terms);
         person.setContact(contact);
+        if (tags != null) {
+            person.setTags(tags);
+        }
         if (gradeFrom != null || !grade.equals(person.gradeOn(today))) {
             person.setGradeFrom(gradeFrom != null ? gradeFrom : today, grade, today);
         }
         Person saved = save(person);
+        useTags(sheetId, saved);
         audit.recordOnCommit(record("PERSON_EDITED", sheetId, user, saved, today)
                 + (Objects.equals(termsBefore, terms) ? "" : " terms=" + (terms != null ? terms : ""))
                 + (Objects.equals(contactBefore, contact) ? "" : " contact=" + (contact != null ? contact : "")));
         rollup.recordChanges(sheetId, user, before);
         return saved;
+    }
+
+    /** Keep each of the person's tags as used on the sheet. */
+    private void useTags(String sheetId, Person person) {
+        for (String tag : person.getTags()) {
+            if (!usedTags.existsBySheetIdAndTag(sheetId, tag)) {
+                usedTags.saveAndFlush(new UsedTag(sheetId, tag));
+            }
+        }
     }
 
     /**

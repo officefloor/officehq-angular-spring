@@ -160,6 +160,11 @@ public class PersonTransferService {
             Person arriving = person.transferredTo(toSheetId);
             arriving.setPosition(people.maxPosition(toSheetId) + 1);
             arrived = people.saveAndFlush(arriving);
+            for (String tag : arrived.getTags()) {
+                if (!usedTags.existsBySheetIdAndTag(toSheetId, tag)) {
+                    usedTags.saveAndFlush(new UsedTag(toSheetId, tag));
+                }
+            }
         } else {
             arrived = into;
         }
