@@ -3,7 +3,7 @@ import { Component, computed, effect, inject, signal } from '@angular/core';
 import { firstValueFrom } from 'rxjs';
 import { Session } from '../../core/session';
 import { AMOUNT, Claim, PersonClaims, cents, counts, isOpen, money, overdue, roundingDate } from '../claims/claims';
-import { DatedDue, Period, Periods, periodDueTotal } from '../periods/periods';
+import { DatedDue, Period, Periods, periodDueTotal, personPeriodDueTotal } from '../periods/periods';
 import { DatedGrade, Lateness, Rate, Rates, chargedDueCents, dueText, gradeOn, pctOn } from '../rates/rates';
 import { Roles } from '../roles/roles';
 import { Settings } from '../settings/settings';
@@ -236,6 +236,9 @@ const SUMMARY_STATUSES = ['DRAFT', 'OPEN', 'PENDING', 'SETTLED', 'VOID'] as cons
             <th scope="col">Grade</th>
             <th scope="col">Claimed</th>
             <th scope="col">Due</th>
+            @for (pd of periods(); track pd.id) {
+              <th scope="col">Due in {{ pd.name }}</th>
+            }
             <th scope="col">Overdue</th>
             <th scope="col">Statements</th>
             <th scope="col">Retired</th>
@@ -252,6 +255,9 @@ const SUMMARY_STATUSES = ['DRAFT', 'OPEN', 'PENDING', 'SETTLED', 'VOID'] as cons
               <td data-testid="person-grade">{{ gradeToday(p) }}</td>
               <td data-testid="person-claimed">{{ claimedOf(p.id) }}</td>
               <td data-testid="person-due-total">{{ dueText(dueOf(p)) }}</td>
+              @for (pd of periods(); track pd.id) {
+                <td [attr.data-testid]="'person-period-' + pd.name + '-due-total'">{{ periodDueOf(pd, p.id) }}</td>
+              }
               <td>
                 <span data-testid="person-overdue-count">{{ overdueOf(p).count }}</span>
                 <span>totalling <span data-testid="person-overdue-total">{{ money(overdueOf(p).cents) }}</span></span>
@@ -445,7 +451,7 @@ export class People {
       const p = this.peopleById().get(c.personId);
       if (p === undefined || !countsFor(p, c)) continue;
       const due = chargedDueCents(c, this.rates(), gradeOn(p.grades, c.date), this.floorCents(), this.lateness(), this.roundOn(c));
-      if (due !== null) out.push({ date: c.date, cents: due });
+      if (due !== null) out.push({ personId: c.personId, date: c.date, cents: due });
     }
     return out;
   });
@@ -496,6 +502,10 @@ export class People {
   protected readonly periodSummary = computed<PeriodSummary[]>(() =>
     this.periods().map((p) => ({ name: p.name, dueTotal: periodDueTotal(p, this.dues()) })),
   );
+  /** A person's due-total for a period, as their row shows it. */
+  protected periodDueOf(period: Period, personId: number): string {
+    return personPeriodDueTotal(period, personId, this.dues());
+  }
   /** Per status: how many of the sheet's claims have it, retired people's included. */
   protected readonly statusSummary = computed<StatusSummary[]>(() =>
     SUMMARY_STATUSES.map((status) => ({

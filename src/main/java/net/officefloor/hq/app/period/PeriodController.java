@@ -8,6 +8,8 @@ import jakarta.validation.constraints.Size;
 import java.math.RoundingMode;
 import java.time.LocalDate;
 import java.util.List;
+import java.util.Map;
+import java.util.TreeMap;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
@@ -31,16 +33,27 @@ public class PeriodController {
             @NotNull Long id) {
     }
 
-    /** closedDue is the due-total fixed when the period was closed; null while it is open. */
+    /**
+     * closedDue is the due-total fixed when the period was closed, closedDues each person's (by
+     * person id); null while it is open.
+     */
     public record PeriodResponse(long id, String name, LocalDate from, LocalDate to, boolean closed,
-            String closedDue) {
+            String closedDue, Map<String, String> closedDues) {
     }
 
     private static PeriodResponse response(Period period) {
         return new PeriodResponse(period.getId(), period.getName(), period.getFromDate(), period.getToDate(),
                 period.isClosed(),
                 period.getClosedDue() == null ? null
-                        : period.getClosedDue().setScale(2, RoundingMode.UNNECESSARY).toPlainString());
+                        : period.getClosedDue().setScale(2, RoundingMode.UNNECESSARY).toPlainString(),
+                period.isClosed() ? closedDues(period) : null);
+    }
+
+    private static Map<String, String> closedDues(Period period) {
+        Map<String, String> dues = new TreeMap<>();
+        period.getClosedDues().forEach((person, due) -> dues.put(String.valueOf(person),
+                due.setScale(2, RoundingMode.UNNECESSARY).toPlainString()));
+        return dues;
     }
 
     private final PeriodService service;

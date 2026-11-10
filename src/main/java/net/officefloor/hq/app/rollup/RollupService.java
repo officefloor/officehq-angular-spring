@@ -108,16 +108,17 @@ public class RollupService {
     }
 
     /**
-     * The due of the claims that count whose date falls in from..to (both inclusive), each at the
-     * figure the screen shows for it now.
+     * Each person's due of their claims that count whose date falls in from..to (both inclusive),
+     * by person id, for every person on the sheet (0.00 when none).
      */
-    public BigDecimal dueBetween(String sheetId, LocalDate from, LocalDate to) {
+    public Map<Long, BigDecimal> dueBetweenByPerson(String sheetId, LocalDate from, LocalDate to) {
         Sheet sheet = sheet(sheetId);
         BigDecimal floor = sheet.getFloor();
         List<Rate> sheetRates = rates.findBySheetIdOrderByGradeAscFromDateAsc(sheetId);
         List<Claim> sheetClaims = claims.findBySheetIdOrderByIdDesc(sheetId);
-        BigDecimal due = zero();
+        Map<Long, BigDecimal> dues = new LinkedHashMap<>();
         for (Person person : people.findBySheetIdOrderByIdAsc(sheetId)) {
+            BigDecimal due = zero();
             for (Claim claim : sheetClaims) {
                 if (!claim.getPersonId().equals(person.getId()) || !person.counts(claim)
                         || claim.getDate().isBefore(from) || claim.getDate().isAfter(to)) {
@@ -128,8 +129,9 @@ public class RollupService {
                     due = due.add(figure);
                 }
             }
+            dues.put(person.getId(), due);
         }
-        return due;
+        return dues;
     }
 
     /** Record, once the change commits, the figures that moved since the snapshot taken before it. */

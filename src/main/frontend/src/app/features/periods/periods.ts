@@ -9,7 +9,8 @@ import { money } from '../claims/claims';
 // dates contain its date, or to none; each period shows the due of the claims that count in it.
 // A period can be closed: its due-total is then the one fixed when it was closed, and no claim
 // dated inside it can be added, edited, opened, settled or voided. A steward can reopen a closed
-// period, making its due-total live again.
+// period, making its due-total live again. Each person's row shows their own due-total for every
+// period, fixed the same way while it is closed; a period's due-total is the sum of these.
 export interface Period {
   id: number;
   name: string;
@@ -18,10 +19,13 @@ export interface Period {
   closed: boolean;
   /** The due-total fixed when the period was closed; null while it is open. */
   closedDue: string | null;
+  /** Each person's due-total for the period fixed when it was closed, by person id; null while open. */
+  closedDues: Record<string, string> | null;
 }
 
-/** A claim's date and its figure in whole cents, for a claim that counts. */
+/** A claim's person, date and its figure in whole cents, for a claim that counts. */
 export interface DatedDue {
+  personId: number;
   date: string;
   cents: number;
 }
@@ -39,6 +43,15 @@ export function periodOn(periods: readonly Period[], date: string): Period | und
 export function periodDueTotal(p: Period, dues: readonly DatedDue[]): string {
   if (p.closed && p.closedDue !== null) return p.closedDue;
   return money(dues.reduce((sum, d) => sum + (p.from <= d.date && d.date <= p.to ? d.cents : 0), 0));
+}
+
+/** A person's due-total for a period: for a closed period, the one fixed when it was closed (0.00
+ *  for a person added since); for an open one, the due of their claims that count in it. */
+export function personPeriodDueTotal(p: Period, personId: number, dues: readonly DatedDue[]): string {
+  if (p.closed && p.closedDues !== null) return p.closedDues[String(personId)] ?? '0.00';
+  return money(
+    dues.reduce((sum, d) => sum + (d.personId === personId && p.from <= d.date && d.date <= p.to ? d.cents : 0), 0),
+  );
 }
 
 /** Whether a date (yyyy-mm-dd) falls inside a closed period. */
