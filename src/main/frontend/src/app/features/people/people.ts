@@ -280,6 +280,9 @@ const SUMMARY_STATUSES = ['DRAFT', 'OPEN', 'PENDING', 'SETTLED', 'VOID'] as cons
         @if (importAdded() !== null) {
           <p>Added <strong data-testid="import-added">{{ importAdded() }}</strong></p>
         }
+        @if (importUpdated() !== null) {
+          <p>Updated <strong data-testid="import-updated">{{ importUpdated() }}</strong></p>
+        }
         @if (importError(); as err) {
           <p role="alert" data-testid="import-error">{{ err }}</p>
         }
@@ -770,6 +773,7 @@ export class People {
   protected readonly importText = signal('');
   /** How many people the last import added; cleared while the next one runs. */
   protected readonly importAdded = signal<number | null>(null);
+  protected readonly importUpdated = signal<number | null>(null);
   protected readonly importError = signal<string | null>(null);
   private readonly claimsByPerson = computed(() => {
     const by = new Map<number, Claim[]>();
@@ -1015,6 +1019,7 @@ export class People {
       this.bulkGradeError.set(null);
       this.importText.set('');
       this.importAdded.set(null);
+      this.importUpdated.set(null);
       this.importError.set(null);
       this.statements.set(new Map());
       this.rowErrors.set(new Map());
@@ -1718,23 +1723,32 @@ export class People {
     }
   }
 
-  /** Import the pasted people: the server checks every line first, then adds each as the person form would; all or none. */
+  /**
+   * Import the pasted people: the server checks every line first, then updates each person a line
+   * names as the person form would edit them, and adds each other as the person form would; all or none.
+   */
   protected async importPeople(event: Event): Promise<void> {
     event.preventDefault();
     this.importAdded.set(null);
+    this.importUpdated.set(null);
     this.importError.set(null);
     const sheet = this.session.sheet();
     try {
       const done = await firstValueFrom(
-        this.http.post<{ added: number; people: Person[] }>('/api/people/import', {
+        this.http.post<{ added: number; updated: number; people: Person[] }>('/api/people/import', {
           sheet,
           user: this.session.user(),
           text: this.importText(),
         }),
       );
       if (this.session.sheet() !== sheet) return;
-      this.people.update((list) => [...list, ...done.people]);
+      const byId = new Map(done.people.map((p) => [p.id, p]));
+      this.people.update((list) => [
+        ...list.map((p) => byId.get(p.id) ?? p),
+        ...done.people.filter((p) => !list.some((q) => q.id === p.id)),
+      ]);
       this.importAdded.set(done.added);
+      this.importUpdated.set(done.updated);
     } catch (e) {
       if (this.session.sheet() !== sheet) return;
       const reason = e instanceof HttpErrorResponse && typeof e.error?.message === 'string' ? e.error.message : '';

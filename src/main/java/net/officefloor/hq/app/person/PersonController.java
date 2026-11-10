@@ -11,6 +11,7 @@ import java.time.LocalDate;
 import java.util.List;
 import java.util.Locale;
 import java.util.Set;
+import java.util.stream.Stream;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
@@ -47,8 +48,11 @@ public class PersonController {
             @NotBlank @Size(max = 100) String user, @NotNull @Size(max = 100000) String text) {
     }
 
-    /** What an import added: how many people, and each in the order they were added. */
-    public record ImportPeopleResponse(int added, List<PersonResponse> people) {
+    /**
+     * What an import did: how many people it added and how many it updated, and each of them as the
+     * store now holds them, the added then the updated, each in line order.
+     */
+    public record ImportPeopleResponse(int added, int updated, List<PersonResponse> people) {
     }
 
     public record TransferPersonRequest(@NotBlank @Size(max = 100) String sheet,
@@ -151,10 +155,11 @@ public class PersonController {
     @PostMapping("/import")
     public ImportPeopleResponse importPeople(@Valid @RequestBody ImportPeopleRequest req) {
         String sheet = req.sheet().trim();
-        List<Person> added = imports.importPeople(sheet, req.user().trim(), req.text());
-        Set<Long> clashing = service.clashing(sheet, added);
-        return new ImportPeopleResponse(added.size(),
-                added.stream().map(p -> response(p, clashing.contains(p.getId()))).toList());
+        PersonImportService.Result done = imports.importPeople(sheet, req.user().trim(), req.text());
+        List<Person> touched = Stream.concat(done.added().stream(), done.updated().stream()).toList();
+        Set<Long> clashing = service.clashing(sheet, touched);
+        return new ImportPeopleResponse(done.added().size(), done.updated().size(),
+                touched.stream().map(p -> response(p, clashing.contains(p.getId()))).toList());
     }
 
     @PostMapping("/update")

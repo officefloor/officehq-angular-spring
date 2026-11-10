@@ -12,10 +12,13 @@ import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.server.ResponseStatusException;
 
 /**
- * The import box: lines of {@code name,grade,terms,contact}, each a person added in order exactly as
- * the person form adds them (terms and contact may be absent or blank). Every line is held to the
+ * The import box: lines of {@code name,grade,terms,contact}, taken in order (terms and contact may be
+ * absent or blank). A line whose name matches a person on the sheet by name or alias (compared without
+ * regard to case) updates them exactly as the person form edits them: their grade recorded from the
+ * sheet's today, their terms and contact set when the line gives them, their name kept. Every other
+ * line adds a person exactly as the person form adds them. Every line is held to the
  * person form's rules before anything is added, and a name or contact repeated within the import
- * refuses it; the import is one change, so a refused line adds nothing and writes nothing. Blank
+ * refuses it, as does a person matched by two lines; the import is one change, so a refused line adds nothing and writes nothing. Blank
  * lines are skipped; an import with no lines is refused.
  */
 @Service
@@ -27,16 +30,22 @@ public class PersonImportService {
     private record Line(String name, String grade, Integer terms, String contact) {
     }
 
+    /** What an import did: the people it added and those it updated, each in line order. */
+    public record Result(List<Person> added, List<Person> updated) {
+    }
+
     private final PersonService people;
+    private final PersonRepository repository;
     private final RoleService roles;
 
-    public PersonImportService(PersonService people, RoleService roles) {
+    public PersonImportService(PersonService people, PersonRepository repository, RoleService roles) {
         this.people = people;
+        this.repository = repository;
         this.roles = roles;
     }
 
     @Transactional
-    public List<Person> importPeople(String sheetId, String user, String text) {
+    public Result importPeople(String sheetId, String user, String text) {
         roles.refuseViewer(sheetId, user);
         List<Line> lines = new ArrayList<>();
         Set<String> names = new HashSet<>();
@@ -58,10 +67,21 @@ public class PersonImportService {
             throw refused("Paste at least one line of name,grade,terms,contact.");
         }
         List<Person> added = new ArrayList<>();
+        List<Person> updated = new ArrayList<>();
+        Set<Long> matched = new HashSet<>();
         for (Line line : lines) {
-            added.add(people.add(sheetId, user, line.name(), line.grade(), line.terms(), line.contact()));
+            Person person = repository.findBySheetIdAndNameOrAlias(sheetId, line.name()).orElse(null);
+            if (person == null) {
+                added.add(people.add(sheetId, user, line.name(), line.grade(), line.terms(), line.contact()));
+            } else if (!matched.add(person.getId())) {
+                throw refused("The name " + line.name() + " matches " + person.getName() + ", already in this import.");
+            } else {
+                updated.add(people.update(sheetId, user, person.getId(), person.getVersion(), person.getName(),
+                        line.grade(), null, line.terms() != null ? line.terms() : person.getTerms(),
+                        line.contact() != null ? line.contact() : person.getContact()));
+            }
         }
-        return added;
+        return new Result(added, updated);
     }
 
     private static Line parse(int number, String text) {
