@@ -1,0 +1,163 @@
+diff --git a/src/main/frontend/src/app/features/people/people.ts b/src/main/frontend/src/app/features/people/people.ts
+index 7866a7b3a..a7580b1f6 100644
+--- a/src/main/frontend/src/app/features/people/people.ts
++++ b/src/main/frontend/src/app/features/people/people.ts
+@@ -196,12 +196,22 @@ interface PatronLink {
+   patronId: number;
+ }
+ 
+-/** A person's statements: how many, and the last one's due-total (n/a when it had none) and date. */
++/**
++ * A person's statements: how many, the last one's due-total (n/a when it had none) and date, and a
++ * line for each one still standing, oldest first.
++ */
+ interface StatementSummary {
+   personId: number;
+   count: number;
+   dueTotal: string;
+   date: string;
++  lines: StatementLine[];
++}
++
++/** One of a person's statements still standing: its date and due-total ('n/a' when it had none). */
++interface StatementLine {
++  date: string;
++  dueTotal: string;
+ }
+ 
+ /** A statement just taken, with the person's claims as it left them. */
+@@ -656,6 +666,11 @@ const SUMMARY_STATUSES = ['DRAFT', 'OPEN', 'PENDING', 'SETTLED', 'VOID', 'REVIEW
+                 @if (shown('statement-date')) {
+                   <span>on <span data-testid="person-statement-date">{{ statementOf(p.id)?.date ?? '' }}</span></span>
+                 }
++                <ul aria-label="Statements">
++                  @for (l of statementOf(p.id)?.lines ?? []; track $index) {
++                    <li data-testid="person-statement-line-line">{{ l.date }} {{ l.dueTotal }}</li>
++                  }
++                </ul>
+               </td>
+               <td>
+                 @if (shown('retired')) {
+diff --git a/src/main/java/net/officefloor/hq/app/statement/StatementController.java b/src/main/java/net/officefloor/hq/app/statement/StatementController.java
+index b8cbf031c..11ba65551 100644
+--- a/src/main/java/net/officefloor/hq/app/statement/StatementController.java
++++ b/src/main/java/net/officefloor/hq/app/statement/StatementController.java
+@@ -5,6 +5,7 @@ import jakarta.validation.constraints.NotBlank;
+ import jakarta.validation.constraints.NotNull;
+ import jakarta.validation.constraints.Size;
+ import java.time.LocalDate;
++import java.util.Comparator;
+ import java.util.List;
+ import net.officefloor.hq.app.claim.ClaimController;
+ import net.officefloor.hq.app.claim.ClaimController.ClaimResponse;
+@@ -30,22 +31,30 @@ public class StatementController {
+             @NotBlank @Size(max = 100) String user, @NotNull Long personId) {
+     }
+ 
++    /** One of a person's statements still standing: its date and due-total ("n/a" when it had none). */
++    public record StatementLine(LocalDate date, String dueTotal) {
++    }
++
+     /**
+      * A person's statement count, and the last statement's due-total ("n/a" when it had none) and
+-     * date; both none when no statement is left.
++     * date, both none when no statement is left; and a line for each statement still standing,
++     * oldest first by date (in the order taken on the same date).
+      */
+-    public record SummaryResponse(long personId, int count, String dueTotal, LocalDate date) {
++    public record SummaryResponse(long personId, int count, String dueTotal, LocalDate date,
++            List<StatementLine> lines) {
+     }
+ 
+     public record TakenResponse(SummaryResponse summary, List<ClaimResponse> claims) {
+     }
+ 
+     private static SummaryResponse response(StatementService.Summary s) {
++        List<StatementLine> lines = s.standing().stream().sorted(Comparator.comparing(Statement::getTakenOn))
++                .map(t -> new StatementLine(t.getTakenOn(), StatementService.money(t.getDueTotal()))).toList();
+         if (s.last() == null) {
+-            return new SummaryResponse(s.personId(), s.count(), null, null);
++            return new SummaryResponse(s.personId(), s.count(), null, null, lines);
+         }
+         return new SummaryResponse(s.personId(), s.count(), StatementService.money(s.last().getDueTotal()),
+-                s.last().getTakenOn());
++                s.last().getTakenOn(), lines);
+     }
+ 
+     private final StatementService service;
+diff --git a/src/main/java/net/officefloor/hq/app/statement/StatementService.java b/src/main/java/net/officefloor/hq/app/statement/StatementService.java
+index a382cd26b..34062c780 100644
+--- a/src/main/java/net/officefloor/hq/app/statement/StatementService.java
++++ b/src/main/java/net/officefloor/hq/app/statement/StatementService.java
+@@ -3,6 +3,7 @@ package net.officefloor.hq.app.statement;
+ import java.math.BigDecimal;
+ import java.math.RoundingMode;
+ import java.time.LocalDate;
++import java.util.ArrayList;
+ import java.util.LinkedHashMap;
+ import java.util.List;
+ import java.util.Map;
+@@ -39,8 +40,16 @@ import org.springframework.web.server.ResponseStatusException;
+ @Service
+ public class StatementService {
+ 
+-    /** A person's statements: how many, and the last one (none before the first). */
+-    public record Summary(long personId, int count, Statement last) {
++    /**
++     * A person's statements: how many, the last one (none before the first), and every one still
++     * standing, in the order taken (a merge's or transfer's brought over before their own).
++     */
++    public record Summary(long personId, int count, Statement last, List<Statement> standing) {
++
++        static Summary of(long personId, List<Statement> standing) {
++            return new Summary(personId, standing.size(), standing.isEmpty() ? null : standing.get(standing.size() - 1),
++                    List.copyOf(standing));
++        }
+     }
+ 
+     /** A statement just taken, with the person's claims as it left them. */
+@@ -78,12 +87,11 @@ public class StatementService {
+     /** Each person's statements on the sheet who has taken any. */
+     @Transactional(readOnly = true)
+     public List<Summary> list(String sheetId) {
+-        Map<Long, Summary> by = new LinkedHashMap<>();
++        Map<Long, List<Statement>> by = new LinkedHashMap<>();
+         for (Statement s : statements.findBySheetIdOrderByIdAsc(sheetId)) {
+-            Summary was = by.get(s.getPersonId());
+-            by.put(s.getPersonId(), new Summary(s.getPersonId(), was == null ? 1 : was.count() + 1, s));
++            by.computeIfAbsent(s.getPersonId(), id -> new ArrayList<>()).add(s);
+         }
+-        return List.copyOf(by.values());
++        return by.entrySet().stream().map(e -> Summary.of(e.getKey(), e.getValue())).toList();
+     }
+ 
+     /**
+@@ -108,15 +116,14 @@ public class StatementService {
+         List<Claim> theirs = claims.findBySheetIdAndPersonIdOrderByIdDesc(sheetId, personId);
+         Tally tally = asOf == null ? takeNow(sheetId, person, theirs, today) : takeAsOf(sheetId, person, theirs, asOf);
+         claims.saveAllAndFlush(theirs);
+-        Statement taken = statements.saveAndFlush(new Statement(sheetId, personId, asOf != null ? asOf : today,
++        statements.saveAndFlush(new Statement(sheetId, personId, asOf != null ? asOf : today,
+                 tally.dueTotal(), tally.counted(), today));
+-        int count = (int) statements.findBySheetIdOrderByIdAsc(sheetId).stream()
+-                .filter(s -> Objects.equals(s.getPersonId(), personId)).count();
++        List<Statement> standing = statements.findBySheetIdAndPerson(sheetId, personId);
+         audit.recordOnCommit("STATEMENT sheet=" + sheetId + " by=" + user + " name=" + person.getName()
+                 + " due-total=" + money(tally.dueTotal()) + " claims=" + tally.counted()
+                 + (asOf != null ? " asof=" + asOf : ""));
+         rollup.recordChanges(sheetId, user, before);
+-        return new Taken(new Summary(personId, count, taken), theirs);
++        return new Taken(Summary.of(personId, standing), theirs);
+     }
+ 
+     /** What a statement found: the person's due-total (none for n/a) and how many claims counted. */
+@@ -228,8 +235,7 @@ public class StatementService {
+         audit.recordOnCommit("STATEMENT_CANCELLED sheet=" + sheetId + " by=" + user + " name=" + person.getName()
+                 + " due-total=" + money(last.getDueTotal()));
+         rollup.recordChanges(sheetId, user, before);
+-        int count = theirStatements.size() - 1;
+-        return new Cancelled(new Summary(personId, count, count == 0 ? null : theirStatements.get(count - 1)), theirs);
++        return new Cancelled(Summary.of(personId, theirStatements.subList(0, theirStatements.size() - 1)), theirs);
+     }
+ 
+     public static String money(BigDecimal value) {

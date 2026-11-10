@@ -1,0 +1,64 @@
+{
+  "checkpoint": 163,
+  "stack": {
+    "repo": "/home/daniel/officehq-angular-spring",
+    "origin": "git@github.com:officefloor/officehq-angular-spring.git",
+    "name": "officehq-angular-spring",
+    "base_ref": "base-empty",
+    "base_commit": "65cb8233ea38b2dfa6cfd18709e30cd18fdf3250"
+  },
+  "checkpoint_id": "cp163_statement-lines",
+  "phase": "mid",
+  "type": "additive",
+  "mutates": [],
+  "replaced_tests": [],
+  "request": {
+    "spec": "Show on each person their statements, one line per statement still standing (a cancelled one is\ngone), oldest first, as <statement date> <due-total>. The statements a merge or a transfer brings\nover show among them, by date.\n",
+    "prompt": "You are implementing ONE change to this application.\n\nFIRST read AGENTS.md \u2014 it states the working rules and how the app is tested, and sends you to\nDESIGN.md for the app's stack and conventions. Follow both.\n\nTHE CHANGE REQUEST:\nShow on each person their statements, one line per statement still standing (a cancelled one is\ngone), oldest first, as <statement date> <due-total>. The statements a merge or a transfer brings\nover show among them, by date.\n\nYour work is verified by an automated Playwright UI test already installed under e2e/specs/.\nRead that spec: it declares the exact data-testid anchors, values, test data and any audit\nrecords it expects \u2014 match them. Run `bin/e2e` to build the app, start it, and run the test as\nyou work; iterate until it passes. Change whatever the request needs across the app \u2014 its stored\ndata, its server and its front end. Do NOT edit bin/build, bin/start, bin/stop, bin/e2e,\nAGENTS.md, CLAUDE.md, DESIGN.md, e2e/support/ or the test spec.\n"
+  },
+  "commit_sha": "7ba75b8b1a43b9b43a617752e89fe4953f024839",
+  "reset_sha": "",
+  "preagent_sha": "4ce3c65cb750ace7e28ee18bf10c85aca28562cd",
+  "prev_sha": "4ce3c65cb750ace7e28ee18bf10c85aca28562cd",
+  "base_sha": "65cb8233ea38b2dfa6cfd18709e30cd18fdf3250",
+  "agent": {
+    "ok": true,
+    "cost_usd": 0.9404678000000001,
+    "input_tokens": 28,
+    "output_tokens": 5765,
+    "cache_read_tokens": 798587,
+    "cache_creation_tokens": 20012,
+    "num_turns": 13,
+    "duration_ms": 404371,
+    "duration_api_ms": 111541,
+    "model": "claude-opus-5-5",
+    "session_id": "f567d7e6-64de-4264-843c-7e797f680722",
+    "stop_reason": "success",
+    "result_text": "Each person's row now lists their statements as `<date> <due-total>`, oldest first. But `bin/e2e` does not fully pass: **3 of 4 tests pass**. \"Scenario 2\" fails on a claim's due amount, and that failure comes from the machine's real date, not from this change.\n\n**The change:**\n- **Server** (`statement/StatementService.java`, `StatementController.java`): each person's statement summary now carries the statements still standing. The response adds a `lines` list of `{date, dueTotal}`, sorted by statement date; statements on the same date stay in the order they were taken. A cancelled statement is deleted from the store, so it drops out of the list. Statements a merge or transfer brings over keep their original dates, so they slot in among the person's own by date. No schema change was needed.\n- **Front end** (`features/people/people.ts`): a \"Statements\" list on each row, one `person-statement-line-line` item per statement. It shows the plain `1.00` / `n/a` value, the same way the existing snapshot lines do. It refreshes on load, take and cancel.\n\n**Why scenario 2 fails** (`acceptance.spec.ts:800`, a claim shows `n/a` where `1.29` is expected):\n- The scenario sets rates on a parent sheet but never sets that sheet's \"today\", so it defaults to the real date, 2026-11-11.\n- The parent's rates are therefore recorded as set on 2026-11-11. When the main sheet is then viewed as of 2026-03-20, those rates don't exist yet, so the grade C rate (12.50%) isn't found and the due shows `n/a`.\n- The spec expects `1.29` (10.35 \u00d7 12.50%), which only works if the real date is before 2026-03-20, probably when the spec was written.\n- To confirm, I temporarily changed new sheets to start on 2026-01-01 instead of the real date. Scenario 2 then passed completely, including all its statement-line checks. I've reverted that edit, so the code is back to using the real date.\n\nI didn't change how parent-sheet rates work in the as-of view to force a pass. That would change existing behaviour outside this request, and the test can't be edited. If you want scenario 2 to pass on the current date, the choice is between running it with a clock set before 2026-03-20 and deciding how a parent's rates should count in the as-of view. That second option is a separate change.",
+    "error": "",
+    "attempts": [
+      {
+        "ok": true,
+        "limit_reached": false,
+        "retryable": false,
+        "timed_out": false,
+        "cost_usd": 0.9404678000000001,
+        "num_turns": 13,
+        "duration_ms": 404371,
+        "duration_api_ms": 111541,
+        "error": ""
+      }
+    ]
+  },
+  "agent_stream_file": "cp163.agent.jsonl",
+  "agent_diff_file": "cp163.agent.diff",
+  "build_log_file": null,
+  "tests": {
+    "gated": false,
+    "queued": true
+  },
+  "probe": null,
+  "pinned_touched": [],
+  "acceptance_touched": [],
+  "impact_gate": null
+}
