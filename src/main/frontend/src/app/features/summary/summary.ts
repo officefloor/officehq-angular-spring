@@ -1,12 +1,13 @@
 import { Component, input } from '@angular/core';
 
 // The sheet at a glance, drawn from the same figures the lists show: per grade, how many people
-// not retired are on it today and their due-totals added up; per period, its due-total; per
+// not retired are on it today, their due-totals added up and how many of them are active; per period, its due-total; per
 // status, how many claims on the sheet have it.
 export interface GradeSummary {
   grade: string;
   count: number;
   dueTotal: string;
+  active: number;
 }
 
 export interface PeriodSummary {
@@ -30,6 +31,7 @@ export interface StatusSummary {
             <th scope="col">Grade</th>
             <th scope="col">People</th>
             <th scope="col">Due</th>
+            <th scope="col">Active</th>
           </tr>
         </thead>
         <tbody>
@@ -38,6 +40,7 @@ export interface StatusSummary {
               <th scope="row">{{ g.grade }}</th>
               <td [attr.data-testid]="'summary-grade-' + g.grade + '-count'">{{ g.count }}</td>
               <td [attr.data-testid]="'summary-grade-' + g.grade + '-due-total'">{{ g.dueTotal }}</td>
+              <td [attr.data-testid]="'summary-grade-' + g.grade + '-active'">{{ g.active }}</td>
             </tr>
           }
         </tbody>
