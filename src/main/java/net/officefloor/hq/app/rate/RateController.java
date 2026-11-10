@@ -50,14 +50,18 @@ public class RateController {
     public record PreviewRateResponse(int count, String diff) {
     }
 
-    /** A rate with its version count; {@code level} 0 for the sheet's own, 1 for its parent's, 2 for the parent's parent, and so on. */
-    public record RateResponse(String grade, LocalDate from, LocalDate to, String pct, int level, int version) {
+    /**
+     * A rate with its version count; {@code level} 0 for the sheet's own, 1 for its parent's, 2 for the parent's parent, and so on;
+     * {@code forwardAfter} for a forward-only rate, applying only to claims whose {@code addedSeq} is above it (none: every claim).
+     */
+    public record RateResponse(String grade, LocalDate from, LocalDate to, String pct, int level, int version,
+            Long forwardAfter) {
     }
 
     private static RateResponse response(Rate rate, int level) {
         return new RateResponse(rate.getGrade(), rate.getFromDate(), rate.getToDate(),
                 rate.getPct().setScale(2, RoundingMode.UNNECESSARY).toPlainString(), level,
-                rate.getVersion());
+                rate.getVersion(), rate.getForwardAfter());
     }
 
     private final RateService service;

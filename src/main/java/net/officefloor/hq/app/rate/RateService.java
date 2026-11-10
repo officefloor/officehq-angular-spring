@@ -19,7 +19,8 @@ import org.springframework.web.server.ResponseStatusException;
  * The sheet's rates for each grade: set (or set again) on the screen, one per grade and from-date;
  * setting a grade's rate for a from-date it already has keeps the rate it replaces as an older
  * version and makes the new value (and its to-date) the newest, the one in force. A to-date before
- * the from-date is refused.
+ * the from-date is refused. A rate saved with a from-date on or after the sheet's today is
+ * forward-only: it applies only to claims added after it was saved (see {@link Rate#appliesTo}).
  */
 @Service
 public class RateService {
@@ -69,6 +70,8 @@ public class RateService {
         Rate rate = replaced.orElseGet(() -> new Rate(sheetId, grade, fromDate, pct));
         rate.setPct(pct);
         rate.setToDate(toDate);
+        LocalDate today = sheets.today(sheetId);
+        rate.setForwardAfter(fromDate != null && today != null && !fromDate.isBefore(today) ? rates.nextEntrySeq() : null);
         Rate saved;
         try {
             saved = rates.saveAndFlush(rate);
@@ -76,7 +79,7 @@ public class RateService {
             // another user set this grade's rate from this date at the same moment
             throw new ResponseStatusException(HttpStatus.CONFLICT, "This rate was just set by someone else.");
         }
-        rateLog.saveAndFlush(new RateLog(saved, sheets.today(sheetId)));
+        rateLog.saveAndFlush(new RateLog(saved, today));
         audit.recordOnCommit("RATE_SET sheet=" + sheetId + " by=" + user + " grade=" + grade + " rate="
                 + saved.getPct().setScale(2, RoundingMode.UNNECESSARY).toPlainString()
                 + (fromDate != null ? " from=" + fromDate : "") + (toDate != null ? " to=" + toDate : ""));

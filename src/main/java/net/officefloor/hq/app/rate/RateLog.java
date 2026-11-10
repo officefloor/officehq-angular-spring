@@ -37,6 +37,9 @@ public class RateLog {
     @Column(name = "pct", nullable = false, precision = 5, scale = 2)
     private BigDecimal pct;
 
+    @Column(name = "forward_after")
+    private Long forwardAfter;
+
     @Column(name = "made_on")
     private LocalDate madeOn;
 
@@ -49,6 +52,7 @@ public class RateLog {
         this.fromDate = rate.getFromDate();
         this.toDate = rate.getToDate();
         this.pct = rate.getPct();
+        this.forwardAfter = rate.getForwardAfter();
         this.madeOn = madeOn;
     }
 
@@ -65,6 +69,7 @@ public class RateLog {
     public Rate toRate() {
         Rate rate = new Rate(sheetId, grade, fromDate, pct);
         rate.setToDate(toDate);
+        rate.setForwardAfter(forwardAfter);
         return rate;
     }
 

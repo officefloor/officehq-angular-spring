@@ -1033,7 +1033,7 @@ public class ClaimService {
     public BigDecimal due(String sheetId, Person person, Claim claim) {
         Sheet sheet = sheets.sheet(sheetId);
         RoundingMode rounding = Rounding.mode(sheet, roundingDate(sheetId, claim));
-        return rates.findInForce(sheetId, person.gradeOn(claim.getDate()), claim.getDate()).map(Rate::getPct)
+        return rates.findInForce(sheetId, person.gradeOn(claim.getDate()), claim).map(Rate::getPct)
                 .map(pct -> claim.getAmount().multiply(pct).divide(BigDecimal.valueOf(100), 2, rounding))
                 .orElse(null);
     }

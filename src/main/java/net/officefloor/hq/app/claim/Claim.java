@@ -19,6 +19,7 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
 import org.hibernate.annotations.BatchSize;
+import org.hibernate.annotations.Generated;
 
 /**
  * A claim by a person on a sheet: an amount (two decimals; below zero only for a correction, which
@@ -47,6 +48,11 @@ public class Claim {
 
     @Column(name = "note", nullable = false)
     private String note;
+
+    /** When the claim was added, in the order claims and forward-only rates are saved (see {@link net.officefloor.hq.app.rate.Rate#appliesTo}). */
+    @Generated
+    @Column(name = "added_seq", insertable = false, updatable = false)
+    private Long addedSeq;
 
     @Enumerated(EnumType.STRING)
     @Column(name = "status", nullable = false)
@@ -188,6 +194,10 @@ public class Claim {
         this.terms = terms;
         this.note = note;
         this.corrects = corrects;
+    }
+
+    public Long getAddedSeq() {
+        return addedSeq;
     }
 
     public Long getId() {

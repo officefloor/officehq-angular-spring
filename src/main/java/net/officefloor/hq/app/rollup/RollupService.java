@@ -264,7 +264,7 @@ public class RollupService {
             return claim.getSettledDue();
         }
         BigDecimal figure = claim.isStated() && claim.getStatus() != ClaimStatus.PENDING ? claim.getStatedDue()
-                : inForce(sheetRates, person.gradeOn(claim.getDate()), claim.getDate()).map(Rate::getPct)
+                : RateChain.inForce(sheetRates, person.gradeOn(claim.getDate()), claim).map(Rate::getPct)
                         .map(pct -> claim.getAmount().multiply(pct).divide(BigDecimal.valueOf(100), 2,
                                 Rounding.mode(sheet, Rounding.dateOf(claim, sheetClaims))))
                         .orElse(null);

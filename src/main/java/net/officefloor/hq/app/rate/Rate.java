@@ -8,11 +8,14 @@ import jakarta.persistence.Id;
 import jakarta.persistence.Table;
 import java.math.BigDecimal;
 import java.time.LocalDate;
+import net.officefloor.hq.app.claim.Claim;
 
 /**
  * A sheet's rate for a grade: a percent with two decimals, in force from its from-date (none: from
  * the beginning of time) until the grade's next rate, or through its to-date when it has one. Its
  * version counts how many times it has been set: the older ones are kept as {@link RateVersion}s.
+ * Saved with a from-date on or after the sheet's today it is forward-only: it applies only to the
+ * claims added after it was saved.
  */
 @Entity
 @Table(name = "rate")
@@ -39,6 +42,10 @@ public class Rate {
 
     @Column(name = "version", nullable = false)
     private int version = 1;
+
+    /** For a forward-only rate, the point it was saved at: it applies to claims added after it; none applies to every claim. */
+    @Column(name = "forward_after")
+    private Long forwardAfter;
 
     protected Rate() {
     }
@@ -86,6 +93,19 @@ public class Rate {
 
     public void setVersion(int version) {
         this.version = version;
+    }
+
+    public Long getForwardAfter() {
+        return forwardAfter;
+    }
+
+    public void setForwardAfter(Long forwardAfter) {
+        this.forwardAfter = forwardAfter;
+    }
+
+    /** Whether the rate applies to a claim: it is not forward-only, or the claim was added after it was saved. */
+    public boolean appliesTo(Claim claim) {
+        return forwardAfter == null || claim.getAddedSeq() != null && claim.getAddedSeq() > forwardAfter;
     }
 
     public BigDecimal getPct() {

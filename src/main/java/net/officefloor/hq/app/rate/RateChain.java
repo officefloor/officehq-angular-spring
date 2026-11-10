@@ -4,6 +4,7 @@ import java.time.LocalDate;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
+import net.officefloor.hq.app.claim.Claim;
 import net.officefloor.hq.app.sheet.AsOfFilter;
 import net.officefloor.hq.app.sheet.Sheet;
 import net.officefloor.hq.app.sheet.SheetRepository;
@@ -93,6 +94,25 @@ public class RateChain {
             }
         }
         return Optional.empty();
+    }
+
+    /**
+     * The grade's rate in force on a claim's date among the rates that apply to the claim (see
+     * {@link Rate#appliesTo}): the sheet's own, else the nearest ancestor's; empty when none has one.
+     */
+    public static Optional<Rate> inForce(List<List<Rate>> chain, String grade, Claim claim) {
+        for (List<Rate> level : chain) {
+            Optional<Rate> rate = RateRepository.inForce(level, grade, claim);
+            if (rate.isPresent()) {
+                return rate;
+            }
+        }
+        return Optional.empty();
+    }
+
+    /** The grade's rate in force for a claim on the sheet or, failing that, its nearest ancestor. */
+    public Optional<Rate> findInForce(String sheetId, String grade, Claim claim) {
+        return inForce(current(sheetId), grade, claim);
     }
 
     /** The grade's rate in force on a date on the sheet or, failing that, its nearest ancestor. */

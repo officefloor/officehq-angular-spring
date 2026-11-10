@@ -21,6 +21,14 @@ export interface Rate {
   version?: number;
   /** Whose rate it is: 0 (or missing) for the sheet's own, 1 for its parent's, 2 for the parent's parent, and so on. */
   level?: number;
+  /** For a rate saved with a from-date on or after the sheet's today: it applies only to claims
+   *  whose addedSeq is above this. Null (or missing) for a rate that applies to every claim. */
+  forwardAfter?: number | null;
+}
+
+/** Whether a rate applies to a claim: it is not forward-only, or the claim was added after it was saved. */
+function appliesTo(r: Rate, c: Claim): boolean {
+  return r.forwardAfter == null || (c.addedSeq != null && c.addedSeq > r.forwardAfter);
 }
 
 const GRADES = ['A', 'B', 'C'] as const;
@@ -54,9 +62,11 @@ export function gradeOn(grades: readonly DatedGrade[], date: string | null): str
  * The grade's rate in force on a date (yyyy-mm-dd) on the sheet: the one with the latest from-date
  * on or before it, an undated rate counting as from the beginning of time; none when none applies yet,
  * or when that one's to-date has passed by the date. With none on the sheet, its parent's rate in
- * force then, then the parent's parent's, and so on. Undefined when no level has one.
+ * force then, then the parent's parent's, and so on. Undefined when no level has one. Given a claim,
+ * only the rates that apply to it count (a forward-only rate applies only to claims added after it).
  */
-export function pctOn(rates: readonly Rate[], grade: string, date: string | null): string | undefined {
+export function pctOn(rates: readonly Rate[], grade: string, date: string | null, claim?: Claim): string | undefined {
+  if (claim !== undefined) rates = rates.filter((r) => appliesTo(r, claim));
   const levels = [...new Set(rates.map((r) => r.level ?? 0))].sort((a, b) => a - b);
   for (const level of levels) {
     const pct = levelPctOn(rates.filter((r) => (r.level ?? 0) === level), grade, date);
@@ -128,7 +138,7 @@ export function roundsHalfUp(
 export function claimDueCents(c: Claim, rates: readonly Rate[], grade: string, halfUp = false): number | null {
   if (c.settledDue !== null) return cents(c.settledDue);
   if (c.stated && c.status !== 'PENDING') return fixedDueCents(c);
-  return dueCents(cents(c.amount), pctOn(rates, grade, c.date), halfUp);
+  return dueCents(cents(c.amount), pctOn(rates, grade, c.date, c), halfUp);
 }
 
 /** One value recorded for a dated setting: in force from its from-date (blank: from the

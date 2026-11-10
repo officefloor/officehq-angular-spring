@@ -82,6 +82,8 @@ export type ClaimStatus = 'DRAFT' | 'OPEN' | 'PENDING' | 'SETTLED' | 'VOID' | 'D
 
 export interface Claim {
   id: number;
+  /** When the claim was added, in the order claims and forward-only rates are saved (see Rate.forwardAfter). */
+  addedSeq?: number | null;
   personId: number;
   amount: string;
   date: string;

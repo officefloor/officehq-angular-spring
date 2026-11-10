@@ -4,9 +4,16 @@ import java.time.LocalDate;
 import java.util.List;
 import java.util.Objects;
 import java.util.Optional;
+import java.util.stream.Stream;
+import net.officefloor.hq.app.claim.Claim;
 import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.data.jpa.repository.Query;
 
 public interface RateRepository extends JpaRepository<Rate, Long> {
+
+    /** The next point in the order claims are added and forward-only rates saved (see {@link Rate#appliesTo}). */
+    @Query(value = "SELECT NEXT VALUE FOR entry_seq", nativeQuery = true)
+    long nextEntrySeq();
 
     /** A sheet's rates by grade, then by from-date. */
     List<Rate> findBySheetIdOrderByGradeAscFromDateAsc(String sheetId);
@@ -31,7 +38,16 @@ public interface RateRepository extends JpaRepository<Rate, Long> {
 
     /** The grade's rate in force on a date among the given rates, as {@link #findInForce} picks it. */
     static Optional<Rate> inForce(List<Rate> rates, String grade, LocalDate date) {
-        return rates.stream().filter(r -> r.getGrade().equals(grade))
+        return inForce(rates.stream(), grade, date);
+    }
+
+    /** The grade's rate in force on a claim's date among the given rates that apply to the claim (see {@link Rate#appliesTo}). */
+    static Optional<Rate> inForce(List<Rate> rates, String grade, Claim claim) {
+        return inForce(rates.stream().filter(r -> r.appliesTo(claim)), grade, claim.getDate());
+    }
+
+    private static Optional<Rate> inForce(Stream<Rate> rates, String grade, LocalDate date) {
+        return rates.filter(r -> r.getGrade().equals(grade))
                 .filter(r -> r.getFromDate() == null || !r.getFromDate().isAfter(date))
                 .max((a, b) -> a.getFromDate() == null ? -1 : b.getFromDate() == null ? 1
                         : a.getFromDate().compareTo(b.getFromDate()))
