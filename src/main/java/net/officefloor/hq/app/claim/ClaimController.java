@@ -133,7 +133,8 @@ public class ClaimController {
             boolean stated, String statedDue, String corrects, LocalDate dueBy, List<ClaimLogLine> log,
             LocalDate deferredUntil, int proofs, String splitFrom, String lockedBy,
             boolean lateEntry, LocalDate remindedOn, String ref, List<String> tags, String voidReason,
-            List<ClaimCommentLine> comments, Integer batch, List<ClaimLineLine> lines, Long addedSeq) {
+            List<ClaimCommentLine> comments, Integer batch, List<ClaimLineLine> lines, Long addedSeq,
+            LocalDate reviewOn) {
     }
 
     /** One line of a claim, in the order added: its label, quantity and unit amount. */
@@ -168,7 +169,7 @@ public class ClaimController {
                 claim.getBatch(),
                 claim.getLines().stream().map(l -> new ClaimLineLine(l.getLabel(), l.getQty(), money(l.getUnit())))
                         .toList(),
-                claim.getAddedSeq());
+                claim.getAddedSeq(), claim.getReviewOn());
     }
 
     public static BigDecimal amount(String amount) {

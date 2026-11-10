@@ -149,6 +149,10 @@ public class Claim {
     @Column(name = "escalated", nullable = false)
     private boolean escalated;
 
+    /** The sheet's today when the claim last went to REVIEW; none when it never has. */
+    @Column(name = "review_on")
+    private LocalDate reviewOn;
+
     /** The reason the claim was voided with; none when voided without one, or not voided. */
     @Column(name = "void_reason")
     private String voidReason;
@@ -234,6 +238,7 @@ public class Claim {
         copy.deferredOn = deferredOn;
         copy.remindedOn = remindedOn;
         copy.escalated = escalated;
+        copy.reviewOn = reviewOn;
         copy.voidReason = voidReason;
         copy.proofs = proofs;
         copy.log.addAll(log);
@@ -496,6 +501,14 @@ public class Claim {
 
     public void setEscalated(boolean escalated) {
         this.escalated = escalated;
+    }
+
+    public LocalDate getReviewOn() {
+        return reviewOn;
+    }
+
+    public void setReviewOn(LocalDate reviewOn) {
+        this.reviewOn = reviewOn;
     }
 
     /** Raise the claim's proofs count by one. */

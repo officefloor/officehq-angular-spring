@@ -4,7 +4,7 @@ import { FigurePipe } from '../../core/figure';
 // The sheet at a glance, drawn from the same figures the lists show: per grade, how many people
 // not retired are on it today, their due-totals added up and how many of them are active; per period, its due-total and its change from the period before it by start date; per
 // status, how many claims on the sheet have it; per void reason on the sheet's list, how many VOID
-// claims were voided with it.
+// claims were voided with it; and how many REVIEW claims are late for review.
 export interface GradeSummary {
   grade: string;
   count: number;
@@ -89,6 +89,7 @@ export interface StatusSummary {
           }
         </tbody>
       </table>
+      <p>Late for review <strong data-testid="summary-review-late-count">{{ reviewLateCount() }}</strong></p>
       <table aria-label="By void reason">
         <thead>
           <tr>
@@ -113,6 +114,8 @@ export class Summary {
   readonly periods = input.required<PeriodSummary[]>();
   readonly statuses = input.required<StatusSummary[]>();
   readonly voidReasons = input.required<VoidReasonSummary[]>();
+  /** How many REVIEW claims are late for review on the sheet's today. */
+  readonly reviewLateCount = input.required<number>();
 }
 
 // The classic summary, beside the summary: per period, its due-total counting each claim by its

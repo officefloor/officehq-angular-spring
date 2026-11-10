@@ -95,7 +95,8 @@ public class SettingController {
             @Pattern(regexp = FISCAL_MONTH) String fiscalStartMonth,
             @Pattern(regexp = "\\s*|" + ClaimController.AMOUNT) String alertThreshold,
             @Pattern(regexp = ROUNDING) String rounding, @Pattern(regexp = DATE) String roundingFrom,
-            @Pattern(regexp = "\\s*|" + TERMS) String escalateAfter) {
+            @Pattern(regexp = "\\s*|" + TERMS) String escalateAfter,
+            @Pattern(regexp = "\\s*|" + TERMS) String reviewSla) {
     }
 
     /** A value recorded for a setting that carries a figure: blank from for the beginning of time, blank value for none. */
@@ -110,12 +111,14 @@ public class SettingController {
      * entered, blank for the standing rule. And the grace days, blank for off. And the entry date, blank for off.
      * And the pot, blank for none. And the parent sheet's id, blank for none. And the fiscal start month.
      * And the alert threshold, blank for off. And the rounding mode, blank for none. And the escalation gap, blank for off.
+     * And the review SLA in days, blank for none.
      */
     public record SettingsResponse(String clerkLimit, String floor, int terms, String latePct, String policyDate,
             String periodNumberingFrom, Map<String, Integer> gradeTerms, String cap, String proofThreshold,
             String noteThreshold, String reviewThreshold,
             List<DatedValue> dated, Map<String, String> permissions, String graceDays, String entryDate, String pot,
-            String parent, int fiscalStartMonth, String alertThreshold, String rounding, String escalateAfter) {
+            String parent, int fiscalStartMonth, String alertThreshold, String rounding, String escalateAfter,
+            String reviewSla) {
     }
 
     private static SettingsResponse response(Sheet sheet) {
@@ -131,7 +134,8 @@ public class SettingController {
                 sheet.getParentId() == null ? "" : sheet.getParentId(), sheet.getFiscalStartMonth(),
                 SettingService.text(sheet.getAlertThreshold()),
                 sheet.getRounding() == null ? "" : sheet.getRounding(),
-                sheet.getEscalateAfter() == null ? "" : String.valueOf(sheet.getEscalateAfter()));
+                sheet.getEscalateAfter() == null ? "" : String.valueOf(sheet.getEscalateAfter()),
+                sheet.getReviewSla() == null ? "" : String.valueOf(sheet.getReviewSla()));
     }
 
     private static DatedValue dated(DatedSetting s) {
@@ -182,6 +186,7 @@ public class SettingController {
         String parent = req.parent() == null ? "" : req.parent().trim();
         String alert = req.alertThreshold() == null ? "" : req.alertThreshold().trim();
         String escalate = req.escalateAfter() == null ? "" : req.escalateAfter().trim();
+        String reviewSla = req.reviewSla() == null ? "" : req.reviewSla().trim();
         return response(service.set(req.sheet().trim(), req.user().trim(),
                 req.clerkLimit() == null ? null : amount(req.clerkLimit(), req.clerkLimitFrom()),
                 req.floor() == null ? null : amount(req.floor(), req.floorFrom()),
@@ -200,7 +205,8 @@ public class SettingController {
                 req.fiscalStartMonth() == null ? null : Integer.valueOf(req.fiscalStartMonth().trim()),
                 req.alertThreshold() != null, alert.isEmpty() ? null : ClaimController.amount(alert),
                 req.rounding() == null ? null : rounding(req.rounding(), req.roundingFrom()),
-                req.escalateAfter() != null, escalate.isEmpty() ? null : Integer.valueOf(escalate)));
+                req.escalateAfter() != null, escalate.isEmpty() ? null : Integer.valueOf(escalate),
+                req.reviewSla() != null, reviewSla.isEmpty() ? null : Integer.valueOf(reviewSla)));
     }
 
     /** A permission matrix entry given: its roles, lower case, comma separated without spaces. */

@@ -420,6 +420,7 @@ public class ClaimService {
             claim.setOpenedBy(user);
         } else if (next == ClaimStatus.REVIEW) {
             claim.setOpenedBy(user);
+            claim.setReviewOn(sheets.today(sheetId));
         } else if (next == ClaimStatus.SETTLED) {
             claim.setSettledDue(settling);
         } else if (next == ClaimStatus.VOID) {

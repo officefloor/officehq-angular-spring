@@ -42,6 +42,8 @@ export class Session {
   /** The id of the sheet's parent, whose rates stand in for a grade with none in force here; blank for none.
    *  Set from the sheet's settings as they are read and saved. */
   readonly parent = signal('');
+  /** The sheet's review SLA in whole days, blank for none. Set from the sheet's settings as they are read and saved. */
+  readonly reviewSla = signal('');
   /** Whether retired people are listed: off when the screen opens, and left as it is by loading a sheet. */
   readonly showRetired = signal(false);
   /** What this screen sorts the people list by: off (added) when the screen opens, and left as it is by loading a sheet. */
@@ -158,7 +160,10 @@ export class Session {
   }
 
   private show(res: SheetResponse): void {
-    if (res.id !== this.sheet()) this.parent.set('');
+    if (res.id !== this.sheet()) {
+      this.parent.set('');
+      this.reviewSla.set('');
+    }
     this.sheet.set(res.id);
     this.today.set(res.today);
     this.archived.set(res.archived);

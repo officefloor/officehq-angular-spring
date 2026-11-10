@@ -45,6 +45,9 @@ import { FigurePipe } from '../../core/figure';
 // The escalation gap (a whole number of days; blank: off): reminding a claim whose previous reminder
 // was at least that many days before the sheet's today escalates it, once ever. It saves, like the
 // alert threshold, once its field has been entered; it is not dated.
+// The review SLA (a whole number of days; blank: none): a REVIEW claim whose review day plus that
+// many days is before the sheet's today is late for review. It saves, like the escalation gap, once
+// its field has been entered; it is not dated.
 // Grace days (whole days; blank: off): when the sheet's today changes, every open period whose
 // to-date plus the grace days is before the new today is closed. It saves, like the clerk limit,
 // once its field has been entered; it is not dated.
@@ -114,6 +117,8 @@ interface SettingsResponse {
   rounding: string;
   /** The escalation gap in days, blank for off. */
   escalateAfter: string;
+  /** The review SLA in days, blank for none. */
+  reviewSla: string;
 }
 
 /** The actions the permission matrix covers. */
@@ -442,6 +447,15 @@ const DATE = /^\d{4}-\d{2}-\d{2}$/;
           (focus)="enterEscalate($any($event.target))"
           (input)="escalateInput.set($any($event.target).value); error.set(null)"
         />
+        <label for="setting-review-sla">Days a claim may wait in review before it is late (blank: none)</label>
+        <input
+          id="setting-review-sla"
+          data-testid="setting-review-sla"
+          inputmode="numeric"
+          [value]="reviewSlaInput() ?? ''"
+          (focus)="enterReviewSla($any($event.target))"
+          (input)="reviewSlaInput.set($any($event.target).value); error.set(null)"
+        />
         <label for="setting-parent">Parent sheet whose rates stand in for missing ones (blank: none)</label>
         <input
           id="setting-parent"
@@ -594,6 +608,13 @@ const DATE = /^\d{4}-\d{2}-\d{2}$/;
         }
       </p>
       <p>
+        Review SLA (days):
+        <strong data-testid="setting-review-sla-current">{{ session.reviewSla() }}</strong>
+        @if (session.reviewSla() === '') {
+          <span>(none)</span>
+        }
+      </p>
+      <p>
         Fiscal year starts in month:
         <strong data-testid="setting-fiscal-start-month-current">{{ fiscalStartMonth() }}</strong>
       </p>
@@ -712,6 +733,8 @@ export class Settings {
   protected readonly escalateAfter = signal('');
   /** The escalation gap typed; null while its field has not been entered (left as it is). */
   protected readonly escalateInput = signal<string | null>(null);
+  /** The review SLA typed; null while its field has not been entered (left as it is). */
+  protected readonly reviewSlaInput = signal<string | null>(null);
   /** The month the sheet's fiscal year starts in (1 to 12). */
   protected readonly fiscalStartMonth = signal('1');
   /** The fiscal start month typed; null while its field has not been typed in (left as it is). */
@@ -754,6 +777,7 @@ export class Settings {
       this.potInput.set(null);
       this.alertInput.set(null);
       this.escalateInput.set(null);
+      this.reviewSlaInput.set(null);
       this.fiscalInput.set(null);
       this.parentInput.set(null);
       this.error.set(null);
@@ -879,6 +903,15 @@ export class Settings {
     this.escalateInput.set(this.escalateAfter());
   }
 
+  /** Entering the review SLA's field fills it with the SLA in force, selected, so it saves as it is
+   *  unless typed over. */
+  protected enterReviewSla(input: HTMLInputElement): void {
+    if (this.reviewSlaInput() !== null) return;
+    input.value = this.session.reviewSla();
+    input.select();
+    this.reviewSlaInput.set(this.session.reviewSla());
+  }
+
   /** Entering the parent's field fills it with the parent in force, selected, so it saves as it is
    *  unless typed over. */
   protected enterParent(input: HTMLInputElement): void {
@@ -976,7 +1009,7 @@ export class Settings {
 
   private show(
     res: Pick<SettingsResponse, 'dated' | 'policyDate' | 'periodNumberingFrom' | 'permissions' | 'graceDays' | 'entryDate' | 'pot'>
-      & Partial<Pick<SettingsResponse, 'parent' | 'fiscalStartMonth' | 'alertThreshold' | 'escalateAfter'>>,
+      & Partial<Pick<SettingsResponse, 'parent' | 'fiscalStartMonth' | 'alertThreshold' | 'escalateAfter' | 'reviewSla'>>,
   ): void {
     this.dated.set(res.dated);
     this.permissions.set(res.permissions);
@@ -994,6 +1027,7 @@ export class Settings {
     this.alertThreshold.set(res.alertThreshold ?? '');
     this.escalateAfter.set(res.escalateAfter ?? '');
     if (res.parent !== undefined) this.session.parent.set(res.parent);
+    this.session.reviewSla.set(res.reviewSla ?? '');
   }
 
   protected async save(event: Event): Promise<void> {
@@ -1019,6 +1053,7 @@ export class Settings {
     const fiscalStartMonth = this.fiscalInput()?.trim() || null;
     const alertThreshold = this.alertInput()?.trim() ?? null;
     const escalateAfter = this.escalateInput()?.trim() ?? null;
+    const reviewSla = this.reviewSlaInput()?.trim() ?? null;
     if (clerkLimit !== null && clerkLimit !== '' && !LIMIT.test(clerkLimit)) {
       this.error.set('Enter a clerk limit of 0.00 or more, with up to two decimals, or leave it blank.');
       return;
@@ -1113,6 +1148,10 @@ export class Settings {
       this.error.set('Enter an escalation gap of 0 or more whole days, or leave it blank for off.');
       return;
     }
+    if (reviewSla !== null && reviewSla !== '' && !TERMS.test(reviewSla)) {
+      this.error.set('Enter a review SLA of 0 or more whole days, or leave it blank for none.');
+      return;
+    }
     if (fiscalStartMonth !== null && !/^(0?[1-9]|1[0-2])$/.test(fiscalStartMonth)) {
       this.error.set('Enter the fiscal start month as a month number, 1 to 12.');
       return;
@@ -1202,6 +1241,7 @@ export class Settings {
           rounding,
           roundingFrom: from.rounding ?? null,
           escalateAfter,
+          reviewSla,
         }),
       );
       if (this.session.sheet() !== sheet) return;
@@ -1226,6 +1266,7 @@ export class Settings {
       this.potInput.set(null);
       this.alertInput.set(null);
       this.escalateInput.set(null);
+      this.reviewSlaInput.set(null);
       this.fiscalInput.set(null);
       this.parentInput.set(null);
       this.fromInput.set({});

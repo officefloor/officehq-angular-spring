@@ -122,6 +122,10 @@ public class Sheet {
     @Column(name = "escalate_after")
     private Integer escalateAfter;
 
+    /** The days a claim may wait in REVIEW past the day it went there before it is late; null for none. Not dated. */
+    @Column(name = "review_sla")
+    private Integer reviewSla;
+
     /** The due-total above which a person is alerted; null for off. Not dated. */
     @Column(name = "alert_threshold")
     private BigDecimal alertThreshold;
@@ -214,6 +218,7 @@ public class Sheet {
         then.entryDate = entryDate;
         then.graceDays = graceDays;
         then.escalateAfter = escalateAfter;
+        then.reviewSla = reviewSla;
         then.pot = pot;
         then.alertThreshold = alertThreshold;
         then.fiscalStartMonth = fiscalStartMonth;
@@ -455,6 +460,15 @@ public class Sheet {
 
     public void setEscalateAfter(Integer escalateAfter) {
         this.escalateAfter = escalateAfter;
+    }
+
+    /** The review SLA in days; null for none. Not dated. */
+    public Integer getReviewSla() {
+        return reviewSla;
+    }
+
+    public void setReviewSla(Integer reviewSla) {
+        this.reviewSla = reviewSla;
     }
 
     public BigDecimal getAlertThreshold() {

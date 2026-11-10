@@ -134,6 +134,8 @@ export interface Claim {
   batch: number | null;
   /** The claim's lines, in the order added; while it has any, its amount is their total. */
   lines: ClaimLineItem[];
+  /** The sheet's today when the claim last went to REVIEW; null when it never has. */
+  reviewOn: string | null;
 }
 
 /** One line of a claim: a label, a quantity and a unit amount. */
@@ -205,6 +207,13 @@ export function isOpen(c: Claim): boolean {
 }
 
 /** Whether a claim is deferred on the sheet's today: open, and its deferral date not yet reached. */
+/** Whether a REVIEW claim is late for review on the sheet's today: its review day plus the review SLA
+ *  (whole days; blank: none) is before today. */
+export function reviewLate(c: Claim, today: string | null, sla: string): boolean {
+  return c.status === 'REVIEW' && c.reviewOn !== null && today !== null && sla !== ''
+    && plusDays(c.reviewOn, Number(sla)) < today;
+}
+
 export function deferred(c: Claim, today: string | null): boolean {
   return isOpen(c) && c.deferredUntil !== null && today !== null && today < c.deferredUntil;
 }
@@ -397,6 +406,7 @@ export function money(c: number): string {
           <span>Split from <span data-testid="claim-split-from">{{ c.splitFrom ?? '' }}</span></span>
           <span>Batch <span data-testid="claim-batch">{{ c.batch ?? '' }}</span></span>
           <span>Late entry <span data-testid="claim-late-entry">{{ c.lateEntry ? 'yes' : 'no' }}</span></span>
+          <span>Review late <span data-testid="claim-review-late">{{ reviewLateOf(c) ? 'yes' : 'no' }}</span></span>
           <span>Reminded <span data-testid="claim-reminded">{{ c.remindedOn ?? '' }}</span></span>
           <ol [attr.aria-label]="'Status log of claim of ' + c.amount + ' on ' + c.date">
             @for (l of c.log; track $index) {
@@ -666,6 +676,11 @@ export class PersonClaims {
 
   protected overdueOf(c: Claim): boolean {
     return overdue(c, this.session.today(), graceOn(this.graces(), gradeOn(this.grades(), c.date), c.date));
+  }
+
+  /** Whether the claim shows as late for review (see reviewLate). */
+  protected reviewLateOf(c: Claim): boolean {
+    return reviewLate(c, this.session.today(), this.session.reviewSla());
   }
 
   /** Whether the claim shows as deferred: its deferral date not yet reached, a voided claim keeping its deferral. */
