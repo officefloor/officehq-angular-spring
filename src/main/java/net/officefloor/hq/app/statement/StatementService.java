@@ -11,11 +11,17 @@ import net.officefloor.hq.app.Audit;
 import net.officefloor.hq.app.claim.Claim;
 import net.officefloor.hq.app.claim.ClaimRepository;
 import net.officefloor.hq.app.claim.ClaimService;
+import net.officefloor.hq.app.claim.ClaimStatus;
+import net.officefloor.hq.app.claim.LateCharge;
+import net.officefloor.hq.app.claim.Rounding;
 import net.officefloor.hq.app.person.Person;
 import net.officefloor.hq.app.person.PersonRepository;
+import net.officefloor.hq.app.rate.Rate;
+import net.officefloor.hq.app.rate.RateLogRepository;
 import net.officefloor.hq.app.rate.RateRepository;
 import net.officefloor.hq.app.role.RoleService;
 import net.officefloor.hq.app.rollup.RollupService;
+import net.officefloor.hq.app.sheet.Sheet;
 import net.officefloor.hq.app.sheet.SheetService;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
@@ -24,7 +30,7 @@ import org.springframework.web.server.ResponseStatusException;
 
 /**
  * Statements on a sheet. Taking a person's statement records their due-total at that moment, taken
- * on the sheet's today (held to the sheet's cap), and binds every claim of theirs that counts (OPEN, PENDING or SETTLED, but not a held
+ * on the sheet's today (held to the sheet's cap), or as of a date on or before it, and binds every claim of theirs that counts (OPEN, PENDING or SETTLED, but not a held
  * person's OPEN or PENDING claims) to the figure it has then; a claim of theirs that does not count is unbound,
  * so its figure is live again. The late charge is never bound: the due-total includes each claim's charge on the day, but a claim is
  * bound to the rate figure under it, not the floored one (the floor is applied last, see {@link net.officefloor.hq.app.claim.LateCharge}).
@@ -51,13 +57,14 @@ public class StatementService {
     private final ClaimRepository claims;
     private final ClaimService claimService;
     private final RateRepository rates;
+    private final RateLogRepository rateLog;
     private final SheetService sheets;
     private final Audit audit;
     private final RollupService rollup;
     private final RoleService roles;
 
     public StatementService(StatementRepository statements, PersonRepository people, ClaimRepository claims,
-            ClaimService claimService, RateRepository rates, SheetService sheets, Audit audit, RollupService rollup,
+            ClaimService claimService, RateRepository rates, RateLogRepository rateLog, SheetService sheets, Audit audit, RollupService rollup,
             RoleService roles) {
         this.roles = roles;
         this.rollup = rollup;
@@ -66,6 +73,7 @@ public class StatementService {
         this.claims = claims;
         this.claimService = claimService;
         this.rates = rates;
+        this.rateLog = rateLog;
         this.sheets = sheets;
         this.audit = audit;
     }
@@ -81,14 +89,45 @@ public class StatementService {
         return List.copyOf(by.values());
     }
 
+    /**
+     * Take the person's statement now, or as of a date on or before the sheet's today (see
+     * {@link #takeAsOf}). Refused (400) for a date after the sheet's today.
+     */
     @Transactional
-    public Taken take(String sheetId, String user, long personId) {
+    public Taken take(String sheetId, String user, long personId, LocalDate asOf) {
         roles.refuseViewer(sheetId, user);
         Person person = people.lockByIdAndSheetId(personId, sheetId)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "No such person on this sheet."));
         LocalDate today = sheets.today(sheetId);
+        if (asOf != null && asOf.isAfter(today)) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
+                    "A statement cannot be taken as of a date after the sheet's today.");
+        }
+        if (asOf != null && !person.addedBy(asOf)) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT,
+                    person.getName() + " was not on the sheet by " + asOf + ".");
+        }
         RollupService.Snapshot before = rollup.snapshot(sheetId);
         List<Claim> theirs = claims.findBySheetIdAndPersonIdOrderByIdDesc(sheetId, personId);
+        Tally tally = asOf == null ? takeNow(sheetId, person, theirs, today) : takeAsOf(sheetId, person, theirs, asOf);
+        claims.saveAllAndFlush(theirs);
+        Statement taken = statements.saveAndFlush(new Statement(sheetId, personId, asOf != null ? asOf : today,
+                tally.dueTotal(), tally.counted(), today));
+        int count = (int) statements.findBySheetIdOrderByIdAsc(sheetId).stream()
+                .filter(s -> Objects.equals(s.getPersonId(), personId)).count();
+        audit.recordOnCommit("STATEMENT sheet=" + sheetId + " by=" + user + " name=" + person.getName()
+                + " due-total=" + money(tally.dueTotal()) + " claims=" + tally.counted()
+                + (asOf != null ? " asof=" + asOf : ""));
+        rollup.recordChanges(sheetId, user, before);
+        return new Taken(new Summary(personId, count, taken), theirs);
+    }
+
+    /** What a statement found: the person's due-total (none for n/a) and how many claims counted. */
+    private record Tally(BigDecimal dueTotal, int counted) {
+    }
+
+    /** Bind the person's claims that count now to their figures now. */
+    private Tally takeNow(String sheetId, Person person, List<Claim> theirs, LocalDate today) {
         BigDecimal total = BigDecimal.ZERO.setScale(2);
         boolean anyFigure = false;
         int counted = 0;
@@ -106,16 +145,61 @@ public class StatementService {
                 claim.bind(false, null);
             }
         }
-        claims.saveAllAndFlush(theirs);
         // as on screen: n/a when the grade has no rate today and no claim that counts has a figure
         BigDecimal dueTotal = anyFigure || rates.findInForce(sheetId, person.gradeOn(today), today).isPresent() ? sheets.capped(sheetId, total) : null;
-        Statement taken = statements.saveAndFlush(new Statement(sheetId, personId, today, dueTotal, counted));
-        int count = (int) statements.findBySheetIdOrderByIdAsc(sheetId).stream()
-                .filter(s -> Objects.equals(s.getPersonId(), personId)).count();
-        audit.recordOnCommit("STATEMENT sheet=" + sheetId + " by=" + user + " name=" + person.getName()
-                + " due-total=" + money(dueTotal) + " claims=" + counted);
-        rollup.recordChanges(sheetId, user, before);
-        return new Taken(new Summary(personId, count, taken), theirs);
+        return new Tally(dueTotal, counted);
+    }
+
+    /**
+     * Bind the person's claims that counted at the end of a day to their figures as they stood then:
+     * every change made while the sheet's today was on or before the day counts, every later one
+     * does not, and the day stands in for the sheet's today in every figure (the grade and rate in
+     * force, the floor, late charges, holds, retirements, deferrals and the cap). A claim's status
+     * then is the one its status log records; a claim with none by then did not count. A claim
+     * bound by the last statement counts as bound then only when that statement was taken by then.
+     * Every other claim of theirs is unbound.
+     */
+    private Tally takeAsOf(String sheetId, Person person, List<Claim> theirs, LocalDate day) {
+        Sheet then = sheets.sheet(sheetId).asOf(day);
+        List<Rate> ratesThen = rateLog.asOf(sheetId, day);
+        boolean boundThen = statements.findBySheetIdOrderByIdAsc(sheetId).stream()
+                .filter(s -> Objects.equals(s.getPersonId(), person.getId())).reduce((first, last) -> last)
+                .map(last -> last.madeBy(day)).orElse(false);
+        BigDecimal total = BigDecimal.ZERO.setScale(2);
+        boolean anyFigure = false;
+        int counted = 0;
+        for (Claim claim : theirs) {
+            ClaimStatus status = claim.statusAt(day).orElse(null);
+            boolean stated = boundThen && claim.isStated();
+            if (status == null || !person.countedAsOf(claim, status, day, stated)) {
+                claim.bind(false, null);
+                continue;
+            }
+            BigDecimal figure;
+            BigDecimal charged;
+            if (status == ClaimStatus.SETTLED) {
+                figure = claim.settledDueAt(day);
+                charged = figure;
+            } else {
+                figure = stated && status != ClaimStatus.PENDING ? claim.getStatedDue()
+                        : RateRepository.inForce(ratesThen, person.gradeOn(claim.getDate(), day), claim.getDate())
+                                .map(Rate::getPct)
+                                .map(pct -> claim.getAmount().multiply(pct).divide(BigDecimal.valueOf(100), 2,
+                                        Rounding.mode(then, Rounding.dateOf(claim, theirs))))
+                                .orElse(null);
+                charged = LateCharge.withCharge(then, claim, figure,
+                        status.isOpen() && !claim.isDeferredAsOf(status, day));
+            }
+            claim.bind(true, figure);
+            if (charged != null) {
+                total = total.add(charged);
+                anyFigure = true;
+            }
+            counted++;
+        }
+        // as on screen: n/a when the grade then has no rate then and no claim that counted has a figure
+        boolean none = !anyFigure && RateRepository.inForce(ratesThen, person.gradeOn(day, day), day).isEmpty();
+        return new Tally(none ? null : then.capped(total), counted);
     }
 
     /**

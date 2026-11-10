@@ -391,7 +391,7 @@ public class ClaimService {
         }
         periods.refuseIfClosed(sheetId, claim.getDate());
         Person person = person(sheetId, claim.getPersonId());
-        claim.setDeferredUntil(until);
+        claim.setDeferredUntil(until, sheets.today(sheetId));
         Claim saved = claims.saveAndFlush(claim);
         audit.recordOnCommit(record("CLAIM_DEFERRED", sheetId, user, person, saved)
                 + (saved.getNumber() != null ? " number=" + saved.getNumber() : "") + " until=" + until);

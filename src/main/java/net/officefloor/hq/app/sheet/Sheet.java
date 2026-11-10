@@ -8,6 +8,7 @@ import jakarta.persistence.FetchType;
 import jakarta.persistence.Id;
 import jakarta.persistence.JoinColumn;
 import jakarta.persistence.MapKeyColumn;
+import jakarta.persistence.OrderColumn;
 import jakarta.persistence.Table;
 import java.math.BigDecimal;
 import java.time.Instant;
@@ -79,6 +80,12 @@ public class Sheet {
     @CollectionTable(name = "sheet_setting", joinColumns = @JoinColumn(name = "sheet_id"))
     private List<DatedSetting> settings = new ArrayList<>();
 
+    /** Every setting value recorded, oldest first, with the sheet's today when it was recorded. */
+    @ElementCollection(fetch = FetchType.EAGER)
+    @CollectionTable(name = "sheet_setting_log", joinColumns = @JoinColumn(name = "sheet_id"))
+    @OrderColumn(name = "seq")
+    private List<LoggedSetting> settingLog = new ArrayList<>();
+
     /** The date a claim's rounding turns on: half up before it, half to even on or after; null for the sheet's today. */
     @Column(name = "policy_date")
     private LocalDate policyDate;
@@ -149,8 +156,29 @@ public class Sheet {
      * already recorded for the key from that date is replaced. A null value is none.
      */
     public void record(String key, LocalDate fromDate, BigDecimal value) {
+        put(key, fromDate, value);
+        settingLog.add(new LoggedSetting(key, fromDate, value, today));
+    }
+
+    private void put(String key, LocalDate fromDate, BigDecimal value) {
         settings.removeIf(s -> s.getKey().equals(key) && Objects.equals(s.getFromDate(), fromDate));
         settings.add(new DatedSetting(key, fromDate, value));
+    }
+
+    /**
+     * The sheet as it stood at the end of a day, for working out figures then: that day stands in
+     * for its today, and its settings are those recorded while its today was on or before that day.
+     * Not to be saved.
+     */
+    public Sheet asOf(LocalDate day) {
+        Sheet then = new Sheet(id, createdBy, createdAt, day);
+        settingLog.stream().filter(s -> s.madeBy(day)).forEach(s -> then.put(s.getKey(), s.getFromDate(), s.getValue()));
+        then.policyDate = policyDate;
+        then.periodNumberingFrom = periodNumberingFrom;
+        then.graceDays = graceDays;
+        then.permissions.putAll(permissions);
+        then.archived = archived;
+        return then;
     }
 
     /** The values recorded for the settings, by key and then by from-date (from the beginning of time first). */

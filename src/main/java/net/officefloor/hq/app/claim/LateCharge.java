@@ -28,6 +28,14 @@ public final class LateCharge {
     }
 
     /**
+     * The figure with its late charge on the sheet's today added on top, then raised to the floor,
+     * the claim open ({@code open}: OPEN or PENDING and not deferred) or not; null when the figure is null.
+     */
+    public static BigDecimal withCharge(Sheet sheet, Claim claim, BigDecimal figure, boolean open) {
+        return figure == null ? null : floored(sheet, claim, figure.add(charge(sheet, claim, figure, open)));
+    }
+
+    /**
      * The figure with the late charge it would have on the sheet's today were the claim open,
      * whatever its status; null when the figure is null.
      */

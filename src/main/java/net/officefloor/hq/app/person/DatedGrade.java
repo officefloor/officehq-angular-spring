@@ -14,12 +14,17 @@ public class DatedGrade {
     @Column(name = "grade", nullable = false)
     private String grade;
 
+    /** The sheet's today when it was recorded; none: from the beginning of time. */
+    @Column(name = "made_on")
+    private LocalDate madeOn;
+
     protected DatedGrade() {
     }
 
-    public DatedGrade(LocalDate fromDate, String grade) {
+    public DatedGrade(LocalDate fromDate, String grade, LocalDate madeOn) {
         this.fromDate = fromDate;
         this.grade = grade;
+        this.madeOn = madeOn;
     }
 
     public LocalDate getFromDate() {
@@ -28,5 +33,10 @@ public class DatedGrade {
 
     public String getGrade() {
         return grade;
+    }
+
+    /** Whether it was recorded by the end of a day: the sheet's today then on or before it. */
+    public boolean madeBy(LocalDate day) {
+        return madeOn == null || !madeOn.isAfter(day);
     }
 }

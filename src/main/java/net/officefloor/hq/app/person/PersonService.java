@@ -62,7 +62,7 @@ public class PersonService {
         if (people.existsBySheetIdAndNameIgnoreCase(sheetId, name)) {
             throw nameInUse();
         }
-        Person person = new Person(sheetId, name, grade);
+        Person person = new Person(sheetId, name, grade, sheets.today(sheetId));
         person.setTerms(terms);
         Person added = save(person);
         audit.recordOnCommit(record("PERSON_ADDED", sheetId, user, added, sheets.today(sheetId))
@@ -89,7 +89,7 @@ public class PersonService {
         person.setName(name);
         person.setTerms(terms);
         if (gradeFrom != null || !grade.equals(person.gradeOn(today))) {
-            person.setGradeFrom(gradeFrom != null ? gradeFrom : today, grade);
+            person.setGradeFrom(gradeFrom != null ? gradeFrom : today, grade, today);
         }
         Person saved = save(person);
         audit.recordOnCommit(record("PERSON_EDITED", sheetId, user, saved, today)
@@ -109,7 +109,7 @@ public class PersonService {
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "No such person on this sheet."));
         RollupService.Snapshot before = rollup.snapshot(sheetId);
         LocalDate from = date != null ? date : sheets.today(sheetId);
-        person.setRetiredFrom(from);
+        person.setRetiredFrom(from, sheets.today(sheetId));
         Person saved = save(person);
         audit.recordOnCommit("PERSON_RETIRED sheet=" + sheetId + " by=" + user + " name=" + saved.getName() + " from="
                 + from);
@@ -132,7 +132,7 @@ public class PersonService {
         if (toDate != null && toDate.isBefore(from)) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "A hold cannot end before it starts.");
         }
-        person.addHold(from, toDate);
+        person.addHold(from, toDate, sheets.today(sheetId));
         Person saved = save(person);
         audit.recordOnCommit("PERSON_HELD sheet=" + sheetId + " by=" + user + " name=" + saved.getName() + " from="
                 + from);

@@ -10,7 +10,8 @@ import java.math.BigDecimal;
 import java.time.LocalDate;
 
 /**
- * A statement taken for a person: the sheet's today when it was taken, their due-total then (none
+ * A statement taken for a person: the sheet's today when it was taken (or the date it was taken as
+ * of), their due-total then (none
  * when it was n/a) and how many of their claims counted.
  */
 @Entity
@@ -36,10 +37,16 @@ public class Statement {
     @Column(name = "claims", nullable = false)
     private int claims;
 
+    /** The sheet's today when the statement was taken; its taken-on is the date it was taken as of. */
+    @Column(name = "made_on")
+    private LocalDate madeOn;
+
     protected Statement() {
     }
 
-    public Statement(String sheetId, Long personId, LocalDate takenOn, BigDecimal dueTotal, int claims) {
+    public Statement(String sheetId, Long personId, LocalDate takenOn, BigDecimal dueTotal, int claims,
+            LocalDate madeOn) {
+        this.madeOn = madeOn;
         this.sheetId = sheetId;
         this.personId = personId;
         this.takenOn = takenOn;
@@ -65,6 +72,11 @@ public class Statement {
 
     public BigDecimal getDueTotal() {
         return dueTotal;
+    }
+
+    /** Whether it was taken by the end of a day: the sheet's today then on or before it. */
+    public boolean madeBy(LocalDate day) {
+        return madeOn == null || !madeOn.isAfter(day);
     }
 
     public int getClaims() {

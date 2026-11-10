@@ -109,6 +109,10 @@ public class Claim {
     @Column(name = "deferred_until")
     private LocalDate deferredUntil;
 
+    /** The sheet's today when the claim was last deferred; none when never deferred. */
+    @Column(name = "deferred_on")
+    private LocalDate deferredOn;
+
     /** How many proofs the claim has: raised by one at a time, never while SETTLED or VOID. */
     @Column(name = "proofs", nullable = false)
     private int proofs;
@@ -282,8 +286,32 @@ public class Claim {
         return deferredUntil;
     }
 
-    public void setDeferredUntil(LocalDate deferredUntil) {
+    /** Defer the claim until a date; {@code madeOn} is the sheet's today. */
+    public void setDeferredUntil(LocalDate deferredUntil, LocalDate madeOn) {
         this.deferredUntil = deferredUntil;
+        this.deferredOn = madeOn;
+    }
+
+    /**
+     * Whether the claim was deferred at the end of a day, had it the given status then: deferred
+     * while the sheet's today was on or before the day, until a date after it.
+     */
+    public boolean isDeferredAsOf(ClaimStatus status, LocalDate day) {
+        return isDeferredOn(status, day) && (deferredOn == null || !deferredOn.isAfter(day));
+    }
+
+    /**
+     * The due the claim was settled at, as its status log records it at the end of a day (the last
+     * line logged on or before it); none when it had none then.
+     */
+    public BigDecimal settledDueAt(LocalDate day) {
+        String due = null;
+        for (ClaimLogEntry entry : log) {
+            if (!entry.getDate().isAfter(day)) {
+                due = entry.getDue();
+            }
+        }
+        return due == null || due.equals("n/a") ? null : new BigDecimal(due);
     }
 
     /** Whether the claim is open and deferred on the given day: its deferral date not yet reached. */

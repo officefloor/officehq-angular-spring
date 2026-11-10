@@ -21,8 +21,9 @@ public class StatementController {
     public record ListStatementsRequest(@NotBlank @Size(max = 100) String sheet) {
     }
 
+    /** {@code asOf}: the date the statement is taken as of; none for now. */
     public record TakeStatementRequest(@NotBlank @Size(max = 100) String sheet,
-            @NotBlank @Size(max = 100) String user, @NotNull Long personId) {
+            @NotBlank @Size(max = 100) String user, @NotNull Long personId, LocalDate asOf) {
     }
 
     public record CancelStatementRequest(@NotBlank @Size(max = 100) String sheet,
@@ -60,7 +61,8 @@ public class StatementController {
 
     @PostMapping("/take")
     public TakenResponse take(@Valid @RequestBody TakeStatementRequest req) {
-        StatementService.Taken taken = service.take(req.sheet().trim(), req.user().trim(), req.personId());
+        StatementService.Taken taken = service.take(req.sheet().trim(), req.user().trim(), req.personId(),
+                req.asOf());
         return new TakenResponse(response(taken.summary()),
                 taken.claims().stream().map(ClaimController::response).toList());
     }

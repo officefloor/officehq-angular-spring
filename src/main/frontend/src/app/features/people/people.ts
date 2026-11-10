@@ -29,7 +29,9 @@ import { GradeSummary, PeriodSummary, StatusSummary, Summary } from '../summary/
 // Taking a person's statement binds each of their claims that counts to the figure it has then
 // (a stated claim shows and totals that figure); each row shows how many statements the person
 // has taken, and the last one's due-total and date. A steward can cancel the last statement: the
-// claims it bound are live again, and the row shows the statement before it (or none).
+// claims it bound are live again, and the row shows the statement before it (or none). A statement
+// can be taken as of a date on or before the sheet's today: it binds the claims that counted at the
+// end of that date to their figures as they stood then, and shows that date as its date.
 // Each claim shows the period its date falls in, and each period the due of the claims that counted in it
 // at its end (by the status each had then, as its log records it).
 // A person can be retired from a date (the sheet's today when left blank); with a date set they count
@@ -399,6 +401,14 @@ const SUMMARY_STATUSES = ['DRAFT', 'OPEN', 'PENDING', 'SETTLED', 'VOID'] as cons
                 >
                   Edit
                 </button>
+                <label [for]="'person-statement-asof-' + p.id">Statement as of</label>
+                <input
+                  type="date"
+                  [id]="'person-statement-asof-' + p.id"
+                  data-testid="person-statement-asof"
+                  [value]="statementAsOfs().get(p.id) ?? ''"
+                  (input)="setStatementAsOf(p.id, $any($event.target).value)"
+                />
                 <button
                   type="button"
                   data-testid="person-statement"
@@ -480,6 +490,8 @@ export class People {
   protected readonly retireDates = signal<ReadonlyMap<number, string>>(new Map());
   /** The hold from- and to-dates typed on each person's row, by person id. */
   protected readonly holdFroms = signal<ReadonlyMap<number, string>>(new Map());
+  /** The date each person's next statement is taken as of, by person id; blank for now. */
+  protected readonly statementAsOfs = signal<ReadonlyMap<number, string>>(new Map());
   protected readonly holdTos = signal<ReadonlyMap<number, string>>(new Map());
   /** The sheet's claims, newest first. */
   protected readonly claims = signal<Claim[]>([]);
@@ -649,6 +661,7 @@ export class People {
       this.watched.set(new Set());
       this.retireDates.set(new Map());
       this.holdFroms.set(new Map());
+      this.statementAsOfs.set(new Map());
       this.holdTos.set(new Map());
       this.reset();
       this.quickName.set('');
@@ -932,15 +945,34 @@ export class People {
     }
   }
 
-  /** Take the person's statement: their claims come back bound (or unbound) as it left them. */
+  protected setStatementAsOf(id: number, date: string): void {
+    this.statementAsOfs.update((m) => new Map(m).set(id, date));
+    this.clearRowError(id);
+  }
+
+  /**
+   * Take the person's statement, now or as of the date on their row: their claims come back bound
+   * (or unbound) as it left them, and the date is cleared.
+   */
   protected async takeStatement(p: Person): Promise<void> {
     this.clearRowError(p.id);
     const sheet = this.session.sheet();
+    const asOf = (this.statementAsOfs().get(p.id) ?? '').trim();
+    if (asOf !== '' && !/^\d{4}-\d{2}-\d{2}$/.test(asOf)) {
+      this.rowErrors.update((m) => new Map(m).set(p.id, 'Enter a date, or leave it blank for a statement now.'));
+      return;
+    }
     try {
       const taken = await firstValueFrom(
-        this.http.post<StatementTaken>('/api/statements/take', { sheet, user: this.session.user(), personId: p.id }),
+        this.http.post<StatementTaken>('/api/statements/take', {
+          sheet,
+          user: this.session.user(),
+          personId: p.id,
+          asOf: asOf || null,
+        }),
       );
       if (this.session.sheet() !== sheet) return;
+      this.statementAsOfs.update((m) => new Map(m).set(p.id, ''));
       const byId = new Map(taken.claims.map((c) => [c.id, c]));
       this.claims.update((list) => list.map((c) => byId.get(c.id) ?? c));
       this.statements.update((m) => new Map(m).set(p.id, taken.summary));

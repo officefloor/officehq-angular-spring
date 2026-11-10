@@ -23,12 +23,15 @@ import org.springframework.web.server.ResponseStatusException;
 public class RateService {
 
     private final RateRepository rates;
+    private final RateLogRepository rateLog;
     private final SheetService sheets;
     private final Audit audit;
     private final RollupService rollup;
     private final RoleService roles;
 
-    public RateService(RateRepository rates, SheetService sheets, Audit audit, RollupService rollup, RoleService roles) {
+    public RateService(RateRepository rates, RateLogRepository rateLog, SheetService sheets, Audit audit,
+            RollupService rollup, RoleService roles) {
+        this.rateLog = rateLog;
         this.roles = roles;
         this.rollup = rollup;
         this.rates = rates;
@@ -61,6 +64,7 @@ public class RateService {
             // another user set this grade's rate from this date at the same moment
             throw new ResponseStatusException(HttpStatus.CONFLICT, "This rate was just set by someone else.");
         }
+        rateLog.saveAndFlush(new RateLog(saved, sheets.today(sheetId)));
         audit.recordOnCommit("RATE_SET sheet=" + sheetId + " by=" + user + " grade=" + grade + " rate="
                 + saved.getPct().setScale(2, RoundingMode.UNNECESSARY).toPlainString()
                 + (fromDate != null ? " from=" + fromDate : "") + (toDate != null ? " to=" + toDate : ""));

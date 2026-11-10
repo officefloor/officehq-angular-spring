@@ -47,6 +47,14 @@ public class Person {
     @Column(name = "retired_from")
     private LocalDate retiredFrom;
 
+    /** The sheet's today when the person was retired; none while not retired. */
+    @Column(name = "retired_on")
+    private LocalDate retiredOn;
+
+    /** The sheet's today when the person was added; none for one added before it was recorded. */
+    @Column(name = "added_on")
+    private LocalDate addedOn;
+
     /** The person's OPEN claims dated within a hold, and not bound by a statement, count in no live total. */
     @ElementCollection(fetch = FetchType.EAGER)
     @CollectionTable(name = "person_hold", joinColumns = @JoinColumn(name = "person_id"))
@@ -60,10 +68,11 @@ public class Person {
     protected Person() {
     }
 
-    public Person(String sheetId, String name, String grade) {
+    public Person(String sheetId, String name, String grade, LocalDate addedOn) {
         this.sheetId = sheetId;
         this.name = name;
-        this.grades.add(new DatedGrade(null, grade));
+        this.addedOn = addedOn;
+        this.grades.add(new DatedGrade(null, grade, addedOn));
     }
 
     public Long getId() {
@@ -99,10 +108,27 @@ public class Person {
         return found;
     }
 
-    /** Record the grade from a date, replacing any grade already recorded from that same date. */
-    public void setGradeFrom(LocalDate fromDate, String grade) {
+    /**
+     * The grade in force on a date as the person stood at the end of a day: the one with the latest
+     * from-date on or before the date, of those recorded while the sheet's today was on or before the day.
+     */
+    public String gradeOn(LocalDate date, LocalDate asOf) {
+        String found = null;
+        for (DatedGrade g : getGrades()) {
+            if (g.madeBy(asOf) && (g.getFromDate() == null || !g.getFromDate().isAfter(date))) {
+                found = g.getGrade();
+            }
+        }
+        return found;
+    }
+
+    /**
+     * Record the grade from a date, replacing any grade already recorded from that same date;
+     * {@code madeOn} is the sheet's today.
+     */
+    public void setGradeFrom(LocalDate fromDate, String grade, LocalDate madeOn) {
         grades.removeIf(g -> fromDate.equals(g.getFromDate()));
-        grades.add(new DatedGrade(fromDate, grade));
+        grades.add(new DatedGrade(fromDate, grade, madeOn));
     }
 
     public Integer getTerms() {
@@ -117,8 +143,15 @@ public class Person {
         return retiredFrom;
     }
 
-    public void setRetiredFrom(LocalDate retiredFrom) {
+    /** Retire the person from a date; {@code madeOn} is the sheet's today. */
+    public void setRetiredFrom(LocalDate retiredFrom, LocalDate madeOn) {
         this.retiredFrom = retiredFrom;
+        this.retiredOn = madeOn;
+    }
+
+    /** Whether the person had been added by the end of a day: the sheet's today then on or before it. */
+    public boolean addedBy(LocalDate day) {
+        return addedOn == null || !addedOn.isAfter(day);
     }
 
     public boolean isRetired() {
@@ -136,8 +169,9 @@ public class Person {
                 .thenComparing(DatedHold::getToDate, Comparator.nullsLast(Comparator.naturalOrder()))).toList();
     }
 
-    public void addHold(LocalDate fromDate, LocalDate toDate) {
-        holds.add(new DatedHold(fromDate, toDate));
+    /** Add a hold; {@code madeOn} is the sheet's today. */
+    public void addHold(LocalDate fromDate, LocalDate toDate, LocalDate madeOn) {
+        holds.add(new DatedHold(fromDate, toDate, madeOn));
     }
 
     /** Whether the person has any hold. */
@@ -166,6 +200,20 @@ public class Person {
     public boolean counts(Claim claim, ClaimStatus status, LocalDate today) {
         return status.counts() && !claim.isDeferredOn(status, today) && (claim.isStated()
                 || !(status.isOpen() && claim.getStatus().isOpen() && (heldOn(claim.getDate()) || retiredOn(today))));
+    }
+
+    /**
+     * Whether a claim of this person counted at the end of a day, as the person stood then: had it
+     * the given status then, and was it bound by a statement then ({@code stated}). The day stands in
+     * for the sheet's today, and only holds and a retirement recorded while the sheet's today was on
+     * or before it count.
+     */
+    public boolean countedAsOf(Claim claim, ClaimStatus status, LocalDate day, boolean stated) {
+        boolean held = holds.stream().anyMatch(h -> h.madeBy(day) && h.covers(claim.getDate()));
+        boolean retired = retiredFrom != null && (retiredOn == null || !retiredOn.isAfter(day))
+                && !day.isBefore(retiredFrom);
+        return status.counts() && !claim.isDeferredAsOf(status, day)
+                && (stated || !(status.isOpen() && (held || retired)));
     }
 
     public long getVersion() {
