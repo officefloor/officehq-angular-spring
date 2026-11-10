@@ -129,13 +129,13 @@ public class ClaimService {
 
     /**
      * A claim's due-by, fixed at creation: its date plus the first of the person's own terms, the
-     * terms of their grade and the sheet's terms, each as in force on its date; when that falls on
-     * one of the sheet's holidays, the next day that is not.
+     * terms of their grade and the sheet's terms, each as in force on its date, counted in business
+     * days: skipping every Saturday, Sunday and holiday on the sheet.
      */
     private LocalDate dueBy(String sheetId, Person person, LocalDate dated) {
         Integer own = person.getTerms();
-        return holidays.pastHolidays(sheetId,
-                dated.plusDays(own != null ? own : sheets.sheet(sheetId).termsFor(person.gradeOn(dated), dated)));
+        return holidays.businessDaysAfter(sheetId, dated,
+                own != null ? own : sheets.sheet(sheetId).termsFor(person.gradeOn(dated), dated));
     }
 
     @Transactional(readOnly = true)

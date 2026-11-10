@@ -77,8 +77,9 @@ public class Claim {
     private BigDecimal statedDue;
 
     /**
-     * The date the claim is due by: fixed when it is created, its date plus the terms of its
-     * person's grade in force on its date; later changes to the terms or its date leave it as it is.
+     * The date the claim is due by: fixed when it is created, the terms-th business day after its
+     * date (skipping Saturdays, Sundays and the sheet's holidays), with the terms of its person's
+     * grade in force on its date; later changes to the terms, the holidays or its date leave it as it is.
      */
     @Column(name = "due_by", nullable = false)
     private LocalDate dueBy;

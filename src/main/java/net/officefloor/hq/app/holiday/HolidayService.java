@@ -1,5 +1,6 @@
 package net.officefloor.hq.app.holiday;
 
+import java.time.DayOfWeek;
 import java.time.LocalDate;
 import java.util.List;
 import java.util.Set;
@@ -16,8 +17,8 @@ import org.springframework.web.server.ResponseStatusException;
 
 /**
  * The sheet's holidays: dates added on the screen, each at most once. A claim's due-by, fixed when
- * it is created, is moved past them (see {@link #pastHolidays}); a holiday added later moves no
- * claim's due-by.
+ * it is created, counts business days past them (see {@link #businessDaysAfter}); a holiday added
+ * later moves no claim's due-by.
  */
 @Service
 public class HolidayService {
@@ -62,14 +63,26 @@ public class HolidayService {
         return added;
     }
 
-    /** The date itself when it is no holiday on the sheet, else the next day that is not. */
+    /**
+     * The {@code days}-th business day after the date: counting forward from the day after it,
+     * skipping every Saturday, Sunday and holiday on the sheet; the date itself when {@code days} is 0.
+     */
     @Transactional(readOnly = true)
-    public LocalDate pastHolidays(String sheetId, LocalDate date) {
-        Set<LocalDate> days = holidays.findBySheetIdOrderByDayAsc(sheetId).stream().map(Holiday::getDay)
+    public LocalDate businessDaysAfter(String sheetId, LocalDate date, int days) {
+        Set<LocalDate> off = holidays.findBySheetIdOrderByDayAsc(sheetId).stream().map(Holiday::getDay)
                 .collect(Collectors.toSet());
+        return businessDaysAfter(off, date, days);
+    }
+
+    /** The {@code days}-th day after the date that is no Saturday, Sunday or one of the holidays. */
+    public static LocalDate businessDaysAfter(Set<LocalDate> holidays, LocalDate date, int days) {
         LocalDate d = date;
-        while (days.contains(d)) {
+        for (int left = days; left > 0;) {
             d = d.plusDays(1);
+            if (d.getDayOfWeek() != DayOfWeek.SATURDAY && d.getDayOfWeek() != DayOfWeek.SUNDAY
+                    && !holidays.contains(d)) {
+                left--;
+            }
         }
         return d;
     }
