@@ -4,6 +4,7 @@ import { firstValueFrom } from 'rxjs';
 import { Session } from '../../core/session';
 import { AMOUNT, Claim, PersonClaims, cents, counts, dayNumber, deferred, isCorrection, isOpen, money, overdue, plusDays, roundingDate, statusAt } from '../claims/claims';
 import { AuditView } from '../audit/audit-view';
+import { TreeSearch } from '../search/tree-search';
 import { Holidays } from '../holidays/holidays';
 import { DatedDue, Period, Periods, periodDueTotal, periodOn, personPeriodDueTotal } from '../periods/periods';
 import { DatedGrade, DatedValue, Lateness, Rate, Rates, chargedDueCents, dueCents, dueText, graceOn, gradeOn, pctOn, valueOn } from '../rates/rates';
@@ -222,7 +223,7 @@ const SUMMARY_STATUSES = ['DRAFT', 'OPEN', 'PENDING', 'SETTLED', 'VOID'] as cons
 
 @Component({
   selector: 'app-people',
-  imports: [AuditView, Header, Holidays, PersonClaims, PersonPlans, Periods, Rates, Roles, Pools, Settings, Summary, Templates, VoidReasons],
+  imports: [AuditView, Header, Holidays, PersonClaims, PersonPlans, Periods, Rates, Roles, Pools, Settings, Summary, Templates, TreeSearch, VoidReasons],
   template: `
     <app-header
       [peopleCount]="people().length"
@@ -244,6 +245,7 @@ const SUMMARY_STATUSES = ['DRAFT', 'OPEN', 'PENDING', 'SETTLED', 'VOID'] as cons
     <app-templates />
     <app-pools [people]="people()" [pot]="pot()" [(pools)]="pools" />
     <app-audit-view />
+    <app-tree-search />
     <section aria-labelledby="people-heading">
       <h2 id="people-heading">People</h2>
       <form aria-label="Person" (submit)="save($event)">
