@@ -527,21 +527,20 @@ export class People {
     const today = this.session.today();
     return new Map<string, string | undefined>(GRADES.map((g) => [g, pctOn(this.rates(), g, today)]));
   });
+  /** The sheet's due-total: people's due-totals added up (skipping n/a), trimmed. */
   protected readonly dueTotal = computed(() =>
-    money(this.people().reduce((sum, p) => sum + (this.dueOf(p) ?? 0), 0)),
+    money(trimmedSum(this.people().map((p) => this.dueOf(p)).filter((d): d is number => d !== null))),
   );
   protected readonly dueText = dueText;
   protected readonly money = money;
-  /** The sheet's overdue claims that count: how many, and the sum of their figures in whole cents. */
-  protected readonly overdueTotals = computed(() =>
-    this.people().reduce(
-      (sum, p) => {
-        const o = this.overdueOf(p);
-        return { count: sum.count + o.count, cents: sum.cents + o.cents };
-      },
-      { count: 0, cents: 0 },
-    ),
-  );
+  /** The sheet's overdue claims that count: how many, and the sum of people's figures in whole cents, trimmed. */
+  protected readonly overdueTotals = computed(() => {
+    const each = this.people().map((p) => this.overdueOf(p));
+    return {
+      count: each.reduce((sum, o) => sum + o.count, 0),
+      cents: trimmedSum(each.map((o) => o.cents)),
+    };
+  });
   /** Per grade: the people not retired on it today, and their due-totals added up (skipping n/a). */
   protected readonly gradeSummary = computed<GradeSummary[]>(() => {
     const active = this.people().filter((p) => !p.retired);
@@ -1131,4 +1130,13 @@ export class People {
       // the refusal is shown either way
     }
   }
+}
+
+/**
+ * A sheet total of people's figures: with three or more, the single highest and the single lowest
+ * are left out.
+ */
+function trimmedSum(figures: readonly number[]): number {
+  const sum = figures.reduce((s, f) => s + f, 0);
+  return figures.length < 3 ? sum : sum - Math.max(...figures) - Math.min(...figures);
 }

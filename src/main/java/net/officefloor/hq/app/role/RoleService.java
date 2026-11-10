@@ -38,7 +38,8 @@ public class RoleService {
      * Refuse (403) an action the user's role may not take by the sheet's permission matrix (see
      * {@link net.officefloor.hq.app.sheet.Sheet#permits}).
      */
-    @Transactional(readOnly = true)
+    // a refusal leaves the caller's transaction usable (a bulk action refuses one claim and goes on)
+    @Transactional(readOnly = true, noRollbackFor = ResponseStatusException.class)
     public void refuseUnlessPermitted(String sheetId, String user, String action) {
         if (!sheets.sheet(sheetId).permits(action, roleOf(sheetId, user))) {
             throw new ResponseStatusException(HttpStatus.FORBIDDEN, "Your role may not " + action + " here.");
@@ -46,7 +47,8 @@ public class RoleService {
     }
 
     /** Refuse (403) any change by a viewer: a viewer sees the sheet and may change nothing. */
-    @Transactional(readOnly = true)
+    // a refusal leaves the caller's transaction usable (a bulk action refuses one claim and goes on)
+    @Transactional(readOnly = true, noRollbackFor = ResponseStatusException.class)
     public void refuseViewer(String sheetId, String user) {
         if (Role.VIEWER.equals(roleOf(sheetId, user))) {
             throw new ResponseStatusException(HttpStatus.FORBIDDEN, "A viewer may not change anything here.");

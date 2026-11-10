@@ -46,13 +46,24 @@ public class RollupService {
             return people.values().stream().map(Figures::claimed).reduce(zero(), BigDecimal::add);
         }
 
+        /** People's due-totals added up (n/a is no figure), trimmed as {@link #trimmed} says. */
         public BigDecimal dueTotal() {
-            return people.values().stream().map(Figures::dueTotal).filter(Objects::nonNull).reduce(zero(),
-                    BigDecimal::add);
+            return trimmed(people.values().stream().map(Figures::dueTotal).filter(Objects::nonNull).toList());
         }
 
+        /** People's overdue-totals added up, trimmed as {@link #trimmed} says. */
         public BigDecimal overdueTotal() {
-            return people.values().stream().map(Figures::overdueTotal).reduce(zero(), BigDecimal::add);
+            return trimmed(people.values().stream().map(Figures::overdueTotal).toList());
+        }
+
+        /** The sum of people's figures, leaving out the single highest and lowest when there are three or more. */
+        private static BigDecimal trimmed(List<BigDecimal> figures) {
+            BigDecimal sum = figures.stream().reduce(zero(), BigDecimal::add);
+            if (figures.size() < 3) {
+                return sum;
+            }
+            return sum.subtract(figures.stream().reduce(BigDecimal::max).orElseThrow())
+                    .subtract(figures.stream().reduce(BigDecimal::min).orElseThrow());
         }
     }
 
