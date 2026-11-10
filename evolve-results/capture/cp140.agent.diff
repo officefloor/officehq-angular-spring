@@ -1,0 +1,82 @@
+diff --git a/src/main/java/net/officefloor/hq/app/claim/ClaimService.java b/src/main/java/net/officefloor/hq/app/claim/ClaimService.java
+index 017c1e9ac..ebd63f408 100644
+--- a/src/main/java/net/officefloor/hq/app/claim/ClaimService.java
++++ b/src/main/java/net/officefloor/hq/app/claim/ClaimService.java
+@@ -744,8 +744,8 @@ public class ClaimService {
+         }
+         periods.refuseIfClosed(sheetId, claim.getDueBy());
+         refuseIfRetired(to, claim.getDate());
+-        // a numbered claim moved to another person takes the next number; its old one is not reused
+-        if (claim.getNumber() != null && !from.getId().equals(to.getId())) {
++        // a numbered claim moved (in place too) takes the next number; its old one is not reused
++        if (claim.getNumber() != null) {
+             claim.setNumber(sheets.nextClaimNumber(sheetId, claim.getDueBy()));
+         }
+         claim.setPersonId(to.getId());
+@@ -905,7 +905,7 @@ public class ClaimService {
+     /**
+      * Move the given claims to one person together, in list order (the order people were added,
+      * newest claim first within a person), each by exactly the rules of moving one claim. A claim
+-     * already on that person is moved in place (listed first, unbound). A claim that cannot be
++     * already on that person is moved in place (listed first, unbound, the next number). A claim that cannot be
+      * moved is refused and left as it is.
+      */
+     @Transactional
+diff --git a/src/main/java/net/officefloor/hq/app/pool/PoolService.java b/src/main/java/net/officefloor/hq/app/pool/PoolService.java
+index f491dd381..7e6a91b43 100644
+--- a/src/main/java/net/officefloor/hq/app/pool/PoolService.java
++++ b/src/main/java/net/officefloor/hq/app/pool/PoolService.java
+@@ -32,8 +32,9 @@ import org.springframework.web.server.ResponseStatusException;
+  * <p>
+  * With a pot set on the sheet, each member of a balanced pool has a cut: the pot times their share
+  * divided by 100, rounded half to even to two decimals. The remainder, the
+- * pot less the cuts added up, goes to the member with the largest share (the earliest added on a
+- * tie), so the cuts total exactly the pot. An unbalanced pool, or no pot, has no cuts.
++ * pot less the cuts added up, goes to the member with the smallest non-zero cut (the latest added
++ * on a tie; a member with no cut gets none, and a pool with no non-zero cut gives it to the last
++ * member with a share), so the cuts total exactly the pot. An unbalanced pool, or no pot, has no cuts.
+  * <p>
+  * A retired person, and a person with a hold in force on the sheet's today (one whose dates include
+  * today), has a cut of 0.00 in every pool, and their share is spread over the members left with a
+@@ -211,7 +212,8 @@ public class PoolService {
+     /**
+      * Each member's cut of the pot, in the members' order: the pot times their share over the shares of
+      * the members with a cut added up, half to even, a retired or held member's 0.00; the remainder to
+-     * the member with a cut with the largest share, the earliest on a tie. A member whose dates leave
++     * the member with the smallest non-zero cut, the latest added on a tie (the last member with a cut
++     * when no cut is non-zero). A member whose dates leave
+      * out today has none (null).
+      */
+     private static List<BigDecimal> cuts(BigDecimal pot, List<Listed> listed, List<BigDecimal> shares) {
+@@ -223,7 +225,8 @@ public class PoolService {
+         }
+         List<BigDecimal> cuts = new ArrayList<>();
+         BigDecimal sum = BigDecimal.ZERO.setScale(2);
+-        int largest = -1;
++        int smallest = -1;
++        int last = -1;
+         for (int i = 0; i < listed.size(); i++) {
+             if (!listed.get(i).current()) {
+                 cuts.add(null);
+@@ -232,15 +235,17 @@ public class PoolService {
+             BigDecimal cut = BigDecimal.ZERO.setScale(2);
+             if (hasCut(listed.get(i))) {
+                 cut = pot.multiply(shares.get(i)).divide(cutShares, 2, RoundingMode.HALF_EVEN);
+-                if (largest < 0 || shares.get(i).compareTo(shares.get(largest)) > 0) {
+-                    largest = i;
++                last = i;
++                if (cut.signum() != 0 && (smallest < 0 || cut.compareTo(cuts.get(smallest)) <= 0)) {
++                    smallest = i;
+                 }
+             }
+             cuts.add(cut);
+             sum = sum.add(cut);
+         }
+-        if (largest >= 0) {
+-            cuts.set(largest, cuts.get(largest).add(pot.subtract(sum)));
++        int to = smallest >= 0 ? smallest : last;
++        if (to >= 0) {
++            cuts.set(to, cuts.get(to).add(pot.subtract(sum)));
+         }
+         return cuts;
+     }

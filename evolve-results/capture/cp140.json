@@ -1,0 +1,72 @@
+{
+  "checkpoint": 140,
+  "stack": {
+    "repo": "/home/daniel/officehq-angular-spring",
+    "origin": "git@github.com:officefloor/officehq-angular-spring.git",
+    "name": "officehq-angular-spring",
+    "base_ref": "base-empty",
+    "base_commit": "65cb8233ea38b2dfa6cfd18709e30cd18fdf3250"
+  },
+  "checkpoint_id": "cp140_remainder-to-smallest",
+  "phase": "mid",
+  "type": "mutative",
+  "mutates": [
+    106,
+    109,
+    119
+  ],
+  "replaced_tests": [
+    "cp106_pool-cuts.spec.ts::pool cuts",
+    "cp109_parent-sheet-rates.spec.ts::parent sheet rates scenario 2",
+    "cp119_cut-totals.spec.ts::cut totals"
+  ],
+  "request": {
+    "spec": "The remainder of a pool's cuts now goes to the member with the smallest non-zero cut, the latest\nadded on a tie (a member with no cut gets none; a pool with no non-zero cut gives it to the last\nmember with a share).\n",
+    "prompt": "You are implementing ONE change to this application.\n\nFIRST read AGENTS.md \u2014 it states the working rules and how the app is tested, and sends you to\nDESIGN.md for the app's stack and conventions. Follow both.\n\nTHE CHANGE REQUEST:\nThe remainder of a pool's cuts now goes to the member with the smallest non-zero cut, the latest\nadded on a tie (a member with no cut gets none; a pool with no non-zero cut gives it to the last\nmember with a share).\n\nYour work is verified by an automated Playwright UI test already installed under e2e/specs/.\nRead that spec: it declares the exact data-testid anchors, values, test data and any audit\nrecords it expects \u2014 match them. Run `bin/e2e` to build the app, start it, and run the test as\nyou work; iterate until it passes. Change whatever the request needs across the app \u2014 its stored\ndata, its server and its front end. Do NOT edit bin/build, bin/start, bin/stop, bin/e2e,\nAGENTS.md, CLAUDE.md, DESIGN.md, e2e/support/ or the test spec.\n"
+  },
+  "commit_sha": "1bfef522ee1139eceebeb21ece45f01069404bc4",
+  "reset_sha": "",
+  "preagent_sha": "98584a05bef5b5a07e1879e8b79da928285c8f3e",
+  "prev_sha": "98584a05bef5b5a07e1879e8b79da928285c8f3e",
+  "base_sha": "65cb8233ea38b2dfa6cfd18709e30cd18fdf3250",
+  "agent": {
+    "ok": true,
+    "cost_usd": 0.5916541999999999,
+    "input_tokens": 38,
+    "output_tokens": 6213,
+    "cache_read_tokens": 702131,
+    "cache_creation_tokens": 40852,
+    "num_turns": 20,
+    "duration_ms": 539852,
+    "duration_api_ms": 66280,
+    "model": "claude-opus-5-5",
+    "session_id": "371e51b2-d4e5-4c99-8da9-91e25b3bb10e",
+    "stop_reason": "success",
+    "result_text": "A pool's remainder now goes to the member with the smallest non-zero cut, and all 4 tests in `bin/e2e` pass. To get there I also had to change something outside the request: claim renumbering on bulk reassign.\n\n**The remainder rule** (`src/main/java/net/officefloor/hq/app/pool/PoolService.java`, method `cuts`): the remainder is the pot minus the rounded cuts.\n- It now goes to the member with the smallest non-zero rounded cut; on a tie, the one added most recently.\n- Members with no cut (retired, held, or 0.00) never get it.\n- If no cut is non-zero, it goes to the last member who still takes a cut. I read \"the last member with a share\" that way, so a retired or held member never receives it.\n\nCuts are worked out only on the server, so the front end needed no code change. I updated the class and method comments to describe the new rule.\n\n**The extra change** (`src/main/java/net/officefloor/hq/app/claim/ClaimService.java`, method `reassign`): the first run passed 3 of the 4 tests. Scenario 2 failed on a claim number, not on cuts. It bulk-reassigns a numbered claim to the person it is already on and expects the claim to take the next number (`X-1` \u2192 `X-2`, with `number=X-2` in the `CLAIM_REASSIGNED` audit line). The code only renumbered a claim when it moved to a different person. I removed that condition. This only changes bulk reassign, because reassigning a single claim to its own person is still refused. It's a behaviour change the request didn't mention, so you may want to confirm it's intended.",
+    "error": "",
+    "attempts": [
+      {
+        "ok": true,
+        "limit_reached": false,
+        "retryable": false,
+        "timed_out": false,
+        "cost_usd": 0.5916541999999999,
+        "num_turns": 20,
+        "duration_ms": 539852,
+        "duration_api_ms": 66280,
+        "error": ""
+      }
+    ]
+  },
+  "agent_stream_file": "cp140.agent.jsonl",
+  "agent_diff_file": "cp140.agent.diff",
+  "build_log_file": null,
+  "tests": {
+    "gated": false,
+    "queued": true
+  },
+  "probe": null,
+  "pinned_touched": [],
+  "acceptance_touched": [],
+  "impact_gate": null
+}
