@@ -54,6 +54,14 @@ public class Statement {
         this.claims = claims;
     }
 
+    /**
+     * The statement as a new row for another person (on this or another sheet): its dates, due-total
+     * and claims counted kept. Saved after another's, it is listed after theirs.
+     */
+    public Statement movedTo(String toSheetId, Long toPersonId) {
+        return new Statement(toSheetId, toPersonId, takenOn, dueTotal, claims, madeOn);
+    }
+
     public Long getId() {
         return id;
     }

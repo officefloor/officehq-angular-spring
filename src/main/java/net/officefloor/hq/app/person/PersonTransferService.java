@@ -7,7 +7,6 @@ import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
-import java.util.Objects;
 import java.util.Set;
 import net.officefloor.hq.app.Audit;
 import net.officefloor.hq.app.claim.Claim;
@@ -21,7 +20,6 @@ import net.officefloor.hq.app.role.RoleService;
 import net.officefloor.hq.app.rollup.RollupService;
 import net.officefloor.hq.app.sheet.SheetHistory;
 import net.officefloor.hq.app.sheet.SheetService;
-import net.officefloor.hq.app.statement.Statement;
 import net.officefloor.hq.app.statement.StatementRepository;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
@@ -33,8 +31,9 @@ import org.springframework.web.server.ResponseStatusException;
  * every grade they were given, their terms, contact and aliases, and their claims with their status,
  * dates, notes, tags, frozen figures and logs. Each claim that had a number takes the next number of
  * the other sheet, in the order the claims were opened (by the sheet's today when each was opened,
- * then by the order they were added). Figures a statement bound are lost, their statements are
- * dropped, and references are not carried. They leave this sheet entirely: patron links, pool
+ * then by the order they were added). Figures a statement bound are kept, their statements go with
+ * them (listed before those of a person they merge into, whose last statement stays theirs, or, having
+ * none, becomes the transferred person's), and references are not carried. They leave this sheet entirely: patron links, pool
  * memberships, holds and watches are dropped. They and their claims arrive as new rows, so
  * this sheet's history (its as-of view) keeps its own. When the other sheet already has a person
  * with their name or an alias, they are merged into that person instead, as a merge does: their
@@ -137,7 +136,7 @@ public class PersonTransferService {
         RollupService.Snapshot before = rollup.snapshot(sheetId);
         RollupService.Snapshot beforeTo = rollup.snapshot(toSheetId);
 
-        // the links to this sheet go: patrons either way, pool memberships, watches and statements
+        // the links to this sheet go: patrons either way, pool memberships and watches
         patrons.deleteAll(patrons.findBySheetIdOrderByIdAsc(sheetId).stream()
                 .filter(l -> l.getPersonId().equals(person.getId()) || l.getPatronId().equals(person.getId()))
                 .toList());
@@ -146,10 +145,6 @@ public class PersonTransferService {
         poolMembers.flush();
         watches.deleteAll(watches.findByPersonIdOrderByIdAsc(person.getId()));
         watches.flush();
-        List<Statement> theirStatements = statements.findBySheetIdOrderByIdAsc(sheetId).stream()
-                .filter(s -> Objects.equals(s.getPersonId(), person.getId())).toList();
-        statements.deleteAll(theirStatements);
-        statements.flush();
 
         // the person and their claims arrive on the other sheet as new rows, or their claims go to the
         // one they merge into, listed after theirs; in the order they were, the numbered ones numbered
@@ -186,6 +181,7 @@ public class PersonTransferService {
         }
         claims.deleteAll(theirs);
         claims.flush();
+        statements.moveStatements(sheetId, person.getId(), toSheetId, arrived.getId());
         people.delete(person);
         people.flush();
 

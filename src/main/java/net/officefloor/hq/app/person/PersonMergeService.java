@@ -2,7 +2,6 @@ package net.officefloor.hq.app.person;
 
 import java.util.ArrayList;
 import java.util.List;
-import java.util.Objects;
 import net.officefloor.hq.app.Audit;
 import net.officefloor.hq.app.claim.Claim;
 import net.officefloor.hq.app.claim.ClaimRepository;
@@ -11,7 +10,6 @@ import net.officefloor.hq.app.pool.PoolMemberRepository;
 import net.officefloor.hq.app.role.RoleService;
 import net.officefloor.hq.app.rollup.RollupService;
 import net.officefloor.hq.app.sheet.SheetService;
-import net.officefloor.hq.app.statement.Statement;
 import net.officefloor.hq.app.statement.StatementRepository;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
@@ -21,11 +19,12 @@ import org.springframework.web.server.ResponseStatusException;
 /**
  * Merging a person into another on the sheet (a steward only). The merged person's claims move to
  * the other, keeping their numbers and dates, listed after the other's in the order they were added,
- * each unbound from any statement; their name and aliases become aliases of the other; their patrons
+ * each keeping any figure a statement bound it to; their statements go to the other, listed before the
+ * other's own (so the other's last statement stays theirs, or, having none, becomes the merged
+ * person's); their name and aliases become aliases of the other; their patrons
  * are added to the other's (not the other themselves, no repeats), anyone naming them as patron names
  * the other instead (no repeats), and their pool memberships move to the other (shares added when the
- * other is already a member). Their statements, holds, watchers and contact are dropped, and they
- * leave the sheet.
+ * other is already a member). Their holds, watchers and contact are dropped, and they leave the sheet.
  */
 @Service
 public class PersonMergeService {
@@ -82,7 +81,6 @@ public class PersonMergeService {
         List<Claim> moved = claims.findBySheetIdAndPersonIdOrderByListedAsc(sheetId, from.getId());
         for (Claim claim : moved) {
             claim.setPersonId(into.getId());
-            claim.bind(false, null);
         }
         claims.saveAllAndFlush(moved);
         for (Claim claim : moved) {
@@ -116,10 +114,7 @@ public class PersonMergeService {
         }
         poolMembers.flush();
 
-        List<Statement> theirStatements = statements.findBySheetIdOrderByIdAsc(sheetId).stream()
-                .filter(s -> Objects.equals(s.getPersonId(), from.getId())).toList();
-        statements.deleteAll(theirStatements);
-        statements.flush();
+        statements.moveStatements(sheetId, from.getId(), sheetId, into.getId());
         watches.deleteAll(watches.findByPersonIdOrderByIdAsc(from.getId()));
         watches.flush();
 
