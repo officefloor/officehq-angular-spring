@@ -1,0 +1,64 @@
+{
+  "checkpoint": 119,
+  "stack": {
+    "repo": "/home/daniel/officehq-angular-spring",
+    "origin": "git@github.com:officefloor/officehq-angular-spring.git",
+    "name": "officehq-angular-spring",
+    "base_ref": "base-empty",
+    "base_commit": "65cb8233ea38b2dfa6cfd18709e30cd18fdf3250"
+  },
+  "checkpoint_id": "cp119_cut-totals",
+  "phase": "mid",
+  "type": "additive",
+  "mutates": [],
+  "replaced_tests": [],
+  "request": {
+    "spec": "Show on each person their cut total: their cuts across every pool they are a member of, added\nup (a pool that shows no cuts adds nothing). Show the sheet's cut total: everyone's added up.\n",
+    "prompt": "You are implementing ONE change to this application.\n\nFIRST read AGENTS.md \u2014 it states the working rules and how the app is tested, and sends you to\nDESIGN.md for the app's stack and conventions. Follow both.\n\nTHE CHANGE REQUEST:\nShow on each person their cut total: their cuts across every pool they are a member of, added\nup (a pool that shows no cuts adds nothing). Show the sheet's cut total: everyone's added up.\n\nYour work is verified by an automated Playwright UI test already installed under e2e/specs/.\nRead that spec: it declares the exact data-testid anchors, values, test data and any audit\nrecords it expects \u2014 match them. Run `bin/e2e` to build the app, start it, and run the test as\nyou work; iterate until it passes. Change whatever the request needs across the app \u2014 its stored\ndata, its server and its front end. Do NOT edit bin/build, bin/start, bin/stop, bin/e2e,\nAGENTS.md, CLAUDE.md, DESIGN.md, e2e/support/ or the test spec.\n"
+  },
+  "commit_sha": "df935be40725c952cb2415f19ecfe516da55e90f",
+  "reset_sha": "",
+  "preagent_sha": "bd967073d9afcfb8c9767dc3617d527addf5aeeb",
+  "prev_sha": "bd967073d9afcfb8c9767dc3617d527addf5aeeb",
+  "base_sha": "65cb8233ea38b2dfa6cfd18709e30cd18fdf3250",
+  "agent": {
+    "ok": true,
+    "cost_usd": 0.5464932,
+    "input_tokens": 24,
+    "output_tokens": 4698,
+    "cache_read_tokens": 457666,
+    "cache_creation_tokens": 45113,
+    "num_turns": 14,
+    "duration_ms": 295554,
+    "duration_api_ms": 49107,
+    "model": "claude-opus-5-5",
+    "session_id": "83b0c53f-469f-4a9b-8414-ef632014513a",
+    "stop_reason": "success",
+    "result_text": "Each person row now shows a cut total, and the sheet shows the total for everyone. All 4 Playwright tests in `bin/e2e` pass.\n\nThe change is front-end only. The server already works out each pool member's cut, so I left the server and stored data alone.\n\n- **`src/main/frontend/src/app/features/pools/pools.ts`**: the pools list is now shared with the people screen, and it updates every time the pools are re-read or one is added or changed.\n- **`src/main/frontend/src/app/features/people/people.ts`**:\n  - **Person total (`person-cut-total`):** adds up that person's cuts across every pool they're in. A pool that shows no cut adds nothing, and someone with no cuts shows `0.00`.\n  - **Sheet total (`rollup-cut-total`):** adds up everyone's totals. It appears below \"Overdue in total\".\n\nThe totals only count cuts paid to people. When a pool is a member of another pool, its cut there isn't added on its own, because it's already shared out to the people in it, so adding it would count it twice.\n\nBecause the totals are worked out on screen from the pools list, they change as soon as a pool member, the pot or the people change, without reloading the sheet.",
+    "error": "",
+    "attempts": [
+      {
+        "ok": true,
+        "limit_reached": false,
+        "retryable": false,
+        "timed_out": false,
+        "cost_usd": 0.5464932,
+        "num_turns": 14,
+        "duration_ms": 295554,
+        "duration_api_ms": 49107,
+        "error": ""
+      }
+    ]
+  },
+  "agent_stream_file": "cp119.agent.jsonl",
+  "agent_diff_file": "cp119.agent.diff",
+  "build_log_file": null,
+  "tests": {
+    "gated": false,
+    "queued": true
+  },
+  "probe": null,
+  "pinned_touched": [],
+  "acceptance_touched": [],
+  "impact_gate": null
+}
