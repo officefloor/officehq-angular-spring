@@ -95,6 +95,10 @@ public class Sheet {
     @Column(name = "period_numbering_from")
     private LocalDate periodNumberingFrom;
 
+    /** The default date of a new claim in place of the sheet's today; null for off. */
+    @Column(name = "entry_date")
+    private LocalDate entryDate;
+
     /** The days after a period's to-date it is left open once the sheet's today passes it; null for off. */
     @Column(name = "grace_days")
     private Integer graceDays;
@@ -176,6 +180,7 @@ public class Sheet {
         settingLog.stream().filter(s -> s.madeBy(day)).forEach(s -> then.put(s.getKey(), s.getFromDate(), s.getValue()));
         then.policyDate = policyDate;
         then.periodNumberingFrom = periodNumberingFrom;
+        then.entryDate = entryDate;
         then.graceDays = graceDays;
         then.permissions.putAll(permissions);
         then.archived = archived;
@@ -300,6 +305,19 @@ public class Sheet {
 
     public void setPeriodNumberingFrom(LocalDate periodNumberingFrom) {
         this.periodNumberingFrom = periodNumberingFrom;
+    }
+
+    public LocalDate getEntryDate() {
+        return entryDate;
+    }
+
+    public void setEntryDate(LocalDate entryDate) {
+        this.entryDate = entryDate;
+    }
+
+    /** The default date of a new claim: the entry date when set, else the sheet's today. */
+    public LocalDate entryDateOrToday() {
+        return entryDate != null ? entryDate : today;
     }
 
     public Integer getGraceDays() {

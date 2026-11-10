@@ -755,6 +755,6 @@ public class ClaimService {
     }
 
     private LocalDate dateOrToday(String sheetId, LocalDate date) {
-        return date != null ? date : sheets.today(sheetId);
+        return date != null ? date : sheets.entryDate(sheetId);
     }
 }

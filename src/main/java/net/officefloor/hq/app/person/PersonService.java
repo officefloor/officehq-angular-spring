@@ -103,11 +103,19 @@ public class PersonService {
     /**
      * Give each of the people a grade from a from-date (the sheet's today when none is given), in list
      * order, exactly as editing each with the person form would (name and terms kept). All or none: a
-     * person not on the sheet refuses the lot.
+     * person not on the sheet refuses the lot. A viewer may grade no one: each person is refused and
+     * none is graded.
      */
     @Transactional
     public List<Person> bulkGrade(String sheetId, String user, List<Long> ids, String grade, LocalDate gradeFrom) {
-        roles.refuseViewer(sheetId, user);
+        try {
+            roles.refuseViewer(sheetId, user);
+        } catch (ResponseStatusException e) {
+            if (e.getStatusCode() == HttpStatus.FORBIDDEN) {
+                return List.of();
+            }
+            throw e;
+        }
         Set<Long> wanted = new HashSet<>(ids);
         List<Person> chosen = people.findBySheetIdOrderByIdAsc(sheetId).stream()
                 .filter(p -> wanted.contains(p.getId())).toList();
@@ -205,6 +213,7 @@ public class PersonService {
      */
     @Transactional
     public void watch(String sheetId, String user, long id, boolean on) {
+        roles.refuseViewer(sheetId, user);
         sheets.refuseIfArchived(sheetId);
         Person person = people.lockByIdAndSheetId(id, sheetId)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "No such person on this sheet."));

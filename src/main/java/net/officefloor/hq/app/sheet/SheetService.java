@@ -53,6 +53,12 @@ public class SheetService {
         return sheets.findById(id).map(Sheet::getToday).orElseGet(LocalDate::now);
     }
 
+    /** The default date of a new claim on the sheet: its entry date when set, else its today. */
+    @Transactional(readOnly = true)
+    public LocalDate entryDate(String id) {
+        return sheets.findById(id).map(Sheet::entryDateOrToday).orElseGet(LocalDate::now);
+    }
+
     /** The sheet as the store holds it now; a sheet never loaded reads as a new one, today the real date. */
     @Transactional(readOnly = true)
     public Sheet sheet(String id) {

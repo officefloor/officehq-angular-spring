@@ -38,6 +38,8 @@ import { DatedValue, START_FLOOR, START_LATE_PCT, valueOn } from '../rates/rates
 // Grace days (whole days; blank: off): when the sheet's today changes, every open period whose
 // to-date plus the grace days is before the new today is closed. It saves, like the clerk limit,
 // once its field has been entered; it is not dated.
+// The entry date (blank: off): while set, it is the default date of a new claim in place of the
+// sheet's today. It saves like the policy date; it is not dated.
 /** A value saved for a dated setting, by key: blank from for the beginning of time, blank value for none. */
 interface DatedSetting extends DatedValue {
   key: string;
@@ -67,6 +69,8 @@ interface SettingsResponse {
   permissions: Partial<Record<PermAction, string>>;
   /** The grace days, blank for off. */
   graceDays: string;
+  /** The entry date, blank for off. */
+  entryDate: string;
 }
 
 /** The actions the permission matrix covers. */
@@ -277,6 +281,15 @@ const DATE = /^\d{4}-\d{2}-\d{2}$/;
           (focus)="enterGrace($any($event.target))"
           (input)="graceInput.set($any($event.target).value); error.set(null)"
         />
+        <label for="setting-entry-date">Entry date for new claims (blank: off)</label>
+        <input
+          id="setting-entry-date"
+          data-testid="setting-entry-date"
+          type="date"
+          [value]="entryInput() ?? ''"
+          (focus)="enterEntry($any($event.target))"
+          (input)="entryInput.set($any($event.target).value); error.set(null)"
+        />
         <button type="submit" data-testid="settings-save">Save settings</button>
         @if (error(); as err) {
           <p role="alert" data-testid="settings-error">{{ err }}</p>
@@ -350,6 +363,13 @@ const DATE = /^\d{4}-\d{2}-\d{2}$/;
         <strong data-testid="setting-grace-days-current">{{ graceDays() }}</strong>
         @if (graceDays() === '') {
           <span>(off)</span>
+        }
+      </p>
+      <p>
+        Entry date:
+        <strong data-testid="setting-entry-date-current">{{ entryDate() }}</strong>
+        @if (entryDate() === '') {
+          <span>(off: the sheet's today)</span>
         }
       </p>
       @for (a of permActions; track a) {
@@ -427,6 +447,10 @@ export class Settings {
   protected readonly graceDays = signal('');
   /** The grace days typed; null while its field has not been entered (left as they are). */
   protected readonly graceInput = signal<string | null>(null);
+  /** The entry date in force; blank for off. */
+  protected readonly entryDate = signal('');
+  /** The entry date typed; null while its field has not been entered (left as it is). */
+  protected readonly entryInput = signal<string | null>(null);
   protected readonly permActions = PERM_ACTIONS;
   /** The permission matrix in force: for each action, its roles, blank for the standing rule. */
   protected readonly permissions = signal<Partial<Record<PermAction, string>>>({});
@@ -441,7 +465,7 @@ export class Settings {
     effect(() => {
       const sheet = this.session.sheet();
       this.session.loads();
-      untracked(() => this.show({ dated: [], policyDate: '', periodNumberingFrom: '', permissions: {}, graceDays: '' }));
+      untracked(() => this.show({ dated: [], policyDate: '', periodNumberingFrom: '', permissions: {}, graceDays: '', entryDate: '' }));
       this.permInput.set({});
       this.gradeTermsInput.set({});
       this.fromInput.set({});
@@ -455,6 +479,7 @@ export class Settings {
       this.policyInput.set(null);
       this.numberingInput.set(null);
       this.graceInput.set(null);
+      this.entryInput.set(null);
       this.error.set(null);
       if (sheet) {
         void this.fetch(sheet);
@@ -525,6 +550,14 @@ export class Settings {
     this.numberingInput.set(this.numberingFrom());
   }
 
+  /** Entering the entry date's field fills it with the date in force, so it saves as it is unless
+   *  changed. */
+  protected enterEntry(input: HTMLInputElement): void {
+    if (this.entryInput() !== null) return;
+    input.value = this.entryDate();
+    this.entryInput.set(this.entryDate());
+  }
+
   /** Entering the grace days' field fills it with the days in force, selected, so they save as
    *  they are unless typed over. */
   protected enterGrace(input: HTMLInputElement): void {
@@ -574,7 +607,7 @@ export class Settings {
   }
 
   private show(
-    res: Pick<SettingsResponse, 'dated' | 'policyDate' | 'periodNumberingFrom' | 'permissions' | 'graceDays'>,
+    res: Pick<SettingsResponse, 'dated' | 'policyDate' | 'periodNumberingFrom' | 'permissions' | 'graceDays' | 'entryDate'>,
   ): void {
     this.dated.set(res.dated);
     this.permissions.set(res.permissions);
@@ -584,6 +617,7 @@ export class Settings {
     this.policyDate.set(res.policyDate);
     this.numberingFrom.set(res.periodNumberingFrom);
     this.graceDays.set(res.graceDays);
+    this.entryDate.set(res.entryDate);
   }
 
   protected async save(event: Event): Promise<void> {
@@ -601,6 +635,7 @@ export class Settings {
     const proofThreshold = this.thresholdInput()?.trim() ?? null;
     const noteThreshold = this.noteThresholdInput()?.trim() ?? null;
     const graceDays = this.graceInput()?.trim() ?? null;
+    const entryDate = this.entryInput()?.trim() ?? null;
     if (clerkLimit !== null && clerkLimit !== '' && !LIMIT.test(clerkLimit)) {
       this.error.set('Enter a clerk limit of 0.00 or more, with up to two decimals, or leave it blank.');
       return;
@@ -649,6 +684,10 @@ export class Settings {
     }
     if (graceDays !== null && graceDays !== '' && !TERMS.test(graceDays)) {
       this.error.set('Enter grace days of 0 or more whole days, or leave it blank for off.');
+      return;
+    }
+    if (entryDate !== null && entryDate !== '' && !DATE.test(entryDate)) {
+      this.error.set('Enter an entry date as a date, or leave it blank for off.');
       return;
     }
     const perms: Partial<Record<PermAction, string>> = {};
@@ -706,6 +745,7 @@ export class Settings {
           permClose: perms.close ?? null,
           permReopen: perms.reopen ?? null,
           graceDays,
+          entryDate,
         }),
       );
       if (this.session.sheet() !== sheet) return;
@@ -722,6 +762,7 @@ export class Settings {
       this.noteThresholdInput.set(null);
       this.permInput.set({});
       this.graceInput.set(null);
+      this.entryInput.set(null);
       this.fromInput.set({});
     } catch {
       this.error.set('Could not save the settings.');

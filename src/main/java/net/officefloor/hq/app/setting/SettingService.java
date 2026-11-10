@@ -35,7 +35,8 @@ import org.springframework.transaction.annotation.Transactional;
  * for each of open, settle, void, reassign, close and reopen, the roles that may take it (blank: the
  * standing rule, see {@link Sheet#permits}), recorded under the key {@code perm-<action>}. Nor are
  * the grace days (none: off): when the sheet's today changes, every open period whose to-date plus
- * the grace days is before the new today is closed (see {@link SheetService#setToday}).
+ * the grace days is before the new today is closed (see {@link SheetService#setToday}). Nor is the
+ * entry date (none: off): while set, it is the default date of a new claim in place of the sheet's today.
  */
 @Service
 public class SettingService {
@@ -52,6 +53,7 @@ public class SettingService {
     public static final String POLICY_DATE = "policy-date";
     public static final String PERIOD_NUMBERING_FROM = "period-numbering-from";
     public static final String GRACE_DAYS = "grace-days";
+    public static final String ENTRY_DATE = "entry-date";
     /** The key of a permission matrix entry: {@code perm-<action>}. */
     public static final String PERMISSION = "perm-";
 
@@ -90,7 +92,7 @@ public class SettingService {
      * (by grade, in grade order), and a proof threshold when {@code proofThreshold} is not null, and a note threshold when
      * {@code noteThreshold} is not null, and each permission matrix entry
      * given in {@code permissions} (by action, in the order given; blank for the standing rule), and the grace days when
-     * {@code changeGrace} (null for off). Each figure is recorded from its from-date, keeping the values
+     * {@code changeGrace} (null for off), and the entry date when {@code changeEntry} (null for off). Each figure is recorded from its from-date, keeping the values
      * already recorded (one already recorded from that date is replaced). Each one saved is
      * recorded, in that order.
      */
@@ -100,7 +102,7 @@ public class SettingService {
             boolean changeNumbering, LocalDate numberingFrom, Dated<BigDecimal> cap,
             Map<String, Dated<Integer>> gradeTerms, Dated<BigDecimal> proofThreshold, Dated<BigDecimal> noteThreshold,
             Map<String, String> permissions,
-            boolean changeGrace, Integer graceDays) {
+            boolean changeGrace, Integer graceDays, boolean changeEntry, LocalDate entryDate) {
         roles.refuseViewer(sheetId, user);
         Sheet sheet = sheets.load(sheetId, user);
         if (limit != null) {
@@ -154,6 +156,11 @@ public class SettingService {
             sheet.setGraceDays(graceDays);
             sheet = sheetStore.saveAndFlush(sheet);
             audit.recordOnCommit(changed(sheetId, user, GRACE_DAYS, graceDays == null ? "" : graceDays.toString()));
+        }
+        if (changeEntry) {
+            sheet.setEntryDate(entryDate);
+            sheet = sheetStore.saveAndFlush(sheet);
+            audit.recordOnCommit(changed(sheetId, user, ENTRY_DATE, entryDate == null ? "" : entryDate.toString()));
         }
         return sheet;
     }
