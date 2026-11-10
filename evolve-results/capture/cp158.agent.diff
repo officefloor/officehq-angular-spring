@@ -1,0 +1,210 @@
+diff --git a/src/main/frontend/src/app/core/session.ts b/src/main/frontend/src/app/core/session.ts
+index 95893d31e..4e4676692 100644
+--- a/src/main/frontend/src/app/core/session.ts
++++ b/src/main/frontend/src/app/core/session.ts
+@@ -1,5 +1,5 @@
+ import { HttpClient } from '@angular/common/http';
+-import { Injectable, inject, signal } from '@angular/core';
++import { Injectable, computed, inject, signal } from '@angular/core';
+ import { firstValueFrom } from 'rxjs';
+ 
+ // The session: who is signed in (a name, no password) and which sheet is active. Everything else
+@@ -19,6 +19,13 @@ export type Locale = (typeof LOCALES)[number];
+ /** The keys the people list can be sorted by on the screen. */
+ export type PeopleSort = 'added' | 'name' | 'grade' | 'due-total';
+ 
++/** The columns of the people list a user may switch off on their screen. */
++export const PEOPLE_COLUMNS = [
++  'claimed', 'due-total', 'statement-count', 'stated-total', 'statement-date', 'overdue-count', 'overdue-total',
++  'patrons', 'backing', 'excess', 'hold', 'retired', 'terms', 'contact', 'aliases',
++] as const;
++export type PeopleColumn = (typeof PEOPLE_COLUMNS)[number];
++
+ @Injectable({ providedIn: 'root' })
+ export class Session {
+   private readonly http = inject(HttpClient);
+@@ -39,6 +46,21 @@ export class Session {
+   readonly showRetired = signal(false);
+   /** What this screen sorts the people list by: off (added) when the screen opens, and left as it is by loading a sheet. */
+   readonly sortBy = signal<PeopleSort>('added');
++  /** The people-list columns each user has switched off on this screen: all shown until they choose, and left as they are by loading a sheet. */
++  private readonly hiddenColumns = signal<ReadonlyMap<string, ReadonlySet<PeopleColumn>>>(new Map());
++  /** The columns the signed-in user has switched off on this screen. */
++  readonly hidden = computed(() => this.hiddenColumns().get(this.user() ?? '') ?? new Set<PeopleColumn>());
++
++  /** Show or hide one column of the people list for the signed-in user on this screen. */
++  showColumn(column: PeopleColumn, shown: boolean): void {
++    const user = this.user() ?? '';
++    this.hiddenColumns.update((all) => {
++      const off = new Set(all.get(user));
++      if (shown) off.delete(column);
++      else off.add(column);
++      return new Map(all).set(user, off);
++    });
++  }
+   /**
+    * The date this screen shows the sheet as of (none: as it is now). Sent with every request
+    * (see asOfInterceptor): the store answers as the sheet stood at the end of that date, its today
+diff --git a/src/main/frontend/src/app/features/people/people.ts b/src/main/frontend/src/app/features/people/people.ts
+index 7ca7c1e8f..019dcb4ba 100644
+--- a/src/main/frontend/src/app/features/people/people.ts
++++ b/src/main/frontend/src/app/features/people/people.ts
+@@ -1,7 +1,7 @@
+ import { HttpClient, HttpErrorResponse } from '@angular/common/http';
+ import { Component, computed, effect, inject, signal } from '@angular/core';
+ import { firstValueFrom } from 'rxjs';
+-import { Session } from '../../core/session';
++import { PEOPLE_COLUMNS, PeopleColumn, Session } from '../../core/session';
+ import { AMOUNT, Claim, PersonClaims, cents, counts, dayNumber, deferred, isCorrection, isOpen, money, overdue, plusDays, roundingDate, statusAt } from '../claims/claims';
+ import { AuditView } from '../audit/audit-view';
+ import { TreeSearch } from '../search/tree-search';
+@@ -385,6 +385,20 @@ const SUMMARY_STATUSES = ['DRAFT', 'OPEN', 'PENDING', 'SETTLED', 'VOID', 'REVIEW
+         />
+         Show retired
+       </label>
++      <fieldset>
++        <legend>Columns</legend>
++        @for (c of columns; track c) {
++          <label>
++            <input
++              type="checkbox"
++              [attr.data-testid]="'column-' + c"
++              [checked]="!session.hidden().has(c)"
++              (change)="session.showColumn(c, $any($event.target).checked)"
++            />
++            {{ c }}
++          </label>
++        }
++      </fieldset>
+       <label>
+         Sort by
+         <select
+@@ -556,11 +570,11 @@ const SUMMARY_STATUSES = ['DRAFT', 'OPEN', 'PENDING', 'SETTLED', 'VOID', 'REVIEW
+             <th scope="col"><span class="visually-hidden">Select</span></th>
+             <th scope="col">Name</th>
+             <th scope="col">Grade</th>
+-            <th scope="col">Terms</th>
+-            <th scope="col">Contact</th>
++            @if (shown('terms')) { <th scope="col">Terms</th> }
++            @if (shown('contact')) { <th scope="col">Contact</th> }
+             <th scope="col">Tags</th>
+-            <th scope="col">Claimed</th>
+-            <th scope="col">Due</th>
++            @if (shown('claimed')) { <th scope="col">Claimed</th> }
++            @if (shown('due-total')) { <th scope="col">Due</th> }
+             <th scope="col">Settled</th>
+             <th scope="col">Open</th>
+             @for (pd of periods(); track pd.id) {
+@@ -598,11 +612,19 @@ const SUMMARY_STATUSES = ['DRAFT', 'OPEN', 'PENDING', 'SETTLED', 'VOID', 'REVIEW
+               </td>
+               <td data-testid="person-name">{{ p.name }}</td>
+               <td data-testid="person-grade">{{ gradeToday(p) }}</td>
+-              <td data-testid="person-terms">{{ p.terms ?? '' }}</td>
+-              <td data-testid="person-contact">{{ p.contact ?? '' }}</td>
++              @if (shown('terms')) {
++                <td data-testid="person-terms">{{ p.terms ?? '' }}</td>
++              }
++              @if (shown('contact')) {
++                <td data-testid="person-contact">{{ p.contact ?? '' }}</td>
++              }
+               <td data-testid="person-tags">{{ p.tags.join(', ') }}</td>
+-              <td data-testid="person-claimed">{{ claimedOf(p.id) | figure }}</td>
+-              <td data-testid="person-due-total">{{ dueText(dueOf(p)) | figure }}</td>
++              @if (shown('claimed')) {
++                <td data-testid="person-claimed">{{ claimedOf(p.id) | figure }}</td>
++              }
++              @if (shown('due-total')) {
++                <td data-testid="person-due-total">{{ dueText(dueOf(p)) | figure }}</td>
++              }
+               <td data-testid="person-settled-total">{{ money(settledOpenOf(p).settled) | figure }}</td>
+               <td data-testid="person-open-total">{{ money(settledOpenOf(p).open) | figure }}</td>
+               @for (pd of periods(); track pd.id) {
+@@ -612,17 +634,29 @@ const SUMMARY_STATUSES = ['DRAFT', 'OPEN', 'PENDING', 'SETTLED', 'VOID', 'REVIEW
+               <td data-testid="person-aged-31-60">{{ money(agedOf(p)[1]) | figure }}</td>
+               <td data-testid="person-aged-61">{{ money(agedOf(p)[2]) | figure }}</td>
+               <td>
+-                <span data-testid="person-overdue-count">{{ overdueOf(p).count }}</span>
+-                <span>totalling <span data-testid="person-overdue-total">{{ money(overdueOf(p).cents) | figure }}</span></span>
++                @if (shown('overdue-count')) {
++                  <span data-testid="person-overdue-count">{{ overdueOf(p).count }}</span>
++                }
++                @if (shown('overdue-total')) {
++                  <span>totalling <span data-testid="person-overdue-total">{{ money(overdueOf(p).cents) | figure }}</span></span>
++                }
+               </td>
+               <td data-testid="person-active">{{ isActive(p) ? 'yes' : 'no' }}</td>
+               <td>
+-                <span data-testid="person-statement-count">{{ statementOf(p.id)?.count ?? 0 }}</span>
+-                <span>Last due <span data-testid="person-stated-total">{{ (statementOf(p.id)?.dueTotal ?? '') | figure }}</span></span>
+-                <span>on <span data-testid="person-statement-date">{{ statementOf(p.id)?.date ?? '' }}</span></span>
++                @if (shown('statement-count')) {
++                  <span data-testid="person-statement-count">{{ statementOf(p.id)?.count ?? 0 }}</span>
++                }
++                @if (shown('stated-total')) {
++                  <span>Last due <span data-testid="person-stated-total">{{ (statementOf(p.id)?.dueTotal ?? '') | figure }}</span></span>
++                }
++                @if (shown('statement-date')) {
++                  <span>on <span data-testid="person-statement-date">{{ statementOf(p.id)?.date ?? '' }}</span></span>
++                }
+               </td>
+               <td>
+-                <span data-testid="person-retired">{{ p.retired ? 'yes' : 'no' }}</span>
++                @if (shown('retired')) {
++                  <span data-testid="person-retired">{{ p.retired ? 'yes' : 'no' }}</span>
++                }
+                 <span>from <span data-testid="person-retired-from">{{ p.retiredFrom ?? '' }}</span></span>
+                 <ul>
+                   @for (r of p.retirements; track $index) {
+@@ -636,7 +670,9 @@ const SUMMARY_STATUSES = ['DRAFT', 'OPEN', 'PENDING', 'SETTLED', 'VOID', 'REVIEW
+                 </ul>
+               </td>
+               <td>
+-                <span data-testid="person-hold">{{ p.held ? 'yes' : 'no' }}</span>
++                @if (shown('hold')) {
++                  <span data-testid="person-hold">{{ p.held ? 'yes' : 'no' }}</span>
++                }
+                 <ul>
+                   @for (h of p.holds; track $index) {
+                     <li data-testid="person-hold-line">{{ h.from }} to {{ h.to ?? 'open' }}</li>
+@@ -644,7 +680,9 @@ const SUMMARY_STATUSES = ['DRAFT', 'OPEN', 'PENDING', 'SETTLED', 'VOID', 'REVIEW
+                 </ul>
+               </td>
+               <td>
+-                <span data-testid="person-aliases">{{ p.aliases.join(', ') }}</span>
++                @if (shown('aliases')) {
++                  <span data-testid="person-aliases">{{ p.aliases.join(', ') }}</span>
++                }
+                 <label [for]="'person-alias-input-' + p.id" class="visually-hidden">Alias for {{ p.name }}</label>
+                 <input
+                   type="text"
+@@ -667,9 +705,15 @@ const SUMMARY_STATUSES = ['DRAFT', 'OPEN', 'PENDING', 'SETTLED', 'VOID', 'REVIEW
+               </td>
+               <td data-testid="person-origin">{{ p.origin ?? '' }}</td>
+               <td>
+-                <span data-testid="person-patrons">{{ patronNamesOf(p.id) }}</span>
+-                <span>backing <span data-testid="person-backing">{{ money(backingOf(p.id)) | figure }}</span></span>
+-                <span>excess <span data-testid="person-excess">{{ money(excessOf(p)) | figure }}</span></span>
++                @if (shown('patrons')) {
++                  <span data-testid="person-patrons">{{ patronNamesOf(p.id) }}</span>
++                }
++                @if (shown('backing')) {
++                  <span>backing <span data-testid="person-backing">{{ money(backingOf(p.id)) | figure }}</span></span>
++                }
++                @if (shown('excess')) {
++                  <span>excess <span data-testid="person-excess">{{ money(excessOf(p)) | figure }}</span></span>
++                }
+                 <span>cut <span data-testid="person-cut-total">{{ money(cutTotalOf(p.id)) | figure }}</span></span>
+                 <label [for]="'person-patron-select-' + p.id">Patron</label>
+                 <select
+@@ -899,6 +943,11 @@ const SUMMARY_STATUSES = ['DRAFT', 'OPEN', 'PENDING', 'SETTLED', 'VOID', 'REVIEW
+   `,
+ })
+ export class People {
++  protected readonly columns = PEOPLE_COLUMNS;
++  /** Whether the signed-in user shows this column of the list on this screen. */
++  protected shown(column: PeopleColumn): boolean {
++    return !this.session.hidden().has(column);
++  }
+   private readonly http = inject(HttpClient);
+   protected readonly session = inject(Session);
+ 
