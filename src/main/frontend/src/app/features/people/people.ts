@@ -1048,10 +1048,18 @@ export class People {
       };
     });
   });
-  /** Per period: its due-total, as the periods list shows it. */
-  protected readonly periodSummary = computed<PeriodSummary[]>(() =>
-    this.periods().map((p) => ({ name: p.name, dueTotal: periodDueTotal(p, this.dues()) })),
-  );
+  /** Per period: its due-total, as the periods list shows it, and its change from the period
+   *  before it by start date (none for the earliest). */
+  protected readonly periodSummary = computed<PeriodSummary[]>(() => {
+    const totals = new Map(this.periods().map((p) => [p.id, periodDueTotal(p, this.dues())]));
+    const byStart = [...this.periods()].sort((a, b) => (a.from < b.from ? -1 : a.from > b.from ? 1 : 0));
+    const change = new Map<number, string>();
+    byStart.forEach((p, i) => {
+      const before = byStart[i - 1];
+      change.set(p.id, before ? money(cents(totals.get(p.id)!) - cents(totals.get(before.id)!)) : '');
+    });
+    return this.periods().map((p) => ({ name: p.name, dueTotal: totals.get(p.id)!, change: change.get(p.id)! }));
+  });
   /** A person's due-total for a period, as their row shows it. */
   protected periodDueOf(period: Period, personId: number): string {
     return personPeriodDueTotal(period, personId, this.dues());

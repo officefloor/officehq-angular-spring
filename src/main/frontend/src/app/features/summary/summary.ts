@@ -1,7 +1,7 @@
 import { Component, input } from '@angular/core';
 
 // The sheet at a glance, drawn from the same figures the lists show: per grade, how many people
-// not retired are on it today, their due-totals added up and how many of them are active; per period, its due-total; per
+// not retired are on it today, their due-totals added up and how many of them are active; per period, its due-total and its change from the period before it by start date; per
 // status, how many claims on the sheet have it; per void reason on the sheet's list, how many VOID
 // claims were voided with it.
 export interface GradeSummary {
@@ -14,6 +14,8 @@ export interface GradeSummary {
 export interface PeriodSummary {
   name: string;
   dueTotal: string;
+  /** This period's due-total minus the one before it by start date; empty for the earliest. */
+  change: string;
 }
 
 export interface VoidReasonSummary {
@@ -56,6 +58,7 @@ export interface StatusSummary {
           <tr>
             <th scope="col">Period</th>
             <th scope="col">Due</th>
+            <th scope="col">Change</th>
           </tr>
         </thead>
         <tbody>
@@ -63,6 +66,7 @@ export interface StatusSummary {
             <tr>
               <th scope="row">{{ p.name }}</th>
               <td [attr.data-testid]="'summary-period-' + p.name + '-due-total'">{{ p.dueTotal }}</td>
+              <td [attr.data-testid]="'summary-period-' + p.name + '-change'">{{ p.change }}</td>
             </tr>
           }
         </tbody>
