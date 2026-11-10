@@ -7,6 +7,7 @@ import { DatedDue, Period, Periods, periodDueTotal } from '../periods/periods';
 import { DatedGrade, Lateness, Rate, Rates, chargedDueCents, dueText, gradeOn, pctOn } from '../rates/rates';
 import { Roles } from '../roles/roles';
 import { Settings } from '../settings/settings';
+import { Header } from '../header/header';
 import { GradeSummary, PeriodSummary, StatusSummary, Summary } from '../summary/summary';
 
 // The people on the active sheet, in the order they were added, and the one form that both adds
@@ -118,8 +119,14 @@ const SUMMARY_STATUSES = ['DRAFT', 'OPEN', 'PENDING', 'SETTLED', 'VOID'] as cons
 
 @Component({
   selector: 'app-people',
-  imports: [PersonClaims, Periods, Rates, Roles, Settings, Summary],
+  imports: [Header, PersonClaims, Periods, Rates, Roles, Settings, Summary],
   template: `
+    <app-header
+      [peopleCount]="people().length"
+      [statuses]="statusSummary()"
+      [dueTotal]="dueTotal()"
+      [overdueTotal]="money(overdueTotals().cents)"
+    />
     <app-rates [(rates)]="rates" />
     <app-roles />
     <app-settings [(floor)]="floor" [(latePct)]="latePct" [(policyDate)]="policyDate" />
