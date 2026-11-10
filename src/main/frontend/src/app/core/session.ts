@@ -12,6 +12,9 @@ interface SheetResponse {
   lastBatch: number | null;
 }
 
+/** The keys the people list can be sorted by on the screen. */
+export type PeopleSort = 'added' | 'name' | 'grade' | 'due-total';
+
 @Injectable({ providedIn: 'root' })
 export class Session {
   private readonly http = inject(HttpClient);
@@ -28,6 +31,8 @@ export class Session {
   readonly parent = signal('');
   /** Whether retired people are listed: off when the screen opens, and left as it is by loading a sheet. */
   readonly showRetired = signal(false);
+  /** What this screen sorts the people list by: off (added) when the screen opens, and left as it is by loading a sheet. */
+  readonly sortBy = signal<PeopleSort>('added');
   /**
    * The date this screen shows the sheet as of (none: as it is now). Sent with every request
    * (see asOfInterceptor): the store answers as the sheet stood at the end of that date, its today

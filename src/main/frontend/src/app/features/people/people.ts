@@ -371,6 +371,19 @@ const SUMMARY_STATUSES = ['DRAFT', 'OPEN', 'PENDING', 'SETTLED', 'VOID'] as cons
         />
         Show retired
       </label>
+      <label>
+        Sort by
+        <select
+          data-testid="sort-by"
+          [value]="session.sortBy()"
+          (change)="session.sortBy.set($any($event.target).value)"
+        >
+          <option value="added">added</option>
+          <option value="name">name</option>
+          <option value="grade">grade</option>
+          <option value="due-total">due-total</option>
+        </select>
+      </label>
       <button type="button" data-testid="export-people" (click)="exportCsv()">Export people (CSV)</button>
       <button type="button" data-testid="export-claims" (click)="exportClaims()">Export claims (CSV)</button>
       <button type="button" data-testid="bulk-open" (click)="bulkOpen()">Open selected claims</button>
@@ -539,7 +552,7 @@ const SUMMARY_STATUSES = ['DRAFT', 'OPEN', 'PENDING', 'SETTLED', 'VOID'] as cons
           </tr>
         </thead>
         <tbody>
-          @for (p of listed(); track p.id) {
+          @for (p of sorted(); track p.id) {
             <tr [attr.data-testid]="'person-row-' + p.id">
               <td>
                 <input
@@ -837,6 +850,24 @@ export class People {
   protected readonly listed = computed(() =>
     this.session.showRetired() ? this.people() : this.people().filter((p) => !p.retired),
   );
+  /** The listed people in the order this screen sorts them by; equal keys keep list order. Only the
+   *  rows shown follow it: every total and action keeps to list order. */
+  protected readonly sorted = computed(() => {
+    const listed = this.listed();
+    const by = this.session.sortBy();
+    if (by === 'added') return listed;
+    const key = (p: Person): string | number | null =>
+      by === 'name' ? p.name.toLowerCase() : by === 'grade' ? this.gradeToday(p) || null : this.dueOf(p);
+    const keyed = listed.map((p) => ({ p, k: key(p) }));
+    return keyed
+      .sort((a, b) => {
+        if (a.k === b.k) return 0;
+        if (a.k === null) return 1;
+        if (b.k === null) return -1;
+        return a.k < b.k ? -1 : 1;
+      })
+      .map((e) => e.p);
+  });
   /** The sheet id typed on each person's row to transfer them to, by person id. */
   protected readonly transferTos = signal<ReadonlyMap<number, string>>(new Map());
   /** The retire-from date typed on each person's row, by person id. */
