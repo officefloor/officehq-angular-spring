@@ -1,0 +1,64 @@
+{
+  "checkpoint": 177,
+  "stack": {
+    "repo": "/home/daniel/officehq-angular-spring",
+    "origin": "git@github.com:officefloor/officehq-angular-spring.git",
+    "name": "officehq-angular-spring",
+    "base_ref": "base-empty",
+    "base_commit": "65cb8233ea38b2dfa6cfd18709e30cd18fdf3250"
+  },
+  "checkpoint_id": "cp177_proof-kinds",
+  "phase": "late",
+  "type": "additive",
+  "mutates": [],
+  "replaced_tests": [],
+  "request": {
+    "spec": "A proof has a kind, receipt or photo, chosen when it is added (receipt when none is chosen);\nCLAIM_PROOF_ADDED gains kind=<kind> at its end when a kind was chosen, and the claim shows a count\nper kind beside the total. The sheet gains proof kinds (settings, a comma separated list of kinds, not dated;\nSETTING_CHANGED key=proof-kinds value=<list>): while set, a claim above the proof threshold needs\nat least one proof of each listed kind before it can be settled or approved.\n",
+    "prompt": "You are implementing ONE change to this application.\n\nFIRST read AGENTS.md \u2014 it states the working rules and how the app is tested, and sends you to\nDESIGN.md for the app's stack and conventions. Follow both.\n\nTHE CHANGE REQUEST:\nA proof has a kind, receipt or photo, chosen when it is added (receipt when none is chosen);\nCLAIM_PROOF_ADDED gains kind=<kind> at its end when a kind was chosen, and the claim shows a count\nper kind beside the total. The sheet gains proof kinds (settings, a comma separated list of kinds, not dated;\nSETTING_CHANGED key=proof-kinds value=<list>): while set, a claim above the proof threshold needs\nat least one proof of each listed kind before it can be settled or approved.\n\nYour work is verified by an automated Playwright UI test already installed under e2e/specs/.\nRead that spec: it declares the exact data-testid anchors, values, test data and any audit\nrecords it expects \u2014 match them. Run `bin/e2e` to build the app, start it, and run the test as\nyou work; iterate until it passes. Change whatever the request needs across the app \u2014 its stored\ndata, its server and its front end. Do NOT edit bin/build, bin/start, bin/stop, bin/e2e,\nAGENTS.md, CLAUDE.md, DESIGN.md, e2e/support/ or the test spec.\n"
+  },
+  "commit_sha": "7dee936e37bb8366a5769806e030f3a24bba9eac",
+  "reset_sha": "",
+  "preagent_sha": "11ccf47053bdebceca4e1a9bf05443a870558251",
+  "prev_sha": "11ccf47053bdebceca4e1a9bf05443a870558251",
+  "base_sha": "65cb8233ea38b2dfa6cfd18709e30cd18fdf3250",
+  "agent": {
+    "ok": true,
+    "cost_usd": 1.3581522,
+    "input_tokens": 62,
+    "output_tokens": 16652,
+    "cache_read_tokens": 1877681,
+    "cache_creation_tokens": 81166,
+    "num_turns": 32,
+    "duration_ms": 407303,
+    "duration_api_ms": 160493,
+    "model": "claude-opus-5-5",
+    "session_id": "bbfdeafc-3c71-4332-a05d-7991860bac2a",
+    "stop_reason": "success",
+    "result_text": "Proofs now have a kind, and the sheet has a \"proof kinds\" setting. All 4 Playwright tests in `bin/e2e` pass.\n\n**Stored data** (`V98__proof_kinds.sql`)\n- Each claim gets a new `photo_proofs` count, and receipts are worked out as total proofs minus photos. That means every proof added before this change counts as a receipt, with no data to migrate.\n- The sheet gets a `proof_kinds` column. It is not dated, and empty means off.\n\n**Server**\n- **Adding a proof** (`/api/claims/proof`) now accepts an optional `kind`, `receipt` or `photo`. If none is chosen the proof counts as a receipt, and `kind=<kind>` is added to the end of `CLAIM_PROOF_ADDED` only when one was chosen. Any other kind is refused with an error and nothing is written. Each claim now also returns `proofsReceipt` and `proofsPhoto`.\n- **Settling or approving:** the existing check in `ClaimService` still requires a claim above the proof threshold to have at least one proof. While proof kinds are set, it now also needs at least one proof of each listed kind. The refusal message says so.\n- **The setting:** `proofKinds` accepts `receipt` and/or `photo`, comma separated, or blank to turn it off. It is saved lower case with no spaces or repeats, and recorded as `SETTING_CHANGED key=proof-kinds value=<list>`.\n\n**Screen**\n- **Settings:** a new `setting-proof-kinds` field, with the value in force shown in `setting-proof-kinds-current`. The settings screen checks the list itself before saving.\n- **Claim row:** shows the receipt and photo counts (`claim-proofs-receipt`, `claim-proofs-photo`) beside the total. Next to the \"Add proof\" button is a kind picker (`claim-proof-kind`), which defaults to \"(receipt)\" and goes back to that after each proof is added.\n\nRaising the per-kind check also changed one existing message: the server's refusal and the settle/approve error on the claim now say \"without a proof of each kind the sheet needs\" instead of \"without a proof\".",
+    "error": "",
+    "attempts": [
+      {
+        "ok": true,
+        "limit_reached": false,
+        "retryable": false,
+        "timed_out": false,
+        "cost_usd": 1.3581522,
+        "num_turns": 32,
+        "duration_ms": 407303,
+        "duration_api_ms": 160493,
+        "error": ""
+      }
+    ]
+  },
+  "agent_stream_file": "cp177.agent.jsonl",
+  "agent_diff_file": "cp177.agent.diff",
+  "build_log_file": null,
+  "tests": {
+    "gated": false,
+    "queued": true
+  },
+  "probe": null,
+  "pinned_touched": [],
+  "acceptance_touched": [],
+  "impact_gate": null
+}
