@@ -4,6 +4,7 @@ import jakarta.validation.Valid;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.NotNull;
 import jakarta.validation.constraints.Size;
+import java.time.LocalDate;
 import java.util.List;
 import org.springframework.http.HttpStatus;
 import org.springframework.web.bind.annotation.PostMapping;
@@ -25,7 +26,8 @@ public class PoolController {
     }
 
     public record AddMemberRequest(@NotBlank @Size(max = 100) String sheet, @NotBlank @Size(max = 100) String user,
-            @NotNull Long pool, Long person, Long memberPool, @NotNull @Size(max = 20) String share) {
+            @NotNull Long pool, Long person, Long memberPool, @NotNull @Size(max = 20) String share,
+            LocalDate from, LocalDate to) {
     }
 
     private final PoolService service;
@@ -50,9 +52,11 @@ public class PoolController {
     public List<PoolService.PoolView> addMember(@Valid @RequestBody AddMemberRequest req) {
         String sheet = req.sheet().trim();
         if (req.memberPool() != null) {
-            service.addPoolMember(sheet, req.user().trim(), req.pool(), req.memberPool(), req.share());
+            service.addPoolMember(sheet, req.user().trim(), req.pool(), req.memberPool(), req.share(),
+                    req.from(), req.to());
         } else if (req.person() != null) {
-            service.addMember(sheet, req.user().trim(), req.pool(), req.person(), req.share());
+            service.addMember(sheet, req.user().trim(), req.pool(), req.person(), req.share(), req.from(),
+                    req.to());
         } else {
             throw new ResponseStatusException(HttpStatus.UNPROCESSABLE_ENTITY, "Choose a member.");
         }
