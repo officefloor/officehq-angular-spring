@@ -1310,8 +1310,9 @@ export class People {
     }
   }
 
-  /** Settle the selected claims together: the server settles each it can, in list order, by the
-   *  rules of settling one (a clerk's above the limit goes PENDING), and refuses the rest. */
+  /** Settle the selected claims together, all or nothing: the server settles each in list order by
+   *  the rules of settling one (a clerk's above the limit goes PENDING), or, when any one would be
+   *  refused, settles none and counts every one refused. */
   protected async bulkSettle(): Promise<void> {
     this.bulkSettleResult.set(null);
     this.bulkSettleError.set(null);
