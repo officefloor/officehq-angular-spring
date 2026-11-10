@@ -48,6 +48,8 @@ public class Sheet {
     public static final String LATE_PCT = "late-pct";
     public static final String PROOF_THRESHOLD = "proof-threshold";
     public static final String NOTE_THRESHOLD = "note-threshold";
+    /** The key of a grade's own proof threshold: {@code proof-threshold-<grade>}. */
+    public static final String GRADE_PROOF_THRESHOLD = "proof-threshold-";
 
     /** The actions the permission matrix covers. */
     public static final List<String> PERMISSION_ACTIONS = List.of("open", "settle", "void", "reassign", "close", "reopen");
@@ -243,6 +245,15 @@ public class Sheet {
      */
     public BigDecimal proofThresholdOn(LocalDate date) {
         return inForce(PROOF_THRESHOLD, date).map(DatedSetting::getValue).orElse(null);
+    }
+
+    /**
+     * The proof threshold for a grade in force on a date: the grade's own in force then when it has
+     * one (a blank one is none), else the sheet's in force then; null for none.
+     */
+    public BigDecimal proofThresholdFor(String grade, LocalDate date) {
+        return (grade == null ? Optional.<DatedSetting>empty() : inForce(GRADE_PROOF_THRESHOLD + grade, date))
+                .map(DatedSetting::getValue).orElseGet(() -> proofThresholdOn(date));
     }
 
     /** The note threshold in force on the sheet's today; null for none. */

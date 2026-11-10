@@ -366,7 +366,7 @@ public class ClaimService {
         // settling fixes the figure with its late charge as it stands on the sheet's today (a
         // PENDING claim's figure is live)
         BigDecimal settling = next == ClaimStatus.SETTLED ? charged(sheetId, person, claim) : null;
-        if (next == ClaimStatus.SETTLED && needsProof(sheetId, claim, settling)) {
+        if (next == ClaimStatus.SETTLED && needsProof(sheetId, person, claim, settling)) {
             throw new ResponseStatusException(HttpStatus.UNPROCESSABLE_ENTITY,
                     "A claim due above the proof threshold cannot be " + (review ? "approved" : "settled")
                             + " without a proof.");
@@ -822,9 +822,12 @@ public class ClaimService {
         return due == null ? "n/a" : due.setScale(2, RoundingMode.UNNECESSARY).toPlainString();
     }
 
-    /** Whether a claim settling at the figure is above the proof threshold in force on its date and has no proofs. */
-    private boolean needsProof(String sheetId, Claim claim, BigDecimal figure) {
-        BigDecimal threshold = sheets.sheet(sheetId).proofThresholdOn(claim.getDate());
+    /**
+     * Whether a claim settling at the figure is above the proof threshold in force on its date (its
+     * person's grade's then when it has one, else the sheet's) and has no proofs.
+     */
+    private boolean needsProof(String sheetId, Person person, Claim claim, BigDecimal figure) {
+        BigDecimal threshold = sheets.sheet(sheetId).proofThresholdFor(person.gradeOn(claim.getDate()), claim.getDate());
         return claim.getProofs() == 0 && figure != null && threshold != null && figure.compareTo(threshold) > 0;
     }
 

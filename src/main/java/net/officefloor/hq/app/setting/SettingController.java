@@ -51,7 +51,7 @@ public class SettingController {
      * or blank for off. A grade's own terms (A, B or C): a whole number of days. A cap: an amount with
      * up to two decimals, or blank for none. A proof threshold: an amount with up to two decimals, or blank
      * for none. A note threshold: an amount with up to two decimals, or blank for none. A permission matrix entry for open, settle, void, reassign, close or reopen: roles
-     * comma separated, or blank for the standing rule. Grace days: a whole number of days, or blank for off. A grade's grace days (A, B or C): a whole number of days, or blank for none. An entry date: yyyy-mm-dd, or blank for off. Each setting that carries a figure may name the date it
+     * comma separated, or blank for the standing rule. Grace days: a whole number of days, or blank for off. A grade's grace days (A, B or C): a whole number of days, or blank for none. A grade's own proof threshold (A, B or C): an amount with up to two decimals, or blank for none (the sheet's). An entry date: yyyy-mm-dd, or blank for off. Each setting that carries a figure may name the date it
      * is in force from (its {@code ...From}: yyyy-mm-dd, or blank or null for the sheet's today).
      */
     public record SetSettingsRequest(@NotBlank @Size(max = 100) String sheet, @NotBlank @Size(max = 100) String user,
@@ -76,7 +76,12 @@ public class SettingController {
             @Pattern(regexp = "\\s*|" + TERMS) String graceDays, @Pattern(regexp = DATE) String entryDate,
             @Pattern(regexp = "\\s*|" + TERMS) String graceA, @Pattern(regexp = "\\s*|" + TERMS) String graceB,
             @Pattern(regexp = "\\s*|" + TERMS) String graceC, @Pattern(regexp = DATE) String graceAFrom,
-            @Pattern(regexp = DATE) String graceBFrom, @Pattern(regexp = DATE) String graceCFrom) {
+            @Pattern(regexp = DATE) String graceBFrom, @Pattern(regexp = DATE) String graceCFrom,
+            @Pattern(regexp = "\\s*|" + ClaimController.AMOUNT) String proofThresholdA,
+            @Pattern(regexp = "\\s*|" + ClaimController.AMOUNT) String proofThresholdB,
+            @Pattern(regexp = "\\s*|" + ClaimController.AMOUNT) String proofThresholdC,
+            @Pattern(regexp = DATE) String proofThresholdAFrom, @Pattern(regexp = DATE) String proofThresholdBFrom,
+            @Pattern(regexp = DATE) String proofThresholdCFrom) {
     }
 
     /** A value recorded for a setting that carries a figure: blank from for the beginning of time, blank value for none. */
@@ -138,6 +143,10 @@ public class SettingController {
         if (req.graceA() != null) gradeGraces.put("A", grace(req.graceA(), req.graceAFrom()));
         if (req.graceB() != null) gradeGraces.put("B", grace(req.graceB(), req.graceBFrom()));
         if (req.graceC() != null) gradeGraces.put("C", grace(req.graceC(), req.graceCFrom()));
+        Map<String, SettingService.Dated<BigDecimal>> gradeProofThresholds = new TreeMap<>();
+        if (req.proofThresholdA() != null) gradeProofThresholds.put("A", amount(req.proofThresholdA(), req.proofThresholdAFrom()));
+        if (req.proofThresholdB() != null) gradeProofThresholds.put("B", amount(req.proofThresholdB(), req.proofThresholdBFrom()));
+        if (req.proofThresholdC() != null) gradeProofThresholds.put("C", amount(req.proofThresholdC(), req.proofThresholdCFrom()));
         Map<String, String> permissions = new LinkedHashMap<>();
         permission(permissions, "open", req.permOpen());
         permission(permissions, "settle", req.permSettle());
@@ -155,7 +164,7 @@ public class SettingController {
                 policy.isEmpty() ? null : date(policy), req.periodNumberingFrom() != null,
                 numberingFrom.isEmpty() ? null : date(numberingFrom),
                 req.cap() == null ? null : amount(req.cap(), req.capFrom()), gradeTerms, gradeGraces,
-                req.proofThreshold() == null ? null : amount(req.proofThreshold(), req.proofThresholdFrom()),
+                req.proofThreshold() == null ? null : amount(req.proofThreshold(), req.proofThresholdFrom()), gradeProofThresholds,
                 req.noteThreshold() == null ? null : amount(req.noteThreshold(), req.noteThresholdFrom()), permissions,
                 req.graceDays() != null, grace.isEmpty() ? null : Integer.valueOf(grace),
                 req.entryDate() != null, entry.isEmpty() ? null : date(entry)));

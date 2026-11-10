@@ -32,9 +32,9 @@ import org.springframework.transaction.annotation.Transactional;
  * that move are recorded.
  * <p>
  * The settings that carry a figure (the floor, the late percent, the terms, a grade's own terms,
- * a grade's grace days, the clerk limit, the cap, the proof threshold and the note threshold) are dated: each value is recorded from a from-date (the sheet's
+ * a grade's grace days, the clerk limit, the cap, the proof threshold, a grade's own proof threshold and the note threshold) are dated: each value is recorded from a from-date (the sheet's
  * today when none is given). A claim's floor, late percent and terms are those in force on its
- * date, as are its proof threshold (see {@link Sheet#proofThresholdOn}) and its note threshold (see {@link Sheet#noteThresholdOn}); the clerk limit and the cap are those in force on the sheet's today (see {@link Sheet}).
+ * date, as is its proof threshold (its person's grade's own in force then when it has one, else the sheet's; see {@link Sheet#proofThresholdFor}) and its note threshold (see {@link Sheet#noteThresholdOn}); the clerk limit and the cap are those in force on the sheet's today (see {@link Sheet}).
  * The policy date and the period-numbering-from date are not dated. Nor is the permission matrix:
  * for each of open, settle, void, reassign, close and reopen, the roles that may take it (blank: the
  * standing rule, see {@link Sheet#permits}), recorded under the key {@code perm-<action>}. Nor are
@@ -56,6 +56,8 @@ public class SettingService {
     public static final String LATE_PCT = Sheet.LATE_PCT;
     public static final String PROOF_THRESHOLD = Sheet.PROOF_THRESHOLD;
     public static final String NOTE_THRESHOLD = Sheet.NOTE_THRESHOLD;
+    /** The key of a grade's own proof threshold: {@code proof-threshold-<grade>}. */
+    public static final String GRADE_PROOF_THRESHOLD = Sheet.GRADE_PROOF_THRESHOLD;
     public static final String POLICY_DATE = "policy-date";
     public static final String PERIOD_NUMBERING_FROM = "period-numbering-from";
     public static final String GRACE_DAYS = "grace-days";
@@ -96,7 +98,8 @@ public class SettingService {
      * (null for none), and a period-numbering-from date when {@code changeNumbering} (null for off),
      * and a cap when {@code cap} is not null, and each grade's own terms given in {@code gradeTerms}
      * (by grade, in grade order), and each grade's grace days given in {@code gradeGraces} (by grade, in grade
-     * order; null for none), and a proof threshold when {@code proofThreshold} is not null, and a note threshold when
+     * order; null for none), and a proof threshold when {@code proofThreshold} is not null, and each grade's own proof
+     * threshold given in {@code gradeProofThresholds} (by grade, in grade order; null for none), and a note threshold when
      * {@code noteThreshold} is not null, and each permission matrix entry
      * given in {@code permissions} (by action, in the order given; blank for the standing rule), and the grace days when
      * {@code changeGrace} (null for off), and the entry date when {@code changeEntry} (null for off). Each figure is recorded from its from-date, keeping the values
@@ -108,8 +111,8 @@ public class SettingService {
             Dated<Integer> terms, Dated<BigDecimal> latePct, boolean changePolicy, LocalDate policyDate,
             boolean changeNumbering, LocalDate numberingFrom, Dated<BigDecimal> cap,
             Map<String, Dated<Integer>> gradeTerms, Map<String, Dated<Integer>> gradeGraces,
-            Dated<BigDecimal> proofThreshold, Dated<BigDecimal> noteThreshold,
-            Map<String, String> permissions,
+            Dated<BigDecimal> proofThreshold, Map<String, Dated<BigDecimal>> gradeProofThresholds,
+            Dated<BigDecimal> noteThreshold, Map<String, String> permissions,
             boolean changeGrace, Integer graceDays, boolean changeEntry, LocalDate entryDate) {
         roles.refuseViewer(sheetId, user);
         Sheet sheet = sheets.load(sheetId, user);
@@ -155,6 +158,10 @@ public class SettingService {
         if (proofThreshold != null) {
             sheet = record(sheet, user, PROOF_THRESHOLD, proofThreshold.value(), proofThreshold.from(),
                     text(proofThreshold.value()), false);
+        }
+        for (Map.Entry<String, Dated<BigDecimal>> e : new TreeMap<>(gradeProofThresholds).entrySet()) {
+            Dated<BigDecimal> t = e.getValue();
+            sheet = record(sheet, user, GRADE_PROOF_THRESHOLD + e.getKey(), t.value(), t.from(), text(t.value()), false);
         }
         if (noteThreshold != null) {
             sheet = record(sheet, user, NOTE_THRESHOLD, noteThreshold.value(), noteThreshold.from(),

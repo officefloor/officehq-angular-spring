@@ -28,6 +28,9 @@ import { DatedValue, START_FLOOR, START_LATE_PCT, valueOn } from '../rates/rates
 // The proof threshold (two decimals; blank for none) is dated like the floor: a claim whose due is
 // above the one in force on its date cannot be settled or approved while it has no proofs. It
 // saves, like the clerk limit, once its field has been entered (blank: none).
+// Each grade may have its own proof threshold (two decimals; blank: none), dated like the floor: a
+// claim's threshold is its person's grade's on its date when it has one then, else the sheet's.
+// Each saves, like the clerk limit, once its field has been entered.
 // The note threshold (two decimals; blank for none) is dated like the floor: a claim whose due is
 // above the one in force on its date cannot be opened while its note is empty. It saves, like the
 // clerk limit, once its field has been entered (blank: none).
@@ -102,7 +105,7 @@ const PCT = /^\d{1,3}(\.\d{1,2})?$/;
 
 
 /** The keys of the dated settings, each with its own from field. */
-const DATED_KEYS = ['clerk-limit', 'floor', 'terms', 'terms-A', 'terms-B', 'terms-C', 'grace-A', 'grace-B', 'grace-C', 'late-pct', 'cap', 'proof-threshold', 'note-threshold'] as const;
+const DATED_KEYS = ['clerk-limit', 'floor', 'terms', 'terms-A', 'terms-B', 'terms-C', 'grace-A', 'grace-B', 'grace-C', 'late-pct', 'cap', 'proof-threshold', 'proof-threshold-A', 'proof-threshold-B', 'proof-threshold-C', 'note-threshold'] as const;
 type DatedKey = (typeof DATED_KEYS)[number];
 
 /** A policy date: yyyy-mm-dd. */
@@ -268,6 +271,25 @@ const DATE = /^\d{4}-\d{2}-\d{2}$/;
           [value]="fromInput()['proof-threshold'] ?? ''"
           (input)="typeFrom('proof-threshold', $any($event.target).value)"
         />
+        @for (g of grades; track g) {
+          <label [for]="'setting-proof-threshold-' + g">Proof threshold for grade {{ g }} (blank: none, the sheet's)</label>
+          <input
+            [id]="'setting-proof-threshold-' + g"
+            [attr.data-testid]="'setting-proof-threshold-' + g"
+            inputmode="decimal"
+            [value]="gradeThresholdInput()[g] ?? ''"
+            (focus)="enterGradeThreshold(g, $any($event.target))"
+            (input)="typeGradeThreshold(g, $any($event.target).value)"
+          />
+          <label [for]="'setting-proof-threshold-' + g + '-from'">Proof threshold for grade {{ g }} in force from (blank: the sheet's today)</label>
+          <input
+            [id]="'setting-proof-threshold-' + g + '-from'"
+            [attr.data-testid]="'setting-proof-threshold-' + g + '-from'"
+            type="date"
+            [value]="fromInput()[thresholdKey(g)] ?? ''"
+            (input)="typeFrom(thresholdKey(g), $any($event.target).value)"
+          />
+        }
         <label for="setting-note-threshold">Note threshold (blank: none)</label>
         <input
           id="setting-note-threshold"
@@ -383,6 +405,15 @@ const DATE = /^\d{4}-\d{2}-\d{2}$/;
           <span>(none)</span>
         }
       </p>
+      @for (g of grades; track g) {
+        <p>
+          Proof threshold in force for grade {{ g }}:
+          <strong [attr.data-testid]="'setting-proof-threshold-' + g + '-current'">{{ gradeThresholds()[g] }}</strong>
+          @if (gradeThresholds()[g] === '') {
+            <span>(the sheet's)</span>
+          }
+        </p>
+      }
       <p>
         Note threshold in force:
         <strong data-testid="setting-note-threshold-current">{{ noteThreshold() }}</strong>
@@ -460,6 +491,12 @@ export class Settings {
   protected readonly threshold = computed(() => this.inForce('proof-threshold', ''));
   /** The proof threshold typed; null while its field has not been entered (left as it is). */
   protected readonly thresholdInput = signal<string | null>(null);
+  /** The proof threshold in force on the sheet's today for each grade; blank for none (the sheet's). */
+  protected readonly gradeThresholds = computed(
+    () => Object.fromEntries(GRADES.map((g) => [g, this.inForce(this.thresholdKey(g), '')])) as Record<Grade, string>,
+  );
+  /** The proof threshold typed for each grade; missing while its field has not been entered (left as it is). */
+  protected readonly gradeThresholdInput = signal<Partial<Record<Grade, string>>>({});
   /** The note threshold in force on the sheet's today; blank for none. */
   protected readonly noteThreshold = computed(() => this.inForce('note-threshold', ''));
   /** The note threshold typed; null while its field has not been entered (left as it is). */
@@ -509,6 +546,7 @@ export class Settings {
       this.permInput.set({});
       this.gradeTermsInput.set({});
       this.gradeGraceInput.set({});
+      this.gradeThresholdInput.set({});
       this.fromInput.set({});
       this.capInput.set(null);
       this.thresholdInput.set(null);
@@ -646,6 +684,25 @@ export class Settings {
     this.error.set(null);
   }
 
+  protected thresholdKey(grade: Grade): DatedKey {
+    return `proof-threshold-${grade}`;
+  }
+
+  /** Entering a grade's proof threshold's field fills it with the threshold in force, selected, so
+   *  it saves as it is unless typed over. */
+  protected enterGradeThreshold(grade: Grade, input: HTMLInputElement): void {
+    if (this.gradeThresholdInput()[grade] !== undefined) return;
+    const threshold = this.gradeThresholds()[grade];
+    input.value = threshold;
+    input.select();
+    this.gradeThresholdInput.update((m) => ({ ...m, [grade]: threshold }));
+  }
+
+  protected typeGradeThreshold(grade: Grade, value: string): void {
+    this.gradeThresholdInput.update((m) => ({ ...m, [grade]: value }));
+    this.error.set(null);
+  }
+
   protected typeFrom(key: DatedKey, value: string): void {
     this.fromInput.update((m) => ({ ...m, [key]: value }));
     this.error.set(null);
@@ -749,6 +806,16 @@ export class Settings {
       this.error.set('Enter a proof threshold of 0.00 or more, with up to two decimals, or leave it blank.');
       return;
     }
+    const gradeThresholds: Partial<Record<Grade, string>> = {};
+    for (const g of GRADES) {
+      const t = this.gradeThresholdInput()[g]?.trim();
+      if (t === undefined) continue;
+      if (t !== '' && !LIMIT.test(t)) {
+        this.error.set(`Enter a proof threshold for grade ${g} of 0.00 or more, with up to two decimals, or leave it blank.`);
+        return;
+      }
+      gradeThresholds[g] = t;
+    }
     if (noteThreshold !== null && noteThreshold !== '' && !LIMIT.test(noteThreshold)) {
       this.error.set('Enter a note threshold of 0.00 or more, with up to two decimals, or leave it blank.');
       return;
@@ -823,6 +890,12 @@ export class Settings {
           graceAFrom: from['grace-A'] ?? null,
           graceBFrom: from['grace-B'] ?? null,
           graceCFrom: from['grace-C'] ?? null,
+          proofThresholdA: gradeThresholds.A ?? null,
+          proofThresholdB: gradeThresholds.B ?? null,
+          proofThresholdC: gradeThresholds.C ?? null,
+          proofThresholdAFrom: from['proof-threshold-A'] ?? null,
+          proofThresholdBFrom: from['proof-threshold-B'] ?? null,
+          proofThresholdCFrom: from['proof-threshold-C'] ?? null,
         }),
       );
       if (this.session.sheet() !== sheet) return;
@@ -832,6 +905,7 @@ export class Settings {
       this.termsInput.set(null);
       this.gradeTermsInput.set({});
       this.gradeGraceInput.set({});
+      this.gradeThresholdInput.set({});
       this.latePctInput.set(null);
       this.policyInput.set(null);
       this.numberingInput.set(null);
