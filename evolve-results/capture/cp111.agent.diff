@@ -1,0 +1,544 @@
+diff --git a/src/main/frontend/src/app/features/people/people.ts b/src/main/frontend/src/app/features/people/people.ts
+index 993c2c4c1..73c8bef4c 100644
+--- a/src/main/frontend/src/app/features/people/people.ts
++++ b/src/main/frontend/src/app/features/people/people.ts
+@@ -118,9 +118,11 @@ interface Descendants {
+   peopleCount: number;
+   dueTotal: string;
+   overdueTotal: string;
++  /** The sheet's own figures as the store holds them now: an as-of view shows these, the consolidated figures not being dated. */
++  own: { peopleCount: number; dueTotal: string; overdueTotal: string } | null;
+ }
+ 
+-const NO_DESCENDANTS: Descendants = { peopleCount: 0, dueTotal: '0.00', overdueTotal: '0.00' };
++const NO_DESCENDANTS: Descendants = { peopleCount: 0, dueTotal: '0.00', overdueTotal: '0.00', own: null };
+ 
+ interface DatedHold {
+   from: string;
+@@ -193,9 +195,9 @@ const SUMMARY_STATUSES = ['DRAFT', 'OPEN', 'PENDING', 'SETTLED', 'VOID'] as cons
+       [statuses]="statusSummary()"
+       [dueTotal]="dueTotal()"
+       [overdueTotal]="money(overdueTotals().cents)"
+-      [consolidatedPeopleCount]="people().length + descendants().peopleCount"
+-      [consolidatedDueTotal]="money(cents(dueTotal()) + cents(descendants().dueTotal))"
+-      [consolidatedOverdueTotal]="money(overdueTotals().cents + cents(descendants().overdueTotal))"
++      [consolidatedPeopleCount]="consolidated().peopleCount"
++      [consolidatedDueTotal]="consolidated().dueTotal"
++      [consolidatedOverdueTotal]="consolidated().overdueTotal"
+     />
+     <app-rates [(rates)]="rates" />
+     <app-roles />
+@@ -670,6 +672,22 @@ const SUMMARY_STATUSES = ['DRAFT', 'OPEN', 'PENDING', 'SETTLED', 'VOID'] as cons
+                 >
+                   Merge
+                 </button>
++                <label [for]="'person-transfer-to-' + p.id">Transfer to sheet</label>
++                <input
++                  type="text"
++                  [id]="'person-transfer-to-' + p.id"
++                  data-testid="person-transfer-to"
++                  [value]="transferTos().get(p.id) ?? ''"
++                  (input)="setTransferTo(p.id, $any($event.target).value)"
++                />
++                <button
++                  type="button"
++                  data-testid="person-transfer"
++                  [attr.aria-label]="'Transfer ' + p.name + ' to the sheet entered'"
++                  (click)="transfer(p)"
++                >
++                  Transfer
++                </button>
+                 @if (rowErrors().get(p.id); as err) {
+                   <p role="alert" data-testid="person-error">{{ err }}</p>
+                 }
+@@ -691,6 +709,8 @@ export class People {
+   protected readonly listed = computed(() =>
+     this.session.showRetired() ? this.people() : this.people().filter((p) => !p.retired),
+   );
++  /** The sheet id typed on each person's row to transfer them to, by person id. */
++  protected readonly transferTos = signal<ReadonlyMap<number, string>>(new Map());
+   /** The retire-from date typed on each person's row, by person id. */
+   protected readonly retireDates = signal<ReadonlyMap<number, string>>(new Map());
+   /** The alias typed on each person's row, by person id. */
+@@ -819,6 +839,21 @@ export class People {
+   protected readonly cents = cents;
+   /** The figures of the sheet's descendants as the store holds them, added to its own for the consolidated figures. */
+   protected readonly descendants = signal<Descendants>(NO_DESCENDANTS);
++  /**
++   * The figures over the sheet and its descendants. They are not dated: an as-of view adds the
++   * sheet's own figures as the store holds them now, else the screen's own.
++   */
++  protected readonly consolidated = computed(() => {
++    const d = this.descendants();
++    const own = this.session.asOf() && d.own
++      ? { peopleCount: d.own.peopleCount, due: cents(d.own.dueTotal), overdue: cents(d.own.overdueTotal) }
++      : { peopleCount: this.people().length, due: cents(this.dueTotal()), overdue: this.overdueTotals().cents };
++    return {
++      peopleCount: own.peopleCount + d.peopleCount,
++      dueTotal: money(own.due + cents(d.dueTotal)),
++      overdueTotal: money(own.overdue + cents(d.overdueTotal)),
++    };
++  });
+   /** The sheet's overdue claims that count: how many, and the sum of people's figures in whole cents, trimmed. */
+   protected readonly overdueTotals = computed(() => {
+     const each = this.people().map((p) => this.overdueOf(p));
+@@ -954,6 +989,7 @@ export class People {
+       this.patronChoices.set(new Map());
+       this.patronErrors.set(new Map());
+       this.mergeChoices.set(new Map());
++      this.transferTos.set(new Map());
+       this.watched.set(new Set());
+       this.retireDates.set(new Map());
+       this.holdFroms.set(new Map());
+@@ -1257,6 +1293,56 @@ export class People {
+     if (sheet) await this.fetch(sheet);
+   }
+ 
++  protected setTransferTo(id: number, value: string): void {
++    this.transferTos.update((m) => new Map(m).set(id, value));
++    this.clearRowError(id);
++  }
++
++  /**
++   * Transfer the person to the sheet whose id is typed on their row (a steward only): they arrive
++   * there with their grades, details and claims and leave this sheet, so the sheet is re-read.
++   */
++  protected async transfer(p: Person): Promise<void> {
++    this.clearRowError(p.id);
++    const sheet = this.session.sheet();
++    const to = (this.transferTos().get(p.id) ?? '').trim();
++    const fail = (err: string) => this.rowErrors.update((m) => new Map(m).set(p.id, err));
++    if (to === '') {
++      fail('Enter the id of the sheet to transfer ' + p.name + ' to.');
++      return;
++    }
++    if (to === sheet) {
++      fail(p.name + ' is already on this sheet.');
++      return;
++    }
++    if (p.retired) {
++      fail('A retired person cannot be transferred.');
++      return;
++    }
++    try {
++      await firstValueFrom(
++        this.http.post<Person>('/api/people/transfer', { sheet, user: this.session.user(), id: p.id, to }),
++      );
++    } catch (e) {
++      if (this.session.sheet() !== sheet) return;
++      fail(
++        e instanceof HttpErrorResponse && e.status === 403
++          ? 'Only a steward can transfer people.'
++          : e instanceof HttpErrorResponse && e.status === 409
++            ? 'Could not transfer ' + p.name + ': a name, alias or contact is already on sheet ' + to + ', or ' + p.name + ' is retired.'
++            : 'Could not transfer ' + p.name + '.',
++      );
++      return;
++    }
++    if (this.session.sheet() !== sheet) return;
++    this.transferTos.update((m) => {
++      const next = new Map(m);
++      next.delete(p.id);
++      return next;
++    });
++    if (sheet) await this.fetch(sheet);
++  }
++
+   protected setRetireDate(id: number, date: string): void {
+     this.retireDates.update((m) => new Map(m).set(id, date));
+     this.clearRowError(id);
+diff --git a/src/main/java/net/officefloor/hq/app/claim/Claim.java b/src/main/java/net/officefloor/hq/app/claim/Claim.java
+index 75a255d1e..db74e9e64 100644
+--- a/src/main/java/net/officefloor/hq/app/claim/Claim.java
++++ b/src/main/java/net/officefloor/hq/app/claim/Claim.java
+@@ -191,6 +191,32 @@ public class Claim {
+         return sheetId;
+     }
+ 
++    /**
++     * The claim as it arrives on another sheet under a person transferred there: everything it has
++     * (status, dates, note, tags, frozen figures, log and comments) but its number, which the caller
++     * gives afresh, its reference, which is not carried, a figure a statement bound, which is lost,
++     * and an editor's lock.
++     */
++    public Claim transferredTo(String toSheetId, Long toPersonId) {
++        Claim copy = new Claim(toSheetId, toPersonId, amount, date, dueBy, terms, note, corrects);
++        copy.status = status;
++        copy.settledDue = settledDue;
++        copy.openedBy = openedBy;
++        copy.editedBy = editedBy;
++        copy.tags = tags;
++        copy.splitFrom = splitFrom;
++        copy.batch = batch;
++        copy.lateEntry = lateEntry;
++        copy.deferredUntil = deferredUntil;
++        copy.deferredOn = deferredOn;
++        copy.remindedOn = remindedOn;
++        copy.voidReason = voidReason;
++        copy.proofs = proofs;
++        copy.log.addAll(log);
++        copy.comments.addAll(comments);
++        return copy;
++    }
++
+     public Long getPersonId() {
+         return personId;
+     }
+diff --git a/src/main/java/net/officefloor/hq/app/person/DatedGrade.java b/src/main/java/net/officefloor/hq/app/person/DatedGrade.java
+index 2561baa56..26f244b42 100644
+--- a/src/main/java/net/officefloor/hq/app/person/DatedGrade.java
++++ b/src/main/java/net/officefloor/hq/app/person/DatedGrade.java
+@@ -35,6 +35,10 @@ public class DatedGrade {
+         return grade;
+     }
+ 
++    public LocalDate getMadeOn() {
++        return madeOn;
++    }
++
+     /** Whether it was recorded by the end of a day: the sheet's today then on or before it. */
+     public boolean madeBy(LocalDate day) {
+         return madeOn == null || !madeOn.isAfter(day);
+diff --git a/src/main/java/net/officefloor/hq/app/person/Person.java b/src/main/java/net/officefloor/hq/app/person/Person.java
+index ee102967c..49b6a15d4 100644
+--- a/src/main/java/net/officefloor/hq/app/person/Person.java
++++ b/src/main/java/net/officefloor/hq/app/person/Person.java
+@@ -96,6 +96,22 @@ public class Person {
+         return sheetId;
+     }
+ 
++    /**
++     * The person as they arrive on another sheet: their name, every grade they were given (each with
++     * its from-date), their terms, contact and aliases; not their holds or retirement.
++     */
++    public Person transferredTo(String toSheetId) {
++        Person copy = new Person();
++        copy.sheetId = toSheetId;
++        copy.name = name;
++        copy.addedOn = addedOn;
++        grades.forEach(g -> copy.grades.add(new DatedGrade(g.getFromDate(), g.getGrade(), g.getMadeOn())));
++        copy.terms = terms;
++        copy.contact = contact;
++        copy.aliases.addAll(aliases);
++        return copy;
++    }
++
+     public String getName() {
+         return name;
+     }
+diff --git a/src/main/java/net/officefloor/hq/app/person/PersonController.java b/src/main/java/net/officefloor/hq/app/person/PersonController.java
+index dab851ce9..3979fe186 100644
+--- a/src/main/java/net/officefloor/hq/app/person/PersonController.java
++++ b/src/main/java/net/officefloor/hq/app/person/PersonController.java
+@@ -42,6 +42,10 @@ public class PersonController {
+             @NotBlank @Size(max = 100) String user, @NotNull Long id, @NotNull Long intoId) {
+     }
+ 
++    public record TransferPersonRequest(@NotBlank @Size(max = 100) String sheet,
++            @NotBlank @Size(max = 100) String user, @NotNull Long id, @NotBlank @Size(max = 100) String to) {
++    }
++
+     public record BulkGradeRequest(@NotBlank @Size(max = 100) String sheet,
+             @NotBlank @Size(max = 100) String user, @NotEmpty List<@NotNull Long> ids,
+             @NotNull @Pattern(regexp = "[ABC]") String grade, LocalDate from) {
+@@ -105,10 +109,12 @@ public class PersonController {
+ 
+     private final PersonService service;
+     private final PersonMergeService merges;
++    private final PersonTransferService transfers;
+ 
+-    public PersonController(PersonService service, PersonMergeService merges) {
++    public PersonController(PersonService service, PersonMergeService merges, PersonTransferService transfers) {
+         this.service = service;
+         this.merges = merges;
++        this.transfers = transfers;
+     }
+ 
+     @PostMapping("/list")
+@@ -139,6 +145,12 @@ public class PersonController {
+         return response(merges.merge(req.sheet().trim(), req.user().trim(), req.id(), req.intoId()));
+     }
+ 
++    /** Transfer the person to another sheet by id; answers them as the other sheet now holds them. */
++    @PostMapping("/transfer")
++    public PersonResponse transfer(@Valid @RequestBody TransferPersonRequest req) {
++        return response(transfers.transfer(req.sheet().trim(), req.user().trim(), req.id(), req.to().trim()));
++    }
++
+     @PostMapping("/bulk-grade")
+     public BulkGradeResponse bulkGrade(@Valid @RequestBody BulkGradeRequest req) {
+         List<PersonResponse> graded = service.bulkGrade(req.sheet().trim(), req.user().trim(), req.ids(), req.grade(),
+diff --git a/src/main/java/net/officefloor/hq/app/person/PersonTransferService.java b/src/main/java/net/officefloor/hq/app/person/PersonTransferService.java
+new file mode 100644
+index 000000000..f5e81a15f
+--- /dev/null
++++ b/src/main/java/net/officefloor/hq/app/person/PersonTransferService.java
+@@ -0,0 +1,169 @@
++package net.officefloor.hq.app.person;
++
++import java.time.LocalDate;
++import java.util.ArrayList;
++import java.util.Comparator;
++import java.util.HashMap;
++import java.util.List;
++import java.util.Map;
++import java.util.Objects;
++import net.officefloor.hq.app.Audit;
++import net.officefloor.hq.app.claim.Claim;
++import net.officefloor.hq.app.claim.ClaimLogEntry;
++import net.officefloor.hq.app.claim.ClaimRepository;
++import net.officefloor.hq.app.claim.ClaimStatus;
++import net.officefloor.hq.app.claim.UsedTag;
++import net.officefloor.hq.app.claim.UsedTagRepository;
++import net.officefloor.hq.app.pool.PoolMemberRepository;
++import net.officefloor.hq.app.role.RoleService;
++import net.officefloor.hq.app.rollup.RollupService;
++import net.officefloor.hq.app.sheet.SheetHistory;
++import net.officefloor.hq.app.sheet.SheetService;
++import net.officefloor.hq.app.statement.Statement;
++import net.officefloor.hq.app.statement.StatementRepository;
++import org.springframework.http.HttpStatus;
++import org.springframework.stereotype.Service;
++import org.springframework.transaction.annotation.Transactional;
++import org.springframework.web.server.ResponseStatusException;
++
++/**
++ * Transferring a person to another sheet by id (a steward only). The person arrives there with
++ * every grade they were given, their terms, contact and aliases, and their claims with their status,
++ * dates, notes, tags, frozen figures and logs. Each claim that had a number takes the next number of
++ * the other sheet, in the order the claims were opened (by the sheet's today when each was opened,
++ * then by the order they were added). Figures a statement bound are lost, their statements are
++ * dropped, and references are not carried. They leave this sheet entirely: patron links, pool
++ * memberships, holds and watches are dropped. They and their claims arrive as new rows, so
++ * this sheet's history (its as-of view) keeps its own.
++ */
++@Service
++public class PersonTransferService {
++
++    private final PersonRepository people;
++    private final PatronRepository patrons;
++    private final WatchRepository watches;
++    private final ClaimRepository claims;
++    private final StatementRepository statements;
++    private final PoolMemberRepository poolMembers;
++    private final UsedTagRepository usedTags;
++    private final SheetService sheets;
++    private final SheetHistory history;
++    private final RoleService roles;
++    private final RollupService rollup;
++    private final Audit audit;
++
++    public PersonTransferService(PersonRepository people, PatronRepository patrons, WatchRepository watches,
++            ClaimRepository claims, StatementRepository statements, PoolMemberRepository poolMembers,
++            UsedTagRepository usedTags, SheetService sheets, SheetHistory history, RoleService roles, RollupService rollup, Audit audit) {
++        this.people = people;
++        this.patrons = patrons;
++        this.watches = watches;
++        this.claims = claims;
++        this.statements = statements;
++        this.poolMembers = poolMembers;
++        this.usedTags = usedTags;
++        this.sheets = sheets;
++        this.history = history;
++        this.roles = roles;
++        this.rollup = rollup;
++        this.audit = audit;
++    }
++
++    /**
++     * Transfer the person to the other sheet. Refused (403) to anyone but a steward, (409) for a
++     * transfer to this same sheet, of a retired person, or when the person's name, an alias or their
++     * contact is already on the other sheet; (423) when either sheet is archived.
++     */
++    @Transactional
++    public Person transfer(String sheetId, String user, long id, String toSheetId) {
++        roles.refuseViewer(sheetId, user);
++        roles.refuseUnlessSteward(sheetId, user);
++        if (sheetId.equals(toSheetId)) {
++            throw new ResponseStatusException(HttpStatus.CONFLICT, "A person cannot be transferred to their own sheet.");
++        }
++        sheets.refuseIfArchived(sheetId);
++        sheets.refuseIfArchived(toSheetId);
++        sheets.load(toSheetId, user);
++        // lock both sheets, in a fixed order, so two transfers between them do not deadlock
++        if (sheetId.compareTo(toSheetId) < 0) {
++            sheets.lock(sheetId);
++            sheets.lock(toSheetId);
++        } else {
++            sheets.lock(toSheetId);
++            sheets.lock(sheetId);
++        }
++        Person person = people.lockByIdAndSheetId(id, sheetId)
++                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "No such person on this sheet."));
++        if (person.isRetired()) {
++            throw new ResponseStatusException(HttpStatus.CONFLICT, "A retired person cannot be transferred.");
++        }
++        List<String> names = new ArrayList<>(List.of(person.getName()));
++        names.addAll(person.getAliases());
++        for (String name : names) {
++            if (people.existsBySheetIdAndNameIgnoreCase(toSheetId, name) || people.existsAliasOnSheet(toSheetId, name)) {
++                throw new ResponseStatusException(HttpStatus.CONFLICT,
++                        "The name " + name + " is already in use on sheet " + toSheetId + ".");
++            }
++        }
++        if (person.getContact() != null && people.existsBySheetIdAndContact(toSheetId, person.getContact())) {
++            throw new ResponseStatusException(HttpStatus.CONFLICT,
++                    "That contact is already in use on sheet " + toSheetId + ".");
++        }
++        history.captureFirst(toSheetId);
++        RollupService.Snapshot before = rollup.snapshot(sheetId);
++        RollupService.Snapshot beforeTo = rollup.snapshot(toSheetId);
++
++        // the links to this sheet go: patrons either way, pool memberships, watches and statements
++        patrons.deleteAll(patrons.findBySheetIdOrderByIdAsc(sheetId).stream()
++                .filter(l -> l.getPersonId().equals(person.getId()) || l.getPatronId().equals(person.getId()))
++                .toList());
++        patrons.flush();
++        poolMembers.deleteAll(poolMembers.findByPersonIdOrderByIdAsc(person.getId()));
++        poolMembers.flush();
++        watches.deleteAll(watches.findByPersonIdOrderByIdAsc(person.getId()));
++        watches.flush();
++        List<Statement> theirStatements = statements.findBySheetIdOrderByIdAsc(sheetId).stream()
++                .filter(s -> Objects.equals(s.getPersonId(), person.getId())).toList();
++        statements.deleteAll(theirStatements);
++        statements.flush();
++
++        // the person and their claims arrive on the other sheet as new rows, listed in the order they
++        // were, the numbered ones numbered afresh there in the order they were opened; this sheet's go
++        Person arrived = people.saveAndFlush(person.transferredTo(toSheetId));
++        List<Claim> theirs = claims.findBySheetIdAndPersonIdOrderByListedAsc(sheetId, person.getId());
++        Map<Long, String> numbers = new HashMap<>();
++        theirs.stream().filter(c -> c.getNumber() != null)
++                .sorted(Comparator.comparing(PersonTransferService::openedOn,
++                        Comparator.nullsLast(Comparator.naturalOrder())).thenComparing(Claim::getId))
++                .forEach(c -> numbers.put(c.getId(), sheets.nextClaimNumber(toSheetId, c.getDueBy())));
++        for (Claim claim : theirs) {
++            Claim copy = claim.transferredTo(toSheetId, arrived.getId());
++            copy.setNumber(numbers.get(claim.getId()));
++            claims.saveAndFlush(copy);
++            for (String tag : copy.getTags()) {
++                if (!usedTags.existsBySheetIdAndTag(toSheetId, tag)) {
++                    usedTags.saveAndFlush(new UsedTag(toSheetId, tag));
++                }
++            }
++        }
++        claims.deleteAll(theirs);
++        claims.flush();
++        people.delete(person);
++        people.flush();
++        history.capture(toSheetId);
++
++        audit.recordOnCommit("PERSON_TRANSFERRED sheet=" + sheetId + " by=" + user + " name=" + arrived.getName()
++                + " to=" + toSheetId);
++        rollup.recordChanges(sheetId, user, before, true);
++        audit.recordOnCommit("PERSON_TRANSFERRED sheet=" + toSheetId + " by=" + user + " name=" + arrived.getName()
++                + " from=" + sheetId);
++        rollup.recordChanges(toSheetId, user, beforeTo);
++        return arrived;
++    }
++
++    /** The sheet's today when the claim was first opened, as its status log records it; none when not recorded. */
++    private static LocalDate openedOn(Claim claim) {
++        return claim.getLog().stream().filter(e -> e.getStatus() != ClaimStatus.DRAFT).map(ClaimLogEntry::getDate)
++                .findFirst().orElse(null);
++    }
++}
+diff --git a/src/main/java/net/officefloor/hq/app/rollup/RollupController.java b/src/main/java/net/officefloor/hq/app/rollup/RollupController.java
+index 57aca7f53..521a85282 100644
+--- a/src/main/java/net/officefloor/hq/app/rollup/RollupController.java
++++ b/src/main/java/net/officefloor/hq/app/rollup/RollupController.java
+@@ -3,6 +3,7 @@ package net.officefloor.hq.app.rollup;
+ import jakarta.validation.Valid;
+ import jakarta.validation.constraints.NotBlank;
+ import jakarta.validation.constraints.Size;
++import java.math.BigDecimal;
+ import java.math.RoundingMode;
+ import org.springframework.web.bind.annotation.PostMapping;
+ import org.springframework.web.bind.annotation.RequestBody;
+@@ -17,7 +18,11 @@ public class RollupController {
+     public record DescendantsRequest(@NotBlank @Size(max = 100) String sheet) {
+     }
+ 
+-    public record DescendantsResponse(int peopleCount, String dueTotal, String overdueTotal) {
++    /** The sheet's own figures as the store holds them now, as consolidated figures count them. */
++    public record OwnFigures(int peopleCount, String dueTotal, String overdueTotal) {
++    }
++
++    public record DescendantsResponse(int peopleCount, String dueTotal, String overdueTotal, OwnFigures own) {
+     }
+ 
+     private final RollupService service;
+@@ -26,12 +31,18 @@ public class RollupController {
+         this.service = service;
+     }
+ 
+-    // ends in /list: it only reads, so the as-of view answers it
++    // ends in /list: it only reads; the as-of view answers it as the store holds the sheets now
+     @PostMapping("/descendants/list")
+     public DescendantsResponse descendants(@Valid @RequestBody DescendantsRequest req) {
+-        RollupService.Consolidated figures = service.descendants(req.sheet().trim());
+-        return new DescendantsResponse(figures.peopleCount(),
+-                figures.dueTotal().setScale(2, RoundingMode.UNNECESSARY).toPlainString(),
+-                figures.overdueTotal().setScale(2, RoundingMode.UNNECESSARY).toPlainString());
++        String sheet = req.sheet().trim();
++        RollupService.Consolidated figures = service.descendants(sheet);
++        RollupService.Snapshot own = service.snapshot(sheet);
++        return new DescendantsResponse(figures.peopleCount(), money(figures.dueTotal()),
++                money(figures.overdueTotal()),
++                new OwnFigures(own.people().size(), money(own.dueTotal()), money(own.overdueTotal())));
++    }
++
++    private static String money(BigDecimal amount) {
++        return amount.setScale(2, RoundingMode.UNNECESSARY).toPlainString();
+     }
+ }
+diff --git a/src/main/java/net/officefloor/hq/app/rollup/RollupService.java b/src/main/java/net/officefloor/hq/app/rollup/RollupService.java
+index 72d6fc092..d6e601ef3 100644
+--- a/src/main/java/net/officefloor/hq/app/rollup/RollupService.java
++++ b/src/main/java/net/officefloor/hq/app/rollup/RollupService.java
+@@ -182,9 +182,18 @@ public class RollupService {
+ 
+     /** Record, once the change commits, the figures that moved since the snapshot taken before it. */
+     public void recordChanges(String sheetId, String user, Snapshot before) {
++        recordChanges(sheetId, user, before, false);
++    }
++
++    /**
++     * Record, once the change commits, the figures that moved since the snapshot taken before it;
++     * with {@code leaving}, a person who has left the sheet since counts as moved, so the totals
++     * they leave are recorded too.
++     */
++    public void recordChanges(String sheetId, String user, Snapshot before, boolean leaving) {
+         Snapshot after = snapshot(sheetId);
+         String prefix = " sheet=" + sheetId + " by=" + user;
+-        boolean moved = false;
++        boolean moved = leaving && !after.people().keySet().containsAll(before.people().keySet());
+         for (Map.Entry<Long, Figures> entry : after.people().entrySet()) {
+             Figures now = entry.getValue();
+             Figures was = before.people().get(entry.getKey());
+diff --git a/src/main/java/net/officefloor/hq/app/sheet/AsOfFilter.java b/src/main/java/net/officefloor/hq/app/sheet/AsOfFilter.java
+index 11dbafc15..1c4a81384 100644
+--- a/src/main/java/net/officefloor/hq/app/sheet/AsOfFilter.java
++++ b/src/main/java/net/officefloor/hq/app/sheet/AsOfFilter.java
+@@ -48,6 +48,12 @@ public class AsOfFilter extends OncePerRequestFilter {
+     private static final Set<String> READS = Set.of("/api/signin", LOAD, "/api/settings/get",
+             "/api/people/watched", "/api/roles/delegations", "/api/claims/tags");
+ 
++    /**
++     * The reads answered as the store holds the sheets now, whatever the date asked for: the
++     * consolidated figures are not dated.
++     */
++    private static final Set<String> UNDATED = Set.of("/api/rollup/descendants/list");
++
+     /** The changes that only take or release a claim editor's lock: not part of the sheet's history. */
+     private static final Set<String> LOCKS = Set.of("/api/claims/lock", "/api/claims/unlock");
+ 
+@@ -99,7 +105,7 @@ public class AsOfFilter extends OncePerRequestFilter {
+             response.sendError(HttpStatus.LOCKED.value(), "The sheet is shown as of a date and may not be changed.");
+             return;
+         }
+-        if (sheet == null) {
++        if (sheet == null || UNDATED.contains(path)) {
+             chain.doFilter(body, response);
+             return;
+         }
