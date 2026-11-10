@@ -11,7 +11,7 @@ import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 
-/** Sign-in (a name, no password), loading a sheet by id, changing a sheet's today and archiving it. */
+/** Sign-in (a name, no password), loading a sheet by id, changing a sheet's today, archiving it and cloning it. */
 @RestController
 @RequestMapping("/api")
 public class SheetController {
@@ -32,6 +32,10 @@ public class SheetController {
     public record ArchiveSheetRequest(@NotBlank @Size(max = 100) String id, @NotBlank @Size(max = 100) String user) {
     }
 
+    public record CloneSheetRequest(@NotBlank @Size(max = 100) String id, @NotBlank @Size(max = 100) String user,
+            @NotBlank @Size(max = 100) String to) {
+    }
+
     /** {@code lastBatch}: the number of the sheet's last settle batch; none when there has been none. */
     public record SheetResponse(String id, LocalDate today, boolean archived, Integer lastBatch) {
     }
@@ -43,10 +47,12 @@ public class SheetController {
 
     private final SheetService service;
     private final RoleService roles;
+    private final SheetCloneService clones;
 
-    public SheetController(SheetService service, RoleService roles) {
+    public SheetController(SheetService service, RoleService roles, SheetCloneService clones) {
         this.service = service;
         this.roles = roles;
+        this.clones = clones;
     }
 
     @PostMapping("/signin")
@@ -71,5 +77,11 @@ public class SheetController {
         // only a steward may archive the sheet (checked here: the role service depends on the sheet service)
         roles.refuseUnlessSteward(req.id().trim(), req.user().trim());
         return response(service.archive(req.id().trim(), req.user().trim()));
+    }
+
+    /** Clone the sheet to another id never used; answers the clone. */
+    @PostMapping("/sheets/clone")
+    public SheetResponse cloneSheet(@Valid @RequestBody CloneSheetRequest req) {
+        return response(clones.cloneTo(req.id().trim(), req.user().trim(), req.to().trim()));
     }
 }

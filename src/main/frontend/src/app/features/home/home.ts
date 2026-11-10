@@ -42,6 +42,17 @@ import { People } from '../people/people';
             Archived <strong data-testid="sheet-archived">{{ session.archived() ? 'yes' : 'no' }}</strong>
             <button type="button" data-testid="sheet-archive" (click)="archive()">Archive sheet</button>
           </p>
+          <form aria-label="Clone sheet" (submit)="cloneSheet($event)">
+            <label for="sheet-clone-to">Clone to sheet id</label>
+            <input
+              id="sheet-clone-to"
+              data-testid="sheet-clone-to"
+              [value]="cloneInput()"
+              (input)="cloneInput.set($any($event.target).value); sheetError.set(null)"
+            />
+            <button type="submit" data-testid="sheet-clone">Clone sheet</button>
+            <p>Last clone made <strong data-testid="sheet-cloned-to">{{ clonedTo() }}</strong></p>
+          </form>
           <p>Parent sheet <strong data-testid="sheet-parent">{{ session.parent() }}</strong></p>
           <form aria-label="As of" (submit)="setAsOf($event)">
             <p>As of <strong data-testid="sheet-asof">{{ session.asOf() ?? '' }}</strong></p>
@@ -90,6 +101,9 @@ export class Home {
   protected readonly todayInput = signal('');
   protected readonly asOfInput = signal('');
   protected readonly asOfError = signal<string | null>(null);
+  protected readonly cloneInput = signal('');
+  /** The id of the last clone made of the sheet from this screen; blank for none. */
+  protected readonly clonedTo = signal('');
 
   protected async signIn(event: Event): Promise<void> {
     event.preventDefault();
@@ -115,6 +129,7 @@ export class Home {
       return;
     }
     try {
+      if (id !== this.session.sheet()) this.clonedTo.set('');
       await this.session.loadSheet(id);
     } catch {
       this.sheetError.set('Could not load that sheet.');
@@ -157,6 +172,21 @@ export class Home {
       await this.session.clearAsOf();
     } catch {
       this.asOfError.set('Could not show the sheet as it is now.');
+    }
+  }
+
+  protected async cloneSheet(event: Event): Promise<void> {
+    event.preventDefault();
+    this.sheetError.set(null);
+    const to = this.cloneInput().trim();
+    if (!to) {
+      this.sheetError.set('Enter a sheet id to clone to.');
+      return;
+    }
+    try {
+      this.clonedTo.set(await this.session.cloneSheet(to));
+    } catch {
+      this.sheetError.set('Could not clone the sheet to that id.');
     }
   }
 

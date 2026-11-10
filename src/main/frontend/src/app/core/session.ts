@@ -84,6 +84,14 @@ export class Session {
     this.show(res);
   }
 
+  /** Clone the active sheet to another id never used (a steward only); answers the clone's id. */
+  async cloneSheet(to: string): Promise<string> {
+    const res = await firstValueFrom(
+      this.http.post<SheetResponse>('/api/sheets/clone', { id: this.sheet(), user: this.user(), to }),
+    );
+    return res.id;
+  }
+
   private show(res: SheetResponse): void {
     if (res.id !== this.sheet()) this.parent.set('');
     this.sheet.set(res.id);

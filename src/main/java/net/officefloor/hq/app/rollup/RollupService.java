@@ -185,6 +185,19 @@ public class RollupService {
         recordChanges(sheetId, user, before, false);
     }
 
+    /** Record, once the change commits, the figures of every person on the sheet in list order, then its totals. */
+    public void recordAll(String sheetId, String user) {
+        Snapshot now = snapshot(sheetId);
+        String prefix = " sheet=" + sheetId + " by=" + user;
+        for (Figures figures : now.people().values()) {
+            audit.recordOnCommit("ROLLUP" + prefix + " person=" + figures.name() + " claimed="
+                    + money(figures.claimed()) + " due-total=" + money(figures.dueTotal()) + " overdue-total="
+                    + money(figures.overdueTotal()));
+        }
+        audit.recordOnCommit("TOTALS" + prefix + " claimed-total=" + money(now.claimedTotal()) + " due-total="
+                + money(now.dueTotal()) + " overdue-total=" + money(now.overdueTotal()));
+    }
+
     /**
      * Record, once the change commits, the figures that moved since the snapshot taken before it;
      * with {@code leaving}, a person who has left the sheet since counts as moved, so the totals
