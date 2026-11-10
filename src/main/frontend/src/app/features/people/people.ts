@@ -14,6 +14,7 @@ import { GradeSummary, PeriodSummary, StatusSummary, Summary, VoidReasonSummary 
 import { VoidReasons } from '../void-reasons/void-reasons';
 import { Templates } from '../templates/templates';
 import { Pool, Pools } from '../pools/pools';
+import { PersonPlans, Plan } from '../plans/plans';
 import { VoidReasons as VoidReasonList } from '../../core/void-reasons';
 
 // The people on the active sheet, in list order (each person's position: new people go to the end,
@@ -209,7 +210,7 @@ const SUMMARY_STATUSES = ['DRAFT', 'OPEN', 'PENDING', 'SETTLED', 'VOID'] as cons
 
 @Component({
   selector: 'app-people',
-  imports: [AuditView, Header, Holidays, PersonClaims, Periods, Rates, Roles, Pools, Settings, Summary, Templates, VoidReasons],
+  imports: [AuditView, Header, Holidays, PersonClaims, PersonPlans, Periods, Rates, Roles, Pools, Settings, Summary, Templates, VoidReasons],
   template: `
     <app-header
       [peopleCount]="people().length"
@@ -343,6 +344,13 @@ const SUMMARY_STATUSES = ['DRAFT', 'OPEN', 'PENDING', 'SETTLED', 'VOID'] as cons
           <p role="alert" data-testid="paste-error">{{ err }}</p>
         }
       </form>
+      <button type="button" data-testid="plan-generate" (click)="generatePlans()">Generate plan claims</button>
+      @if (planGenerated() !== null) {
+        <p>Made <strong data-testid="plan-generated-count">{{ planGenerated() }}</strong></p>
+      }
+      @if (planGenerateError(); as err) {
+        <p role="alert" data-testid="plan-generate-error">{{ err }}</p>
+      }
       <label>
         <input
           type="checkbox"
@@ -514,6 +522,7 @@ const SUMMARY_STATUSES = ['DRAFT', 'OPEN', 'PENDING', 'SETTLED', 'VOID'] as cons
             <th scope="col">Patrons</th>
             <th scope="col">Watched</th>
             <th scope="col">Claims</th>
+            <th scope="col">Plans</th>
             <th scope="col"><span class="visually-hidden">Actions</span></th>
           </tr>
         </thead>
@@ -651,6 +660,14 @@ const SUMMARY_STATUSES = ['DRAFT', 'OPEN', 'PENDING', 'SETTLED', 'VOID'] as cons
                   (saved)="claimSaved($event)"
                   (reassigned)="claimMoved($event)"
                   (selectedChange)="selectClaim($event.id, $event.on)"
+                />
+              </td>
+              <td>
+                <app-person-plans
+                  [personId]="p.id"
+                  [personName]="p.name"
+                  [plans]="plansOf(p.id)"
+                  (added)="planAdded($event)"
                 />
               </td>
               <td>
@@ -820,6 +837,11 @@ export class People {
   protected readonly holdTos = signal<ReadonlyMap<number, string>>(new Map());
   /** The sheet's claims, newest first. */
   protected readonly claims = signal<Claim[]>([]);
+  /** The sheet's plans, in the order they were added. */
+  protected readonly plans = signal<Plan[]>([]);
+  /** How many claims the last generate made; null before one, and while one runs. */
+  protected readonly planGenerated = signal<number | null>(null);
+  protected readonly planGenerateError = signal<string | null>(null);
   /** The ids of the claims ticked for a bulk action. */
   protected readonly selectedClaims = signal<ReadonlySet<number>>(new Set());
   /** What the last bulk open did; cleared while the next one runs. */
@@ -1104,6 +1126,8 @@ export class People {
   protected readonly pasteError = signal<string | null>(null);
   /** Whether a paste is waiting for its answer: a second one meanwhile is ignored. */
   private pasteSubmitting = false;
+  /** Whether a generate is waiting for its answer: a second press meanwhile is ignored. */
+  private planGenerating = false;
 
   constructor() {
     // Re-read the sheet's people from the store every time a sheet is loaded.
@@ -1112,6 +1136,9 @@ export class People {
       this.session.loads();
       this.people.set([]);
       this.claims.set([]);
+      this.plans.set([]);
+      this.planGenerated.set(null);
+      this.planGenerateError.set(null);
       this.descendants.set(NO_DESCENDANTS);
       this.usedTags.set([]);
       this.selectedClaims.set(new Set());
@@ -1162,7 +1189,7 @@ export class People {
 
   private async fetch(sheet: string): Promise<void> {
     try {
-      const [list, claims, statements, patrons, watched, tags, descendants] = await Promise.all([
+      const [list, claims, statements, patrons, watched, tags, descendants, plans] = await Promise.all([
         firstValueFrom(this.http.post<Person[]>('/api/people/list', { sheet })),
         firstValueFrom(this.http.post<Claim[]>('/api/claims/list', { sheet })),
         firstValueFrom(this.http.post<StatementSummary[]>('/api/statements/list', { sheet })),
@@ -1170,9 +1197,11 @@ export class People {
         firstValueFrom(this.http.post<number[]>('/api/people/watched', { sheet, user: this.session.user() })),
         firstValueFrom(this.http.post<string[]>('/api/claims/tags', { sheet })),
         firstValueFrom(this.http.post<Descendants>('/api/rollup/descendants/list', { sheet })),
+        firstValueFrom(this.http.post<Plan[]>('/api/plans/list', { sheet })),
       ]);
       if (this.session.sheet() === sheet) {
         this.claims.set(claims);
+        this.plans.set(plans);
         this.descendants.set(descendants);
         this.usedTags.set(tags);
         this.statements.set(new Map(statements.map((s) => [s.personId, s])));
@@ -1731,6 +1760,45 @@ export class People {
     this.claims.update((list) =>
       list.some((c) => c.id === claim.id) ? list.map((c) => (c.id === claim.id ? claim : c)) : [claim, ...list],
     );
+  }
+
+  protected plansOf(personId: number): Plan[] {
+    return this.plans().filter((pl) => pl.personId === personId);
+  }
+
+  protected planAdded(plan: Plan): void {
+    this.plans.update((list) => [...list, plan]);
+  }
+
+  /** Make the DRAFT claims the sheet's plans are due: the server adds them in order, and the
+   *  screen lists each as its person's newest claim and shows how many were made. */
+  protected async generatePlans(): Promise<void> {
+    if (this.planGenerating) return;
+    this.planGenerated.set(null);
+    this.planGenerateError.set(null);
+    const sheet = this.session.sheet();
+    this.planGenerating = true;
+    try {
+      const done = await firstValueFrom(
+        this.http.post<{ made: number; claims: Claim[]; plans: Plan[] }>('/api/plans/generate', {
+          sheet,
+          user: this.session.user(),
+        }),
+      );
+      if (this.session.sheet() !== sheet) return;
+      for (const c of done.claims) this.claimSaved(c);
+      this.plans.set(done.plans);
+      this.planGenerated.set(done.made);
+    } catch (e) {
+      if (this.session.sheet() !== sheet) return;
+      this.planGenerateError.set(
+        e instanceof HttpErrorResponse && e.status === 403
+          ? 'Your role may not generate plan claims.'
+          : 'Could not generate the plan claims.',
+      );
+    } finally {
+      this.planGenerating = false;
+    }
   }
 
   /** A claim moved to another person: listed first, as their newest claim. */

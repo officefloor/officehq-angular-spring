@@ -188,6 +188,17 @@ public class ClaimService {
         return added;
     }
 
+    /**
+     * Whether the claim form would take a claim of the person dated so, as far as its date decides:
+     * its due-by is inside no closed period and the person's retirements do not refuse the date.
+     */
+    @Transactional(readOnly = true)
+    public boolean takesDate(String sheetId, long personId, LocalDate date) {
+        Person person = person(sheetId, personId);
+        LocalDate dueBy = dueBy(sheetId, date, terms(sheetId, person, date));
+        return !periods.isClosed(sheetId, dueBy) && !person.refusesClaimOn(date);
+    }
+
     @Transactional
     public Claim update(String sheetId, String user, long id, BigDecimal amount, LocalDate date, String note,
             String corrects, String ref, List<String> tags) {
