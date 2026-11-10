@@ -9,7 +9,7 @@ import { DatedGrade, DatedValue, Lateness, Rate, chargedDueCents, dueText, grace
 // A person's claims, newest first, and the one form under their row that both adds a claim and
 // edits an existing one (opening a claim's editor fills the form with its values). Each claim
 // shows its status and the buttons that move it on; a move its status does not allow is refused
-// with an error on the claim, as is the user who opened a claim settling it (four eyes). A claim
+// with an error on the claim, as is the user who opened or last edited a claim settling it (four eyes). A claim
 // belongs to the period its due-by falls in (as fixed when added; for one being added, its date
 // plus the terms it would get). A claim whose due-by is inside a closed period cannot be added,
 // edited or moved on: each is refused with an error; one dated in a closed period but due outside
@@ -39,7 +39,7 @@ import { DatedGrade, DatedValue, Lateness, Rate, chargedDueCents, dueText, grace
 // A clerk settling a claim whose due is above the clerk limit makes it PENDING. A PENDING claim
 // counts like an OPEN one but is not bound by a statement: it shows its live figure. A steward
 // approves it (SETTLED, its due fixed then) or rejects it with a reason (back to OPEN, bound again
-// by the last statement); the user who opened it cannot approve it.
+// by the last statement); the user who opened or last edited it cannot approve it.
 // Who may open, settle, void or move a claim is the sheet's permission matrix (see the settings).
 // By default a steward can move a DRAFT, OPEN or PENDING claim to another person: it keeps its number and
 // date, loses any figure a statement bound it to, and is listed first under its new person.
@@ -81,6 +81,8 @@ export interface Claim {
   settledDue: string | null;
   /** The user who opened the claim; null while DRAFT, or if voided without being opened. */
   openedBy: string | null;
+  /** The user who last edited the claim through its form or its row's amount; null while never edited. */
+  editedBy: string | null;
   /** Whether the person's last statement bound the claim to the figure it had then. */
   stated: boolean;
   /** The figure bound by the last statement; null while unbound or if it had no rate then. */
@@ -1054,6 +1056,8 @@ export class PersonClaims {
           ? action === 'approve' || action === 'reject'
             ? c.openedBy === this.session.user() && action === 'approve'
               ? 'The user who opened a claim cannot approve it.'
+              : c.editedBy === this.session.user() && action === 'approve'
+                ? 'The user who last edited a claim cannot approve it.'
               : 'Only a steward can approve or reject a PENDING claim.'
             : action === 'resettle'
               ? 'Only a steward can re-settle a claim.'
@@ -1061,6 +1065,8 @@ export class PersonClaims {
                 ? 'Only a steward can void a SETTLED claim.'
               : action === 'settle' && c.openedBy === this.session.user()
                 ? 'The user who opened a claim cannot settle it.'
+              : action === 'settle' && c.editedBy === this.session.user()
+                ? 'The user who last edited a claim cannot settle it.'
                 : `Your role may not ${action} a claim on this sheet.`
           : e instanceof HttpErrorResponse && e.status === 423
             ? CLOSED

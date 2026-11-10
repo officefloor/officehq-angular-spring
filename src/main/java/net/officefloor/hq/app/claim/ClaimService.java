@@ -44,7 +44,8 @@ import org.springframework.web.server.ResponseStatusException;
  * only when its figure is at or below the sheet's clerk limit (a claim with no figure is within any
  * limit); a clerk settling one above it makes it PENDING instead. A steward settles any claim, and
  * approves a PENDING claim (SETTLED, its due fixed then) or rejects it with a reason (back to OPEN);
- * the user who opened a claim cannot approve it. A PENDING claim is not bound by a statement: it
+ * the user who opened a claim cannot approve it. The user who last edited a claim (through its form or
+ * its row's amount) can neither settle nor approve it, as its opener cannot. A PENDING claim is not bound by a statement: it
  * shows its live figure, and is bound again by the last statement once rejected. An overdue claim's due gains a late charge on its
  * figure (see {@link LateCharge}), and the floor is applied last: a claim's live due is never below
  * the sheet's floor. A statement binds only the rate figure, not the charge nor the floor, and settling fixes the charge into the settled due. A claim with
@@ -198,6 +199,7 @@ public class ClaimService {
         claim.setNote(note);
         claim.setCorrects(corrected);
         claim.setLockedBy(null);
+        claim.setEditedBy(user);
         Claim saved = claims.saveAndFlush(claim);
         useTags(sheetId, saved);
         audit.recordOnCommit(record("CLAIM_EDITED", sheetId, user, person(sheetId, saved.getPersonId()), saved));
@@ -346,6 +348,10 @@ public class ClaimService {
         if (next == ClaimStatus.SETTLED && user.equals(claim.getOpenedBy())) {
             throw new ResponseStatusException(HttpStatus.FORBIDDEN,
                     "The user who opened a claim cannot " + (review ? "approve" : "settle") + " it.");
+        }
+        if (next == ClaimStatus.SETTLED && user.equals(claim.getEditedBy())) {
+            throw new ResponseStatusException(HttpStatus.FORBIDDEN,
+                    "The user who last edited a claim cannot " + (review ? "approve" : "settle") + " it.");
         }
         if (review && !isSteward(sheetId, user)) {
             throw new ResponseStatusException(HttpStatus.FORBIDDEN,

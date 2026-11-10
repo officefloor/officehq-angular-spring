@@ -106,6 +106,7 @@ public class ClaimController {
 
     public record ClaimResponse(long id, long personId, String amount, LocalDate date, String note,
             ClaimStatus status, String number, String settledDue, String openedBy,
+            String editedBy,
             boolean stated, String statedDue, String corrects, LocalDate dueBy, List<ClaimLogLine> log,
             LocalDate deferredUntil, int proofs, String splitFrom, String lockedBy,
             boolean lateEntry, LocalDate remindedOn, String ref, List<String> tags, String voidReason,
@@ -128,7 +129,7 @@ public class ClaimController {
         return new ClaimResponse(claim.getId(), claim.getPersonId(),
                 claim.getAmount().setScale(2, RoundingMode.UNNECESSARY).toPlainString(), claim.getDate(),
                 claim.getNote(), claim.getStatus(), claim.getNumber(),
-                money(claim.getSettledDue()), claim.getOpenedBy(), claim.isStated(), money(claim.getStatedDue()),
+                money(claim.getSettledDue()), claim.getOpenedBy(), claim.getEditedBy(), claim.isStated(), money(claim.getStatedDue()),
                 claim.getCorrects(), claim.getDueBy(),
                 claim.getLog().stream().map(l -> new ClaimLogLine(l.getStatus(), l.getBy(), l.getDate(), l.getDue()))
                         .toList(),
