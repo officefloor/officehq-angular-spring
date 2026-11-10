@@ -395,6 +395,10 @@ public class ClaimService {
         }
         String voidedWith = next == ClaimStatus.VOID ? voidReasons.refuseUnlessListed(sheetId, voidReason) : null;
         Person person = person(sheetId, claim.getPersonId());
+        if (next == ClaimStatus.OPEN && !review && flaggedAgainst(sheetId, user, person)) {
+            throw new ResponseStatusException(HttpStatus.FORBIDDEN,
+                    "This person is flagged: only a steward can open their claims.");
+        }
         if (next == ClaimStatus.OPEN && !review && atPeriodCap(sheetId, claim)) {
             throw new ResponseStatusException(HttpStatus.CONFLICT,
                     "This person already has as many open claims in that period as it allows.");
@@ -935,6 +939,11 @@ public class ClaimService {
                 .orElse(false);
     }
 
+    /** Whether the person's flag, in force on the sheet's today, keeps the user (not a steward) from opening their claims. */
+    private boolean flaggedAgainst(String sheetId, String user, Person person) {
+        return person != null && person.flaggedOn(sheets.today(sheetId)) && !isSteward(sheetId, user);
+    }
+
     /** What a bulk open did: how many claims were opened and how many refused, and the claims opened. */
     public record BulkOpened(int opened, int refused, List<Claim> claims) {
     }
@@ -942,7 +951,7 @@ public class ClaimService {
     /**
      * Open the given claims together, in list order (the order people were added, newest claim
      * first within a person), so they are numbered in that order. A claim that cannot be opened
-     * (not on the sheet, not DRAFT, dated inside a closed period, its person at its period's cap, or due above the note threshold
+     * (not on the sheet, not DRAFT, dated inside a closed period, its person flagged and the user no steward, its person at its period's cap, or due above the note threshold
      * with an empty note) is refused and left as it is. A claim that goes to REVIEW counts as opened.
      */
     @Transactional
@@ -953,6 +962,7 @@ public class ClaimService {
         boolean permitted = sheets.sheet(sheetId).permits("open", roles.roleOf(sheetId, user));
         for (Claim claim : selected) {
             if (!permitted || claim.getStatus() != ClaimStatus.DRAFT || periods.isClosed(sheetId, claim.getDueBy())
+                    || flaggedAgainst(sheetId, user, person(sheetId, claim.getPersonId()))
                     || atPeriodCap(sheetId, claim) || needsNote(sheetId, person(sheetId, claim.getPersonId()), claim)) {
                 refused++;
                 continue;

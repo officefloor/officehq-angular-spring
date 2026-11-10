@@ -106,6 +106,14 @@ public class Person {
     @Column(name = "arrived_on")
     private LocalDate arrivedOn;
 
+    /** The reason a steward flagged the person; null when never flagged. */
+    @Column(name = "flag_reason")
+    private String flagReason;
+
+    /** The last day the flag is in force; null when never flagged. */
+    @Column(name = "flag_until")
+    private LocalDate flagUntil;
+
     /** Bumped on every save; an edit must carry the version it was made from. */
     @Version
     @Column(name = "version", nullable = false)
@@ -319,6 +327,22 @@ public class Person {
     /** Whether the retirement date is reached on a day (the day on or after it). */
     public boolean retiredOn(LocalDate date) {
         return retiredFrom != null && date != null && !date.isBefore(retiredFrom);
+    }
+
+    /** Flag the person with a reason, in force through the until date; replaces any earlier flag. */
+    public void flag(String reason, LocalDate until) {
+        this.flagReason = reason;
+        this.flagUntil = until;
+    }
+
+    /** Whether the flag is in force on a day: on or before its until date. */
+    public boolean flaggedOn(LocalDate date) {
+        return flagReason != null && flagUntil != null && date != null && !date.isAfter(flagUntil);
+    }
+
+    /** The flag's reason when it is in force on a day, else null. */
+    public String flagShownOn(LocalDate date) {
+        return flaggedOn(date) ? flagReason : null;
     }
 
     /** The holds recorded, by from-date. */

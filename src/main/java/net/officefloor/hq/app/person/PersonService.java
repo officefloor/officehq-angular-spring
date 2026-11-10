@@ -411,6 +411,26 @@ public class PersonService {
         return saved;
     }
 
+    /**
+     * Flag the person with a reason until a date (a steward only, 403 for anyone else; 400 for a
+     * blank reason). While the sheet's today is on or before the date, only a steward may open a
+     * claim of theirs.
+     */
+    @Transactional
+    public Person flag(String sheetId, String user, long id, String reason, LocalDate until) {
+        roles.refuseUnlessSteward(sheetId, user);
+        if (reason == null || reason.isBlank()) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Enter a reason for the flag.");
+        }
+        Person person = people.lockByIdAndSheetId(id, sheetId)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "No such person on this sheet."));
+        person.flag(reason, until);
+        Person saved = save(person);
+        audit.recordOnCommit("PERSON_FLAGGED sheet=" + sheetId + " by=" + user + " name=" + saved.getName()
+                + " reason=" + reason + " until=" + until);
+        return saved;
+    }
+
     @Transactional(readOnly = true)
     public List<Patron> patrons(String sheetId) {
         return patrons.findBySheetIdOrderByIdAsc(sheetId);

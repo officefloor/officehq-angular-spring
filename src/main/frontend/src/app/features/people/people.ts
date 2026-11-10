@@ -143,6 +143,8 @@ interface Person {
   retirements: PastRetirement[];
   /** The person's snapshot lines, oldest first: the day being left when today moved, and their due-total then. */
   snapshots: SnapshotLine[];
+  /** The reason of the person's flag while it is in force on the sheet's today, or null. */
+  flag: string | null;
 }
 
 /** One of a person's snapshot lines: the day being left and their due-total then ('n/a' when none). */
@@ -701,6 +703,7 @@ const SUMMARY_STATUSES = ['DRAFT', 'OPEN', 'PENDING', 'SETTLED', 'VOID', 'REVIEW
                     <li data-testid="person-retirement-line">{{ r.from }} to {{ r.to }}</li>
                   }
                 </ul>
+                <span>Flag: <span data-testid="person-flag-shown">{{ p.flag ?? '' }}</span></span>
                 <ul aria-label="Snapshots">
                   @for (n of p.snapshots; track $index) {
                     <li data-testid="person-snapshot-line">{{ n.day }} {{ n.dueTotal }}</li>
@@ -909,6 +912,30 @@ const SUMMARY_STATUSES = ['DRAFT', 'OPEN', 'PENDING', 'SETTLED', 'VOID', 'REVIEW
                 >
                   Unretire
                 </button>
+                <label [for]="'person-flag-reason-' + p.id">Flag reason</label>
+                <input
+                  type="text"
+                  [id]="'person-flag-reason-' + p.id"
+                  data-testid="person-flag-reason"
+                  [value]="flagReasons().get(p.id) ?? ''"
+                  (input)="setFlagReason(p.id, $any($event.target).value)"
+                />
+                <label [for]="'person-flag-until-' + p.id">until</label>
+                <input
+                  type="date"
+                  [id]="'person-flag-until-' + p.id"
+                  data-testid="person-flag-until"
+                  [value]="flagUntils().get(p.id) ?? ''"
+                  (input)="setFlagUntil(p.id, $any($event.target).value)"
+                />
+                <button
+                  type="button"
+                  data-testid="person-flag"
+                  [attr.aria-label]="'Flag ' + p.name"
+                  (click)="flag(p)"
+                >
+                  Flag
+                </button>
                 <label [for]="'person-hold-from-' + p.id">Hold from</label>
                 <input
                   type="date"
@@ -1027,6 +1054,9 @@ export class People {
   protected readonly inlineGrades = signal<ReadonlyMap<number, string>>(new Map());
   /** The retire-from date typed on each person's row, by person id. */
   protected readonly retireDates = signal<ReadonlyMap<number, string>>(new Map());
+  /** The flag reason and until-date typed on each person's row, by person id. */
+  protected readonly flagReasons = signal<ReadonlyMap<number, string>>(new Map());
+  protected readonly flagUntils = signal<ReadonlyMap<number, string>>(new Map());
   /** The alias typed on each person's row, by person id. */
   protected readonly aliasInputs = signal<ReadonlyMap<number, string>>(new Map());
   /** The hold from- and to-dates typed on each person's row, by person id. */
@@ -1430,6 +1460,8 @@ export class People {
       this.retireDates.set(new Map());
       this.inlineGrades.set(new Map());
       this.holdFroms.set(new Map());
+      this.flagReasons.set(new Map());
+      this.flagUntils.set(new Map());
       this.aliasInputs.set(new Map());
       this.statementAsOfs.set(new Map());
       this.holdTos.set(new Map());
@@ -1955,6 +1987,46 @@ export class People {
           e instanceof HttpErrorResponse && e.status === 409
             ? 'That alias is already a name or alias on this sheet.'
             : 'Could not add an alias for ' + p.name + '.',
+        ),
+      );
+    }
+  }
+
+  protected setFlagReason(id: number, reason: string): void {
+    this.flagReasons.update((m) => new Map(m).set(id, reason));
+    this.clearRowError(id);
+  }
+
+  protected setFlagUntil(id: number, date: string): void {
+    this.flagUntils.update((m) => new Map(m).set(id, date));
+    this.clearRowError(id);
+  }
+
+  /** Flag the person with the reason on their row until its date (a steward only). */
+  protected async flag(p: Person): Promise<void> {
+    this.clearRowError(p.id);
+    const sheet = this.session.sheet();
+    const reason = (this.flagReasons().get(p.id) ?? '').trim();
+    const until = (this.flagUntils().get(p.id) ?? '').trim();
+    if (reason === '' || !/^\d{4}-\d{2}-\d{2}$/.test(until)) {
+      this.rowErrors.update((m) => new Map(m).set(p.id, 'Enter a reason and an until date to flag ' + p.name + '.'));
+      return;
+    }
+    try {
+      const saved = await firstValueFrom(
+        this.http.post<Person>('/api/people/flag', { sheet, user: this.session.user(), id: p.id, reason, until }),
+      );
+      if (this.session.sheet() !== sheet) return;
+      this.people.update((list) => list.map((x) => (x.id === saved.id ? saved : x)));
+      if (this.editingId() === saved.id && this.editingVersion === p.version) this.editingVersion = saved.version;
+    } catch (e) {
+      if (this.session.sheet() !== sheet) return;
+      this.rowErrors.update((m) =>
+        new Map(m).set(
+          p.id,
+          e instanceof HttpErrorResponse && e.status === 403
+            ? 'Only a steward can flag ' + p.name + '.'
+            : 'Could not flag ' + p.name + '.',
         ),
       );
     }

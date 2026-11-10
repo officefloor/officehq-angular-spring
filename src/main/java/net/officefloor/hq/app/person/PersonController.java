@@ -99,6 +99,11 @@ public class PersonController {
             @NotBlank @Size(max = 100) String user, @NotNull Long id, LocalDate from, LocalDate to) {
     }
 
+    public record FlagPersonRequest(@NotBlank @Size(max = 100) String sheet,
+            @NotBlank @Size(max = 100) String user, @NotNull Long id, @Size(max = 500) String reason,
+            @NotNull LocalDate until) {
+    }
+
     public record AddPatronRequest(@NotBlank @Size(max = 100) String sheet,
             @NotBlank @Size(max = 100) String user, @NotNull Long id, @NotNull Long patronId) {
     }
@@ -130,11 +135,11 @@ public class PersonController {
     public record SnapshotResponse(LocalDate day, String dueTotal) {
     }
 
-    /** A person, with every grade recorded for them, the one from the beginning of time first, their own terms in force on the sheet's today or null, their contact or null, their aliases sorted as names are compared, their tags sorted, and whether they clash: their name or an alias is used on another sheet of the sheet's tree, and the sheet they were transferred from or null. */
+    /** A person, with every grade recorded for them, the one from the beginning of time first, their own terms in force on the sheet's today or null, their contact or null, their aliases sorted as names are compared, their tags sorted, the reason of their flag when in force on the sheet's today or null, and whether they clash: their name or an alias is used on another sheet of the sheet's tree, and the sheet they were transferred from or null. */
     public record PersonResponse(long id, String name, List<GradeResponse> grades, long version, boolean retired,
             LocalDate retiredFrom, boolean held, List<HoldResponse> holds, Integer terms, String contact,
             List<String> aliases, boolean clashing, String origin, List<RetirementResponse> retirements, List<String> tags,
-            List<SnapshotResponse> snapshots) {
+            List<SnapshotResponse> snapshots, String flag) {
     }
 
     public static PersonResponse response(Person person, boolean clashing, LocalDate today) {
@@ -147,7 +152,8 @@ public class PersonController {
                 person.getPastRetirements().stream().map(r -> new RetirementResponse(r.getFromDate(), r.getToDate())).toList(),
                 person.getTags(),
                 person.getSnapshots().stream().map(n -> new SnapshotResponse(n.getDay(), n.getDueTotal() == null ? "n/a"
-                        : n.getDueTotal().setScale(2, RoundingMode.HALF_UP).toPlainString())).toList());
+                        : n.getDueTotal().setScale(2, RoundingMode.HALF_UP).toPlainString())).toList(),
+                person.flagShownOn(today));
     }
 
     /** The person, with whether they clash on the sheet's tree. */
@@ -265,6 +271,12 @@ public class PersonController {
     @PostMapping("/hold")
     public PersonResponse hold(@Valid @RequestBody HoldPersonRequest req) {
         return response(req.sheet().trim(), service.hold(req.sheet().trim(), req.user().trim(), req.id(), req.from(), req.to()));
+    }
+
+    @PostMapping("/flag")
+    public PersonResponse flag(@Valid @RequestBody FlagPersonRequest req) {
+        return response(req.sheet().trim(), service.flag(req.sheet().trim(), req.user().trim(), req.id(),
+                req.reason() == null ? null : req.reason().trim(), req.until()));
     }
 
     @PostMapping("/patrons/list")
