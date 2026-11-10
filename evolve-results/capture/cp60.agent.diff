@@ -1,0 +1,105 @@
+diff --git a/src/main/frontend/src/app/features/people/people.ts b/src/main/frontend/src/app/features/people/people.ts
+index 56b66652c..07c0b19e4 100644
+--- a/src/main/frontend/src/app/features/people/people.ts
++++ b/src/main/frontend/src/app/features/people/people.ts
+@@ -527,21 +527,20 @@ export class People {
+     const today = this.session.today();
+     return new Map<string, string | undefined>(GRADES.map((g) => [g, pctOn(this.rates(), g, today)]));
+   });
++  /** The sheet's due-total: people's due-totals added up (skipping n/a), trimmed. */
+   protected readonly dueTotal = computed(() =>
+-    money(this.people().reduce((sum, p) => sum + (this.dueOf(p) ?? 0), 0)),
++    money(trimmedSum(this.people().map((p) => this.dueOf(p)).filter((d): d is number => d !== null))),
+   );
+   protected readonly dueText = dueText;
+   protected readonly money = money;
+-  /** The sheet's overdue claims that count: how many, and the sum of their figures in whole cents. */
+-  protected readonly overdueTotals = computed(() =>
+-    this.people().reduce(
+-      (sum, p) => {
+-        const o = this.overdueOf(p);
+-        return { count: sum.count + o.count, cents: sum.cents + o.cents };
+-      },
+-      { count: 0, cents: 0 },
+-    ),
+-  );
++  /** The sheet's overdue claims that count: how many, and the sum of people's figures in whole cents, trimmed. */
++  protected readonly overdueTotals = computed(() => {
++    const each = this.people().map((p) => this.overdueOf(p));
++    return {
++      count: each.reduce((sum, o) => sum + o.count, 0),
++      cents: trimmedSum(each.map((o) => o.cents)),
++    };
++  });
+   /** Per grade: the people not retired on it today, and their due-totals added up (skipping n/a). */
+   protected readonly gradeSummary = computed<GradeSummary[]>(() => {
+     const active = this.people().filter((p) => !p.retired);
+@@ -1132,3 +1131,12 @@ export class People {
+     }
+   }
+ }
++
++/**
++ * A sheet total of people's figures: with three or more, the single highest and the single lowest
++ * are left out.
++ */
++function trimmedSum(figures: readonly number[]): number {
++  const sum = figures.reduce((s, f) => s + f, 0);
++  return figures.length < 3 ? sum : sum - Math.max(...figures) - Math.min(...figures);
++}
+diff --git a/src/main/java/net/officefloor/hq/app/role/RoleService.java b/src/main/java/net/officefloor/hq/app/role/RoleService.java
+index de3943db0..f572c92f4 100644
+--- a/src/main/java/net/officefloor/hq/app/role/RoleService.java
++++ b/src/main/java/net/officefloor/hq/app/role/RoleService.java
+@@ -38,7 +38,8 @@ public class RoleService {
+      * Refuse (403) an action the user's role may not take by the sheet's permission matrix (see
+      * {@link net.officefloor.hq.app.sheet.Sheet#permits}).
+      */
+-    @Transactional(readOnly = true)
++    // a refusal leaves the caller's transaction usable (a bulk action refuses one claim and goes on)
++    @Transactional(readOnly = true, noRollbackFor = ResponseStatusException.class)
+     public void refuseUnlessPermitted(String sheetId, String user, String action) {
+         if (!sheets.sheet(sheetId).permits(action, roleOf(sheetId, user))) {
+             throw new ResponseStatusException(HttpStatus.FORBIDDEN, "Your role may not " + action + " here.");
+@@ -46,7 +47,8 @@ public class RoleService {
+     }
+ 
+     /** Refuse (403) any change by a viewer: a viewer sees the sheet and may change nothing. */
+-    @Transactional(readOnly = true)
++    // a refusal leaves the caller's transaction usable (a bulk action refuses one claim and goes on)
++    @Transactional(readOnly = true, noRollbackFor = ResponseStatusException.class)
+     public void refuseViewer(String sheetId, String user) {
+         if (Role.VIEWER.equals(roleOf(sheetId, user))) {
+             throw new ResponseStatusException(HttpStatus.FORBIDDEN, "A viewer may not change anything here.");
+diff --git a/src/main/java/net/officefloor/hq/app/rollup/RollupService.java b/src/main/java/net/officefloor/hq/app/rollup/RollupService.java
+index 9761abc7f..e0f408a3d 100644
+--- a/src/main/java/net/officefloor/hq/app/rollup/RollupService.java
++++ b/src/main/java/net/officefloor/hq/app/rollup/RollupService.java
+@@ -46,13 +46,24 @@ public class RollupService {
+             return people.values().stream().map(Figures::claimed).reduce(zero(), BigDecimal::add);
+         }
+ 
++        /** People's due-totals added up (n/a is no figure), trimmed as {@link #trimmed} says. */
+         public BigDecimal dueTotal() {
+-            return people.values().stream().map(Figures::dueTotal).filter(Objects::nonNull).reduce(zero(),
+-                    BigDecimal::add);
++            return trimmed(people.values().stream().map(Figures::dueTotal).filter(Objects::nonNull).toList());
+         }
+ 
++        /** People's overdue-totals added up, trimmed as {@link #trimmed} says. */
+         public BigDecimal overdueTotal() {
+-            return people.values().stream().map(Figures::overdueTotal).reduce(zero(), BigDecimal::add);
++            return trimmed(people.values().stream().map(Figures::overdueTotal).toList());
++        }
++
++        /** The sum of people's figures, leaving out the single highest and lowest when there are three or more. */
++        private static BigDecimal trimmed(List<BigDecimal> figures) {
++            BigDecimal sum = figures.stream().reduce(zero(), BigDecimal::add);
++            if (figures.size() < 3) {
++                return sum;
++            }
++            return sum.subtract(figures.stream().reduce(BigDecimal::max).orElseThrow())
++                    .subtract(figures.stream().reduce(BigDecimal::min).orElseThrow());
+         }
+     }
+ 
