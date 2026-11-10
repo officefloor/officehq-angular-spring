@@ -1,0 +1,269 @@
+diff --git a/src/main/frontend/src/app/core/session.ts b/src/main/frontend/src/app/core/session.ts
+index 1f8fd271d..0eb752567 100644
+--- a/src/main/frontend/src/app/core/session.ts
++++ b/src/main/frontend/src/app/core/session.ts
+@@ -116,7 +116,8 @@ export class Session {
+ 
+   async loadSheet(id: string): Promise<void> {
+     const res = await firstValueFrom(
+-      this.http.post<SheetResponse>('/api/sheets/load', { id, user: this.user() }),
++      // a sheet never used starts with the today of the sheet open now
++      this.http.post<SheetResponse>('/api/sheets/load', { id, user: this.user(), open: this.sheet() }),
+     );
+     this.show(res);
+     this.loads.update((n) => n + 1);
+diff --git a/src/main/frontend/src/app/features/dashboard/dashboard.ts b/src/main/frontend/src/app/features/dashboard/dashboard.ts
+new file mode 100644
+index 000000000..6064ec0e6
+--- /dev/null
++++ b/src/main/frontend/src/app/features/dashboard/dashboard.ts
+@@ -0,0 +1,62 @@
++import { HttpClient } from '@angular/common/http';
++import { Component, effect, inject, input, signal } from '@angular/core';
++import { firstValueFrom } from 'rxjs';
++import { Session } from '../../core/session';
++
++// The steward's dashboard: how many of the sheet's claims are PENDING and in REVIEW (as the summary
++// counts them), and how many claims that count are overdue (as the people list's totals count them).
++// Only a steward (in their own right or by a delegation in force) sees the counts; anyone else sees
++// the cells empty. Shown as of a date, it is the role the user had then that decides.
++@Component({
++  selector: 'app-dashboard',
++  template: `
++    <section aria-labelledby="dashboard-heading">
++      <h2 id="dashboard-heading">Steward's dashboard</h2>
++      <dl>
++        <dt>Pending</dt>
++        <dd data-testid="dash-pending-count">{{ steward() ? pendingCount() : '' }}</dd>
++        <dt>In review</dt>
++        <dd data-testid="dash-review-count">{{ steward() ? reviewCount() : '' }}</dd>
++        <dt>Overdue</dt>
++        <dd data-testid="dash-overdue-count">{{ steward() ? overdueCount() : '' }}</dd>
++      </dl>
++    </section>
++  `,
++})
++export class Dashboard {
++  private readonly http = inject(HttpClient);
++  private readonly session = inject(Session);
++
++  readonly pendingCount = input.required<number>();
++  readonly reviewCount = input.required<number>();
++  readonly overdueCount = input.required<number>();
++
++  /** Whether the signed-in user is a steward on the sheet (as of the date shown). */
++  protected readonly steward = signal(false);
++
++  constructor() {
++    // Re-read the user's role from the store every time a sheet is loaded.
++    effect(() => {
++      const sheet = this.session.sheet();
++      const user = this.session.user();
++      this.session.loads();
++      this.steward.set(false);
++      if (sheet && user) {
++        void this.fetch(sheet, user);
++      }
++    });
++  }
++
++  private async fetch(sheet: string, user: string): Promise<void> {
++    try {
++      const mine = await firstValueFrom(
++        this.http.post<{ user: string; role: string }>('/api/roles/mine/list', { sheet, user }),
++      );
++      if (this.session.sheet() === sheet && this.session.user() === user) {
++        this.steward.set(mine.role === 'steward');
++      }
++    } catch {
++      this.steward.set(false);
++    }
++  }
++}
+diff --git a/src/main/frontend/src/app/features/people/people.ts b/src/main/frontend/src/app/features/people/people.ts
+index 207d59a14..d58130aee 100644
+--- a/src/main/frontend/src/app/features/people/people.ts
++++ b/src/main/frontend/src/app/features/people/people.ts
+@@ -11,6 +11,7 @@ import { DatedGrade, DatedValue, Lateness, Rate, Rates, chargedDueCents, dueCent
+ import { Roles } from '../roles/roles';
+ import { Settings } from '../settings/settings';
+ import { Header } from '../header/header';
++import { Dashboard } from '../dashboard/dashboard';
+ import { ClassicPeriodSummary, ClassicSummary, GradeSummary, PeriodSummary, StatusSummary, Summary, VoidReasonSummary } from '../summary/summary';
+ import { VoidReasons } from '../void-reasons/void-reasons';
+ import { Templates } from '../templates/templates';
+@@ -242,7 +243,7 @@ const SUMMARY_STATUSES = ['DRAFT', 'OPEN', 'PENDING', 'SETTLED', 'VOID', 'REVIEW
+ 
+ @Component({
+   selector: 'app-people',
+-  imports: [FigurePipe, AuditView, Header, Holidays, PersonClaims, PersonPlans, Periods, Rates, Roles, Pools, Crews, Settings, Summary, ClassicSummary, Templates, TreeSearch, VoidReasons],
++  imports: [FigurePipe, AuditView, Header, Dashboard, Holidays, PersonClaims, PersonPlans, Periods, Rates, Roles, Pools, Crews, Settings, Summary, ClassicSummary, Templates, TreeSearch, VoidReasons],
+   template: `
+     <app-header
+       [peopleCount]="people().length"
+@@ -256,6 +257,11 @@ const SUMMARY_STATUSES = ['DRAFT', 'OPEN', 'PENDING', 'SETTLED', 'VOID', 'REVIEW
+       [myOverdueTotal]="myFigures()?.overdueTotal ?? ''"
+       [myCrewDueTotal]="myCrewDueTotal()"
+     />
++    <app-dashboard
++      [pendingCount]="statusCount('PENDING')"
++      [reviewCount]="statusCount('REVIEW')"
++      [overdueCount]="overdueTotals().count"
++    />
+     <app-rates [(rates)]="rates" />
+     <app-roles />
+     <app-settings [(floors)]="floors" [(latePcts)]="latePcts" [(graces)]="graces" [(policyDate)]="policyDate" [(roundings)]="roundings" [(caps)]="caps" [(pot)]="pot" />
+@@ -1330,6 +1336,10 @@ export class People {
+       count: this.claims().filter((c) => c.status === status).length,
+     })),
+   );
++  /** How many of the sheet's claims the summary counts in a status. */
++  protected statusCount(status: string): number {
++    return this.statusSummary().find((s) => s.status === status)?.count ?? 0;
++  }
+   /** How many of the sheet's REVIEW claims are late for review on its today. */
+   protected readonly reviewLateCount = computed(() =>
+     this.claims().filter((c) => reviewLate(c, this.session.today(), this.session.reviewSla())).length,
+diff --git a/src/main/java/net/officefloor/hq/app/role/RoleController.java b/src/main/java/net/officefloor/hq/app/role/RoleController.java
+index 65e32b5c6..a7f7601d2 100644
+--- a/src/main/java/net/officefloor/hq/app/role/RoleController.java
++++ b/src/main/java/net/officefloor/hq/app/role/RoleController.java
+@@ -20,6 +20,9 @@ public class RoleController {
+     public record ListRolesRequest(@NotBlank @Size(max = 100) String sheet) {
+     }
+ 
++    public record MyRoleRequest(@NotBlank @Size(max = 100) String sheet, @NotBlank @Size(max = 100) String user) {
++    }
++
+     public record SetRoleRequest(@NotBlank @Size(max = 100) String sheet, @NotBlank @Size(max = 100) String user,
+             @NotBlank @Size(max = 100) String name,
+             @NotNull @Pattern(regexp = Role.CLERK + "|" + Role.STEWARD + "|" + Role.VIEWER) String role) {
+@@ -55,6 +58,13 @@ public class RoleController {
+         return service.list(req.sheet().trim()).stream().map(RoleController::response).toList();
+     }
+ 
++    /** The signed-in user's role on the sheet (a delegation in force counts); as of a date, the role they had then. */
++    @PostMapping("/mine/list")
++    public RoleResponse mine(@Valid @RequestBody MyRoleRequest req) {
++        String user = req.user().trim();
++        return new RoleResponse(user, service.roleOf(req.sheet().trim(), user));
++    }
++
+     @PostMapping("/delegations")
+     public List<DelegationResponse> delegations(@Valid @RequestBody ListRolesRequest req) {
+         return service.delegations(req.sheet().trim()).stream().map(RoleController::response).toList();
+diff --git a/src/main/java/net/officefloor/hq/app/sheet/AsOfFilter.java b/src/main/java/net/officefloor/hq/app/sheet/AsOfFilter.java
+index 7d5581ecc..ab2d58786 100644
+--- a/src/main/java/net/officefloor/hq/app/sheet/AsOfFilter.java
++++ b/src/main/java/net/officefloor/hq/app/sheet/AsOfFilter.java
+@@ -115,7 +115,9 @@ public class AsOfFilter extends OncePerRequestFilter {
+         if (path.equals(LOAD)) {
+             // a sheet never loaded starts as usual, and counts from the beginning of time
+             String user = body.field("user");
+-            sheets.load(sheet, user == null || user.isBlank() ? "?" : user.trim());
++            String open = body.field("open");
++            sheets.load(sheet, user == null || user.isBlank() ? "?" : user.trim(),
++                    open == null || open.isBlank() ? null : open.trim());
+             history.captureFirst(sheet);
+         }
+         LocalDate date = asOf;
+diff --git a/src/main/java/net/officefloor/hq/app/sheet/SheetController.java b/src/main/java/net/officefloor/hq/app/sheet/SheetController.java
+index 868c72334..db447005e 100644
+--- a/src/main/java/net/officefloor/hq/app/sheet/SheetController.java
++++ b/src/main/java/net/officefloor/hq/app/sheet/SheetController.java
+@@ -24,7 +24,9 @@ public class SheetController {
+     public record SignInResponse(String name, String locale) {
+     }
+ 
+-    public record LoadSheetRequest(@NotBlank @Size(max = 100) String id, @NotBlank @Size(max = 100) String user) {
++    /** {@code open}: the sheet the user has open, whose today a sheet never loaded starts with; none for none. */
++    public record LoadSheetRequest(@NotBlank @Size(max = 100) String id, @NotBlank @Size(max = 100) String user,
++            @Size(max = 100) String open) {
+     }
+ 
+     public record SetTodayRequest(@NotBlank @Size(max = 100) String id, @NotBlank @Size(max = 100) String user,
+@@ -68,7 +70,8 @@ public class SheetController {
+ 
+     @PostMapping("/sheets/load")
+     public SheetResponse load(@Valid @RequestBody LoadSheetRequest req) {
+-        return response(service.load(req.id().trim(), req.user().trim()));
++        return response(service.load(req.id().trim(), req.user().trim(),
++                req.open() == null || req.open().isBlank() ? null : req.open().trim()));
+     }
+ 
+     @PostMapping("/sheets/today")
+diff --git a/src/main/java/net/officefloor/hq/app/sheet/SheetService.java b/src/main/java/net/officefloor/hq/app/sheet/SheetService.java
+index e272af0fe..411705a87 100644
+--- a/src/main/java/net/officefloor/hq/app/sheet/SheetService.java
++++ b/src/main/java/net/officefloor/hq/app/sheet/SheetService.java
+@@ -24,7 +24,10 @@ import org.springframework.stereotype.Service;
+ import org.springframework.transaction.annotation.Transactional;
+ import org.springframework.web.server.ResponseStatusException;
+ 
+-/** Loads a sheet by id; a sheet never loaded before is started empty, its today the real date. */
++/**
++ * Loads a sheet by id; a sheet never loaded before is started empty, its today that of the sheet the
++ * user had open when they loaded it (the real date when none).
++ */
+ @Service
+ public class SheetService {
+ 
+@@ -49,9 +52,17 @@ public class SheetService {
+ 
+     @Transactional
+     public Sheet load(String id, String user) {
++        return load(id, user, null);
++    }
++
++    /** Load a sheet; one never loaded before starts with the today of the sheet {@code openId} (when there is one). */
++    @Transactional
++    public Sheet load(String id, String user, String openId) {
+         return sheets.findById(id).orElseGet(() -> {
++            LocalDate today = (openId == null ? Optional.<Sheet>empty() : sheets.findById(openId))
++                    .map(Sheet::getToday).orElseGet(LocalDate::now);
+             try {
+-                return sheets.saveAndFlush(new Sheet(id, user, Instant.now(), LocalDate.now()));
++                return sheets.saveAndFlush(new Sheet(id, user, Instant.now(), today));
+             } catch (DataIntegrityViolationException e) {
+                 // another user started the same sheet at the same moment
+                 return sheets.findById(id).orElseThrow(() -> e);
+diff --git a/src/main/java/net/officefloor/hq/app/statement/Statement.java b/src/main/java/net/officefloor/hq/app/statement/Statement.java
+index cb5bf5705..0ae607aeb 100644
+--- a/src/main/java/net/officefloor/hq/app/statement/Statement.java
++++ b/src/main/java/net/officefloor/hq/app/statement/Statement.java
+@@ -82,6 +82,11 @@ public class Statement {
+         return dueTotal;
+     }
+ 
++    /** The sheet's today when it was taken; none for one kept from before that was recorded. */
++    public LocalDate getMadeOn() {
++        return madeOn;
++    }
++
+     /** Whether it was taken by the end of a day: the sheet's today then on or before it. */
+     public boolean madeBy(LocalDate day) {
+         return madeOn == null || !madeOn.isAfter(day);
+diff --git a/src/main/java/net/officefloor/hq/app/statement/StatementController.java b/src/main/java/net/officefloor/hq/app/statement/StatementController.java
+index 11ba65551..366626570 100644
+--- a/src/main/java/net/officefloor/hq/app/statement/StatementController.java
++++ b/src/main/java/net/officefloor/hq/app/statement/StatementController.java
+@@ -38,7 +38,8 @@ public class StatementController {
+     /**
+      * A person's statement count, and the last statement's due-total ("n/a" when it had none) and
+      * date, both none when no statement is left; and a line for each statement still standing,
+-     * oldest first by date (in the order taken on the same date).
++     * oldest first by the day it was taken (the sheet's today then; in the order taken on the same day),
++     * so one taken as of an earlier date is listed when it was taken.
+      */
+     public record SummaryResponse(long personId, int count, String dueTotal, LocalDate date,
+             List<StatementLine> lines) {
+@@ -48,7 +49,8 @@ public class StatementController {
+     }
+ 
+     private static SummaryResponse response(StatementService.Summary s) {
+-        List<StatementLine> lines = s.standing().stream().sorted(Comparator.comparing(Statement::getTakenOn))
++        List<StatementLine> lines = s.standing().stream().sorted(Comparator.comparing(Statement::getMadeOn,
++                Comparator.nullsFirst(Comparator.naturalOrder())))
+                 .map(t -> new StatementLine(t.getTakenOn(), StatementService.money(t.getDueTotal()))).toList();
+         if (s.last() == null) {
+             return new SummaryResponse(s.personId(), s.count(), null, null, lines);
