@@ -1,0 +1,88 @@
+diff --git a/src/main/frontend/src/app/features/people/people.ts b/src/main/frontend/src/app/features/people/people.ts
+index 0d84e459c..1ffb7181c 100644
+--- a/src/main/frontend/src/app/features/people/people.ts
++++ b/src/main/frontend/src/app/features/people/people.ts
+@@ -31,7 +31,7 @@ import { FigurePipe } from '../../core/figure';
+ // A person may have their own terms, a whole number of days (blank for none). A save with a terms
+ // from-date records them from that date, keeping those recorded before; with it blank, from the
+ // beginning of time. The row shows the terms in force on the sheet's today; a claim's due-by is fixed
+-// by the server when it is created, from those in force on its date before the grade's or sheet's.
++// by the server when it is created, from those in force on the sheet's today then before the grade's or sheet's.
+ // A person may have a contact (blank for none), stored trimmed and lower-cased and shown on the row;
+ // a contact another person on the sheet already has is refused.
+ // A person may carry tags, typed comma separated: each trimmed and lower-cased, repeats dropped,
+diff --git a/src/main/java/net/officefloor/hq/app/claim/ClaimService.java b/src/main/java/net/officefloor/hq/app/claim/ClaimService.java
+index b3dcdd599..b7d4db4ba 100644
+--- a/src/main/java/net/officefloor/hq/app/claim/ClaimService.java
++++ b/src/main/java/net/officefloor/hq/app/claim/ClaimService.java
+@@ -148,17 +148,22 @@ public class ClaimService {
+ 
+     /**
+      * A claim's due-by, fixed at creation: its date plus the first of the person's own terms, the
+-     * terms of their grade and the sheet's terms, each as in force on its date, counted in business
+-     * days: skipping every Saturday, Sunday and holiday on the sheet.
++     * terms of the grade they have that day and the sheet's terms, each as in force on the day it is
++     * created (the sheet's today then), counted in business days: skipping every Saturday, Sunday and
++     * holiday on the sheet.
+      */
+     private LocalDate dueBy(String sheetId, LocalDate dated, int terms) {
+         return holidays.businessDaysAfter(sheetId, dated, terms);
+     }
+ 
+-    /** The terms a claim of the person dated so is due by: their own in force on its date, else those of their grade or the sheet. */
+-    private int terms(String sheetId, Person person, LocalDate dated) {
+-        Integer own = person.termsOn(dated);
+-        return own != null ? own : sheets.sheet(sheetId).termsFor(person.gradeOn(dated), dated);
++    /**
++     * The terms a claim of the person created now is due by: their own in force on the sheet's today,
++     * else those of the grade they have that day or the sheet's, as in force that day.
++     */
++    private int terms(String sheetId, Person person) {
++        LocalDate today = sheets.today(sheetId);
++        Integer own = person.termsOn(today);
++        return own != null ? own : sheets.sheet(sheetId).termsFor(person.gradeOn(today), today);
+     }
+ 
+     @Transactional(readOnly = true)
+@@ -172,7 +177,7 @@ public class ClaimService {
+         roles.refuseViewer(sheetId, user);
+         Person person = person(sheetId, personId);
+         LocalDate dated = dateOrToday(sheetId, date);
+-        int terms = terms(sheetId, person, dated);
++        int terms = terms(sheetId, person);
+         LocalDate dueBy = dueBy(sheetId, dated, terms);
+         periods.refuseIfClosed(sheetId, dueBy);
+         refuseIfRetired(person, dated);
+@@ -205,7 +210,7 @@ public class ClaimService {
+     @Transactional(readOnly = true)
+     public boolean takesDate(String sheetId, long personId, LocalDate date) {
+         Person person = person(sheetId, personId);
+-        LocalDate dueBy = dueBy(sheetId, date, terms(sheetId, person, date));
++        LocalDate dueBy = dueBy(sheetId, date, terms(sheetId, person));
+         return !periods.isClosed(sheetId, dueBy) && !person.refusesClaimOn(date);
+     }
+ 
+@@ -907,7 +912,7 @@ public class ClaimService {
+         claim.bind(false, null);
+         Claim original = claims.saveAndFlush(claim);
+         LocalDate dated = claim.getDate();
+-        int terms = terms(sheetId, person, dated);
++        int terms = terms(sheetId, person);
+         Claim split = new Claim(sheetId, person.getId(), amount, dated, dueBy(sheetId, dated, terms), terms,
+                 claim.getNote(), null);
+         split.setStatus(ClaimStatus.OPEN);
+diff --git a/src/main/java/net/officefloor/hq/app/setting/SettingService.java b/src/main/java/net/officefloor/hq/app/setting/SettingService.java
+index c4f3c2015..ab0eb83e0 100644
+--- a/src/main/java/net/officefloor/hq/app/setting/SettingService.java
++++ b/src/main/java/net/officefloor/hq/app/setting/SettingService.java
+@@ -36,8 +36,8 @@ import org.springframework.web.server.ResponseStatusException;
+  * <p>
+  * The settings that carry a figure (the floor, the late percent, the terms, a grade's own terms,
+  * a grade's grace days, the clerk limit, the cap, the proof threshold, a grade's own proof threshold and the note threshold) are dated: each value is recorded from a from-date (the sheet's
+- * today when none is given). A claim's floor, late percent and terms are those in force on its
+- * date, as is its proof threshold (its person's grade's own in force then when it has one, else the sheet's; see {@link Sheet#proofThresholdFor}) and its note threshold (see {@link Sheet#noteThresholdOn}) and its review threshold (see {@link Sheet#reviewThresholdOn}); the clerk limit and the cap are those in force on the sheet's today (see {@link Sheet}).
++ * today when none is given). A claim's floor and late percent are those in force on its
++ * date (its terms are those in force on the day it was created: the sheet's today then), as is its proof threshold (its person's grade's own in force then when it has one, else the sheet's; see {@link Sheet#proofThresholdFor}) and its note threshold (see {@link Sheet#noteThresholdOn}) and its review threshold (see {@link Sheet#reviewThresholdOn}); the clerk limit and the cap are those in force on the sheet's today (see {@link Sheet}).
+  * The policy date and the period-numbering-from date are not dated. Nor is the permission matrix:
+  * for each of open, settle, void, reassign, close and reopen, the roles that may take it (blank: the
+  * standing rule, see {@link Sheet#permits}), recorded under the key {@code perm-<action>}. Nor are
