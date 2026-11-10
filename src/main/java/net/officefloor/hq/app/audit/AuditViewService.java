@@ -6,6 +6,8 @@ import java.util.List;
 import java.util.Locale;
 import java.util.regex.Pattern;
 import net.officefloor.hq.app.Audit;
+import net.officefloor.hq.app.person.Person;
+import net.officefloor.hq.app.person.PersonRepository;
 import org.springframework.stereotype.Service;
 
 /**
@@ -19,20 +21,34 @@ public class AuditViewService {
     private static final Pattern NEXT_FIELD = Pattern.compile("^( [A-Za-z][A-Za-z0-9-]*=.*)?$");
 
     private final Audit audit;
+    private final PersonRepository people;
 
-    public AuditViewService(Audit audit) {
+    public AuditViewService(Audit audit, PersonRepository people) {
         this.audit = audit;
+        this.people = people;
     }
 
     /**
      * The sheet's records, newest first; with a name (blank for none), only those carrying
      * {@code name=<name>} or {@code person=<name>}, the name compared ignoring case and surrounding
-     * spaces.
+     * spaces. When the name is a person transferred in, the lines about them from the sheet they
+     * came from follow, newest first, as that sheet's lines are.
      */
     public List<String> lines(String sheet, String name) {
         String person = name == null ? "" : name.trim().toLowerCase(Locale.ROOT);
+        List<String> all = audit.lines();
+        List<String> found = linesOf(all, sheet, person);
+        if (!person.isEmpty()) {
+            people.findBySheetIdAndNameIgnoreCase(sheet, name.trim()).map(Person::getOriginSheet)
+                    .ifPresent(origin -> found.addAll(linesOf(all, origin, person)));
+        }
+        return found;
+    }
+
+    /** The sheet's lines, newest first, only those about the (lower-cased) person when one is given. */
+    private static List<String> linesOf(List<String> all, String sheet, String person) {
         List<String> found = new ArrayList<>();
-        for (String line : audit.lines()) {
+        for (String line : all) {
             if (ofSheet(line, sheet) && (person.isEmpty() || about(line, person))) {
                 found.add(line);
             }

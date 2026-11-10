@@ -116,6 +116,8 @@ interface Person {
   aliases: string[];
   /** Whether the person's name or an alias is used on another sheet of the sheet's tree. */
   clashing: boolean;
+  /** The sheet the person was transferred from, or null when they were not transferred in. */
+  origin: string | null;
 }
 
 /** One of a person's holds: from its from-date to its to-date (null: open-ended), both inclusive. */
@@ -475,6 +477,7 @@ const SUMMARY_STATUSES = ['DRAFT', 'OPEN', 'PENDING', 'SETTLED', 'VOID'] as cons
             <th scope="col">On hold</th>
             <th scope="col">Aliases</th>
             <th scope="col">Clashing</th>
+            <th scope="col">Came from</th>
             <th scope="col">Patrons</th>
             <th scope="col">Watched</th>
             <th scope="col">Claims</th>
@@ -551,6 +554,7 @@ const SUMMARY_STATUSES = ['DRAFT', 'OPEN', 'PENDING', 'SETTLED', 'VOID'] as cons
               <td>
                 <span data-testid="person-clashing">{{ p.clashing ? 'yes' : 'no' }}</span>
               </td>
+              <td data-testid="person-origin">{{ p.origin ?? '' }}</td>
               <td>
                 <span data-testid="person-patrons">{{ patronNamesOf(p.id) }}</span>
                 <span>backing <span data-testid="person-backing">{{ money(backingOf(p.id)) }}</span></span>

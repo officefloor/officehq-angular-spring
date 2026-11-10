@@ -77,6 +77,10 @@ public class Person {
     @Column(name = "position", nullable = false)
     private long position;
 
+    /** The sheet the person was transferred from; null when they were not transferred in. */
+    @Column(name = "origin_sheet")
+    private String originSheet;
+
     /** Bumped on every save; an edit must carry the version it was made from. */
     @Version
     @Column(name = "version", nullable = false)
@@ -102,7 +106,8 @@ public class Person {
 
     /**
      * The person as they arrive on another sheet: their name, every grade they were given (each with
-     * its from-date), their terms, contact and aliases; not their holds or retirement.
+     * its from-date), their terms, contact and aliases; not their holds or retirement. They carry
+     * this sheet as the one they came from.
      */
     public Person transferredTo(String toSheetId) {
         Person copy = new Person();
@@ -113,7 +118,12 @@ public class Person {
         copy.terms = terms;
         copy.contact = contact;
         copy.aliases.addAll(aliases);
+        copy.originSheet = sheetId;
         return copy;
+    }
+
+    public String getOriginSheet() {
+        return originSheet;
     }
 
     public long getPosition() {
