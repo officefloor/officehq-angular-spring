@@ -1,0 +1,64 @@
+{
+  "checkpoint": 43,
+  "stack": {
+    "repo": "/home/daniel/officehq-angular-spring",
+    "origin": "git@github.com:officefloor/officehq-angular-spring.git",
+    "name": "officehq-angular-spring",
+    "base_ref": "base-empty",
+    "base_commit": "65cb8233ea38b2dfa6cfd18709e30cd18fdf3250"
+  },
+  "checkpoint_id": "cp43_cap",
+  "phase": "early",
+  "type": "additive",
+  "mutates": [],
+  "replaced_tests": [],
+  "request": {
+    "spec": "The sheet has a cap (two decimals, settings, blank means none; SETTING_CHANGED key=cap\nvalue=<cap>). A person's due-total is at most the cap: when the sum of their figures is above it,\ntheir due-total shows the cap and their excess shows the difference, otherwise the excess is\n0.00. Everything that adds up due-totals (the sheet's due-total, a grade's, backing, the ROLLUP\nand TOTALS lines, the export) uses the capped figure. A due-total of n/a is not capped.\n",
+    "prompt": "You are implementing ONE change to this application.\n\nFIRST read AGENTS.md \u2014 it states the working rules and how the app is tested, and sends you to\nDESIGN.md for the app's stack and conventions. Follow both.\n\nTHE CHANGE REQUEST:\nThe sheet has a cap (two decimals, settings, blank means none; SETTING_CHANGED key=cap\nvalue=<cap>). A person's due-total is at most the cap: when the sum of their figures is above it,\ntheir due-total shows the cap and their excess shows the difference, otherwise the excess is\n0.00. Everything that adds up due-totals (the sheet's due-total, a grade's, backing, the ROLLUP\nand TOTALS lines, the export) uses the capped figure. A due-total of n/a is not capped.\n\nYour work is verified by an automated Playwright UI test already installed under e2e/specs/.\nRead that spec: it declares the exact data-testid anchors, values, test data and any audit\nrecords it expects \u2014 match them. Run `bin/e2e` to build the app, start it, and run the test as\nyou work; iterate until it passes. Change whatever the request needs across the app \u2014 its stored\ndata, its server and its front end. Do NOT edit bin/build, bin/start, bin/stop, bin/e2e,\nAGENTS.md, CLAUDE.md, DESIGN.md, e2e/support/ or the test spec.\n"
+  },
+  "commit_sha": "0e5988f5cb0d8c3a239a008db847619d5ec62dc1",
+  "reset_sha": "",
+  "preagent_sha": "f7826922b149d88d4b5dc14c8567c1cda8c0781c",
+  "prev_sha": "f7826922b149d88d4b5dc14c8567c1cda8c0781c",
+  "base_sha": "65cb8233ea38b2dfa6cfd18709e30cd18fdf3250",
+  "agent": {
+    "ok": true,
+    "cost_usd": 1.0982997999999997,
+    "input_tokens": 32,
+    "output_tokens": 8699,
+    "cache_read_tokens": 956319,
+    "cache_creation_tokens": 91616,
+    "num_turns": 17,
+    "duration_ms": 253766,
+    "duration_api_ms": 82399,
+    "model": "claude-opus-5-5",
+    "session_id": "bd44cf6a-30d9-4c8f-9b6b-47ecc5f99150",
+    "stop_reason": "success",
+    "result_text": "The sheet now has a cap setting, and all 4 tests in `bin/e2e` pass.\n\n**What changed:**\n- **Stored data:** a new migration, `V33__sheet_cap.sql`, adds a `due_cap` column to the sheet. It can be empty (no cap) and can't be negative.\n- **Settings:** there's a new \"Cap\" field (`setting-cap`) and a \"Cap in force\" display (`setting-cap-current`). It saves the same way the clerk limit does: once you type in the field, and a blank value removes the cap. Each save writes `SETTING_CHANGED ... key=cap value=<cap>` to the audit file. It then writes a ROLLUP line for each person whose due-total moved and a TOTALS line, like changing the floor or late percent already does.\n- **Server:** each person's due-total is held to the cap before it's added into anything, so the ROLLUP and TOTALS lines use the capped figure. A statement also records the capped due-total. A due-total of n/a is never capped.\n- **Screen:** each person's row has a new excess value (`person-excess`): how far their figures go over the cap, or 0.00 otherwise. Their due-total shows the capped figure. The sheet's due-total, the header, the grade totals, backing and the CSV export all add up the capped figures.\n\nThe request didn't list them, so period due-totals and overdue totals are not capped. The tests require this: in scenario 2, period P1 shows 2.20 and the overdue total shows 4.20 even though the cap is 2.00.",
+    "error": "",
+    "attempts": [
+      {
+        "ok": true,
+        "limit_reached": false,
+        "retryable": false,
+        "timed_out": false,
+        "cost_usd": 1.0982997999999997,
+        "num_turns": 17,
+        "duration_ms": 253766,
+        "duration_api_ms": 82399,
+        "error": ""
+      }
+    ]
+  },
+  "agent_stream_file": "cp43.agent.jsonl",
+  "agent_diff_file": "cp43.agent.diff",
+  "build_log_file": null,
+  "tests": {
+    "gated": false,
+    "queued": true
+  },
+  "probe": null,
+  "pinned_touched": [],
+  "acceptance_touched": [],
+  "impact_gate": null
+}
