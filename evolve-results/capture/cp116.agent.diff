@@ -1,0 +1,178 @@
+diff --git a/src/main/frontend/src/app/features/people/people.ts b/src/main/frontend/src/app/features/people/people.ts
+index 353cbbf67..162a8533e 100644
+--- a/src/main/frontend/src/app/features/people/people.ts
++++ b/src/main/frontend/src/app/features/people/people.ts
+@@ -280,6 +280,9 @@ const SUMMARY_STATUSES = ['DRAFT', 'OPEN', 'PENDING', 'SETTLED', 'VOID'] as cons
+         @if (importAdded() !== null) {
+           <p>Added <strong data-testid="import-added">{{ importAdded() }}</strong></p>
+         }
++        @if (importUpdated() !== null) {
++          <p>Updated <strong data-testid="import-updated">{{ importUpdated() }}</strong></p>
++        }
+         @if (importError(); as err) {
+           <p role="alert" data-testid="import-error">{{ err }}</p>
+         }
+@@ -770,6 +773,7 @@ export class People {
+   protected readonly importText = signal('');
+   /** How many people the last import added; cleared while the next one runs. */
+   protected readonly importAdded = signal<number | null>(null);
++  protected readonly importUpdated = signal<number | null>(null);
+   protected readonly importError = signal<string | null>(null);
+   private readonly claimsByPerson = computed(() => {
+     const by = new Map<number, Claim[]>();
+@@ -1015,6 +1019,7 @@ export class People {
+       this.bulkGradeError.set(null);
+       this.importText.set('');
+       this.importAdded.set(null);
++      this.importUpdated.set(null);
+       this.importError.set(null);
+       this.statements.set(new Map());
+       this.rowErrors.set(new Map());
+@@ -1718,23 +1723,32 @@ export class People {
+     }
+   }
+ 
+-  /** Import the pasted people: the server checks every line first, then adds each as the person form would; all or none. */
++  /**
++   * Import the pasted people: the server checks every line first, then updates each person a line
++   * names as the person form would edit them, and adds each other as the person form would; all or none.
++   */
+   protected async importPeople(event: Event): Promise<void> {
+     event.preventDefault();
+     this.importAdded.set(null);
++    this.importUpdated.set(null);
+     this.importError.set(null);
+     const sheet = this.session.sheet();
+     try {
+       const done = await firstValueFrom(
+-        this.http.post<{ added: number; people: Person[] }>('/api/people/import', {
++        this.http.post<{ added: number; updated: number; people: Person[] }>('/api/people/import', {
+           sheet,
+           user: this.session.user(),
+           text: this.importText(),
+         }),
+       );
+       if (this.session.sheet() !== sheet) return;
+-      this.people.update((list) => [...list, ...done.people]);
++      const byId = new Map(done.people.map((p) => [p.id, p]));
++      this.people.update((list) => [
++        ...list.map((p) => byId.get(p.id) ?? p),
++        ...done.people.filter((p) => !list.some((q) => q.id === p.id)),
++      ]);
+       this.importAdded.set(done.added);
++      this.importUpdated.set(done.updated);
+     } catch (e) {
+       if (this.session.sheet() !== sheet) return;
+       const reason = e instanceof HttpErrorResponse && typeof e.error?.message === 'string' ? e.error.message : '';
+diff --git a/src/main/java/net/officefloor/hq/app/person/PersonController.java b/src/main/java/net/officefloor/hq/app/person/PersonController.java
+index 24218a0a7..f99d2a421 100644
+--- a/src/main/java/net/officefloor/hq/app/person/PersonController.java
++++ b/src/main/java/net/officefloor/hq/app/person/PersonController.java
+@@ -11,6 +11,7 @@ import java.time.LocalDate;
+ import java.util.List;
+ import java.util.Locale;
+ import java.util.Set;
++import java.util.stream.Stream;
+ import org.springframework.web.bind.annotation.PostMapping;
+ import org.springframework.web.bind.annotation.RequestBody;
+ import org.springframework.web.bind.annotation.RequestMapping;
+@@ -47,8 +48,11 @@ public class PersonController {
+             @NotBlank @Size(max = 100) String user, @NotNull @Size(max = 100000) String text) {
+     }
+ 
+-    /** What an import added: how many people, and each in the order they were added. */
+-    public record ImportPeopleResponse(int added, List<PersonResponse> people) {
++    /**
++     * What an import did: how many people it added and how many it updated, and each of them as the
++     * store now holds them, the added then the updated, each in line order.
++     */
++    public record ImportPeopleResponse(int added, int updated, List<PersonResponse> people) {
+     }
+ 
+     public record TransferPersonRequest(@NotBlank @Size(max = 100) String sheet,
+@@ -151,10 +155,11 @@ public class PersonController {
+     @PostMapping("/import")
+     public ImportPeopleResponse importPeople(@Valid @RequestBody ImportPeopleRequest req) {
+         String sheet = req.sheet().trim();
+-        List<Person> added = imports.importPeople(sheet, req.user().trim(), req.text());
+-        Set<Long> clashing = service.clashing(sheet, added);
+-        return new ImportPeopleResponse(added.size(),
+-                added.stream().map(p -> response(p, clashing.contains(p.getId()))).toList());
++        PersonImportService.Result done = imports.importPeople(sheet, req.user().trim(), req.text());
++        List<Person> touched = Stream.concat(done.added().stream(), done.updated().stream()).toList();
++        Set<Long> clashing = service.clashing(sheet, touched);
++        return new ImportPeopleResponse(done.added().size(), done.updated().size(),
++                touched.stream().map(p -> response(p, clashing.contains(p.getId()))).toList());
+     }
+ 
+     @PostMapping("/update")
+diff --git a/src/main/java/net/officefloor/hq/app/person/PersonImportService.java b/src/main/java/net/officefloor/hq/app/person/PersonImportService.java
+index 83cadcf12..e7e3851a1 100644
+--- a/src/main/java/net/officefloor/hq/app/person/PersonImportService.java
++++ b/src/main/java/net/officefloor/hq/app/person/PersonImportService.java
+@@ -12,10 +12,13 @@ import org.springframework.transaction.annotation.Transactional;
+ import org.springframework.web.server.ResponseStatusException;
+ 
+ /**
+- * The import box: lines of {@code name,grade,terms,contact}, each a person added in order exactly as
+- * the person form adds them (terms and contact may be absent or blank). Every line is held to the
++ * The import box: lines of {@code name,grade,terms,contact}, taken in order (terms and contact may be
++ * absent or blank). A line whose name matches a person on the sheet by name or alias (compared without
++ * regard to case) updates them exactly as the person form edits them: their grade recorded from the
++ * sheet's today, their terms and contact set when the line gives them, their name kept. Every other
++ * line adds a person exactly as the person form adds them. Every line is held to the
+  * person form's rules before anything is added, and a name or contact repeated within the import
+- * refuses it; the import is one change, so a refused line adds nothing and writes nothing. Blank
++ * refuses it, as does a person matched by two lines; the import is one change, so a refused line adds nothing and writes nothing. Blank
+  * lines are skipped; an import with no lines is refused.
+  */
+ @Service
+@@ -27,16 +30,22 @@ public class PersonImportService {
+     private record Line(String name, String grade, Integer terms, String contact) {
+     }
+ 
++    /** What an import did: the people it added and those it updated, each in line order. */
++    public record Result(List<Person> added, List<Person> updated) {
++    }
++
+     private final PersonService people;
++    private final PersonRepository repository;
+     private final RoleService roles;
+ 
+-    public PersonImportService(PersonService people, RoleService roles) {
++    public PersonImportService(PersonService people, PersonRepository repository, RoleService roles) {
+         this.people = people;
++        this.repository = repository;
+         this.roles = roles;
+     }
+ 
+     @Transactional
+-    public List<Person> importPeople(String sheetId, String user, String text) {
++    public Result importPeople(String sheetId, String user, String text) {
+         roles.refuseViewer(sheetId, user);
+         List<Line> lines = new ArrayList<>();
+         Set<String> names = new HashSet<>();
+@@ -58,10 +67,21 @@ public class PersonImportService {
+             throw refused("Paste at least one line of name,grade,terms,contact.");
+         }
+         List<Person> added = new ArrayList<>();
++        List<Person> updated = new ArrayList<>();
++        Set<Long> matched = new HashSet<>();
+         for (Line line : lines) {
+-            added.add(people.add(sheetId, user, line.name(), line.grade(), line.terms(), line.contact()));
++            Person person = repository.findBySheetIdAndNameOrAlias(sheetId, line.name()).orElse(null);
++            if (person == null) {
++                added.add(people.add(sheetId, user, line.name(), line.grade(), line.terms(), line.contact()));
++            } else if (!matched.add(person.getId())) {
++                throw refused("The name " + line.name() + " matches " + person.getName() + ", already in this import.");
++            } else {
++                updated.add(people.update(sheetId, user, person.getId(), person.getVersion(), person.getName(),
++                        line.grade(), null, line.terms() != null ? line.terms() : person.getTerms(),
++                        line.contact() != null ? line.contact() : person.getContact()));
++            }
+         }
+-        return added;
++        return new Result(added, updated);
+     }
+ 
+     private static Line parse(int number, String text) {
