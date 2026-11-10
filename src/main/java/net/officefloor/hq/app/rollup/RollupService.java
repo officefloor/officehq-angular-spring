@@ -35,7 +35,9 @@ import org.springframework.stereotype.Service;
  * these (nor their PENDING ones), nor in a period's due-total; their SETTLED claims still do. So too a person whose
  * retirement date the sheet's today has reached. An overdue claim's figure has
  * its late charge added on top, and a live due is then never below the floor in force on its claim's date. A person's
- * due-total is at most the cap in force on the sheet's today, when there is one.
+ * due-total is at most the cap in force on the sheet's today, when there is one. With an alert threshold
+ * set, the rollup lines are followed by one ALERT line per person (in list order) whose due-total went
+ * from at or below it (or none) to above it.
  */
 @Service
 public class RollupService {
@@ -196,6 +198,7 @@ public class RollupService {
         }
         audit.recordOnCommit("TOTALS" + prefix + " claimed-total=" + money(now.claimedTotal()) + " due-total="
                 + money(now.dueTotal()) + " overdue-total=" + money(now.overdueTotal()));
+        recordAlerts(sheetId, prefix, new Snapshot(Map.of()), now);
     }
 
     /**
@@ -223,6 +226,29 @@ public class RollupService {
             audit.recordOnCommit("TOTALS" + prefix + " claimed-total=" + money(after.claimedTotal()) + " due-total="
                     + money(after.dueTotal()) + " overdue-total=" + money(after.overdueTotal()));
         }
+        recordAlerts(sheetId, prefix, before, after);
+    }
+
+    /**
+     * Record one ALERT per person, in list order, whose due-total went from at or below the sheet's
+     * alert threshold (or none) to above it; none when the threshold is off.
+     */
+    private void recordAlerts(String sheetId, String prefix, Snapshot before, Snapshot after) {
+        BigDecimal threshold = sheet(sheetId).getAlertThreshold();
+        if (threshold == null) {
+            return;
+        }
+        for (Map.Entry<Long, Figures> entry : after.people().entrySet()) {
+            Figures now = entry.getValue();
+            Figures was = before.people().get(entry.getKey());
+            if (above(now.dueTotal(), threshold) && (was == null || !above(was.dueTotal(), threshold))) {
+                audit.recordOnCommit("ALERT" + prefix + " name=" + now.name() + " due-total=" + money(now.dueTotal()));
+            }
+        }
+    }
+
+    private static boolean above(BigDecimal dueTotal, BigDecimal threshold) {
+        return dueTotal != null && dueTotal.compareTo(threshold) > 0;
     }
 
     /**

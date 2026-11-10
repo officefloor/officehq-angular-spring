@@ -114,6 +114,10 @@ public class Sheet {
     @Column(name = "pot")
     private BigDecimal pot;
 
+    /** The due-total above which a person is alerted; null for off. Not dated. */
+    @Column(name = "alert_threshold")
+    private BigDecimal alertThreshold;
+
     /** The month (1 to 12) the sheet's fiscal year starts in. Not dated. */
     @Column(name = "fiscal_start_month", nullable = false)
     private int fiscalStartMonth = 1;
@@ -202,6 +206,7 @@ public class Sheet {
         then.entryDate = entryDate;
         then.graceDays = graceDays;
         then.pot = pot;
+        then.alertThreshold = alertThreshold;
         then.fiscalStartMonth = fiscalStartMonth;
         then.parentId = parentId;
         then.permissions.putAll(permissions);
@@ -399,6 +404,15 @@ public class Sheet {
 
     public void setPot(BigDecimal pot) {
         this.pot = pot;
+    }
+
+    /** The due-total above which a person is alerted (see {@link net.officefloor.hq.app.rollup.RollupService}); null for off. Not dated. */
+    public BigDecimal getAlertThreshold() {
+        return alertThreshold;
+    }
+
+    public void setAlertThreshold(BigDecimal alertThreshold) {
+        this.alertThreshold = alertThreshold;
     }
 
     /** The month (1 to 12) the sheet's fiscal year starts in; 1 unless set. Not dated. */

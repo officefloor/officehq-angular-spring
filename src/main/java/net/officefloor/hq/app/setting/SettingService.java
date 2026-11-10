@@ -48,7 +48,9 @@ import org.springframework.web.server.ResponseStatusException;
  * {@link net.officefloor.hq.app.pool.PoolService}). Nor is the parent (none: no parent), a sheet that has
  * been loaded, never the sheet itself nor one that has it as an ancestor: a grade with no rate in force on a date
  * here takes its parent's, then the parent's parent's, up to three levels up (see {@link RateChain}), so changing it
- * records the figures that move too.
+ * records the figures that move too. Nor is the alert threshold (none: off): a change whose figures
+ * lift a person's due-total above it records an ALERT (see {@link RollupService#recordChanges}); changing
+ * it moves no figures.
  */
 @Service
 public class SettingService {
@@ -73,6 +75,7 @@ public class SettingService {
     public static final String POT = "pot";
     public static final String PARENT = "parent";
     public static final String FISCAL_START_MONTH = "fiscal-start-month";
+    public static final String ALERT_THRESHOLD = "alert-threshold";
     /** The key of a permission matrix entry: {@code perm-<action>}. */
     public static final String PERMISSION = "perm-";
 
@@ -118,7 +121,8 @@ public class SettingService {
      * {@code changeGrace} (null for off), and the entry date when {@code changeEntry} (null for off), and the pot when {@code changePot} (null for none), and the parent when
      * {@code changeParent} (null for none; refused (400) for the sheet itself, a sheet never loaded, or one that has
      * this sheet as an ancestor, before anything is saved), and the fiscal start month when {@code fiscalStartMonth}
-     * is not null (1 to 12; anything else refused (400) before anything is saved). Each figure is recorded from its from-date, keeping the values
+     * is not null (1 to 12; anything else refused (400) before anything is saved), and the alert threshold when
+     * {@code changeAlert} (null for off). Each figure is recorded from its from-date, keeping the values
      * already recorded (one already recorded from that date is replaced). Each one saved is
      * recorded, in that order.
      */
@@ -131,7 +135,7 @@ public class SettingService {
             Dated<BigDecimal> noteThreshold, Map<String, String> permissions,
             boolean changeGrace, Integer graceDays, boolean changeEntry, LocalDate entryDate,
             boolean changePot, BigDecimal pot, boolean changeParent, String parent,
-            Integer fiscalStartMonth) {
+            Integer fiscalStartMonth, boolean changeAlert, BigDecimal alertThreshold) {
         roles.refuseViewer(sheetId, user);
         Sheet sheet = sheets.load(sheetId, user);
         if (changeParent && parent != null) {
@@ -230,6 +234,11 @@ public class SettingService {
             sheet.setFiscalStartMonth(fiscalStartMonth);
             sheet = sheetStore.saveAndFlush(sheet);
             audit.recordOnCommit(changed(sheetId, user, FISCAL_START_MONTH, fiscalStartMonth.toString()));
+        }
+        if (changeAlert) {
+            sheet.setAlertThreshold(alertThreshold == null ? null : alertThreshold.setScale(2));
+            sheet = sheetStore.saveAndFlush(sheet);
+            audit.recordOnCommit(changed(sheetId, user, ALERT_THRESHOLD, text(sheet.getAlertThreshold())));
         }
         return sheet;
     }

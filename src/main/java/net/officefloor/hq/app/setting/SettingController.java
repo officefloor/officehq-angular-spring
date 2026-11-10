@@ -54,7 +54,7 @@ public class SettingController {
      * or blank for off. A grade's own terms (A, B or C): a whole number of days. A cap: an amount with
      * up to two decimals, or blank for none. A proof threshold: an amount with up to two decimals, or blank
      * for none. A note threshold: an amount with up to two decimals, or blank for none. A permission matrix entry for open, settle, void, reassign, close or reopen: roles
-     * comma separated, or blank for the standing rule. Grace days: a whole number of days, or blank for off. A grade's grace days (A, B or C): a whole number of days, or blank for none. A grade's own proof threshold (A, B or C): an amount with up to two decimals, or blank for none (the sheet's). An entry date: yyyy-mm-dd, or blank for off. A pot: an amount with up to two decimals, or blank for none. A parent: a sheet id, or blank for none. A fiscal start month: 1 to 12. Each setting that carries a figure may name the date it
+     * comma separated, or blank for the standing rule. Grace days: a whole number of days, or blank for off. A grade's grace days (A, B or C): a whole number of days, or blank for none. A grade's own proof threshold (A, B or C): an amount with up to two decimals, or blank for none (the sheet's). An entry date: yyyy-mm-dd, or blank for off. A pot: an amount with up to two decimals, or blank for none. A parent: a sheet id, or blank for none. A fiscal start month: 1 to 12. An alert threshold: an amount with up to two decimals, or blank for off. Each setting that carries a figure may name the date it
      * is in force from (its {@code ...From}: yyyy-mm-dd, or blank or null for the sheet's today).
      */
     public record SetSettingsRequest(@NotBlank @Size(max = 100) String sheet, @NotBlank @Size(max = 100) String user,
@@ -87,7 +87,8 @@ public class SettingController {
             @Pattern(regexp = DATE) String proofThresholdCFrom,
             @Pattern(regexp = "\\s*|" + ClaimController.AMOUNT) String pot,
             @Size(max = 100) String parent,
-            @Pattern(regexp = FISCAL_MONTH) String fiscalStartMonth) {
+            @Pattern(regexp = FISCAL_MONTH) String fiscalStartMonth,
+            @Pattern(regexp = "\\s*|" + ClaimController.AMOUNT) String alertThreshold) {
     }
 
     /** A value recorded for a setting that carries a figure: blank from for the beginning of time, blank value for none. */
@@ -101,12 +102,13 @@ public class SettingController {
      * a figure, by key and from-date. And the permission matrix: for each action, its roles as
      * entered, blank for the standing rule. And the grace days, blank for off. And the entry date, blank for off.
      * And the pot, blank for none. And the parent sheet's id, blank for none. And the fiscal start month.
+     * And the alert threshold, blank for off.
      */
     public record SettingsResponse(String clerkLimit, String floor, int terms, String latePct, String policyDate,
             String periodNumberingFrom, Map<String, Integer> gradeTerms, String cap, String proofThreshold,
             String noteThreshold,
             List<DatedValue> dated, Map<String, String> permissions, String graceDays, String entryDate, String pot,
-            String parent, int fiscalStartMonth) {
+            String parent, int fiscalStartMonth, String alertThreshold) {
     }
 
     private static SettingsResponse response(Sheet sheet) {
@@ -119,7 +121,8 @@ public class SettingController {
                 sheet.getSettings().stream().map(SettingController::dated).toList(), sheet.getPermissions(),
                 sheet.getGraceDays() == null ? "" : String.valueOf(sheet.getGraceDays()),
                 sheet.getEntryDate() == null ? "" : sheet.getEntryDate().toString(), SettingService.text(sheet.getPot()),
-                sheet.getParentId() == null ? "" : sheet.getParentId(), sheet.getFiscalStartMonth());
+                sheet.getParentId() == null ? "" : sheet.getParentId(), sheet.getFiscalStartMonth(),
+                SettingService.text(sheet.getAlertThreshold()));
     }
 
     private static DatedValue dated(DatedSetting s) {
@@ -167,6 +170,7 @@ public class SettingController {
         String entry = req.entryDate() == null ? "" : req.entryDate().trim();
         String pot = req.pot() == null ? "" : req.pot().trim();
         String parent = req.parent() == null ? "" : req.parent().trim();
+        String alert = req.alertThreshold() == null ? "" : req.alertThreshold().trim();
         return response(service.set(req.sheet().trim(), req.user().trim(),
                 req.clerkLimit() == null ? null : amount(req.clerkLimit(), req.clerkLimitFrom()),
                 req.floor() == null ? null : amount(req.floor(), req.floorFrom()),
@@ -181,7 +185,8 @@ public class SettingController {
                 req.entryDate() != null, entry.isEmpty() ? null : date(entry),
                 req.pot() != null, pot.isEmpty() ? null : ClaimController.amount(pot),
                 req.parent() != null, parent.isEmpty() ? null : parent,
-                req.fiscalStartMonth() == null ? null : Integer.valueOf(req.fiscalStartMonth().trim())));
+                req.fiscalStartMonth() == null ? null : Integer.valueOf(req.fiscalStartMonth().trim()),
+                req.alertThreshold() != null, alert.isEmpty() ? null : ClaimController.amount(alert)));
     }
 
     /** A permission matrix entry given: its roles, lower case, comma separated without spaces. */
