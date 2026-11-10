@@ -1,0 +1,312 @@
+diff --git a/src/main/frontend/src/app/features/settings/settings.ts b/src/main/frontend/src/app/features/settings/settings.ts
+index baa0d2ab2..5364a052a 100644
+--- a/src/main/frontend/src/app/features/settings/settings.ts
++++ b/src/main/frontend/src/app/features/settings/settings.ts
+@@ -28,6 +28,9 @@ import { DatedValue, START_FLOOR, START_LATE_PCT, valueOn } from '../rates/rates
+ // The proof threshold (two decimals; blank for none) is dated like the floor: a claim whose due is
+ // above the one in force on its date cannot be settled or approved while it has no proofs. It
+ // saves, like the clerk limit, once its field has been entered (blank: none).
++// Each grade may have its own proof threshold (two decimals; blank: none), dated like the floor: a
++// claim's threshold is its person's grade's on its date when it has one then, else the sheet's.
++// Each saves, like the clerk limit, once its field has been entered.
+ // The note threshold (two decimals; blank for none) is dated like the floor: a claim whose due is
+ // above the one in force on its date cannot be opened while its note is empty. It saves, like the
+ // clerk limit, once its field has been entered (blank: none).
+@@ -102,7 +105,7 @@ const PCT = /^\d{1,3}(\.\d{1,2})?$/;
+ 
+ 
+ /** The keys of the dated settings, each with its own from field. */
+-const DATED_KEYS = ['clerk-limit', 'floor', 'terms', 'terms-A', 'terms-B', 'terms-C', 'grace-A', 'grace-B', 'grace-C', 'late-pct', 'cap', 'proof-threshold', 'note-threshold'] as const;
++const DATED_KEYS = ['clerk-limit', 'floor', 'terms', 'terms-A', 'terms-B', 'terms-C', 'grace-A', 'grace-B', 'grace-C', 'late-pct', 'cap', 'proof-threshold', 'proof-threshold-A', 'proof-threshold-B', 'proof-threshold-C', 'note-threshold'] as const;
+ type DatedKey = (typeof DATED_KEYS)[number];
+ 
+ /** A policy date: yyyy-mm-dd. */
+@@ -268,6 +271,25 @@ const DATE = /^\d{4}-\d{2}-\d{2}$/;
+           [value]="fromInput()['proof-threshold'] ?? ''"
+           (input)="typeFrom('proof-threshold', $any($event.target).value)"
+         />
++        @for (g of grades; track g) {
++          <label [for]="'setting-proof-threshold-' + g">Proof threshold for grade {{ g }} (blank: none, the sheet's)</label>
++          <input
++            [id]="'setting-proof-threshold-' + g"
++            [attr.data-testid]="'setting-proof-threshold-' + g"
++            inputmode="decimal"
++            [value]="gradeThresholdInput()[g] ?? ''"
++            (focus)="enterGradeThreshold(g, $any($event.target))"
++            (input)="typeGradeThreshold(g, $any($event.target).value)"
++          />
++          <label [for]="'setting-proof-threshold-' + g + '-from'">Proof threshold for grade {{ g }} in force from (blank: the sheet's today)</label>
++          <input
++            [id]="'setting-proof-threshold-' + g + '-from'"
++            [attr.data-testid]="'setting-proof-threshold-' + g + '-from'"
++            type="date"
++            [value]="fromInput()[thresholdKey(g)] ?? ''"
++            (input)="typeFrom(thresholdKey(g), $any($event.target).value)"
++          />
++        }
+         <label for="setting-note-threshold">Note threshold (blank: none)</label>
+         <input
+           id="setting-note-threshold"
+@@ -383,6 +405,15 @@ const DATE = /^\d{4}-\d{2}-\d{2}$/;
+           <span>(none)</span>
+         }
+       </p>
++      @for (g of grades; track g) {
++        <p>
++          Proof threshold in force for grade {{ g }}:
++          <strong [attr.data-testid]="'setting-proof-threshold-' + g + '-current'">{{ gradeThresholds()[g] }}</strong>
++          @if (gradeThresholds()[g] === '') {
++            <span>(the sheet's)</span>
++          }
++        </p>
++      }
+       <p>
+         Note threshold in force:
+         <strong data-testid="setting-note-threshold-current">{{ noteThreshold() }}</strong>
+@@ -460,6 +491,12 @@ export class Settings {
+   protected readonly threshold = computed(() => this.inForce('proof-threshold', ''));
+   /** The proof threshold typed; null while its field has not been entered (left as it is). */
+   protected readonly thresholdInput = signal<string | null>(null);
++  /** The proof threshold in force on the sheet's today for each grade; blank for none (the sheet's). */
++  protected readonly gradeThresholds = computed(
++    () => Object.fromEntries(GRADES.map((g) => [g, this.inForce(this.thresholdKey(g), '')])) as Record<Grade, string>,
++  );
++  /** The proof threshold typed for each grade; missing while its field has not been entered (left as it is). */
++  protected readonly gradeThresholdInput = signal<Partial<Record<Grade, string>>>({});
+   /** The note threshold in force on the sheet's today; blank for none. */
+   protected readonly noteThreshold = computed(() => this.inForce('note-threshold', ''));
+   /** The note threshold typed; null while its field has not been entered (left as it is). */
+@@ -509,6 +546,7 @@ export class Settings {
+       this.permInput.set({});
+       this.gradeTermsInput.set({});
+       this.gradeGraceInput.set({});
++      this.gradeThresholdInput.set({});
+       this.fromInput.set({});
+       this.capInput.set(null);
+       this.thresholdInput.set(null);
+@@ -646,6 +684,25 @@ export class Settings {
+     this.error.set(null);
+   }
+ 
++  protected thresholdKey(grade: Grade): DatedKey {
++    return `proof-threshold-${grade}`;
++  }
++
++  /** Entering a grade's proof threshold's field fills it with the threshold in force, selected, so
++   *  it saves as it is unless typed over. */
++  protected enterGradeThreshold(grade: Grade, input: HTMLInputElement): void {
++    if (this.gradeThresholdInput()[grade] !== undefined) return;
++    const threshold = this.gradeThresholds()[grade];
++    input.value = threshold;
++    input.select();
++    this.gradeThresholdInput.update((m) => ({ ...m, [grade]: threshold }));
++  }
++
++  protected typeGradeThreshold(grade: Grade, value: string): void {
++    this.gradeThresholdInput.update((m) => ({ ...m, [grade]: value }));
++    this.error.set(null);
++  }
++
+   protected typeFrom(key: DatedKey, value: string): void {
+     this.fromInput.update((m) => ({ ...m, [key]: value }));
+     this.error.set(null);
+@@ -749,6 +806,16 @@ export class Settings {
+       this.error.set('Enter a proof threshold of 0.00 or more, with up to two decimals, or leave it blank.');
+       return;
+     }
++    const gradeThresholds: Partial<Record<Grade, string>> = {};
++    for (const g of GRADES) {
++      const t = this.gradeThresholdInput()[g]?.trim();
++      if (t === undefined) continue;
++      if (t !== '' && !LIMIT.test(t)) {
++        this.error.set(`Enter a proof threshold for grade ${g} of 0.00 or more, with up to two decimals, or leave it blank.`);
++        return;
++      }
++      gradeThresholds[g] = t;
++    }
+     if (noteThreshold !== null && noteThreshold !== '' && !LIMIT.test(noteThreshold)) {
+       this.error.set('Enter a note threshold of 0.00 or more, with up to two decimals, or leave it blank.');
+       return;
+@@ -823,6 +890,12 @@ export class Settings {
+           graceAFrom: from['grace-A'] ?? null,
+           graceBFrom: from['grace-B'] ?? null,
+           graceCFrom: from['grace-C'] ?? null,
++          proofThresholdA: gradeThresholds.A ?? null,
++          proofThresholdB: gradeThresholds.B ?? null,
++          proofThresholdC: gradeThresholds.C ?? null,
++          proofThresholdAFrom: from['proof-threshold-A'] ?? null,
++          proofThresholdBFrom: from['proof-threshold-B'] ?? null,
++          proofThresholdCFrom: from['proof-threshold-C'] ?? null,
+         }),
+       );
+       if (this.session.sheet() !== sheet) return;
+@@ -832,6 +905,7 @@ export class Settings {
+       this.termsInput.set(null);
+       this.gradeTermsInput.set({});
+       this.gradeGraceInput.set({});
++      this.gradeThresholdInput.set({});
+       this.latePctInput.set(null);
+       this.policyInput.set(null);
+       this.numberingInput.set(null);
+diff --git a/src/main/java/net/officefloor/hq/app/claim/ClaimService.java b/src/main/java/net/officefloor/hq/app/claim/ClaimService.java
+index ec0c81aa6..b363a48ac 100644
+--- a/src/main/java/net/officefloor/hq/app/claim/ClaimService.java
++++ b/src/main/java/net/officefloor/hq/app/claim/ClaimService.java
+@@ -366,7 +366,7 @@ public class ClaimService {
+         // settling fixes the figure with its late charge as it stands on the sheet's today (a
+         // PENDING claim's figure is live)
+         BigDecimal settling = next == ClaimStatus.SETTLED ? charged(sheetId, person, claim) : null;
+-        if (next == ClaimStatus.SETTLED && needsProof(sheetId, claim, settling)) {
++        if (next == ClaimStatus.SETTLED && needsProof(sheetId, person, claim, settling)) {
+             throw new ResponseStatusException(HttpStatus.UNPROCESSABLE_ENTITY,
+                     "A claim due above the proof threshold cannot be " + (review ? "approved" : "settled")
+                             + " without a proof.");
+@@ -822,9 +822,12 @@ public class ClaimService {
+         return due == null ? "n/a" : due.setScale(2, RoundingMode.UNNECESSARY).toPlainString();
+     }
+ 
+-    /** Whether a claim settling at the figure is above the proof threshold in force on its date and has no proofs. */
+-    private boolean needsProof(String sheetId, Claim claim, BigDecimal figure) {
+-        BigDecimal threshold = sheets.sheet(sheetId).proofThresholdOn(claim.getDate());
++    /**
++     * Whether a claim settling at the figure is above the proof threshold in force on its date (its
++     * person's grade's then when it has one, else the sheet's) and has no proofs.
++     */
++    private boolean needsProof(String sheetId, Person person, Claim claim, BigDecimal figure) {
++        BigDecimal threshold = sheets.sheet(sheetId).proofThresholdFor(person.gradeOn(claim.getDate()), claim.getDate());
+         return claim.getProofs() == 0 && figure != null && threshold != null && figure.compareTo(threshold) > 0;
+     }
+ 
+diff --git a/src/main/java/net/officefloor/hq/app/setting/SettingController.java b/src/main/java/net/officefloor/hq/app/setting/SettingController.java
+index 37a560407..0de9cf0c7 100644
+--- a/src/main/java/net/officefloor/hq/app/setting/SettingController.java
++++ b/src/main/java/net/officefloor/hq/app/setting/SettingController.java
+@@ -51,7 +51,7 @@ public class SettingController {
+      * or blank for off. A grade's own terms (A, B or C): a whole number of days. A cap: an amount with
+      * up to two decimals, or blank for none. A proof threshold: an amount with up to two decimals, or blank
+      * for none. A note threshold: an amount with up to two decimals, or blank for none. A permission matrix entry for open, settle, void, reassign, close or reopen: roles
+-     * comma separated, or blank for the standing rule. Grace days: a whole number of days, or blank for off. A grade's grace days (A, B or C): a whole number of days, or blank for none. An entry date: yyyy-mm-dd, or blank for off. Each setting that carries a figure may name the date it
++     * comma separated, or blank for the standing rule. Grace days: a whole number of days, or blank for off. A grade's grace days (A, B or C): a whole number of days, or blank for none. A grade's own proof threshold (A, B or C): an amount with up to two decimals, or blank for none (the sheet's). An entry date: yyyy-mm-dd, or blank for off. Each setting that carries a figure may name the date it
+      * is in force from (its {@code ...From}: yyyy-mm-dd, or blank or null for the sheet's today).
+      */
+     public record SetSettingsRequest(@NotBlank @Size(max = 100) String sheet, @NotBlank @Size(max = 100) String user,
+@@ -76,7 +76,12 @@ public class SettingController {
+             @Pattern(regexp = "\\s*|" + TERMS) String graceDays, @Pattern(regexp = DATE) String entryDate,
+             @Pattern(regexp = "\\s*|" + TERMS) String graceA, @Pattern(regexp = "\\s*|" + TERMS) String graceB,
+             @Pattern(regexp = "\\s*|" + TERMS) String graceC, @Pattern(regexp = DATE) String graceAFrom,
+-            @Pattern(regexp = DATE) String graceBFrom, @Pattern(regexp = DATE) String graceCFrom) {
++            @Pattern(regexp = DATE) String graceBFrom, @Pattern(regexp = DATE) String graceCFrom,
++            @Pattern(regexp = "\\s*|" + ClaimController.AMOUNT) String proofThresholdA,
++            @Pattern(regexp = "\\s*|" + ClaimController.AMOUNT) String proofThresholdB,
++            @Pattern(regexp = "\\s*|" + ClaimController.AMOUNT) String proofThresholdC,
++            @Pattern(regexp = DATE) String proofThresholdAFrom, @Pattern(regexp = DATE) String proofThresholdBFrom,
++            @Pattern(regexp = DATE) String proofThresholdCFrom) {
+     }
+ 
+     /** A value recorded for a setting that carries a figure: blank from for the beginning of time, blank value for none. */
+@@ -138,6 +143,10 @@ public class SettingController {
+         if (req.graceA() != null) gradeGraces.put("A", grace(req.graceA(), req.graceAFrom()));
+         if (req.graceB() != null) gradeGraces.put("B", grace(req.graceB(), req.graceBFrom()));
+         if (req.graceC() != null) gradeGraces.put("C", grace(req.graceC(), req.graceCFrom()));
++        Map<String, SettingService.Dated<BigDecimal>> gradeProofThresholds = new TreeMap<>();
++        if (req.proofThresholdA() != null) gradeProofThresholds.put("A", amount(req.proofThresholdA(), req.proofThresholdAFrom()));
++        if (req.proofThresholdB() != null) gradeProofThresholds.put("B", amount(req.proofThresholdB(), req.proofThresholdBFrom()));
++        if (req.proofThresholdC() != null) gradeProofThresholds.put("C", amount(req.proofThresholdC(), req.proofThresholdCFrom()));
+         Map<String, String> permissions = new LinkedHashMap<>();
+         permission(permissions, "open", req.permOpen());
+         permission(permissions, "settle", req.permSettle());
+@@ -155,7 +164,7 @@ public class SettingController {
+                 policy.isEmpty() ? null : date(policy), req.periodNumberingFrom() != null,
+                 numberingFrom.isEmpty() ? null : date(numberingFrom),
+                 req.cap() == null ? null : amount(req.cap(), req.capFrom()), gradeTerms, gradeGraces,
+-                req.proofThreshold() == null ? null : amount(req.proofThreshold(), req.proofThresholdFrom()),
++                req.proofThreshold() == null ? null : amount(req.proofThreshold(), req.proofThresholdFrom()), gradeProofThresholds,
+                 req.noteThreshold() == null ? null : amount(req.noteThreshold(), req.noteThresholdFrom()), permissions,
+                 req.graceDays() != null, grace.isEmpty() ? null : Integer.valueOf(grace),
+                 req.entryDate() != null, entry.isEmpty() ? null : date(entry)));
+diff --git a/src/main/java/net/officefloor/hq/app/setting/SettingService.java b/src/main/java/net/officefloor/hq/app/setting/SettingService.java
+index 310f9cabb..eaec49d81 100644
+--- a/src/main/java/net/officefloor/hq/app/setting/SettingService.java
++++ b/src/main/java/net/officefloor/hq/app/setting/SettingService.java
+@@ -32,9 +32,9 @@ import org.springframework.transaction.annotation.Transactional;
+  * that move are recorded.
+  * <p>
+  * The settings that carry a figure (the floor, the late percent, the terms, a grade's own terms,
+- * a grade's grace days, the clerk limit, the cap, the proof threshold and the note threshold) are dated: each value is recorded from a from-date (the sheet's
++ * a grade's grace days, the clerk limit, the cap, the proof threshold, a grade's own proof threshold and the note threshold) are dated: each value is recorded from a from-date (the sheet's
+  * today when none is given). A claim's floor, late percent and terms are those in force on its
+- * date, as are its proof threshold (see {@link Sheet#proofThresholdOn}) and its note threshold (see {@link Sheet#noteThresholdOn}); the clerk limit and the cap are those in force on the sheet's today (see {@link Sheet}).
++ * date, as is its proof threshold (its person's grade's own in force then when it has one, else the sheet's; see {@link Sheet#proofThresholdFor}) and its note threshold (see {@link Sheet#noteThresholdOn}); the clerk limit and the cap are those in force on the sheet's today (see {@link Sheet}).
+  * The policy date and the period-numbering-from date are not dated. Nor is the permission matrix:
+  * for each of open, settle, void, reassign, close and reopen, the roles that may take it (blank: the
+  * standing rule, see {@link Sheet#permits}), recorded under the key {@code perm-<action>}. Nor are
+@@ -56,6 +56,8 @@ public class SettingService {
+     public static final String LATE_PCT = Sheet.LATE_PCT;
+     public static final String PROOF_THRESHOLD = Sheet.PROOF_THRESHOLD;
+     public static final String NOTE_THRESHOLD = Sheet.NOTE_THRESHOLD;
++    /** The key of a grade's own proof threshold: {@code proof-threshold-<grade>}. */
++    public static final String GRADE_PROOF_THRESHOLD = Sheet.GRADE_PROOF_THRESHOLD;
+     public static final String POLICY_DATE = "policy-date";
+     public static final String PERIOD_NUMBERING_FROM = "period-numbering-from";
+     public static final String GRACE_DAYS = "grace-days";
+@@ -96,7 +98,8 @@ public class SettingService {
+      * (null for none), and a period-numbering-from date when {@code changeNumbering} (null for off),
+      * and a cap when {@code cap} is not null, and each grade's own terms given in {@code gradeTerms}
+      * (by grade, in grade order), and each grade's grace days given in {@code gradeGraces} (by grade, in grade
+-     * order; null for none), and a proof threshold when {@code proofThreshold} is not null, and a note threshold when
++     * order; null for none), and a proof threshold when {@code proofThreshold} is not null, and each grade's own proof
++     * threshold given in {@code gradeProofThresholds} (by grade, in grade order; null for none), and a note threshold when
+      * {@code noteThreshold} is not null, and each permission matrix entry
+      * given in {@code permissions} (by action, in the order given; blank for the standing rule), and the grace days when
+      * {@code changeGrace} (null for off), and the entry date when {@code changeEntry} (null for off). Each figure is recorded from its from-date, keeping the values
+@@ -108,8 +111,8 @@ public class SettingService {
+             Dated<Integer> terms, Dated<BigDecimal> latePct, boolean changePolicy, LocalDate policyDate,
+             boolean changeNumbering, LocalDate numberingFrom, Dated<BigDecimal> cap,
+             Map<String, Dated<Integer>> gradeTerms, Map<String, Dated<Integer>> gradeGraces,
+-            Dated<BigDecimal> proofThreshold, Dated<BigDecimal> noteThreshold,
+-            Map<String, String> permissions,
++            Dated<BigDecimal> proofThreshold, Map<String, Dated<BigDecimal>> gradeProofThresholds,
++            Dated<BigDecimal> noteThreshold, Map<String, String> permissions,
+             boolean changeGrace, Integer graceDays, boolean changeEntry, LocalDate entryDate) {
+         roles.refuseViewer(sheetId, user);
+         Sheet sheet = sheets.load(sheetId, user);
+@@ -156,6 +159,10 @@ public class SettingService {
+             sheet = record(sheet, user, PROOF_THRESHOLD, proofThreshold.value(), proofThreshold.from(),
+                     text(proofThreshold.value()), false);
+         }
++        for (Map.Entry<String, Dated<BigDecimal>> e : new TreeMap<>(gradeProofThresholds).entrySet()) {
++            Dated<BigDecimal> t = e.getValue();
++            sheet = record(sheet, user, GRADE_PROOF_THRESHOLD + e.getKey(), t.value(), t.from(), text(t.value()), false);
++        }
+         if (noteThreshold != null) {
+             sheet = record(sheet, user, NOTE_THRESHOLD, noteThreshold.value(), noteThreshold.from(),
+                     text(noteThreshold.value()), false);
+diff --git a/src/main/java/net/officefloor/hq/app/sheet/Sheet.java b/src/main/java/net/officefloor/hq/app/sheet/Sheet.java
+index 8d9df88a4..69741964c 100644
+--- a/src/main/java/net/officefloor/hq/app/sheet/Sheet.java
++++ b/src/main/java/net/officefloor/hq/app/sheet/Sheet.java
+@@ -48,6 +48,8 @@ public class Sheet {
+     public static final String LATE_PCT = "late-pct";
+     public static final String PROOF_THRESHOLD = "proof-threshold";
+     public static final String NOTE_THRESHOLD = "note-threshold";
++    /** The key of a grade's own proof threshold: {@code proof-threshold-<grade>}. */
++    public static final String GRADE_PROOF_THRESHOLD = "proof-threshold-";
+ 
+     /** The actions the permission matrix covers. */
+     public static final List<String> PERMISSION_ACTIONS = List.of("open", "settle", "void", "reassign", "close", "reopen");
+@@ -245,6 +247,15 @@ public class Sheet {
+         return inForce(PROOF_THRESHOLD, date).map(DatedSetting::getValue).orElse(null);
+     }
+ 
++    /**
++     * The proof threshold for a grade in force on a date: the grade's own in force then when it has
++     * one (a blank one is none), else the sheet's in force then; null for none.
++     */
++    public BigDecimal proofThresholdFor(String grade, LocalDate date) {
++        return (grade == null ? Optional.<DatedSetting>empty() : inForce(GRADE_PROOF_THRESHOLD + grade, date))
++                .map(DatedSetting::getValue).orElseGet(() -> proofThresholdOn(date));
++    }
++
+     /** The note threshold in force on the sheet's today; null for none. */
+     public BigDecimal getNoteThreshold() {
+         return noteThresholdOn(today);
