@@ -48,6 +48,8 @@ import { GradeSummary, PeriodSummary, StatusSummary, Summary } from '../summary/
 // A person can name other people on the sheet as their patrons, one at a time from their row (not
 // themselves, and not the same person twice). Each row shows the person's patrons by name, sorted,
 // and their backing: their patrons' due-totals added up, skipping those that are n/a.
+// A user can watch a person, and stop watching them, from their row; "Watched" shows whether the
+// signed-in user watches them.
 // The export button downloads everyone, retired people included, in list order, as a CSV file
 // (name, grade in force today, retired-from date or nothing, due-total as shown).
 // The sheet may have a cap (the one in force on its today): a person's due-total is at most it, and their excess is how far the
@@ -266,6 +268,7 @@ const SUMMARY_STATUSES = ['DRAFT', 'OPEN', 'PENDING', 'SETTLED', 'VOID'] as cons
             <th scope="col">Retired</th>
             <th scope="col">On hold</th>
             <th scope="col">Patrons</th>
+            <th scope="col">Watched</th>
             <th scope="col">Claims</th>
             <th scope="col"><span class="visually-hidden">Actions</span></th>
           </tr>
@@ -328,6 +331,18 @@ const SUMMARY_STATUSES = ['DRAFT', 'OPEN', 'PENDING', 'SETTLED', 'VOID'] as cons
                 @if (patronErrors().get(p.id); as err) {
                   <p role="alert" data-testid="person-patron-error">{{ err }}</p>
                 }
+              </td>
+              <td>
+                <span data-testid="person-watched">{{ watched().has(p.id) ? 'yes' : 'no' }}</span>
+                <button
+                  type="button"
+                  data-testid="person-watch"
+                  [attr.aria-pressed]="watched().has(p.id)"
+                  [attr.aria-label]="(watched().has(p.id) ? 'Stop watching ' : 'Watch ') + p.name"
+                  (click)="toggleWatch(p)"
+                >
+                  {{ watched().has(p.id) ? 'Unwatch' : 'Watch' }}
+                </button>
               </td>
               <td>
                 <app-person-claims
@@ -503,6 +518,8 @@ export class People {
   protected readonly patronChoices = signal<ReadonlyMap<number, string>>(new Map());
   /** The error of each person's last refused patron add, by person id. */
   protected readonly patronErrors = signal<ReadonlyMap<number, string>>(new Map());
+  /** The ids of the people the signed-in user watches. */
+  protected readonly watched = signal<ReadonlySet<number>>(new Set());
   /** The error of each person's last refused row action, by person id. */
   protected readonly rowErrors = signal<ReadonlyMap<number, string>>(new Map());
   /** Each grade's rate in force on the sheet's today. */
@@ -587,6 +604,7 @@ export class People {
       this.patrons.set([]);
       this.patronChoices.set(new Map());
       this.patronErrors.set(new Map());
+      this.watched.set(new Set());
       this.retireDates.set(new Map());
       this.holdFroms.set(new Map());
       this.holdTos.set(new Map());
@@ -605,16 +623,18 @@ export class People {
 
   private async fetch(sheet: string): Promise<void> {
     try {
-      const [list, claims, statements, patrons] = await Promise.all([
+      const [list, claims, statements, patrons, watched] = await Promise.all([
         firstValueFrom(this.http.post<Person[]>('/api/people/list', { sheet })),
         firstValueFrom(this.http.post<Claim[]>('/api/claims/list', { sheet })),
         firstValueFrom(this.http.post<StatementSummary[]>('/api/statements/list', { sheet })),
         firstValueFrom(this.http.post<PatronLink[]>('/api/people/patrons/list', { sheet })),
+        firstValueFrom(this.http.post<number[]>('/api/people/watched', { sheet, user: this.session.user() })),
       ]);
       if (this.session.sheet() === sheet) {
         this.claims.set(claims);
         this.statements.set(new Map(statements.map((s) => [s.personId, s])));
         this.patrons.set(patrons);
+        this.watched.set(new Set(watched));
         this.people.set(list);
       }
     } catch {
@@ -825,6 +845,26 @@ export class People {
     } catch {
       if (this.session.sheet() !== sheet) return;
       this.rowErrors.update((m) => new Map(m).set(p.id, 'Could not hold ' + p.name + '.'));
+    }
+  }
+
+  /** Start watching the person as the signed-in user, or stop when they already watch them. */
+  protected async toggleWatch(p: Person): Promise<void> {
+    this.clearRowError(p.id);
+    const sheet = this.session.sheet();
+    const on = !this.watched().has(p.id);
+    try {
+      await firstValueFrom(this.http.post<void>('/api/people/watch', { sheet, user: this.session.user(), id: p.id, watch: on }));
+      if (this.session.sheet() !== sheet) return;
+      this.watched.update((s) => {
+        const next = new Set(s);
+        if (on) next.add(p.id);
+        else next.delete(p.id);
+        return next;
+      });
+    } catch {
+      if (this.session.sheet() !== sheet) return;
+      this.rowErrors.update((m) => new Map(m).set(p.id, 'Could not ' + (on ? 'watch ' : 'stop watching ') + p.name + '.'));
     }
   }
 

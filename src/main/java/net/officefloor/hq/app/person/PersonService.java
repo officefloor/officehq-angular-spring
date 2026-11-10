@@ -22,7 +22,8 @@ import org.springframework.web.server.ResponseStatusException;
  * name is unique on the sheet, compared without regard to case (names arrive trimmed). A person can
  * be retired from a date (the sheet's today when none is given); they count as retired at once. A
  * person can be put on hold over a span of dates, and may have several holds over time. A person can name other people on the sheet as
- * their patrons, one at a time: not themselves, and not the same person twice.
+ * their patrons, one at a time: not themselves, and not the same person twice. A user can watch a
+ * person, and stop watching them; each user's watching is their own.
  */
 @Service
 public class PersonService {
@@ -33,10 +34,12 @@ public class PersonService {
     private final RollupService rollup;
     private final PatronRepository patrons;
     private final RoleService roles;
+    private final WatchRepository watches;
 
     public PersonService(PersonRepository people, SheetService sheets, Audit audit, RollupService rollup,
-            PatronRepository patrons, RoleService roles) {
+            PatronRepository patrons, RoleService roles, WatchRepository watches) {
         this.roles = roles;
+        this.watches = watches;
         this.people = people;
         this.patrons = patrons;
         this.sheets = sheets;
@@ -155,6 +158,34 @@ public class PersonService {
         audit.recordOnCommit("PATRON_ADDED sheet=" + sheetId + " by=" + user + " name=" + person.getName()
                 + " patron=" + patron.getName());
         return added;
+    }
+
+    /** The ids of the people the user watches on the sheet. */
+    @Transactional(readOnly = true)
+    public List<Long> watched(String sheetId, String user) {
+        return watches.findBySheetIdAndUserName(sheetId, user).stream().map(Watch::getPersonId).toList();
+    }
+
+    /**
+     * Start ({@code on}) or stop watching the person as the user; already so, nothing changes and
+     * nothing is recorded.
+     */
+    @Transactional
+    public void watch(String sheetId, String user, long id, boolean on) {
+        Person person = people.lockByIdAndSheetId(id, sheetId)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "No such person on this sheet."));
+        var existing = watches.findByPersonIdAndUserName(person.getId(), user);
+        if (on == existing.isPresent()) {
+            return;
+        }
+        if (on) {
+            watches.saveAndFlush(new Watch(sheetId, person.getId(), user));
+        } else {
+            watches.delete(existing.get());
+            watches.flush();
+        }
+        audit.recordOnCommit((on ? "PERSON_WATCHED" : "PERSON_UNWATCHED") + " sheet=" + sheetId + " by=" + user
+                + " name=" + person.getName());
     }
 
     private static ResponseStatusException patronTaken() {

@@ -13,6 +13,8 @@ import net.officefloor.hq.app.Audit;
 import net.officefloor.hq.app.period.PeriodService;
 import net.officefloor.hq.app.person.Person;
 import net.officefloor.hq.app.person.PersonRepository;
+import net.officefloor.hq.app.person.Watch;
+import net.officefloor.hq.app.person.WatchRepository;
 import net.officefloor.hq.app.rate.Rate;
 import net.officefloor.hq.app.rate.RateRepository;
 import net.officefloor.hq.app.role.Role;
@@ -55,7 +57,9 @@ import org.springframework.web.server.ResponseStatusException;
  * {@link #split}). A claim whose figure is above the proof threshold in force on its date cannot be settled
  * or approved while it has no proofs: that is refused before the clerk limit is considered.
  * Who may open, settle, void or move a claim is the sheet's permission matrix (see
- * {@link Sheet#permits}): an action the user's role may not take is refused (403).
+ * {@link Sheet#permits}): an action the user's role may not take is refused (403). When a claim is
+ * settled, approved or re-settled, each user watching its person is notified, in the order they
+ * started watching.
  */
 @Service
 public class ClaimService {
@@ -68,10 +72,12 @@ public class ClaimService {
     private final RollupService rollup;
     private final PeriodService periods;
     private final RoleService roles;
+    private final WatchRepository watches;
 
     public ClaimService(ClaimRepository claims, PersonRepository people, RateRepository rates, SheetService sheets,
-            Audit audit, RollupService rollup, PeriodService periods, RoleService roles) {
+            Audit audit, RollupService rollup, PeriodService periods, RoleService roles, WatchRepository watches) {
         this.roles = roles;
+        this.watches = watches;
         this.rollup = rollup;
         this.periods = periods;
         this.claims = claims;
@@ -249,8 +255,19 @@ public class ClaimService {
                 + (saved.getNumber() != null ? " number=" + saved.getNumber() : "")
                 + (next == ClaimStatus.SETTLED ? " due=" + dueText(saved.getSettledDue()) : "")
                 + (reason != null ? " reason=" + reason : ""));
+        if (next == ClaimStatus.SETTLED) {
+            notifyWatchers(sheetId, user, person, saved);
+        }
         rollup.recordChanges(sheetId, user, before);
         return saved;
+    }
+
+    /** Record a notice of the claim for each user watching its person, in the order they started watching. */
+    private void notifyWatchers(String sheetId, String user, Person person, Claim claim) {
+        for (Watch watch : watches.findByPersonIdOrderByIdAsc(person.getId())) {
+            audit.recordOnCommit("NOTIFY sheet=" + sheetId + " by=" + user + " user=" + watch.getUserName()
+                    + " person=" + person.getName() + " number=" + claim.getNumber());
+        }
     }
 
     /**
@@ -333,6 +350,7 @@ public class ClaimService {
         audit.recordOnCommit(record("CLAIM_RESETTLED", sheetId, user, person, saved)
                 + (saved.getNumber() != null ? " number=" + saved.getNumber() : "")
                 + " old=" + dueText(old) + " new=" + dueText(settling));
+        notifyWatchers(sheetId, user, person, saved);
         rollup.recordChanges(sheetId, user, before);
         return saved;
     }

@@ -41,6 +41,14 @@ public class PersonController {
             @NotBlank @Size(max = 100) String user, @NotNull Long id, @NotNull Long patronId) {
     }
 
+    public record ListWatchedRequest(@NotBlank @Size(max = 100) String sheet,
+            @NotBlank @Size(max = 100) String user) {
+    }
+
+    public record WatchPersonRequest(@NotBlank @Size(max = 100) String sheet,
+            @NotBlank @Size(max = 100) String user, @NotNull Long id, @NotNull Boolean watch) {
+    }
+
     public record PatronResponse(long personId, long patronId) {
     }
 
@@ -107,5 +115,16 @@ public class PersonController {
     public PatronResponse addPatron(@Valid @RequestBody AddPatronRequest req) {
         Patron added = service.addPatron(req.sheet().trim(), req.user().trim(), req.id(), req.patronId());
         return new PatronResponse(added.getPersonId(), added.getPatronId());
+    }
+
+    /** The ids of the people the user watches on the sheet. */
+    @PostMapping("/watched")
+    public List<Long> watched(@Valid @RequestBody ListWatchedRequest req) {
+        return service.watched(req.sheet().trim(), req.user().trim());
+    }
+
+    @PostMapping("/watch")
+    public void watch(@Valid @RequestBody WatchPersonRequest req) {
+        service.watch(req.sheet().trim(), req.user().trim(), req.id(), req.watch());
     }
 }
