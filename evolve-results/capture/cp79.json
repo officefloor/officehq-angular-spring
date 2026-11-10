@@ -1,0 +1,64 @@
+{
+  "checkpoint": 79,
+  "stack": {
+    "repo": "/home/daniel/officehq-angular-spring",
+    "origin": "git@github.com:officefloor/officehq-angular-spring.git",
+    "name": "officehq-angular-spring",
+    "base_ref": "base-empty",
+    "base_commit": "65cb8233ea38b2dfa6cfd18709e30cd18fdf3250"
+  },
+  "checkpoint_id": "cp79_entry-date",
+  "phase": "early",
+  "type": "additive",
+  "mutates": [],
+  "replaced_tests": [],
+  "request": {
+    "spec": "The sheet may have an entry date (settings, a date, blank means off, not dated; SETTING_CHANGED\nkey=entry-date value=<date>). While it is set, it is the default date of a new claim wherever the\nsheet's today was: the claim form, the quick-add bar, a pasted line with a blank date and a\ncorrection.\n",
+    "prompt": "You are implementing ONE change to this application.\n\nFIRST read AGENTS.md \u2014 it states the working rules and how the app is tested, and sends you to\nDESIGN.md for the app's stack and conventions. Follow both.\n\nTHE CHANGE REQUEST:\nThe sheet may have an entry date (settings, a date, blank means off, not dated; SETTING_CHANGED\nkey=entry-date value=<date>). While it is set, it is the default date of a new claim wherever the\nsheet's today was: the claim form, the quick-add bar, a pasted line with a blank date and a\ncorrection.\n\nYour work is verified by an automated Playwright UI test already installed under e2e/specs/.\nRead that spec: it declares the exact data-testid anchors, values, test data and any audit\nrecords it expects \u2014 match them. Run `bin/e2e` to build the app, start it, and run the test as\nyou work; iterate until it passes. Change whatever the request needs across the app \u2014 its stored\ndata, its server and its front end. Do NOT edit bin/build, bin/start, bin/stop, bin/e2e,\nAGENTS.md, CLAUDE.md, DESIGN.md, e2e/support/ or the test spec.\n"
+  },
+  "commit_sha": "cdcb50cc8913ab751b8ed26d655eadf512a5316a",
+  "reset_sha": "",
+  "preagent_sha": "f920ca2653b247a7dbef837a1252c0d34b194fa3",
+  "prev_sha": "f920ca2653b247a7dbef837a1252c0d34b194fa3",
+  "base_sha": "65cb8233ea38b2dfa6cfd18709e30cd18fdf3250",
+  "agent": {
+    "ok": true,
+    "cost_usd": 1.3327835999999997,
+    "input_tokens": 70,
+    "output_tokens": 14843,
+    "cache_read_tokens": 2013778,
+    "cache_creation_tokens": 79111,
+    "num_turns": 36,
+    "duration_ms": 594597,
+    "duration_api_ms": 153972,
+    "model": "claude-opus-5-5",
+    "session_id": "32846f6d-5749-4a70-94b1-2716ca1828cb",
+    "stop_reason": "success",
+    "result_text": "The sheet now has an entry date setting, and all 4 Playwright tests in `bin/e2e` pass.\n\n**What the entry date does**\n- It's a new field in the settings form (`setting-entry-date`), with its current value shown in `setting-entry-date-current`. It isn't dated, and blank means off.\n- Saving it writes `SETTING_CHANGED sheet=\u2026 by=\u2026 key=entry-date value=<date or blank>` to the audit file.\n- While it's set, a new claim with a blank date gets the entry date instead of the sheet's today. That covers the claim form, the quick-add bar, pasted lines and corrections. The default is applied before the existing checks, so a claim is still refused if that date is in a closed period or after the person's retirement date.\n- It's stored in a new column on the sheet table (migration `V50__entry_date.sql`).\n- The main code changes are in `Sheet.java`, `SheetService.java` and `ClaimService.java`. The settings controller, service and form (`SettingController.java`, `SettingService.java`, `settings.ts`) follow the same pattern as the period-numbering-from setting.\n\n**Decision for you:** saving a claim in its editor with the date cleared now also uses the entry date. The request didn't mention the editor, but it shares the same server code; say if you'd rather it kept using the sheet's today.\n\n**Two changes outside the request.** The tests expect these viewer behaviours, which the app didn't have before:\n- **Watch:** a viewer trying to watch a person is now refused, like every other change a viewer attempts (`PersonService.watch`).\n- **Bulk grade:** a viewer's bulk grade now reports 0 changed and writes nothing, instead of showing an error. Each person is refused in turn, as the bulk claim actions do; on an archived sheet the whole action is still refused. The code comment used to say a bulk grade was \"all or none\", and I updated it to say a viewer grades no one.",
+    "error": "",
+    "attempts": [
+      {
+        "ok": true,
+        "limit_reached": false,
+        "retryable": false,
+        "timed_out": false,
+        "cost_usd": 1.3327835999999997,
+        "num_turns": 36,
+        "duration_ms": 594597,
+        "duration_api_ms": 153972,
+        "error": ""
+      }
+    ]
+  },
+  "agent_stream_file": "cp79.agent.jsonl",
+  "agent_diff_file": "cp79.agent.diff",
+  "build_log_file": null,
+  "tests": {
+    "gated": false,
+    "queued": true
+  },
+  "probe": null,
+  "pinned_touched": [],
+  "acceptance_touched": [],
+  "impact_gate": null
+}
