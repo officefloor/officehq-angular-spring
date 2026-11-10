@@ -1,0 +1,43 @@
+diff --git a/src/main/frontend/src/app/features/people/people.ts b/src/main/frontend/src/app/features/people/people.ts
+index 0d5a9d9dd..289ed3a0e 100644
+--- a/src/main/frontend/src/app/features/people/people.ts
++++ b/src/main/frontend/src/app/features/people/people.ts
+@@ -49,14 +49,15 @@ import { GradeSummary, PeriodSummary, StatusSummary, Summary } from '../summary/
+ // percent of it for every full 30 days overdue) added on top, in every figure and total.
+ // A person can name other people on the sheet as their patrons, one at a time from their row (not
+ // themselves, and not the same person twice). Each row shows the person's patrons by name, sorted,
+-// and their backing: their patrons' due-totals added up, skipping those that are n/a.
++// and their backing: the sum of their patrons' settled figures over their SETTLED claims dated within
++// the 90 days up to and including the sheet's today (each at its frozen figure), 0.00 with none.
+ // A user can watch a person, and stop watching them, from their row; "Watched" shows whether the
+ // signed-in user watches them.
+ // The export button downloads everyone, retired people included, in list order, as a CSV file
+ // (name, grade in force today, retired-from date or nothing, due-total as shown).
+ // The sheet may have a cap (the one in force on its today): a person's due-total is at most it, and their excess is how far the
+ // sum of their figures is above it (0.00 otherwise; a due-total of n/a is not capped). Every total
+-// of due-totals (the sheet's, a grade's, backing, the export) adds up the capped figures.
++// of due-totals (the sheet's, a grade's, the export) adds up the capped figures.
+ // A person is active when they have an OPEN or PENDING claim that counts dated within the 30 days up
+ // to and including the sheet's today; the summary counts the active people per grade, retired excluded.
+ interface Person {
+@@ -752,9 +753,18 @@ export class People {
+       .join(', ');
+   }
+ 
+-  /** The person's backing in whole cents: their patrons' due-totals added up, skipping n/a. */
++  /**
++   * The person's backing in whole cents: their patrons' frozen figures over their SETTLED claims
++   * dated within the 90 days up to and including the sheet's today.
++   */
+   protected backingOf(personId: number): number {
+-    return this.patronsOf(personId).reduce((sum, p) => sum + (this.dueOf(p) ?? 0), 0);
++    const today = this.session.today();
++    if (!today) return 0;
++    const since = plusDays(today, -89);
++    return this.patronsOf(personId)
++      .flatMap((p) => this.claimsOf(p.id))
++      .filter((c) => c.status === 'SETTLED' && c.date >= since && c.date <= today)
++      .reduce((sum, c) => sum + (c.settledDue === null ? 0 : cents(c.settledDue)), 0);
+   }
+ 
+   private patronsOf(personId: number): Person[] {
