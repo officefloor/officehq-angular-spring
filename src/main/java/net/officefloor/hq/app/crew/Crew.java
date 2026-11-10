@@ -7,7 +7,7 @@ import jakarta.persistence.GenerationType;
 import jakarta.persistence.Id;
 import jakarta.persistence.Table;
 
-/** A crew on the sheet: a name, at most once on the sheet, and its lead, a person on the sheet. */
+/** A crew on the sheet: a name, at most once on the sheet, and its lead, a person on the sheet (none once the lead has left it). */
 @Entity
 @Table(name = "crew")
 public class Crew {
@@ -22,7 +22,7 @@ public class Crew {
     @Column(name = "name", nullable = false)
     private String name;
 
-    @Column(name = "lead_id", nullable = false)
+    @Column(name = "lead_id")
     private Long leadId;
 
     protected Crew() {

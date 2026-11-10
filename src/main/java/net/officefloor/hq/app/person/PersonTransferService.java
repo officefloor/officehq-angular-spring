@@ -35,7 +35,7 @@ import org.springframework.web.server.ResponseStatusException;
  * then by the order they were added). Figures a statement bound are kept, their statements go with
  * them (listed before those of a person they merge into, whose last statement stays theirs, or, having
  * none, becomes the transferred person's), and references are not carried. They leave this sheet entirely: patron links, pool
- * memberships, crew memberships (and the crews they lead), holds and watches are dropped. They and their claims arrive as new rows, so
+ * memberships, crew memberships (the crews they lead are left without a lead), holds and watches are dropped. They and their claims arrive as new rows, so
  * this sheet's history (its as-of view) keeps its own. When the other sheet already has a person
  * with their name or an alias, they are merged into that person instead, as a merge does: their
  * claims are listed after that person's, their name and aliases become that person's aliases, and

@@ -18,7 +18,8 @@ export interface CrewMember {
 export interface Crew {
   id: number;
   name: string;
-  leadId: number;
+  /** Null once the lead has left the sheet. */
+  leadId: number | null;
   lead: string;
   members: CrewMember[];
 }
@@ -33,7 +34,7 @@ export interface CrewPerson {
 /** A crew's due-total in whole cents: its lead's and members' due-totals added up, n/a skipped. */
 export function crewDueCents(crew: Crew, people: CrewPerson[]): number {
   const dues = new Map(people.map((p) => [p.id, p.due]));
-  return [crew.leadId, ...crew.members.map((m) => m.personId)].reduce((sum, id) => sum + (dues.get(id) ?? 0), 0);
+  return [crew.leadId ?? 0, ...crew.members.map((m) => m.personId)].reduce((sum, id) => sum + (dues.get(id) ?? 0), 0);
 }
 
 function refusal(e: unknown, what: string): string {

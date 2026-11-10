@@ -33,7 +33,7 @@ public class CrewService {
     }
 
     /** A crew as listed: its lead (id and current name) and its members in the order they were added. */
-    public record CrewView(long id, String name, long leadId, String lead, List<MemberView> members) {
+    public record CrewView(long id, String name, Long leadId, String lead, List<MemberView> members) {
     }
 
     private final CrewRepository crews;
@@ -131,7 +131,7 @@ public class CrewService {
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "No such crew."));
         Person person = people.findByIdAndSheetId(personId, sheetId)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.UNPROCESSABLE_ENTITY, "Choose a person."));
-        if (crew.getLeadId().equals(person.getId())) {
+        if (person.getId().equals(crew.getLeadId())) {
             throw new ResponseStatusException(HttpStatus.CONFLICT, "That person leads the crew.");
         }
         if (members.existsByCrewIdAndPersonId(crew.getId(), person.getId())) {
@@ -162,7 +162,7 @@ public class CrewService {
         members.flush();
         for (CrewMember member : members.findByPersonIdOrderByIdAsc(fromId)) {
             Crew crew = crews.findById(member.getCrewId()).orElse(null);
-            if (crew == null || crew.getLeadId().equals(intoId)
+            if (crew == null || Long.valueOf(intoId).equals(crew.getLeadId())
                     || members.existsByCrewIdAndPersonId(member.getCrewId(), intoId)) {
                 members.delete(member);
             } else {
@@ -173,17 +173,15 @@ public class CrewService {
         members.flush();
     }
 
-    /** A person leaving the sheet: their memberships go, and so do the crews they lead with their members. */
+    /** A person leaving the sheet: their memberships go, and the crews they lead are left without a lead. */
     @Transactional
     public void drop(long personId) {
         members.deleteAll(members.findByPersonIdOrderByIdAsc(personId));
         members.flush();
-        List<Crew> led = crews.findByLeadIdOrderByIdAsc(personId);
-        if (!led.isEmpty()) {
-            members.deleteAll(members.findByCrewIdInOrderByIdAsc(led.stream().map(Crew::getId).toList()));
-            members.flush();
-            crews.deleteAll(led);
-            crews.flush();
+        for (Crew crew : crews.findByLeadIdOrderByIdAsc(personId)) {
+            crew.setLeadId(null);
+            crews.save(crew);
         }
+        crews.flush();
     }
 }

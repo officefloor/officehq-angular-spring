@@ -336,6 +336,26 @@ export function dueText(c: number | null): string {
           }
         </tbody>
       </table>
+      <table aria-label="Rate calendar">
+        <thead>
+          <tr>
+            <th scope="col">Grade</th>
+            @for (m of calendarMonths(); track m) {
+              <th scope="col">{{ m }}</th>
+            }
+          </tr>
+        </thead>
+        <tbody>
+          @for (g of grades; track g) {
+            <tr>
+              <th scope="row">{{ g }}</th>
+              @for (m of calendarMonths(); track m) {
+                <td [attr.data-testid]="'rate-month-' + g + '-' + m">{{ (calendar().get(g + '-' + m) ?? 'n/a') | figure }}</td>
+              }
+            </tr>
+          }
+        </tbody>
+      </table>
       <table data-testid="rates-list" aria-label="All rates">
         <thead>
           <tr>
@@ -379,6 +399,21 @@ export class Rates {
   protected readonly current = computed(() => {
     const today = this.session.today();
     return new Map(GRADES.map((g) => [g, pctOn(this.rates(), g, today)]));
+  });
+  /** Each month (yyyy-mm) of the sheet's today's calendar year; none without a today. */
+  protected readonly calendarMonths = computed(() => {
+    const year = this.session.today()?.slice(0, 4);
+    if (!year) return [];
+    return Array.from({ length: 12 }, (_, i) => `${year}-${String(i + 1).padStart(2, '0')}`);
+  });
+  /** Each grade's rate in force on the first day of each calendar month, keyed grade-yyyy-mm. */
+  protected readonly calendar = computed(() => {
+    const rates = this.rates();
+    const out = new Map<string, string | undefined>();
+    for (const g of GRADES) {
+      for (const m of this.calendarMonths()) out.set(`${g}-${m}`, pctOn(rates, g, `${m}-01`));
+    }
+    return out;
   });
   protected readonly gradeInput = signal<string>('A');
   protected readonly pctInput = signal('');
