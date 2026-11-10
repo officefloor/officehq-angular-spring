@@ -1,0 +1,64 @@
+{
+  "checkpoint": 42,
+  "stack": {
+    "repo": "/home/daniel/officehq-angular-spring",
+    "origin": "git@github.com:officefloor/officehq-angular-spring.git",
+    "name": "officehq-angular-spring",
+    "base_ref": "base-empty",
+    "base_commit": "65cb8233ea38b2dfa6cfd18709e30cd18fdf3250"
+  },
+  "checkpoint_id": "cp42_rate-end-dates",
+  "phase": "early",
+  "type": "additive",
+  "mutates": [],
+  "replaced_tests": [],
+  "request": {
+    "spec": "A rate may carry a to-date as well as a from-date (RATE_SET gains to=<date> at the end when one\nwas given; a to-date before the from-date is refused). A rate applies through its to-date; a claim\ndated after the to-date of the rate that would apply to it, with no later rate in force on the\nclaim's date, has due n/a, and everything that reads due follows (a total skips it, a statement\nbinds n/a, the late charge has nothing to add to).\n",
+    "prompt": "You are implementing ONE change to this application.\n\nFIRST read AGENTS.md \u2014 it states the working rules and how the app is tested, and sends you to\nDESIGN.md for the app's stack and conventions. Follow both.\n\nTHE CHANGE REQUEST:\nA rate may carry a to-date as well as a from-date (RATE_SET gains to=<date> at the end when one\nwas given; a to-date before the from-date is refused). A rate applies through its to-date; a claim\ndated after the to-date of the rate that would apply to it, with no later rate in force on the\nclaim's date, has due n/a, and everything that reads due follows (a total skips it, a statement\nbinds n/a, the late charge has nothing to add to).\n\nYour work is verified by an automated Playwright UI test already installed under e2e/specs/.\nRead that spec: it declares the exact data-testid anchors, values, test data and any audit\nrecords it expects \u2014 match them. Run `bin/e2e` to build the app, start it, and run the test as\nyou work; iterate until it passes. Change whatever the request needs across the app \u2014 its stored\ndata, its server and its front end. Do NOT edit bin/build, bin/start, bin/stop, bin/e2e,\nAGENTS.md, CLAUDE.md, DESIGN.md, e2e/support/ or the test spec.\n"
+  },
+  "commit_sha": "736fd42186f56d4317f52118460873237ab44d56",
+  "reset_sha": "",
+  "preagent_sha": "9f7d41f357374ee566127ab09b3c407cdc8e339d",
+  "prev_sha": "9f7d41f357374ee566127ab09b3c407cdc8e339d",
+  "base_sha": "65cb8233ea38b2dfa6cfd18709e30cd18fdf3250",
+  "agent": {
+    "ok": true,
+    "cost_usd": 0.5599654,
+    "input_tokens": 6,
+    "output_tokens": 787,
+    "cache_read_tokens": 101839,
+    "cache_creation_tokens": 2453,
+    "num_turns": 2,
+    "duration_ms": 9298,
+    "duration_api_ms": 63340,
+    "model": "claude-opus-5-5",
+    "session_id": "1093a053-4a65-4458-bca4-bb3a935456d5",
+    "stop_reason": "success",
+    "result_text": "Rates can now have a to-date as well as a from-date, and all 4 acceptance tests pass in `bin/e2e`.\n\n**How it behaves:**\n- The rate form has a new \"To\" field (`rate-form-to`), and the rates list has a \"To\" column (`rate-to`). A rate with no to-date shows \"open\" there.\n- A to-date before the from-date is refused, both in the form and on the server. A refused rate is not saved and writes nothing to the audit file.\n- Setting a rate again for a from-date it already has replaces its percent and its to-date.\n- `RATE_SET` now ends with ` to=<date>` when a to-date was given.\n- To find a claim's rate, the app still picks the grade's rate with the latest from-date on or before the claim's date. If that rate's to-date is already past, the claim gets no rate and its due is **n/a**. It does not fall back to an older rate. So with an undated 10% and a 20% from 03-05 to 03-07, a claim on 03-08 is n/a, not 10%.\n- Because the server and the screen both use that one rule, everything that reads due follows it: claim dues, person and sheet totals (which skip n/a), the ROLLUP/TOTALS audit lines, statements (which bind n/a), the late charge, and the \"rate today\" cells.\n\n**Changes:**\n- `db/migration/V32__rate_to_date.sql` adds a `to_date` column, with a database check that it isn't before `from_date`.\n- `Rate.java` gains the to-date and a `runsThrough(date)` check.\n- `RateRepository.findInForce` and `RollupService.inForce` apply that check.\n- `RateController` and `RateService` take the to-date, refuse a bad one, and write the audit field.\n- `features/rates/rates.ts` has the new field and column, the same refusal, and the same rule in `pctOn`.",
+    "error": "",
+    "attempts": [
+      {
+        "ok": true,
+        "limit_reached": false,
+        "retryable": false,
+        "timed_out": false,
+        "cost_usd": 0.5599654,
+        "num_turns": 2,
+        "duration_ms": 9298,
+        "duration_api_ms": 63340,
+        "error": ""
+      }
+    ]
+  },
+  "agent_stream_file": "cp42.agent.jsonl",
+  "agent_diff_file": "cp42.agent.diff",
+  "build_log_file": null,
+  "tests": {
+    "gated": false,
+    "queued": true
+  },
+  "probe": null,
+  "pinned_touched": [],
+  "acceptance_touched": [],
+  "impact_gate": null
+}
