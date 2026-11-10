@@ -188,13 +188,13 @@ function retiredOn(p: Person, date: string | null): boolean {
 }
 
 /**
- * Whether a claim of the person counts toward the totals: an OPEN or PENDING claim dated within one
- * of their holds does not, nor does one once the sheet's today reaches their retirement date, unless
+ * Whether a claim of the person counts toward the totals: an OPEN or PENDING claim that is held, or
+ * dated within one of their holds, does not, nor does one once the sheet's today reaches their retirement date, unless
  * a statement binds it; nor does a claim deferred on the sheet's today.
  */
 function countsFor(p: Person | undefined, c: Claim, today: string | null): boolean {
   return counts(c) && !deferred(c, today)
-    && (c.stated || !(p !== undefined && isOpen(c) && (heldOn(p, c.date) || retiredOn(p, today))));
+    && (c.stated || !(isOpen(c) && (c.held || (p !== undefined && (heldOn(p, c.date) || retiredOn(p, today))))));
 }
 
 /** One of a person's patrons. */
@@ -1178,11 +1178,11 @@ export class People {
       if (p === undefined) continue;
       const due = chargedDueCents(c, this.rates(), gradeOn(p.grades, c.date), this.floors(), this.lateness(), this.roundOn(c));
       if (due === null) continue;
-      // a hold takes out only a claim that is open now as well
+      // a hold (the person's or the claim's) takes out only a claim that is open now as well
       const countsAt = (day: string): boolean => {
         const status = statusAt(c, day);
         return status !== null && (isOpen(c) ? countsFor(p, { ...c, status }, today)
-          : countsFor(undefined, { ...c, status }, today));
+          : countsFor(undefined, { ...c, status, held: false }, today));
       };
       const openAt = (day: string): boolean => {
         const status = statusAt(c, day);

@@ -139,7 +139,8 @@ public class ClaimController {
             LocalDate deferredUntil, int proofs, String splitFrom, String lockedBy,
             boolean lateEntry, LocalDate remindedOn, String ref, List<String> tags, String voidReason,
             List<ClaimCommentLine> comments, Integer batch, List<ClaimLineLine> lines, Long addedSeq,
-            LocalDate reviewOn, boolean waived, String statedCharged, int proofsReceipt, int proofsPhoto) {
+            LocalDate reviewOn, boolean waived, String statedCharged, int proofsReceipt, int proofsPhoto,
+            boolean held) {
     }
 
     /** One line of a claim, in the order added: its label, quantity and unit amount. */
@@ -175,7 +176,8 @@ public class ClaimController {
                 claim.getLines().stream().map(l -> new ClaimLineLine(l.getLabel(), l.getQty(), money(l.getUnit())))
                         .toList(),
                 claim.getAddedSeq(), claim.getReviewOn(), claim.isWaived(),
-                money(claim.getStatedCharged()), claim.proofsOf(Claim.RECEIPT), claim.proofsOf(Claim.PHOTO));
+                money(claim.getStatedCharged()), claim.proofsOf(Claim.RECEIPT), claim.proofsOf(Claim.PHOTO),
+                claim.isHeld());
     }
 
     public static BigDecimal amount(String amount) {
@@ -336,6 +338,11 @@ public class ClaimController {
     @PostMapping("/waive")
     public ClaimResponse waive(@Valid @RequestBody ClaimStatusRequest req) {
         return response(service.waive(req.sheet().trim(), req.user().trim(), req.id()));
+    }
+
+    @PostMapping("/hold")
+    public ClaimResponse hold(@Valid @RequestBody ClaimStatusRequest req) {
+        return response(service.toggleHold(req.sheet().trim(), req.user().trim(), req.id()));
     }
 
     @PostMapping("/reassign")

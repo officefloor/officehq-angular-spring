@@ -60,6 +60,9 @@ import { FigurePipe } from '../../core/figure';
 // A steward can waive an OPEN or PENDING claim's late charge with its waive button: from then on it
 // bears none, whatever its overdue state, and shows waived yes (refused for anyone else, a claim in
 // any other status, or one already waived).
+// An OPEN or PENDING claim can be held and released with its hold toggle: while held it counts in
+// no live total, as a held person's open claims do, unless a statement binds it, and shows held yes
+// (refused for a claim in any other status).
 // Any claim can be commented with its comment text and button (an empty comment is refused with an
 // error on the claim): its comments show oldest first as <user> on <date>: <text>, each kept with
 // the user who wrote it and the sheet's today then.
@@ -150,6 +153,8 @@ export interface Claim {
   reviewOn: string | null;
   /** Whether a steward waived the claim's late charge: from then on it bears none. */
   waived: boolean;
+  /** Whether the claim is held: while held it counts in no live total unless a statement binds it. */
+  held: boolean;
 }
 
 /** One line of a claim: a label, a quantity and a unit amount. */
@@ -424,6 +429,7 @@ export function money(c: number): string {
           <span>Late entry <span data-testid="claim-late-entry">{{ c.lateEntry ? 'yes' : 'no' }}</span></span>
           <span>Review late <span data-testid="claim-review-late">{{ reviewLateOf(c) ? 'yes' : 'no' }}</span></span>
           <span>Waived <span data-testid="claim-waived">{{ c.waived ? 'yes' : 'no' }}</span></span>
+          <span>Held <span data-testid="claim-held">{{ c.held ? 'yes' : 'no' }}</span></span>
           <span>Reminded <span data-testid="claim-reminded">{{ c.remindedOn ?? '' }}</span></span>
           <ol [attr.aria-label]="'Status log of claim of ' + c.amount + ' on ' + c.date">
             @for (l of c.log; track $index) {
@@ -505,6 +511,9 @@ export function money(c: number): string {
           <button type="button" data-testid="claim-proof" (click)="addProof(c)">Add proof</button>
           <button type="button" data-testid="claim-remind" (click)="remind(c)">Remind</button>
           <button type="button" data-testid="claim-waive" (click)="waive(c)">Waive late charge</button>
+          <button type="button" data-testid="claim-hold" [attr.aria-pressed]="c.held" (click)="toggleHold(c)">
+            {{ c.held ? 'Release' : 'Hold' }}
+          </button>
           @if (voidReasons.list().length > 0) {
             <label [for]="'claim-void-reason-' + c.id">Void reason</label>
             <select
@@ -1288,6 +1297,29 @@ export class PersonClaims {
           : status === 403
             ? 'Only a steward can waive a late charge.'
             : "Could not waive this claim's late charge.";
+      this.actionErrors.update((m) => new Map(m).set(c.id, err));
+    }
+  }
+
+  /** Hold an OPEN or PENDING claim, or release it when held; the server refuses any other status. */
+  protected async toggleHold(c: Claim): Promise<void> {
+    this.clearActionError(c.id);
+    const sheet = this.session.sheet();
+    try {
+      const claim = await firstValueFrom(
+        this.http.post<Claim>('/api/claims/hold', { sheet, user: this.session.user(), id: c.id }),
+      );
+      if (this.session.sheet() !== sheet) return;
+      this.saved.emit(claim);
+    } catch (e) {
+      if (this.session.sheet() !== sheet) return;
+      const status = e instanceof HttpErrorResponse ? e.status : 0;
+      const err =
+        status === 409
+          ? `A ${c.status} claim cannot be held or released.`
+          : c.held
+            ? 'Could not release this claim.'
+            : 'Could not hold this claim.';
       this.actionErrors.update((m) => new Map(m).set(c.id, err));
     }
   }

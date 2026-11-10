@@ -753,6 +753,31 @@ public class ClaimService {
     }
 
     /**
+     * Hold an OPEN or PENDING claim, or release it when held: while held it counts in no live total,
+     * as a held person's open claims do, unless a statement binds it. CLAIM_HELD or CLAIM_RELEASED is
+     * written. Refused (409) for a claim in any other status.
+     */
+    @Transactional
+    public Claim toggleHold(String sheetId, String user, long id) {
+        roles.refuseViewer(sheetId, user);
+        RollupService.Snapshot before = rollup.snapshot(sheetId);
+        Claim claim = claims.findByIdAndSheetId(id, sheetId)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "No such claim on this sheet."));
+        if (claim.getStatus() != ClaimStatus.OPEN && claim.getStatus() != ClaimStatus.PENDING) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT,
+                    "A " + claim.getStatus() + " claim cannot be held or released.");
+        }
+        Person person = person(sheetId, claim.getPersonId());
+        boolean hold = !claim.isHeld();
+        claim.setHeld(hold, sheets.today(sheetId));
+        Claim saved = claims.saveAndFlush(claim);
+        audit.recordOnCommit(record(hold ? "CLAIM_HELD" : "CLAIM_RELEASED", sheetId, user, person, saved)
+                + (saved.getNumber() != null ? " number=" + saved.getNumber() : ""));
+        rollup.recordChanges(sheetId, user, before);
+        return saved;
+    }
+
+    /**
      * Re-settle a SETTLED claim: fix its due again at the figure it would have on the sheet's today
      * as an open claim bound by no statement, with its late charge. Refused (403) for anyone but a
      * steward, (409) for a claim that is not SETTLED and (423) when dated inside a closed period.

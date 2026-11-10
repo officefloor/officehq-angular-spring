@@ -160,6 +160,14 @@ public class Claim {
     @Column(name = "waived", nullable = false)
     private boolean waived;
 
+    /** Whether the claim is held: while held an open claim counts in no live total unless a statement binds it. */
+    @Column(name = "held", nullable = false)
+    private boolean held;
+
+    /** The sheet's today when the claim was last held; none when never held. */
+    @Column(name = "held_on")
+    private LocalDate heldOn;
+
     /** The sheet's today when the claim last went to REVIEW; none when it never has. */
     @Column(name = "review_on")
     private LocalDate reviewOn;
@@ -262,6 +270,8 @@ public class Claim {
         copy.escalated = escalated;
         copy.reviewOn = reviewOn;
         copy.waived = waived;
+        copy.held = held;
+        copy.heldOn = heldOn;
         copy.voidReason = voidReason;
         copy.proofs = proofs;
         copy.photoProofs = photoProofs;
@@ -550,6 +560,23 @@ public class Claim {
 
     public boolean isWaived() {
         return waived;
+    }
+
+    public boolean isHeld() {
+        return held;
+    }
+
+    /** Whether the claim was held at the end of a day: held now, and held while the sheet's today was on or before it. */
+    public boolean isHeldAsOf(LocalDate day) {
+        return held && (heldOn == null || !heldOn.isAfter(day));
+    }
+
+    /** Hold the claim ({@code madeOn} is the sheet's today), or release it. */
+    public void setHeld(boolean held, LocalDate madeOn) {
+        this.held = held;
+        if (held) {
+            this.heldOn = madeOn;
+        }
     }
 
     /** Waive the claim's late charge. */

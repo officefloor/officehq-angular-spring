@@ -378,7 +378,7 @@ public class Person {
 
     /**
      * Whether a claim of this person counts toward the live totals: an open claim dated within a
-     * hold does not, nor does one of a person whose retirement date the sheet's today has reached,
+     * hold does not, nor does a held claim, nor does one of a person whose retirement date the sheet's today has reached,
      * unless a statement binds it; nor does a claim deferred on the sheet's today.
      */
     public boolean counts(Claim claim, LocalDate today) {
@@ -391,7 +391,7 @@ public class Person {
      */
     public boolean counts(Claim claim, ClaimStatus status, LocalDate today) {
         return status.counts() && !claim.isDeferredOn(status, today) && (claim.isStated()
-                || !(status.isOpen() && claim.getStatus().isOpen() && (heldOn(claim.getDate()) || retiredOn(today))));
+                || !(status.isOpen() && claim.getStatus().isOpen() && (claim.isHeld() || heldOn(claim.getDate()) || retiredOn(today))));
     }
 
     /**
@@ -405,7 +405,7 @@ public class Person {
         boolean retired = (retiredFrom != null && (retiredOn == null || !retiredOn.isAfter(day))
                 && !day.isBefore(retiredFrom)) || pastRetirements.stream().anyMatch(r -> r.retiredAsOf(day));
         return status.counts() && !claim.isDeferredAsOf(status, day)
-                && (stated || !(status.isOpen() && (held || retired)));
+                && (stated || !(status.isOpen() && (held || claim.isHeldAsOf(day) || retired)));
     }
 
     public long getVersion() {
