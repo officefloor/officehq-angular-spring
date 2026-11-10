@@ -50,6 +50,8 @@ import { DatedValue, START_FLOOR, START_LATE_PCT, valueOn } from '../rates/rates
 // The pot (an amount with up to two decimals; blank: none): shared out over each balanced pool's
 // members as their cuts. It saves, like the clerk limit, once its field has been entered; it is not
 // dated.
+// The fiscal start month (1 to 12; 1 on a new sheet): the month each fiscal year starts in. It
+// saves when typed (blank: left as it is); it is not dated.
 // The parent (a sheet id; blank: none): a sheet already loaded, never this sheet nor one that has it
 // as an ancestor. A grade with no rate in force on a date here takes the parent's rate for it then,
 // then the parent's parent's, up to three levels up. It saves, like the clerk limit, once its field
@@ -89,6 +91,8 @@ interface SettingsResponse {
   pot: string;
   /** The parent sheet's id, blank for none. */
   parent: string;
+  /** The month (1 to 12) the sheet's fiscal year starts in. */
+  fiscalStartMonth: number;
 }
 
 /** The actions the permission matrix covers. */
@@ -370,6 +374,14 @@ const DATE = /^\d{4}-\d{2}-\d{2}$/;
           (focus)="enterParent($any($event.target))"
           (input)="parentInput.set($any($event.target).value); error.set(null)"
         />
+        <label for="setting-fiscal-start-month">Month the fiscal year starts in, 1 to 12 (blank: left as it is)</label>
+        <input
+          id="setting-fiscal-start-month"
+          data-testid="setting-fiscal-start-month"
+          inputmode="numeric"
+          [value]="fiscalInput() ?? ''"
+          (input)="fiscalInput.set($any($event.target).value); error.set(null)"
+        />
         <button type="submit" data-testid="settings-save">Save settings</button>
         @if (error(); as err) {
           <p role="alert" data-testid="settings-error">{{ err }}</p>
@@ -477,6 +489,10 @@ const DATE = /^\d{4}-\d{2}-\d{2}$/;
           <span>(none)</span>
         }
       </p>
+      <p>
+        Fiscal year starts in month:
+        <strong data-testid="setting-fiscal-start-month-current">{{ fiscalStartMonth() }}</strong>
+      </p>
       @for (a of permActions; track a) {
         <p>
           Roles that may {{ a }}:
@@ -574,6 +590,10 @@ export class Settings {
   readonly pot = model('');
   /** The pot typed; null while its field has not been entered (left as it is). */
   protected readonly potInput = signal<string | null>(null);
+  /** The month the sheet's fiscal year starts in (1 to 12). */
+  protected readonly fiscalStartMonth = signal('1');
+  /** The fiscal start month typed; null while its field has not been typed in (left as it is). */
+  protected readonly fiscalInput = signal<string | null>(null);
   /** The parent typed; null while its field has not been entered (left as it is). */
   protected readonly parentInput = signal<string | null>(null);
   protected readonly permActions = PERM_ACTIONS;
@@ -608,6 +628,7 @@ export class Settings {
       this.graceInput.set(null);
       this.entryInput.set(null);
       this.potInput.set(null);
+      this.fiscalInput.set(null);
       this.parentInput.set(null);
       this.error.set(null);
       if (sheet) {
@@ -793,7 +814,7 @@ export class Settings {
 
   private show(
     res: Pick<SettingsResponse, 'dated' | 'policyDate' | 'periodNumberingFrom' | 'permissions' | 'graceDays' | 'entryDate' | 'pot'>
-      & Partial<Pick<SettingsResponse, 'parent'>>,
+      & Partial<Pick<SettingsResponse, 'parent' | 'fiscalStartMonth'>>,
   ): void {
     this.dated.set(res.dated);
     this.permissions.set(res.permissions);
@@ -806,6 +827,7 @@ export class Settings {
     this.graceDays.set(res.graceDays);
     this.entryDate.set(res.entryDate);
     this.pot.set(res.pot);
+    this.fiscalStartMonth.set(String(res.fiscalStartMonth ?? 1));
     if (res.parent !== undefined) this.session.parent.set(res.parent);
   }
 
@@ -827,6 +849,7 @@ export class Settings {
     const entryDate = this.entryInput()?.trim() ?? null;
     const pot = this.potInput()?.trim() ?? null;
     const parent = this.parentInput()?.trim() ?? null;
+    const fiscalStartMonth = this.fiscalInput()?.trim() || null;
     if (clerkLimit !== null && clerkLimit !== '' && !LIMIT.test(clerkLimit)) {
       this.error.set('Enter a clerk limit of 0.00 or more, with up to two decimals, or leave it blank.');
       return;
@@ -903,6 +926,10 @@ export class Settings {
     }
     if (pot !== null && pot !== '' && !LIMIT.test(pot)) {
       this.error.set('Enter a pot of 0.00 or more, with up to two decimals, or leave it blank.');
+      return;
+    }
+    if (fiscalStartMonth !== null && !/^(0?[1-9]|1[0-2])$/.test(fiscalStartMonth)) {
+      this.error.set('Enter the fiscal start month as a month number, 1 to 12.');
       return;
     }
     if (parent !== null && parent.length > 100) {
@@ -983,6 +1010,7 @@ export class Settings {
           proofThresholdCFrom: from['proof-threshold-C'] ?? null,
           pot,
           parent,
+          fiscalStartMonth,
         }),
       );
       if (this.session.sheet() !== sheet) return;
@@ -1003,6 +1031,7 @@ export class Settings {
       this.graceInput.set(null);
       this.entryInput.set(null);
       this.potInput.set(null);
+      this.fiscalInput.set(null);
       this.parentInput.set(null);
       this.fromInput.set({});
     } catch {

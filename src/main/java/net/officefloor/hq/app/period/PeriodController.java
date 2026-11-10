@@ -33,24 +33,35 @@ public class PeriodController {
             @NotBlank @Size(max = 100) String user, @NotNull LocalDate from, @NotNull LocalDate to) {
     }
 
+    /** The fiscal year to generate, by the calendar year its first day falls in. */
+    public record GenerateFiscalYearRequest(@NotBlank @Size(max = 100) String sheet,
+            @NotBlank @Size(max = 100) String user, @NotBlank @Pattern(regexp = "\\s*\\d{4}\\s*") String year) {
+    }
+
     public record ClosePeriodRequest(@NotBlank @Size(max = 100) String sheet, @NotBlank @Size(max = 100) String user,
             @NotNull Long id) {
     }
 
     /**
      * closedDue is the due-total fixed when the period was closed, closedDues each person's (by
-     * person id); null while it is open.
+     * person id); null while it is open. fy is the fiscal year its from-date falls in.
      */
     public record PeriodResponse(long id, String name, LocalDate from, LocalDate to, boolean closed,
-            boolean softClosed, String closedDue, Map<String, String> closedDues) {
+            boolean softClosed, String closedDue, Map<String, String> closedDues, String fy) {
     }
 
-    private static PeriodResponse response(Period period) {
-        return new PeriodResponse(period.getId(), period.getName(), period.getFromDate(), period.getToDate(),
-                period.isClosed(), period.isSoftClosed(),
+    private PeriodResponse response(String sheetId, Period period) {
+        return responses(sheetId, List.of(period)).get(0);
+    }
+
+    private List<PeriodResponse> responses(String sheetId, List<Period> list) {
+        Map<Long, String> years = service.fiscalYears(sheetId, list);
+        return list.stream().map(period -> new PeriodResponse(period.getId(), period.getName(), period.getFromDate(),
+                period.getToDate(), period.isClosed(), period.isSoftClosed(),
                 period.getClosedDue() == null ? null
                         : period.getClosedDue().setScale(2, RoundingMode.UNNECESSARY).toPlainString(),
-                period.isClosed() || period.isSoftClosed() ? closedDues(period) : null);
+                period.isClosed() || period.isSoftClosed() ? closedDues(period) : null, years.get(period.getId())))
+                .toList();
     }
 
     private static Map<String, String> closedDues(Period period) {
@@ -68,33 +79,39 @@ public class PeriodController {
 
     @PostMapping("/list")
     public List<PeriodResponse> list(@Valid @RequestBody ListPeriodsRequest req) {
-        return service.list(req.sheet().trim()).stream().map(PeriodController::response).toList();
+        return responses(req.sheet().trim(), service.list(req.sheet().trim()));
     }
 
     @PostMapping("/add")
     public PeriodResponse add(@Valid @RequestBody AddPeriodRequest req) {
-        return response(service.add(req.sheet().trim(), req.user().trim(), req.name().trim(), req.from(), req.to()));
+        return response(req.sheet().trim(), service.add(req.sheet().trim(), req.user().trim(), req.name().trim(), req.from(), req.to()));
     }
 
     /** The periods made, by from-date. */
     @PostMapping("/generate")
     public List<PeriodResponse> generate(@Valid @RequestBody GeneratePeriodsRequest req) {
-        return service.generate(req.sheet().trim(), req.user().trim(), req.from(), req.to()).stream()
-                .map(PeriodController::response).toList();
+        return responses(req.sheet().trim(), service.generate(req.sheet().trim(), req.user().trim(), req.from(), req.to()));
+    }
+
+    /** The periods made for the fiscal year, by from-date. */
+    @PostMapping("/generate-fy")
+    public List<PeriodResponse> generateFiscalYear(@Valid @RequestBody GenerateFiscalYearRequest req) {
+        return responses(req.sheet().trim(), service.generateFiscalYear(req.sheet().trim(), req.user().trim(),
+                Integer.parseInt(req.year().trim())));
     }
 
     @PostMapping("/reopen")
     public PeriodResponse reopen(@Valid @RequestBody ClosePeriodRequest req) {
-        return response(service.reopen(req.sheet().trim(), req.user().trim(), req.id()));
+        return response(req.sheet().trim(), service.reopen(req.sheet().trim(), req.user().trim(), req.id()));
     }
 
     @PostMapping("/soft-close")
     public PeriodResponse softClose(@Valid @RequestBody ClosePeriodRequest req) {
-        return response(service.softClose(req.sheet().trim(), req.user().trim(), req.id()));
+        return response(req.sheet().trim(), service.softClose(req.sheet().trim(), req.user().trim(), req.id()));
     }
 
     @PostMapping("/close")
     public PeriodResponse close(@Valid @RequestBody ClosePeriodRequest req) {
-        return response(service.close(req.sheet().trim(), req.user().trim(), req.id()));
+        return response(req.sheet().trim(), service.close(req.sheet().trim(), req.user().trim(), req.id()));
     }
 }

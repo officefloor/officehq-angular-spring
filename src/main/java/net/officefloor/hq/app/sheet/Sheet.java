@@ -114,6 +114,10 @@ public class Sheet {
     @Column(name = "pot")
     private BigDecimal pot;
 
+    /** The month (1 to 12) the sheet's fiscal year starts in. Not dated. */
+    @Column(name = "fiscal_start_month", nullable = false)
+    private int fiscalStartMonth = 1;
+
     /** The id of the sheet whose rates stand in for a grade with no rate of its own in force; null for none. */
     @Column(name = "parent_id")
     private String parentId;
@@ -198,6 +202,7 @@ public class Sheet {
         then.entryDate = entryDate;
         then.graceDays = graceDays;
         then.pot = pot;
+        then.fiscalStartMonth = fiscalStartMonth;
         then.parentId = parentId;
         then.permissions.putAll(permissions);
         then.archived = archived;
@@ -394,6 +399,23 @@ public class Sheet {
 
     public void setPot(BigDecimal pot) {
         this.pot = pot;
+    }
+
+    /** The month (1 to 12) the sheet's fiscal year starts in; 1 unless set. Not dated. */
+    public int getFiscalStartMonth() {
+        return fiscalStartMonth;
+    }
+
+    public void setFiscalStartMonth(int fiscalStartMonth) {
+        this.fiscalStartMonth = fiscalStartMonth;
+    }
+
+    /**
+     * The fiscal year a date falls in, for fiscal years starting in a month (1 to 12): named
+     * FY&lt;yyyy&gt; by the calendar year of the fiscal year's first day.
+     */
+    public static String fiscalYearOf(LocalDate date, int startMonth) {
+        return "FY" + (date.getMonthValue() >= startMonth ? date.getYear() : date.getYear() - 1);
     }
 
     /** Whether a claim opened on the sheet's today is numbered within its period. */

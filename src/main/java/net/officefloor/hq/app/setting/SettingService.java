@@ -72,6 +72,7 @@ public class SettingService {
     public static final String ENTRY_DATE = "entry-date";
     public static final String POT = "pot";
     public static final String PARENT = "parent";
+    public static final String FISCAL_START_MONTH = "fiscal-start-month";
     /** The key of a permission matrix entry: {@code perm-<action>}. */
     public static final String PERMISSION = "perm-";
 
@@ -116,7 +117,8 @@ public class SettingService {
      * given in {@code permissions} (by action, in the order given; blank for the standing rule), and the grace days when
      * {@code changeGrace} (null for off), and the entry date when {@code changeEntry} (null for off), and the pot when {@code changePot} (null for none), and the parent when
      * {@code changeParent} (null for none; refused (400) for the sheet itself, a sheet never loaded, or one that has
-     * this sheet as an ancestor, before anything is saved). Each figure is recorded from its from-date, keeping the values
+     * this sheet as an ancestor, before anything is saved), and the fiscal start month when {@code fiscalStartMonth}
+     * is not null (1 to 12; anything else refused (400) before anything is saved). Each figure is recorded from its from-date, keeping the values
      * already recorded (one already recorded from that date is replaced). Each one saved is
      * recorded, in that order.
      */
@@ -128,7 +130,8 @@ public class SettingService {
             Dated<BigDecimal> proofThreshold, Map<String, Dated<BigDecimal>> gradeProofThresholds,
             Dated<BigDecimal> noteThreshold, Map<String, String> permissions,
             boolean changeGrace, Integer graceDays, boolean changeEntry, LocalDate entryDate,
-            boolean changePot, BigDecimal pot, boolean changeParent, String parent) {
+            boolean changePot, BigDecimal pot, boolean changeParent, String parent,
+            Integer fiscalStartMonth) {
         roles.refuseViewer(sheetId, user);
         Sheet sheet = sheets.load(sheetId, user);
         if (changeParent && parent != null) {
@@ -141,6 +144,9 @@ public class SettingService {
             if (rateChain.wouldLoop(sheetId, parent)) {
                 throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Sheet " + parent + " has this sheet as an ancestor.");
             }
+        }
+        if (fiscalStartMonth != null && (fiscalStartMonth < 1 || fiscalStartMonth > 12)) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "The fiscal start month is 1 to 12.");
         }
         if (limit != null) {
             sheet = record(sheet, user, CLERK_LIMIT, limit.value(), limit.from(), text(limit.value()), false);
@@ -219,6 +225,11 @@ public class SettingService {
             sheet = sheetStore.saveAndFlush(sheet);
             audit.recordOnCommit(changed(sheetId, user, PARENT, parent == null ? "" : parent));
             rollup.recordChanges(sheetId, user, before);
+        }
+        if (fiscalStartMonth != null) {
+            sheet.setFiscalStartMonth(fiscalStartMonth);
+            sheet = sheetStore.saveAndFlush(sheet);
+            audit.recordOnCommit(changed(sheetId, user, FISCAL_START_MONTH, fiscalStartMonth.toString()));
         }
         return sheet;
     }

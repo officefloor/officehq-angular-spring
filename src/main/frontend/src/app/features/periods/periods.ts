@@ -1,12 +1,15 @@
 import { HttpClient, HttpErrorResponse } from '@angular/common/http';
 import { Component, effect, inject, input, model, signal } from '@angular/core';
-import { firstValueFrom } from 'rxjs';
+import { Observable, firstValueFrom } from 'rxjs';
 import { Session } from '../../core/session';
 import { money } from '../claims/claims';
 
 // The sheet's periods, by from-date, and the form that adds one: a name unique on the sheet and a
 // from and to date, both inclusive, no two periods overlapping. A second form generates a period
-// per calendar month (named yyyy-mm) between two dates, leaving out months in use or overlapping. A claim belongs to the period whose
+// per calendar month (named yyyy-mm) between two dates, leaving out months in use or overlapping; a third
+// generates them, the same way, for the twelve months of a fiscal year (FY<yyyy>, named by the calendar
+// year its first day falls in; it starts in the sheet's fiscal start month). Each period shows the fiscal
+// year its from-date falls in. A claim belongs to the period whose
 // dates contain its due-by (as fixed when it was added), or to none; each period shows the due of the claims that count in it.
 // A period can be closed: its due-total is then the one fixed when it was closed, and no claim
 // due by a day inside it can be added, edited, opened, settled or voided. Who may close or reopen a period
@@ -30,6 +33,8 @@ export interface Period {
   closedDue: string | null;
   /** Each person's due-total for the period fixed when it was closed, by person id; null while open. */
   closedDues: Record<string, string> | null;
+  /** The fiscal year its from-date falls in: FY<yyyy>. */
+  fy: string;
 }
 
 /** A claim's person, due-by (the date that places it in a period) and its figure in whole cents, for a claim that has one. */
@@ -127,13 +132,24 @@ export function inClosedPeriod(periods: readonly Period[], date: string): boolea
           (input)="generateTo.set($any($event.target).value); generateError.set(null)"
         />
         <button type="submit" data-testid="period-generate">Generate monthly periods</button>
-        @if (generated() !== null) {
-          <p role="status">Made <span data-testid="period-generated">{{ generated() }}</span></p>
-        }
-        @if (generateError(); as err) {
-          <p role="alert" data-testid="period-generate-error">{{ err }}</p>
-        }
       </form>
+      <form aria-label="Generate a fiscal year's periods" (submit)="generateFy($event)">
+        <label for="period-generate-fy-year">Fiscal year (FY yyyy)</label>
+        <input
+          id="period-generate-fy-year"
+          data-testid="period-generate-fy-year"
+          inputmode="numeric"
+          [value]="fyYear()"
+          (input)="fyYear.set($any($event.target).value); generateError.set(null)"
+        />
+        <button type="submit" data-testid="period-generate-fy">Generate fiscal year</button>
+      </form>
+      @if (generated() !== null) {
+        <p role="status">Made <span data-testid="period-generated">{{ generated() }}</span></p>
+      }
+      @if (generateError(); as err) {
+        <p role="alert" data-testid="period-generate-error">{{ err }}</p>
+      }
       <table data-testid="periods-list" aria-label="Periods">
         <thead>
           <tr>
@@ -142,6 +158,7 @@ export function inClosedPeriod(periods: readonly Period[], date: string): boolea
             <th scope="col">To</th>
             <th scope="col">Due</th>
             <th scope="col">Closed</th>
+            <th scope="col">Fiscal year</th>
             <th scope="col"><span class="visually-hidden">Actions</span></th>
           </tr>
         </thead>
@@ -153,6 +170,7 @@ export function inClosedPeriod(periods: readonly Period[], date: string): boolea
               <td data-testid="period-to">{{ p.to }}</td>
               <td data-testid="period-due-total">{{ dueTotalOf(p) }}</td>
               <td data-testid="period-closed">{{ p.closed ? 'yes' : p.softClosed ? 'soft' : 'no' }}</td>
+              <td data-testid="period-fy">{{ p.fy }}</td>
               <td>
                 <button
                   type="button"
@@ -204,6 +222,8 @@ export class Periods {
   protected readonly error = signal<string | null>(null);
   protected readonly generateFrom = signal('');
   protected readonly generateTo = signal('');
+  /** The fiscal year typed to generate, by the calendar year its first day falls in. */
+  protected readonly fyYear = signal('');
   /** How many periods the last generate made; null before one, and while one runs. */
   protected readonly generated = signal<number | null>(null);
   protected readonly generateError = signal<string | null>(null);
@@ -224,6 +244,7 @@ export class Periods {
       this.error.set(null);
       this.generateFrom.set('');
       this.generateTo.set('');
+      this.fyYear.set('');
       this.generated.set(null);
       this.generateError.set(null);
       this.rowErrors.set(new Map());
@@ -371,11 +392,29 @@ export class Periods {
       this.generateError.set('The to-date cannot be before the from-date.');
       return;
     }
+    await this.made(sheet, this.http.post<Period[]>('/api/periods/generate', { sheet, user: this.session.user(), from, to }));
+  }
+
+  /** Make the twelve monthly periods of a fiscal year, as the monthly generator does; shows how many were made. */
+  protected async generateFy(event: Event): Promise<void> {
+    event.preventDefault();
+    if (this.submitting) return;
+    this.generateError.set(null);
+    this.generated.set(null);
+    const sheet = this.session.sheet();
+    const year = this.fyYear().trim();
+    if (!/^\d{4}$/.test(year)) {
+      this.generateError.set('Enter the fiscal year as yyyy.');
+      return;
+    }
+    await this.made(sheet, this.http.post<Period[]>('/api/periods/generate-fy', { sheet, user: this.session.user(), year }));
+  }
+
+  /** Add the periods a generate made to the list and show how many; or show why it was refused. */
+  private async made(sheet: string | null, request: Observable<Period[]>): Promise<void> {
     this.submitting = true;
     try {
-      const made = await firstValueFrom(
-        this.http.post<Period[]>('/api/periods/generate', { sheet, user: this.session.user(), from, to }),
-      );
+      const made = await firstValueFrom(request);
       if (this.session.sheet() !== sheet) return;
       this.periods.update((list) => [...list, ...made].sort((a, b) => a.from.localeCompare(b.from)));
       this.generated.set(made.length);

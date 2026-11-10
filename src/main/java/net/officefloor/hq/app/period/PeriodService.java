@@ -3,9 +3,12 @@ package net.officefloor.hq.app.period;
 import java.time.LocalDate;
 import java.time.YearMonth;
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 import net.officefloor.hq.app.Audit;
 import net.officefloor.hq.app.role.RoleService;
+import net.officefloor.hq.app.sheet.Sheet;
 import net.officefloor.hq.app.sheet.SheetRepository;
 import net.officefloor.hq.app.sheet.SheetService;
 import org.springframework.dao.DataIntegrityViolationException;
@@ -102,6 +105,26 @@ public class PeriodService {
             made.add(added);
         }
         return made;
+    }
+
+    /**
+     * Generate the twelve monthly periods of the fiscal year named FY&lt;year&gt;: from the first day
+     * of the sheet's fiscal start month in that year, exactly as {@link #generate} does.
+     */
+    @Transactional
+    public List<Period> generateFiscalYear(String sheetId, String user, int year) {
+        roles.refuseViewer(sheetId, user);
+        LocalDate first = LocalDate.of(year, sheets.load(sheetId, user).getFiscalStartMonth(), 1);
+        return generate(sheetId, user, first, first.plusMonths(11));
+    }
+
+    /** The fiscal year each of the sheet's periods falls in (by its from-date), by period id. */
+    @Transactional(readOnly = true)
+    public Map<Long, String> fiscalYears(String sheetId, List<Period> list) {
+        int startMonth = sheetRows.findById(sheetId).map(Sheet::getFiscalStartMonth).orElse(1);
+        Map<Long, String> years = new HashMap<>();
+        list.forEach(p -> years.put(p.getId(), Sheet.fiscalYearOf(p.getFromDate(), startMonth)));
+        return years;
     }
 
     /** Close a period, fixing its due-total now; refused (403) for a role the permission matrix does not allow and (409) when it is already closed. */
