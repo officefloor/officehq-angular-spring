@@ -2,6 +2,7 @@ import { HttpClient, HttpErrorResponse } from '@angular/common/http';
 import { Component, computed, inject, input, linkedSignal, output, signal, untracked } from '@angular/core';
 import { firstValueFrom } from 'rxjs';
 import { Session } from '../../core/session';
+import { ClaimTemplates } from '../../core/claim-templates';
 import { VoidReasons } from '../../core/void-reasons';
 import { Period, inClosedPeriod, periodOn } from '../periods/periods';
 import { DatedGrade, DatedValue, Lateness, Rate, chargedDueCents, dueText, graceOn, gradeOn } from '../rates/rates';
@@ -317,6 +318,20 @@ export function money(c: number): string {
         <p role="alert" data-testid="claim-form-error">{{ err }}</p>
       }
     </form>
+    <div role="group" [attr.aria-label]="'Claim from a template for ' + personName()">
+      <label [for]="'claim-template-' + personId()">Template</label>
+      <select
+        [id]="'claim-template-' + personId()"
+        data-testid="claim-template-select"
+        (change)="templateChosen.set($any($event.target).value); error.set(null)"
+      >
+        <option value="" [selected]="templateChosen() === ''">Choose a template</option>
+        @for (t of templates.list(); track t.id) {
+          <option [value]="t.name" [selected]="templateChosen() === t.name">{{ t.name }}</option>
+        }
+      </select>
+      <button type="button" data-testid="claim-template-add" (click)="addFromTemplate()">Add from template</button>
+    </div>
     <ul [attr.aria-label]="'Claims of ' + personName()">
       @for (c of claims(); track c.id) {
         <li [attr.data-testid]="'claim-row-' + c.id">
@@ -517,6 +532,10 @@ export class PersonClaims {
   protected readonly tagsInput = this.editorField((c) => c.tags.join(', '));
   protected readonly editingId = linkedSignal(() => this.lockedId());
   protected readonly error = signal<string | null>(null);
+  /** The sheet's claim templates, one of which adds a DRAFT claim from this row. */
+  protected readonly templates = inject(ClaimTemplates);
+  /** The name of the template chosen to add a claim from; '' when none is. */
+  protected readonly templateChosen = signal('');
   /** Whether a submit is waiting for its answer: a second submit meanwhile is ignored. */
   private submitting = false;
   /** The lock an opened editor is taking, while it is being taken. */
@@ -1093,6 +1112,41 @@ export class PersonClaims {
   /** Whether a claim number names a SETTLED claim of this person, as a correction must. */
   private correctable(corrects: string): boolean {
     return NUMBER.test(corrects) && this.claims().some((c) => c.number === corrects && c.status === 'SETTLED');
+  }
+
+  /** Add a DRAFT claim from the chosen template: its amount and note as the store holds them now,
+   *  dated the sheet's today, and refused as the claim form refuses a claim with no date. */
+  protected async addFromTemplate(): Promise<void> {
+    if (this.submitting) return;
+    this.error.set(null);
+    const name = this.templateChosen();
+    if (name === '') {
+      this.error.set('Choose a template to add a claim from.');
+      return;
+    }
+    const sheet = this.session.sheet();
+    this.submitting = true;
+    try {
+      const claim = await firstValueFrom(
+        this.http.post<Claim>('/api/templates/claim', { sheet, user: this.session.user(), personId: this.personId(), name }),
+      );
+      if (this.session.sheet() !== sheet) return;
+      this.saved.emit(claim);
+    } catch (e) {
+      this.error.set(
+        e instanceof HttpErrorResponse && e.status === 423
+          ? CLOSED
+          : e instanceof HttpErrorResponse && e.status === 422
+            ? 'A claim cannot be dated after its person\'s retirement date.'
+          : e instanceof HttpErrorResponse && e.status === 404
+            ? 'That template is no longer on this sheet.'
+          : e instanceof HttpErrorResponse && e.status === 403
+            ? 'Your role may not add claims.'
+            : 'Could not add a claim from this template.',
+      );
+    } finally {
+      this.submitting = false;
+    }
   }
 
   protected async save(event: Event): Promise<void> {
