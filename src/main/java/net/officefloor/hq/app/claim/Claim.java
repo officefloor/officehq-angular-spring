@@ -172,6 +172,10 @@ public class Claim {
     @Column(name = "proofs", nullable = false)
     private int proofs;
 
+    /** How many of the claim's proofs are photos; the rest are receipts. */
+    @Column(name = "photo_proofs", nullable = false)
+    private int photoProofs;
+
     /**
      * The claim's place in the list, newest (highest) first: taken from the store's sequence when
      * the claim is added and again when it is moved to another person.
@@ -199,6 +203,12 @@ public class Claim {
     @OrderColumn(name = "seq")
     @BatchSize(size = 100)
     private List<ClaimLine> lines = new ArrayList<>();
+
+    /** A proof that is a receipt, the kind a proof is when none is chosen. */
+    public static final String RECEIPT = "receipt";
+    public static final String PHOTO = "photo";
+    /** The kinds a proof can be. */
+    public static final List<String> PROOF_KINDS = List.of(RECEIPT, PHOTO);
 
     protected Claim() {
     }
@@ -254,6 +264,7 @@ public class Claim {
         copy.waived = waived;
         copy.voidReason = voidReason;
         copy.proofs = proofs;
+        copy.photoProofs = photoProofs;
         copy.log.addAll(log);
         copy.comments.addAll(comments);
         copy.lines.addAll(lines);
@@ -554,9 +565,17 @@ public class Claim {
         this.reviewOn = reviewOn;
     }
 
-    /** Raise the claim's proofs count by one. */
-    public void addProof() {
+    /** How many of the claim's proofs are of a kind (see {@link #PROOF_KINDS}). */
+    public int proofsOf(String kind) {
+        return PHOTO.equals(kind) ? photoProofs : RECEIPT.equals(kind) ? proofs - photoProofs : 0;
+    }
+
+    /** Raise the claim's proofs count by one, with a proof of a kind (see {@link #PROOF_KINDS}). */
+    public void addProof(String kind) {
         proofs++;
+        if (PHOTO.equals(kind)) {
+            photoProofs++;
+        }
     }
 
     public List<ClaimLogEntry> getLog() {

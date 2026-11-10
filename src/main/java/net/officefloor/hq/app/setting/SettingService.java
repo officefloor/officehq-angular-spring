@@ -48,7 +48,8 @@ import org.springframework.web.server.ResponseStatusException;
  * {@link net.officefloor.hq.app.pool.PoolService}). Nor is the parent (none: no parent), a sheet that has
  * been loaded, never the sheet itself nor one that has it as an ancestor: a grade with no rate in force on a date
  * here takes its parent's, then the parent's parent's, up to three levels up (see {@link RateChain}), so changing it
- * records the figures that move too. Nor is the alert threshold (none: off): a change whose figures
+ * records the figures that move too. Nor are the proof kinds (none: off): while set, a claim above its proof threshold needs a proof of each
+ * before it can be settled or approved. Nor is the alert threshold (none: off): a change whose figures
  * lift a person's due-total above it records an ALERT (see {@link RollupService#recordChanges}); changing
  * it moves no figures. The rounding mode (none: off) is dated like the floor: a claim whose date has
  * one in force rounds its live figures by it in place of the policy date (see {@link Rounding}), so
@@ -82,6 +83,7 @@ public class SettingService {
     public static final String ALERT_THRESHOLD = "alert-threshold";
     public static final String ESCALATE_AFTER = "escalate-after";
     public static final String REVIEW_SLA = "review-sla";
+    public static final String PROOF_KINDS = "proof-kinds";
     /** The key of a permission matrix entry: {@code perm-<action>}. */
     public static final String PERMISSION = "perm-";
 
@@ -130,7 +132,7 @@ public class SettingService {
      * is not null (1 to 12; anything else refused (400) before anything is saved), and the alert threshold when
      * {@code changeAlert} (null for off), and the rounding mode when {@code rounding} is not null (half-up or
      * half-even, null for none; anything else refused (400) before anything is saved), and the escalation gap when
-     * {@code changeEscalate} (null for off), and the review SLA when {@code changeReviewSla} (null for none). Each figure is recorded from its from-date, keeping the values
+     * {@code changeEscalate} (null for off), and the review SLA when {@code changeReviewSla} (null for none), and the proof kinds when {@code changeProofKinds} (comma separated, null for none). Each figure is recorded from its from-date, keeping the values
      * already recorded (one already recorded from that date is replaced). Each one saved is
      * recorded, in that order.
      */
@@ -144,7 +146,8 @@ public class SettingService {
             boolean changeGrace, Integer graceDays, boolean changeEntry, LocalDate entryDate,
             boolean changePot, BigDecimal pot, boolean changeParent, String parent,
             Integer fiscalStartMonth, boolean changeAlert, BigDecimal alertThreshold, Dated<String> rounding,
-            boolean changeEscalate, Integer escalateAfter, boolean changeReviewSla, Integer reviewSla) {
+            boolean changeEscalate, Integer escalateAfter, boolean changeReviewSla, Integer reviewSla,
+            boolean changeProofKinds, String proofKinds) {
         roles.refuseViewer(sheetId, user);
         Sheet sheet = sheets.load(sheetId, user);
         if (changeParent && parent != null) {
@@ -269,6 +272,11 @@ public class SettingService {
             sheet.setReviewSla(reviewSla);
             sheet = sheetStore.saveAndFlush(sheet);
             audit.recordOnCommit(changed(sheetId, user, REVIEW_SLA, reviewSla == null ? "" : reviewSla.toString()));
+        }
+        if (changeProofKinds) {
+            sheet.setProofKinds(proofKinds);
+            sheet = sheetStore.saveAndFlush(sheet);
+            audit.recordOnCommit(changed(sheetId, user, PROOF_KINDS, proofKinds == null ? "" : proofKinds));
         }
         return sheet;
     }

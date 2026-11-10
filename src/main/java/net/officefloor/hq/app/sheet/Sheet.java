@@ -126,6 +126,10 @@ public class Sheet {
     @Column(name = "review_sla")
     private Integer reviewSla;
 
+    /** The kinds of proof a claim above the proof threshold needs one of each of, comma separated; null for none. Not dated. */
+    @Column(name = "proof_kinds")
+    private String proofKinds;
+
     /** The due-total above which a person is alerted; null for off. Not dated. */
     @Column(name = "alert_threshold")
     private BigDecimal alertThreshold;
@@ -219,6 +223,7 @@ public class Sheet {
         then.graceDays = graceDays;
         then.escalateAfter = escalateAfter;
         then.reviewSla = reviewSla;
+        then.proofKinds = proofKinds;
         then.pot = pot;
         then.alertThreshold = alertThreshold;
         then.fiscalStartMonth = fiscalStartMonth;
@@ -469,6 +474,20 @@ public class Sheet {
 
     public void setReviewSla(Integer reviewSla) {
         this.reviewSla = reviewSla;
+    }
+
+    /** The proof kinds, comma separated; null for none. Not dated. */
+    public String getProofKinds() {
+        return proofKinds;
+    }
+
+    /** The proof kinds a claim above the proof threshold needs one of each of; empty for none. */
+    public List<String> proofKindList() {
+        return proofKinds == null ? List.of() : List.of(proofKinds.split(","));
+    }
+
+    public void setProofKinds(String proofKinds) {
+        this.proofKinds = proofKinds;
     }
 
     public BigDecimal getAlertThreshold() {

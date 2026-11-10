@@ -43,6 +43,9 @@ public class SettingController {
     /** A rounding mode: half-up or half-even, or blank for none. */
     private static final String ROUNDING = "\\s*|\\s*(half-up|half-even)\\s*";
 
+    /** Proof kinds: receipt or photo, comma separated, or blank for none. */
+    private static final String PROOF_KINDS = "\\s*|\\s*(?i:receipt|photo)(\\s*,\\s*(?i:receipt|photo))*\\s*";
+
     /** A fiscal start month: a whole month number, 1 to 12. */
     private static final String FISCAL_MONTH = "\\s*(0?[1-9]|1[0-2])\\s*";
 
@@ -57,7 +60,7 @@ public class SettingController {
      * or blank for off. A grade's own terms (A, B or C): a whole number of days. A cap: an amount with
      * up to two decimals, or blank for none. A proof threshold: an amount with up to two decimals, or blank
      * for none. A note threshold: an amount with up to two decimals, or blank for none. A review threshold: an amount with up to two decimals, or blank for none. A permission matrix entry for open, settle, void, reassign, close or reopen: roles
-     * comma separated, or blank for the standing rule. Grace days: a whole number of days, or blank for off. A grade's grace days (A, B or C): a whole number of days, or blank for none. A grade's own proof threshold (A, B or C): an amount with up to two decimals, or blank for none (the sheet's). An entry date: yyyy-mm-dd, or blank for off. A pot: an amount with up to two decimals, or blank for none. A parent: a sheet id, or blank for none. A fiscal start month: 1 to 12. An alert threshold: an amount with up to two decimals, or blank for off. A rounding mode: half-up or half-even, or blank for none. An escalation gap: a whole number of days, or blank for off. Each setting that carries a figure may name the date it
+     * comma separated, or blank for the standing rule. Grace days: a whole number of days, or blank for off. A grade's grace days (A, B or C): a whole number of days, or blank for none. A grade's own proof threshold (A, B or C): an amount with up to two decimals, or blank for none (the sheet's). An entry date: yyyy-mm-dd, or blank for off. A pot: an amount with up to two decimals, or blank for none. A parent: a sheet id, or blank for none. A fiscal start month: 1 to 12. An alert threshold: an amount with up to two decimals, or blank for off. A rounding mode: half-up or half-even, or blank for none. An escalation gap: a whole number of days, or blank for off. Proof kinds: receipt or photo, comma separated, or blank for none. Each setting that carries a figure may name the date it
      * is in force from (its {@code ...From}: yyyy-mm-dd, or blank or null for the sheet's today).
      */
     public record SetSettingsRequest(@NotBlank @Size(max = 100) String sheet, @NotBlank @Size(max = 100) String user,
@@ -96,7 +99,8 @@ public class SettingController {
             @Pattern(regexp = "\\s*|" + ClaimController.AMOUNT) String alertThreshold,
             @Pattern(regexp = ROUNDING) String rounding, @Pattern(regexp = DATE) String roundingFrom,
             @Pattern(regexp = "\\s*|" + TERMS) String escalateAfter,
-            @Pattern(regexp = "\\s*|" + TERMS) String reviewSla) {
+            @Pattern(regexp = "\\s*|" + TERMS) String reviewSla,
+            @Pattern(regexp = PROOF_KINDS) String proofKinds) {
     }
 
     /** A value recorded for a setting that carries a figure: blank from for the beginning of time, blank value for none. */
@@ -111,14 +115,14 @@ public class SettingController {
      * entered, blank for the standing rule. And the grace days, blank for off. And the entry date, blank for off.
      * And the pot, blank for none. And the parent sheet's id, blank for none. And the fiscal start month.
      * And the alert threshold, blank for off. And the rounding mode, blank for none. And the escalation gap, blank for off.
-     * And the review SLA in days, blank for none.
+     * And the review SLA in days, blank for none. And the proof kinds, comma separated, blank for none.
      */
     public record SettingsResponse(String clerkLimit, String floor, int terms, String latePct, String policyDate,
             String periodNumberingFrom, Map<String, Integer> gradeTerms, String cap, String proofThreshold,
             String noteThreshold, String reviewThreshold,
             List<DatedValue> dated, Map<String, String> permissions, String graceDays, String entryDate, String pot,
             String parent, int fiscalStartMonth, String alertThreshold, String rounding, String escalateAfter,
-            String reviewSla) {
+            String reviewSla, String proofKinds) {
     }
 
     private static SettingsResponse response(Sheet sheet) {
@@ -135,7 +139,8 @@ public class SettingController {
                 SettingService.text(sheet.getAlertThreshold()),
                 sheet.getRounding() == null ? "" : sheet.getRounding(),
                 sheet.getEscalateAfter() == null ? "" : String.valueOf(sheet.getEscalateAfter()),
-                sheet.getReviewSla() == null ? "" : String.valueOf(sheet.getReviewSla()));
+                sheet.getReviewSla() == null ? "" : String.valueOf(sheet.getReviewSla()),
+                sheet.getProofKinds() == null ? "" : sheet.getProofKinds());
     }
 
     private static DatedValue dated(DatedSetting s) {
@@ -206,7 +211,8 @@ public class SettingController {
                 req.alertThreshold() != null, alert.isEmpty() ? null : ClaimController.amount(alert),
                 req.rounding() == null ? null : rounding(req.rounding(), req.roundingFrom()),
                 req.escalateAfter() != null, escalate.isEmpty() ? null : Integer.valueOf(escalate),
-                req.reviewSla() != null, reviewSla.isEmpty() ? null : Integer.valueOf(reviewSla)));
+                req.reviewSla() != null, reviewSla.isEmpty() ? null : Integer.valueOf(reviewSla),
+                req.proofKinds() != null, proofKinds(req.proofKinds())));
     }
 
     /** A permission matrix entry given: its roles, lower case, comma separated without spaces. */
@@ -215,6 +221,15 @@ public class SettingController {
             permissions.put(action, roles.trim().isEmpty() ? ""
                     : String.join(",", Arrays.stream(roles.trim().split("\\s*,\\s*")).map(r -> r.toLowerCase(Locale.ROOT)).toList()));
         }
+    }
+
+    /** Proof kinds given: lower case, comma separated without spaces, each once; null for none. */
+    private static String proofKinds(String kinds) {
+        if (kinds == null || kinds.isBlank()) {
+            return null;
+        }
+        return String.join(",", Arrays.stream(kinds.trim().split("\\s*,\\s*"))
+                .map(k -> k.toLowerCase(Locale.ROOT)).distinct().toList());
     }
 
     /** An amount (blank: none) from a from-date (blank or null: the sheet's today). */

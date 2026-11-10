@@ -412,7 +412,7 @@ public class ClaimService {
         if (next == ClaimStatus.SETTLED && needsProof(sheetId, person, claim, settling)) {
             throw new ResponseStatusException(HttpStatus.UNPROCESSABLE_ENTITY,
                     "A claim due above the proof threshold cannot be " + (review ? "approved" : "settled")
-                            + " without a proof.");
+                            + " without a proof of each kind the sheet needs.");
         }
         if (next == ClaimStatus.SETTLED && !review && aboveClerkLimit(sheetId, user, settling)) {
             next = ClaimStatus.PENDING;
@@ -605,12 +605,16 @@ public class ClaimService {
     }
 
     /**
-     * Raise a claim's proofs count by one. Refused (409) for a SETTLED or VOID claim and (423) when
+     * Raise a claim's proofs count by one, with a proof of a kind (receipt or photo; null for none
+     * chosen, a receipt). Refused (400) for any other kind, (409) for a SETTLED or VOID claim and (423) when
      * dated inside a closed period.
      */
     @Transactional
-    public Claim addProof(String sheetId, String user, long id) {
+    public Claim addProof(String sheetId, String user, long id, String kind) {
         roles.refuseViewer(sheetId, user);
+        if (kind != null && !Claim.PROOF_KINDS.contains(kind)) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "A proof is a receipt or a photo.");
+        }
         Claim claim = claims.findByIdAndSheetId(id, sheetId)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "No such claim on this sheet."));
         if (claim.getStatus() == ClaimStatus.SETTLED || claim.getStatus() == ClaimStatus.VOID
@@ -620,10 +624,11 @@ public class ClaimService {
         }
         periods.refuseIfClosed(sheetId, claim.getDueBy());
         Person person = person(sheetId, claim.getPersonId());
-        claim.addProof();
+        claim.addProof(kind);
         Claim saved = claims.saveAndFlush(claim);
         audit.recordOnCommit(record("CLAIM_PROOF_ADDED", sheetId, user, person, saved)
-                + (saved.getNumber() != null ? " number=" + saved.getNumber() : "") + " proofs=" + saved.getProofs());
+                + (saved.getNumber() != null ? " number=" + saved.getNumber() : "") + " proofs=" + saved.getProofs()
+                + (kind != null ? " kind=" + kind : ""));
         return saved;
     }
 
@@ -1148,11 +1153,15 @@ public class ClaimService {
 
     /**
      * Whether a claim settling at the figure is above the proof threshold in force on its date (its
-     * person's grade's then when it has one, else the sheet's) and has no proofs.
+     * person's grade's then when it has one, else the sheet's) and has no proofs, or, while the sheet has
+     * proof kinds, no proof of one of them.
      */
     private boolean needsProof(String sheetId, Person person, Claim claim, BigDecimal figure) {
-        BigDecimal threshold = sheets.sheet(sheetId).proofThresholdFor(person.gradeOn(claim.getDate()), claim.getDate());
-        return claim.getProofs() == 0 && figure != null && threshold != null && figure.compareTo(threshold) > 0;
+        Sheet sheet = sheets.sheet(sheetId);
+        BigDecimal threshold = sheet.proofThresholdFor(person.gradeOn(claim.getDate()), claim.getDate());
+        boolean lacking = claim.getProofs() == 0
+                || sheet.proofKindList().stream().anyMatch(k -> claim.proofsOf(k) == 0);
+        return lacking && figure != null && threshold != null && figure.compareTo(threshold) > 0;
     }
 
     /** Whether a claim's due is above the note threshold in force on its date and its note is empty. */

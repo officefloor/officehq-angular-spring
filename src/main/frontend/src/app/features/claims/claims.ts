@@ -51,6 +51,9 @@ import { FigurePipe } from '../../core/figure';
 // Each claim shows its proofs count, raised by one with its proof button (refused for a SETTLED or
 // VOID claim, or one in a closed period). A claim whose due is above the proof threshold in force on
 // its date cannot be settled or approved while it has no proofs: refused with an error on the claim.
+// A proof has a kind, receipt or photo, chosen beside the proof button (a receipt when none is
+// chosen); the claim shows a count per kind beside the total. While the sheet has proof kinds, a claim
+// above the proof threshold also needs a proof of each of them before it can be settled or approved.
 // An OPEN or PENDING claim can be reminded with its remind button, once per sheet-today: it shows
 // the last day a reminder was written (refused for a claim in any other status or already reminded
 // on the sheet's today).
@@ -123,6 +126,10 @@ export interface Claim {
   deferredUntil: string | null;
   /** How many proofs the claim has. */
   proofs: number;
+  /** How many of its proofs are receipts. */
+  proofsReceipt: number;
+  /** How many of its proofs are photos. */
+  proofsPhoto: number;
   /** The number of the claim this claim was split off from; null for a claim not made by a split. */
   splitFrom: string | null;
   /** The user whose open editor locks the claim for everyone else; null when unlocked. */
@@ -410,6 +417,8 @@ export function money(c: number): string {
           <span>Deferred <span data-testid="claim-deferred">{{ deferredOf(c) ? 'yes' : 'no' }}</span></span>
           <span>Until <span data-testid="claim-deferred-until">{{ c.deferredUntil ?? '' }}</span></span>
           <span>Proofs <span data-testid="claim-proofs">{{ c.proofs }}</span></span>
+          <span>Receipts <span data-testid="claim-proofs-receipt">{{ c.proofsReceipt }}</span></span>
+          <span>Photos <span data-testid="claim-proofs-photo">{{ c.proofsPhoto }}</span></span>
           <span>Split from <span data-testid="claim-split-from">{{ c.splitFrom ?? '' }}</span></span>
           <span>Batch <span data-testid="claim-batch">{{ c.batch ?? '' }}</span></span>
           <span>Late entry <span data-testid="claim-late-entry">{{ c.lateEntry ? 'yes' : 'no' }}</span></span>
@@ -482,6 +491,17 @@ export function money(c: number): string {
             (input)="setReason(c.id, $any($event.target).value)"
           />
           <button type="button" data-testid="claim-reject" (click)="act(c, 'reject')">Reject</button>
+          <label [for]="'claim-proof-kind-' + c.id">Proof kind</label>
+          <select
+            [id]="'claim-proof-kind-' + c.id"
+            data-testid="claim-proof-kind"
+            (change)="setProofKind(c.id, $any($event.target).value)"
+          >
+            <option value="" [selected]="!proofKindsChosen().get(c.id)">(receipt)</option>
+            @for (k of proofKinds; track k) {
+              <option [value]="k" [selected]="proofKindsChosen().get(c.id) === k">{{ k }}</option>
+            }
+          </select>
           <button type="button" data-testid="claim-proof" (click)="addProof(c)">Add proof</button>
           <button type="button" data-testid="claim-remind" (click)="remind(c)">Remind</button>
           <button type="button" data-testid="claim-waive" (click)="waive(c)">Waive late charge</button>
@@ -646,6 +666,10 @@ export class PersonClaims {
   protected readonly voidReasons = inject(VoidReasons);
   /** The void reason chosen for each claim, by claim id. */
   protected readonly voidReasonsChosen = signal<ReadonlyMap<number, string>>(new Map());
+  /** The kinds a proof can be. */
+  protected readonly proofKinds = ['receipt', 'photo'] as const;
+  /** The proof kind chosen for each claim's next proof, by claim id; none chosen: a receipt. */
+  protected readonly proofKindsChosen = signal<ReadonlyMap<number, string>>(new Map());
   /** The date typed to defer each claim until, by claim id. */
   protected readonly deferDates = signal<ReadonlyMap<number, string>>(new Map());
   /** The new date typed for each claim, by claim id. */
@@ -859,6 +883,11 @@ export class PersonClaims {
 
   protected setVoidReason(id: number, reason: string): void {
     this.voidReasonsChosen.update((m) => new Map(m).set(id, reason));
+    this.clearActionError(id);
+  }
+
+  protected setProofKind(id: number, kind: string): void {
+    this.proofKindsChosen.update((m) => new Map(m).set(id, kind));
     this.clearActionError(id);
   }
 
@@ -1082,16 +1111,22 @@ export class PersonClaims {
     }
   }
 
-  /** Raise a claim's proofs count by one; the server refuses a SETTLED or VOID claim, and one dated
-   *  inside a closed period. */
+  /** Raise a claim's proofs count by one, with a proof of the kind chosen (none chosen: a receipt);
+   *  the server refuses a SETTLED or VOID claim, and one dated inside a closed period. */
   protected async addProof(c: Claim): Promise<void> {
     this.clearActionError(c.id);
     const sheet = this.session.sheet();
+    const kind = this.proofKindsChosen().get(c.id) || null;
     try {
       const claim = await firstValueFrom(
-        this.http.post<Claim>('/api/claims/proof', { sheet, user: this.session.user(), id: c.id }),
+        this.http.post<Claim>('/api/claims/proof', { sheet, user: this.session.user(), id: c.id, kind }),
       );
       if (this.session.sheet() !== sheet) return;
+      this.proofKindsChosen.update((m) => {
+        const next = new Map(m);
+        next.delete(c.id);
+        return next;
+      });
       this.saved.emit(claim);
     } catch (e) {
       if (this.session.sheet() !== sheet) return;
@@ -1311,7 +1346,7 @@ export class PersonClaims {
             : e instanceof HttpErrorResponse && e.status === 422 && action === 'open'
               ? 'This claim is due above the note threshold and cannot be opened with an empty note.'
             : e instanceof HttpErrorResponse && e.status === 422
-              ? `This claim is due above the proof threshold and cannot be ${PAST[action]} without a proof.`
+              ? `This claim is due above the proof threshold and cannot be ${PAST[action]} without a proof (of each kind the sheet needs).`
             : action === 'settle' && deferred(c, this.session.today())
               ? `This claim is deferred until ${c.deferredUntil} and cannot be settled before then.`
               : action === 'void' && c.status === 'SETTLED'

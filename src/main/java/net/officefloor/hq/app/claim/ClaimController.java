@@ -58,6 +58,11 @@ public class ClaimController {
     public record PasteClaimsResponse(int added, List<ClaimResponse> claims) {
     }
 
+    /** A proof to add to a claim: its kind, receipt or photo, or blank or null for none chosen (a receipt). */
+    public record ProofRequest(@NotBlank @Size(max = 100) String sheet,
+            @NotBlank @Size(max = 100) String user, @NotNull Long id, @Size(max = 20) String kind) {
+    }
+
     public record ClaimStatusRequest(@NotBlank @Size(max = 100) String sheet,
             @NotBlank @Size(max = 100) String user, @NotNull Long id) {
     }
@@ -134,7 +139,7 @@ public class ClaimController {
             LocalDate deferredUntil, int proofs, String splitFrom, String lockedBy,
             boolean lateEntry, LocalDate remindedOn, String ref, List<String> tags, String voidReason,
             List<ClaimCommentLine> comments, Integer batch, List<ClaimLineLine> lines, Long addedSeq,
-            LocalDate reviewOn, boolean waived, String statedCharged) {
+            LocalDate reviewOn, boolean waived, String statedCharged, int proofsReceipt, int proofsPhoto) {
     }
 
     /** One line of a claim, in the order added: its label, quantity and unit amount. */
@@ -170,7 +175,7 @@ public class ClaimController {
                 claim.getLines().stream().map(l -> new ClaimLineLine(l.getLabel(), l.getQty(), money(l.getUnit())))
                         .toList(),
                 claim.getAddedSeq(), claim.getReviewOn(), claim.isWaived(),
-                money(claim.getStatedCharged()));
+                money(claim.getStatedCharged()), claim.proofsOf(Claim.RECEIPT), claim.proofsOf(Claim.PHOTO));
     }
 
     public static BigDecimal amount(String amount) {
@@ -307,8 +312,9 @@ public class ClaimController {
     }
 
     @PostMapping("/proof")
-    public ClaimResponse proof(@Valid @RequestBody ClaimStatusRequest req) {
-        return response(service.addProof(req.sheet().trim(), req.user().trim(), req.id()));
+    public ClaimResponse proof(@Valid @RequestBody ProofRequest req) {
+        String kind = req.kind() == null || req.kind().isBlank() ? null : req.kind().trim();
+        return response(service.addProof(req.sheet().trim(), req.user().trim(), req.id(), kind));
     }
 
     @PostMapping("/comment")

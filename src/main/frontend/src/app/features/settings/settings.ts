@@ -119,7 +119,12 @@ interface SettingsResponse {
   escalateAfter: string;
   /** The review SLA in days, blank for none. */
   reviewSla: string;
+  /** The proof kinds a claim above the proof threshold needs one of each of, comma separated, blank for none. */
+  proofKinds: string;
 }
+
+/** Proof kinds: receipt or photo, comma separated. */
+const PROOF_KINDS = /^(receipt|photo)(\s*,\s*(receipt|photo))*$/i;
 
 /** The actions the permission matrix covers. */
 const PERM_ACTIONS = ['open', 'settle', 'void', 'reassign', 'close', 'reopen'] as const;
@@ -456,6 +461,14 @@ const DATE = /^\d{4}-\d{2}-\d{2}$/;
           (focus)="enterReviewSla($any($event.target))"
           (input)="reviewSlaInput.set($any($event.target).value); error.set(null)"
         />
+        <label for="setting-proof-kinds">Proof kinds a claim above the proof threshold needs, comma separated: receipt, photo (blank: none)</label>
+        <input
+          id="setting-proof-kinds"
+          data-testid="setting-proof-kinds"
+          [value]="proofKindsInput() ?? ''"
+          (focus)="enterProofKinds($any($event.target))"
+          (input)="proofKindsInput.set($any($event.target).value); error.set(null)"
+        />
         <label for="setting-parent">Parent sheet whose rates stand in for missing ones (blank: none)</label>
         <input
           id="setting-parent"
@@ -615,6 +628,13 @@ const DATE = /^\d{4}-\d{2}-\d{2}$/;
         }
       </p>
       <p>
+        Proof kinds:
+        <strong data-testid="setting-proof-kinds-current">{{ proofKinds() }}</strong>
+        @if (proofKinds() === '') {
+          <span>(none)</span>
+        }
+      </p>
+      <p>
         Fiscal year starts in month:
         <strong data-testid="setting-fiscal-start-month-current">{{ fiscalStartMonth() }}</strong>
       </p>
@@ -735,6 +755,10 @@ export class Settings {
   protected readonly escalateInput = signal<string | null>(null);
   /** The review SLA typed; null while its field has not been entered (left as it is). */
   protected readonly reviewSlaInput = signal<string | null>(null);
+  /** The proof kinds in force, comma separated, blank for none. */
+  protected readonly proofKinds = signal('');
+  /** The proof kinds typed; null while their field has not been entered (left as they are). */
+  protected readonly proofKindsInput = signal<string | null>(null);
   /** The month the sheet's fiscal year starts in (1 to 12). */
   protected readonly fiscalStartMonth = signal('1');
   /** The fiscal start month typed; null while its field has not been typed in (left as it is). */
@@ -778,6 +802,7 @@ export class Settings {
       this.alertInput.set(null);
       this.escalateInput.set(null);
       this.reviewSlaInput.set(null);
+      this.proofKindsInput.set(null);
       this.fiscalInput.set(null);
       this.parentInput.set(null);
       this.error.set(null);
@@ -912,6 +937,15 @@ export class Settings {
     this.reviewSlaInput.set(this.session.reviewSla());
   }
 
+  /** Entering the proof kinds' field fills it with the kinds in force, selected, so they save as they are
+   *  unless typed over. */
+  protected enterProofKinds(input: HTMLInputElement): void {
+    if (this.proofKindsInput() !== null) return;
+    input.value = this.proofKinds();
+    input.select();
+    this.proofKindsInput.set(this.proofKinds());
+  }
+
   /** Entering the parent's field fills it with the parent in force, selected, so it saves as it is
    *  unless typed over. */
   protected enterParent(input: HTMLInputElement): void {
@@ -1009,7 +1043,7 @@ export class Settings {
 
   private show(
     res: Pick<SettingsResponse, 'dated' | 'policyDate' | 'periodNumberingFrom' | 'permissions' | 'graceDays' | 'entryDate' | 'pot'>
-      & Partial<Pick<SettingsResponse, 'parent' | 'fiscalStartMonth' | 'alertThreshold' | 'escalateAfter' | 'reviewSla'>>,
+      & Partial<Pick<SettingsResponse, 'parent' | 'fiscalStartMonth' | 'alertThreshold' | 'escalateAfter' | 'reviewSla' | 'proofKinds'>>,
   ): void {
     this.dated.set(res.dated);
     this.permissions.set(res.permissions);
@@ -1028,6 +1062,7 @@ export class Settings {
     this.escalateAfter.set(res.escalateAfter ?? '');
     if (res.parent !== undefined) this.session.parent.set(res.parent);
     this.session.reviewSla.set(res.reviewSla ?? '');
+    this.proofKinds.set(res.proofKinds ?? '');
   }
 
   protected async save(event: Event): Promise<void> {
@@ -1054,6 +1089,7 @@ export class Settings {
     const alertThreshold = this.alertInput()?.trim() ?? null;
     const escalateAfter = this.escalateInput()?.trim() ?? null;
     const reviewSla = this.reviewSlaInput()?.trim() ?? null;
+    const proofKinds = this.proofKindsInput()?.trim() ?? null;
     if (clerkLimit !== null && clerkLimit !== '' && !LIMIT.test(clerkLimit)) {
       this.error.set('Enter a clerk limit of 0.00 or more, with up to two decimals, or leave it blank.');
       return;
@@ -1152,6 +1188,10 @@ export class Settings {
       this.error.set('Enter a review SLA of 0 or more whole days, or leave it blank for none.');
       return;
     }
+    if (proofKinds !== null && proofKinds !== '' && !PROOF_KINDS.test(proofKinds)) {
+      this.error.set('Enter the proof kinds as receipt or photo, comma separated, or leave it blank for none.');
+      return;
+    }
     if (fiscalStartMonth !== null && !/^(0?[1-9]|1[0-2])$/.test(fiscalStartMonth)) {
       this.error.set('Enter the fiscal start month as a month number, 1 to 12.');
       return;
@@ -1242,6 +1282,7 @@ export class Settings {
           roundingFrom: from.rounding ?? null,
           escalateAfter,
           reviewSla,
+          proofKinds,
         }),
       );
       if (this.session.sheet() !== sheet) return;
@@ -1267,6 +1308,7 @@ export class Settings {
       this.alertInput.set(null);
       this.escalateInput.set(null);
       this.reviewSlaInput.set(null);
+      this.proofKindsInput.set(null);
       this.fiscalInput.set(null);
       this.parentInput.set(null);
       this.fromInput.set({});
