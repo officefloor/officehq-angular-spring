@@ -9,7 +9,10 @@ import { DatedGrade, DatedValue, Lateness, Rate, chargedDueCents, dueText, grade
 // edits an existing one (opening a claim's editor fills the form with its values). Each claim
 // shows its status and the buttons that move it on; a move its status does not allow is refused
 // with an error on the claim, as is the user who opened a claim settling it (four eyes). A claim
-// dated inside a closed period cannot be added, edited or moved on: each is refused with an error.
+// belongs to the period its due-by falls in (as fixed when added; for one being added, its date
+// plus the terms it would get). A claim whose due-by is inside a closed period cannot be added,
+// edited or moved on: each is refused with an error; one dated in a closed period but due outside
+// it can.
 // Only a DRAFT can be edited; editing any other claim is refused with an error on the claim (to
 // change an open claim, void it and add a new one).
 // Opening a claim's editor locks the claim for every other user until the editor is saved or
@@ -46,10 +49,9 @@ import { DatedGrade, DatedValue, Lateness, Rate, chargedDueCents, dueText, grade
 // original's number as split-from; the original keeps the rest and loses any figure a statement bound
 // it to. Refused for a claim that is not OPEN, one deferred or in a closed period, and a role that may
 // not open a claim.
-// A steward can re-date an OPEN or PENDING claim: its due-by and any statement-bound figure stay, its
-// period follows the new date, and under numbering per period a change of period gives it the next
-// number of its new period. Refused for anyone else, a claim in a closed period or a new date inside
-// one, and a date after its person's retirement.
+// A steward can re-date an OPEN or PENDING claim: its due-by, and so its period and number, and any
+// statement-bound figure stay. Refused for anyone else, a claim in a closed period, and a date after
+// its person's retirement.
 export type ClaimStatus = 'DRAFT' | 'OPEN' | 'PENDING' | 'SETTLED' | 'VOID';
 
 export interface Claim {
@@ -85,7 +87,7 @@ export interface Claim {
   splitFrom: string | null;
   /** The user whose open editor locks the claim for everyone else; null when unlocked. */
   lockedBy: string | null;
-  /** Whether the claim was added while the period its date falls in was soft-closed. */
+  /** Whether the claim was added while the period its due-by falls in was soft-closed. */
   lateEntry: boolean;
 }
 
@@ -456,9 +458,9 @@ export class PersonClaims {
     return deferred(c, this.session.today());
   }
 
-  /** The name of the period whose dates contain the claim's date; blank when none does. */
+  /** The name of the period whose dates contain the claim's due-by; blank when none does. */
   protected periodOf(c: Claim): string {
-    return periodOn(this.periods(), c.date)?.name ?? '';
+    return periodOn(this.periods(), c.dueBy)?.name ?? '';
   }
 
   /** A value of the claim whose lock this user holds; blank when none. */
@@ -471,7 +473,7 @@ export class PersonClaims {
   /** Open a claim's editor, taking its lock; refused when it cannot be edited or another user holds it. */
   protected async edit(c: Claim): Promise<void> {
     this.clearActionError(c.id);
-    if (inClosedPeriod(this.periods(), c.date)) {
+    if (inClosedPeriod(this.periods(), c.dueBy)) {
       this.actionErrors.update((m) => new Map(m).set(c.id, CLOSED));
       return;
     }

@@ -108,7 +108,7 @@ public class SheetService {
     }
 
     /**
-     * The next number for a claim dated {@code date} opened on the sheet, with no gaps and never
+     * The next number for a claim due by {@code date} opened on the sheet, with no gaps and never
      * reused. Sheet-wide (1, 2, ...) unless the sheet numbers by period on its today: then within
      * the period the date falls in ({@code <period name>-<n>}), or in no period its X sequence
      * ({@code X-<n>}), each counting from 1. The sheet stays locked until the caller's transaction

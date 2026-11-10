@@ -119,7 +119,7 @@ public class RollupService {
     }
 
     /**
-     * Each person's due of their claims whose date falls in from..to (both inclusive) and that
+     * Each person's due of their claims whose due-by falls in from..to (both inclusive) and that
      * counted by the status they had at the end of the to-day (as their status log records it; a
      * claim with none by then does not), by person id, for every person on the sheet (0.00 when
      * none). Each counts at its figure as shown now.
@@ -132,8 +132,8 @@ public class RollupService {
         for (Person person : people.findBySheetIdOrderByIdAsc(sheetId)) {
             BigDecimal due = zero();
             for (Claim claim : sheetClaims) {
-                if (!claim.getPersonId().equals(person.getId()) || claim.getDate().isBefore(from)
-                        || claim.getDate().isAfter(to) || !claim.statusAt(to)
+                if (!claim.getPersonId().equals(person.getId()) || claim.getDueBy().isBefore(from)
+                        || claim.getDueBy().isAfter(to) || !claim.statusAt(to)
                                 .map(status -> person.counts(claim, status, sheet.getToday())).orElse(false)) {
                     continue;
                 }

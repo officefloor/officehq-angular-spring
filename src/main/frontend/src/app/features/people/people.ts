@@ -32,7 +32,7 @@ import { GradeSummary, PeriodSummary, StatusSummary, Summary } from '../summary/
 // claims it bound are live again, and the row shows the statement before it (or none). A statement
 // can be taken as of a date on or before the sheet's today: it binds the claims that counted at the
 // end of that date to their figures as they stood then, and shows that date as its date.
-// Each claim shows the period its date falls in, and each period the due of the claims that counted in it
+// Each claim shows the period its due-by falls in, and each period the due of the claims that counted in it
 // at its end (by the status each had then, as its log records it).
 // A person can be retired from a date (the sheet's today when left blank); with a date set they count
 // as retired at once, whatever the date. No claim of theirs can be dated after it. Retired people are
@@ -590,7 +590,7 @@ export class People {
     today: this.session.today(),
     policyDate: this.policyDate(),
   }));
-  /** The date and figure of each claim that has a figure, and whether it counts by its status at
+  /** The due-by (which places it in a period) and figure of each claim that has a figure, and whether it counts by its status at
    *  the end of a day, for the periods' due-totals. */
   protected readonly dues = computed(() => {
     const out: DatedDue[] = [];
@@ -606,7 +606,7 @@ export class People {
         return status !== null && (isOpen(c) ? countsFor(p, { ...c, status }, today)
           : countsFor(undefined, { ...c, status }, today));
       };
-      out.push({ personId: c.personId, date: c.date, cents: due, countsAt });
+      out.push({ personId: c.personId, date: c.dueBy, cents: due, countsAt });
     }
     return out;
   });

@@ -17,8 +17,8 @@ import org.springframework.web.server.ResponseStatusException;
 /**
  * The sheet's periods: added on the screen, each a name unique on the sheet (without regard to
  * case) and a from and to date, both inclusive; no two periods on a sheet overlap. A period can be
- * closed once: closing fixes its due-total at that moment, and no claim dated inside a closed
- * period can be added, edited, opened, settled or voided. A steward can reopen a closed period, which
+ * closed once: closing fixes its due-total at that moment, and no claim whose due-by is inside a
+ * closed period can be added, edited, opened, settled or voided. A steward can reopen a closed period, which
  * makes its due-total live again. A period can instead be soft-closed: its figures are fixed in the
  * same way but its claims can still change; it can then be closed (fixing them afresh) or reopened. With grace days set, a change of the sheet's today closes the
  * periods past them (see {@link SheetService#setToday}).
@@ -159,7 +159,7 @@ public class PeriodService {
     }
 
     /**
-     * Refuse (423) a change to a claim dated inside a closed period. Holds the sheet first, so a
+     * Refuse (423) a change to a claim due (by its due-by) inside a closed period. Holds the sheet first, so a
      * period cannot close while the change is under way.
      */
     public void refuseIfClosed(String sheetId, LocalDate date) {
@@ -169,7 +169,7 @@ public class PeriodService {
     }
 
     /**
-     * Whether a claim dated on this day lies inside a closed period. Holds the sheet first, so a
+     * Whether a claim due by this day lies inside a closed period. Holds the sheet first, so a
      * period cannot close while a change that relies on the answer is under way.
      */
     public boolean isClosed(String sheetId, LocalDate date) {
@@ -178,15 +178,9 @@ public class PeriodService {
                 date);
     }
 
-    /** Whether a claim dated on this day lies inside a soft-closed period. */
+    /** Whether a claim due by this day lies inside a soft-closed period. */
     public boolean isSoftClosed(String sheetId, LocalDate date) {
         return periods.existsBySheetIdAndSoftClosedTrueAndFromDateLessThanEqualAndToDateGreaterThanEqual(sheetId,
                 date, date);
-    }
-
-    /** The name of the period the day falls in; blank when it falls in none. */
-    public String periodNameOn(String sheetId, LocalDate date) {
-        return periods.findBySheetIdAndFromDateLessThanEqualAndToDateGreaterThanEqual(sheetId, date, date)
-                .map(Period::getName).orElse("");
     }
 }

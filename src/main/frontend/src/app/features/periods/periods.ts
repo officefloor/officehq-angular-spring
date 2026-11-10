@@ -7,15 +7,15 @@ import { money } from '../claims/claims';
 // The sheet's periods, by from-date, and the form that adds one: a name unique on the sheet and a
 // from and to date, both inclusive, no two periods overlapping. A second form generates a period
 // per calendar month (named yyyy-mm) between two dates, leaving out months in use or overlapping. A claim belongs to the period whose
-// dates contain its date, or to none; each period shows the due of the claims that count in it.
+// dates contain its due-by (as fixed when it was added), or to none; each period shows the due of the claims that count in it.
 // A period can be closed: its due-total is then the one fixed when it was closed, and no claim
-// dated inside it can be added, edited, opened, settled or voided. Who may close or reopen a period
+// due by a day inside it can be added, edited, opened, settled or voided. Who may close or reopen a period
 // is the sheet's permission matrix (see the settings); by default a steward can reopen a closed
 // period, making its due-total live again. Each person's row shows their own due-total for every
 // period, fixed the same way while it is closed; a period's due-total is the sum of these.
 // A period can instead be soft-closed (by whoever may close it): its due-total and each person's
-// are fixed as for a closed period, but claims dated inside it can still change; a claim added then
-// is a late entry. A soft-closed period can be closed (fixing its figures afresh) or reopened.
+// are fixed as for a closed period, but claims due inside it can still change; a claim added then
+// with its due-by inside it is a late entry. A soft-closed period can be closed (fixing its figures afresh) or reopened.
 // An open period counts a claim by the status it had at the end of its to-date, as the claim's status
 // log records it (a claim with no status by then does not count), at its figure as shown now.
 export interface Period {
@@ -32,7 +32,7 @@ export interface Period {
   closedDues: Record<string, string> | null;
 }
 
-/** A claim's person, date and its figure in whole cents, for a claim that has one. */
+/** A claim's person, due-by (the date that places it in a period) and its figure in whole cents, for a claim that has one. */
 export interface DatedDue {
   personId: number;
   date: string;
@@ -41,7 +41,7 @@ export interface DatedDue {
   countsAt: (day: string) => boolean;
 }
 
-/** Whether a claim's due falls in an open period: dated inside it, counting at the end of its to-date. */
+/** Whether a claim's due falls in an open period: due by a day inside it, counting at the end of its to-date. */
 function inPeriod(p: Period, d: DatedDue): boolean {
   return p.from <= d.date && d.date <= p.to && d.countsAt(p.to);
 }
@@ -55,7 +55,7 @@ export function periodOn(periods: readonly Period[], date: string): Period | und
 }
 
 /** A closed period's due-total fixed when it was closed; an open period's, the due of the claims
- *  whose date falls in it that counted at the end of its to-date. */
+ *  whose due-by falls in it that counted at the end of its to-date. */
 export function periodDueTotal(p: Period, dues: readonly DatedDue[]): string {
   if ((p.closed || p.softClosed) && p.closedDue !== null) return p.closedDue;
   return money(dues.reduce((sum, d) => sum + (inPeriod(p, d) ? d.cents : 0), 0));
