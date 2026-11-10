@@ -152,8 +152,8 @@ public class SheetService {
     }
 
     /**
-     * Change the sheet's today. With grace days set, every open period whose to-date plus the grace
-     * days is before the new today is then closed, in order of their to-dates. A new today releases
+     * Change the sheet's today. With grace days set, every open (not soft-closed) period whose to-date
+     * plus the grace days is before the new today is then closed, in order of their to-dates. A new today releases
      * every claim editor's lock.
      */
     @Transactional
@@ -169,7 +169,8 @@ public class SheetService {
         Integer grace = saved.getGraceDays();
         if (grace != null) {
             for (Period period : periods.findBySheetIdAndClosedFalseOrderByToDateAsc(id)) {
-                if (period.getToDate().plusDays(grace).isBefore(today)) {
+                // a soft-closed period keeps the figures it fixed: only an open one closes by grace days
+                if (!period.isSoftClosed() && period.getToDate().plusDays(grace).isBefore(today)) {
                     closePeriod(id, user, period, true);
                 }
             }

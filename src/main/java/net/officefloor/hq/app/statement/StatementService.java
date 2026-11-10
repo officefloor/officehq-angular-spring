@@ -28,6 +28,8 @@ import org.springframework.web.server.ResponseStatusException;
  * person's OPEN or PENDING claims) to the figure it has then; a claim of theirs that does not count is unbound,
  * so its figure is live again. The late charge is never bound: the due-total includes each claim's charge on the day, but a claim is
  * bound to the rate figure under it, not the floored one (the floor is applied last, see {@link net.officefloor.hq.app.claim.LateCharge}).
+ * A steward can cancel a person's last statement: the claims it bound are live again (a figure bound
+ * by a statement before it is not restored), and the statement before it is the last one again.
  */
 @Service
 public class StatementService {
@@ -38,6 +40,10 @@ public class StatementService {
 
     /** A statement just taken, with the person's claims as it left them. */
     public record Taken(Summary summary, List<Claim> claims) {
+    }
+
+    /** A statement just cancelled: the person's statements left (none last when none are), and their claims. */
+    public record Cancelled(Summary summary, List<Claim> claims) {
     }
 
     private final StatementRepository statements;
@@ -110,6 +116,39 @@ public class StatementService {
                 + " due-total=" + money(dueTotal) + " claims=" + counted);
         rollup.recordChanges(sheetId, user, before);
         return new Taken(new Summary(personId, count, taken), theirs);
+    }
+
+    /**
+     * Cancel the person's last statement: each claim it bound is unbound, so its figure is live
+     * again. Refused (403) to anyone but a steward, and (409) for a person with no statement.
+     */
+    @Transactional
+    public Cancelled cancel(String sheetId, String user, long personId) {
+        roles.refuseViewer(sheetId, user);
+        roles.refuseUnlessSteward(sheetId, user);
+        Person person = people.lockByIdAndSheetId(personId, sheetId)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "No such person on this sheet."));
+        List<Statement> theirStatements = statements.findBySheetIdOrderByIdAsc(sheetId).stream()
+                .filter(s -> Objects.equals(s.getPersonId(), personId)).toList();
+        if (theirStatements.isEmpty()) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT, person.getName() + " has no statement to cancel.");
+        }
+        Statement last = theirStatements.get(theirStatements.size() - 1);
+        RollupService.Snapshot before = rollup.snapshot(sheetId);
+        List<Claim> theirs = claims.findBySheetIdAndPersonIdOrderByIdDesc(sheetId, personId);
+        for (Claim claim : theirs) {
+            if (claim.isStated()) {
+                claim.bind(false, null);
+            }
+        }
+        claims.saveAllAndFlush(theirs);
+        statements.delete(last);
+        statements.flush();
+        audit.recordOnCommit("STATEMENT_CANCELLED sheet=" + sheetId + " by=" + user + " name=" + person.getName()
+                + " due-total=" + money(last.getDueTotal()));
+        rollup.recordChanges(sheetId, user, before);
+        int count = theirStatements.size() - 1;
+        return new Cancelled(new Summary(personId, count, count == 0 ? null : theirStatements.get(count - 1)), theirs);
     }
 
     public static String money(BigDecimal value) {

@@ -28,7 +28,8 @@ import { GradeSummary, PeriodSummary, StatusSummary, Summary } from '../summary/
 // the floor in force on the claim's date (a figure fixed when settled, bound by a statement or by closing a period keeps its own).
 // Taking a person's statement binds each of their claims that counts to the figure it has then
 // (a stated claim shows and totals that figure); each row shows how many statements the person
-// has taken, and the last one's due-total and date.
+// has taken, and the last one's due-total and date. A steward can cancel the last statement: the
+// claims it bound are live again, and the row shows the statement before it (or none).
 // Each claim shows the period its date falls in, and each period the due of the claims that counted in it
 // at its end (by the status each had then, as its log records it).
 // A person can be retired from a date (the sheet's today when left blank); with a date set they count
@@ -397,6 +398,14 @@ const SUMMARY_STATUSES = ['DRAFT', 'OPEN', 'PENDING', 'SETTLED', 'VOID'] as cons
                   (click)="takeStatement(p)"
                 >
                   Statement
+                </button>
+                <button
+                  type="button"
+                  data-testid="person-unstate"
+                  [attr.aria-label]="'Cancel last statement for ' + p.name"
+                  (click)="cancelStatement(p)"
+                >
+                  Cancel statement
                 </button>
                 <label [for]="'person-retire-date-' + p.id">Retire from</label>
                 <input
@@ -930,6 +939,32 @@ export class People {
     } catch {
       if (this.session.sheet() !== sheet) return;
       this.rowErrors.update((m) => new Map(m).set(p.id, 'Could not take a statement for ' + p.name + '.'));
+    }
+  }
+
+  /** Cancel the person's last statement: their claims come back as it left them, the row shows the one before. */
+  protected async cancelStatement(p: Person): Promise<void> {
+    this.clearRowError(p.id);
+    const sheet = this.session.sheet();
+    try {
+      const cancelled = await firstValueFrom(
+        this.http.post<StatementTaken>('/api/statements/cancel', { sheet, user: this.session.user(), personId: p.id }),
+      );
+      if (this.session.sheet() !== sheet) return;
+      const byId = new Map(cancelled.claims.map((c) => [c.id, c]));
+      this.claims.update((list) => list.map((c) => byId.get(c.id) ?? c));
+      this.statements.update((m) => {
+        const next = new Map(m);
+        if (cancelled.summary.count === 0) {
+          next.delete(p.id);
+        } else {
+          next.set(p.id, cancelled.summary);
+        }
+        return next;
+      });
+    } catch {
+      if (this.session.sheet() !== sheet) return;
+      this.rowErrors.update((m) => new Map(m).set(p.id, 'Could not cancel the statement for ' + p.name + '.'));
     }
   }
 

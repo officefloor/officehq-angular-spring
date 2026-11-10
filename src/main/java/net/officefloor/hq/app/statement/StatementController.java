@@ -13,7 +13,7 @@ import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 
-/** Listing each person's statements on a sheet, and taking a person's statement. */
+/** Listing each person's statements on a sheet, and taking or cancelling a person's statement. */
 @RestController
 @RequestMapping("/api/statements")
 public class StatementController {
@@ -25,7 +25,14 @@ public class StatementController {
             @NotBlank @Size(max = 100) String user, @NotNull Long personId) {
     }
 
-    /** A person's statement count, and the last statement's due-total ("n/a" when none) and date. */
+    public record CancelStatementRequest(@NotBlank @Size(max = 100) String sheet,
+            @NotBlank @Size(max = 100) String user, @NotNull Long personId) {
+    }
+
+    /**
+     * A person's statement count, and the last statement's due-total ("n/a" when it had none) and
+     * date; both none when no statement is left.
+     */
     public record SummaryResponse(long personId, int count, String dueTotal, LocalDate date) {
     }
 
@@ -33,6 +40,9 @@ public class StatementController {
     }
 
     private static SummaryResponse response(StatementService.Summary s) {
+        if (s.last() == null) {
+            return new SummaryResponse(s.personId(), s.count(), null, null);
+        }
         return new SummaryResponse(s.personId(), s.count(), StatementService.money(s.last().getDueTotal()),
                 s.last().getTakenOn());
     }
@@ -53,5 +63,12 @@ public class StatementController {
         StatementService.Taken taken = service.take(req.sheet().trim(), req.user().trim(), req.personId());
         return new TakenResponse(response(taken.summary()),
                 taken.claims().stream().map(ClaimController::response).toList());
+    }
+
+    @PostMapping("/cancel")
+    public TakenResponse cancel(@Valid @RequestBody CancelStatementRequest req) {
+        StatementService.Cancelled cancelled = service.cancel(req.sheet().trim(), req.user().trim(), req.personId());
+        return new TakenResponse(response(cancelled.summary()),
+                cancelled.claims().stream().map(ClaimController::response).toList());
     }
 }
