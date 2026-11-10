@@ -98,7 +98,7 @@ public class RollupService {
         List<List<Rate>> sheetRates = rates.current(sheetId);
         List<Claim> sheetClaims = claims.findBySheetIdOrderByIdDesc(sheetId);
         Map<Long, Figures> figures = new LinkedHashMap<>();
-        for (Person person : people.findBySheetIdOrderByIdAsc(sheetId)) {
+        for (Person person : people.findBySheetIdOrderByPositionAscIdAsc(sheetId)) {
             BigDecimal claimed = zero();
             BigDecimal due = zero();
             BigDecimal overdue = zero();
@@ -162,7 +162,7 @@ public class RollupService {
         List<List<Rate>> sheetRates = rates.current(sheetId);
         List<Claim> sheetClaims = claims.findBySheetIdOrderByIdDesc(sheetId);
         Map<Long, BigDecimal> dues = new LinkedHashMap<>();
-        for (Person person : people.findBySheetIdOrderByIdAsc(sheetId)) {
+        for (Person person : people.findBySheetIdOrderByPositionAscIdAsc(sheetId)) {
             BigDecimal due = zero();
             for (Claim claim : sheetClaims) {
                 if (!claim.getPersonId().equals(person.getId()) || claim.getDueBy().isBefore(from)

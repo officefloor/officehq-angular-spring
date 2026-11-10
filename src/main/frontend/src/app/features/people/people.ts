@@ -16,7 +16,8 @@ import { Templates } from '../templates/templates';
 import { Pools } from '../pools/pools';
 import { VoidReasons as VoidReasonList } from '../../core/void-reasons';
 
-// The people on the active sheet, in the order they were added, and the one form that both adds
+// The people on the active sheet, in list order (each person's position: new people go to the end,
+// and a row's up and down buttons swap them with the person above or below), and the one form that both adds
 // a person and edits an existing one (opening a person's editor fills the form with their values).
 // A person's grade is dated: their first applies from the beginning of time, and each save records
 // the form's grade from its from-date (the sheet's today when blank), keeping those recorded before;
@@ -609,6 +610,22 @@ const SUMMARY_STATUSES = ['DRAFT', 'OPEN', 'PENDING', 'SETTLED', 'VOID'] as cons
                 />
               </td>
               <td>
+                <button
+                  type="button"
+                  data-testid="person-move-up"
+                  [attr.aria-label]="'Move ' + p.name + ' up'"
+                  (click)="move(p, 'up')"
+                >
+                  Up
+                </button>
+                <button
+                  type="button"
+                  data-testid="person-move-down"
+                  [attr.aria-label]="'Move ' + p.name + ' down'"
+                  (click)="move(p, 'down')"
+                >
+                  Down
+                </button>
                 <button
                   type="button"
                   [attr.data-testid]="'person-edit-' + p.id"
@@ -1381,6 +1398,29 @@ export class People {
     if (sheet) await this.fetch(sheet);
   }
 
+  /** Swap the person with the one above or below them, then re-read the list in its new order. */
+  protected async move(p: Person, direction: 'up' | 'down'): Promise<void> {
+    this.clearRowError(p.id);
+    const sheet = this.session.sheet();
+    try {
+      await firstValueFrom(
+        this.http.post<Person>('/api/people/move', { sheet, user: this.session.user(), id: p.id, direction }),
+      );
+      const list = await firstValueFrom(this.http.post<Person[]>('/api/people/list', { sheet }));
+      if (this.session.sheet() !== sheet) return;
+      // the move bumps the version of each person it renumbers; an open editor follows only that
+      const was = this.people().find((x) => x.id === this.editingId());
+      const now = list.find((x) => x.id === this.editingId());
+      if (was && now && this.editingVersion === was.version) this.editingVersion = now.version;
+      this.people.set(list);
+    } catch {
+      if (this.session.sheet() !== sheet) return;
+      this.rowErrors.update((m) =>
+        new Map(m).set(p.id, 'Could not move ' + p.name + ' ' + direction + ': they are already at the ' + (direction === 'up' ? 'top.' : 'bottom.')),
+      );
+    }
+  }
+
   protected setRetireDate(id: number, date: string): void {
     this.retireDates.update((m) => new Map(m).set(id, date));
     this.clearRowError(id);
@@ -1683,6 +1723,7 @@ export class People {
       return next;
     });
     this.bulkGradeError.set(null);
+    this.clearRowError(id);
   }
 
   /** Give the selected people the grade from the from-date (the sheet's today when blank): the

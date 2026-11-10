@@ -73,6 +73,10 @@ public class Person {
     @Column(name = "alias", nullable = false)
     private Set<String> aliases = new HashSet<>();
 
+    /** The person's place in the sheet's list, lowest first. */
+    @Column(name = "position", nullable = false)
+    private long position;
+
     /** Bumped on every save; an edit must carry the version it was made from. */
     @Version
     @Column(name = "version", nullable = false)
@@ -110,6 +114,14 @@ public class Person {
         copy.contact = contact;
         copy.aliases.addAll(aliases);
         return copy;
+    }
+
+    public long getPosition() {
+        return position;
+    }
+
+    public void setPosition(long position) {
+        this.position = position;
     }
 
     public String getName() {

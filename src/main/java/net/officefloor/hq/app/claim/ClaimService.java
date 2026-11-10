@@ -884,10 +884,10 @@ public class ClaimService {
         return new BulkReassigned(moved.size(), refused, moved);
     }
 
-    /** The given claims on the sheet in list order: people as added, newest claim first within a person. */
+    /** The given claims on the sheet in list order: people by position, newest claim first within a person. */
     private List<Claim> inListOrder(String sheetId, Collection<Long> ids) {
         Map<Long, Integer> personOrder = new HashMap<>();
-        List<Person> listed = people.findBySheetIdOrderByIdAsc(sheetId);
+        List<Person> listed = people.findBySheetIdOrderByPositionAscIdAsc(sheetId);
         for (int i = 0; i < listed.size(); i++) {
             personOrder.put(listed.get(i).getId(), i);
         }
@@ -926,7 +926,7 @@ public class ClaimService {
     public RatePreview previewRate(String sheetId, String grade, BigDecimal pct) {
         Sheet sheet = sheets.sheet(sheetId);
         Map<Long, Person> byId = new HashMap<>();
-        for (Person p : people.findBySheetIdOrderByIdAsc(sheetId)) {
+        for (Person p : people.findBySheetIdOrderByPositionAscIdAsc(sheetId)) {
             byId.put(p.getId(), p);
         }
         int count = 0;

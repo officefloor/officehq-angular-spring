@@ -19,7 +19,7 @@ import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.server.ResponseStatusException;
 
 /**
- * The people on a sheet: listed in the order they were added, added and edited by name and grade. A
+ * The people on a sheet: listed by position (new people at the end, moved up or down one place), added and edited by name and grade. A
  * person's grade is dated: the first applies from the beginning of time, and each edit records the
  * grade from its from-date (the sheet's today when none is given), keeping those already recorded;
  * an edit leaving the grade in force on the sheet's today as it is, with no from-date, records none.
@@ -62,7 +62,7 @@ public class PersonService {
 
     @Transactional(readOnly = true)
     public List<Person> list(String sheetId) {
-        return people.findBySheetIdOrderByIdAsc(sheetId);
+        return people.findBySheetIdOrderByPositionAscIdAsc(sheetId);
     }
 
     @Transactional
@@ -85,6 +85,7 @@ public class PersonService {
         Person person = new Person(sheetId, name, grade, sheets.today(sheetId));
         person.setTerms(terms);
         person.setContact(contact);
+        person.setPosition(people.maxPosition(sheetId) + 1);
         Person added = save(person);
         audit.recordOnCommit(record("PERSON_ADDED", sheetId, user, added, sheets.today(sheetId))
                 + (terms != null ? " terms=" + terms : "") + (contact != null ? " contact=" + contact : ""));
@@ -201,13 +202,52 @@ public class PersonService {
             throw e;
         }
         Set<Long> wanted = new HashSet<>(ids);
-        List<Person> chosen = people.findBySheetIdOrderByIdAsc(sheetId).stream()
+        List<Person> chosen = people.findBySheetIdOrderByPositionAscIdAsc(sheetId).stream()
                 .filter(p -> wanted.contains(p.getId())).toList();
         if (chosen.size() != wanted.size()) {
             throw new ResponseStatusException(HttpStatus.NOT_FOUND, "No such person on this sheet.");
         }
         return chosen.stream().map(p -> update(sheetId, user, p.getId(), p.getVersion(), p.getName(), grade,
                 gradeFrom, p.getTerms(), p.getContact())).toList();
+    }
+
+    /**
+     * Swap the person with the one above ({@code up}) or below them in the list; the top person
+     * cannot move up nor the bottom one down (409).
+     */
+    @Transactional
+    public Person move(String sheetId, String user, long id, boolean up) {
+        roles.refuseViewer(sheetId, user);
+        sheets.refuseIfArchived(sheetId);
+        List<Person> listed = people.findBySheetIdOrderByPositionAscIdAsc(sheetId);
+        int at = -1;
+        for (int i = 0; i < listed.size(); i++) {
+            if (listed.get(i).getId() == id) {
+                at = i;
+            }
+        }
+        if (at < 0) {
+            throw new ResponseStatusException(HttpStatus.NOT_FOUND, "No such person on this sheet.");
+        }
+        int to = up ? at - 1 : at + 1;
+        if (to < 0 || to >= listed.size()) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT,
+                    up ? "The first person cannot move up." : "The last person cannot move down.");
+        }
+        // renumber the list as it stands, the two swapped, so equal positions cannot leave them tied
+        Person moved = listed.get(at);
+        listed.set(at, listed.get(to));
+        listed.set(to, moved);
+        for (int i = 0; i < listed.size(); i++) {
+            Person p = listed.get(i);
+            if (p.getPosition() != i + 1) {
+                p.setPosition(i + 1);
+                save(p);
+            }
+        }
+        audit.recordOnCommit("PERSON_MOVED sheet=" + sheetId + " by=" + user + " name=" + moved.getName()
+                + " position=" + (to + 1));
+        return moved;
     }
 
     /**

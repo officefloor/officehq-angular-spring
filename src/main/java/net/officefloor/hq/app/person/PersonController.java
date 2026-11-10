@@ -72,6 +72,11 @@ public class PersonController {
             @NotBlank @Size(max = 100) String user, @NotNull Long id, LocalDate date) {
     }
 
+    public record MovePersonRequest(@NotBlank @Size(max = 100) String sheet,
+            @NotBlank @Size(max = 100) String user, @NotNull Long id,
+            @NotNull @Pattern(regexp = "up|down") String direction) {
+    }
+
     public record HoldPersonRequest(@NotBlank @Size(max = 100) String sheet,
             @NotBlank @Size(max = 100) String user, @NotNull Long id, LocalDate from, LocalDate to) {
     }
@@ -195,6 +200,13 @@ public class PersonController {
     @PostMapping("/retire")
     public PersonResponse retire(@Valid @RequestBody RetirePersonRequest req) {
         return response(req.sheet().trim(), service.retire(req.sheet().trim(), req.user().trim(), req.id(), req.date()));
+    }
+
+    /** Swap the person with the one above or below them in the list. */
+    @PostMapping("/move")
+    public PersonResponse move(@Valid @RequestBody MovePersonRequest req) {
+        return response(req.sheet().trim(), service.move(req.sheet().trim(), req.user().trim(), req.id(),
+                req.direction().equals("up")));
     }
 
     @PostMapping("/hold")

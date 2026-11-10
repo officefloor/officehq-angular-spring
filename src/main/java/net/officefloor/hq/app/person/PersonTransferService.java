@@ -134,7 +134,9 @@ public class PersonTransferService {
 
         // the person and their claims arrive on the other sheet as new rows, listed in the order they
         // were, the numbered ones numbered afresh there in the order they were opened; this sheet's go
-        Person arrived = people.saveAndFlush(person.transferredTo(toSheetId));
+        Person arriving = person.transferredTo(toSheetId);
+        arriving.setPosition(people.maxPosition(toSheetId) + 1);
+        Person arrived = people.saveAndFlush(arriving);
         List<Claim> theirs = claims.findBySheetIdAndPersonIdOrderByListedAsc(sheetId, person.getId());
         Map<Long, String> numbers = new HashMap<>();
         theirs.stream().filter(c -> c.getNumber() != null)
