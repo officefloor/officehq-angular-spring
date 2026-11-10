@@ -38,7 +38,8 @@ public class StatementController {
     /**
      * A person's statement count, and the last statement's due-total ("n/a" when it had none) and
      * date, both none when no statement is left; and a line for each statement still standing,
-     * oldest first by date (in the order taken on the same date).
+     * oldest first by the day it was taken (the sheet's today then; in the order taken on the same day),
+     * so one taken as of an earlier date is listed when it was taken.
      */
     public record SummaryResponse(long personId, int count, String dueTotal, LocalDate date,
             List<StatementLine> lines) {
@@ -48,7 +49,8 @@ public class StatementController {
     }
 
     private static SummaryResponse response(StatementService.Summary s) {
-        List<StatementLine> lines = s.standing().stream().sorted(Comparator.comparing(Statement::getTakenOn))
+        List<StatementLine> lines = s.standing().stream().sorted(Comparator.comparing(Statement::getMadeOn,
+                Comparator.nullsFirst(Comparator.naturalOrder())))
                 .map(t -> new StatementLine(t.getTakenOn(), StatementService.money(t.getDueTotal()))).toList();
         if (s.last() == null) {
             return new SummaryResponse(s.personId(), s.count(), null, null, lines);

@@ -115,7 +115,9 @@ public class AsOfFilter extends OncePerRequestFilter {
         if (path.equals(LOAD)) {
             // a sheet never loaded starts as usual, and counts from the beginning of time
             String user = body.field("user");
-            sheets.load(sheet, user == null || user.isBlank() ? "?" : user.trim());
+            String open = body.field("open");
+            sheets.load(sheet, user == null || user.isBlank() ? "?" : user.trim(),
+                    open == null || open.isBlank() ? null : open.trim());
             history.captureFirst(sheet);
         }
         LocalDate date = asOf;

@@ -24,7 +24,10 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.server.ResponseStatusException;
 
-/** Loads a sheet by id; a sheet never loaded before is started empty, its today the real date. */
+/**
+ * Loads a sheet by id; a sheet never loaded before is started empty, its today that of the sheet the
+ * user had open when they loaded it (the real date when none).
+ */
 @Service
 public class SheetService {
 
@@ -49,9 +52,17 @@ public class SheetService {
 
     @Transactional
     public Sheet load(String id, String user) {
+        return load(id, user, null);
+    }
+
+    /** Load a sheet; one never loaded before starts with the today of the sheet {@code openId} (when there is one). */
+    @Transactional
+    public Sheet load(String id, String user, String openId) {
         return sheets.findById(id).orElseGet(() -> {
+            LocalDate today = (openId == null ? Optional.<Sheet>empty() : sheets.findById(openId))
+                    .map(Sheet::getToday).orElseGet(LocalDate::now);
             try {
-                return sheets.saveAndFlush(new Sheet(id, user, Instant.now(), LocalDate.now()));
+                return sheets.saveAndFlush(new Sheet(id, user, Instant.now(), today));
             } catch (DataIntegrityViolationException e) {
                 // another user started the same sheet at the same moment
                 return sheets.findById(id).orElseThrow(() -> e);

@@ -116,7 +116,8 @@ export class Session {
 
   async loadSheet(id: string): Promise<void> {
     const res = await firstValueFrom(
-      this.http.post<SheetResponse>('/api/sheets/load', { id, user: this.user() }),
+      // a sheet never used starts with the today of the sheet open now
+      this.http.post<SheetResponse>('/api/sheets/load', { id, user: this.user(), open: this.sheet() }),
     );
     this.show(res);
     this.loads.update((n) => n + 1);

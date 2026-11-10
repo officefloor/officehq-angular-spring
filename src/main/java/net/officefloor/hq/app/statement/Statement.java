@@ -82,6 +82,11 @@ public class Statement {
         return dueTotal;
     }
 
+    /** The sheet's today when it was taken; none for one kept from before that was recorded. */
+    public LocalDate getMadeOn() {
+        return madeOn;
+    }
+
     /** Whether it was taken by the end of a day: the sheet's today then on or before it. */
     public boolean madeBy(LocalDate day) {
         return madeOn == null || !madeOn.isAfter(day);

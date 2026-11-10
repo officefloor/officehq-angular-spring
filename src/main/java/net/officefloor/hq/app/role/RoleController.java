@@ -20,6 +20,9 @@ public class RoleController {
     public record ListRolesRequest(@NotBlank @Size(max = 100) String sheet) {
     }
 
+    public record MyRoleRequest(@NotBlank @Size(max = 100) String sheet, @NotBlank @Size(max = 100) String user) {
+    }
+
     public record SetRoleRequest(@NotBlank @Size(max = 100) String sheet, @NotBlank @Size(max = 100) String user,
             @NotBlank @Size(max = 100) String name,
             @NotNull @Pattern(regexp = Role.CLERK + "|" + Role.STEWARD + "|" + Role.VIEWER) String role) {
@@ -53,6 +56,13 @@ public class RoleController {
     @PostMapping("/list")
     public List<RoleResponse> list(@Valid @RequestBody ListRolesRequest req) {
         return service.list(req.sheet().trim()).stream().map(RoleController::response).toList();
+    }
+
+    /** The signed-in user's role on the sheet (a delegation in force counts); as of a date, the role they had then. */
+    @PostMapping("/mine/list")
+    public RoleResponse mine(@Valid @RequestBody MyRoleRequest req) {
+        String user = req.user().trim();
+        return new RoleResponse(user, service.roleOf(req.sheet().trim(), user));
     }
 
     @PostMapping("/delegations")

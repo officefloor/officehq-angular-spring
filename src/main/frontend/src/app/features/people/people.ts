@@ -11,6 +11,7 @@ import { DatedGrade, DatedValue, Lateness, Rate, Rates, chargedDueCents, dueCent
 import { Roles } from '../roles/roles';
 import { Settings } from '../settings/settings';
 import { Header } from '../header/header';
+import { Dashboard } from '../dashboard/dashboard';
 import { ClassicPeriodSummary, ClassicSummary, GradeSummary, PeriodSummary, StatusSummary, Summary, VoidReasonSummary } from '../summary/summary';
 import { VoidReasons } from '../void-reasons/void-reasons';
 import { Templates } from '../templates/templates';
@@ -242,7 +243,7 @@ const SUMMARY_STATUSES = ['DRAFT', 'OPEN', 'PENDING', 'SETTLED', 'VOID', 'REVIEW
 
 @Component({
   selector: 'app-people',
-  imports: [FigurePipe, AuditView, Header, Holidays, PersonClaims, PersonPlans, Periods, Rates, Roles, Pools, Crews, Settings, Summary, ClassicSummary, Templates, TreeSearch, VoidReasons],
+  imports: [FigurePipe, AuditView, Header, Dashboard, Holidays, PersonClaims, PersonPlans, Periods, Rates, Roles, Pools, Crews, Settings, Summary, ClassicSummary, Templates, TreeSearch, VoidReasons],
   template: `
     <app-header
       [peopleCount]="people().length"
@@ -255,6 +256,11 @@ const SUMMARY_STATUSES = ['DRAFT', 'OPEN', 'PENDING', 'SETTLED', 'VOID', 'REVIEW
       [myDueTotal]="myFigures()?.dueTotal ?? ''"
       [myOverdueTotal]="myFigures()?.overdueTotal ?? ''"
       [myCrewDueTotal]="myCrewDueTotal()"
+    />
+    <app-dashboard
+      [pendingCount]="statusCount('PENDING')"
+      [reviewCount]="statusCount('REVIEW')"
+      [overdueCount]="overdueTotals().count"
     />
     <app-rates [(rates)]="rates" />
     <app-roles />
@@ -1330,6 +1336,10 @@ export class People {
       count: this.claims().filter((c) => c.status === status).length,
     })),
   );
+  /** How many of the sheet's claims the summary counts in a status. */
+  protected statusCount(status: string): number {
+    return this.statusSummary().find((s) => s.status === status)?.count ?? 0;
+  }
   /** How many of the sheet's REVIEW claims are late for review on its today. */
   protected readonly reviewLateCount = computed(() =>
     this.claims().filter((c) => reviewLate(c, this.session.today(), this.session.reviewSla())).length,

@@ -24,7 +24,9 @@ public class SheetController {
     public record SignInResponse(String name, String locale) {
     }
 
-    public record LoadSheetRequest(@NotBlank @Size(max = 100) String id, @NotBlank @Size(max = 100) String user) {
+    /** {@code open}: the sheet the user has open, whose today a sheet never loaded starts with; none for none. */
+    public record LoadSheetRequest(@NotBlank @Size(max = 100) String id, @NotBlank @Size(max = 100) String user,
+            @Size(max = 100) String open) {
     }
 
     public record SetTodayRequest(@NotBlank @Size(max = 100) String id, @NotBlank @Size(max = 100) String user,
@@ -68,7 +70,8 @@ public class SheetController {
 
     @PostMapping("/sheets/load")
     public SheetResponse load(@Valid @RequestBody LoadSheetRequest req) {
-        return response(service.load(req.id().trim(), req.user().trim()));
+        return response(service.load(req.id().trim(), req.user().trim(),
+                req.open() == null || req.open().isBlank() ? null : req.open().trim()));
     }
 
     @PostMapping("/sheets/today")
