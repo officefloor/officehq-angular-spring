@@ -3,6 +3,7 @@ package net.officefloor.hq.app.person;
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.Min;
 import jakarta.validation.constraints.NotBlank;
+import jakarta.validation.constraints.NotEmpty;
 import jakarta.validation.constraints.NotNull;
 import jakarta.validation.constraints.Pattern;
 import jakarta.validation.constraints.Size;
@@ -29,6 +30,15 @@ public class PersonController {
             @NotBlank @Size(max = 100) String user, @NotNull Long id, @NotBlank @Size(max = 200) String name,
             @NotNull @Pattern(regexp = "[ABC]") String grade, LocalDate gradeFrom, @NotNull Long version,
             @Min(0) Integer terms) {
+    }
+
+    public record BulkGradeRequest(@NotBlank @Size(max = 100) String sheet,
+            @NotBlank @Size(max = 100) String user, @NotEmpty List<@NotNull Long> ids,
+            @NotNull @Pattern(regexp = "[ABC]") String grade, LocalDate from) {
+    }
+
+    /** How many people were given the grade, and each as the store now holds them. */
+    public record BulkGradeResponse(int graded, List<PersonResponse> people) {
     }
 
     public record RetirePersonRequest(@NotBlank @Size(max = 100) String sheet,
@@ -97,6 +107,13 @@ public class PersonController {
     public PersonResponse update(@Valid @RequestBody UpdatePersonRequest req) {
         return response(service.update(req.sheet().trim(), req.user().trim(), req.id(), req.version(), req.name().trim(),
                 req.grade(), req.gradeFrom(), req.terms()));
+    }
+
+    @PostMapping("/bulk-grade")
+    public BulkGradeResponse bulkGrade(@Valid @RequestBody BulkGradeRequest req) {
+        List<PersonResponse> graded = service.bulkGrade(req.sheet().trim(), req.user().trim(), req.ids(), req.grade(),
+                req.from()).stream().map(PersonController::response).toList();
+        return new BulkGradeResponse(graded.size(), graded);
     }
 
     @PostMapping("/retire")

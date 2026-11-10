@@ -1,8 +1,10 @@
 package net.officefloor.hq.app.person;
 
 import java.time.LocalDate;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Objects;
+import java.util.Set;
 import net.officefloor.hq.app.Audit;
 import net.officefloor.hq.app.role.RoleService;
 import net.officefloor.hq.app.rollup.RollupService;
@@ -96,6 +98,24 @@ public class PersonService {
                 + (Objects.equals(termsBefore, terms) ? "" : " terms=" + (terms != null ? terms : "")));
         rollup.recordChanges(sheetId, user, before);
         return saved;
+    }
+
+    /**
+     * Give each of the people a grade from a from-date (the sheet's today when none is given), in list
+     * order, exactly as editing each with the person form would (name and terms kept). All or none: a
+     * person not on the sheet refuses the lot.
+     */
+    @Transactional
+    public List<Person> bulkGrade(String sheetId, String user, List<Long> ids, String grade, LocalDate gradeFrom) {
+        roles.refuseViewer(sheetId, user);
+        Set<Long> wanted = new HashSet<>(ids);
+        List<Person> chosen = people.findBySheetIdOrderByIdAsc(sheetId).stream()
+                .filter(p -> wanted.contains(p.getId())).toList();
+        if (chosen.size() != wanted.size()) {
+            throw new ResponseStatusException(HttpStatus.NOT_FOUND, "No such person on this sheet.");
+        }
+        return chosen.stream().map(p -> update(sheetId, user, p.getId(), p.getVersion(), p.getName(), grade,
+                gradeFrom, p.getTerms())).toList();
     }
 
     /**
