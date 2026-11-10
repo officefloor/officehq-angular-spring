@@ -34,8 +34,12 @@ import org.springframework.transaction.annotation.Transactional;
 @Service
 public class SheetHistory {
 
-    /** Tables never kept: the sheet row itself is kept apart, and the snapshots are the history. */
-    private static final Set<String> SKIPPED = Set.of("SHEET", "SHEET_SNAPSHOT", "flyway_schema_history");
+    /**
+     * Tables never kept: the sheet row itself is kept apart, and the snapshots are the history. The
+     * sheet's notes are dated by the today each was added on, and shown as of a date by that.
+     */
+    private static final Set<String> SKIPPED = Set.of("SHEET", "SHEET_SNAPSHOT", "SHEET_NOTE",
+            "flyway_schema_history");
 
     /** The sheet's columns not kept: they are not dated, so a sheet shown as of a date shows them as they are now. */
     private static final Set<String> UNKEPT_SHEET_COLUMNS = Set.of("PARENT_ID");

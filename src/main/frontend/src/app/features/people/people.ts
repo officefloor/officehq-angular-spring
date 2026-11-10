@@ -15,6 +15,7 @@ import { Dashboard } from '../dashboard/dashboard';
 import { ClassicPeriodSummary, ClassicSummary, GradeSummary, PeriodSummary, StatusSummary, Summary, VoidReasonSummary } from '../summary/summary';
 import { VoidReasons } from '../void-reasons/void-reasons';
 import { Templates } from '../templates/templates';
+import { Notes } from '../notes/notes';
 import { Pool, Pools } from '../pools/pools';
 import { Crew, CrewPerson, Crews, crewDueCents } from '../crews/crews';
 import { PersonPlans, Plan } from '../plans/plans';
@@ -245,7 +246,7 @@ const SUMMARY_STATUSES = ['DRAFT', 'OPEN', 'PENDING', 'SETTLED', 'VOID', 'REVIEW
 
 @Component({
   selector: 'app-people',
-  imports: [FigurePipe, AuditView, Header, Dashboard, Holidays, PersonClaims, PersonPlans, Periods, Rates, Roles, Pools, Crews, Settings, Summary, ClassicSummary, Templates, TreeSearch, VoidReasons],
+  imports: [FigurePipe, AuditView, Header, Dashboard, Holidays, PersonClaims, PersonPlans, Periods, Rates, Roles, Pools, Crews, Settings, Summary, ClassicSummary, Templates, Notes, TreeSearch, VoidReasons],
   template: `
     <app-header
       [peopleCount]="people().length"
@@ -271,6 +272,7 @@ const SUMMARY_STATUSES = ['DRAFT', 'OPEN', 'PENDING', 'SETTLED', 'VOID', 'REVIEW
     <app-holidays />
     <app-void-reasons />
     <app-templates />
+    <app-notes />
     <app-pools [people]="people()" [pot]="pot()" [crews]="crews()" [(pools)]="pools" />
     <app-crews [people]="crewPeople()" [(crews)]="crews" />
     <app-audit-view />
