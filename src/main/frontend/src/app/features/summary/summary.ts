@@ -112,3 +112,41 @@ export class Summary {
   readonly statuses = input.required<StatusSummary[]>();
   readonly voidReasons = input.required<VoidReasonSummary[]>();
 }
+
+// The classic summary, beside the summary: per period, its due-total counting each claim by its
+// status now (a closed period shows the figure fixed when it closed), and the sheet's due-total
+// untrimmed (everyone's due-total added up).
+export interface ClassicPeriodSummary {
+  name: string;
+  dueTotal: string;
+}
+
+@Component({
+  selector: 'app-classic-summary',
+  template: `
+    <section aria-labelledby="classic-summary-heading">
+      <h2 id="classic-summary-heading">Classic summary</h2>
+      <p>Due in total <strong data-testid="classic-due-total">{{ dueTotal() }}</strong></p>
+      <table aria-label="Classic by period">
+        <thead>
+          <tr>
+            <th scope="col">Period</th>
+            <th scope="col">Due</th>
+          </tr>
+        </thead>
+        <tbody>
+          @for (p of periods(); track p.name) {
+            <tr>
+              <th scope="row">{{ p.name }}</th>
+              <td [attr.data-testid]="'classic-period-' + p.name + '-due-total'">{{ p.dueTotal }}</td>
+            </tr>
+          }
+        </tbody>
+      </table>
+    </section>
+  `,
+})
+export class ClassicSummary {
+  readonly periods = input.required<ClassicPeriodSummary[]>();
+  readonly dueTotal = input.required<string>();
+}

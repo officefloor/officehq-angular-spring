@@ -46,6 +46,8 @@ export interface DatedDue {
   cents: number;
   /** Whether the claim counts by the status it had at the end of a day (yyyy-mm-dd). */
   countsAt: (day: string) => boolean;
+  /** Whether the claim counts by its status now (OPEN, SETTLED or PENDING), for the classic summary. */
+  countsNow: boolean;
 }
 
 /** Whether a claim's due falls in an open period: due by a day inside it, counting at the end of its to-date. */
@@ -66,6 +68,13 @@ export function periodOn(periods: readonly Period[], date: string): Period | und
 export function periodDueTotal(p: Period, dues: readonly DatedDue[]): string {
   if ((p.closed || p.softClosed) && p.closedDue !== null) return p.closedDue;
   return money(dues.reduce((sum, d) => sum + (inPeriod(p, d) ? d.cents : 0), 0));
+}
+
+/** A period's classic due-total: a closed period's fixed when it was closed; an open period's, the
+ *  due of the claims whose due-by falls in it, each counted by its status now. */
+export function classicPeriodDueTotal(p: Period, dues: readonly DatedDue[]): string {
+  if ((p.closed || p.softClosed) && p.closedDue !== null) return p.closedDue;
+  return money(dues.reduce((sum, d) => sum + (p.from <= d.date && d.date <= p.to && d.countsNow ? d.cents : 0), 0));
 }
 
 /** A person's due-total for a period: for a closed period, the one fixed when it was closed (0.00

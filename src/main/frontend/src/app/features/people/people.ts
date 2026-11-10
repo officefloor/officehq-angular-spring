@@ -6,12 +6,12 @@ import { AMOUNT, Claim, PersonClaims, cents, counts, dayNumber, deferred, isCorr
 import { AuditView } from '../audit/audit-view';
 import { TreeSearch } from '../search/tree-search';
 import { Holidays } from '../holidays/holidays';
-import { DatedDue, Period, Periods, periodDueTotal, periodOn, personPeriodDueTotal } from '../periods/periods';
+import { DatedDue, Period, Periods, classicPeriodDueTotal, periodDueTotal, periodOn, personPeriodDueTotal } from '../periods/periods';
 import { DatedGrade, DatedValue, Lateness, Rate, Rates, chargedDueCents, dueCents, dueText, graceOn, gradeOn, pctOn, valueOn } from '../rates/rates';
 import { Roles } from '../roles/roles';
 import { Settings } from '../settings/settings';
 import { Header } from '../header/header';
-import { GradeSummary, PeriodSummary, StatusSummary, Summary, VoidReasonSummary } from '../summary/summary';
+import { ClassicPeriodSummary, ClassicSummary, GradeSummary, PeriodSummary, StatusSummary, Summary, VoidReasonSummary } from '../summary/summary';
 import { VoidReasons } from '../void-reasons/void-reasons';
 import { Templates } from '../templates/templates';
 import { Pool, Pools } from '../pools/pools';
@@ -226,7 +226,7 @@ const SUMMARY_STATUSES = ['DRAFT', 'OPEN', 'PENDING', 'SETTLED', 'VOID'] as cons
 
 @Component({
   selector: 'app-people',
-  imports: [AuditView, Header, Holidays, PersonClaims, PersonPlans, Periods, Rates, Roles, Pools, Settings, Summary, Templates, TreeSearch, VoidReasons],
+  imports: [AuditView, Header, Holidays, PersonClaims, PersonPlans, Periods, Rates, Roles, Pools, Settings, Summary, ClassicSummary, Templates, TreeSearch, VoidReasons],
   template: `
     <app-header
       [peopleCount]="people().length"
@@ -548,6 +548,7 @@ const SUMMARY_STATUSES = ['DRAFT', 'OPEN', 'PENDING', 'SETTLED', 'VOID'] as cons
         </table>
       }
       <app-summary [grades]="gradeSummary()" [periods]="periodSummary()" [statuses]="statusSummary()" [voidReasons]="voidReasonSummary()" />
+      <app-classic-summary [periods]="classicPeriodSummary()" [dueTotal]="classicDueTotal()" />
       <table data-testid="people-list">
         <thead>
           <tr>
@@ -1049,7 +1050,7 @@ export class People {
         return status !== null && (isOpen(c) ? countsFor(p, { ...c, status }, today)
           : countsFor(undefined, { ...c, status }, today));
       };
-      out.push({ personId: c.personId, date: c.dueBy, cents: due, countsAt });
+      out.push({ personId: c.personId, date: c.dueBy, cents: due, countsAt, countsNow: countsFor(p, c, today) });
     }
     return out;
   });
@@ -1194,6 +1195,14 @@ export class People {
     });
     return this.periods().map((p) => ({ name: p.name, dueTotal: totals.get(p.id)!, change: change.get(p.id)! }));
   });
+  /** Per period: its classic due-total, each claim counted by its status now (fixed while closed). */
+  protected readonly classicPeriodSummary = computed<ClassicPeriodSummary[]>(() =>
+    this.periods().map((p) => ({ name: p.name, dueTotal: classicPeriodDueTotal(p, this.dues()) })),
+  );
+  /** The sheet's classic due-total: people's due-totals added up (skipping n/a), untrimmed. */
+  protected readonly classicDueTotal = computed(() =>
+    money(this.people().reduce((sum, p) => sum + (this.dueOf(p) ?? 0), 0)),
+  );
   /** A person's due-total for a period, as their row shows it. */
   protected periodDueOf(period: Period, personId: number): string {
     return personPeriodDueTotal(period, personId, this.dues());
