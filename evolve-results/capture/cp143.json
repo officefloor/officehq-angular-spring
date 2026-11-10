@@ -1,0 +1,64 @@
+{
+  "checkpoint": 143,
+  "stack": {
+    "repo": "/home/daniel/officehq-angular-spring",
+    "origin": "git@github.com:officefloor/officehq-angular-spring.git",
+    "name": "officehq-angular-spring",
+    "base_ref": "base-empty",
+    "base_commit": "65cb8233ea38b2dfa6cfd18709e30cd18fdf3250"
+  },
+  "checkpoint_id": "cp143_fiscal-year",
+  "phase": "mid",
+  "type": "additive",
+  "mutates": [],
+  "replaced_tests": [],
+  "request": {
+    "spec": "The sheet has a fiscal year start month (settings, 1 to 12, 1 unless set, not dated;\nSETTING_CHANGED key=fiscal-start-month value=<month>; anything else is refused). A fiscal year is\nnamed FY<yyyy> by the calendar year its first day falls in; show on each period the fiscal year its\nfrom-date falls in. A year entry and a button generate that fiscal year's twelve monthly periods\nexactly as the period generator does; show how many were made.\n",
+    "prompt": "You are implementing ONE change to this application.\n\nFIRST read AGENTS.md \u2014 it states the working rules and how the app is tested, and sends you to\nDESIGN.md for the app's stack and conventions. Follow both.\n\nTHE CHANGE REQUEST:\nThe sheet has a fiscal year start month (settings, 1 to 12, 1 unless set, not dated;\nSETTING_CHANGED key=fiscal-start-month value=<month>; anything else is refused). A fiscal year is\nnamed FY<yyyy> by the calendar year its first day falls in; show on each period the fiscal year its\nfrom-date falls in. A year entry and a button generate that fiscal year's twelve monthly periods\nexactly as the period generator does; show how many were made.\n\nYour work is verified by an automated Playwright UI test already installed under e2e/specs/.\nRead that spec: it declares the exact data-testid anchors, values, test data and any audit\nrecords it expects \u2014 match them. Run `bin/e2e` to build the app, start it, and run the test as\nyou work; iterate until it passes. Change whatever the request needs across the app \u2014 its stored\ndata, its server and its front end. Do NOT edit bin/build, bin/start, bin/stop, bin/e2e,\nAGENTS.md, CLAUDE.md, DESIGN.md, e2e/support/ or the test spec.\n"
+  },
+  "commit_sha": "40732328831fc43f90505e223637774386c03bba",
+  "reset_sha": "",
+  "preagent_sha": "78fc63505a545469fc69569f6a641f574f236d59",
+  "prev_sha": "78fc63505a545469fc69569f6a641f574f236d59",
+  "base_sha": "65cb8233ea38b2dfa6cfd18709e30cd18fdf3250",
+  "agent": {
+    "ok": true,
+    "cost_usd": 1.210074,
+    "input_tokens": 50,
+    "output_tokens": 14808,
+    "cache_read_tokens": 1304330,
+    "cache_creation_tokens": 81606,
+    "num_turns": 25,
+    "duration_ms": 356213,
+    "duration_api_ms": 136335,
+    "model": "claude-opus-5-5",
+    "session_id": "b10238c0-1f2c-44f2-af9d-5583d2dd68ff",
+    "stop_reason": "success",
+    "result_text": "The fiscal year change is in, and `bin/e2e` passes all 4 tests (the main fiscal year test and its three scenario tests).\n\n**Stored data and server**\n- **New setting:** a migration (`V78__sheet_fiscal_start_month.sql`) adds `fiscal_start_month` to the sheet. It defaults to 1, must be 1\u201312, and is not dated. The settings endpoint only accepts a whole month from 1 to 12 and refuses anything else (such as `13` or `x`) before saving anything. A saved value writes `SETTING_CHANGED \u2026 key=fiscal-start-month value=<month>` to the audit file.\n- **Fiscal year on each period:** every period the server returns now carries an `fy` value, worked out from its from-date and the sheet's start month. The helper is `Sheet.fiscalYearOf`.\n- **Generating a fiscal year:** a new `/api/periods/generate-fy` takes a four-digit year. It works out the 12 months starting from the sheet's start month in that year and hands them to the existing monthly generator. Months already taken or overlapping another period are skipped and audited exactly as before.\n\n**Front end**\n- **Settings:** a new `setting-fiscal-start-month` field and a `setting-fiscal-start-month-current` value. A bad month shows `settings-error`. Leaving the field blank keeps the current month.\n- **Periods:** each row has a new `period-fy` column. A new year field (`period-generate-fy-year`) and button (`period-generate-fy`) generate the year.\n- **Moved elements:** the made-count (`period-generated`) and its error (`period-generate-error`) used to sit inside the monthly-generate form. They now sit below both generate forms so both can use them; their test ids are unchanged.\n\n**One limitation:** the fiscal year is worked out on the server. If someone changes the start month, the periods already on screen keep their old fiscal year until the sheet is re-loaded. The test re-loads after changing it, so it isn't affected.",
+    "error": "",
+    "attempts": [
+      {
+        "ok": true,
+        "limit_reached": false,
+        "retryable": false,
+        "timed_out": false,
+        "cost_usd": 1.210074,
+        "num_turns": 25,
+        "duration_ms": 356213,
+        "duration_api_ms": 136335,
+        "error": ""
+      }
+    ]
+  },
+  "agent_stream_file": "cp143.agent.jsonl",
+  "agent_diff_file": "cp143.agent.diff",
+  "build_log_file": null,
+  "tests": {
+    "gated": false,
+    "queued": true
+  },
+  "probe": null,
+  "pinned_touched": [],
+  "acceptance_touched": [],
+  "impact_gate": null
+}
