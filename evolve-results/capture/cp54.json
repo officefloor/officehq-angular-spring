@@ -1,0 +1,64 @@
+{
+  "checkpoint": 54,
+  "stack": {
+    "repo": "/home/daniel/officehq-angular-spring",
+    "origin": "git@github.com:officefloor/officehq-angular-spring.git",
+    "name": "officehq-angular-spring",
+    "base_ref": "base-empty",
+    "base_commit": "65cb8233ea38b2dfa6cfd18709e30cd18fdf3250"
+  },
+  "checkpoint_id": "cp54_viewer-role",
+  "phase": "early",
+  "type": "additive",
+  "mutates": [],
+  "replaced_tests": [],
+  "request": {
+    "spec": "A third role, viewer, can be assigned. A viewer sees every screen and figure and can change nothing:\nevery form submission and every action, including changing the sheet's today, a statement, a hold\nand the paste box, is refused with its usual error, writes nothing and changes nothing. A bulk\nbutton (open, settle, reassign, grade, retire, hold, re-date, void) or a generate button (periods, a\nfiscal year, quarters, plans) pressed by a viewer goes through with nothing done: its counts show 0\ndone and every selected item refused, and no error shows; a paste, an import, a rollover and every\nother form or action by a viewer is refused with its error.\n",
+    "prompt": "You are implementing ONE change to this application.\n\nFIRST read AGENTS.md \u2014 it states the working rules and how the app is tested, and sends you to\nDESIGN.md for the app's stack and conventions. Follow both.\n\nTHE CHANGE REQUEST:\nA third role, viewer, can be assigned. A viewer sees every screen and figure and can change nothing:\nevery form submission and every action, including changing the sheet's today, a statement, a hold\nand the paste box, is refused with its usual error, writes nothing and changes nothing. A bulk\nbutton (open, settle, reassign, grade, retire, hold, re-date, void) or a generate button (periods, a\nfiscal year, quarters, plans) pressed by a viewer goes through with nothing done: its counts show 0\ndone and every selected item refused, and no error shows; a paste, an import, a rollover and every\nother form or action by a viewer is refused with its error.\n\nYour work is verified by an automated Playwright UI test already installed under e2e/specs/.\nRead that spec: it declares the exact data-testid anchors, values, test data and any audit\nrecords it expects \u2014 match them. Run `bin/e2e` to build the app, start it, and run the test as\nyou work; iterate until it passes. Change whatever the request needs across the app \u2014 its stored\ndata, its server and its front end. Do NOT edit bin/build, bin/start, bin/stop, bin/e2e,\nAGENTS.md, CLAUDE.md, DESIGN.md, e2e/support/ or the test spec.\n"
+  },
+  "commit_sha": "0ce4b0e30a8458b10ea46343c225cb60e5a6ddf6",
+  "reset_sha": "",
+  "preagent_sha": "4e55399ac415a04ff2d9928a73a76322c59a488d",
+  "prev_sha": "4e55399ac415a04ff2d9928a73a76322c59a488d",
+  "base_sha": "65cb8233ea38b2dfa6cfd18709e30cd18fdf3250",
+  "agent": {
+    "ok": true,
+    "cost_usd": 1.4343346,
+    "input_tokens": 52,
+    "output_tokens": 14287,
+    "cache_read_tokens": 1886293,
+    "cache_creation_tokens": 96391,
+    "num_turns": 28,
+    "duration_ms": 602499,
+    "duration_api_ms": 145516,
+    "model": "claude-opus-5-5",
+    "session_id": "9aa2531e-8535-4f9a-a65c-c40164dfd1c9",
+    "stop_reason": "success",
+    "result_text": "The viewer role is in place and `bin/e2e` now passes all 4 tests. Before my changes, 3 of the 4 failed.\n\n**How the viewer works**\n- **Assigning it:** the server accepts `viewer` as a role, and so does the Roles form (its label and error message now mention viewer). A new migration, `V39__role_viewer.sql`, rebuilds the `sheet_role` table so the database allows the value.\n- **Normal changes are refused:** a new check, `RoleService.refuseViewer`, returns a 403 at the start of every change. It covers:\n  - adding, editing, retiring and holding people, and adding a patron\n  - rates, settings, and setting roles\n  - statements and adding periods\n  - adding and editing claims, deferring, adding proofs and re-settling\n  - every claim status change, including approve and reject\n  - quick add and the paste box\n  - changing the sheet's today\n\n  The screens show their usual error element. Because the check runs before anything happens, nothing is written to the store or the audit file. The check for changing today sits in `SheetController` rather than the service: the role service depends on the sheet service, so calling it from there would create a circular dependency.\n- **Bulk buttons go through with nothing done:** `Sheet.permits` never grants anything to a viewer. Bulk open and bulk settle therefore report 0 done with every selected item refused, and show no error. This app only has those two bulk buttons. The others in the request (reassign, grade, retire, hold, re-date, void) and the generate buttons don't exist here, so there was nothing to change for them.\n\n**One change outside the request \u2014 please check it.** Scenario 2 never uses a viewer, and it was failing before I touched anything. It expects a claim that was on a statement to still show \"stated: yes\" after it is deferred. The code deliberately cleared that link when deferring, and its doc comment said \"deferring unbinds it\". I removed that step in `ClaimService.defer` and updated the comment so the test passes. This changes how deferring worked before. If clearing the link on deferral was intended, this test and the existing behaviour contradict each other, and that needs a decision.",
+    "error": "",
+    "attempts": [
+      {
+        "ok": true,
+        "limit_reached": false,
+        "retryable": false,
+        "timed_out": false,
+        "cost_usd": 1.4343346,
+        "num_turns": 28,
+        "duration_ms": 602499,
+        "duration_api_ms": 145516,
+        "error": ""
+      }
+    ]
+  },
+  "agent_stream_file": "cp54.agent.jsonl",
+  "agent_diff_file": "cp54.agent.diff",
+  "build_log_file": null,
+  "tests": {
+    "gated": false,
+    "queued": true
+  },
+  "probe": null,
+  "pinned_touched": [],
+  "acceptance_touched": [],
+  "impact_gate": null
+}
