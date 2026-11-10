@@ -1,0 +1,131 @@
+diff --git a/src/main/frontend/src/app/features/claims/claims.ts b/src/main/frontend/src/app/features/claims/claims.ts
+index a724e558c..0f5b18a2a 100644
+--- a/src/main/frontend/src/app/features/claims/claims.ts
++++ b/src/main/frontend/src/app/features/claims/claims.ts
+@@ -61,7 +61,7 @@ import { FigurePipe } from '../../core/figure';
+ // bears none, whatever its overdue state, and shows waived yes (refused for anyone else, a claim in
+ // any other status, or one already waived).
+ // An OPEN or PENDING claim can be held and released with its hold toggle: while held it counts in
+-// no live total, as a held person's open claims do, unless a statement binds it, and shows held yes
++// claimed but in no live due figure, as a held person's open claims do, unless a statement binds it, and shows held yes
+ // (refused for a claim in any other status).
+ // Any claim can be commented with its comment text and button (an empty comment is refused with an
+ // error on the claim): its comments show oldest first as <user> on <date>: <text>, each kept with
+@@ -153,7 +153,7 @@ export interface Claim {
+   reviewOn: string | null;
+   /** Whether a steward waived the claim's late charge: from then on it bears none. */
+   waived: boolean;
+-  /** Whether the claim is held: while held it counts in no live total unless a statement binds it. */
++  /** Whether the claim is held: while held it counts in claimed but in no live due figure unless a statement binds it. */
+   held: boolean;
+ }
+ 
+diff --git a/src/main/frontend/src/app/features/people/people.ts b/src/main/frontend/src/app/features/people/people.ts
+index 2851bb798..73b0bb560 100644
+--- a/src/main/frontend/src/app/features/people/people.ts
++++ b/src/main/frontend/src/app/features/people/people.ts
+@@ -68,7 +68,7 @@ import { FigurePipe } from '../../core/figure';
+ // retirement stays on the row as from-date to the day unretired; no claim can be dated after the one and before the other.
+ // A person can be put on hold from a date (the sheet's today when left blank) to an optional to-date,
+ // and may have several holds over time; a hold ends on its to-date. Their OPEN and PENDING claims dated
+-// within a hold count in no total (their own, the sheet's or a period's); their other claims still do,
++// within a hold count in claimed but in no due figure (their own, the sheet's or a period's); their other claims count in all,
+ // and so does a claim bound by a statement, whatever its date. A period counts a claim open at its
+ // end but since settled or voided whatever its holds. "On hold" shows whether they have any hold.
+ // The quick-add bar adds a DRAFT claim of an amount, dated the sheet's today with an empty note, for
+@@ -197,6 +197,15 @@ function countsFor(p: Person | undefined, c: Claim, today: string | null): boole
+     && (c.stated || !(isOpen(c) && (c.held || (p !== undefined && (heldOn(p, c.date) || retiredOn(p, today))))));
+ }
+ 
++/**
++ * Whether a claim of the person counts toward claimed: as {@link countsFor}, but a hold (the person's
++ * or the claim's) does not take it out; only its due figures leave the totals while held.
++ */
++function claimedFor(p: Person | undefined, c: Claim, today: string | null): boolean {
++  return counts(c) && !deferred(c, today)
++    && (c.stated || !(isOpen(c) && p !== undefined && retiredOn(p, today)));
++}
++
+ /** One of a person's patrons. */
+ interface PatronLink {
+   personId: number;
+@@ -1526,9 +1535,9 @@ export class People {
+     return money(this.claimsOf(personId).reduce((sum, c) => sum + this.countedCents(p, c), 0));
+   }
+ 
+-  /** A claim's amount in whole cents when it counts toward claimed, else nothing: a correction never does. */
++  /** A claim's amount in whole cents when it counts toward claimed, else nothing: a correction never does; a hold does not take it out. */
+   private countedCents(p: Person | undefined, c: Claim): number {
+-    return countsFor(p, c, this.session.today()) && !isCorrection(c) ? cents(c.amount) : 0;
++    return claimedFor(p, c, this.session.today()) && !isCorrection(c) ? cents(c.amount) : 0;
+   }
+ 
+   /** What the person owes, in whole cents: the sum of their figures held to the sheet's cap. */
+diff --git a/src/main/java/net/officefloor/hq/app/claim/Claim.java b/src/main/java/net/officefloor/hq/app/claim/Claim.java
+index e12545142..e203e09fd 100644
+--- a/src/main/java/net/officefloor/hq/app/claim/Claim.java
++++ b/src/main/java/net/officefloor/hq/app/claim/Claim.java
+@@ -160,7 +160,7 @@ public class Claim {
+     @Column(name = "waived", nullable = false)
+     private boolean waived;
+ 
+-    /** Whether the claim is held: while held an open claim counts in no live total unless a statement binds it. */
++    /** Whether the claim is held: while held an open claim counts in claimed but in no live due figure unless a statement binds it. */
+     @Column(name = "held", nullable = false)
+     private boolean held;
+ 
+diff --git a/src/main/java/net/officefloor/hq/app/person/Person.java b/src/main/java/net/officefloor/hq/app/person/Person.java
+index 12413aa21..6d6210cc9 100644
+--- a/src/main/java/net/officefloor/hq/app/person/Person.java
++++ b/src/main/java/net/officefloor/hq/app/person/Person.java
+@@ -394,6 +394,16 @@ public class Person {
+                 || !(status.isOpen() && claim.getStatus().isOpen() && (claim.isHeld() || heldOn(claim.getDate()) || retiredOn(today))));
+     }
+ 
++    /**
++     * Whether a claim of this person counts toward claimed: as {@link #counts(Claim, LocalDate)}, but
++     * a hold (the person's or the claim's) does not take it out; only the due figures leave while held.
++     */
++    public boolean countsClaimed(Claim claim, LocalDate today) {
++        ClaimStatus status = claim.getStatus();
++        return status.counts() && !claim.isDeferredOn(status, today)
++                && (claim.isStated() || !(status.isOpen() && retiredOn(today)));
++    }
++
+     /**
+      * Whether a claim of this person counted at the end of a day, as the person stood then: had it
+      * the given status then, and was it bound by a statement then ({@code stated}). The day stands in
+diff --git a/src/main/java/net/officefloor/hq/app/rollup/RollupService.java b/src/main/java/net/officefloor/hq/app/rollup/RollupService.java
+index f3e3eeacc..eb04d96a8 100644
+--- a/src/main/java/net/officefloor/hq/app/rollup/RollupService.java
++++ b/src/main/java/net/officefloor/hq/app/rollup/RollupService.java
+@@ -37,8 +37,8 @@ import org.springframework.stereotype.Service;
+  * (the figures of their overdue claims that count, not capped), and the sheet's totals of each. A change takes a {@link #snapshot} before it alters anything
+  * and calls {@link #recordChanges} after its own audit lines, which appends one ROLLUP line per
+  * person whose figures moved (people in the order they were added; a new person counts as moved),
+- * then a TOTALS line when any of the sheet's totals moved. A held person's OPEN claims count in none of
+- * these (nor their PENDING ones), nor in a period's due-total; their SETTLED claims still do. So too a person whose
++ * then a TOTALS line when any of the sheet's totals moved. A held person's OPEN claims (and PENDING ones), and a
++ * held claim, count in claimed but in none of the due figures, nor in a period's due-total; their SETTLED claims count in all. So too a person whose
+  * retirement date the sheet's today has reached. An overdue claim's figure has
+  * its late charge added on top, and a live due is then never below the floor in force on its claim's date. A person's
+  * due-total is at most the cap in force on the sheet's today, when there is one. With an alert threshold
+@@ -118,12 +118,16 @@ public class RollupService {
+             BigDecimal overdue = zero();
+             boolean anyFigure = false;
+             for (Claim claim : sheetClaims) {
+-                if (!claim.getPersonId().equals(person.getId()) || !person.counts(claim, today)) {
++                if (!claim.getPersonId().equals(person.getId())) {
+                     continue;
+                 }
+-                if (!claim.isCorrection()) {
++                // a hold leaves a claim in claimed; only its due figures leave the totals
++                if (person.countsClaimed(claim, today) && !claim.isCorrection()) {
+                     claimed = claimed.add(claim.getAmount());
+                 }
++                if (!person.counts(claim, today)) {
++                    continue;
++                }
+                 BigDecimal figure = figure(sheet, sheetRates, sheetClaims, person, claim);
+                 if (figure != null) {
+                     anyFigure = true;
