@@ -12,12 +12,17 @@ import jakarta.persistence.JoinColumn;
 import jakarta.persistence.Table;
 import java.math.BigDecimal;
 import java.time.LocalDate;
+import java.time.YearMonth;
+import java.util.ArrayList;
 import java.util.HashSet;
+import java.util.List;
 import java.util.Set;
 
 /**
- * A person's plan: an amount, a start date, every so many days and an end date. Its plan dates are
- * the start, then every that many days, up to the end; it keeps each date it has made a claim for.
+ * A person's plan: an amount, a start date, every so many days or a day of the month, and an end date.
+ * Its plan dates are the start, then every that many days, up to the end; or, monthly, that day in
+ * every month from the start's month (a day beyond the month's length on its last day), dates before
+ * the start left out. It keeps each date it has made a claim for.
  */
 @Entity
 @Table(name = "plan")
@@ -39,8 +44,11 @@ public class Plan {
     @Column(name = "start_date", nullable = false)
     private LocalDate start;
 
-    @Column(name = "every_days", nullable = false)
-    private int every;
+    @Column(name = "every_days")
+    private Integer every;
+
+    @Column(name = "day_of_month")
+    private Integer day;
 
     @Column(name = "end_date", nullable = false)
     private LocalDate end;
@@ -53,12 +61,14 @@ public class Plan {
     protected Plan() {
     }
 
-    public Plan(String sheetId, long personId, BigDecimal amount, LocalDate start, int every, LocalDate end) {
+    public Plan(String sheetId, long personId, BigDecimal amount, LocalDate start, Integer every,
+            Integer day, LocalDate end) {
         this.sheetId = sheetId;
         this.personId = personId;
         this.amount = amount;
         this.start = start;
         this.every = every;
+        this.day = day;
         this.end = end;
     }
 
@@ -82,8 +92,32 @@ public class Plan {
         return start;
     }
 
-    public int getEvery() {
+    /** Every how many days, or null for a monthly plan. */
+    public Integer getEvery() {
         return every;
+    }
+
+    /** The day of the month of a monthly plan, or null. */
+    public Integer getDay() {
+        return day;
+    }
+
+    /** The plan's dates from its start up to and including the last, in order. */
+    public List<LocalDate> datesUpTo(LocalDate last) {
+        List<LocalDate> dates = new ArrayList<>();
+        if (day == null) {
+            for (LocalDate d = start; !d.isAfter(last); d = d.plusDays(every)) {
+                dates.add(d);
+            }
+            return dates;
+        }
+        for (YearMonth month = YearMonth.from(start); !month.atDay(1).isAfter(last); month = month.plusMonths(1)) {
+            LocalDate d = month.atDay(Math.min(day, month.lengthOfMonth()));
+            if (!d.isBefore(start) && !d.isAfter(last)) {
+                dates.add(d);
+            }
+        }
+        return dates;
     }
 
     public LocalDate getEnd() {

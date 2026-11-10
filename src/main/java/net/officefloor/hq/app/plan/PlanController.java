@@ -23,17 +23,21 @@ public class PlanController {
     public record ListPlansRequest(@NotBlank @Size(max = 100) String sheet) {
     }
 
-    /** A plan's amount is one the claim form takes without a correction; every is a whole number of days. */
+    /**
+     * A plan's amount is one the claim form takes without a correction; every is a whole number of
+     * days, or day a day of the month; exactly one of them is given.
+     */
     public record AddPlanRequest(@NotBlank @Size(max = 100) String sheet, @NotBlank @Size(max = 100) String user,
             @NotNull Long personId, @NotNull @Pattern(regexp = ClaimController.AMOUNT) String amount,
-            @NotNull LocalDate start, @NotNull @Pattern(regexp = "\\d{1,6}") String every, @NotNull LocalDate end) {
+            @NotNull LocalDate start, @Pattern(regexp = "\\d{1,6}") String every,
+            @Pattern(regexp = "\\d{1,6}") String day, @NotNull LocalDate end) {
     }
 
     public record GenerateRequest(@NotBlank @Size(max = 100) String sheet, @NotBlank @Size(max = 100) String user) {
     }
 
-    public record PlanResponse(long id, long personId, String amount, LocalDate start, int every, LocalDate end,
-            int generated) {
+    public record PlanResponse(long id, long personId, String amount, LocalDate start, Integer every, Integer day,
+            LocalDate end, int generated) {
     }
 
     /** What a generate did: how many claims were made, those claims in order, and the plans after it. */
@@ -43,7 +47,11 @@ public class PlanController {
     private static PlanResponse response(Plan plan) {
         return new PlanResponse(plan.getId(), plan.getPersonId(),
                 plan.getAmount().setScale(2, RoundingMode.UNNECESSARY).toPlainString(), plan.getStart(),
-                plan.getEvery(), plan.getEnd(), plan.getGenerated());
+                plan.getEvery(), plan.getDay(), plan.getEnd(), plan.getGenerated());
+    }
+
+    private static Integer number(String digits) {
+        return digits == null || digits.isEmpty() ? null : Integer.valueOf(digits);
     }
 
     private final PlanService service;
@@ -60,7 +68,8 @@ public class PlanController {
     @PostMapping("/add")
     public PlanResponse add(@Valid @RequestBody AddPlanRequest req) {
         return response(service.add(req.sheet().trim(), req.user().trim(), req.personId(),
-                ClaimController.amount(req.amount()), req.start(), Integer.parseInt(req.every()), req.end()));
+                ClaimController.amount(req.amount()), req.start(), number(req.every()), number(req.day()),
+                req.end()));
     }
 
     @PostMapping("/generate")

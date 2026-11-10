@@ -9,13 +9,17 @@ export interface Plan {
   personId: number;
   amount: string;
   start: string;
-  every: number;
+  /** Every how many days, or null for a monthly plan. */
+  every: number | null;
+  /** The day of the month of a monthly plan, or null. */
+  day: number | null;
   end: string;
   generated: number;
 }
 
-// A person's plans and the form on their row that adds one: an amount, a start date, every N days
-// (a whole number, at least 1) and an end date not before the start. The sheet's generate button
+// A person's plans and the form on their row that adds one: an amount, a start date, either every N
+// days (a whole number, at least 1) or monthly on a day of the month (1 to 31), and an end date not
+// before the start. The sheet's generate button
 // (on the people screen) makes each plan's DRAFT claims; each plan shows how many it has made.
 @Component({
   selector: 'app-person-plans',
@@ -24,6 +28,7 @@ export interface Plan {
       <thead>
         <tr>
           <th scope="col">Amount</th><th scope="col">Start</th><th scope="col">Every (days)</th>
+          <th scope="col">Day of month</th>
           <th scope="col">End</th><th scope="col">Made</th>
         </tr>
       </thead>
@@ -33,6 +38,7 @@ export interface Plan {
             <td data-testid="plan-amount">{{ pl.amount }}</td>
             <td data-testid="plan-start">{{ pl.start }}</td>
             <td data-testid="plan-every">{{ pl.every }}</td>
+            <td data-testid="plan-day">{{ pl.day }}</td>
             <td data-testid="plan-end">{{ pl.end }}</td>
             <td data-testid="plan-generated">{{ pl.generated }}</td>
           </tr>
@@ -64,6 +70,14 @@ export interface Plan {
         [value]="everyInput()"
         (input)="everyInput.set($any($event.target).value); error.set(null)"
       />
+      <label [for]="'plan-form-day-' + personId()">Or monthly on day</label>
+      <input
+        [id]="'plan-form-day-' + personId()"
+        data-testid="plan-form-day"
+        inputmode="numeric"
+        [value]="dayInput()"
+        (input)="dayInput.set($any($event.target).value); error.set(null)"
+      />
       <label [for]="'plan-form-end-' + personId()">End</label>
       <input
         [id]="'plan-form-end-' + personId()"
@@ -91,6 +105,7 @@ export class PersonPlans {
   protected readonly amountInput = signal('');
   protected readonly startInput = signal('');
   protected readonly everyInput = signal('');
+  protected readonly dayInput = signal('');
   protected readonly endInput = signal('');
   protected readonly error = signal<string | null>(null);
   /** Whether a submit is waiting for its answer: a second submit meanwhile is ignored. */
@@ -103,6 +118,7 @@ export class PersonPlans {
       this.amountInput.set('');
       this.startInput.set('');
       this.everyInput.set('');
+      this.dayInput.set('');
       this.endInput.set('');
       this.error.set(null);
     });
@@ -115,6 +131,7 @@ export class PersonPlans {
     const amount = this.amountInput().trim();
     const start = this.startInput().trim();
     const every = this.everyInput().trim();
+    const day = this.dayInput().trim();
     const end = this.endInput().trim();
     if (!AMOUNT.test(amount)) {
       this.error.set('Enter an amount of 0.00 or more with up to two decimals.');
@@ -124,8 +141,16 @@ export class PersonPlans {
       this.error.set('Enter a start date and an end date.');
       return;
     }
-    if (!/^\d{1,6}$/.test(every) || Number(every) < 1) {
+    if (!every === !day) {
+      this.error.set('Enter either every how many days or a day of the month.');
+      return;
+    }
+    if (every && (!/^\d{1,6}$/.test(every) || Number(every) < 1)) {
       this.error.set('Enter every how many days as a whole number, at least 1.');
+      return;
+    }
+    if (day && (!/^\d{1,2}$/.test(day) || Number(day) < 1 || Number(day) > 31)) {
+      this.error.set('Enter the day of the month as a whole number from 1 to 31.');
       return;
     }
     if (end < start) {
@@ -142,7 +167,8 @@ export class PersonPlans {
           personId: this.personId(),
           amount,
           start,
-          every,
+          every: every || null,
+          day: day || null,
           end,
         }),
       );
@@ -151,6 +177,7 @@ export class PersonPlans {
       this.amountInput.set('');
       this.startInput.set('');
       this.everyInput.set('');
+      this.dayInput.set('');
       this.endInput.set('');
     } catch (e) {
       if (this.session.sheet() !== sheet) return;

@@ -19,9 +19,10 @@ import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.server.ResponseStatusException;
 
 /**
- * The people's plans: an amount, a start date, every N days (N at least 1) and an end date not
- * before the start, added from the person's row. Generating goes through every plan on the sheet
- * in the order they were added and, for each plan date (the start, then every N days) up to the
+ * The people's plans: an amount, a start date, every N days (N at least 1) or monthly on a day of
+ * the month (1 to 31), and an end date not before the start, added from the person's row. Generating goes through every plan on the sheet
+ * in the order they were added and, for each plan date (the start, then every N days; or that day in every month from the start's month, on the month's
+ * last day when it is shorter, dates before the start left out) up to the
  * end and the sheet's today that the plan has made no claim for yet, adds a DRAFT claim with the
  * plan's amount, dated that day with an empty note, by the claim form's rules: a date the form
  * refuses is skipped, and tried again on the next generate.
@@ -53,24 +54,34 @@ public class PlanService {
         return plans.findBySheetIdOrderByIdAsc(sheetId);
     }
 
-    /** Add a plan to the person; an end before the start, or an interval below 1, is refused (400). */
+    /**
+     * Add a plan to the person, every N days or monthly on a day; an end before the start, an interval
+     * below 1, a day outside 1 to 31, or both or neither of every and day, is refused (400).
+     */
     @Transactional
-    public Plan add(String sheetId, String user, long personId, BigDecimal amount, LocalDate start, int every,
-            LocalDate end) {
+    public Plan add(String sheetId, String user, long personId, BigDecimal amount, LocalDate start, Integer every,
+            Integer day, LocalDate end) {
         roles.refuseViewer(sheetId, user);
         sheets.load(sheetId, user);
         Person person = people.findByIdAndSheetId(personId, sheetId)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "No such person on this sheet."));
-        if (every < 1) {
+        if ((every == null) == (day == null)) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Give either every so many days or a day of the month.");
+        }
+        if (day != null && (day < 1 || day > 31)) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "The day of the month must be 1 to 31.");
+        }
+        if (every != null && every < 1) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Every must be a whole number of days, at least 1.");
         }
         if (end.isBefore(start)) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "A plan's end cannot be before its start.");
         }
-        Plan saved = plans.saveAndFlush(new Plan(sheetId, personId, amount, start, every, end));
+        Plan saved = plans.saveAndFlush(new Plan(sheetId, personId, amount, start, every, day, end));
         audit.recordOnCommit("PLAN_ADDED sheet=" + sheetId + " by=" + user + " name=" + person.getName() + " amount="
                 + saved.getAmount().setScale(2, RoundingMode.UNNECESSARY).toPlainString() + " start="
-                + saved.getStart() + " every=" + saved.getEvery() + " end=" + saved.getEnd());
+                + saved.getStart() + (saved.getDay() != null ? " day=" + saved.getDay() : " every=" + saved.getEvery())
+                + " end=" + saved.getEnd());
         return saved;
     }
 
@@ -88,7 +99,7 @@ public class PlanService {
                 continue;
             }
             LocalDate last = plan.getEnd().isBefore(today) ? plan.getEnd() : today;
-            for (LocalDate day = plan.getStart(); !day.isAfter(last); day = day.plusDays(plan.getEvery())) {
+            for (LocalDate day : plan.datesUpTo(last)) {
                 if (plan.hasMade(day) || !claims.takesDate(sheetId, plan.getPersonId(), day)) {
                     continue;
                 }
