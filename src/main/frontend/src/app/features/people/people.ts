@@ -68,7 +68,7 @@ import { FigurePipe } from '../../core/figure';
 // retirement stays on the row as from-date to the day unretired; no claim can be dated after the one and before the other.
 // A person can be put on hold from a date (the sheet's today when left blank) to an optional to-date,
 // and may have several holds over time; a hold ends on its to-date. Their OPEN and PENDING claims dated
-// within a hold count in no total (their own, the sheet's or a period's); their other claims still do,
+// within a hold count in claimed but in no due figure (their own, the sheet's or a period's); their other claims count in all,
 // and so does a claim bound by a statement, whatever its date. A period counts a claim open at its
 // end but since settled or voided whatever its holds. "On hold" shows whether they have any hold.
 // The quick-add bar adds a DRAFT claim of an amount, dated the sheet's today with an empty note, for
@@ -195,6 +195,15 @@ function retiredOn(p: Person, date: string | null): boolean {
 function countsFor(p: Person | undefined, c: Claim, today: string | null): boolean {
   return counts(c) && !deferred(c, today)
     && (c.stated || !(isOpen(c) && (c.held || (p !== undefined && (heldOn(p, c.date) || retiredOn(p, today))))));
+}
+
+/**
+ * Whether a claim of the person counts toward claimed: as {@link countsFor}, but a hold (the person's
+ * or the claim's) does not take it out; only its due figures leave the totals while held.
+ */
+function claimedFor(p: Person | undefined, c: Claim, today: string | null): boolean {
+  return counts(c) && !deferred(c, today)
+    && (c.stated || !(isOpen(c) && p !== undefined && retiredOn(p, today)));
 }
 
 /** One of a person's patrons. */
@@ -1526,9 +1535,9 @@ export class People {
     return money(this.claimsOf(personId).reduce((sum, c) => sum + this.countedCents(p, c), 0));
   }
 
-  /** A claim's amount in whole cents when it counts toward claimed, else nothing: a correction never does. */
+  /** A claim's amount in whole cents when it counts toward claimed, else nothing: a correction never does; a hold does not take it out. */
   private countedCents(p: Person | undefined, c: Claim): number {
-    return countsFor(p, c, this.session.today()) && !isCorrection(c) ? cents(c.amount) : 0;
+    return claimedFor(p, c, this.session.today()) && !isCorrection(c) ? cents(c.amount) : 0;
   }
 
   /** What the person owes, in whole cents: the sum of their figures held to the sheet's cap. */

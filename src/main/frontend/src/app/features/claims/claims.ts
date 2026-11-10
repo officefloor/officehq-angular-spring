@@ -61,7 +61,7 @@ import { FigurePipe } from '../../core/figure';
 // bears none, whatever its overdue state, and shows waived yes (refused for anyone else, a claim in
 // any other status, or one already waived).
 // An OPEN or PENDING claim can be held and released with its hold toggle: while held it counts in
-// no live total, as a held person's open claims do, unless a statement binds it, and shows held yes
+// claimed but in no live due figure, as a held person's open claims do, unless a statement binds it, and shows held yes
 // (refused for a claim in any other status).
 // Any claim can be commented with its comment text and button (an empty comment is refused with an
 // error on the claim): its comments show oldest first as <user> on <date>: <text>, each kept with
@@ -153,7 +153,7 @@ export interface Claim {
   reviewOn: string | null;
   /** Whether a steward waived the claim's late charge: from then on it bears none. */
   waived: boolean;
-  /** Whether the claim is held: while held it counts in no live total unless a statement binds it. */
+  /** Whether the claim is held: while held it counts in claimed but in no live due figure unless a statement binds it. */
   held: boolean;
 }
 

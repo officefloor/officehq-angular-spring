@@ -395,6 +395,16 @@ public class Person {
     }
 
     /**
+     * Whether a claim of this person counts toward claimed: as {@link #counts(Claim, LocalDate)}, but
+     * a hold (the person's or the claim's) does not take it out; only the due figures leave while held.
+     */
+    public boolean countsClaimed(Claim claim, LocalDate today) {
+        ClaimStatus status = claim.getStatus();
+        return status.counts() && !claim.isDeferredOn(status, today)
+                && (claim.isStated() || !(status.isOpen() && retiredOn(today)));
+    }
+
+    /**
      * Whether a claim of this person counted at the end of a day, as the person stood then: had it
      * the given status then, and was it bound by a statement then ({@code stated}). The day stands in
      * for the sheet's today, and only holds and a retirement recorded while the sheet's today was on

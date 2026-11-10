@@ -160,7 +160,7 @@ public class Claim {
     @Column(name = "waived", nullable = false)
     private boolean waived;
 
-    /** Whether the claim is held: while held an open claim counts in no live total unless a statement binds it. */
+    /** Whether the claim is held: while held an open claim counts in claimed but in no live due figure unless a statement binds it. */
     @Column(name = "held", nullable = false)
     private boolean held;
 

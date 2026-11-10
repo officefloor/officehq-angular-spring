@@ -37,8 +37,8 @@ import org.springframework.stereotype.Service;
  * (the figures of their overdue claims that count, not capped), and the sheet's totals of each. A change takes a {@link #snapshot} before it alters anything
  * and calls {@link #recordChanges} after its own audit lines, which appends one ROLLUP line per
  * person whose figures moved (people in the order they were added; a new person counts as moved),
- * then a TOTALS line when any of the sheet's totals moved. A held person's OPEN claims count in none of
- * these (nor their PENDING ones), nor in a period's due-total; their SETTLED claims still do. So too a person whose
+ * then a TOTALS line when any of the sheet's totals moved. A held person's OPEN claims (and PENDING ones), and a
+ * held claim, count in claimed but in none of the due figures, nor in a period's due-total; their SETTLED claims count in all. So too a person whose
  * retirement date the sheet's today has reached. An overdue claim's figure has
  * its late charge added on top, and a live due is then never below the floor in force on its claim's date. A person's
  * due-total is at most the cap in force on the sheet's today, when there is one. With an alert threshold
@@ -118,11 +118,15 @@ public class RollupService {
             BigDecimal overdue = zero();
             boolean anyFigure = false;
             for (Claim claim : sheetClaims) {
-                if (!claim.getPersonId().equals(person.getId()) || !person.counts(claim, today)) {
+                if (!claim.getPersonId().equals(person.getId())) {
                     continue;
                 }
-                if (!claim.isCorrection()) {
+                // a hold leaves a claim in claimed; only its due figures leave the totals
+                if (person.countsClaimed(claim, today) && !claim.isCorrection()) {
                     claimed = claimed.add(claim.getAmount());
+                }
+                if (!person.counts(claim, today)) {
+                    continue;
                 }
                 BigDecimal figure = figure(sheet, sheetRates, sheetClaims, person, claim);
                 if (figure != null) {
