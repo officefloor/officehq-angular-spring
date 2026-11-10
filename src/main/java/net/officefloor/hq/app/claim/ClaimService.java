@@ -275,16 +275,7 @@ public class ClaimService {
      */
     @Transactional
     public BulkOpened bulkOpen(String sheetId, String user, Collection<Long> ids) {
-        Map<Long, Integer> personOrder = new HashMap<>();
-        List<Person> listed = people.findBySheetIdOrderByIdAsc(sheetId);
-        for (int i = 0; i < listed.size(); i++) {
-            personOrder.put(listed.get(i).getId(), i);
-        }
-        List<Claim> selected = ids.stream().distinct()
-                .flatMap(id -> claims.findByIdAndSheetId(id, sheetId).stream())
-                .sorted(Comparator.<Claim>comparingInt(c -> personOrder.getOrDefault(c.getPersonId(), Integer.MAX_VALUE))
-                        .thenComparing(Claim::getListed, Comparator.reverseOrder()))
-                .toList();
+        List<Claim> selected = inListOrder(sheetId, ids);
         int refused = (int) ids.stream().distinct().count() - selected.size();
         List<Claim> opened = new ArrayList<>();
         for (Claim claim : selected) {
@@ -295,6 +286,46 @@ public class ClaimService {
             opened.add(changeStatus(sheetId, user, claim.getId(), ClaimStatus.OPEN));
         }
         return new BulkOpened(opened.size(), refused, opened);
+    }
+
+    /** What a bulk settle did: how many claims were settled (or made PENDING) and how many refused, and the claims changed. */
+    public record BulkSettled(int settled, int refused, List<Claim> claims) {
+    }
+
+    /**
+     * Settle the given claims together, in list order (the order people were added, newest claim
+     * first within a person), each by exactly the rules of settling one claim. A claim a clerk's
+     * settle makes PENDING counts as settled; a claim that cannot be settled is refused and left
+     * as it is.
+     */
+    @Transactional
+    public BulkSettled bulkSettle(String sheetId, String user, Collection<Long> ids) {
+        List<Claim> selected = inListOrder(sheetId, ids);
+        int refused = (int) ids.stream().distinct().count() - selected.size();
+        List<Claim> settled = new ArrayList<>();
+        for (Claim claim : selected) {
+            try {
+                settled.add(changeStatus(sheetId, user, claim.getId(), ClaimStatus.SETTLED));
+            } catch (ResponseStatusException refusedOne) {
+                // every refusal is checked before the claim is changed, so it is left as it is
+                refused++;
+            }
+        }
+        return new BulkSettled(settled.size(), refused, settled);
+    }
+
+    /** The given claims on the sheet in list order: people as added, newest claim first within a person. */
+    private List<Claim> inListOrder(String sheetId, Collection<Long> ids) {
+        Map<Long, Integer> personOrder = new HashMap<>();
+        List<Person> listed = people.findBySheetIdOrderByIdAsc(sheetId);
+        for (int i = 0; i < listed.size(); i++) {
+            personOrder.put(listed.get(i).getId(), i);
+        }
+        return ids.stream().distinct()
+                .flatMap(id -> claims.findByIdAndSheetId(id, sheetId).stream())
+                .sorted(Comparator.<Claim>comparingInt(c -> personOrder.getOrDefault(c.getPersonId(), Integer.MAX_VALUE))
+                        .thenComparing(Claim::getListed, Comparator.reverseOrder()))
+                .toList();
     }
 
     /**

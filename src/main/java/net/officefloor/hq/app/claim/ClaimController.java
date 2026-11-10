@@ -59,6 +59,9 @@ public class ClaimController {
     public record BulkOpenResponse(int opened, int refused, List<ClaimResponse> claims) {
     }
 
+    public record BulkSettleResponse(int settled, int refused, List<ClaimResponse> claims) {
+    }
+
     public record ClaimResponse(long id, long personId, String amount, LocalDate date, String note,
             ClaimStatus status, String number, String settledDue, String openedBy,
             boolean stated, String statedDue, String corrects, LocalDate dueBy, List<ClaimLogLine> log) {
@@ -152,6 +155,13 @@ public class ClaimController {
     public BulkOpenResponse bulkOpen(@Valid @RequestBody BulkOpenRequest req) {
         ClaimService.BulkOpened done = service.bulkOpen(req.sheet().trim(), req.user().trim(), req.ids());
         return new BulkOpenResponse(done.opened(), done.refused(),
+                done.claims().stream().map(ClaimController::response).toList());
+    }
+
+    @PostMapping("/bulk-settle")
+    public BulkSettleResponse bulkSettle(@Valid @RequestBody BulkOpenRequest req) {
+        ClaimService.BulkSettled done = service.bulkSettle(req.sheet().trim(), req.user().trim(), req.ids());
+        return new BulkSettleResponse(done.settled(), done.refused(),
                 done.claims().stream().map(ClaimController::response).toList());
     }
 
