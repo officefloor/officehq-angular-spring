@@ -66,6 +66,11 @@ import { DatedGrade, DatedValue, Lateness, Rate, chargedDueCents, dueText, grace
 // A steward can re-date an OPEN or PENDING claim: its due-by, and so its period and number, and any
 // statement-bound figure stay. Refused for anyone else, a claim in a closed period, and a date after
 // its person's retirement.
+// A DRAFT claim can have lines added with its line label, quantity (a whole number, at least 1) and
+// unit amount (two decimals): its amount becomes the quantities times the unit amounts added up, and
+// an edit typing another amount is refused. Adding a line counts as editing the claim; it is refused
+// for a claim that is not DRAFT, in a closed period, or locked by another user's editor. The lines
+// show in the order added as <label> <qty> x <unit>.
 // A DRAFT claim can be deleted with its delete button (refused for any other status or a claim in a
 // closed period): it is DELETED, counts nowhere and cannot be edited, opened or voided. Its restore
 // button makes it a DRAFT again on the sheet-today it was deleted; on a later day that is refused.
@@ -120,6 +125,22 @@ export interface Claim {
   comments: ClaimCommentLine[];
   /** The number of the bulk settle batch that settled the claim (or made it PENDING); null when not settled by one. */
   batch: number | null;
+  /** The claim's lines, in the order added; while it has any, its amount is their total. */
+  lines: ClaimLineItem[];
+}
+
+/** One line of a claim: a label, a quantity and a unit amount. */
+export interface ClaimLineItem {
+  label: string;
+  qty: number;
+  unit: string;
+}
+
+/** The line typed on a claim, before it is added. */
+interface LineDraft {
+  label: string;
+  qty: string;
+  unit: string;
 }
 
 /** One comment on a claim: who wrote it, on the sheet's today then. */
@@ -378,6 +399,35 @@ export function money(c: number): string {
               <li data-testid="claim-comments-line">{{ m.by }} on {{ m.date }}: {{ m.text }}</li>
             }
           </ol>
+          <ol [attr.aria-label]="'Lines of claim of ' + c.amount + ' on ' + c.date">
+            @for (l of c.lines; track $index) {
+              <li data-testid="claim-lines-line">{{ l.label }} {{ l.qty }} x {{ l.unit }}</li>
+            }
+          </ol>
+          <label [for]="'claim-line-label-' + c.id">Line label</label>
+          <input
+            [id]="'claim-line-label-' + c.id"
+            data-testid="claim-line-label"
+            [value]="lineDrafts().get(c.id)?.label ?? ''"
+            (input)="setLine(c.id, 'label', $any($event.target).value)"
+          />
+          <label [for]="'claim-line-qty-' + c.id">Quantity</label>
+          <input
+            [id]="'claim-line-qty-' + c.id"
+            data-testid="claim-line-qty"
+            inputmode="numeric"
+            [value]="lineDrafts().get(c.id)?.qty ?? ''"
+            (input)="setLine(c.id, 'qty', $any($event.target).value)"
+          />
+          <label [for]="'claim-line-unit-' + c.id">Unit amount</label>
+          <input
+            [id]="'claim-line-unit-' + c.id"
+            data-testid="claim-line-unit"
+            inputmode="decimal"
+            [value]="lineDrafts().get(c.id)?.unit ?? ''"
+            (input)="setLine(c.id, 'unit', $any($event.target).value)"
+          />
+          <button type="button" data-testid="claim-line-add" (click)="addLine(c)">Add line</button>
           <label [for]="'claim-comment-text-' + c.id">Comment</label>
           <input
             [id]="'claim-comment-text-' + c.id"
@@ -551,6 +601,8 @@ export class PersonClaims {
   protected readonly actionErrors = signal<ReadonlyMap<number, string>>(new Map());
   /** The reason typed for rejecting each claim, by claim id. */
   protected readonly reasons = signal<ReadonlyMap<number, string>>(new Map());
+  /** The line typed on each claim, by claim id. */
+  protected readonly lineDrafts = signal<ReadonlyMap<number, LineDraft>>(new Map());
   /** The comment typed on each claim, by claim id. */
   protected readonly commentTexts = signal<ReadonlyMap<number, string>>(new Map());
   /** The sheet's void reasons, one of which a void needs while there are any. */
@@ -742,6 +794,14 @@ export class PersonClaims {
 
   protected setReason(id: number, reason: string): void {
     this.reasons.update((m) => new Map(m).set(id, reason));
+    this.clearActionError(id);
+  }
+
+  protected setLine(id: number, field: keyof LineDraft, value: string): void {
+    this.lineDrafts.update((m) => {
+      const draft = m.get(id) ?? { label: '', qty: '', unit: '' };
+      return new Map(m).set(id, { ...draft, [field]: value });
+    });
     this.clearActionError(id);
   }
 
@@ -995,6 +1055,54 @@ export class PersonClaims {
           : status === 409
             ? `A ${c.status} claim cannot have a proof added.`
             : 'Could not add a proof to this claim.';
+      this.actionErrors.update((m) => new Map(m).set(c.id, err));
+    }
+  }
+
+  /** Add a line to a DRAFT claim; a blank label, a quantity below 1 or a unit amount with more than
+   *  two decimals is refused. */
+  protected async addLine(c: Claim): Promise<void> {
+    this.clearActionError(c.id);
+    const sheet = this.session.sheet();
+    const draft = this.lineDrafts().get(c.id) ?? { label: '', qty: '', unit: '' };
+    const label = draft.label.trim();
+    const qty = draft.qty.trim();
+    const unit = draft.unit.trim();
+    if (!label || !/^\d{1,7}$/.test(qty) || Number(qty) < 1 || !/^\d{1,12}(\.\d{1,2})?$/.test(unit)) {
+      this.actionErrors.update((m) =>
+        new Map(m).set(c.id, 'Enter a label, a whole quantity of at least 1 and a unit amount with two decimals.'),
+      );
+      return;
+    }
+    try {
+      const claim = await firstValueFrom(
+        this.http.post<Claim>('/api/claims/line', {
+          sheet,
+          user: this.session.user(),
+          id: c.id,
+          label,
+          qty: Number(qty),
+          unit,
+        }),
+      );
+      if (this.session.sheet() !== sheet) return;
+      this.lineDrafts.update((m) => {
+        const next = new Map(m);
+        next.delete(c.id);
+        return next;
+      });
+      this.saved.emit(claim);
+    } catch (e) {
+      if (this.session.sheet() !== sheet) return;
+      const status = e instanceof HttpErrorResponse ? e.status : 0;
+      const err =
+        status === 403
+          ? 'You may not change this claim.'
+          : status === 409
+            ? `A line cannot be added to this claim: it is not a DRAFT or is being edited by another user.`
+            : status === 423
+              ? 'This claim is in a closed period.'
+              : 'Could not add this line.';
       this.actionErrors.update((m) => new Map(m).set(c.id, err));
     }
   }

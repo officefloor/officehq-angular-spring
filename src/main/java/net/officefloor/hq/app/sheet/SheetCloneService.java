@@ -56,7 +56,7 @@ public class SheetCloneService {
             "PERSON_RETIREMENT");
 
     /** A claim's own tables, copied onto its clone. */
-    private static final List<String> CLAIM_TABLES = List.of("CLAIM_LOG", "CLAIM_COMMENT");
+    private static final List<String> CLAIM_TABLES = List.of("CLAIM_LOG", "CLAIM_COMMENT", "CLAIM_LINE");
 
     private final JdbcTemplate jdbc;
     private final SheetService sheets;

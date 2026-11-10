@@ -209,6 +209,10 @@ public class ClaimService {
         LocalDate dated = dateOrToday(sheetId, date);
         periods.refuseIfClosed(sheetId, claim.getDueBy());
         refuseIfRetired(person(sheetId, claim.getPersonId()), dated);
+        if (!claim.getLines().isEmpty() && amount.compareTo(claim.getAmount()) != 0) {
+            throw new ResponseStatusException(HttpStatus.UNPROCESSABLE_ENTITY,
+                    "A claim with lines takes its amount from them.");
+        }
         String corrected = corrected(sheetId, claim.getPersonId(), amount, corrects);
         refuseIfRefUsed(sheetId, ref, claim.getId());
         RollupService.Snapshot before = rollup.snapshot(sheetId);
@@ -564,6 +568,30 @@ public class ClaimService {
         Claim saved = claims.saveAndFlush(claim);
         audit.recordOnCommit(record("CLAIM_PROOF_ADDED", sheetId, user, person, saved)
                 + (saved.getNumber() != null ? " number=" + saved.getNumber() : "") + " proofs=" + saved.getProofs());
+        return saved;
+    }
+
+    /**
+     * Add a line to a DRAFT claim: its amount becomes the total of its lines (quantity times unit
+     * amount), written as CLAIM_LINE_ADDED with the new amount. It counts as editing the claim.
+     * Refused as an edit is: (409) for a claim that is not DRAFT or that another user's editor locks,
+     * and (423) when due inside a closed period. An editor the user has open on the claim stays open.
+     */
+    @Transactional
+    public Claim addLine(String sheetId, String user, long id, String label, int qty, BigDecimal unit) {
+        roles.refuseViewer(sheetId, user);
+        Claim claim = claims.findByIdAndSheetId(id, sheetId)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "No such claim on this sheet."));
+        refuseIfNotEditable(sheetId, user, claim);
+        periods.refuseIfClosed(sheetId, claim.getDueBy());
+        Person person = person(sheetId, claim.getPersonId());
+        RollupService.Snapshot before = rollup.snapshot(sheetId);
+        claim.addLine(new ClaimLine(label, qty, unit));
+        claim.setEditedBy(user);
+        Claim saved = claims.saveAndFlush(claim);
+        audit.recordOnCommit(record("CLAIM_LINE_ADDED", sheetId, user, person, saved) + " label=" + label + " qty="
+                + qty + " unit=" + unit.toPlainString());
+        rollup.recordChanges(sheetId, user, before);
         return saved;
     }
 

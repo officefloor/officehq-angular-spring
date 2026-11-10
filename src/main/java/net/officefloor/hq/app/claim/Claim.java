@@ -168,6 +168,13 @@ public class Claim {
     @BatchSize(size = 100)
     private List<ClaimComment> comments = new ArrayList<>();
 
+    /** The claim's lines, in the order they were added; while it has any, its amount is their total. */
+    @ElementCollection(fetch = FetchType.EAGER)
+    @CollectionTable(name = "claim_line", joinColumns = @JoinColumn(name = "claim_id"))
+    @OrderColumn(name = "seq")
+    @BatchSize(size = 100)
+    private List<ClaimLine> lines = new ArrayList<>();
+
     protected Claim() {
     }
 
@@ -216,6 +223,7 @@ public class Claim {
         copy.proofs = proofs;
         copy.log.addAll(log);
         copy.comments.addAll(comments);
+        copy.lines.addAll(lines);
         return copy;
     }
 
@@ -489,5 +497,16 @@ public class Claim {
     /** Add a comment to the claim. */
     public void comment(ClaimComment comment) {
         comments.add(comment);
+    }
+
+    /** The claim's lines, in the order they were added. */
+    public List<ClaimLine> getLines() {
+        return List.copyOf(lines);
+    }
+
+    /** Add a line to the claim: its amount becomes the total of its lines. */
+    public void addLine(ClaimLine line) {
+        lines.add(line);
+        amount = lines.stream().map(ClaimLine::total).reduce(BigDecimal.ZERO, BigDecimal::add);
     }
 }

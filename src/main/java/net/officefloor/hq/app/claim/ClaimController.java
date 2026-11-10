@@ -1,6 +1,8 @@
 package net.officefloor.hq.app.claim;
 
 import jakarta.validation.Valid;
+import jakarta.validation.constraints.Max;
+import jakarta.validation.constraints.Min;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.NotNull;
 import jakarta.validation.constraints.Pattern;
@@ -73,6 +75,12 @@ public class ClaimController {
             @NotBlank @Size(max = 100) String user, @NotNull Long id, @NotNull @Size(max = 1000) String text) {
     }
 
+    public record AddLineRequest(@NotBlank @Size(max = 100) String sheet,
+            @NotBlank @Size(max = 100) String user, @NotNull Long id,
+            @NotBlank @Size(max = 200) String label,
+            @NotNull @Min(1) @Max(1000000) Integer qty, @NotNull @Pattern(regexp = AMOUNT) String unit) {
+    }
+
     public record RedateClaimRequest(@NotBlank @Size(max = 100) String sheet,
             @NotBlank @Size(max = 100) String user, @NotNull Long id, @NotNull LocalDate date) {
     }
@@ -118,7 +126,11 @@ public class ClaimController {
             boolean stated, String statedDue, String corrects, LocalDate dueBy, List<ClaimLogLine> log,
             LocalDate deferredUntil, int proofs, String splitFrom, String lockedBy,
             boolean lateEntry, LocalDate remindedOn, String ref, List<String> tags, String voidReason,
-            List<ClaimCommentLine> comments, Integer batch) {
+            List<ClaimCommentLine> comments, Integer batch, List<ClaimLineLine> lines) {
+    }
+
+    /** One line of a claim, in the order added: its label, quantity and unit amount. */
+    public record ClaimLineLine(String label, int qty, String unit) {
     }
 
     /** One comment on a claim, oldest first. */
@@ -146,7 +158,9 @@ public class ClaimController {
                 claim.getVoidReason(),
                 claim.getComments().stream().map(c -> new ClaimCommentLine(c.getBy(), c.getDate(), c.getText()))
                         .toList(),
-                claim.getBatch());
+                claim.getBatch(),
+                claim.getLines().stream().map(l -> new ClaimLineLine(l.getLabel(), l.getQty(), money(l.getUnit())))
+                        .toList());
     }
 
     public static BigDecimal amount(String amount) {
@@ -285,6 +299,12 @@ public class ClaimController {
     @PostMapping("/comment")
     public ClaimResponse comment(@Valid @RequestBody CommentClaimRequest req) {
         return response(service.comment(req.sheet().trim(), req.user().trim(), req.id(), req.text().trim()));
+    }
+
+    @PostMapping("/line")
+    public ClaimResponse addLine(@Valid @RequestBody AddLineRequest req) {
+        return response(service.addLine(req.sheet().trim(), req.user().trim(), req.id(), req.label().trim(), req.qty(),
+                amount(req.unit())));
     }
 
     @PostMapping("/remind")
