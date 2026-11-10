@@ -3,8 +3,10 @@ import { provideHttpClient, withInterceptors } from '@angular/common/http';
 import { provideRouter } from '@angular/router';
 import { routes } from './app.routes';
 import { asOfInterceptor } from './core/as-of.interceptor';
+import { inFlightInterceptor } from './core/in-flight.interceptor';
 
-// The app's wiring: the router and the HTTP client (which sends the screen's as-of date).
+// The app's wiring: the router and the HTTP client (which sends the screen's as-of date and counts
+// the requests still waiting for their answer).
 export const appConfig: ApplicationConfig = {
-  providers: [provideBrowserGlobalErrorListeners(), provideRouter(routes), provideHttpClient(withInterceptors([asOfInterceptor]))],
+  providers: [provideBrowserGlobalErrorListeners(), provideRouter(routes), provideHttpClient(withInterceptors([asOfInterceptor, inFlightInterceptor]))],
 };

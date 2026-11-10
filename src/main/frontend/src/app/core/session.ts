@@ -69,6 +69,29 @@ export class Session {
   readonly asOf = signal<string | null>(null);
   /** Counts sheet loads, so features re-read the store each time a sheet is (re-)loaded. */
   readonly loads = signal(0);
+  /** How many API requests are waiting for their answer (see inFlightInterceptor). */
+  private inFlight = 0;
+  /** What waits for every API request to be answered. */
+  private idleWaiters: (() => void)[] = [];
+
+  requestStarted(): void {
+    this.inFlight++;
+  }
+
+  requestEnded(): void {
+    if (--this.inFlight > 0) return;
+    const waiters = this.idleWaiters;
+    this.idleWaiters = [];
+    for (const w of waiters) w();
+  }
+
+  /**
+   * Resolves once no API request is waiting for its answer: what the screen shows is then as the
+   * store last answered (an export taken after the as-of date is set waits for its re-read).
+   */
+  settled(): Promise<void> {
+    return this.inFlight === 0 ? Promise.resolve() : new Promise((resolve) => this.idleWaiters.push(resolve));
+  }
 
   async signIn(name: string): Promise<void> {
     const res = await firstValueFrom(this.http.post<{ name: string; locale: Locale }>('/api/signin', { name }));

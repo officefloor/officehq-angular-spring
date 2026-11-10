@@ -89,7 +89,9 @@ import { FigurePipe } from '../../core/figure';
 // A user can watch a person, and stop watching them, from their row; "Watched" shows whether the
 // signed-in user watches them.
 // The export button downloads everyone, retired people included, in list order, as a CSV file
-// (name, grade in force today, retired-from date or nothing, due-total as shown).
+// (name, grade in force today, retired-from date or nothing, due-total as shown). It and the
+// export-claims button first wait for the screen's reads to be answered, so an export taken while
+// an as-of date is set has the as-of figures (the pools export reads the pools afresh as of it).
 // The export-claims button downloads every claim as a CSV file the same way: people in list order,
 // retired included, each person's claims oldest first, with person, number, date, amount, due,
 // status and period as the claim's row shows them (an empty number or period, or n/a, as it is).
@@ -2353,7 +2355,10 @@ export class People {
   }
 
   /** Download every person, retired included, in list order, as a CSV file. */
-  protected exportCsv(): void {
+  protected async exportCsv(): Promise<void> {
+    const sheet = this.session.sheet();
+    await this.session.settled();
+    if (this.session.sheet() !== sheet) return;
     const lines = ['name,grade,retired-from,due-total'];
     for (const p of this.people()) {
       lines.push([p.name, this.gradeToday(p), p.retiredFrom ?? '', dueText(this.dueOf(p))].map(csvField).join(','));
@@ -2362,7 +2367,10 @@ export class People {
   }
 
   /** Download every claim, people in list order (retired included) and each one's oldest first, as a CSV file. */
-  protected exportClaims(): void {
+  protected async exportClaims(): Promise<void> {
+    const sheet = this.session.sheet();
+    await this.session.settled();
+    if (this.session.sheet() !== sheet) return;
     const lines = ['person,number,date,amount,due,status,period'];
     for (const p of this.people()) {
       for (const c of [...this.claimsOf(p.id)].reverse()) {
