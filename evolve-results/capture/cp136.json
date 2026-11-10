@@ -1,0 +1,74 @@
+{
+  "checkpoint": 136,
+  "stack": {
+    "repo": "/home/daniel/officehq-angular-spring",
+    "origin": "git@github.com:officefloor/officehq-angular-spring.git",
+    "name": "officehq-angular-spring",
+    "base_ref": "base-empty",
+    "base_commit": "65cb8233ea38b2dfa6cfd18709e30cd18fdf3250"
+  },
+  "checkpoint_id": "cp136_bindings-follow",
+  "phase": "mid",
+  "type": "mutative",
+  "mutates": [
+    107,
+    108,
+    111,
+    128
+  ],
+  "replaced_tests": [
+    "cp107_merge-people.spec.ts::merge people",
+    "cp108_patron-shares.spec.ts::patron shares scenario 1",
+    "cp111_transfer-person.spec.ts::transfer person",
+    "cp128_transfer-merges.spec.ts::transfer merges"
+  ],
+  "request": {
+    "spec": "Claims that move with a merge or a transfer now keep the figure a statement bound them to, and\nthe receiving person's statement count becomes their own plus the other's; the receiving person's\nlast statement stays theirs (or, having none, becomes the other's).\n",
+    "prompt": "You are implementing ONE change to this application.\n\nFIRST read AGENTS.md \u2014 it states the working rules and how the app is tested, and sends you to\nDESIGN.md for the app's stack and conventions. Follow both.\n\nTHE CHANGE REQUEST:\nClaims that move with a merge or a transfer now keep the figure a statement bound them to, and\nthe receiving person's statement count becomes their own plus the other's; the receiving person's\nlast statement stays theirs (or, having none, becomes the other's).\n\nYour work is verified by an automated Playwright UI test already installed under e2e/specs/.\nRead that spec: it declares the exact data-testid anchors, values, test data and any audit\nrecords it expects \u2014 match them. Run `bin/e2e` to build the app, start it, and run the test as\nyou work; iterate until it passes. Change whatever the request needs across the app \u2014 its stored\ndata, its server and its front end. Do NOT edit bin/build, bin/start, bin/stop, bin/e2e,\nAGENTS.md, CLAUDE.md, DESIGN.md, e2e/support/ or the test spec.\n"
+  },
+  "commit_sha": "0cc5a23d218471e581705a0e8b6a324e532b4b61",
+  "reset_sha": "",
+  "preagent_sha": "cf7892133a322e10116b2fb1932854594aaa7d07",
+  "prev_sha": "cf7892133a322e10116b2fb1932854594aaa7d07",
+  "base_sha": "65cb8233ea38b2dfa6cfd18709e30cd18fdf3250",
+  "agent": {
+    "ok": true,
+    "cost_usd": 0.6167020000000001,
+    "input_tokens": 30,
+    "output_tokens": 7103,
+    "cache_read_tokens": 598810,
+    "cache_creation_tokens": 44345,
+    "num_turns": 17,
+    "duration_ms": 265481,
+    "duration_api_ms": 70821,
+    "model": "claude-opus-5-5",
+    "session_id": "086682b4-548e-4ba8-a83c-dfcd33549127",
+    "stop_reason": "success",
+    "result_text": "I made the change, and all 4 tests in `bin/e2e` pass.\n\n**What now happens on a merge or transfer**\n- **Claims keep their bound figure.** A merge no longer clears it (`PersonMergeService`). A transfer now copies it onto the claim on the new sheet (`Claim.transferredTo`), where before it was dropped.\n- **Statements move with the person.** The person's statements used to be deleted; now they go to the receiving person, so that person's count is their own plus the other's. The moved statements are placed before the receiver's own, so the receiver's last statement stays theirs. If the receiver had none, the other's last statement becomes their last.\n\n**How it works**\n- \"Last statement\" is simply the newest row in the store, so I had to re-save rows to get the order right. A new `StatementRepository.moveStatements` deletes the moved person's statements and the receiver's, then saves them again in that order. Dates, due-totals and claim counts are unchanged; only the row ids change. If the moved person had no statements, nothing is touched.\n- A new `Statement.movedTo` makes the copy for the new person or sheet.\n\n**One choice to check:** a transfer to a sheet with no matching name (so nobody is merged into) now also brings the person's statements, since their claims keep the figures those statements bound. The request only talks about the receiving person in a merge, so say if you'd rather plain transfers still drop statements.\n\nI also updated the code comments that described the old behaviour. No front-end or database changes were needed.",
+    "error": "",
+    "attempts": [
+      {
+        "ok": true,
+        "limit_reached": false,
+        "retryable": false,
+        "timed_out": false,
+        "cost_usd": 0.6167020000000001,
+        "num_turns": 17,
+        "duration_ms": 265481,
+        "duration_api_ms": 70821,
+        "error": ""
+      }
+    ]
+  },
+  "agent_stream_file": "cp136.agent.jsonl",
+  "agent_diff_file": "cp136.agent.diff",
+  "build_log_file": null,
+  "tests": {
+    "gated": false,
+    "queued": true
+  },
+  "probe": null,
+  "pinned_touched": [],
+  "acceptance_touched": [],
+  "impact_gate": null
+}
